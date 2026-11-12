@@ -42,24 +42,18 @@ package struct LlamaServerLaunchBuilder: Sendable {
   /// a test that has to hop to the main actor to read a constant is a test
   /// nobody writes.
   ///
-  /// **EG-1 also gets word-copying** (`--spec-type ngram-simple`, #3363/#3370): the server
-  /// drafts the next tokens by copying from the prompt (polish mostly repeats the
-  /// dictation) and the model verifies them in one pass. No second model is loaded.
-  /// Measured on EG-1 1.2 with these exact app flags (2026-10-02): 52/52 outputs equal
-  /// the study's word-copying run and 51/52 equal no word-copying; graded sealed 1,459/1,462
-  /// and multilingual 480/480 byte-identical; ~1.2x faster on M5 Max and ~1.1-1.7x on M1
-  /// for long takes, neutral on one-sentence takes. Not byte-identical by design, so it
-  /// stays EG-1-only until S1-mini is measured the same way.
+  /// #4473: EG-1 is not built here any more. It runs on its own engine (EnviousDecode), which
+  /// drafts with its own draft model; the word-copying flag (`--spec-type ngram-simple`,
+  /// #3363/#3370) that this builder gave EG-1 left with it. S1-mini is the one bundled model
+  /// on this server.
   package static func engineArguments(for provider: LLMProvider) -> [String] {
     let footprint = ["-fa", "on", "--cache-type-k", "q8_0", "--cache-type-v", "q8_0"]
     switch provider {
-    case .egOne:
-      return footprint + ["--spec-type", "ngram-simple"]
     case .s1Mini:
       return footprint + ["--jinja", "--chat-template-kwargs", #"{"enable_thinking":false}"#]
-    case .openAI, .gemini, .claude, .ollama, .appleIntelligence, .none:
+    case .egOne, .openAI, .gemini, .claude, .ollama, .appleIntelligence, .none:
       preconditionFailure(
-        "LlamaServerLaunchBuilder builds flags for a bundled local model; \(provider) is not one")
+        "LlamaServerLaunchBuilder builds flags for a model on llama-server; \(provider) is not one")
     }
   }
 
@@ -80,8 +74,8 @@ package struct LlamaServerLaunchBuilder: Sendable {
     let engine = engineArguments(for: provider)
     guard let learnedWordAdapterURL else { return engine }
     switch provider {
-    case .egOne, .s1Mini: break
-    case .openAI, .gemini, .claude, .ollama, .appleIntelligence, .none: return engine
+    case .s1Mini: break
+    case .egOne, .openAI, .gemini, .claude, .ollama, .appleIntelligence, .none: return engine
     }
     let path = learnedWordAdapterURL.path
     guard !path.contains(","), !path.contains(":") else { return engine }
@@ -121,23 +115,30 @@ package struct LlamaServerLaunchBuilder: Sendable {
         modelID: modelID, artifactIdentity: artifactIdentity, serverBinaryURL: serverBinaryURL,
         modelURL: modelURL, contextTokens: contextTokens,
         learnedWordAdapterURL: learnedWordAdapterURL),
-      makeArguments: arguments)
+      makeLaunch: launch)
   }
 
-  /// The complete argument list for one spawn (#4473): model, loopback host, port, context
-  /// capacity and bearer, then the engine's flags and the adapter's flags in that order. The
-  /// port and bearer are chosen by the process manager for each spawn; they are not part of
-  /// the spec. Renders the spec it is GIVEN, so a bare-base fallback copy (adapter arguments
-  /// cleared) renders without the adapter.
-  package static func arguments(
-    spec: LocalPolishLaunchSpec, port: UInt16, authToken: String
-  ) -> [String] {
-    [
-      "-m", spec.modelURL.path,
-      "--host", "127.0.0.1",
-      "--port", String(port),
-      "-c", String(spec.contextTokens),
-      "--api-key", authToken,
-    ] + spec.extraArguments + spec.learnedWordAdapterArguments
+  /// The launch for one spawn (#4473, #4493): model, the launch's private socket as the host,
+  /// context capacity and the launch's key file, then the engine's flags and the adapter's
+  /// flags in that order. `llama-server` listens on a Unix socket when its host ends in
+  /// `.sock`, and reads the bearer from the key file, so the secret is never in its arguments.
+  /// `EW_STOP_ON_STDIN_EOF` turns on the carried `llama-server` change (#4493 C5a,
+  /// `llama-server-PROVENANCE.md`): the server stops itself when its standard input (the app's
+  /// pipe) ends, so it does not outlive an app that died.
+  /// The socket path and the key file belong to the launch connection the process manager made
+  /// for this spawn; they are not part of the spec. Renders the spec it is GIVEN, so a
+  /// bare-base fallback copy (adapter arguments cleared) renders without the adapter.
+  package static func launch(
+    spec: LocalPolishLaunchSpec, inputs: LocalPolishLaunchConnection.Inputs
+  ) -> LocalPolishLaunchCommand {
+    LocalPolishLaunchCommand(
+      arguments: [
+        "-m", spec.modelURL.path,
+        "--host", inputs.socketPath,
+        "-c", String(spec.contextTokens),
+        "--api-key-file", inputs.keyFileURL.path,
+      ] + spec.extraArguments + spec.learnedWordAdapterArguments,
+      environment: ["EW_STOP_ON_STDIN_EOF": "1"],
+      writesKeyFile: true)
   }
 }

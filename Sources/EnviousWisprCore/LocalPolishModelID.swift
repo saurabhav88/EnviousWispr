@@ -2,7 +2,9 @@
 ///
 /// A logical size, not an artifact revision: which bytes serve a size is decided by model
 /// delivery when the work runs.
-public enum EGOneSize: Sendable, Hashable, CaseIterable {
+///
+/// The raw value is the stored form of the size preference (`egOneSize` in Settings).
+public enum EGOneSize: String, Sendable, Hashable, CaseIterable {
   case full
   case mini
   case micro
@@ -42,5 +44,23 @@ public struct LocalPolishModelID: Sendable, Hashable {
     case .s1Mini, .openAI, .gemini, .claude, .ollama, .appleIntelligence, .none:
       return LocalPolishModelID(provider: provider, size: nil)
     }
+  }
+}
+
+extension LocalPolishModelID {
+  /// The EG-1 size as a saved snapshot stores it: the size's raw value for EG-1, nil for every
+  /// other provider (#4473).
+  public var storedEGOneSize: String? { provider == .egOne ? size?.rawValue : nil }
+
+  /// The model a saved snapshot names, from its stored provider and EG-1 size (#4473).
+  ///
+  /// - A snapshot written before sizes existed stores no size: that EG-1 was the one model
+  ///   which is now the full size.
+  /// - A stored size this build does not know gives nil. The work then runs WITHOUT local
+  ///   polish: it never runs on another size's weights.
+  public static func stored(provider: LLMProvider, egOneSize: String?) -> LocalPolishModelID? {
+    guard provider == .egOne else { return .singleModel(for: provider) }
+    guard let egOneSize else { return .egOne(.full) }
+    return EGOneSize(rawValue: egOneSize).map { .egOne($0) }
   }
 }

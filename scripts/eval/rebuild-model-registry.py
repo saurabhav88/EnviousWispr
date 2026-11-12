@@ -96,7 +96,111 @@ ARMS = [
      "selected", "Round 3. Zero genuine stable critical regressions, email held at +75. "
      "Won but NOT yet shipped: the shards are not uploaded, and two founder decisions are "
      "open (the absolute S4 waiver, and two verbatim_passthrough refusals)."),
+
+    # --- #4473: the three sizes on the EnviousDecode engine. Their ids were given before
+    # they were chosen and are kept as they are (model_registry.KEPT_CANDIDATE_IDS). They
+    # have no score receipt in this harness yet, so they carry no candidate file; their
+    # qualification is plan #4473 P6. Their status is "candidate", so none of them sets a floor.
+    ("eg1-1.3-intl-1c-20261109", "1.3", "eg13-1c", [], "candidate",
+     "The full size (Qwen3.5-4B, round 1c). Chosen for PACKAGING as the EnviousDecode "
+     "full size in plan #4473 P4; an export is recorded. Not qualified for release here: "
+     "the delivered exam is plan #4473 P6."),
+    ("eg1-mini-1.0-g3onestage", "1.0", "mini-g3onestage", [], "candidate",
+     "EG-1 Mini (Qwen3.5-2B, one-stage). Chosen for PACKAGING in plan #4473 P4; an export "
+     "is recorded. Not qualified for release here: the delivered exam is plan #4473 P6. "
+     "A size of its own: it is not a candidate against the 1.0 full-size line."),
+    ("eg1-micro-1.0-g3d", "1.0", "micro-g3d", [], "candidate",
+     "EG-1 Micro (Qwen3.5-0.8B, g3d). Chosen for PACKAGING in plan #4473 P4; an export is "
+     "recorded. Not qualified for release here: the delivered exam is plan #4473 P6. "
+     "A size of its own: it is not a candidate against the 1.0 full-size line."),
 ]
+# Packaged forms (exports) of the artifacts above, hand-authored from the packaging inventory
+# of plan #4473 P4 (run folder 20261109-223321-eg1-family-app-integration-9cd4, p4-c1/inventory.json).
+# An export id starts with its artifact id and is never an artifact id. packageSHA256 is the
+# SHA-256 of the lines "path<TAB>bytes<TAB>sha256" of the package's files, sorted by path.
+EXPORTS = json.loads(r"""{
+    "eg1-1.3-intl-1c-20261109": [
+        {
+            "exportId": "eg1-1.3-intl-1c-20261109-mlx-q6-e001",
+            "variant": "mlx-q6",
+            "runtimeABI": "enviousdecode-v1",
+            "packageSHA256": "a22ed7b2dd1c93931fe2d3815a5abb21e9e2358634d73860bdccc99c0d93bfe9",
+            "files": 21,
+            "totalBytes": 4707411269,
+            "chatTemplateSHA256": "64f85b198065d0fba2a81f37e10ed68161ce2c19a754c7100e67e0ca2ee9c326",
+            "tokenizerSHA256": "a5cd9732badce41de57e6efce8302930ded1c1188c5f81feb2bd6c24c4a1941f",
+            "stopTokenIds": [
+                248046,
+                248044
+            ],
+            "draftWeightsSHA256": [
+                "064a2e53bd7bbeb48c9169857499b4636fba98b1a3e8679bfafb1646ea3275d0",
+                "6ba7f5420e692710aaa72b67193a8e0ed5640733feb09917ab0684833ed59dfc",
+                "826a277ca43d55666ff7021c398a95f33223fbe8586ecfac605e2a814a07b0c1"
+            ],
+            "checker": {
+                "packageSHA256": "e844ae6a6c517f99e50e38f05880a7d918b9233df7af96e625677814834279b0",
+                "adapterSHA256": "670a9015e2b938043bc3adf6560487e6904d140377dda0b60783b3c09fef4881",
+                "adapterConfigSHA256": "5f119770b33c2c301cdb0dcfa3c2fd2e0098ae4b79284bac59f6e5391779f47e",
+                "variant": "mlx-f32",
+                "qualifiedThreshold": "0.1824255410790286"
+            }
+        }
+    ],
+    "eg1-mini-1.0-g3onestage": [
+        {
+            "exportId": "eg1-mini-1.0-g3onestage-mlx-q6-e001",
+            "variant": "mlx-q6",
+            "runtimeABI": "enviousdecode-v1",
+            "packageSHA256": "b50be3c0a6a247710bfebb662b3ef3cc534697473b3a15f7ae9339988cba4552",
+            "files": 16,
+            "totalBytes": 2074163194,
+            "chatTemplateSHA256": "64f85b198065d0fba2a81f37e10ed68161ce2c19a754c7100e67e0ca2ee9c326",
+            "tokenizerSHA256": "a5cd9732badce41de57e6efce8302930ded1c1188c5f81feb2bd6c24c4a1941f",
+            "stopTokenIds": [
+                248046,
+                248044
+            ],
+            "draftWeightsSHA256": [
+                "c81505f8b1077dedf26fffb12c1bcc179ecae243aa71c59dd22abce2f1e945cf",
+                "947293ec7f70bc50582d74a0f31ee90a48790b51081c1b281b7d5ed9467f7fcf"
+            ],
+            "checker": {
+                "packageSHA256": "dec2ff00883f7124f290d779add871269b039db0b186b8573edde4923f39089a",
+                "adapterSHA256": "94d090aa8ccdc3ac1ec0e8e76020da2c471f1d463aad0e04bb8f54ded147d831",
+                "adapterConfigSHA256": "d0e64161799a4fa222663035ca778de76bea3a41eda8fc81408dfde1f78fb6e5",
+                "variant": "mlx-f32",
+                "qualifiedThreshold": "0.20181324011109297"
+            }
+        }
+    ],
+    "eg1-micro-1.0-g3d": [
+        {
+            "exportId": "eg1-micro-1.0-g3d-mlx-q6-e001",
+            "variant": "mlx-q6",
+            "runtimeABI": "enviousdecode-v1",
+            "packageSHA256": "19e3aa3e67b62d8c8ebcfdf0d2e53ea49b4d5da626be448f853d1ba205d7deda",
+            "files": 12,
+            "totalBytes": 805133748,
+            "chatTemplateSHA256": "64f85b198065d0fba2a81f37e10ed68161ce2c19a754c7100e67e0ca2ee9c326",
+            "tokenizerSHA256": "a5cd9732badce41de57e6efce8302930ded1c1188c5f81feb2bd6c24c4a1941f",
+            "stopTokenIds": [
+                248046,
+                248044
+            ],
+            "draftWeightsSHA256": [
+                "4c69854f078a44fa52bb19332620cf2f4e77589019fe8bdb2e37acd933397f9a"
+            ],
+            "checker": {
+                "packageSHA256": "d62b33576a6bdc4747aba414af337ea582f7b794ee076d207f929b14fbfa9a66",
+                "adapterSHA256": "7247de615fb5f33c5fc6b4d3bf392e9c5c76a35a945935078ce82eae220f1a3a",
+                "adapterConfigSHA256": "d0e64161799a4fa222663035ca778de76bea3a41eda8fc81408dfde1f78fb6e5",
+                "variant": "mlx-f32",
+                "qualifiedThreshold": "0.20181324142004287"
+            }
+        }
+    ]
+}""")
 
 
 def read_receipts() -> dict:
@@ -215,11 +319,17 @@ def main() -> int:
             "REFUSED: these declared candidate files have no receipt under "
             f"{RUNS}:\n  " + "\n  ".join(missing) +
             "\nEither the receipts moved, or the table names a file that never existed.")
+    sys.path.insert(0, str(Path(__file__).parent))
+    from model_registry import KEPT_CANDIDATE_IDS
+    exports = EXPORTS
     records, seen = [], set()
     for artifact_id, release, legacy, cand_files, status, reason in ARMS:
         if artifact_id in seen:
             raise SystemExit(f"REFUSED: {artifact_id} appears twice in ARMS")
-        if not artifact_id.startswith(f"eg1-{release}-"):
+        if artifact_id in KEPT_CANDIDATE_IDS:
+            if KEPT_CANDIDATE_IDS[artifact_id] != release:
+                raise SystemExit(f"REFUSED: {artifact_id} does not belong to release {release}")
+        elif not artifact_id.startswith(f"eg1-{release}-"):
             raise SystemExit(f"REFUSED: {artifact_id} does not match release {release}")
         seen.add(artifact_id)
         evals = []
@@ -235,6 +345,8 @@ def main() -> int:
             "legacyExemption": True,
             "evaluations": evals,
         })
+        if artifact_id in exports:
+            records[-1]["exports"] = exports[artifact_id]
 
     doc = {
         "_comment": "Every EG-1 model we have trained, under the artifact-ID convention. "

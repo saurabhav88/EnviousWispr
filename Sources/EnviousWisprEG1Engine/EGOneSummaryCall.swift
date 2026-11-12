@@ -3,7 +3,7 @@ import EnviousWisprLLM
 import EnviousWisprLocalPolish
 import Foundation
 
-/// One EnviousMeet summary call on the bundled EG-1 server (#4319).
+/// One EnviousMeet summary call on EG-1's EnviousDecode helper (#4319, #4473).
 ///
 /// Deliberately NOT `LocalPolishTransport`: that path is built for a dictation that must never
 /// wait, so it caps a request at 20 seconds and turns every failure into the silent polish skip
@@ -11,7 +11,8 @@ import Foundation
 /// `MeetingSummary`'s own policy: a length stop is a cut-off answer (`Failure.truncated`, never
 /// saved; no loop guard, founder 2026-11-01), an empty answer is `Failure.empty`, a timeout is
 /// `Failure.timedOut`, a dropped connection stays a `URLError` the summary's retry policy
-/// already treats as retryable, a prompt the server's window cannot hold is
+/// already treats as retryable (#4493: the helper exchange reports it in its own terms, and this
+/// call gives it back as the `URLError` code the policy keys on), a prompt the server's window cannot hold is
 /// `LLMError.classified(.inputTooLong)` (the summary re-plans with its byte count, as for the
 /// other engines), and any other HTTP status is a non-retryable request failure.
 /// No transcript-tag stripping (the summary prompt wraps nothing in transcript tags) and no
@@ -21,36 +22,34 @@ public enum EGOneSummaryCall {
   /// - Parameters:
   ///   - timeoutSeconds: the summary's local call limit; the request waits that plus ten
   ///     seconds, so the summary's own timeout fires first and reports `timedOut`.
-  ///   - send: the transport; the app uses `URLSession.shared`, tests a canned answer.
+  ///   - send: the transport; the app uses the helper exchange, tests a canned answer.
   public static func complete(
     endpoint: LocalPolishEndpoint, instructions: String, prompt: String, timeoutSeconds: Double,
-    send: @Sendable (URLRequest) async throws -> (Data, URLResponse) = {
-      try await URLSession.shared.data(for: $0)
-    }
+    send: LocalPolishHelperExchange.Perform = LocalPolishHelperExchange.perform
   ) async throws -> String {
-    var request = URLRequest(url: endpoint.chatCompletionsURL)
-    request.httpMethod = "POST"
-    request.setValue("Bearer \(endpoint.authToken)", forHTTPHeaderField: "Authorization")
-    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-    request.timeoutInterval = timeoutSeconds + 10
-    request.httpBody = try JSONSerialization.data(
-      withJSONObject: requestBody(
-        instructions: instructions, prompt: prompt,
-        hasLearnedWordAdapter: endpoint.hasLearnedWordAdapter))
-    let data: Data
-    let response: URLResponse
+    let request = LocalPolishHelperRequest(
+      method: .post, path: "/v1/chat/completions",
+      body: try JSONSerialization.data(
+        withJSONObject: requestBody(instructions: instructions, prompt: prompt)),
+      timeout: .seconds(timeoutSeconds + 10))
+    let response: LocalPolishHelperResponse
     do {
-      (data, response) = try await send(request)
-    } catch let error as URLError where error.code == .cancelled {
-      throw CancellationError()
-    } catch let error as URLError where error.code == .timedOut {
+      response = try await send(request, endpoint)
+    } catch LocalPolishHelperClientError.timedOut {
       throw MeetingSummary.Failure.timedOut
+    } catch LocalPolishHelperClientError.notConnectable {
+      // `LLMRetryPolicy` retries these two `URLError` codes; they are what this call threw
+      // when the transport was `URLSession` (plan #4493 §3.3, Q4).
+      throw URLError(.cannotConnectToHost)
+    } catch LocalPolishHelperClientError.connectionLost {
+      throw URLError(.networkConnectionLost)
     }
-    let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+    let data = response.body
+    let status = response.status
     guard status == 200 else {
-      // The planning estimate can undercount EG-1's tokenizer; the bundled llama-server then
-      // answers 400 with type `exceed_context_size_error` and "request (N tokens) exceeds the
-      // available context size". The type is checked first, so new wording still re-plans.
+      // The planning estimate can undercount EG-1's tokenizer; the helper then answers 400
+      // with type `exceed_context_size_error`. The type is checked first, so new wording
+      // still re-plans.
       if status == 400, isContextOverflow(data) {
         throw LLMError.classified(.inputTooLong)
       }
@@ -70,23 +69,25 @@ public enum EGOneSummaryCall {
   }
 
   /// The chat-completions body: system and user as given, the fixed EG-1 model name, the
-  /// summary's output cap and temperature 0, with the learned-word adapter switched off by the
-  /// same owner polish uses.
-  static func requestBody(
-    instructions: String, prompt: String, hasLearnedWordAdapter: Bool
-  ) -> [String: Any] {
-    let body: [String: Any] = [
+  /// summary's output cap and temperature 0. Exactly the fields the helper serves and no
+  /// other (it refuses a field it does not know): the learned-word adapter is a separate model
+  /// tree in the helper and never rides a chat request, so nothing switches it off here.
+  /// Normalize whitespace at the edges of summary messages, including parts cut at a
+  /// token budget. This also satisfies the supported emptyThinkBlock template's
+  /// whitespace restriction. Bundled Micro currently uses plainAssistant.
+  static func requestBody(instructions: String, prompt: String) -> [String: Any] {
+    [
       "model": LLMProvider.egOneModelName,
       "messages": [
-        ["role": "system", "content": instructions],
-        ["role": "user", "content": prompt],
+        [
+          "role": "system", "content": instructions.trimmingCharacters(in: .whitespacesAndNewlines),
+        ],
+        ["role": "user", "content": prompt.trimmingCharacters(in: .whitespacesAndNewlines)],
       ],
       "max_tokens": MeetingSummary.outputTokens,
       "temperature": 0,
       "stream": false,
     ]
-    return EGOneConnector.withLearnedWordAdapterOff(
-      body, hasLearnedWordAdapter: hasLearnedWordAdapter)
   }
 
   /// The answer, or why there is none. A length stop is checked before the content: the bench

@@ -57,7 +57,7 @@ struct FileImportCloudSetupTests {
   {
     let subject = FileImportRunner(
       keychainManager: KeychainManager(), localPolishers: .llamaForTests,
-      egOneRuntime: nil, s1MiniRuntime: nil,
+      egOneRuntime: nil, additionalLocalRuntimes: [:], s1MiniRuntime: nil,
       outputClassifierHolder: nil, languageIdentifier: { _ in ("en", 0.99) },
       promptPlanner: nil, checkerSelectionProvider: nil,
       makePolisher: { _, _, _, _ in Polisher(capture: capture) })
@@ -67,7 +67,7 @@ struct FileImportCloudSetupTests {
         languageMode: .locked("en"), wordCorrectionEnabled: false, fillerRemovalEnabled: false,
         emojiFormatterEnabled: false, spokenPunctuationEnabled: false,
         spokenPunctuationStartWords: nil, spokenPunctuationEnglishPeriodWord: nil,
-        llmProvider: provider.rawValue, llmModel: model, s1Control: nil,
+        llmProvider: provider.rawValue, llmModel: model, egOneSize: nil, s1Control: nil,
         englishSpelling: .american, casualModeEnabled: false),
       vocabulary: nil, cloudModelList: nil)
     return subject

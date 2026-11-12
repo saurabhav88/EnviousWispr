@@ -4,7 +4,20 @@ import Foundation
 /// checker family (`ModelFamily.checkerBaseFamily`). Version 1 is pinned
 /// inside the bundled delivery manifest and its digest. Shard order matters
 /// because llama.cpp loads the first shard as entrypoint.
+///
+/// Two adapter layouts exist (#4473 P3), named by `format`:
+/// - `gguf-lora`: one file, loaded by the llama engine.
+/// - `mlx-lora`: two files in one folder, loaded by the EnviousDecode helper: the weights
+///   (`adapters.safetensors`) and their settings (`adapter_config.json`). The contract pins
+///   the weights file by name, size and hash; the settings file is pinned like every delivered
+///   file, by its own entry in the manifest's `files` and by the manifest digest.
+/// `DeliveryManifest` refuses any other format and any other set of files.
 public struct LearnedWordCheckerContract: Codable, Sendable, Equatable {
+  public static let ggufLoRAFormat = "gguf-lora"
+  public static let mlxLoRAFormat = "mlx-lora"
+  public static let mlxWeightsFileName = "adapters.safetensors"
+  public static let mlxSettingsFileName = "adapter_config.json"
+
   public struct Base: Codable, Sendable, Equatable {
     public let revision: String
     public let variant: String

@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "measuredOn": "Apple M5 Max",
+  "note": "Every number a size card shows comes from here. The numbers are guidance for choosing a size, not research results (founder 2026-11-11): rounded values from our own measurements; each carries its receipt and states any difference from the shipped setup. Receipts are paths inside the #4473 run folder (AgentArtifacts/enviouswispr/runs/2026/11/20261109-223321-eg1-family-app-integration-9cd4) unless they name another run. Measured 2026-11-11 on the epic build with the newer MLX core (PR #4513), M5 Max 64 GB, macOS 27.2, the Mac busy with other work.",
+  "sizes": {
+    "full": {
+      "englishPercent": {
+        "value": 97,
+        "receipt": "main checkout scripts/eval/runs/intl-sealed-2026-11/grading/<set>_newcore_full/summary.json; table p6-bench/ROUND2-REPORT.md (English)",
+        "measures": "pass + minor on the sealed English exam, 1,462 dictations, blind Sol 6.1 low judge, raw output of the shipped helper on the newer MLX core (#4480), installed q6 files"
+      },
+      "internationalPercent": {
+        "value": 86,
+        "receipt": "main checkout scripts/eval/runs/intl-sealed-2026-11/grading/<set>_newcore_full/summary.json; table p6-bench/ROUND2-REPORT.md (ten languages primary + supplemental)",
+        "measures": "pass + minor on the sealed exam in the ten languages other than English (de, es, fr, hi, it, nl, pl, pt, ru, zh), 2,890 dictations, same judge and build"
+      },
+      "polishMilliseconds": {
+        "value": 101,
+        "receipt": "p6-bench/newcore/receipt-newcore_full.json:speed_fb_short40.p50_ms",
+        "measures": "p50 of 40 short English dictations (fb_short40), 80 timed requests, through the shipped helper on the newer core, installed q6 files"
+      },
+      "memoryBytes": {
+        "value": 5955293528,
+        "receipt": "p6-bench/newcore/receipt-newcore_full.json:memory.peak_physical_footprint_bytes",
+        "measures": "peak physical footprint of the helper process (macOS count, polled every 20 ms) over the whole exam run, including the longest dictations; typical short dictations use less"
+      }
+    },
+    "mini": {
+      "englishPercent": {
+        "value": 96,
+        "receipt": "main checkout scripts/eval/runs/intl-sealed-2026-11/grading/<set>_newcore_mini/summary.json; table p6-bench/ROUND2-REPORT.md (English)",
+        "measures": "pass + minor on the sealed English exam, 1,462 dictations, blind Sol 6.1 low judge, raw output of the shipped helper on the newer MLX core (#4480), installed q6 files"
+      },
+      "internationalPercent": {
+        "value": 82,
+        "receipt": "main checkout scripts/eval/runs/intl-sealed-2026-11/grading/<set>_newcore_mini/summary.json; table p6-bench/ROUND2-REPORT.md (ten languages primary + supplemental)",
+        "measures": "pass + minor on the sealed exam in the ten languages other than English (de, es, fr, hi, it, nl, pl, pt, ru, zh), 2,890 dictations, same judge and build"
+      },
+      "polishMilliseconds": {
+        "value": 55,
+        "receipt": "run 20261110-190852-4480-eg1-full-size-speed-dda6: final/mini/receipt.json:speed.helper.p50",
+        "measures": "p50 of the same 40 short dictations through the newer-core helper (same engine version and weights). Measured on a research copy of Mini whose chat template differs from the shipped one; the round 2 Mini number on the shipped files ran while the Mac compiled other work (founder 2026-11-11: use this value)"
+      },
+      "memoryBytes": {
+        "value": 3104344944,
+        "receipt": "p6-bench/newcore/receipt-newcore_mini.json:memory.peak_physical_footprint_bytes",
+        "measures": "peak physical footprint of the helper process (macOS count, polled every 20 ms) over the whole exam run, including the longest dictations; typical short dictations use less"
+      }
+    },
+    "micro": {
+      "englishPercent": {
+        "value": 92,
+        "receipt": "main checkout scripts/eval/runs/intl-sealed-2026-11/grading/<set>_newcore_micro/summary.json; table p6-bench/ROUND2-REPORT.md (English)",
+        "measures": "pass + minor on the sealed English exam, 1,462 dictations, blind Sol 6.1 low judge, raw output of the shipped helper on the newer MLX core (#4480), installed q6 files"
+      },
+      "internationalPercent": {
+        "value": 71,
+        "receipt": "main checkout scripts/eval/runs/intl-sealed-2026-11/grading/<set>_newcore_micro/summary.json; table p6-bench/ROUND2-REPORT.md (ten languages primary + supplemental)",
+        "measures": "pass + minor on the sealed exam in the ten languages other than English (de, es, fr, hi, it, nl, pl, pt, ru, zh), 2,890 dictations, same judge and build"
+      },
+      "polishMilliseconds": {
+        "value": 35,
+        "receipt": "p6-bench/newcore/receipt-newcore_micro.json:speed_fb_short40.p50_ms",
+        "measures": "p50 of 40 short English dictations (fb_short40), 80 timed requests, through the shipped helper on the newer core, installed q6 files"
+      },
+      "memoryBytes": {
+        "value": 1698973688,
+        "receipt": "p6-bench/newcore/receipt-newcore_micro.json:memory.peak_physical_footprint_bytes",
+        "measures": "peak physical footprint of the helper process (macOS count, polled every 20 ms) over the whole exam run, including the longest dictations; typical short dictations use less"
+      }
+    }
+  }
+}

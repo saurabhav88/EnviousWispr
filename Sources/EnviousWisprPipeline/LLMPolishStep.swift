@@ -18,7 +18,25 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// the default `.swallow` from the protocol extension.
   internal var errorSurfacePolicy: ErrorSurfacePolicy { .surface }
 
-  public var llmProvider: LLMProvider = .none
+  /// The polish provider of this piece of work. Set only through `setPolish(provider:model:)`,
+  /// with the model, so the two can never disagree.
+  public private(set) var llmProvider: LLMProvider = .none
+  /// #4473: the exact polish model of this piece of work. For EG-1 it names one size, and only
+  /// that size's runtime may answer. nil means the work names an EG-1 size this build does not
+  /// know: local polish is skipped and the deterministic text is delivered; no other size is
+  /// used.
+  public private(set) var polishModelID: LocalPolishModelID? = .singleModel(for: .none)
+
+  /// The ONE way to say what polishes this piece of work: the provider and the exact model,
+  /// together, from the work's frozen settings (a dictation's session configuration, a
+  /// recovery or import snapshot). There is no provider-only form: a provider alone does not
+  /// say which EG-1 size, and guessing one is how a take gets another size's weights.
+  public func setPolish(provider: LLMProvider, model: LocalPolishModelID?) {
+    precondition(
+      model == nil || model?.provider == provider, "the polish model is not the provider's")
+    llmProvider = provider
+    polishModelID = model
+  }
   /// #4353 D2: no model until the session's settings set one; never a preselected default.
   public var llmModel: String = ""
   /// #4353 D6: the cloud model list the operation captured, set beside `llmProvider` and
@@ -218,13 +236,24 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     max(0, (contextTokens - localPromptOverheadBytes) / 2)
   }
 
-  public var egOneRuntime: (any EGOneEndpointProviding)?
+  /// #4473: the bundled-server runtime handles, by exact model. A model with no handle here is
+  /// not served: its take is skipped as "not ready", never answered by another model's handle.
+  public var localRuntimes: [LocalPolishModelID: any EGOneEndpointProviding] = [:]
+
+  /// EG-1 at its full size.
+  public var egOneRuntime: (any EGOneEndpointProviding)? {
+    get { localRuntimes[.egOne(.full)] }
+    set { localRuntimes[.egOne(.full)] = newValue }
+  }
 
   /// S1-mini runtime handle (#2649). SEPARATE from EG-1's, deliberately: both
   /// resolve an endpoint from the same coordinator, and that coordinator returns
   /// nil for a model that is not the resident one. Sharing one handle would
   /// throw that answer away and let a polish be served by other weights.
-  public var s1MiniRuntime: (any EGOneEndpointProviding)?
+  public var s1MiniRuntime: (any EGOneEndpointProviding)? {
+    get { localRuntimes[.singleModel(for: .s1Mini)] }
+    set { localRuntimes[.singleModel(for: .s1Mini)] = newValue }
+  }
 
   /// Test seam for `.egOne` (mirrors `makePolisher` for the other
   /// providers): production builds the localhost connector from the live
@@ -298,7 +327,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     /// seam — this field does not duplicate that.
     /// `takeID` (#1846) is the LIVE in-flight take — polish runs before the session
     /// terminal, so the concluded key is not yet stamped.
-    let recordPolishSkipped: @MainActor (String, String, String?) -> Void
+    /// The last parameter (#4473) is the frozen EG-1 size, nil for every other provider.
+    let recordPolishSkipped: @MainActor (String, String, String?, String?) -> Void
     /// #3111: which instruction EG-1's named-language prompt selected, for the take's
     /// terminal row. `(takeID, hint)`. Silenced for recovery and file import like the rest.
     let recordPolishLanguageHint: @MainActor (String, String) -> Void
@@ -320,8 +350,9 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       breadcrumbCompleted: { message, data in
         SentryBreadcrumb.add(stage: "polish", message: message, data: data)
       },
-      recordPolishSkipped: { provider, reason, takeID in
-        TelemetryService.shared.polishSkipped(provider: provider, reason: reason, takeID: takeID)
+      recordPolishSkipped: { provider, reason, takeID, modelSize in
+        TelemetryService.shared.polishSkipped(
+          provider: provider, reason: reason, takeID: takeID, modelSize: modelSize)
       },
       recordPolishLanguageHint: { takeID, hint in
         TelemetryService.shared.recordPolishLanguageHint(takeID: takeID, hint: hint)
@@ -343,7 +374,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
         captureProviderInitError: { _ in },
         captureAFMPolishError: { _ in },
         breadcrumbCompleted: { _, _ in },
-        recordPolishSkipped: { _, _, _ in },
+        recordPolishSkipped: { _, _, _, _ in },
         recordPolishLanguageHint: { _, _ in })
     }
   }
@@ -773,6 +804,9 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // Cleared rather than left alone because this returns the CALLER's context,
     // and a value arriving here could otherwise ride a bypass into telemetry.
     ctx.polishRanRemote = nil
+    // #4473: nothing was polished, so no size and no engine report ride a bypass either.
+    ctx.polishModelSize = nil
+    ctx.polishLocalDecode = nil
     // #1948: same reasoning for the route receipt. A stale family riding a bypass would tell
     // `EmojiRestoreStep` that a polish it never saw used the local prompt.
     ctx.promptFamily = nil
@@ -808,7 +842,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
         }
         let skipReason = PolishSkipReason.tooShort(provider)
         telemetry.recordPolishSkipped(
-          skipReason.provider.rawValue, skipReason.telemetryTag, context.takeID)
+          skipReason.provider.rawValue, skipReason.telemetryTag, context.takeID,
+          provider == .egOne ? polishModelID?.size?.rawValue : nil)
         return Self.bypassedContext(context)
       }
     } else {
@@ -822,7 +857,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
         }
         let skipReason = PolishSkipReason.tooShort(provider)
         telemetry.recordPolishSkipped(
-          skipReason.provider.rawValue, skipReason.telemetryTag, context.takeID)
+          skipReason.provider.rawValue, skipReason.telemetryTag, context.takeID,
+          provider == .egOne ? polishModelID?.size?.rawValue : nil)
         return Self.bypassedContext(context)
       }
     }
@@ -878,6 +914,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // read below uses these locals, never `self`, so reentrancy cannot tear it.
     let provider = llmProvider
     let model = llmModel
+    let localModel = polishModelID
     // #4353 D6: the operation's cloud model list, read with provider and model; every request
     // policy below (thinking, connector body, chat preflight) comes from this local.
     let cloudModelList = cloudModelList
@@ -1010,8 +1047,9 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     let localServerHandles: (runtime: (any EGOneEndpointProviding)?,
       make: (@MainActor (LocalPolishEndpoint) -> any TranscriptPolisher))? =
       switch provider {
-      case .egOne: (egOneRuntime, makeEGOnePolisher)
-      case .s1Mini: (s1MiniRuntime, makeS1MiniPolisher)
+      // #4473: the handle of the take's EXACT model, or none.
+      case .egOne: (localModel.flatMap { localRuntimes[$0] }, makeEGOnePolisher)
+      case .s1Mini: (localModel.flatMap { localRuntimes[$0] }, makeS1MiniPolisher)
       // #2651: enumerated rather than `default:`. nil means "not served by a
       // bundled server", which sends the provider down `makePolisher` and its
       // keychain lookup. A NEW bundled-server engine reaching a `default:`
@@ -1477,6 +1515,10 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // too. Apple Intelligence cannot reach this stamp because its branch returns
     // above.
     ctx.polishRanRemote = ollamaRemote
+    // #4473: same stamp site. The size is the step's frozen model (`setPolish`, set once for
+    // the take); the engine report is what the engine sent with THIS answer.
+    ctx.polishModelSize = provider == .egOne ? polishModelID?.size?.rawValue : nil
+    ctx.polishLocalDecode = result.localDecode
     // #1948: same stamp site, same reasoning — set only after a real polish returned.
     ctx.promptFamily = family
     return ctx
@@ -1743,7 +1785,28 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     ]
     data.merge(extraData) { _, new in new }
 
-    telemetry.breadcrumbCompleted("LLM polish completed", data)
+    // #4473: the same size and engine report `llm.polish_completed` carries, so a Sentry trail
+    // names the size and the engine that answered. Counts stay numbers. The count keys end in
+    // `_count`, NOT `_tokens` as in PostHog: Sentry's server-side password filter removes the
+    // value of any key that contains "token" (measured on the development proof, 2026-11-11:
+    // all three counts arrived null with the remark `@password:filter`).
+    var breadcrumbData = data.mapValues { $0 as Any }
+    if provider == .egOne, let size = polishModelID?.size {
+      breadcrumbData["model_size"] = size.rawValue
+    }
+    if let decode = result.localDecode {
+      breadcrumbData["implementation_actual"] = decode.implementation
+      if let n = decode.draftProposedTokens {
+        breadcrumbData["draft_proposed_count"] = n
+      }
+      if let n = decode.draftAcceptedTokens {
+        breadcrumbData["draft_accepted_count"] = n
+      }
+      if let n = decode.emittedTokens {
+        breadcrumbData["emitted_count"] = n
+      }
+    }
+    telemetry.breadcrumbCompleted("LLM polish completed", breadcrumbData)
     Task {
       await AppLogger.shared.log(
         "LLM polish complete: \(result.polishedText.count) chars in \(String(format: "%.3f", duration))s "

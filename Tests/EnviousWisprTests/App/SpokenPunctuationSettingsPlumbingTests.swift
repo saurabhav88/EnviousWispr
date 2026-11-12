@@ -78,6 +78,7 @@ struct SpokenPunctuationSettingsPlumbingTests {
       spokenPunctuationEnglishPeriodWord: periodWord,
       llmProvider: "none",
       llmModel: "none",
+      egOneSize: nil,
       s1Control: nil,
       englishSpelling: nil, casualModeEnabled: nil)
   }

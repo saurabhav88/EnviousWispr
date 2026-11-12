@@ -151,15 +151,34 @@ public struct DeliveryManifest: Codable, Sendable, Equatable {
     return manifest
   }
 
+  /// The file a checker contract pins, when the manifest's files are exactly the set its
+  /// format is made of. nil for a format this app does not load and for any other set of
+  /// files: one file for `gguf-lora`; for `mlx-lora` the weights and the settings file, both
+  /// by the names the loader reads, and nothing else.
+  private static func checkerWeightsFile(in files: [File], format: String) -> File? {
+    switch format {
+    case LearnedWordCheckerContract.ggufLoRAFormat:
+      return files.count == 1 ? files.first : nil
+    case LearnedWordCheckerContract.mlxLoRAFormat:
+      let weights = LearnedWordCheckerContract.mlxWeightsFileName
+      let settings = LearnedWordCheckerContract.mlxSettingsFileName
+      guard files.count == 2, Set(files.map(\.resolvedInstallPath)) == [weights, settings],
+        files.allSatisfy({ $0.sizeBytes > 0 })
+      else { return nil }
+      return files.first { $0.resolvedInstallPath == weights }
+    default:
+      return nil
+    }
+  }
+
   private func validateStructure() throws {
     guard !files.isEmpty else { throw ManifestError.structurallyInvalid("files[] empty") }
     if identity.family.checkerBaseFamily != nil {
       guard let checkerContract, checkerContract.version == 1,
-        files.count == 1, let file = files.first,
+        let file = Self.checkerWeightsFile(in: files, format: checkerContract.format),
         checkerContract.adapterFileName == file.resolvedInstallPath,
         checkerContract.adapterSizeBytes == file.sizeBytes,
         checkerContract.adapterSHA256 == file.sha256,
-        checkerContract.format == "gguf-lora",
         // The signed contract, not this parser, names the threshold a checker
         // revision is qualified at, so a new threshold is a manifest change.
         // The parser only refuses values no checker can mean.

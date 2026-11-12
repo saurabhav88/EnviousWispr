@@ -18,8 +18,14 @@ enum EGOneTelemetryBridge {
   /// and worker reads that name; the `engine` property, a closed enum value,
   /// is what separates the two. Before this the S1-mini runtime had no handler
   /// at all, so every S1-mini health and paused-install signal was dropped.
-  static func handler(engine: LLMProvider) -> @Sendable (EGOneRuntimeEvent) -> Void {
-    { event in
+  ///
+  /// `size` (#4473): the EG-1 size of the runtime this handler serves, added as `model_size` to
+  /// its health and paused-install rows; nil for S1-mini.
+  static func handler(engine: LLMProvider, size: EGOneSize? = nil)
+    -> @Sendable (EGOneRuntimeEvent) -> Void
+  {
+    let sizeProperty: [String: String] = size.map { ["model_size": $0.rawValue] } ?? [:]
+    return { event in
       Task { @MainActor in
         switch event {
         case .childProcessFailed(let failure, let outsideStop):
@@ -46,14 +52,15 @@ enum EGOneTelemetryBridge {
             name: "health_changed",
             properties: [
               "from": from, "to": to, "reason": reason ?? "none", "engine": engine.rawValue,
-            ])
+            ].merging(sizeProperty) { current, _ in current })
         case .pausedInstallStateChanged(let projection):
           // One property from a closed set of four (three paused states plus
           // "none" for leaving one). No transcript, no path, no version string
           // beyond what this app already ships — shape, never content.
           TelemetryService.shared.egOneDownloadEvent(
             name: "paused_install_state_changed",
-            properties: ["state": projection?.rawValue ?? "none", "engine": engine.rawValue])
+            properties: ["state": projection?.rawValue ?? "none", "engine": engine.rawValue]
+              .merging(sizeProperty) { current, _ in current })
         }
       }
     }

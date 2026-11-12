@@ -22,14 +22,9 @@ struct LocalPolishP1CharacterizationTests {
 
   // MARK: - Probe identity
 
-  @Test("each bundled model is health-checked as itself, with its own connector")
+  @Test("S1-mini on llama-server is health-checked as itself, with its own connector")
   func probeSpecsNameTheirOwnModel() {
-    let endpoint = LocalPolishEndpoint(port: 1, authToken: "t", contextTokens: 1)
-
-    let egOne = LlamaServerHealthProbe.ProbeSpec.egOne
-    #expect(egOne.provider == .egOne)
-    #expect(egOne.modelID == "eg-1")
-    #expect(egOne.makeConnector(endpoint) is EGOneConnector)
+    let endpoint = LocalPolishEndpoint(socketPath: "/t/1.sock", authToken: "t", contextTokens: 1)
 
     let s1Mini = LlamaServerHealthProbe.ProbeSpec.s1Mini
     #expect(s1Mini.provider == .s1Mini)
@@ -39,10 +34,9 @@ struct LocalPolishP1CharacterizationTests {
 
   // MARK: - Launch arguments
 
-  @Test("the complete launch flags of both engines, with and without a word-check adapter")
+  @Test("the complete launch flags of S1-mini on llama-server, with and without a word-check adapter")
   func completeLaunchArguments() {
     let footprint = ["-fa", "on", "--cache-type-k", "q8_0", "--cache-type-v", "q8_0"]
-    let egOne = footprint + ["--spec-type", "ngram-simple"]
     let s1Mini = footprint + ["--jinja", "--chat-template-kwargs", #"{"enable_thinking":false}"#]
     let adapter = URL(fileURLWithPath: "/tmp/ew-p1/checker.gguf")
     // Scale 0 at launch, nine slots (one polish slot plus eight checker slots), one shared cache.
@@ -51,11 +45,7 @@ struct LocalPolishP1CharacterizationTests {
       "-np", "9", "--kv-unified", "--no-cache-idle-slots",
     ]
 
-    #expect(LlamaServerLaunchBuilder.launchArguments(for: .egOne, learnedWordAdapterURL: nil) == egOne)
     #expect(LlamaServerLaunchBuilder.launchArguments(for: .s1Mini, learnedWordAdapterURL: nil) == s1Mini)
-    #expect(
-      LlamaServerLaunchBuilder.launchArguments(for: .egOne, learnedWordAdapterURL: adapter)
-        == egOne + adapterFlags)
     #expect(
       LlamaServerLaunchBuilder.launchArguments(for: .s1Mini, learnedWordAdapterURL: adapter)
         == s1Mini + adapterFlags)
@@ -72,12 +62,12 @@ struct LocalPolishP1CharacterizationTests {
     let coordinator = LocalPolishServerCoordinator()
     let egOne = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      engine: LlamaServerEngine(), defaults: store,
-      coordinator: coordinator, provider: .egOne)
+      engine: TestLocalPolishEngine(), defaults: store,
+      coordinator: coordinator, modelID: .egOne)
     let s1Mini = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
       engine: LlamaServerEngine(), defaults: store,
-      coordinator: coordinator, provider: .s1Mini)
+      coordinator: coordinator, modelID: .s1Mini)
     let set = LocalPolishRuntimeSet(egOne: egOne, s1Mini: s1Mini)
 
     #expect(set.runtime(for: .singleModel(for: .egOne)) === egOne)
@@ -115,8 +105,8 @@ struct LocalPolishP1CharacterizationTests {
     // Update: a pause is written under the model's own key only.
     let egOne = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      engine: LlamaServerEngine(),
-      defaults: store, provider: .egOne)
+      engine: TestLocalPolishEngine(),
+      defaults: store, modelID: .egOne)
     egOne.applyInstallStateForTesting(.paused)
     #expect(store.string(forKey: egKey) == "paused")
     #expect(store.string(forKey: s1Key) == nil)
@@ -127,7 +117,7 @@ struct LocalPolishP1CharacterizationTests {
     let s1Mini = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
       engine: LlamaServerEngine(),
-      defaults: store, provider: .s1Mini)
+      defaults: store, modelID: .s1Mini)
     s1Mini.onEvent = { s1Events.record($0) }
     s1Mini.applyInstallStateForTesting(.paused)
     #expect(s1Events.paused == [.paused])
@@ -139,8 +129,8 @@ struct LocalPolishP1CharacterizationTests {
     let restoredEvents = EventBox()
     let restored = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      engine: LlamaServerEngine(),
-      defaults: store, provider: .egOne)
+      engine: TestLocalPolishEngine(),
+      defaults: store, modelID: .egOne)
     restored.onEvent = { restoredEvents.record($0) }
     restored.applyInstallStateForTesting(.paused)
     #expect(restoredEvents.paused.isEmpty)

@@ -120,7 +120,7 @@
         onEngineReleased: onEngineReleased,
         beginRun: {
           FileImportCoordinator.RunConfiguration(
-            polishIsCloud: false, localPolishProvider: nil, polishProvider: .egOne,
+            polishIsCloud: false, localPolishModel: nil, polishProvider: .egOne,
             ollamaModel: nil, polishModel: "eg-1", backendType: .parakeet)
         },
         prepareLocalPolish: { _ in polisherStarts },
@@ -407,7 +407,7 @@
         engineAdmission: .live(lease: EngineLease(), as: .fileImport),
         beginRun: {
           FileImportCoordinator.RunConfiguration(
-            polishIsCloud: false, localPolishProvider: nil, polishProvider: .egOne,
+            polishIsCloud: false, localPolishModel: nil, polishProvider: .egOne,
             ollamaModel: nil, polishModel: "eg-1", backendType: .parakeet)
         },
         saveToHistory: { refusingHistory.rows[$0.id] = $0 },

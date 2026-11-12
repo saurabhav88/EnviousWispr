@@ -42,6 +42,31 @@ struct ChildProcessFailureTests {
     #expect(count.withLock { $0 } == 0)
   }
 
+  /// #4493 §3.7: the socket recovery and an accepted termination decide under one lock who
+  /// owns a child's stop.
+  @Test func claimAfterAcceptanceReturnsTheTermination() {
+    let count = OSAllocatedUnfairLock(initialState: 0)
+    let observation = ChildProcessObservation(provider: .egOne, generation: 4) { _ in
+      count.withLock { $0 += 1 }
+    }
+    let accepted = observation.recordTermination(reason: .signal, status: 15, pid: 42)
+    #expect(accepted != nil)
+    #expect(observation.claimIntentionalStop() == accepted)
+    // The termination is not suppressed after the fact: it was reported once.
+    #expect(count.withLock { $0 } == 1)
+    #expect(observation.recordTermination(reason: .signal, status: 15, pid: 42) == accepted)
+  }
+
+  @Test func claimBeforeAcceptanceSuppressesTheLaterTermination() {
+    let count = OSAllocatedUnfairLock(initialState: 0)
+    let observation = ChildProcessObservation(provider: .s1Mini, generation: 5) { _ in
+      count.withLock { $0 += 1 }
+    }
+    #expect(observation.claimIntentionalStop() == nil)
+    #expect(observation.recordTermination(reason: .signal, status: 15, pid: 43) == nil)
+    #expect(count.withLock { $0 } == 0)
+  }
+
   @Test func concurrentObserversAcceptOneFact() {
     let count = OSAllocatedUnfairLock(initialState: 0)
     let observation = ChildProcessObservation(provider: .egOne, generation: 1) { _ in
@@ -129,12 +154,12 @@ struct ChildProcessFailureTests {
           modelID: .singleModel(for: provider),
           serverBinaryURL: missingRoot.appendingPathComponent("server"),
           modelURL: missingRoot.appendingPathComponent("model"), contextTokens: 2048),
-        makeArguments: LlamaServerLaunchBuilder.arguments)
+        makeLaunch: LlamaServerLaunchBuilder.launch)
       await coordinator.transition(
         to: .run(LocalPolishTarget(configuration: configuration)),
         intent: coordinator.claimIntent())
       let resident = await coordinator.residentModelForTesting
-      #expect(resident == provider)
+      #expect(resident == .singleModel(for: provider))
     }
     let fact = ChildProcessFailure(
       role: .server, provider: .egOne, generation: 1, phase: .ready,
@@ -195,7 +220,7 @@ struct OutsideStopChildTelemetryTests {
   ) -> (LocalPolishRuntime, Box) {
     let runtime = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      engine: LlamaServerEngine(), provider: provider)
+      engine: TestLocalPolishEngine.forModel(.singleModel(for: provider)), modelID: .singleModel(for: provider))
     let box = Box()
     runtime.onEvent = { event in MainActor.assumeIsolated { box.events.append(event) } }
     runtime.memoryPressureLevel = {
@@ -266,7 +291,7 @@ struct OutsideStopChildTelemetryTests {
     // Reporting after the engine is back resurrects nothing.
     runtime.receive(
       LocalPolishLifecycleEvent(
-        lifecycle: .init(state: .ready(LocalPolishEndpoint(port: 1, authToken: "t", contextTokens: 1))),
+        lifecycle: .init(state: .ready(LocalPolishEndpoint(socketPath: "/t/1.sock", authToken: "t", contextTokens: 1))),
         order: 2))
     runtime.reportChildProcessFailure(Self.record(.ready, .signal, SIGTERM, generation: 5))
     #expect(runtime.unresolvedOutsideStop == nil)

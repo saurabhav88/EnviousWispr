@@ -218,7 +218,8 @@ public extension LLMResult {
     let transportTrimmed = polishedText.trimmingCharacters(in: .whitespacesAndNewlines)
     if !cleaned.isEmpty, cleaned.utf8.elementsEqual(transportTrimmed.utf8) { return self }
     return LLMResult(
-      polishedText: cleaned, polishMetadata: polishMetadata, stoppedEarly: stoppedEarly)
+      polishedText: cleaned, polishMetadata: polishMetadata, stoppedEarly: stoppedEarly,
+      localDecode: localDecode)
   }
 }
 

@@ -483,6 +483,9 @@ public final class TelemetryService {
         fellBackToRaw: m?.polishFellBackToRaw,
         fallbackReason: m?.polishFallbackReason,
         ollamaRemote: m?.polishRanRemote,
+        modelSize: m?.polishModelSize,
+        // #4473: an engine report belongs to an answer that was delivered.
+        localDecode: t.polishedText != nil ? m?.polishLocalDecode : nil,
         validatorGuard: m?.polishValidatorGuard,
         symbolTokens: m?.symbolTokens,
         takeID: takeID,
@@ -2814,6 +2817,14 @@ public final class TelemetryService {
     /// skipped events carry no equivalent field under the founder's
     /// 2026-08-03 tabling recorded in plan §3a.
     ollamaRemote: Bool? = nil,
+    /// #4473: the frozen EG-1 size of the invocation (`full`/`mini`/`micro`); nil for every
+    /// other provider. Present on `skipped` rows too.
+    modelSize: String? = nil,
+    /// #4473: the local engine's report on a delivered answer: `implementation_actual`
+    /// (`envious_decode`/`llama_server`), and for the speculative engine the measured
+    /// `draft_proposed_tokens`, `draft_accepted_tokens` and `emitted_tokens` of that request.
+    /// Each omit-when-nil; a measured zero is emitted. nil unless an engine answered.
+    localDecode: LocalDecodeStats? = nil,
     /// #3038: the validator guard that discarded the polish, and the slash/backslash token
     /// count Guard 4 measured on the deterministic text. Both omit-when-nil; a measured zero is
     /// emitted. Read `symbol_drop` over takes whose `symbol_tokens` is nonzero, never as "how
@@ -2838,6 +2849,13 @@ public final class TelemetryService {
     if let fb = fellBackToRaw { props["fell_back_to_raw"] = fb }
     if let fr = fallbackReason { props["fallback_reason"] = fr }
     if let ollamaRemote { props["ollama_remote"] = ollamaRemote }
+    if let modelSize { props["model_size"] = modelSize }
+    if let localDecode {
+      props["implementation_actual"] = localDecode.implementation
+      if let n = localDecode.draftProposedTokens { props["draft_proposed_tokens"] = n }
+      if let n = localDecode.draftAcceptedTokens { props["draft_accepted_tokens"] = n }
+      if let n = localDecode.emittedTokens { props["emitted_tokens"] = n }
+    }
     if let validatorGuard { props["polish_validator_guard"] = validatorGuard }
     if let symbolTokens { props["symbol_tokens"] = symbolTokens }
     if let takeID { props["take_id"] = takeID }
@@ -2865,6 +2883,10 @@ public final class TelemetryService {
       if let emitted = props["polish_validator_guard"] as? String {
         stringProps["polish_validator_guard"] = emitted
       }
+      // #4473: read BACK OUT of `props`, same reason.
+      for key in ["model_size", "implementation_actual"] {
+        if let emitted = props[key] as? String { stringProps[key] = emitted }
+      }
       testEventHook?(
         CapturedTelemetryEvent(
           name: "llm.polish_completed",
@@ -2884,12 +2906,16 @@ public final class TelemetryService {
   /// (an output was accepted) and from a surfaced attempted failure recorded
   /// by `llm.polish_failed`. `reason` is a `PolishSkipReason.telemetryTag` —
   /// a closed, content-free set (`EnviousWisprPipeline`).
-  public func polishSkipped(provider: String, reason: String, takeID: String? = nil) {
+  /// `modelSize` (#4473): the invocation's frozen EG-1 size; omitted for every other provider.
+  public func polishSkipped(
+    provider: String, reason: String, takeID: String? = nil, modelSize: String? = nil
+  ) {
     var props: [String: Any] = [
       "provider": provider,
       "skip_reason": reason,
     ]
     if let takeID { props["take_id"] = takeID }
+    if let modelSize { props["model_size"] = modelSize }
     #if DEBUG
       // #1846: derived from the emitted payload, never a parallel dictionary.
       testEventHook?(
@@ -2915,7 +2941,9 @@ public final class TelemetryService {
   /// `model` is catalog metadata, matching what `llm.polish_completed` already
   /// sends. No transcript, prompt, provider error body, key, or endpoint URL.
   public func polishFailed(
-    provider: String, model: String, reason: String, isTimeout: Bool, takeID: String? = nil
+    provider: String, model: String, reason: String, isTimeout: Bool, takeID: String? = nil,
+    /// #4473: the invocation's frozen EG-1 size; omitted for every other provider.
+    modelSize: String? = nil
   ) {
     var props: [String: Any] = [
       "provider": provider,
@@ -2924,6 +2952,7 @@ public final class TelemetryService {
       "is_timeout": isTimeout,
     ]
     if let takeID { props["take_id"] = takeID }
+    if let modelSize { props["model_size"] = modelSize }
     #if DEBUG
       // #1846: derived from the emitted payload, never a parallel dictionary.
       testEventHook?(
@@ -4084,7 +4113,9 @@ public final class TelemetryService {
     asrOutcome: FileImportASROutcome? = nil,
     polishOutcome: FileImportPolishOutcome? = nil,
     polishProvider: LLMProvider? = nil,
-    polishModel: String? = nil
+    polishModel: String? = nil,
+    /// #4473: the EG-1 size the run froze (`full`/`mini`/`micro`); omitted for other polishers.
+    polishModelSize: String? = nil
   ) {
     var props: [String: Any] = [
       "outcome": outcome.rawValue,
@@ -4101,6 +4132,9 @@ public final class TelemetryService {
       props["polish_provider"] = polishProvider.rawValue
       if let polishModel, !polishModel.isEmpty {
         props["polish_model"] = polishModel
+      }
+      if polishProvider == .egOne, let polishModelSize {
+        props["polish_model_size"] = polishModelSize
       }
     }
     props.addModelAttribution(model)

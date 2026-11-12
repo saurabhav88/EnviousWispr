@@ -104,11 +104,13 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
   /// #1271: EG-1 runtime handle — recovery polishes through the same server
   /// as live dictation (or silently skips when it is not ready).
   private let egOneRuntime: (any EGOneEndpointProviding)?
+  /// #4473: the runtime handles of further local models (the other EG-1 sizes), by exact model.
+  private let additionalLocalRuntimes: [LocalPolishModelID: any EGOneEndpointProviding]
   /// #2649: a recovered take is re-polished with the provider it was captured
   /// under, so the second engine needs its own handle here too.
   private let s1MiniRuntime: (any EGOneEndpointProviding)?
   private let checkerSelectionProvider:
-    (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)?
+    (@MainActor (LocalPolishModelID, String?) async -> LearnedWordCheckerSelection)?
   /// #3289: told the recovered recording's frozen polish engine just before it is transcribed, so
   /// the word check can start loading behind the transcription, and again when this replay ends on
   /// any path, so the word check stops counting it as work. Nil in tests that do not care.
@@ -153,8 +155,9 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     localPolishers: BundledLocalPolisherFactories,
     outputClassifierHolder: OutputClassifierHolder,
     egOneRuntime: (any EGOneEndpointProviding)? = nil,
+    additionalLocalRuntimes: [LocalPolishModelID: any EGOneEndpointProviding] = [:],
     s1MiniRuntime: (any EGOneEndpointProviding)? = nil,
-    checkerSelectionProvider: (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)? = nil,
+    checkerSelectionProvider: (@MainActor (LocalPolishModelID, String?) async -> LearnedWordCheckerSelection)? = nil,
     onReplayWillTranscribe: (@MainActor (LLMProvider) -> Void)? = nil,
     onReplayFinished: (@MainActor (LLMProvider) -> Void)? = nil,
     now: @escaping @Sendable () -> Date = { Date() },
@@ -174,6 +177,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     self.localPolishers = localPolishers
     self.outputClassifierHolder = outputClassifierHolder
     self.egOneRuntime = egOneRuntime
+    self.additionalLocalRuntimes = additionalLocalRuntimes
     self.s1MiniRuntime = s1MiniRuntime
     self.checkerSelectionProvider = checkerSelectionProvider
     self.onReplayWillTranscribe = onReplayWillTranscribe
@@ -466,6 +470,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
       cloudModelList: cloudModelList,
       outputClassifierHolder: outputClassifierHolder,
       egOneRuntime: egOneRuntime,
+      additionalLocalRuntimes: additionalLocalRuntimes,
       s1MiniRuntime: s1MiniRuntime,
       checkerSelectionProvider: checkerSelectionProvider)
     if let settings = recovered.settings { processor.applySettings(settings) }

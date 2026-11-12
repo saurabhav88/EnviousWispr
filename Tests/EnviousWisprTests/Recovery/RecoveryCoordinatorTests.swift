@@ -145,7 +145,8 @@ struct RecoveryCoordinatorTests {
     try #require(
       await h.coordinator.makeDirective(
         settings: Self.freshSettings(crashRecoveryEnabled: true),
-        backendType: .parakeet, supportsLanguageDetection: false)
+        backendType: .parakeet, supportsLanguageDetection: false,
+        polishModel: .singleModel(for: .none), polishWireModel: "")
     ).recoverySessionID
   }
 
@@ -156,7 +157,8 @@ struct RecoveryCoordinatorTests {
     let h = Self.makeHarness()
     let result = await h.coordinator.makeDirective(
       settings: Self.freshSettings(crashRecoveryEnabled: false),
-      backendType: .parakeet, supportsLanguageDetection: false)
+      backendType: .parakeet, supportsLanguageDetection: false,
+        polishModel: .singleModel(for: .none), polishWireModel: "")
     #expect(result == nil)
   }
 
@@ -165,7 +167,8 @@ struct RecoveryCoordinatorTests {
     let h = Self.makeHarness()
     let result = await h.coordinator.makeDirective(
       settings: Self.freshSettings(crashRecoveryEnabled: true),
-      backendType: .whisper, supportsLanguageDetection: true)
+      backendType: .whisper, supportsLanguageDetection: true,
+        polishModel: .singleModel(for: .none), polishWireModel: "")
     let armed = try #require(result)
     let directive = try JSONDecoder().decode(RecoverySpoolDirective.self, from: armed.payload)
     #expect(directive.enabled)
@@ -173,6 +176,25 @@ struct RecoveryCoordinatorTests {
     #expect(directive.settingsSnapshot.backendType == .whisper)
     let storedKey = try h.keyStore.retrieve(for: armed.recoverySessionID)
     #expect(storedKey == directive.keyData)
+  }
+
+  /// #4473: the saved recording names the model the CALLER captured (provider, size and the
+  /// request model name together), not what Settings says when recovery is armed.
+  @Test("the directive records the captured polish model, not the live selection")
+  func directiveRecordsTheCapturedPolishModel() async throws {
+    let h = Self.makeHarness()
+    let settings = Self.freshSettings(crashRecoveryEnabled: true)
+    settings.llmProvider = .s1Mini
+    let result = await h.coordinator.makeDirective(
+      settings: settings, backendType: .parakeet, supportsLanguageDetection: false,
+      polishModel: .egOne(.micro), polishWireModel: LLMProvider.egOneModelName)
+    let armed = try #require(result)
+    let snapshot = try JSONDecoder().decode(RecoverySpoolDirective.self, from: armed.payload)
+      .settingsSnapshot
+    #expect(snapshot.llmProvider == LLMProvider.egOne.rawValue)
+    #expect(snapshot.llmModel == LLMProvider.egOneModelName)
+    #expect(snapshot.egOneSize == EGOneSize.micro.rawValue)
+    #expect(snapshot.polishModelID == .egOne(.micro))
   }
 
   /// #2649: the record-time S1-mini picks ride in the spool, so a take
@@ -187,7 +209,8 @@ struct RecoveryCoordinatorTests {
     settings.s1MiniStructure = .prose
     settings.s1MiniContext = .email
     let result = await h.coordinator.makeDirective(
-      settings: settings, backendType: .parakeet, supportsLanguageDetection: false)
+      settings: settings, backendType: .parakeet, supportsLanguageDetection: false,
+        polishModel: .singleModel(for: .none), polishWireModel: "")
     let armed = try #require(result)
     let directive = try JSONDecoder().decode(RecoverySpoolDirective.self, from: armed.payload)
     #expect(
@@ -203,7 +226,8 @@ struct RecoveryCoordinatorTests {
     settings.languageMode = .locked("ja")
     func frozen(_ backend: ASRBackendType) async throws -> LanguageMode {
       let result = await h.coordinator.makeDirective(
-        settings: settings, backendType: backend, supportsLanguageDetection: false)
+        settings: settings, backendType: backend, supportsLanguageDetection: false,
+        polishModel: .singleModel(for: .none), polishWireModel: "")
       let armed = try #require(result)
       return try JSONDecoder().decode(RecoverySpoolDirective.self, from: armed.payload)
         .settingsSnapshot.languageMode
@@ -766,7 +790,8 @@ struct RecoveryCoordinatorTests {
     let armed = try #require(
       await h.coordinator.makeDirective(
         settings: Self.freshSettings(crashRecoveryEnabled: true),
-        backendType: .parakeet, supportsLanguageDetection: false))
+        backendType: .parakeet, supportsLanguageDetection: false,
+        polishModel: .singleModel(for: .none), polishWireModel: ""))
     let id = armed.recoverySessionID
     try Self.writeSpool(h.spoolStore, id)
 
@@ -794,7 +819,8 @@ struct RecoveryCoordinatorTests {
     let armed = try #require(
       await h.coordinator.makeDirective(
         settings: Self.freshSettings(crashRecoveryEnabled: true),
-        backendType: .parakeet, supportsLanguageDetection: false))
+        backendType: .parakeet, supportsLanguageDetection: false,
+        polishModel: .singleModel(for: .none), polishWireModel: ""))
     let id = armed.recoverySessionID
     try Self.writeSpool(h.spoolStore, id)
 
@@ -817,11 +843,13 @@ struct RecoveryCoordinatorTests {
     let first = try #require(
       await h.coordinator.makeDirective(
         settings: Self.freshSettings(crashRecoveryEnabled: true),
-        backendType: .parakeet, supportsLanguageDetection: false))
+        backendType: .parakeet, supportsLanguageDetection: false,
+        polishModel: .singleModel(for: .none), polishWireModel: ""))
     let second = try #require(
       await h.coordinator.makeDirective(
         settings: Self.freshSettings(crashRecoveryEnabled: true),
-        backendType: .parakeet, supportsLanguageDetection: false))
+        backendType: .parakeet, supportsLanguageDetection: false,
+        polishModel: .singleModel(for: .none), polishWireModel: ""))
     #expect(first.recoverySessionID != second.recoverySessionID)
     try Self.writeSpool(h.spoolStore, first.recoverySessionID)
     try Self.writeSpool(h.spoolStore, second.recoverySessionID)
@@ -848,11 +876,13 @@ struct RecoveryCoordinatorTests {
     let a = try #require(
       await h.coordinator.makeDirective(
         settings: Self.freshSettings(crashRecoveryEnabled: true),
-        backendType: .parakeet, supportsLanguageDetection: false))
+        backendType: .parakeet, supportsLanguageDetection: false,
+        polishModel: .singleModel(for: .none), polishWireModel: ""))
     let b = try #require(
       await h.coordinator.makeDirective(
         settings: Self.freshSettings(crashRecoveryEnabled: true),
-        backendType: .parakeet, supportsLanguageDetection: false))
+        backendType: .parakeet, supportsLanguageDetection: false,
+        polishModel: .singleModel(for: .none), polishWireModel: ""))
     try Self.writeSpool(h.spoolStore, a.recoverySessionID)
     try Self.writeSpool(h.spoolStore, b.recoverySessionID)
 
@@ -879,7 +909,8 @@ struct RecoveryCoordinatorTests {
     let armed = try #require(
       await h.coordinator.makeDirective(
         settings: Self.freshSettings(crashRecoveryEnabled: true),
-        backendType: .parakeet, supportsLanguageDetection: false))
+        backendType: .parakeet, supportsLanguageDetection: false,
+        polishModel: .singleModel(for: .none), polishWireModel: ""))
     let id = armed.recoverySessionID
     try Self.writeSpool(h.spoolStore, id)
 
@@ -919,7 +950,8 @@ struct RecoveryCoordinatorTests {
     let armed = try #require(
       await h.coordinator.makeDirective(
         settings: Self.freshSettings(crashRecoveryEnabled: true),
-        backendType: .parakeet, supportsLanguageDetection: false))
+        backendType: .parakeet, supportsLanguageDetection: false,
+        polishModel: .singleModel(for: .none), polishWireModel: ""))
     let id = armed.recoverySessionID
     try Self.writeSpool(h.spoolStore, id)
 
@@ -943,7 +975,8 @@ struct RecoveryCoordinatorTests {
     let armed = try #require(
       await h.coordinator.makeDirective(
         settings: Self.freshSettings(crashRecoveryEnabled: true),
-        backendType: .parakeet, supportsLanguageDetection: false))
+        backendType: .parakeet, supportsLanguageDetection: false,
+        polishModel: .singleModel(for: .none), polishWireModel: ""))
     let id = armed.recoverySessionID
     try Self.writeSpool(h.spoolStore, id)
 
@@ -1042,7 +1075,8 @@ struct RecoveryCoordinatorTests {
     let armed = try #require(
       await h.coordinator.makeDirective(
         settings: Self.freshSettings(crashRecoveryEnabled: true),
-        backendType: .parakeet, supportsLanguageDetection: false))
+        backendType: .parakeet, supportsLanguageDetection: false,
+        polishModel: .singleModel(for: .none), polishWireModel: ""))
     let id = armed.recoverySessionID
     // Disposition arrives (marker-write begins) but the writer never acks —
     // this session stays in `pendingSessions` indefinitely, exactly the
@@ -1157,7 +1191,8 @@ struct RecoveryCoordinatorTests {
     let armed = try #require(
       await h.coordinator.makeDirective(
         settings: Self.freshSettings(crashRecoveryEnabled: true),
-        backendType: .parakeet, supportsLanguageDetection: false))
+        backendType: .parakeet, supportsLanguageDetection: false,
+        polishModel: .singleModel(for: .none), polishWireModel: ""))
     try Self.writeSpool(h.spoolStore, armed.recoverySessionID)
     let orphan = "orphan-\(UUID().uuidString)"
     try Self.writeSpool(h.spoolStore, orphan)
@@ -1500,11 +1535,13 @@ struct RecoveryCoordinatorTests {
     // passes an on-only one. Off and on differ here, so neither constant survives.
     #expect(
       await access.makeDirective(
-        Self.freshSettings(crashRecoveryEnabled: false), .parakeet, false) == nil,
+        Self.freshSettings(crashRecoveryEnabled: false), .parakeet, false,
+        .singleModel(for: .none), "") == nil,
       "makeDirective is not reading the coordinator: recovery is off, so there is no directive")
     let armed = try #require(
       await access.makeDirective(
-        Self.freshSettings(crashRecoveryEnabled: true), .whisper, true),
+        Self.freshSettings(crashRecoveryEnabled: true), .whisper, true,
+        .singleModel(for: .none), ""),
       "makeDirective is not reading the coordinator: recovery is on and it armed nothing")
     #expect(
       try h.keyStore.retrieve(for: armed.recoverySessionID) != nil,
@@ -1625,7 +1662,8 @@ struct RecoveryCoordinatorTests {
     let armed = try #require(
       await h.coordinator.makeDirective(
         settings: Self.freshSettings(crashRecoveryEnabled: true),
-        backendType: .parakeet, supportsLanguageDetection: false))
+        backendType: .parakeet, supportsLanguageDetection: false,
+        polishModel: .singleModel(for: .none), polishWireModel: ""))
     // A genuine key-only orphan from a prior run.
     let orphan = "orphan-\(UUID().uuidString)"
     try h.keyStore.store(keyData: RecoveryKeyStore.makeKey(), for: orphan)
@@ -1695,7 +1733,8 @@ struct RecoveryCoordinatorTests {
       engineAdmission: .alwaysAllowedForTesting)
     let result = await coordinator.makeDirective(
       settings: Self.freshSettings(crashRecoveryEnabled: true),
-      backendType: .parakeet, supportsLanguageDetection: false)
+      backendType: .parakeet, supportsLanguageDetection: false,
+        polishModel: .singleModel(for: .none), polishWireModel: "")
     #expect(result == nil, "a failed durable key store disables recovery for the take")
     #expect(
       coordinator.handleRecordingEndedWithoutDurableSave(
@@ -1855,7 +1894,8 @@ struct RecoveryCoordinatorTests {
     let lifetimeID = try #require(
       await coordinator?.makeDirective(
         settings: Self.freshSettings(crashRecoveryEnabled: true),
-        backendType: .parakeet, supportsLanguageDetection: false)
+        backendType: .parakeet, supportsLanguageDetection: false,
+        polishModel: .singleModel(for: .none), polishWireModel: "")
     ).recoverySessionID
     coordinator?.acknowledgeWriterQuiescent(recoverySessionID: lifetimeID)
     let task = try #require(coordinator).handleRecordingEndedWithoutDurableSave(

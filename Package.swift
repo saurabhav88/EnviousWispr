@@ -20,6 +20,9 @@ let package = Package(
     // #4473: the llama-server engine (S1-mini, and EG-1 until its own engine lands). Exposed
     // like its dependencies; only the app shell and the unit tests import it.
     .library(name: "EnviousWisprLlamaEngine", targets: ["EnviousWisprLlamaEngine"]),
+    // #4473 P2: the EnviousDecode engine adapter for EG-1. Exposed like the llama engine; only
+    // the app shell and the unit tests import it.
+    .library(name: "EnviousWisprEG1Engine", targets: ["EnviousWisprEG1Engine"]),
     // Exposed for the alias-suggestion eval harness at
     // scripts/eval/alias_runner. Purely additive — no production code
     // imports change. (#637)
@@ -71,17 +74,32 @@ let package = Package(
       url: "https://github.com/saurabhav88/FluidAudio.git",
       revision: "8e64f574c772632c4ebfd037585e5d14c3910c68", traits: ["Diarizer"]),
     // #3242: the learned-word check for engines without their own (Kev, a Qwen3.5 decision model) runs on
-    // MLX, through two forks each carrying the smallest change on top of upstream:
+    // MLX, through two forks each carrying the smallest change on top of upstream. #4473 P2 adds what the
+    // EnviousDecode engine needs to the same two forks:
     // - mlx-swift-lm (upstream ee673d6): two access changes in Qwen35.swift so the final-norm hidden
-    //   states are reachable without lm_head, and its mlx-swift dependency pointed at the fork below.
-    // - mlx-swift (upstream 0.31.6): the CUDA build-tool plugin attached to Cmlx on Linux only. On Apple
-    //   platforms it generates nothing, but its presence made every xcodebuild stop at "Validate plug-in".
+    //   states are reachable without lm_head (Kev's backbone call, kept as it is), and its mlx-swift
+    //   dependency pointed at the fork below. For #4473: a gated-delta tape-recording hook and its
+    //   forwarding through Qwen 3.5 (an armed cache leaves the compiled single-token routes), a capturing
+    //   forward with public read access to the embedding and the output head, MambaCache open so a
+    //   rollback cache can subclass it from another module, and test bounds sized by measured float32
+    //   matmul precision (upstream #649). For #4480: upstream #720 (3d066d3), the adaptation to the
+    //   compile API of mlx-swift 0.33.0.
+    // - mlx-swift (upstream 0.33.0, MLX core v0.32.4; #4480): the core with the M5 quantized-matmul
+    //   kernels the full-size EG-1 verify pass needs. Two carried repairs of JIT kernel sources:
+    //   the head-dim-split attention kernel (ml-explore/mlx issue 4832), without which the process
+    //   aborts when upstream dispatch selects this split kernel on a NAX GPU; and the steel
+    //   integral-constant operators (ml-explore/mlx-swift issue 497), without which every request
+    //   aborts on macOS 14, whose Metal compiler lacks a trait the newer core names. The two changes the
+    //   fork carried on 0.31.6 are in 0.33.0 itself: the CUDA build-tool plugin is declared on Linux
+    //   only (on Apple platforms its presence made every xcodebuild stop at "Validate plug-in"), and
+    //   the #461 compiler-lock repair (CompiledFunction.lock / evalLock order), without which two
+    //   threads evaluating MLX at once can deadlock for good.
     .package(
       url: "https://github.com/saurabhav88/mlx-swift-lm.git",
-      revision: "644680cddf080bc3bfd1318798735646b184e127"),
+      revision: "eb7c70071641b20854ce07e2a2ae15b21410d64f"),
     .package(
       url: "https://github.com/saurabhav88/mlx-swift",
-      revision: "8746d3d8d2f3a19c79276f6d884b8c9c02e751e2"),
+      revision: "bedcf0103dd0ca7a1b73b4d8bd272195d3f8c810"),
     .package(url: "https://github.com/sparkle-project/Sparkle.git", from: "2.6.0"),
     .package(url: "https://github.com/PostHog/posthog-ios.git", from: "3.0.0"),
     // #3685: qualified macOS artifact with native crash attribution/caller fixes.
@@ -318,6 +336,21 @@ let package = Package(
       ],
       path: "Sources/EnviousWisprLlamaEngine"
     ),
+    // #4473 P2: the EnviousDecode engine adapter for EG-1: the helper's launch spec and command
+    // line, the health probe and EG-1's connector for the helper. It names the helper's command
+    // line only: it depends on no MLX product, not on EnviousDecodeKit and not on the llama
+    // engine. Same place in the graph as the llama engine: above LLM and LocalPolish, imported
+    // only by the app shell and the unit tests. Mirrors Project.swift.
+    .target(
+      name: "EnviousWisprEG1Engine",
+      dependencies: [
+        "EnviousWisprCore",
+        "EnviousWisprModelDelivery",
+        "EnviousWisprLocalPolish",
+        "EnviousWisprLLM",
+      ],
+      path: "Sources/EnviousWisprEG1Engine"
+    ),
     // #3242: the learned-word check for polish engines that have none of their own. A leaf over Core
     // so MLX never reaches the eval harnesses that link EnviousWisprLLM or EnviousWisprPipeline.
     .target(
@@ -360,6 +393,7 @@ let package = Package(
         "EnviousWisprModelDelivery",
         "EnviousWisprLocalPolish",
         "EnviousWisprLlamaEngine",
+        "EnviousWisprEG1Engine",
         "EnviousWisprPostProcessing",
         "EnviousWisprLivePreview",
         // #2108: composition only — `WhisperPreviewDeliveryWiring` constructs the
@@ -423,6 +457,36 @@ let package = Package(
       ],
       path: "Sources/EnviousWisprAppLive"
     ),
+    // #4473 P2: the EnviousDecode engine's own code: the DFlash tape kernels and the recurrent
+    // rollback cache today, the draft model and generation loop in later chunks. MLX only: it
+    // depends on no first-party module, and only the helper and the unit tests depend on it. Not a
+    // library product: nothing outside this package consumes it.
+    .target(
+      name: "EnviousDecodeKit",
+      dependencies: [
+        .product(name: "MLX", package: "mlx-swift"),
+        .product(name: "MLXNN", package: "mlx-swift"),
+        .product(name: "MLXLMCommon", package: "mlx-swift-lm"),
+        // The Qwen3.5 polish model the draft pairs with (its embedding, output head and
+        // captured forward pass).
+        .product(name: "MLXLLM", package: "mlx-swift-lm"),
+      ],
+      path: "Sources/EnviousDecodeKit"
+    ),
+    // #4473 P2: mirrors Project.swift's EnviousDecodeHelper, the second executable that ships inside
+    // the app at Contents/MacOS/envious-decode. It imports the kit and MLX, no app module, and no
+    // library or test target depends on it.
+    .executableTarget(
+      name: "EnviousDecodeHelper",
+      dependencies: [
+        "EnviousDecodeKit",
+        .product(name: "MLX", package: "mlx-swift"),
+        // The model folder's tokenizer, through the public Argmax surface the word check uses.
+        // The kit takes it as two closures and has no tokenizer edge of its own.
+        .product(name: "ArgmaxOSS", package: "argmax-oss-swift"),
+      ],
+      path: "Sources/EnviousDecodeHelper"
+    ),
     // #919: thin launchable shell. Owns @main + the AppDelegate adaptor +
     // app identity/Resources; delegates ALL construction + lifecycle downward.
     // #2455 C1: depends ONLY on EnviousWisprAppLive.
@@ -459,6 +523,7 @@ let package = Package(
         "EnviousWisprModelDelivery",
         "EnviousWisprLocalPolish",
         "EnviousWisprLlamaEngine",
+        "EnviousWisprEG1Engine",
         "EnviousWisprPostProcessing",
         "EnviousWisprLLM",
         "EnviousWisprPipeline",
@@ -476,6 +541,15 @@ let package = Package(
         "EnviousWisprContacts",
         // #3242: KevEncodingTests exercise the word check's encoder directly.
         "EnviousWisprWordCheck",
+        // #4473 P2: DFlashTapeRollbackTests check the kit's tape kernels and rollback cache
+        // against the library's ordinary gated-delta computation.
+        "EnviousDecodeKit",
+        .product(name: "MLX", package: "mlx-swift"),
+        .product(name: "MLXLMCommon", package: "mlx-swift-lm"),
+        .product(name: "MLXLLM", package: "mlx-swift-lm"),
+        // #4473 P2: EnviousDecodeRequestMapperTests load a model folder's real tokenizer directly
+        // (the helper's own file cannot be imported by a test).
+        .product(name: "ArgmaxOSS", package: "argmax-oss-swift"),
         // #3735: WhisperGGUFRealDeliveryTests decode the admitted model directly.
         "EnviousWisprTranscribeCpp",
         // #1741 Chunk 10: EngineMutationInventoryFreezeTests's real Swift

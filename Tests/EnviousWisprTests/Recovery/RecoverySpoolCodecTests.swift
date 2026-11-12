@@ -32,6 +32,7 @@ struct RecoverySpoolCodecTests {
       customWordsVersion: "v3",
       llmProvider: "appleIntelligence",
       llmModel: "apple-intelligence",
+      egOneSize: nil,
       polishPromptVersion: "v38",
       // A NON-default value, so the round-trip rows below prove the field
       // survives rather than that a default was re-minted on the way back.
@@ -241,6 +242,7 @@ struct RecoverySpoolCodecTests {
       customWordsVersion: snapshot().customWordsVersion,
       llmProvider: snapshot().llmProvider,
       llmModel: snapshot().llmModel,
+      egOneSize: nil,
       polishPromptVersion: snapshot().polishPromptVersion,
       s1Control: nil,
       englishSpelling: snapshot().englishSpelling, casualModeEnabled: snapshot().casualModeEnabled)
@@ -275,6 +277,7 @@ struct RecoverySpoolCodecTests {
       customWordsVersion: snapshot().customWordsVersion,
       llmProvider: snapshot().llmProvider,
       llmModel: snapshot().llmModel,
+      egOneSize: nil,
       polishPromptVersion: snapshot().polishPromptVersion,
       s1Control: snapshot().s1Control,
       englishSpelling: nil, casualModeEnabled: snapshot().casualModeEnabled)
@@ -332,6 +335,7 @@ struct RecoverySpoolCodecTests {
       customWordsVersion: snapshot().customWordsVersion,
       llmProvider: snapshot().llmProvider,
       llmModel: snapshot().llmModel,
+      egOneSize: nil,
       polishPromptVersion: snapshot().polishPromptVersion,
       s1Control: snapshot().s1Control,
       englishSpelling: snapshot().englishSpelling, casualModeEnabled: snapshot().casualModeEnabled)

@@ -281,6 +281,23 @@ let appSettings = targetSettings(
   ]
 )
 
+// #4473 P2: the EnviousDecode helper, a second executable that ships inside the app at
+// Contents/MacOS/envious-decode. It links its own static copy of MLX. From that folder MLX finds
+// the app's mlx-swift_Cmlx.bundle through the main bundle, so no second Metal library is copied
+// (measured with a probe executable: Contents/Helpers fails that lookup, Contents/MacOS does not).
+// Its code ships, so its strings are extracted like every shipped target's. Dev signs it with the
+// app's self-signed identity when the app's copy phase embeds it; Debug and Release stay unsigned
+// like every other target, and the release script signs inside-out. It carries no entitlements.
+// ENABLE_DEBUG_DYLIB=NO keeps it one Mach-O file: a stub plus a debug dylib is not one product
+// the copy phase can embed, and MLX resolves its Metal library relative to its own image.
+let decodeHelperSettings = targetSettings(
+  baseExtra: stringExtractionSettings.merging([
+    "ENABLE_DEBUG_DYLIB": "NO",
+    "SKIP_INSTALL": "YES",
+  ]) { _, new in new },
+  devExtra: devSigningSettings
+)
+
 // First-party modules are NATIVE Tuist targets, statically linked. The app
 // gets its own copy of the code it needs (no runtime @rpath dependency on
 // internal frameworks) — matching the current SwiftPM behavior. #1908: the
@@ -449,6 +466,18 @@ let project = Project(
         .target(name: "EnviousWisprLocalPolish"),
         .target(name: "EnviousWisprLLM"),
       ]),
+    // #4473 P2: the EnviousDecode engine adapter for EG-1 (helper launch spec, health probe,
+    // connector). Same edges as the llama engine and no MLX or EnviousDecodeKit edge; imported
+    // only by the app shell and the unit tests (see Package.swift). Not in the shared
+    // `firstPartyTargetDeps`: the app library and the full unit bundle name it themselves.
+    firstPartyLibrary(
+      "EnviousWisprEG1Engine",
+      dependencies: [
+        .target(name: "EnviousWisprCore"),
+        .target(name: "EnviousWisprModelDelivery"),
+        .target(name: "EnviousWisprLocalPolish"),
+        .target(name: "EnviousWisprLLM"),
+      ]),
     // #3242: Kev learned-word check on MLX (leaf over Core; see Package.swift).
     firstPartyLibrary(
       "EnviousWisprWordCheck",
@@ -547,6 +576,7 @@ let project = Project(
     firstPartyLibrary(
       "EnviousWisprAppKit",
       dependencies: firstPartyTargetDeps + [
+        .target(name: "EnviousWisprEG1Engine"),  // #4473 P2: the app shell composes both engines
         .target(name: "EnviousWisprContacts"),
         .target(name: "EnviousWisprLivePreview"),
         .target(name: "EnviousWisprWhisperPreviewAdapter"),
@@ -631,6 +661,39 @@ let project = Project(
         .package(product: "Sparkle"),
       ]),
 
+    // ---- EnviousDecode kit (#4473 P2) ----
+    // The engine's own code on MLX. Deliberately NOT in `firstPartyTargetDeps`: no app library
+    // may link it. Only the helper below and the unit tests depend on it.
+    firstPartyLibrary(
+      "EnviousDecodeKit",
+      dependencies: [
+        .package(product: "MLX"),
+        .package(product: "MLXNN"),
+        .package(product: "MLXLMCommon"),
+        .package(product: "MLXLLM"),  // the Qwen3.5 polish model the draft pairs with
+      ]),
+
+    // ---- EnviousDecode helper (#4473 P2) ----
+    // A command-line tool, not a first-party library: nothing links it. The app depends on it for
+    // build order only and embeds the built product (see the app's copyFiles).
+    .target(
+      name: "EnviousDecodeHelper",
+      destinations: .macOS,
+      product: .commandLineTool,
+      productName: "envious-decode",
+      bundleId: "com.enviouswispr.envious-decode",
+      deploymentTargets: deploymentTargets,
+      infoPlist: nil,
+      sources: ["Sources/EnviousDecodeHelper/**"],
+      dependencies: [
+        .target(name: "EnviousDecodeKit"),
+        .package(product: "MLX"),
+        // The model folder's tokenizer, through the public Argmax surface the word check uses.
+        .package(product: "ArgmaxOSS"),
+      ],
+      settings: decodeHelperSettings
+    ),
+
     // ---- App ----
     .target(
       name: "EnviousWispr",
@@ -673,6 +736,10 @@ let project = Project(
         // binary is a nested Mach-O: build-dev-app.sh and
         // build-release-dmg.sh sign it in the inside-out order.
         "Sources/EnviousWispr/Resources/eg1-manifest.json",
+        // #4473: one runtime manifest per published EG-1 size (the full size is the file above).
+        "Sources/EnviousWispr/Resources/eg1-micro-manifest.json",
+        "Sources/EnviousWispr/Resources/eg1-mini-manifest.json",
+        "Sources/EnviousWispr/Resources/eg1-size-facts.json",
         // #1348 Phase 2: Parakeet delivery manifest — the bundled trust root
         // (contract 4a). Same Bundle.main route as eg1-manifest.json.
         "Sources/EnviousWispr/Resources/parakeet-delivery-manifest.json",
@@ -686,8 +753,16 @@ let project = Project(
         // #1348 Phase 3: EG-1 delivery manifest — the DELIVERY trust root for
         // EG-1's convergence onto the shared engine (the runtime trust root
         // stays eg1-manifest.json). Same Bundle.main route.
-        "Sources/EnviousWispr/Resources/eg1-delivery-manifest.json",
-        "Sources/EnviousWispr/Resources/eg1-checker-delivery-manifest.json",
+        // #4473 P4: the published EG-1 sizes on the EnviousDecode engine (MLX folders with
+        // the draft model under `helper`, and each size's checker adapter), registered at
+        // launch. Mini joins when it is published. The llama (GGUF) EG-1 manifests left with
+        // the llama EG-1 path; copies live under the tests' Fixtures as the old revision.
+        "Sources/EnviousWispr/Resources/eg1-mlx-delivery-manifest.json",
+        "Sources/EnviousWispr/Resources/eg1-mlx-checker-delivery-manifest.json",
+        "Sources/EnviousWispr/Resources/eg1-micro-delivery-manifest.json",
+        "Sources/EnviousWispr/Resources/eg1-micro-checker-delivery-manifest.json",
+        "Sources/EnviousWispr/Resources/eg1-mini-delivery-manifest.json",
+        "Sources/EnviousWispr/Resources/eg1-mini-checker-delivery-manifest.json",
         "Sources/EnviousWispr/Resources/s1-checker-delivery-manifest.json",
         // #2649: S1-mini — the third-party normalizer that sits beside EG-1 in
         // the polish picker. Same Bundle.main route and the same two trust
@@ -769,7 +844,12 @@ let project = Project(
             .folderReference(
               path: "Vendor/MediaRemoteAdapter.framework",
               codeSignOnCopy: true)
-          ])
+          ]),
+        // #4473 P2: the built EnviousDecode helper into Contents/MacOS (Xcode's Executables
+        // destination), signed on copy with the build's identity like the framework above.
+        .executables(
+          name: "Embed envious-decode",
+          files: [.buildProduct(name: "EnviousDecodeHelper", codeSignOnCopy: true)]),
       ],
       entitlements: .file(path: "Sources/EnviousWispr/Resources/EnviousWispr.entitlements"),
       // #919: the thin shell links ONLY the kit (the kit static-links the
@@ -781,6 +861,9 @@ let project = Project(
         // #2455 C1: AppLive, not AppKit. The shell reaches the kit only THROUGH
         // the module that chooses live implementations.
         .target(name: "EnviousWisprAppLive"),
+        // #4473 P2: build order only, so the copy phase above has a product to embed. The app
+        // does not link the helper.
+        .target(name: "EnviousDecodeHelper"),
         .package(product: "Sparkle"),
         // #3735: dynamic framework, a direct app dep so Tuist embeds
         // CTranscribe.framework into the .app (same reason as Sparkle).
@@ -853,6 +936,14 @@ let project = Project(
         // #1525 PR I-B (Codex cloud review): ParakeetTranscriptionSentryErrorTests /
         // ParakeetModelLoadSentryErrorTests import this directly.
         .target(name: "EnviousWisprFluidAudioBridge"),
+        // #4473 P2: DFlashTapeRollbackTests import the kit and MLXLMCommon directly. The kit is
+        // added here, not to `firstPartyTargetDeps` and not to the critical bundle.
+        .target(name: "EnviousDecodeKit"),
+        // #4473 P2: EnviousDecodeEngineTests import the EG-1 engine adapter directly.
+        .target(name: "EnviousWisprEG1Engine"),
+        .package(product: "MLXLMCommon"),
+        .package(product: "MLXLLM"),  // DFlashDraftingTests build a tiny Qwen3.5 model directly
+        .package(product: "ArgmaxOSS"),  // EnviousDecodeRequestMapperTests load a real tokenizer
         .package(product: "FluidAudio"),
         .package(product: "PostHog"),
         .package(product: "MLX"),  // #3242: Cmlx/_NumericsShims via EnviousWisprWordCheck, as FluidAudio above

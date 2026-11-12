@@ -117,7 +117,7 @@ struct FileImportCoordinatorTests {
     },
     beginRun: @escaping @MainActor () -> FileImportCoordinator.RunConfiguration = {
       FileImportCoordinator.RunConfiguration(
-        polishIsCloud: false, localPolishProvider: nil, polishProvider: .egOne,
+        polishIsCloud: false, localPolishModel: nil, polishProvider: .egOne,
         ollamaModel: nil, polishModel: "eg-1", backendType: .parakeet)
     },
     engineSelectionSettled: @escaping @MainActor () -> Bool = { true },
@@ -1276,7 +1276,7 @@ struct FileImportCoordinatorTests {
       lease: lease,
       beginRun: {
         FileImportCoordinator.RunConfiguration(
-          polishIsCloud: cloud, localPolishProvider: cloud ? nil : .egOne,
+          polishIsCloud: cloud, localPolishModel: cloud ? nil : .egOne,
           polishProvider: cloud ? .openAI : .egOne, ollamaModel: nil, polishModel: "eg-1",
           backendType: .parakeet)
       })
@@ -1321,7 +1321,7 @@ struct FileImportCoordinatorTests {
       lease: lease,
       beginRun: {
         FileImportCoordinator.RunConfiguration(
-          polishIsCloud: false, localPolishProvider: nil, polishProvider: polisher,
+          polishIsCloud: false, localPolishModel: nil, polishProvider: polisher,
           ollamaModel: nil, polishModel: polisher.rawValue, backendType: engine)
       })
     coordinator.choose(url: Self.anyURL)
@@ -1350,7 +1350,7 @@ struct FileImportCoordinatorTests {
       localPolishers: .llamaForTests.replacingEGOne { _ in
         PromptCapturingPolisher(capture: capture)
       },
-      egOneRuntime: ReadyEGOneRuntime(), s1MiniRuntime: nil,
+      egOneRuntime: ReadyEGOneRuntime(), additionalLocalRuntimes: [:], s1MiniRuntime: nil,
       // Polish only for the SAVED raw text: a second pass fed the first pass's cleaned output
       // (which differs from the raw text) would read as English and name nothing.
       outputClassifierHolder: nil,

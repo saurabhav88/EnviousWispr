@@ -9,6 +9,9 @@ public struct ChildProcessFailure: Error, Sendable, Equatable, StableSentryError
 
   public let role: Role
   public let provider: LLMProvider?
+  /// The exact model that owned the process, when one did (#4473). Not sent anywhere: it routes
+  /// the fact to that model's runtime. `provider` is what telemetry reports.
+  public let modelID: LocalPolishModelID?
   public let generation: Int?
   /// Last lifecycle phase published by the owner before observation.
   public let phase: Phase
@@ -20,10 +23,11 @@ public struct ChildProcessFailure: Error, Sendable, Equatable, StableSentryError
   public init(
     role: Role, provider: LLMProvider?, generation: Int?, phase: Phase,
     termination: Termination? = nil, status: Int32? = nil, pid: Int32? = nil,
-    launchErrorCode: Int? = nil
+    launchErrorCode: Int? = nil, modelID: LocalPolishModelID? = nil
   ) {
     self.role = role
-    self.provider = provider
+    self.provider = modelID?.provider ?? provider
+    self.modelID = modelID
     self.generation = generation
     self.phase = phase
     self.termination = termination

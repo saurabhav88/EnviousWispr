@@ -66,8 +66,9 @@ public final class RecoveryTextProcessor {
     cloudModelList: CloudModelList?,
     outputClassifierHolder: OutputClassifierHolder? = nil,
     egOneRuntime: (any EGOneEndpointProviding)? = nil,
+    additionalLocalRuntimes: [LocalPolishModelID: any EGOneEndpointProviding] = [:],
     s1MiniRuntime: (any EGOneEndpointProviding)? = nil,
-    checkerSelectionProvider: (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)? = nil
+    checkerSelectionProvider: (@MainActor (LocalPolishModelID, String?) async -> LearnedWordCheckerSelection)? = nil
   ) {
     let llmPolish = LLMPolishStep(
       keychainManager: keychainManager, localPolishers: localPolishers, telemetry: .silent())
@@ -79,6 +80,7 @@ public final class RecoveryTextProcessor {
     // #1271: recovery polishes through the SAME EG-1 server as live dictation
     // (or silently skips when it is not ready) — never crashes on a nil handle.
     llmPolish.egOneRuntime = egOneRuntime
+    for (model, runtime) in additionalLocalRuntimes { llmPolish.localRuntimes[model] = runtime }
     // #2649: a recovered take is re-polished under the settings it was
     // captured with, so the second engine needs its handle here too.
     llmPolish.s1MiniRuntime = s1MiniRuntime
@@ -127,7 +129,11 @@ public final class RecoveryTextProcessor {
     // ITN rather than rewriting possibly-non-English text. Sourced from the
     // record-time capability, never an engine-identity literal (Codex PR0 P2).
     steps.inverseTextNormalization.backendSupportsLID = snapshot.backendSupportsLanguageDetection
-    steps.llmPolish.llmProvider = LLMProvider(rawValue: snapshot.llmProvider) ?? .none
+    // #4473: the recorded provider and model. A nil model (an EG-1 size this build does not
+    // know) skips local polish.
+    steps.llmPolish.setPolish(
+      provider: LLMProvider(rawValue: snapshot.llmProvider) ?? .none,
+      model: snapshot.polishModelID)
     // Replay the RECORDED model, as chosen (#4353 decision 4 supersedes the #1770 swap to the
     // default): a model the provider has withdrawn fails at request time and the recovered
     // take keeps its deterministic text, the same as a live dictation.

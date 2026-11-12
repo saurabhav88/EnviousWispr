@@ -14,12 +14,16 @@ final class ChildProcessObservation: Sendable {
   }
   private let state: OSAllocatedUnfairLock<State>
   private let provider: LLMProvider?
+  private let modelID: LocalPolishModelID?
   private let generation: Int
   private let report: (@Sendable (ChildProcessFailure) -> Void)?
 
-  init(provider: LLMProvider?, generation: Int, report: (@Sendable (ChildProcessFailure) -> Void)?)
-  {
+  init(
+    provider: LLMProvider?, modelID: LocalPolishModelID? = nil, generation: Int,
+    report: (@Sendable (ChildProcessFailure) -> Void)?
+  ) {
     self.provider = provider
+    self.modelID = modelID
     self.generation = generation
     self.report = report
     state = OSAllocatedUnfairLock(initialState: State(phase: .starting))
@@ -27,6 +31,17 @@ final class ChildProcessObservation: Sendable {
 
   func publish(_ phase: ChildProcessFailure.Phase) { state.withLock { $0.phase = phase } }
   func suppressIntentionalStop() { state.withLock { $0.suppressed = true } }
+
+  /// #4493 §3.7: decides, under the same lock that accepts a termination, who owns the stop of
+  /// this child. A termination already accepted wins and is returned (nothing is suppressed);
+  /// otherwise the caller owns the stop, and the child's later termination is suppressed.
+  func claimIntentionalStop() -> ChildProcessFailure? {
+    state.withLock { state in
+      if let accepted = state.accepted { return accepted }
+      state.suppressed = true
+      return nil
+    }
+  }
 
   /// The accepted record, accepting it now if this is the first observation.
   /// Nil only when an intentional stop was suppressed before any acceptance.
@@ -46,7 +61,7 @@ final class ChildProcessObservation: Sendable {
       guard !state.suppressed else { return (nil, false) }
       let record = ChildProcessFailure(
         role: .server, provider: provider, generation: generation, phase: state.phase,
-        termination: reason, status: status, pid: pid)
+        termination: reason, status: status, pid: pid, modelID: modelID)
       state.accepted = record
       return (record, true)
     }

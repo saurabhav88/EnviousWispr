@@ -178,6 +178,11 @@ echo "==> Step 7: Verifying deployed bundle..."
   || { echo "ERROR: app executable name mismatch"; exit 1; }
 [ -x "$APP_PATH/Contents/MacOS/EnviousWispr" ] \
   || { echo "ERROR: app executable missing/not executable"; exit 1; }
+# #4473 P2: the EnviousDecode helper ships beside the app executable, signed on copy by the build.
+[ -x "$APP_PATH/Contents/MacOS/envious-decode" ] \
+  || { echo "ERROR: envious-decode helper missing from Contents/MacOS (#4473)"; exit 1; }
+codesign --verify --strict "$APP_PATH/Contents/MacOS/envious-decode" \
+  || { echo "ERROR: envious-decode helper signature does not verify (#4473)"; exit 1; }
 [ "$(plutil -extract SUFeedURL raw "$APP_PATH/Contents/Info.plist")" = "" ] \
   || { echo "ERROR: dev SUFeedURL must be blank"; exit 1; }
 # #1271: EG-1 inference server + manifest must ship in Resources. On dev the

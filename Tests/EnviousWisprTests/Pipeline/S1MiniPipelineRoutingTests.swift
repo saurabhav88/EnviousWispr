@@ -60,7 +60,7 @@ struct S1MiniPipelineRoutingTests {
   }
 
   private static func endpoint() -> LocalPolishEndpoint {
-    LocalPolishEndpoint(port: 1, authToken: "t", contextTokens: 32768)
+    LocalPolishEndpoint(socketPath: "/t/1.sock", authToken: "t", contextTokens: 32768)
   }
 
   private func makeStep(
@@ -68,7 +68,7 @@ struct S1MiniPipelineRoutingTests {
     polished: String = S1MiniPipelineRoutingTests.s1Answer
   ) -> LLMPolishStep {
     let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
-    step.llmProvider = .s1Mini
+    step.setPolish(provider: .s1Mini)
     step.llmModel = LLMProvider.s1MiniModelName
     step.s1MiniRuntime = s1Runtime
     step.egOneRuntime = egOneRuntime
@@ -92,7 +92,7 @@ struct S1MiniPipelineRoutingTests {
     let executor = FakeTimeoutExecutor(throwBelowSeconds: timeoutBelow)
     let runner = TextProcessingRunner(
       telemetry: .init(
-        captureError: spy.sink, recordPolishFailed: { _, _, _, _, _ in },
+        captureError: spy.sink, recordPolishFailed: { _, _, _, _, _, _ in },
         recordPolishSkipped: TextProcessingRunner.TelemetrySeams.live.recordPolishSkipped),
       timeoutExecutor: executor.run)
     return try await runner.run(
@@ -184,7 +184,7 @@ struct S1MiniPipelineRoutingTests {
     let window = 8192
     let ceiling = LLMPolishStep.localPolishTranscriptCeiling(contextTokens: window)
     #expect(ceiling == 3328)
-    let endpoint = LocalPolishEndpoint(port: 1, authToken: "t", contextTokens: window)
+    let endpoint = LocalPolishEndpoint(socketPath: "/t/1.sock", authToken: "t", contextTokens: window)
     // Words, not one long token: the runner's other steps treat the text as
     // prose, and the guard counts bytes either way.
     func transcript(_ count: Int) -> String {

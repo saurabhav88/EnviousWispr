@@ -1048,8 +1048,8 @@ struct TranscribeFileView: View {
     return FileImportPolishGate.readiness(
       provider: provider, savedKey: savedKey, hasUnsavedKeyDraft: edited,
       importOllamaModel: importOllamaModel, llmDiscovery: llmDiscovery,
-      localPolishRuntimes: localPolishRuntimes, aiAvailability: aiAvailability, setup: setup,
-      savedKeyPresence: savedKeyPresence)
+      localPolishRuntimes: localPolishRuntimes, egOneSize: settings.preferredEGOneSize,
+      aiAvailability: aiAvailability, setup: setup, savedKeyPresence: savedKeyPresence)
   }
 
   struct PolishChoice {

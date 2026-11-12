@@ -171,7 +171,7 @@ struct FileImportCoordinatorSpeakerTests {
       onEngineReleased: onEngineReleased,
       beginRun: beginRunOverride ?? {
         FileImportCoordinator.RunConfiguration(
-          polishIsCloud: false, localPolishProvider: nil, polishProvider: .egOne,
+          polishIsCloud: false, localPolishModel: nil, polishProvider: .egOne,
           ollamaModel: nil, polishModel: "eg-1", backendType: .parakeet)
       },
       prepareLocalPolish: prepareLocalPolish,
@@ -869,7 +869,7 @@ struct FileImportCoordinatorSpeakerTests {
     let store = FakeHistoryStore(); let capture = BatchCapture()
     let processor = FileImportRunner(
       keychainManager: KeychainManager(), localPolishers: .llamaForTests,
-      egOneRuntime: nil, s1MiniRuntime: nil,
+      egOneRuntime: nil, additionalLocalRuntimes: [:], s1MiniRuntime: nil,
       outputClassifierHolder: nil, languageIdentifier: { _ in ("en", 0.99) },
       promptPlanner: nil,
       makePolisher: { _, _, _, _ in BatchPolisher(capture: capture, preserveExistingPunctuation: sentenceBoundary) })
@@ -877,7 +877,7 @@ struct FileImportCoordinatorSpeakerTests {
       backendType: .parakeet, backendSupportsLanguageDetection: false, languageMode: .locked("en"),
       wordCorrectionEnabled: false, fillerRemovalEnabled: sentenceBoundary, emojiFormatterEnabled: false,
       spokenPunctuationEnabled: false, spokenPunctuationStartWords: nil, spokenPunctuationEnglishPeriodWord: nil,
-      llmProvider: LLMProvider.openAI.rawValue, llmModel: "gpt-6.1-sol",
+      llmProvider: LLMProvider.openAI.rawValue, llmModel: "gpt-6.1-sol", egOneSize: nil,
       s1Control: nil, englishSpelling: .american, casualModeEnabled: false)
     var finished = BoundedWait.Signal()
     weak var observed: FileImportCoordinator?
@@ -901,7 +901,7 @@ struct FileImportCoordinatorSpeakerTests {
       beginRunOverride: {
         processor.freeze(settings: settings, vocabulary: nil, cloudModelList: nil)
         return FileImportCoordinator.RunConfiguration(
-          polishIsCloud: true, localPolishProvider: nil, polishProvider: .openAI,
+          polishIsCloud: true, localPolishModel: nil, polishProvider: .openAI,
           ollamaModel: nil, polishModel: settings.llmModel, backendType: .parakeet)
       }, onEngineReleased: { processor.releaseCheckerSelections(); finished.fire() })
     observed = coordinator
@@ -1332,8 +1332,7 @@ struct FileImportCoordinatorSpeakerTests {
 
   /// `count` words "w0 w1 ...", one every 100 ms, speaker A for the first `split` words and
   /// B for the rest: two turns, one cleanup section each while both stay under the run's
-  /// part ceiling (`TranscriptSplitter.maximumWordsPerLocalPart` for the fixtures' EG-1
-  /// polisher); a `split` over the ceiling makes A's turn several sections sharing one turn
+  /// part ceiling (300 words for the fixtures' EG-1 full-size polisher); a `split` over the ceiling makes A's turn several sections sharing one turn
   /// id.
   private static func manyWordFixture(count: Int, split: Int) -> (
     text: String, timings: [ASRWordTiming], segments: [SpeakerSegment]
@@ -1509,23 +1508,106 @@ struct FileImportCoordinatorSpeakerTests {
     #expect(turnTexts(store.current(historyID)) == [first, second])
   }
 
-  /// The part ceiling follows the run's polisher: a cloud polisher is bound by the request,
-  /// an on-device one by the words (15 s budget; 470-word parts timed out on a fast Mac).
-  @Test("the part ceiling is the local one for an on-device polisher and the default for cloud")
-  func partCeilingFollowsThePolisher() {
-    let local = FileImportCoordinator.RunConfiguration(
-      polishIsCloud: false, localPolishProvider: .egOne, polishProvider: .egOne,
-      ollamaModel: nil, polishModel: "eg-1", backendType: .parakeet)
-    let cloud = FileImportCoordinator.RunConfiguration(
-      polishIsCloud: true, localPolishProvider: nil, polishProvider: .openAI,
-      ollamaModel: nil, polishModel: "gpt-4o-mini", backendType: .parakeet)
-    #expect(FileImportDocumentMath.partCeiling(local) == TranscriptSplitter.maximumWordsPerLocalPart)
-    #expect(FileImportDocumentMath.partCeiling(cloud) == TranscriptSplitter.maximumWordsPerPart)
-    #expect(FileImportDocumentMath.partCeiling(nil) == TranscriptSplitter.maximumWordsPerPart)
-    let none = FileImportCoordinator.RunConfiguration(
-      polishIsCloud: false, localPolishProvider: nil, polishProvider: .none,
+  /// A run's configuration for the ceiling tests, built the way the suite builds the others.
+  private static func ceilingConfiguration(
+    provider: LLMProvider, model: LocalPolishModelID?, cloud: Bool = false
+  ) -> FileImportCoordinator.RunConfiguration {
+    FileImportCoordinator.RunConfiguration(
+      polishIsCloud: cloud, localPolishModel: model, polishProvider: provider,
       ollamaModel: nil, polishModel: "", backendType: .parakeet)
-    #expect(FileImportDocumentMath.partCeiling(none) == TranscriptSplitter.maximumWordsPerPart)
+  }
+
+  /// If this fails, an import cut for one polisher gets the wrong amount of text per part:
+  /// too much and the polish times out, too little and the document is cleaned in needless pieces.
+  @Test("the part ceiling is exactly: EG-1 full 300, Mini 500, Micro 200, unknown size 200, other on-device 200, cloud, none and no run 500 (#4473)")
+  func partCeilingFollowsThePolisher() {
+    func ceiling(_ provider: LLMProvider, _ model: LocalPolishModelID?, cloud: Bool = false) -> Int {
+      FileImportDocumentMath.partCeiling(
+        Self.ceilingConfiguration(provider: provider, model: model, cloud: cloud))
+    }
+    #expect(ceiling(.egOne, .egOne(.full)) == 300)
+    #expect(ceiling(.egOne, .egOne(.mini)) == 500)
+    #expect(ceiling(.egOne, .egOne(.micro)) == 200)
+    #expect(ceiling(.egOne, nil) == 200)
+    #expect(ceiling(.s1Mini, .s1Mini) == 200)
+    #expect(ceiling(.appleIntelligence, nil) == 200)
+    #expect(ceiling(.openAI, nil, cloud: true) == 500)
+    #expect(ceiling(.none, nil) == 500)
+    #expect(FileImportDocumentMath.partCeiling(nil) == 500)
+    #expect(TranscriptSplitter.maximumWordsPerLocalPart == 200)
+    #expect(TranscriptSplitter.maximumWordsPerPart == 500)
+  }
+
+  /// If this fails, a long memo polished by a bigger EG-1 size is cut at the wrong place, or text
+  /// is lost or reordered between parts.
+  @Test("each EG-1 size cuts a long memo at its own ceiling, Mini into the biggest parts, and the parts are the memo in order (#4473)")
+  func eachEGOneSizeCutsAtItsCeiling() {
+    let text = Self.manyWordFixture(count: 1500, split: 1500).text
+    var counts: [EGOneSize: Int] = [:]
+    var biggest: [EGOneSize: Int] = [:]
+    for size in [EGOneSize.full, .mini, .micro] {
+      let config = Self.ceilingConfiguration(provider: .egOne, model: .egOne(size))
+      let ceiling = FileImportDocumentMath.partCeiling(config)
+      let cut = FileImportDocumentMath.cleanupPieces(
+        turns: nil, rawText: text, maximumWords: ceiling)
+      let sizes = cut.pieces.map { TranscriptSplitter.wordCount(in: $0) }
+      #expect(sizes.allSatisfy { $0 >= 1 && $0 <= ceiling }, "\(size): \(sizes)")
+      // Same literal-search placement the coordinator uses: every piece is found, in order,
+      // and the passages rebuild the whole memo.
+      let placed = FileImportDocumentMath.placedPassages(
+        rawTranscript: text, pieces: cut.pieces, parts: [])
+      let allPlaced = placed.allSatisfy { passage -> Bool in
+        if case .placed = passage.placement { return true }
+        return false
+      }
+      #expect(allPlaced, "\(size): every part is found in the memo")
+      let rebuilt: String = placed.map { $0.original }.joined()
+      #expect(rebuilt == text, "\(size): the parts are the memo in order")
+      let pieceWords: [String] = cut.pieces.flatMap { piece -> [String] in
+        piece.split(separator: " ").map { String($0) }
+      }
+      let memoWords: [String] = text.split(separator: " ").map { String($0) }
+      #expect(pieceWords == memoWords)
+      counts[size] = cut.pieces.count
+      biggest[size] = sizes.max()
+    }
+    guard let full = counts[.full], let mini = counts[.mini], let micro = counts[.micro] else {
+      Issue.record("missing a size")
+      return
+    }
+    #expect(mini <= full && full <= micro && mini < micro, "mini \(mini), full \(full), micro \(micro)")
+    #expect((biggest[.mini] ?? 0) > 300, "Mini really gets parts bigger than full's ceiling")
+    #expect((biggest[.full] ?? 0) > 200, "full really gets parts bigger than Micro's ceiling")
+  }
+
+  /// If this fails, changing the EG-1 size in Settings mid-import re-cuts the rest of the file
+  /// for a model that is not the one polishing it.
+  @Test("the part ceiling follows the size the import froze, not the size chosen later; a new import freezes the new size (#4473)")
+  func theCeilingFollowsTheFrozenSize() {
+    let name = "ew.eg1.ceiling.\(UUID().uuidString)"
+    let defaults = TestDefaults.suite(name)!
+    defaults.removePersistentDomain(forName: name)
+    let settings = SettingsManager(defaults: defaults)
+    settings.fileImportLLMProvider = .egOne
+    settings.selectEGOneSize(.micro)
+    let frozen = FileImportSettingsFreeze.configuration(
+      for: FileImportSettingsFreeze.snapshot(settings: settings), ollamaModelIsRemote: nil)
+    #expect(FileImportDocumentMath.partCeiling(frozen) == 200)
+    settings.selectEGOneSize(.mini)
+    #expect(FileImportDocumentMath.partCeiling(frozen) == 200, "the running import keeps Micro's ceiling")
+    let next = FileImportSettingsFreeze.configuration(
+      for: FileImportSettingsFreeze.snapshot(settings: settings), ollamaModelIsRemote: nil)
+    #expect(FileImportDocumentMath.partCeiling(next) == 500)
+  }
+
+  /// If this fails, an EG-1 import whose size is unknown (a recording from a newer build) takes
+  /// a larger size's parts and may time out on a smaller model.
+  @Test("an EG-1 run with no known size never borrows another size's larger part (#4473)")
+  func anUnknownSizeNeverBorrows() {
+    let config = Self.ceilingConfiguration(provider: .egOne, model: nil)
+    let ceiling = FileImportDocumentMath.partCeiling(config)
+    #expect(ceiling == 200)
+    #expect(ceiling != 300 && ceiling != 500)
   }
 
   /// With no turns and a local polisher, a 600-word memo is cut at the local ceiling.
@@ -1740,7 +1822,7 @@ struct FileImportCoordinatorSpeakerTests {
       },
       beginRunOverride: {
         FileImportCoordinator.RunConfiguration(
-          polishIsCloud: true, localPolishProvider: nil,
+          polishIsCloud: true, localPolishModel: nil,
           polishProvider: script.rerun ? .gemini : .openAI, ollamaModel: nil,
           polishModel: script.rerun ? "second-model" : "first-model", backendType: .parakeet)
       })

@@ -141,7 +141,7 @@ import Testing
         egOneRuntime: ReadyEGOneRuntime(), s1MiniRuntime: ReadyEGOneRuntime(),
         revealPatience: PasteRevealPatience())
       let driver = KernelDictationDriverFactory.makeForWhisper(inputs: inputs)
-      driver.llmPolish.llmProvider = provider
+      driver.llmPolish.setPolish(provider: provider)
       driver.llmPolish.llmModel = LLMProvider.localModel(for: provider, ollamaModel: "") ?? ""
 
       let executor = FakeTimeoutExecutor(throwBelowSeconds: 0.0)

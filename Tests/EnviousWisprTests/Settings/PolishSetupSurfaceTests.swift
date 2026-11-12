@@ -150,4 +150,62 @@ struct PolishSetupSurfaceCopyTests {
       #expect(text.hasSuffix(".") == false, "a short reason carries its own full stop")
     }
   }
+
+  // #4473: setup messages name the EG-1 size.
+  @Test("engineName names an EG-1 size, and nothing else changes")
+  func engineNameTable() {
+    let rows: [(LLMProvider, EGOneSize?, String)] = [
+      (.egOne, .full, "EG-1"),
+      (.egOne, .mini, "EG-1 Mini"),
+      (.egOne, .micro, "EG-1 Micro"),
+      (.egOne, nil, "EG-1"),
+      (.s1Mini, nil, LLMProvider.s1Mini.displayName),
+      (.s1Mini, .micro, LLMProvider.s1Mini.displayName),
+      (.openAI, .micro, LLMProvider.openAI.displayName),
+    ]
+    for (provider, size, expected) in rows {
+      #expect(
+        PolishSetupSurfaceCopy.engineName(provider, egOneSize: size) == expected,
+        "\(provider) \(String(describing: size))")
+    }
+  }
+
+  @Test("the six local-engine reasons name the EG-1 size; nil keeps plain EG-1")
+  func shortReasonNamesTheSize() {
+    let problems: [PolishSetupProblem] = [
+      .localEngineNotDownloaded(.egOne), .localEngineDownloadPaused(.egOne),
+      .localEngineUpdatePaused(.egOne), .localEngineFailed(.egOne),
+      .localEngineDownloading(.egOne), .localEngineVerifying(.egOne),
+    ]
+    for problem in problems {
+      #expect(
+        PolishSetupSurfaceCopy.shortReason(problem, egOneSize: .micro).contains("EG-1 Micro"),
+        "\(problem)")
+      #expect(
+        PolishSetupSurfaceCopy.shortReason(problem, egOneSize: .mini).contains("EG-1 Mini"),
+        "\(problem)")
+      let plain = PolishSetupSurfaceCopy.shortReason(problem, egOneSize: nil)
+      #expect(plain.contains("EG-1"), "\(problem)")
+      #expect(plain.contains("Micro") == false, "\(problem)")
+    }
+  }
+
+  @Test("a size changes nothing for S1-mini or for a non-local problem")
+  func sizeIgnoredElsewhere() {
+    let s1: [PolishSetupProblem] = [
+      .localEngineNotDownloaded(.s1Mini), .localEngineDownloadPaused(.s1Mini),
+      .localEngineUpdatePaused(.s1Mini), .localEngineFailed(.s1Mini),
+      .localEngineDownloading(.s1Mini), .localEngineVerifying(.s1Mini),
+      .cloudKeyMissing(.openAI),
+    ]
+    for problem in s1 {
+      #expect(
+        PolishSetupSurfaceCopy.shortReason(problem, egOneSize: .micro)
+          == PolishSetupSurfaceCopy.shortReason(problem, egOneSize: nil),
+        "\(problem)")
+    }
+    #expect(
+      PolishSetupSurfaceCopy.shortReason(.localEngineNotDownloaded(.s1Mini), egOneSize: .micro)
+        .contains("EG-1") == false)
+  }
 }

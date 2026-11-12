@@ -77,16 +77,17 @@ struct FileImportBatchTests {
       backendType: .parakeet, backendSupportsLanguageDetection: false, languageMode: language,
       wordCorrectionEnabled: correction, fillerRemovalEnabled: false, emojiFormatterEnabled: false,
       spokenPunctuationEnabled: false, spokenPunctuationStartWords: nil, spokenPunctuationEnglishPeriodWord: nil,
-      llmProvider: provider.rawValue, llmModel: model ?? batchModel, s1Control: nil,
+      llmProvider: provider.rawValue, llmModel: model ?? batchModel, egOneSize: nil, s1Control: nil,
       englishSpelling: spelling, casualModeEnabled: false)
   }
   private func runner(
     _ capture: Capture, identify: @escaping (String) -> (language: String, confidence: Double)? = { _ in ("en", 0.99) },
-    selection: (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)? = nil
+    selection: (@MainActor (LocalPolishModelID, String?) async -> LearnedWordCheckerSelection)? =
+      nil
   ) -> FileImportRunner {
     FileImportRunner(
       keychainManager: KeychainManager(), localPolishers: .llamaForTests,
-      egOneRuntime: nil, s1MiniRuntime: nil,
+      egOneRuntime: nil, additionalLocalRuntimes: [:], s1MiniRuntime: nil,
       outputClassifierHolder: nil, languageIdentifier: identify,
       promptPlanner: nil, checkerSelectionProvider: selection,
       makePolisher: { _, _, _, _ in Polisher(capture: capture) })
@@ -412,7 +413,7 @@ struct FileImportBatchTests {
       localPolishers: .llamaForTests.replacingEGOne { _ in
         PromptCapturingPolisher(capture: capture)
       },
-      egOneRuntime: ReadyEGOneRuntime(), s1MiniRuntime: nil,
+      egOneRuntime: ReadyEGOneRuntime(), additionalLocalRuntimes: [:], s1MiniRuntime: nil,
       outputClassifierHolder: nil, languageIdentifier: { _ in ("pl", 0.99) },
       promptPlanner: DefaultPromptPlanner(egOneFamily: .egOneEnvelopeNamedLanguage))
     subject.freeze(settings: FileImportRunnerTests.egOneSnapshot, vocabulary: nil, cloudModelList: nil)

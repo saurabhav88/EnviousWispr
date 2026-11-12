@@ -26,7 +26,7 @@ struct PolishSetupBanner: View {
         .imageScale(.medium)
         .accessibilityHidden(true)
 
-      Text(PolishSetupSurfaceCopy.banner(reason: PolishSetupSurfaceCopy.shortReason(subject.problem)))
+      Text(PolishSetupSurfaceCopy.banner(reason: PolishSetupSurfaceCopy.shortReason(subject.problem, egOneSize: subject.egOneSize)))
         .font(.callout)
         .foregroundStyle(.primary)
         .fixedSize(horizontal: false, vertical: true)

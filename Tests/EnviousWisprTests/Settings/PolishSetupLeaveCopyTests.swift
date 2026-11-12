@@ -20,6 +20,70 @@ struct PolishSetupLeaveCopyTests {
         problem: problem, provider: .openAI, goBackProvider: goBack, keyNotSaved: keyNotSaved))
   }
 
+  private static func sizedRequest(
+    _ problem: PolishSetupProblem, size: EGOneSize?
+  ) -> PolishSetupLeaveRequest {
+    PolishSetupLeaveRequest(
+      intent: .sidebar(.history), scope: .dictation,
+      episode: PolishSetupEpisodeToken(rawValue: 1), problem: problem, provider: .egOne,
+      goBackProvider: nil, keyNotSaved: false, egOneSize: size)
+  }
+
+  // #4473
+  @Test("the leave question names the EG-1 size; full or unknown stays EG-1")
+  func namesTheEGOneSize() {
+    func message(_ problem: PolishSetupProblem, _ size: EGOneSize?) -> String {
+      PolishSetupLeaveDialogContent.make(for: Self.sizedRequest(problem, size: size)).message
+    }
+    let tail = " Until then, text is pasted without AI polish."
+    #expect(
+      message(.localEngineNotDownloaded(.egOne), .micro)
+        == "EG-1 Micro is not downloaded yet." + tail)
+    #expect(
+      message(.localEngineNotDownloaded(.egOne), .micro).hasPrefix("EG-1 Micro is not downloaded yet."))
+    #expect(
+      message(.localEngineNotDownloaded(.egOne), .mini)
+        == "EG-1 Mini is not downloaded yet." + tail)
+    #expect(
+      message(.localEngineNotDownloaded(.egOne), nil) == "EG-1 is not downloaded yet." + tail)
+    #expect(
+      message(.localEngineNotDownloaded(.egOne), .full) == "EG-1 is not downloaded yet." + tail)
+    #expect(
+      message(.localEngineDownloadPaused(.egOne), .micro)
+        == "The EG-1 Micro download is paused." + tail)
+    #expect(
+      message(.localEngineUpdatePaused(.egOne), .mini) == "The EG-1 Mini update is paused." + tail)
+    #expect(
+      message(.localEngineFailed(.egOne), .micro)
+        == "The EG-1 Micro download did not finish." + tail)
+    #expect(
+      message(.localEngineFailed(.s1Mini), .micro)
+        == "The S1-mini download did not finish." + tail)
+  }
+
+  @Test("the informational titles name the EG-1 size")
+  func informationalTitlesNameTheSize() {
+    let downloading = PolishSetupLeaveDialogContent.make(
+      for: Self.sizedRequest(.localEngineDownloading(.egOne), size: .micro))
+    #expect(downloading.title == "EG-1 Micro is still downloading")
+    let verifying = PolishSetupLeaveDialogContent.make(
+      for: Self.sizedRequest(.localEngineVerifying(.egOne), size: .mini))
+    #expect(verifying.title.contains("EG-1 Mini"))
+    let plain = PolishSetupLeaveDialogContent.make(
+      for: Self.sizedRequest(.localEngineDownloading(.egOne), size: nil))
+    #expect(plain.title == "EG-1 is still downloading")
+  }
+
+  @Test("the request hands its EG-1 size to the prompt subject")
+  func promptSubjectCarriesTheSize() {
+    #expect(
+      Self.sizedRequest(.localEngineNotDownloaded(.egOne), size: .micro).promptSubject.egOneSize
+        == .micro)
+    #expect(
+      Self.sizedRequest(.localEngineNotDownloaded(.egOne), size: nil).promptSubject.egOneSize
+        == nil)
+  }
+
   @Test("a missing cloud key, with and without Go back, and with an unsaved draft")
   func cloudKey() {
     let plain = Self.content(.cloudKeyMissing(.openAI))
@@ -243,5 +307,148 @@ struct PolishSetupLeaveCopyTests {
       let off = AppleIntelligenceSetupCopy.forOSMajorVersion(major).summaryLeaveMessage
       #expect(off.localizedCaseInsensitiveContains("AI polish") == false, "macOS \(major)")
     }
+  }
+}
+
+// MARK: - The leave question as the app's own card (#4473)
+
+/// #4473 (founder 2026-11-11). How the question's buttons sit on the card: the safe answer is the
+/// filled button, every other button sits under it in order. Built from the real contents; the
+/// expected titles are literals.
+@MainActor
+@Suite("Leave card layout (#4473)", .tags(.driftGuard))
+struct PolishSetupLeaveCardLayoutTests {
+
+  private static func content(
+    _ problem: PolishSetupProblem, goBack: LLMProvider? = nil,
+    scope: PolishSetupScope = .dictation
+  ) -> PolishSetupLeaveDialogContent {
+    PolishSetupLeaveDialogContent.make(
+      for: PolishSetupLeaveRequest(
+        intent: .sidebar(.history), scope: scope, episode: PolishSetupEpisodeToken(rawValue: 1),
+        problem: problem, provider: .openAI, goBackProvider: goBack, keyNotSaved: false))
+  }
+
+  private static func layout(_ content: PolishSetupLeaveDialogContent)
+    -> PolishSetupLeaveCardLayout
+  {
+    guard let layout = PolishSetupLeaveCardLayout(content) else {
+      Issue.record("no layout for \(content.title)")
+      return PolishSetupLeaveCardLayout(
+        PolishSetupLeaveDialogContent(
+          title: "", message: "",
+          buttons: [PolishSetupLeaveButton(title: "x", role: .plain, action: .ok)]))!
+    }
+    return layout
+  }
+
+  @Test("actionable with no Go back: Finish setup is primary, Leave anyway is the only other")
+  func actionablePlain() {
+    let layout = Self.layout(Self.content(.localEngineNotDownloaded(.egOne)))
+    #expect(layout.primary.title == "Finish setup")
+    #expect(layout.primary.action == .finishSetup)
+    #expect(layout.primary.role == .cancel)
+    #expect(layout.secondary.map(\.title) == ["Leave anyway"])
+    #expect(layout.secondary.map(\.action) == [.leaveAnyway])
+    #expect(layout.escape == layout.primary)
+  }
+
+  @Test("actionable with Go back: Go back sits before Leave anyway, three buttons at most")
+  func actionableGoBack() {
+    let layout = Self.layout(Self.content(.cloudKeyMissing(.openAI), goBack: .gemini))
+    #expect(layout.primary.title == "Finish setup")
+    #expect(layout.secondary.map(\.title) == ["Go back to Gemini", "Leave anyway"])
+    #expect(layout.secondary.map(\.action) == [.goBack(.gemini), .leaveAnyway])
+    #expect(1 + layout.secondary.count == 3)
+    #expect(layout.escape == layout.primary)
+  }
+
+  @Test("Apple Intelligence off: Pick another model is primary; Open System Settings stays")
+  func appleOff() {
+    let layout = Self.layout(Self.content(.appleUnavailable(.appleIntelligenceDisabled)))
+    #expect(layout.primary.title == "Pick another model")
+    #expect(layout.primary.role == .cancel)
+    #expect(layout.primary.action == .finishSetup)
+    #expect(layout.secondary.map(\.title) == ["Open System Settings", "Leave anyway"])
+    #expect(layout.escape == layout.primary)
+  }
+
+  @Test("Apple Intelligence unavailable for every other reason: Pick another model is primary")
+  func appleOtherReasons() {
+    let reasons: [AIFailureReason] = [
+      .deviceNotEligible, .unsupportedHardware, .unsupportedOS, .notCompiledIn,
+      .frameworkMissingAtRuntime, .modelNotReady, .modelAccessFailed, .sessionInitFailed,
+      .generationFailed, .unknownError,
+    ]
+    for reason in reasons {
+      for scope in [PolishSetupScope.dictation, .meetingSummary] {
+        let layout = Self.layout(Self.content(.appleUnavailable(reason), scope: scope))
+        #expect(layout.primary.title == "Pick another model", "\(reason)")
+        #expect(layout.primary.role == .cancel, "\(reason)")
+        #expect(layout.secondary.map(\.title) == ["Leave anyway"], "\(reason)")
+        #expect(layout.escape == layout.primary, "\(reason)")
+      }
+    }
+  }
+
+  @Test("an informational notice: OK is primary, nothing else, Escape answers nothing")
+  func informational() {
+    let layout = Self.layout(Self.content(.localEngineDownloading(.egOne)))
+    #expect(layout.primary.title == "OK")
+    #expect(layout.primary.action == .ok)
+    #expect(layout.secondary.isEmpty)
+    #expect(layout.escape == nil)
+  }
+
+  @Test("no content with buttons loses or duplicates one; Escape exists exactly with a cancel role")
+  func everyProblem() {
+    let stop = OutsideStopContext(provider: .egOne, generation: 1, memoryPressure: .warning)
+    var problems: [PolishSetupProblem] = [
+      .cloudKeyMissing(.openAI), .cloudKeyRejected(.claude), .ollamaNotInstalled,
+      .ollamaNotRunning, .ollamaNoModel, .ollamaModelNotInstalled,
+      .localEngineNotDownloaded(.egOne), .localEngineDownloadPaused(.s1Mini),
+      .localEngineUpdatePaused(.egOne), .localEngineFailed(.egOne),
+      .localEngineDownloading(.egOne), .localEngineVerifying(.s1Mini), .appleModelNotReady,
+      .localEngineStoppedOutside(.egOne, stop), .cloudNoModel(.gemini),
+      .cloudModelUnavailable(.openAI, "gpt-x"),
+    ]
+    let reasons: [AIFailureReason] = [
+      .deviceNotEligible, .unsupportedHardware, .unsupportedOS, .notCompiledIn,
+      .frameworkMissingAtRuntime, .appleIntelligenceDisabled, .modelNotReady, .modelAccessFailed,
+      .sessionInitFailed, .generationFailed, .unknownError,
+    ]
+    problems += reasons.map { .appleUnavailable($0) }
+    for problem in problems {
+      for goBack in [nil, LLMProvider.openAI] {
+        for scope in [PolishSetupScope.dictation, .meetingSummary] {
+          let content = Self.content(problem, goBack: goBack, scope: scope)
+          guard let layout = PolishSetupLeaveCardLayout(content) else {
+            Issue.record("no layout for \(problem)")
+            continue
+          }
+          let shown = [layout.primary] + layout.secondary
+          #expect(shown.count == content.buttons.count, "\(problem)")
+          for button in content.buttons {
+            #expect(
+              shown.filter { $0 == button }.count == content.buttons.filter { $0 == button }.count,
+              "\(problem): \(button.title)")
+          }
+          let hasCancel = content.buttons.contains { $0.role == .cancel }
+          #expect((layout.escape != nil) == hasCancel, "\(problem)")
+          if hasCancel {
+            #expect(layout.primary.role == .cancel, "\(problem)")
+            #expect(layout.escape == layout.primary, "\(problem)")
+          }
+          #expect(shown.count <= 3, "\(problem)")
+        }
+      }
+    }
+  }
+
+  @Test("a content with no buttons has no layout")
+  func noButtons() {
+    #expect(
+      PolishSetupLeaveCardLayout(PolishSetupLeaveDialogContent(title: "t", message: "m", buttons: []))
+        == nil)
   }
 }

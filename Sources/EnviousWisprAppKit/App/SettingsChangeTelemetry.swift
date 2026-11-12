@@ -67,6 +67,10 @@ enum SettingsProjection {
     /// #3737: Casual mode (leave off the final full stop). Ships off; adoption is the question.
     /// On/off only.
     case casualMode = "casual_mode"
+    /// #4473: the EG-1 size the user prefers (`full`/`mini`/`micro`). Changes when a person
+    /// presses "Use <size>" on a size card or removes the size in use; the first-launch
+    /// resolution writes before any observer exists, so it is never a change event.
+    case egOneSize = "eg1_size"
     case crashRecovery = "crash_recovery"
     /// #996: whether the "remember this correction?" card is on. Instrumented because
     /// adoption of a default-ON toggle is measured by who turns it OFF, and that
@@ -207,6 +211,7 @@ enum SettingsProjection {
     case .learnFromEdits: return [.learnFromEdits]
     case .languageMode: return [.languageMode]
     case .englishSpelling: return [.englishSpelling]
+    case .egOneSize: return [.egOneSize]
     case .useStreamingASR: return [.streamingASR]
     case .livePreviewEnabled: return [.livePreview]
     case .livePreviewEngine: return [.livePreviewEngine]
@@ -330,6 +335,7 @@ enum SettingsProjection {
       return settings.spokenPunctuation.startWordOverrides.isEmpty ? "default" : "customised"
     case .spokenPunctuationPeriodWord: return onOff(settings.spokenPunctuation.englishPeriodWord)
     case .casualMode: return onOff(settings.casualModeEnabled)
+    case .egOneSize: return settings.preferredEGOneSize.rawValue
     case .crashRecovery: return onOff(settings.crashRecoveryEnabled)
     case .learnFromEdits: return onOff(settings.learnFromEdits)
     case .languageMode: return languageModeLabel(settings.languageMode)

@@ -496,7 +496,13 @@ final class MeetingSummaryOwner {
     case .none, .saved: break
     }
     // Nil inputs are a cancel (gone, not ready) unless the meeting is known and wordless (#4148).
-    guard let inputs = currentInputs(meetingID, selection: selection) else {
+    guard
+      let inputs = currentInputs(
+        meetingID, selection: selection,
+        // The attempt's own captured revision when its preparation carries one (EG-1); a
+        // provider whose preparation carries none is read as before.
+        attemptRevision: prepared.artifactRevision.map { Optional($0) })
+    else {
       return Ending(end: deps.hasNoWords(meetingID) ? .nothingToSummarize : .cancelled)
     }
 
@@ -657,8 +663,12 @@ final class MeetingSummaryOwner {
     }
   }
 
+  /// `attemptRevision`: given by a running attempt, the artifact revision it was PREPARED with
+  /// (#4473), so what it saves names the model that wrote it even when Settings changed while
+  /// it waited. Not given: the revision a new attempt would use now, for "is this out of date".
   private func currentInputs(
-    _ meetingID: UUID, selection: (provider: LLMProvider, model: String)
+    _ meetingID: UUID, selection: (provider: LLMProvider, model: String),
+    attemptRevision: String?? = nil
   ) -> Inputs? {
     guard let transcript = deps.visibleTranscript(meetingID) else {
       fingerprints[meetingID] = nil
@@ -680,7 +690,7 @@ final class MeetingSummaryOwner {
         providerID: selection.provider.rawValue,
         configurationSHA256: MeetingSummary.configurationFingerprint(
           provider: selection.provider, model: selection.model,
-          artifactRevision: deps.artifactRevision(selection.provider)),
+          artifactRevision: attemptRevision ?? deps.artifactRevision(selection.provider)),
         transcriptAttemptID: transcript.transcriptAttemptID, contextSHA256: factsHash))
   }
 

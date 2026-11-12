@@ -21,9 +21,10 @@ import EnviousWisprPipeline
 struct PipelineSettingsSyncLocalEngineSwitchTests {
 
   private func makeSync(
-    selection: (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)? = nil,
-    importPin: @escaping @MainActor () -> LLMProvider? = { nil },
-    summaryPin: @escaping @MainActor () -> LLMProvider? = { nil }
+    selection: (@MainActor (LocalPolishModelID, String?) async -> LearnedWordCheckerSelection)? =
+      nil,
+    importPin: @escaping @MainActor () -> LocalPolishModelID? = { nil },
+    summaryPin: @escaping @MainActor () -> LocalPolishModelID? = { nil }
   ) -> (PipelineSettingsSync, SettingsManager, LocalPolishServerCoordinator,
     KernelDictationDriver, KernelDictationDriver) {
     let audio = RouterTestAudioCapture()
@@ -41,12 +42,12 @@ struct PipelineSettingsSyncLocalEngineSwitchTests {
     let coordinator = LocalPolishServerCoordinator()
     let egOne = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      engine: LlamaServerEngine(), coordinator: coordinator,
-      provider: .egOne)
+      engine: TestLocalPolishEngine(), coordinator: coordinator,
+      modelID: .egOne)
     let s1Mini = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
       engine: LlamaServerEngine(), coordinator: coordinator,
-      provider: .s1Mini)
+      modelID: .s1Mini)
     let sync = PipelineSettingsSync(
       kernelDriver: pipeline,
       whisperKernelDriver: whisperDriver,
@@ -57,8 +58,8 @@ struct PipelineSettingsSyncLocalEngineSwitchTests {
       s1MiniRuntime: s1Mini,
       checkerSelectionProvider: selection,
       ollamaRemotenessLookup: { _ in nil },
-      importPinnedLocalProvider: importPin,
-      summaryPinnedLocalProvider: summaryPin
+      importPinnedLocalModel: importPin,
+      summaryPinnedLocalModel: summaryPin
     )
     return (sync, settings, coordinator, pipeline, whisperDriver)
   }
@@ -73,12 +74,35 @@ struct PipelineSettingsSyncLocalEngineSwitchTests {
     return after - before - 1
   }
 
+  /// #4473: when this fails, a file import running on one EG-1 size loses its server in the
+  /// middle of a file because the user selected EG-1 (another size) for dictation.
+  @Test("an import frozen on another EG-1 size pins the engine: selecting EG-1 stops nothing")
+  func anImportOnAnotherSizeDefersTheSwitch() {
+    var imported: LocalPolishModelID? = .egOne(.mini)
+    let (sync, settings, coordinator, _, _) = makeSync(importPin: { imported })
+    settings.llmProvider = .s1Mini
+    sync.applyInitialSettings(settings)
+    #expect(sync.pinnedLocalModel() == .egOne(.mini))
+    #expect(sync.pinnedLocalProvider() == .egOne)
+    let held = stampsClaimed(
+      by: {
+        settings.llmProvider = .egOne
+        sync.handleSettingChanged(.llmProvider, settings: settings)
+      }, on: coordinator)
+    #expect(held == 0, "the pinned size is not the selected one: the change waits")
+    // The control: with the import over, the same selection stops the outgoing engine.
+    imported = nil
+    let released = stampsClaimed(
+      by: { sync.retryDeferredEGOneDeactivation(settings: settings) }, on: coordinator)
+    #expect(released > 0)
+  }
+
   /// #4319: an EnviousMeet summary holding EG-1 pins it like an import: a switch away claims
   /// no stop until the summary ends, and an import's pin is read first.
   @Test("a summary holding EG-1 pins it: a switch away stops nothing; an import pin wins")
   func summaryPinDefersTheStop() {
-    var summary: LLMProvider? = .egOne
-    var imported: LLMProvider?
+    var summary: LocalPolishModelID? = .egOne
+    var imported: LocalPolishModelID?
     let (sync, settings, coordinator, _, _) = makeSync(
       importPin: { imported }, summaryPin: { summary })
     settings.llmProvider = .egOne
@@ -164,7 +188,8 @@ struct PipelineSettingsSyncLocalEngineSwitchTests {
     ] {
       settings.llmProvider = provider
       sync.handleSettingChanged(.llmProvider, settings: settings)
-      let selection = await parakeet.learnedWordCheck.selectionProvider?(provider, "de")
+      let selection = await parakeet.learnedWordCheck.selectionProvider?(
+        .singleModel(for: provider), "de")
       #expect(selection?.absence == .adapterDownloading)
     }
   }

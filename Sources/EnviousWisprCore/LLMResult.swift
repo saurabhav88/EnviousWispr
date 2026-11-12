@@ -125,21 +125,53 @@ public struct PolishMetadata: Codable, Sendable, Equatable {
   }
 }
 
+/// What a bundled local engine reported about ONE answer it gave (#4473): which engine it
+/// was, and for the speculative-decoding engine the measured draft counts of that request.
+/// Counts and a closed engine name only; never text. Present only when an engine answered,
+/// so "selected" or "ready" never reads as "answered".
+public struct LocalDecodeStats: Codable, Sendable, Equatable {
+  /// `envious_decode` (EG-1's MLX helper) or `llama_server` (S1-mini).
+  public let implementation: String
+  /// Draft tokens that entered a verification round. nil for an engine with no draft model.
+  public let draftProposedTokens: Int?
+  /// Accepted draft tokens that are in the answer.
+  public let draftAcceptedTokens: Int?
+  /// Tokens in the answer, the stop token not counted.
+  public let emittedTokens: Int?
+
+  public static let enviousDecode = "envious_decode"
+  public static let llamaServer = "llama_server"
+
+  public init(
+    implementation: String, draftProposedTokens: Int? = nil, draftAcceptedTokens: Int? = nil,
+    emittedTokens: Int? = nil
+  ) {
+    self.implementation = implementation
+    self.draftProposedTokens = draftProposedTokens
+    self.draftAcceptedTokens = draftAcceptedTokens
+    self.emittedTokens = emittedTokens
+  }
+}
+
 /// Result from LLM transcript polishing.
 public struct LLMResult: Sendable {
   public let polishedText: String
   public let polishMetadata: PolishMetadata?
+  /// The bundled local engine's own report on this answer; nil for every other provider.
+  public let localDecode: LocalDecodeStats?
   /// The model stopped before finishing (its output cap), and the connector returned the text
   /// anyway. Only Ollama's chat path sets it, where a user's own model and budget are accepted
   /// as they are; polish ignores it. The meeting summary refuses such an answer (#3972).
   public let stoppedEarly: Bool
 
   public init(
-    polishedText: String, polishMetadata: PolishMetadata? = nil, stoppedEarly: Bool = false
+    polishedText: String, polishMetadata: PolishMetadata? = nil, stoppedEarly: Bool = false,
+    localDecode: LocalDecodeStats? = nil
   ) {
     self.polishedText = polishedText
     self.polishMetadata = polishMetadata
     self.stoppedEarly = stoppedEarly
+    self.localDecode = localDecode
   }
 }
 

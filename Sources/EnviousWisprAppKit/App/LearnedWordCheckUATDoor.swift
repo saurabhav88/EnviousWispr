@@ -28,7 +28,7 @@
       }
       let checker = ScriptedLearnedWordChecker(approvedWords: words)
       log("learned-check UAT door ACTIVE: words=\(words.count)")
-      for engine in LearnedWordCheckerEngine.allCases
+      for engine in LearnedWordCheckerEngine.published
       where environment[engine.adapterKey] != nil || environment[engine.thresholdKey] != nil {
         log("learned-check UAT door WINS over \(engine.label) adapter door")
       }
@@ -66,6 +66,14 @@
       let path = environment[engine.adapterKey]
       let rawThreshold = environment[engine.thresholdKey]
       guard path != nil || rawThreshold != nil else { return nil }
+      // #4473: EG-1's checker is an MLX adapter folder in its own engine. The GGUF file this
+      // door takes cannot be loaded there, so it is refused, never handed on.
+      if case .egOne = engine {
+        log(
+          "learned-check \(engine.label) door REJECTED: EG-1's GGUF adapter door is retired (EG-1 runs its delivered MLX adapter)"
+        )
+        return nil
+      }
       guard let path, path.hasPrefix("/"), !path.isEmpty,
         URL(fileURLWithPath: path).pathExtension.lowercased() == "gguf"
       else {

@@ -258,8 +258,13 @@ struct TelemetryEmitterRegistryTests {
   /// site, same per_take cadence and sampling, no new row per month, same take_id join, no
   /// content (a number of milliseconds); the event's row stays unchanged. Reader: the #4426 plan
   /// release review of patience by app class and the late-hit rate split by version.
+  /// #4473: `llmPolishCompleted` (`modelSize:`, `localDecode:`), `polishSkipped` and
+  /// `polishFailed` (`modelSize:`) and `trackFileImportCompleted` (`polishModelSize:`) gained
+  /// parameters, which changes the enclosing-function identity of their existing sites. No new
+  /// site or event: optional content-free properties on existing rows (a closed size name, an
+  /// engine name and counts).
   static let sitesFingerprint =
-    "2f803a7d4f2e0824abe4ac7faf569ab8b1bf0c00f3874615552417fb3eea0428"
+    "1fc27947a9d91679cd2833cd019f1b50c9b98f967d3bf352dba16bee1dbf19e6"
   static let ungradedFingerprint =
     "676fe038e6e688fa79c33aae8cec75e5996979f10c3f79775755ec23c5dba168"
 

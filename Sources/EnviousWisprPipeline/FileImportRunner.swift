@@ -72,10 +72,12 @@ public final class FileImportRunner {
 
   private let keychainManager: KeychainManager
   private let egOneRuntime: (any EGOneEndpointProviding)?
+  /// #4473: the runtime handles of further local models (the other EG-1 sizes), by exact model.
+  private let additionalLocalRuntimes: [LocalPolishModelID: any EGOneEndpointProviding]
   private let s1MiniRuntime: (any EGOneEndpointProviding)?
   private let outputClassifierHolder: OutputClassifierHolder?
   private let checkerSelectionProvider:
-    (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)?
+    (@MainActor (LocalPolishModelID, String?) async -> LearnedWordCheckerSelection)?
 
   /// Test seams (#3111), production defaults unchanged: the language recogniser the
   /// runner resolves with, the EG-1 polisher factory, and the prompt planner, so a test
@@ -124,13 +126,15 @@ public final class FileImportRunner {
     keychainManager: KeychainManager,
     localPolishers: BundledLocalPolisherFactories,
     egOneRuntime: (any EGOneEndpointProviding)? = nil,
+    additionalLocalRuntimes: [LocalPolishModelID: any EGOneEndpointProviding] = [:],
     s1MiniRuntime: (any EGOneEndpointProviding)? = nil,
     outputClassifierHolder: OutputClassifierHolder? = nil,
-    checkerSelectionProvider: (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)? = nil
+    checkerSelectionProvider: (@MainActor (LocalPolishModelID, String?) async -> LearnedWordCheckerSelection)? = nil
   ) {
     self.init(
       keychainManager: keychainManager, localPolishers: localPolishers,
-      egOneRuntime: egOneRuntime, s1MiniRuntime: s1MiniRuntime,
+      egOneRuntime: egOneRuntime, additionalLocalRuntimes: additionalLocalRuntimes,
+      s1MiniRuntime: s1MiniRuntime,
       outputClassifierHolder: outputClassifierHolder,
       languageIdentifier: DictationLanguageResolver.identify,
       promptPlanner: nil, checkerSelectionProvider: checkerSelectionProvider)
@@ -140,16 +144,18 @@ public final class FileImportRunner {
     keychainManager: KeychainManager,
     localPolishers: BundledLocalPolisherFactories,
     egOneRuntime: (any EGOneEndpointProviding)?,
+    additionalLocalRuntimes: [LocalPolishModelID: any EGOneEndpointProviding],
     s1MiniRuntime: (any EGOneEndpointProviding)?,
     outputClassifierHolder: OutputClassifierHolder?,
     languageIdentifier: @escaping (String) -> (language: String, confidence: Double)?,
     promptPlanner: (any PromptPlanning)?,
-    checkerSelectionProvider: (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)? = nil,
+    checkerSelectionProvider: (@MainActor (LocalPolishModelID, String?) async -> LearnedWordCheckerSelection)? = nil,
     makePolisher: LLMPolishStep.PolisherFactory? = nil
   ) {
     self.keychainManager = keychainManager
     self.localPolishers = localPolishers
     self.egOneRuntime = egOneRuntime
+    self.additionalLocalRuntimes = additionalLocalRuntimes
     self.s1MiniRuntime = s1MiniRuntime
     self.outputClassifierHolder = outputClassifierHolder
     self.languageIdentifier = languageIdentifier
@@ -443,10 +449,14 @@ public final class FileImportRunner {
     llmPolish.onToken = nil
     llmPolish.outputClassifierHolder = outputClassifierHolder
     llmPolish.egOneRuntime = egOneRuntime
+    for (model, runtime) in additionalLocalRuntimes { llmPolish.localRuntimes[model] = runtime }
     if let promptPlanner { llmPolish.promptPlanner = promptPlanner }
     if let makePolisher { llmPolish.makePolisher = makePolisher }
     llmPolish.s1MiniRuntime = s1MiniRuntime
-    llmPolish.llmProvider = LLMProvider(rawValue: settings.llmProvider) ?? .none
+    // #4473: the run's frozen provider and model, from the same snapshot.
+    llmPolish.setPolish(
+      provider: LLMProvider(rawValue: settings.llmProvider) ?? .none,
+      model: settings.polishModelID)
     // #4353 decision 4: the chosen model is requested as chosen, retired or not; a model
     // that no longer works fails at request time and the user picks a new one.
     llmPolish.llmModel = settings.llmModel

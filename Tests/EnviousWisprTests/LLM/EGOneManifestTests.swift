@@ -12,8 +12,8 @@ struct EGOneManifestTests {
   /// revision it belongs to. The revision is in the NAME deliberately: when
   /// the pin moves, this constant has to be renamed as well as revalued, so
   /// the pairing cannot be updated by half.
-  private static let shippedRevision = "eg1-1.2-c003"
-  private static let expectedDisplayVersionForShippedRevision = "1.2"
+  private static let shippedRevision = "eg1-1.3-intl-1c-20261109"
+  private static let expectedDisplayVersionForShippedRevision = "1.3"
   private static let expectedPromptTemplateForShippedRevision = "eg1-v2-named-language"
 
   static func makeManifest(
@@ -175,5 +175,39 @@ struct EGOneManifestTests {
     #expect(manifest.promptTemplateID == Self.expectedPromptTemplateForShippedRevision)
     // #3111: the same 1.2 weights, served the named-language prompt.
     #expect(manifest.promptFamily == .egOneEnvelopeNamedLanguage)
+  }
+
+  // The EG-1 sizes must be told the same prompt, or one size answers a different instruction than it was qualified on.
+  // To cover another size, add its manifest file name to this list.
+  @Test func everyShippedSizeSharesOnePromptAndTheSmallerSizesArePinned() throws {
+    let resources = URL(fileURLWithPath: #filePath)
+      .deletingLastPathComponent()  // LLM
+      .deletingLastPathComponent()  // EnviousWisprTests
+      .deletingLastPathComponent()  // Tests
+      .deletingLastPathComponent()  // repo root
+      .appendingPathComponent("Sources/EnviousWispr/Resources")
+    let files = ["eg1-manifest.json", "eg1-mini-manifest.json", "eg1-micro-manifest.json"]
+    var manifests: [String: EGOneManifest] = [:]
+    for file in files {
+      let data = try Data(contentsOf: resources.appendingPathComponent(file))
+      manifests[file] = try JSONDecoder().decode(EGOneManifest.self, from: data)
+    }
+    let first = try #require(manifests[files[0]])
+    #expect(first.promptFamily != nil)
+    for file in files {
+      let manifest = try #require(manifests[file])
+      #expect(manifest.promptTemplateID == first.promptTemplateID, "\(file) names another prompt")
+      #expect(manifest.promptFamily == first.promptFamily, "\(file) uses another prompt family")
+    }
+
+    let micro = try #require(manifests["eg1-micro-manifest.json"])
+    #expect(micro.version == "eg1-micro-1.0-g3d")
+    #expect(micro.contextTokens == 8192)
+    #expect(micro.resolvedDisplayVersion == "1.0")
+
+    let mini = try #require(manifests["eg1-mini-manifest.json"])
+    #expect(mini.version == "eg1-mini-1.0-g3onestage")
+    #expect(mini.contextTokens == 16384)
+    #expect(mini.resolvedDisplayVersion == "1.0")
   }
 }

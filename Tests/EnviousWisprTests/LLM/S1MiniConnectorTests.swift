@@ -71,6 +71,16 @@ struct S1MiniConnectorTests {
     #expect(result.polishedText == "I need to send the report by Thursday.")
   }
 
+  // #4473: loses the llama_server label on S1-mini takes if the connector stops reporting it.
+  @Test("an S1-mini answer reports llama_server with no draft counts")
+  func answerReportsItsEngine() throws {
+    let result = try S1MiniConnector.parseSuccess(
+      data: Self.body(content: "I need to send the report by Thursday."),
+      userMessage: Self.userMessage("i need to send the report by thursday"))
+    #expect(result.localDecode == LocalDecodeStats(implementation: "llama_server"))
+    #expect(result.localDecode?.draftProposedTokens == nil)
+  }
+
   @Test("a malformed body is a local-server hiccup, not a valid empty")
   func malformedBodyFails() {
     #expect(throws: (any Error).self) {

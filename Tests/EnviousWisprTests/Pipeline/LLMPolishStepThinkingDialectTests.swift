@@ -57,7 +57,7 @@ struct LLMPolishStepThinkingDialectTests {
     model: String
   ) async throws -> (value: ResolvedThinking?, sawCall: Bool) {
     let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
-    step.llmProvider = .gemini
+    step.setPolish(provider: .gemini)
     step.llmModel = model
     // #4353 D6: the per-model values live in the cloud model list the take captured.
     step.cloudModelList = CloudModelListSeed.current

@@ -7,6 +7,7 @@ import Testing
 
 @testable import EnviousWisprASR
 @testable import EnviousWisprAppKit
+@testable import EnviousWisprEG1Engine
 @testable import EnviousWisprLLM
 @testable import EnviousWisprLlamaEngine
 @testable import EnviousWisprModelDelivery
@@ -196,11 +197,15 @@ struct FileImportReplayRunner {
   @Test("the Mini arm requires its own endpoint and model hash; other arms refuse one")
   func miniEndpointIsRequiredOnlyForMini() throws {
     let full = [
-      "EW_REPLAY_MINI_PORT": "47000", "EW_REPLAY_MINI_TOKEN": "t",
+      "EW_REPLAY_MINI_SOCKET": "/tmp/ew-mini/s.sock", "EW_REPLAY_MINI_TOKEN": "t",
       "EW_REPLAY_MINI_CONTEXT": "16384", "EW_REPLAY_MINI_SHA256": "abc",
     ]
     let endpoint = try #require(try Self.miniEndpoint(arm: .mini, env: full))
-    #expect(endpoint.port == 47000)
+    #expect(endpoint.socketPath == "/tmp/ew-mini/s.sock")
+    // #4493: the retired port setting fails loudly instead of being ignored.
+    var retired = full
+    retired["EW_REPLAY_MINI_PORT"] = "47000"
+    #expect(throws: (any Error).self) { try Self.miniEndpoint(arm: .mini, env: retired) }
     #expect(endpoint.hasLearnedWordAdapter == false)
     #expect(throws: (any Error).self) { try Self.miniEndpoint(arm: .mini, env: [:]) }
     #expect(throws: (any Error).self) { try Self.miniEndpoint(arm: .egOne, env: full) }
@@ -220,19 +225,28 @@ struct FileImportReplayRunner {
       }
       return value
     }
+    // #4493: the Mini server listens on a Unix socket now; a driver that still names a port
+    // starts it the old way and must be updated, not silently ignored.
+    if env["EW_REPLAY_MINI_PORT"] != nil {
+      throw ReplayConfigurationError(
+        description: "EW_REPLAY_MINI_PORT is retired: start the Mini server on a Unix socket "
+          + "(--host <path>.sock) and pass EW_REPLAY_MINI_SOCKET")
+    }
     guard arm == .mini else {
-      if env["EW_REPLAY_MINI_PORT"] != nil {
+      if env["EW_REPLAY_MINI_SOCKET"] != nil {
         throw ReplayConfigurationError(description: "a Mini endpoint was named for arm \(arm)")
       }
       return nil
     }
-    guard let port = UInt16(try need("EW_REPLAY_MINI_PORT")),
-      let context = Int(try need("EW_REPLAY_MINI_CONTEXT"))
-    else { throw ReplayConfigurationError(description: "Mini port or context is not a number") }
+    let socketPath = try need("EW_REPLAY_MINI_SOCKET")
+    guard let context = Int(try need("EW_REPLAY_MINI_CONTEXT")) else {
+      throw ReplayConfigurationError(description: "Mini context is not a number")
+    }
     let token = try need("EW_REPLAY_MINI_TOKEN")
     _ = try need("EW_REPLAY_MINI_SHA256")
     return LocalPolishEndpoint(
-      port: port, authToken: token, contextTokens: context, hasLearnedWordAdapter: false)
+      socketPath: socketPath, authToken: token, contextTokens: context,
+      hasLearnedWordAdapter: false)
   }
 
 
@@ -522,6 +536,9 @@ final class ReplayRig {
     let resources = appBundle.appendingPathComponent("Contents/Resources", isDirectory: true)
     let serverBinary = resources.appendingPathComponent("llama-server")
     try #require(fm.isExecutableFile(atPath: serverBinary.path), "no llama-server in \(appBundle)")
+    // #4473: EG-1 runs on the EnviousDecode helper the same build embeds.
+    let helperBinary = appBundle.appendingPathComponent("Contents/MacOS/envious-decode")
+    try #require(fm.isExecutableFile(atPath: helperBinary.path), "no envious-decode in \(appBundle)")
     let manifestBundle = try #require(
       Bundle(
         url: FileImportReplayRunner.repoRoot.appendingPathComponent(
@@ -561,11 +578,11 @@ final class ReplayRig {
     let dataDir = appSupport.appendingPathComponent("EnviousWispr", isDirectory: true)
     let egOneManifest = try EGOneManifest.loadBundled(from: manifestBundle)
     let egOneDelivery = try DeliveryManifest.loadBundled(
-      resource: "eg1-delivery-manifest", bundle: manifestBundle)
-    let egOneRegistration = DeliveryRegistration(
-      manifest: egOneDelivery,
-      installDirectory: dataDir.appendingPathComponent("Models/eg-1", isDirectory: true),
-      metadataDirectory: dataDir.appendingPathComponent("ModelDelivery", isDirectory: true))
+      resource: "eg1-mlx-delivery-manifest", bundle: manifestBundle)
+    // The full size's registration, from the same catalog the app's composition root uses
+    // (`Models/eg-1` under the temporary Application Support).
+    let egOneRegistration = try EGOneArtifactCatalog.modelRegistration(
+      .full, manifest: egOneDelivery, appSupport: appSupport)
     for name in ["eg-1", "eg-1-checker", "word-check"] {
       try linkTree(
         from: modelsDir.appendingPathComponent(name, isDirectory: true),
@@ -575,7 +592,7 @@ final class ReplayRig {
       controller: home.controller, registration: egOneRegistration,
       version: egOneManifest.resolvedDisplayVersion)
     let egOneAdmitted = await egOneAdapter.adoptIfPresent()
-    let checkerRegistration = try #require(home.checkerRegistrations[.egOne])
+    let checkerRegistration = try #require(home.checkerRegistrations[.egOne(.full)])
     let checkerAdmitted = await home.controller.admitIfComplete(checkerRegistration)
     let wordCheckAdmitted: Bool
     if let registration = home.wordCheckRegistration {
@@ -587,32 +604,35 @@ final class ReplayRig {
     let promptTemplateID = egOneManifest.promptTemplateID
     let egOneRuntime = LocalPolishRuntime(
       manifest: egOneManifest.runtimeFacts(expectedModelName: LLMProvider.egOneModelName),
-      serverBinaryURL: serverBinary, delivery: egOneAdapter,
-      engine: LlamaServerEngine(),
+      serverBinaryURL: helperBinary, delivery: egOneAdapter,
+      engine: EGOneArtifactCatalog.engine(for: egOneRegistration),
+      launchLocation: { EGOneArtifactCatalog.launchFolders(for: egOneRegistration)?.model },
       learnedWordAdapterProvider: {
         return await home.admittedCompatibleCheckerURL(
-          engine: .egOne, baseRegistration: egOneRegistration, promptTemplateID: promptTemplateID)
+          engine: .egOne(.full), baseRegistration: egOneRegistration,
+          promptTemplateID: promptTemplateID)
       })
     egOneRuntime.isActiveProvider = { settingsBox.settings.effectiveFileImportLLMProvider == .egOne }
     let s1MiniRuntime = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: serverBinary, delivery: nil,
       engine: LlamaServerEngine(),
-      coordinator: egOneRuntime.serverCoordinator, provider: .s1Mini)
+      coordinator: egOneRuntime.serverCoordinator, modelID: .s1Mini)
     let localPolish = LocalPolishRuntimeSet(egOne: egOneRuntime, s1Mini: s1MiniRuntime)
     let checkerEligibility = LearnedWordCheckerEligibility(
       delivery: home,
       engines: [
-        .egOne: .init(
+        .egOne(.full): .init(
           base: egOneRegistration, promptTemplateID: promptTemplateID, runtime: egOneRuntime,
           debugThreshold: nil)
-      ])
+      ],
+      currentModel: { settingsBox.settings.polishModelID(for: $0) })
     let wordCheck = WordCheckRuntime(
       delivery: home,
       isDictionaryEnabled: { settingsBox.settings.wordCorrectionEnabled },
       someEngineLacksOwnChecker: {
         let settings = settingsBox.settings
-        return LearnedWordCheckerEngine(provider: settings.llmProvider) == nil
-          || LearnedWordCheckerEngine(provider: settings.effectiveFileImportLLMProvider) == nil
+        return !LearnedWordCheckerEngine.hasOwnChecker(settings.llmProvider)
+          || !LearnedWordCheckerEngine.hasOwnChecker(settings.effectiveFileImportLLMProvider)
       },
       isOnboardingComplete: { true })
     checkerEligibility.wordCheck = wordCheck
@@ -647,9 +667,11 @@ final class ReplayRig {
 
     // The polisher factories are the step's own defaults, wrapped. Read off a throwaway step so
     // the wrapped closure is exactly the one production would have used.
-    // #4473: the EG-1 factory is no longer a step default. It is read from the explicit llama
-    // pair, the same connector the app's composition root supplies.
-    let llamaPolishers = BundledLocalPolisherFactories.llamaForTests
+    // #4473: the EG-1 factory is no longer a step default. The pair is the one the app's
+    // composition root supplies: EG-1's own connector for the EnviousDecode helper, and
+    // S1-mini's.
+    let llamaPolishers = BundledLocalPolisherFactories(
+      egOne: { EGOneConnector(endpoint: $0) }, s1Mini: { S1MiniConnector(endpoint: $0) })
     let probe = LLMPolishStep(
       keychainManager: KeychainManager(), localPolishers: llamaPolishers, telemetry: .silent())
     let productionFactory = probe.makePolisher
@@ -690,16 +712,16 @@ final class ReplayRig {
           inner: productionEGOne(mini ?? endpoint), provider: mini == nil ? "egOne" : "mini",
           log: rigLog)
       },
-      egOneRuntime: egOneRuntime, s1MiniRuntime: s1MiniRuntime,
+      egOneRuntime: egOneRuntime, additionalLocalRuntimes: [:], s1MiniRuntime: s1MiniRuntime,
       outputClassifierHolder: classifierHolder,
       languageIdentifier: DictationLanguageResolver.identify,
       promptPlanner: RecordingPlanner(inner: productionPlanner, log: rigLog),
       checkerSelectionProvider: { [checkerEligibility] provider, language in
         let caseID = await rigLog.currentCase
-        let selection = await checkerEligibility.selection(provider: provider, language: language)
+        let selection = await checkerEligibility.selection(model: provider, language: language)
         await rigLog.appendPlan([
           "checker_case": caseID,
-          "checker_provider": provider.rawValue, "checker_language": language ?? "",
+          "checker_provider": provider.provider.rawValue, "checker_language": language ?? "",
           "checker_identity": selection.identity ?? "",
           "checker_absence": selection.absence.map { String(describing: $0) } ?? "",
         ])
@@ -716,8 +738,8 @@ final class ReplayRig {
     // resources. Refuse a build whose bundled manifests differ from the committed ones.
     var manifestIdentity: [String: String] = [:]
     for name in [
-      "eg1-manifest.json", "eg1-delivery-manifest.json", "eg1-checker-delivery-manifest.json",
-      "word-check-delivery-manifest.json",
+      "eg1-manifest.json", "eg1-mlx-delivery-manifest.json",
+      "eg1-mlx-checker-delivery-manifest.json", "word-check-delivery-manifest.json",
     ] {
       let committed = try Data(contentsOf: manifestBundle.bundleURL.appendingPathComponent(name))
       let bundled = try Data(contentsOf: resources.appendingPathComponent(name))
@@ -744,6 +766,7 @@ final class ReplayRig {
         + "captured system text is the connector's input, not Apple's assembled model prompt.",
       "app_bundle": appBundle.path,
       "llama_server_sha256": try sha256(Data(contentsOf: serverBinary)),
+      "envious_decode_sha256": try sha256(Data(contentsOf: helperBinary)),
       "eg1_manifest_prompt_template": promptTemplateID,
       "eg1_prompt_family": egOneFamily.rawValue,
       "eg1_model_revision": egOneDelivery.identity.revision,
@@ -764,7 +787,6 @@ final class ReplayRig {
       identity["canned_answers_path"] = ProcessInfo.processInfo.environment["EW_REPLAY_CANNED"]
     }
     if let mini {
-      identity["mini_endpoint_port"] = Int(mini.port)
       identity["mini_model_sha256"] = miniSHA256 ?? NSNull()
       // #4450: the same EG-1 slot also serves EG-1 1.3 (Qwen3.5-4B); the driver names the model.
       identity["mini_label"] =
@@ -810,8 +832,8 @@ final class ReplayRig {
     let snapshotJSON = try JSONSerialization.jsonObject(with: JSONEncoder().encode(snapshot))
     runner.freeze(settings: snapshot, vocabulary: corrector, cloudModelList: nil)
     wordCheck.fileImportStarted(
-      needsWordCheck: LearnedWordCheckerEngine(
-        provider: LLMProvider(rawValue: snapshot.llmProvider) ?? .none) == nil)
+      needsWordCheck: !LearnedWordCheckerEngine.hasOwnChecker(
+        LLMProvider(rawValue: snapshot.llmProvider) ?? .none))
     // In the app this preload runs while the file is still decoding and transcribing, so the
     // first part finds the model loaded. The replay starts from recogniser text, so it waits for
     // the load the preload started; without this the first case's check outlived the step's
@@ -822,8 +844,8 @@ final class ReplayRig {
     if configuration.polishProvider == .appleIntelligence {
       try await loadClassifier()
     }
-    if let provider = configuration.localPolishProvider {
-      try await prepareLocalPolish(provider)
+    if let model = configuration.localPolishModel {
+      try await prepareLocalPolish(model)
     }
     defer {
       localPolish.releaseImportHold()
@@ -837,12 +859,13 @@ final class ReplayRig {
 
   /// `prepareLocalPolish` from `WisprBootstrapper`: activation awaited, the endpoint checked,
   /// then the import hold. A refusal invalidates the case rather than letting the step skip.
-  private func prepareLocalPolish(_ provider: LLMProvider) async throws {
-    let runtime = try #require(localPolish.runtime(for: .singleModel(for: provider)))
+  private func prepareLocalPolish(_ model: LocalPolishModelID) async throws {
+    let provider = model.provider
+    let runtime = try #require(localPolish.runtime(for: model))
     if let activation = runtime.activateAndProbe() { await activation.value }
     let endpoint = await runtime.activeEndpoint()
     try #require(endpoint != nil, "\(provider) endpoint unavailable after activation")
-    try #require(await localPolish.holdForImport(provider), "\(provider) import hold refused")
+    try #require(await localPolish.holdForImport(model), "\(provider) import hold refused")
     lastChecker = [
       "provider": provider.rawValue,
       "server_has_learned_word_adapter": String(endpoint?.hasLearnedWordAdapter ?? false),

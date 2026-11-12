@@ -45,11 +45,14 @@ import Testing
     let resourceDir = repoRoot.appendingPathComponent("Sources/EnviousWispr/Resources")
 
     for resource in [
-      "edit-judge-delivery-manifest", "eg1-checker-delivery-manifest", "eg1-delivery-manifest", "parakeet-delivery-manifest",
+      "edit-judge-delivery-manifest", "parakeet-delivery-manifest",
       "parakeet-v3-retired-manifest",
       "s1-checker-delivery-manifest", "s1-delivery-manifest", "whisper-delivery-manifest",
       "whisper-preview-delivery-manifest", "word-check-delivery-manifest",
       "speaker-live-delivery-manifest",
+      "eg1-mlx-delivery-manifest", "eg1-mlx-checker-delivery-manifest",
+      "eg1-micro-delivery-manifest", "eg1-micro-checker-delivery-manifest",
+      "eg1-mini-delivery-manifest", "eg1-mini-checker-delivery-manifest",
     ] {
       let url = resourceDir.appendingPathComponent("\(resource).json")
       let manifest = try DeliveryManifest.load(from: try Data(contentsOf: url))
@@ -76,6 +79,10 @@ import Testing
       .editJudge: ["xenc-mmbert-small"],
       .egOne: ["eg-1"],
       .egOneChecker: ["eg1c"],
+      .egOneMicro: ["eg-1-micro"],
+      .egOneMicroChecker: ["eg1c-micro"],
+      .egOneMini: ["eg-1-mini"],
+      .egOneMiniChecker: ["eg1c-mini"],
       .parakeet: ["parakeet-tdt-0.6b-v3-coreml", "parakeet-ultra-coreml"],
       .s1Mini: ["s1-mini"],
       .s1MiniChecker: ["s1c"],
@@ -144,11 +151,14 @@ import Testing
 
     var keys: [String] = []
     for resource in [
-      "edit-judge-delivery-manifest", "eg1-checker-delivery-manifest", "eg1-delivery-manifest", "parakeet-delivery-manifest",
+      "edit-judge-delivery-manifest", "parakeet-delivery-manifest",
       "parakeet-v3-retired-manifest",
       "s1-checker-delivery-manifest", "s1-delivery-manifest", "whisper-delivery-manifest",
       "whisper-preview-delivery-manifest", "word-check-delivery-manifest",
       "speaker-live-delivery-manifest",
+      "eg1-mlx-delivery-manifest", "eg1-mlx-checker-delivery-manifest",
+      "eg1-micro-delivery-manifest", "eg1-micro-checker-delivery-manifest",
+      "eg1-mini-delivery-manifest", "eg1-mini-checker-delivery-manifest",
     ] {
       let url = resourceDir.appendingPathComponent("\(resource).json")
       let identity = try DeliveryManifest.load(from: try Data(contentsOf: url)).identity
@@ -158,7 +168,7 @@ import Testing
     #expect(
       Self.firstCollision(keys) == nil,
       "two bundled manifests share family+name+variant, so the staging sweep would treat one as a superseded revision of the other and delete a live download")
-    #expect(keys.count == 11, "expected eleven bundled registrations, got \(keys.count)")
+    #expect(keys.count == 15, "expected fifteen bundled registrations, got \(keys.count)")
   }
 
   /// Two-way control that drives the REAL detector. Every set we ship is
@@ -221,11 +231,14 @@ import Testing
       .deletingLastPathComponent()
     let resourceDir = repoRoot.appendingPathComponent("Sources/EnviousWispr/Resources")
     for resource in [
-      "edit-judge-delivery-manifest", "eg1-checker-delivery-manifest", "eg1-delivery-manifest", "parakeet-delivery-manifest",
+      "edit-judge-delivery-manifest", "parakeet-delivery-manifest",
       "parakeet-v3-retired-manifest",
       "s1-checker-delivery-manifest", "s1-delivery-manifest", "whisper-delivery-manifest",
       "whisper-preview-delivery-manifest", "word-check-delivery-manifest",
       "speaker-live-delivery-manifest",
+      "eg1-mlx-delivery-manifest", "eg1-mlx-checker-delivery-manifest",
+      "eg1-micro-delivery-manifest", "eg1-micro-checker-delivery-manifest",
+      "eg1-mini-delivery-manifest", "eg1-mini-checker-delivery-manifest",
     ] {
       let url = resourceDir.appendingPathComponent("\(resource).json")
       let identity = try DeliveryManifest.load(from: try Data(contentsOf: url)).identity

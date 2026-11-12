@@ -137,7 +137,7 @@ struct EGOneLanguageNamingPipelineTests {
   @MainActor
   final class FakeRuntime: EGOneEndpointProviding {
     func activeEndpoint() async -> LocalPolishEndpoint? {
-      LocalPolishEndpoint(port: 1, authToken: "t", contextTokens: 32768)
+      LocalPolishEndpoint(socketPath: "/t/1.sock", authToken: "t", contextTokens: 32768)
     }
   }
 
@@ -181,7 +181,7 @@ struct EGOneLanguageNamingPipelineTests {
   ) async throws -> PromptCapture {
     let capture = PromptCapture()
     let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
-    step.llmProvider = .egOne
+    step.setPolish(provider: .egOne)
     step.llmModel = LLMProvider.egOneModelName
     step.egOneRuntime = FakeRuntime()
     step.promptPlanner = DefaultPromptPlanner(egOneFamily: family)
@@ -277,7 +277,7 @@ struct EGOneLanguageNamingPipelineTests {
     let spy = InputSpy()
     let capture = PromptCapture()
     let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
-    step.llmProvider = .openAI
+    step.setPolish(provider: .openAI)
     step.llmModel = "gpt-4o-mini"
     step.promptPlanner = spy
     step.makePolisher = { _, _, _, _ in CapturingPolisher(capture: capture) }

@@ -404,7 +404,7 @@ final class WordCheckRuntime {
   static func workNeedsWordCheck(
     dictationProviders: [LLMProvider], importHoldsEngine: Bool, importProvider: LLMProvider?
   ) -> Bool {
-    let needs = { (provider: LLMProvider) in LearnedWordCheckerEngine(provider: provider) == nil }
+    let needs = { (provider: LLMProvider) in !LearnedWordCheckerEngine.hasOwnChecker(provider) }
     if dictationProviders.contains(where: needs) { return true }
     guard importHoldsEngine, let importProvider else { return false }
     return needs(importProvider)

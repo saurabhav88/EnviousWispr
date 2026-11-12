@@ -40,11 +40,6 @@ package enum LlamaServerHealthProbe {
       self.makeConnector = makeConnector
     }
 
-    /// EG-1's exact current values, so its probe is unchanged by this move.
-    package static let egOne = ProbeSpec(
-      provider: .egOne, modelID: LLMProvider.egOneModelName,
-      makeConnector: { EGOneConnector(endpoint: $0) })
-
     /// #2649. Without this the second model was health-checked AS EG-1 — right
     /// endpoint, wrong connector, wrong provider stamp, wrong model id. The
     /// verdict would have been about EG-1's contract, and the connector's
@@ -67,13 +62,12 @@ package enum LlamaServerHealthProbe {
   ) -> LocalPolishHealthProbe {
     let spec: ProbeSpec
     switch modelID.provider {
-    case .egOne:
-      spec = .egOne
     case .s1Mini:
       spec = .s1Mini
-    case .openAI, .gemini, .claude, .ollama, .appleIntelligence, .none:
+    // #4473: EG-1 is probed by its own engine, with its own connector.
+    case .egOne, .openAI, .gemini, .claude, .ollama, .appleIntelligence, .none:
       preconditionFailure(
-        "LlamaServerHealthProbe probes a bundled local model; \(modelID.provider) is not one")
+        "LlamaServerHealthProbe probes a model on llama-server; \(modelID.provider) is not one")
     }
     return operation(spec: spec, promptFamily: promptFamily)
   }

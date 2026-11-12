@@ -17,10 +17,12 @@ TARGETS = [
     "EnviousWisprModelDelivery", "EnviousWisprLocalPolish", "EnviousWisprPostProcessing",
     "EnviousWisprAudio",
     "EnviousWisprServices", "EnviousWisprFluidAudioBridge", "EnviousWisprTranscribeCpp", "EnviousWisprASR",
-    "EnviousWisprLLM", "EnviousWisprLlamaEngine", "EnviousWisprWordCheck", "EnviousWisprPipeline",
+    "EnviousWisprLLM", "EnviousWisprLlamaEngine", "EnviousWisprEG1Engine", "EnviousWisprWordCheck",
+    "EnviousWisprPipeline",
     "EnviousWisprContacts",
     "EnviousWisprLivePreview", "EnviousWisprWhisperPreviewAdapter", "EnviousWisprAppKit",
-    "EnviousWisprDesktopEffects", "EnviousWisprAppLive", "EnviousWispr",
+    "EnviousWisprDesktopEffects", "EnviousWisprAppLive", "EnviousDecodeKit", "EnviousDecodeHelper",
+    "EnviousWispr",
 ]
 MANUAL = {
     "settings.aiPolish.enable.title": "Enable AI Polish",
@@ -31,7 +33,7 @@ MANUAL = {
 # The script's own list must equal this fixture's: a drifted list would make the
 # fixture pass while the real run refuses (or the reverse).
 listed = re.search(r"PRODUCTION_TARGETS = \[(.*?)\]", pathlib.Path(SYNC).read_text(), re.S).group(1)
-assert re.findall(r'"([A-Za-z]+)"', listed) == TARGETS, "self-test target list differs from the script's"
+assert re.findall(r'"([A-Za-z0-9]+)"', listed) == TARGETS, "self-test target list differs from the script's"
 
 # What's New fixture source (#3142 PR 2E): read by the REAL renderer through the sync.
 def whats_new(alpha_bullets=("One", "Two"), alpha_title="Alpha", alpha_desc="Alpha paragraph.", duplicate=False):

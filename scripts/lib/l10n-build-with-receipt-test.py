@@ -24,7 +24,7 @@ LIB = pathlib.Path(__file__).resolve().parent
 SCRIPTS = LIB.parent
 GIT_ENV = {"GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null", "GIT_AUTHOR_NAME": "t",
            "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
-TARGETS = re.findall(r'"(EnviousWispr[A-Za-z]*)"',
+TARGETS = re.findall(r'"([A-Za-z][A-Za-z0-9]*)"',
                      re.search(r"PRODUCTION_TARGETS = \[(.*?)\]", (LIB / "l10n-catalog-sync.sh").read_text(), re.S).group(1))
 INPUTS = {
     "Project.swift": "let project = 1\n",

@@ -1,5 +1,5 @@
 {
-  "originHash" : "2c18c411a07257fda0d52cd62d6ded2d748ec807f964e284ffa4185388f8d895",
+  "originHash" : "00a41445206394d01583a56bcedb52809bf28e9f419e7f6e0e6c535c376d234e",
   "pins" : [
     {
       "identity" : "argmax-oss-swift",
@@ -23,7 +23,7 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/saurabhav88/mlx-swift",
       "state" : {
-        "revision" : "8746d3d8d2f3a19c79276f6d884b8c9c02e751e2"
+        "revision" : "bedcf0103dd0ca7a1b73b4d8bd272195d3f8c810"
       }
     },
     {
@@ -31,7 +31,7 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/saurabhav88/mlx-swift-lm.git",
       "state" : {
-        "revision" : "644680cddf080bc3bfd1318798735646b184e127"
+        "revision" : "eb7c70071641b20854ce07e2a2ae15b21410d64f"
       }
     },
     {

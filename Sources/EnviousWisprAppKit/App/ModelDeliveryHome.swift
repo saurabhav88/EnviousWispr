@@ -848,7 +848,9 @@ final class ModelDeliveryHome {
       ? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("EnviousWispr", isDirectory: true)
       : storage.dataDirectory
-    for engine in LearnedWordCheckerEngine.allCases {
+    // #4473: the PUBLISHED checkers only. A model whose checker is not published has no
+    // registration, so nothing downloads or selects it.
+    for engine in LearnedWordCheckerEngine.published {
       guard
         let manifest = try? DeliveryManifest.loadBundled(
           resource: engine.manifestResource, bundle: manifestBundle),

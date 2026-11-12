@@ -55,22 +55,18 @@ struct LocalEngineDescriptorTests {
   /// DERIVED from the guard, and these rows bind both ends: the window each
   /// descriptor carries is the window its manifest ships, and the minutes are
   /// what the guard's ceiling actually allows.
-  @Test("each engine's context window is the one its manifest ships")
+  @Test("S1-mini's context window is the one its manifest ships")
   func contextWindowsMatchManifests() throws {
-    for (descriptor, leaf) in [
-      (LocalEngineDescriptor.s1Mini, "s1-manifest.json"),
-      (LocalEngineDescriptor.egOne, "eg1-manifest.json"),
-    ] {
-      let url = ParakeetShippedManifestTests.repoRoot
-        .appendingPathComponent("Sources/EnviousWispr/Resources/\(leaf)")
-      let manifest = try JSONDecoder().decode(EGOneManifest.self, from: Data(contentsOf: url))
-      #expect(descriptor.contextTokens == manifest.contextTokens, Comment(rawValue: leaf))
-    }
+    // #4473: EG-1 left this card; its sizes' context windows are pinned in EGOneManifestTests.
+    let url = ParakeetShippedManifestTests.repoRoot
+      .appendingPathComponent("Sources/EnviousWispr/Resources/s1-manifest.json")
+    let manifest = try JSONDecoder().decode(EGOneManifest.self, from: Data(contentsOf: url))
+    #expect(LocalEngineDescriptor.s1Mini.contextTokens == manifest.contextTokens)
   }
 
   @Test("the promised dictation length is what the length guard admits")
   func dictationMinutesFollowTheGuard() {
-    for descriptor in [LocalEngineDescriptor.s1Mini, LocalEngineDescriptor.egOne] {
+    for descriptor in [LocalEngineDescriptor.s1Mini] {
       let ceiling = LLMPolishStep.localPolishTranscriptCeiling(
         contextTokens: descriptor.contextTokens)
       let minutes = descriptor.dictationMinutes
@@ -83,19 +79,7 @@ struct LocalEngineDescriptorTests {
     }
     // The numbers the copy renders today, pinned so a silent drift is loud.
     // 8,192 tokens: (8192 - 1536) / 2 = 3,328 characters, about 4 minutes.
-    // 16,384 tokens: (16384 - 1536) / 2 = 7,424 characters, about 9 minutes.
     #expect(LocalEngineDescriptor.s1Mini.dictationMinutes == 4)
-    #expect(LocalEngineDescriptor.egOne.dictationMinutes == 9)
-  }
-
-  @Test("EG-1's stated download size is the size of the file we actually serve")
-  func egOneSizeMatchesItsManifest() throws {
-    let manifest = try Self.manifest("eg1-delivery-manifest.json")
-    #expect(LocalEngineDescriptor.egOne.downloadSize == "2.9 GB")
-    let actualGB = Double(manifest.totalBytes) / 1_000_000_000
-    #expect(
-      abs(actualGB - 2.9) < 0.1,
-      "the card promises 2.9 GB but the manifest ships \(actualGB) GB")
   }
 
   /// The licence's ADDITIONAL TERM binds this name, so the descriptor must READ
@@ -115,23 +99,18 @@ struct LocalEngineDescriptorTests {
   func downloadButtonNamesItsOwnEngine() {
     let s1 = EGOneRowPresentation.forState(
       .notInstalled, engine: LocalEngineDescriptor.s1Mini.name)
-    let eg1 = EGOneRowPresentation.forState(
-      .notInstalled, engine: LocalEngineDescriptor.egOne.name)
+    let eg1 = EGOneRowPresentation.forState(.notInstalled, engine: "EG-1")
     #expect(s1.primaryAction == "Download S1-mini")
     #expect(eg1.primaryAction == "Download EG-1")
     #expect(s1.primaryAction != eg1.primaryAction, "one engine's row is naming the other")
   }
 
-  /// The 8 GB warning is EG-1's, and giving it to S1-mini would be noise that
-  /// teaches users to ignore the real one. The headroom differs for the same
-  /// reason: EG-1's 6 GB demand would refuse a 484 MB install that fits fine.
-  @Test("what differs between the engines actually differs")
-  func descriptorsDoNotShareIdentity() {
-    #expect(LocalEngineDescriptor.egOne.showsLowMemoryNote)
+  /// The 8 GB warning belonged to EG-1 and giving it to S1-mini would be noise that
+  /// teaches users to ignore the real one. EG-1 left this card (#4473), so only the
+  /// S1-mini side remains here.
+  @Test("S1-mini does not carry EG-1's low-memory warning")
+  func s1MiniHasNoLowMemoryNote() {
     #expect(!LocalEngineDescriptor.s1Mini.showsLowMemoryNote)
-    #expect(
-      LocalEngineDescriptor.egOne.installHeadroom != LocalEngineDescriptor.s1Mini.installHeadroom)
-    #expect(LocalEngineDescriptor.egOne != LocalEngineDescriptor.s1Mini)
   }
 
   /// The rail falls back to an "S1" monogram when a mark will not render, and

@@ -106,6 +106,7 @@ enum FileImportPolishGate {
     importOllamaModel: String,
     llmDiscovery: LLMModelDiscoveryCoordinator,
     localPolishRuntimes: LocalPolishRuntimeSet,
+    egOneSize: EGOneSize,
     aiAvailability: AIAvailabilityCoordinator,
     setup: SetupCoordinator,
     savedKeyPresence: SavedKeyPresence
@@ -118,7 +119,9 @@ enum FileImportPolishGate {
     return readiness(
       provider: provider,
       facts: .live(
-        localPolishRuntimes: localPolishRuntimes, aiAvailability: aiAvailability, setup: setup,
+        localPolishRuntimes: localPolishRuntimes,
+        egOneSize: egOneSize,
+        aiAvailability: aiAvailability, setup: setup,
         validationProvider: llmDiscovery.stateProvider,
         cloudValidation: llmDiscovery.keyValidationState,
         openAIKeySaved: provider == .openAI ? saved : nil,

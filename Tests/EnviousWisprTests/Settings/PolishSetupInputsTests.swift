@@ -144,6 +144,19 @@ struct PolishSetupInputsTests {
     #expect(quietSummary.currentEpisode == nil)
   }
 
+  // A user who picks another EG-1 size would see warnings for the old size until something else changed.
+  @Test("an EG-1 size change reaches both monitors")
+  func egOneSizeReachesBoth() {
+    let holder = PolishSetupMonitorHolder()
+    let dictation = Self.monitor(World())
+    let summary = Self.monitor(World())
+    holder.monitor = dictation
+    holder.summaryMonitor = summary
+    holder.settingChanged(.egOneSize)
+    #expect(dictation.currentEpisode != nil, "dictation's monitor missed the size change")
+    #expect(summary.currentEpisode != nil, "the summary monitor missed the size change")
+  }
+
   @Test("a summary key that becomes saved ends the summary episode at once")
   func savedKeyRepairsTheSummaryEpisode() {
     let summaryWorld = World()

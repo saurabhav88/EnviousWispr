@@ -1,6 +1,6 @@
 import AppKit
 import EnviousWisprCore
-import EnviousWisprLocalPolish
+@testable import EnviousWisprLocalPolish
 @testable import EnviousWisprLLM
 import EnviousWisprServices
 import Testing
@@ -38,8 +38,8 @@ struct FileImportPolishGateTests {
     func liveGate(_ provider: LLMProvider) -> FileImportPolishReadiness {
       FileImportPolishGate.readiness(provider: provider, savedKey: .present,
         hasUnsavedKeyDraft: false, importOllamaModel: "", llmDiscovery: discovery,
-        localPolishRuntimes: runtimes, aiAvailability: availability, setup: home.setup,
-        savedKeyPresence: presence)
+        localPolishRuntimes: runtimes, egOneSize: .full, aiAvailability: availability,
+        setup: home.setup, savedKeyPresence: presence)
     }
     #expect(liveGate(.openAI) == .ready)
     let admission = writer.admit(.openAI, settings: home.settings, surface: .dictation)
@@ -62,6 +62,74 @@ struct FileImportPolishGateTests {
     presence.endMutation(pending)
     #expect(FileImportPolishGate.savedKey(for: .openAI, keychain: manager, presence: presence) == .absent)
     #expect(storage.readEntries == 1)
+  }
+
+  /// Full installed, Mini and Micro not: each size's facts and the import gate answer for the
+  /// size the person picked, never another's (#4473).
+  @MainActor
+  private static func sizedWorld() throws -> (
+    home: SettingsMapRenderingTests.Home, runtimes: LocalPolishRuntimeSet
+  ) {
+    _ = NSApplication.shared
+    let home = try SettingsMapRenderingTests.Home(provider: .egOne)
+    let full = LocalPolishExactModelTests.runtime(.egOne(.full), defaults: home.defaults)
+    let mini = LocalPolishExactModelTests.runtime(.egOne(.mini), defaults: home.defaults)
+    let micro = LocalPolishExactModelTests.runtime(.egOne(.micro), defaults: home.defaults)
+    full.applyInstallStateForTesting(.installed(version: "1.3"))
+    mini.applyInstallStateForTesting(.notInstalled)
+    micro.applyInstallStateForTesting(.paused)
+    let s1 = LocalPolishExactModelTests.runtime(.s1Mini, defaults: home.defaults)
+    return (home, LocalPolishRuntimeSet(egOne: full, s1Mini: s1, additional: [mini, micro]))
+  }
+
+  @MainActor
+  private static func sizedFacts(
+    _ world: (home: SettingsMapRenderingTests.Home, runtimes: LocalPolishRuntimeSet),
+    size: EGOneSize
+  ) -> PolishSetupFacts {
+    PolishSetupFacts.live(
+      localPolishRuntimes: world.runtimes, egOneSize: size,
+      aiAvailability: AIAvailabilityCoordinator(defaults: world.home.defaults),
+      setup: world.home.setup, validationProvider: nil, cloudValidation: .idle,
+      openAIKeySaved: nil, geminiKeySaved: nil, claudeKeySaved: nil,
+      savedKeyPresence: SavedKeyPresence(), cloudVerdicts: [:], ollamaModel: "",
+      selectedCloudModel: nil, cloudModelEvidence: [:])
+  }
+
+  // A user who chose Mini would be told EG-1 is ready from the full size's files, then get no polish.
+  @Test("setup facts read the chosen EG-1 size's own install state")
+  @MainActor
+  func factsReadThePreferredSize() throws {
+    let world = try Self.sizedWorld()
+    #expect(Self.sizedFacts(world, size: .full).egOneInstall == .installed(version: "1.3"))
+    #expect(Self.sizedFacts(world, size: .mini).egOneInstall == .notInstalled)
+    #expect(Self.sizedFacts(world, size: .micro).egOneInstall == .paused)
+    #expect(
+      PolishSetupReadiness.evaluate(provider: .egOne, facts: Self.sizedFacts(world, size: .full))
+        == .noProblem)
+    #expect(
+      PolishSetupReadiness.evaluate(provider: .egOne, facts: Self.sizedFacts(world, size: .mini))
+        == .problem(.localEngineNotDownloaded(.egOne)))
+  }
+
+  // A user who chose Mini would be allowed to import with no Mini on disk and get unpolished text.
+  @Test("the import gate blocks on the chosen EG-1 size, not on another size that is installed")
+  @MainActor
+  func importGateFollowsTheChosenSize() throws {
+    let world = try Self.sizedWorld()
+    let presence = SavedKeyPresence()
+    let discovery = LLMModelDiscoveryCoordinator(
+      keychainManager: world.home.keys, cacheDefaults: world.home.defaults,
+      savedKeyPresence: presence, discoverModels: { _, _ in [] })
+    let availability = AIAvailabilityCoordinator(defaults: world.home.defaults)
+    func gate(_ size: EGOneSize) -> FileImportPolishReadiness {
+      FileImportPolishGate.readiness(
+        provider: .egOne, savedKey: .absent, hasUnsavedKeyDraft: false, importOllamaModel: "",
+        llmDiscovery: discovery, localPolishRuntimes: world.runtimes, egOneSize: size,
+        aiAvailability: availability, setup: world.home.setup, savedKeyPresence: presence)
+    }
+    #expect(gate(.mini) == .blocked(.needsSetup))
+    #expect(gate(.full) == .ready)
   }
 
   /// Everything the gate reads, with the values that mean "healthy" so each test can name

@@ -15,6 +15,64 @@ import Foundation
 /// `family-name-` and `[-variant].admission.json` is the revision, whatever it contains.
 public enum PriorRevisionAdmission {
 
+  /// The ONE list of cross-variant predecessors (#4473 P4).
+  ///
+  /// A model's variant names its file format and precision, and a prior revision is normally
+  /// recognised only at the SAME variant (see `supersededStagingURLs`). When a model's next
+  /// revision ships in another format, its variant changes, and the installed revision would
+  /// never be seen as the one it replaces: no update would be offered and the old files and
+  /// marker would never be cleaned up. This table names exactly those pairs: for a model
+  /// (`family|name`) and the variant of its NEW revision, the older variants whose revisions
+  /// it supersedes.
+  ///
+  /// It is a closed list, not a rule. A variant that is not written here is never matched, so
+  /// two registrations that differ only by an unlisted variant stay as isolated as before.
+  /// Every entry must name variants registered in `ShippedModelNames.variants`; a test holds
+  /// that.
+  ///
+  /// - EG-1 (full size): the EnviousDecode revision (`mlx-q6`) replaces the llama revision
+  ///   (`q5km`) in the same install folder.
+  /// - EG-1's checker adapter: the MLX adapter (`mlx-f32`) replaces the llama adapter (`f16`).
+  static let approvedPredecessorVariants: [String: [String: Set<String>]] = [
+    "eg_one|eg-1": ["mlx-q6": ["q5km"]],
+    "eg_one_checker|eg1c": ["mlx-f32": ["f16"]],
+  ]
+
+  /// The variants a prior revision of `identity` may carry: its own, and the approved
+  /// predecessors of its own. Never empty; never holds an empty variant unless the identity's
+  /// own variant is empty.
+  static func supersededVariants(of identity: ModelIdentity) -> [String] {
+    let key = "\(identity.family.rawValue)|\(identity.name)"
+    let predecessors = approvedPredecessorVariants[key]?[identity.variant] ?? []
+    return [identity.variant] + predecessors.sorted()
+  }
+
+  /// Whether `metadataDirectory` holds an install record of `family`/`name`, at ANY revision and
+  /// variant, that this module can read (#4473 plan §3.1.1 S4: "the user had this model").
+  ///
+  /// It is the record, not the model's files, that is asked about: a folder of weight files
+  /// with no record is not evidence, and a record whose files were since replaced still is.
+  /// A file that has the record's name but cannot be decoded as one is not counted. False when
+  /// the directory cannot be read. Reads only; changes nothing.
+  public static func hasReadableMarker(family: ModelFamily, name: String, metadataDirectory: URL)
+    -> Bool
+  {
+    let prefix = "\(family.rawValue)-\(name)-"
+    let suffix = ".admission.json"
+    guard
+      let entries = try? FileManager.default.contentsOfDirectory(
+        at: metadataDirectory, includingPropertiesForKeys: nil)
+    else { return false }
+    return entries.contains { url in
+      let file = url.lastPathComponent
+      guard file.hasPrefix(prefix), file.hasSuffix(suffix),
+        file.count > prefix.count + suffix.count,
+        let data = try? Data(contentsOf: url)
+      else { return false }
+      return (try? JSONDecoder().decode(CacheAdmission.AdmissionMarker.self, from: data)) != nil
+    }
+  }
+
   /// Markers in `metadataDirectory` for the same `family` AND `name` as `identity`, at a
   /// DIFFERENT revision. Empty when the directory cannot be read — the caller treats an
   /// unreadable metadata directory as "no prior revision", which fails closed (no download).
@@ -22,8 +80,10 @@ public enum PriorRevisionAdmission {
   /// cleanup lives in this same module. Keeping the public surface to exactly one function.
   static func markerURLs(for identity: ModelIdentity, metadataDirectory: URL) -> [URL] {
     let prefix = "\(identity.family.rawValue)-\(identity.name)-"
-    let suffix =
-      identity.variant.isEmpty ? ".admission.json" : "-\(identity.variant).admission.json"
+    // The identity's own variant, and the approved predecessor variants of it.
+    let suffixes = supersededVariants(of: identity).map {
+      $0.isEmpty ? ".admission.json" : "-\($0).admission.json"
+    }
     let current = "\(identity.cacheKey).admission.json"
 
     guard
@@ -33,10 +93,10 @@ public enum PriorRevisionAdmission {
 
     return entries.filter { url in
       let name = url.lastPathComponent
-      guard name != current, name.hasPrefix(prefix), name.hasSuffix(suffix) else { return false }
+      guard name != current, name.hasPrefix(prefix) else { return false }
       // A degenerate identity could make prefix and suffix overlap in a short name and admit a
       // file that is neither. Require a non-empty revision segment between them.
-      return name.count > prefix.count + suffix.count
+      return suffixes.contains { name.hasSuffix($0) && name.count > prefix.count + $0.count }
     }
   }
 
@@ -61,7 +121,9 @@ public enum PriorRevisionAdmission {
   static func supersededStagingURLs(for identity: ModelIdentity, metadataDirectory: URL) -> [URL] {
     let staging = metadataDirectory.appendingPathComponent("staging", isDirectory: true)
     let prefix = "\(identity.family.rawValue)-\(identity.name)-"
-    let suffix = identity.variant.isEmpty ? "" : "-\(identity.variant)"
+    // The identity's own variant, and the approved predecessor variants of it
+    // (`approvedPredecessorVariants`). No other variant is ever matched.
+    let suffixes = supersededVariants(of: identity).map { $0.isEmpty ? "" : "-\($0)" }
     let current = identity.cacheKey
 
     guard
@@ -71,11 +133,12 @@ public enum PriorRevisionAdmission {
 
     return entries.filter { url in
       let name = url.lastPathComponent
-      guard name != current, name.hasPrefix(prefix), name.hasSuffix(suffix) else { return false }
+      guard name != current, name.hasPrefix(prefix) else { return false }
       // Require a non-empty revision segment between prefix and suffix, so a
       // degenerate identity whose two ends overlap cannot admit an entry that
       // is neither. Mirrors the same guard in `markerURLs`.
-      guard name.count > prefix.count + suffix.count else { return false }
+      guard suffixes.contains(where: { name.hasSuffix($0) && name.count > prefix.count + $0.count })
+      else { return false }
       // DIRECTORIES ONLY. Staging is always a directory; a regular file whose
       // name happens to match would otherwise be deleted as if it were one.
       // The caller removes whatever this returns, so a name match alone is not

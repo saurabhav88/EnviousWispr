@@ -41,7 +41,7 @@ import Testing
         downloadURL: URL(string: "https://example.invalid/eg1.gguf")!
       ).runtimeFacts(expectedModelName: LLMProvider.egOneModelName),
       serverBinaryURL: nil, delivery: nil,
-      engine: LlamaServerEngine(), defaults: store)
+      engine: TestLocalPolishEngine(), defaults: store)
     let recorded = Recorded()
     runtime.onEvent = { event in
       if case .healthChanged = event { recorded.append(event) }
@@ -143,7 +143,7 @@ import Testing
     // No manifest: `activationBlockers == ["manifest_missing"]` from init.
     let runtime = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      engine: LlamaServerEngine(), defaults: store)
+      engine: TestLocalPolishEngine(), defaults: store)
     let recorded = Recorded()
     runtime.onEvent = { event in
       if case .healthChanged = event { recorded.append(event) }
@@ -199,7 +199,7 @@ extension EGOneHealthTransitionTelemetryTests {
   /// crash path named `starting`, the same row in the same place.
   @Test("ready_unchecked adds and removes no rows on activation, a skipped probe, recovery or a probe verdict")
   func readyUncheckedRowEquivalence() throws {
-    let endpoint = LocalPolishEndpoint(port: 9, authToken: "t", contextTokens: 1)
+    let endpoint = LocalPolishEndpoint(socketPath: "/t/9.sock", authToken: "t", contextTokens: 1)
     func run(_ steps: (LocalPolishRuntime) -> Void) throws -> [EGOneRuntimeEvent] {
       let (runtime, recorded, cleanup) = try makeRuntime()
       defer { cleanup() }
@@ -244,7 +244,7 @@ extension EGOneHealthTransitionTelemetryTests {
           LocalPolishProcessManager.Lifecycle(state: .stoppedOutside, outsideStopGeneration: 1))
         runtime.applyLifecycleForTesting(
           LocalPolishProcessManager.Lifecycle(state: .starting, outsideStopGeneration: 1))
-        let replacement = LocalPolishEndpoint(port: 10, authToken: "u", contextTokens: 1)
+        let replacement = LocalPolishEndpoint(socketPath: "/t/10.sock", authToken: "u", contextTokens: 1)
         runtime.applyServerStateForTesting(.ready(replacement))
         runtime.acceptProbeResult(.green, for: replacement)
       } == [

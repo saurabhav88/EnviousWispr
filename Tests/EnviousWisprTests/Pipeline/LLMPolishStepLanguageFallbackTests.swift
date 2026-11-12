@@ -60,7 +60,7 @@ struct LLMPolishStepLanguageFallbackTests {
   @Test("nil live detection → polisher config carries the persisted context language")
   func nilDetectionFallsBackToContextLanguage() async throws {
     let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
-    step.llmProvider = .openAI
+    step.setPolish(provider: .openAI)
     step.llmModel = "gpt-4o-mini"
     step.languageDetection = nil  // mirrors RecoveryTextProcessor (#1063)
 
@@ -89,7 +89,7 @@ extension LLMPolishStepLanguageFallbackTests {
     language: String?, source: DictationLanguageResolver.Resolution.Source?
   ) async throws -> LanguageCapture {
     let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
-    step.llmProvider = .openAI
+    step.setPolish(provider: .openAI)
     step.llmModel = "gpt-4o-mini"
     step.languageDetection = nil
     let capture = LanguageCapture()

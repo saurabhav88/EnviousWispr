@@ -52,7 +52,7 @@ struct LLMPolishStepAFMPrewarmTests {
 
   private func appleStep(preparer: @escaping LLMPolishStep.AFMSessionPreparer) -> LLMPolishStep {
     let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
-    step.llmProvider = .appleIntelligence
+    step.setPolish(provider: .appleIntelligence)
     step.llmModel = "apple-intelligence"
     step.prepareAFMSession = preparer
     return step
@@ -118,7 +118,7 @@ struct LLMPolishStepAFMPrewarmTests {
     var long = TextProcessingContext(text: transcript, language: "en")
     long.afmPrewarmOutcome = .hit
     let cloud = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
-    cloud.llmProvider = .openAI
+    cloud.setPolish(provider: .openAI)
     cloud.llmModel = "gpt-4o-mini"  // #4353 D2: no implicit model
     let box = TextBox()
     cloud.makePolisher = { _, _, _, _ in RecordingPolisher(box: box) }
@@ -140,7 +140,7 @@ struct LLMPolishStepAFMPrewarmTests {
   func nonAppleProviderPreparesNothing() async {
     let calls = Counter()
     let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
-    step.llmProvider = .openAI
+    step.setPolish(provider: .openAI)
     step.prepareAFMSession = { _ in
       calls.increment()
       return "carrier"

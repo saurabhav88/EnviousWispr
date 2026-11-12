@@ -83,7 +83,7 @@ struct LimbFailureFallbackTests {
     let runner = TextProcessingRunner(timeoutExecutor: fakeTimeout.run)
     let raw = "raw asr transcript from a long dictation"
     let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
-    step.llmProvider = .appleIntelligence
+    step.setPolish(provider: .appleIntelligence)
 
     let result = try await runner.run(
       rawText: raw, evidence: .none, targetAppName: nil, steps: [step])
@@ -106,7 +106,7 @@ struct LimbFailureFallbackTests {
     let runner = TextProcessingRunner(timeoutExecutor: fakeTimeout.run)
     let raw = "raw asr transcript"
     let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
-    step.llmProvider = .openAI
+    step.setPolish(provider: .openAI)
 
     let result = try await runner.run(
       rawText: raw, evidence: .none, targetAppName: nil, steps: [step])
@@ -125,9 +125,9 @@ struct LimbFailureFallbackTests {
     // failed". The executor here mutates the provider to a cloud value and THEN
     // times out, simulating that race.
     let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
-    step.llmProvider = .appleIntelligence
+    step.setPolish(provider: .appleIntelligence)
     let runner = TextProcessingRunner(timeoutExecutor: { _, _ in
-      step.llmProvider = .openAI  // settings change during the suspended polish
+      step.setPolish(provider: .openAI)  // settings change during the suspended polish
       throw TimeoutError(seconds: 10)
     })
     let raw = "raw asr transcript"

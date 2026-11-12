@@ -50,7 +50,7 @@ struct EGOnePipelineRoutingTests {
 
   private func makeStep(runtime: FakeRuntime?) -> LLMPolishStep {
     let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
-    step.llmProvider = .egOne
+    step.setPolish(provider: .egOne)
     step.llmModel = LLMProvider.egOneModelName
     step.egOneRuntime = runtime
     return step
@@ -65,7 +65,7 @@ struct EGOnePipelineRoutingTests {
     // so this suite can never reach the real PostHog failure client (#1446).
     let runner = TextProcessingRunner(
       telemetry: .init(
-        captureError: spy.sink, recordPolishFailed: { _, _, _, _, _ in },
+        captureError: spy.sink, recordPolishFailed: { _, _, _, _, _, _ in },
         // This suite asserts on the real `llm.polish_skipped` via testEventHook.
         recordPolishSkipped: TextProcessingRunner.TelemetrySeams.live.recordPolishSkipped),
       timeoutExecutor: executor.run)
@@ -100,7 +100,7 @@ struct EGOnePipelineRoutingTests {
     let spy = CaptureSpy()
     // Tiny context window: the 16-word transcript over-budgets it.
     let runtime = FakeRuntime(
-      endpoint: LocalPolishEndpoint(port: 1, authToken: "t", contextTokens: 16))
+      endpoint: LocalPolishEndpoint(socketPath: "/t/1.sock", authToken: "t", contextTokens: 16))
     let step = makeStep(runtime: runtime)
     step.makeEGOnePolisher = { _ in CannedPolisher(output: "MUST NOT BE USED") }
     let result = try await run(step, spy: spy)
@@ -115,7 +115,7 @@ struct EGOnePipelineRoutingTests {
   func healthyEndpointPolishes() async throws {
     let spy = CaptureSpy()
     let runtime = FakeRuntime(
-      endpoint: LocalPolishEndpoint(port: 1, authToken: "t", contextTokens: 32768))
+      endpoint: LocalPolishEndpoint(socketPath: "/t/1.sock", authToken: "t", contextTokens: 32768))
     let step = makeStep(runtime: runtime)
     step.makeEGOnePolisher = { endpoint in
       #expect(endpoint.authToken == "t")
@@ -133,7 +133,7 @@ struct EGOnePipelineRoutingTests {
   func keychainFactoryNotUsed() async throws {
     let spy = CaptureSpy()
     let runtime = FakeRuntime(
-      endpoint: LocalPolishEndpoint(port: 1, authToken: "t", contextTokens: 32768))
+      endpoint: LocalPolishEndpoint(socketPath: "/t/1.sock", authToken: "t", contextTokens: 32768))
     let step = makeStep(runtime: runtime)
     var legacyFactoryCalled = false
     step.makePolisher = { _, _, _, _ in
@@ -153,7 +153,7 @@ struct EGOnePipelineRoutingTests {
     // error must still surface (adversarial pairing for the new branch).
     let spy = CaptureSpy()
     let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
-    step.llmProvider = .ollama
+    step.setPolish(provider: .ollama)
     step.llmModel = "llama3.2"
     // #1305: report ready so this stays a MID-FLIGHT surfacing test (the
     // preflight gate would otherwise intercept, and would probe a real socket).

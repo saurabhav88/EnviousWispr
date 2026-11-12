@@ -1,11 +1,11 @@
 import EnviousWisprCore
 import EnviousWisprLlamaEngine
-import EnviousWisprLocalPolish
 import EnviousWisprModelDelivery
 import Foundation
 import Testing
 
 @testable import EnviousWisprLLM
+@testable import EnviousWisprLocalPolish
 
 extension LocalPolishLaunchSpec {
   /// A launch spec for tests, with an explicit fixture identity: no test reads a real manifest
@@ -91,10 +91,14 @@ struct LocalPolishLaunchSpecTests {
       learnedWordAdapterArguments: adapterFlags)
   }
 
+  /// #4493: one short launch home for this suite's launches, in the test folder.
+  private static let launchHome = TestLaunchHome.make().home
+
   private static func target(_ spec: LocalPolishLaunchSpec) -> LocalPolishTarget {
     LocalPolishTarget(
       configuration: LocalPolishProcessManager.Configuration(
-        spec: spec, makeArguments: LlamaServerLaunchBuilder.arguments, readinessBudgetSeconds: 4))
+        spec: spec, makeLaunch: LlamaServerLaunchBuilder.launch, readinessBudgetSeconds: 4
+      ).inLaunchHome(Self.launchHome))
   }
 
   @Test("the same spec asked again leaves the running model alone")
@@ -115,8 +119,8 @@ struct LocalPolishLaunchSpecTests {
     // How long to wait and who renders the arguments are execution details, not identity.
     var restated = Self.target(Self.base(fixture)).configuration
     restated.readinessBudgetSeconds = 9
-    restated.makeArguments = { spec, port, token in
-      LlamaServerLaunchBuilder.arguments(spec: spec, port: port, authToken: token)
+    restated.makeLaunch = { spec, inputs in
+      LlamaServerLaunchBuilder.launch(spec: spec, inputs: inputs)
     }
     #expect(restated.spec == Self.base(fixture))
     await coordinator.transition(
@@ -143,10 +147,13 @@ struct LocalPolishLaunchSpecTests {
     let firstPID = try fixture.lastPID()
 
     await coordinator.transition(to: .run(Self.target(changed)), intent: coordinator.claimIntent())
-    #expect(await coordinator.endpoint(for: .egOne) != nil)
+    // #4473: the endpoint belongs to the model that was started. When the changed field is the
+    // model itself, the old model has no endpoint any more.
+    #expect(await coordinator.endpoint(for: changed.modelID) != nil)
+    #expect((await coordinator.endpoint(for: base.modelID) != nil) == (changed.modelID == base.modelID))
     #expect(try fixture.launches().count == 2, "\(difference.rawValue) did not start a new process")
     #expect(try fixture.lastPID() != firstPID)
-    await coordinator.transition(to: .idle(.egOne), intent: coordinator.claimIntent())
+    await coordinator.transition(to: .idle(changed.modelID), intent: coordinator.claimIntent())
   }
 
   /// About 1.59 seconds, measured: three real launches of the fake server (the adapter launch

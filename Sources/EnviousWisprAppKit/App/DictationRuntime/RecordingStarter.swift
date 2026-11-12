@@ -64,7 +64,7 @@ final class RecordingStarter {
     /// opaque directive payload (nil when recovery is off or could not arm).
     /// (#1063 PR1.)
     let makeDirective:
-      @MainActor (SettingsManager, ASRBackendType, Bool) async -> (
+      @MainActor (SettingsManager, ASRBackendType, Bool, LocalPolishModelID, String) async -> (
         recoverySessionID: String, payload: Data
       )?
 
@@ -98,7 +98,7 @@ final class RecordingStarter {
 
     /// The recovery-off shape, for construction that is not about recovery.
     static let disabled = RecoveryAccess(
-      makeDirective: { _, _, _ in nil },
+      makeDirective: { _, _, _, _, _ in nil },
       cleanupArm: { _ in },
       isRecovering: { false },
       signalPendingLiveStart: {},
@@ -913,16 +913,26 @@ final class RecordingStarter {
   private func makeSessionConfig(triggerSource: TriggerSource, armRecovery: Bool) async
     -> DictationSessionConfig
   {
+    // #4473 (plan §3.1.1 S6): the take's polish model is captured ONCE, here, before the
+    // suspension below: the exact model AND the name sent in its requests. The recovery
+    // snapshot and the session configuration are both given these values, so a provider or
+    // size changed in Settings while recovery is armed cannot give the take one model and its
+    // saved recording another, nor send one provider's runtime another provider's model name.
+    let polishModel = settings.polishModelID(for: settings.llmProvider)
+    let polishWireModel = settings.effectiveLLMModel
     let recovery =
       armRecovery
       ? await recovery.makeDirective(
-        settings, asrManager.activeBackendType, activeDriver.supportsLanguageDetection)
+        settings, asrManager.activeBackendType, activeDriver.supportsLanguageDetection,
+        polishModel, polishWireModel)
       : nil
     return DictationSessionConfigFactory.make(
       asrManager: asrManager,
       kernelDriver: kernelDriver,
       whisperKernelDriver: whisperKernelDriver,
       settings: settings,
+      polishModel: polishModel,
+      polishWireModel: polishWireModel,
       triggerSource: triggerSource,
       recoverySessionID: recovery?.recoverySessionID,
       recoveryPayload: recovery?.payload)

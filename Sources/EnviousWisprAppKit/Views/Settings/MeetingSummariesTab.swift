@@ -122,7 +122,9 @@ struct MeetingSummariesTab: View {
   private var statusFacts: PolishSetupFacts {
     let aboutThisSurface = llmDiscovery.stateProvider == provider
     return .live(
-      localPolishRuntimes: localPolishRuntimes, aiAvailability: aiAvailability, setup: setup,
+      localPolishRuntimes: localPolishRuntimes,
+      egOneSize: settings.preferredEGOneSize,
+      aiAvailability: aiAvailability, setup: setup,
       validationProvider: aboutThisSurface ? llmDiscovery.stateProvider : nil,
       cloudValidation: aboutThisSurface ? llmDiscovery.keyValidationState : .idle,
       openAIKeySaved: setupModel.openAIKeySaved, geminiKeySaved: setupModel.geminiKeySaved,

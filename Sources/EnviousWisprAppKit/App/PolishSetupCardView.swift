@@ -21,7 +21,7 @@ struct PolishSetupCardModel: Hashable, Sendable {
   let dismissLabel: String
   let variant: NoticeVariant?
 
-  init(problem: PolishSetupProblem) {
+  init(problem: PolishSetupProblem, egOneSize: EGOneSize? = nil) {
     if case .localEngineStoppedOutside(_, let stop) = problem {
       self.init(outsideStop: stop, variant: .first)
     } else if case .cloudNoModel(let provider) = problem {
@@ -40,7 +40,8 @@ struct PolishSetupCardModel: Hashable, Sendable {
     } else {
       self.init(
         title: PolishSetupSurfaceCopy.cardTitle,
-        line: PolishSetupSurfaceCopy.cardLine(reason: PolishSetupSurfaceCopy.shortReason(problem)),
+        line: PolishSetupSurfaceCopy.cardLine(
+          reason: PolishSetupSurfaceCopy.shortReason(problem, egOneSize: egOneSize)),
         primaryLabel: PolishSetupLeaveDialogContent.Copy.finishSetup,
         dismissLabel: PolishSetupSurfaceCopy.cardNotNow, variant: nil)
     }
@@ -97,16 +98,43 @@ struct PolishSetupCardView: View {
   let onFinishSetup: () -> Void
   let onNotNow: () -> Void
 
+  var body: some View {
+    PolishSetupCardChrome(
+      title: model.title, line: model.line,
+      primary: model.primaryLabel.map { .init(id: 0, title: $0, perform: onFinishSetup) },
+      secondary: [.init(id: 1, title: model.dismissLabel, perform: onNotNow)])
+  }
+}
+
+/// The drawn card itself: a title, one line, one filled button and the quieter ones under it.
+/// One owner for the look, shared by the card after a dictation and (#4473, founder 2026-11-11)
+/// the question asked before leaving an unfinished polish setup, so both read as the same card.
+struct PolishSetupCardChrome: View {
+  struct Action: Identifiable {
+    let id: Int
+    let title: String
+    /// The key that presses this button, if any (the leave question binds Return and Escape).
+    var shortcut: KeyboardShortcut? = nil
+    let perform: () -> Void
+  }
+
+  let title: String
+  let line: String
+  /// The filled button; nil draws none.
+  let primary: Action?
+  /// The quieter buttons, top to bottom.
+  let secondary: [Action]
+
   private static let cardWidth: CGFloat = 320
 
   var body: some View {
     VStack(spacing: 14) {
       VStack(spacing: 6) {
-        Text(model.title)
+        Text(title)
           .font(.system(size: 16, weight: .semibold))
           .foregroundStyle(.stTextPrimary)
           .multilineTextAlignment(.center)
-        Text(model.line)
+        Text(line)
           .font(.system(size: 14))
           .foregroundStyle(.stTextSecondary)
           .multilineTextAlignment(.center)
@@ -114,9 +142,9 @@ struct PolishSetupCardView: View {
       }
 
       VStack(spacing: 10) {
-        if let primaryLabel = model.primaryLabel {
-          Button(action: onFinishSetup) {
-            Text(primaryLabel)
+        if let primary {
+          Button(action: primary.perform) {
+            Text(primary.title)
               .font(.system(size: 14, weight: .semibold))
               .foregroundStyle(.white)
               .padding(.horizontal, 28)
@@ -125,15 +153,19 @@ struct PolishSetupCardView: View {
               .background(Capsule().fill(Color.stAccentSolid))
           }
           .buttonStyle(.plain)
+          .keyboardShortcut(primary.shortcut)
         }
 
-        Button(action: onNotNow) {
-          Text(model.dismissLabel)
-            .font(.system(size: 14, weight: .medium))
-            .foregroundStyle(.stAccent)
-            .contentShape(Rectangle())
+        ForEach(secondary) { action in
+          Button(action: action.perform) {
+            Text(action.title)
+              .font(.system(size: 14, weight: .medium))
+              .foregroundStyle(.stAccent)
+              .contentShape(Rectangle())
+          }
+          .buttonStyle(.plain)
+          .keyboardShortcut(action.shortcut)
         }
-        .buttonStyle(.plain)
       }
     }
     .padding(.horizontal, 20)
