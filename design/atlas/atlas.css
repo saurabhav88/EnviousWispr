@@ -372,10 +372,40 @@
 .ew-pill img { width: 34px; height: 34px; }
 .ew-pill-rail { display: inline-flex; gap: 3px; }
 .ew-pill-rail i { width: 4px; height: 4px; border-radius: 50%; background: var(--ew-rainbow-7); }
-.ew-pill-tag { font: 600 13px var(--ew-font-st-body-family); padding: 6px 12px; border-radius: 999px;
+.ew-pill-tag { font: 600 13px var(--ew-font-st-body-family); padding: 6px 12px; border-radius: 999px; white-space: nowrap;
   background: rgb(from var(--ew-white) r g b / 6%); color: var(--ew-st-text-tertiary); }
 .ew-pill--well { border-radius: 16px; background: var(--ew-st-section-bg); color: var(--ew-st-text-primary);
   box-shadow: inset 0 0 0 0.5px var(--ew-st-divider); width: 400px; justify-content: space-between; }
+/* Pill states: locked Capsule (round, bigger lips), a notice or the words under the clock row. */
+.ew-pill--round { padding: 0 5px; }
+.ew-pill--round img { width: 38px; height: 38px; }
+.ew-pill--stack { flex-direction: column; height: auto; padding: 12px 24px; gap: 8px; border-radius: 32px; }
+.ew-pill--well.ew-pill--stack { border-radius: 16px; padding: 10px 0 12px; align-items: stretch; }
+.ew-pill-row { display: inline-flex; align-items: center; justify-content: center; gap: 14px; }
+.ew-pill--well .ew-pill-row { justify-content: space-between; padding: 0 26px; }
+.ew-pill-note { font: 600 13px var(--ew-font-st-body-family); text-align: center; max-width: 240px; }
+.ew-pill--well .ew-pill-note { max-width: none; font-weight: 500; color: var(--ew-st-text-secondary);
+  border-top: 1px solid var(--ew-st-divider); padding: 6px 16px 0; }
+.ew-pill-words { font: 400 17px var(--ew-font-st-body-family); text-align: left; line-height: 1.4;
+  border-top: 1px solid var(--ew-st-divider); padding: 10px 26px 0; }
+.ew-pill-state { font: 600 13px var(--ew-font-st-body-family); color: var(--ew-st-text-tertiary); letter-spacing: .05em; }
+.ew-pill-chip { font: 600 13px var(--ew-font-st-body-family); color: var(--ew-st-text-secondary); letter-spacing: .05em;
+  padding: 5px 12px; border-radius: 999px; background: var(--ew-st-input-bg); }
+.ew-pill-chip::before { content: "\2022"; margin-right: 6px; }
+
+/* Pill notices (PillCatalog looks): dark capsule, a leading mark, one short sentence. */
+.ew-notice { display: inline-flex; align-items: center; gap: 12px; height: 44px; padding: 0 22px; border-radius: 999px;
+  background: var(--ew-pill-dark-fill); box-shadow: inset 0 0 0 0.5px var(--ew-pill-dark-edge); color: var(--ew-white);
+  font: 600 15px var(--ew-font-st-body-family); }
+.ew-notice-spinner { width: 20px; height: 20px; border-radius: 50%; background: conic-gradient(var(--ew-rainbow-1),
+  var(--ew-rainbow-3), var(--ew-rainbow-5), var(--ew-rainbow-7), var(--ew-rainbow-9), var(--ew-rainbow-1));
+  -webkit-mask: radial-gradient(circle, transparent 4px, var(--ew-white) 5px),
+    repeating-conic-gradient(var(--ew-white) 0 14deg, transparent 14deg 30deg);
+  -webkit-mask-composite: source-in;
+  mask: radial-gradient(circle, transparent 4px, var(--ew-white) 5px),
+    repeating-conic-gradient(var(--ew-white) 0 14deg, transparent 14deg 30deg);
+  mask-composite: intersect; }
+.ew-notice-warning { color: var(--ew-system-orange); font-size: 18px; }
 
 /* Window title bar and sidebar extras (UnifiedWindowView, hand photo hand-window-dictation) */
 .ew-app { border-radius: 12px; overflow: hidden; border: 1px solid var(--ew-st-divider); }

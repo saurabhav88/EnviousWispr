@@ -1,0 +1,32 @@
+<!doctype html>
+<!-- Screen atlas starter (#4506). Copy this file to start an EnviousWispr mockup.
+     Keep it next to atlas.css and the logos/ folder: save the copy inside design/atlas/, or copy
+     atlas.css and logos/ into the copy's folder. Every link below is relative to this file.
+     Then paste parts from parts/*.html into <main> and change the words, not the look. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EnviousWispr mockup</title>
+  <link rel="stylesheet" href="atlas.css">
+  <style>
+    /* Mockup layout only. Part looks come from atlas.css; do not restyle parts here. */
+    body { margin: 0; padding: 32px; background: var(--ew-st-page-bg); }
+    main { display: flex; flex-direction: column; gap: 24px; max-width: 578px; }
+  </style>
+</head>
+<!-- Light and dark follow the system. To force one, set data-theme="light" or "dark" on <html>. -->
+<body class="ew-root">
+  <main>
+    <!-- Example: a titled card of rows (part card-section) -->
+    <div>
+      <p class="ew-eyebrow">Applies to both engines</p>
+      <div class="ew-card">
+        <div class="ew-row"><span class="ew-row-icon">&#x23F1;&#xFE0E;</span><div class="ew-row-label"><span class="ew-row-title">Stop recording on silence <button class="ew-help" aria-label="Help">?</button></span><span class="ew-row-short">Ends recording after you stop speaking.</span></div><span class="ew-row-control"><button class="ew-switch" role="switch" aria-checked="false"></button></span></div>
+      </div>
+    </div>
+    <!-- Example: the Capsule recording pill (part pill-capsule) -->
+    <div><span class="ew-pill"><img src="logos/lips-open.svg" alt="">2:07</span></div>
+  </main>
+</body>
+</html>

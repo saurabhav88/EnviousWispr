@@ -44,6 +44,12 @@ Each picture is the whole page, top to bottom, at the 820pt window (a 578pt page
 - **Buttons:** View license (outlined), View notices (outlined).
 - **Parts:** SettingsTabStrip, SettingsSectionHeading, BrandedSection, SettingsRow, SettingsRowIcon, SettingsInfoButton.
 
+## page-appSettings-licenseReader
+**App Settings > Licenses > View license.** The license text in a reader: bold title "GPL-3.0 License", the full license in monospaced text in a scrolling area, and an outlined "Done" capsule button at the bottom right. `LicenseDocumentReader` (`Views/Settings/LicenseDocumentReader.swift`).
+
+## page-appSettings-noticesReader
+**App Settings > Licenses > View notices.** The same reader with the title "Third-Party Notices" and the notices text (component name, version, license, source, then the license text). `LicenseDocumentReader`.
+
 ## page-appSettings-permissions
 **App Settings > Permissions.** Shows whether the app may use the microphone and Accessibility.
 - **Top to bottom:** tab strip (Permissions selected), PERMISSIONS.
@@ -295,6 +301,15 @@ Short messages that take the pill's place after or around a recording. Built fro
 
 ## notice-language-chip
 **Language chip.** Globe icon, "Detected Spanish. Lock it?", a filled blue "Lock" button and a quiet "Dismiss" button. `LanguageChipView`.
+
+## notice-correction-save-error
+**Word not saved.** A small dark capsule with one red line, "Couldn’t save “Tuist”", when a learned word cannot be written to the Dictionary. `CorrectionLearnedSaveErrorView` (`CorrectionLearnedPillView.swift`).
+
+## notice-parakeet-upgrade
+**Parakeet Ultra download.** A dark capsule: blue download icon, "Downloading Parakeet Ultra", a grey line "Keep dictating. We’ll switch when it’s ready." and a thin blue progress line along the bottom. Other phases (installing, ready) reuse this look with other words. `ColdStartNoticeView`, words from `DictationNarrator`.
+
+## notice-polish-setup-card
+**AI Polish setup card.** A large light card (it stays light): bold title "Choose a model for Claude.", the line "Pasted without AI polish.", a filled purple "Select a new cloud model" button and a quiet purple "Not now" link. Other polish problems reuse this card with other words. `PolishSetupCardView`.
 
 # Logos
 

@@ -156,7 +156,8 @@ struct DesignAtlasSyncTests {
       let name = "--ew-motion-" + Self.cssName("Color." + member)
       expectedLight.formUnion([name + "-duration", name + "-curve"])
       #expect(
-        Self.number(blocks.light[name + "-duration"], unit: "s") == motion.duration, "\(key): duration")
+        Self.number(blocks.light[name + "-duration"], unit: "s") == motion.duration,
+        "\(key): duration")
       #expect(blocks.light[name + "-curve"] == curves[motion.curve], "\(key): curve")
     }
 
@@ -246,6 +247,22 @@ struct DesignAtlasSyncTests {
       } else {
         Issue.record("\(picture.id): a harness source names neither a page nor a manifest capture")
       }
+    }
+  }
+
+  /// `DesignPageCaptures.atlasPicture(for:)` switches over every `PillCatalogRequest` case, so a
+  /// new kind of pill does not build until it names its atlas picture. This checks the names it
+  /// returns: each is a staged notice fixture and an atlas.json picture.
+  @Test("every kind of pill notice the app draws has its atlas picture")
+  func everyNoticeKindHasAPicture() throws {
+    let atlas = try JSONDecoder().decode(
+      Atlas.self, from: Data(contentsOf: Self.atlasURL.appending(path: "atlas.json")))
+    let ids = Set(atlas.pictures.map(\.id))
+    for (key, request) in DesignPageCaptures.notices {
+      #expect(
+        DesignPageCaptures.atlasPicture(for: request) == key,
+        "notice fixture \(key) is not the picture atlasPicture(for:) names for its kind")
+      #expect(ids.contains("notice-\(key)"), "atlas.json has no notice-\(key) picture")
     }
   }
 
