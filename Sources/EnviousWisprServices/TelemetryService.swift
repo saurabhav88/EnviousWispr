@@ -830,13 +830,102 @@ public final class TelemetryService {
     PostHogSDK.shared.capture("onboarding.step_completed", properties: props)
   }
 
-  public func onboardingCompleted(asrBackend: String, recordingMode: String) {
-    PostHogSDK.shared.capture(
-      "onboarding.completed",
-      properties: [
-        "asr_backend": asrBackend,
-        "recording_mode": recordingMode,
-      ])
+  /// `asr_backend` and `recording_mode` are the original contract (the daily report reads the
+  /// event); #4528 §3.8 adds the Setup summary fields, all optional so existing callers and
+  /// payloads are unchanged.
+  public func onboardingCompleted(
+    asrBackend: String, recordingMode: String, summary: OnboardingTelemetry.CompletionSummary? = nil
+  ) {
+    var props: [String: Any] = ["asr_backend": asrBackend, "recording_mode": recordingMode]
+    if let summary {
+      props["polish_provider"] = summary.polishProvider.rawValue
+      props["polish_model_id"] = summary.polishModel.id
+      props["speech_model_id"] = summary.speechModel.rawValue
+      props["followed_all_recommendations"] = summary.followedAllRecommendations
+      // Mode only, like settings telemetry (`SettingsProjection.languageModeLabel`); the code is on
+      // the language `choice_made` row.
+      switch summary.languageMode {
+      case .auto: props["language_mode"] = "auto"
+      case .locked: props["language_mode"] = "locked"
+      }
+      props["rules_version"] = OnboardingTelemetry.boundedIdentifier(summary.rulesVersion)
+      // The film may not have been shown (Skip practice ends Setup before it); only this
+      // summary can say so, never `onboarding.film_finished`.
+      props["film_result"] = summary.filmResult?.rawValue ?? "not_shown"
+    }
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "onboarding.completed",
+          stringProps: props.compactMapValues { $0 as? String },
+          boolProps: props.compactMapValues { $0 as? Bool }))
+    #endif
+    PostHogSDK.shared.capture("onboarding.completed", properties: props)
+  }
+
+  /// #4528 §3.8: one row per Setup screen shown (at most 14 per visit; the coordinator dedupes,
+  /// chunk F2). `elapsed_seconds` is time since the visit began; `$value` carries it.
+  public func onboardingScreenViewed(
+    step: String, entry: OnboardingTelemetry.Entry, elapsedSeconds: Double
+  ) {
+    let props: [String: Any] = [
+      "step": OnboardingTelemetry.boundedIdentifier(step), "entry": entry.rawValue,
+      "elapsed_seconds": elapsedSeconds, "$value": elapsedSeconds,
+    ]
+    captureOnboarding("onboarding.screen_viewed", props)
+  }
+
+  /// #4528 §3.8: one row per final choice of each kind per visit (F2 aggregates). The value is
+  /// typed per kind (`OnboardingTelemetry.Choice`), so only closed values can be sent: engines and
+  /// providers are enums, polish picks and languages must be ones the app offers, a key is a
+  /// closed outcome, and a cloud model must already be the settings-telemetry projection.
+  public func onboardingChoiceMade(
+    _ choice: OnboardingTelemetry.Choice, recommended: OnboardingTelemetry.Choice?,
+    followedRecommendation: Bool, rulesVersion: String
+  ) {
+    var props: [String: Any] = [
+      "kind": choice.kind.rawValue, "value": choice.value,
+      "followed_recommendation": followedRecommendation,
+      "rules_version": OnboardingTelemetry.boundedIdentifier(rulesVersion),
+    ]
+    if let recommended, recommended.kind == choice.kind { props["recommended_value"] = recommended.value }
+    captureOnboarding("onboarding.choice_made", props)
+  }
+
+  /// #4528 §3.8: one row per Setup download that ends (ok, failed or cancelled). `seconds` is
+  /// the attempt's duration (`$value`); size is a coarse bucket, never exact bytes.
+  public func onboardingDownloadFinished(
+    model: OnboardingTelemetry.DownloadModel, result: OnboardingTelemetry.DownloadResult,
+    seconds: Double, bytes: Int64?
+  ) {
+    let props: [String: Any] = [
+      "model_kind": model.kind.rawValue, "model_id": model.id,
+      "result": result.rawValue, "seconds": seconds, "$value": seconds,
+      "bytes_bucket": OnboardingTelemetry.bytesBucket(bytes),
+    ]
+    captureOnboarding("onboarding.download_finished", props)
+  }
+
+  /// #4528 §3.8: once per visit when the refresher film ends.
+  public func onboardingFilmFinished(result: OnboardingTelemetry.FilmResult, lastScene: String) {
+    let props: [String: Any] = [
+      "result": result.rawValue, "last_scene": OnboardingTelemetry.boundedIdentifier(lastScene),
+    ]
+    captureOnboarding("onboarding.film_finished", props)
+  }
+
+  /// One capture path for the #4528 onboarding events: the SDK's consent and volume policy apply
+  /// as for every event; the DEBUG mirror is derived from the emitted payload.
+  private func captureOnboarding(_ name: String, _ props: [String: Any]) {
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: name,
+          stringProps: props.compactMapValues { $0 as? String },
+          doubleProps: props.compactMapValues { $0 as? Double },
+          boolProps: props.compactMapValues { $0 as? Bool }))
+    #endif
+    PostHogSDK.shared.capture(name, properties: props)
   }
 
   /// Telemetry Bible Phase 7 (#1176): a first-run user was blocked on a setup
@@ -889,6 +978,14 @@ public final class TelemetryService {
           doubleProps: props.compactMapValues { $0 as? Double }))
     #endif
     PostHogSDK.shared.capture("onboarding.abandoned", properties: props)
+  }
+
+  /// #4528 §3.8: the new Setup blockers (key check, disk, download), alongside the existing
+  /// warm-up and permission reasons. Same event and properties as the string form.
+  public func onboardingStepBlocked(
+    step: String, reason: OnboardingTelemetry.BlockedReason, durationSeconds: Double? = nil
+  ) {
+    onboardingStepBlocked(step: step, reason: reason.rawValue, durationSeconds: durationSeconds)
   }
 
   // MARK: - Audio System Events (issue #574)
@@ -5716,6 +5813,182 @@ public enum LatencyBucket {
     case 25..<50: return "25_to_50ms"
     case 50..<100: return "50_to_100ms"
     default: return "over_100ms"
+    }
+  }
+}
+
+/// #4528 §3.8: the closed vocabularies of the new onboarding events. Values are closed by TYPE
+/// (enums, the app's own lists, or a caller-built projection), never by a text filter.
+public enum OnboardingTelemetry {
+  public enum Entry: String, Sendable, CaseIterable { case forward, back, resume }
+
+  public enum ChoiceKind: String, Sendable, CaseIterable {
+    case language, speech, polish
+    case cloudProvider = "cloud_provider"
+    case cloudModel = "cloud_model"
+    case key
+  }
+
+  public enum ModelKind: String, Sendable, CaseIterable { case speech, polish }
+
+  public enum DownloadResult: String, Sendable, CaseIterable { case ok, failed, cancelled }
+
+  /// Plan §3.8: the only values `onboarding.film_finished` may carry.
+  public enum FilmResult: String, Sendable, CaseIterable { case watched, skipped, replayed }
+
+  public enum BlockedReason: String, Sendable, CaseIterable {
+    case keyCheckFailed = "key_check_failed"
+    case diskShort = "disk_short"
+    case downloadFailed = "download_failed"
+  }
+
+  /// What happened with a cloud key on Setup's key step: an outcome, never the key.
+  public enum KeyOutcome: String, Sendable, CaseIterable {
+    case saved
+    case checkPassed = "check_passed"
+    case checkFailed = "check_failed"
+    case skipped
+  }
+
+  /// A polish model value AFTER the settings-telemetry redaction policy (a recognised cloud id or
+  /// `custom`, `apple-intelligence`, `none`). Services cannot apply that policy (it lives in AppKit,
+  /// `SettingsProjection.model(provider:id:list:)`), so the only way to build one is to say so at
+  /// the call site.
+  public struct ProjectedModel: Sendable, Equatable {
+    public let value: String
+    public init(projectedBySettingsTelemetry value: String) { self.value = value }
+  }
+
+  /// One Setup choice, typed per kind.
+  public enum Choice: Sendable, Equatable {
+    case language(LanguageMode)
+    case speech(ASRBackendType)
+    /// A Setup polish id (`SetupRules.registeredPolish`), `off` or `cloud`; anything else reads `other`.
+    case polish(String)
+    /// Cloud providers only; any other provider reads `other`.
+    case cloudProvider(LLMProvider)
+    case cloudModel(ProjectedModel)
+    case key(KeyOutcome)
+
+    public var kind: ChoiceKind {
+      switch self {
+      case .language: .language
+      case .speech: .speech
+      case .polish: .polish
+      case .cloudProvider: .cloudProvider
+      case .cloudModel: .cloudModel
+      case .key: .key
+      }
+    }
+
+    public var value: String {
+      switch self {
+      case .language(let mode): OnboardingTelemetry.languageValue(mode)
+      case .speech(let engine): engine.rawValue
+      case .polish(let id): OnboardingTelemetry.polishValue(id)
+      case .cloudProvider(let provider):
+        CloudModelMemory.cloudProviders.contains(provider) ? provider.rawValue : "other"
+      case .cloudModel(let projected): projected.value
+      case .key(let outcome): outcome.rawValue
+      }
+    }
+  }
+
+  /// A model Setup downloads, typed.
+  public enum DownloadModel: Sendable, Equatable {
+    case speech(ASRBackendType)
+    /// A local polish pick id (`SetupRules.registeredPolish`); anything else reads `other`.
+    case polish(String)
+
+    public var kind: ModelKind {
+      switch self {
+      case .speech: .speech
+      case .polish: .polish
+      }
+    }
+
+    public var id: String {
+      switch self {
+      case .speech(let engine): engine.rawValue
+      case .polish(let pick): OnboardingTelemetry.polishValue(pick)
+      }
+    }
+  }
+
+  /// The polish model in the completion summary: a local pick (registered id, else `other`), or
+  /// the AppKit projection for everything else (cloud, Apple Intelligence, off).
+  public enum PolishModel: Sendable, Equatable {
+    case local(String)
+    case projected(ProjectedModel)
+
+    public var id: String {
+      switch self {
+      case .local(let pick): OnboardingTelemetry.polishValue(pick)
+      case .projected(let projected): projected.value
+      }
+    }
+  }
+
+  /// The Setup summary `onboarding.completed` gains.
+  public struct CompletionSummary: Sendable, Equatable {
+    public var polishProvider: LLMProvider
+    public var polishModel: PolishModel
+    public var speechModel: ASRBackendType
+    public var followedAllRecommendations: Bool
+    public var languageMode: LanguageMode
+    public var rulesVersion: String
+    /// nil when the film was not shown (Skip practice); the summary then says `not_shown`.
+    public var filmResult: FilmResult?
+
+    public init(
+      polishProvider: LLMProvider, polishModel: PolishModel, speechModel: ASRBackendType,
+      followedAllRecommendations: Bool, languageMode: LanguageMode, rulesVersion: String,
+      filmResult: FilmResult?
+    ) {
+      self.polishProvider = polishProvider
+      self.polishModel = polishModel
+      self.speechModel = speechModel
+      self.followedAllRecommendations = followedAllRecommendations
+      self.languageMode = languageMode
+      self.rulesVersion = rulesVersion
+      self.filmResult = filmResult
+    }
+  }
+
+  /// `auto`, or a language code the app supports; anything else reads `other`.
+  public static func languageValue(_ mode: LanguageMode) -> String {
+    switch mode {
+    case .auto: return "auto"
+    case .locked(let code): return LanguageTypes.isSupported(code) ? code.lowercased() : "other"
+    }
+  }
+
+  /// A polish id from the app's own list (or `off`/`cloud`); anything else reads `other`.
+  public static func polishValue(_ id: String) -> String {
+    if id == "off" || id == "cloud" || SetupRules.registeredPolish[id] != nil { return id }
+    return "other"
+  }
+
+  /// SYNTAX ONLY, for values from a caller-owned closed vocabulary (Setup step names, film scene
+  /// names, the rules version): ASCII letters, digits and `._-:`, 1-64 characters, else `invalid`.
+  /// It is not a privacy boundary and must never be the only check on a value a person chose.
+  public static func boundedIdentifier(_ raw: String) -> String {
+    let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._-:"))
+    guard !raw.isEmpty, raw.count <= 64,
+      raw.unicodeScalars.allSatisfy({ allowed.contains($0) && $0.isASCII })
+    else { return "invalid" }
+    return raw
+  }
+
+  /// Download size as a coarse bucket (never exact bytes).
+  public static func bytesBucket(_ bytes: Int64?) -> String {
+    guard let bytes, bytes >= 0 else { return "unknown" }
+    let mb = Double(bytes) / 1_000_000
+    switch mb {
+    case ..<100: return "lt_100mb"
+    case ..<500: return "100_500mb"
+    case ..<1000: return "500mb_1gb"
+    default: return "gte_1gb"
     }
   }
 }

@@ -82,6 +82,150 @@ import Testing
 
     private func makeBox() -> OnboardingProgress { OnboardingProgress() }
 
+    // MARK: #4528 §3.8 new Setup events (payload contract only; F2 wires them)
+
+    @Test("completed keeps its two original fields alone, and adds the typed summary when given")
+    func completedContract() {
+      withHook { events in
+        TelemetryService.shared.onboardingCompleted(asrBackend: "parakeet", recordingMode: "pushToTalk")
+        let legacy = events.named("onboarding.completed").last
+        #expect(legacy?.stringProps == ["asr_backend": "parakeet", "recording_mode": "pushToTalk"])
+        #expect(legacy?.boolProps.isEmpty == true)
+
+        TelemetryService.shared.onboardingCompleted(
+          asrBackend: "whisper", recordingMode: "toggle",
+          summary: .init(
+            polishProvider: .egOne, polishModel: .local("eg1.mini"), speechModel: .whisper,
+            followedAllRecommendations: false, languageMode: .locked("de"), rulesVersion: "2026.11.12",
+            filmResult: nil))
+        let full = events.named("onboarding.completed").last
+        #expect(full?.stringProps["polish_provider"] == "egOne")
+        #expect(full?.stringProps["polish_model_id"] == "eg1.mini")
+        #expect(full?.stringProps["speech_model_id"] == "whisper")
+        // Mode only, like settings telemetry; the code belongs to the language choice row.
+        #expect(full?.stringProps["language_mode"] == "locked")
+        #expect(full?.stringProps["film_result"] == "not_shown")  // summary-only state
+        #expect(full?.stringProps["asr_backend"] == "whisper")
+        #expect(full?.boolProps["followed_all_recommendations"] == false)
+      }
+    }
+
+    @Test("the completion summary reports a cloud polish model as the projection, private names as custom")
+    func completedCloudModel() {
+      // A model the committed list recognises passes as its id; a private name reads custom.
+      guard let listed = CloudModelListSeed.current?.models.first(where: { $0.provider == .openAI })?.id
+      else {
+        Issue.record("the committed cloud model list has no OpenAI model")
+        return
+      }
+      withHook { events in
+        for (id, expected) in [(listed, listed), ("MyPrivateModel", "custom")] {
+          let projected = SettingsProjection.model(
+            provider: .openAI, id: id, list: CloudModelListSeed.current)
+          TelemetryService.shared.onboardingCompleted(
+            asrBackend: "parakeet", recordingMode: "pushToTalk",
+            summary: .init(
+              polishProvider: .openAI, polishModel: .projected(.init(projectedBySettingsTelemetry: projected)),
+              speechModel: .parakeet, followedAllRecommendations: false, languageMode: .auto,
+              rulesVersion: "r1", filmResult: .watched))
+          let e = events.named("onboarding.completed").last
+          #expect(e?.stringProps["polish_model_id"] == expected, "\(id)")
+          #expect(e?.stringProps["language_mode"] == "auto")
+        }
+      }
+      #expect(OnboardingTelemetry.PolishModel.local("custom-weights").id == "other")
+    }
+
+    @Test("screen_viewed carries step, entry and seconds as a number in elapsed_seconds and $value")
+    func screenViewedPayload() {
+      withHook { events in
+        TelemetryService.shared.onboardingScreenViewed(step: "polishPick", entry: .back, elapsedSeconds: 42.5)
+        let e = events.named("onboarding.screen_viewed").last
+        #expect(e?.stringProps == ["step": "polishPick", "entry": "back"])
+        #expect(e?.doubleProps == ["elapsed_seconds": 42.5, "$value": 42.5])
+      }
+    }
+
+    @Test("choice_made values are closed by type: offered ids pass, anything else reads other")
+    func choiceMadePayload() {
+      withHook { events in
+        TelemetryService.shared.onboardingChoiceMade(
+          .polish("eg1.mini"), recommended: .polish("eg1.mini"), followedRecommendation: true,
+          rulesVersion: "2026.11.12")
+        let polish = events.named("onboarding.choice_made").last
+        #expect(polish?.stringProps["kind"] == "polish")
+        #expect(polish?.stringProps["value"] == "eg1.mini")
+        #expect(polish?.stringProps["recommended_value"] == "eg1.mini")
+        #expect(polish?.boolProps["followed_recommendation"] == true)
+
+        TelemetryService.shared.onboardingChoiceMade(
+          .key(.checkFailed), recommended: nil, followedRecommendation: false, rulesVersion: "r1")
+        let key = events.named("onboarding.choice_made").last
+        #expect(key?.stringProps["kind"] == "key" && key?.stringProps["value"] == "check_failed")
+        #expect(key?.stringProps["recommended_value"] == nil)
+      }
+      // Credential-shaped and private ASCII never pass as an offered value.
+      #expect(OnboardingTelemetry.Choice.polish("sk-test-secret123").value == "other")
+      #expect(OnboardingTelemetry.Choice.polish("MyPrivateModel").value == "other")
+      #expect(OnboardingTelemetry.Choice.language(.locked("sk-test")).value == "other")
+      #expect(OnboardingTelemetry.Choice.language(.auto).value == "auto")
+      #expect(OnboardingTelemetry.Choice.cloudProvider(.ollama).value == "other")
+      #expect(OnboardingTelemetry.Choice.cloudProvider(.claude).value == "claude")
+      #expect(OnboardingTelemetry.Choice.speech(.parakeet).value == "parakeet")
+    }
+
+    @Test("a cloud model reaches telemetry only as the settings projection, which redacts private names")
+    func cloudModelProjectionBoundary() {
+      // The AppKit projection is the boundary (F2 calls it before building the choice).
+      for privateName in ["MyPrivateModel", "sk-test-secret123", "acme-internal-v2"] {
+        let projected = SettingsProjection.model(provider: .openAI, id: privateName, list: nil)
+        #expect(projected == "custom", "\(privateName) leaked as \(projected)")
+        let choice = OnboardingTelemetry.Choice.cloudModel(.init(projectedBySettingsTelemetry: projected))
+        #expect(choice.value == "custom" && choice.kind == .cloudModel)
+      }
+      #expect(SettingsProjection.model(provider: .openAI, id: "", list: nil) == "none")
+    }
+
+    @Test("download_finished carries a typed model, result, seconds and a coarse size bucket")
+    func downloadFinishedPayload() {
+      withHook { events in
+        TelemetryService.shared.onboardingDownloadFinished(
+          model: .speech(.parakeet), result: .ok, seconds: 61, bytes: 632_314_500)
+        let e = events.named("onboarding.download_finished").last
+        #expect(e?.stringProps == [
+          "model_kind": "speech", "model_id": "parakeet", "result": "ok", "bytes_bucket": "500mb_1gb",
+        ])
+        #expect(e?.doubleProps == ["seconds": 61, "$value": 61])
+      }
+      #expect(OnboardingTelemetry.DownloadModel.polish("eg1.full").id == "eg1.full")
+      #expect(OnboardingTelemetry.DownloadModel.polish("custom-weights").id == "other")
+      #expect(OnboardingTelemetry.bytesBucket(nil) == "unknown")
+      #expect(OnboardingTelemetry.bytesBucket(99_000_000) == "lt_100mb")
+      #expect(OnboardingTelemetry.bytesBucket(1_000_000_000) == "gte_1gb")
+    }
+
+    @Test("film_finished allows only watched, skipped and replayed; blocked reasons are closed")
+    func filmAndBlocked() {
+      #expect(OnboardingTelemetry.FilmResult.allCases.map(\.rawValue) == ["watched", "skipped", "replayed"])
+      withHook { events in
+        TelemetryService.shared.onboardingFilmFinished(result: .replayed, lastScene: "pill")
+        #expect(events.named("onboarding.film_finished").last?.stringProps == [
+          "result": "replayed", "last_scene": "pill",
+        ])
+        for reason in OnboardingTelemetry.BlockedReason.allCases {
+          TelemetryService.shared.onboardingStepBlocked(step: "downloads", reason: reason)
+          #expect(events.named("onboarding.step_blocked").last?.stringProps["reason"] == reason.rawValue)
+        }
+      }
+      #expect(OnboardingTelemetry.BlockedReason.allCases.map(\.rawValue) == [
+        "key_check_failed", "disk_short", "download_failed",
+      ])
+      // Syntax check only (caller-owned closed vocabularies).
+      #expect(OnboardingTelemetry.boundedIdentifier("") == "invalid")
+      #expect(OnboardingTelemetry.boundedIdentifier(String(repeating: "a", count: 65)) == "invalid")
+      #expect(OnboardingTelemetry.boundedIdentifier("polishPick") == "polishPick")
+    }
+
     /// A SettingsManager backed by a fresh ephemeral suite (never touches the real
     /// shared store).
     private func makeSettings() -> SettingsManager {

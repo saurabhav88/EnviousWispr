@@ -106,6 +106,10 @@ onboarding.completed	ungraded	ungraded	-	pre-#2987
 onboarding.started	ungraded	ungraded	-	pre-#2987
 onboarding.step_blocked	ungraded	ungraded	-	pre-#2987
 onboarding.step_completed	ungraded	ungraded	-	pre-#2987
+onboarding.screen_viewed	per_user_action	keep	analytics-operations.md FACT: onboarding-setup-funnel (founder weekly, Setup funnel by step, choice and download result); at most 14 per Setup visit (coordinator dedupe, #4528 F2); about 427 installs/30d x <=14 = <=6k rows/month	#4528
+onboarding.choice_made	per_user_action	keep	analytics-operations.md FACT: onboarding-setup-funnel (founder weekly, Setup funnel by step, choice and download result); final choice per kind per visit, <=6 per visit, <=3k rows/month	#4528
+onboarding.download_finished	per_user_action	keep	analytics-operations.md FACT: onboarding-setup-funnel (founder weekly, Setup funnel by step, choice and download result); one per Setup download end, <=2 per visit, <=1k rows/month	#4528
+onboarding.film_finished	per_user_action	keep	analytics-operations.md FACT: onboarding-setup-funnel (founder weekly, Setup funnel by step, choice and download result); once per visit, <=0.5k rows/month	#4528
 paste.copies_observed	ungraded	ungraded	-	pre-#2987
 permission.status	ungraded	ungraded	-	pre-#2987
 pipeline.failed	ungraded	ungraded	-	pre-#2987
