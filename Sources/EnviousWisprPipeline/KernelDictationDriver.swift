@@ -1384,6 +1384,8 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
         // best-effort `store` closure flips these only on a real save throw.
         outcome.historySaved = true
         outcome.historySaveError = nil
+        // #3147: no take starts with a save receipt.
+        outcome.permanentSaveRowID = nil
         context.config = config
         // #3438: freeze the AI polish setup at the same boundary as `config`, and only when it
         // describes the same provider and model this recording will ask for.

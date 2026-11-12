@@ -234,7 +234,7 @@ enum SettingsProjection {
     case .showMenuBarUpdateAlert: return [.menuBarUpdateAlert]
     // Not instrumented.
     case .selectedBackend, .onboardingState, .hasCompletedOnboarding,
-      .isDebugModeEnabled, .isDictationAudioArchiveEnabled, .debugLogLevel, .whisperKitLanguage,
+      .isDebugModeEnabled, .debugLogLevel, .whisperKitLanguage,
       .selectedInputDeviceUID, .preferredInputDeviceIDOverride,
       // #2664: a UID-keyed map is device identity, which never leaves the Mac;
       // the effective channel is already carried per take by

@@ -96,7 +96,6 @@ public final class SettingsManager {
     case sendCrashReports
     case contactsSyncOnLaunchEnabled
     case isDebugModeEnabled
-    case isDictationAudioArchiveEnabled
     case debugLogLevel
     case whisperKitLanguage
     case languageMode
@@ -175,7 +174,7 @@ public final class SettingsManager {
     "fillerRemovalEnabled", "emojiFormatterEnabled", "spokenPunctuationEnabled",
     "spokenPunctuationStartWords", "spokenPunctuationEnglishPeriodWord", "casualModeEnabled",
     "crashRecoveryEnabled", "shareUsageMetrics", "sendCrashReports", "contactsSyncOnLaunchEnabled",
-    "isDebugModeEnabled", "isDictationAudioArchiveEnabled", "debugLogLevel",
+    "isDebugModeEnabled", "debugLogLevel",
     "egOneSize", "whisperKitLanguage", "languageMode", "englishSpelling",
     "selectedInputDeviceUID", "preferredInputDeviceIDOverride", "inputChannelByDeviceUID",
     "useStreamingASR", "livePreviewEnabled", "livePreviewEngine",
@@ -1611,16 +1610,6 @@ public final class SettingsManager {
     }
   }
 
-  /// Sticky, founder-controlled opt-in for the DEBUG-only per-dictation audio
-  /// archive (#1230). Survives rebuilds/relaunches, unlike the env-var opt-in
-  /// (`EW_KEEP_DICTATION_AUDIO`) it ORs with at `DictationAudioArchive.archive()`.
-  public var isDictationAudioArchiveEnabled: Bool {
-    didSet {
-      defaults.set(isDictationAudioArchiveEnabled, forKey: "isDictationAudioArchiveEnabled")
-      onChange?(.isDictationAudioArchiveEnabled)
-    }
-  }
-
   public var debugLogLevel: DebugLogLevel {
     didSet {
       defaults.set(debugLogLevel.rawValue, forKey: "debugLogLevel")
@@ -2121,9 +2110,6 @@ public final class SettingsManager {
     isDebugModeEnabled =
       defaults.object(forKey: "isDebugModeEnabled") as? Bool
       ?? SettingsDefaultValues.isDebugModeEnabled
-    isDictationAudioArchiveEnabled =
-      defaults.object(forKey: "isDictationAudioArchiveEnabled") as? Bool
-      ?? SettingsDefaultValues.isDictationAudioArchiveEnabled
     debugLogLevel =
       DebugLogLevel(
         rawValue: defaults.string(forKey: "debugLogLevel") ?? ""

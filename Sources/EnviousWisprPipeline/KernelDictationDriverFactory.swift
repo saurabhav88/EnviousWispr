@@ -142,12 +142,10 @@ public enum KernelDictationDriverFactory {
     /// nil when no classifier (tests, or before prewarm). Read lazily at polish
     /// time by `LLMPolishStep`.
     package let outputClassifierHolder: OutputClassifierHolder?
-    /// #1247: live read of the persisted Settings opt-in for the DEBUG-only
-    /// dictation-audio archive (#1230). Forwarded into the kernel's
-    /// `dictationAudioArchiveOptInProvider` init parameter — a closure, not a
-    /// frozen value, so an off-flip stops archiving on the very next
-    /// dictation (cloud review, PR #1250).
-    package let dictationAudioArchiveOptInProvider: @MainActor () -> Bool
+    /// #3147: whether saved recordings are on; the kernel reads it once per take, at acceptance.
+    package let recordingPreference: @MainActor () -> Bool
+    /// #3147: receives each successfully saved dictation's audio (History's recordings).
+    package let recordingSink: (any DictationRecordingSink)?
     /// #2549: live mic-permission read, forwarded into the kernel's own
     /// `microphonePermissionIsDenied` init parameter. See that property's
     /// doc comment on `RecordingSessionKernel`.
@@ -226,7 +224,8 @@ public enum KernelDictationDriverFactory {
       engineMutationScope: EngineMutationScope,
       captureErrorSink: @escaping HeartPathCaptureErrorSink = defaultCaptureErrorSink,
       outputClassifierHolder: OutputClassifierHolder? = nil,
-      dictationAudioArchiveOptInProvider: @escaping @MainActor () -> Bool = { false },
+      recordingPreference: @escaping @MainActor () -> Bool = { false },
+      recordingSink: (any DictationRecordingSink)? = nil,
       microphonePermissionIsDenied: @escaping @MainActor () -> Bool = { false },
       egOneRuntime: (any EGOneEndpointProviding)? = nil,
       additionalLocalRuntimes: [LocalPolishModelID: any EGOneEndpointProviding] = [:],
@@ -253,7 +252,8 @@ public enum KernelDictationDriverFactory {
       self.engineMutationScope = engineMutationScope
       self.captureErrorSink = captureErrorSink
       self.outputClassifierHolder = outputClassifierHolder
-      self.dictationAudioArchiveOptInProvider = dictationAudioArchiveOptInProvider
+      self.recordingPreference = recordingPreference
+      self.recordingSink = recordingSink
       self.microphonePermissionIsDenied = microphonePermissionIsDenied
       self.egOneRuntime = egOneRuntime
       self.additionalLocalRuntimes = additionalLocalRuntimes
@@ -288,10 +288,10 @@ public enum KernelDictationDriverFactory {
     /// App-owned output-safety classifier holder (#832/#913 PR8). See
     /// `ParakeetInputs.outputClassifierHolder`.
     package let outputClassifierHolder: OutputClassifierHolder?
-    /// #1247: live read of the persisted Settings opt-in for the DEBUG-only
-    /// dictation-audio archive (#1230). See
-    /// `ParakeetInputs.dictationAudioArchiveOptInProvider`.
-    package let dictationAudioArchiveOptInProvider: @MainActor () -> Bool
+    /// #3147: see `ParakeetInputs.recordingPreference`.
+    package let recordingPreference: @MainActor () -> Bool
+    /// #3147: see `ParakeetInputs.recordingSink`.
+    package let recordingSink: (any DictationRecordingSink)?
     /// #2549: live mic-permission read. See `ParakeetInputs.microphonePermissionIsDenied`.
     package let microphonePermissionIsDenied: @MainActor () -> Bool
     /// #1271: EG-1 runtime handle. See `ParakeetInputs.egOneRuntime`.
@@ -368,7 +368,8 @@ public enum KernelDictationDriverFactory {
       whisperModelIdentity: ASRModelIdentity?,
       captureErrorSink: @escaping HeartPathCaptureErrorSink = defaultCaptureErrorSink,
       outputClassifierHolder: OutputClassifierHolder? = nil,
-      dictationAudioArchiveOptInProvider: @escaping @MainActor () -> Bool = { false },
+      recordingPreference: @escaping @MainActor () -> Bool = { false },
+      recordingSink: (any DictationRecordingSink)? = nil,
       microphonePermissionIsDenied: @escaping @MainActor () -> Bool = { false },
       egOneRuntime: (any EGOneEndpointProviding)? = nil,
       additionalLocalRuntimes: [LocalPolishModelID: any EGOneEndpointProviding] = [:],
@@ -395,7 +396,8 @@ public enum KernelDictationDriverFactory {
       self.engineMutationScope = engineMutationScope
       self.captureErrorSink = captureErrorSink
       self.outputClassifierHolder = outputClassifierHolder
-      self.dictationAudioArchiveOptInProvider = dictationAudioArchiveOptInProvider
+      self.recordingPreference = recordingPreference
+      self.recordingSink = recordingSink
       self.microphonePermissionIsDenied = microphonePermissionIsDenied
       self.egOneRuntime = egOneRuntime
       self.additionalLocalRuntimes = additionalLocalRuntimes
@@ -491,7 +493,8 @@ public enum KernelDictationDriverFactory {
       engineMutationScope: inputs.engineMutationScope,
       captureErrorSink: inputs.captureErrorSink,
       outputClassifierHolder: inputs.outputClassifierHolder,
-      dictationAudioArchiveOptInProvider: inputs.dictationAudioArchiveOptInProvider,
+      recordingPreference: inputs.recordingPreference,
+      recordingSink: inputs.recordingSink,
       microphonePermissionIsDenied: inputs.microphonePermissionIsDenied,
       egOneRuntime: inputs.egOneRuntime,
       additionalLocalRuntimes: inputs.additionalLocalRuntimes,
@@ -546,7 +549,8 @@ public enum KernelDictationDriverFactory {
       engineMutationScope: inputs.engineMutationScope,
       captureErrorSink: inputs.captureErrorSink,
       outputClassifierHolder: inputs.outputClassifierHolder,
-      dictationAudioArchiveOptInProvider: inputs.dictationAudioArchiveOptInProvider,
+      recordingPreference: inputs.recordingPreference,
+      recordingSink: inputs.recordingSink,
       microphonePermissionIsDenied: inputs.microphonePermissionIsDenied,
       egOneRuntime: inputs.egOneRuntime,
       additionalLocalRuntimes: inputs.additionalLocalRuntimes,
@@ -575,7 +579,8 @@ public enum KernelDictationDriverFactory {
     engineMutationScope: EngineMutationScope,
     captureErrorSink: @escaping HeartPathCaptureErrorSink,
     outputClassifierHolder: OutputClassifierHolder? = nil,
-    dictationAudioArchiveOptInProvider: @escaping @MainActor () -> Bool = { false },
+    recordingPreference: @escaping @MainActor () -> Bool = { false },
+    recordingSink: (any DictationRecordingSink)? = nil,
     microphonePermissionIsDenied: @escaping @MainActor () -> Bool = { false },
     egOneRuntime: (any EGOneEndpointProviding)? = nil,
     additionalLocalRuntimes: [LocalPolishModelID: any EGOneEndpointProviding] = [:],
@@ -857,7 +862,10 @@ public enum KernelDictationDriverFactory {
         outcome.asrEndedAtSeconds = CFAbsoluteTimeGetCurrent()
       },
       telemetryState: telemetryState,
-      dictationAudioArchiveOptInProvider: dictationAudioArchiveOptInProvider,
+      recordingPreference: recordingPreference,
+      recordingSink: recordingSink,
+      // #3147: this take\'s ordinary permanent save, bound to the row id the kernel minted.
+      permanentSaveReceipt: { [outcome] rowID in outcome.permanentSaveRowID == rowID },
       microphonePermissionIsDenied: microphonePermissionIsDenied,
       batchDecodeFaultController: batchDecodeFaultController,
       // #3195 PR B: key-up Apple session preparation on the SAME retained step the

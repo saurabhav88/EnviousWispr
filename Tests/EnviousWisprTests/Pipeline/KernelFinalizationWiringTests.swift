@@ -331,9 +331,12 @@ import os
     let wiring = makeWiring(
       outcome: outcome, save: { transcript, _ in saved.transcript = transcript })
 
-    try await wiring.store("polished text", UUID(), .ordinary)
+    let rowID = UUID()
+    try await wiring.store("polished text", rowID, .ordinary)
 
     #expect(saved.transcript?.text == "raw asr text")
+    // #3147: only a successful ORDINARY save is a receipt for a saved recording, bound to its row.
+    #expect(outcome.permanentSaveRowID == rowID)
     #expect(saved.transcript?.polishedText == "polished text")
     #expect(saved.transcript?.backendType == .parakeet)
     #expect(saved.transcript?.llmProvider == "openai")
@@ -369,6 +372,8 @@ import os
       outcome: outcome, save: { transcript, _ in saved.transcript = transcript })
 
     try await wiring.store("kept text", UUID(), .escapeRecovery(triggeredAt: pressedAt))
+    // #3147: a held (pending) row never gets a saved recording, even after a later Keep.
+    #expect(outcome.permanentSaveRowID == nil)
 
     #expect(
       saved.transcript?.escapeRecoveredAt == pressedAt,
@@ -392,8 +397,11 @@ import os
       telemetryState: telemetryState)
     // Best-effort: the save throw is absorbed — `store` does NOT propagate it,
     // so the kernel proceeds to deliver instead of routing a terminal failure.
+    outcome.permanentSaveRowID = UUID()  // a stale receipt from an earlier save
     try await wiring.store("the delivered words", UUID(), .ordinary)
     #expect(outcome.historySaved == false)
+    // #3147: a failed save is no receipt, and clears any earlier one.
+    #expect(outcome.permanentSaveRowID == nil)
     #expect(outcome.historySaveError != nil)
     // The transcript is set BEFORE the save attempt, so completion telemetry +
     // paste metrics populate and delivery proceeds with the polished text.

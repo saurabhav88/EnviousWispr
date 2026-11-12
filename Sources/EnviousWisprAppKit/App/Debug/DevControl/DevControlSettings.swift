@@ -62,7 +62,7 @@
       .escapeRecoveryEnabled, .wordCorrectionEnabled, .fillerRemovalEnabled,
       .emojiFormatterEnabled, .spokenPunctuation, .casualModeEnabled, .crashRecoveryEnabled,
       .shareUsageMetrics, .sendCrashReports, .contactsSyncOnLaunchEnabled, .isDebugModeEnabled,
-      .isDictationAudioArchiveEnabled, .debugLogLevel, .whisperKitLanguage, .languageMode,
+      .debugLogLevel, .whisperKitLanguage, .languageMode,
       .englishSpelling, .egOneSize, .selectedInputDeviceUID, .preferredInputDeviceIDOverride,
       .inputChannelByDeviceUID, .useStreamingASR, .livePreviewEnabled, .livePreviewEngine,
       .warmEnginePolicy, .appearance, .overlayPillPosition, .recordingPillDesignWithoutWords,
@@ -95,7 +95,7 @@
         .quickAddClipboardFallback, .smartInsertion, .escapeRecoveryEnabled,
         .wordCorrectionEnabled, .fillerRemovalEnabled, .emojiFormatterEnabled,
         .casualModeEnabled, .shareUsageMetrics, .sendCrashReports, .contactsSyncOnLaunchEnabled,
-        .isDebugModeEnabled, .isDictationAudioArchiveEnabled, .debugLogLevel, .useStreamingASR,
+        .isDebugModeEnabled, .debugLogLevel, .useStreamingASR,
         .livePreviewEnabled, .livePreviewEngine, .warmEnginePolicy, .appearance,
         .overlayPillPosition, .showBluetoothTips, .showInDock, .showMenuBarUpdateAlert,
         .playRecordingSounds, .recordingSoundPairing, .otherAudioWhileDictating, .learnFromEdits,
@@ -187,7 +187,6 @@
       case .sendCrashReports: return settings.sendCrashReports
       case .contactsSyncOnLaunchEnabled: return settings.contactsSyncOnLaunchEnabled
       case .isDebugModeEnabled: return settings.isDebugModeEnabled
-      case .isDictationAudioArchiveEnabled: return settings.isDictationAudioArchiveEnabled
       case .debugLogLevel: return settings.debugLogLevel.rawValue
       case .whisperKitLanguage: return settings.whisperKitLanguage
       case .languageMode: return Codec.encode(settings.languageMode)
@@ -394,8 +393,6 @@
         return set(Codec.bool(value)) { settings.contactsSyncOnLaunchEnabled = $0 }
       case .isDebugModeEnabled:
         return set(Codec.bool(value)) { settings.isDebugModeEnabled = $0 }
-      case .isDictationAudioArchiveEnabled:
-        return set(Codec.bool(value)) { settings.isDictationAudioArchiveEnabled = $0 }
       case .debugLogLevel:
         return set(Codec.raw(value, DebugLogLevel.self)) { settings.debugLogLevel = $0 }
       case .whisperKitLanguage:
@@ -613,7 +610,7 @@
         .escapeRecoveryEnabled, .wordCorrectionEnabled, .fillerRemovalEnabled,
         .emojiFormatterEnabled, .casualModeEnabled, .crashRecoveryEnabled, .shareUsageMetrics,
         .sendCrashReports, .contactsSyncOnLaunchEnabled, .isDebugModeEnabled,
-        .isDictationAudioArchiveEnabled, .debugLogLevel, .whisperKitLanguage, .useStreamingASR,
+        .debugLogLevel, .whisperKitLanguage, .useStreamingASR,
         .livePreviewEnabled, .livePreviewEngine, .warmEnginePolicy, .appearance,
         .overlayPillPosition, .showBluetoothTips, .showInDock, .showMenuBarUpdateAlert,
         .playRecordingSounds, .recordingSoundPairing, .otherAudioWhileDictating, .learnFromEdits,

@@ -788,7 +788,9 @@ package final class WisprBootstrapper {
         pasteCompletionRegistry: pasteCompletionRegistry,
         engineMutationScope: engineMutationScope,
         outputClassifierHolder: outputClassifierHolder,
-        dictationAudioArchiveOptInProvider: { settings.isDictationAudioArchiveEnabled },
+        // #3147: recordings are on (D1) until the Recordings setting arrives (PR1 chunk 6).
+        recordingPreference: { true },
+        recordingSink: transcriptCoordinator.recordings,
         microphonePermissionIsDenied: { permissions.microphonePermissionIsDenied },
         egOneRuntime: egOneRuntime,
         additionalLocalRuntimes: additionalLocalRuntimes,
@@ -859,7 +861,9 @@ package final class WisprBootstrapper {
         whisperModelIdentity: modelDelivery.whisperRegistration?.manifest.identity
           .asrModelIdentity,
         outputClassifierHolder: outputClassifierHolder,
-        dictationAudioArchiveOptInProvider: { settings.isDictationAudioArchiveEnabled },
+        // #3147: recordings are on (D1) until the Recordings setting arrives (PR1 chunk 6).
+        recordingPreference: { true },
+        recordingSink: transcriptCoordinator.recordings,
         microphonePermissionIsDenied: { permissions.microphonePermissionIsDenied },
         egOneRuntime: egOneRuntime,
         additionalLocalRuntimes: additionalLocalRuntimes,

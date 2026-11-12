@@ -476,8 +476,6 @@ final class PipelineSettingsSync {
       // under the rules it began with and a change applies to the NEXT one.
       // Same classification as `crashRecoveryEnabled` above.
       break
-    case .isDictationAudioArchiveEnabled:
-      break  // #1247: kernel pulls this live via `dictationAudioArchiveOptInProvider` — no push needed here.
     case .livePreviewEnabled:
       // #1988: display-only limb, read live by `LivePreviewCoordinator` off the
       // overlay seam. The PIPELINE still never learns it exists, which is the

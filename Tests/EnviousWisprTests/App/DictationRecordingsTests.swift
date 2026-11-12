@@ -4,6 +4,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprAppKit
+import EnviousWisprPipeline
 @testable import EnviousWisprStorage
 
 /// #3147 §3.1: when these fail, a recording the user deleted comes back after a slow encode, an
@@ -93,6 +94,42 @@ struct DictationRecordingsTests {
         return Array(releases.values)
       }
       pending.forEach { $0.signal() }
+    }
+  }
+
+  /// Holds one row check until released; bounded so a subject that never reaches it fails.
+  @MainActor final class RowCheckGate {
+    private var held = false
+    private var heldWaiters: [CheckedContinuation<Bool, Never>] = []
+    private var releaseWaiter: CheckedContinuation<Void, Never>?
+    private var released = false
+
+    func hold() async {
+      held = true
+      heldWaiters.forEach { $0.resume(returning: true) }
+      heldWaiters.removeAll()
+      if released { return }
+      await withCheckedContinuation { releaseWaiter = $0 }
+    }
+
+    func waitUntilHeld(sourceLocation: SourceLocation = #_sourceLocation) async throws {
+      if held { return }
+      let arrived = await withCheckedContinuation { (c: CheckedContinuation<Bool, Never>) in
+        heldWaiters.append(c)
+        Task { @MainActor [weak self] in
+          // deadline-fallback: a hang guard only; no assertion depends on this clock.
+          try? await Task.sleep(for: .seconds(10))
+          guard let self, !self.heldWaiters.isEmpty else { return }
+          self.heldWaiters.removeFirst().resume(returning: false)
+        }
+      }
+      try #require(arrived, "the publication never reached its row check", sourceLocation: sourceLocation)
+    }
+
+    func release() {
+      released = true
+      releaseWaiter?.resume()
+      releaseWaiter = nil
     }
   }
 
@@ -308,6 +345,110 @@ struct DictationRecordingsTests {
 
     #expect(rig.coordinator.actionFailure == nil)
     #expect(try await rig.store.permanentRowIDs()?.isEmpty == true)
+  }
+
+  static func request(_ rowID: UUID, samples: [Float], on: Bool) -> DictationRecordingRequest {
+    DictationRecordingRequest(
+      rowID: rowID, samples: samples, recordingsOn: on,
+      asr: DictationASREvidence(
+        text: "hello", backend: .parakeet, source: .batch, input: .conditionedBatch,
+        wordTimingsAvailable: false))
+  }
+
+  @Test("an older publication suspended on its row check never takes the newer take's place")
+  func newerSubmissionDuringOlderPublication() async throws {
+    let rig = rig()
+    defer { rig.gate.releaseAll() }
+    let row = try savedRow(rig)
+    // The older take encodes and starts publishing; its row check is held.
+    let rowCheck = RowCheckGate()
+    rig.recordings.rowCheckWillRunForTesting = { await rowCheck.hold() }
+    rig.gate.release(1)
+    rig.recordings.submit(Self.request(row.id, samples: [0], on: true))
+    try await rowCheck.waitUntilHeld()
+    // A newer take is handed over while the older publication is suspended.
+    rig.recordings.rowCheckWillRunForTesting = nil
+    rig.gate.release(2)
+    rig.recordings.submit(Self.request(row.id, samples: [0, 0, 0, 0, 0], on: true))
+    rowCheck.release()
+    await rig.recordings.waitForSubmissions()
+
+    #expect(try await audioBytes(rig, row.id) == 5, "the newer take owns the final bytes")
+    #expect(try await rig.archive.usage().temporaryBytes == 0)
+  }
+
+  @Test("a stored recording keeps the delivering decode's text beside it, with no timings invented")
+  func sidecarKeepsASRText() async throws {
+    let rig = rig()
+    defer { rig.gate.releaseAll() }
+    let row = try savedRow(rig)
+    rig.gate.release(1)
+
+    rig.recordings.submit(Self.request(row.id, samples: [0], on: true))
+    await rig.recordings.waitForSubmissions()
+
+    let timing = try #require(try await rig.archive.timing(for: row.id))
+    #expect(timing.exactASRText == "hello")
+    #expect(timing.textVersion.hasPrefix("asr-sha256:"))
+    #expect(timing.anchors.isEmpty)
+  }
+
+  @Test("a hand-off returns at once; the recording is kept once its encode finishes")
+  func submitDoesNotWait() async throws {
+    let rig = rig()
+    defer { rig.gate.releaseAll() }
+    let row = try savedRow(rig)
+
+    // The encode is held, yet the hand-off has already returned (paste is never delayed).
+    rig.recordings.submit(Self.request(row.id, samples: [0, 0], on: true))
+    try await rig.gate.waitUntilStarted(1)
+    #expect(await rig.archive.url(for: row.id) == nil)
+    rig.gate.release(1)
+    await rig.recordings.waitForSubmissions()
+
+    #expect(try await audioBytes(rig, row.id) == 2)
+  }
+
+  @Test("a deletion right after the hand-off, before encoding begins, still wins")
+  func deletionRightAfterHandOffWins() async throws {
+    let rig = rig()
+    defer { rig.gate.releaseAll() }
+    let row = try savedRow(rig)
+    rig.gate.release(1)
+
+    rig.recordings.submit(Self.request(row.id, samples: [0], on: true))
+    try await rig.recordings.deleteRecording(rowID: row.id, reason: .deleted)
+    await rig.recordings.waitForSubmissions()
+
+    #expect(await rig.archive.url(for: row.id) == nil)
+    #expect(try await rig.archive.absence(for: row.id) == .deleted)
+  }
+
+  @Test("a take started with recordings off encodes nothing and keeps the reason")
+  func recordingsOffKeepsReason() async throws {
+    let rig = rig()
+    defer { rig.gate.releaseAll() }
+    let row = try savedRow(rig)
+
+    rig.recordings.submit(Self.request(row.id, samples: [0], on: false))
+    await rig.recordings.waitForSubmissions()
+
+    #expect(try await rig.archive.absence(for: row.id) == .recordingsOff)
+    #expect(try await rig.archive.recordedRowIDs().isEmpty)
+    #expect(try await rig.archive.usage().temporaryBytes == 0)
+  }
+
+  @Test("an off hand-off never overwrites a deletion that came after it")
+  func staleOffDoesNotOverwrite() async throws {
+    let rig = rig()
+    defer { rig.gate.releaseAll() }
+    let row = try savedRow(rig)
+
+    rig.recordings.submit(Self.request(row.id, samples: [0], on: false))
+    try await rig.recordings.deleteRecording(rowID: row.id, reason: .deleted)
+    await rig.recordings.waitForSubmissions()
+
+    #expect(try await rig.archive.absence(for: row.id) == .deleted)
   }
 
   @Test("launch cleanup removes interrupted encodes and orphans, never a recording with its row")
