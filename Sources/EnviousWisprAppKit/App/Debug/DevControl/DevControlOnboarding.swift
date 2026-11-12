@@ -1,4 +1,5 @@
 #if DEBUG
+  import AVFoundation
   import EnviousWisprCore
   import EnviousWisprServices
   import Foundation
@@ -16,16 +17,22 @@
     }
 
     private let workflow: OnboardingWorkflowOwner
-    private let makeSession: @MainActor () -> Session
+    /// Builds the session; it receives this door so completion can end ownership here.
+    private let makeSession: @MainActor (DevControlOnboarding) -> Session
     private let checkpointData: @MainActor () -> Data?
     private let legacyState: @MainActor () -> OnboardingState
+    /// The app's permissions service, for M5 simulation (nil when not wired).
+    private let permissions: PermissionsService?
     private(set) var session: Session?
 
     init(
-      workflow: OnboardingWorkflowOwner, makeSession: @escaping @MainActor () -> Session,
+      workflow: OnboardingWorkflowOwner,
+      makeSession: @escaping @MainActor (DevControlOnboarding) -> Session,
       checkpointData: @escaping @MainActor () -> Data?,
-      legacyState: @escaping @MainActor () -> OnboardingState
+      legacyState: @escaping @MainActor () -> OnboardingState,
+      permissions: PermissionsService? = nil
     ) {
+      self.permissions = permissions
       self.workflow = workflow
       self.makeSession = makeSession
       self.checkpointData = checkpointData
@@ -46,8 +53,9 @@
       guard workflow.claimBackendSession() else { return legacyBusy() }
       let session = ensureSession()
       guard session.coordinator.begin() else {
-        // Completed, or an interrupted completion just finished: Setup does not open.
-        workflow.releaseBackendSession()
+        // Completed, or an interrupted completion just finished: Setup does not open, and
+        // Setup goes back through the one release path (simulation cleared first, M61).
+        endOwnership()
         return .ok(snapshot(extra: ["opened": false]))
       }
       session.runtime.start()
@@ -69,13 +77,123 @@
 
     /// Ends the backend session as an app quit would (checkpoint kept, downloads continue in
     /// their owners), and returns Setup to the old onboarding.
+    /// Ends any session as an app quit would and always clears simulation before Setup goes
+    /// back to the old onboarding; with nothing running it only cleans up.
     func stop() -> Result {
-      guard let session, workflow.backendSessionActive else {
-        return .failure(.rejected, "no onboarding session is running")
+      if let session, session.runtime.isRunning || session.coordinator.isActive {
+        session.runtime.quit()
       }
-      session.runtime.quit()
-      workflow.releaseBackendSession()
+      endOwnership()
       return .ok(snapshot())
+    }
+
+    /// The one way this door gives Setup back (stop, and completion through the session's
+    /// observer): simulation is cleared first, so no override outlives the session (M60).
+    func endOwnership() {
+      clearSimulation()
+      workflow.releaseBackendSession()
+    }
+
+    // MARK: Simulation (DEBUG only; cleared by `--clear`, by `stop` and by relaunch)
+
+    /// Fakes the Mac for advice only (`SetupAdvice.debugProfile`).
+    func profile(_ args: [String: Any]) -> Result {
+      if args["clear"] as? Bool == true {
+        SetupAdvice.debugProfile = nil
+        return .ok(snapshot())
+      }
+      var fake = SetupAdvice.DebugProfile()
+      if let ram = args["ram"] {
+        guard let value = ram as? Int, value > 0 else { return .failure(.badArgs, "ram must be a positive integer (GiB)") }
+        fake.memoryGiB = value
+      }
+      if let os = args["os"] {
+        guard let value = os as? Int, value >= 14 else { return .failure(.badArgs, "os must be a macOS major version, 14 or later") }
+        fake.macOSMajor = value
+      }
+      if let afm = args["afm"] {
+        guard let raw = afm as? String, let state = AppleIntelligenceSetupState(rawValue: raw) else {
+          let states = AppleIntelligenceSetupState.allCases.map(\.rawValue).joined(separator: ", ")
+          return .failure(.badArgs, "afm must be one of: \(states)")
+        }
+        fake.appleIntelligence = state
+      }
+      if let lang = args["lang"] {
+        guard let code = lang as? String, LanguageTypes.isSupported(code) else {
+          return .failure(.badArgs, "lang must be a supported language code")
+        }
+        fake.macLanguages = [code]
+      }
+      guard fake != SetupAdvice.DebugProfile() else {
+        return .failure(.badArgs, "give at least one of ram, os, afm, lang, or clear")
+      }
+      // Validated: claim Setup immediately before applying (M61).
+      guard workflow.claimBackendSession() else { return legacyBusy() }
+      SetupAdvice.debugProfile = fake
+      return .ok(snapshot())
+    }
+
+    /// Simulated permission grants (M5): no real prompt, pane or telemetry while set.
+    func permissionsCommand(_ args: [String: Any]) -> Result {
+      guard let permissions else { return .failure(.notWired, "permissions are not wired") }
+      if args["clear"] as? Bool == true {
+        permissions.simulated = nil
+        return .ok(snapshot())
+      }
+      var fake = permissions.simulated ?? PermissionsService.SimulatedPermissions()
+      if let mic = args["mic"] {
+        switch mic as? String {
+        case "granted": fake.microphone = .authorized
+        case "denied": fake.microphone = .denied
+        case "notDetermined": fake.microphone = .notDetermined
+        default: return .failure(.badArgs, "mic must be granted, denied or notDetermined")
+        }
+      }
+      if let ax = args["ax"] {
+        switch ax as? String {
+        case "granted": fake.accessibility = true
+        case "denied": fake.accessibility = false
+        default: return .failure(.badArgs, "ax must be granted or denied")
+        }
+      }
+      guard args["mic"] != nil || args["ax"] != nil else {
+        return .failure(.badArgs, "give mic, ax, or clear")
+      }
+      // Validated: claim Setup immediately before applying (M61).
+      guard workflow.claimBackendSession() else { return legacyBusy() }
+      permissions.simulated = fake
+      session?.runtime.tick()
+      return .ok(snapshot())
+    }
+
+    /// Turns one approved fault on or off, or clears all.
+    func fault(_ args: [String: Any]) -> Result {
+      if args["clear"] as? Bool == true {
+        OnboardingDebugFaults.active.removeAll()
+        return .ok(snapshot())
+      }
+      guard let raw = args["name"] as? String, let fault = OnboardingFault(rawValue: raw) else {
+        let names = OnboardingFault.allCases.map(\.rawValue).joined(separator: ", ")
+        return .failure(.badArgs, "fault must be one of: \(names)")
+      }
+      guard workflow.claimBackendSession() else { return legacyBusy() }
+      if args["off"] as? Bool == true {
+        OnboardingDebugFaults.active.remove(fault)
+      } else {
+        OnboardingDebugFaults.active.insert(fault)
+      }
+      session?.coordinator.invalidateReadiness()
+      session?.runtime.tick()
+      return .ok(snapshot())
+    }
+
+    private func clearSimulation() { Self.clearSimulation(permissions: permissions) }
+
+    /// Clears every DEBUG override (advice profile, simulated grants, faults).
+    static func clearSimulation(permissions: PermissionsService?) {
+      SetupAdvice.debugProfile = nil
+      permissions?.simulated = nil
+      OnboardingDebugFaults.active.removeAll()
     }
 
     func goto(_ args: [String: Any]) -> Result {
@@ -177,7 +295,7 @@
 
     private func ensureSession() -> Session {
       if let session { return session }
-      let made = makeSession()
+      let made = makeSession(self)
       session = made
       return made
     }
@@ -210,6 +328,7 @@
         "checkpoint": OnboardingCheckpoint.decode(checkpointData()).map { $0.step.rawValue }
           ?? NSNull(),
         "sessionBuilt": session != nil,
+        "simulated": simulatedSnapshot(),
       ]
       if let coordinator = session?.coordinator {
         let state = coordinator.state
@@ -225,6 +344,40 @@
         out["running"] = session?.runtime.isRunning ?? false
       }
       for (key, value) in extra { out[key] = value }
+      return out
+    }
+
+    /// Every synthetic input in force, so a reply never passes simulated evidence off as real.
+    private func simulatedSnapshot() -> [String: Any] {
+      var out: [String: Any] = [
+        "faults": OnboardingDebugFaults.active.map(\.rawValue).sorted()
+      ]
+      if let fake = SetupAdvice.debugProfile {
+        out["profile"] = [
+          "ram": fake.memoryGiB.map { $0 as Any } ?? NSNull(),
+          "os": fake.macOSMajor.map { $0 as Any } ?? NSNull(),
+          "afm": fake.appleIntelligence?.rawValue ?? NSNull(),
+          "lang": fake.macLanguages?.first ?? NSNull(),
+        ]
+      } else {
+        out["profile"] = NSNull()
+      }
+      if let fake = permissions?.simulated {
+        let mic: Any =
+          switch fake.microphone {
+          case .authorized?: "granted"
+          case .denied?: "denied"
+          case .notDetermined?: "notDetermined"
+          case .restricted?: "restricted"
+          case nil: NSNull()
+          @unknown default: "unknown"
+          }
+        out["permissions"] = [
+          "mic": mic, "ax": fake.accessibility.map { $0 ? "granted" : "denied" } ?? NSNull(),
+        ]
+      } else {
+        out["permissions"] = NSNull()
+      }
       return out
     }
 
@@ -266,19 +419,28 @@
     ) -> DevControlOnboarding {
       DevControlOnboarding(
         workflow: workflow,
-        makeSession: { [weak workflow] in
+        makeSession: { [weak workflow] door in
           let facts = OnboardingLiveFacts()
           let coordinator = OnboardingCoordinator(
             dependencies: .live(
               owners, facts: facts, sleepAssertion: OnboardingSleepAssertion(),
               onPracticeOutcome: { _ in },
-              onCompleted: { workflow?.releaseBackendSession() }))
+              // Completion gives Setup back through the door, which clears simulation first.
+              onCompleted: { [weak door] in
+                if let door {
+                  door.endOwnership()
+                } else {
+                  DevControlOnboarding.clearSimulation(permissions: owners.permissions)
+                  workflow?.releaseBackendSession()
+                }
+              }))
           let runtime = OnboardingRuntime(
             coordinator: coordinator, facts: facts, inputs: .live(owners, coordinator: coordinator))
           return Session(coordinator: coordinator, runtime: runtime)
         },
         checkpointData: { owners.settings.onboardingCheckpointData },
-        legacyState: { owners.settings.onboardingState })
+        legacyState: { owners.settings.onboardingState },
+        permissions: owners.permissions)
     }
   }
 #endif

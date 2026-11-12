@@ -402,6 +402,16 @@ def routes_and_values(r, tree):
         (["onboarding", "stop"], "onboarding.stop", None),
         (["onboarding", "goto", "permissions"], "onboarding.goto", {"step": "permissions"}),
         (["onboarding", "send", "next"], "onboarding.send", {"event": "next"}),
+        (["onboarding", "profile", "--ram", "8", "--afm", "unavailable", "--lang", "de"],
+         "onboarding.profile", {"ram": 8, "afm": "unavailable", "lang": "de"}),
+        (["onboarding", "profile", "--clear"], "onboarding.profile", {"clear": True}),
+        (["onboarding", "permissions", "--mic", "granted", "--ax", "denied"],
+         "onboarding.permissions", {"mic": "granted", "ax": "denied"}),
+        (["onboarding", "permissions", "--clear"], "onboarding.permissions", {"clear": True}),
+        (["onboarding", "fault", "disk-short"], "onboarding.fault", {"name": "disk-short"}),
+        (["onboarding", "fault", "warm-fail", "--off"], "onboarding.fault",
+         {"name": "warm-fail", "off": True}),
+        (["onboarding", "fault", "--clear"], "onboarding.fault", {"clear": True}),
         (["onboarding", "send", "chooseSpeech", "--value", "whisper"], "onboarding.send",
          {"event": "chooseSpeech", "value": "whisper"}),
         (["onboarding", "send", "chooseCloud", "--provider", "openAI", "--model", "gpt-4o-mini"],
@@ -450,7 +460,11 @@ def routes_and_values(r, tree):
                      ["models", "download", "s1mini", "--size", "mini"],
                      ["onboarding", "goto", "done"],
                      ["onboarding", "send", "readinessChanged"],
-                     ["onboarding", "jump"]):
+                     ["onboarding", "jump"],
+                     ["onboarding", "profile"],
+                     ["onboarding", "permissions"],
+                     ["onboarding", "fault"],
+                     ["onboarding", "fault", "meltdown"]):
             door.received.clear()
             b = FakeBoundaries({"111": exe}, door=door, lock=FakeLock(session=AGENT, status=0))
             status, document, out, _ = _run(["--worktree", tree.wt] + argv, b)
@@ -543,6 +557,9 @@ def lock_cases(r, tree):
         ["onboarding", "stop"],
         ["onboarding", "goto", "key"],
         ["onboarding", "send", "back"],
+        ["onboarding", "profile", "--ram", "8"],
+        ["onboarding", "permissions", "--mic", "denied"],
+        ["onboarding", "fault", "slow-network"],
         ["language", "set", "de"],
         ["channel", "set", "BuiltInMic", "0"],
         ["shortcut", "set", "cancel", "53", "0"],

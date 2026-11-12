@@ -51,6 +51,10 @@
       case onboardingGoto = "onboarding.goto"
       case onboardingSend = "onboarding.send"
       case onboardingStop = "onboarding.stop"
+      /// #4528 C2c.2b: DEBUG simulation (advice profile, M5 permissions, approved faults).
+      case onboardingProfile = "onboarding.profile"
+      case onboardingPermissions = "onboarding.permissions"
+      case onboardingFault = "onboarding.fault"
       case dictationStart = "dictation.start"
       case dictationStop = "dictation.stop"
       case dictationCancel = "dictation.cancel"
@@ -288,6 +292,14 @@
         return onboardingCommand(args, allowed: []) { $0.reset() }
       case .onboardingStop:
         return onboardingCommand(args, allowed: []) { $0.stop() }
+      case .onboardingProfile:
+        return onboardingCommand(args, allowed: ["ram", "os", "afm", "lang", "clear"]) {
+          $0.profile(args)
+        }
+      case .onboardingPermissions:
+        return onboardingCommand(args, allowed: ["mic", "ax", "clear"]) { $0.permissionsCommand(args) }
+      case .onboardingFault:
+        return onboardingCommand(args, allowed: ["name", "off", "clear"]) { $0.fault(args) }
       case .onboardingGoto:
         return onboardingCommand(args, allowed: ["step"]) { $0.goto(args) }
       case .onboardingSend:

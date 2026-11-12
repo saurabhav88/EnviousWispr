@@ -1,4 +1,5 @@
 #if DEBUG
+  import AppKit
   import EnviousWisprCore
   import Foundation
   import Testing
@@ -14,6 +15,9 @@
   @MainActor
   @Suite(.tags(.harnessContract))
   struct DevControlOnboardingTests {
+    // The window test reaches AppKit window code; NSApp is nil in a non-hosted run until this.
+    init() { _ = NSApplication.shared }
+
     private final class Box {
       var built = 0
     }
@@ -25,7 +29,7 @@
     ) -> (DevControlOnboarding, OnboardingWorkflowOwner, OnboardingCoordinatorTests.World) {
       let door = DevControlOnboarding(
         workflow: workflow,
-        makeSession: {
+        makeSession: { _ in
           box.built += 1
           let coordinator = world.coordinator()
           let runtime = OnboardingRuntime(

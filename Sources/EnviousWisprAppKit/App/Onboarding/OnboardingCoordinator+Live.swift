@@ -45,12 +45,8 @@ extension OnboardingCoordinator.Dependencies {
         capabilities: LanguageLockOptions.speechCapabilities)
     }
     return Self(
-      downloads: OnboardingDownloads(
-        owners: .live(
-          settings: settings, modelDelivery: owners.modelDelivery,
-          whisperSetup: owners.whisperSetup,
-          localPolish: owners.localPolish)),
-      readinessSources: .live(
+      downloads: OnboardingDownloads(owners: OnboardingLiveMapping.downloadOwners(owners)),
+      readinessSources: OnboardingLiveMapping.withFaults(.live(
         modelDelivery: owners.modelDelivery, engineCoordinator: owners.engineCoordinator,
         localPolish: owners.localPolish, appleIntelligence: appleIntelligence,
         cloudEvidence: { provider in
@@ -66,7 +62,7 @@ extension OnboardingCoordinator.Dependencies {
             owners.permissions.microphoneStatusLive == .authorized,
             owners.permissions.accessibilityGrantedLive
           )
-        }),
+        })),
       legacyState: { settings.onboardingState },
       checkpointData: { settings.onboardingCheckpointData },
       writeCheckpoint: { settings.onboardingCheckpointData = $0 },
@@ -88,7 +84,13 @@ extension OnboardingCoordinator.Dependencies {
         assert(bytes != nil, "no manifest size for \(model)")
         return bytes
       },
-      freeDiskBytes: { MacProfileReader.live.freeDiskBytes() },
+      freeDiskBytes: {
+        #if DEBUG
+          // Fault `disk-short`: one free byte, so the real preflight blocks (no file written).
+          if OnboardingDebugFaults.active.contains(.diskShort) { return 1 }
+        #endif
+        return MacProfileReader.live.freeDiskBytes()
+      },
       acquireSleepAssertion: { sleepAssertion.acquire() },
       releaseSleepAssertion: { sleepAssertion.release() },
       now: { Date() },
@@ -110,12 +112,15 @@ extension OnboardingRuntime.Inputs {
       },
       downloadProgress: { [weak coordinator] in
         guard let coordinator else { return nil }
+        #if DEBUG
+          // Fault `slow-network`: a synthetic 0.1 MB/s stream for the notice; no real transfer.
+          if OnboardingDebugFaults.active.contains(.slowNetwork) {
+            return ("simulated-slow", Int64(Date().timeIntervalSince1970 * 100_000))
+          }
+        #endif
         return OnboardingLiveMapping.downloadProgress(
           choices: coordinator.state.choices,
-          downloads: OnboardingDownloads(
-            owners: .live(
-              settings: owners.settings, modelDelivery: owners.modelDelivery,
-              whisperSetup: owners.whisperSetup, localPolish: owners.localPolish)),
+          downloads: OnboardingDownloads(owners: OnboardingLiveMapping.downloadOwners(owners)),
           bytes: { model in
             OnboardingLiveMapping.downloadBytes(
               model, parakeet: owners.modelDelivery.parakeetHandle?.modelTotalBytes,
@@ -125,10 +130,7 @@ extension OnboardingRuntime.Inputs {
       },
       downloadsFinished: { [weak coordinator] in
         guard let coordinator else { return false }
-        let downloads = OnboardingDownloads(
-          owners: .live(
-            settings: owners.settings, modelDelivery: owners.modelDelivery,
-            whisperSetup: owners.whisperSetup, localPolish: owners.localPolish))
+        let downloads = OnboardingDownloads(owners: OnboardingLiveMapping.downloadOwners(owners))
         return OnboardingLiveMapping.downloadsFinished(
           coordinator.state.choices, downloads: downloads)
       },
@@ -148,6 +150,29 @@ extension OnboardingRuntime.Inputs {
 
 /// Pure mappings from owner facts to Setup's inputs, tested directly.
 enum OnboardingLiveMapping {
+  /// The download owners every live closure uses, with any DEBUG fault applied at that boundary.
+  @MainActor
+  static func downloadOwners(_ owners: OnboardingLiveOwners) -> OnboardingDownloadOwners {
+    let live = OnboardingDownloadOwners.live(
+      settings: owners.settings, modelDelivery: owners.modelDelivery,
+      whisperSetup: owners.whisperSetup, localPolish: owners.localPolish)
+    #if DEBUG
+      return OnboardingDebugFaults.apply(to: live)
+    #else
+      return live
+    #endif
+  }
+
+  /// Readiness sources with any DEBUG fault applied at that boundary.
+  @MainActor
+  static func withFaults(_ sources: OnboardingReadinessSources) -> OnboardingReadinessSources {
+    #if DEBUG
+      return OnboardingDebugFaults.apply(to: sources)
+    #else
+      return sources
+    #endif
+  }
+
   /// Until the first off-main sample arrives the live answer is unknown, which the one mapping
   /// treats as not available; no diagnosis is inferred from the OS or chip.
   static func appleIntelligence(

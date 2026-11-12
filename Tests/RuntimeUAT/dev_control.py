@@ -345,6 +345,10 @@ S1MINI_MODEL = "s1mini"
 ONBOARDING_STEPS = ("welcome", "language", "speechPick", "speechCompare", "polishIntro",
                     "polishPick", "polishSeeAll", "downloads", "permissions", "key",
                     "gettingReady", "practice", "film")
+ONBOARDING_AFM_STATES = ("available", "turnedOff", "needsNewerMacOS", "gettingReady",
+                         "unavailable")
+ONBOARDING_FAULTS = ("download-fail", "slow-network", "disk-short", "key-invalid", "warm-fail",
+                     "polish-fail")
 ONBOARDING_EVENTS = ("next", "back", "chooseLanguage", "compareSpeech", "chooseSpeech",
                      "seeAllPolish", "choosePolish", "chooseCloud", "skipPolish", "turnPolishOn",
                      "practiceSucceeded", "skipPractice", "filmFinished", "skipFilm")
@@ -432,6 +436,20 @@ def build_parser():
     send.add_argument("--value", help="chooseLanguage auto|<code>, chooseSpeech, choosePolish id")
     send.add_argument("--provider", help="chooseCloud provider (openAI, gemini, claude)")
     send.add_argument("--model", help="chooseCloud model")
+    profile = onboarding.add_parser("profile", help="fake the Mac for advice only (DEBUG)")
+    profile.add_argument("--ram", type=int, help="memory in GiB")
+    profile.add_argument("--os", type=int, help="macOS major version")
+    profile.add_argument("--afm", choices=ONBOARDING_AFM_STATES)
+    profile.add_argument("--lang", help="the Mac's language code")
+    profile.add_argument("--clear", action="store_true")
+    perms = onboarding.add_parser("permissions", help="simulate grants: no prompts, no telemetry")
+    perms.add_argument("--mic", choices=("granted", "denied", "notDetermined"))
+    perms.add_argument("--ax", choices=("granted", "denied"))
+    perms.add_argument("--clear", action="store_true")
+    fault = onboarding.add_parser("fault", help="turn an approved Setup fault on or off")
+    fault.add_argument("name", nargs="?", choices=ONBOARDING_FAULTS)
+    fault.add_argument("--off", action="store_true")
+    fault.add_argument("--clear", action="store_true")
 
     keys = sub.add_parser("keys", help="save or clear a cloud polish API key").add_subparsers(
         dest="action", required=True, metavar="ACTION")
@@ -596,6 +614,31 @@ def route(args):
                 if getattr(args, name) is not None:
                     wire[name] = getattr(args, name)
             return "onboarding.send", wire, True
+        if args.action == "profile":
+            if args.clear:
+                return "onboarding.profile", {"clear": True}, True
+            wire = {k: v for k, v in (("ram", args.ram), ("os", args.os), ("afm", args.afm),
+                                      ("lang", args.lang)) if v is not None}
+            if not wire:
+                raise CliError("usage", "onboarding profile needs --ram, --os, --afm, --lang or --clear",
+                               EXIT_USAGE)
+            return "onboarding.profile", wire, True
+        if args.action == "permissions":
+            if args.clear:
+                return "onboarding.permissions", {"clear": True}, True
+            wire = {k: v for k, v in (("mic", args.mic), ("ax", args.ax)) if v is not None}
+            if not wire:
+                raise CliError("usage", "onboarding permissions needs --mic, --ax or --clear", EXIT_USAGE)
+            return "onboarding.permissions", wire, True
+        if args.action == "fault":
+            if args.clear:
+                return "onboarding.fault", {"clear": True}, True
+            if args.name is None:
+                raise CliError("usage", "onboarding fault needs a fault name or --clear", EXIT_USAGE)
+            wire = {"name": args.name}
+            if args.off:
+                wire["off"] = True
+            return "onboarding.fault", wire, True
     if key == ("keys", "set"):
         # The value is added by `run` from stdin, never from argv.
         return "keys.set", {"provider": KEY_PROVIDERS[args.provider]}, True

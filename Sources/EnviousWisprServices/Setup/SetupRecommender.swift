@@ -1,5 +1,6 @@
 import EnviousWisprCore
 import Foundation
+import os
 
 /// Which languages each speech engine can transcribe, handed in by the app (#4528 plan §3.2).
 ///
@@ -175,7 +176,7 @@ public enum SetupAdvice {
     capabilities: SpeechLanguageCapabilities
   ) -> SetupRecommendation {
     SetupRecommender.recommend(
-      profile: profileReader.read(appleIntelligence: appleIntelligence), rules: activeRules,
+      profile: adviceProfile(appleIntelligence: appleIntelligence), rules: activeRules,
       languageMode: languageMode, capabilities: capabilities)
   }
 
@@ -204,8 +205,58 @@ public enum SetupAdvice {
   /// The Mac's own primary language code ("fr" on a French Mac), for language defaults. Callers
   /// still apply their own supported-language check.
   public static var macLanguageCode: String? {
-    profileReader.read(appleIntelligence: .unavailable).primaryMacLanguageCode
+    adviceProfile(appleIntelligence: .unavailable).primaryMacLanguageCode
   }
+
+  /// The one profile every piece of advice reads (the DEBUG override applies here only).
+  private static func adviceProfile(appleIntelligence: AppleIntelligenceSetupState) -> MacProfile {
+    let real = profileReader.read(appleIntelligence: appleIntelligence)
+    #if DEBUG
+      return applying(debugProfile, to: real)
+    #else
+      return real
+    #endif
+  }
+
+  #if DEBUG
+    /// #4528 plan §3.9: a faked Mac for ADVICE only (the door's `onboarding profile`), so CLI UAT
+    /// can walk every recommendation branch on one Mac. It changes what Setup and Settings
+    /// recommend while set, never a setting, a download, readiness or a real availability check.
+    /// A nil field keeps the real value.
+    public struct DebugProfile: Equatable, Sendable {
+      public var memoryGiB: Int?
+      public var macOSMajor: Int?
+      public var appleIntelligence: AppleIntelligenceSetupState?
+      public var macLanguages: [String]?
+
+      public init(
+        memoryGiB: Int? = nil, macOSMajor: Int? = nil,
+        appleIntelligence: AppleIntelligenceSetupState? = nil, macLanguages: [String]? = nil
+      ) {
+        self.memoryGiB = memoryGiB
+        self.macOSMajor = macOSMajor
+        self.appleIntelligence = appleIntelligence
+        self.macLanguages = macLanguages
+      }
+    }
+
+    /// The faked profile: each set field replaces the real one; chip and free disk stay real.
+    static func applying(_ fake: DebugProfile?, to real: MacProfile) -> MacProfile {
+      guard let fake else { return real }
+      return MacProfile(
+        memoryGiB: fake.memoryGiB ?? real.memoryGiB, chipName: real.chipName,
+        macOSMajor: fake.macOSMajor ?? real.macOSMajor,
+        appleIntelligence: fake.appleIntelligence ?? real.appleIntelligence,
+        macLanguages: fake.macLanguages ?? real.macLanguages, freeDiskBytes: real.freeDiskBytes)
+    }
+
+    private static let debugProfileLock = OSAllocatedUnfairLock<DebugProfile?>(initialState: nil)
+
+    public static var debugProfile: DebugProfile? {
+      get { debugProfileLock.withLock { $0 } }
+      set { debugProfileLock.withLock { $0 = newValue } }
+    }
+  #endif
 
   /// The EG-1 size a polish-table pick names. Validated polish tables pick only EG-1 sizes
   /// (`SetupRules.polishTablePicks`), so a pick without a size is a broken rules invariant.
