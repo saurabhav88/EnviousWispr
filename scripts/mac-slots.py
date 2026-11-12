@@ -8,8 +8,9 @@ CI state comes from the lock itself (a separate non-blocking shared-lock probe o
 the slot file), never from a holder card: a held slot with no live card is
 "held_unknown" (an older runner). Missing slot files read as free; nothing is
 created, written or cached here. Local app testing (UAT) is read from the
-existing dev-app lock card without involving its owner; remote app testing is
-#4510 and shows as deferred. Each backup Mac's job state comes from its remote
+existing dev-app lock card without involving its owner; a backup Mac's app
+testing (#4510) is read the same way from the card scripts/remote-dev-app.py
+keeps for it on THIS Mac (dev-app-lock-hosts/<host>/holder.json). Each backup Mac's job state comes from its remote
 supervisor over SSH (`remote-job.py status`), even when this Mac holds no slot
 for it; a Mac that does not answer shows as unreachable. Exit 2 when the host
 list is invalid.
@@ -27,6 +28,8 @@ import time
 HERE = Path(__file__).resolve().parent
 # OS identity, not HOME. Tests rewrite this one literal in a private COPY.
 UAT_CARD = Path(pwd.getpwuid(os.getuid()).pw_dir) / "Library/Caches/EnviousWispr/dev-app-lock/holder.json"
+# Backup-Mac app-testing holds, one folder per host name (scripts/remote-dev-app.py HOST_LOCKS).
+UAT_HOST_CARDS = Path(pwd.getpwuid(os.getuid()).pw_dir) / "Library/Caches/EnviousWispr/dev-app-lock-hosts"
 
 
 def _module(name, path):
@@ -55,12 +58,14 @@ def ci_state(queue, host):
         os.close(fd)
 
 
-def uat_local(lock):
-    """The local dev app's effective state, using the unchanged owner's own read
+def uat_hold(lock, card_path):
+    """One dev-app slot's effective state, using the unchanged owner's own read
     helpers (holder liveness and the 10-minute founder-wait rule) without taking
-    its mutex or creating its folder. Anything it cannot decide is "unknown"."""
+    its mutex or creating its folder. Anything it cannot decide is "unknown".
+    The owner reads wait events from its LOCK_DIR, so it points at the card's
+    folder for the read, as scripts/remote-dev-app.py does for its holds."""
     try:
-        card = json.loads(UAT_CARD.read_text())
+        card = json.loads(card_path.read_text())
     except FileNotFoundError:
         return {"state": "free", "holder": None}
     except (OSError, ValueError):
@@ -68,11 +73,17 @@ def uat_local(lock):
     if not isinstance(card, dict) or type(card.get("pid")) is not int or not isinstance(card.get("started"), str):
         return {"state": "unknown", "holder": None}
     now = time.time()
+    saved = getattr(lock, "LOCK_DIR", None)
     try:
+        if saved is not None:
+            lock.LOCK_DIR = str(card_path.parent)
         alive = lock.holder_alive(card)
         expired = alive and lock.wait_expired(card, now)
     except Exception:  # the owner's Undecided or a malformed field: never guess
         return {"state": "unknown", "holder": None}
+    finally:
+        if saved is not None:
+            lock.LOCK_DIR = saved
     if not alive or expired:
         return {"state": "free", "holder": None}
     return {"state": "held",
@@ -119,11 +130,10 @@ def status(hosts_module, queue, lock, remote_job_fn=None):
                           "elapsed_s": int(now - card.get("claimed_at", now)),
                           "last_output_age_s": None if last is None else int(now - last)}
             entry["slots"]["ci"] = {"state": state, "holder": holder}
-        if host["ssh"] is None:
-            if "uat" in host["kinds"]:
-                entry["slots"]["uat"] = uat_local(lock)
-        else:
-            entry["slots"]["uat"] = {"state": "deferred (#4510)", "holder": None}
+        if "uat" in host["kinds"]:
+            card = UAT_CARD if host["ssh"] is None else UAT_HOST_CARDS / host["name"] / "holder.json"
+            entry["slots"]["uat"] = uat_hold(lock, card)
+        if host["ssh"] is not None:
             entry["remote_job"] = remote_job_fn(hosts_module, host) if remote_job_fn else "not queried"
         out["hosts"].append(entry)
     out["hosts"].extend(orphan_hosts(queue, {hosts_module.slot_name(h) for h in hosts}))
@@ -169,7 +179,7 @@ def text(report):
 def self_test():
     import subprocess
     import tempfile
-    global UAT_CARD
+    global UAT_CARD, UAT_HOST_CARDS
     queue_src = (HERE / "local-ci-queue.py").read_text()
     definition = 'LOCK_PATH = Path(pwd.getpwuid(os.getuid()).pw_dir) / "Library/Caches/EnviousWispr/local-ci/runner.lock"'
     hosts_src = (HERE / "lib/mac_hosts.py").read_text()
@@ -185,6 +195,7 @@ def self_test():
         (root / "queue.py").write_text(queue_src.replace(definition, f"LOCK_PATH = Path({str(lock)!r})"))
         (root / "hosts.py").write_text(hosts_src.replace(config_definition, f"CONFIG_PATH = Path({str(config)!r})"))
         UAT_CARD = root / "dev-app-lock/holder.json"
+        UAT_HOST_CARDS = root / "dev-app-lock-hosts"
         queue = _module("queue_copy", root / "queue.py")
         hosts = _module("hosts_copy", root / "hosts.py")
         config.write_text(json.dumps({"schema": 1, "hosts": [
@@ -228,6 +239,42 @@ def self_test():
         checks += 1
         if status(hosts, queue, Ended)["hosts"][0]["slots"]["uat"]["state"] != "free":
             failures.append("an ended app-testing hold reads as free")
+        # A backup Mac with kind uat reads the hold remote-dev-app.py keeps for it
+        # here: free with no card, the holder's label while its session lives,
+        # with the owner pointed at that host's folder for the read.
+        config.write_text(json.dumps({"schema": 1, "hosts": [
+            {"name": "main", "ssh": None, "order": 0, "kinds": ["ci", "uat"], "ci_workers": 4, "audio": "real"},
+            {"name": "spare", "ssh": "spare-host", "order": 1, "kinds": ["ci", "uat"], "ci_workers": 2,
+             "audio": "blackhole", "root": "/x", "requires_mount": None, "repo_url": "https://e.invalid"}]}))
+
+        class Alive:
+            LOCK_DIR = "unchanged"
+            seen = []
+
+            @staticmethod
+            def holder_alive(_card):
+                Alive.seen.append(Alive.LOCK_DIR)
+                return True
+
+            @staticmethod
+            def wait_expired(_card, _now):
+                return False
+
+        checks += 1
+        if status(hosts, queue, Alive)["hosts"][1]["slots"]["uat"]["state"] != "free":
+            failures.append("a backup Mac with no app-testing card reads as free")
+        host_card = UAT_HOST_CARDS / "spare/holder.json"
+        host_card.parent.mkdir(parents=True)
+        host_card.write_text(json.dumps({"pid": 4343, "started": "y", "kind": "claude", "label": "uat-spare",
+                                         "claimed_at": time.time() - 180}))
+        uat = status(hosts, queue, Alive)["hosts"][1]["slots"]["uat"]
+        checks += 1
+        line = text({"hosts": [{"display": "spare", "slots": {"uat": uat}}]})
+        if uat["state"] != "held" or line != "spare: UAT: uat-spare 3m":
+            failures.append("a live backup-Mac app-testing hold shows its label and minutes")
+        checks += 1
+        if Alive.seen[-1] != str(host_card.parent) or Alive.LOCK_DIR != "unchanged":
+            failures.append("the owner reads a backup Mac's hold from that host's folder, then is restored")
     for label in failures:
         print(f"FAIL: {label}")
     print(f"mac-slots self-test: {checks - len(failures)} of {checks} checks passed")
