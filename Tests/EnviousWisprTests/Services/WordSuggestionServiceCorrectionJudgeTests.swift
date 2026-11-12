@@ -282,9 +282,14 @@ struct WordSuggestionServiceCorrectionJudgeTests {
   /// Mac where Apple Intelligence is on. Skipped elsewhere (the hosted runner
   /// has no model). Asserts the contract shape and the identity, never the
   /// model's judgement, which the eval scores.
+  ///
+  /// #4517: the live Apple Intelligence model is shared OS state; on a busy Mac (a dev build
+  /// holding the model) it timed out and failed the everyday lane. It runs only in
+  /// `scripts/xcode-test.sh --real-boundary`.
   @Test(
     "the three §3.3 smoke classes run through the real model on this Mac",
-    .enabled(if: WordSuggestionService().isAvailable))
+    .enabled(if: WordSuggestionService().isAvailable),
+    .tags(.realBoundary), .realBoundaryRun)
   func realModelSmoke() async throws {
     let service = WordSuggestionService()
     let cases: [(String, String, String)] = [
