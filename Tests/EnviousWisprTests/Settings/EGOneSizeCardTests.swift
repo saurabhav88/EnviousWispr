@@ -407,7 +407,51 @@ struct EGOneSizeCardTests {
 
   // A user would read the wrong memory for their Mac.
   @Test func thisMacNamesTheMemory() {
-    #expect(EGOneSizeCardCopy.thisMac(physicalMemoryBytes: 64 << 30).contains("64"))
+    #expect(
+      EGOneSizeCardCopy.thisMac(physicalMemoryBytes: 64 << 30, usedBytes: nil)
+        == "This Mac: 64 GB memory")
+  }
+
+  // #4525: a user would read a memory figure in a different unit from Activity Monitor.
+  @Test func memoryFiguresAreBinaryGigabytesWithTheRegionsDecimalMark() {
+    let peak: UInt64 = 5_955_293_528  // EG-1's measured peak in eg1-size-facts.json
+    #expect(EGOneSizeCardCopy.memoryGigabytes(peak, locale: Locale(identifier: "en_US")) == "5.5")
+    #expect(EGOneSizeCardCopy.memoryGigabytes(peak, locale: Locale(identifier: "de_DE")) == "5,5")
+  }
+
+  // #4525: a user would not see how much memory the Mac uses now.
+  @Test func thisMacAddsTheMemoryInUseWhenKnown() {
+    let used = UInt64(48.1 * Double(1 << 30))
+    let line = EGOneSizeCardCopy.thisMac(physicalMemoryBytes: 64 << 30, usedBytes: used)
+    #expect(line.hasPrefix("This Mac: 64 GB memory"))
+    #expect(line.contains(EGOneSizeCardCopy.memoryGigabytes(used)))
+    #expect(line.hasSuffix("GB in use"))
+  }
+
+  // #4525: a user would see the wrong note under the memory figure, or none where one is due.
+  @Test func memoryNoteNamesTheWarningOrTheRunningState() {
+    typealias Copy = EGOneSizeCardCopy
+    #expect(Copy.memoryNote(Self.memory(peak: 6, mac: 8, used: nil)) == Copy.tightOnThisMac)
+    #expect(Copy.memoryNote(Self.memory(peak: 10, mac: 100, used: 81)) == Copy.wontFitRightNow)
+    #expect(Copy.memoryNote(Self.memory(peak: 10, mac: 100, used: 20)) == nil)
+    #expect(
+      Copy.memoryNote(Self.memory(peak: 10, mac: 100, used: 95, activity: .starting))
+        == Copy.startingIncludedInUse)
+    #expect(
+      Copy.memoryNote(Self.memory(peak: 10, mac: 100, used: 95, activity: .ready))
+        == Copy.runningIncludedInUse)
+    // No live figure: a running size says nothing extra (today's card).
+    #expect(Copy.memoryNote(Self.memory(peak: 1, mac: 100, used: nil, activity: .ready)) == nil)
+  }
+
+  // #4525: a VoiceOver user would not hear the size's need and the Mac's use as separate facts.
+  @Test func voiceOverReadsTheNeedAndTheUseSeparately() {
+    let gib: UInt64 = 1 << 30
+    let value = EGOneSizeCardCopy.memoryAccessibilityValue(
+      Self.memory(peak: Int64(6 * gib), mac: 64 * gib, used: 48 * gib))
+    let need = EGOneSizeCardCopy.memoryGigabytes(6 * gib)
+    let used = EGOneSizeCardCopy.memoryGigabytes(48 * gib)
+    #expect(value == "Needs about \(need) GB. Mac is using \(used) GB of 64 GB now.")
   }
 
   // A user would not be able to tell the size in use from one that is merely downloaded.

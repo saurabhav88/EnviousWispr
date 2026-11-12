@@ -71,9 +71,6 @@ struct EGOneSizeCard: Equatable, Identifiable, Sendable {
       whole == 0 ? 0 : min(1, Double(part) / Double(whole))
     }
 
-    // Kept for the view until #4525 chunk 3 redraws the bar; removed there.
-    var isTight: Bool { warning != nil }
-    var fraction: Double { peakFraction }
   }
 
   let size: EGOneSize

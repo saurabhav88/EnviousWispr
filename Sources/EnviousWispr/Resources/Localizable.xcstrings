@@ -12730,6 +12730,23 @@
         }
       }
     },
+    "Mac is using %@ GB of %lld GB now." : {
+      "comment" : "AI Polish, EG-1 size card, VoiceOver: memory in use now (%1$@, such as 48.1) of the Mac's memory (%2$lld GB).",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Mac is using %1$@ GB of %2$lld GB now."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Mac belegt gerade %1$@ GB von %2$lld GB Arbeitsspeicher."
+          }
+        }
+      }
+    },
     "Macedonian" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -13590,6 +13607,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "API-Schlüssel erforderlich"
+          }
+        }
+      }
+    },
+    "Needs about %@ GB." : {
+      "comment" : "AI Polish, EG-1 size card, VoiceOver: the memory this size needs, such as 5.5.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Benötigt etwa %@ GB."
           }
         }
       }
@@ -18175,6 +18203,17 @@
         }
       }
     },
+    "Running now, included in use" : {
+      "comment" : "AI Polish, EG-1 size card: this size is running, so its memory is already part of the memory in use.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Läuft · bereits mitgezählt"
+          }
+        }
+      }
+    },
     "Running streaming ASR..." : {
       "comment" : "Settings > Diagnostics, speed test: progress. ASR means speech recognition.",
       "localizations" : {
@@ -20229,6 +20268,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Modell wird gestartet. Das dauert einige Sekunden."
+          }
+        }
+      }
+    },
+    "Starting, included in use" : {
+      "comment" : "AI Polish, EG-1 size card: this size is starting, so its memory is already part of the memory in use.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird gestartet · bereits mitgezählt"
           }
         }
       }
@@ -22401,6 +22451,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dieser Mac: %lld GB Arbeitsspeicher"
+          }
+        }
+      }
+    },
+    "This Mac: %lld GB memory · %@ GB in use" : {
+      "comment" : "AI Polish, above the EG-1 size cards. %1$lld is the Mac's installed memory in GB; %2$@ is the memory in use right now, such as 48.1.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "This Mac: %1$lld GB memory · %2$@ GB in use"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Mac: %1$lld GB Arbeitsspeicher · %2$@ GB belegt"
           }
         }
       }
@@ -25039,6 +25106,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wenn dies eingeschaltet ist, transkribiert EnviousWispr während des Sprechens überlappende Audioabschnitte und fügt sie zusammen. Wenn zwei Abschnitte dieselbe Stelle unterschiedlich erkennen, lässt sich nicht sicher sagen, welche Fassung stimmt. Je länger du sprichst, desto mehr Übergänge gibt es und desto größer wird das Problem."
+          }
+        }
+      }
+    },
+    "Won't fit right now" : {
+      "comment" : "AI Polish, EG-1 size card: the memory in use now plus this size is more than 90% of the Mac's memory.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reicht gerade nicht"
           }
         }
       }
