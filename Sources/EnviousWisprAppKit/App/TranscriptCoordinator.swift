@@ -103,6 +103,9 @@ final class TranscriptCoordinator {
   private(set) var expiryPulse: Int = 0
 
   @ObservationIgnored private let transactionExecutor: HistoryTransactionExecutor
+  /// #3147: saved dictation recordings, changed only through this coordinator's command queue.
+  /// Nil when no archive was given (tests that do not exercise recordings).
+  @ObservationIgnored let recordings: DictationRecordings?
   @ObservationIgnored private let diskReconciler: HistoryDiskReconciler
   @ObservationIgnored private let meetingDocuments = HistoryMeetingDocumentCache()
 
@@ -714,10 +717,26 @@ final class TranscriptCoordinator {
     recordEscapeRecoveryKeep: (@MainActor (_ outcome: String, _ takeID: String?) -> Void)? = nil,
     emitRenameTelemetry: @escaping (_ outcome: TelemetryService.FileImportRenameOutcome) -> Void =
       { _ in },
-    emitTurnsDisplayedTelemetry: @escaping () -> Void = {}
+    emitTurnsDisplayedTelemetry: @escaping () -> Void = {},
+    recordingArchive: RecordingArchive? = nil,
+    encodeRecording: DictationRecordings.Encode? = nil
   ) {
     let transactionExecutor = HistoryTransactionExecutor(store: store)
     self.transactionExecutor = transactionExecutor
+    self.recordings = recordingArchive.map { archive in
+      let exists: @MainActor (UUID) async throws -> Bool = {
+        try await transactionExecutor.readRow(id: $0) != nil
+      }
+      let rows: @MainActor () async throws -> Set<UUID>? = { try await store.permanentRowIDs() }
+      return encodeRecording.map {
+        DictationRecordings(
+          archive: archive, executor: transactionExecutor, permanentRowExists: exists,
+          permanentRowIDs: rows, encode: $0)
+      }
+        ?? DictationRecordings(
+          archive: archive, executor: transactionExecutor, permanentRowExists: exists,
+          permanentRowIDs: rows)
+    }
     self.diskReconciler = HistoryDiskReconciler(
       store: store, transactionExecutor: transactionExecutor)
     self.pendingPulseInterval = pendingPulseInterval
@@ -1708,8 +1727,16 @@ final class TranscriptCoordinator {
   /// absent from History and confirmed absent from both folders is `alreadyAbsent`, and
   /// changes nothing on screen.
   private func performRemoval(_ id: UUID) async throws -> Removal {
-    let listed = transcripts.contains { $0.id == id }
+    let known = transcripts.first { $0.id == id }
+    let listed = known != nil
+    // #3147: meetings and imports never have a dictation recording, so their removal never
+    // depends on the dictation archive. Decided from the row before its text goes.
+    let mayHaveRecording = known.map { $0.meetingID == nil && !$0.isImported } ?? true
     let existed = try await transactionExecutor.remove(id: id)
+    // #3147: a dictation's recording goes with it, also when the text was already gone (a
+    // leftover). A failure is reported, never hidden behind the text's removal; launch
+    // reconciliation removes the leftover later.
+    if mayHaveRecording { await forgetRecording(of: id) }
     guard listed || existed else { return .alreadyAbsent }
     // #2807: the displayed set BEFORE the removal, so the neighbour is the row the user
     // saw beside the one they deleted.
@@ -1759,6 +1786,18 @@ final class TranscriptCoordinator {
     }
     do {
       try transactionExecutor.deleteAll()
+      // #3147: every recording goes with the rows. A failure is reported as a failed Delete All
+      // after the text is gone; launch reconciliation removes what is left.
+      do {
+        try await recordings?.removeAllInCommand()
+      } catch {
+        actionFailure = .deleteAll
+        Task {
+          await AppLogger.shared.log(
+            "Delete All left dictation recordings: \(type(of: error))",
+            level: .info, category: "TranscriptCoordinator")
+        }
+      }
       let removedIDs = transcripts.map(\.id)
       transcripts.removeAll()
       removedRowIDs.formUnion(removedIDs)
@@ -1778,6 +1817,21 @@ final class TranscriptCoordinator {
           "Failed to delete all transcripts: \(error)",
           level: .info, category: "TranscriptCoordinator"
         )
+      }
+    }
+  }
+
+  /// Inside a removal command: withdraws and deletes the row's recording, reporting a failure.
+  private func forgetRecording(of id: UUID) async {
+    guard let recordings else { return }
+    do {
+      try await recordings.forgetInCommand(rowID: id)
+    } catch {
+      actionFailure = .delete
+      Task {
+        await AppLogger.shared.log(
+          "Deleted transcript left its recording: \(type(of: error))",
+          level: .info, category: "TranscriptCoordinator")
       }
     }
   }

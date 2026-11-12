@@ -98,7 +98,7 @@ public actor RecordingArchive {
     public var totalBytes: Int64 { committedBytes + temporaryBytes }
   }
 
-  public let directory: URL
+  public nonisolated let directory: URL
 
   /// The standard location: `<app support>/recordings/dictations/`.
   public init() {
@@ -250,6 +250,32 @@ public actor RecordingArchive {
     try writePins(pins)
   }
 
+  /// Removes one encode in progress that will not be published (its row or audio was deleted
+  /// meanwhile, or encoding failed). Only a `.partial` file directly inside this archive is
+  /// removed; anything else is left alone.
+  public func discardPartial(_ url: URL) throws {
+    guard url.deletingLastPathComponent().standardizedFileURL == directory.standardizedFileURL,
+      url.lastPathComponent.hasSuffix(".\(Self.partialExtension)")
+    else { return }
+    if FileManager.default.fileExists(atPath: url.path) {
+      try FileManager.default.removeItem(at: url)
+    }
+  }
+
+  /// Every text row was deleted (History's Delete All): removes every recording, timing file,
+  /// Keep mark and recorded reason, leaving an empty archive. Recordings go first; metadata is
+  /// cleared only after all of them are gone.
+  public func removeEverything() throws {
+    for id in try recordedRowIDs().sorted(by: { $0.uuidString < $1.uuidString }) {
+      try removeFiles(of: id)
+    }
+    let fm = FileManager.default
+    for name in [Self.pinsFileName, Self.absencesFileName] {
+      let url = directory.appendingPathComponent(name)
+      if fm.fileExists(atPath: url.path) { try fm.removeItem(at: url) }
+    }
+  }
+
   /// Removes encodes a previous run left behind. Call once at launch, before any encode starts:
   /// it removes every `.partial` file in the archive, including one being written.
   @discardableResult
@@ -298,6 +324,24 @@ public actor RecordingArchive {
       if let id = UUID(uuidString: String(name.dropLast(Self.audioExtension.count + 1))) {
         ids.insert(id)
       }
+    }
+    return ids
+  }
+
+  /// Every row that has a recording or a leftover timing file (a removal that stopped halfway),
+  /// for reconciliation against the text rows. Throws when the folder cannot be listed.
+  public func recordedRowIDs() throws -> Set<UUID> {
+    var ids = Set<UUID>()
+    for name in try listing() {
+      let stem: Substring
+      if name.hasSuffix(".\(Self.audioExtension)") {
+        stem = name.dropLast(Self.audioExtension.count + 1)
+      } else if name.hasSuffix(Self.timingSuffix) {
+        stem = name.dropLast(Self.timingSuffix.count)
+      } else {
+        continue
+      }
+      if let id = UUID(uuidString: String(stem)) { ids.insert(id) }
     }
     return ids
   }

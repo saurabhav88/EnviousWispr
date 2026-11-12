@@ -428,7 +428,12 @@ package final class WisprBootstrapper {
       },
       emitTurnsDisplayedTelemetry: {
         TelemetryService.shared.trackFileImportTurnsDisplayed(screen: .history)
-      })
+      },
+      // #3147: the one dictation recording archive.
+      recordingArchive: RecordingArchive())
+    // #3147: interrupted encodes and orphaned recordings are cleaned once, before any new
+    // recording is admitted.
+    transcriptCoordinator.recordings?.start()
 
     // #832/#913 PR8: app-owned output-safety classifier holder. Created before
     // the polish service + both kernel drivers so all three receive the same

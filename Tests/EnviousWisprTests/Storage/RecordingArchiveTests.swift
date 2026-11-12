@@ -280,6 +280,26 @@ struct RecordingArchiveTests {
     await #expect(throws: RecordingArchive.ArchiveError.unmeasurable) { try await archive.usage() }
   }
 
+  @Test("discarding an encode removes only that partial file inside the archive")
+  func discardPartialIsNarrow() async throws {
+    let dir = folder()
+    let archive = RecordingArchive(directory: dir)
+    let row = UUID()
+    try await archive.store(rowID: row, fileURL: try await finishedEncode(archive, rowID: row), timing: nil)
+    let partial = try await finishedEncode(archive, rowID: row)
+    let outside = TestTemporaryDirectory.url.appendingPathComponent("\(UUID().uuidString).m4a.partial")
+    #expect(FileManager.default.createFile(atPath: outside.path, contents: Data()))
+    defer { try? FileManager.default.removeItem(at: outside) }
+
+    try await archive.discardPartial(partial)
+    try await archive.discardPartial(outside)
+    try await archive.discardPartial(try #require(await archive.url(for: row)))
+
+    #expect(!FileManager.default.fileExists(atPath: partial.path))
+    #expect(FileManager.default.fileExists(atPath: outside.path))
+    #expect(await archive.url(for: row) != nil)
+  }
+
   @Test("launch cleanup removes interrupted encodes and keeps finished recordings")
   func removesInterruptedPartials() async throws {
     let archive = RecordingArchive(directory: folder())
