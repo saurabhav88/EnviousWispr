@@ -1751,6 +1751,10 @@ package final class WisprBootstrapper {
       driver.onDictationEndedForRecovery = { [weak recoveryCoordinator] in
         recoveryCoordinator?.requestRecoveryRecheck()
       }
+      // #4537: any settled warm-up republishes engine status (a launch preload never poked it).
+      driver.onEngineWarmSettled = { [weak engineCoordinator] in
+        engineCoordinator?.poke(.driverStateChanged)
+      }
     }
     // Row 7: Parakeet's idle-unload choke point. #1741 Chunk 3 — `asrManager`
     // (whichever concrete type) already received the shared `engineMutationScope`

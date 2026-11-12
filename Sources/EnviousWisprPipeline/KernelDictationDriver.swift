@@ -430,6 +430,13 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   @ObservationIgnored
   public var onDictationEndedForRecovery: (@MainActor () -> Void)?
 
+  /// #4537: fired once whenever an `ensureEngineWarm` call returns, whoever started it (launch
+  /// preload, cold press, Setup's warm-up, explicit retry, the engine coordinator's own warm).
+  /// The composition root binds it to the engine coordinator's status refresh: a warm-up the
+  /// coordinator did not start otherwise settles without republishing its status snapshot.
+  @ObservationIgnored
+  public var onEngineWarmSettled: (@MainActor () -> Void)?
+
   /// #1707 Phase 3 (§3.2) / #1741 Chunk 9 — the shared `EngineMutationScope`
   /// constructed once by the composition root, injected exactly like
   /// `onStateChange` above. Guards this driver's own `ensureEngineWarm(_:)`
@@ -593,6 +600,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   }
 
   public func ensureEngineWarm(reason: EngineWarmupReason) async -> EngineWarmupOutcome {
+    defer { onEngineWarmSettled?() }
     let engine = adapter.engineIdentity.rawValue
     if adapter.readiness == .ready {
       if reason == .launch {

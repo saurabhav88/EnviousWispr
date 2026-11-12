@@ -612,6 +612,25 @@ import Testing
     #expect(h.adapter.readiness != .ready)
   }
 
+  @Test("#4537: every ensureEngineWarm exit fires the settled signal once, after readiness is final")
+  func ensureEngineWarmSignalsSettledOnEveryExit() async throws {
+    struct BoomError: Error {}
+    let cases: [(String, Harness, Bool)] = [
+      ("success", makeDriver(), false),
+      ("failure", makeDriver(behavior: .failLoad(BoomError())), false),
+      ("cancel", makeDriver(behavior: .failLoad(ASRLoadCancelledError())), false),
+      ("already ready", makeDriver(), true),
+    ]
+    for (label, h, prewarm) in cases {
+      if prewarm { try await h.adapter.warmUp(modelReceipt: nil) }
+      var settled: [ASREngineReadiness] = []
+      h.driver.onEngineWarmSettled = { settled.append(h.adapter.readiness) }
+      _ = await h.driver.ensureEngineWarm(reason: .launch)
+      #expect(settled.count == 1, "\(label): fired \(settled.count) times")
+      #expect(settled.first != .warming, "\(label): fired while the load was still in flight")
+    }
+  }
+
   // MARK: #1388 — terminal classification (user Cancel vs guard verdict vs failure)
 
   @Test("#1388: the cancellation error maps to .cancelled — never .failed")
