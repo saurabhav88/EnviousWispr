@@ -6,6 +6,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprASR
+import EnviousWisprAudio
 @testable import EnviousWisprTranscribeCpp
 
 /// #3147 P1-0: can History keep a compressed copy of every dictation and meeting without
@@ -24,8 +25,8 @@ private enum SpeechCodecFixture {
     .deletingLastPathComponent()  // Tests
     .deletingLastPathComponent()  // repo root
 
-  static let dictationBitRate = 32_000
-  static let meetingBitRate = 48_000
+  static let dictationBitRate = SpeechAudioEncoder.Purpose.dictation.bitRate
+  static let meetingBitRate = SpeechAudioEncoder.Purpose.meeting.bitRate
 
   /// Plan §3a acceptance targets, in decimal MB per hour of audio.
   static let dictationMBPerHourLimit = 16.0
@@ -140,35 +141,15 @@ private enum SpeechCodecFixture {
     let fileFrames: AVAudioFramePosition
   }
 
-  /// Test-local stand-in for the future SpeechAudioEncoder (Chunk 2 binds these tests to it).
-  /// The writer lives only inside the `do` scope, so it is finalized before the file is reopened.
+  /// The production encoder (#3147 Chunk 2), so these measurements describe what ships. It
+  /// verifies the decoded length itself; the file is reopened here to record what it wrote.
   static func encode(_ samples: [Float], bitRate: Int, to url: URL) throws -> Encoded {
-    let processing = try #require(
-      AVAudioFormat(
-        commonFormat: .pcmFormatFloat32, sampleRate: 16_000, channels: 1, interleaved: false))
-    let buffer = try #require(
-      AVAudioPCMBuffer(pcmFormat: processing, frameCapacity: AVAudioFrameCount(samples.count)))
-    buffer.frameLength = AVAudioFrameCount(samples.count)
-    samples.withUnsafeBufferPointer { source in
-      buffer.floatChannelData![0].update(from: source.baseAddress!, count: samples.count)
-    }
-    do {
-      let writer = try AVAudioFile(
-        forWriting: url,
-        settings: [
-          AVFormatIDKey: kAudioFormatMPEG4AAC,
-          AVSampleRateKey: 16_000,
-          AVNumberOfChannelsKey: 1,
-          AVEncoderBitRateKey: bitRate,
-        ],
-        commonFormat: .pcmFormatFloat32, interleaved: false)
-      try writer.write(from: buffer)
-    }
+    let purpose: SpeechAudioEncoder.Purpose = bitRate == dictationBitRate ? .dictation : .meeting
+    try #require(purpose.bitRate == bitRate, "no production purpose encodes at \(bitRate) bps")
+    let output = try SpeechAudioEncoder.encode(samples: samples, purpose: purpose, to: url)
     let reader = try AVAudioFile(forReading: url)
-    let bytes = try #require(
-      (try FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.intValue)
     return Encoded(
-      url: url, bytes: bytes,
+      url: url, bytes: Int(output.bytes),
       formatID: reader.fileFormat.streamDescription.pointee.mFormatID,
       sampleRate: reader.fileFormat.sampleRate,
       channels: reader.fileFormat.channelCount,
