@@ -1,0 +1,1 @@
+{"language":"hr","title":"zauzeti prostor","words":["veličina snimki"],"phrases":["koliko prostora zauzimaju snimke","ukupna veličina snimki"]}

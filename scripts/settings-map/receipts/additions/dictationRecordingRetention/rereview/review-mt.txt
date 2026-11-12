@@ -1,0 +1,9 @@
+{
+  "language": "mt",
+  "title": "żomm ir-reġistrazzjonijiet tad-dettatura",
+  "words": [],
+  "phrases": [
+    "kemm idumu jinżammu r-reġistrazzjonijiet tad-dettatura",
+    "ħassar awtomatikament ir-reġistrazzjonijiet tad-dettatura wara 7 ijiem"
+  ]
+}

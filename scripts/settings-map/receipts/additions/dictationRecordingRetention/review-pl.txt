@@ -1,0 +1,12 @@
+{
+  "language": "pl",
+  "title": "czas przechowywania nagrań dyktowania",
+  "words": [
+    "okres przechowywania",
+    "automatyczne usuwanie"
+  ],
+  "phrases": [
+    "jak długo przechowywać nagrania dyktowania",
+    "automatycznie usuwaj stare nagrania dyktowania i zachowuj tekst"
+  ]
+}

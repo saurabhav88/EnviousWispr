@@ -1,0 +1,1 @@
+{"language":"ro","title":"la depășirea limitei de stocare","words":["ștergere automată audio"],"phrases":["anunță-mă când înregistrările dictărilor depășesc limita de spațiu","șterge automat cele mai vechi înregistrări ale dictărilor când se depășește limita"]}

@@ -1,0 +1,1 @@
+{"language":"pt","title":"limiar de aviso de armazenamento","words":["alerta de armazenamento","aviso de espaço"],"phrases":["avisar quando as gravações ocuparem muito espaço","escolher a partir de quantos GB de gravações receber um aviso"]}

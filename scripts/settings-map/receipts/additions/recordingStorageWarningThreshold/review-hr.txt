@@ -1,0 +1,1 @@
+{"language":"hr","title":"prag upozorenja o zauzeću prostora","words":["prag upozorenja","upozorenje o prostoru"],"phrases":["upozori me kad snimke zauzmu više od 2 GB","isključi upozorenje o zauzeću prostora"]}

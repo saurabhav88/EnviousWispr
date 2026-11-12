@@ -1,0 +1,12 @@
+{
+  "language": "fi",
+  "title": "sanelutallenteiden säilytysaika",
+  "words": [
+    "säilytysaika",
+    "sanelutallenteet"
+  ],
+  "phrases": [
+    "kuinka kauan sanelutallenteet säilyvät",
+    "poista vanhat sanelutallenteet automaattisesti"
+  ]
+}

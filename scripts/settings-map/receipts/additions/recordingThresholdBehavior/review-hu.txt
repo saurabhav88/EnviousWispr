@@ -1,0 +1,11 @@
+{
+  "language": "hu",
+  "title": "a tárhelykorlát túllépésekor",
+  "words": [
+    "automatikus törlés"
+  ],
+  "phrases": [
+    "csak figyelmeztessen, ha a diktálási felvételek túllépik a tárhelykorlátot",
+    "a legrégebbi diktálási felvételek automatikus törlése a korlát túllépésekor"
+  ]
+}

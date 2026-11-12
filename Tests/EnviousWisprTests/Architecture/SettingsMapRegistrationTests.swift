@@ -124,7 +124,8 @@ struct SettingsMapRegistrationTests {
     ".recordingChime", ".selfLearningDictionary", ".selfLearningDictionaryLearnMore",
     // #3975: the Forget learning memory button.
     ".selfLearningDictionaryForgetMemory",
-    ".sendCrashReportsRestart", ".snippetKeyword", ".snippets", ".snippetsAdd", ".snippetsAddFirst",
+    ".sendCrashReportsRestart", ".deleteAllDictationRecordings", ".deleteAllMeetingAudio",
+    ".snippetKeyword", ".snippets", ".snippetsAdd", ".snippetsAddFirst",
     ".snippetsClearSearch", ".snippetsExport", ".snippetsImport", ".snippetsSearch",
     ".transcribeFileSteps",
     ".transcriptionEngineRecheckFast", ".whatWeCollectSeeDetails", ".whisperModelCancelDownload",

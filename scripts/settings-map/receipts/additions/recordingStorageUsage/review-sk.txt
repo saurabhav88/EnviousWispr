@@ -1,0 +1,11 @@
+{
+  "language": "sk",
+  "title": "využité miesto na disku",
+  "words": [
+    "veľkosť nahrávok"
+  ],
+  "phrases": [
+    "koľko miesta zaberajú nahrávky diktovania",
+    "koľko miesta zaberá zvuk zo stretnutí"
+  ]
+}

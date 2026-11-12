@@ -557,12 +557,13 @@ struct SettingsDefaultsRoutingTests {
   func recordingRetentionDefaults() {
     let suite = Self.freshSuite()
     let settings = SettingsManager(defaults: suite)
+    #expect(settings.saveDictationRecordings, "D1: new dictations are recorded")
     #expect(settings.dictationRecordingRetention == .forever, "D2: no automatic seven-day removal")
     #expect(settings.meetingRecordingRetention == .forever)
     #expect(settings.recordingStorageWarningThreshold == .gb2)
     #expect(settings.recordingThresholdBehavior == .ask, "D3: past the threshold, only ask")
     for key in [
-      "dictationRecordingRetention", "meetingRecordingRetention",
+      "saveDictationRecordings", "dictationRecordingRetention", "meetingRecordingRetention",
       "recordingStorageWarningThreshold", "recordingThresholdBehavior",
     ] {
       #expect(suite.object(forKey: key) == nil, "\(key) is never seeded")
@@ -588,11 +589,13 @@ struct SettingsDefaultsRoutingTests {
   func recordingRetentionPersists() {
     let suite = Self.freshSuite()
     let settings = SettingsManager(defaults: suite)
+    settings.saveDictationRecordings = false
     settings.dictationRecordingRetention = .day7
     settings.meetingRecordingRetention = .day90
     settings.recordingStorageWarningThreshold = .none
     settings.recordingThresholdBehavior = .removeOldestDictations
     let reloaded = SettingsManager(defaults: suite)
+    #expect(reloaded.saveDictationRecordings == false)
     #expect(reloaded.dictationRecordingRetention == .day7)
     #expect(reloaded.meetingRecordingRetention == .day90)
     #expect(reloaded.recordingStorageWarningThreshold == .none)

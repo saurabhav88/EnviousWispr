@@ -1,0 +1,12 @@
+{
+  "language": "vi",
+  "title": "thời gian lưu bản ghi âm đọc chính tả",
+  "words": [
+    "thời gian lưu",
+    "tự động xóa"
+  ],
+  "phrases": [
+    "giữ bản ghi âm đọc chính tả trong bao lâu",
+    "tự động xóa bản ghi âm đọc chính tả cũ nhưng giữ lại văn bản"
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "language": "fr",
+  "title": "enregistrements",
+  "words": [
+    "enregistrements audio",
+    "audio des réunions",
+    "durée de conservation",
+    "stockage audio"
+  ],
+  "phrases": [
+    "conserver les enregistrements de dictée",
+    "supprimer les enregistrements sans effacer le texte",
+    "régler le seuil d’alerte du stockage audio"
+  ]
+}

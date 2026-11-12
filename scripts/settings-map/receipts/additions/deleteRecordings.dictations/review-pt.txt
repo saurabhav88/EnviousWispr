@@ -1,0 +1,1 @@
+{"language":"pt","title":"excluir todas as gravações de ditado","words":[],"phrases":["apagar todos os áudios de ditado","excluir todas as gravações de ditado sem apagar os textos"]}

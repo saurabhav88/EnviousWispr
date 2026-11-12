@@ -2255,6 +2255,50 @@ final class MeetingCoordinator {
     let endedAt: Date
   }
 
+  /// What became of Settings' Delete all meeting audio.
+  struct BulkAudioDeletion: Sendable, Equatable {
+    var removed = 0
+    /// Meetings recording, processing or otherwise owned by work right now; their audio stays.
+    var skipped = 0
+    /// The mark could not be saved or a file could not be removed.
+    var failed = 0
+  }
+
+  /// Settings' "Delete all meeting audio": every saved meeting's audio through Delete audio,
+  /// once launch has loaded every record. The meetings, their notes, summaries and History rows
+  /// stay. Each meeting is checked when its turn comes: one recording, stopping, processing or
+  /// owned by a close or an unknown save is skipped; queued, failed, interrupted and playing
+  /// meetings are explicit-delete targets (playback stops first, as for Delete audio). A meeting
+  /// whose earlier removal failed part-way (marked as deleted, files still there) is retried
+  /// here too, so a second click finishes what the first could not.
+  func deleteAllAudio() async -> BulkAudioDeletion {
+    if let launchTask { await launchTask.value }
+    var result = BulkAudioDeletion()
+    let ids = live.values.filter { needsAudioDeletion($0) }.map(\.id)
+    for meetingID in ids {
+      guard let record = live[meetingID], needsAudioDeletion(record) else { continue }
+      guard !isActive(meetingID), !closeOwned.contains(meetingID),
+        !unknownCommits.contains(meetingID), record.state != .recording, record.state != .stopping
+      else {
+        result.skipped += 1
+        continue
+      }
+      if await deleteAudio(meetingID: meetingID) {
+        result.removed += 1
+      } else {
+        result.failed += 1
+      }
+    }
+    return result
+  }
+
+  /// Audio still kept, or marked as deleted with files left behind by a failed removal.
+  private func needsAudioDeletion(_ record: MeetingRecord) -> Bool {
+    guard !record.deletionRequested else { return false }
+    if record.audioKept { return true }
+    return (try? deps.store.segmentFiles(meeting: record.id))?.isEmpty == false
+  }
+
   /// What became of one retention removal.
   enum AudioRetentionOutcome: Sendable, Equatable {
     case removed

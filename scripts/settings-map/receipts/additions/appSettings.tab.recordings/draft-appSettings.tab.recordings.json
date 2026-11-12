@@ -1,0 +1,363 @@
+{
+ "id": "appSettings.tab.recordings",
+ "blocks": [
+  {
+   "language": "ar",
+   "title": "التسجيلات",
+   "words": [
+    "تسجيلات صوتية"
+   ],
+   "phrases": [
+    "إعدادات التسجيلات",
+    "تسجيلات الإملاء"
+   ]
+  },
+  {
+   "language": "bg",
+   "title": "записи",
+   "words": [
+    "аудиозаписи"
+   ],
+   "phrases": [
+    "настройки за записите",
+    "записи на диктовки"
+   ]
+  },
+  {
+   "language": "cs",
+   "title": "nahrávky",
+   "words": [
+    "zvukové záznamy"
+   ],
+   "phrases": [
+    "nastavení nahrávek",
+    "nahrávky diktování"
+   ]
+  },
+  {
+   "language": "da",
+   "title": "optagelser",
+   "words": [
+    "lydoptagelser"
+   ],
+   "phrases": [
+    "indstillinger for optagelser",
+    "optagelser af diktat"
+   ]
+  },
+  {
+   "language": "de",
+   "words": [
+    "Audioaufnahmen",
+    "Sprachaufnahmen"
+   ],
+   "phrases": [
+    "Einstellungen für Aufnahmen",
+    "meine Diktataufnahmen"
+   ]
+  },
+  {
+   "language": "el",
+   "title": "ηχογραφήσεις",
+   "words": [
+    "εγγραφές ήχου"
+   ],
+   "phrases": [
+    "ρυθμίσεις ηχογραφήσεων",
+    "ηχογραφήσεις υπαγόρευσης"
+   ]
+  },
+  {
+   "language": "en",
+   "words": [
+    "audio recordings",
+    "voice recordings"
+   ],
+   "phrases": [
+    "recording settings",
+    "dictation recordings"
+   ]
+  },
+  {
+   "language": "es",
+   "title": "grabaciones",
+   "words": [
+    "audios"
+   ],
+   "phrases": [
+    "ajustes de grabaciones",
+    "grabaciones de dictado"
+   ]
+  },
+  {
+   "language": "et",
+   "title": "salvestised",
+   "words": [
+    "helisalvestised"
+   ],
+   "phrases": [
+    "salvestiste seaded",
+    "dikteerimise salvestised"
+   ]
+  },
+  {
+   "language": "fi",
+   "title": "äänitteet",
+   "words": [
+    "nauhoitukset",
+    "äänitallenteet"
+   ],
+   "phrases": [
+    "äänitteiden asetukset",
+    "sanelun äänitteet"
+   ]
+  },
+  {
+   "language": "fr",
+   "title": "enregistrements",
+   "words": [
+    "enregistrements audio"
+   ],
+   "phrases": [
+    "réglages des enregistrements",
+    "enregistrements de dictée"
+   ]
+  },
+  {
+   "language": "hi",
+   "title": "रिकॉर्डिंग",
+   "words": [
+    "ऑडियो रिकॉर्डिंग"
+   ],
+   "phrases": [
+    "रिकॉर्डिंग की सेटिंग",
+    "बोलकर लिखने की रिकॉर्डिंग"
+   ]
+  },
+  {
+   "language": "hr",
+   "title": "snimke",
+   "words": [
+    "audiosnimke",
+    "zvučni zapisi"
+   ],
+   "phrases": [
+    "postavke snimki",
+    "snimke diktata"
+   ]
+  },
+  {
+   "language": "hu",
+   "title": "felvételek",
+   "words": [
+    "hangfelvételek"
+   ],
+   "phrases": [
+    "felvételek beállításai",
+    "diktálás hangfelvételei"
+   ]
+  },
+  {
+   "language": "it",
+   "title": "registrazioni",
+   "words": [
+    "registrazioni audio"
+   ],
+   "phrases": [
+    "impostazioni delle registrazioni",
+    "registrazioni di dettatura"
+   ]
+  },
+  {
+   "language": "ja",
+   "title": "録音",
+   "words": [
+    "音声記録"
+   ],
+   "phrases": [
+    "録音の設定",
+    "音声入力の録音"
+   ]
+  },
+  {
+   "language": "ko",
+   "title": "녹음",
+   "words": [
+    "음성 녹음"
+   ],
+   "phrases": [
+    "녹음 설정",
+    "받아쓰기 녹음"
+   ]
+  },
+  {
+   "language": "lt",
+   "title": "įrašai",
+   "words": [
+    "garso įrašai"
+   ],
+   "phrases": [
+    "įrašų nustatymai",
+    "diktavimo įrašai"
+   ]
+  },
+  {
+   "language": "lv",
+   "title": "ieraksti",
+   "words": [
+    "audioieraksti",
+    "skaņas ieraksti"
+   ],
+   "phrases": [
+    "ierakstu iestatījumi",
+    "diktēšanas ieraksti"
+   ]
+  },
+  {
+   "language": "mt",
+   "title": "reġistrazzjonijiet",
+   "words": [
+    "reġistrazzjonijiet tal-awdjo"
+   ],
+   "phrases": [
+    "settings tar-reġistrazzjonijiet",
+    "reġistrazzjonijiet tad-dettatura"
+   ]
+  },
+  {
+   "language": "nl",
+   "title": "opnamen",
+   "words": [
+    "opnames",
+    "geluidsopnamen"
+   ],
+   "phrases": [
+    "instellingen voor opnamen",
+    "opnamen van dictaten"
+   ]
+  },
+  {
+   "language": "pl",
+   "title": "nagrania",
+   "words": [
+    "nagrania dźwiękowe"
+   ],
+   "phrases": [
+    "ustawienia nagrań",
+    "nagrania dyktowania"
+   ]
+  },
+  {
+   "language": "pt",
+   "title": "gravações",
+   "words": [
+    "áudios"
+   ],
+   "phrases": [
+    "configurações das gravações",
+    "gravações de ditado"
+   ]
+  },
+  {
+   "language": "ro",
+   "title": "înregistrări",
+   "words": [
+    "înregistrări audio"
+   ],
+   "phrases": [
+    "setări pentru înregistrări",
+    "înregistrări de dictare"
+   ]
+  },
+  {
+   "language": "ru",
+   "title": "записи",
+   "words": [
+    "аудиозаписи",
+    "звукозаписи"
+   ],
+   "phrases": [
+    "настройки записей",
+    "записи диктовки"
+   ]
+  },
+  {
+   "language": "sk",
+   "title": "nahrávky",
+   "words": [
+    "zvukové záznamy"
+   ],
+   "phrases": [
+    "nastavenia nahrávok",
+    "nahrávky diktovania"
+   ]
+  },
+  {
+   "language": "sl",
+   "title": "posnetki",
+   "words": [
+    "zvočni posnetki"
+   ],
+   "phrases": [
+    "nastavitve posnetkov",
+    "posnetki narekovanja"
+   ]
+  },
+  {
+   "language": "sv",
+   "title": "inspelningar",
+   "words": [
+    "ljudinspelningar"
+   ],
+   "phrases": [
+    "inställningar för inspelningar",
+    "inspelningar av diktat"
+   ]
+  },
+  {
+   "language": "tr",
+   "title": "kayıtlar",
+   "words": [
+    "ses kayıtları"
+   ],
+   "phrases": [
+    "kayıt ayarları",
+    "dikte kayıtları"
+   ]
+  },
+  {
+   "language": "uk",
+   "title": "записи",
+   "words": [
+    "аудіозаписи",
+    "звукозаписи"
+   ],
+   "phrases": [
+    "налаштування записів",
+    "записи диктування"
+   ]
+  },
+  {
+   "language": "vi",
+   "title": "bản ghi âm",
+   "words": [
+    "thu âm"
+   ],
+   "phrases": [
+    "cài đặt ghi âm",
+    "bản ghi âm đọc chính tả"
+   ]
+  },
+  {
+   "language": "zh",
+   "title": "录音",
+   "words": [
+    "录音文件"
+   ],
+   "phrases": [
+    "录音设置",
+    "语音输入的录音"
+   ]
+  }
+ ]
+}

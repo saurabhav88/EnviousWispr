@@ -1,0 +1,11 @@
+{
+  "language": "tr",
+  "title": "kullanılan depolama alanı",
+  "words": [
+    "kayıt boyutu"
+  ],
+  "phrases": [
+    "kayıtlar ne kadar yer kaplıyor",
+    "kayıtların toplam boyutu"
+  ]
+}

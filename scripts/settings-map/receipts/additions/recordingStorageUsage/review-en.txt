@@ -1,0 +1,11 @@
+{
+  "language": "en",
+  "words": [
+    "recording size",
+    "disk usage"
+  ],
+  "phrases": [
+    "how much space do my recordings take",
+    "space taken up by recordings"
+  ]
+}

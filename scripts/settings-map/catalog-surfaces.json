@@ -707,6 +707,40 @@
   ],
   "mac-ctl-meeting-speaker-labels": [
    "meetingSpeakerLabels"
+  ],
+  "mac-tab-recordings": [
+   "appSettings.tab.recordings"
+  ],
+  "mac-sec-recordings": [
+   "section.recordings"
+  ],
+  "mac-ctl-save-dictation-recordings": [
+   "saveDictationRecordings"
+  ],
+  "mac-ctl-keep-dictation-recordings": [
+   "dictationRecordingRetention"
+  ],
+  "mac-ctl-keep-meeting-audio": [
+   "meetingRecordingRetention"
+  ],
+  "mac-sec-recording-storage": [
+   "section.recordingStorage"
+  ],
+  "mac-ctl-recording-storage-used": [
+   "recordingStorageUsage"
+  ],
+  "mac-ctl-recording-storage-threshold": [
+   "recordingStorageWarningThreshold"
+  ],
+  "mac-ctl-recording-threshold-behavior": [
+   "recordingThresholdBehavior"
+  ],
+  "mac-ctl-delete-all-dictation-recordings": [
+   "deleteRecordings",
+   "deleteRecordings.dictations"
+  ],
+  "mac-ctl-delete-all-meeting-audio": [
+   "deleteRecordings.meetings"
   ]
  },
  "newSurfaces": {
@@ -864,6 +898,61 @@
    "kind": "control",
    "parent": "mac-page-meetings",
    "label": "Speaker labels [Models tab; live speaker model download]"
+  },
+  "mac-tab-recordings": {
+   "kind": "section",
+   "parent": "mac-page-app-settings",
+   "label": "Recordings [tab]"
+  },
+  "mac-sec-recordings": {
+   "kind": "section",
+   "parent": "mac-tab-recordings",
+   "label": "RECORDINGS [caps]"
+  },
+  "mac-ctl-save-dictation-recordings": {
+   "kind": "control",
+   "parent": "mac-sec-recordings",
+   "label": "Save dictation recordings"
+  },
+  "mac-ctl-keep-dictation-recordings": {
+   "kind": "control",
+   "parent": "mac-sec-recordings",
+   "label": "Keep dictation recordings: 1 day / 7 days / 30 days / Until I delete them [a shorter period shows a count preview with Apply and Cancel]"
+  },
+  "mac-ctl-keep-meeting-audio": {
+   "kind": "control",
+   "parent": "mac-sec-recordings",
+   "label": "Keep meeting audio: 30 days / 90 days / Until I delete them"
+  },
+  "mac-sec-recording-storage": {
+   "kind": "section",
+   "parent": "mac-tab-recordings",
+   "label": "STORAGE [caps]"
+  },
+  "mac-ctl-recording-storage-used": {
+   "kind": "control",
+   "parent": "mac-sec-recording-storage",
+   "label": "Storage used [read-only sizes and storage warning]"
+  },
+  "mac-ctl-recording-storage-threshold": {
+   "kind": "control",
+   "parent": "mac-sec-recording-storage",
+   "label": "Storage warning threshold: 1 GB / 2 GB / 5 GB / No warning"
+  },
+  "mac-ctl-recording-threshold-behavior": {
+   "kind": "control",
+   "parent": "mac-sec-recording-storage",
+   "label": "Past the threshold: Ask me to free space / Remove oldest dictation recordings"
+  },
+  "mac-ctl-delete-all-dictation-recordings": {
+   "kind": "control",
+   "parent": "mac-sec-recording-storage",
+   "label": "Delete all dictation recordings [Delete recordings row; confirms; text stays]"
+  },
+  "mac-ctl-delete-all-meeting-audio": {
+   "kind": "control",
+   "parent": "mac-sec-recording-storage",
+   "label": "Delete all meeting audio [Delete recordings row; confirms; meetings, notes and summaries stay]"
   }
  }
 }

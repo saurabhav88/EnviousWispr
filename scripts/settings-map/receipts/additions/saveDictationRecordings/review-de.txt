@@ -1,0 +1,11 @@
+{
+  "language": "de",
+  "words": [
+    "Audioaufnahmen",
+    "Diktataudio"
+  ],
+  "phrases": [
+    "speichere den Ton neuer Diktate auf diesem Mac zum späteren Anhören",
+    "speichere keine Audioaufnahmen neuer Diktate mehr"
+  ]
+}

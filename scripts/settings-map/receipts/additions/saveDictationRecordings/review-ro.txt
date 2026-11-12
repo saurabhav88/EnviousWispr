@@ -1,0 +1,1 @@
+{"language":"ro","title":"salvează înregistrările dictărilor","words":[],"phrases":["păstrează sunetul fiecărei dictări","salvează sunetul dictărilor ca să îl ascult mai târziu"]}

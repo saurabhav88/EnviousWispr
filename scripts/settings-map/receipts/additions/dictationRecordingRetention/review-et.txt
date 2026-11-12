@@ -1,0 +1,12 @@
+{
+  "language": "et",
+  "title": "dikteerimissalvestiste säilitusaeg",
+  "words": [
+    "säilitusaeg",
+    "automaatne kustutamine"
+  ],
+  "phrases": [
+    "kui kaua dikteerimissalvestisi alles hoitakse",
+    "kustuta vanad dikteerimissalvestised automaatselt ja jäta tekst alles"
+  ]
+}

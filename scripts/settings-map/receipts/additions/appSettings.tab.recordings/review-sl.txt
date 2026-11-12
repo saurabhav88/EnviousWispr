@@ -1,0 +1,1 @@
+{"language":"sl","title":"posnetki","words":["zvočni posnetki"],"phrases":["nastavitve posnetkov","posnetki narekovanja"]}

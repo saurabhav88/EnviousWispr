@@ -1,0 +1,1 @@
+{"language":"cs","title":"využité místo","words":["velikost nahrávek"],"phrases":["kolik místa zabírají nahrávky","velikost uložených nahrávek"]}

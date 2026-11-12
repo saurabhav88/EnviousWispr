@@ -21,14 +21,14 @@
  },
  "placeVectors": {
   "bin": {
-   "bytes": 21100032,
-   "sha256": "6bb2b67a48c93202cf21742d6f03e8f6f4be5a21e538fc77f38ad781dde98870"
+   "bytes": 21980928,
+   "sha256": "3d4f1c938a28ce7ef5cc57b4f6a4de69bd189546a99ee6168eac683488851012"
   },
   "dimension": 384,
   "dtype": "float16",
   "index": {
-   "bytes": 246739,
-   "sha256": "6684e80452e1b332ef7960ebf8af7d86cc0a0b611f1b14184353751b8568dcf5"
+   "bytes": 256911,
+   "sha256": "9dd6d004afd7445012fd8d7a33c59eab4a660014e3c60580cbd681775205cefe"
   },
   "model": {
    "base": "intfloat/multilingual-e5-small",
@@ -39,8 +39,8 @@
    "sentenceTransformers": "6.1.0",
    "torch": "2.14.1"
   },
-  "rows": 27474,
-  "textsSHA256": "84088103a5d34f59e1b24f753da5012fd42d25f21aa812f59a03f575e0e3c20e"
+  "rows": 28621,
+  "textsSHA256": "45dab691af0ca208348b01b218acfd5258c9160414ddf47a06091baa8524cdf0"
  },
  "schema": "settings-search-meaning-assets",
  "selfTest": [
@@ -1213,9 +1213,9 @@
   }
  ],
  "sources": {
-  "mapSHA256": "eea9daea98589fbe29969e0c3bf14476c78e409fe842641923874ead1f4653f0",
-  "uiCatalogSHA256": "d6b71e9dafbf5ffd1c4a13748340d7786d6af1ae1a294cb790055d80eea54cd0",
-  "vocabularySHA256": "25b4f8c996996005c0e93c5f821e8c181182fe93b056485ca832f7964426e487"
+  "mapSHA256": "c0a2ecae83032eac2fdeb5158fa50c39f4638f088af51e1876f0611582b5c6f7",
+  "uiCatalogSHA256": "a8c4feae287547595cd7fe24529f186ac8f2f33614e3412dfbfbb6203f6a2a24",
+  "vocabularySHA256": "33d583304fa73b4547e53f491c69599d47ec82a067b6d6ea657cd0a1e400efd9"
  },
  "tokenizer": {
   "bytes": 6819027,

@@ -1,0 +1,231 @@
+{
+ "id": "deleteRecordings.meetings",
+ "blocks": {
+  "ar": {
+   "title": "حذف جميع التسجيلات الصوتية للاجتماعات",
+   "words": [],
+   "phrases": [
+    "امسح صوت كل الاجتماعات"
+   ]
+  },
+  "bg": {
+   "title": "изтриване на всички аудиозаписи от срещи",
+   "words": [],
+   "phrases": [
+    "изтрий звука от всички срещи"
+   ]
+  },
+  "cs": {
+   "title": "smazat všechny zvukové záznamy schůzek",
+   "words": [],
+   "phrases": [
+    "odstranit audio ze všech schůzek"
+   ]
+  },
+  "da": {
+   "title": "slet al mødelyd",
+   "words": [],
+   "phrases": [
+    "slet lydoptagelser fra alle møder"
+   ]
+  },
+  "de": {
+   "words": [
+    "Besprechungsaufnahmen"
+   ],
+   "phrases": [
+    "lösch die Audioaufnahmen aller Meetings"
+   ]
+  },
+  "el": {
+   "title": "διαγραφή όλου του ήχου των συναντήσεων",
+   "words": [],
+   "phrases": [
+    "σβήσε τις ηχογραφήσεις όλων των συναντήσεων"
+   ]
+  },
+  "en": {
+   "words": [
+    "meeting recordings"
+   ],
+   "phrases": [
+    "delete audio recordings of all meetings"
+   ]
+  },
+  "es": {
+   "title": "eliminar todo el audio de las reuniones",
+   "words": [],
+   "phrases": [
+    "borrar las grabaciones de audio de todas las reuniones"
+   ]
+  },
+  "et": {
+   "title": "kustuta kõigi koosolekute heli",
+   "words": [],
+   "phrases": [
+    "kustuta kõik koosolekute helisalvestised"
+   ]
+  },
+  "fi": {
+   "title": "poista kaikkien kokousten äänitallenteet",
+   "words": [],
+   "phrases": [
+    "poista kaikki kokousten äänitallenteet"
+   ]
+  },
+  "fr": {
+   "title": "supprimer tout l’audio des réunions",
+   "words": [],
+   "phrases": [
+    "effacer les enregistrements audio de toutes les réunions"
+   ]
+  },
+  "hi": {
+   "title": "सभी मीटिंगों का ऑडियो मिटाएँ",
+   "words": [],
+   "phrases": [
+    "सभी मीटिंगों की ऑडियो रिकॉर्डिंग हटाओ"
+   ]
+  },
+  "hr": {
+   "title": "izbriši sve audiosnimke sastanaka",
+   "words": [],
+   "phrases": [
+    "obriši zvučne snimke svih sastanaka"
+   ]
+  },
+  "hu": {
+   "title": "az összes megbeszélés hangfelvételének törlése",
+   "words": [],
+   "phrases": [
+    "töröld az összes értekezlet hangfelvételét"
+   ]
+  },
+  "it": {
+   "title": "elimina tutto l’audio delle riunioni",
+   "words": [],
+   "phrases": [
+    "cancella le registrazioni audio di tutte le riunioni"
+   ]
+  },
+  "ja": {
+   "title": "すべての会議の音声を削除",
+   "words": [],
+   "phrases": [
+    "会議の録音を全部消す"
+   ]
+  },
+  "ko": {
+   "title": "모든 회의 오디오 삭제",
+   "words": [],
+   "phrases": [
+    "회의 녹음 전부 지우기"
+   ]
+  },
+  "lt": {
+   "title": "ištrinti visus susitikimų garso įrašus",
+   "words": [],
+   "phrases": [
+    "pašalinti visų susitikimų garso įrašus"
+   ]
+  },
+  "lv": {
+   "title": "dzēst visus sapulču audioierakstus",
+   "words": [],
+   "phrases": [
+    "izdzēst visu sapulču skaņas ierakstus"
+   ]
+  },
+  "mt": {
+   "title": "ħassar l-awdjo kollu tal-laqgħat",
+   "words": [],
+   "phrases": [
+    "neħħi r-reġistrazzjonijiet tal-awdjo tal-laqgħat kollha"
+   ]
+  },
+  "nl": {
+   "title": "alle audio van vergaderingen verwijderen",
+   "words": [],
+   "phrases": [
+    "geluidsopnames van alle vergaderingen wissen"
+   ]
+  },
+  "pl": {
+   "title": "usuń wszystkie nagrania dźwiękowe spotkań",
+   "words": [],
+   "phrases": [
+    "skasuj audio ze wszystkich spotkań"
+   ]
+  },
+  "pt": {
+   "title": "excluir todo o áudio das reuniões",
+   "words": [],
+   "phrases": [
+    "apagar as gravações de áudio de todas as reuniões"
+   ]
+  },
+  "ro": {
+   "title": "șterge toate înregistrările audio ale întâlnirilor",
+   "words": [],
+   "phrases": [
+    "șterge sunetul de la toate întâlnirile"
+   ]
+  },
+  "ru": {
+   "title": "удалить все аудиозаписи встреч",
+   "words": [],
+   "phrases": [
+    "удалить аудио всех встреч"
+   ]
+  },
+  "sk": {
+   "title": "odstrániť všetky zvukové záznamy stretnutí",
+   "words": [],
+   "phrases": [
+    "vymazať audio zo všetkých stretnutí"
+   ]
+  },
+  "sl": {
+   "title": "izbriši vse zvočne posnetke sestankov",
+   "words": [],
+   "phrases": [
+    "odstrani zvok vseh sestankov"
+   ]
+  },
+  "sv": {
+   "title": "radera allt mötesljud",
+   "words": [],
+   "phrases": [
+    "ta bort ljudinspelningar från alla möten"
+   ]
+  },
+  "tr": {
+   "title": "tüm toplantı ses kayıtlarını sil",
+   "words": [],
+   "phrases": [
+    "bütün toplantıların sesini sil"
+   ]
+  },
+  "uk": {
+   "title": "видалити всі аудіозаписи зустрічей",
+   "words": [],
+   "phrases": [
+    "видалити аудіо всіх зустрічей"
+   ]
+  },
+  "vi": {
+   "title": "xóa toàn bộ âm thanh cuộc họp",
+   "words": [],
+   "phrases": [
+    "xóa hết bản ghi âm các cuộc họp"
+   ]
+  },
+  "zh": {
+   "title": "删除所有会议音频",
+   "words": [],
+   "phrases": [
+    "把所有会议录音都删掉"
+   ]
+  }
+ }
+}

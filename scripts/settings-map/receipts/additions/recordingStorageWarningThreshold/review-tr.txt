@@ -1,0 +1,12 @@
+{
+  "language": "tr",
+  "title": "depolama alanı uyarı eşiği",
+  "words": [
+    "depolama uyarısı",
+    "uyarı eşiği"
+  ],
+  "phrases": [
+    "kayıtlar çok yer kaplayınca beni uyar",
+    "kayıtlar ne kadar yer kaplayınca uyarı verilsin"
+  ]
+}

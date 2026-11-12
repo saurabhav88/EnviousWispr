@@ -68,8 +68,8 @@
       .warmEnginePolicy, .appearance, .overlayPillPosition, .recordingPillDesignWithoutWords,
       .recordingPillDesignWithWords, .showBluetoothTips, .showInDock, .showMenuBarUpdateAlert,
       .playRecordingSounds, .recordingSoundPairing, .otherAudioWhileDictating, .learnFromEdits,
-      .dictationRecordingRetention, .meetingRecordingRetention, .recordingStorageWarningThreshold,
-      .recordingThresholdBehavior,
+      .saveDictationRecordings, .dictationRecordingRetention, .meetingRecordingRetention,
+      .recordingStorageWarningThreshold, .recordingThresholdBehavior,
     ]
 
     /// The wire name: the enum case's own name.
@@ -101,7 +101,7 @@
         .livePreviewEnabled, .livePreviewEngine, .warmEnginePolicy, .appearance,
         .overlayPillPosition, .showBluetoothTips, .showInDock, .showMenuBarUpdateAlert,
         .playRecordingSounds, .recordingSoundPairing, .otherAudioWhileDictating, .learnFromEdits,
-        .egOneSize:
+        .egOneSize, .saveDictationRecordings:
         return make(.direct)
       case .selectedInputDeviceUID, .preferredInputDeviceIDOverride, .spokenPunctuation,
         .hasCompletedOnboarding, .recordingPillDesignWithoutWords, .recordingPillDesignWithWords,
@@ -222,6 +222,7 @@
       case .recordingSoundPairing: return settings.recordingSoundPairing.rawValue
       case .otherAudioWhileDictating: return settings.otherAudioWhileDictating.rawValue
       case .learnFromEdits: return settings.learnFromEdits
+      case .saveDictationRecordings: return settings.saveDictationRecordings
       case .dictationRecordingRetention: return settings.dictationRecordingRetention.rawValue
       case .meetingRecordingRetention: return settings.meetingRecordingRetention.rawValue
       case .recordingStorageWarningThreshold:
@@ -486,6 +487,8 @@
         }
       case .learnFromEdits:
         return set(Codec.bool(value)) { settings.learnFromEdits = $0 }
+      case .saveDictationRecordings:
+        return set(Codec.bool(value)) { settings.saveDictationRecordings = $0 }
       case .dictationRecordingRetention:
         return set(Codec.raw(value, DictationRecordingRetention.self)) {
           settings.dictationRecordingRetention = $0
@@ -642,8 +645,9 @@
         .livePreviewEnabled, .livePreviewEngine, .warmEnginePolicy, .appearance,
         .overlayPillPosition, .showBluetoothTips, .showInDock, .showMenuBarUpdateAlert,
         .playRecordingSounds, .recordingSoundPairing, .otherAudioWhileDictating, .learnFromEdits,
-        .egOneSize, .dictationRecordingRetention, .meetingRecordingRetention,
-        .recordingStorageWarningThreshold, .recordingThresholdBehavior:
+        .egOneSize, .saveDictationRecordings, .dictationRecordingRetention,
+        .meetingRecordingRetention, .recordingStorageWarningThreshold,
+        .recordingThresholdBehavior:
         return .typed
       }
     }

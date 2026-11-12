@@ -1,0 +1,11 @@
+{
+  "language": "ro",
+  "title": "șterge înregistrările",
+  "words": [
+    "ștergere audio"
+  ],
+  "phrases": [
+    "șterge toate înregistrările dictărilor și păstrează textul",
+    "șterge toate înregistrările audio ale întâlnirilor"
+  ]
+}

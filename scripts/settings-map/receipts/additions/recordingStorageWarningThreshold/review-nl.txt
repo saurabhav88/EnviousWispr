@@ -1,0 +1,1 @@
+{"language":"nl","title":"drempel voor opslagwaarschuwing","words":["opslagwaarschuwing","waarschuwingsdrempel"],"phrases":["bij hoeveel GB aan opnamen krijg ik een waarschuwing","waarschuwing over opslagruimte voor opnamen uitschakelen"]}

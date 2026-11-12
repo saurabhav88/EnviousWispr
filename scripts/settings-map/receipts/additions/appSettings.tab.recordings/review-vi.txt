@@ -1,0 +1,1 @@
+{"language":"vi","title":"bản ghi âm","words":["lưu bản ghi âm","thời gian lưu","dung lượng bản ghi âm","cảnh báo dung lượng"],"phrases":["lưu bản ghi âm đọc chính tả","giữ âm thanh cuộc họp trong bao lâu","xóa bản ghi âm để giải phóng dung lượng"]}

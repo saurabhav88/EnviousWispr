@@ -125,7 +125,9 @@ public final class SettingsManager {
     case otherAudioWhileDictating
     /// #996: ask before remembering a word the user fixed in pasted text.
     case learnFromEdits
-    /// #3147: how long dictation and meeting recordings are kept, and the storage warning.
+    /// #3147: save a recording of each new dictation (D1), how long dictation and meeting
+    /// recordings are kept, and the storage warning.
+    case saveDictationRecordings
     case dictationRecordingRetention
     case meetingRecordingRetention
     case recordingStorageWarningThreshold
@@ -188,7 +190,7 @@ public final class SettingsManager {
     "recordingPillDesignWithoutWords", "recordingPillDesignWithWords",
     "showBluetoothTips", "showInDock", "showMenuBarUpdateAlert", "playRecordingSounds", "recordingSoundPairing",
     "otherAudioWhileDictating", "learnFromEdits",
-    "dictationRecordingRetention", "meetingRecordingRetention",
+    "saveDictationRecordings", "dictationRecordingRetention", "meetingRecordingRetention",
     "recordingStorageWarningThreshold", "recordingThresholdBehavior",
     WhatsNewConstants.lastSeenVersionDefaultsKey,
     globeGuidanceClaimKey,
@@ -1425,6 +1427,16 @@ public final class SettingsManager {
     }
   }
 
+  /// #3147 D1: save a compressed recording of each new dictation. Read once when a take is
+  /// accepted (the kernel freezes it for that take). Off affects new dictations only: existing
+  /// recordings stay, keep their expiry, still play and still count toward storage.
+  public var saveDictationRecordings: Bool {
+    didSet {
+      defaults.set(saveDictationRecordings, forKey: "saveDictationRecordings")
+      onChange?(.saveDictationRecordings)
+    }
+  }
+
   /// #3147 D2: how long a dictation's recording is kept. Read by `RecordingRetention` at each
   /// sweep and again inside each removal. A shorter value reaches here only after the Settings
   /// page's count preview and Undo (`RecordingRetention.stage`), never on a bare picker change.
@@ -2151,6 +2163,9 @@ public final class SettingsManager {
     }
     // #3147: absent or unknown values resolve to the canonical defaults, never seeded, so an
     // unreadable value cannot turn on deletion.
+    saveDictationRecordings =
+      defaults.object(forKey: "saveDictationRecordings") as? Bool
+      ?? SettingsDefaultValues.saveDictationRecordings
     dictationRecordingRetention =
       DictationRecordingRetention(
         rawValue: defaults.string(forKey: "dictationRecordingRetention") ?? ""

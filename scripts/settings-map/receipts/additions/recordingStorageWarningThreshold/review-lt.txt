@@ -1,0 +1,12 @@
+{
+  "language": "lt",
+  "title": "įspėjimo apie užimamą vietą slenkstis",
+  "words": [
+    "įspėjimo slenkstis"
+  ],
+  "phrases": [
+    "įspėti, kai įrašai užima per daug vietos",
+    "pasirinkti, kiek vietos užėmus įrašams rodyti įspėjimą",
+    "išjungti įspėjimą apie įrašų užimamą vietą"
+  ]
+}

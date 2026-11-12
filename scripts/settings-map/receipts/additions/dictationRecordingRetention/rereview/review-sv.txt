@@ -1,0 +1,1 @@
+{"language":"sv","title":"behåll dikteringsinspelningar","words":["lagringstid"],"phrases":["hur länge sparas dikteringsinspelningar","ta bort gamla dikteringsinspelningar automatiskt"]}

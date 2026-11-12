@@ -1606,6 +1606,60 @@ struct MeetingCoordinatorTests {
     await coordinator.stop(reason: .user)
   }
 
+  @Test("Delete all meeting audio removes saved meetings' audio, keeps them, skips a recording one")
+  func deleteAllAudioKeepsMeetings() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    await coordinator.start(from: .history)
+    let saved = try onlyMeeting(harness).id
+    await coordinator.stop(reason: .user)
+    await Self.eventually("ready") {
+      coordinator.record(id: saved)?.state == .ready && coordinator.processing == nil
+    }
+    await coordinator.start(from: .history)
+    let recording = try #require(harness.store.loadAll().compactMap { listing -> UUID? in
+      if case .meeting(let record) = listing, record.id != saved { return record.id }
+      return nil
+    }.first)
+
+    let result = await coordinator.deleteAllAudio()
+
+    #expect(result == MeetingCoordinator.BulkAudioDeletion(removed: 1, skipped: 1, failed: 0))
+    #expect(try harness.store.load(id: saved).audioKept == false)
+    #expect(try harness.store.load(id: saved).state == .ready, "the meeting and its text stay")
+    #expect(try harness.store.segmentFiles(meeting: saved).isEmpty)
+    #expect(try harness.store.load(id: recording).audioKept, "a recording meeting keeps its audio")
+    await coordinator.stop(reason: .user)
+  }
+
+  @Test("Delete all meeting audio again finishes a removal an earlier click could not")
+  func deleteAllAudioRetriesLeftoverFiles() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    await coordinator.start(from: .history)
+    let meetingID = try onlyMeeting(harness).id
+    await coordinator.stop(reason: .user)
+    await Self.eventually("ready") {
+      coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
+    }
+    let segment = try #require(try harness.store.segmentFiles(meeting: meetingID).first)
+    try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: segment.url.path)
+
+    let first = await coordinator.deleteAllAudio()
+    #expect(first == MeetingCoordinator.BulkAudioDeletion(removed: 0, skipped: 0, failed: 1))
+    #expect(try harness.store.load(id: meetingID).audioKept == false, "marked as deleted")
+    #expect(FileManager.default.fileExists(atPath: segment.url.path))
+
+    try FileManager.default.setAttributes([.immutable: false], ofItemAtPath: segment.url.path)
+    let second = await coordinator.deleteAllAudio()
+
+    #expect(second == MeetingCoordinator.BulkAudioDeletion(removed: 1, skipped: 0, failed: 0))
+    #expect(try harness.store.segmentFiles(meeting: meetingID).isEmpty)
+    #expect(try harness.store.load(id: meetingID).state == .ready, "the meeting and its text stay")
+    let third = await coordinator.deleteAllAudio()
+    #expect(third == MeetingCoordinator.BulkAudioDeletion(), "an empty meeting is not counted again")
+  }
+
   /// #3147: a meeting's player stops before its audio or its folder is removed.
   @Test("deleting a meeting's audio or the meeting stops its player before the files go")
   func meetingDeletionsStopPlayback() async throws {

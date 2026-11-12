@@ -1,0 +1,12 @@
+{
+  "language": "it",
+  "title": "conserva le registrazioni di dettatura",
+  "words": [
+    "periodo di conservazione",
+    "eliminazione automatica"
+  ],
+  "phrases": [
+    "per quanto tempo vengono conservate le registrazioni di dettatura",
+    "eliminare automaticamente le vecchie registrazioni di dettatura mantenendo il testo"
+  ]
+}

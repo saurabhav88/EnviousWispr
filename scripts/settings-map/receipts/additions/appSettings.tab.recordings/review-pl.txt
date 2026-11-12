@@ -1,0 +1,1 @@
+{"language":"pl","title":"nagrania","words":["nagrania dźwiękowe"],"phrases":["ustawienia nagrań","nagrania dyktowania"]}

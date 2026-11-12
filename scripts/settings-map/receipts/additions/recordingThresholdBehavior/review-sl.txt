@@ -1,0 +1,11 @@
+{
+  "language": "sl",
+  "title": "ob prekoračitvi omejitve prostora",
+  "words": [
+    "samodejno brisanje"
+  ],
+  "phrases": [
+    "vprašaj me, ko posnetki narekovanja presežejo omejitev prostora",
+    "samodejno izbriši najstarejše posnetke narekovanja, ko je omejitev prostora presežena"
+  ]
+}

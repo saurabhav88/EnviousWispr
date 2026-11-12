@@ -1,0 +1,1 @@
+{"language":"fr","title":"supprimer les enregistrements","words":["fichiers audio","effacer"],"phrases":["supprimer l’audio et garder le texte"]}

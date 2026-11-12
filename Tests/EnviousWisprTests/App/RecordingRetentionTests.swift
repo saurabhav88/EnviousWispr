@@ -557,6 +557,39 @@ struct RecordingRetentionTests {
     #expect(rig.settings.dictationRecordingRetention == .forever, "nothing to commit")
   }
 
+  @Test("the page's preview request never brings back a preview it cancelled")
+  func previewRequestCancellation() async throws {
+    let rig = rig()
+    try await recordedRow(rig, ageDays: 20)
+    let request = RetentionPreviewRequest()
+
+    // Cancelled before its count starts: the cancelled request is awaited before the check.
+    request.choose(.dictations(.day7), on: rig.retention)
+    let beforeEntry = request.cancel(on: rig.retention)
+    #expect(beforeEntry != nil)
+    await beforeEntry?.value
+    #expect(rig.retention.staged == nil, "cancelled before entering the count")
+
+    // Cancelled while counting: held at the gate, cancelled, released, then awaited.
+    let gate = Gate()
+    rig.hooks.savedDatesWillAnswer = { await gate.wait() }
+    request.choose(.dictations(.day7), on: rig.retention)
+    await MeetingCoordinatorTests.eventually("count waiting") { gate.arrived }
+    let whileCounting = request.cancel(on: rig.retention)
+    gate.release()
+    await whileCounting?.value
+    #expect(rig.retention.staged == nil, "cancelled while counting")
+
+    // A longer choice applies at once; the superseded shorter request is awaited too.
+    rig.hooks.savedDatesWillAnswer = nil
+    request.choose(.dictations(.day7), on: rig.retention)
+    let superseded = request.choose(.dictations(.forever), on: rig.retention)
+    #expect(superseded != nil)
+    await superseded?.value
+    #expect(rig.retention.staged == nil)
+    #expect(rig.settings.dictationRecordingRetention == .forever)
+  }
+
   @Test("a stopped retention starts no pass")
   func stopEndsPasses() async throws {
     let rig = rig()

@@ -1,0 +1,10 @@
+{
+  "language": "es",
+  "title": "eliminar grabaciones",
+  "words": [
+    "archivos de audio"
+  ],
+  "phrases": [
+    "borrar el audio y conservar el texto"
+  ]
+}

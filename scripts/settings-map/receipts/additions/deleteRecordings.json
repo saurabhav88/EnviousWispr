@@ -1,0 +1,314 @@
+{
+ "id": "deleteRecordings",
+ "blocks": {
+  "ar": {
+   "title": "حذف التسجيلات",
+   "words": [
+    "ملفات صوتية"
+   ],
+   "phrases": [
+    "احذف الصوت واحتفظ بالنص"
+   ]
+  },
+  "bg": {
+   "title": "изтриване на записи",
+   "words": [
+    "аудиофайлове"
+   ],
+   "phrases": [
+    "изтрий аудиото, но запази текста"
+   ]
+  },
+  "cs": {
+   "title": "smazat nahrávky",
+   "words": [
+    "odstranění nahrávek"
+   ],
+   "phrases": [
+    "smazat všechny nahrávky diktátů",
+    "smazat všechny zvukové nahrávky schůzek",
+    "smazat zvuk a nechat text"
+   ]
+  },
+  "da": {
+   "title": "slet optagelser",
+   "words": [
+    "lydfiler"
+   ],
+   "phrases": [
+    "slet lyden og behold teksten"
+   ]
+  },
+  "de": {
+   "words": [
+    "Audiodateien",
+    "Aufnahmen"
+   ],
+   "phrases": [
+    "lösche Audio von Diktaten oder Meetings",
+    "lösche Aufnahmen und behalte Text, Notizen und Zusammenfassungen"
+   ]
+  },
+  "el": {
+   "title": "διαγραφή ηχογραφήσεων",
+   "words": [
+    "διαγραφή ήχου"
+   ],
+   "phrases": [
+    "σβήσε όλες τις ηχογραφήσεις υπαγόρευσης και κράτα το κείμενο",
+    "σβήσε όλο τον ήχο των συναντήσεων και κράτα τις σημειώσεις και τις περιλήψεις"
+   ]
+  },
+  "en": {
+   "words": [
+    "audio files",
+    "remove"
+   ],
+   "phrases": [
+    "delete audio and keep the text"
+   ]
+  },
+  "es": {
+   "title": "eliminar grabaciones",
+   "words": [
+    "archivos de audio"
+   ],
+   "phrases": [
+    "borrar el audio y conservar el texto"
+   ]
+  },
+  "et": {
+   "title": "kustuta salvestised",
+   "words": [
+    "helifailid"
+   ],
+   "phrases": [
+    "kustuta heli ja jäta tekst alles"
+   ]
+  },
+  "fi": {
+   "title": "poista tallenteet",
+   "words": [
+    "äänitiedostot"
+   ],
+   "phrases": [
+    "poista ääni ja säilytä teksti"
+   ]
+  },
+  "fr": {
+   "title": "supprimer les enregistrements",
+   "words": [
+    "fichiers audio",
+    "effacer"
+   ],
+   "phrases": [
+    "supprimer l’audio et garder le texte"
+   ]
+  },
+  "hi": {
+   "title": "रिकॉर्डिंग हटाएँ",
+   "words": [
+    "ऑडियो फ़ाइलें",
+    "डिलीट"
+   ],
+   "phrases": [
+    "ऑडियो हटाएँ और टेक्स्ट रखें"
+   ]
+  },
+  "hr": {
+   "title": "izbriši snimke",
+   "words": [
+    "audiodatoteke"
+   ],
+   "phrases": [
+    "izbriši zvuk i zadrži tekst"
+   ]
+  },
+  "hu": {
+   "title": "felvételek törlése",
+   "words": [
+    "hangfájlok"
+   ],
+   "phrases": [
+    "hang törlése a szöveg megtartásával"
+   ]
+  },
+  "it": {
+   "title": "elimina registrazioni",
+   "words": [
+    "cancella registrazioni",
+    "elimina audio"
+   ],
+   "phrases": [
+    "eliminare tutte le registrazioni delle dettature mantenendo il testo",
+    "cancellare tutto l'audio delle riunioni senza eliminare note e riepiloghi"
+   ]
+  },
+  "ja": {
+   "title": "録音を削除",
+   "words": [
+    "音声ファイル"
+   ],
+   "phrases": [
+    "テキストを残して音声を消す"
+   ]
+  },
+  "ko": {
+   "title": "녹음 삭제",
+   "words": [
+    "오디오 파일"
+   ],
+   "phrases": [
+    "텍스트는 남기고 음성만 지우기"
+   ]
+  },
+  "lt": {
+   "title": "ištrinti garso įrašus",
+   "words": [],
+   "phrases": [
+    "ištrinti visus diktavimo garso įrašus",
+    "ištrinti visus susitikimų garso įrašus",
+    "ištrinti garsą ir palikti tekstą"
+   ]
+  },
+  "lv": {
+   "title": "dzēst ierakstus",
+   "words": [
+    "audio faili"
+   ],
+   "phrases": [
+    "dzēst audio un paturēt tekstu"
+   ]
+  },
+  "mt": {
+   "title": "ħassar ir-reġistrazzjonijiet",
+   "words": [
+    "fajls awdjo"
+   ],
+   "phrases": [
+    "ħassar l-awdjo u żomm it-test"
+   ]
+  },
+  "nl": {
+   "title": "opnamen verwijderen",
+   "words": [
+    "audiobestanden",
+    "wissen"
+   ],
+   "phrases": [
+    "audio verwijderen en tekst bewaren"
+   ]
+  },
+  "pl": {
+   "title": "usuń nagrania",
+   "words": [
+    "pliki audio"
+   ],
+   "phrases": [
+    "usuń dźwięk i zachowaj tekst"
+   ]
+  },
+  "pt": {
+   "title": "apagar gravações",
+   "words": [
+    "ficheiros de áudio",
+    "arquivos de áudio"
+   ],
+   "phrases": [
+    "apagar o áudio e manter o texto"
+   ]
+  },
+  "ro": {
+   "title": "șterge înregistrările",
+   "words": [
+    "ștergere audio"
+   ],
+   "phrases": [
+    "șterge toate înregistrările dictărilor și păstrează textul",
+    "șterge toate înregistrările audio ale întâlnirilor"
+   ]
+  },
+  "ru": {
+   "title": "удалить записи",
+   "words": [
+    "аудиофайлы"
+   ],
+   "phrases": [
+    "удалить все аудиозаписи диктовок",
+    "удалить все аудиозаписи встреч",
+    "удалить аудиозаписи, сохранив текст"
+   ]
+  },
+  "sk": {
+   "title": "vymazať nahrávky",
+   "words": [
+    "zvukové súbory"
+   ],
+   "phrases": [
+    "vymazať zvuk a ponechať text"
+   ]
+  },
+  "sl": {
+   "title": "izbriši posnetke",
+   "words": [
+    "zvočne datoteke"
+   ],
+   "phrases": [
+    "izbriši zvok in ohrani besedilo"
+   ]
+  },
+  "sv": {
+   "title": "radera inspelningar",
+   "words": [
+    "ljudfiler",
+    "ta bort"
+   ],
+   "phrases": [
+    "radera ljudet och behåll texten"
+   ]
+  },
+  "tr": {
+   "title": "ses kayıtlarını sil",
+   "words": [
+    "ses dosyaları"
+   ],
+   "phrases": [
+    "tüm dikte kayıtlarını sil",
+    "tüm toplantı seslerini sil",
+    "ses kayıtlarını sil ama metinler kalsın"
+   ]
+  },
+  "uk": {
+   "title": "видалити записи",
+   "words": [
+    "аудіофайли"
+   ],
+   "phrases": [
+    "видалити всі записи диктування",
+    "видалити все аудіо зустрічей",
+    "видалити аудіо й зберегти текст"
+   ]
+  },
+  "vi": {
+   "title": "xóa bản ghi âm",
+   "words": [
+    "tệp âm thanh"
+   ],
+   "phrases": [
+    "xóa âm thanh và giữ lại văn bản"
+   ]
+  },
+  "zh": {
+   "title": "删除录音",
+   "words": [
+    "清空录音",
+    "删除音频"
+   ],
+   "phrases": [
+    "删除所有听写录音",
+    "删除所有会议音频",
+    "删除录音但保留文字、会议笔记和摘要"
+   ]
+  }
+ }
+}

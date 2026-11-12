@@ -1,0 +1,1 @@
+{"language":"es","title":"conservar el audio de las reuniones","words":["retención del audio","caducidad del audio"],"phrases":["cuánto tiempo guardar el audio de las reuniones","borrar automáticamente el audio antiguo de las reuniones","conservar el audio de las reuniones hasta que lo borre"]}

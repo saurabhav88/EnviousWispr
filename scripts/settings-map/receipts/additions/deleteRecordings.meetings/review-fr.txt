@@ -1,0 +1,8 @@
+{
+  "language": "fr",
+  "title": "supprimer tout l’audio des réunions",
+  "words": [],
+  "phrases": [
+    "effacer les enregistrements audio de toutes les réunions"
+  ]
+}

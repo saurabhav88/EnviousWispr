@@ -1,0 +1,11 @@
+{
+  "language": "sl",
+  "title": "hrani zvočne posnetke sestankov",
+  "words": [
+    "posnetki sestankov"
+  ],
+  "phrases": [
+    "kako dolgo naj se hranijo zvočni posnetki sestankov",
+    "samodejno izbriši stare zvočne posnetke sestankov"
+  ]
+}

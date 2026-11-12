@@ -1,0 +1,1 @@
+{"language":"de","words":["Audiodateien","entfernen"],"phrases":["Aufnahmen löschen und Text behalten"]}

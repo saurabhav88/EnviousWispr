@@ -573,6 +573,92 @@ struct DictationRecordingsTests {
       "a working player for the same file is kept")
   }
 
+  @Test("Delete all dictation recordings removes every recording, kept ones too, and keeps the text")
+  func deleteAllRecordingsKeepsText() async throws {
+    let rig = rig()
+    defer { rig.gate.releaseAll() }
+    let kept = try savedRow(rig, "kept")
+    let plain = try savedRow(rig, "plain")
+    let encoding = try savedRow(rig, "encoding")
+    let off = try savedRow(rig, "off")
+    for row in [kept, plain] { try await storeRealRecording(rig, rowID: row.id) }
+    try await rig.recordings.pin(rowID: kept.id)
+    try await rig.archive.recordAbsence(.recordingsOff, for: off.id)
+    let pending = Task {
+      await rig.recordings.record(rowID: encoding.id, samples: [0, 0, 0], timing: nil)
+    }
+    try await rig.gate.waitUntilStarted(1)
+    let arbiter = PlaybackArbiter()
+    rig.recordings.arbiter = arbiter
+    let silent: MeetingPlaybackController.Reader = { _, loaded, _, count in
+      (
+        loaded ?? (DictationPlaybackTests.SilentAudio() as any PlaybackWindowAudio),
+        [Float](repeating: 0, count: count * 16)
+      )
+    }
+    let player = MeetingPlaybackController(
+      media: .dictation(URL(filePath: "/dev/null")), durationMs: 5_000,
+      output: MeetingPlaybackControllerTests.FakeOutput(), read: silent,
+      sourceID: .dictation(plain.id), arbiter: arbiter)
+    player.play()
+
+    let result = await rig.recordings.deleteAllRecordingsKeepingText()
+    rig.gate.release(1)
+
+    #expect(result == DictationRecordings.BulkDeletion(removed: 2, remaining: 0, failed: false))
+    #expect(await pending.value == .discarded, "an encode in flight never brings audio back")
+    #expect(try await rig.archive.recordedRowIDs().isEmpty)
+    #expect(try await rig.archive.usage().temporaryBytes == 0, "its partial file went too")
+    #expect(player.state == .unavailable, "playback stopped")
+    #expect(try await rig.archive.absence(for: kept.id) == .deleted, "kept audio is deleted on request")
+    #expect(try await rig.archive.absence(for: plain.id) == .deleted)
+    #expect(try await rig.archive.absence(for: off.id) == .recordingsOff, "other reasons stay")
+    #expect(
+      try await rig.archive.absence(for: encoding.id) == .deleted,
+      "the row whose encode was withdrawn says deleted, never unexplained")
+    let rowsLeft = try #require(try await rig.store.permanentRowIDs())
+    #expect(rowsLeft.isSuperset(of: [kept.id, plain.id, encoding.id, off.id]), "every text row stays")
+  }
+
+  @Test("Delete all dictation recordings reports what it could not delete")
+  func deleteAllRecordingsReportsFailure() async throws {
+    let rig = rig()
+    defer { rig.gate.releaseAll() }
+    let rows = [try savedRow(rig, "a"), try savedRow(rig, "b"), try savedRow(rig, "c")]
+    for row in rows { try await storeRealRecording(rig, rowID: row.id) }
+    let locked = try #require(await rig.archive.url(for: rows[1].id))
+    try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: locked.path)
+    defer { try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: locked.path) }
+
+    let result = await rig.recordings.deleteAllRecordingsKeepingText()
+
+    #expect(result.failed)
+    // The archive stops at the first failure, so the locked one and any after it remain.
+    #expect((1...3).contains(result.remaining ?? 0), "what is left is counted, never zero")
+    #expect((result.removed ?? 0) + (result.remaining ?? 0) == 3)
+    #expect(await rig.archive.url(for: rows[1].id) != nil)
+  }
+
+  @Test("Delete all dictation recordings reports a failure even when every audio file went")
+  func deleteAllRecordingsReportsMetadataFailure() async throws {
+    let rig = rig()
+    defer { rig.gate.releaseAll() }
+    let row = try savedRow(rig)
+    try await storeRealRecording(rig, rowID: row.id)
+    // A reason file that exists and cannot be replaced: the audio goes, the reasons cannot be
+    // written.
+    try await rig.archive.recordAbsence(.recordingsOff, for: UUID())
+    let reasons = rig.archive.directory.appendingPathComponent("absences.json")
+    try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: reasons.path)
+    defer { try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: reasons.path) }
+
+    let result = await rig.recordings.deleteAllRecordingsKeepingText()
+
+    #expect(await rig.archive.url(for: row.id) == nil, "the audio went")
+    #expect(result.remaining == 0)
+    #expect(result.failed, "the reasons were not written, so it is not a success")
+  }
+
   @Test("launch cleanup removes interrupted encodes and orphans, never a recording with its row")
   func launchCleanup() async throws {
     let rig = rig()

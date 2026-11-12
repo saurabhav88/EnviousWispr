@@ -2,6 +2,7 @@ import CryptoKit
 import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprPipeline
+import EnviousWisprServices
 import EnviousWisprStorage
 import Foundation
 
@@ -78,6 +79,13 @@ import Foundation
     self.permanentRowExists = permanentRowExists
     self.permanentRowIDs = permanentRowIDs
     self.encode = encode
+  }
+
+  /// The take-start recording preference both dictation kernels read (#3147 D1): App Settings >
+  /// Recordings' switch, read live each time it is asked, so the next accepted take sees a
+  /// change at once. The kernel freezes the answer for that take.
+  static func livePreference(_ settings: SettingsManager) -> @MainActor () -> Bool {
+    { [settings] in settings.saveDictationRecordings }
   }
 
   // MARK: - Launch
@@ -337,6 +345,58 @@ import Foundation
     case .failure(let error):
       log("automatic recording removal failed: \(type(of: error))")
       return .failed
+    }
+  }
+
+  /// What became of Settings' Delete all dictation recordings.
+  struct BulkDeletion: Sendable, Equatable {
+    /// Recordings removed; nil when the count before or after could not be read.
+    let removed: Int?
+    /// Recordings still there after a failure; nil when they could not be counted.
+    let remaining: Int?
+    /// Any step failed: an audio file stayed, or the recorded reasons could not be written even
+    /// though every audio file went. Independent of `remaining`.
+    let failed: Bool
+  }
+
+  /// Settings' "Delete all dictation recordings": every recording's audio goes, every text row
+  /// stays, and each affected row records `.deleted` (unlike text Delete All, which forgets the
+  /// rows). Kept recordings go too: this is the user's own explicit deletion. One History
+  /// command: the rows with an encode in flight are noted, every ticket is withdrawn (a late
+  /// encode discards its own partial file), every dictation player stops, the archive removes,
+  /// and each noted row whose text still exists records `.deleted` too, so History never shows
+  /// it as unexplained. Other recorded reasons (recordings off) stay. Any failure is reported.
+  func deleteAllRecordingsKeepingText() async -> BulkDeletion {
+    await executor.admit { [self] () async -> BulkDeletion in
+      let inFlight = Set(generations.keys)
+      generations.removeAll()
+      arbiter?.stopAllDictationsForDeletion()
+      defer { changes.changedAll() }
+      let before = try? await archive.index().count
+      var failed = false
+      var removed: Int?
+      do {
+        removed = try await archive.deleteAll(reason: .deleted)
+      } catch {
+        failed = true
+        log("delete all recordings failed: \(type(of: error))")
+      }
+      for rowID in inFlight {
+        do {
+          guard try await permanentRowExists(rowID), await archive.url(for: rowID) == nil else {
+            continue
+          }
+          try await archive.recordAbsence(.deleted, for: rowID)
+        } catch {
+          failed = true
+          log("delete all recordings: reason not recorded \(type(of: error))")
+        }
+      }
+      let remaining = try? await archive.index().count
+      if remaining != 0 { failed = true }
+      if failed, let before, let remaining { removed = max(0, before - remaining) }
+      if failed, before == nil { removed = nil }
+      return BulkDeletion(removed: removed, remaining: remaining, failed: failed)
     }
   }
 

@@ -1,0 +1,11 @@
+{
+  "language": "vi",
+  "title": "dung lượng đã dùng",
+  "words": [
+    "kích thước bản ghi"
+  ],
+  "phrases": [
+    "bản ghi âm chiếm bao nhiêu dung lượng",
+    "tổng dung lượng các bản ghi âm"
+  ]
+}

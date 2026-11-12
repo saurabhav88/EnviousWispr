@@ -1,0 +1,11 @@
+{
+  "language": "de",
+  "words": [
+    "Aufnahmegröße",
+    "Speicherverbrauch"
+  ],
+  "phrases": [
+    "wie viel Platz brauchen meine Aufnahmen",
+    "zeig mir die Größe meiner Aufnahmen"
+  ]
+}

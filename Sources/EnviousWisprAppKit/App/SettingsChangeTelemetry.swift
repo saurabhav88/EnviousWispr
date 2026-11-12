@@ -251,7 +251,7 @@ enum SettingsProjection {
       // whenever a consumer appears; it simply has not.
       .recordingPillDesignWithoutWords, .recordingPillDesignWithWords:
       return []
-    case .dictationRecordingRetention, .meetingRecordingRetention,
+    case .saveDictationRecordings, .dictationRecordingRetention, .meetingRecordingRetention,
       .recordingStorageWarningThreshold, .recordingThresholdBehavior:
       // #3147: not instrumented in PR1. Telemetry for recordings follows the plan's §16 C8
       // budget review first (reader, cadence, existing-event reuse); none is added here.

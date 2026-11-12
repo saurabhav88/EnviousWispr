@@ -1,0 +1,15 @@
+{
+  "language": "lv",
+  "title": "ieraksti",
+  "words": [
+    "audioieraksti",
+    "skaņas ieraksti",
+    "ierakstu glabāšana",
+    "ierakstu aizņemtā vieta"
+  ],
+  "phrases": [
+    "saglabāt diktēšanas ierakstus",
+    "cik ilgi glabāt sapulču audio",
+    "dzēst audioierakstus, saglabājot tekstu"
+  ]
+}

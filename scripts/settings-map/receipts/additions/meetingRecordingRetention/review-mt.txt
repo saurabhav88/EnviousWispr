@@ -1,0 +1,11 @@
+{
+  "language": "mt",
+  "title": "żomm l-awdjo tal-laqgħat",
+  "words": [
+    "reġistrazzjonijiet tal-laqgħat"
+  ],
+  "phrases": [
+    "għal kemm żmien inżomm l-awdjo tal-laqgħat",
+    "ħassar l-awdjo tal-laqgħat wara 30 jew 90 jum"
+  ]
+}

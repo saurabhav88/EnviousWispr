@@ -792,8 +792,9 @@ package final class WisprBootstrapper {
         pasteCompletionRegistry: pasteCompletionRegistry,
         engineMutationScope: engineMutationScope,
         outputClassifierHolder: outputClassifierHolder,
-        // #3147: recordings are on (D1) until the Recordings setting arrives (PR1 chunk 6).
-        recordingPreference: { true },
+        // #3147 D1: App Settings > Recordings' switch, read live; the kernel freezes it once
+        // per accepted take.
+        recordingPreference: DictationRecordings.livePreference(settings),
         recordingSink: transcriptCoordinator.recordings,
         microphonePermissionIsDenied: { permissions.microphonePermissionIsDenied },
         egOneRuntime: egOneRuntime,
@@ -865,8 +866,9 @@ package final class WisprBootstrapper {
         whisperModelIdentity: modelDelivery.whisperRegistration?.manifest.identity
           .asrModelIdentity,
         outputClassifierHolder: outputClassifierHolder,
-        // #3147: recordings are on (D1) until the Recordings setting arrives (PR1 chunk 6).
-        recordingPreference: { true },
+        // #3147 D1: App Settings > Recordings' switch, read live; the kernel freezes it once
+        // per accepted take.
+        recordingPreference: DictationRecordings.livePreference(settings),
         recordingSink: transcriptCoordinator.recordings,
         microphonePermissionIsDenied: { permissions.microphonePermissionIsDenied },
         egOneRuntime: egOneRuntime,
@@ -3651,6 +3653,9 @@ private struct MainWindowRoot: View {
       .environment(b.transcriptCoordinator)
       .environment(b.fileImportCoordinator)
       .environment(b.meetingCoordinator)
+      // #3147: Recordings settings and History's storage warning.
+      .environment(b.recordingRetention)
+      .environment(b.recordingUsage)
       .environment(b.meetingStartFlow)
       .environment(b.meetingOnboardingModel)
       .environment(b.meetingLiveWordsRow)

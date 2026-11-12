@@ -1,0 +1,1 @@
+{"language":"it","title":"spazio utilizzato","words":["spazio su disco","dimensione delle registrazioni"],"phrases":["quanto spazio occupano le registrazioni delle dettature","quanto spazio occupa l'audio delle riunioni"]}

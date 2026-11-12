@@ -160,6 +160,41 @@ final class RecordingRetention {
     request(.sweep)
   }
 
+  /// Measure usage and re-check the threshold now (after a Settings deletion or a page open).
+  func refresh() {
+    request(.usage)
+  }
+
+  /// Whether `change` shortens its keep period and so must go through `stage`.
+  func isShortening(_ change: RetentionChange) -> Bool {
+    switch change {
+    case .dictations(let new):
+      Self.shortens(from: deps.settings.dictationRecordingRetention.days, to: new.days)
+    case .meetings(let new):
+      Self.shortens(from: deps.settings.meetingRecordingRetention.days, to: new.days)
+    }
+  }
+
+  nonisolated static func shortens(from old: Int?, to new: Int?) -> Bool {
+    guard let new else { return false }
+    guard let old else { return true }
+    return new < old
+  }
+
+  /// A longer keep period or "until I delete" removes nothing earlier than before, so it
+  /// applies at once. A shortening is refused here (false): it must be staged and confirmed.
+  @discardableResult
+  func applyWithoutPreview(_ change: RetentionChange) -> Bool {
+    guard !isShortening(change) else { return false }
+    stageGeneration += 1
+    staged = nil
+    switch change {
+    case .dictations(let retention): deps.settings.dictationRecordingRetention = retention
+    case .meetings(let retention): deps.settings.meetingRecordingRetention = retention
+    }
+    return true
+  }
+
   /// Awaitable end of every requested pass, for callers and tests.
   func waitUntilIdle() async {
     while let runner { await runner.value }

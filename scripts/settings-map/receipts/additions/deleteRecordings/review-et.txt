@@ -1,0 +1,1 @@
+{"language":"et","title":"kustuta salvestised","words":["helifailid"],"phrases":["kustuta heli ja jäta tekst alles"]}

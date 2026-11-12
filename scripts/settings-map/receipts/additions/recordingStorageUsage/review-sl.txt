@@ -1,0 +1,1 @@
+{"language":"sl","title":"zasedeni prostor","words":["velikost posnetkov"],"phrases":["koliko prostora zavzamejo posnetki","skupna velikost shranjenih posnetkov"]}

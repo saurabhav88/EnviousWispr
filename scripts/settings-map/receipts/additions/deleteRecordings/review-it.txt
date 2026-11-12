@@ -1,0 +1,12 @@
+{
+  "language": "it",
+  "title": "elimina registrazioni",
+  "words": [
+    "cancella registrazioni",
+    "elimina audio"
+  ],
+  "phrases": [
+    "eliminare tutte le registrazioni delle dettature mantenendo il testo",
+    "cancellare tutto l'audio delle riunioni senza eliminare note e riepiloghi"
+  ]
+}
