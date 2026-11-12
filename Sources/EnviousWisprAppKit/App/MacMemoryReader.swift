@@ -1,4 +1,5 @@
 import Darwin
+import Foundation
 
 /// #4525: the Mac's memory in use right now, system-wide, for the EG-1 size cards' live bar.
 ///
@@ -7,10 +8,14 @@ import Darwin
 /// footprint is subtracted and no child process is walked, because a process footprint is not
 /// an exact share of the system figure (plan #4525 §2.1 G3).
 ///
-/// Formula, candidate A of plan §2.5 item 5: app memory (`internal - purgeable`) + wired +
-/// compressed (`compressor_page_count`, the physical pages the compressor occupies), the three
-/// parts Activity Monitor lists under Memory Used. Adoption over candidate B waits on the
-/// plan's paired Activity Monitor readings (§11.1 item 2).
+/// Formula, candidate B of plan §2.5 item 5: installed memory minus free pages minus file-backed
+/// pages (Activity Monitor's "Physical Memory − Cached Files − free"). `free_count` already
+/// includes speculative pages (XNU `vm_statistics.h`), so they are not subtracted again.
+/// Measured 2026-11-11 on an M5 Max, 64 GB, paired with Activity Monitor: candidate A (app +
+/// wired + compressed) matched the three parts Activity Monitor lists within 0.1 GB, but its
+/// headline "Memory Used" read about 1.5 GB above that sum; candidate B came within about
+/// 0.5 GB of the headline and never below candidate A, so the bar never shows more room than
+/// the Mac has.
 enum MacMemoryReader {
   /// `mach_host_self()` returns a send right each call; one is enough for the process.
   nonisolated(unsafe) private static let host = mach_host_self()
@@ -29,24 +34,20 @@ enum MacMemoryReader {
     guard result == KERN_SUCCESS, host_page_size(host, &pageSize) == KERN_SUCCESS, pageSize > 0
     else { return nil }
     return usedBytes(
-      internalPages: UInt64(stats.internal_page_count),
-      purgeablePages: UInt64(stats.purgeable_count),
-      wiredPages: UInt64(stats.wire_count),
-      compressorPages: UInt64(stats.compressor_page_count),
+      physicalBytes: ProcessInfo.processInfo.physicalMemory,
+      freePages: UInt64(stats.free_count),
+      fileBackedPages: UInt64(stats.external_page_count),
       pageSize: UInt64(pageSize))
   }
 
-  /// The formula alone, so its arithmetic is testable. Nil on underflow (more purgeable pages
-  /// than app pages) or overflow, never a wrapped huge number.
+  /// The formula alone, so its arithmetic is testable. Nil on overflow or when free plus
+  /// file-backed memory exceeds the installed memory, never a wrapped huge number.
   nonisolated static func usedBytes(
-    internalPages: UInt64, purgeablePages: UInt64, wiredPages: UInt64, compressorPages: UInt64,
-    pageSize: UInt64
+    physicalBytes: UInt64, freePages: UInt64, fileBackedPages: UInt64, pageSize: UInt64
   ) -> UInt64? {
-    guard internalPages >= purgeablePages else { return nil }
-    let (withWired, o1) = (internalPages - purgeablePages).addingReportingOverflow(wiredPages)
-    let (pages, o2) = withWired.addingReportingOverflow(compressorPages)
-    let (bytes, o3) = pages.multipliedReportingOverflow(by: pageSize)
-    guard !o1, !o2, !o3 else { return nil }
-    return bytes
+    let (pages, o1) = freePages.addingReportingOverflow(fileBackedPages)
+    let (unused, o2) = pages.multipliedReportingOverflow(by: pageSize)
+    guard !o1, !o2, unused <= physicalBytes else { return nil }
+    return physicalBytes - unused
   }
 }

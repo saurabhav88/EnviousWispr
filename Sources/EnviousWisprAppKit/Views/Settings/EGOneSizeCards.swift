@@ -97,8 +97,8 @@ enum EGOneSizeCardCopy {
       localized: "\(megabytes) MB", comment: "A file size in megabytes. %lld is a whole number.")
   }
 
-  /// "This Mac: 64 GB memory", and "· 48.1 GB in use" when the live figure is known (#4525).
-  /// Macs report whole binary gigabytes.
+  /// "This Mac: 64 GB memory", and "· 48.1 GB in use · 75%" when the live figure is known
+  /// (#4525). Macs report whole binary gigabytes.
   static func thisMac(physicalMemoryBytes: UInt64, usedBytes: UInt64?) -> String {
     let gigabytes = Int((Double(physicalMemoryBytes) / Double(1 << 30)).rounded())
     guard let usedBytes else {
@@ -107,10 +107,13 @@ enum EGOneSizeCardCopy {
         comment: "AI Polish, above the EG-1 size cards. %lld is the Mac's installed memory in GB.")
     }
     let used = memoryGigabytes(usedBytes)
+    let percent =
+      physicalMemoryBytes == 0
+      ? 0 : Int((Double(usedBytes) / Double(physicalMemoryBytes) * 100).rounded())
     return String(
-      localized: "This Mac: \(gigabytes) GB memory · \(used) GB in use",
+      localized: "This Mac: \(gigabytes) GB memory · \(used) GB in use · \(percent)%",
       comment:
-        "AI Polish, above the EG-1 size cards. %1$lld is the Mac's installed memory in GB; %2$@ is the memory in use right now, such as 48.1."
+        "AI Polish, above the EG-1 size cards. %1$lld is the Mac's installed memory in GB; %2$@ is the memory in use right now, such as 48.1; %3$lld is that as a percent of the Mac's memory."
     )
   }
 
@@ -126,23 +129,66 @@ enum EGOneSizeCardCopy {
     comment: "AI Polish, EG-1 size card: the size needs more than half of the Mac's memory.")
 
   static let wontFitRightNow = String(
-    localized: "Won't fit right now",
+    localized: "Won't fit right now. Close some apps or pick a smaller size.",
     comment:
       "AI Polish, EG-1 size card: the memory in use now plus this size is more than 90% of the Mac's memory.")
 
-  static let startingIncludedInUse = String(
-    localized: "Starting, included in use",
-    comment:
-      "AI Polish, EG-1 size card: this size is starting, so its memory is already part of the memory in use.")
+  /// #4525: the key under the memory bar, one entry per colour. Nil with no live figure (the
+  /// bar is then today's single purple part and needs no key).
+  struct MemoryKey: Equatable {
+    /// The gray part: "In use now", or "Other apps" when this size is running inside it.
+    let inUse: String
+    /// The purple part: "EG-1 adds 5.5 GB", or "EG-1 Mini, running".
+    let size: String
+    /// Where the bar ends: "65% with this size" or "56% in use".
+    let percent: String
+  }
 
-  static let runningIncludedInUse = String(
-    localized: "Running now, included in use",
-    comment:
-      "AI Polish, EG-1 size card: this size is running, so its memory is already part of the memory in use.")
+  static func memoryKey(_ memory: EGOneSizeCard.Memory, size: EGOneSize) -> MemoryKey? {
+    guard let percent = memory.projectedPercent else { return nil }
+    let name = title(size)
+    switch memory.activity {
+    case .inactive:
+      let adds = memoryGigabytes(UInt64(max(0, memory.bytes)))
+      return MemoryKey(
+        inUse: String(
+          localized: "In use now",
+          comment: "AI Polish, EG-1 size card, key under the memory bar: the gray part, memory the Mac uses now."),
+        size: String(
+          localized: "\(name) adds \(adds) GB",
+          comment:
+            "AI Polish, EG-1 size card, key under the memory bar: the purple part. %1$@ is the size's name, such as EG-1 Mini; %2$@ its memory, such as 2.9."
+        ),
+        percent: String(
+          localized: "\(percent)% with this size",
+          comment:
+            "AI Polish, EG-1 size card, under the memory bar: memory in use now plus this size, as a percent of the Mac's memory."
+        ))
+    case .starting, .ready:
+      let otherApps = String(
+        localized: "Other apps",
+        comment:
+          "AI Polish, EG-1 size card, key under the memory bar of the running size: the gray part, memory everything else uses.")
+      let inUsePercent = String(
+        localized: "\(percent)% in use",
+        comment:
+          "AI Polish, EG-1 size card, under the memory bar of the running size: memory in use now, this size included, as a percent of the Mac's memory."
+      )
+      let sizeLabel =
+        memory.activity == .ready
+        ? String(
+          localized: "\(name), running",
+          comment: "AI Polish, EG-1 size card, key under the memory bar: the purple part is this size, running now. %@ is its name.")
+        : String(
+          localized: "\(name), starting",
+          comment: "AI Polish, EG-1 size card, key under the memory bar: the purple part is this size, starting now. %@ is its name.")
+      return MemoryKey(inUse: otherApps, size: sizeLabel, percent: inUsePercent)
+    }
+  }
 
   /// What VoiceOver reads for the memory row: the size's need and the Mac's memory in use now,
-  /// as two separate sentences, then the warning or running note shown on the card.
-  static func memoryAccessibilityValue(_ memory: EGOneSizeCard.Memory) -> String {
+  /// as separate sentences, then where the bar ends and any warning.
+  static func memoryAccessibilityValue(_ memory: EGOneSizeCard.Memory, size: EGOneSize) -> String {
     let need = memoryGigabytes(UInt64(max(0, memory.bytes)))
     var parts = [
       String(
@@ -159,23 +205,17 @@ enum EGOneSizeCardCopy {
             "AI Polish, EG-1 size card, VoiceOver: memory in use now (%1$@, such as 48.1) of the Mac's memory (%2$lld GB)."
         ))
     }
+    if let key = memoryKey(memory, size: size) { parts.append(key.percent + ".") }
     if let note = memoryNote(memory) { parts.append(note) }
     return parts.joined(separator: " ")
   }
 
-  /// The line under the memory figure: the warning, or for a starting or running size with a
-  /// live figure, that its memory is already counted. Nil when there is nothing to say.
+  /// The warning under the memory part, or nil.
   static func memoryNote(_ memory: EGOneSizeCard.Memory) -> String? {
     switch memory.warning {
-    case .tight: return tightOnThisMac
-    case .wontFitNow: return wontFitRightNow
-    case nil: break
-    }
-    guard memory.systemUsedBytes != nil else { return nil }
-    switch memory.activity {
-    case .starting: return startingIncludedInUse
-    case .ready: return runningIncludedInUse
-    case .inactive: return nil
+    case .tight: tightOnThisMac
+    case .wontFitNow: wontFitRightNow
+    case nil: nil
     }
   }
 
@@ -479,8 +519,10 @@ private struct EGOneSizeCardView: View {
   private func memoryRow(_ memory: EGOneSizeCard.Memory) -> some View {
     let warned = memory.warning != nil
     let tint = warned ? Color.stWarning : Color.stTextPrimary
+    let sizeColor = warned ? Color.stWarning : Color.stAccent
     let need = EGOneSizeCardCopy.memoryGigabytes(UInt64(max(0, memory.bytes)))
     let mac = Int((Double(memory.macBytes) / Double(1 << 30)).rounded())
+    let key = EGOneSizeCardCopy.memoryKey(memory, size: card.size)
     return VStack(alignment: .leading, spacing: 6) {
       factRow(
         String(localized: "Memory", comment: "AI Polish, EG-1 size card: memory the size uses."),
@@ -497,30 +539,67 @@ private struct EGOneSizeCardView: View {
               comment: "AI Polish, EG-1 size card: marks the size that uses the least memory.")
             : nil),
         tint: tint)
-      if let note = EGOneSizeCardCopy.memoryNote(memory) {
-        Text(note)
-          .font(.stRowHelper)
-          .foregroundStyle(warned ? Color.stWarning : Color.stTextSecondary)
-      }
       // #4525: gray = the Mac's memory in use now; purple (orange when warned) = this size,
-      // after gray for a size that is not running. Decorative: VoiceOver reads the row's value.
+      // after gray for a size that is not running, over the end of gray for the running one.
+      // Decorative: VoiceOver reads the row's label.
       GeometryReader { proxy in
         ZStack(alignment: .leading) {
           Capsule().fill(Color.stDivider)
           Capsule().fill(Color.stTextTertiary)
             .frame(width: proxy.size.width * memory.usedFraction)
-          Capsule().fill(warned ? Color.stWarning : Color.stAccent)
+          Capsule().fill(sizeColor)
             .frame(width: proxy.size.width * memory.peakFraction)
             .offset(x: proxy.size.width * memory.peakStart)
         }
       }
-      .frame(height: 4)
+      .frame(height: 6)
       .accessibilityHidden(true)
+      if let key {
+        let percent = Text(key.percent)
+          .font(.stRowHelper)
+          .monospacedDigit()
+          .foregroundStyle(warned ? Color.stWarning : Color.stTextSecondary)
+          .lineLimit(1)
+          .fixedSize()
+        // One line when the card is wide enough; the percent on its own line when it is not,
+        // so no label is cut short.
+        ViewThatFits(in: .horizontal) {
+          HStack(spacing: 10) {
+            keyEntry(key.inUse, color: .stTextTertiary)
+            keyEntry(key.size, color: sizeColor)
+            Spacer(minLength: 6)
+            percent
+          }
+          VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 10) {
+              keyEntry(key.inUse, color: .stTextTertiary)
+              keyEntry(key.size, color: sizeColor)
+            }
+            percent
+          }
+        }
+      }
+      if let note = EGOneSizeCardCopy.memoryNote(memory) {
+        Text(note)
+          .font(.stRowHelper)
+          .foregroundStyle(Color.stWarning)
+      }
     }
+    // One label, not label + value: the card is a Button, and a Button's VoiceOver label joins
+    // its children's labels but drops their values (seen in UAT: it read only "Memory").
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(
-      String(localized: "Memory", comment: "AI Polish, EG-1 size card: memory the size uses."))
-    .accessibilityValue(EGOneSizeCardCopy.memoryAccessibilityValue(memory))
+      String(localized: "Memory", comment: "AI Polish, EG-1 size card: memory the size uses.")
+        + ", " + EGOneSizeCardCopy.memoryAccessibilityValue(memory, size: card.size))
+  }
+
+  /// One entry of the memory bar's key: a small swatch of the bar's colour, then its label.
+  private func keyEntry(_ label: String, color: Color) -> some View {
+    HStack(spacing: 4) {
+      Circle().fill(color).frame(width: 7, height: 7)
+      Text(label).font(.stRowHelper).foregroundStyle(Color.stTextSecondary).lineLimit(1)
+        .fixedSize()
+    }
   }
 
   private var statusLine: some View {

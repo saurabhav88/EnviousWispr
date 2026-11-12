@@ -326,16 +326,29 @@ struct EGOneSizeCardTests {
     #expect(full.peakStart + full.peakFraction == 1)
   }
 
-  // A user would see a running size counted twice, or warned that it will not fit.
+  // A user would lose sight of EnviousWispr's part of the bar while it runs, see it counted
+  // twice, or be warned that a running size will not fit (founder 2026-11-11).
   @Test(arguments: [LocalPolishRuntime.ServerActivity.starting, .ready])
-  func aStartingOrRunningSizeAddsNoPurpleAndNoWarning(activity: LocalPolishRuntime.ServerActivity) {
-    let card = Self.memory(peak: 4, mac: 16, used: 15, activity: activity)
-    #expect(card.usedFraction == 15.0 / 16)
-    #expect(card.peakFraction == 0)
+  func aStartingOrRunningSizeIsDrawnInsideMemoryInUse(activity: LocalPolishRuntime.ServerActivity) {
+    let card = Self.memory(peak: 4, mac: 16, used: 12, activity: activity)
+    #expect(card.usedFraction == 0.75)
+    #expect(card.peakStart == 0.5)
+    #expect(card.peakFraction == 0.25)
+    #expect(card.peakStart + card.peakFraction == card.usedFraction)
+    #expect(card.projectedPercent == 75)
     #expect(card.warning == nil)
+    // Its peak is never drawn past what is in use.
+    let small = Self.memory(peak: 8, mac: 16, used: 4, activity: activity)
+    #expect(small.peakStart == 0 && small.peakFraction == 0.25)
     // A failed live read does not bring back the more-than-half warning for it either.
     #expect(Self.memory(peak: 6, mac: 8, used: nil, activity: activity).warning == nil)
     #expect(Self.memory(peak: 6, mac: 8, used: nil).warning == .tight)
+  }
+
+  // A user would read a percent that does not match where the bar ends.
+  @Test func projectedPercentIsWhereTheBarEnds() {
+    #expect(Self.memory(peak: 9, mac: 100, used: 56).projectedPercent == 65)
+    #expect(Self.memory(peak: 9, mac: 100, used: nil).projectedPercent == nil)
   }
 
   // A user would be told a size will not fit when it will, or not told when it will not.
@@ -420,38 +433,48 @@ struct EGOneSizeCardTests {
   }
 
   // #4525: a user would not see how much memory the Mac uses now.
-  @Test func thisMacAddsTheMemoryInUseWhenKnown() {
-    let used = UInt64(48.1 * Double(1 << 30))
+  @Test func thisMacAddsTheMemoryInUseAndItsPercentWhenKnown() {
+    let used = UInt64(36.1 * Double(1 << 30))
     let line = EGOneSizeCardCopy.thisMac(physicalMemoryBytes: 64 << 30, usedBytes: used)
     #expect(line.hasPrefix("This Mac: 64 GB memory"))
-    #expect(line.contains(EGOneSizeCardCopy.memoryGigabytes(used)))
-    #expect(line.hasSuffix("GB in use"))
+    #expect(line.contains("\(EGOneSizeCardCopy.memoryGigabytes(used)) GB in use"))
+    #expect(line.hasSuffix("56%"))
   }
 
-  // #4525: a user would see the wrong note under the memory figure, or none where one is due.
-  @Test func memoryNoteNamesTheWarningOrTheRunningState() {
+  // #4525: a user would see the wrong key under the bar, or a warning where none is due.
+  @Test func memoryKeyNamesEachPartAndTheWarningStandsAlone() throws {
     typealias Copy = EGOneSizeCardCopy
+    let gib: UInt64 = 1 << 30
+    let adds = try #require(
+      Copy.memoryKey(Self.memory(peak: Int64(gib * 3), mac: 64 * gib, used: 32 * gib), size: .mini))
+    #expect(adds.inUse == "In use now")
+    #expect(adds.size == "EG-1 Mini adds \(Copy.memoryGigabytes(3 * gib)) GB")
+    #expect(adds.percent == "55% with this size")
+    let running = try #require(
+      Copy.memoryKey(
+        Self.memory(peak: Int64(gib * 3), mac: 64 * gib, used: 32 * gib, activity: .ready),
+        size: .mini))
+    #expect(running == .init(inUse: "Other apps", size: "EG-1 Mini, running", percent: "50% in use"))
+    let starting = Copy.memoryKey(
+      Self.memory(peak: 1, mac: 64 * gib, used: 32 * gib, activity: .starting), size: .micro)
+    #expect(starting?.size == "EG-1 Micro, starting")
+    #expect(Copy.memoryKey(Self.memory(peak: 1, mac: 100, used: nil), size: .full) == nil)
+
     #expect(Copy.memoryNote(Self.memory(peak: 6, mac: 8, used: nil)) == Copy.tightOnThisMac)
     #expect(Copy.memoryNote(Self.memory(peak: 10, mac: 100, used: 81)) == Copy.wontFitRightNow)
     #expect(Copy.memoryNote(Self.memory(peak: 10, mac: 100, used: 20)) == nil)
-    #expect(
-      Copy.memoryNote(Self.memory(peak: 10, mac: 100, used: 95, activity: .starting))
-        == Copy.startingIncludedInUse)
-    #expect(
-      Copy.memoryNote(Self.memory(peak: 10, mac: 100, used: 95, activity: .ready))
-        == Copy.runningIncludedInUse)
-    // No live figure: a running size says nothing extra (today's card).
-    #expect(Copy.memoryNote(Self.memory(peak: 1, mac: 100, used: nil, activity: .ready)) == nil)
+    #expect(Copy.memoryNote(Self.memory(peak: 10, mac: 100, used: 95, activity: .ready)) == nil)
   }
 
   // #4525: a VoiceOver user would not hear the size's need and the Mac's use as separate facts.
   @Test func voiceOverReadsTheNeedAndTheUseSeparately() {
     let gib: UInt64 = 1 << 30
     let value = EGOneSizeCardCopy.memoryAccessibilityValue(
-      Self.memory(peak: Int64(6 * gib), mac: 64 * gib, used: 48 * gib))
+      Self.memory(peak: Int64(6 * gib), mac: 64 * gib, used: 48 * gib), size: .full)
     let need = EGOneSizeCardCopy.memoryGigabytes(6 * gib)
     let used = EGOneSizeCardCopy.memoryGigabytes(48 * gib)
-    #expect(value == "Needs about \(need) GB. Mac is using \(used) GB of 64 GB now.")
+    #expect(
+      value == "Needs about \(need) GB. Mac is using \(used) GB of 64 GB now. 84% with this size.")
   }
 
   // A user would not be able to tell the size in use from one that is merely downloaded.

@@ -141,6 +141,23 @@
         }
       }
     },
+    "%@ adds %@ GB" : {
+      "comment" : "AI Polish, EG-1 size card, key under the memory bar: the purple part. %1$@ is the size's name, such as EG-1 Mini; %2$@ its memory, such as 2.9.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ adds %2$@ GB"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@: +%2$@ GB"
+          }
+        }
+      }
+    },
     "%@ already knows \"%@\"" : {
       "comment" : "Quick Add panel: the word already has that spelling. The first %@ is the word, the second the misheard text; use this language's quotation marks.",
       "localizations" : {
@@ -1014,6 +1031,28 @@
         }
       }
     },
+    "%@, running" : {
+      "comment" : "AI Polish, EG-1 size card, key under the memory bar: the purple part is this size, running now. %@ is its name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@, läuft"
+          }
+        }
+      }
+    },
+    "%@, starting" : {
+      "comment" : "AI Polish, EG-1 size card, key under the memory bar: the purple part is this size, starting now. %@ is its name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@, wird gestartet"
+          }
+        }
+      }
+    },
     "%@. %@" : {
       "comment" : "Recording Pill settings, style picker, VoiceOver: a design card. The first %@ is the design's name, the second one sentence about it.\nSettings sidebar, VoiceOver: a row's value. The first %@ is Selected or Not selected; the second says what is running on that page.",
       "localizations" : {
@@ -1260,6 +1299,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld%%"
+          }
+        }
+      }
+    },
+    "%lld%% in use" : {
+      "comment" : "AI Polish, EG-1 size card, under the memory bar of the running size: memory in use now, this size included, as a percent of the Mac's memory.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld%% belegt"
+          }
+        }
+      }
+    },
+    "%lld%% with this size" : {
+      "comment" : "AI Polish, EG-1 size card, under the memory bar: memory in use now plus this size, as a percent of the Mac's memory.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld%% mit dieser Größe"
           }
         }
       }
@@ -10839,6 +10900,17 @@
         }
       }
     },
+    "In use now" : {
+      "comment" : "AI Polish, EG-1 size card, key under the memory bar: the gray part, memory the Mac uses now.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jetzt belegt"
+          }
+        }
+      }
+    },
     "Indonesian" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -15779,6 +15851,17 @@
         }
       }
     },
+    "Other apps" : {
+      "comment" : "AI Polish, EG-1 size card, key under the memory bar of the running size: the gray part, memory everything else uses.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Andere Apps"
+          }
+        }
+      }
+    },
     "Other languages?" : {
       "comment" : "AI Polish, Why use S1-mini: bold lead-in of a paragraph.",
       "localizations" : {
@@ -18203,17 +18286,6 @@
         }
       }
     },
-    "Running now, included in use" : {
-      "comment" : "AI Polish, EG-1 size card: this size is running, so its memory is already part of the memory in use.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Läuft · bereits mitgezählt"
-          }
-        }
-      }
-    },
     "Running streaming ASR..." : {
       "comment" : "Settings > Diagnostics, speed test: progress. ASR means speech recognition.",
       "localizations" : {
@@ -20268,17 +20340,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Modell wird gestartet. Das dauert einige Sekunden."
-          }
-        }
-      }
-    },
-    "Starting, included in use" : {
-      "comment" : "AI Polish, EG-1 size card: this size is starting, so its memory is already part of the memory in use.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wird gestartet · bereits mitgezählt"
           }
         }
       }
@@ -22455,19 +22516,19 @@
         }
       }
     },
-    "This Mac: %lld GB memory · %@ GB in use" : {
-      "comment" : "AI Polish, above the EG-1 size cards. %1$lld is the Mac's installed memory in GB; %2$@ is the memory in use right now, such as 48.1.",
+    "This Mac: %lld GB memory · %@ GB in use · %lld%%" : {
+      "comment" : "AI Polish, above the EG-1 size cards. %1$lld is the Mac's installed memory in GB; %2$@ is the memory in use right now, such as 48.1; %3$lld is that as a percent of the Mac's memory.",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "This Mac: %1$lld GB memory · %2$@ GB in use"
+            "value" : "This Mac: %1$lld GB memory · %2$@ GB in use · %3$lld%%"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Dieser Mac: %1$lld GB Arbeitsspeicher · %2$@ GB belegt"
+            "value" : "Dieser Mac: %1$lld GB Arbeitsspeicher · %2$@ GB belegt · %3$lld%%"
           }
         }
       }
@@ -25110,13 +25171,13 @@
         }
       }
     },
-    "Won't fit right now" : {
+    "Won't fit right now. Close some apps or pick a smaller size." : {
       "comment" : "AI Polish, EG-1 size card: the memory in use now plus this size is more than 90% of the Mac's memory.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Reicht gerade nicht"
+            "value" : "Reicht gerade nicht. Schließe einige Apps oder wähle eine kleinere Größe."
           }
         }
       }

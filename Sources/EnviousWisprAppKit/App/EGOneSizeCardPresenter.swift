@@ -24,9 +24,11 @@ struct EGOneSizeCard: Equatable, Identifiable, Sendable {
   }
 
   /// #4525: the memory row and its bar. Gray is the Mac's memory in use now (live); purple is
-  /// the size's measured peak, stacked after gray for a size that is not running. A size that is
-  /// starting or running adds no purple: its memory is already part of gray. With no live
-  /// figure the bar is today's: purple from the left, warned by the more-than-half rule.
+  /// the size's measured peak. For a size that is not running, purple stacks after gray ("now
+  /// plus this size"). For a size that is starting or running, its memory is already part of
+  /// gray, so purple is drawn over the end of gray instead, never added (founder 2026-11-11:
+  /// EnviousWispr's part must stay visible on the bar). With no live figure the bar is
+  /// today's: purple from the left, warned by the more-than-half rule.
   struct Memory: Equatable, Sendable {
     enum Warning: Equatable, Sendable {
       /// No live figure: the size needs more than half of this Mac's memory.
@@ -58,13 +60,33 @@ struct EGOneSizeCard: Equatable, Identifiable, Sendable {
 
     /// Gray: memory in use now, as a share of the Mac's memory; 0 with no live figure.
     var usedFraction: Double { Self.share(systemUsedBytes ?? 0, of: macBytes) }
-    /// Where purple starts: after gray when live, else at the left edge.
-    var peakStart: Double { usedFraction }
-    /// Purple's width; never past the end of the track, and 0 for a starting or running size
-    /// with a live figure.
+    /// The size's part of the bar while it is starting or running with a live figure: its peak,
+    /// at most the memory in use (it is inside gray).
+    private var includedFraction: Double? {
+      guard let used = systemUsedBytes, activity != .inactive else { return nil }
+      return Self.share(min(UInt64(max(0, bytes)), used), of: macBytes)
+    }
+    /// Where purple starts: inside the end of gray for a running size, after gray for a size
+    /// that is not running, at the left edge with no live figure.
+    var peakStart: Double {
+      if let included = includedFraction { return max(0, usedFraction - included) }
+      return usedFraction
+    }
+    /// Purple's width; never past the end of the track.
     var peakFraction: Double {
-      if systemUsedBytes != nil, activity != .inactive { return 0 }
+      if let included = includedFraction { return included }
       return min(1 - peakStart, Self.share(UInt64(max(0, bytes)), of: macBytes))
+    }
+
+    /// Percent of the Mac's memory the bar ends at, rounded: memory in use now plus this size
+    /// for a size that is not running, memory in use now (this size included) for a running
+    /// one. Nil with no live figure.
+    var projectedPercent: Int? {
+      guard let used = systemUsedBytes, macBytes > 0 else { return nil }
+      let peak = activity == .inactive ? UInt64(max(0, bytes)) : 0
+      let (total, overflow) = used.addingReportingOverflow(peak)
+      let bytes = overflow ? UInt64.max : total
+      return Int((Double(bytes) / Double(macBytes) * 100).rounded())
     }
 
     private static func share(_ part: UInt64, of whole: UInt64) -> Double {
