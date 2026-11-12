@@ -1,0 +1,24 @@
+<!-- Settings buttons. Swift: `Button { } label: { EnviousButtonLabel(...) }.settingsButton(emphasis, ...)`,
+     look from EnviousButtonFace (Views/Design/EnviousButtonStyle.swift). Capsule everywhere in Settings;
+     rounded rectangle (--rect) only in wizards. Sizes: regular 12pt (default), medium 14pt, large 15pt. -->
+<!-- part: button-filled | Filled button (the one main action) | EnviousButtonFace .filled | parts-controls -->
+<button class="ew-btn ew-btn--filled">Download</button>
+<!-- /part -->
+<!-- part: button-outlined | Outlined button (a row-level action) | EnviousButtonFace .outlined | parts-controls -->
+<button class="ew-btn">Test</button>
+<!-- /part -->
+<!-- part: button-quiet | Quiet button (Back, Cancel) | EnviousButtonFace .quiet | parts-controls -->
+<button class="ew-btn ew-btn--quiet">Back</button>
+<!-- /part -->
+<!-- part: button-destructive | Destructive button (Delete) | Button(role: .destructive) + EnviousButtonFace | parts-controls -->
+<button class="ew-btn ew-btn--destructive">Delete</button>
+<!-- /part -->
+<!-- part: button-disabled | Disabled button (any emphasis) | EnviousButtonFace paintsEnabled false | parts-controls -->
+<button class="ew-btn" disabled>Download</button>
+<!-- /part -->
+<!-- part: button-wizard | Wizard pair: quiet Back + large filled Continue (rounded rectangle) | EnviousButtonFace .roundedRect .large | parts-controls -->
+<span style="display:inline-flex;gap:14px"><button class="ew-btn ew-btn--quiet ew-btn--rect ew-btn--large">Back</button><button class="ew-btn ew-btn--filled ew-btn--rect ew-btn--large">Continue &rarr;</button></span>
+<!-- /part -->
+<!-- part: button-close | Sheet close X | EnviousCloseGlyph | parts-controls -->
+<button class="ew-close" aria-label="Close">&#x2715;</button>
+<!-- /part -->

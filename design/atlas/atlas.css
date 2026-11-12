@@ -1,0 +1,408 @@
+/* GENERATED from DESIGN.md by scripts/design/generate-tokens.py. Do not edit between these markers. */
+/* Light values; also the explicit light choice. */
+:root, :root[data-theme="light"] {
+  --ew-st-page-bg: rgb(97.3% 96.1% 100% / 100%);
+  --ew-st-section-bg: rgb(100% 100% 100% / 100%);
+  --ew-st-sidebar-bg: rgb(91% 88.6% 96.1% / 100%);
+  --ew-st-window-bg: rgb(86.7% 83.5% 93.3% / 100%);
+  --ew-st-text-primary: rgb(5.9% 3.9% 10.2% / 100%);
+  --ew-st-text-secondary: rgb(29% 23.9% 37.6% / 100%);
+  --ew-st-text-tertiary: rgb(42% 36.9% 52.5% / 100%);
+  --ew-st-text-body: rgb(20% 17.6% 27.8% / 100%);
+  --ew-st-accent: rgb(48.6% 22.7% 92.9% / 100%);
+  --ew-st-accent-light: rgb(48.6% 22.7% 92.9% / 9%);
+  --ew-st-accent-solid: rgb(48.6% 22.7% 92.9% / 100%);
+  --ew-st-toggle-on: rgb(0% 63.9% 40% / 100%);
+  --ew-st-toggle-off: rgb(60.8% 55.7% 72.2% / 100%);
+  --ew-st-success: rgb(0% 63.9% 40% / 100%);
+  --ew-st-warning: rgb(80% 43.9% 0% / 100%);
+  --ew-st-warning-soft: rgb(80% 43.9% 0% / 10%);
+  --ew-st-error: rgb(75.3% 22.4% 16.9% / 100%);
+  --ew-st-input-bg: rgb(96.5% 95.7% 98.4% / 100%);
+  --ew-st-input-border: rgb(54.1% 16.9% 88.6% / 20%);
+  --ew-st-divider: rgb(54.1% 16.9% 88.6% / 8%);
+  --ew-ob-surface: rgb(94.1% 92.5% 97.6% / 100%);
+  --ew-ob-card-bg: rgb(100% 100% 100% / 100%);
+  --ew-ob-text-primary: rgb(5.9% 3.9% 10.2% / 100%);
+  --ew-ob-text-secondary: rgb(29% 23.9% 37.6% / 100%);
+  --ew-ob-text-tertiary: rgb(49% 43.5% 58.8% / 100%);
+  --ew-ob-button-fill: rgb(5.9% 3.9% 10.2% / 100%);
+  --ew-ob-keycap-top: rgb(100% 100% 100% / 100%);
+  --ew-ob-accent: rgb(48.6% 22.7% 92.9% / 100%);
+  --ew-ob-accent-soft: rgb(48.6% 22.7% 92.9% / 10%);
+  --ew-ob-success: rgb(0% 78.4% 50.2% / 100%);
+  --ew-ob-success-soft: rgb(0% 78.4% 50.2% / 10%);
+  --ew-ob-success-text: rgb(0% 54.1% 33.7% / 100%);
+  --ew-ob-warning: rgb(90.2% 76.1% 0% / 100%);
+  --ew-ob-error: rgb(90.2% 14.5% 22.7% / 100%);
+  --ew-ob-error-soft: rgb(90.2% 14.5% 22.7% / 10%);
+  --ew-ob-border: rgb(54.1% 16.9% 88.6% / 6%);
+  --ew-font-st-section-header-size: 14px;
+  --ew-font-st-section-header-weight: 600;
+  --ew-font-st-section-header-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  --ew-font-st-row-title-size: 16px;
+  --ew-font-st-row-title-weight: 600;
+  --ew-font-st-row-title-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  --ew-font-st-row-label-size: 14px;
+  --ew-font-st-row-label-weight: 600;
+  --ew-font-st-row-label-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  --ew-font-st-body-size: 14px;
+  --ew-font-st-body-weight: 400;
+  --ew-font-st-body-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  --ew-font-st-helper-size: 14px;
+  --ew-font-st-helper-weight: 400;
+  --ew-font-st-helper-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  --ew-font-st-row-helper-size: 14px;
+  --ew-font-st-row-helper-weight: 400;
+  --ew-font-st-row-helper-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  --ew-font-ob-display-size: 22px;
+  --ew-font-ob-display-weight: 800;
+  --ew-font-ob-display-family: ui-rounded, "SF Pro Rounded", -apple-system, BlinkMacSystemFont, sans-serif;
+  --ew-font-ob-subheading-size: 14px;
+  --ew-font-ob-subheading-weight: 600;
+  --ew-font-ob-subheading-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  --ew-font-ob-body-size: 14px;
+  --ew-font-ob-body-weight: 400;
+  --ew-font-ob-body-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  --ew-font-ob-caption-size: 12px;
+  --ew-font-ob-caption-weight: 400;
+  --ew-font-ob-caption-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  --ew-font-ob-caption-small-size: 11px;
+  --ew-font-ob-caption-small-weight: 400;
+  --ew-font-ob-caption-small-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  --ew-font-ob-label-size: 13px;
+  --ew-font-ob-label-weight: 500;
+  --ew-font-ob-label-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  --ew-settings-layout-section-radius: 14px;
+  --ew-settings-layout-row-padding-h: 14px;
+  --ew-settings-layout-row-padding-v: 12px;
+  --ew-settings-layout-section-spacing: 18px;
+  --ew-settings-layout-content-top: 18px;
+  --ew-settings-layout-content-h: 24px;
+  --ew-settings-layout-content-bottom: 32px;
+  --ew-settings-layout-window-card-radius: 18px;
+  --ew-settings-layout-window-frame-inset: 14px;
+  --ew-settings-pr1-layout-row-padding-v: 10px;
+  --ew-settings-pr1-layout-heading-gap: 8px;
+  --ew-design-radius-xs: 4px;
+  --ew-design-radius-sm: 6px;
+  --ew-design-radius-md: 8px;
+  --ew-design-radius-lg: 10px;
+  --ew-design-radius-xl: 12px;
+  --ew-design-radius-xxl: 16px;
+  --ew-design-spacing-xxs: 2px;
+  --ew-design-spacing-xs: 4px;
+  --ew-design-spacing-sm: 6px;
+  --ew-design-spacing-md: 8px;
+  --ew-design-spacing-lg: 10px;
+  --ew-design-spacing-xl: 12px;
+  --ew-design-spacing-xxl: 16px;
+  --ew-design-spacing-xxxl: 24px;
+  --ew-motion-quick-duration: 0.15s;
+  --ew-motion-quick-curve: ease-in-out;
+  --ew-motion-brisk-duration: 0.25s;
+  --ew-motion-brisk-curve: ease-in-out;
+  --ew-motion-standard-duration: 0.3s;
+  --ew-motion-standard-curve: ease-in-out;
+  --ew-motion-gentle-duration: 0.35s;
+  --ew-motion-gentle-curve: ease-in-out;
+}
+/* Dark values when the system is dark and no light choice is set. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ew-st-page-bg: rgb(7.5% 6.3% 9.8% / 100%);
+    --ew-st-section-bg: rgb(12.5% 10.6% 16.9% / 100%);
+    --ew-st-sidebar-bg: rgb(10.2% 8.6% 13.7% / 100%);
+    --ew-st-window-bg: rgb(5.1% 4.3% 7.1% / 100%);
+    --ew-st-text-primary: rgb(92.5% 91.4% 95.7% / 100%);
+    --ew-st-text-secondary: rgb(66.7% 63.5% 74.9% / 100%);
+    --ew-st-text-tertiary: rgb(47.8% 44.7% 56.5% / 100%);
+    --ew-st-text-body: rgb(83.5% 82% 88.6% / 100%);
+    --ew-st-accent: rgb(65.5% 54.5% 98% / 100%);
+    --ew-st-accent-light: rgb(65.5% 54.5% 98% / 16%);
+    --ew-st-accent-solid: rgb(54.5% 27.5% 94.1% / 100%);
+    --ew-st-toggle-on: rgb(36.1% 78.8% 60.4% / 100%);
+    --ew-st-toggle-off: rgb(29% 26.3% 37.6% / 100%);
+    --ew-st-success: rgb(36.1% 78.8% 60.4% / 100%);
+    --ew-st-warning: rgb(90.2% 71.8% 40% / 100%);
+    --ew-st-warning-soft: rgb(90.2% 71.8% 40% / 14%);
+    --ew-st-error: rgb(93.7% 48.6% 53.7% / 100%);
+    --ew-st-input-bg: rgb(16.5% 14.5% 21.2% / 100%);
+    --ew-st-input-border: rgb(72.2% 66.7% 83.9% / 30%);
+    --ew-st-divider: rgb(72.2% 66.7% 83.9% / 14%);
+    --ew-ob-surface: rgb(12.5% 10.6% 16.9% / 100%);
+    --ew-ob-card-bg: rgb(14.5% 12.2% 21.6% / 100%);
+    --ew-ob-text-primary: rgb(91% 89.4% 94.5% / 100%);
+    --ew-ob-text-secondary: rgb(66.7% 63.5% 74.9% / 100%);
+    --ew-ob-text-tertiary: rgb(47.8% 44.7% 56.5% / 100%);
+    --ew-ob-button-fill: rgb(42% 31% 82% / 100%);
+    --ew-ob-keycap-top: rgb(18% 15.5% 25.5% / 100%);
+    --ew-ob-accent: rgb(65.5% 54.5% 98% / 100%);
+    --ew-ob-accent-soft: rgb(65.5% 54.5% 98% / 16%);
+    --ew-ob-success: rgb(36.1% 78.8% 60.4% / 100%);
+    --ew-ob-success-soft: rgb(36.1% 78.8% 60.4% / 16%);
+    --ew-ob-success-text: rgb(36.1% 78.8% 60.4% / 100%);
+    --ew-ob-warning: rgb(90.2% 71.8% 40% / 100%);
+    --ew-ob-error: rgb(93.7% 48.6% 53.7% / 100%);
+    --ew-ob-error-soft: rgb(93.7% 48.6% 53.7% / 16%);
+    --ew-ob-border: rgb(72.2% 66.7% 83.9% / 14%);
+  }
+}
+/* The explicit dark choice. */
+:root[data-theme="dark"] {
+  --ew-st-page-bg: rgb(7.5% 6.3% 9.8% / 100%);
+  --ew-st-section-bg: rgb(12.5% 10.6% 16.9% / 100%);
+  --ew-st-sidebar-bg: rgb(10.2% 8.6% 13.7% / 100%);
+  --ew-st-window-bg: rgb(5.1% 4.3% 7.1% / 100%);
+  --ew-st-text-primary: rgb(92.5% 91.4% 95.7% / 100%);
+  --ew-st-text-secondary: rgb(66.7% 63.5% 74.9% / 100%);
+  --ew-st-text-tertiary: rgb(47.8% 44.7% 56.5% / 100%);
+  --ew-st-text-body: rgb(83.5% 82% 88.6% / 100%);
+  --ew-st-accent: rgb(65.5% 54.5% 98% / 100%);
+  --ew-st-accent-light: rgb(65.5% 54.5% 98% / 16%);
+  --ew-st-accent-solid: rgb(54.5% 27.5% 94.1% / 100%);
+  --ew-st-toggle-on: rgb(36.1% 78.8% 60.4% / 100%);
+  --ew-st-toggle-off: rgb(29% 26.3% 37.6% / 100%);
+  --ew-st-success: rgb(36.1% 78.8% 60.4% / 100%);
+  --ew-st-warning: rgb(90.2% 71.8% 40% / 100%);
+  --ew-st-warning-soft: rgb(90.2% 71.8% 40% / 14%);
+  --ew-st-error: rgb(93.7% 48.6% 53.7% / 100%);
+  --ew-st-input-bg: rgb(16.5% 14.5% 21.2% / 100%);
+  --ew-st-input-border: rgb(72.2% 66.7% 83.9% / 30%);
+  --ew-st-divider: rgb(72.2% 66.7% 83.9% / 14%);
+  --ew-ob-surface: rgb(12.5% 10.6% 16.9% / 100%);
+  --ew-ob-card-bg: rgb(14.5% 12.2% 21.6% / 100%);
+  --ew-ob-text-primary: rgb(91% 89.4% 94.5% / 100%);
+  --ew-ob-text-secondary: rgb(66.7% 63.5% 74.9% / 100%);
+  --ew-ob-text-tertiary: rgb(47.8% 44.7% 56.5% / 100%);
+  --ew-ob-button-fill: rgb(42% 31% 82% / 100%);
+  --ew-ob-keycap-top: rgb(18% 15.5% 25.5% / 100%);
+  --ew-ob-accent: rgb(65.5% 54.5% 98% / 100%);
+  --ew-ob-accent-soft: rgb(65.5% 54.5% 98% / 16%);
+  --ew-ob-success: rgb(36.1% 78.8% 60.4% / 100%);
+  --ew-ob-success-soft: rgb(36.1% 78.8% 60.4% / 16%);
+  --ew-ob-success-text: rgb(36.1% 78.8% 60.4% / 100%);
+  --ew-ob-warning: rgb(90.2% 71.8% 40% / 100%);
+  --ew-ob-error: rgb(93.7% 48.6% 53.7% / 100%);
+  --ew-ob-error-soft: rgb(93.7% 48.6% 53.7% / 16%);
+  --ew-ob-border: rgb(72.2% 66.7% 83.9% / 14%);
+}
+/* END GENERATED. Hand-written part classes below use only the variables above. */
+
+/* BRAND ART AND PART CONSTANTS. Values the app draws outside DESIGN.md, copied from their Swift
+   owners (named on each line). The only raw colors allowed in this file. */
+:root {
+  /* Color.obRainbow (Views/Onboarding/OnboardingDesignTokens.swift), also the lips and pill rail. */
+  --ew-rainbow-1: #ff2a40; --ew-rainbow-2: #ff8c00; --ew-rainbow-3: #ffd700;
+  --ew-rainbow-4: #adff2f; --ew-rainbow-5: #00fa9a; --ew-rainbow-6: #00ffff;
+  --ew-rainbow-7: #1e90ff; --ew-rainbow-8: #4169e1; --ew-rainbow-9: #8a2be2;
+  --ew-rainbow: linear-gradient(90deg, var(--ew-rainbow-1), var(--ew-rainbow-2), var(--ew-rainbow-3),
+    var(--ew-rainbow-4), var(--ew-rainbow-5), var(--ew-rainbow-6), var(--ew-rainbow-7),
+    var(--ew-rainbow-8), var(--ew-rainbow-9));
+  /* Dark pill capsule: OverlayCapsuleBackground (App/Overlay/Views/OverlayCapsuleBackgrounds.swift). */
+  --ew-pill-dark-fill: rgb(7.8% 7.8% 11% / 82%);
+  --ew-pill-dark-edge: rgb(100% 100% 100% / 10%);
+  /* macOS system orange (AccessibilityWarningBanner uses .orange, not a DESIGN.md token). */
+  --ew-system-orange: #ff9500;
+  /* Pure white and the toggle knob shadow (BrandedToggleStyle). */
+  --ew-white: #ffffff;
+  --ew-knob-shadow: 0 1px 1px rgb(0% 0% 0% / 15%);
+}
+
+/* PART CLASSES. Only var(--ew-*) values below this line (DesignAtlasSyncTests). */
+
+/* Page and window */
+.ew-root { font-family: var(--ew-font-st-body-family); font-size: var(--ew-font-st-body-size);
+  color: var(--ew-st-text-primary); -webkit-font-smoothing: antialiased; }
+.ew-window { display: flex; gap: var(--ew-settings-layout-window-frame-inset);
+  padding: var(--ew-settings-layout-window-frame-inset); background: var(--ew-st-window-bg);
+  border-radius: 12px; min-height: 480px; }
+.ew-sidebar { width: 200px; flex: none; background: var(--ew-st-sidebar-bg);
+  border-radius: var(--ew-settings-layout-window-card-radius); padding: 14px 10px;
+  display: flex; flex-direction: column; gap: 2px; }
+.ew-sidebar-brand { display: flex; align-items: center; gap: 8px; padding: 4px 8px 14px;
+  font-weight: var(--ew-font-st-row-title-weight); font-size: var(--ew-font-st-row-title-size); }
+.ew-sidebar-brand img { width: 28px; height: 28px; }
+.ew-sidebar-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+  border-radius: var(--ew-settings-hover-row-radius, 9px); color: var(--ew-st-text-primary);
+  font-size: var(--ew-font-st-row-label-size); font-weight: 500; }
+.ew-sidebar-item[aria-current="page"] { background: var(--ew-st-accent-solid); color: var(--ew-white); }
+.ew-content { flex: 1; min-width: 0; background: var(--ew-st-page-bg);
+  border-radius: var(--ew-settings-layout-window-card-radius); overflow: hidden; }
+.ew-page { display: flex; flex-direction: column; gap: var(--ew-settings-layout-section-spacing);
+  padding: var(--ew-settings-layout-content-top) var(--ew-settings-layout-content-h)
+  var(--ew-settings-layout-content-bottom); background: var(--ew-st-page-bg); }
+
+/* Headings */
+.ew-eyebrow { font-size: var(--ew-font-st-section-header-size);
+  font-weight: var(--ew-font-st-section-header-weight); color: var(--ew-st-accent);
+  text-transform: uppercase; letter-spacing: 0.02em; padding-left: 4px; margin: 0 0 6px; }
+.ew-heading { display: flex; align-items: baseline; gap: 6px; }
+
+/* Cards */
+.ew-card { background: var(--ew-st-section-bg); border: 1px solid var(--ew-st-divider);
+  border-radius: var(--ew-settings-layout-section-radius); overflow: hidden; }
+.ew-panel { background: var(--ew-st-section-bg); border: 1px solid var(--ew-st-divider);
+  border-radius: var(--ew-settings-layout-section-radius); padding: 18px;
+  display: flex; flex-direction: column; gap: 14px; }
+.ew-panel-head { display: flex; flex-direction: column; gap: 5px; }
+.ew-panel-head .ew-eyebrow { display: flex; align-items: center; gap: 8px; margin: 0; padding: 0; }
+.ew-reading { font-size: var(--ew-font-st-body-size); color: var(--ew-st-text-body); margin: 0; line-height: 1.35; }
+
+/* Rows */
+.ew-row { display: flex; align-items: center; gap: 11px;
+  padding: var(--ew-settings-layout-row-padding-v) var(--ew-settings-layout-row-padding-h);
+  position: relative; }
+.ew-row + .ew-row::before { content: ""; position: absolute; top: 0;
+  left: var(--ew-settings-layout-row-padding-h); right: var(--ew-settings-layout-row-padding-h);
+  border-top: 1px solid var(--ew-st-divider); }
+.ew-row-icon { width: 26px; flex: none; text-align: center; color: var(--ew-st-accent); font-size: 16px; }
+.ew-row-label { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ew-row-title { display: flex; align-items: center; gap: 6px; font-size: var(--ew-font-st-row-label-size);
+  font-weight: var(--ew-font-st-row-label-weight); color: var(--ew-st-text-primary); }
+.ew-row-short { font-size: var(--ew-font-st-row-helper-size); color: var(--ew-st-text-secondary); }
+.ew-row-control { flex: none; margin-left: 12px; }
+
+/* Help "?" (SettingsInfoButton) */
+.ew-help { display: inline-flex; width: 18px; height: 18px; border-radius: 50%;
+  border: 1.4px solid var(--ew-st-text-tertiary); color: var(--ew-st-text-tertiary);
+  align-items: center; justify-content: center; font-size: 11px; font-weight: 600;
+  line-height: 1; box-sizing: border-box; cursor: pointer; background: none; padding: 0; }
+.ew-help:hover { border-color: var(--ew-st-accent); color: var(--ew-st-accent); }
+.ew-help-text { font-size: var(--ew-font-st-body-size); color: var(--ew-st-text-primary); margin: 0; }
+.ew-help-link { color: var(--ew-st-accent); text-decoration: none; }
+
+/* Buttons (EnviousButtonFace) */
+.ew-btn { display: inline-flex; align-items: center; gap: 5px; font-family: inherit;
+  font-weight: 600; font-size: 12px; padding: 6px 14px; border-radius: 999px;
+  border: 1px solid var(--ew-st-accent); background: var(--ew-st-accent-light);
+  color: var(--ew-st-accent); cursor: pointer; line-height: 1.2;
+  transition: background var(--ew-motion-quick-duration) ease-out, color 0.12s ease-out; }
+.ew-btn:hover { background: var(--ew-st-accent-solid); border-color: transparent; color: var(--ew-white); }
+.ew-btn--filled { background: var(--ew-st-accent-solid); border-color: transparent; color: var(--ew-white); }
+.ew-btn--filled:hover { background: var(--ew-st-accent); }
+.ew-btn--quiet { background: transparent; border-color: var(--ew-st-divider); color: var(--ew-st-text-primary); }
+.ew-btn--quiet:hover { background: transparent; border-color: var(--ew-st-accent); color: var(--ew-st-accent); }
+.ew-btn--destructive { background: color-mix(in srgb, var(--ew-st-error) 12%, transparent);
+  border-color: var(--ew-st-error); color: var(--ew-st-error); }
+.ew-btn--destructive:hover { background: var(--ew-st-error); border-color: transparent; color: var(--ew-white); }
+.ew-btn--rect { border-radius: 9px; }
+.ew-btn--medium { font-size: 14px; padding: 8px 14px; }
+.ew-btn--large { font-size: 15px; padding: 10px 22px; }
+.ew-btn:disabled, .ew-btn[aria-disabled="true"] { background: transparent; border-color: var(--ew-st-divider);
+  color: var(--ew-st-text-tertiary); cursor: default; }
+.ew-close { background: none; border: 0; color: var(--ew-st-text-primary); font-size: 16px; cursor: pointer; }
+
+/* Switch (BrandedToggleStyle) */
+.ew-switch { width: 38px; height: 22px; border-radius: 11px; background: var(--ew-st-toggle-off);
+  position: relative; display: inline-block; border: 0; padding: 0; cursor: pointer; }
+.ew-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px;
+  border-radius: 50%; background: var(--ew-white); box-shadow: var(--ew-knob-shadow);
+  transition: left var(--ew-motion-quick-duration) var(--ew-motion-quick-curve); }
+.ew-switch[aria-checked="true"] { background: var(--ew-st-toggle-on); }
+.ew-switch[aria-checked="true"]::after { left: 18px; }
+
+/* Choice bar (BrandedSegmentedPicker) */
+.ew-choices { display: flex; gap: 4px; padding: 3px; background: var(--ew-st-input-bg);
+  border: 1px solid var(--ew-st-divider); border-radius: 10px; }
+.ew-choice { flex: 1; text-align: center; padding: 7px 10px; border-radius: 7px; border: 0;
+  background: transparent; font: inherit; font-size: 14px; color: var(--ew-st-text-secondary); cursor: pointer; }
+.ew-choice[aria-checked="true"] { background: var(--ew-st-accent-solid); color: var(--ew-white); font-weight: 600; }
+
+/* Tab strip (SettingsTabStrip) */
+.ew-tabs { display: flex; background: var(--ew-st-section-bg); border: 1px solid var(--ew-st-divider);
+  border-radius: 12px; overflow: hidden; }
+.ew-tab { flex: 1; display: flex; align-items: center; justify-content: center; gap: 7px;
+  min-height: 52px; padding: 16px 12px; position: relative; border: 0; background: none; font: inherit;
+  font-size: var(--ew-font-st-row-label-size); font-weight: var(--ew-font-st-row-label-weight);
+  color: var(--ew-st-text-body); cursor: pointer; box-sizing: border-box; }
+.ew-tab + .ew-tab::before { content: ""; position: absolute; left: 0; top: 13px; bottom: 13px;
+  border-left: 1px solid var(--ew-st-divider); }
+.ew-tab[aria-selected="true"] { color: var(--ew-st-accent); }
+.ew-tab[aria-selected="true"]::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: 0;
+  height: 3px; border-radius: 2px; background: var(--ew-st-accent); }
+
+/* Fields (.settingsFieldChrome) */
+.ew-field { width: 100%; box-sizing: border-box; font: inherit; font-size: var(--ew-font-st-body-size);
+  color: var(--ew-st-text-primary); background: var(--ew-st-input-bg); border: 1px solid var(--ew-st-input-border);
+  border-radius: 8px; padding: 7px 10px; outline: none; }
+.ew-field:focus { border: 2px solid var(--ew-st-accent); padding: 6px 9px; }
+
+/* Status chip (ProviderStatusChip) and inset notice (InsetNotice) */
+.ew-chip { display: inline-flex; align-items: center; gap: 5px; font-size: var(--ew-font-st-helper-size); }
+.ew-chip::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.ew-chip--ready { color: var(--ew-st-success); }
+.ew-chip--setup { color: var(--ew-st-warning); }
+.ew-chip--off { color: var(--ew-st-text-tertiary); }
+.ew-chip--error { color: var(--ew-st-error); }
+.ew-inset { display: flex; align-items: baseline; gap: 8px; padding: 10px 12px; background: var(--ew-st-input-bg);
+  border: 1px solid var(--ew-st-divider); border-radius: 9px; font-size: var(--ew-font-st-helper-size);
+  color: var(--ew-st-text-secondary); }
+.ew-inset-icon { color: var(--ew-st-accent); }
+
+/* Banners: AccessibilityWarningBanner (warning tint) and MeetingNoticeBanner */
+.ew-banner { display: flex; align-items: flex-start; gap: 10px; padding: 12px; border-radius: 10px;
+  background: color-mix(in srgb, var(--ew-st-warning) 12%, transparent); color: var(--ew-st-text-primary);
+  font-size: var(--ew-font-st-body-size); }
+.ew-banner-icon { color: var(--ew-st-warning); }
+.ew-banner--accessibility { border-radius: 8px; padding: 8px 14px; align-items: center;
+  background: color-mix(in srgb, var(--ew-system-orange) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ew-system-orange) 30%, transparent); }
+.ew-banner--accessibility .ew-banner-icon { color: var(--ew-system-orange); }
+.ew-btn--orange { background: var(--ew-system-orange); border-color: transparent; color: var(--ew-white); font-size: 11px; padding: 3px 9px; border-radius: 5px; }
+
+/* Engine card (EngineCard) and summary card (SettingsSummaryCard) */
+.ew-engine { background: var(--ew-st-section-bg); border: 1px solid var(--ew-st-divider); border-radius: 12px;
+  padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.ew-engine[aria-checked="true"] { border: 2px solid var(--ew-st-accent); padding: 15px; }
+.ew-engine-head { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: var(--ew-font-st-row-title-size); }
+.ew-engine[aria-checked="true"] .ew-engine-head { color: var(--ew-st-accent); }
+.ew-engine-fact { display: flex; justify-content: space-between; color: var(--ew-st-text-secondary);
+  border-top: 1px solid var(--ew-st-divider); padding-top: 8px; }
+.ew-engine-fact b { color: var(--ew-st-text-primary); font-weight: 500; }
+.ew-summary { background: var(--ew-st-input-bg); border: 1px solid var(--ew-st-input-border); border-radius: 12px;
+  padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+
+/* Recording pill (RecordingOverlayView), approximations for mockups; the pictures are exact. */
+.ew-pill { display: inline-flex; align-items: center; gap: 14px; height: 46px; padding: 0 26px;
+  border-radius: 999px; background: var(--ew-pill-dark-fill); box-shadow: inset 0 0 0 0.5px var(--ew-pill-dark-edge);
+  color: var(--ew-white); font: 600 17px ui-monospace, "SF Mono", Menlo, monospace; position: relative; }
+.ew-pill::after { content: ""; position: absolute; left: 22%; right: 22%; bottom: 0; height: 1px;
+  background: var(--ew-rainbow); opacity: 0.6; }
+.ew-pill img { width: 34px; height: 34px; }
+.ew-pill-rail { display: inline-flex; gap: 3px; }
+.ew-pill-rail i { width: 4px; height: 4px; border-radius: 50%; background: var(--ew-rainbow-7); }
+.ew-pill-tag { font: 600 13px var(--ew-font-st-body-family); padding: 6px 12px; border-radius: 999px;
+  background: rgb(from var(--ew-white) r g b / 6%); color: var(--ew-st-text-tertiary); }
+.ew-pill--well { border-radius: 16px; background: var(--ew-st-section-bg); color: var(--ew-st-text-primary);
+  box-shadow: inset 0 0 0 0.5px var(--ew-st-divider); width: 400px; justify-content: space-between; }
+
+/* Window title bar and sidebar extras (UnifiedWindowView, hand photo hand-window-dictation) */
+.ew-app { border-radius: 12px; overflow: hidden; border: 1px solid var(--ew-st-divider); }
+.ew-titlebar { display: flex; align-items: center; height: 36px; padding: 0 10px; background: var(--ew-st-section-bg);
+  border-bottom: 1px solid var(--ew-st-divider); }
+.ew-lights { display: inline-flex; gap: 8px; flex: 1; }
+.ew-lights i { width: 12px; height: 12px; border-radius: 50%; background: var(--ew-st-text-tertiary); opacity: 0.5; }
+.ew-title { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 13px; }
+.ew-title-actions { display: inline-flex; gap: 8px; flex: 1; justify-content: flex-end; }
+.ew-app .ew-window { border-radius: 0; }
+.ew-sidebar-group { font-size: var(--ew-font-st-section-header-size); font-weight: var(--ew-font-st-section-header-weight);
+  color: var(--ew-st-text-secondary); text-transform: uppercase; margin: 12px 10px 4px; }
+.ew-sidebar .ew-field { margin: 0 0 8px; }
+.ew-beta { font-size: 11px; font-weight: 700; padding: 0 6px; border-radius: 999px; color: var(--ew-st-text-primary);
+  background: linear-gradient(90deg, var(--ew-st-warning-soft), var(--ew-st-accent-light)); }
+
+/* Checker fixes: engine radio, icon tile, rail end mark, version tag, sidebar icons */
+.ew-engine-head .ew-radio { margin-left: auto; width: 20px; height: 20px; border-radius: 50%; box-sizing: border-box;
+  border: 1.5px solid var(--ew-st-divider); }
+.ew-engine[aria-checked="true"] .ew-radio { background: var(--ew-st-accent-solid); border-color: transparent; position: relative; }
+.ew-engine[aria-checked="true"] .ew-radio::after { content: "\2713"; position: absolute; inset: 0; display: flex;
+  align-items: center; justify-content: center; color: var(--ew-white); font-size: 12px; font-weight: 700; }
+.ew-icon-tile { width: 38px; height: 38px; flex: none; display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 9px; background: var(--ew-st-accent-light); border: 1px solid var(--ew-st-input-border); color: var(--ew-st-accent); }
+.ew-pill-rail { align-items: center; }
+.ew-pill-rail-end { width: 3px; height: 14px; border-radius: 2px; background: var(--ew-rainbow-9); margin-left: 2px; }
+.ew-version { font-size: 11px; font-weight: 600; padding: 0 5px; border-radius: 4px; background: var(--ew-st-input-bg);
+  color: var(--ew-st-text-secondary); }
+.ew-sidebar-icon { width: 20px; text-align: center; color: var(--ew-st-accent); flex: none; }
+.ew-sidebar-item[aria-current="page"] .ew-sidebar-icon { color: var(--ew-white); }

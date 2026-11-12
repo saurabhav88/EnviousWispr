@@ -376,12 +376,27 @@ struct DesignRenderHarness {
     if entry.fixture == "germanFit" {
       view = try germanFitSheet(pageWidth: width)
     } else if entry.fixture.hasPrefix("pill-") {
-      // pill-<design>-<rest|locked>
+      // pill-<design>-<rest|locked|words|waiting|notice>
       let parts = entry.fixture.split(separator: "-").map(String.init)
       let design = try #require(
         parts.count == 3 ? RecordingPillDesign(rawValue: parts[1]) : nil,
         "\(entry.name): unknown pill fixture \(entry.fixture)")
-      view = DesignPageCaptures.pill(design, locked: parts[2] == "locked")
+      switch parts[2] {
+      case "rest": view = DesignPageCaptures.pill(design, locked: false)
+      case "locked": view = DesignPageCaptures.pill(design, locked: true)
+      case "words":
+        view = DesignPageCaptures.pill(
+          design, locked: false, preview: .text(DesignPageCaptures.atlasWords))
+      case "waiting": view = DesignPageCaptures.pill(design, locked: false, preview: .waiting)
+      case "notice":
+        view = DesignPageCaptures.pill(
+          design, locked: false, noticeText: DictationNarrator.copy(for: .secureInputActive))
+      default: throw RenderError("\(entry.name): unknown pill state \(parts[2])")
+      }
+    } else if entry.fixture.hasPrefix("notice-") {
+      view = try DesignPageCaptures.notice(String(entry.fixture.dropFirst("notice-".count)))
+    } else if entry.fixture.hasPrefix("logo-") {
+      view = try DesignPageCaptures.logo(String(entry.fixture.dropFirst("logo-".count)))
     } else if entry.fixture.hasPrefix("parts-") {
       let sheet = try #require(
         DesignPartsSheets.sheet(String(entry.fixture.dropFirst("parts-".count))),
@@ -407,9 +422,15 @@ struct DesignRenderHarness {
     host.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
     // The size a measurement asks for: German sheets and pills take their own size; pages keep
     // the declared width and the predecessor's 400pt minimum height.
-    let ownSize = ["germanFit", "pill-"].contains { entry.fixture.hasPrefix($0) }
+    let ownSize = ["germanFit", "pill-", "notice-", "logo-"].contains { entry.fixture.hasPrefix($0) }
+    // Screen atlas notices and marks (#4506) can measure a fractional point, which the capture
+    // window rounds; they take their size rounded up to whole points. Older fixtures keep theirs.
+    let wholePoints = ["notice-", "logo-"].contains { entry.fixture.hasPrefix($0) }
     func target(_ fitting: CGSize) -> CGSize {
-      ownSize ? fitting : CGSize(width: width, height: max(fitting.height, 400))
+      if wholePoints {
+        return CGSize(width: fitting.width.rounded(.up), height: fitting.height.rounded(.up))
+      }
+      return ownSize ? fitting : CGSize(width: width, height: max(fitting.height, 400))
     }
     var size = target(host.fittingSize)
     host.frame = NSRect(origin: .zero, size: size)
@@ -418,7 +439,16 @@ struct DesignRenderHarness {
       contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
     window.isReleasedWhenClosed = false
     window.appearance = host.appearance
-    window.contentView = host
+    // Overlay notices (#4506 atlas): production hosts them inside a plain container so the
+    // hosting view never resizes its window (`OverlayWindowHost`, #3850); the capture does the same.
+    if entry.fixture.hasPrefix("notice-") {
+      let container = NSView(frame: host.frame)
+      host.autoresizingMask = [.width, .height]
+      container.addSubview(host)
+      window.contentView = container
+    } else {
+      window.contentView = host
+    }
     defer {
       window.contentView = nil
       window.close()
