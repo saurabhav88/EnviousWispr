@@ -19,10 +19,10 @@ What the macOS app looks like, as pictures and as HTML parts you can copy. Use i
 
 ## Build a mockup from it
 
-1. Copy `starter.html`. It links the whole `atlas.css` (variables and part classes; the parts need both) and shows two parts in place. Paths in the parts are relative to the page, so keep the copy next to `atlas.css` and `logos/`: save it inside `design/atlas/`, or copy `atlas.css` and `logos/` into the copy's folder.
+1. Copy `starter.html`. It links the whole `atlas.css` (variables and part classes; the parts need both) and shows two parts in place. Paths in the parts are relative to the page, so keep the copy next to `atlas.css`, `logos/` and `pictures/`: save it inside `design/atlas/`, or copy all three into the copy's folder.
 2. Copy parts from `parts/*.html` (or the "Copy snippet" button in `index.html`) into the starter. Change the words, not the look.
 3. Use the logo files in `logos/`. The EnviousMeet mark is a picture (`pictures/logo-envious-meet-*.png`): it is Apple's `person.2.wave.2` symbol in the rainbow, so it is not redrawn as SVG.
-4. For a pill notice with no HTML part, paste its picture: `<img src="pictures/notice-<id>-dark.png" alt="">`, with the id from `inventory.md` "Pill notices". The sentences come from `DictationNarrator`; do not invent new ones.
+4. For a pill notice with no HTML part, paste its picture: `<img src="pictures/<id>-dark.png" alt="">`, with the full id from `inventory.md` "Pill notices" (for example `pictures/notice-accessibility-toast-dark.png`). The sentences come from `DictationNarrator`; do not invent new ones.
 5. For a whole screen, start from its page picture and `inventory.md` section. A Settings page sits in the window frame (`hand-window-dictation`): the sidebar card on the left, the page card on the right.
 6. SF Symbols do not exist in a browser. Where a part needs an icon, use a close stand-in and name the SF Symbol from `DESIGN.md` "Icons" in your mockup notes.
 7. The pill HTML parts are approximations. Where the exact pill matters, use its picture.
