@@ -381,6 +381,30 @@ struct OnboardingSetupTelemetryTests {
     #expect(lr.downloads.isEmpty)
   }
 
+  @Test("a warm-up failure reads one warmup_failed blocker, not one per poll")
+  func warmupFailedBlocker() async {
+    let world = World()
+    let owner = OnboardingWarmupTests.Owner(world)
+    owner.answers = [.failed]
+    world.speechPhase[.parakeet] = .installed
+    world.engine = (.parakeet, .notReady)
+    let r = Recorder()
+    let (c, _, tick) = Self.wired(world, r)
+    c.begin()
+    c.send(.next)
+    c.send(.next)
+    c.send(.chooseSpeech(.parakeet))
+    c.send(.next)
+    c.send(.skipPolish)
+    for _ in 0..<3 {
+      c.refreshReadiness()
+      await c.settle()
+      tick()
+    }
+    #expect(r.blocked.map(\.1) == [.warmupFailed] && r.blocked.map(\.0) == ["downloads"])
+    withExtendedLifetime(owner) {}
+  }
+
   @Test("a disk block is one episode across polls and retries; a new episode after it clears")
   func diskBlockEpisodes() async {
     let world = World()

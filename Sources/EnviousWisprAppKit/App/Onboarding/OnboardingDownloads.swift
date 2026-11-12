@@ -54,6 +54,10 @@ enum OnboardingDownloadFailure: Equatable, Sendable {
 
 /// One model's download as Setup shows it. Read from the owner each time; never stored.
 enum OnboardingDownloadPhase: Equatable, Sendable {
+  /// The owner has not answered yet whether the model is on this Mac (an upgrade-served
+  /// Parakeet before its first read, P1). Never treated as missing: no bytes are counted, no
+  /// cancel is sent, Downloads is not finished; the next owner read resolves it.
+  case unknown
   case notStarted
   case downloading(fraction: Double?)
   case verifying
@@ -63,6 +67,42 @@ enum OnboardingDownloadPhase: Equatable, Sendable {
   case failed(OnboardingDownloadFailure)
   /// Refused or out of attempts: "Download unavailable" with Retry.
   case unavailable
+}
+
+/// Setup's last upgrade-aware answer to "is Parakeet usable" (#4528 P1, plan M70). The owner's
+/// answer is async (`ModelDeliveryHome.isParakeetUsable()`) and `parakeetState` mirrors only the
+/// BASE registration, which stays `.notReady` on a Mac the Parakeet upgrade serves. Setup's
+/// existing reads (readiness and the start path) record each answer with the delivery key read
+/// BEFORE the await; a synchronous phase uses it only while that key is still current.
+@MainActor
+final class OnboardingParakeetAdmission {
+  struct Key: Equatable {
+    let state: DeliveryState
+    let revision: UInt64
+  }
+
+  private var answer: (key: Key, usable: Bool)?
+
+  func record(_ usable: Bool, at key: Key) { answer = (key, usable) }
+
+  /// The recorded answer for `key`, or nil when the delivery facts changed since.
+  func usable(at key: Key) -> Bool? {
+    guard let answer, answer.key == key else { return nil }
+    return answer.usable
+  }
+
+  /// The current key of `modelDelivery`'s Parakeet facts.
+  static func key(_ modelDelivery: ModelDeliveryHome) -> Key {
+    Key(state: modelDelivery.parakeetState, revision: modelDelivery.parakeetPresentationRevision)
+  }
+
+  /// Reads the owner's answer through the existing call and records it under the pre-await key.
+  func read(_ modelDelivery: ModelDeliveryHome) async -> Bool {
+    let key = Self.key(modelDelivery)
+    let usable = await modelDelivery.isParakeetUsable()
+    record(usable, at: key)
+    return usable
+  }
 }
 
 /// The existing owners Setup's downloads go through, as narrow closures (plan §3.4, M6, M22).
@@ -133,6 +173,12 @@ struct OnboardingDownloads {
     }
   }
 
+  /// Asks the owner whether the engine's model is on this Mac (for Parakeet this also records
+  /// the upgrade-aware answer Setup's phase reads), before an installed-dependent decision.
+  func resolveSpeechInstalled(_ engine: ASRBackendType) async -> Bool {
+    await owners.speechInstalled(engine)
+  }
+
   /// Whether a request for this engine is answered with the attempt's end.
   func speechReportsEnd(_ engine: ASRBackendType) -> Bool { owners.speechReportsEnd(engine) }
 
@@ -195,10 +241,19 @@ struct OnboardingDownloads {
 
   // MARK: Owner state → phase (pure)
 
-  static func phase(parakeet state: DeliveryState, needsExplicitRetry: Bool)
+  /// `usable` is the owner's upgrade-aware answer for the current delivery key (nil: not
+  /// answered for this key yet). A transfer or failure in the mirror is shown as is; an idle or
+  /// cancelled mirror reads installed when the owner says Parakeet is usable, and `unknown`
+  /// (never missing) until the owner has answered (P1).
+  static func phase(parakeet state: DeliveryState, needsExplicitRetry: Bool, usable: Bool?)
     -> OnboardingDownloadPhase
   {
     if needsExplicitRetry { return .unavailable }
+    switch (state, usable) {
+    case (.notReady, true?), (.cancelled, true?): return .installed
+    case (.notReady, nil), (.cancelled, nil): return .unknown
+    default: break  // a transfer or failure in the mirror is shown as is
+    }
     switch state {
     case .notReady: return .notStarted
     case .preparing: return .downloading(fraction: nil)
@@ -239,7 +294,7 @@ extension OnboardingDownloadOwners {
   /// are.
   static func live(
     settings: SettingsManager, modelDelivery: ModelDeliveryHome, whisperSetup: WhisperSetupService,
-    localPolish: LocalPolishRuntimeSet
+    localPolish: LocalPolishRuntimeSet, parakeetAdmission: OnboardingParakeetAdmission
   ) -> OnboardingDownloadOwners {
     OnboardingDownloadOwners(
       speechDeliveryEnabled: { engine in
@@ -250,7 +305,7 @@ extension OnboardingDownloadOwners {
       },
       speechInstalled: { engine in
         switch engine {
-        case .parakeet: return await modelDelivery.isParakeetUsable()
+        case .parakeet: return await parakeetAdmission.read(modelDelivery)
         case .whisper: return await modelDelivery.whisperHandle?.isAdmitted() ?? false
         }
       },
@@ -284,7 +339,8 @@ extension OnboardingDownloadOwners {
         case .parakeet:
           OnboardingDownloads.phase(
             parakeet: modelDelivery.parakeetState,
-            needsExplicitRetry: modelDelivery.parakeetNeedsExplicitRetry)
+            needsExplicitRetry: modelDelivery.parakeetNeedsExplicitRetry,
+            usable: parakeetAdmission.usable(at: OnboardingParakeetAdmission.key(modelDelivery)))
         case .whisper: OnboardingDownloads.phase(whisper: whisperSetup.setupState)
         }
       },

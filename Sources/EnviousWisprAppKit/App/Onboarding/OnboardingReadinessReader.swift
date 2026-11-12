@@ -90,7 +90,7 @@ extension OnboardingReadinessSources {
   /// explicit inputs come from their owners in the coordinator.
   static func live(
     modelDelivery: ModelDeliveryHome, engineCoordinator: EngineCoordinator,
-    localPolish: LocalPolishRuntimeSet,
+    localPolish: LocalPolishRuntimeSet, parakeetAdmission: OnboardingParakeetAdmission,
     appleIntelligence: @escaping () -> AppleIntelligenceSetupState,
     cloudEvidence: @escaping (LLMProvider) -> OnboardingCloudEvidence?,
     permissions: @escaping () -> (microphone: Bool, accessibility: Bool)
@@ -98,7 +98,8 @@ extension OnboardingReadinessSources {
     OnboardingReadinessSources(
       speechAdmitted: { engine in
         switch engine {
-        case .parakeet: return await modelDelivery.isParakeetUsable()
+        // The same owner read, recorded for Setup's synchronous phase (P1).
+        case .parakeet: return await parakeetAdmission.read(modelDelivery)
         case .whisper: return await modelDelivery.whisperHandle?.isAdmitted() ?? false
         }
       },

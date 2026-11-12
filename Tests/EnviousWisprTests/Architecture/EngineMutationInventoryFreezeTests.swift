@@ -1466,6 +1466,15 @@ import EnviousWisprAppKitTestSupport
       matcher: "cancelSessionlessWarmup",
       text: "await starter.activeDriver.cancelSessionlessWarmup()",
       classification: .structurallySafe),
+    // #4528 P2 (plan M70): the new Setup's cancel for the warm-up it requested, bound to the
+    // driver captured when that warm-up was requested (`DictationRuntime.onboardingWarmup()`),
+    // so it can never reach a newer engine's load. Same call and the same in-flight gate as the
+    // entry above: a no-op against a just-completed load, `structurallySafe` category (c).
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/DictationRuntime/DictationRuntime.swift",
+      matcher: "cancelSessionlessWarmup",
+      text: "cancel: { await driver.cancelSessionlessWarmup() })",
+      classification: .structurallySafe),
     CallSite(
       file: "Sources/EnviousWisprPipeline/KernelDictationDriver.swift",
       matcher: "cancelSessionlessWarmup", text: "await cancelling.cancelSessionlessWarmup()",

@@ -255,4 +255,15 @@ final class DictationRuntime {
   func cancelActiveEngineWarmupForOnboarding() async {
     await starter.activeDriver.cancelSessionlessWarmup()
   }
+
+  /// #4528 P2 (plan M70): the new Setup's warm-up for the engine active NOW, with its cancel
+  /// bound to that same driver. The driver is captured once, so a later cancel never reaches
+  /// a newer engine's load after the person switched engines. Same `ensureEngineWarm(reason:
+  /// .onboarding)` single flight and telemetry as `ensureActiveEngineWarmForOnboarding`.
+  func onboardingWarmup() -> OnboardingWarmup {
+    let driver = starter.activeDriver
+    return OnboardingWarmup(
+      run: { await driver.ensureEngineWarm(reason: .onboarding) },
+      cancel: { await driver.cancelSessionlessWarmup() })
+  }
 }

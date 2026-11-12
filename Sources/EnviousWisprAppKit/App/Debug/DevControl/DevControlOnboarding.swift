@@ -495,9 +495,9 @@
               }))
           let telemetry = OnboardingTelemetryObserver(
             inputs: .live(
-              progress: progress, owners: owners,
+              progress: progress, owners: owners, facts: facts,
               visitOwned: { [weak door] in door?.ownsVisit ?? false }))
-          var inputs = OnboardingRuntime.Inputs.live(owners, coordinator: coordinator)
+          var inputs = OnboardingRuntime.Inputs.live(owners, facts: facts, coordinator: coordinator)
           inputs.observeTelemetry = telemetry.attach(to: coordinator)
           let runtime = OnboardingRuntime(coordinator: coordinator, facts: facts, inputs: inputs)
           return Session(coordinator: coordinator, runtime: runtime, telemetry: telemetry)

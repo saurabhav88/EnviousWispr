@@ -219,6 +219,8 @@ import Testing
       }
       #expect(OnboardingTelemetry.BlockedReason.allCases.map(\.rawValue) == [
         "key_check_failed", "disk_short", "download_failed",
+        // C repair (M70): the new Setup reuses the old onboarding's warm-up failure reason.
+        "warmup_failed",
       ])
       // Syntax check only (caller-owned closed vocabularies).
       #expect(OnboardingTelemetry.boundedIdentifier("") == "invalid")

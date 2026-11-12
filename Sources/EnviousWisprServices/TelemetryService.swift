@@ -5843,6 +5843,8 @@ public enum OnboardingTelemetry {
     case keyCheckFailed = "key_check_failed"
     case diskShort = "disk_short"
     case downloadFailed = "download_failed"
+    /// The engine owner's warm-up failed (the old onboarding's reason name, reused).
+    case warmupFailed = "warmup_failed"
   }
 
   /// What happened with a cloud key on Setup's key step: an outcome, never the key.

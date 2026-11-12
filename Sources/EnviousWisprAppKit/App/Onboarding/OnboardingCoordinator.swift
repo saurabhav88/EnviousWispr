@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprPipeline
 import IOKit.pwr_mgt
 import EnviousWisprServices
 import Foundation
@@ -16,6 +17,13 @@ enum OnboardingDownloadBlock: Equatable, Sendable {
   case insufficientDisk(neededBytes: Int64, freeBytes: Int64)
   case speechRefused(ASRBackendType)
   case polishRefused(String)
+}
+
+/// One engine's onboarding warm-up from its owner (`DictationRuntime.onboardingWarmup()`):
+/// `run` warms through the owner's single flight; `cancel` cancels THAT engine's load only.
+struct OnboardingWarmup {
+  let run: @MainActor () async -> EngineWarmupOutcome
+  let cancel: @MainActor () async -> Void
 }
 
 /// What the coordinator reports to Setup's telemetry at its existing execution points (#4528
@@ -41,6 +49,8 @@ enum OnboardingObservation: Equatable {
   case blockChanged(OnboardingDownloadBlock?, step: OnboardingStep, choices: OnboardingChoices)
   /// Restart Onboarding: the picks start over.
   case reset
+  /// The engine owner's warm-up for the current pick failed (P2); once per failure.
+  case warmFailed(step: OnboardingStep)
   /// Completion is durable (SettingsManager already wrote `.completed`). `interrupted` is a
   /// completion finished on relaunch, with no visit shown.
   case completed(OnboardingChoices, interrupted: Bool)
@@ -82,6 +92,9 @@ final class OnboardingCoordinator {
     var acquireSleepAssertion: () -> Void
     var releaseSleepAssertion: () -> Void
     var now: () -> Date
+    /// The engine owner's warm-up for `engine`, or nil unless that engine is selected, active
+    /// and not switching (P2). Tests inject it; the default never warms.
+    var warmEngine: (ASRBackendType) -> OnboardingWarmup? = { _ in nil }
     /// Observers (telemetry and window wiring attach here; none emit from this file).
     var onPracticeOutcome: (OnboardingPracticeOutcome) -> Void = { _ in }
     var onCompleted: () -> Void = {}
@@ -108,6 +121,9 @@ final class OnboardingCoordinator {
   private var ownedSpeech: Set<ASRBackendType> = []
   private var ownedPolish: Set<String> = []
   private var speechStartsInFlight = 0
+  /// Per engine, bumped whenever a speech start takes ownership: a delayed Cancel decision
+  /// (an `unknown` phase resolved later) only acts if no newer start owns that engine.
+  private var speechOwnershipStarts: [ASRBackendType: Int] = [:]
   /// Numbers each download start for telemetry's start/answer pairing (observation only).
   private var downloadRequests = 0
   private(set) var isActive = false
@@ -115,6 +131,23 @@ final class OnboardingCoordinator {
   /// a forward move). A narrow observation hook for telemetry (#4528 F2a); never navigation.
   private(set) var resumedFromCheckpoint = false
   private var startedAt: Date?
+  /// P2: the warm-up context last requested (engine, speech generation, attempt), so a
+  /// readiness pass requests at most once per context; and the owned request's cancel.
+  private struct WarmContext: Equatable {
+    let engine: ASRBackendType
+    let speechGeneration: Int
+    let attempt: Int
+  }
+  private var warmRequested: WarmContext?
+  /// The load this flow asked for, OWNED until its own `run()` returns (even when its answer
+  /// has gone stale), so a later quit, reset, Cancel or engine change can still cancel it.
+  private var warmOwned: (request: Int, cancel: @MainActor () async -> Void)?
+  /// The queued or running warm task (a queued one is cancelled before it reaches the owner).
+  private var warmTask: Task<Void, Never>?
+  private var warmRequests = 0
+  private var warmAttempt = 0
+  /// The current pick's warm-up failed; only `retryWarmup()` asks again (no retry loop).
+  private(set) var warmFailed = false
   private var queuedPolish: String?
   private var holdsSleepAssertion = false
   private var speechTask: Task<Void, Never>?
@@ -211,6 +244,9 @@ final class OnboardingCoordinator {
     {
       speechGeneration &+= 1
       speechTask?.cancel()
+      // A new engine ends the old engine's owned load; a language-only change only makes
+      // the in-flight result stale (same engine).
+      endWarm(cancelLoad: before.choices.speech != transition.state.choices.speech)
     }
     apply(transition, after: before)
   }
@@ -232,6 +268,7 @@ final class OnboardingCoordinator {
       self.startQueuedPolishIfSpeechInstalled()
       self.updateSleepAssertion()
       self.send(.readinessChanged(readiness))
+      self.requestWarmIfNeeded(readiness)
     }
     if let readinessTask { startedTasks.append(readinessTask) }
   }
@@ -264,6 +301,7 @@ final class OnboardingCoordinator {
   /// Cancel on the download screen: the OWNERS' explicit cancels (a coordinator task
   /// cancellation never stops a transfer), then the coordinator's own work.
   func cancelDownloads() {
+    endWarm(cancelLoad: true)
     cancelOwnedTransfers()
     onObservation?(.downloadsCancelled)
     queuedPolish = nil
@@ -304,6 +342,7 @@ final class OnboardingCoordinator {
       readinessTask?.cancel()
       generation &+= 1
       speechGeneration &+= 1
+      endWarm(cancelLoad: false)  // positioning: the result is stale, the load may continue
       var target = state
       target.step = step
       target.readiness = OnboardingReadiness()
@@ -316,6 +355,7 @@ final class OnboardingCoordinator {
   /// App quit: the checkpoint is already written and delivery resumes partial bytes on the
   /// next launch, so only the coordinator's own work and the sleep assertion end.
   func quit() {
+    endWarm(cancelLoad: true)
     isActive = false
     speechTask?.cancel()
     readinessTask?.cancel()
@@ -325,6 +365,86 @@ final class OnboardingCoordinator {
   }
 
   // MARK: Private
+
+  // MARK: Warm-up (P2)
+
+  /// The screen's Try again after a warm-up failure: the next readiness pass asks once more.
+  func retryWarmup() {
+    guard isActive, warmFailed else { return }
+    warmFailed = false
+    warmAttempt += 1
+    onChange?()
+    refreshReadiness()
+  }
+
+  private static let warmSteps: Set<OnboardingStep> = [
+    .downloads, .permissions, .key, .gettingReady, .practice,
+  ]
+
+  /// Asks the engine owner to warm the current pick once per context, when a readiness pass
+  /// for that pick reads installed and not warm. Never per poll; never after a failure.
+  private func requestWarmIfNeeded(_ readiness: OnboardingReadiness) {
+    guard isActive, !warmFailed, Self.warmSteps.contains(state.step),
+      let speech = state.choices.speech, readiness.speech == speech, readiness.speechInstalled,
+      !readiness.engineWarm
+    else { return }
+    let context = WarmContext(
+      engine: speech, speechGeneration: speechGeneration, attempt: warmAttempt)
+    guard warmRequested != context, let warmup = deps.warmEngine(speech) else { return }
+    warmRequested = context
+    warmRequests &+= 1
+    let request = warmRequests
+    let task = Task { [weak self] in
+      // Queued work invalidated before it starts never reaches the owner.
+      guard let self, !Task.isCancelled, self.isActive, self.warmRequested == context,
+        self.currentWarmContext == context
+      else { return }
+      self.warmOwned = (request, warmup.cancel)
+      let outcome = await warmup.run()
+      // The load ended: this request no longer owns anything, stale or not.
+      if self.warmOwned?.request == request { self.warmOwned = nil }
+      guard self.isActive, self.warmRequested == context, self.currentWarmContext == context
+      else { return }  // a stale answer: another pick, reset or quit since
+      switch outcome {
+      case .ready:
+        self.refreshReadiness()  // live readiness decides; a warm answer opens nothing
+      case .failed:
+        self.warmFailed = true
+        self.onObservation?(.warmFailed(step: self.state.step))
+        self.onChange?()
+      case .cancelled:
+        break  // not a failure; not asked again in this context
+      }
+    }
+    warmTask = task
+    startedTasks.append(task)
+  }
+
+  private var currentWarmContext: WarmContext? {
+    state.choices.speech.map {
+      WarmContext(engine: $0, speechGeneration: speechGeneration, attempt: warmAttempt)
+    }
+  }
+
+  /// Ends warm work. Always: the context is cleared, so an answer still to come is stale and
+  /// a new context may ask again. With `cancelLoad`: a queued task is cancelled before it
+  /// reaches the owner, and a running load is cancelled through its OWN captured driver. Without
+  /// it (a language-only change, DEBUG positioning) the running load keeps its owned handle.
+  private func endWarm(cancelLoad: Bool) {
+    if cancelLoad {
+      // Only a QUEUED task is cancelled: a running one awaits the owner's single flight, which
+      // other callers may share, so a running load is ended through the owner's cancel instead.
+      if warmOwned == nil { warmTask?.cancel() }
+      warmTask = nil
+      if let owned = warmOwned {
+        warmOwned = nil
+        let cancel = owned.cancel
+        startedTasks.append(Task { await cancel() })
+      }
+    }
+    warmRequested = nil
+    warmFailed = false
+  }
 
   private func nextDownloadRequest() -> Int {
     downloadRequests &+= 1
@@ -345,10 +465,27 @@ final class OnboardingCoordinator {
   /// Explicit owner cancels for every unfinished transfer this flow requested; installed
   /// models are left alone (a cancel records a decline for some owners).
   private func cancelOwnedTransfers() {
-    for engine in ownedSpeech where deps.downloads.speechPhase(engine) != .installed {
-      deps.downloads.cancelSpeech(engine)
+    // Never for an installed model. An `unknown` one is resolved through the owner first and
+    // cancelled only if it is not installed and no newer start owns that engine since (P1).
+    for engine in ownedSpeech {
+      switch deps.downloads.speechPhase(engine) {
+      case .installed:
+        continue
+      case .unknown:
+        let owner = speechOwnershipStarts[engine, default: 0]
+        startedTasks.append(
+          Task { [weak self] in
+            guard let self else { return }
+            let installed = await self.deps.downloads.resolveSpeechInstalled(engine)
+            guard !installed, self.speechOwnershipStarts[engine, default: 0] == owner else { return }
+            self.deps.downloads.cancelSpeech(engine)
+          })
+      default:
+        deps.downloads.cancelSpeech(engine)
+      }
     }
-    for id in ownedPolish where deps.downloads.polishPhase(id) != .installed {
+    let cancellable: (OnboardingDownloadPhase?) -> Bool = { $0 != .installed && $0 != .unknown }
+    for id in ownedPolish where cancellable(deps.downloads.polishPhase(id)) {
       deps.downloads.cancelPolish(id)
     }
     ownedSpeech.removeAll()
@@ -426,12 +563,14 @@ final class OnboardingCoordinator {
   private func preflightBlock() -> OnboardingDownloadBlock? {
     guard let free = deps.freeDiskBytes() else { return nil }
     var needed: Int64 = 0
-    if let speech = state.choices.speech, deps.downloads.speechPhase(speech) != .installed {
+    // Only a model KNOWN to be missing counts; `unknown` is never missing (P1).
+    let missing: (OnboardingDownloadPhase?) -> Bool = { $0 != .installed && $0 != .unknown }
+    if let speech = state.choices.speech, missing(deps.downloads.speechPhase(speech)) {
       needed += deps.downloadBytes(.speech(speech)) ?? 0
     }
     if let polish = state.choices.polish,
       let model = OnboardingDownloads.localModel(forPolish: polish),
-      deps.downloads.polishPhase(polish) != .installed
+      missing(deps.downloads.polishPhase(polish))
     {
       needed += deps.downloadBytes(.polish(model)) ?? 0
     }
@@ -446,7 +585,6 @@ final class OnboardingCoordinator {
     }
     let speechGeneration = speechGeneration
     speechTask?.cancel()
-    ownedSpeech.insert(engine)
     speechStartsInFlight += 1
     updateSleepAssertion()
     let bytes = deps.downloadBytes(.speech(engine))
@@ -459,6 +597,20 @@ final class OnboardingCoordinator {
       // A cancelled task still enters its body: do nothing (not even the pick write) once it
       // was cancelled or superseded before it ran.
       guard !Task.isCancelled, self.speechGeneration == speechGeneration else { return }
+      // The owner's installed fact first: an unanswered model reads `unknown`, which the
+      // synchronous preflight above does not count, so check again once it is answered.
+      _ = await self.deps.downloads.resolveSpeechInstalled(engine)
+      guard !Task.isCancelled, self.isActive, self.speechGeneration == speechGeneration else {
+        return
+      }
+      if let blocked = self.preflightBlock() {
+        self.block = blocked
+        self.onChange?()
+        return
+      }
+      // Owned only once a request will really be sent (Cancel then reaches the owner).
+      self.ownedSpeech.insert(engine)
+      self.speechOwnershipStarts[engine, default: 0] &+= 1
       // Parakeet answers only after its attempt, so the attempt starts here, before the owner
       // (a retry clears the old failure) can change the phase.
       let request = self.nextDownloadRequest()

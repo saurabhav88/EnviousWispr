@@ -24,6 +24,8 @@ struct OnboardingLiveOwners {
   let egOneDownloadBytes: [EGOneSize: Int64]
   /// The cloud model list settings telemetry projects model ids with (F2b).
   let cloudModelList: CloudModelListHolder
+  /// The engine warm-up owner (P2, `onboardingWarmup()`).
+  let dictationRuntime: DictationRuntime
 }
 
 extension OnboardingCoordinator.Dependencies {
@@ -47,10 +49,11 @@ extension OnboardingCoordinator.Dependencies {
         capabilities: LanguageLockOptions.speechCapabilities)
     }
     return Self(
-      downloads: OnboardingDownloads(owners: OnboardingLiveMapping.downloadOwners(owners)),
+      downloads: OnboardingDownloads(owners: OnboardingLiveMapping.downloadOwners(owners, facts: facts)),
       readinessSources: OnboardingLiveMapping.withFaults(.live(
         modelDelivery: owners.modelDelivery, engineCoordinator: owners.engineCoordinator,
-        localPolish: owners.localPolish, appleIntelligence: appleIntelligence,
+        localPolish: owners.localPolish, parakeetAdmission: facts.parakeetAdmission,
+        appleIntelligence: appleIntelligence,
         cloudEvidence: { provider in
           OnboardingLiveMapping.cloudEvidence(
             provider: provider,
@@ -96,6 +99,19 @@ extension OnboardingCoordinator.Dependencies {
       acquireSleepAssertion: { sleepAssertion.acquire() },
       releaseSleepAssertion: { sleepAssertion.release() },
       now: { Date() },
+      warmEngine: { engine in
+        // Only the engine the person picked, once it is the loaded one and no switch runs: the
+        // captured driver is then that engine's.
+        let status = owners.engineCoordinator.status
+        guard status.selected == engine, status.active == engine, status.switchPhase == .idle
+        else { return nil }
+        let warmup = owners.dictationRuntime.onboardingWarmup()
+        #if DEBUG
+          return OnboardingDebugFaults.apply(to: warmup)
+        #else
+          return warmup
+        #endif
+      },
       onPracticeOutcome: onPracticeOutcome,
       onCompleted: onCompleted)
   }
@@ -105,7 +121,7 @@ extension OnboardingRuntime.Inputs {
   /// The runtime's production inputs over the same owners.
   @MainActor
   static func live(
-    _ owners: OnboardingLiveOwners, coordinator: OnboardingCoordinator
+    _ owners: OnboardingLiveOwners, facts: OnboardingLiveFacts, coordinator: OnboardingCoordinator
   ) -> Self {
     Self(
       readObservedFacts: { [weak coordinator] in
@@ -122,7 +138,7 @@ extension OnboardingRuntime.Inputs {
         #endif
         return OnboardingLiveMapping.downloadProgress(
           choices: coordinator.state.choices,
-          downloads: OnboardingDownloads(owners: OnboardingLiveMapping.downloadOwners(owners)),
+          downloads: OnboardingDownloads(owners: OnboardingLiveMapping.downloadOwners(owners, facts: facts)),
           bytes: { model in
             OnboardingLiveMapping.downloadBytes(
               model, parakeet: owners.modelDelivery.parakeetHandle?.modelTotalBytes,
@@ -132,7 +148,7 @@ extension OnboardingRuntime.Inputs {
       },
       downloadsFinished: { [weak coordinator] in
         guard let coordinator else { return false }
-        let downloads = OnboardingDownloads(owners: OnboardingLiveMapping.downloadOwners(owners))
+        let downloads = OnboardingDownloads(owners: OnboardingLiveMapping.downloadOwners(owners, facts: facts))
         return OnboardingLiveMapping.downloadsFinished(
           coordinator.state.choices, downloads: downloads)
       },
@@ -154,10 +170,13 @@ extension OnboardingRuntime.Inputs {
 enum OnboardingLiveMapping {
   /// The download owners every live closure uses, with any DEBUG fault applied at that boundary.
   @MainActor
-  static func downloadOwners(_ owners: OnboardingLiveOwners) -> OnboardingDownloadOwners {
+  static func downloadOwners(_ owners: OnboardingLiveOwners, facts: OnboardingLiveFacts)
+    -> OnboardingDownloadOwners
+  {
     let live = OnboardingDownloadOwners.live(
       settings: owners.settings, modelDelivery: owners.modelDelivery,
-      whisperSetup: owners.whisperSetup, localPolish: owners.localPolish)
+      whisperSetup: owners.whisperSetup, localPolish: owners.localPolish,
+      parakeetAdmission: facts.parakeetAdmission)
     #if DEBUG
       return OnboardingDebugFaults.apply(to: live)
     #else

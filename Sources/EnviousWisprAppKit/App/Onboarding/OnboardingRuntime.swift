@@ -103,6 +103,8 @@ struct OnboardingAutoAdvance: Equatable {
 @MainActor
 final class OnboardingLiveFacts {
   var appleIntelligenceLive: AppleIntelligenceLiveAvailability?
+  /// Setup's remembered upgrade-aware Parakeet answer (P1), shared by every live owner closure.
+  let parakeetAdmission = OnboardingParakeetAdmission()
 }
 
 /// Binds a coordinator to the running app (#4528 chunk C2c.1): observes the owners' tracked

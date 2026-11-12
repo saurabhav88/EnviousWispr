@@ -44,6 +44,20 @@
       return faulted
     }
 
+    /// The failure a faulted warm-up reports, marked synthetic.
+    struct SimulatedWarmFailure: Error {}
+
+    /// `warm-fail`: the warm-up answers a labelled failure without calling the owner, so the
+    /// failure path (warmFailed, `warmup_failed`, Retry) runs with no real load touched.
+    static func apply(to warmup: OnboardingWarmup) -> OnboardingWarmup {
+      OnboardingWarmup(
+        run: {
+          if active.contains(.warmFail) { return .failed(SimulatedWarmFailure()) }
+          return await warmup.run()
+        },
+        cancel: warmup.cancel)
+    }
+
     static func apply(to sources: OnboardingReadinessSources) -> OnboardingReadinessSources {
       var faulted = sources
       let real = sources

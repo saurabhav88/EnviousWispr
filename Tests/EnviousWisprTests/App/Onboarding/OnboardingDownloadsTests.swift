@@ -205,12 +205,14 @@ struct OnboardingDownloadsTests {
     ]
     for (state, phase) in rows {
       #expect(
-        OnboardingDownloads.phase(parakeet: state, needsExplicitRetry: false) == phase, "\(state)")
+        // The owner answered "not usable": the mirror's own mapping.
+        OnboardingDownloads.phase(parakeet: state, needsExplicitRetry: false, usable: false)
+          == phase, "\(state)")
     }
     #expect(
       OnboardingDownloads.phase(
         parakeet: .downloading(fractionCompleted: 0.4, bytesWritten: 4, totalBytes: 10),
-        needsExplicitRetry: true) == .unavailable)
+        needsExplicitRetry: true, usable: nil) == .unavailable)
   }
 
   @Test("Whisper's and the local engines' states map to Setup's phase with the owner's failure")
@@ -237,5 +239,46 @@ struct OnboardingDownloadsTests {
       OnboardingDownloads.result(
         of: .failed(DeliveryFailure(reason: .sourceUnreachable, detail: nil))) == .failed)
     #expect(OnboardingDownloads.result(of: .cancelled(resumable: true)) == .cancelled)
+  }
+
+  @Test("an upgrade-served Parakeet reads installed only on the owner's current answer; a transfer or failure is never masked")
+  func parakeetUpgradeAwarePhase() {
+    let idle = OnboardingDownloads.phase(parakeet: .notReady, needsExplicitRetry: false, usable: true)
+    #expect(idle == .installed)
+    #expect(
+      OnboardingDownloads.phase(
+        parakeet: .cancelled(resumable: true), needsExplicitRetry: false, usable: true)
+        == .installed)
+    #expect(
+      OnboardingDownloads.phase(parakeet: .notReady, needsExplicitRetry: false, usable: false)
+        == .notStarted)
+    // Not answered yet for this key: unknown, never missing.
+    #expect(
+      OnboardingDownloads.phase(parakeet: .notReady, needsExplicitRetry: false, usable: nil)
+        == .unknown)
+    #expect(
+      OnboardingDownloads.phase(
+        parakeet: .cancelled(resumable: true), needsExplicitRetry: false, usable: nil) == .unknown)
+    #expect(
+      OnboardingDownloads.phase(parakeet: .verifying, needsExplicitRetry: false, usable: true)
+        == .verifying)
+    let failure = DeliveryFailure(reason: .sourceUnreachable, detail: nil)
+    #expect(
+      OnboardingDownloads.phase(parakeet: .failed(failure), needsExplicitRetry: false, usable: true)
+        == .failed(.delivery(failure)))
+    #expect(
+      OnboardingDownloads.phase(parakeet: .notReady, needsExplicitRetry: true, usable: true)
+        == .unavailable)
+  }
+
+  @Test("the remembered answer counts only for the delivery key it was read under")
+  func parakeetAdmissionKey() {
+    let admission = OnboardingParakeetAdmission()
+    let key = OnboardingParakeetAdmission.Key(state: .notReady, revision: 3)
+    #expect(admission.usable(at: key) == nil)
+    admission.record(true, at: key)
+    #expect(admission.usable(at: key) == true)
+    #expect(admission.usable(at: .init(state: .notReady, revision: 4)) == nil)
+    #expect(admission.usable(at: .init(state: .verifying, revision: 3)) == nil)
   }
 }

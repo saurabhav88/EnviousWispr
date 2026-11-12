@@ -211,6 +211,10 @@ final class OnboardingTelemetryObserver {
     case .blockChanged(let block, let step, let choices):
       guard ownedVisit() else { return }
       updateBlocker(step: step, block: block, choices: choices)
+    case .warmFailed(let step):
+      // One row per failure: each failure waits for an explicit Retry, so it is its own episode.
+      guard ownedVisit() else { return }
+      inputs.emitBlocked(step.rawValue, .warmupFailed)
     case .reset:
       choices = [:]
       blocker = nil
@@ -363,7 +367,7 @@ final class OnboardingTelemetryObserver {
     case .installed?: .ok
     case .failed?, .unavailable?: .failed
     case .notStarted?, .paused?, nil: cancelled ? .cancelled : nil
-    case .downloading?, .verifying?: nil
+    case .downloading?, .verifying?, .unknown?: nil
     }
   }
 
@@ -460,7 +464,7 @@ extension OnboardingTelemetryObserver.Inputs {
   /// (consent unchanged).
   @MainActor
   static func live(
-    progress: OnboardingProgress, owners: OnboardingLiveOwners,
+    progress: OnboardingProgress, owners: OnboardingLiveOwners, facts: OnboardingLiveFacts,
     visitOwned: @escaping () -> Bool
   ) -> Self {
     let settings = owners.settings
@@ -490,7 +494,7 @@ extension OnboardingTelemetryObserver.Inputs {
           recordingMode: settings.recordingMode.rawValue, summary: summary)
       },
       downloadPhase: { model in
-        let downloads = OnboardingDownloads(owners: OnboardingLiveMapping.downloadOwners(owners))
+        let downloads = OnboardingDownloads(owners: OnboardingLiveMapping.downloadOwners(owners, facts: facts))
         switch model {
         case .speech(let engine): return downloads.speechPhase(engine)
         case .polish(let id): return downloads.polishPhase(id)

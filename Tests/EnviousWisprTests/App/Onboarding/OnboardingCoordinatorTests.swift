@@ -78,16 +78,40 @@ struct OnboardingCoordinatorTests {
     var local: [LocalPolishModelID: OnboardingLocalPolishState] = [:]
     var permissions = (microphone: true, accessibility: true)
     var selected: ASRBackendType = .parakeet
+    /// An upgrade-served Parakeet (P1): the base mirror stays at `upgradeKey`, and only the owner's
+    /// installed read records the upgrade-aware answer into this cache (as live does).
+    var upgradeServed: OnboardingParakeetAdmission?
+    var upgradeKey = OnboardingParakeetAdmission.Key(state: .notReady, revision: 1)
+    /// What the upgrade-served owner answers for "is Parakeet usable" (false: still downloading).
+    var upgradeUsable = true
+    /// One gate per installed read, in order (used before `admissionGate`).
+    var admissionGateQueue: [Gate] = []
+    /// The engine owner's warm-up (P2); nil means the engine is not ready to warm.
+    var warm: ((ASRBackendType) -> OnboardingWarmup?)?
     /// The coordinator's clock (`deps.now`).
     var clock = Date(timeIntervalSince1970: 1000)
     /// Runs when the speech owner receives a request (an owner moving its phase).
     var onRequest: ((ASRBackendType) -> Void)?
 
     func coordinator() -> OnboardingCoordinator {
-      let owners = OnboardingDownloadOwners(
+      let owners = downloadOwners()
+      return makeCoordinator(owners: owners)
+    }
+
+    /// The world's download owners, exactly as `coordinator()` hands them to Setup.
+    func downloadOwners() -> OnboardingDownloadOwners {
+      OnboardingDownloadOwners(
         speechDeliveryEnabled: { _ in true },
         speechInstalled: { engine in
-          await self.admissionGate?.pass()
+          if !self.admissionGateQueue.isEmpty {
+            await self.admissionGateQueue.removeFirst().pass()
+          } else {
+            await self.admissionGate?.pass()
+          }
+          if engine == .parakeet, let admission = self.upgradeServed {
+            admission.record(self.upgradeUsable, at: self.upgradeKey)
+            return self.upgradeUsable
+          }
           return self.speechPhase[engine] == .installed
         },
         writeSelectedBackend: { engine in
@@ -109,7 +133,14 @@ struct OnboardingCoordinatorTests {
         },
         cancelSpeech: { self.log.append("cancel(\($0))") },
         clearSpeechBlock: { _ in true },
-        speechPhase: { self.speechPhase[$0] ?? .notStarted },
+        speechPhase: { engine in
+          if engine == .parakeet, let admission = self.upgradeServed {
+            return OnboardingDownloads.phase(
+              parakeet: self.upgradeKey.state, needsExplicitRetry: false,
+              usable: admission.usable(at: self.upgradeKey))
+          }
+          return self.speechPhase[engine] ?? .notStarted
+        },
         writePolishSelection: { self.log.append("selectPolish(\(Self.name($0)))") },
         polishPhase: { self.polishPhase[$0] ?? .notStarted },
         requestPolish: { model in
@@ -120,8 +151,17 @@ struct OnboardingCoordinatorTests {
         cancelPolish: { self.log.append("cancelPolish(\(Self.name($0)))") },
         activatePolish: { self.log.append("activate(\(Self.name($0)))") },
         speechReportsEnd: { self.reportsEnd.contains($0) })
+    }
+
+    private func makeCoordinator(owners: OnboardingDownloadOwners) -> OnboardingCoordinator {
       let sources = OnboardingReadinessSources(
-        speechAdmitted: { self.speechPhase[$0] == .installed },
+        speechAdmitted: { engine in
+          if engine == .parakeet, let admission = self.upgradeServed {
+            admission.record(self.upgradeUsable, at: self.upgradeKey)
+            return self.upgradeUsable
+          }
+          return self.speechPhase[engine] == .installed
+        },
         engine: { self.engine },
         localPolish: { self.local[$0] },
         appleIntelligence: { .available },
@@ -158,6 +198,7 @@ struct OnboardingCoordinatorTests {
           acquireSleepAssertion: { self.log.append("awake") },
           releaseSleepAssertion: { self.log.append("sleepOK") },
           now: { self.clock },
+          warmEngine: { self.warm?($0) ?? nil },
           onPracticeOutcome: { self.log.append("practice(\($0.rawValue))") },
           onCompleted: { self.log.append("onCompleted") }))
     }
@@ -284,8 +325,22 @@ struct OnboardingCoordinatorTests {
     world.speechGate?.open()
     await c.settle()
     #expect(c.state.step == .welcome && c.state.choices == OnboardingChoices())
-    #expect(world.log.contains("cancel(whisper)") && world.log.contains("restart"))
+    // Reset came before the start ever reached the owner: nothing was requested, so nothing
+    // is cancelled (C repair r1: the engine is owned only once its request will be sent).
+    #expect(!world.log.contains("request(whisper)") && !world.log.contains("cancel(whisper)"))
+    #expect(world.log.contains("restart"))
     #expect(c.block == nil && world.checkpoint == nil)
+
+    // A request already with the owner IS cancelled by reset.
+    let held = World()
+    held.speechGate = Gate()
+    let h = Self.atSpeechPick(held)
+    h.send(.chooseSpeech(.whisper))
+    await held.speechGate?.untilEntered()
+    h.reset()
+    held.speechGate?.open()
+    await h.settle()
+    #expect(held.log.contains("request(whisper)") && held.log.contains("cancel(whisper)"))
   }
 
   // MARK: Async safety

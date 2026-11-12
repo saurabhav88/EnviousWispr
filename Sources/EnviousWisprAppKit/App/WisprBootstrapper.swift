@@ -2678,7 +2678,8 @@ package final class WisprBootstrapper {
               localPolish: localPolishRuntimes, engineCoordinator: engineCoordinator,
               aiAvailability: aiAvailability, llmDiscovery: llmDiscovery,
               savedKeyPresence: savedKeyPresence, permissions: permissions,
-              egOneDownloadBytes: egOneSizeCatalog.downloadBytes, cloudModelList: cloudModelList),
+              egOneDownloadBytes: egOneSizeCatalog.downloadBytes, cloudModelList: cloudModelList,
+              dictationRuntime: dictationRuntime),
             workflow: onboardingWorkflow, progress: onboardingProgress)))
     #endif
     // #3972 C4a: EnviousMeet, bootstrapped here so it lives independently of any view.
