@@ -87,7 +87,8 @@ enum DesignPageCaptures {
 
   /// Photograph one page state at one width and appearance, one PNG per declared scroll position.
   static func capturePage(
-    label: String, width: CGFloat, dark: Bool, names: [String], into directory: URL
+    label: String, width: CGFloat, dark: Bool, names: [String], into directory: URL,
+    viewport: CGFloat = DesignPageCaptures.viewport, offsets: ((CGFloat) -> Void)? = nil
   ) async throws -> [DesignRenderHarness.Capture] {
     var made: [DesignRenderHarness.Capture] = []
     let size = CGSize(width: width, height: viewport)
@@ -170,6 +171,8 @@ enum DesignPageCaptures {
               abs(currentOffset() - offset) < 0.5,
               "\(name): the page did not scroll to \(offset) (at \(currentOffset()))")
           }
+          // The screen atlas (#4506) joins a page's captures into one picture at these offsets.
+          offsets?(currentOffset())
           made.append(
             try DesignRenderHarness.writePNG(of: host, size: size, name: name, into: directory))
         }
@@ -237,17 +240,121 @@ enum DesignPageCaptures {
   // MARK: - Recording pill designs
 
   /// A recording pill leaf as the overlay draws it, with constant level and elapsed time.
-  static func pill(_ design: RecordingPillDesign, locked: Bool) -> AnyView {
+  /// The screen atlas (#4506) also photographs it with words (`preview`) and with the in-pill
+  /// notice (`noticeText`); the defaults draw exactly what the Phase 2 captures drew.
+  static func pill(
+    _ design: RecordingPillDesign, locked: Bool, preview: LivePreviewDisplay = .off,
+    noticeText: String? = nil
+  ) -> AnyView {
     AnyView(
       RecordingOverlayView(
         audioLevelProvider: { 0.4 },
         recordingElapsedProvider: { 127 },
-        livePreviewProvider: { .off },
+        livePreviewProvider: { preview },
         onContentHeightChange: { _ in },
         chrome: design.chrome,
         isLocked: locked,
-        noticeText: nil,
-        initialPreview: .off
+        noticeText: noticeText,
+        initialPreview: preview
       ).frame(width: design.width))
+  }
+
+  /// The words the atlas's with-words pills show.
+  static let atlasWords =
+    "Let's move the design review to Thursday afternoon and invite the whole team."
+
+  // MARK: - Pill notices (screen atlas, #4506)
+
+  /// Every distinct notice look the overlay draws, built from the app's own catalog so size and
+  /// wording are what users see (`PillCatalog`, the sole authority on what a pill is). Other
+  /// reasons reuse one of these looks with different words.
+  static let notices: [(key: String, request: PillCatalogRequest)] = [
+    ("processing-transcribing", .processing(phase: .transcribing)),
+    ("processing-polishing", .processing(phase: .polishing)),
+    ("clipboard-fallback", .clipboardFallback),
+    ("accessibility-toast", .accessibilityToast),
+    ("warning-polish-failed", .warning(reason: .polishFailed)),
+    ("error-capture", .error(reason: .captureStalled)),
+    ("advisory-zero-signal", .advisory(reason: .zeroSignal)),
+    ("interruption-device-removed", .interruption(reason: .deviceRemoved)),
+    ("caching-model", .cachingModel(engineLabel: "Parakeet")),
+    ("engine-ready", .engineReady),
+    ("recovering", .recoveringLastRecording),
+    ("recovery-succeeded", .recoverySucceeded),
+    ("bluetooth", .bluetoothAwareness),
+    (
+      "escape-recovery",
+      .escapeRecovery(transcriptID: UUID(uuidString: "4506A71A-0000-0000-0000-000000000001")!)
+    ),
+    (
+      "import-status",
+      .importStatus(message: "Importing your words now. Check progress on the Dictionary page.")
+    ),
+    (
+      "correction-learned",
+      .correctionLearned(
+        LearnedCorrectionPillModel(
+          id: UUID(uuidString: "4506A71A-0000-0000-0000-000000000002")!,
+          wordID: UUID(uuidString: "4506A71A-0000-0000-0000-000000000003")!,
+          canonical: "Tuist", kind: .added, phase: .learned))
+    ),
+    (
+      "language-chip",
+      .passiveChip(
+        payload: LanguageChipPayload(
+          lang: "es", displayName: "Spanish", state: .askToLock, generation: 1))
+    ),
+  ]
+
+  /// One notice as the overlay root draws it, proposed the width production proposes
+  /// (`RenderedPillHarness.rootSize(for:)` repeats the same rule).
+  static func notice(_ key: String) throws -> AnyView {
+    let request = try #require(
+      notices.first { $0.key == key }?.request, "unknown notice fixture \(key)")
+    let definition = PillCatalog.entry(
+      for: request, id: PresentationID(rawValue: UUID())
+    ).definition
+    let model = OverlayRenderModel()
+    model.publish(definition)
+    // The interruption pill pulses on a clock (red lips and edge glow), so two runs differ; it is
+    // photographed in its Reduce Motion picture (same red look, steady), as `holdsAnimatedMarksStill`
+    // stills the EnviousMeet mark. Every other notice is already still.
+    let root = OverlayRootView(model: model, sendEvent: { _ in })
+      .environment(\.overlayReduceMotionOverride, key.hasPrefix("interruption-") ? true : nil)
+    if let definition, case .fixed(let width) = definition.requestedWidth, width > 0 {
+      if let height = definition.reservesFixedHeight {
+        return AnyView(root.frame(width: width, height: height))
+      }
+      return AnyView(root.frame(width: width))
+    }
+    // A measured width stays unproposed: production sizes the panel to `fittingSize`
+    // (`OverlayWindowHost`), and so does the capture.
+    return AnyView(root)
+  }
+
+  // MARK: - Logos (screen atlas, #4506)
+
+  /// The brand marks as the app draws them, at a fixed size, still.
+  static func logo(_ key: String) throws -> AnyView {
+    switch key {
+    case "lips": return AnyView(RainbowLipsIcon(size: 64, audioLevel: 0))
+    case "lips-open": return AnyView(RainbowLipsIcon(size: 64, audioLevel: 0.4))
+    case "logo-mark": return AnyView(WisprLogoMark().frame(width: 64, height: 64))
+    case "envious-meet":
+      return AnyView(
+        MeetingRainbowLogo(size: 48).environment(\.holdsAnimatedMarksStill, true).padding(4))
+    case "menu-bar-idle", "menu-bar-recording":
+      let animator = MenuBarIconAnimator()
+      let button = NSStatusBarButton(frame: NSRect(x: 0, y: 0, width: 22, height: 22))
+      animator.configure(button: button)
+      if key == "menu-bar-recording" { animator.transition(to: .recording) }
+      let image = try #require(button.image, "\(key): the animator set no image")
+      // The idle lips are a template image: the menu bar tints them, so the capture does too.
+      return AnyView(
+        Image(nsImage: image).renderingMode(key == "menu-bar-idle" ? .template : .original)
+          .foregroundStyle(Color.primary).frame(width: 22, height: 22))
+    default:
+      throw DesignRenderHarness.RenderError("unknown logo fixture \(key)")
+    }
   }
 }

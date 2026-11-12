@@ -8,6 +8,7 @@ The single source for how the macOS app looks. Every Claude or Codex session rea
 
 ## How to use this book
 
+0. **See it before you build it.** Before you build, describe or mock up any screen, open the screen atlas in `design/atlas/` (`README.md`, `inventory.md`, `index.html`). It has a picture of every Settings page and tab, every recording pill and notice, the logos as files, and copy-ready HTML parts on these tokens. Copy from it instead of drawing EnviousWispr from scratch.
 1. **Pick a part from "Approved parts".** If a part exists for the job, use it. Never build a second card, banner, button, row or badge.
 2. **Use tokens, never raw values.** Colors, fonts and layout sizes come from the tokens below. `DesignLiteralRatchetTests` rejects new hand-typed corner sizes, font sizes and color literals.
 3. **If nothing fits, stop and ask.** Do not invent a new part, color or size. Propose it to the founder with a mockup that uses these tokens.

@@ -1,0 +1,28 @@
+<!-- The main window: title bar, sidebar card, content card. Swift: UnifiedWindowView
+     (Views/Settings/SettingsView.swift). Labels and order are the shipped sidebar (v2.6.0).
+     Put a Settings page (parts in cards.html and controls.html) inside .ew-content. -->
+<!-- part: window-frame | Main window: title bar (gift, bug, Record), sidebar card, content card | UnifiedWindowView | hand-window-dictation -->
+<div class="ew-root ew-app">
+  <div class="ew-titlebar"><span class="ew-lights"><i></i><i></i><i></i></span><span class="ew-title"><img src="logos/logo-mark.svg" width="16" height="16" alt="">EnviousWispr</span><span class="ew-title-actions"><button class="ew-btn ew-btn--quiet ew-btn--rect" aria-label="What's New">&#x1F381;&#xFE0E;</button><button class="ew-btn ew-btn--rect" aria-label="Send Feedback">&#x1F41E;&#xFE0E;</button><button class="ew-btn ew-btn--filled ew-btn--rect">&#x1F3A4;&#xFE0E; Record</button></span></div>
+  <div class="ew-window">
+    <nav class="ew-sidebar">
+      <div class="ew-sidebar-brand"><img src="logos/logo-mark.svg" alt=""><span>EnviousWispr<br><span class="ew-version">v2.6.0</span></span></div>
+      <input class="ew-field" placeholder="Search settings">
+      <a class="ew-sidebar-item"><span class="ew-sidebar-icon">&#x1F552;&#xFE0E;</span>History</a>
+      <p class="ew-sidebar-group">Record</p>
+      <a class="ew-sidebar-item" aria-current="page"><span class="ew-sidebar-icon">&#x2016;</span>Dictation Settings</a>
+      <a class="ew-sidebar-item"><span class="ew-sidebar-icon">&#x2328;&#xFE0E;</span>Keybinds</a>
+      <a class="ew-sidebar-item"><span class="ew-sidebar-icon">&#x2195;</span>Transcribe a File</a>
+      <a class="ew-sidebar-item"><span class="ew-sidebar-icon">&#x1F465;&#xFE0E;</span>EnviousMeet <span class="ew-beta">BETA</span></a>
+      <p class="ew-sidebar-group">Process</p>
+      <a class="ew-sidebar-item"><span class="ew-sidebar-icon">&#x2728;&#xFE0E;</span>AI Polish</a>
+      <a class="ew-sidebar-item"><span class="ew-sidebar-icon">&#x1F4D6;&#xFE0E;</span>Dictionary</a>
+      <a class="ew-sidebar-item"><span class="ew-sidebar-icon">{ }</span>Snippets</a>
+      <p class="ew-sidebar-group">System</p>
+      <a class="ew-sidebar-item"><span class="ew-sidebar-icon">&#x2699;&#xFE0E;</span>App Settings</a>
+      <a class="ew-sidebar-item"><span class="ew-sidebar-icon">&#x1F41E;&#xFE0E;</span>Diagnostics</a>
+    </nav>
+    <main class="ew-content"><div class="ew-page"><p class="ew-eyebrow">Page content goes here</p></div></main>
+  </div>
+</div>
+<!-- /part -->

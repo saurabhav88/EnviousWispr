@@ -1,6 +1,6 @@
 {
-  "version": 4,
-  "note": "The expected captures of DesignRenderHarness (#4506). Every capture is <name>.png. German entries are text-fit evidence built from source-catalog values and labelled unreviewed drafts, not a localized app render. page: entries (Phase 2) are Settings pages built by SettingsMapRenderingTests, photographed in a 560pt reference viewport at each scroll position; pill- entries take their own size. Not staged, with reasons: DesignPageCaptures.swift.",
+  "version": 5,
+  "note": "The expected captures of DesignRenderHarness (#4506). Every capture is <name>.png. German entries are text-fit evidence built from source-catalog values and labelled unreviewed drafts, not a localized app render. page: entries (Phase 2) are Settings pages built by SettingsMapRenderingTests, photographed in a 560pt reference viewport at each scroll position; pill- entries take their own size. Not staged, with reasons: DesignPageCaptures.swift. Screen atlas entries (v5, #4506): pill words and waiting states (Reading Well, the only design that holds words), pill notice states, overlay notices built from PillCatalog, and the brand marks; each takes its own size.",
   "entries": [
     {
       "name": "appearance-min-750-light",
@@ -3107,6 +3107,510 @@
       "appearance": "dark",
       "locale": "en_US",
       "state": "recording, locked, level 0.4, 2:07 elapsed"
+    },
+    {
+      "name": "pill-classic-notice-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "pill-classic-notice",
+      "pageWidth": 0,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "recording, in-pill notice: secure input active, level 0.4, 2:07 elapsed"
+    },
+    {
+      "name": "pill-classic-notice-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "pill-classic-notice",
+      "pageWidth": 0,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "recording, in-pill notice: secure input active, level 0.4, 2:07 elapsed"
+    },
+    {
+      "name": "pill-readingWell-words-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "pill-readingWell-words",
+      "pageWidth": 0,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "recording, words shown: the atlas sentence, level 0.4, 2:07 elapsed"
+    },
+    {
+      "name": "pill-readingWell-words-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "pill-readingWell-words",
+      "pageWidth": 0,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "recording, words shown: the atlas sentence, level 0.4, 2:07 elapsed"
+    },
+    {
+      "name": "pill-readingWell-waiting-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "pill-readingWell-waiting",
+      "pageWidth": 0,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "recording, words on and none yet, level 0.4, 2:07 elapsed"
+    },
+    {
+      "name": "pill-readingWell-waiting-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "pill-readingWell-waiting",
+      "pageWidth": 0,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "recording, words on and none yet, level 0.4, 2:07 elapsed"
+    },
+    {
+      "name": "pill-readingWell-notice-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "pill-readingWell-notice",
+      "pageWidth": 0,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "recording, in-pill notice: secure input active, level 0.4, 2:07 elapsed"
+    },
+    {
+      "name": "pill-readingWell-notice-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "pill-readingWell-notice",
+      "pageWidth": 0,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "recording, in-pill notice: secure input active, level 0.4, 2:07 elapsed"
+    },
+    {
+      "name": "pill-levelRail-notice-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "pill-levelRail-notice",
+      "pageWidth": 0,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "recording, in-pill notice: secure input active, level 0.4, 2:07 elapsed"
+    },
+    {
+      "name": "pill-levelRail-notice-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "pill-levelRail-notice",
+      "pageWidth": 0,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "recording, in-pill notice: secure input active, level 0.4, 2:07 elapsed"
+    },
+    {
+      "name": "notice-processing-transcribing-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "notice-processing-transcribing",
+      "pageWidth": 0,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "overlay notice from PillCatalog: processing-transcribing"
+    },
+    {
+      "name": "notice-processing-transcribing-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "notice-processing-transcribing",
+      "pageWidth": 0,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "overlay notice from PillCatalog: processing-transcribing"
+    },
+    {
+      "name": "notice-processing-polishing-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "notice-processing-polishing",
+      "pageWidth": 0,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "overlay notice from PillCatalog: processing-polishing"
+    },
+    {
+      "name": "notice-processing-polishing-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "notice-processing-polishing",
+      "pageWidth": 0,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "overlay notice from PillCatalog: processing-polishing"
+    },
+    {
+      "name": "notice-clipboard-fallback-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "notice-clipboard-fallback",
+      "pageWidth": 0,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "overlay notice from PillCatalog: clipboard-fallback"
+    },
+    {
+      "name": "notice-clipboard-fallback-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "notice-clipboard-fallback",
+      "pageWidth": 0,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "overlay notice from PillCatalog: clipboard-fallback"
+    },
+    {
+      "name": "notice-accessibility-toast-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "notice-accessibility-toast",
+      "pageWidth": 0,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "overlay notice from PillCatalog: accessibility-toast"
+    },
+    {
+      "name": "notice-accessibility-toast-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "notice-accessibility-toast",
+      "pageWidth": 0,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "overlay notice from PillCatalog: accessibility-toast"
+    },
+    {
+      "name": "notice-warning-polish-failed-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "notice-warning-polish-failed",
+      "pageWidth": 0,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "overlay notice from PillCatalog: warning-polish-failed"
+    },
+    {
+      "name": "notice-warning-polish-failed-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "notice-warning-polish-failed",
+      "pageWidth": 0,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "overlay notice from PillCatalog: warning-polish-failed"
+    },
+    {
+      "name": "notice-error-capture-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "notice-error-capture",
+      "pageWidth": 0,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "overlay notice from PillCatalog: error-capture"
+    },
+    {
+      "name": "notice-error-capture-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "notice-error-capture",
+      "pageWidth": 0,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "overlay notice from PillCatalog: error-capture"
+    },
+    {
+      "name": "notice-advisory-zero-signal-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "notice-advisory-zero-signal",
+      "pageWidth": 0,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "overlay notice from PillCatalog: advisory-zero-signal"
+    },
+    {
+      "name": "notice-advisory-zero-signal-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "notice-advisory-zero-signal",
+      "pageWidth": 0,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "overlay notice from PillCatalog: advisory-zero-signal"
+    },
+    {
+      "name": "notice-interruption-device-removed-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "notice-interruption-device-removed",
+      "pageWidth": 0,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "overlay notice from PillCatalog: interruption-device-removed"
+    },
+    {
+      "name": "notice-interruption-device-removed-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "notice-interruption-device-removed",
+      "pageWidth": 0,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "overlay notice from PillCatalog: interruption-device-removed"
+    },
+    {
+      "name": "notice-caching-model-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "notice-caching-model",
+      "pageWidth": 0,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "overlay notice from PillCatalog: caching-model"
+    },
+    {
+      "name": "notice-caching-model-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "notice-caching-model",
+      "pageWidth": 0,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "overlay notice from PillCatalog: caching-model"
+    },
+    {
+      "name": "notice-engine-ready-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "notice-engine-ready",
+      "pageWidth": 0,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "overlay notice from PillCatalog: engine-ready"
+    },
+    {
+      "name": "notice-engine-ready-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "notice-engine-ready",
+      "pageWidth": 0,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "overlay notice from PillCatalog: engine-ready"
+    },
+    {
+      "name": "notice-recovering-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "notice-recovering",
+      "pageWidth": 0,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "overlay notice from PillCatalog: recovering"
+    },
+    {
+      "name": "notice-recovering-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "notice-recovering",
+      "pageWidth": 0,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "overlay notice from PillCatalog: recovering"
+    },
+    {
+      "name": "notice-recovery-succeeded-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "notice-recovery-succeeded",
+      "pageWidth": 0,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "overlay notice from PillCatalog: recovery-succeeded"
+    },
+    {
+      "name": "notice-recovery-succeeded-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "notice-recovery-succeeded",
+      "pageWidth": 0,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "overlay notice from PillCatalog: recovery-succeeded"
+    },
+    {
+      "name": "notice-bluetooth-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "notice-bluetooth",
+      "pageWidth": 0,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "overlay notice from PillCatalog: bluetooth"
+    },
+    {
+      "name": "notice-bluetooth-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "notice-bluetooth",
+      "pageWidth": 0,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "overlay notice from PillCatalog: bluetooth"
+    },
+    {
+      "name": "notice-escape-recovery-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "notice-escape-recovery",
+      "pageWidth": 0,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "overlay notice from PillCatalog: escape-recovery"
+    },
+    {
+      "name": "notice-escape-recovery-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "notice-escape-recovery",
+      "pageWidth": 0,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "overlay notice from PillCatalog: escape-recovery"
+    },
+    {
+      "name": "notice-import-status-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "notice-import-status",
+      "pageWidth": 0,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "overlay notice from PillCatalog: import-status"
+    },
+    {
+      "name": "notice-import-status-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "notice-import-status",
+      "pageWidth": 0,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "overlay notice from PillCatalog: import-status"
+    },
+    {
+      "name": "notice-correction-learned-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "notice-correction-learned",
+      "pageWidth": 0,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "overlay notice from PillCatalog: correction-learned"
+    },
+    {
+      "name": "notice-correction-learned-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "notice-correction-learned",
+      "pageWidth": 0,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "overlay notice from PillCatalog: correction-learned"
+    },
+    {
+      "name": "notice-language-chip-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "notice-language-chip",
+      "pageWidth": 0,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "overlay notice from PillCatalog: language-chip"
+    },
+    {
+      "name": "notice-language-chip-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "notice-language-chip",
+      "pageWidth": 0,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "overlay notice from PillCatalog: language-chip"
+    },
+    {
+      "name": "logo-lips-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "logo-lips",
+      "pageWidth": 0,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "brand mark, still: lips"
+    },
+    {
+      "name": "logo-lips-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "logo-lips",
+      "pageWidth": 0,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "brand mark, still: lips"
+    },
+    {
+      "name": "logo-lips-open-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "logo-lips-open",
+      "pageWidth": 0,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "brand mark, still: lips-open"
+    },
+    {
+      "name": "logo-lips-open-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "logo-lips-open",
+      "pageWidth": 0,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "brand mark, still: lips-open"
+    },
+    {
+      "name": "logo-logo-mark-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "logo-logo-mark",
+      "pageWidth": 0,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "brand mark, still: logo-mark"
+    },
+    {
+      "name": "logo-logo-mark-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "logo-logo-mark",
+      "pageWidth": 0,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "brand mark, still: logo-mark"
+    },
+    {
+      "name": "logo-envious-meet-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "logo-envious-meet",
+      "pageWidth": 0,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "brand mark, still: envious-meet"
+    },
+    {
+      "name": "logo-envious-meet-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "logo-envious-meet",
+      "pageWidth": 0,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "brand mark, still: envious-meet"
+    },
+    {
+      "name": "logo-menu-bar-idle-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "logo-menu-bar-idle",
+      "pageWidth": 0,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "brand mark, still: menu-bar-idle"
+    },
+    {
+      "name": "logo-menu-bar-idle-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "logo-menu-bar-idle",
+      "pageWidth": 0,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "brand mark, still: menu-bar-idle"
+    },
+    {
+      "name": "logo-menu-bar-recording-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "logo-menu-bar-recording",
+      "pageWidth": 0,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "brand mark, still: menu-bar-recording"
+    },
+    {
+      "name": "logo-menu-bar-recording-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "logo-menu-bar-recording",
+      "pageWidth": 0,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "brand mark, still: menu-bar-recording"
     }
   ]
 }
