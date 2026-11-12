@@ -183,6 +183,16 @@ final class OnboardingCoordinator {
     if let readinessTask { startedTasks.append(readinessTask) }
   }
 
+  /// A readiness-relevant fact changed: clear the facts first, so an old pass (a replaced key, a
+  /// revoked grant, an unloaded model) can never stand while the re-measure is pending, then
+  /// re-measure. Clearing never moves the flow backward.
+  func invalidateReadiness() {
+    guard isActive else { return }
+    readinessTask?.cancel()
+    send(.readinessChanged(OnboardingReadiness()))
+    refreshReadiness()
+  }
+
   // MARK: Downloads
 
   /// Retry after a block: clears it and starts the current picks again.
