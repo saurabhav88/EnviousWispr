@@ -22,6 +22,8 @@ struct OnboardingLiveOwners {
   /// EG-1 manifest totals by size, as the bootstrapper already stores them
   /// (`PolishSetupWiring.egOneSizeCatalog.downloadBytes`).
   let egOneDownloadBytes: [EGOneSize: Int64]
+  /// The cloud model list settings telemetry projects model ids with (F2b).
+  let cloudModelList: CloudModelListHolder
 }
 
 extension OnboardingCoordinator.Dependencies {

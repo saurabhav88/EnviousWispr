@@ -18,6 +18,34 @@ enum OnboardingDownloadBlock: Equatable, Sendable {
   case polishRefused(String)
 }
 
+/// What the coordinator reports to Setup's telemetry at its existing execution points (#4528
+/// chunk F2b, plan §3.8, M68). Observation only: nothing here changes the flow.
+enum OnboardingObservation: Equatable {
+  /// An accepted transition changed the picks (never a refusal, DEBUG positioning or restore),
+  /// with the recommendation the flow held at that moment.
+  case choicesCommitted(
+    before: OnboardingChoices, after: OnboardingChoices, recommendedSpeech: ASRBackendType,
+    recommendedPolish: String)
+  /// A Setup download start is about to reach its owner (before any owner call can change the
+  /// model's phase). `request` numbers it; its answer reports the same number.
+  /// `ownerReportsEnd`: the owner answers only once the attempt ended (Parakeet).
+  case downloadStarting(
+    OnboardingTelemetry.DownloadModel, request: Int, at: Date, bytes: Int64?, ownerReportsEnd: Bool)
+  /// The owner's answer for that start (an accepted attempt only when `.requested`), with the
+  /// attempt's end when the owner reports it.
+  case downloadAnswered(
+    request: Int, OnboardingStartAnswer, ended: OnboardingTelemetry.DownloadResult?)
+  /// Cancel on the download screen (or reset): the owners' explicit cancels were sent.
+  case downloadsCancelled
+  /// The typed download block changed.
+  case blockChanged(OnboardingDownloadBlock?, step: OnboardingStep, choices: OnboardingChoices)
+  /// Restart Onboarding: the picks start over.
+  case reset
+  /// Completion is durable (SettingsManager already wrote `.completed`). `interrupted` is a
+  /// completion finished on relaunch, with no visit shown.
+  case completed(OnboardingChoices, interrupted: Bool)
+}
+
 /// Owns the one live Setup flow (#4528 chunk C2b, plan §3.3-3.4, §5). It applies C1's reducer
 /// (the only navigation authority), runs each transition's effects in order and orchestrates
 /// the existing owners through C2a's adapters. Every async result carries the generation and
@@ -61,7 +89,13 @@ final class OnboardingCoordinator {
 
   private let deps: Dependencies
   private(set) var state = OnboardingFlowState()
-  private(set) var block: OnboardingDownloadBlock?
+  private(set) var block: OnboardingDownloadBlock? {
+    didSet {
+      if block != oldValue, !holdBlockObservation { reportBlock() }
+    }
+  }
+  /// Retry clears the block and may set it again in the same call: telemetry sees one change.
+  private var holdBlockObservation = false
   /// The last refusal the reducer returned, for the screen to explain a disabled step.
   private(set) var lastRefusal: String?
   /// Bumped by every pick change and by reset; readiness results from an older one drop.
@@ -74,6 +108,8 @@ final class OnboardingCoordinator {
   private var ownedSpeech: Set<ASRBackendType> = []
   private var ownedPolish: Set<String> = []
   private var speechStartsInFlight = 0
+  /// Numbers each download start for telemetry's start/answer pairing (observation only).
+  private var downloadRequests = 0
   private(set) var isActive = false
   /// True when this flow was restored from a checkpoint (the first screen shown is a resume, not
   /// a forward move). A narrow observation hook for telemetry (#4528 F2a); never navigation.
@@ -87,6 +123,8 @@ final class OnboardingCoordinator {
   private var startedTasks: [Task<Void, Never>] = []
   /// Fires after every published change, so the screens and tests read the new state.
   var onChange: (() -> Void)?
+  /// Telemetry's observation hook (F2b); `OnboardingTelemetryObserver.attach` sets it.
+  var onObservation: ((OnboardingObservation) -> Void)?
 
   init(dependencies: Dependencies) {
     deps = dependencies
@@ -107,8 +145,12 @@ final class OnboardingCoordinator {
     case .completed:
       return false
     case .finishCompletion(let outcome):
+      // The checkpoint's picks, read before `markCompleted` deletes it, for the summary.
+      let choices = resolvedChoices(
+        OnboardingCheckpoint.decode(deps.checkpointData())?.choices ?? OnboardingChoices())
       if let outcome { deps.onPracticeOutcome(outcome) }
       deps.markCompleted()
+      onObservation?(.completed(choices, interrupted: true))
       deps.onCompleted()
       return false
     case .fresh:
@@ -155,6 +197,12 @@ final class OnboardingCoordinator {
     }
     lastRefusal = nil
     if before.choices != transition.state.choices {
+      // Before effects, so a final transition's completion follows its picks.
+      onObservation?(
+        .choicesCommitted(
+          before: before.choices, after: transition.state.choices,
+          recommendedSpeech: transition.state.recommendedSpeech,
+          recommendedPolish: transition.state.recommendedPolish))
       generation &+= 1
       readinessTask?.cancel()
     }
@@ -203,9 +251,13 @@ final class OnboardingCoordinator {
   /// Retry after a block: clears it and starts the current picks again.
   func retryDownloads() {
     guard isActive else { return }
+    let previous = block
+    holdBlockObservation = true
     block = nil
     if let speech = state.choices.speech { startSpeech(speech, retry: true) }
     if let polish = state.choices.polish { startPolish(polish, retry: true) }
+    holdBlockObservation = false
+    if block != previous { reportBlock() }
     onChange?()
   }
 
@@ -213,6 +265,7 @@ final class OnboardingCoordinator {
   /// cancellation never stops a transfer), then the coordinator's own work.
   func cancelDownloads() {
     cancelOwnedTransfers()
+    onObservation?(.downloadsCancelled)
     queuedPolish = nil
     speechTask?.cancel()
     generation &+= 1
@@ -236,6 +289,7 @@ final class OnboardingCoordinator {
     startedAt = deps.now()
     resumedFromCheckpoint = false
     isActive = true
+    onObservation?(.reset)
     onChange?()
   }
 
@@ -271,6 +325,15 @@ final class OnboardingCoordinator {
   }
 
   // MARK: Private
+
+  private func nextDownloadRequest() -> Int {
+    downloadRequests &+= 1
+    return downloadRequests
+  }
+
+  private func reportBlock() {
+    onObservation?(.blockChanged(block, step: state.step, choices: state.choices))
+  }
 
   private func freshState() -> OnboardingFlowState {
     var s = OnboardingFlowState()
@@ -339,7 +402,23 @@ final class OnboardingCoordinator {
     isActive = false
     updateSleepAssertion()
     deps.markCompleted()
+    // After the durable write, before completion hands Setup back.
+    onObservation?(.completed(resolvedChoices(state.choices), interrupted: false))
     deps.onCompleted()
+  }
+
+  /// The picks for the completion summary: any pick the flow never set reads the saved setting.
+  private func resolvedChoices(_ choices: OnboardingChoices) -> OnboardingChoices {
+    let saved = deps.savedChoices()
+    var c = choices
+    if c.languageMode == nil { c.languageMode = saved.languageMode }
+    if c.speech == nil { c.speech = saved.speech }
+    if c.polish == nil {
+      c.polish = saved.polish
+      c.cloudProvider = saved.cloudProvider
+      c.cloudModel = saved.cloudModel
+    }
+    return c
   }
 
   /// The selected pair still to download, × 1.2, against free space (plan M8). Installed
@@ -370,6 +449,7 @@ final class OnboardingCoordinator {
     ownedSpeech.insert(engine)
     speechStartsInFlight += 1
     updateSleepAssertion()
+    let bytes = deps.downloadBytes(.speech(engine))
     speechTask = Task { [weak self] in
       guard let self else { return }
       defer {
@@ -379,10 +459,19 @@ final class OnboardingCoordinator {
       // A cancelled task still enters its body: do nothing (not even the pick write) once it
       // was cancelled or superseded before it ran.
       guard !Task.isCancelled, self.speechGeneration == speechGeneration else { return }
+      // Parakeet answers only after its attempt, so the attempt starts here, before the owner
+      // (a retry clears the old failure) can change the phase.
+      let request = self.nextDownloadRequest()
+      self.onObservation?(
+        .downloadStarting(
+          .speech(engine), request: request, at: self.deps.now(), bytes: bytes,
+          ownerReportsEnd: self.deps.downloads.speechReportsEnd(engine)))
       let start =
         retry
         ? await self.deps.downloads.retrySpeech(engine)
         : await self.deps.downloads.startSpeech(engine)
+      // Every answer, even when the pick has since changed (a late answer keeps its own start).
+      self.onObservation?(.downloadAnswered(request: request, start.answer, ended: start.ended))
       // Re-check after the (possibly whole-attempt) await before publishing anything.
       guard !Task.isCancelled, self.isActive, self.speechGeneration == speechGeneration,
         self.state.choices.speech == start.id
@@ -411,8 +500,16 @@ final class OnboardingCoordinator {
       return
     }
     queuedPolish = nil
+    let request = nextDownloadRequest()
+    let bytes = OnboardingDownloads.localModel(forPolish: id).flatMap {
+      deps.downloadBytes(.polish($0))
+    }
+    onObservation?(
+      .downloadStarting(
+        .polish(id), request: request, at: deps.now(), bytes: bytes, ownerReportsEnd: false))
     let start = retry ? deps.downloads.retryPolish(id) : deps.downloads.startPolish(id)
     if start.answer == .requested { ownedPolish.insert(id) }
+    onObservation?(.downloadAnswered(request: request, start.answer, ended: start.ended))
     guard state.choices.polish == start.id else { return }
     if start.answer == .refused { block = .polishRefused(id) }
     updateSleepAssertion()

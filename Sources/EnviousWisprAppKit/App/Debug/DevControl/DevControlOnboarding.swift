@@ -14,8 +14,9 @@
     struct Session {
       let coordinator: OnboardingCoordinator
       let runtime: OnboardingRuntime
-      /// Visit and screen telemetry (F2a). The door session presents no screens, so it emits no
-      /// screen rows; chunk D's screens call `screenPresented` when a screen is shown.
+      /// Setup telemetry (F2a, F2b). The door session presents no screens, so it emits no screen
+      /// rows (chunk D's screens call `screenPresented`); choices, downloads, blockers and
+      /// completion come from the coordinator and runtime it is attached to.
       var telemetry: OnboardingTelemetryObserver? = nil
     }
 
@@ -135,6 +136,8 @@
         session.runtime.quit()
       }
       if ownsVisit {
+        // The visit's final choices and observed download ends, before its abandon row.
+        session?.telemetry?.visitEnded()
         progress?.emitAbandonIfInFlight(
           reason: abandonReason, micStatus: permissions?.microphoneStatusString ?? "unknown",
           accessibilityStatus: (permissions?.accessibilityGrantedLive ?? false) ? "granted" : "denied")
@@ -490,10 +493,13 @@
                   workflow?.releaseBackendSession()
                 }
               }))
-          let runtime = OnboardingRuntime(
-            coordinator: coordinator, facts: facts, inputs: .live(owners, coordinator: coordinator))
           let telemetry = OnboardingTelemetryObserver(
-            inputs: .live(progress: progress, visitOwned: { [weak door] in door?.ownsVisit ?? false }))
+            inputs: .live(
+              progress: progress, owners: owners,
+              visitOwned: { [weak door] in door?.ownsVisit ?? false }))
+          var inputs = OnboardingRuntime.Inputs.live(owners, coordinator: coordinator)
+          inputs.observeTelemetry = telemetry.attach(to: coordinator)
+          let runtime = OnboardingRuntime(coordinator: coordinator, facts: facts, inputs: inputs)
           return Session(coordinator: coordinator, runtime: runtime, telemetry: telemetry)
         },
         checkpointData: { owners.settings.onboardingCheckpointData },

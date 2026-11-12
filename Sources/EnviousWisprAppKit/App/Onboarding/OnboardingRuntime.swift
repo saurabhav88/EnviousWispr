@@ -128,6 +128,8 @@ final class OnboardingRuntime {
     var sleep: (Duration) async -> Void = { try? await Task.sleep(for: $0) }
     /// The existing onboarding permission cadence (OnboardingV2View.pollPermissions, 2 s).
     var pollInterval: Duration = .seconds(2)
+    /// Telemetry's read at this tick (download ends, blockers; F2b). Read-only; no new timer.
+    var observeTelemetry: () -> Void = {}
   }
 
   private let coordinator: OnboardingCoordinator
@@ -261,6 +263,7 @@ final class OnboardingRuntime {
     let progress = inputs.downloadProgress()
     speed.record(identity: progress?.identity, bytes: progress?.bytes ?? 0, at: now)
     isNetworkSlow = step == .downloads && speed.isSlow
+    inputs.observeTelemetry()
     if advance.shouldAdvance(
       onDownloads: step == .downloads, visible: downloadsVisible,
       finished: inputs.downloadsFinished(), choices: coordinator.state.choices, at: now)

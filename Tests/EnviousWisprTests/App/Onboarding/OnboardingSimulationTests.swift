@@ -96,7 +96,7 @@
         writeSelectedBackend: { _ in }, selectedBackend: { .whisper },
         requestSpeech: { engine in
           requested.append("speech:\(engine)")
-          return true
+          return .accepted
         },
         cancelSpeech: { _ in }, clearSpeechBlock: { _ in true }, speechPhase: { _ in .notStarted },
         writePolishSelection: { _ in }, polishPhase: { _ in .notStarted },
@@ -107,7 +107,7 @@
         cancelPolish: { _ in }, activatePolish: { _ in })
       let faulted = OnboardingDebugFaults.apply(to: real)
       OnboardingDebugFaults.active = [.downloadFail, .polishFail]
-      #expect(await faulted.requestSpeech(.whisper))
+      #expect(await faulted.requestSpeech(.whisper) == .accepted)
       #expect(requested.isEmpty)
       #expect(
         faulted.speechPhase(.whisper)
@@ -116,7 +116,7 @@
       #expect(faulted.requestPolish(.egOne(.mini)) && requested == ["polish:egOne"])
       #expect(faulted.polishPhase(.egOne(.mini)) == .notStarted)
       OnboardingDebugFaults.active = []
-      #expect(await faulted.requestSpeech(.whisper))
+      #expect(await faulted.requestSpeech(.whisper) == .accepted)
       #expect(requested == ["polish:egOne", "speech:whisper"])
       #expect(faulted.speechPhase(.whisper) == .notStarted)
 

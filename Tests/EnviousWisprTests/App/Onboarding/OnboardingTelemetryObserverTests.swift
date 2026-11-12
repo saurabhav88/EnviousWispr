@@ -19,13 +19,73 @@ struct OnboardingTelemetryObserverTests {
     var now = Date(timeIntervalSince1970: 1_000)
     var rows: [(String, OnboardingTelemetry.Entry, Double)] = []
     var positions: [OnboardingStep] = []
+    // F2b rows (OnboardingSetupTelemetryTests).
+    var choices: [(OnboardingTelemetry.Choice, OnboardingTelemetry.Choice?, Bool?, String)] = []
+    var downloads:
+      [(OnboardingTelemetry.DownloadModel, OnboardingTelemetry.DownloadResult, Double, Int64?)] = []
+    var blocked: [(String, OnboardingTelemetry.BlockedReason)] = []
+    var completed: [OnboardingTelemetry.CompletionSummary?] = []
+    var version = "rules-a"
+    var phase: (OnboardingTelemetry.DownloadModel) -> OnboardingDownloadPhase? = { _ in nil }
+    /// Every emitted row's name, in order, into a shared log (ordering checks).
+    var sink: (String) -> Void = { _ in }
+    var retained: OnboardingTelemetryObserver?
+    var onDownload: (() -> Void)?
+
+    /// Waits for the download row the observer itself sends (its emit is the signal); a row
+    /// that never comes records a failure instead of hanging.
+    func untilDownloads(_ count: Int) async {
+      guard downloads.count < count else { return }
+      var resumed = false
+      await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+        let finish = {
+          guard !resumed else { return }
+          resumed = true
+          self.onDownload = nil
+          done.resume()
+        }
+        onDownload = { if self.downloads.count >= count { finish() } }
+        Task { @MainActor in
+          // deadline-fallback: hang guard only; the signal is the emit above.
+          try? await Task.sleep(for: .seconds(5))
+          finish()
+        }
+      }
+      #expect(downloads.count >= count, "expected \(count) download rows")
+    }
 
     func observer() -> OnboardingTelemetryObserver {
-      OnboardingTelemetryObserver(
-        inputs: .init(
+      OnboardingTelemetryObserver(inputs: observerInputs())
+    }
+
+    func observerInputs() -> OnboardingTelemetryObserver.Inputs {
+        .init(
           visitStart: { self.start }, visitOwned: { self.owned },
           updatePosition: { self.positions.append($0) },
-          emitScreenViewed: { self.rows.append(($0, $1, $2)) }, now: { self.now }))
+          emitScreenViewed: { self.rows.append(($0, $1, $2)) }, now: { self.now },
+          emitChoice: {
+            self.choices.append(($0, $1, $2, $3))
+            self.sink("choice(\($0.kind.rawValue))")
+          },
+          emitDownload: {
+            self.downloads.append(($0, $1, $2, $3))
+            self.sink("download(\($0.id),\($1.rawValue))")
+            self.onDownload?()
+          },
+          emitBlocked: {
+            self.blocked.append(($0, $1))
+            self.sink("blocked(\($1.rawValue))")
+          },
+          emitCompleted: {
+            self.completed.append($0)
+            self.sink("event(completed)")
+          },
+          downloadPhase: { self.phase($0) },
+          // The real settings-telemetry projection (no model list: nothing published).
+          projectModel: {
+            .init(projectedBySettingsTelemetry: SettingsProjection.model(provider: $0, id: $1, list: nil))
+          },
+          rulesVersion: { self.version })
     }
   }
 
@@ -115,11 +175,11 @@ struct OnboardingTelemetryObserverTests {
   @Test("the live inputs read the shared visit box: no visit, no rows; the position is updated")
   func liveInputs() {
     let progress = OnboardingProgress()
-    let inputs = OnboardingTelemetryObserver.Inputs.live(progress: progress, visitOwned: { true })
-    #expect(inputs.visitStart() == nil)
+    let box = OnboardingTelemetryObserver.Inputs.visitBox(progress)
+    #expect(box.visitStart() == nil)
     progress.begin(source: "first_run")
-    #expect(inputs.visitStart() == progress.sessionStart)
-    inputs.updatePosition(.polishPick)
+    #expect(box.visitStart() == progress.sessionStart)
+    box.updatePosition(.polishPick)
     #expect(progress.step == "polishPick" && progress.screen == "setup")
   }
 }

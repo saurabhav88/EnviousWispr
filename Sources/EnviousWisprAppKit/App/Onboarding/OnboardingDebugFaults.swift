@@ -30,7 +30,9 @@
       let real = owners
       faulted.requestSpeech = { engine in
         // `download-fail`: accepted, then failed, without starting a real transfer.
-        if active.contains(.downloadFail) { return true }
+        if active.contains(.downloadFail) {
+          return real.speechReportsEnd(engine) ? .ended(.failed) : .accepted
+        }
         return await real.requestSpeech(engine)
       }
       faulted.speechPhase = { engine in

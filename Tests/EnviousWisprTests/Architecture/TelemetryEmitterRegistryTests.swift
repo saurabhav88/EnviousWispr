@@ -271,8 +271,10 @@ struct TelemetryEmitterRegistryTests {
   /// fields: closed typed values and one Bool). F1 repair (M65): `onboardingChoiceMade` and
   /// `onboardingDownloadFinished` take typed values (`OnboardingTelemetry.Choice`,
   /// `DownloadModel`), which changes those two sites' identities only; same events and rows.
+  /// F2b (M68): `onboardingChoiceMade` takes `followedRecommendation: Bool?` (unknown agreement
+  /// is omitted, never sent as false); that one site's identity only, same event and row.
   static let sitesFingerprint =
-    "e35a872b7b00e72f8b647f616ad40d7d211bdfccf6657d227960c94d544dacd5"
+    "2dcf54864f9742c2abbe84e67136522f092fac1ad5225d340498580bc74b4d58"
   static let ungradedFingerprint =
     "676fe038e6e688fa79c33aae8cec75e5996979f10c3f79775755ec23c5dba168"
 

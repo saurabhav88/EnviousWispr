@@ -286,12 +286,12 @@
           workflow: OnboardingWorkflowOwner(),
           makeSession: { door in
             let c = world.coordinator()
-            let telemetry = OnboardingTelemetryObserver(
-              inputs: .init(
-                visitStart: { progress.isInFlight ? progress.sessionStart : nil },
-                visitOwned: { [weak door] in door?.ownsVisit ?? false },
-                updatePosition: { _ in }, emitScreenViewed: { step, _, _ in rows.append(step) },
-                now: { .now }))
+            let recorder = OnboardingTelemetryObserverTests.Recorder()
+            var inputs = recorder.observerInputs()
+            inputs.visitStart = { progress.isInFlight ? progress.sessionStart : nil }
+            inputs.visitOwned = { [weak door] in door?.ownsVisit ?? false }
+            inputs.emitScreenViewed = { step, _, _ in rows.append(step) }
+            let telemetry = OnboardingTelemetryObserver(inputs: inputs)
             return .init(
               coordinator: c,
               runtime: OnboardingRuntime(

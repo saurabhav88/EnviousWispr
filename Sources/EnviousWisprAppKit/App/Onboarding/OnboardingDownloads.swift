@@ -29,6 +29,17 @@ enum OnboardingStartAnswer: Equatable, Sendable {
 struct OnboardingStart<ID: Equatable & Sendable>: Equatable, Sendable {
   let id: ID
   let answer: OnboardingStartAnswer
+  /// The transfer's end when the owner answers only once its attempt ended (Parakeet), else nil.
+  var ended: OnboardingTelemetry.DownloadResult? = nil
+}
+
+/// A speech owner's answer to a request (plan M49; the end forwarded for F2b, M68).
+enum OnboardingSpeechRequestAnswer: Equatable, Sendable {
+  case refused
+  /// Accepted; the transfer's end is observed later (Whisper's task answers acceptance only).
+  case accepted
+  /// Accepted, answered once the attempt ended (Parakeet's `DeliveryOutcome`).
+  case ended(OnboardingTelemetry.DownloadResult)
 }
 
 /// Why a download failed, in the OWNER's own typed form, so Setup shows the copy those owners
@@ -66,7 +77,7 @@ struct OnboardingDownloadOwners {
   /// The engine currently picked (`settings.selectedBackend`), re-read after every await.
   var selectedBackend: () -> ASRBackendType
   /// The owner's own accept/refuse answer (plan M49); never inferred from calling it.
-  var requestSpeech: (ASRBackendType) async -> Bool
+  var requestSpeech: (ASRBackendType) async -> OnboardingSpeechRequestAnswer
   var cancelSpeech: (ASRBackendType) -> Void
   /// Clears an owner-recorded block (Parakeet's spent attempt budget) before a Retry; false
   /// when the owner refused to clear it.
@@ -80,6 +91,8 @@ struct OnboardingDownloadOwners {
   var cancelPolish: (LocalPolishModelID) -> Void
   /// Loads an already-installed model, only while it is still the current pick.
   var activatePolish: (LocalPolishModelID) -> Void
+  /// Whether this engine's owner answers a request only once the attempt ended (`.ended`).
+  var speechReportsEnd: (ASRBackendType) -> Bool = { _ in false }
 }
 
 /// Setup's download operations over the existing owners (#4528 chunk C2a).
@@ -113,8 +126,25 @@ struct OnboardingDownloads {
     guard owners.speechDeliveryEnabled(engine) else {
       return OnboardingStart(id: engine, answer: .refused)
     }
-    let accepted = await owners.requestSpeech(engine)
-    return OnboardingStart(id: engine, answer: accepted ? .requested : .refused)
+    switch await owners.requestSpeech(engine) {
+    case .refused: return OnboardingStart(id: engine, answer: .refused)
+    case .accepted: return OnboardingStart(id: engine, answer: .requested)
+    case .ended(let result): return OnboardingStart(id: engine, answer: .requested, ended: result)
+    }
+  }
+
+  /// Whether a request for this engine is answered with the attempt's end.
+  func speechReportsEnd(_ engine: ASRBackendType) -> Bool { owners.speechReportsEnd(engine) }
+
+  /// Parakeet's typed attempt outcome as Setup's download result.
+  static func result(of outcome: ModelDeliveryController.DeliveryOutcome)
+    -> OnboardingTelemetry.DownloadResult
+  {
+    switch outcome {
+    case .admitted: .ok
+    case .failed: .failed
+    case .cancelled: .cancelled
+    }
   }
 
   func cancelSpeech(_ engine: ASRBackendType) { owners.cancelSpeech(engine) }
@@ -231,11 +261,13 @@ extension OnboardingDownloadOwners {
       requestSpeech: { engine in
         switch engine {
         case .parakeet:
-          guard let attempt = modelDelivery.resumeParakeetDownload() else { return false }
-          if case .refused = await attempt.value { return false }
-          return true
+          guard let attempt = modelDelivery.resumeParakeetDownload() else { return .refused }
+          switch await attempt.value {
+          case .refused: return .refused
+          case .attempted(let outcome): return .ended(OnboardingDownloads.result(of: outcome))
+          }
         case .whisper:
-          return await whisperSetup.downloadModel().value
+          return await whisperSetup.downloadModel().value ? .accepted : .refused
         }
       },
       cancelSpeech: { engine in
@@ -279,6 +311,8 @@ extension OnboardingDownloadOwners {
         // older pick is never loaded over the current one.
         guard settings.polishModelID(for: settings.llmProvider) == model else { return }
         localPolish.runtime(for: model)?.activateAndProbe()
-      })
+      },
+      // Parakeet's request answers with the attempt's `DeliveryOutcome`; Whisper's only accepts.
+      speechReportsEnd: { $0 == .parakeet })
   }
 }

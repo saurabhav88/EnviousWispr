@@ -63,6 +63,12 @@ struct OnboardingCoordinatorTests {
     /// Engines whose request is refused, read when the request returns.
     var refusedEngines: Set<ASRBackendType> = []
     var speechGate: Gate?
+    /// One gate per speech request, in order (used before `speechGate`).
+    var speechGateQueue: [Gate] = []
+    /// Engines whose owner answers a request with the attempt's end (Parakeet in production).
+    var reportsEnd: Set<ASRBackendType> = []
+    /// The ends those owners answer with, in answer order (default ok).
+    var speechEnds: [OnboardingTelemetry.DownloadResult] = []
     var admissionGate: Gate?
     var parallel = true
     var free: Int64? = 100_000
@@ -72,6 +78,10 @@ struct OnboardingCoordinatorTests {
     var local: [LocalPolishModelID: OnboardingLocalPolishState] = [:]
     var permissions = (microphone: true, accessibility: true)
     var selected: ASRBackendType = .parakeet
+    /// The coordinator's clock (`deps.now`).
+    var clock = Date(timeIntervalSince1970: 1000)
+    /// Runs when the speech owner receives a request (an owner moving its phase).
+    var onRequest: ((ASRBackendType) -> Void)?
 
     func coordinator() -> OnboardingCoordinator {
       let owners = OnboardingDownloadOwners(
@@ -87,8 +97,15 @@ struct OnboardingCoordinatorTests {
         selectedBackend: { self.selected },
         requestSpeech: { engine in
           self.log.append("request(\(engine))")
-          await self.speechGate?.pass()
-          return self.speechAccepted && !self.refusedEngines.contains(engine)
+          self.onRequest?(engine)
+          if !self.speechGateQueue.isEmpty {
+            await self.speechGateQueue.removeFirst().pass()
+          } else {
+            await self.speechGate?.pass()
+          }
+          guard self.speechAccepted, !self.refusedEngines.contains(engine) else { return .refused }
+          guard self.reportsEnd.contains(engine) else { return .accepted }
+          return .ended(self.speechEnds.isEmpty ? .ok : self.speechEnds.removeFirst())
         },
         cancelSpeech: { self.log.append("cancel(\($0))") },
         clearSpeechBlock: { _ in true },
@@ -101,7 +118,8 @@ struct OnboardingCoordinatorTests {
           return true
         },
         cancelPolish: { self.log.append("cancelPolish(\(Self.name($0)))") },
-        activatePolish: { self.log.append("activate(\(Self.name($0)))") })
+        activatePolish: { self.log.append("activate(\(Self.name($0)))") },
+        speechReportsEnd: { self.reportsEnd.contains($0) })
       let sources = OnboardingReadinessSources(
         speechAdmitted: { self.speechPhase[$0] == .installed },
         engine: { self.engine },
@@ -139,7 +157,7 @@ struct OnboardingCoordinatorTests {
           downloadBytes: { self.bytes[$0] }, freeDiskBytes: { self.free },
           acquireSleepAssertion: { self.log.append("awake") },
           releaseSleepAssertion: { self.log.append("sleepOK") },
-          now: { Date(timeIntervalSince1970: 1000) },
+          now: { self.clock },
           onPracticeOutcome: { self.log.append("practice(\($0.rawValue))") },
           onCompleted: { self.log.append("onCompleted") }))
     }

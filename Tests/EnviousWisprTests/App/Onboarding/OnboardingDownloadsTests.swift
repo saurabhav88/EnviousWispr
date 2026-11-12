@@ -44,7 +44,7 @@ struct OnboardingDownloadsTests {
         selectedBackend: { self.selected },
         requestSpeech: { engine in
           self.calls.append("request(\(engine))")
-          return self.acceptsSpeechRequest
+          return self.acceptsSpeechRequest ? .accepted : .refused
         },
         cancelSpeech: { self.calls.append("cancel(\($0))") },
         clearSpeechBlock: { engine in
@@ -228,5 +228,14 @@ struct OnboardingDownloadsTests {
     #expect(
       OnboardingDownloads.phase(localPolish: .updatePaused(resumable: true, targetVersion: nil))
         == .paused)
+  }
+
+  @Test("Parakeet's attempt outcome maps to Setup's download result")
+  func parakeetOutcomeMapping() {
+    #expect(OnboardingDownloads.result(of: .admitted) == .ok)
+    #expect(
+      OnboardingDownloads.result(
+        of: .failed(DeliveryFailure(reason: .sourceUnreachable, detail: nil))) == .failed)
+    #expect(OnboardingDownloads.result(of: .cancelled(resumable: true)) == .cancelled)
   }
 }

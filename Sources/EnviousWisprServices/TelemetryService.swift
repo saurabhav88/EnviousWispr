@@ -841,7 +841,9 @@ public final class TelemetryService {
       props["polish_provider"] = summary.polishProvider.rawValue
       props["polish_model_id"] = summary.polishModel.id
       props["speech_model_id"] = summary.speechModel.rawValue
-      props["followed_all_recommendations"] = summary.followedAllRecommendations
+      if let followed = summary.followedAllRecommendations {
+        props["followed_all_recommendations"] = followed
+      }
       // Mode only, like settings telemetry (`SettingsProjection.languageModeLabel`); the code is on
       // the language `choice_made` row.
       switch summary.languageMode {
@@ -881,13 +883,14 @@ public final class TelemetryService {
   /// closed outcome, and a cloud model must already be the settings-telemetry projection.
   public func onboardingChoiceMade(
     _ choice: OnboardingTelemetry.Choice, recommended: OnboardingTelemetry.Choice?,
-    followedRecommendation: Bool, rulesVersion: String
+    followedRecommendation: Bool?, rulesVersion: String
   ) {
     var props: [String: Any] = [
       "kind": choice.kind.rawValue, "value": choice.value,
-      "followed_recommendation": followedRecommendation,
       "rules_version": OnboardingTelemetry.boundedIdentifier(rulesVersion),
     ]
+    // Unknown agreement (no recommendation for this kind) is omitted, never reported as false.
+    if let followedRecommendation { props["followed_recommendation"] = followedRecommendation }
     if let recommended, recommended.kind == choice.kind { props["recommended_value"] = recommended.value }
     captureOnboarding("onboarding.choice_made", props)
   }
@@ -5934,7 +5937,8 @@ public enum OnboardingTelemetry {
     public var polishProvider: LLMProvider
     public var polishModel: PolishModel
     public var speechModel: ASRBackendType
-    public var followedAllRecommendations: Bool
+    /// nil when agreement is unknown (e.g. an interrupted completion restored after relaunch).
+    public var followedAllRecommendations: Bool?
     public var languageMode: LanguageMode
     public var rulesVersion: String
     /// nil when the film was not shown (Skip practice); the summary then says `not_shown`.
@@ -5942,7 +5946,7 @@ public enum OnboardingTelemetry {
 
     public init(
       polishProvider: LLMProvider, polishModel: PolishModel, speechModel: ASRBackendType,
-      followedAllRecommendations: Bool, languageMode: LanguageMode, rulesVersion: String,
+      followedAllRecommendations: Bool?, languageMode: LanguageMode, rulesVersion: String,
       filmResult: FilmResult?
     ) {
       self.polishProvider = polishProvider

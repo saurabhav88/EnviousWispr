@@ -409,7 +409,7 @@ struct OnboardingRuntimeTests {
     OnboardingDownloadOwners(
       speechDeliveryEnabled: { _ in true }, speechInstalled: { _ in false },
       writeSelectedBackend: { _ in },
-      selectedBackend: { .parakeet }, requestSpeech: { _ in true }, cancelSpeech: { _ in },
+      selectedBackend: { .parakeet }, requestSpeech: { _ in .accepted }, cancelSpeech: { _ in },
       clearSpeechBlock: { _ in true }, speechPhase: { world.speechPhase[$0] ?? .notStarted },
       writePolishSelection: { _ in }, polishPhase: { world.polishPhase[$0] ?? .notStarted },
       requestPolish: { _ in true }, cancelPolish: { _ in }, activatePolish: { _ in })
