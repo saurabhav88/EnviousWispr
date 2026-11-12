@@ -80,7 +80,20 @@ final class SetupScreenModel {
   /// True only while the window is on screen: a mounted view in a hidden window is not a view.
   @ObservationIgnored private(set) var isWindowVisible = false
   /// The steps that have a real screen so far (D1).
-  static let realScreens: Set<OnboardingStep> = [.welcome, .language]
+  static let realScreens: Set<OnboardingStep> = [.welcome, .language, .speechPick, .speechCompare]
+
+  /// Speech pick/Compare's pending engine (D2, M76): a UI selection only, alive while the flow
+  /// stays on those two screens with the same language; never a choice until "Use <model>".
+  private(set) var speechDraft: ASRBackendType?
+  /// The Parakeet model the Mac presents (`ModelDeliveryHome.parakeetModelLabel`), injected by
+  /// the presenter so the card's name and download size describe the same model. nil: the
+  /// shipped model's presentation.
+  @ObservationIgnored var parakeetModelName: (() -> String)?
+
+  func setSpeechDraft(_ engine: ASRBackendType) {
+    guard state.step == .speechPick || state.step == .speechCompare else { return }
+    speechDraft = engine
+  }
 
   init(coordinator: OnboardingCoordinator) {
     self.coordinator = coordinator
@@ -122,10 +135,14 @@ final class SetupScreenModel {
   /// Re-reads the coordinator (its `onChange` fires after every published change).
   func refresh() {
     guard let coordinator else { return }
-    let previous = state.step
+    let previous = state
     state = coordinator.state
     isPracticeUsable = coordinator.isPracticeUsable
-    if state.step != previous { routeEpoch &+= 1 }
+    if state.step != previous.step { routeEpoch &+= 1 }
+    let onSpeechPair = state.step == .speechPick || state.step == .speechCompare
+    if !onSpeechPair || state.choices.languageMode != previous.choices.languageMode {
+      speechDraft = nil
+    }
   }
 
   /// Stops mirroring. Only this model's subscription is removed.
@@ -149,8 +166,8 @@ struct SetupScreenRouter: View {
     switch model.state.step {
     case .welcome: SetupWelcomeScreen(model: model, epoch: model.routeEpoch)
     case .language: SetupLanguageScreen(model: model, epoch: model.routeEpoch)
-    case .speechPick: SetupPlaceholder(step: .speechPick, chunk: "D2")
-    case .speechCompare: SetupPlaceholder(step: .speechCompare, chunk: "D2")
+    case .speechPick: SetupSpeechScreen(model: model, epoch: model.routeEpoch, comparing: false)
+    case .speechCompare: SetupSpeechScreen(model: model, epoch: model.routeEpoch, comparing: true)
     case .polishIntro: SetupPlaceholder(step: .polishIntro, chunk: "D3a")
     case .polishPick: SetupPlaceholder(step: .polishPick, chunk: "D3a")
     case .polishSeeAll: SetupPlaceholder(step: .polishSeeAll, chunk: "D3a/D3b")

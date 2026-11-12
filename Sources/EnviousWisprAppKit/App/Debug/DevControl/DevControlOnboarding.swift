@@ -20,6 +20,8 @@
       var telemetry: OnboardingTelemetryObserver? = nil
       /// The owners' download phase for the current picks, read for `status` only (I1).
       var downloadPhases: ((OnboardingChoices) -> [String: Any])? = nil
+      /// The Parakeet model the Mac presents, for the Setup screens' names and sizes (D2).
+      var parakeetModelName: (@MainActor () -> String)? = nil
       /// Asks each speech engine's owner, read-only, whether it is installed (the same
       /// `speechInstalled` query Setup's readiness uses), so the catalog can answer Parakeet's
       /// upgrade-aware "installed" with no pick (I1, plan M69). Never selects or downloads.
@@ -134,7 +136,9 @@
         return notRunning()
       }
       guard !workflow.legacyWindowVisible() else { return legacyBusy() }
-      presenter.show(coordinator: session.coordinator, telemetry: session.telemetry)
+      presenter.show(
+        coordinator: session.coordinator, telemetry: session.telemetry,
+        parakeetModelName: session.parakeetModelName)
       return .ok(snapshot())
     }
 
@@ -601,6 +605,7 @@
                 "polish": choices.polish.map { phaseName(downloads.polishPhase($0)) } ?? NSNull(),
               ]
             },
+            parakeetModelName: { owners.modelDelivery.parakeetModelLabel },
             resolveInstalled: {
               let read = OnboardingLiveMapping.downloadOwners(owners, facts: facts)
               for engine in [ASRBackendType.parakeet, .whisper] {

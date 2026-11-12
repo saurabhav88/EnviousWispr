@@ -41,13 +41,17 @@
 
     /// Shows (or refocuses) the Setup screens for `coordinator`. A real screen on screen is
     /// reported to the session's telemetry observer (M67); nil sends nothing.
-    func show(coordinator: OnboardingCoordinator, telemetry: OnboardingTelemetryObserver?) {
+    func show(
+      coordinator: OnboardingCoordinator, telemetry: OnboardingTelemetryObserver?,
+      parakeetModelName: (@MainActor () -> String)? = nil
+    ) {
       if let window {
         window.makeKeyAndOrderFront(nil)
         updateVisibility()
         return
       }
       let model = SetupScreenModel(coordinator: coordinator)
+      model.parakeetModelName = parakeetModelName
       model.onPresented = { [weak telemetry] step, resumed in
         telemetry?.screenPresented(step, resumed: resumed)
       }

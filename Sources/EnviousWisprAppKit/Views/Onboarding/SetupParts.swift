@@ -47,6 +47,12 @@ enum SetupMetrics {
   static let chipHeight: CGFloat = 32
   static let bubbleTop: CGFloat = 14
   static let focusRing: CGFloat = 3
+  /// Speech Compare: the tag height and the tile icon well (mockup 20, 52; the well's 14-point
+  /// mockup corner uses the approved 12, DESIGN.md allows no new radius), and the tag's overlap
+  /// above the tile (10).
+  static let tagHeight: CGFloat = 20
+  static let iconWell: CGFloat = 52
+  static let tagOverlap: CGFloat = 10
 }
 
 /// A screen's footer (mockup `[data-ui="footer"]`): the primary action, then the 32-high links
@@ -123,5 +129,64 @@ struct SetupRise: ViewModifier {
           withAnimation(DesignMotion.firstRunRise.delay(delay)) { shown = true }
         }
       }
+  }
+}
+
+/// A footer link (mockup `[data-ui="link"]`): accent, underlined, 32 high; `quiet` is the
+/// secondary-text variant ("Recommended options").
+struct SetupLinkButton: View {
+  let title: LocalizedStringKey
+  var quiet = false
+  let action: () -> Void
+  @State private var hovering = false
+
+  var body: some View {
+    Button(action: action) {
+      Text(title)
+        .font(.firstRunLabel)
+        .underline()
+        .foregroundStyle(quiet ? Color.obTextSecondary : Color.obAccent)
+        .padding(.horizontal, DesignSpacing.xl)
+        .frame(height: SetupMetrics.linksHeight)
+        .background(
+          RoundedRectangle(cornerRadius: DesignRadius.md, style: .continuous)
+            .fill(hovering ? (quiet ? Color.obSurface : Color.firstRunAccentSoft) : .clear))
+        .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .onHover { hovering = $0 }
+    .animation(SettingsHover.animation, value: hovering)
+  }
+}
+
+/// A surface card (mockup `[data-ui="card"]`): 16 padding, 16 corners.
+struct SetupCard<Content: View>: View {
+  @ViewBuilder var content: Content
+
+  var body: some View {
+    content
+      .padding(DesignSpacing.xxl)
+      .frame(maxWidth: .infinity)
+      .background(
+        RoundedRectangle(cornerRadius: DesignRadius.xxl, style: .continuous).fill(Color.obSurface))
+  }
+}
+
+/// A small uppercase tag (mockup `[data-ui="tag"]`); `recommended` is the success tone.
+struct SetupTag: View {
+  let text: String
+  var recommended = false
+
+  var body: some View {
+    Text(verbatim: text.uppercased())
+      .font(.firstRunEyebrow)
+      .tracking(0.4)
+      .lineLimit(1)
+      .foregroundStyle(recommended ? Color.firstRunSuccessText : Color.obAccent)
+      .padding(.horizontal, DesignSpacing.md)
+      .frame(height: SetupMetrics.tagHeight)
+      .background(
+        Capsule().fill(recommended ? Color.obSuccessSoft : Color.firstRunAccentSoft)
+          .background(Capsule().fill(Color.obCardBg)))
   }
 }

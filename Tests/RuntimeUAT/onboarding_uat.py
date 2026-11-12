@@ -889,6 +889,96 @@ def s_screens_d1(run, speech):
     return s
 
 
+def s_screens_d2(run, speech):
+    """D2: Speech pick and Compare through their real controls (AX press), light and dark:
+    open Compare, select a tile WITHOUT advancing, go back to the card, accept; plus Japanese,
+    where Parakeet's tile is disabled. Only engines installed on this Mac are accepted (the
+    read-only catalog); a missing-model download is clean-Mac UAT."""
+    from ui_helpers import get_attr, perform_action
+    s = Scenario("screens_d2")
+    pid = run.app.client.pid
+    shots = os.path.join(run.artifacts, "shots")
+    os.makedirs(shots, exist_ok=True)
+    before = run.app.call("settings", "get", "appearance").get("value")
+
+    def shot(name):
+        wid = window_id(pid, "Setup")
+        path = os.path.join(shots, f"d2-{name}.png")
+        s.expect(wid is not None and capture_window(wid, path), f"captured {name}", path)
+
+    def settle(seconds=0.6):
+        time.sleep(seconds)  # test-fixture-timer: the screen entrance runs on screen
+
+    def press(name):
+        b = setup_button(pid, name)
+        s.expect(b is not None and perform_action(b, "AXPress"), f"pressed {name}")
+        settle(0.4)
+
+    def to_speech(language):
+        run.reset(s, f"fresh flow for {language}")
+        run.send("next")
+        run.send("chooseLanguage", value=language)
+        run.send("next")
+        settle()
+
+    installed = (settled_catalog(run).get("speech") or {})
+    for appearance in ("light", "dark"):
+        run.app.call("settings", "set", "appearance", json.dumps(appearance))
+        run.reset(s, "fresh flow")
+        run.app.call("onboarding", "present")
+        to_speech("en")
+        st = run.status()
+        s.expect(st.get("step") == "speechPick" and (st.get("recommended") or {}).get("speech") == "parakeet",
+                 "English recommends Parakeet", (st.get("step"), st.get("recommended")))
+        shot(f"{appearance}-pick-parakeet")
+        press("Compare speech models")
+        s.expect(run.status().get("step") == "speechCompare", "the link opens Compare")
+        shot(f"{appearance}-compare")
+        press("Whisper")
+        st = run.status()
+        s.expect(st.get("step") == "speechCompare" and (st.get("choices") or {}).get("speech") is None,
+                 "a tile click stays on Compare and commits nothing", (st.get("step"), st.get("choices")))
+        s.expect(setup_button(pid, "Use Whisper") is not None, "the CTA names the selected tile")
+        shot(f"{appearance}-compare-whisper")
+        press("Recommended options")
+        st = run.status()
+        s.expect(st.get("step") == "speechPick" and setup_button(pid, "Use Whisper") is not None,
+                 "Recommended options keeps the pending pick and the CTA agrees", st.get("step"))
+        shot(f"{appearance}-pick-whisper")
+        if appearance == "light":
+            if installed.get("whisper") == "installed":
+                press("Use Whisper")
+                st = run.until(lambda x: x.get("step") == "polishIntro", 4, "polishIntro")
+                s.expect(st.get("step") == "polishIntro" and (st.get("choices") or {}).get("speech") == "whisper",
+                         "Use Whisper commits Whisper and moves on", (st.get("step"), st.get("choices")))
+            else:
+                s.uncovered.append("accepting Whisper: not installed on this Mac (clean-Mac UAT)")
+        to_speech("ja")
+        st = run.status()
+        s.expect((st.get("recommended") or {}).get("speech") == "whisper"
+                 and setup_button(pid, "Use Whisper") is not None,
+                 "Japanese shows Whisper", st.get("recommended"))
+        shot(f"{appearance}-pick-whisper-japanese")
+        press("Compare speech models")
+        parakeet = next((b for b in setup_elements(pid, "AXButton")
+                         if (get_attr(b, "AXTitle") or get_attr(b, "AXDescription") or "").startswith("Parakeet")), None)
+        s.expect(parakeet is not None and get_attr(parakeet, "AXEnabled") is False,
+                 "Japanese disables the Parakeet tile", parakeet is not None and get_attr(parakeet, "AXEnabled"))
+        value = (get_attr(parakeet, "AXValue") or "") if parakeet is not None else ""
+        s.expect(all(part in value for part in ("for 30 s of speech", "languages", "download",
+                                                 "Whisper is the one for")),
+                 "VoiceOver reads the disabled tile's facts and reason", value)
+        whisper = setup_button(pid, "Whisper")
+        wvalue = (get_attr(whisper, "AXValue") or "") if whisper is not None else ""
+        s.expect(all(part in wvalue for part in ("for 30 s of speech", "99+ languages", "download")),
+                 "VoiceOver reads the recommended tile's facts", wvalue)
+        shot(f"{appearance}-compare-japanese")
+    run.app.call("settings", "set", "appearance", json.dumps(before))
+    run.app.call("onboarding", "stop")
+    s.notes.append(f"VISUAL REVIEW OWED: {shots} d2-* against the source-of-truth mockup")
+    return s
+
+
 def s_shell(run, speech):
     """D0: the new Setup shell shown for the session (DEBUG `onboarding present`), captured in
     light and dark at a few steps. Visual evidence only: positioning uses `goto`, which proves
@@ -962,7 +1052,7 @@ SCENARIOS = {
     "fresh": s_fresh, "resume": s_resume, "restart": s_restart, "profiles": s_profiles,
     "permissions": s_permissions, "faults": s_faults, "completion": s_completion,
     "interrupted": s_interrupted, "consent_off": s_consent_off,
-    "shell": s_shell, "screens_d1": s_screens_d1,
+    "shell": s_shell, "screens_d1": s_screens_d1, "screens_d2": s_screens_d2,
 }
 
 

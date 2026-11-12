@@ -68,6 +68,7 @@ struct SetupWindowRootTests {
     coordinator.send(.next)
     coordinator.send(.chooseLanguage(.auto))
     coordinator.send(.next)
+    coordinator.send(.next)  // Speech pick's default: Polish intro, still a placeholder
     let model = SetupScreenModel(coordinator: coordinator)
     defer { model.detach() }
     let still = try Self.pixels(SetupWindowRoot(model: model), reduceMotion: true)
@@ -149,6 +150,27 @@ struct SetupWindowRootTests {
     try Self.png(language).write(to: folder.appending(path: "setup-language-reduce-motion.png"))
   }
 
+  @Test("Speech pick and Compare render all their content under Reduce Motion")
+  func speechScreensUnderReduceMotion() throws {
+    _ = NSApplication.shared
+    let world = OnboardingCoordinatorTests.World()
+    world.recommended = OnboardingRecommended(speech: .whisper, polish: "eg1.mini", rulesVersion: "r")
+    let coordinator = world.coordinator()
+    coordinator.begin()
+    coordinator.send(.next)
+    coordinator.send(.chooseLanguage(.locked("ja")))
+    coordinator.send(.next)
+    let model = SetupScreenModel(coordinator: coordinator)
+    defer { model.detach() }
+    let folder = RepoRoot.url.appending(path: "build/design-render")
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    try Self.png(Self.host(SetupWindowRoot(model: model), reduceMotion: true))
+      .write(to: folder.appending(path: "setup-speech-pick-reduce-motion.png"))
+    coordinator.send(.compareSpeech)
+    try Self.png(Self.host(SetupWindowRoot(model: model), reduceMotion: true))
+      .write(to: folder.appending(path: "setup-speech-compare-reduce-motion.png"))
+  }
+
   private static func host(_ view: some View, reduceMotion: Bool) -> NSHostingView<AnyView> {
     let size = CGSize(width: SetupLayout.windowWidth, height: SetupLayout.contentHeight)
     let host = NSHostingView(
@@ -180,5 +202,30 @@ struct SetupWindowRootTests {
     let rep = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
     host.cacheDisplay(in: host.bounds, to: rep)
     return try #require(rep.representation(using: .png, properties: [:]))
+  }
+
+  @Test("the speech draft lives only on Speech pick/Compare and never becomes a choice by itself")
+  func speechDraftLifetime() {
+    let world = OnboardingCoordinatorTests.World()
+    let coordinator = world.coordinator()
+    coordinator.begin()
+    let model = SetupScreenModel(coordinator: coordinator)
+    defer { model.detach() }
+    model.setSpeechDraft(.whisper)
+    #expect(model.speechDraft == nil, "a draft was taken off the speech screens")
+    coordinator.send(.next)
+    coordinator.send(.chooseLanguage(.locked("de")))
+    coordinator.send(.next)  // Speech pick
+    model.setSpeechDraft(.whisper)
+    coordinator.send(.compareSpeech)
+    #expect(model.speechDraft == .whisper, "Compare lost the pending pick")
+    coordinator.send(.back)  // Recommended options
+    #expect(model.speechDraft == .whisper && coordinator.state.choices.speech == nil)
+    coordinator.send(.back)  // Language
+    #expect(model.speechDraft == nil, "the draft outlived the speech screens")
+    coordinator.send(.next)
+    model.setSpeechDraft(.whisper)
+    coordinator.reset()
+    #expect(model.speechDraft == nil, "the draft outlived a reset")
   }
 }
