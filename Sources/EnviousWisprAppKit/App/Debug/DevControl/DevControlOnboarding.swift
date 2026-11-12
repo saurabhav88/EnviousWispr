@@ -18,7 +18,18 @@
       /// rows (chunk D's screens call `screenPresented`); choices, downloads, blockers and
       /// completion come from the coordinator and runtime it is attached to.
       var telemetry: OnboardingTelemetryObserver? = nil
+      /// The owners' download phase for the current picks, read for `status` only (I1).
+      var downloadPhases: ((OnboardingChoices) -> [String: Any])? = nil
+      /// Asks each speech engine's owner, read-only, whether it is installed (the same
+      /// `speechInstalled` query Setup's readiness uses), so the catalog can answer Parakeet's
+      /// upgrade-aware "installed" with no pick (I1, plan M69). Never selects or downloads.
+      var resolveInstalled: (@MainActor () async -> Void)? = nil
     }
+
+    /// I1: launched with this set to `1`, the door holds Setup from launch, so the old
+    /// onboarding window does not open over a CLI session on an install whose Setup is
+    /// unfinished (a relaunch mid-run). DEBUG only; `stop` gives Setup back as usual.
+    static let holdAtLaunchEnvironmentKey = "EW_UAT_ONBOARDING_BACKEND"
 
     private let workflow: OnboardingWorkflowOwner
     /// Builds the session; it receives this door so completion can end ownership here.
@@ -34,6 +45,8 @@
     /// abandon or complete it. The old onboarding's live visit is never touched from here.
     private(set) var ownsVisit = false
     private(set) var session: Session?
+    /// The catalog's in-flight owner query, so repeated `status` reads start at most one.
+    private var installedQuery: Task<Void, Never>?
 
     init(
       workflow: OnboardingWorkflowOwner,
@@ -110,6 +123,9 @@
       ownsVisit = false
       endOwnership()
     }
+
+    /// Holds Setup for a CLI session from launch (`holdAtLaunchEnvironmentKey`).
+    func holdForUAT() -> Bool { claim() }
 
     /// Claims Setup and installs this session's Restart and quit handlers on the owner.
     private func claim() -> Bool {
@@ -401,6 +417,14 @@
         out["lastRefusal"] = coordinator.lastRefusal ?? NSNull()
         out["networkSlow"] = session?.runtime.isNetworkSlow ?? false
         out["running"] = session?.runtime.isRunning ?? false
+        out["recommended"] = [
+          "speech": state.recommended.speech.rawValue, "polish": state.recommended.polish,
+          "rulesVersion": state.recommended.rulesVersion,
+        ]
+        out["downloads"] = session?.downloadPhases?(state.choices) ?? NSNull()
+        let catalog = session?.downloadPhases.map(Self.catalog)
+        out["catalog"] = catalog ?? NSNull()
+        resolveUnknownSpeech(catalog)
       }
       for (key, value) in extra { out[key] = value }
       return out
@@ -462,6 +486,52 @@
       ]
     }
 
+    /// A speech entry the owners have not answered yet ("unknown": Parakeet's upgrade-aware
+    /// admission needs an async owner read) starts one read-only owner query; the next `status`
+    /// shows its answer. Nothing is chosen, written or downloaded.
+    private func resolveUnknownSpeech(_ catalog: [String: Any]?) {
+      let speech = (catalog?["speech"] as? [String: Any]) ?? [:]
+      guard installedQuery == nil, speech.values.contains(where: { $0 as? String == "unknown" }),
+        let resolve = session?.resolveInstalled
+      else { return }
+      installedQuery = Task { [weak self] in
+        await resolve()
+        self?.installedQuery = nil
+      }
+    }
+
+    /// Every Setup speech engine's and local polish model's owner phase, read without choosing
+    /// anything: choosing a model starts its download, so the CLI harness finds what is already
+    /// on this Mac here (I1, plan M69).
+    static func catalog(_ phases: (OnboardingChoices) -> [String: Any]) -> [String: Any] {
+      let engines: [ASRBackendType] = [.parakeet, .whisper]
+      let polish = SetupRules.registeredPolish.keys.sorted()
+        .filter { OnboardingDownloads.localModel(forPolish: $0) != nil }
+      return [
+        "speech": Dictionary(uniqueKeysWithValues: engines.map {
+          ($0.rawValue, phases(OnboardingChoices(speech: $0))["speech"] ?? NSNull())
+        }),
+        "polish": Dictionary(uniqueKeysWithValues: polish.map {
+          ($0, phases(OnboardingChoices(polish: $0))["polish"] ?? NSNull())
+        }),
+      ]
+    }
+
+    /// A download phase's name for `status` (no failure text).
+    static func phaseName(_ phase: OnboardingDownloadPhase?) -> Any {
+      switch phase {
+      case nil: NSNull()
+      case .notStarted?: "notStarted"
+      case .downloading?: "downloading"
+      case .verifying?: "verifying"
+      case .installed?: "installed"
+      case .paused?: "paused"
+      case .failed?: "failed"
+      case .unavailable?: "unavailable"
+      case .unknown?: "unknown"
+      }
+    }
+
     private static func block(_ b: OnboardingDownloadBlock) -> [String: Any] {
       switch b {
       case .insufficientDisk(let needed, let free):
@@ -476,7 +546,7 @@
     static func live(
       _ owners: OnboardingLiveOwners, workflow: OnboardingWorkflowOwner, progress: OnboardingProgress
     ) -> DevControlOnboarding {
-      DevControlOnboarding(
+      let door = DevControlOnboarding(
         workflow: workflow,
         makeSession: { [weak workflow] door in
           let facts = OnboardingLiveFacts()
@@ -500,12 +570,31 @@
           var inputs = OnboardingRuntime.Inputs.live(owners, facts: facts, coordinator: coordinator)
           inputs.observeTelemetry = telemetry.attach(to: coordinator)
           let runtime = OnboardingRuntime(coordinator: coordinator, facts: facts, inputs: inputs)
-          return Session(coordinator: coordinator, runtime: runtime, telemetry: telemetry)
+          return Session(
+            coordinator: coordinator, runtime: runtime, telemetry: telemetry,
+            downloadPhases: { choices in
+              let downloads = OnboardingDownloads(
+                owners: OnboardingLiveMapping.downloadOwners(owners, facts: facts))
+              return [
+                "speech": choices.speech.map { phaseName(downloads.speechPhase($0)) } ?? NSNull(),
+                "polish": choices.polish.map { phaseName(downloads.polishPhase($0)) } ?? NSNull(),
+              ]
+            },
+            resolveInstalled: {
+              let read = OnboardingLiveMapping.downloadOwners(owners, facts: facts)
+              for engine in [ASRBackendType.parakeet, .whisper] {
+                _ = await read.speechInstalled(engine)
+              }
+            })
         },
         checkpointData: { owners.settings.onboardingCheckpointData },
         legacyState: { owners.settings.onboardingState },
         permissions: owners.permissions, progress: progress,
         everCompleted: { owners.settings.onboardingEverCompleted })
+      if ProcessInfo.processInfo.environment[holdAtLaunchEnvironmentKey] == "1" {
+        _ = door.holdForUAT()
+      }
+      return door
     }
   }
 #endif

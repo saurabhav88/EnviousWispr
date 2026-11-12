@@ -20,6 +20,10 @@
 
     private final class Box {
       var built = 0
+      /// The owner's read-only answer the catalog query records (nil: the query does nothing).
+      var ownerAnswer: OnboardingDownloadPhase?
+      var queries = 0
+      var queried: (() -> Void)?
     }
 
     private static func make(
@@ -41,10 +45,75 @@
               // deadline-fallback: timers wait until stop() cancels them.
               sleep: { _ in try? await Task.sleep(for: .seconds(3600)) },
               pollInterval: .seconds(3600)))
-          return .init(coordinator: coordinator, runtime: runtime)
+          return .init(
+            coordinator: coordinator, runtime: runtime,
+            downloadPhases: { choices in
+              ["speech": DevControlOnboarding.phaseName(choices.speech.map {
+                world.speechPhase[$0] ?? .notStarted
+              })]
+            },
+            resolveInstalled: {
+              box.queries += 1
+              if let answer = box.ownerAnswer { world.speechPhase[.parakeet] = answer }
+              box.queried?()
+            })
         },
         checkpointData: { world.checkpoint }, legacyState: { world.legacy })
       return (door, workflow, world)
+    }
+
+    @Test("the launch hold keeps the old onboarding closed until stop; status reads the flow's recommendation and download phases")
+    func launchHoldAndStatusFields() {
+      let (door, workflow, world) = Self.make()
+      world.speechPhase[.parakeet] = .installed
+      #expect(door.holdForUAT())
+      #expect(!workflow.legacyMayOpen && workflow.current == .backend)
+      _ = door.begin()
+      _ = door.send(["event": "next"])
+      _ = door.send(["event": "next"])
+      _ = door.send(["event": "chooseSpeech", "value": "parakeet"])
+      let status = Self.payload(door.status())
+      let recommended = status?["recommended"] as? [String: Any]
+      #expect(recommended?["speech"] as? String == "parakeet")
+      #expect(recommended?["polish"] as? String == "eg1.mini")
+      #expect(recommended?["rulesVersion"] as? String == "rules-a")  // the World's captured version
+      #expect((status?["downloads"] as? [String: Any])?["speech"] as? String == "installed")
+      // The catalog reads every engine's phase without choosing one: the pick stays Parakeet.
+      let catalog = status?["catalog"] as? [String: Any]
+      let speechCatalog = catalog?["speech"] as? [String: Any]
+      #expect(speechCatalog?["parakeet"] as? String == "installed")
+      #expect(speechCatalog?["whisper"] as? String == "notStarted")
+      let polishIDs = Set(((catalog?["polish"] as? [String: Any]) ?? [:]).keys)
+      #expect(polishIDs.contains("eg1.mini"))
+      let after = Self.payload(door.status())
+      #expect((after?["choices"] as? [String: Any])?["speech"] as? String == "parakeet")
+      _ = door.stop()
+      #expect(workflow.legacyMayOpen)
+    }
+
+    @Test("a cold Parakeet admission with no pick is answered by one read-only owner query, never a choice")
+    func catalogResolvesColdAdmission() async {
+      let box = Box()
+      box.ownerAnswer = .installed  // upgrade-served Parakeet the base mirror does not show
+      let (door, _, world) = Self.make(box: box)
+      world.speechPhase[.parakeet] = .unknown  // empty admission cache
+      let queried = AsyncStream<Void> { continuation in
+        box.queried = { continuation.yield() }
+      }
+      _ = door.reset()  // its own status reply may already start the query
+      let first = Self.payload(door.status())
+      let firstSpeech = (first?["catalog"] as? [String: Any])?["speech"] as? [String: Any]
+      #expect(firstSpeech?["parakeet"] as? String == "unknown")
+      var signals = queried.makeAsyncIterator()
+      _ = await signals.next()  // the owner query ran (its own signal, no timer)
+      _ = Self.payload(door.status())  // a second read while answered starts nothing new
+      let second = Self.payload(door.status())
+      let speech = (second?["catalog"] as? [String: Any])?["speech"] as? [String: Any]
+      #expect(speech?["parakeet"] as? String == "installed")
+      #expect(box.queries == 1, "repeated status reads started \(box.queries) owner queries")
+      let picks = second?["choices"] as? [String: Any]
+      #expect(picks?["speech"] is NSNull, "the query chose an engine")
+      _ = door.stop()
     }
 
     private static func payload(_ result: DevControlDispatcher.Result) -> [String: Any]? {
