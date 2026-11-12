@@ -9,13 +9,13 @@ import Foundation
 /// an exact share of the system figure (plan #4525 §2.1 G3).
 ///
 /// Formula, candidate B of plan §2.5 item 5: installed memory minus free pages minus file-backed
-/// pages (Activity Monitor's "Physical Memory − Cached Files − free"). `free_count` already
-/// includes speculative pages (XNU `vm_statistics.h`), so they are not subtracted again.
-/// Measured 2026-11-11 on an M5 Max, 64 GB, paired with Activity Monitor: candidate A (app +
-/// wired + compressed) matched the three parts Activity Monitor lists within 0.1 GB, but its
-/// headline "Memory Used" read about 1.5 GB above that sum; candidate B came within about
-/// 0.5 GB of the headline and never below candidate A, so the bar never shows more room than
-/// the Mac has.
+/// pages (Activity Monitor's "Physical Memory − Cached Files − free"). Speculative pages sit in
+/// BOTH counters (XNU: `vm_stats` folds them into `free_count`, and `vm_page_speculate` also
+/// counts them as external, file-backed pages), so they are added back once (PR #4527 cloud
+/// review). Measured 2026-11-11 on an M5 Max, 64 GB, paired with Activity Monitor: the
+/// app + wired + compressed sum read about 1.5 GB below Activity Monitor's headline "Memory
+/// Used"; this formula, recomputed from the same paired reading, came to 31.43 GB against the
+/// headline's 31.40 GB.
 enum MacMemoryReader {
   /// `mach_host_self()` returns a send right each call; one is enough for the process.
   nonisolated(unsafe) private static let host = mach_host_self()
@@ -37,15 +37,24 @@ enum MacMemoryReader {
       physicalBytes: ProcessInfo.processInfo.physicalMemory,
       freePages: UInt64(stats.free_count),
       fileBackedPages: UInt64(stats.external_page_count),
+      speculativePages: UInt64(stats.speculative_count),
       pageSize: UInt64(pageSize))
   }
 
-  /// The formula alone, so its arithmetic is testable. Nil on overflow or when free plus
-  /// file-backed memory exceeds the installed memory, never a wrapped huge number.
+  /// The formula alone, so its arithmetic is testable: `(free − speculative) + file-backed`, the
+  /// form fastfetch uses. Speculative pages are counted in both `freePages` and
+  /// `fileBackedPages`, so they are subtracted once, not twice. Only `freePages` bounds them:
+  /// XNU folds the same sampled speculative value into free, but reads the file-backed count a
+  /// moment later, so a normal Mac can report more speculative than file-backed pages and must
+  /// not lose its bar for it. Nil on overflow, on more speculative pages than `freePages`, or
+  /// when the unused memory exceeds the installed memory, never a wrapped huge number.
   nonisolated static func usedBytes(
-    physicalBytes: UInt64, freePages: UInt64, fileBackedPages: UInt64, pageSize: UInt64
+    physicalBytes: UInt64, freePages: UInt64, fileBackedPages: UInt64, speculativePages: UInt64,
+    pageSize: UInt64
   ) -> UInt64? {
-    let (pages, o1) = freePages.addingReportingOverflow(fileBackedPages)
+    guard speculativePages <= freePages else { return nil }
+    let (pages, o1) = (freePages - speculativePages)
+      .addingReportingOverflow(fileBackedPages)
     let (unused, o2) = pages.multipliedReportingOverflow(by: pageSize)
     guard !o1, !o2, unused <= physicalBytes else { return nil }
     return physicalBytes - unused

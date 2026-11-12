@@ -11,22 +11,51 @@ struct MacMemoryReaderTests {
   @Test("installed memory minus free and file-backed pages, times the page size")
   func formula() {
     let bytes = MacMemoryReader.usedBytes(
-      physicalBytes: 64 << 30, freePages: 1000, fileBackedPages: 500, pageSize: 16_384)
+      physicalBytes: 64 << 30, freePages: 1000, fileBackedPages: 500, speculativePages: 0,
+      pageSize: 16_384)
     #expect(bytes == (64 << 30) - 1500 * 16_384)
   }
 
-  @Test("free plus file-backed above the installed memory reads nil, never a wrapped number")
-  func underflowIsNil() {
-    #expect(
-      MacMemoryReader.usedBytes(
-        physicalBytes: 1000, freePages: 1, fileBackedPages: 1, pageSize: 501) == nil)
+  // PR #4527 cloud review's example: 16 GiB Mac, 1 GiB truly free, 4 GiB file-backed of which
+  // 2 GiB speculative (counted in both counters). In use is 11 GiB, not 9.
+  @Test("speculative pages, counted in both free and file-backed, are subtracted once")
+  func speculativeIsNotSubtractedTwice() {
+    let gib: UInt64 = 1 << 30
+    let page: UInt64 = 16_384
+    let pagesPerGiB = gib / page
+    let bytes = MacMemoryReader.usedBytes(
+      physicalBytes: 16 * gib, freePages: 3 * pagesPerGiB, fileBackedPages: 4 * pagesPerGiB,
+      speculativePages: 2 * pagesPerGiB, pageSize: page)
+    #expect(bytes == 11 * gib)
   }
 
-  @Test("an overflowing page count reads nil")
-  func overflowIsNil() {
+  // XNU reads file-backed a moment after speculative, so speculative can exceed it on a normal
+  // Mac; the bar must stay, not turn into nil.
+  @Test("more speculative than file-backed pages still reads a figure")
+  func speculativeAboveFileBackedStillReads() {
     #expect(
       MacMemoryReader.usedBytes(
-        physicalBytes: .max, freePages: .max, fileBackedPages: 1, pageSize: 1) == nil)
+        physicalBytes: 16, freePages: 3, fileBackedPages: 1, speculativePages: 2, pageSize: 1)
+        == 14)
+  }
+
+  @Test("inconsistent counters read nil, never a wrapped number")
+  func inconsistentCountersAreNil() {
+    // Free plus file-backed above the installed memory.
+    #expect(
+      MacMemoryReader.usedBytes(
+        physicalBytes: 1000, freePages: 1, fileBackedPages: 1, speculativePages: 0,
+        pageSize: 501) == nil)
+    // More speculative pages than free pages (free always includes them).
+    #expect(
+      MacMemoryReader.usedBytes(
+        physicalBytes: 1 << 30, freePages: 1, fileBackedPages: 5, speculativePages: 2,
+        pageSize: 1) == nil)
+    // An overflowing page count.
+    #expect(
+      MacMemoryReader.usedBytes(
+        physicalBytes: .max, freePages: .max, fileBackedPages: 1, speculativePages: 0,
+        pageSize: 1) == nil)
   }
 
   // A live read of this Mac's counters: the answer depends on live OS state.
