@@ -802,16 +802,24 @@ struct MeetingRecorderTests {
   /// delivery read the observer out of the lock's generic storage, and the Debug build wrapped it
   /// in one more reabstraction thunk each time, so after about 5,500 call chunks one call of it
   /// overflowed the tap thread's stack. The depth of a delivery must not grow with deliveries.
+  ///
+  /// #4517: deliveries run on the writer's dispatch queue, which may hop between worker threads,
+  /// so a raw stack address differs by thread. Depth is measured from the running thread's own
+  /// stack top, and a small spread is allowed for the queue's entry frames. The #3973 growth was
+  /// about 95 bytes per chunk (5,500 chunks filled a 512 KB stack), so 2,000 chunks would grow it
+  /// by well over 64 KB, far beyond `allowedSpread`.
   @Test("the live-samples observer is called at the same stack depth on every chunk")
   func liveSamplesDepthStaysFlat() async throws {
     let r = try rig(callSound: true)
     let depths = OSAllocatedUnfairLock(initialState: [Int]())
     r.recorder.liveSamples = { track, _, _ in
       guard track == .callSound else { return }
-      // The address of a local: how far down the stack this call runs (cheap on every chunk).
+      // Bytes between this thread's stack top and a local: how deep this call runs (cheap on
+      // every chunk; the stack grows down from `pthread_get_stackaddr_np`).
       var marker = 0
-      let depth = withUnsafeMutablePointer(to: &marker) { Int(bitPattern: $0) }
-      depths.withLock { $0.append(depth) }
+      let here = withUnsafeMutablePointer(to: &marker) { Int(bitPattern: $0) }
+      let top = Int(bitPattern: pthread_get_stackaddr_np(pthread_self()))
+      depths.withLock { $0.append(top - here) }
     }
     _ = try await r.recorder.start()
     let chunk = [Float](repeating: 0.1, count: 160)
@@ -822,9 +830,12 @@ struct MeetingRecorderTests {
     await r.recorder.stop()
     let seen = depths.withLock { $0 }
     #expect(seen.count == 2_000, "control: every chunk reached the observer")
+    let allowedSpread = 4_096
+    let spread = (seen.max() ?? 0) - (seen.min() ?? 0)
     #expect(
-      seen.first == seen.last,
-      "stack address \(seen.first ?? -1) on the first chunk, \(seen.last ?? -1) on the last")
+      spread <= allowedSpread,
+      "stack depth ranged \(seen.min() ?? -1)...\(seen.max() ?? -1) bytes; first \(seen.first ?? -1), last \(seen.last ?? -1)"
+    )
   }
 
   /// #4248: the microphone reaches the observer when its silence hold releases it, so audio
