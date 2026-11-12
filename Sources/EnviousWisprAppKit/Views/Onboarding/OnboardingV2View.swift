@@ -96,6 +96,9 @@ final class OnboardingV2ViewModel {
   /// owned task; churn re-fires the kick, which finds the live workflow and
   /// stands down.
   @ObservationIgnored private(set) var setupTask: Task<Void, Never>?
+  /// #4528 C2c.2: the setup and warming tasks outlive the window, so each reports itself to
+  /// Setup's workflow owner; a new-coordinator session refuses to start while one runs.
+  @ObservationIgnored var workflowOwner: OnboardingWorkflowOwner?
 
   /// Start the setup workflow if none is live and the checklist is genuinely
   /// at the start line. Safe to call repeatedly (every view re-appear).
@@ -111,9 +114,13 @@ final class OnboardingV2ViewModel {
       !setupCancelled,
       case .pending = checklistStatuses[0]
     else { return }
+    let owner = workflowOwner
+    // #4528 C2c.2: never start old work while a new-coordinator session owns Setup.
+    if let owner, !owner.beginLegacyWork() { return }
     setupTask = Task { @MainActor in
       await self.startSetup(warmUp: warmUp, settings: settings)
       self.setupTask = nil
+      owner?.endLegacyWork()
     }
   }
 
@@ -401,9 +408,12 @@ final class OnboardingV2ViewModel {
   ) {
     guard warmingTask == nil else { return }
     guard currentScreen == .warmingUp, warmingOutcome == .waiting else { return }
+    let owner = workflowOwner
+    if let owner, !owner.beginLegacyWork() { return }
     warmingTask = Task { @MainActor in
       await self.runWarmingGate(warmUp: warmUp, displayFloor: displayFloor)
       self.warmingTask = nil
+      owner?.endLegacyWork()
     }
   }
 
@@ -1135,6 +1145,8 @@ struct OnboardingV2View: View {
   @Environment(DictationRuntime.self) private var dictationRuntime
   /// #3546: the explicit Retry for a Parakeet load the upgrade policy stopped.
   @Environment(ModelDeliveryHome.self) private var modelDelivery: ModelDeliveryHome?
+  /// #4528 C2c.2: who may run Setup (the old workflow reports its tasks here).
+  @Environment(OnboardingWorkflowOwner.self) private var workflowOwner: OnboardingWorkflowOwner?
   var onComplete: () -> Void
   /// #1176: in-flight onboarding session + its single terminal abandon emit,
   /// bootstrapper-owned and shared with the App-layer window-close / app-quit paths.
@@ -1215,6 +1227,7 @@ struct OnboardingV2View: View {
       viewModel.beforeWarmingRetry = { [modelDelivery] in
         modelDelivery?.retryParakeetUpgradeIfBlocked() ?? true
       }
+      viewModel.workflowOwner = workflowOwner
       viewModel.kickSetupIfNeeded(
         warmUp: { await dictationRuntime.ensureActiveEngineWarmForOnboarding() },
         settings: settings)

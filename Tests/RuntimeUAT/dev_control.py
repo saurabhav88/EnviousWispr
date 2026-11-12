@@ -339,6 +339,15 @@ MODEL_BACKENDS = ("parakeet", "whisper")
 # --size; the door refuses a missing or unknown one and never falls back to the full size.
 EGONE_MODEL = "egone"
 EGONE_SIZES = ("full", "mini", "micro")
+# #4528: the S1-mini local polish model (one size; no --size).
+S1MINI_MODEL = "s1mini"
+# #4528 plan §3.9: the new Setup's DEBUG session. Every command but `status` mutates (M31).
+ONBOARDING_STEPS = ("welcome", "language", "speechPick", "speechCompare", "polishIntro",
+                    "polishPick", "polishSeeAll", "downloads", "permissions", "key",
+                    "gettingReady", "practice", "film")
+ONBOARDING_EVENTS = ("next", "back", "chooseLanguage", "compareSpeech", "chooseSpeech",
+                     "seeAllPolish", "choosePolish", "chooseCloud", "skipPolish", "turnPolishOn",
+                     "practiceSucceeded", "skipPractice", "filmFinished", "skipFilm")
 # ShortcutRole raw values; the door refuses anything else.
 SHORTCUT_ROLES = ("record", "cancel", "quickAdd", "pasteLast", "copyLast")
 MODEL_ACTIONS = ("download", "cancel")
@@ -403,13 +412,26 @@ def build_parser():
         dest="action", required=True, metavar="ACTION")
     for verb in MODEL_ACTIONS:
         model = models.add_parser(verb)
-        model.add_argument("backend", choices=MODEL_BACKENDS + (EGONE_MODEL,))
+        model.add_argument("backend", choices=MODEL_BACKENDS + (EGONE_MODEL, S1MINI_MODEL))
         model.add_argument("--size", choices=EGONE_SIZES,
                            help="required for egone: which EG-1 size")
     # Remove exists for the EG-1 sizes only (the size card's Remove, with its preference rule).
     remove = models.add_parser("remove")
     remove.add_argument("backend", choices=(EGONE_MODEL,))
     remove.add_argument("--size", choices=EGONE_SIZES, required=True)
+
+    onboarding = sub.add_parser(
+        "onboarding", help="drive the new Setup's DEBUG session (status reads only)"
+    ).add_subparsers(dest="action", required=True, metavar="ACTION")
+    for verb in ("status", "begin", "reset", "stop"):
+        onboarding.add_parser(verb)
+    goto = onboarding.add_parser("goto", help="DEBUG positioning, not proof of prerequisites")
+    goto.add_argument("step", choices=ONBOARDING_STEPS)
+    send = onboarding.add_parser("send", help="send the event a Setup button sends")
+    send.add_argument("event", choices=ONBOARDING_EVENTS)
+    send.add_argument("--value", help="chooseLanguage auto|<code>, chooseSpeech, choosePolish id")
+    send.add_argument("--provider", help="chooseCloud provider (openAI, gemini, claude)")
+    send.add_argument("--model", help="chooseCloud model")
 
     keys = sub.add_parser("keys", help="save or clear a cloud polish API key").add_subparsers(
         dest="action", required=True, metavar="ACTION")
@@ -548,6 +570,10 @@ def route(args):
     if key == ("models", "remove"):
         return f"models.{EGONE_MODEL}.remove", {"size": args.size}, True
     if args.group == "models" and args.action in MODEL_ACTIONS:
+        if args.backend == S1MINI_MODEL:
+            if args.size is not None:
+                raise CliError("usage", "--size applies to models egone only", EXIT_USAGE)
+            return f"models.{S1MINI_MODEL}.{args.action}", None, True
         if args.backend == EGONE_MODEL:
             if args.size is None:
                 raise CliError("usage", "models egone needs --size full|mini|micro", EXIT_USAGE)
@@ -557,6 +583,19 @@ def route(args):
         if args.size is not None:
             raise CliError("usage", "--size applies to models egone only", EXIT_USAGE)
         return f"models.{args.backend}.{args.action}", None, True
+    if args.group == "onboarding":
+        if args.action == "status":
+            return "onboarding.status", None, False
+        if args.action in ("begin", "reset", "stop"):
+            return f"onboarding.{args.action}", None, True
+        if args.action == "goto":
+            return "onboarding.goto", {"step": args.step}, True
+        if args.action == "send":
+            wire = {"event": args.event}
+            for name in ("value", "provider", "model"):
+                if getattr(args, name) is not None:
+                    wire[name] = getattr(args, name)
+            return "onboarding.send", wire, True
     if key == ("keys", "set"):
         # The value is added by `run` from stdin, never from argv.
         return "keys.set", {"provider": KEY_PROVIDERS[args.provider]}, True

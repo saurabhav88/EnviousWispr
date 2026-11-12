@@ -401,6 +401,18 @@
       #expect((reply["state"] as? [String: Any])?["state"] as? String == "noRuntime")
     }
 
+    @Test("onboarding and S1-mini commands answer not wired when the build wires neither (#4528)")
+    func unwiredOnboardingAndS1Mini() async {
+      let (_, dispatcher) = Self.make()
+      for command in [
+        DevControlDispatcher.Command.onboardingStatus, .onboardingBegin, .onboardingReset,
+        .onboardingStop, .modelsS1MiniDownload, .modelsS1MiniCancel,
+      ] {
+        #expect(code(await dispatcher.handle(command, args: [:])) == "notWired", "\(command)")
+      }
+      #expect(code(await dispatcher.handle(.modelsS1MiniDownload, args: ["size": "mini"])) == "badArgs")
+    }
+
     @Test("a model command with any argument is refused before any button is pressed")
     func modelCommandRefusesArguments() async throws {
       let models = DevControlFixtures.ModelFake()

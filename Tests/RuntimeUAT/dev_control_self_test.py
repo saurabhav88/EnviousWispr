@@ -394,6 +394,18 @@ def routes_and_values(r, tree):
          {"size": "micro"}),
         (["models", "remove", "egone", "--size", "micro"], "models.egone.remove",
          {"size": "micro"}),
+        (["models", "download", "s1mini"], "models.s1mini.download", None),
+        (["models", "cancel", "s1mini"], "models.s1mini.cancel", None),
+        (["onboarding", "status"], "onboarding.status", None),
+        (["onboarding", "begin"], "onboarding.begin", None),
+        (["onboarding", "reset"], "onboarding.reset", None),
+        (["onboarding", "stop"], "onboarding.stop", None),
+        (["onboarding", "goto", "permissions"], "onboarding.goto", {"step": "permissions"}),
+        (["onboarding", "send", "next"], "onboarding.send", {"event": "next"}),
+        (["onboarding", "send", "chooseSpeech", "--value", "whisper"], "onboarding.send",
+         {"event": "chooseSpeech", "value": "whisper"}),
+        (["onboarding", "send", "chooseCloud", "--provider", "openAI", "--model", "gpt-4o-mini"],
+         "onboarding.send", {"event": "chooseCloud", "provider": "openAI", "model": "gpt-4o-mini"}),
         (["language", "set", "en-gb"], "language.set", {"code": "en-gb"}),
         (["channel", "set", "BuiltInMic", "1"], "channel.set", {"deviceUID": "BuiltInMic", "channel": 1}),
         (["shortcut", "set", "record", "54", "0"], "shortcut.set",
@@ -434,7 +446,11 @@ def routes_and_values(r, tree):
                      ["models", "download", "parakeet", "extra"],
                      ["models", "download", "egone"],
                      ["models", "download", "egone", "--size", "giant"],
-                     ["models", "download", "parakeet", "--size", "mini"]):
+                     ["models", "download", "parakeet", "--size", "mini"],
+                     ["models", "download", "s1mini", "--size", "mini"],
+                     ["onboarding", "goto", "done"],
+                     ["onboarding", "send", "readinessChanged"],
+                     ["onboarding", "jump"]):
             door.received.clear()
             b = FakeBoundaries({"111": exe}, door=door, lock=FakeLock(session=AGENT, status=0))
             status, document, out, _ = _run(["--worktree", tree.wt] + argv, b)
@@ -520,6 +536,13 @@ def lock_cases(r, tree):
         ["models", "cancel", "parakeet"],
         ["models", "download", "whisper"],
         ["models", "cancel", "whisper"],
+        ["models", "download", "s1mini"],
+        ["models", "cancel", "s1mini"],
+        ["onboarding", "begin"],
+        ["onboarding", "reset"],
+        ["onboarding", "stop"],
+        ["onboarding", "goto", "key"],
+        ["onboarding", "send", "back"],
         ["language", "set", "de"],
         ["channel", "set", "BuiltInMic", "0"],
         ["shortcut", "set", "cancel", "53", "0"],
@@ -576,7 +599,7 @@ def lock_cases(r, tree):
                 status == 2 and _code(document) == "lockUndecided" and door.received == []
                 and b.backend_loads == 0, f"status={status} doc={document}")
         reader_lock = FakeLock(find_error=AssertionError("a read must not ask the lock"))
-        for argv in (["status"], ["settings", "list"], ["history", "list"], ["words", "list"],
+        for argv in (["status"], ["onboarding", "status"], ["settings", "list"], ["history", "list"], ["words", "list"],
                      ["meeting", "status"], ["meeting", "list"], ["meeting", "get", word_id],
                      ["meeting", "notes-get", word_id], ["meeting", "summary-get", word_id],
                      ["meeting", "live"], ["call", "simulate"]):

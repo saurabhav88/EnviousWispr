@@ -30,6 +30,13 @@ final class AppWindowCoordinator: UpdateDialogPresenting {
   /// Onboarding window, captured lazily on first open so the close observer
   /// can match by identity rather than title.
   private weak var onboardingWindow: NSWindow?
+  /// #4528 C2c.2: the old onboarding window is reserved from the moment an open is requested
+  /// (before SwiftUI creates it) until it closes or is dismissed, so Setup's workflow owner
+  /// never sees a gap a new-coordinator session could claim.
+  private var onboardingWindowReserved = false
+  var isOnboardingWindowVisible: Bool {
+    onboardingWindowReserved || (onboardingWindow?.isVisible ?? false)
+  }
   /// `NSWindow.willCloseNotification` observer token for the onboarding window.
   private var onboardingCloseObserver: (any NSObjectProtocol)?
 
@@ -287,6 +294,7 @@ final class AppWindowCoordinator: UpdateDialogPresenting {
   func openOnboardingWindow() {
     // (1) Eligibility — was `guard let appState` + `guard != .completed`.
     guard canOpenOnboarding() else { return }
+    onboardingWindowReserved = true
     // (2) Not-yet-wired queue guard: if the SwiftUI bridge has not been wired
     // yet, queue the request instead of dropping it. Drained by
     // `consumePendingOpenOnboarding()` once `ActionWirer.task` runs.
@@ -337,6 +345,7 @@ final class AppWindowCoordinator: UpdateDialogPresenting {
             : Self.matchesOnboardingWindowIdentity(window)
           guard isOnboardingWindow else { return }
           self.onboardingWindow = nil
+          self.onboardingWindowReserved = false
           // Only treat as abort if onboarding not yet completed.
           if !self.isOnboardingComplete() {
             self.onOnboardingDismissed?()
@@ -359,6 +368,7 @@ final class AppWindowCoordinator: UpdateDialogPresenting {
   /// State-driven: flips isOnboardingPresented to false, ActionWirer's onChange
   /// dismisses the window.
   func closeOnboardingWindow() {
+    onboardingWindowReserved = false
     dismissOnboardingAction?()
     // #3149: setup hid the main window, so bring it back now that setup is done;
     // otherwise a new user finishes onboarding with no window at all. An ABORT (the

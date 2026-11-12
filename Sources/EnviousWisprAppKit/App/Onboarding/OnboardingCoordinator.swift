@@ -233,6 +233,26 @@ final class OnboardingCoordinator {
     onChange?()
   }
 
+  #if DEBUG
+    /// DEBUG positioning for the door's `onboarding goto` (plan §3.9): never evidence that a
+    /// prerequisite passed. It ends pending speech and readiness work, clears readiness (re-
+    /// measured live), then saves the checkpoint and the legacy projection like any move.
+    /// `done` is refused by the door: finishing goes through the real events.
+    func debugGoto(_ step: OnboardingStep) {
+      guard isActive, step != .done else { return }
+      speechTask?.cancel()
+      readinessTask?.cancel()
+      generation &+= 1
+      speechGeneration &+= 1
+      var target = state
+      target.step = step
+      target.readiness = OnboardingReadiness()
+      apply(
+        OnboardingTransition(state: target, outcome: .moved, effects: [.persistCheckpoint]),
+        after: state)
+    }
+  #endif
+
   /// App quit: the checkpoint is already written and delivery resumes partial bytes on the
   /// next launch, so only the coordinator's own work and the sleep assertion end.
   func quit() {

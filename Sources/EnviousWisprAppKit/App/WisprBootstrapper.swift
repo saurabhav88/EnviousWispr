@@ -97,6 +97,8 @@ package final class WisprBootstrapper {
   let permissions: PermissionsService
   /// #1176: in-flight onboarding session, read at app-quit to emit abandon.
   let onboardingProgress = OnboardingProgress()
+  /// #4528 C2c.2: who may run Setup (old onboarding or a new-coordinator session), one at a time.
+  let onboardingWorkflow: OnboardingWorkflowOwner
   let asrManager: any ASRManagerInterface
   /// #1386 PR-2: the one door to whichever engine is active. Shared plumbing —
   /// crash recovery (constructed here) and the Diagnostics benchmark (via the
@@ -1327,6 +1329,8 @@ package final class WisprBootstrapper {
     // report to it** (the "Show app in Dock" switch, the update dialog). Its inputs,
     // `presentationEffects` and `settings`, already exist, so this is a reorder, not
     // a late-bound seam: same reasoning as `MenuBarController` below.
+    let onboardingWorkflow = OnboardingWorkflowOwner()
+    self.onboardingWorkflow = onboardingWorkflow
     let appWindowCoordinator = AppWindowCoordinator(
       application: presentationEffects.application,
       // Strong: `settings` holds no reference back to the coordinator, and a nil fallback
@@ -1334,7 +1338,8 @@ package final class WisprBootstrapper {
       showInDock: { [settings] in settings.showInDock },
       canOpenOnboarding: { [weak settings] in
         guard let settings else { return false }
-        return settings.onboardingState != .completed
+        // #4528 C2c.2: never open the old writer over a new-coordinator session.
+        return settings.onboardingState != .completed && onboardingWorkflow.legacyMayOpen
       },
       isOnboardingComplete: { [weak settings] in
         settings?.onboardingState == .completed
@@ -2637,7 +2642,20 @@ package final class WisprBootstrapper {
                 recommendation: SetupAdvice.recommendedEGOneSize(
                   languageMode: settings.languageMode))
             },
-            egOneState: { [egOneSizeActions] in egOneSizeActions.installState($0) }),
+            egOneState: { [egOneSizeActions] in egOneSizeActions.installState($0) },
+            s1MiniDownload: { [localPolishRuntimes] in
+              guard let runtime = localPolishRuntimes.runtime(for: .singleModel(for: .s1Mini)),
+                runtime.installState.acceptsDownloadStart
+              else { return false }
+              runtime.startDownload()
+              return true
+            },
+            s1MiniCancel: { [localPolishRuntimes] in
+              localPolishRuntimes.runtime(for: .singleModel(for: .s1Mini))?.cancelDownload()
+            },
+            s1MiniState: { [localPolishRuntimes] in
+              localPolishRuntimes.runtime(for: .singleModel(for: .s1Mini))?.installState
+            }),
           dictation: devControlDictation,
           credentials: CredentialWriter(
             keychainManager: keychainManager, presence: savedKeyPresence,
@@ -2653,7 +2671,15 @@ package final class WisprBootstrapper {
               })),
           calls: DevControlCalls(
             sources: DevControlCalls.Sources(
-              coordinator: { [meetingBox] in meetingBox.callDetection }))))
+              coordinator: { [meetingBox] in meetingBox.callDetection })),
+          onboarding: .live(
+            OnboardingLiveOwners(
+              settings: settings, modelDelivery: modelDelivery, whisperSetup: setup.whisperSetup,
+              localPolish: localPolishRuntimes, engineCoordinator: engineCoordinator,
+              aiAvailability: aiAvailability, llmDiscovery: llmDiscovery,
+              savedKeyPresence: savedKeyPresence, permissions: permissions,
+              egOneDownloadBytes: egOneSizeCatalog.downloadBytes),
+            workflow: onboardingWorkflow)))
     #endif
     // #3972 C4a: EnviousMeet, bootstrapped here so it lives independently of any view.
     engineCoordinator.onMintingEnded = { [meetingWakes] in meetingWakes.poke() }
@@ -3110,6 +3136,9 @@ package final class WisprBootstrapper {
     self.dictationRuntime = dictationRuntime
     self.hotkeyService = hotkeyService
     self.appWindowCoordinator = appWindowCoordinator
+    onboardingWorkflow.legacyWindowVisible = { [weak appWindowCoordinator] in
+      appWindowCoordinator?.isOnboardingWindowVisible ?? false
+    }
     self.previousApplicationTracker = previousApplicationTracker
     self.historyPaste = historyPaste
     self.menuBarController = menuBarController
@@ -3683,6 +3712,8 @@ private struct OnboardingWindowRoot: View {
     .environment(b.navigationCoordinator)
     .environment(b.languageSuggestionPresenter)
     .environment(b.dictationRuntime)
+    // #4528 C2c.2: the old workflow reports its long-lived tasks to Setup's owner.
+    .environment(b.onboardingWorkflow)
     // #3546: the warming screen's retry reaches the Parakeet upgrade policy.
     .environment(b.modelDelivery)
     // #2196 — the practice screen reads BOTH of these, and a type-based
