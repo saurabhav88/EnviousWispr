@@ -1037,7 +1037,7 @@ struct SettingsSummaryCard<Summary: View, Status: View, Choices: View>: View {
     isExpanded = true
   }
 
-  /// The real control is this `Button`; `SettingsActionButton` without an action only draws
+  /// The real control is this `Button`; `EnviousButtonLabel` with `EnviousButtonFace` only draws
   /// the page's button treatment, so focus modifiers land on an actual control.
   private var changeButton: some View {
     Button {
@@ -2201,108 +2201,6 @@ struct ProviderStatusChip: View {
         comment: "VoiceOver: a provider's status chip. %@ is the status, such as Live."))
   }
 }
-/// The close control in a settings sheet's title bar.
-///
-/// Promoted from the two byte-identical copies in `LivePreviewPackCatalogSheet`
-/// and `LanguageLockSheet`, whose own comment said "if a third appears, this is
-/// the one to promote". A third appeared.
-///
-/// Deliberately a symbol rather than a second worded button: the sheet's footer
-/// already carries the words, and two worded exits invite the reading that they
-/// do different things.
-struct SettingsSheetCloseButton: View {
-  /// What the assistive label says. The two sheets word it differently on
-  /// purpose, so it stays a parameter rather than becoming a shared constant.
-  let accessibilityTitle: String
-  let action: () -> Void
-
-  var body: some View {
-    Button(action: action) { EnviousCloseGlyph() }
-      .buttonStyle(.plain)
-    .accessibilityLabel(accessibilityTitle)
-  }
-}
-
-/// The Settings action button's call-site shape, kept while its callers move to
-/// `Button { EnviousButtonLabel(...) }.settingsButton(...)` (#4506 Phase 2 PR 2, chunk 3 removes
-/// it). Its paint, role and hover live in `EnviousButtonStyle.swift`.
-struct SettingsActionButton: View {
-  typealias Emphasis = EnviousButtonFace.Emphasis
-  typealias Shape = EnviousButtonFace.Shape
-  typealias Size = EnviousButtonFace.Size
-
-  let title: String
-  let isEnabled: Bool
-  var emphasis: Emphasis = .outlined
-  var shape: Shape = .capsule
-  var size: Size = .regular
-  var trailingSystemImage: String? = nil
-  var systemImage: String? = nil
-  /// Return or Escape for a sheet's confirm and cancel; see `View.settingsButton`.
-  var shortcut: KeyboardShortcut? = nil
-
-  /// OPTIONAL, so this type can render its treatment WITHOUT being a control.
-  ///
-  /// #2772 chunk 4: the file-import drop zone is itself a button, and the "Choose a file"
-  /// inside it is what the design draws to say so. Nesting a real `Button` there put TWO
-  /// actionable controls in one target: `allowsHitTesting(false)` excludes the pointer and
-  /// says nothing about keyboard focus or accessibility activation, so a VoiceOver user or
-  /// anyone tabbing still met the inner one. Found by Codex.
-  ///
-  /// `nil` means "draw the button, do not be one". Every existing call site passes a
-  /// closure, including through trailing-closure syntax, and is unchanged.
-  var action: (() -> Void)? = nil
-
-  init(
-    title: LocalizedStringResource, isEnabled: Bool, emphasis: Emphasis = .outlined,
-    shape: Shape = .capsule, size: Size = .regular, trailingSystemImage: String? = nil,
-    systemImage: String? = nil, shortcut: KeyboardShortcut? = nil, action: (() -> Void)? = nil
-  ) {
-    self.init(
-      verbatimTitle: String(localized: title), isEnabled: isEnabled, emphasis: emphasis,
-      shape: shape, size: size, trailingSystemImage: trailingSystemImage,
-      systemImage: systemImage, shortcut: shortcut, action: action)
-  }
-
-  init(
-    verbatimTitle: String, isEnabled: Bool, emphasis: Emphasis = .outlined,
-    shape: Shape = .capsule, size: Size = .regular, trailingSystemImage: String? = nil,
-    systemImage: String? = nil, shortcut: KeyboardShortcut? = nil, action: (() -> Void)? = nil
-  ) {
-    self.title = verbatimTitle
-    self.isEnabled = isEnabled
-    self.emphasis = emphasis
-    self.shape = shape
-    self.size = size
-    self.trailingSystemImage = trailingSystemImage
-    self.systemImage = systemImage
-    self.shortcut = shortcut
-    self.action = action
-  }
-
-  private var label: EnviousButtonLabel {
-    EnviousButtonLabel(
-      verbatim: title,
-      size: size,
-      systemImage: systemImage,
-      trailingSystemImage: trailingSystemImage)
-  }
-
-  var body: some View {
-    if let action {
-      Button(role: emphasis == .destructive ? .destructive : nil, action: action) { label }
-        .settingsButton(
-          emphasis, shape: shape, size: size, isEnabled: isEnabled, shortcut: shortcut)
-    } else {
-      label
-        .modifier(
-          EnviousButtonFace(emphasis: emphasis, shape: shape, size: size, paintsEnabled: isEnabled)
-        )
-        .disabled(!isEnabled)
-    }
-  }
-}
-
 // MARK: - Text field chrome
 
 /// Makes a `TextField` on a settings surface look like something you can type

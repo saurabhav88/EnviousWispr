@@ -66,7 +66,7 @@ struct EnviousButtonStyle: PrimitiveButtonStyle {
 extension View {
   /// A Settings action button: the style, the search-arrival focus adapter every Settings
   /// action button carries (#3482), the keyboard shortcut and the disabled state, in the order
-  /// the `SettingsActionButton` wrapper applied them (#4506). Apply to the `Button` itself.
+  /// the retired `SettingsActionButton` wrapper applied them (#4506). Apply to the `Button` itself.
   ///
   /// `isEnabled` is the caller's own enabled condition, written once: it picks the enabled or
   /// disabled paint (`EnviousButtonStyle.paintsEnabled`) and disables the button. A parent's
@@ -188,6 +188,13 @@ struct EnviousButtonLabel: View {
 /// The treatment, with no control around it. Shared so a decorative instance and a real
 /// button cannot drift apart visually — which is the whole reason the drop zone draws one
 /// at all.
+///
+/// A decorative instance is an `EnviousButtonLabel` with this face and NO `Button` around it.
+/// #2772 chunk 4: the file-import drop zone is itself a button, and the "Choose a file"
+/// inside it is what the design draws to say so. Nesting a real `Button` there put TWO
+/// actionable controls in one target: `allowsHitTesting(false)` excludes the pointer and
+/// says nothing about keyboard focus or accessibility activation, so a VoiceOver user or
+/// anyone tabbing still met the inner one. Found by Codex.
 struct EnviousButtonFace: ViewModifier {
   /// How loud this button is. `outlined` is a row-level action, `filled` the one
   /// primary on a surface — a hierarchy the system styles could not express here
@@ -258,6 +265,27 @@ struct EnviousButtonFace: ViewModifier {
   }
 
   func body(content: Content) -> some View {
+    switch shape {
+    case .capsule: painted(content, in: Capsule())
+    case .roundedRect: painted(content, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+    }
+  }
+
+  /// The one place `shape` becomes geometry, so the fill, the border and the hit target
+  /// cannot end up cut from three different outlines.
+  ///
+  /// #4506: generic over `InsettableShape`, replacing the type-erased `AnyInsettableShape`, whose
+  /// recorded reasons follow as written (historical; they still explain why the outline is an
+  /// `InsettableShape` and not an `AnyShape`):
+  ///
+  /// A type-erased `InsettableShape`, so one button can be cut from either a capsule or a
+  /// rounded rectangle without three modifiers each branching on which (#2772 finding 9).
+  ///
+  /// `AnyShape` exists and is not enough: `strokeBorder` requires `InsettableShape`, which
+  /// `AnyShape` does not conform to. `stroke` would compile and draw the border straddling the
+  /// edge instead of inside it, which is a 1pt size difference between the two shapes for no
+  /// reason a reader could see.
+  private func painted(_ content: Content, in outline: some InsettableShape) -> some View {
     content
       .padding(.horizontal, size.horizontalPadding)
       .padding(.vertical, size.verticalPadding)
@@ -267,16 +295,6 @@ struct EnviousButtonFace: ViewModifier {
       .contentShape(outline)
       .onHover { pointerInside = $0 }
       .animation(reduceMotion ? nil : SettingsHover.animation, value: hovering)
-  }
-
-  /// The one place `shape` becomes geometry, so the fill, the border and the hit target
-  /// cannot end up cut from three different outlines.
-  private var outline: AnyInsettableShape {
-    switch shape {
-    case .capsule: return AnyInsettableShape(Capsule())
-    case .roundedRect:
-      return AnyInsettableShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-    }
   }
 
   /// The one place emphasis becomes a colour. `destructive` is the only
@@ -315,30 +333,25 @@ struct EnviousButtonFace: ViewModifier {
   }
 }
 
-/// A type-erased `InsettableShape`, so one button can be cut from either a capsule or a
-/// rounded rectangle without three modifiers each branching on which (#2772 finding 9).
-///
-/// `AnyShape` exists and is not enough: `strokeBorder` requires `InsettableShape`, which
-/// `AnyShape` does not conform to. `stroke` would compile and draw the border straddling the
-/// edge instead of inside it, which is a 1pt size difference between the two shapes for no
-/// reason a reader could see.
-struct AnyInsettableShape: InsettableShape {
-  private let makePath: @Sendable (CGRect) -> Path
-  private let makeInset: @Sendable (CGFloat) -> AnyInsettableShape
-
-  init<S: InsettableShape>(_ shape: S) where S: Sendable, S.InsetShape: Sendable {
-    makePath = { shape.path(in: $0) }
-    makeInset = { AnyInsettableShape(shape.inset(by: $0)) }
-  }
-
-  func path(in rect: CGRect) -> Path { makePath(rect) }
-  func inset(by amount: CGFloat) -> AnyInsettableShape { makeInset(amount) }
-}
-
 // MARK: - Glyph adapters
 
-/// The close glyph of a settings sheet's title bar. Its hover paint is `settingsHoverQuiet`'s,
-/// not a second painter.
+/// The close control in a settings sheet's title bar: a `Button` with this label and
+/// `.buttonStyle(.plain)`. Its hover paint is `settingsHoverQuiet`'s, not a second painter.
+///
+/// Promoted from the two byte-identical copies in `LivePreviewPackCatalogSheet`
+/// and `LanguageLockSheet`, whose own comment said "if a third appears, this is
+/// the one to promote". A third appeared.
+///
+/// Deliberately a symbol rather than a second worded button: the sheet's footer
+/// already carries the words, and two worded exits invite the reading that they
+/// do different things.
+///
+/// #4506: each sheet now passes its own `.accessibilityLabel`. The retired wrapper's reason for
+/// its `accessibilityTitle` parameter, as written (historical; it is why the label stays at the
+/// call site):
+///
+/// What the assistive label says. The two sheets word it differently on
+/// purpose, so it stays a parameter rather than becoming a shared constant.
 struct EnviousCloseGlyph: View {
   var body: some View {
     Image(systemName: "xmark")

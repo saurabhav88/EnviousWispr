@@ -84,8 +84,8 @@ struct SettingsControlAffordanceTests {
     #expect(
       offenders.isEmpty,
       """
-      Use `SettingsActionButton`, which owns its fill, border, hover and disabled \
-      state, so the appearance travels with the control instead of with its \
+      Use `.settingsButton(...)` (`EnviousButtonStyle`), which owns its fill, border, hover \
+      and disabled state, so the appearance travels with the control instead of with its \
       container. Offenders:
       \(offenders.joined(separator: "\n"))
       """)
@@ -198,45 +198,6 @@ struct SettingsControlAffordanceTests {
       same provenance a sighted user reads. An explicit label replaces its child \
       announcement, so omitting that value makes VoiceOver lose the distinction \
       between a Mac-chosen language and one the user picked.
-      """)
-  }
-
-  /// A keyboard shortcut is never applied to the OUTSIDE of `SettingsActionButton`.
-  ///
-  /// **The failure this catches is silent in the one direction that matters.**
-  /// `SettingsActionButton` is a composite `View`, not a control, and it binds
-  /// its own `shortcut` to the `Button` inside. A caller that writes
-  /// `.keyboardShortcut` on the outside instead is relying on behaviour Apple
-  /// documents for "the modified control", and the button still works when
-  /// CLICKED -- so a sheet can stop answering Escape with nothing on screen to
-  /// say so. Two #2445 footers were doing exactly this and were found by review,
-  /// not by use.
-  @Test("Keyboard shortcuts reach the control, not the wrapper")
-  func shortcutsArePassedRatherThanApplied() throws {
-    var offenders: [String] = []
-    for file in try Self.settingsSources() {
-      let lines = file.text.split(separator: "\n", omittingEmptySubsequences: false)
-        .map(String.init)
-      for (index, line) in lines.enumerated() where line.contains(".keyboardShortcut(") {
-        // Walk back to the nearest line that opens a control, and report only
-        // when that opener is this composite. A raw `Button` is the correct and
-        // common case, and must not be flagged.
-        for back in stride(from: index, through: max(0, index - 12), by: -1) {
-          let candidate = lines[back]
-          if candidate.contains("SettingsActionButton(") {
-            offenders.append("\(file.path):\(index + 1)")
-            break
-          }
-          if candidate.contains("Button(") || candidate.contains("Button<") { break }
-        }
-      }
-    }
-    #expect(
-      offenders.isEmpty,
-      """
-      Pass the shortcut as `SettingsActionButton(..., shortcut: .cancelAction)` \
-      so it binds to the `Button` inside. Offenders:
-      \(offenders.joined(separator: "\n"))
       """)
   }
 }

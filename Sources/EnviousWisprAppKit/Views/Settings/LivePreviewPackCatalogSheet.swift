@@ -333,7 +333,7 @@ struct LivePreviewPackCatalogSheet: View {
       // install was running, which meant "looks disabled" and "is disabled" were
       // indistinguishable at exactly the moment the difference mattered.
       //
-      // `SettingsActionButton` carries an accent tint, a hover fill, and a
+      // `.settingsButton(...)` (`EnviousButtonStyle`) carries an accent tint, a hover fill, and a
       // disabled state that is visibly different from both.
       Button {
         packs.install(tag: pack.tag)
@@ -354,5 +354,5 @@ struct LivePreviewPackCatalogSheet: View {
 ///
 // Nothing in this sheet is committed on exit, so the X and `Done` simply both
 // leave. The control itself is now
-// `SettingsSheetCloseButton` in `SettingsComponents.swift`, shared with
+// `EnviousCloseGlyph` in `Views/Design/EnviousButtonStyle.swift`, shared with
 // `LanguageLockSheet`, which held a byte-identical copy.

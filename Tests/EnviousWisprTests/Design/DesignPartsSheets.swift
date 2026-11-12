@@ -14,7 +14,8 @@ import SwiftUI
 /// - parent-disabled (`.disabled(true)` on a container, control left enabled): buttons, switch;
 /// - selected: tab strip, choice bar, engine card, switch on and off;
 /// - destructive: the destructive button;
-/// - decorative (drawn, not a control): `SettingsActionButton` with no action;
+/// - decorative (drawn, not a control): `EnviousButtonLabel` with `EnviousButtonFace` and no
+///   `Button`;
 /// - keyboard-focused: `.settingsFieldChrome(focused:)`, the one approved part that paints its own
 ///   focused look (accent border at 2pt). `DesignRenderHarness` makes the second field the first
 ///   responder and waits until SwiftUI reports the focus (`focusObserved`) before capturing.
@@ -47,8 +48,10 @@ enum DesignPartsSheets {
     "BrandedSegmentedPicker": "controls",
     "BrandedToggleStyle": "controls",
     "BrandedSlider": "controls",
-    "SettingsActionButton": "controls",
-    "SettingsSheetCloseButton": "controls",
+    ".settingsButton(...)": "controls",
+    "EnviousButtonLabel": "controls",
+    "EnviousButtonFace": "controls",
+    "EnviousCloseGlyph": "controls",
     ".settingsFieldChrome(focused:)": "controls",
     "OnboardingButtonStyle": "controls",
     "SettingsSummaryCard": "cards",

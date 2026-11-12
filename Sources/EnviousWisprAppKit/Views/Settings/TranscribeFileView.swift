@@ -2361,7 +2361,8 @@ struct TranscribeFileView: View {
   /// own button as its label. I first wrapped `NSSharingServicePicker` in a 1x1 anchor view
   /// on the stated reason that `ShareLink` renders its own treatment and could not match the
   /// other three buttons. That was false: Apple provides a label initialiser, and chunk 4
-  /// already made `SettingsActionButton` usable without an action. Found by Codex; the anchor
+  /// already made `SettingsActionButton` usable without an action (since #4506: a label with
+  /// `EnviousButtonFace` and no `Button`). Found by Codex; the anchor
   /// machinery is deleted rather than kept beside a correction.
   ///
   /// Shares the TEXT, and the text it shares is whatever is on screen: with "Show original

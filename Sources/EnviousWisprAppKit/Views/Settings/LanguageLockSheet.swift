@@ -433,5 +433,5 @@ private struct LanguageLockRow: View {
 }
 
 // The close control this file used to declare is now
-// `SettingsSheetCloseButton` in `SettingsComponents.swift`, shared with
+// `EnviousCloseGlyph` in `Views/Design/EnviousButtonStyle.swift`, shared with
 // `LivePreviewPackCatalogSheet`, which held a byte-identical copy.

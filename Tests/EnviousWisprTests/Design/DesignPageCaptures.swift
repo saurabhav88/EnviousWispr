@@ -27,7 +27,7 @@ import Testing
 /// that grows a section cannot fall out of the set unnoticed.
 ///
 /// Not staged, with the reason (listed so nothing is silently skipped):
-/// - History: its only rebuilt parts are the six `SettingsActionButton`s in
+/// - History: its only rebuilt parts are the six action buttons in
 ///   `MeetingHistoryDetailView`, which shows only with a saved meeting selected. Staging that needs
 ///   a meeting record plus the page's services (polish setup monitor, navigation, runtime, backend
 ///   metadata, history paste, previous-app tracker, window coordinator, meeting start flow, among

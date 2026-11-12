@@ -382,8 +382,8 @@ struct WorkingPulseMark: View {
 
 /// The card itself: mark · three step rows (title, detail, bar) · Stop.
 ///
-/// The Stop button is the wizard's own quiet button (`SettingsActionButton`, `.quiet`,
-/// rounded rect), the same treatment every other button on these six steps carries, and it
+/// The Stop button is the wizard's own quiet button (`.settingsButton(.quiet, shape:
+/// .roundedRect, ...)`), the same treatment every other button on these six steps carries, and it
 /// stays a real button for VoiceOver; each row is read as one element.
 struct TranscribeFileWorkingCard: View {
   let model: WorkingStepModel
