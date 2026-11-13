@@ -444,9 +444,11 @@ import Foundation
 
   // MARK: - Inside an admitted History command (never admit again from these)
 
-  /// Whether `rowID` has a saved recording now (#3147 PR2: Delete recordings only).
-  func hasRecordingInCommand(rowID: UUID) async -> Bool {
-    await archive.url(for: rowID) != nil
+  /// Whether `rowID` has a saved recording now, or an encode still holding a ticket that could
+  /// publish one (#3147 PR2: Delete recordings only must withdraw it).
+  func hasRecordingOrPendingInCommand(rowID: UUID) async -> Bool {
+    if generations[rowID] != nil { return true }
+    return await archive.url(for: rowID) != nil
   }
 
   /// Audio-only deletion. The ticket is withdrawn before the files go, so a late encode cannot

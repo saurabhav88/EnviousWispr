@@ -1562,13 +1562,12 @@ final class TranscriptCoordinator {
     guard !Task.isCancelled else { return .failed }
     return await transactionExecutor.admit { [self] in
       do {
-        switch try await performRemoval(id) {
-        case .removed:
-          onRowDeleted?(id)
-          return .removed
-        case .alreadyAbsent:
-          return .alreadyAbsent
-        }
+        let result = try await performRemovalWithCleanup(id)
+        if result.removal == .removed { onRowDeleted?(id) }
+        // Text gone but its recording left behind is not done: the item stays selected and a
+        // retry finishes the cleanup (Codex r3).
+        if result.recordingCleanupFailed { return .failed }
+        return result.removal == .removed ? .removed : .alreadyAbsent
       } catch {
         return .failed
       }
@@ -1583,7 +1582,9 @@ final class TranscriptCoordinator {
     return await transactionExecutor.admit { [self] in
       guard let row = currentRow(id: rowID) else { return .alreadyAbsent }
       guard !row.isImported, !row.isMeeting else { return .skipped }
-      guard await recordings.hasRecordingInCommand(rowID: rowID) else { return .alreadyAbsent }
+      guard await recordings.hasRecordingOrPendingInCommand(rowID: rowID) else {
+        return .alreadyAbsent
+      }
       do {
         try await recordings.deleteRecordingInCommand(rowID: rowID, reason: .deleted)
         return .removed
@@ -1994,6 +1995,14 @@ final class TranscriptCoordinator {
   /// absent from History and confirmed absent from both folders is `alreadyAbsent`, and
   /// changes nothing on screen.
   private func performRemoval(_ id: UUID) async throws -> Removal {
+    try await performRemovalWithCleanup(id).removal
+  }
+
+  /// `performRemoval` with whether the row's recording cleanup failed (the text can still have
+  /// gone), for History's deletion outcomes (#3147 PR2).
+  private func performRemovalWithCleanup(_ id: UUID) async throws
+    -> (removal: Removal, recordingCleanupFailed: Bool)
+  {
     let known = transcripts.first { $0.id == id }
     let listed = known != nil
     // #3147: meetings and imports never have a dictation recording, so their removal never
@@ -2003,8 +2012,8 @@ final class TranscriptCoordinator {
     // #3147: a dictation's recording goes with it, also when the text was already gone (a
     // leftover). A failure is reported, never hidden behind the text's removal; launch
     // reconciliation removes the leftover later.
-    if mayHaveRecording { await forgetRecording(of: id) }
-    guard listed || existed else { return .alreadyAbsent }
+    let recordingCleanupFailed = mayHaveRecording ? !(await forgetRecording(of: id)) : false
+    guard listed || existed else { return (.alreadyAbsent, recordingCleanupFailed) }
     // #2807: the displayed set BEFORE the removal, so the neighbour is the row the user
     // saw beside the one they deleted.
     let displayed = listedItems
@@ -2023,7 +2032,7 @@ final class TranscriptCoordinator {
     }
     if id == liveFallbackRowID { liveFallbackRowID = nil }
     refreshDiskStateThenStopIfIdle()
-    return .removed
+    return (.removed, recordingCleanupFailed)
   }
 
   func deleteAll() async {
@@ -2089,10 +2098,13 @@ final class TranscriptCoordinator {
   }
 
   /// Inside a removal command: withdraws and deletes the row's recording, reporting a failure.
-  private func forgetRecording(of id: UUID) async {
-    guard let recordings else { return }
+  /// False when the recording could not be removed (reported as a delete failure as before).
+  @discardableResult
+  private func forgetRecording(of id: UUID) async -> Bool {
+    guard let recordings else { return true }
     do {
       try await recordings.forgetInCommand(rowID: id)
+      return true
     } catch {
       actionFailure = .delete
       Task {
@@ -2100,6 +2112,7 @@ final class TranscriptCoordinator {
           "Deleted transcript left its recording: \(type(of: error))",
           level: .info, category: "TranscriptCoordinator")
       }
+      return false
     }
   }
 

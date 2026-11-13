@@ -413,6 +413,50 @@ struct DictationRecordingsTests {
         == .alreadyAbsent)
   }
 
+  @Test("Delete recordings only during an encode withdraws it: no recording, reason deleted, text kept")
+  func historyDeleteRecordingsOnlyWhileEncoding() async throws {
+    let rig = rig()
+    defer { rig.gate.releaseAll() }
+    let row = try savedRow(rig)
+    let pending = Task {
+      await rig.recordings.record(rowID: row.id, samples: [0, 0, 0], timing: nil)
+    }
+    try await rig.gate.waitUntilStarted(1)
+
+    #expect(
+      await rig.coordinator.deleteHistoryItem(id: .transcript(row.id), kind: .recordingsOnly)
+        == .removed)
+    rig.gate.release(1)
+
+    #expect(await pending.value == .discarded)
+    #expect(await rig.archive.url(for: row.id) == nil)
+    #expect(try await rig.archive.absence(for: row.id) == .deleted)
+    #expect(rig.coordinator.currentRow(id: row.id) != nil)
+  }
+
+  @Test("deleting a dictation whose recording cannot be removed fails until a retry finishes it")
+  func historyDeleteReportsLeftoverRecording() async throws {
+    let rig = rig()
+    defer { rig.gate.releaseAll() }
+    let row = try savedRow(rig)
+    rig.gate.release(1)
+    #expect(await rig.recordings.record(rowID: row.id, samples: [0], timing: nil) == .stored)
+    let pins = rig.archive.directory.appendingPathComponent("pins.json")
+    try Data("not json".utf8).write(to: pins)
+
+    #expect(
+      await rig.coordinator.deleteHistoryItem(id: .transcript(row.id), kind: .textAndRecordings)
+        == .failed)
+    #expect(rig.coordinator.currentRow(id: row.id) == nil)
+    #expect(await rig.archive.url(for: row.id) != nil)
+
+    try FileManager.default.removeItem(at: pins)
+    let retry = await rig.coordinator.deleteHistoryItem(
+      id: .transcript(row.id), kind: .textAndRecordings)
+    #expect(retry == .alreadyAbsent)
+    #expect(await rig.archive.url(for: row.id) == nil)
+  }
+
   @Test("a hand-off returns at once; the recording is kept once its encode finishes")
   func submitDoesNotWait() async throws {
     let rig = rig()
