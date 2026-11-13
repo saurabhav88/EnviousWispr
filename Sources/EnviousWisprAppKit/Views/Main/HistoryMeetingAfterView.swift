@@ -1623,29 +1623,47 @@ extension View {
   }
 }
 
+/// Registers and removes one process-local watcher for scroll-wheel, trackpad-scroll and
+/// left-drag events (#3147 PR4A). The live conformer is `LiveHistoryScrollMonitor` in
+/// `EnviousWisprDesktopEffects`, the only module allowed to call
+/// `NSEvent.addLocalMonitorForEvents` (`scripts/check-dependency-direction.sh`); tests pass one
+/// that never touches the desktop.
+@MainActor
+package protocol HistoryScrollMonitoring: AnyObject {
+  /// Calls `handler` for every such event in the process and passes the event on unchanged.
+  /// Returns the framework's token, or nil when AppKit refused.
+  func install(_ handler: @escaping @MainActor () -> Void) -> Any?
+  func remove(_ token: Any)
+}
+
+extension EnvironmentValues {
+  /// The meeting page's scroll watcher on macOS 14, injected with the app's homes. Nil (a
+  /// preview, a test): Follow playback is not suspended by the user's scrolling there.
+  @Entry var historyScrollMonitor: (any HistoryScrollMonitoring)? = nil
+}
+
 /// macOS 14: a scroll-wheel or trackpad scroll, or a drag (the scroller, or selecting text),
 /// while the pointer is over this scroll view counts as the user scrolling. Programmatic scrolls
 /// send neither event.
 private struct MeetingWheelScrollObserver: ViewModifier {
   let action: () -> Void
+  @Environment(\.historyScrollMonitor) private var scrollMonitor
   @State private var hovering = false
-  @State private var monitor: Any?
+  @State private var installed: (monitor: any HistoryScrollMonitoring, token: Any)?
 
   func body(content: Content) -> some View {
     content
       .onHover { hovering = $0 }
       .onAppear {
-        guard monitor == nil else { return }
+        guard installed == nil, let scrollMonitor else { return }
         // A wheel or trackpad scroll, or a drag on the scroller or in the text, over this view.
-        monitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel, .leftMouseDragged]) {
-          event in
-          if hovering { action() }
-          return event
+        if let token = scrollMonitor.install({ if hovering { action() } }) {
+          installed = (scrollMonitor, token)
         }
       }
       .onDisappear {
-        if let monitor { NSEvent.removeMonitor(monitor) }
-        monitor = nil
+        if let installed { installed.monitor.remove(installed.token) }
+        installed = nil
       }
   }
 }
