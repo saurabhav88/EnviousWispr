@@ -91,7 +91,8 @@ extension SetupSession {
             isNetworkSlow: runtime.isNetworkSlow, isCountingDown: runtime.isCountingDown,
             speechPhase: { downloads.speechPhase($0) }, polishPhase: { downloads.polishPhase($0) },
             downloadsFinished: OnboardingLiveMapping.downloadsFinished(
-              coordinator.state.choices, downloads: downloads))
+              coordinator.state.choices, downloads: downloads),
+            speechStartPending: coordinator.speechStartsInFlight > 0)
         },
         resolveInstalled: {
           let read = OnboardingLiveMapping.downloadOwners(owners, facts: facts)

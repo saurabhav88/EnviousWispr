@@ -125,7 +125,7 @@ final class OnboardingCoordinator {
   /// unfinished ones (plan M18, M50).
   @ObservationIgnored private var ownedSpeech: Set<ASRBackendType> = []
   @ObservationIgnored private var ownedPolish: Set<String> = []
-  @ObservationIgnored private var speechStartsInFlight = 0
+  private(set) var speechStartsInFlight = 0
   /// Per engine, bumped whenever a speech start takes ownership: a delayed Cancel decision
   /// (an `unknown` phase resolved later) only acts if no newer start owns that engine.
   @ObservationIgnored private var speechOwnershipStarts: [ASRBackendType: Int] = [:]

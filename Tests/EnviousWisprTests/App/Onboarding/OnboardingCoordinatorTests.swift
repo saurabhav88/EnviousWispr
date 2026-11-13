@@ -159,7 +159,7 @@ struct OnboardingCoordinatorTests {
         speechReportsEnd: { self.reportsEnd.contains($0) })
     }
 
-    private func makeCoordinator(owners: OnboardingDownloadOwners) -> OnboardingCoordinator {
+    func makeCoordinator(owners: OnboardingDownloadOwners) -> OnboardingCoordinator {
       let sources = OnboardingReadinessSources(
         speechAdmitted: { engine in
           if engine == .parakeet, let admission = self.upgradeServed {
