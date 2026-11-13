@@ -44,7 +44,8 @@
     func show(
       coordinator: OnboardingCoordinator, telemetry: OnboardingTelemetryObserver?,
       sources: SetupScreenSources = SetupScreenSources(),
-      activateApp: (@MainActor () -> Void)? = nil
+      activateApp: (@MainActor () -> Void)? = nil,
+      downloadsVisible: (@MainActor (Bool) -> Void)? = nil
     ) {
       if let window {
         window.makeKeyAndOrderFront(nil)
@@ -53,6 +54,7 @@
       }
       let model = SetupScreenModel(coordinator: coordinator)
       model.sources = sources
+      model.onDownloadsVisible = downloadsVisible
       model.onPresented = { [weak telemetry] step, resumed in
         telemetry?.screenPresented(step, resumed: resumed)
       }

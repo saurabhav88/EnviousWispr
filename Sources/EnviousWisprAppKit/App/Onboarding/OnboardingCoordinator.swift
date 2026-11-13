@@ -3,6 +3,7 @@ import EnviousWisprPipeline
 import IOKit.pwr_mgt
 import EnviousWisprServices
 import Foundation
+import Observation
 
 /// A model Setup may download, for the disk preflight and the sleep assertion.
 enum OnboardingModel: Hashable, Sendable {
@@ -60,7 +61,10 @@ enum OnboardingObservation: Equatable {
 /// (the only navigation authority), runs each transition's effects in order and orchestrates
 /// the existing owners through C2a's adapters. Every async result carries the generation and
 /// pick it was started for and is dropped once either changed.
+/// Observable (plan M83) for the presentation facts only: `state`, `block`, `warmFailed` and the
+/// queued local polish. Every other field is ignored, so observation never sees bookkeeping.
 @MainActor
+@Observable
 final class OnboardingCoordinator {
   /// The narrow boundaries the coordinator uses. `live(...)` is assembled with the window and
   /// door wiring (C2c); tests inject every one.
@@ -109,29 +113,29 @@ final class OnboardingCoordinator {
     }
   }
   /// Retry clears the block and may set it again in the same call: telemetry sees one change.
-  private var holdBlockObservation = false
+  @ObservationIgnored private var holdBlockObservation = false
   /// The last refusal the reducer returned, for the screen to explain a disabled step.
-  private(set) var lastRefusal: String?
+  @ObservationIgnored private(set) var lastRefusal: String?
   /// Bumped by every pick change and by reset; readiness results from an older one drop.
-  private(set) var generation = 0
+  @ObservationIgnored private(set) var generation = 0
   /// Bumped only when the speech context (engine or language) changes, so a polish pick never
   /// supersedes a still-current speech start (plan M50).
-  private(set) var speechGeneration = 0
+  @ObservationIgnored private(set) var speechGeneration = 0
   /// Every transfer this flow requested, through pick changes, so reset and Cancel reach all
   /// unfinished ones (plan M18, M50).
-  private var ownedSpeech: Set<ASRBackendType> = []
-  private var ownedPolish: Set<String> = []
-  private var speechStartsInFlight = 0
+  @ObservationIgnored private var ownedSpeech: Set<ASRBackendType> = []
+  @ObservationIgnored private var ownedPolish: Set<String> = []
+  @ObservationIgnored private var speechStartsInFlight = 0
   /// Per engine, bumped whenever a speech start takes ownership: a delayed Cancel decision
   /// (an `unknown` phase resolved later) only acts if no newer start owns that engine.
-  private var speechOwnershipStarts: [ASRBackendType: Int] = [:]
+  @ObservationIgnored private var speechOwnershipStarts: [ASRBackendType: Int] = [:]
   /// Numbers each download start for telemetry's start/answer pairing (observation only).
-  private var downloadRequests = 0
-  private(set) var isActive = false
+  @ObservationIgnored private var downloadRequests = 0
+  @ObservationIgnored private(set) var isActive = false
   /// True when this flow was restored from a checkpoint (the first screen shown is a resume, not
   /// a forward move). A narrow observation hook for telemetry (#4528 F2a); never navigation.
-  private(set) var resumedFromCheckpoint = false
-  private var startedAt: Date?
+  @ObservationIgnored private(set) var resumedFromCheckpoint = false
+  @ObservationIgnored private var startedAt: Date?
   /// P2: the warm-up context last requested (engine, speech generation, attempt), so a
   /// readiness pass requests at most once per context; and the owned request's cancel.
   private struct WarmContext: Equatable {
@@ -139,26 +143,29 @@ final class OnboardingCoordinator {
     let speechGeneration: Int
     let attempt: Int
   }
-  private var warmRequested: WarmContext?
+  @ObservationIgnored private var warmRequested: WarmContext?
   /// The load this flow asked for, OWNED until its own `run()` returns (even when its answer
   /// has gone stale), so a later quit, reset, Cancel or engine change can still cancel it.
-  private var warmOwned: (request: Int, cancel: @MainActor () async -> Void)?
+  @ObservationIgnored private var warmOwned: (request: Int, cancel: @MainActor () async -> Void)?
   /// The queued or running warm task (a queued one is cancelled before it reaches the owner).
-  private var warmTask: Task<Void, Never>?
-  private var warmRequests = 0
-  private var warmAttempt = 0
+  @ObservationIgnored private var warmTask: Task<Void, Never>?
+  @ObservationIgnored private var warmRequests = 0
+  @ObservationIgnored private var warmAttempt = 0
   /// The current pick's warm-up failed; only `retryWarmup()` asks again (no retry loop).
   private(set) var warmFailed = false
   private var queuedPolish: String?
-  private var holdsSleepAssertion = false
-  private var speechTask: Task<Void, Never>?
-  private var readinessTask: Task<Void, Never>?
+  /// The local polish waiting for the speech download to finish (Downloads' "starts right
+  /// after"), read by the presentation (M83).
+  var queuedPolishID: String? { queuedPolish }
+  @ObservationIgnored private var holdsSleepAssertion = false
+  @ObservationIgnored private var speechTask: Task<Void, Never>?
+  @ObservationIgnored private var readinessTask: Task<Void, Never>?
   /// Every task this coordinator started and has not yet awaited; `settle()` drains it.
-  private var startedTasks: [Task<Void, Never>] = []
+  @ObservationIgnored private var startedTasks: [Task<Void, Never>] = []
   /// Fires after every published change, so the screens and tests read the new state.
-  var onChange: (() -> Void)?
+  @ObservationIgnored var onChange: (() -> Void)?
   /// Telemetry's observation hook (F2b); `OnboardingTelemetryObserver.attach` sets it.
-  var onObservation: ((OnboardingObservation) -> Void)?
+  @ObservationIgnored var onObservation: ((OnboardingObservation) -> Void)?
 
   init(dependencies: Dependencies) {
     deps = dependencies
@@ -399,6 +406,17 @@ final class OnboardingCoordinator {
   // MARK: Private
 
   // MARK: Warm-up (P2)
+
+  /// Getting ready's Try again after a local polish model failed to load (plan M83): the
+  /// selected model's activation and probe through its owner, then a fresh readiness pass for
+  /// the current picks. A result for another pick drops in `refreshReadiness`.
+  func retryPolish() {
+    guard isActive, let polish = state.choices.polish, state.readiness.polish == polish,
+      state.readiness.polishFailed
+    else { return }
+    deps.downloads.retryPolishLoad(polish)
+    invalidateReadiness()
+  }
 
   /// The screen's Try again after a warm-up failure: the next readiness pass asks once more.
   func retryWarmup() {

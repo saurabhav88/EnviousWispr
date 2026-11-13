@@ -34,6 +34,10 @@ struct OnboardingReadiness: Equatable, Sendable {
   var speechInstalled = false
   var engineWarm = false
   var polishReady = false
+  /// The local polish model is installed but its owner reports a failed load (health red, or
+  /// the DEBUG `polish-fail` fault). Distinct from loading, which is installed and not ready yet
+  /// (plan M83).
+  var polishFailed = false
   var microphoneGranted = false
   var accessibilityGranted = false
 
@@ -52,6 +56,7 @@ struct OnboardingReadiness: Equatable, Sendable {
     cloudProvider = nil
     cloudModel = nil
     polishReady = false
+    polishFailed = false
   }
 }
 
@@ -123,6 +128,11 @@ enum OnboardingEvent: Equatable, Sendable {
   case chooseCloud(LLMProvider, model: String)
   case skipPolish
   case turnPolishOn
+  /// Getting ready's way past a polish model that cannot get ready: stores AI polish off. Speech
+  /// and permission readiness are still required (plan M83).
+  case continueWithoutPolish
+  /// Getting ready's way back to Permissions when a grant was turned off (plan M83).
+  case reviewPermissions
   case readinessChanged(OnboardingReadiness)
   case practiceSucceeded
   case skipPractice
@@ -268,6 +278,15 @@ enum OnboardingFlow {
     case (.key, .next): return move(s.isReadyForPractice ? .practice : .gettingReady)
     case (.gettingReady, .next):
       return s.isReadyForPractice ? move(.practice) : refuse("not ready for practice")
+    case (.gettingReady, .continueWithoutPolish):
+      if s.choices.polish != OnboardingChoices.polishOff { s.readiness.clearPolish() }
+      s.choices.polish = OnboardingChoices.polishOff
+      s.choices.cloudProvider = nil
+      s.choices.cloudModel = nil
+      // Off needs no polish readiness; speech and both grants still decide.
+      return move(s.isReadyForPractice ? .practice : .gettingReady)
+    case (.gettingReady, .reviewPermissions):
+      return move(.permissions)
 
     case (.practice, .practiceSucceeded):
       // A resumed Practice opens with empty readiness; a take only counts once the current

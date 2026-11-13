@@ -111,7 +111,10 @@ final class OnboardingLiveFacts {
 /// state, polls the facts without a signal (live permissions, engine readiness between pokes),
 /// samples download speed and drives the Downloads auto-advance. One owner of its task and
 /// observation; `start()`/`stop()` are idempotent. It owns no flow state.
+/// Observable (plan M83) for the presentation facts only: the slow-network notice and the
+/// Downloads countdown.
 @MainActor
+@Observable
 final class OnboardingRuntime {
   struct Inputs {
     /// Reads every tracked owner fact readiness depends on (inside observation tracking) and
@@ -137,23 +140,25 @@ final class OnboardingRuntime {
   private let coordinator: OnboardingCoordinator
   private let facts: OnboardingLiveFacts
   private let inputs: Inputs
-  private(set) var isRunning = false
-  private var observationGeneration: UInt64 = 0
+  @ObservationIgnored private(set) var isRunning = false
+  @ObservationIgnored private var observationGeneration: UInt64 = 0
   /// Bumped only by start and stop: an Apple Intelligence sample survives an observation re-arm.
-  private var runGeneration: UInt64 = 0
-  private var pollTask: Task<Void, Never>?
-  private var sampleTask: Task<Void, Never>?
-  private var advanceTask: Task<Void, Never>?
-  private var advanceScheduled = false
-  private var lastSnapshot: AnyHashable?
-  private var speed = OnboardingSlowNetworkMonitor()
+  @ObservationIgnored private var runGeneration: UInt64 = 0
+  @ObservationIgnored private var pollTask: Task<Void, Never>?
+  @ObservationIgnored private var sampleTask: Task<Void, Never>?
+  @ObservationIgnored private var advanceTask: Task<Void, Never>?
+  @ObservationIgnored private var advanceScheduled = false
+  @ObservationIgnored private var lastSnapshot: AnyHashable?
+  @ObservationIgnored private var speed = OnboardingSlowNetworkMonitor()
   private var advance = OnboardingAutoAdvance()
-  private var downloadsVisible = false
-  private var lastStep: OnboardingStep?
+  @ObservationIgnored private var downloadsVisible = false
+  @ObservationIgnored private var lastStep: OnboardingStep?
   /// The picks the current observation subscribed for; a change re-arms it (plan M54).
-  private var observedChoices: OnboardingChoices?
+  @ObservationIgnored private var observedChoices: OnboardingChoices?
   /// The slow-network notice for the Downloads screen.
   private(set) var isNetworkSlow = false
+  /// Downloads' 1.6 s countdown is running ("Taking you to the next step").
+  var isCountingDown: Bool { advance.isCounting }
 
   init(coordinator: OnboardingCoordinator, facts: OnboardingLiveFacts, inputs: Inputs) {
     self.coordinator = coordinator

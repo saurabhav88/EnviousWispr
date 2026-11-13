@@ -77,7 +77,9 @@ enum OnboardingReadinessReader {
       readiness.cloudModel = model
       readiness.polishReady = true
     } else if let model = OnboardingDownloads.localModel(forPolish: polish) {
-      readiness.polishReady = sources.localPolish(model)?.isLoaded ?? false
+      let local = sources.localPolish(model)
+      readiness.polishReady = local?.isLoaded ?? false
+      readiness.polishFailed = local.map { $0.installed && !$0.healthy } ?? false
     } else if SetupRules.registeredPolish[polish]?.provider == .appleIntelligence {
       readiness.polishReady = sources.appleIntelligence() == .available
     }

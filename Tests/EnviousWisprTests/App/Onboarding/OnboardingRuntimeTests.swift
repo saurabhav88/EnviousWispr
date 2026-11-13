@@ -15,7 +15,7 @@ import Testing
 @MainActor
 @Suite(.tags(.productOutcome))
 struct OnboardingRuntimeTests {
-  private static let t0 = Date(timeIntervalSince1970: 10_000)
+  static let t0 = Date(timeIntervalSince1970: 10_000)
 
   // MARK: Slow network
 
@@ -146,7 +146,7 @@ struct OnboardingRuntimeTests {
     }
   }
 
-  private static func runtime(
+  static func runtime(
     _ world: OnboardingCoordinatorTests.World, _ c: OnboardingCoordinator, _ facts: Facts,
     clock: @escaping () -> Date, read: (() -> AnyHashable)? = nil
   ) -> OnboardingRuntime {
@@ -162,7 +162,7 @@ struct OnboardingRuntimeTests {
   }
 
   /// A coordinator on the Downloads screen.
-  private static func atDownloads(_ world: OnboardingCoordinatorTests.World)
+  static func atDownloads(_ world: OnboardingCoordinatorTests.World)
     -> OnboardingCoordinator
   {
     let c = world.coordinator()

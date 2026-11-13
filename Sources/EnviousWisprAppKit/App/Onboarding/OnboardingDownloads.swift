@@ -225,6 +225,15 @@ struct OnboardingDownloads {
     return OnboardingStart(id: id, answer: owners.requestPolish(model) ? .requested : .refused)
   }
 
+  /// Getting ready's Try again after a failed load (plan M83): the selected model's existing
+  /// activation and probe door, only for an installed local model (`activatePolish` itself
+  /// refuses a model that is no longer the current provider's).
+  func retryPolishLoad(_ id: String) {
+    guard let model = Self.localModel(forPolish: id), owners.polishPhase(model) == .installed
+    else { return }
+    owners.activatePolish(model)
+  }
+
   /// Nothing to cancel for a pick that downloads nothing.
   func cancelPolish(_ id: String) {
     guard let model = Self.localModel(forPolish: id) else { return }

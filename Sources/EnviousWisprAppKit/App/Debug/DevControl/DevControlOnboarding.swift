@@ -26,6 +26,8 @@
       /// Brings the app forward when the Setup screens show (`ApplicationActivating`, the
       /// desktop-effects owner); nil leaves activation alone (tests).
       var activateApp: (@MainActor () -> Void)? = nil
+      /// Downloads and Getting ready's typed picture from the live owners (D4a, M83).
+      var downloadsPresentation: (@MainActor () -> OnboardingDownloadsPresentation)? = nil
       /// Asks each speech engine's owner, read-only, whether it is installed (the same
       /// `speechInstalled` query Setup's readiness uses), so the catalog can answer Parakeet's
       /// upgrade-aware "installed" with no pick (I1, plan M69). Never selects or downloads.
@@ -144,9 +146,19 @@
       sources.recheckAppleIntelligence = { [weak runtime = session.runtime] in
         runtime?.recheckAppleIntelligence()
       }
+      sources.downloads = session.downloadsPresentation
+      let coordinator = session.coordinator
+      sources.downloadActions = SetupDownloadActions(
+        retryDownloads: { [weak coordinator] in coordinator?.retryDownloads() },
+        cancelDownloads: { [weak coordinator] in coordinator?.cancelDownloads() },
+        retryWarmup: { [weak coordinator] in coordinator?.retryWarmup() },
+        retryPolish: { [weak coordinator] in coordinator?.retryPolish() })
       presenter.show(
         coordinator: session.coordinator, telemetry: session.telemetry, sources: sources,
-        activateApp: session.activateApp)
+        activateApp: session.activateApp,
+        downloadsVisible: { [weak runtime = session.runtime] visible in
+          runtime?.setDownloadsScreenVisible(visible)
+        })
       return .ok(snapshot())
     }
 
@@ -307,6 +319,24 @@
       OnboardingDebugFaults.active.removeAll()
     }
 
+    /// Getting ready's warm-up Try again (plan M83): the coordinator's own action. Accepted is
+    /// not proof that warming succeeded; the reply carries the state as it stands.
+    func retryWarmup() -> Result {
+      guard let session = activeSession() else { return notRunning() }
+      session.coordinator.retryWarmup()
+      session.runtime.tick()
+      return .ok(snapshot())
+    }
+
+    /// Getting ready's polish Try again (plan M83): the coordinator's own action, through the
+    /// selected model's activation door. Accepted is not proof the model loaded.
+    func retryPolish() -> Result {
+      guard let session = activeSession() else { return notRunning() }
+      session.coordinator.retryPolish()
+      session.runtime.tick()
+      return .ok(snapshot())
+    }
+
     func goto(_ args: [String: Any]) -> Result {
       guard let session = activeSession() else { return notRunning() }
       guard let raw = args["step"] as? String, let step = OnboardingStep(rawValue: raw),
@@ -351,8 +381,8 @@
     /// The button events Setup's screens send. Readiness is never sendable: it is measured live.
     static let sendableEvents = [
       "next", "back", "chooseLanguage", "compareSpeech", "chooseSpeech", "seeAllPolish",
-      "choosePolish", "chooseCloud", "skipPolish", "turnPolishOn", "practiceSucceeded",
-      "skipPractice", "filmFinished", "skipFilm",
+      "choosePolish", "chooseCloud", "skipPolish", "turnPolishOn", "continueWithoutPolish",
+      "reviewPermissions", "practiceSucceeded", "skipPractice", "filmFinished", "skipFilm",
     ]
 
     static func event(from args: [String: Any]) -> Parsed {
@@ -367,6 +397,8 @@
       case "seeAllPolish": return .success(.seeAllPolish)
       case "skipPolish": return .success(.skipPolish)
       case "turnPolishOn": return .success(.turnPolishOn)
+      case "continueWithoutPolish": return .success(.continueWithoutPolish)
+      case "reviewPermissions": return .success(.reviewPermissions)
       case "practiceSucceeded": return .success(.practiceSucceeded)
       case "skipPractice": return .success(.skipPractice)
       case "filmFinished": return .success(.filmFinished)
@@ -453,6 +485,9 @@
         out["block"] = coordinator.block.map(Self.block) ?? NSNull()
         out["lastRefusal"] = coordinator.lastRefusal ?? NSNull()
         out["networkSlow"] = session?.runtime.isNetworkSlow ?? false
+        out["countingDown"] = session?.runtime.isCountingDown ?? false
+        out["warmFailed"] = coordinator.warmFailed
+        out["queuedPolish"] = coordinator.queuedPolishID ?? NSNull()
         out["running"] = session?.runtime.isRunning ?? false
         out["recommended"] = [
           "speech": state.recommended.speech.rawValue, "polish": state.recommended.polish,
@@ -519,6 +554,7 @@
       [
         "speech": r.speech?.rawValue ?? NSNull(), "speechInstalled": r.speechInstalled,
         "engineWarm": r.engineWarm, "polish": r.polish ?? NSNull(), "polishReady": r.polishReady,
+        "polishFailed": r.polishFailed,
         "microphone": r.microphoneGranted, "accessibility": r.accessibilityGranted,
       ]
     }
@@ -647,6 +683,23 @@
                 },
                 actions: .live(owners.permissions))),
             activateApp: { owners.application.activate(.standard) },
+            downloadsPresentation: { [weak coordinator, weak runtime] in
+              guard let coordinator, let runtime else {
+                return OnboardingDownloadsPresentation.make(
+                  state: OnboardingFlowState(), block: nil, warmFailed: false, queuedPolish: nil,
+                  isNetworkSlow: false, isCountingDown: false, speechPhase: { _ in .unknown },
+                  polishPhase: { _ in nil }, downloadsFinished: false)
+              }
+              let downloads = OnboardingDownloads(
+                owners: OnboardingLiveMapping.downloadOwners(owners, facts: facts))
+              return OnboardingDownloadsPresentation.make(
+                state: coordinator.state, block: coordinator.block,
+                warmFailed: coordinator.warmFailed, queuedPolish: coordinator.queuedPolishID,
+                isNetworkSlow: runtime.isNetworkSlow, isCountingDown: runtime.isCountingDown,
+                speechPhase: { downloads.speechPhase($0) }, polishPhase: { downloads.polishPhase($0) },
+                downloadsFinished: OnboardingLiveMapping.downloadsFinished(
+                  coordinator.state.choices, downloads: downloads))
+            },
             resolveInstalled: {
               let read = OnboardingLiveMapping.downloadOwners(owners, facts: facts)
               for engine in [ASRBackendType.parakeet, .whisper] {

@@ -382,4 +382,29 @@ struct SetupWindowRootTests {
         .write(to: folder.appending(path: "setup-polish-seeall-\(afm.rawValue)-reduce-motion.png"))
     }
   }
+
+  @Test("Downloads counts as on screen only while it is the mounted route in a visible window")
+  func downloadsVisibilityFollowsTheMountedRouteAndTheWindow() {
+    let world = OnboardingCoordinatorTests.World()
+    let coordinator = OnboardingRuntimeTests.atDownloads(world)
+    let model = SetupScreenModel(coordinator: coordinator)
+    defer { model.detach() }
+    var calls: [Bool] = []
+    model.onDownloadsVisible = { calls.append($0) }
+    model.setWindowVisible(true)
+    #expect(calls.isEmpty, "Downloads counted before its screen mounted")
+    model.screenMounted(.downloads, epoch: model.routeEpoch)
+    #expect(calls == [true])
+    model.setWindowVisible(false)  // hidden, minimized or covered
+    model.setWindowVisible(true)
+    #expect(calls == [true, false, true])
+    coordinator.send(.next)  // Permissions
+    #expect(calls == [true, false, true, false])
+    coordinator.send(.back)  // Downloads again, not mounted yet
+    #expect(calls == [true, false, true, false])
+    model.screenMounted(.downloads, epoch: model.routeEpoch)
+    #expect(calls.last == true)
+    model.detach()
+    #expect(calls.last == false, "detaching left the countdown armed")
+  }
 }

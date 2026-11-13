@@ -351,7 +351,8 @@ ONBOARDING_FAULTS = ("download-fail", "slow-network", "disk-short", "key-invalid
                      "polish-fail")
 ONBOARDING_EVENTS = ("next", "back", "chooseLanguage", "compareSpeech", "chooseSpeech",
                      "seeAllPolish", "choosePolish", "chooseCloud", "skipPolish", "turnPolishOn",
-                     "practiceSucceeded", "skipPractice", "filmFinished", "skipFilm")
+                     "continueWithoutPolish", "reviewPermissions", "practiceSucceeded",
+                     "skipPractice", "filmFinished", "skipFilm")
 # ShortcutRole raw values; the door refuses anything else.
 SHORTCUT_ROLES = ("record", "cancel", "quickAdd", "pasteLast", "copyLast")
 MODEL_ACTIONS = ("download", "cancel")
@@ -430,6 +431,8 @@ def build_parser():
     for verb in ("status", "begin", "reset", "stop"):
         onboarding.add_parser(verb)
     onboarding.add_parser("present", help="show the new Setup screens for the running session (D0)")
+    onboarding.add_parser("retry-warmup", help="Getting ready's warm-up Try again (not proof)")
+    onboarding.add_parser("retry-polish", help="Getting ready's polish Try again (not proof)")
     goto = onboarding.add_parser("goto", help="DEBUG positioning, not proof of prerequisites")
     goto.add_argument("step", choices=ONBOARDING_STEPS)
     send = onboarding.add_parser("send", help="send the event a Setup button sends")
@@ -605,7 +608,7 @@ def route(args):
     if args.group == "onboarding":
         if args.action == "status":
             return "onboarding.status", None, False
-        if args.action in ("begin", "reset", "stop", "present"):
+        if args.action in ("begin", "reset", "stop", "present", "retry-warmup", "retry-polish"):
             return f"onboarding.{args.action}", None, True
         if args.action == "goto":
             return "onboarding.goto", {"step": args.step}, True

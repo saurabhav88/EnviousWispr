@@ -81,6 +81,17 @@ final class SetupScreenModel {
   @ObservationIgnored var onPresented: ((OnboardingStep, _ resumed: Bool) -> Void)?
   /// True only while the window is on screen: a mounted view in a hidden window is not a view.
   @ObservationIgnored private(set) var isWindowVisible = false
+  /// Downloads is the CURRENT mounted route AND the window is on screen (plan M83): the runtime's
+  /// countdown runs only then. The presenter binds it to `OnboardingRuntime.setDownloadsScreenVisible`.
+  @ObservationIgnored var onDownloadsVisible: ((Bool) -> Void)?
+  @ObservationIgnored private var downloadsVisible = false
+
+  private func updateDownloadsVisibility() {
+    let visible = isWindowVisible && mountedEpoch == routeEpoch && state.step == .downloads
+    guard visible != downloadsVisible else { return }
+    downloadsVisible = visible
+    onDownloadsVisible?(visible)
+  }
   /// The steps that have a real screen so far (D1 to D3a).
   static let realScreens: Set<OnboardingStep> = [
     .welcome, .language, .speechPick, .speechCompare, .polishIntro, .polishPick, .polishSeeAll,
@@ -131,6 +142,7 @@ final class SetupScreenModel {
   func setWindowVisible(_ visible: Bool) {
     isWindowVisible = visible
     if visible { reportIfShown() }
+    updateDownloadsVisibility()
   }
 
   /// A real screen mounted for route `epoch` (its `onAppear`). The one presentation producer:
@@ -140,6 +152,7 @@ final class SetupScreenModel {
     guard epoch == routeEpoch, step == state.step else { return }
     mountedEpoch = epoch
     reportIfShown()
+    updateDownloadsVisibility()
   }
 
   private func reportIfShown() {
@@ -156,6 +169,7 @@ final class SetupScreenModel {
     state = coordinator.state
     isPracticeUsable = coordinator.isPracticeUsable
     if state.step != previous.step { routeEpoch &+= 1 }
+    updateDownloadsVisibility()
     let languageChanged = state.choices.languageMode != previous.choices.languageMode
     let onSpeechPair = state.step == .speechPick || state.step == .speechCompare
     if !onSpeechPair || languageChanged { speechDraft = nil }
@@ -170,6 +184,8 @@ final class SetupScreenModel {
   /// Stops mirroring. Only this model's subscription is removed.
   func detach() {
     isWindowVisible = false
+    updateDownloadsVisibility()
+    onDownloadsVisible = nil
     onPresented = nil
     coordinator?.onChange = nil
     coordinator = nil
@@ -194,6 +210,11 @@ struct SetupScreenSources {
   var shortcut: SetupShortcutSources?
   /// The permissions screen's owners (D4b); nil renders "not asked" with inert actions.
   var permissions: SetupPermissionsSources?
+  /// Downloads and Getting ready's picture of the current picks (D4a, M83), read live in the
+  /// view body so owner changes redraw it.
+  var downloads: (@MainActor () -> OnboardingDownloadsPresentation)?
+  /// Downloads and Getting ready actions, all through the coordinator (D4a, M83).
+  var downloadActions = SetupDownloadActions()
 }
 
 /// The two permissions' owners for Setup's Permissions screen (#4528 D4b, plan M81).
@@ -205,6 +226,17 @@ struct SetupPermissionsSources {
   /// The dictation key's spoken name for the Accessibility card ("Right Option").
   var dictationKey: @MainActor () -> String
   var actions: SetupPermissionsActions
+}
+
+/// The coordinator's own actions for Downloads and Getting ready (plan M83). Views never call a
+/// delivery or engine owner directly.
+struct SetupDownloadActions {
+  /// Both current downloads again (clears a block; rechecks disk).
+  var retryDownloads: @MainActor () -> Void = {}
+  /// Both current downloads stopped (the owners' explicit cancels).
+  var cancelDownloads: @MainActor () -> Void = {}
+  var retryWarmup: @MainActor () -> Void = {}
+  var retryPolish: @MainActor () -> Void = {}
 }
 
 /// The record shortcut's owners for Setup's key screen (#4528 D5, plan M80).
