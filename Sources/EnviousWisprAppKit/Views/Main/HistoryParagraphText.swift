@@ -29,6 +29,8 @@ struct HistoryParagraphText: View {
   let hasGutter: Bool
   /// Hover or focus in the card: show the gutter's buttons.
   let revealGutter: Bool
+  /// Reduce Motion: the gutter appears without its fade.
+  let reduceMotion: Bool
   let focus: FocusState<HistoryDictationCard.Focus?>.Binding
   let onPlay: (Double) -> Void
   let onOpenChange: (Int) -> Void
@@ -78,7 +80,7 @@ struct HistoryParagraphText: View {
         .buttonStyle(.plain)
         .focused(focus, equals: .gutter(block.id))
         .opacity(revealGutter ? 1 : 0)
-        .animation(SettingsHover.animation, value: revealGutter)
+        .animation(reduceMotion ? nil : SettingsHover.animation, value: revealGutter)
         .accessibilityLabel(
           Text(
             "Play from \(label)",

@@ -46,6 +46,7 @@ struct HistoryDictationCard: View {
   @Environment(HistoryPaste.self) private var historyPaste
   @Environment(PreviousApplicationTracker.self) private var previousApplication
   @Environment(SettingsManager.self) private var settings
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   // Recording
   @State private var status: DictationRecordingStatus?
@@ -101,6 +102,7 @@ struct HistoryDictationCard: View {
       HistoryParagraphText(
         blocks: blocks(row: row, texts: texts, prepared: current),
         hasGutter: player != nil && !timeline.isEmpty, revealGutter: revealGutter,
+        reduceMotion: reduceMotion,
         focus: $focus,
         onPlay: { play(from: $0) },
         onOpenChange: { openChange = $0 })
@@ -340,24 +342,27 @@ struct HistoryDictationCard: View {
           item: DeliverableText(resolve: { exportText }),
           preview: SharePreview(Self.dictationWord)
         ) {
-          Image(systemName: "square.and.arrow.up")
+          EnviousButtonLabel(
+            LocalizedStringResource("Share", comment: "History dictation card: shares the text."),
+            size: .medium, systemImage: "square.and.arrow.up")
         }
-        .buttonStyle(.borderless)
+        .settingsButton(.quiet, size: .medium, isEnabled: true)
         .focused($focus, equals: .control("share"))
-        .accessibilityLabel(Text("Share", comment: "History dictation card: shares the text."))
         Button {
           saveDocument()
         } label: {
-          Image(systemName: "square.and.arrow.down")
+          EnviousButtonLabel(
+            LocalizedStringResource(
+              "Save as", comment: "History dictation card: saves the text to a file."),
+            size: .medium, systemImage: "square.and.arrow.down")
         }
-        .buttonStyle(.borderless)
+        .settingsButton(.quiet, size: .medium, isEnabled: true)
         .focused($focus, equals: .control("save"))
-        .accessibilityLabel(
-          Text("Save as", comment: "History dictation card: saves the text to a file."))
       }
       // Shown on hover and on keyboard focus anywhere in the card, as the mock places them.
+      // The state changes without the fade under Reduce Motion.
       .opacity(revealGutter ? 1 : 0)
-      .animation(SettingsHover.animation, value: revealGutter)
+      .animation(reduceMotion ? nil : SettingsHover.animation, value: revealGutter)
 
       Spacer(minLength: 0)
 
@@ -405,15 +410,12 @@ struct HistoryDictationCard: View {
         navigation.request(.appSettings(.permissions))
       }
     } label: {
-      Label {
-        Text(EscapeRecoveryRowPresentation.pasteLabel)
-      } icon: {
-        Image(systemName: "arrow.right.doc.on.clipboard")
-      }
+      EnviousButtonLabel(
+        verbatim: EscapeRecoveryRowPresentation.pasteLabel, size: .medium,
+        systemImage: "arrow.right.doc.on.clipboard")
     }
-    .buttonStyle(.borderless)
+    .settingsButton(.quiet, size: .medium, isEnabled: pasteAllowed(row))
     .focused($focus, equals: .control("paste"))
-    .disabled(!pasteAllowed(row))
     .help(
       Text(
         "Paste into the app you were just using",

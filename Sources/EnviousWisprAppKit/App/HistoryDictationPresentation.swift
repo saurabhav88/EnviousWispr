@@ -345,6 +345,17 @@ enum HistoryDictationPresentation {
 
   /// `range` in the target text, when its first and last characters both sit in literally
   /// unchanged stretches; nil otherwise.
+  ///
+  /// **Why the ends and not every word.** An anchor times a passage by where it STARTS: the
+  /// time button seeks there. A start (and end) the processing or polish left literally
+  /// unchanged lands on the same words in the target text, and the alignment is monotonic, so
+  /// the projected range cannot cross into another passage. Words changed inside the passage do
+  /// not move its start. Requiring the whole passage to be literally unchanged would leave
+  /// almost every polished sentence untimed, because polish almost always changes a word.
+  ///
+  /// **Known limit, stated:** when the same words occur twice and the cleanup keeps one copy,
+  /// the alignment decides which copy was kept, so the kept passage may carry the other copy's
+  /// time. Both copies are the same words; the seek plays one of them.
   static func project(_ range: Range<Int>, through spans: [WordDiff.EqualSpan]) -> Range<Int>? {
     guard !range.isEmpty, let start = project(range.lowerBound, through: spans),
       let last = project(range.upperBound - 1, through: spans), last >= start
