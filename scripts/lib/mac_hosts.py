@@ -26,7 +26,10 @@ Usage:
   mac_hosts.py list            print the effective hosts as JSON
   mac_hosts.py check-config    exit 0 when the file is absent or valid, else 2
   mac_hosts.py sha             print the config's SHA-256 ("none" when absent); exit 2 if invalid
-  mac_hosts.py eligible-ci [--real]   remote CI hosts usable now, in order (probe cached 60 s)
+  mac_hosts.py eligible-ci [--real [FILTER ...]]
+                               remote CI hosts usable now, in order (probe cached 60 s). --real: a
+                               real-boundary run; it needs a host with audio "real" unless FILTERs
+                               are given and every one names a suite in AUDIO_FREE_LIST
   mac_hosts.py local-workers   this Mac's ci_workers (4 when there is no config)
   mac_hosts.py --self-test
 """
@@ -47,6 +50,11 @@ KINDS = {"ci", "uat"}
 AUDIO = {"real", "blackhole"}
 LOCAL_KEYS = {"name", "display", "ssh", "order", "kinds", "ci_workers", "audio"}
 REMOTE_KEYS = LOCAL_KEYS | {"root", "requires_mount", "repo_url"}
+# Real-boundary suites that need no live audio device (models, files, GPU only), so a backup
+# Mac whose audio is "blackhole" may run them. Tracked; each entry's suite carries the
+# `.audioDeviceFree` tag in its own source, and TestInventoryFreezeTests keeps the list and
+# the tags identical.
+AUDIO_FREE_LIST = Path(__file__).resolve().parents[1] / "real-boundary-audio-free.json"
 IMPLICIT = {"name": "local", "display": "This Mac", "ssh": None, "order": 0,
             "kinds": ["ci", "uat"], "ci_workers": 4, "audio": "real"}
 
@@ -233,6 +241,44 @@ def probe(host, cache_dir=None, now=None):
     return facts
 
 
+def audio_free_suites(path=None):
+    """The suites AUDIO_FREE_LIST names, as "Target/Suite". Raises ConfigError when the file
+    is missing, unreadable or not exactly schema 1."""
+    path = AUDIO_FREE_LIST if path is None else Path(path)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        raise ConfigError(f"cannot read {path}: {error}") from None
+    if not isinstance(data, dict) or set(data) != {"schema", "about", "suites"} or data["schema"] != 1:
+        raise ConfigError(f'{path}: top level must be exactly {{"schema": 1, "about": ..., "suites": [...]}}')
+    if not isinstance(data["suites"], list):
+        raise ConfigError(f"{path}: suites must be a list")
+    suites = set()
+    for index, entry in enumerate(data["suites"]):
+        if (not isinstance(entry, dict) or set(entry) != {"suite", "file"}
+                or not isinstance(entry["suite"], str) or not isinstance(entry["file"], str)
+                or not re.fullmatch(r"[A-Za-z0-9_]+/[A-Za-z0-9_.]+", entry["suite"])
+                or not entry["file"].startswith("Tests/") or not entry["file"].endswith(".swift")):
+            raise ConfigError(f'{path}: suites[{index}] must be {{"suite": "Target/Suite", "file": "Tests/....swift"}}')
+        suites.add(entry["suite"])
+    return suites
+
+
+def needs_real_audio(filters, listed):
+    """(needs, reason) for a real-boundary run with these test filters. Only a filtered run
+    whose every filter names a listed suite (or a test inside one) needs no live audio device;
+    an unfiltered run includes the microphone suites."""
+    if not filters:
+        return True, "an unfiltered real-boundary run includes suites that need a microphone"
+    for raw in filters:
+        selection = raw[len("-only-testing:"):] if raw.startswith("-only-testing:") else raw
+        parts = selection.split("/")
+        suite = "/".join(parts[:2]) if len(parts) >= 2 and all(parts[:2]) else None
+        if suite not in listed:
+            return True, f"{selection} is not a suite listed in {AUDIO_FREE_LIST.name}"
+    return False, f"every selected suite is listed in {AUDIO_FREE_LIST.name}"
+
+
 def eligible_ci(hosts, *, need_real, local_build, probe_fn):
     """CI hosts in order: the local host first when it takes CI work, then each
     remote that is reachable, has its work drive, the same Xcode build as this
@@ -290,6 +336,44 @@ def self_test():
         except ConfigError:
             refused = True
         check(f"{label} refused", refused)
+    # Real-boundary audio: only filters that all name listed suites run without real audio.
+    listed = {"EnviousWisprASRTests/Free"}
+    for label, filters, expected in (
+            ("unfiltered run needs real audio", [], True),
+            ("listed suite needs none", ["EnviousWisprASRTests/Free"], False),
+            ("test in a listed suite needs none", ["-only-testing:EnviousWisprASRTests/Free/run()"], False),
+            ("one unlisted filter needs real audio", ["EnviousWisprASRTests/Free", "EnviousWisprTests/Mic"], True),
+            ("target only needs real audio", ["EnviousWisprASRTests"], True),
+            ("suite prefix is not the suite", ["EnviousWisprASRTests/FreeMore"], True),
+            ("empty suite part needs real audio", ["EnviousWisprASRTests/"], True)):
+        check(label, needs_real_audio(filters, listed)[0] is expected)
+    blackhole = [h for h in parsed if h["audio"] == "blackhole"]
+    reachable = lambda host: {"reachable": True, "mount_ok": True, "xcode_build": "B1"}
+    check("a real-audio run skips a blackhole host",
+          eligible_ci(blackhole, need_real=True, local_build="B1", probe_fn=reachable)[0] == [])
+    check("an audio-free run may use a blackhole host",
+          [h["name"] for h in eligible_ci(blackhole, need_real=False, local_build="B1",
+                                          probe_fn=reachable)[0]] == ["spare"])
+    import tempfile
+    with tempfile.TemporaryDirectory() as folder:
+        listing = Path(folder) / "list.json"
+        listing.write_text(json.dumps({"schema": 1, "about": "x", "suites": [
+            {"suite": "EnviousWisprASRTests/Free", "file": "Tests/EnviousWisprASRTests/Free.swift"}]}))
+        check("the audio-free list reads", audio_free_suites(listing) == {"EnviousWisprASRTests/Free"})
+        for label, bad in (
+                ("list with unknown key", {"schema": 1, "about": "x", "suites": [], "extra": 1}),
+                ("list entry without file", {"schema": 1, "about": "x", "suites": [{"suite": "A/B"}]}),
+                ("list entry not Target/Suite", {"schema": 1, "about": "x", "suites": [
+                    {"suite": "A", "file": "Tests/A/B.swift"}]}),
+                ("list of another schema", {"schema": 2, "about": "x", "suites": []})):
+            listing.write_text(json.dumps(bad))
+            try:
+                audio_free_suites(listing)
+                refused = False
+            except ConfigError:
+                refused = True
+            check(f"{label} refused", refused)
+    check("the tracked audio-free list reads", isinstance(audio_free_suites(), set))
     for label in failures:
         print(f"FAIL: {label}")
     print(f"mac_hosts self-test: {len(ran) - len(failures)} of {len(ran)} checks passed")
@@ -315,10 +399,20 @@ def main(argv):
         if argv == ["sha"]:
             print(load()[1])
             return 0
-        if argv in (["eligible-ci"], ["eligible-ci", "--real"]):
+        if argv[:1] == ["eligible-ci"] and (len(argv) == 1 or argv[1] == "--real"):
             # Remote CI hosts that may take this run, in order, one name per line;
             # the local host is always the caller's first slot and is not listed.
             hosts, _ = load()
+            need_real = False
+            if len(argv) > 1:
+                # A real-boundary run: real audio unless every filter names a listed suite.
+                # An unreadable list fails toward real audio, loudly.
+                try:
+                    need_real, reason = needs_real_audio(argv[2:], audio_free_suites())
+                except ConfigError as error:
+                    need_real, reason = True, f"audio-free list unusable: {error}"
+                print(f"==> real-boundary run needs real audio: {'yes' if need_real else 'no'} ({reason})",
+                      file=sys.stderr)
             remotes = [h for h in hosts if h["ssh"] is not None]
             if not remotes:
                 return 0
@@ -328,7 +422,7 @@ def main(argv):
                           / "Library/Caches/EnviousWispr/local-ci/hosts" / host["name"])
                 return probe(host, cache_dir=folder)
 
-            eligible, skipped = eligible_ci(hosts, need_real=argv[-1] == "--real",
+            eligible, skipped = eligible_ci(hosts, need_real=need_real,
                                             local_build=build, probe_fn=probe_fn)
             for name, reason in skipped:
                 print(f"==> {name} is not used for this run: {reason}", file=sys.stderr)
@@ -339,7 +433,7 @@ def main(argv):
     except ConfigError as error:
         print(f"ERROR: Mac host config {CONFIG_PATH}: {error}", file=sys.stderr)
         return 2
-    print("usage: mac_hosts.py list|check-config|sha|local-workers|eligible-ci [--real]|--self-test", file=sys.stderr)
+    print("usage: mac_hosts.py list|check-config|sha|local-workers|eligible-ci [--real [FILTER ...]]|--self-test", file=sys.stderr)
     return 2
 
 

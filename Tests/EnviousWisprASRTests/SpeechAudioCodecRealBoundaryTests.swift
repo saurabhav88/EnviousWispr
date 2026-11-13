@@ -167,7 +167,8 @@ private enum SpeechCodecFixture {
   }
 }
 
-@Suite("#3147 P1-0 compressed speech audio", .serialized, .tags(.productOutcome))
+@Suite(
+  "#3147 P1-0 compressed speech audio", .serialized, .tags(.productOutcome, .audioDeviceFree))
 struct SpeechAudioCodecRealBoundaryTests {
 
   /// Size and duration at one bitrate. Size is projected from a ten-minute take made by
