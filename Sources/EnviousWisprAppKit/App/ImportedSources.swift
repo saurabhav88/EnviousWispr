@@ -201,16 +201,16 @@ final class ImportedSources: ImportedSourceAccessing {
     lookupsStarted += 1
     let check = await Self.lookup(rowID: rowID, reference: resolved.reference, io: io)
     guard !Task.isCancelled else {
-      audio.close()
+      audio.stopReading()
       throw CancellationError()
     }
     guard isUnchanged(rowID, reference: resolved.reference, fence: fence) else {
-      audio.close()
+      audio.stopReading()
       return nil
     }
     guard case .available(let confirmed) = check.state, confirmed.identity == resolved.identity
     else {
-      audio.close()
+      audio.stopReading()
       store(rowID, reference: resolved.reference, state: check.state)
       return nil
     }

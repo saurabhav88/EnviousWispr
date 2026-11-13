@@ -224,7 +224,7 @@ struct ImportedFilePlaybackTests {
     _ = try Self.readAll(audio, ms: 1_000)
     _ = try audio.window(startMs: 3_000, count: 250)
     _ = try audio.window(startMs: 500, count: 250)
-    audio.close()
+    audio.stopReading()
     #expect(throws: ImportedFilePlaybackAudio.Failure.unreadable) {
       try audio.window(startMs: 0, count: 250)
     }
@@ -323,7 +323,7 @@ struct ImportedFilePlaybackTests {
         handle.write(Data((line + "\n").utf8))
         try handle.close()
       }
-      audio.close()
+      audio.stopReading()
     }
   }
 

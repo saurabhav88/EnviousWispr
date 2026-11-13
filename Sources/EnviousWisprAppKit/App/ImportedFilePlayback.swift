@@ -70,7 +70,7 @@ final class ImportedFilePlaybackAudio: PlaybackWindowAudio, @unchecked Sendable 
   private var anchored = false
   /// The current reader has handed out its last buffer.
   private var exhausted = false
-  /// `close()` ran: nothing more is read.
+  /// `stopReading()` ran: nothing more is read.
   private var closed = false
   /// How many readers this audio has started (the first one, then one per far seek).
   private var readersStarted = 0
@@ -119,7 +119,7 @@ final class ImportedFilePlaybackAudio: PlaybackWindowAudio, @unchecked Sendable 
   }
 
   /// Stops reading; later windows throw. Never touches the file.
-  func close() {
+  func stopReading() {
     lock.withLock {
       reader?.cancelReading()
       reader = nil
