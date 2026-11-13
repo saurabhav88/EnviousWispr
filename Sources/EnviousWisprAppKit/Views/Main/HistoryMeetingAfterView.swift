@@ -846,7 +846,8 @@ extension HistoryMeetingAfterView {
         MeetingAfterNotesPane(
           meetingID: meetingID, notes: notes, snapshot: snapshot,
           highlightedNoteID: highlightedNoteID,
-          onSeek: { ms in player?.seek(toMs: ms) })
+          onSeek: { ms in player?.seek(toMs: ms) },
+          playbackMs: { player?.positionMs })
       case .summary:
         summaryPane(
           record, snapshot: snapshot, visibleTurnIDs: visibleTurnIDs, proxy: proxy)
@@ -891,7 +892,7 @@ extension HistoryMeetingAfterView {
             } label: {
               EnviousButtonLabel(
                 LocalizedStringResource(
-                  "Done editing", comment: "History meeting: ends editing the summary."),
+                  "Done editing", comment: "History meeting: ends editing the summary or the notes."),
                 size: .medium, systemImage: "checkmark")
             }
             .settingsButton(.quiet, size: .medium, isEnabled: true)
@@ -1358,10 +1359,62 @@ private struct MeetingAfterNotesPane: View {
   let snapshot: MeetingNotesSnapshot
   let highlightedNoteID: UUID?
   let onSeek: (Int) -> Void
+  /// #3147 PR4A: the playback position, so a block typed after Stop starts there (plan §3.6).
+  let playbackMs: @MainActor () -> Int?
+  /// Read mode keeps note times as seek buttons and the marker highlight; Edit notes swaps in
+  /// the block editor, as Edit summary does for the summary.
+  @State private var editing = false
 
   var body: some View {
+    Group {
+      if editing {
+        editor
+      } else {
+        reader
+      }
+    }
+    // A marker or View source that points at a note shows it in read mode, where it is
+    // highlighted and its time seeks.
+    .onChange(of: highlightedNoteID) { _, id in
+      if id != nil { editing = false }
+    }
+  }
+
+  private var editor: some View {
     VStack(alignment: .leading, spacing: DesignSpacing.md) {
-      saveLine
+      HStack {
+        Spacer(minLength: 0)
+        Button {
+          editing = false
+        } label: {
+          EnviousButtonLabel(
+            LocalizedStringResource(
+              "Done editing", comment: "History meeting: ends editing the summary or the notes."),
+            size: .medium, systemImage: "checkmark")
+        }
+        .settingsButton(.quiet, size: .medium, isEnabled: true)
+      }
+      MeetingNotesBlockEditor(meetingID: meetingID, notes: notes, currentMs: playbackMs)
+    }
+  }
+
+  private var reader: some View {
+    VStack(alignment: .leading, spacing: DesignSpacing.md) {
+      HStack(alignment: .firstTextBaseline) {
+        saveLine
+        Spacer(minLength: 0)
+        if snapshot.canEdit {
+          Button {
+            editing = true
+          } label: {
+            EnviousButtonLabel(
+              LocalizedStringResource(
+                "Edit notes", comment: "History meeting: makes the notes editable."),
+              size: .medium, systemImage: "pencil")
+          }
+          .settingsButton(.quiet, size: .medium, isEnabled: true)
+        }
+      }
       let blocks = snapshot.document.blocks.filter {
         !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
       }

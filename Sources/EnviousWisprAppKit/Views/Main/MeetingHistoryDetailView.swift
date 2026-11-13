@@ -53,6 +53,15 @@ struct MeetingHistoryDetailView: View {
   /// per meeting and audio state (`RosterKey`).
   @State private var rosterRead: KeyedRosterRead<RosterKey>?
 
+  /// #3147 PR4A: where a new note block starts on the meeting timeline. While this meeting
+  /// records, the time since it started; after Stop, the playback position; else unknown.
+  @MainActor private func notesClockMs() -> Int? {
+    if case .recording(let id, let startedAt) = meetings.phase, id == meetingID {
+      return max(0, Int(Date().timeIntervalSince(startedAt) * 1000))
+    }
+    return player?.positionMs
+  }
+
   var body: some View {
     if let record = meetings.record(id: meetingID) {
       ScrollView {
@@ -81,7 +90,7 @@ struct MeetingHistoryDetailView: View {
           tabPicker
           switch tab {
           case .transcript: transcriptTab(record)
-          case .notes: MeetingNotesEditor(meetingID: meetingID)
+          case .notes: MeetingNotesEditor(meetingID: meetingID, currentMs: { notesClockMs() })
           case .summary: MeetingSummaryView(meetingID: meetingID)
           }
         }
