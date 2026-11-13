@@ -436,6 +436,12 @@ import Foundation
     }
   }
 
+  /// The saved sentence timings of one dictation's recording, read off the main actor. `nil`
+  /// when the recording has no timing file.
+  func timing(for rowID: UUID) async throws -> RecordingTiming? {
+    try await archive.timing(for: rowID)
+  }
+
   // MARK: - Inside an admitted History command (never admit again from these)
 
   /// Audio-only deletion. The ticket is withdrawn before the files go, so a late encode cannot

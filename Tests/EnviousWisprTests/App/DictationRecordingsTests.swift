@@ -392,6 +392,7 @@ struct DictationRecordingsTests {
     #expect(timing.exactASRText == "hello")
     #expect(timing.textVersion.hasPrefix("asr-sha256:"))
     #expect(timing.anchors.isEmpty)
+    #expect(try await rig.recordings.timing(for: row.id) == timing)
   }
 
   @Test("a hand-off returns at once; the recording is kept once its encode finishes")
