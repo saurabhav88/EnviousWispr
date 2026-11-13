@@ -71,6 +71,59 @@ struct SetupPracticeScreenTests {
     #expect(openedPermissions == 1)
   }
 
+  @Test("A key Practice window focuses the mounted editor and never steals focus during a take")
+  func initialAndReturningFocus() async throws {
+    _ = NSApplication.shared
+    let settings = SettingsManager(
+      defaults: try #require(TestDefaults.suite("ew.tests.practice-focus.\(UUID())")))
+    var taking = false
+    func screen(_ state: SetupPracticeState) -> SetupPracticeScreen {
+      SetupPracticeScreen(
+        state: state, text: .constant(""), hasSucceeded: false, key: "Right ⌥", polish: .off,
+        settings: settings, devices: [], onSucceeded: {}, onSkip: {}, onBack: {},
+        onOpenPermissions: {}, mayFocusEditor: { !taking })
+    }
+    let rect = NSRect(x: 0, y: 0, width: 460, height: 734)
+    let window = PracticeKeyWindow(
+      contentRect: rect, styleMask: [.titled], backing: .buffered, defer: false)
+    let host = NSHostingView(rootView: screen(.waiting))
+    window.contentView = host
+    host.frame = rect
+    host.layoutSubtreeIfNeeded()
+    await drainFocusRequest()
+    #expect(window.firstResponder === textEditor(in: host))
+
+    window.makeFirstResponder(nil)
+    taking = true
+    NotificationCenter.default.post(name: NSWindow.didBecomeKeyNotification, object: window)
+    await drainFocusRequest()
+    #expect(window.firstResponder !== textEditor(in: host))
+
+    taking = false
+    NotificationCenter.default.post(name: NSWindow.didBecomeKeyNotification, object: window)
+    await drainFocusRequest()
+    #expect(window.firstResponder === textEditor(in: host))
+
+    host.rootView = screen(.accessibilityOff)
+    host.layoutSubtreeIfNeeded()
+    window.makeFirstResponder(nil)
+    host.rootView = screen(.waiting)
+    host.layoutSubtreeIfNeeded()
+    await drainFocusRequest()
+    #expect(window.firstResponder === textEditor(in: host))
+  }
+
+  private final class PracticeKeyWindow: NSWindow {
+    override var isKeyWindow: Bool { true }
+  }
+
+  private func drainFocusRequest() async {
+    // The production focus request is queued on main, so this barrier follows it.
+    await withCheckedContinuation { done in
+      DispatchQueue.main.async { done.resume() }
+    }
+  }
+
   private func textEditor(in view: NSView) -> NSTextView? {
     if let editor = view as? NSTextView, editor.isEditable { return editor }
     return view.subviews.lazy.compactMap { textEditor(in: $0) }.first

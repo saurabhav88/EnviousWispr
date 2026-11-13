@@ -112,6 +112,7 @@ struct SetupPracticeScreen: View {
   let onOpenPermissions: () -> Void
   var onFocusChange: (Bool) -> Void = { _ in }
   var editorIdentifier: String = "Your first dictation"
+  var mayFocusEditor: @MainActor () -> Bool = { true }
   @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
   @Environment(\.overlayReduceMotionOverride) private var reduceMotionOverride
   private var reduceMotion: Bool { reduceMotionOverride ?? systemReduceMotion }
@@ -164,17 +165,10 @@ struct SetupPracticeScreen: View {
         .allowsHitTesting(false)
         .accessibilityHidden(true)
     }
-    .onAppear { editorFocused = state.acceptsFocus }
     .onDisappear { onFocusChange(false) }
     .onChange(of: editorFocused) { _, focused in onFocusChange(focused) }
-    .onChange(of: state) { old, new in
-      if !new.acceptsFocus {
-        editorFocused = false
-      } else if !old.acceptsFocus {
-        editorFocused = true
-      } else if case .missedBox = new {
-        editorFocused = true
-      }
+    .onChange(of: state) { _, new in
+      if !new.acceptsFocus { editorFocused = false }
     }
   }
 
@@ -236,9 +230,22 @@ struct SetupPracticeScreen: View {
           lineWidth: 1
         ).allowsHitTesting(false)
       }
+      .background {
+        SetupPracticeEditorFocus(
+          canFocus: state.acceptsFocus && !state.inFlight,
+          retryAfterMiss: isMissedBox, mayFocusNow: mayFocusEditor
+        )
+        .frame(width: 0, height: 0)
+        .accessibilityHidden(true)
+      }
       .focused($editorFocused)
       .accessibilityLabel("Your first dictation")
       .accessibilityIdentifier(editorIdentifier)
+  }
+
+  private var isMissedBox: Bool {
+    if case .missedBox = state { return true }
+    return false
   }
 
   private var footer: some View {

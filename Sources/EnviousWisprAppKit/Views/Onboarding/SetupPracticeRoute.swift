@@ -113,7 +113,8 @@ struct SetupPracticeRoute: View {
       onBack: { if isCurrent && !sources.live.isDictationActive { model.send(.back) } },
       onOpenPermissions: openPermissions,
       onFocusChange: { editorFocused = $0 },
-      editorIdentifier: editorID
+      editorIdentifier: editorID,
+      mayFocusEditor: { isCurrent && !sources.live.isDictationActive }
     )
     .background(EGOneHostWindowReader(host: window).allowsHitTesting(false))
     .onAppear {
