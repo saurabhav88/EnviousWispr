@@ -249,7 +249,10 @@ def audio_free_suites(path=None):
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as error:
         raise ConfigError(f"cannot read {path}: {error}") from None
-    if not isinstance(data, dict) or set(data) != {"schema", "about", "suites"} or data["schema"] != 1:
+    if (not isinstance(data, dict)
+            or set(data) != {"schema", "about", "suites"}
+            or type(data["schema"]) is not int  # True == 1 in Python; a bool is not a schema
+            or data["schema"] != 1):
         raise ConfigError(f'{path}: top level must be exactly {{"schema": 1, "about": ..., "suites": [...]}}')
     if not isinstance(data["suites"], list):
         raise ConfigError(f"{path}: suites must be a list")
@@ -365,7 +368,8 @@ def self_test():
                 ("list entry without file", {"schema": 1, "about": "x", "suites": [{"suite": "A/B"}]}),
                 ("list entry not Target/Suite", {"schema": 1, "about": "x", "suites": [
                     {"suite": "A", "file": "Tests/A/B.swift"}]}),
-                ("list of another schema", {"schema": 2, "about": "x", "suites": []})):
+                ("list of another schema", {"schema": 2, "about": "x", "suites": []}),
+                ("list with a boolean schema", {"schema": True, "about": "x", "suites": []})):
             listing.write_text(json.dumps(bad))
             try:
                 audio_free_suites(listing)
