@@ -38,6 +38,7 @@ struct SetupLanguageScreen: View {
       .padding(.bottom, DesignSpacing.xl)
       Text("Which language will\nyou dictate in?")
         .font(.firstRunDisplay)
+        .fixedSize(horizontal: false, vertical: true)  // a long German title wraps, never truncates
         .multilineTextAlignment(.center)
         .foregroundStyle(Color.obTextPrimary)
         .accessibilityAddTraits(.isHeader)

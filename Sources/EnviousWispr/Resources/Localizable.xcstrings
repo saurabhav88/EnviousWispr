@@ -74,6 +74,16 @@
         }
       }
     },
+    "%@ API key" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@-API-Schlüssel"
+          }
+        }
+      }
+    },
     "%@ GB" : {
       "comment" : "A file size in gigabytes. %@ is a number such as 4.7.",
       "localizations" : {
@@ -269,6 +279,17 @@
         }
       }
     },
+    "%@ download" : {
+      "comment" : "Setup AI polish: a model's download size.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Download"
+          }
+        }
+      }
+    },
     "%@ download · needs %@ free · stays on this Mac" : {
       "comment" : "AI Polish, local model: what downloading the model takes. The first %@ is its size, the second the free space it needs.",
       "localizations" : {
@@ -332,6 +353,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$@ Korrekturen · z. B. %2$@"
+          }
+        }
+      }
+    },
+    "%@ for 30 s of speech" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ für 30 Sek. Sprache"
           }
         }
       }
@@ -409,6 +440,22 @@
         }
       }
     },
+    "%@ is made for European languages. Whisper is the one for %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ is made for European languages. Whisper is the one for %2$@."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ ist für europäische Sprachen gemacht. Für %2$@ ist Whisper die richtige Wahl."
+          }
+        }
+      }
+    },
     "%@ is no longer available with your key. Choose another." : {
       "comment" : "AI Polish, under the model menu: the chosen cloud AI model is not available for the saved API key. %@ is a model id, such as gpt-4o-mini; keep it as is.",
       "localizations" : {
@@ -466,6 +513,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ wird von %@ nicht unterstützt. Das Transkript verwendet „Auto“."
+          }
+        }
+      }
+    },
+    "%@ is ready" : {
+      "comment" : "Setup Downloads title: the speech model is on this Mac.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ist bereit"
           }
         }
       }
@@ -893,7 +951,7 @@
       }
     },
     "%@ · %@" : {
-      "comment" : "Microphone settings: Auto, then how the chosen microphone is connected.\nMicrophone settings: a microphone's name, then how it is connected.\nSpeech engine settings: heading naming the current engine, then its model. Shown in capitals.",
+      "comment" : "Microphone settings: Auto, then how the chosen microphone is connected.\nMicrophone settings: a microphone's name, then how it is connected.\nSetup language match: the language's own name, then its name in the interface language, as in Deutsch · German.\nSpeech engine settings: heading naming the current engine, then its model. Shown in capitals.",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1145,6 +1203,17 @@
         }
       }
     },
+    "%lld milliseconds polish" : {
+      "comment" : "Setup AI polish See all, VoiceOver: polish time per dictation.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld Millisekunden KI-Nachbearbeitung"
+          }
+        }
+      }
+    },
     "%lld min" : {
       "comment" : "Transcribe a File: a length under an hour. %lld is minutes; min abbreviates minutes.",
       "localizations" : {
@@ -1157,7 +1226,7 @@
       }
     },
     "%lld ms" : {
-      "comment" : "AI Polish, EG-1 size card: a time in milliseconds.",
+      "comment" : "AI Polish, EG-1 size card: a time in milliseconds.\nSetup AI polish See all: polish time per dictation.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1218,7 +1287,7 @@
       }
     },
     "%lld percent" : {
-      "comment" : "VoiceOver, Transcribe a File: a Working row's progress. %lld is 0 to 100.",
+      "comment" : "Setup progress bar value.\nVoiceOver, Transcribe a File: a Working row's progress. %lld is 0 to 100.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1958,6 +2027,28 @@
         }
       }
     },
+    "AI polish" : {
+      "comment" : "Closing film summary row label.\nSetup Downloads card eyebrow.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-Nachbearbeitung"
+          }
+        }
+      }
+    },
+    "AI polish did not start" : {
+      "comment" : "Setup Getting ready title: the polish model failed to load.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-Nachbearbeitung ist nicht gestartet"
+          }
+        }
+      }
+    },
     "AI polish failed: %@" : {
       "comment" : "Dictation notice: Apple Intelligence polish failed. %@ is the reason, one sentence, already translated or from the system.",
       "localizations" : {
@@ -2169,6 +2260,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "KI-Nachbearbeitung fehlgeschlagen: Dein Guthaben bei %@ ist aufgebraucht. Prüfe die Abrechnung bei deinem Anbieter."
+          }
+        }
+      }
+    },
+    "AI polish is off. You can turn it on in Settings." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die KI-Nachbearbeitung ist aus. Du kannst sie in den Einstellungen einschalten."
           }
         }
       }
@@ -2423,6 +2524,17 @@
         }
       }
     },
+    "About 2x" : {
+      "comment" : "Setup speech card: about twice as fast.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Etwa 2×"
+          }
+        }
+      }
+    },
     "About 7 seconds" : {
       "comment" : "Transcribe a File, Transcription step: how long the Fast engine takes for an hour of audio.",
       "localizations" : {
@@ -2446,7 +2558,7 @@
       }
     },
     "Accessibility" : {
-      "comment" : "EnviousMeet page: the Accessibility permission row's title.\nSetup permissions: title of the macOS Accessibility permission row.",
+      "comment" : "EnviousMeet page: the Accessibility permission row's title.\nSetup Getting ready row.\nSetup permissions: title of the macOS Accessibility permission row.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2693,6 +2805,16 @@
         }
       }
     },
+    "Add my key later" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Später hinzufügen"
+          }
+        }
+      }
+    },
     "Add nothing" : {
       "comment" : "Snippets, import snippets: confirm button when no snippet is chosen.\nYour Words, import words: confirm button when no word is chosen.",
       "localizations" : {
@@ -2795,6 +2917,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Füge deinen %@-API-Schlüssel hinzu, um Meeting-Zusammenfassungen zu erstellen."
+          }
+        }
+      }
+    },
+    "Add your %@ key in Settings to turn on AI polish." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Füge deinen %@-API-Schlüssel in den Einstellungen hinzu, um die KI-Nachbearbeitung einzuschalten."
           }
         }
       }
@@ -3132,6 +3264,17 @@
         }
       }
     },
+    "All languages" : {
+      "comment" : "Setup speech compare: Whisper's tag.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle Sprachen"
+          }
+        }
+      }
+    },
     "All quiet" : {
       "comment" : "Practice screen headline. Nothing was heard.",
       "localizations" : {
@@ -3217,6 +3360,16 @@
         }
       }
     },
+    "Allow microphone" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofon erlauben"
+          }
+        }
+      }
+    },
     "Allow microphone access so EnviousWispr can record your voice. If access was denied, Request Access opens System Settings." : {
       "localizations" : {
         "de" : {
@@ -3267,6 +3420,48 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Erlaubt. EnviousMeet kann erkennen, wenn ein Anruf beginnt."
+          }
+        }
+      }
+    },
+    "Allowed. Ready to hear you." : {
+      "comment" : "Setup Getting ready: microphone on.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erlaubt. Bereit, dir zuzuhören."
+          }
+        }
+      }
+    },
+    "Allowed. Your audio stays on this Mac." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erlaubt. Dein Audio bleibt auf diesem Mac."
+          }
+        }
+      }
+    },
+    "Allowed. Your words can land in any app." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erlaubt. Deine Worte können in jeder App landen."
+          }
+        }
+      }
+    },
+    "Almost ready" : {
+      "comment" : "Setup Getting ready title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fast fertig"
           }
         }
       }
@@ -3478,6 +3673,28 @@
         }
       }
     },
+    "And there is a lot more in Settings." : {
+      "comment" : "VoiceOver for the closing film's features scene.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Und in den Einstellungen gibt es noch viel mehr."
+          }
+        }
+      }
+    },
+    "And there is a lot more." : {
+      "comment" : "Closing film scene title before the features overview.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Und es gibt noch viel mehr."
+          }
+        }
+      }
+    },
     "Anonymous usage, settings, performance, and error data to help us catch broken updates." : {
       "comment" : "Permissions settings, Privacy: explains the usage metrics switch.",
       "localizations" : {
@@ -3544,6 +3761,17 @@
         }
       }
     },
+    "Any text box" : {
+      "comment" : "Closing film: label on a sample text field.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beliebiges Textfeld"
+          }
+        }
+      }
+    },
     "Anything saved lands in History" : {
       "comment" : "Pill subtitle during recovery. History is the app's list of past dictations.",
       "localizations" : {
@@ -3551,6 +3779,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Gespeicherte Inhalte erscheinen im Verlauf"
+          }
+        }
+      }
+    },
+    "Anything you copied before comes back after." : {
+      "comment" : "Closing film caption: the earlier clipboard is restored after pasting.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Danach wird der vorherige Inhalt deiner Zwischenablage wiederhergestellt."
           }
         }
       }
@@ -3726,6 +3965,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Apple Intelligence ist verfügbar, aber die Initialisierung des Modells ist fehlgeschlagen."
+          }
+        }
+      }
+    },
+    "Apple Intelligence is not available right now." : {
+      "comment" : "Setup Downloads card: Apple Intelligence cannot run now; no reason claimed.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Intelligence ist gerade nicht verfügbar."
           }
         }
       }
@@ -4498,6 +4748,17 @@
         }
       }
     },
+    "Best for %@" : {
+      "comment" : "Setup speech compare: the recommended engine's tag.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ideal für %@"
+          }
+        }
+      }
+    },
     "Best for everyday English and European recordings." : {
       "comment" : "Transcribe a File, Transcription step: the Fast engine's card.",
       "localizations" : {
@@ -4532,7 +4793,7 @@
       }
     },
     "Best quality" : {
-      "comment" : "AI Polish, EG-1 size card: the largest size.",
+      "comment" : "AI Polish, EG-1 size card: the largest size.\nSetup AI polish See all: EG-1 tile, 2-3 words.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4648,6 +4909,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Beide Engines laufen vollständig auf diesem Mac."
+          }
+        }
+      }
+    },
+    "Both run entirely on your Mac." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beide laufen komplett auf deinem Mac."
+          }
+        }
+      }
+    },
+    "Both run on your Mac. Start right away,\nor download our model for the best results." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beide laufen auf deinem Mac. Leg sofort los\noder lade unser Modell für die besten Ergebnisse."
           }
         }
       }
@@ -4803,6 +5084,27 @@
         }
       }
     },
+    "Built for Apple Silicon. No internet needed to dictate." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für Apple Silicon entwickelt. Diktieren ohne Internet."
+          }
+        }
+      }
+    },
+    "Built in. Ready right away." : {
+      "comment" : "Setup AI polish See all: Apple Intelligence can run now.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Integriert. Sofort bereit."
+          }
+        }
+      }
+    },
     "Built into macOS" : {
       "comment" : "AI Polish provider list: description under a provider name. Apple Intelligence.",
       "localizations" : {
@@ -4810,6 +5112,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "In macOS integriert"
+          }
+        }
+      }
+    },
+    "Built into your Mac. Nothing to download." : {
+      "comment" : "Setup Downloads card: Apple Intelligence ready.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bereits auf deinem Mac. Kein Download nötig."
+          }
+        }
+      }
+    },
+    "Built into your Mac. Ready the moment you finish setup." : {
+      "comment" : "Setup AI polish card: the line under Apple Intelligence.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bereits auf deinem Mac. Bereit, sobald die Einrichtung abgeschlossen ist."
           }
         }
       }
@@ -4865,6 +5189,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Birmanisch"
+          }
+        }
+      }
+    },
+    "CHANGE" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ÄNDERN"
           }
         }
       }
@@ -4967,6 +5301,28 @@
         }
       }
     },
+    "Call the bank about the card." : {
+      "comment" : "Closing film: sample dictated note.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wegen der Karte bei der Bank anrufen."
+          }
+        }
+      }
+    },
+    "Can we move our call to Thursday at 3 pm?" : {
+      "comment" : "Closing film: sample email sentence, dictated.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Können wir unser Telefonat auf Donnerstag, 15 Uhr verschieben?"
+          }
+        }
+      }
+    },
     "Can we move the launch to the 17th?" : {
       "comment" : "EnviousMeet setup: example live words on card 5.",
       "localizations" : {
@@ -5018,6 +5374,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Abbrechen"
+          }
+        }
+      }
+    },
+    "Cancel downloads" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Downloads abbrechen"
           }
         }
       }
@@ -5178,6 +5544,17 @@
         }
       }
     },
+    "Change AI polish" : {
+      "comment" : "Setup Downloads card: back to the polish choice.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-Nachbearbeitung ändern"
+          }
+        }
+      }
+    },
     "Change Live Preview engine" : {
       "comment" : "EnviousMeet Models tab: VoiceOver name of the Change button for the Live Preview engine.",
       "localizations" : {
@@ -5185,6 +5562,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Live-Vorschau-Engine ändern"
+          }
+        }
+      }
+    },
+    "Change dictation key" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktiertaste ändern"
           }
         }
       }
@@ -5379,6 +5766,16 @@
         }
       }
     },
+    "Check my key" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schlüssel prüfen"
+          }
+        }
+      }
+    },
     "Check the laws that apply to you and to the people you record." : {
       "comment" : "EnviousMeet consent text, paragraph 3.",
       "localizations" : {
@@ -5540,6 +5937,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sprachen auf diesem Mac werden geprüft"
+          }
+        }
+      }
+    },
+    "Checking with %@…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schlüssel wird bei %@ geprüft…"
+          }
+        }
+      }
+    },
+    "Checking your key…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schlüssel wird geprüft…"
           }
         }
       }
@@ -5894,6 +6311,16 @@
         }
       }
     },
+    "Choose my AI polish" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-Nachbearbeitung wählen"
+          }
+        }
+      }
+    },
     "Choose short, distinctive words after the keyword." : {
       "localizations" : {
         "de" : {
@@ -5998,6 +6425,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wähle die Engine, die Wörter beim Sprechen anzeigt."
+          }
+        }
+      }
+    },
+    "Choose your AI polish" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle deine KI-Nachbearbeitung"
+          }
+        }
+      }
+    },
+    "Choose your speech model" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle dein Sprachmodell"
           }
         }
       }
@@ -6144,6 +6591,16 @@
         }
       }
     },
+    "Cleaner writing that still sounds like you" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Besser formulierte Texte, die trotzdem nach dir klingen"
+          }
+        }
+      }
+    },
     "Cleaning" : {
       "comment" : "Transcribe a File, Working step: the cleanup row's name when it is done or not yet reached.",
       "localizations" : {
@@ -6168,6 +6625,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Abschnitt %1$@ von %2$@ wird nachbearbeitet"
+          }
+        }
+      }
+    },
+    "Cleaning up your words.\nAlmost there." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Worte werden nachbearbeitet.\nGleich geschafft."
           }
         }
       }
@@ -6235,6 +6702,17 @@
         }
       }
     },
+    "Click away if you need to." : {
+      "comment" : "Closing film caption: you may click another window while dictating.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klick ruhig woanders hin."
+          }
+        }
+      }
+    },
     "Click the \"Press 🌐 key to\" menu" : {
       "comment" : "Globe key tip (a popover after choosing the Globe key as the keybind): step 2. Quote the menu exactly as macOS labels it in this language.",
       "localizations" : {
@@ -6264,6 +6742,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Klicke zuerst in das Feld"
+          }
+        }
+      }
+    },
+    "Click the box, then talk" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klicke in das Feld und sprich dann"
           }
         }
       }
@@ -6329,6 +6817,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Modelle schließen"
+          }
+        }
+      }
+    },
+    "Close setup. Downloads continue in the menu bar." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schließen. Downloads laufen in der Menüleiste."
+          }
+        }
+      }
+    },
+    "Close setup. Retry any time from the menu bar." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schließen. Erneut versuchen in der Menüleiste."
           }
         }
       }
@@ -6432,6 +6940,16 @@
         }
       }
     },
+    "Compare speech models" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprachmodelle vergleichen"
+          }
+        }
+      }
+    },
     "Comparing against your existing snippets." : {
       "comment" : "Snippets, import snippets: working.",
       "localizations" : {
@@ -6507,6 +7025,34 @@
         }
       }
     },
+    "Congratulations! You are all set." : {
+      "comment" : "Closing film, first scene title after Setup finishes.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Glückwunsch! Alles ist bereit."
+          }
+        }
+      }
+    },
+    "Congratulations! You are all set. Speech model: %@. AI polish: %@. Dictation key: %@." : {
+      "comment" : "VoiceOver for the closing film's first scene. The values are the speech model, the AI polish choice and the dictation key.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Congratulations! You are all set. Speech model: %1$@. AI polish: %2$@. Dictation key: %3$@."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Glückwunsch! Alles ist bereit. Sprachmodell: %1$@. KI-Nachbearbeitung: %2$@. Diktiertaste: %3$@."
+          }
+        }
+      }
+    },
     "Contacts access is off. Turn it on in System Settings, then try again." : {
       "localizations" : {
         "de" : {
@@ -6535,6 +7081,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Fortfahren"
+          }
+        }
+      }
+    },
+    "Continue setup" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einrichtung fortsetzen"
+          }
+        }
+      }
+    },
+    "Continue with %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weiter mit %@"
+          }
+        }
+      }
+    },
+    "Continue without AI polish" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ohne KI-Nachbearbeitung fortfahren"
+          }
+        }
+      }
+    },
+    "Control" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Control"
           }
         }
       }
@@ -6730,6 +7316,17 @@
         }
       }
     },
+    "Corrects grammar" : {
+      "comment" : "Setup polish intro: a capability.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Korrigiert die Grammatik"
+          }
+        }
+      }
+    },
     "Could not check" : {
       "comment" : "AI Polish provider status chip: the saved API key could not be read.",
       "localizations" : {
@@ -6737,6 +7334,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nicht prüfbar"
+          }
+        }
+      }
+    },
+    "Could not check your key. Try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein Schlüssel konnte nicht geprüft werden. Versuche es erneut."
           }
         }
       }
@@ -7459,6 +8066,17 @@
         }
       }
     },
+    "Detect automatically" : {
+      "comment" : "Setup language field: shown for a person who already chose automatic language detection.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automatisch erkennen"
+          }
+        }
+      }
+    },
     "Detected %@" : {
       "comment" : "VoiceOver announcement from the recording overlay: a language was detected. %@ is the language name.",
       "localizations" : {
@@ -7601,6 +8219,17 @@
         }
       }
     },
+    "Dictation key" : {
+      "comment" : "Closing film summary row label.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktiertaste"
+          }
+        }
+      }
+    },
     "Dictation keybind" : {
       "localizations" : {
         "de" : {
@@ -7618,6 +8247,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Diktiersprache"
+          }
+        }
+      }
+    },
+    "Dictation needs one more start.\nPress Try again below." : {
+      "comment" : "Setup Getting ready subtitle: warm-up failed.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Diktierfunktion muss noch einmal gestartet werden.\nKlicke unten auf „Erneut versuchen“."
           }
         }
       }
@@ -7829,6 +8469,26 @@
         }
       }
     },
+    "Double-press for hands-free" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zweimal drücken: freihändig"
+          }
+        }
+      }
+    },
+    "Double-press the key to dictate hands-free" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Drücke die Taste zweimal, um freihändig zu diktieren"
+          }
+        }
+      }
+    },
     "Double-press the keybind to go hands-free. Triple-press to cancel instead." : {
       "comment" : "Keybinds, Recording mode help in Push to Talk: two quick presses lock hands-free recording on, three quick presses cancel.",
       "localizations" : {
@@ -7851,7 +8511,7 @@
       }
     },
     "Download" : {
-      "comment" : "AI Polish, Ollama model list: button that downloads a model to this Mac.\nAI Polish, local model: starts the model download.\nLive Preview settings, Universal engine card: button. It starts the engine download.\nLive Preview settings: pack install.\nYour Words, Learn from: the self-learning dictionary row: button that downloads the correction model.",
+      "comment" : "AI Polish, Ollama model list: button that downloads a model to this Mac.\nAI Polish, local model: starts the model download.\nLive Preview settings, Universal engine card: button. It starts the engine download.\nLive Preview settings: pack install.\nSetup Downloads: the eyebrow above the title.\nYour Words, Learn from: the self-learning dictionary row: button that downloads the correction model.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -8124,6 +8784,50 @@
         }
       }
     },
+    "Downloaded" : {
+      "comment" : "Setup Downloads card: polish on this Mac.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heruntergeladen"
+          }
+        }
+      }
+    },
+    "Downloaded and installed" : {
+      "comment" : "Setup Downloads card: done.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heruntergeladen und installiert"
+          }
+        }
+      }
+    },
+    "Downloaded, loaded and ready to polish" : {
+      "comment" : "Setup Getting ready card: polish ready.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heruntergeladen, geladen und bereit für die KI-Nachbearbeitung"
+          }
+        }
+      }
+    },
+    "Downloaded. Loading the model…" : {
+      "comment" : "Setup Getting ready card: polish loading.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heruntergeladen. Das Modell wird geladen…"
+          }
+        }
+      }
+    },
     "Downloaded. The check runs when the meeting ends." : {
       "comment" : "EnviousMeet Models page, Speaker labels: the check that the model works waits for the meeting to end.",
       "localizations" : {
@@ -8131,6 +8835,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Heruntergeladen. Die Prüfung startet, wenn das Meeting endet."
+          }
+        }
+      }
+    },
+    "Downloaded. The model did not start." : {
+      "comment" : "Setup Getting ready card: the polish model failed to load.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heruntergeladen. Das Modell ist nicht gestartet."
           }
         }
       }
@@ -8147,7 +8862,7 @@
       }
     },
     "Downloading %@" : {
-      "comment" : "EnviousMeet page, Live Preview: the chosen language's model is downloading. The placeholder is a language name.",
+      "comment" : "EnviousMeet page, Live Preview: the chosen language's model is downloading. The placeholder is a language name.\nSetup Downloads title: the speech model.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -8290,6 +9005,45 @@
         }
       }
     },
+    "Downloading your models" : {
+      "comment" : "Setup Downloads title: both models.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Modelle werden heruntergeladen"
+          }
+        }
+      }
+    },
+    "Downloading · %@" : {
+      "comment" : "Setup Downloads card: polish downloading. %@ is its size.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Download läuft · %@"
+          }
+        }
+      }
+    },
+    "Downloading · %@ of %@" : {
+      "comment" : "Setup Downloads card: %1$@ downloaded of %2$@.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Downloading · %1$@ of %2$@"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Download läuft · %1$@ von %2$@"
+          }
+        }
+      }
+    },
     "Downloading · %lld%%" : {
       "comment" : "AI Polish, EG-1 size card: status line. %lld is the percent done.",
       "localizations" : {
@@ -8325,6 +9079,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Download läuft: %1$@ von %2$@"
+          }
+        }
+      }
+    },
+    "Downloading…" : {
+      "comment" : "Setup Downloads card.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird heruntergeladen…"
           }
         }
       }
@@ -8394,6 +9159,16 @@
         }
       }
     },
+    "EG-1 size" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EG-1-Größe"
+          }
+        }
+      }
+    },
     "Each recording keeps its audio until you delete it. Delete the audio alone to keep the transcript." : {
       "comment" : "EnviousMeet page: how long recordings and their audio are kept.",
       "localizations" : {
@@ -8405,7 +9180,19 @@
         }
       }
     },
+    "Easiest way to start" : {
+      "comment" : "Setup AI polish card tag: Apple Intelligence.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der einfachste Einstieg"
+          }
+        }
+      }
+    },
     "Edit" : {
+      "comment" : "Menu bar menu in the closing film's picture of a Mac.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -8442,6 +9229,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "E-Mail"
+          }
+        }
+      }
+    },
+    "Email, chat, docs, code and more." : {
+      "comment" : "Closing film scene line under 'Works in any app with a text box.'",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "E-Mail, Chat, Dokumente, Code und mehr."
           }
         }
       }
@@ -8729,6 +9527,17 @@
         }
       }
     },
+    "EnviousWispr brings Mail back and pastes." : {
+      "comment" : "Closing film caption: the app returns to Mail, the starting app, and pastes.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr wechselt zurück zu Mail und fügt deinen Text ein."
+          }
+        }
+      }
+    },
     "EnviousWispr can't read %@ files yet. Try a file you exported from EnviousWispr, or a plain text list." : {
       "comment" : "Your Words, import: error. %@ is the file's type, such as a file extension.",
       "localizations" : {
@@ -8751,6 +9560,17 @@
         }
       }
     },
+    "EnviousWispr copies your words." : {
+      "comment" : "Closing film caption: with no text field the text is put on the clipboard.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr kopiert deine Worte."
+          }
+        }
+      }
+    },
     "EnviousWispr could not confirm this model's name with Ollama. Try again in a moment." : {
       "comment" : "AI Polish, Ollama model list: adding a hosted model failed; a hosted model's name could not be confirmed.",
       "localizations" : {
@@ -8758,6 +9578,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "EnviousWispr konnte den Namen dieses Modells nicht bei Ollama bestätigen. Versuche es gleich noch einmal."
+          }
+        }
+      }
+    },
+    "EnviousWispr didn’t hear any speech.\nPick another microphone, or hold %@ and speak." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr hat keine Sprache erkannt.\nWähle ein anderes Mikrofon oder halte %@ gedrückt und sprich."
           }
         }
       }
@@ -8806,6 +9636,28 @@
         }
       }
     },
+    "EnviousWispr learns it." : {
+      "comment" : "Closing film caption: the app adds the corrected word to its dictionary.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr lernt es."
+          }
+        }
+      }
+    },
+    "EnviousWispr lives here" : {
+      "comment" : "Closing film: label pointing at the menu bar icon.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hier findest du EnviousWispr"
+          }
+        }
+      }
+    },
     "EnviousWispr needs Accessibility permission to read your selection. Turn it on in System Settings, then try again." : {
       "comment" : "Quick Add panel: why the selected text could not be read.",
       "localizations" : {
@@ -8850,6 +9702,16 @@
         }
       }
     },
+    "EnviousWispr needs this switch to type your words for you.\nFlip it on and you are right back here." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr braucht diesen Schalter, um deine Worte für dich zu tippen.\nSchalte ihn ein, dann bist du gleich wieder hier."
+          }
+        }
+      }
+    },
     "EnviousWispr never uploads your address book. These names are added to your word list on this Mac so dictation spells them right." : {
       "comment" : "Your Words, import from Contacts: the privacy note under the count.",
       "localizations" : {
@@ -8868,6 +9730,36 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "EnviousWispr zeigt nur Modelle, die Ollama bereits hat. Nutze Modelle durchsuchen oder führe ollama pull im Terminal aus."
+          }
+        }
+      }
+    },
+    "EnviousWispr picks the best speech model for it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr wählt das beste Sprachmodell dafür."
+          }
+        }
+      }
+    },
+    "EnviousWispr types where your cursor is.\nClick here and try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr schreibt dort, wo dein Cursor ist.\nKlicke hier und versuche es erneut."
+          }
+        }
+      }
+    },
+    "EnviousWispr types where your cursor is.\nThis take is saved on your clipboard." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr schreibt dort, wo dein Cursor ist.\nDer Text dieses Versuchs liegt in deiner Zwischenablage."
           }
         }
       }
@@ -8967,6 +9859,17 @@
         }
       }
     },
+    "Even better results" : {
+      "comment" : "Setup AI polish card tag: a larger EG-1 size than the recommended one.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch bessere Ergebnisse"
+          }
+        }
+      }
+    },
     "Every language Apple offers is already on this Mac." : {
       "comment" : "Live Preview settings: catalog nothing to install.",
       "localizations" : {
@@ -8985,6 +9888,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Jede Zeile wurde als wahrscheinliches Echo ausgeblendet. Aktiviere „Wahrscheinliches Echo anzeigen“, um sie zu sehen."
+          }
+        }
+      }
+    },
+    "Everything you picked is on this Mac now." : {
+      "comment" : "Setup Downloads subtitle: finished.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alles, was du gewählt hast, ist jetzt auf diesem Mac."
           }
         }
       }
@@ -9305,12 +10219,22 @@
       }
     },
     "Fast all-rounder" : {
-      "comment" : "AI Polish, EG-1 size card: the middle size.",
+      "comment" : "AI Polish, EG-1 size card: the middle size.\nSetup AI polish See all: EG-1 Mini tile, 2-3 words.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Schneller Allrounder"
+          }
+        }
+      }
+    },
+    "Fast, even offline" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schnell, auch offline"
           }
         }
       }
@@ -9337,8 +10261,19 @@
         }
       }
     },
+    "Fastest" : {
+      "comment" : "Setup speech compare: Parakeet's tag.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Am schnellsten"
+          }
+        }
+      }
+    },
     "File" : {
-      "comment" : "Transcribe a File, Working page: a row label in the file summary.",
+      "comment" : "Menu bar menu in the closing film's picture of a Mac.\nTranscribe a File, Working page: a row label in the file summary.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -9359,6 +10294,16 @@
         }
       }
     },
+    "Filler words, grammar and formatting get fixed." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Füllwörter werden entfernt, Grammatik und Formatierung korrigiert."
+          }
+        }
+      }
+    },
     "Find Settings" : {
       "comment" : "Edit menu: moves the cursor into the Settings search field (Command-F).",
       "localizations" : {
@@ -9366,6 +10311,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Einstellungen suchen"
+          }
+        }
+      }
+    },
+    "Find all of it in Settings whenever you like." : {
+      "comment" : "Closing film scene line under 'And there is a lot more.'",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du findest alles jederzeit in den Einstellungen."
+          }
+        }
+      }
+    },
+    "Finder" : {
+      "comment" : "App name in the closing film (the Finder).",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Finder"
           }
         }
       }
@@ -9582,6 +10549,27 @@
         }
       }
     },
+    "Finishing the previous key check. You can check this provider next." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die vorherige Schlüsselprüfung wird abgeschlossen. Danach kannst du diesen Anbieter prüfen."
+          }
+        }
+      }
+    },
+    "Finishing up" : {
+      "comment" : "Setup Getting ready: the eyebrow above the title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird abgeschlossen"
+          }
+        }
+      }
+    },
     "Finnish" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -9589,6 +10577,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Finnisch"
+          }
+        }
+      }
+    },
+    "First dictation" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erstes Diktat"
           }
         }
       }
@@ -9625,6 +10623,39 @@
         }
       }
     },
+    "Fix a word once and EnviousWispr learns it. Use Undo if it learned the wrong word." : {
+      "comment" : "VoiceOver for the closing film's scene about learned words.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Korrigiere ein Wort einmal, und EnviousWispr lernt es. Nutze „Rückgängig“, wenn es das falsche Wort gelernt hat."
+          }
+        }
+      }
+    },
+    "Fix a word once." : {
+      "comment" : "Closing film caption: correct a misheard word by hand one time.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Korrigiere ein Wort nur einmal."
+          }
+        }
+      }
+    },
+    "Fixes filler words" : {
+      "comment" : "Setup polish intro: a capability.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entfernt Füllwörter"
+          }
+        }
+      }
+    },
     "Fixes grammar, punctuation and formatting" : {
       "comment" : "AI Polish: the line under Enable AI Polish.",
       "localizations" : {
@@ -9632,6 +10663,36 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Korrigiert Grammatik, Zeichensetzung und Formatierung"
+          }
+        }
+      }
+    },
+    "Flip this switch on. EnviousWispr notices by itself. If it still shows off, quit and reopen EnviousWispr." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leg diesen Schalter um. EnviousWispr bemerkt es von selbst. Bleibt er aus, beende EnviousWispr und öffne es erneut."
+          }
+        }
+      }
+    },
+    "Fluent in %@ and 98+ more languages." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beherrscht %@ und mindestens 98 weitere Sprachen."
+          }
+        }
+      }
+    },
+    "Fluent in 99+ languages." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beherrscht mindestens 99 Sprachen."
           }
         }
       }
@@ -9665,6 +10726,27 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Richtet sich nach deiner Stummschaltung in unterstützten Anrufen mit Zoom, Teams und Google Meet. Kurze Audioabschnitte bei Änderungen der Stummschaltung können in der Aufnahme bleiben oder fehlen. Während EnviousMeet prüft, ob du stummgeschaltet bist, oder dies nicht erkennen kann, wird deine Stimme wie gewohnt aufgenommen."
+          }
+        }
+      }
+    },
+    "For 30 seconds of speech." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bei 30 Sekunden Sprache."
+          }
+        }
+      }
+    },
+    "For English dictation · By Superwhisper" : {
+      "comment" : "Setup AI polish See all: S1-mini is unavailable for the chosen language. Required licence credit; keep Superwhisper as written.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für Diktate auf Englisch · von Superwhisper"
           }
         }
       }
@@ -9827,6 +10909,39 @@
         }
       }
     },
+    "Formats emails" : {
+      "comment" : "Setup polish intro: a capability.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Formatiert E-Mails"
+          }
+        }
+      }
+    },
+    "Formats lists" : {
+      "comment" : "Setup polish intro: a capability.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Formatiert Listen"
+          }
+        }
+      }
+    },
+    "Formats numbers, dates and times" : {
+      "comment" : "Setup polish intro: a capability.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Formatiert Zahlen, Datum und Uhrzeit"
+          }
+        }
+      }
+    },
     "Found %@ entries, but none could be imported. Nothing was changed." : {
       "comment" : "Snippets, import result: %@ is the number of entries found, never 1; none could be imported.",
       "localizations" : {
@@ -9893,6 +11008,17 @@
         }
       }
     },
+    "Free up space to continue" : {
+      "comment" : "Setup Downloads title: disk short.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gib Speicherplatz frei, um fortzufahren"
+          }
+        }
+      }
+    },
     "Free up the Globe key" : {
       "comment" : "Globe key tip (a popover after choosing the Globe key as the keybind): title.",
       "localizations" : {
@@ -9944,6 +11070,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aus einer anderen App"
+          }
+        }
+      }
+    },
+    "From your Mac's language settings. Type to change it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aus den Spracheinstellungen deines Macs. Zum Ändern einfach tippen."
           }
         }
       }
@@ -10056,6 +11192,16 @@
         }
       }
     },
+    "Get a key" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schlüssel holen"
+          }
+        }
+      }
+    },
     "Get an API key" : {
       "comment" : "Settings search result: link to the chosen cloud provider's API key page.",
       "localizations" : {
@@ -10154,6 +11300,28 @@
         }
       }
     },
+    "Getting ready. Check again in a moment." : {
+      "comment" : "Setup AI polish See all: Apple Intelligence's model is still downloading.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird vorbereitet. Prüfe es gleich noch einmal."
+          }
+        }
+      }
+    },
+    "Getting started…" : {
+      "comment" : "Setup Downloads card: preparing.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird gestartet…"
+          }
+        }
+      }
+    },
     "Getting the engine ready" : {
       "comment" : "Transcribe a File, Working step: set-up before transcription starts.",
       "localizations" : {
@@ -10193,6 +11361,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Gib dem Textbaustein einen sprechbaren Auslöser. Ein Auslöser, der nur aus Satzzeichen besteht, kann nie erkannt werden."
+          }
+        }
+      }
+    },
+    "Go ahead, say the line.\nLet go of %@ when you are done." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Los geht's, sprich den Satz.\nLass %@ los, wenn du fertig bist."
           }
         }
       }
@@ -10362,6 +11540,16 @@
         }
       }
     },
+    "Hands-free is on. Talk as long as you like.\nPress %@ once when you are done." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Freihändiges Diktieren ist an. Sprich, solange du möchtest.\nDrücke %@ einmal, wenn du fertig bist."
+          }
+        }
+      }
+    },
     "Hausa" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -10437,6 +11625,17 @@
         }
       }
     },
+    "Here is a quick refresher." : {
+      "comment" : "Closing film, first scene: the film that follows recaps how to dictate.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hier eine kurze Auffrischung."
+          }
+        }
+      }
+    },
     "Here is how EnviousMeet works. Use the arrow keys or the buttons to flip through." : {
       "comment" : "EnviousMeet setup: the line above the how-it-works cards on the last screen.",
       "localizations" : {
@@ -10444,6 +11643,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "So funktioniert EnviousMeet. Blättere mit den Pfeiltasten oder den Schaltflächen."
+          }
+        }
+      }
+    },
+    "Hi Priya," : {
+      "comment" : "Closing film: first line of a sample email.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hallo Priya,"
           }
         }
       }
@@ -10472,6 +11682,16 @@
     },
     "Hide key" : {
       "comment" : "AI Polish: hides the API key text.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schlüssel ausblenden"
+          }
+        }
+      }
+    },
+    "Hide the key" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -10515,6 +11735,7 @@
       }
     },
     "History" : {
+      "comment" : "Feature name in the closing film.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -10546,6 +11767,27 @@
         }
       }
     },
+    "Hold %@ and say the line below.\nLet go when you are done." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Halte %@ gedrückt und sprich den Satz unten.\nLass los, wenn du fertig bist."
+          }
+        }
+      }
+    },
+    "Hold %@ in any app and talk." : {
+      "comment" : "Closing film, last scene. %@ is the dictation key, for example 'Right ⌥'.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Halte %@ in einer beliebigen App gedrückt und sprich."
+          }
+        }
+      }
+    },
     "Hold only the keybind and press Space to go hands-free." : {
       "comment" : "Keybinds, Recording mode help in Push to Talk: while holding a single modifier dictation key, pressing Space locks hands-free recording on. Space is the Space bar.",
       "localizations" : {
@@ -10557,6 +11799,16 @@
         }
       }
     },
+    "Hold the key to dictate, release to transcribe" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Halte die Taste zum Diktieren gedrückt, lass sie zum Transkribieren los"
+          }
+        }
+      }
+    },
     "Hold the keybind to record. Release to stop." : {
       "comment" : "Keybinds, Recording mode help in Push to Talk: hold the dictation key to record.",
       "localizations" : {
@@ -10564,6 +11816,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Halte das Tastenkürzel zum Aufnehmen gedrückt. Lass es zum Stoppen los."
+          }
+        }
+      }
+    },
+    "Hold to dictate" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zum Diktieren halten"
           }
         }
       }
@@ -10584,6 +11846,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Zum Sprechen gedrückt halten oder einmal zum Starten und noch einmal zum Stoppen drücken."
+          }
+        }
+      }
+    },
+    "Hold your key and talk." : {
+      "comment" : "Closing film caption: hold the dictation key while speaking.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Halte deine Taste gedrückt und sprich."
+          }
+        }
+      }
+    },
+    "Hold your key and talk. Click away if you need to. Your words land where you started." : {
+      "comment" : "VoiceOver for the closing film's scene about words landing where you started.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Halte deine Taste gedrückt und sprich. Klick ruhig woanders hin. Deine Worte landen dort, wo du angefangen hast."
           }
         }
       }
@@ -10637,6 +11921,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wartezeit nach dem Sprechen, bevor die Aufnahme endet."
+          }
+        }
+      }
+    },
+    "How to dictate" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "So diktierst du"
           }
         }
       }
@@ -10889,6 +12183,17 @@
         }
       }
     },
+    "In progress" : {
+      "comment" : "Setup progress bar value with no measured percent.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Läuft"
+          }
+        }
+      }
+    },
     "In use" : {
       "comment" : "AI Polish, EG-1 size card: this size polishes now.\nMicrophone settings: capture is active on the displayed microphone, not merely selected or kept warm.",
       "localizations" : {
@@ -11043,6 +12348,28 @@
         }
       }
     },
+    "Installed. Dictation needs one more start." : {
+      "comment" : "Setup Getting ready card: warm-up failed.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Installiert. Die Diktierfunktion muss noch einmal gestartet werden."
+          }
+        }
+      }
+    },
+    "Installed. Getting dictation ready…" : {
+      "comment" : "Setup Getting ready card: warming.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Installiert. Das Diktieren wird vorbereitet…"
+          }
+        }
+      }
+    },
     "Installing 'um' and 'uh' filters..." : {
       "comment" : "Playful status line cycled on the setup screen while the speech model installs.",
       "localizations" : {
@@ -11094,6 +12421,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "EnviousWispr wird in deinem Ordner „Programme“ installiert und öffnet sich danach automatisch neu."
+          }
+        }
+      }
+    },
+    "Installing…" : {
+      "comment" : "Setup Downloads card: verifying.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird installiert…"
           }
         }
       }
@@ -11185,6 +12523,37 @@
         }
       }
     },
+    "It heard “twist”. You type “Tuist”." : {
+      "comment" : "Closing film caption. 'twist' is what dictation heard; 'Tuist' (a developer tool name) is the right word. Keep both words as they are.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erkannt wurde „twist“. Du tippst „Tuist“."
+          }
+        }
+      }
+    },
+    "It hears your dictation key, such as %@." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Es erkennt deine Diktiertaste, etwa %@."
+          }
+        }
+      }
+    },
+    "It pastes your words into the app you are using." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Es fügt deine Worte in die App ein, die du gerade nutzt."
+          }
+        }
+      }
+    },
     "It records from your Mac, so nobody sees a notetaker join." : {
       "comment" : "EnviousMeet setup: welcome tile line under No bot in your call.",
       "localizations" : {
@@ -11203,6 +12572,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Es bleibt auf deinem Mac, wird am Ende der Aufnahme verworfen und ändert kein Zeichen des eingefügten Texts."
+          }
+        }
+      }
+    },
+    "It stays on your Mac. Nothing you type is sent to us." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Es bleibt auf deinem Mac. Nichts, was du tippst, wird an uns gesendet."
           }
         }
       }
@@ -11413,6 +12792,17 @@
         }
       }
     },
+    "Keep talking. Your place is remembered." : {
+      "comment" : "Closing film caption under 'Click away if you need to.'",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprich weiter. EnviousWispr merkt sich die Stelle."
+          }
+        }
+      }
+    },
     "Keep the microphone engine active for a short time after dictation so the next recording starts instantly and captures your first words." : {
       "comment" : "Microphone settings: explains microphone readiness.",
       "localizations" : {
@@ -11604,6 +12994,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Schlüssel gültig · in deinem Schlüsselbund gespeichert"
+          }
+        }
+      }
+    },
+    "Key works. Saved in your Keychain." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein Schlüssel funktioniert und ist im Schlüsselbund gespeichert."
+          }
+        }
+      }
+    },
+    "Key works. Saved in your Keychain. Now choose a model." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein Schlüssel funktioniert und ist im Schlüsselbund gespeichert. Wähle jetzt ein Modell."
           }
         }
       }
@@ -11846,6 +13256,16 @@
         }
       }
     },
+    "Launch EnviousWispr" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr starten"
+          }
+        }
+      }
+    },
     "Learn as you go" : {
       "comment" : "Your Words: a tab in the side rail: the line under Learn from. Keep it short, about 16 characters.",
       "localizations" : {
@@ -12022,6 +13442,26 @@
         }
       }
     },
+    "Left Command" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Linke Befehlstaste"
+          }
+        }
+      }
+    },
+    "Left Option" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Linke Wahltaste"
+          }
+        }
+      }
+    },
     "Legal" : {
       "comment" : "Your Words, vocabulary packs: a pack's name.",
       "localizations" : {
@@ -12061,6 +13501,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Los geht's"
+          }
+        }
+      }
+    },
+    "Let’s try that again" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Versuchen wir es noch einmal"
           }
         }
       }
@@ -12113,6 +13563,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hell"
+          }
+        }
+      }
+    },
+    "Light and quick · By Superwhisper" : {
+      "comment" : "Setup AI polish See all: the line under S1-mini. Required licence credit; keep Superwhisper as written.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leicht und schnell · von Superwhisper"
           }
         }
       }
@@ -12477,6 +13938,17 @@
         }
       }
     },
+    "Live preview" : {
+      "comment" : "Feature name in the closing film.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live-Vorschau"
+          }
+        }
+      }
+    },
     "Live transcript" : {
       "comment" : "EnviousMeet setup: welcome tile title.",
       "localizations" : {
@@ -12549,6 +14021,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Modell wird geladen..."
+          }
+        }
+      }
+    },
+    "Loading models…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modelle werden geladen…"
           }
         }
       }
@@ -12679,6 +14161,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Langes Meeting: Diese Zusammenfassung wurde in Teilen erstellt. Manche Cloud-Modelle fassen auch längere Meetings in einem Durchgang zusammen."
+          }
+        }
+      }
+    },
+    "Look for EnviousWispr in your menu bar." : {
+      "comment" : "Closing film, last scene: where the app's icon is.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du findest EnviousWispr in deiner Menüleiste."
           }
         }
       }
@@ -12830,6 +14323,28 @@
         }
       }
     },
+    "Made for European languages. Whisper is the one for %@." : {
+      "comment" : "Setup speech compare: why Parakeet is not offered for this language.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für europäische Sprachen gemacht. Für %@ ist Whisper die richtige Wahl."
+          }
+        }
+      }
+    },
+    "Mail" : {
+      "comment" : "App name in the closing film (Apple Mail).",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mail"
+          }
+        }
+      }
+    },
     "Malagasy" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -12870,6 +14385,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Maltesisch"
+          }
+        }
+      }
+    },
+    "Many languages" : {
+      "comment" : "Feature name in the closing film.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Viele Sprachen"
           }
         }
       }
@@ -13035,6 +14561,36 @@
         }
       }
     },
+    "Meet %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das ist %@"
+          }
+        }
+      }
+    },
+    "Meet EG-1" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das ist EG-1"
+          }
+        }
+      }
+    },
+    "Meet your dictation key" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das ist deine Diktiertaste"
+          }
+        }
+      }
+    },
     "Meeting" : {
       "comment" : "History list: a meeting recorded with EnviousMeet whose details are not available.\nHistory list: the kind badge of a meeting recorded with EnviousMeet.\nHistory: a meeting's default file name.\nHistory: the title of a meeting whose details are not available.",
       "localizations" : {
@@ -13168,7 +14724,7 @@
       }
     },
     "Microphone" : {
-      "comment" : "Dictation Settings: tab name for the microphone and what other audio does.\nEnviousMeet page: the microphone permission row's title.\nEnviousMeet setup: a permission name.\nMenu bar menu: the submenu for choosing the microphone used for recording.\nSetup permissions: title of the microphone permission row.",
+      "comment" : "Dictation Settings: tab name for the microphone and what other audio does.\nEnviousMeet page: the microphone permission row's title.\nEnviousMeet setup: a permission name.\nMenu bar menu: the submenu for choosing the microphone used for recording.\nSetup Getting ready row.\nSetup permissions: title of the microphone permission row.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -13391,6 +14947,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Modelldownloads wurden von Envious Labs pausiert"
+          }
+        }
+      }
+    },
+    "Model for %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modell für %@"
           }
         }
       }
@@ -13694,6 +15260,17 @@
         }
       }
     },
+    "Needs about %@ of free space." : {
+      "comment" : "Setup Downloads card: disk short. %@ is the measured space needed.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Braucht etwa %@ freien Speicherplatz."
+          }
+        }
+      }
+    },
     "Needs attention" : {
       "comment" : "AI Polish provider status chip.\nEnviousMeet list: the transcript could not be made; the detail says why.",
       "localizations" : {
@@ -13716,6 +15293,17 @@
         }
       }
     },
+    "Needs macOS 26 or newer." : {
+      "comment" : "Setup AI polish See all: this macOS is too old for Apple Intelligence.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erfordert macOS 26 oder neuer."
+          }
+        }
+      }
+    },
     "Needs setup" : {
       "comment" : "Settings sidebar, VoiceOver: AI Polish's chosen model is not set up.\nTranscribe a File, Polish step: the line under an engine's name.",
       "localizations" : {
@@ -13734,6 +15322,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "App erforderlich"
+          }
+        }
+      }
+    },
+    "Needs your OK." : {
+      "comment" : "Setup Getting ready: accessibility off.\nSetup Getting ready: microphone off.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Braucht deine Zustimmung."
           }
         }
       }
@@ -13789,6 +15388,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Neuer %@-Anruf. Lieber dazu Notizen machen?"
+          }
+        }
+      }
+    },
+    "New Message" : {
+      "comment" : "Mail window title in the closing film.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neue Nachricht"
           }
         }
       }
@@ -13856,12 +15466,54 @@
         }
       }
     },
+    "Next dictation" : {
+      "comment" : "Window title in the closing film's learn scene.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nächstes Diktat"
+          }
+        }
+      }
+    },
     "Next page" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nächste Seite"
+          }
+        }
+      }
+    },
+    "Next time it writes Tuist. Use Undo if it learned wrong." : {
+      "comment" : "Closing film caption. 'Tuist' is a developer tool name; keep it. Undo is the pill's button.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nächstes Mal schreibt es Tuist. Falsch gelernt? Nutze „Rückgängig“."
+          }
+        }
+      }
+    },
+    "Next, choose your dictation key." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Als Nächstes wählst du deine Diktiertaste."
+          }
+        }
+      }
+    },
+    "Next: a few quick tips." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Als Nächstes: ein paar kurze Tipps."
           }
         }
       }
@@ -13931,6 +15583,16 @@
         }
       }
     },
+    "No account. No subscription. Anonymous stats only." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein Konto. Kein Abo. Nur anonyme Statistiken."
+          }
+        }
+      }
+    },
     "No app was in front, so there was nothing to read." : {
       "comment" : "Quick Add panel: why the selected text could not be read.",
       "localizations" : {
@@ -13981,6 +15643,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Noch keine automatisch gelernten Wörter."
+          }
+        }
+      }
+    },
+    "No available models found. Check your key again or add it later." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine verfügbaren Modelle gefunden. Prüfe deinen Schlüssel erneut oder füge ihn später hinzu."
           }
         }
       }
@@ -14039,6 +15711,17 @@
         }
       }
     },
+    "No download" : {
+      "comment" : "Setup AI polish See all: Apple Intelligence's size.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein Download"
+          }
+        }
+      }
+    },
     "No internet connection. Please connect to the internet and try again." : {
       "comment" : "Setup error: no internet during the speech model download.",
       "localizations" : {
@@ -14079,6 +15762,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Keine Übereinstimmung für „%@“"
+          }
+        }
+      }
+    },
+    "No match yet. Try the language's own name, such as Deutsch." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein Treffer. Gib den Namen in der Landessprache ein, etwa Español."
           }
         }
       }
@@ -14336,6 +16029,28 @@
         }
       }
     },
+    "No text box selected?" : {
+      "comment" : "Closing film caption: dictating with no text field focused.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein Textfeld ausgewählt?"
+          }
+        }
+      }
+    },
+    "No text box selected? EnviousWispr copies your words. Click any text box and press Command-V to paste them. Your earlier clipboard comes back after." : {
+      "comment" : "VoiceOver for the closing film's scene about copied words.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein Textfeld ausgewählt? EnviousWispr kopiert deine Worte. Klicke in ein beliebiges Textfeld und drücke Befehl-V, um sie einzufügen. Danach wird der vorherige Inhalt deiner Zwischenablage wiederhergestellt."
+          }
+        }
+      }
+    },
     "No transcripts yet" : {
       "localizations" : {
         "de" : {
@@ -14561,6 +16276,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Auf diesem Mac nicht verfügbar"
+          }
+        }
+      }
+    },
+    "Not available on this Mac right now." : {
+      "comment" : "Setup AI polish See all: Apple Intelligence cannot run; the reason is unknown.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auf diesem Mac gerade nicht verfügbar."
           }
         }
       }
@@ -14906,7 +16632,7 @@
       }
     },
     "Notes" : {
-      "comment" : "History, a meeting: the notes box.\nHistory, a meeting: the tab with the user's own notes.",
+      "comment" : "App name in the closing film (Apple Notes).\nHistory, a meeting: the notes box.\nHistory, a meeting: the tab with the user's own notes.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -14949,6 +16675,17 @@
         }
       }
     },
+    "Nothing else to wait for." : {
+      "comment" : "Setup Downloads footer note: finished.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sonst musst du auf nichts warten."
+          }
+        }
+      }
+    },
     "Nothing has run yet." : {
       "comment" : "Transcribe a File, Review step: the note beside Start transcription.",
       "localizations" : {
@@ -14987,6 +16724,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Noch nichts eingefügt."
+          }
+        }
+      }
+    },
+    "Nothing to download" : {
+      "comment" : "Setup AI polish card: Apple Intelligence's size.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein Download nötig"
           }
         }
       }
@@ -15123,6 +16871,28 @@
         }
       }
     },
+    "Now it is your turn." : {
+      "comment" : "Closing film, last scene title: the person can start dictating.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jetzt bist du dran."
+          }
+        }
+      }
+    },
+    "Now it is your turn. Hold %@ in any text box and talk. Look for EnviousWispr in your menu bar." : {
+      "comment" : "VoiceOver for the closing film's last scene. %@ is the dictation key.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jetzt bist du dran. Halte %@ in einem beliebigen Textfeld gedrückt und sprich. Du findest EnviousWispr in deiner Menüleiste."
+          }
+        }
+      }
+    },
     "Numbers, dates, your saved words and filler removal run either way." : {
       "comment" : "Transcribe a File, Polish step: the note beside Continue: what runs even without a cleanup engine.",
       "localizations" : {
@@ -15163,6 +16933,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aus"
+          }
+        }
+      }
+    },
+    "Off for now" : {
+      "comment" : "Closing film: AI polish was skipped in Setup.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorerst aus"
           }
         }
       }
@@ -15440,6 +17221,26 @@
         }
       }
     },
+    "On your Mac" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auf deinem Mac"
+          }
+        }
+      }
+    },
+    "On your Mac or with your own provider." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auf deinem Mac oder mit deinem eigenen Anbieter."
+          }
+        }
+      }
+    },
     "On-Device" : {
       "comment" : "Welcome screen feature title: dictation runs on this Mac.",
       "localizations" : {
@@ -15527,12 +17328,32 @@
         }
       }
     },
+    "One more time" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch einmal"
+          }
+        }
+      }
+    },
     "One per line: the trigger, then =, then the text. A tab, an arrow, or a comma work too. For text on several lines, paste exported JSON or CSV, or type \\n where a line should break." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Eine Zeile pro Eintrag: Auslöser, dann =, dann der Text. Tabulator, Pfeil oder Komma funktionieren ebenfalls. Für mehrzeiligen Text füge exportiertes JSON oder CSV ein, oder schreibe \\n an die Stelle eines Zeilenumbruchs."
+          }
+        }
+      }
+    },
+    "One switch to flip" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nur noch ein Schalter"
           }
         }
       }
@@ -15680,6 +17501,16 @@
         }
       }
     },
+    "Open System Settings again" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Systemeinstellungen erneut öffnen"
+          }
+        }
+      }
+    },
     "Open System Settings, then Keyboard" : {
       "comment" : "Globe key tip (a popover after choosing the Globe key as the keybind): step 1. Use the names macOS shows in this language for System Settings and Keyboard.",
       "localizations" : {
@@ -15818,6 +17649,26 @@
         }
       }
     },
+    "Opens the model list" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öffnet die Modellliste"
+          }
+        }
+      }
+    },
+    "Or pick one of these keys" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oder wähle eine dieser Tasten"
+          }
+        }
+      }
+    },
     "Or start it yourself" : {
       "comment" : "EnviousMeet setup: how-it-works card 3 title.",
       "localizations" : {
@@ -15873,6 +17724,17 @@
         }
       }
     },
+    "Our best balance of quality, speed and size." : {
+      "comment" : "Setup AI polish card: the line under EG-1 Mini.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unsere beste Balance aus Qualität, Tempo und Größe."
+          }
+        }
+      }
+    },
     "Our best model for cleanup and list-making. On an imported recording it removes about four times more filler than Apple Intelligence." : {
       "comment" : "Transcribe a File, Polish step: the description of the selected cleanup engine. EG-1.",
       "localizations" : {
@@ -15880,6 +17742,39 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Unser bestes Modell für Nachbearbeitung und das Erstellen von Listen. Bei importierten Aufnahmen entfernt es etwa viermal so viele Füllwörter wie Apple Intelligence."
+          }
+        }
+      }
+    },
+    "Our call" : {
+      "comment" : "Sample email subject in the closing film.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unser Telefonat"
+          }
+        }
+      }
+    },
+    "Our largest model, for the very best results." : {
+      "comment" : "Setup AI polish card: the line under EG-1.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unser größtes Modell für die allerbesten Ergebnisse."
+          }
+        }
+      }
+    },
+    "Our lightest model. Quick to download and run." : {
+      "comment" : "Setup AI polish card: the line under EG-1 Micro.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unser leichtestes Modell. Schnell heruntergeladen und schnell im Einsatz."
           }
         }
       }
@@ -15902,6 +17797,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Unser eigenes Modell"
+          }
+        }
+      }
+    },
+    "Our own polish model, made for dictation.\nHere are the two best sizes for this Mac." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unser eigenes Modell, gemacht fürs Diktieren.\nHier sind die zwei besten Größen für diesen Mac."
           }
         }
       }
@@ -16208,6 +18113,16 @@
         }
       }
     },
+    "Paste your %@ key in the box first." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Füge zuerst deinen %@-API-Schlüssel in das Feld ein."
+          }
+        }
+      }
+    },
     "Paste your snippets, then check the count before you continue." : {
       "localizations" : {
         "de" : {
@@ -16337,6 +18252,16 @@
         }
       }
     },
+    "Permissions are set" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Berechtigungen sind erteilt"
+          }
+        }
+      }
+    },
     "Persian" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -16454,6 +18379,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wähle dies für andere Sprachen oder besonders schwierige Aufnahmen."
+          }
+        }
+      }
+    },
+    "Picked for this Mac’s memory." : {
+      "comment" : "Setup AI polish card: after the recommended EG-1 size's line.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Passend zum Arbeitsspeicher dieses Macs."
           }
         }
       }
@@ -16579,6 +18515,16 @@
         }
       }
     },
+    "Polish time for a short dictation, measured on an %@." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dauer der KI-Nachbearbeitung für ein kurzes Diktat, gemessen auf einem %@."
+          }
+        }
+      }
+    },
     "Polish time is for a short dictation, measured on an %@." : {
       "comment" : "AI Polish, footnote under the EG-1 size cards. %@ is a Mac model, such as Apple M5 Max.",
       "localizations" : {
@@ -16608,6 +18554,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nachbearbeitet mit %@"
+          }
+        }
+      }
+    },
+    "Polished for you" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automatisch nachbearbeitet"
           }
         }
       }
@@ -16652,6 +18608,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wird nachbearbeitet…"
+          }
+        }
+      }
+    },
+    "Popular dictation keys" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beliebte Diktiertasten"
           }
         }
       }
@@ -16809,6 +18775,37 @@
         }
       }
     },
+    "Press Try again, or continue without AI polish.\nYou can turn it on later in Settings." : {
+      "comment" : "Setup Getting ready subtitle: the polish model failed to load.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klicke auf „Erneut versuchen“ oder fahre ohne KI-Nachbearbeitung fort.\nDu kannst sie später in den Einstellungen einschalten."
+          }
+        }
+      }
+    },
+    "Press a key" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Taste drücken"
+          }
+        }
+      }
+    },
+    "Press any key or shortcut. Esc cancels." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Drücke eine Taste oder ein Tastenkürzel. Esc bricht ab."
+          }
+        }
+      }
+    },
     "Press keys..." : {
       "comment" : "Keybind field: shown while it waits for the user to press the keys.\nKeybind field: waiting for keys.",
       "localizations" : {
@@ -16881,6 +18878,17 @@
         }
       }
     },
+    "Press ⌘V wherever you want them." : {
+      "comment" : "Closing film caption: paste the copied words anywhere. ⌘V is paste.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Drücke ⌘V, wo du sie haben willst."
+          }
+        }
+      }
+    },
     "Preview %@" : {
       "localizations" : {
         "de" : {
@@ -16929,6 +18937,47 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Datenschutz"
+          }
+        }
+      }
+    },
+    "Privacy & Security › Accessibility" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datenschutz & Sicherheit › Bedienungshilfen"
+          }
+        }
+      }
+    },
+    "Privacy & Security › Microphone" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datenschutz & Sicherheit › Mikrofon"
+          }
+        }
+      }
+    },
+    "Private" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privat"
+          }
+        }
+      }
+    },
+    "Priya" : {
+      "comment" : "Sample email recipient name in the closing film.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Priya"
           }
         }
       }
@@ -16983,6 +19032,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Fließtext"
+          }
+        }
+      }
+    },
+    "Provider" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anbieter"
           }
         }
       }
@@ -17359,6 +19418,27 @@
         }
       }
     },
+    "Ready to dictate" : {
+      "comment" : "Setup Getting ready card: warm.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bereit zum Diktieren"
+          }
+        }
+      }
+    },
+    "Ready to dictate!" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bereit zum Diktieren!"
+          }
+        }
+      }
+    },
     "Ready to show your words while you speak." : {
       "comment" : "Live Preview settings: status active detail.",
       "localizations" : {
@@ -17435,13 +19515,56 @@
         }
       }
     },
+    "Recognizes when you misspeak" : {
+      "comment" : "Setup polish intro: a capability.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erkennt, wenn du dich versprichst"
+          }
+        }
+      }
+    },
     "Recommended" : {
-      "comment" : "AI Polish, Ollama model list: our verdict on a model, shown in parentheses after its name.\nAI Polish, cloud model menu: the line under a model the cloud model list recommends.\nAI Polish: the pill on the recommended provider, EG-1.\nTranscribe a File: badge on the recommended engine.",
+      "comment" : "AI Polish, Ollama model list: our verdict on a model, shown in parentheses after its name.\nAI Polish, cloud model menu: the line under a model the cloud model list recommends.\nAI Polish: the pill on the recommended provider, EG-1.\nSetup speech compare: the recommended engine's tag.\nTranscribe a File: badge on the recommended engine.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Empfohlen"
+          }
+        }
+      }
+    },
+    "Recommended for your Mac" : {
+      "comment" : "Setup AI polish card tag: the EG-1 size recommended for this Mac's memory.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Empfohlen für deinen Mac"
+          }
+        }
+      }
+    },
+    "Recommended options" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Empfohlene Optionen"
+          }
+        }
+      }
+    },
+    "Recommended · best results" : {
+      "comment" : "Setup AI polish card tag: the EG-1 size beside Apple Intelligence.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Empfohlen · beste Ergebnisse"
           }
         }
       }
@@ -18133,6 +20256,16 @@
         }
       }
     },
+    "Resume downloads" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Downloads fortsetzen"
+          }
+        }
+      }
+    },
     "Resume upgrade" : {
       "comment" : "Settings > AI Polish, local model row: button.",
       "localizations" : {
@@ -18140,6 +20273,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Upgrade fortsetzen"
+          }
+        }
+      }
+    },
+    "Resume your download" : {
+      "comment" : "Setup Downloads title: a download stopped.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Download fortsetzen"
           }
         }
       }
@@ -18220,6 +20364,36 @@
         }
       }
     },
+    "Review permissions" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Berechtigungen prüfen"
+          }
+        }
+      }
+    },
+    "Right Command" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rechte Befehlstaste"
+          }
+        }
+      }
+    },
+    "Right Option" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rechte Wahltaste"
+          }
+        }
+      }
+    },
     "Romanian" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -18260,6 +20434,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Regeln sind je nach Ort verschieden."
+          }
+        }
+      }
+    },
+    "Run" : {
+      "comment" : "Closing film: first word of 'Run Tuist generate before you build.'",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Führe"
           }
         }
       }
@@ -18315,6 +20500,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Läuft auf Ollamas Servern"
+          }
+        }
+      }
+    },
+    "Runs on the Apple GPU. Works offline." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Läuft auf der Apple-GPU. Funktioniert offline."
+          }
+        }
+      }
+    },
+    "Runs on the Neural Engine. Works offline." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Läuft auf der Neural Engine. Funktioniert offline."
           }
         }
       }
@@ -18707,6 +20912,23 @@
         }
       }
     },
+    "Scene %lld of %lld: %@" : {
+      "comment" : "VoiceOver for a progress bar in the closing film. The numbers are the scene and the scene count; the last value is that scene's description.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Scene %1$lld of %2$lld: %3$@"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Szene %1$lld von %2$lld: %3$@"
+          }
+        }
+      }
+    },
     "Search %@ words" : {
       "localizations" : {
         "de" : {
@@ -19048,6 +21270,16 @@
         }
       }
     },
+    "Sends text and dictation context to %@. Never audio." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sendet Text und Diktierkontext an %@. Niemals Audio."
+          }
+        }
+      }
+    },
     "Sends text and dictation context to Anthropic." : {
       "comment" : "AI Polish: the line under the Claude API key's name.",
       "localizations" : {
@@ -19157,6 +21389,16 @@
         }
       }
     },
+    "Set up dictation" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktieren einrichten"
+          }
+        }
+      }
+    },
     "Set up model" : {
       "comment" : "Speech engine settings: button that downloads the multilingual engine's model.",
       "localizations" : {
@@ -19208,6 +21450,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Einrichtung"
+          }
+        }
+      }
+    },
+    "Setup continues once both permissions are on." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Es geht weiter, sobald beide Berechtigungen aktiv sind."
           }
         }
       }
@@ -19461,6 +21713,16 @@
         }
       }
     },
+    "Show the key" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schlüssel einblenden"
+          }
+        }
+      }
+    },
     "Show the recording" : {
       "comment" : "History, Meetings: selects the meeting that is recording now.",
       "localizations" : {
@@ -19597,6 +21859,16 @@
         }
       }
     },
+    "Six short steps to your first dictation." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sechs kurze Schritte bis zu deinem ersten Diktat."
+          }
+        }
+      }
+    },
     "Six ways to polish" : {
       "comment" : "Transcribe a File, Upload step: a feature tile's title.",
       "localizations" : {
@@ -19608,12 +21880,32 @@
         }
       }
     },
+    "Skip AI polish" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ohne KI-Nachbearbeitung"
+          }
+        }
+      }
+    },
     "Skip and finish setup" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Überspringen und Einrichtung abschließen"
+          }
+        }
+      }
+    },
+    "Skip practice" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Übung überspringen"
           }
         }
       }
@@ -19634,6 +21926,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Übersprungen"
+          }
+        }
+      }
+    },
+    "Slack" : {
+      "comment" : "App name in the closing film (Slack).",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Slack"
           }
         }
       }
@@ -19693,8 +21996,19 @@
         }
       }
     },
+    "Smaller download" : {
+      "comment" : "Setup AI polish card tag: a smaller EG-1 size than the recommended one.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kleinerer Download"
+          }
+        }
+      }
+    },
     "Smallest and fastest" : {
-      "comment" : "AI Polish, EG-1 size card: the smallest size.",
+      "comment" : "AI Polish, EG-1 size card: the smallest size.\nSetup AI polish See all: EG-1 Micro tile, 2-3 words.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -19727,6 +22041,7 @@
       }
     },
     "Snippets" : {
+      "comment" : "Feature name in the closing film.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -19788,6 +22103,16 @@
         }
       }
     },
+    "So EnviousWispr can hear you." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Damit EnviousWispr dich hören kann."
+          }
+        }
+      }
+    },
     "So far" : {
       "comment" : "Transcribe a File, Working page: heading of the live counts, shown in capitals.",
       "localizations" : {
@@ -19795,6 +22120,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "BISHER"
+          }
+        }
+      }
+    },
+    "So your words land in any app." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Damit deine Worte in jeder App landen."
           }
         }
       }
@@ -19916,6 +22251,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Beim Lesen der Datei ist etwas schiefgegangen. Versuche es mit einer anderen."
+          }
+        }
+      }
+    },
+    "Space" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leertaste"
           }
         }
       }
@@ -20072,6 +22417,17 @@
         }
       }
     },
+    "Speech model" : {
+      "comment" : "Closing film summary row label.\nSetup Downloads card eyebrow.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprachmodell"
+          }
+        }
+      }
+    },
     "Speech model couldn't load." : {
       "comment" : "Speech engine settings, speech model: the downloaded model could not be loaded after several tries; Try again starts another attempt.",
       "localizations" : {
@@ -20106,7 +22462,7 @@
       }
     },
     "Spoken punctuation" : {
-      "comment" : "Speech engine settings, spoken punctuation: the toggle's name.\nSpoken punctuation window: the window's title.",
+      "comment" : "Feature name in the closing film.\nSpeech engine settings, spoken punctuation: the toggle's name.\nSpoken punctuation window: the window's title.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -20245,6 +22601,28 @@
         }
       }
     },
+    "Start dictation again" : {
+      "comment" : "Setup Getting ready title: warm-up failed.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktieren erneut starten"
+          }
+        }
+      }
+    },
+    "Start here" : {
+      "comment" : "Closing film: sample text typed in a text field.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hier beginnen"
+          }
+        }
+      }
+    },
     "Start recording" : {
       "comment" : "EnviousMeet: accept the offered call recording.",
       "localizations" : {
@@ -20344,6 +22722,28 @@
         }
       }
     },
+    "Starts right after the speech model" : {
+      "comment" : "Setup Downloads card.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Startet direkt nach dem Sprachmodell"
+          }
+        }
+      }
+    },
+    "Starts right after the speech model · %@" : {
+      "comment" : "Setup Downloads card: polish waits for speech. %@ is its size.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Startet direkt nach dem Sprachmodell · %@"
+          }
+        }
+      }
+    },
     "Status" : {
       "comment" : "AI Polish, Apple Intelligence: the status row's title.",
       "localizations" : {
@@ -20362,6 +22762,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Status: %@"
+          }
+        }
+      }
+    },
+    "Step %lld of %lld: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Step %1$lld of %2$lld: %3$@"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schritt %1$lld von %2$lld: %3$@"
           }
         }
       }
@@ -20389,6 +22805,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Schritt %lld, %@"
+          }
+        }
+      }
+    },
+    "Step 2 of 2" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schritt 2 von 2"
           }
         }
       }
@@ -20551,6 +22977,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Stil"
+          }
+        }
+      }
+    },
+    "Subject:" : {
+      "comment" : "Email field label in the closing film.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Betreff:"
           }
         }
       }
@@ -20860,6 +23297,37 @@
         }
       }
     },
+    "Taking you to the next step." : {
+      "comment" : "Setup Downloads: the 1.6 s countdown runs.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weiter zum nächsten Schritt."
+          }
+        }
+      }
+    },
+    "Taking you to your dictation key…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weiter zu deiner Diktiertaste…"
+          }
+        }
+      }
+    },
+    "Talk naturally.\nCapture perfectly." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Natürlich sprechen.\nPerfekt festhalten."
+          }
+        }
+      }
+    },
     "Tamil" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -20867,6 +23335,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Tamil"
+          }
+        }
+      }
+    },
+    "Tap the key to change it.\nHold it or double-press it to try it now." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klicke auf die Taste, um sie zu ändern.\nHalte sie oder drück sie zweimal zum Ausprobieren."
           }
         }
       }
@@ -20986,6 +23464,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Thailändisch"
+          }
+        }
+      }
+    },
+    "Thanks so much!" : {
+      "comment" : "Closing film: sample email sign-off.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vielen Dank!"
           }
         }
       }
@@ -21326,6 +23815,16 @@
         }
       }
     },
+    "That key did not work. Copy it again from %@ and paste it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Schlüssel hat nicht funktioniert. Kopiere ihn erneut bei %@ und füge ihn ein."
+          }
+        }
+      }
+    },
     "That model runs on this Mac, so nothing leaves it." : {
       "comment" : "Transcribe a File, Polish step: where the chosen Ollama model runs.",
       "localizations" : {
@@ -21333,6 +23832,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dieses Modell läuft auf deinem Mac. Dabei verlassen keine Daten deinen Mac."
+          }
+        }
+      }
+    },
+    "That one was on us, not you.\nHold %@ and say it again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das lag an uns, nicht an dir.\nHalte %@ gedrückt und sag es noch einmal."
           }
         }
       }
@@ -21809,6 +24318,17 @@
         }
       }
     },
+    "The download keeps going on every screen." : {
+      "comment" : "Setup Downloads footer note: downloading.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Download läuft in jedem Schritt weiter."
+          }
+        }
+      }
+    },
     "The download server had a problem. Please try again in a few minutes." : {
       "comment" : "AI Polish, local model card: why the model download failed.",
       "localizations" : {
@@ -21827,6 +24347,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Der Downloadserver ist beschäftigt. Warte kurz und versuche es erneut."
+          }
+        }
+      }
+    },
+    "The download stopped." : {
+      "comment" : "Setup Downloads card: paused, failed or unavailable; no cause claimed.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Download wurde unterbrochen."
+          }
+        }
+      }
+    },
+    "The download stopped.\nPress Resume downloads to try again." : {
+      "comment" : "Setup Downloads subtitle: a download stopped.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Download wurde unterbrochen.\nKlicke auf „Downloads fortsetzen“, um es erneut zu versuchen."
           }
         }
       }
@@ -21915,6 +24457,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die schnelle Engine unterstützt diese Sprache nicht als feste Auswahl und erkennt die Sprache deshalb automatisch. Wähle eine ihrer 25 europäischen Sprachen oder wechsle zur mehrsprachigen Engine."
+          }
+        }
+      }
+    },
+    "The fastest way to dictate in %@." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der schnellste Weg, auf %@ zu diktieren."
+          }
+        }
+      }
+    },
+    "The fastest way to dictate." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der schnellste Weg zu diktieren."
           }
         }
       }
@@ -22089,6 +24651,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Das Modell auf dem Gerät ist noch nicht bereit. Es wird möglicherweise noch heruntergeladen. Versuche es später erneut."
+          }
+        }
+      }
+    },
+    "The pill says: Copied. Press ⌘V to paste." : {
+      "comment" : "Closing film caption quoting the pill's own words. ⌘V is the paste shortcut.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Anzeige meldet: „Kopiert. Zum Einfügen ⌘V drücken“."
+          }
+        }
+      }
+    },
+    "The pill shows EnviousWispr is listening." : {
+      "comment" : "Closing film caption under 'Hold your key and talk.'",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Aufnahmeanzeige zeigt, dass EnviousWispr zuhört."
           }
         }
       }
@@ -22468,6 +25052,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dieser Mac unterstützt Apple Intelligence nicht."
+          }
+        }
+      }
+    },
+    "This Mac needs %@ free for these downloads.\nMake room, then press Try again." : {
+      "comment" : "Setup Downloads subtitle: disk short. %@ is the measured space needed, such as 2.4 GB.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Mac braucht %@ freien Speicherplatz für diese Downloads.\nGib Speicherplatz frei und klicke dann auf „Erneut versuchen“."
           }
         }
       }
@@ -23017,6 +25612,17 @@
         }
       }
     },
+    "Thu 9:41" : {
+      "comment" : "Clock in the closing film's picture of a Mac menu bar.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Do. 9:41"
+          }
+        }
+      }
+    },
     "Tibetan" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -23029,7 +25635,7 @@
       }
     },
     "Tight on this Mac" : {
-      "comment" : "AI Polish, EG-1 size card: the size needs more than half of the Mac's memory.",
+      "comment" : "AI Polish, EG-1 size card: the size needs more than half of the Mac's memory.\nSetup AI polish See all: this EG-1 size needs more than half of the Mac's memory.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -23148,6 +25754,17 @@
         }
       }
     },
+    "To:" : {
+      "comment" : "Email field label in the closing film.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An:"
+          }
+        }
+      }
+    },
     "Today's date" : {
       "comment" : "Snippets, edit: button that inserts today's date into the snippet text.",
       "localizations" : {
@@ -23213,7 +25830,7 @@
       }
     },
     "Transcribe a File" : {
-      "comment" : "Menu bar menu, VoiceOver: the icon beside Transcribe a File.",
+      "comment" : "Feature name in the closing film.\nMenu bar menu, VoiceOver: the icon beside Transcribe a File.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -23448,6 +26065,16 @@
         }
       }
     },
+    "Tried" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ausprobiert"
+          }
+        }
+      }
+    },
     "Trigger" : {
       "localizations" : {
         "de" : {
@@ -23491,12 +26118,22 @@
       }
     },
     "Try again" : {
-      "comment" : "History, a meeting: reads the saved notes again.\nHistory, a meeting: saves the notes again.\nHistory, a meeting: saves the summary changes again.\nLive Preview settings: pack retry.\nTranscribe a File, Done step: button that retries speaker labelling.\nTranscribe a File, Review step: button that retries after a refusal.\nYour Words, Learn from: the self-learning dictionary row: button that retries loading the model.\nYour Words, Learn from: the self-learning dictionary row: retry the word check download.",
+      "comment" : "History, a meeting: reads the saved notes again.\nHistory, a meeting: saves the notes again.\nHistory, a meeting: saves the summary changes again.\nLive Preview settings: pack retry.\nSetup Downloads: retry one card's step.\nTranscribe a File, Done step: button that retries speaker labelling.\nTranscribe a File, Review step: button that retries after a refusal.\nYour Words, Learn from: the self-learning dictionary row: button that retries loading the model.\nYour Words, Learn from: the self-learning dictionary row: retry the word check download.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Erneut versuchen"
+          }
+        }
+      }
+    },
+    "Try saying" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sag zum Beispiel"
           }
         }
       }
@@ -23518,6 +26155,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Versuche zuerst diese"
+          }
+        }
+      }
+    },
+    "Try your first dictation" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein erstes Diktat ausprobieren"
           }
         }
       }
@@ -23551,6 +26198,27 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Turkmenisch"
+          }
+        }
+      }
+    },
+    "Turn Accessibility back on" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bedienungshilfen wieder aktivieren"
+          }
+        }
+      }
+    },
+    "Turn it on in System Settings first." : {
+      "comment" : "Setup AI polish See all: Apple Intelligence is turned off.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schalte es zuerst in den Systemeinstellungen ein."
           }
         }
       }
@@ -23621,6 +26289,17 @@
         }
       }
     },
+    "Turn on" : {
+      "comment" : "Setup Downloads card: turn AI polish back on.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einschalten"
+          }
+        }
+      }
+    },
     "Turn on Accessibility" : {
       "localizations" : {
         "de" : {
@@ -23641,6 +26320,47 @@
         }
       }
     },
+    "Turn spoken thoughts into polished text\nin the apps you use." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mach aus gesprochenen Gedanken ausgefeilten Text\nin den Apps, die du nutzt."
+          }
+        }
+      }
+    },
+    "Turn the microphone back on" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofon wieder aktivieren"
+          }
+        }
+      }
+    },
+    "Turn the microphone on" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofon einschalten"
+          }
+        }
+      }
+    },
+    "Turned off" : {
+      "comment" : "Setup Downloads card: AI polish skipped.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ausgeschaltet"
+          }
+        }
+      }
+    },
     "Turned off. Allow it in System Settings." : {
       "comment" : "EnviousMeet page: calendar access was refused.\nEnviousMeet setup: a refused permission.",
       "localizations" : {
@@ -23648,6 +26368,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ausgeschaltet. Erteile die Berechtigung in den Systemeinstellungen."
+          }
+        }
+      }
+    },
+    "Turning your voice into text,\nright here on this Mac." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Worte werden zu Text,\ndirekt hier auf diesem Mac."
           }
         }
       }
@@ -23663,6 +26393,16 @@
         }
       }
     },
+    "Two quick permissions" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zwei kurze Berechtigungen"
+          }
+        }
+      }
+    },
     "Two transcription engines" : {
       "comment" : "Transcribe a File, Upload step: a feature tile's title.",
       "localizations" : {
@@ -23670,6 +26410,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Zwei Transkriptions-Engines"
+          }
+        }
+      }
+    },
+    "Type a language" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprache eingeben"
           }
         }
       }
@@ -23708,7 +26458,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Typische Werte bei der Nutzung von EnviousWispr. Auf den ältesten unterstützten Macs (M1) etwa %1$@, %2$@ und %3$@."
+            "value" : "Typische Zeiten mit EnviousWispr. Auf dem ältesten unterstützten Mac (M1): etwa %1$@, %2$@ und %3$@"
           }
         }
       }
@@ -24105,6 +26855,16 @@
         }
       }
     },
+    "Use %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ verwenden"
+          }
+        }
+      }
+    },
     "Use Apple instead" : {
       "comment" : "Live Preview settings, Universal engine: button after a failed download that switches Live Preview to the Apple engine.",
       "localizations" : {
@@ -24474,6 +27234,7 @@
       }
     },
     "View" : {
+      "comment" : "Menu bar menu in the closing film's picture of a Mac.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -24547,6 +27308,16 @@
         }
       }
     },
+    "Waiting for the switch in System Settings…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Warten auf Aktivierung in den Systemeinstellungen…"
+          }
+        }
+      }
+    },
     "Waiting for your dictation and other meeting work to finish." : {
       "comment" : "History, a meeting: the summary waits before a model on this Mac is used.",
       "localizations" : {
@@ -24565,6 +27336,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wartet auf die Transkription"
+          }
+        }
+      }
+    },
+    "Waiting…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Warten…"
           }
         }
       }
@@ -24607,6 +27388,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Warnung: %@"
+          }
+        }
+      }
+    },
+    "Watch again" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch einmal ansehen"
           }
         }
       }
@@ -24964,6 +27755,16 @@
         }
       }
     },
+    "Where AI polish runs" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wo die KI-Nachbearbeitung läuft"
+          }
+        }
+      }
+    },
     "Where the pill floats while you dictate." : {
       "comment" : "Recording Pill settings: short line under Position on screen.",
       "localizations" : {
@@ -24971,6 +27772,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wo die Aufnahmeanzeige beim Diktieren schwebt."
+          }
+        }
+      }
+    },
+    "Which language will\nyou dictate in?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In welcher Sprache\nmöchtest du diktieren?"
           }
         }
       }
@@ -25123,6 +27934,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Warum OpenAI verwenden?"
+          }
+        }
+      }
+    },
+    "Wi-Fi" : {
+      "comment" : "Menu bar item in the closing film's picture of a Mac.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WLAN"
           }
         }
       }
@@ -25296,6 +28118,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Transkribiert schon während der Aufnahme; die letzten Wörter können fehlen."
+          }
+        }
+      }
+    },
+    "Works in any app with a text box." : {
+      "comment" : "Closing film scene title: dictation works in every app.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Funktioniert in jeder App mit Textfeld."
           }
         }
       }
@@ -25552,6 +28385,16 @@
         }
       }
     },
+    "You can change the key any time in Settings." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du kannst die Taste jederzeit in den Einstellungen ändern."
+          }
+        }
+      }
+    },
     "You can change this later in EnviousMeet settings." : {
       "comment" : "EnviousMeet setup: under a skipped permission or choice.",
       "localizations" : {
@@ -25585,6 +28428,28 @@
         }
       }
     },
+    "You can keep setting up and resume later." : {
+      "comment" : "Setup Downloads footer note: a problem.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du kannst mit der Einrichtung weitermachen und den Download später fortsetzen."
+          }
+        }
+      }
+    },
+    "You can keep setting up while this runs." : {
+      "comment" : "Setup Downloads subtitle: downloading.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du kannst mit der Einrichtung weitermachen, während das läuft."
+          }
+        }
+      }
+    },
     "You can quit this copy and use the one in Applications." : {
       "comment" : "Move to Applications result, the app was copied but did not reopen: the explanation.",
       "localizations" : {
@@ -25614,6 +28479,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Du hast diese Zusammenfassung geändert. Wenn du sie erneut erstellst, werden deine Änderungen ersetzt."
+          }
+        }
+      }
+    },
+    "You clicked the desktop. Talk anyway." : {
+      "comment" : "Closing film caption under 'No text box selected?'",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du hast auf den Schreibtisch geklickt. Sprich trotzdem."
           }
         }
       }
@@ -25758,6 +28634,16 @@
         }
       }
     },
+    "Your %@ API key" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein %@-API-Schlüssel"
+          }
+        }
+      }
+    },
     "Your %@ key is not saved yet." : {
       "comment" : "AI Polish, leave pop-up reason: a key was typed but Save was not pressed. %@ is a provider name, such as OpenAI.",
       "localizations" : {
@@ -25813,7 +28699,7 @@
       }
     },
     "Your Words" : {
-      "comment" : "Your Words: a tab in the side rail.",
+      "comment" : "Feature name in the closing film.\nYour Words: a tab in the side rail.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -25841,6 +28727,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Deine Aufnahme und dein Text bleiben auf diesem Mac."
+          }
+        }
+      }
+    },
+    "Your audio never leaves this Mac." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein Audio verlässt nie diesen Mac."
           }
         }
       }
@@ -25965,6 +28861,17 @@
         }
       }
     },
+    "Your earlier clipboard is back" : {
+      "comment" : "Closing film: the clipboard from before the paste was restored.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der vorige Inhalt deiner Zwischenablage ist wieder da"
+          }
+        }
+      }
+    },
     "Your engine cannot show words on this Mac." : {
       "comment" : "Recording Pill settings, style picker: why the word-showing pill designs are unavailable.",
       "localizations" : {
@@ -25997,6 +28904,38 @@
         }
       }
     },
+    "Your first dictation starts the moment this finishes." : {
+      "comment" : "Setup Getting ready subtitle.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein erstes Diktat startet, sobald das fertig ist."
+          }
+        }
+      }
+    },
+    "Your internet is slow right now." : {
+      "comment" : "Setup Downloads: the slow-network notice.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Internetverbindung ist gerade langsam."
+          }
+        }
+      }
+    },
+    "Your key" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Diktiertaste"
+          }
+        }
+      }
+    },
     "Your key lists the models your OpenAI account can use, and EnviousWispr leaves out kinds of model it cannot use for cleanup. Some models need a verified organization or a higher usage tier." : {
       "comment" : "AI Polish, Why use OpenAI: why a model may be missing.",
       "localizations" : {
@@ -26004,6 +28943,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dein Schlüssel zeigt die Modelle, die dein OpenAI-Konto nutzen kann, und EnviousWispr lässt Modellarten weg, die es für die Bereinigung nicht nutzen kann. Manche Modelle brauchen eine verifizierte Organisation oder eine höhere Nutzungsstufe."
+          }
+        }
+      }
+    },
+    "Your key needs checking again." : {
+      "comment" : "Setup Downloads card: the cloud key check no longer passes.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein Schlüssel muss erneut geprüft werden."
+          }
+        }
+      }
+    },
+    "Your key works. Ready." : {
+      "comment" : "Setup Downloads card: cloud key passed.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein Schlüssel funktioniert. Bereit."
           }
         }
       }
@@ -26019,6 +28980,16 @@
         }
       }
     },
+    "Your main dictation language" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Hauptsprache fürs Diktieren"
+          }
+        }
+      }
+    },
     "Your microphone is working. We just did not hear anything.\nTry holding %@ and saying: tell grandma I will call Sunday." : {
       "comment" : "Practice screen when nothing was heard. %@ is the dictation shortcut. The sample sentence should be natural to say in the target language. Keep the line break.",
       "localizations" : {
@@ -26026,6 +28997,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dein Mikrofon funktioniert. Wir haben nur nichts gehört.\nHalte %@ gedrückt und sag: Sag Oma, dass ich am Sonntag anrufe."
+          }
+        }
+      }
+    },
+    "Your models are ready" : {
+      "comment" : "Setup Downloads title: both models are on this Mac.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Modelle sind bereit"
           }
         }
       }
@@ -26391,6 +29373,16 @@
         }
       }
     },
+    "Your voice stays on your Mac." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Stimme bleibt auf deinem Mac."
+          }
+        }
+      }
+    },
     "Your word list changed while you were reviewing. Nothing was imported — here are the updated matches." : {
       "comment" : "Your Words, import review: the list changed during review, so the matches were redone.",
       "localizations" : {
@@ -26442,6 +29434,48 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Deine Wortliste ist zu groß für eine einzelne Datei, die EnviousWispr wieder einlesen könnte. Es wurde nichts exportiert."
+          }
+        }
+      }
+    },
+    "Your words are typed as you said them." : {
+      "comment" : "Setup Downloads card: AI polish off.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Worte erscheinen genau so, wie du sie gesagt hast."
+          }
+        }
+      }
+    },
+    "Your words land here" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hier landen deine Worte"
+          }
+        }
+      }
+    },
+    "Your words land where you started." : {
+      "comment" : "Closing film caption: text is pasted in the window where dictation began.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Worte landen dort, wo du angefangen hast."
+          }
+        }
+      }
+    },
+    "Your words, transcribed in about" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Worte als Text, etwa"
           }
         }
       }
@@ -26536,6 +29570,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Schreibweise hinzufügen"
+          }
+        }
+      }
+    },
+    "after you stop talking" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "nachdem du aufgehört hast zu sprechen"
           }
         }
       }
@@ -26660,6 +29704,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "fertig"
+          }
+        }
+      }
+    },
+    "even after 5 minutes of talking" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "auch nach 5 Minuten Sprechen"
+          }
+        }
+      }
+    },
+    "faster than typing first drafts" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "schneller, als erste Entwürfe zu tippen"
           }
         }
       }
@@ -27493,6 +30557,16 @@
         }
       }
     },
+    "fn" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "fn"
+          }
+        }
+      }
+    },
     "from your Mac" : {
       "comment" : "Live Preview settings: language provenance from mac. A caption under the language: where it came from.",
       "localizations" : {
@@ -27500,6 +30574,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "von deinem Mac"
+          }
+        }
+      }
+    },
+    "generate before you build." : {
+      "comment" : "Closing film: end of 'Run Tuist generate before you build.' (Tuist is a tool name).",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "generate vor dem Build aus."
+          }
+        }
+      }
+    },
+    "held" : {
+      "comment" : "Next to a key in the closing film: the dictation key is held down.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "gedrückt"
           }
         }
       }
@@ -27655,6 +30751,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "in Bearbeitung, %@"
+          }
+        }
+      }
+    },
+    "is set up. The build is green." : {
+      "comment" : "Closing film: end of 'Tuist is set up. The build is green.' (Tuist is a tool name).",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ist eingerichtet. Der Build ist grün."
           }
         }
       }
@@ -28196,6 +31303,16 @@
         }
       }
     },
+    "macOS asks before any app can listen or type.\nYou stay in control of both." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS fragt, bevor eine App zuhören oder tippen darf.\nDu behältst beides unter Kontrolle."
+          }
+        }
+      }
+    },
     "macOS asks for full calendar access. EnviousMeet reads the event at the time a meeting starts to name it and to note who was invited, and never changes your calendar." : {
       "comment" : "EnviousMeet page: help for the calendar permission row.",
       "localizations" : {
@@ -28250,6 +31367,16 @@
         }
       }
     },
+    "macOS has it switched off for EnviousWispr. One switch fixes it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS hat es für EnviousWispr ausgeschaltet. Ein Schalter genügt."
+          }
+        }
+      }
+    },
     "macOS has not allowed EnviousWispr to send keystrokes, so it could not ask that app for your selection. Check Accessibility in System Settings, then try again." : {
       "comment" : "Quick Add panel: why the selected text could not be read.",
       "localizations" : {
@@ -28257,6 +31384,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "macOS erlaubt EnviousWispr keine Tastatureingaben. Deshalb konnte es die App nicht nach deiner Auswahl fragen. Prüfe die Bedienungshilfen in den Systemeinstellungen und versuche es erneut."
+          }
+        }
+      }
+    },
+    "macOS has the microphone switched off for EnviousWispr.\nFlip it on and you are right back here." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS hat das Mikrofon für EnviousWispr ausgeschaltet.\nSchalte es ein, dann bist du gleich wieder hier."
           }
         }
       }
@@ -28301,6 +31438,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "macOS fragt, ob EnviousWispr den Ton aufnehmen darf, den dein Mac abspielt. Nur der Ton wird aufgenommen, niemals dein Bildschirm."
+          }
+        }
+      }
+    },
+    "macOS will ask you once. Choose Allow." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS fragt dich einmal. Wähle „Erlauben“."
           }
         }
       }
@@ -28993,6 +32140,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "„%@“ aktualisiert"
+          }
+        }
+      }
+    },
+    "“Um, I think we should, uh, meet tomorrow morning.”" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„Ähm, ich glaube, wir sollten uns, äh, morgen früh treffen.“"
           }
         }
       }

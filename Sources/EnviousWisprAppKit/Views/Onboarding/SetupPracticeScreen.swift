@@ -126,6 +126,8 @@ struct SetupPracticeScreen: View {
       VStack(spacing: DesignSpacing.md) {
         Text(state.headline)
           .font(.firstRunDisplay)
+          .multilineTextAlignment(.center)
+          .fixedSize(horizontal: false, vertical: true)  // a long German title wraps, never truncates
           .foregroundStyle(Color.obTextPrimary)
           .accessibilityAddTraits(.isHeader)
         Text(state.subtitle(key: key))

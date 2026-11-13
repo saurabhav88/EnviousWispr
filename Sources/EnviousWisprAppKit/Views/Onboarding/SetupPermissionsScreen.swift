@@ -56,6 +56,7 @@ struct SetupPermissionsScreen: View {
       .accessibilityHidden(true)
       Text(SetupPermissions.title(microphone, accessibilityAllowed: accessibilityAllowed))
         .font(.firstRunDisplay)
+        .fixedSize(horizontal: false, vertical: true)  // a long German title wraps, never truncates
         .multilineTextAlignment(.center)
         .foregroundStyle(Color.obTextPrimary)
         .accessibilityAddTraits(.isHeader)

@@ -123,6 +123,7 @@ struct SetupPolishScreen: View {
       Text(withApple ? "Choose your AI polish" : "Meet EG-1")
         .font(.firstRunDisplay)
         .multilineTextAlignment(.center)
+        .fixedSize(horizontal: false, vertical: true)  // a long German title wraps, never truncates
         .accessibilityAddTraits(.isHeader)
       Group {
         if withApple {
@@ -207,6 +208,7 @@ struct SetupPolishScreen: View {
       Text("Choose your AI polish")
         .font(.firstRunDisplay)
         .multilineTextAlignment(.center)
+        .fixedSize(horizontal: false, vertical: true)  // a long German title wraps, never truncates
         .accessibilityAddTraits(.isHeader)
       Text("On your Mac or with your own provider.")
         .font(.firstRunBody)
@@ -279,6 +281,7 @@ struct SetupPolishScreen: View {
             .font(.firstRunEyebrow)
             .foregroundStyle(Color.obTextSecondary)
             .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)  // German wraps, never truncates
         }
         appleIntelligenceRow
         s1MiniRow

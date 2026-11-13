@@ -17,6 +17,7 @@ struct SetupWelcomeScreen: View {
         .accessibilityHidden(true)
       Text("Talk naturally.\nCapture perfectly.")
         .font(.firstRunDisplay)
+        .fixedSize(horizontal: false, vertical: true)  // a long German title wraps, never truncates
         .multilineTextAlignment(.center)
         .foregroundStyle(Color.obTextPrimary)
         .accessibilityAddTraits(.isHeader)

@@ -43,6 +43,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 import defaults_store  # noqa: E402
+
+# The Setup window's title in the app's language (German: "Einrichtung"); `EW_UAT_SETUP_TITLE`
+# overrides it for a run in another language.
+SETUP_TITLE = os.environ.get("EW_UAT_SETUP_TITLE", "Setup")
 import dev_control  # noqa: E402
 
 SHARED = "com.enviouswispr.app"
@@ -711,10 +715,11 @@ def window_id(pid, title):
     return None
 
 
-def setup_window_ax(pid, title="Setup"):
+def setup_window_ax(pid, title=None):
     """(window title or None, every AXDescription/AXTitle text under it) for `pid`'s window
     named `title`, read from the running app's accessibility tree."""
     from ui_helpers import get_ax_app, get_attr
+    title = title or SETUP_TITLE
     window = next((w for w in (get_attr(get_ax_app(pid), "AXWindows") or [])
                    if get_attr(w, "AXTitle") == title), None)
     if window is None:
@@ -741,9 +746,10 @@ def capture_window(wid, path):
             and os.path.getmtime(path) >= started - 1)
 
 
-def setup_elements(pid, role, title="Setup"):
+def setup_elements(pid, role, title=None):
     """Every element of `role` in `pid`'s window `title`, with its title/description/value."""
     from ui_helpers import get_ax_app, get_attr
+    title = title or SETUP_TITLE
     window = next((w for w in (get_attr(get_ax_app(pid), "AXWindows") or [])
                    if get_attr(w, "AXTitle") == title), None)
     found, stack = [], [window] if window is not None else []
@@ -807,7 +813,7 @@ def s_screens_d1(run, speech):
     before = run.app.call("settings", "get", "appearance").get("value")
 
     def shot(name):
-        wid = window_id(pid, "Setup")
+        wid = window_id(pid, SETUP_TITLE)
         path = os.path.join(shots, f"d1-{name}.png")
         s.expect(wid is not None and capture_window(wid, path), f"captured {name}", path)
 
@@ -905,7 +911,7 @@ def s_screens_d2(run, speech):
     before = run.app.call("settings", "get", "appearance").get("value")
 
     def shot(name):
-        wid = window_id(pid, "Setup")
+        wid = window_id(pid, SETUP_TITLE)
         path = os.path.join(shots, f"d2-{name}.png")
         s.expect(wid is not None and capture_window(wid, path), f"captured {name}", path)
 
@@ -997,7 +1003,7 @@ def s_screens_d3a(run, speech):
     before = run.app.call("settings", "get", "appearance").get("value")
 
     def shot(name):
-        wid = window_id(pid, "Setup")
+        wid = window_id(pid, SETUP_TITLE)
         path = os.path.join(shots, f"d3a-{name}.png")
         s.expect(wid is not None and capture_window(wid, path), f"captured {name}", path)
 
@@ -1154,7 +1160,7 @@ def s_screens_d5(run, speech):
     before = run.app.call("settings", "get", "appearance").get("value")
 
     def shot(name):
-        wid = window_id(pid, "Setup")
+        wid = window_id(pid, SETUP_TITLE)
         path = os.path.join(shots, f"d5-{name}.png")
         s.expect(wid is not None and capture_window(wid, path), f"captured {name}", path)
 
@@ -1238,7 +1244,7 @@ def s_screens_d4b(run, speech):
     before = run.app.call("settings", "get", "appearance").get("value")
 
     def shot(name):
-        wid = window_id(pid, "Setup")
+        wid = window_id(pid, SETUP_TITLE)
         path = os.path.join(shots, f"d4b-{name}.png")
         s.expect(wid is not None and capture_window(wid, path), f"captured {name}", path)
 
@@ -1335,7 +1341,7 @@ def s_screens_d4a(run, speech):
     eg = next((m for m in ("eg1.micro", "eg1.mini", "eg1.full") if m in have), None)
 
     def shot(name):
-        wid = window_id(pid, "Setup")
+        wid = window_id(pid, SETUP_TITLE)
         path = os.path.join(shots, f"d4a-{name}.png")
         s.expect(wid is not None and capture_window(wid, path), f"captured {name}", path)
 
@@ -1470,7 +1476,7 @@ def s_shell(run, speech):
         for step in SHELL_STEPS:
             run.app.call("onboarding", "goto", step)
             time.sleep(0.6)  # test-fixture-timer: the 0.32 s screen entrance settles before capture
-            wid = window_id(run.app.client.pid, "Setup")
+            wid = window_id(run.app.client.pid, SETUP_TITLE)
             path = os.path.join(shots, f"shell-{appearance}-{step}.png")
             if wid is None:
                 s.expect(False, f"Setup window found for {appearance}/{step}")
@@ -1478,7 +1484,7 @@ def s_shell(run, speech):
             s.expect(capture_window(wid, path), f"captured {appearance}/{step}", path)
             if appearance == "light" and step == "polishPick":
                 title, texts = setup_window_ax(run.app.client.pid)
-                s.expect(title == "Setup", "the window's accessibility title is Setup", title)
+                s.expect(title == SETUP_TITLE, "the window's accessibility title is Setup", title)
                 s.expect(any(t.startswith("Step 3 of 6") for t in texts),
                          "the step strip reads Step 3 of 6 to VoiceOver",
                          [t for t in texts if "Step" in t])
@@ -1538,7 +1544,7 @@ def s_screens_d3b(run, speech):
     synthetic = "uat-synthetic-0000"  # short on purpose: not a real key shape
 
     def shot(name):
-        wid = window_id(pid, "Setup")
+        wid = window_id(pid, SETUP_TITLE)
         path = os.path.join(shots, f"d3b-{name}.png")
         s.expect(wid is not None and capture_window(wid, path), f"captured {name}", path)
 
@@ -1677,7 +1683,7 @@ def s_screens_e(run, speech):
     film_seconds = 35.5  # FilmScript.length (seven scenes)
 
     def shot(name):
-        wid = window_id(pid, "Setup")
+        wid = window_id(pid, SETUP_TITLE)
         path = os.path.join(shots, f"e-{name}.png")
         s.expect(wid is not None and capture_window(wid, path), f"captured {name}", path)
 
@@ -1728,6 +1734,85 @@ def s_screens_e(run, speech):
     run.app.call("settings", "set", "appearance", json.dumps(before))
     return s
 
+
+DE_STEPS = ["welcome", "language", "speechPick", "speechCompare", "polishIntro", "polishPick",
+            "polishSeeAll", "downloads", "permissions", "key", "gettingReady", "film"]
+
+
+def s_screens_de(run, speech):
+    """G: every real Setup screen in German, light and dark, for the truncation and layout
+    review (plan §3.7). The app must already run in German (`AppleLanguages (de)` in the dev
+    domain, set and removed by the operator around the run). Positioning uses `goto`, so this
+    is visual evidence only; the See all Cloud tab and the film's last scene are captured too."""
+    from ui_helpers import perform_action
+    s = Scenario("screens_de")
+    pid = run.app.client.pid
+    shots = os.path.join(run.artifacts, "shots")
+    os.makedirs(shots, exist_ok=True)
+    before = run.app.call("settings", "get", "appearance").get("value")
+    run.app.call("onboarding", "profile", "--ram", "16", "--afm", "available", "--lang", "de")
+    run.reset(s, "a fresh flow for the German sweep")
+    run.app.call("onboarding", "present")
+
+    def shot(name):
+        wid = window_id(pid, SETUP_TITLE)
+        path = os.path.join(shots, f"de-{name}.png")
+        s.expect(wid is not None and capture_window(wid, path), f"captured {name}", path)
+
+    for appearance in ("light", "dark"):
+        run.app.call("settings", "set", "appearance", json.dumps(appearance))
+        # A fresh flow per appearance: a ready flow moves Getting ready on to Practice by itself.
+        run.reset(s, f"a fresh flow for the {appearance} screens")
+        run.app.call("onboarding", "present")
+        for step in DE_STEPS:
+            if step == "permissions":
+                # Real grants skip Permissions; the door's simulation shows the screen itself.
+                run.app.call("onboarding", "permissions", "--mic", "notDetermined", "--ax", "denied")
+            run.app.call("onboarding", "goto", step)
+            time.sleep(0.8)  # test-fixture-timer: the screen entrance and rises settle
+            on = run.status().get("step")
+            s.expect(on == step, f"{appearance}: the requested screen is on screen ({step})", on)
+            shot(f"{appearance}-{step}")
+            if step == "permissions":
+                run.app.call("onboarding", "permissions", "--clear")
+            if step == "polishPick" and appearance == "light":
+                _, texts = setup_window_ax(pid)
+                s.expect(any(t.startswith("Schritt 3 von 6") for t in texts),
+                         "the app runs in German (the step strip reads Schritt 3 von 6)",
+                         [t for t in texts if "Schritt" in t or "Step" in t])
+            if step == "polishSeeAll":
+                cloud = setup_button(pid, "Cloud")
+                s.expect(cloud is not None and perform_action(cloud, "AXPress"), "pressed Cloud")
+                time.sleep(0.6)  # test-fixture-timer: the panel rises
+                shot(f"{appearance}-polishSeeAll-cloud")
+            if step == "film":
+                time.sleep(34.0)  # test-fixture-timer: the film reaches its last scene
+                shot(f"{appearance}-film-last")
+        # Practice with its editor: reached the real way (installed models, granted permissions).
+        run.reset(s, f"a fresh flow to Practice ({appearance})")
+        run.app.call("onboarding", "present")
+        run.walk_to_downloads(s, speech)
+        run.send("next")
+        run.app.call("onboarding", "permissions", "--mic", "granted", "--ax", "granted")
+        run.until(lambda x: x.get("step") == "key", 8, "key")
+        run.send("next")
+        st = run.until(lambda x: x.get("step") == "practice" and x.get("practiceUsable") is True,
+                       60, "practice usable")
+        s.expect(st.get("step") == "practice" and st.get("practiceUsable") is True,
+                 f"{appearance}: Practice is ready", (st.get("step"), st.get("practiceUsable")))
+        time.sleep(0.8)  # test-fixture-timer: the editor rises
+        _, texts = setup_window_ax(pid)
+        # The editor's hint is hidden from VoiceOver by design; the German practice line is read.
+        s.expect(any("Ähm, ich glaube" in t for t in texts),
+                 f"{appearance}: the German Practice line is on screen")
+        shot(f"{appearance}-practice")
+        run.app.call("onboarding", "permissions", "--clear")
+    run.app.call("settings", "set", "appearance", json.dumps(before))
+    run.app.call("onboarding", "profile", "--clear")
+    run.app.call("onboarding", "stop")
+    s.notes.append(f"VISUAL REVIEW OWED: {shots} de-* for truncation and layout")
+    return s
+
 SCENARIOS = {
     "fresh": s_fresh, "resume": s_resume, "restart": s_restart, "profiles": s_profiles,
     "permissions": s_permissions, "faults": s_faults, "completion": s_completion,
@@ -1738,6 +1823,7 @@ SCENARIOS = {
     "screens_d4b": s_screens_d4b,
     "screens_d3b": s_screens_d3b,
     "screens_e": s_screens_e,
+    "screens_de": s_screens_de,
 }
 
 
@@ -1859,7 +1945,8 @@ def cmd_run(args):
     live_before = live_protected(app.call)  # read-only, before the first change
     take_snapshot(artifacts)
     run = Run(app, artifacts)
-    names = args.scenario or list(SCENARIOS)
+    # screens_de needs the app in German (AppleLanguages de), so only an explicit --scenario runs it.
+    names = args.scenario or [name for name in SCENARIOS if name != "screens_de"]
     result = {"build": app.executable, "pid_at_start": app.client.pid, "scenarios": []}
     restore_report = None
     try:

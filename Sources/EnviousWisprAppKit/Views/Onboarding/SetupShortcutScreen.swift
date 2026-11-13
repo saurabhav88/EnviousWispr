@@ -66,6 +66,8 @@ struct SetupShortcutScreen: View {
       .padding(.bottom, DesignSpacing.lg)
       Text(headline)
         .font(.firstRunDisplay)
+        .multilineTextAlignment(.center)
+        .fixedSize(horizontal: false, vertical: true)  // a long German title wraps, never truncates
         .foregroundStyle(Color.obTextPrimary)
         .accessibilityAddTraits(.isHeader)
       Text("Tap the key to change it.\nHold it or double-press it to try it now.")

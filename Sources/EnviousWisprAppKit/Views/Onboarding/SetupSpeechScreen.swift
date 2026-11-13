@@ -101,6 +101,7 @@ struct SetupSpeechScreen: View {
     return VStack(spacing: 0) {
       Text("Meet \(shownName)")
         .font(.firstRunDisplay)
+        .fixedSize(horizontal: false, vertical: true)  // a long German title wraps, never truncates
         .multilineTextAlignment(.center)
         .accessibilityAddTraits(.isHeader)
       pitch
@@ -180,6 +181,7 @@ struct SetupSpeechScreen: View {
     VStack(spacing: 0) {
       Text("Choose your speech model")
         .font(.firstRunDisplay)
+        .fixedSize(horizontal: false, vertical: true)  // a long German title wraps, never truncates
         .multilineTextAlignment(.center)
         .accessibilityAddTraits(.isHeader)
       Text("Both run entirely on your Mac.")
