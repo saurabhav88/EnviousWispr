@@ -134,6 +134,12 @@ public enum MeetingSummary {
     companies and to name the meeting; never report them as something that was said.
     """
 
+  /// #3147 PR4A (D5): the instructions of every call, with the source-tag clause on a route
+  /// that writes summary references.
+  static func systemInstructions(referencing: Bool) -> String {
+    referencing ? "\(instructions)\n\(MeetingSummaryReferences.instructions)" : instructions
+  }
+
   /// The final shape, asked for in the last call.
   static let finalShape = """
     Start with one line "Title: " followed by a short name for this meeting, at most eight \
@@ -273,11 +279,12 @@ public enum MeetingSummary {
   /// #4286: the facts block, when there is one, is reserved here too, so every call that
   /// carries it (single, final, combine) and every cap and count derived from the budget leaves
   /// room for it.
-  static func inputBudget(_ window: Window, _ counting: Counting, facts: String = "") throws
-    -> Int
-  {
+  static func inputBudget(
+    _ window: Window, _ counting: Counting, facts: String = "", referencing: Bool = false
+  ) throws -> Int {
     let budget =
-      window.contextTokens - window.outputReserveTokens - tokens(instructions, counting)
+      window.contextTokens - window.outputReserveTokens
+      - tokens(systemInstructions(referencing: referencing), counting)
       - tokens(finalShape, counting) - framingTokens - safetyMarginTokens
       - factsTokens(facts, counting)
     guard budget >= minimumInputTokens else { throw Failure.windowTooSmall }
@@ -357,9 +364,10 @@ public enum MeetingSummary {
   }
 
   static func plan(
-    transcript: String, notes: String, facts: String = "", window: Window, counting: Counting
+    transcript: String, notes: String, facts: String = "", window: Window, counting: Counting,
+    referencing: Bool = false
   ) throws -> Plan {
-    let budget = try inputBudget(window, counting, facts: facts)
+    let budget = try inputBudget(window, counting, facts: facts, referencing: referencing)
     let notesTokens = tokens(notes, counting)
     if tokens(transcript, counting) + notesTokens <= budget {
       return Plan(
@@ -436,10 +444,28 @@ public enum MeetingSummary {
   public struct Written: Equatable, Sendable {
     public let text: String
     public let inParts: Bool
+    /// #3147 PR4A (D5): the structured summary with its candidate citations, when the summary
+    /// was written with `ReferenceRequest`; nil otherwise. `text` then has no tags left, and
+    /// the document describes the summary that remains once its title line is split off.
+    public let document: MeetingSummaryDocument?
 
-    public init(text: String, inParts: Bool) {
+    public init(text: String, inParts: Bool, document: MeetingSummaryDocument? = nil) {
       self.text = text
       self.inParts = inParts
+      self.document = document
+    }
+  }
+
+  /// #3147 PR4A (D5): what a summary with references is written from. `sources` are the tagged
+  /// turns and note blocks the transcript and notes texts were made from; `inputs` are the
+  /// summary inputs its document records.
+  public struct ReferenceRequest: Equatable, Sendable {
+    public let sources: MeetingSummaryReferenceSources
+    public let inputs: SummaryInputs
+
+    public init(sources: MeetingSummaryReferenceSources, inputs: SummaryInputs) {
+      self.sources = sources
+      self.inputs = inputs
     }
   }
 
@@ -459,32 +485,56 @@ public enum MeetingSummary {
   /// the summary's inputs record, used unchanged in every call that carries it, through retries,
   /// shortening and a byte-count re-plan. It is reserved in every budget; a window too small for
   /// it and the minimum input fails as `windowTooSmall`, never by dropping it.
+  /// #3147 PR4A (D5): with `references`, `transcript` and `notes` are the tagged texts of its
+  /// sources, every call is told to keep the tags through parts, combining and the final
+  /// answer, and the returned text has its tags removed with the document built from them.
+  /// Without it, every prompt and the result are exactly as before.
   public static func write(
     transcript: String, notes: String, facts: String, window: Window,
-    callTimeoutSeconds: Double, admit: Admit, complete: @escaping Complete
+    callTimeoutSeconds: Double, references: ReferenceRequest? = nil, admit: Admit,
+    complete: @escaping Complete
   ) async throws -> Written {
     let attempts = AttemptCounter()
     let block = facts
+    let referencing = references != nil
     func run(_ counting: Counting) async throws -> Written {
-      try await write(
+      let written = try await write(
         plan(
-          transcript: transcript, notes: notes, facts: block, window: window, counting: counting),
-        transcript: transcript, facts: block, timeoutSeconds: callTimeoutSeconds,
-        attempts: attempts, admit: admit, complete: complete)
+          transcript: transcript, notes: notes, facts: block, window: window, counting: counting,
+          referencing: referencing),
+        transcript: transcript, facts: block, referencing: referencing,
+        timeoutSeconds: callTimeoutSeconds, attempts: attempts, admit: admit, complete: complete)
+      guard let references else { return written }
+      return withReferences(written, references)
     }
     do { return try await run(.estimate) } catch is ContextExceeded {}
     do { return try await run(.bytes) } catch is ContextExceeded { throw Failure.tooLong }
   }
 
+  /// The answer without its tags, and the document its tags describe. The document is built
+  /// from the summary that remains after `splitTitle`, the text the store saves.
+  static func withReferences(_ written: Written, _ references: ReferenceRequest) -> Written {
+    let stripped = MeetingSummaryReferences.strippingTags(written.text)
+    let tagged = splitTitle(written.text).summary
+    let summary = splitTitle(stripped).summary
+    let document = MeetingSummaryReferences.document(
+      taggedSummary: tagged, summary: summary, sources: references.sources,
+      inputs: references.inputs)
+    return Written(text: stripped, inParts: written.inParts, document: document)
+  }
+
   private static func write(
-    _ plan: Plan, transcript: String, facts: String, timeoutSeconds: Double,
+    _ plan: Plan, transcript: String, facts: String, referencing: Bool, timeoutSeconds: Double,
     attempts: AttemptCounter, admit: Admit, complete: @escaping Complete
   ) async throws -> Written {
     let counting = plan.counting
+    let system = systemInstructions(referencing: referencing)
+    let partClause = referencing ? MeetingSummaryReferences.partClause : ""
+    let keepClause = referencing ? MeetingSummaryReferences.keepClause : ""
     func ask(_ prompt: String) async throws -> String {
       try await call(
-        prompt, timeoutSeconds: timeoutSeconds, attempts: attempts, admit: admit,
-        complete: complete)
+        prompt, instructions: system, timeoutSeconds: timeoutSeconds, attempts: attempts,
+        admit: admit, complete: complete)
     }
     guard let pieces = plan.pieces else {
       // The whole transcript, which `plan` has just measured against the budget.
@@ -511,7 +561,7 @@ public enum MeetingSummary {
       let percent = max(1, cap * 80 / size)
       let request = """
         Shorten these bullets to at most \(percent)% of their length. Keep every decision and \
-        action item, with its owner when stated.
+        action item, with its owner when stated.\(keepClause)
 
         \(answer)
         """
@@ -529,7 +579,8 @@ public enum MeetingSummary {
       let answer = try await ask(
         """
         This is part \(index + 1) of \(pieces.count) of \(what). List its key points, decisions \
-        and action items (with owners when stated) as short bullets, at most \(words) words.
+        and action items (with owners when stated) as short bullets, at most \(words) words.\
+        \(partClause)
 
         Part:
         \(piece.text)
@@ -552,7 +603,7 @@ public enum MeetingSummary {
           factsPrefix(facts)
             + """
             Below are the key points of consecutive parts of a meeting, in order. Combine them \
-            into one list of short bullets, at most \(words) words; drop repeats.
+            into one list of short bullets, at most \(words) words; drop repeats.\(keepClause)
 
             \(joined(group))
             """)
@@ -662,8 +713,8 @@ public enum MeetingSummary {
   /// and waits for it to end (`withThrowingTimeout`), so a local model still finishes one call
   /// before the next starts (R44); a call that ignores cancellation can run past the limit.
   private static func call(
-    _ prompt: String, timeoutSeconds: Double, attempts: AttemptCounter, admit: Admit,
-    complete: @escaping Complete
+    _ prompt: String, instructions: String, timeoutSeconds: Double, attempts: AttemptCounter,
+    admit: Admit, complete: @escaping Complete
   ) async throws -> String {
     var retries = 0
     while true {
