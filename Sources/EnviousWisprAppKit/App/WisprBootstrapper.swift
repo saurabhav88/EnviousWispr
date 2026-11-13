@@ -17,7 +17,7 @@ import SwiftUI
 /// can link this code WITHOUT launching the app. The thin `EnviousWisprApp`
 /// shell (still `@main`, still owning the `@NSApplicationDelegateAdaptor` and
 /// app identity) constructs ONE of these in `App.init()`, attaches it to the
-/// shell `AppDelegate`, and shows `mainWindowContent()` / `onboardingWindowContent()`.
+/// shell `AppDelegate`, and shows `mainWindowContent()`.
 /// App-owned homes stay `internal` to this module (no public leak); only the
 /// bootstrapper type + its init + 4 lifecycle methods + 2 view factories + 2
 /// window-title accessors cross to the shell.
@@ -99,8 +99,6 @@ package final class WisprBootstrapper {
   let permissions: PermissionsService
   /// #1176: in-flight onboarding session, read at app-quit to emit abandon.
   let onboardingProgress = OnboardingProgress()
-  /// #4528 C2c.2: who may run Setup (old onboarding or a new-coordinator session), one at a time.
-  let onboardingWorkflow: OnboardingWorkflowOwner
   let setupSession: SetupSession
   let asrManager: any ASRManagerInterface
   /// #1386 PR-2: the one door to whichever engine is active. Shared plumbing —
@@ -1339,18 +1337,11 @@ package final class WisprBootstrapper {
     // report to it** (the "Show app in Dock" switch, the update dialog). Its inputs,
     // `presentationEffects` and `settings`, already exist, so this is a reorder, not
     // a late-bound seam: same reasoning as `MenuBarController` below.
-    let onboardingWorkflow = OnboardingWorkflowOwner()
-    self.onboardingWorkflow = onboardingWorkflow
     let appWindowCoordinator = AppWindowCoordinator(
       application: presentationEffects.application,
       // Strong: `settings` holds no reference back to the coordinator, and a nil fallback
       // would be a second copy of the default, which lives only in `SettingsDefaultValues`.
       showInDock: { [settings] in settings.showInDock },
-      canOpenOnboarding: { [weak settings] in
-        guard let settings else { return false }
-        // #4528 C2c.2: never open the old writer over a new-coordinator session.
-        return settings.onboardingState != .completed && onboardingWorkflow.legacyMayOpen
-      },
       isOnboardingComplete: { [weak settings] in
         settings?.onboardingState == .completed
       }
@@ -2132,7 +2123,6 @@ package final class WisprBootstrapper {
       hotkeyService: hotkeyService,
       applicationRelocationCoordinator: applicationRelocationCoordinator,
       bluetoothAwarenessPresenter: bluetoothAwarenessPresenter,
-      onboardingProgress: onboardingProgress,
       transcriptionCheckpointStore: transcriptionCheckpointStore,
       batchDecodeFaultController: batchDecodeFaultController,
       whisperMemoryPressure: whisperMemoryPressure,
@@ -2565,7 +2555,16 @@ package final class WisprBootstrapper {
       liveRecording: liveRecordingState, audioDevices: audioDeviceList)
     let setupSession = SetupSession.live(setupOwners, progress: onboardingProgress)
     self.setupSession = setupSession
+    appWindowCoordinator.setupSession = setupSession
+    setupSession.onCompleted = { [weak appWindowCoordinator, weak menuBarController] in
+      menuBarController?.updateIcon()
+      appWindowCoordinator?.finishSetup()
+    }
+    setupSession.onProgrammaticDismissal = { [weak appWindowCoordinator] in
+      appWindowCoordinator?.refreshActivationPolicy(excluding: nil)
+    }
     #if DEBUG
+      let onboardingWorkflow = OnboardingWorkflowOwner()
       self.debugImportDoor = DebugImportDoor(
         coordinator: fileImportCoordinator,
         // The screen's gate, composed from the same coordinators the screen reads; the
@@ -3161,10 +3160,6 @@ package final class WisprBootstrapper {
     self.dictationRuntime = dictationRuntime
     self.hotkeyService = hotkeyService
     self.appWindowCoordinator = appWindowCoordinator
-    appWindowCoordinator.onboardingWorkflow = onboardingWorkflow
-    onboardingWorkflow.legacyWindowVisible = { [weak appWindowCoordinator] in
-      appWindowCoordinator?.isOnboardingWindowVisible ?? false
-    }
     self.previousApplicationTracker = previousApplicationTracker
     self.historyPaste = historyPaste
     self.menuBarController = menuBarController
@@ -3504,6 +3499,7 @@ package final class WisprBootstrapper {
 
   package func applicationDidBecomeActive() {
     appLifecycleCoordinator.runDidBecomeActive()
+    setupSession.components?.runtime.appDidBecomeActive()
     // #3438: after the pane-scoped probe above, so a visible watch is never doubled.
     polishSetup.monitor.applicationDidBecomeActive()
     // #958: proactive foreground check (post-sleep freshness), strict >=3600 gated.
@@ -3566,11 +3562,7 @@ package final class WisprBootstrapper {
     // bypasses this). Capture BEFORE the Phase-1 flush in runWillTerminate so it is
     // durable. Deduped by the box's terminal guard (a clean finish or a prior
     // window-close abandon suppresses it).
-    onboardingWorkflow.backendQuit?()  // #4528: a backend session that owns Setup ends first.
-    onboardingProgress.emitAbandonIfInFlight(
-      reason: "app_quit", micStatus: permissions.microphoneStatusString,
-      // Live read so a just-before-quit grant isn't logged denied (cloud Codex r3).
-      accessibilityStatus: permissions.accessibilityGrantedLive ? "granted" : "denied")
+    setupSession.stop(reason: "app_quit")
     appLifecycleCoordinator.runWillTerminate()
     // #3849: LAST, synchronously, after every step above: free every transcribe.cpp model
     // (Whisper, Universal Live Preview) so the Metal device destructor at exit finds none
@@ -3582,8 +3574,6 @@ package final class WisprBootstrapper {
   // MARK: - Window titles (so the shell needs no EnviousWisprCore dependency)
 
   package var mainWindowTitle: String { LaunchWindowIdentity.mainTitle }
-  package var onboardingWindowTitle: String { LaunchWindowIdentity.onboardingTitle }
-  package var onboardingWindowID: String { LaunchWindowIdentity.onboardingID }
 
   // MARK: - Root content
   // Homes are injected here, INSIDE the kit — the shell injects nothing, so no
@@ -3593,9 +3583,6 @@ package final class WisprBootstrapper {
     MainWindowRoot(b: self)
   }
 
-  package func onboardingWindowContent() -> some View {
-    OnboardingWindowRoot(b: self)
-  }
 }
 
 // MARK: - Engine switch sequence (#3849)
@@ -3631,18 +3618,9 @@ extension WisprBootstrapper {
   }
 }
 
-/// The main window's root view. Owns the onboarding-presented view-state (was
-/// `@State` on the old App struct) and injects every App-owned home.
+/// Injects the App-owned homes into the main window.
 private struct MainWindowRoot: View {
   let b: WisprBootstrapper
-  @State private var isOnboardingPresented: Bool
-
-  init(b: WisprBootstrapper) {
-    self.b = b
-    // #923: derive from the SettingsManager instance, not a raw `.standard` read
-    // (which on the dev build would hit the wrong per-build store).
-    _isOnboardingPresented = State(initialValue: !b.settings.hasCompletedOnboarding)
-  }
 
   var body: some View {
     UnifiedWindowView()
@@ -3715,72 +3693,27 @@ private struct MainWindowRoot: View {
       .environment(\.asrManager, b.asrManager)
       .environment(\.activeEngine, b.activeEngine)
       .environment(\.keychainManager, b.keychainManager)
-      .background(
-        ActionWirer(
-          settings: b.settings,
-          appWindowCoordinator: b.appWindowCoordinator,
-          menuBarController: b.menuBarController,
-          onboardingProgress: b.onboardingProgress,
-          isOnboardingPresented: $isOnboardingPresented
-        )
-      )
+      .background(ActionWirer(appWindowCoordinator: b.appWindowCoordinator))
   }
 }
 
-
-/// Hidden view that wires SwiftUI environment actions into App-owned homes.
-/// Must live inside a SwiftUI view hierarchy to access @Environment.
+/// Supplies the SwiftUI main opener and admits the first Setup presentation.
 private struct ActionWirer: View {
-  /// The onboarding-auto-open gate reads `onboardingState` off the settings
-  /// store directly (epic #763).
-  let settings: SettingsManager
-  /// PR-B.2 of #763: the three SwiftUI window bridges are wired onto the
-  /// coordinator now, not AppDelegate.
   let appWindowCoordinator: AppWindowCoordinator
-  /// PR-B.3 of #763: onboarding-dismissal icon refresh targets the menu home.
-  let menuBarController: MenuBarController
-  /// #1176: begin a fresh onboarding session on every window open (first-run AND
-  /// Diagnostics restart both funnel through `openOnboardingAction`).
-  let onboardingProgress: OnboardingProgress
-  @Binding var isOnboardingPresented: Bool
   @Environment(\.openWindow) private var openWindow
-  @Environment(\.dismissWindow) private var dismissWindow
 
   var body: some View {
     Color.clear
       .frame(width: 0, height: 0)
       .task {
-        appWindowCoordinator.openMainWindowAction = { [openWindow] in
-          openWindow(id: "main")
-        }
-        appWindowCoordinator.openOnboardingAction = { [openWindow, onboardingProgress, settings] in
-          // #1176: every onboarding presentation funnels through here. `begin` starts
-          // a fresh session only when none is in flight, so a refocus of the open
-          // window (status-menu "Continue Setup…") never rewinds it — see the guard
-          // in `OnboardingProgress.begin`. `source` reads the durable everCompleted
-          // flag from the shared settings store.
-          let source = settings.onboardingEverCompleted ? "diagnostics_restart" : "first_run"
-          onboardingProgress.begin(source: source)
-          openWindow(id: AppConstants.onboardingWindowID)
-        }
-        appWindowCoordinator.dismissOnboardingAction = { [dismissWindow] in
-          dismissWindow(id: AppConstants.onboardingWindowID)
-        }
-        // PR-B.2 of #763: drain any queued onboarding-open request FIRST.
-        let replayed = appWindowCoordinator.consumePendingOpenOnboarding()
-        // Auto-open onboarding if needed (first launch), only if nothing was
-        // already replayed.
-        if !replayed, settings.onboardingState != .completed {
-          appWindowCoordinator.openOnboardingWindow()
-        }
-      }
-      .onChange(of: isOnboardingPresented) { _, newValue in
-        if !newValue {
-          // State-driven dismissal: binding flipped to false → close window.
-          dismissWindow(id: AppConstants.onboardingWindowID)
-          appWindowCoordinator.refreshAfterOnboardingDismissal()
-          menuBarController.updateIcon()
-        }
+        #if DEBUG
+          let automaticallyOpenSetup = !DevControlOnboarding.holdsAutomaticPresentation
+        #else
+          let automaticallyOpenSetup = true
+        #endif
+        appWindowCoordinator.attachMainWindow(
+          open: { [openWindow] in openWindow(id: "main") },
+          automaticallyOpenSetup: automaticallyOpenSetup)
       }
   }
 }

@@ -175,6 +175,7 @@ struct OnboardingCheckpointTests {
   @Test("no checkpoint, unreadable bytes or a newer version start at Welcome")
   func unreadableStartsFresh() throws {
     #expect(Self.resolve(.notStarted, nil) == .fresh)
+    #expect(Self.resolve(.settingUp, nil) == .fresh)
     #expect(Self.resolve(.settingUp, Data("not json".utf8)) == .fresh)
     var newer = OnboardingCheckpoint(state: Self.midway(), startedAt: .now, savedAt: .now)
     newer.version = OnboardingCheckpoint.currentVersion + 1

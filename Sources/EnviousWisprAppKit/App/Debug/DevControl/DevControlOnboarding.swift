@@ -16,8 +16,12 @@
     /// unfinished (a relaunch mid-run). DEBUG only; `stop` gives Setup back as usual.
     static let holdAtLaunchEnvironmentKey = "EW_UAT_ONBOARDING_BACKEND"
 
+    static var holdsAutomaticPresentation: Bool {
+      ProcessInfo.processInfo.environment[holdAtLaunchEnvironmentKey] == "1"
+    }
+
     private let workflow: OnboardingWorkflowOwner
-    private let setupSession: SetupSession
+    let setupSession: SetupSession
     private let checkpointData: @MainActor () -> Data?
     private let legacyState: @MainActor () -> OnboardingState
     private let permissions: PermissionsService?
@@ -99,14 +103,14 @@
       guard workflow.claimBackendSession() else { return false }
       workflow.backendRestart = { [weak self] in _ = self?.reset() }
       workflow.backendQuit = { [weak self] in self?.quitSession() }
-      setupSession.onCompleted = { [weak self] in self?.endOwnership() }
+      setupSession.onDebugEnd = { [weak self] in self?.endOwnership() }
       return true
     }
 
     /// Gives Setup back to the legacy route after an explicit Stop, quit or completion.
     func endOwnership() {
       clearSimulation()
-      setupSession.onCompleted = nil
+      setupSession.onDebugEnd = nil
       workflow.releaseBackendSession()
     }
 
@@ -527,7 +531,7 @@
         workflow: workflow, setupSession: setupSession,
         checkpointData: { owners.settings.onboardingCheckpointData },
         legacyState: { owners.settings.onboardingState }, permissions: owners.permissions)
-      if ProcessInfo.processInfo.environment[holdAtLaunchEnvironmentKey] == "1" {
+      if holdsAutomaticPresentation {
         _ = door.holdForUAT()
       }
       return door

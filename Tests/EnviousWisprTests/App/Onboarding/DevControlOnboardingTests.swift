@@ -296,22 +296,6 @@
       #expect(vm.warmingTask == nil && workflow.legacyTasks == 0)
     }
 
-    @Test("an old window whose open is still pending blocks a session claim")
-    func pendingLegacyOpenBlocksClaim() {
-      let workflow = OnboardingWorkflowOwner()
-      let windows = AppWindowCoordinator(
-        application: RecordingDesktopPresentationEffects(), showInDock: { true },
-        canOpenOnboarding: { workflow.legacyMayOpen }, isOnboardingComplete: { false })
-      workflow.legacyWindowVisible = { windows.isOnboardingWindowVisible }
-      windows.openOnboardingWindow()  // Not wired yet: queued, window not created.
-      #expect(windows.isOnboardingWindowVisible)
-      #expect(workflow.claimBackendSession() == false)
-      windows.closeOnboardingWindow()
-      #expect(workflow.claimBackendSession())
-      windows.openOnboardingWindow()
-      #expect(windows.isOnboardingWindowVisible == false)  // Refused while the session owns Setup.
-    }
-
     @Test("the door refuses choices no Setup button offers")
     func refusesUnofferedValues() {
       for args: [String: Any] in [
@@ -334,42 +318,21 @@
       }
     }
 
-    @Test("Restart Onboarding reaches the session that owns Setup, else the old onboarding")
+    @Test("Restart Onboarding resets the same session and presents Welcome")
     func restartRouting() {
-      let workflow = OnboardingWorkflowOwner()
+      let world = OnboardingCoordinatorTests.World()
+      let (door, _, _) = Self.make(world)
       let windows = AppWindowCoordinator(
         application: RecordingDesktopPresentationEffects(), showInDock: { true },
-        canOpenOnboarding: { workflow.legacyMayOpen }, isOnboardingComplete: { false })
-      windows.onboardingWorkflow = workflow
-      var legacyRestarts = 0
-      windows.restartOnboarding { legacyRestarts += 1 }
-      #expect(legacyRestarts == 1)
-      windows.closeOnboardingWindow()
-
-      let world = OnboardingCoordinatorTests.World()
-      let (door, _, _) = Self.make(world, workflow: workflow)
+        isOnboardingComplete: { false })
+      windows.setupSession = door.setupSession
+      defer { _ = door.stop() }
       _ = door.begin()
       _ = door.send(["event": "next"])
-      windows.restartOnboarding { legacyRestarts += 1 }
-      #expect(legacyRestarts == 1 && door.session?.coordinator.state.step == .welcome)
+      windows.restartOnboarding()
+      #expect(door.session?.coordinator.state.step == .welcome)
+      #expect(door.setupSession.presenter.isVisible)
       #expect(world.log.contains("restart"))
-    }
-
-    @Test("a successful finish lands in the menu bar without reopening the main window")
-    func finishToMenuBar() {
-      let windows = AppWindowCoordinator(
-        application: RecordingDesktopPresentationEffects(), showInDock: { true },
-        canOpenOnboarding: { true }, isOnboardingComplete: { true })
-      var dismissed = 0
-      var mainOpened = 0
-      var observed = 0
-      windows.dismissOnboardingAction = { dismissed += 1 }
-      windows.openMainWindowAction = { mainOpened += 1 }
-      windows.onOnboardingDismissed = { observed += 1 }
-      windows.finishOnboardingToMenuBar()
-      #expect(dismissed == 1 && observed == 1 && mainOpened == 0)
-      windows.closeOnboardingWindow()  // the old completion still restores the main window
-      #expect(mainOpened == 1)
     }
 
     @Test("a session visit begins once, abandons at most once, and a completed visit never abandons")
@@ -432,11 +395,13 @@
       defer { setupSession.stop(reason: "app_quit") }
       #expect(setupSession.components == nil)
       #expect(setupSession.begin())
+      #expect(!progress.isInFlight)
       let components = try #require(setupSession.components)
       let practice = try #require(components.screenSources.practiceProgress)
       components.coordinator.send(.next)
       practice.text = "Practice draft"
       setupSession.present()
+      #expect(progress.isInFlight)
       let model = try #require(setupSession.presenter.screenModel)
       let window = try #require(NSApp.windows.first {
         $0.identifier?.rawValue == "onboarding" && $0.isVisible

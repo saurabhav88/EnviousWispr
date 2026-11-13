@@ -35,6 +35,10 @@ final class SetupSession {
   private(set) var ownsVisit = false
   let presenter = SetupWindowPresenter()
   var onCompleted: (() -> Void)?
+  var onProgrammaticDismissal: (() -> Void)?
+  #if DEBUG
+    var onDebugEnd: (() -> Void)?
+  #endif
 
   init(
     progress: OnboardingProgress? = nil, permissions: PermissionsService? = nil,
@@ -52,7 +56,9 @@ final class SetupSession {
   func begin() -> Bool {
     let components = ensureComponents()
     guard components.coordinator.begin() else { return false }
-    beginVisit()
+    #if DEBUG
+      if onDebugEnd != nil { beginVisit() }
+    #endif
     components.runtime.start()
     return true
   }
@@ -67,7 +73,9 @@ final class SetupSession {
       components.coordinator.reset()
       components.runtime.start()
     }
-    beginVisit()
+    #if DEBUG
+      if onDebugEnd != nil { beginVisit() }
+    #endif
   }
 
   func present() {
@@ -93,6 +101,7 @@ final class SetupSession {
   private func closeWindow() {
     presenter.dismiss()
     endVisit(reason: "window_closed")
+    onProgrammaticDismissal?()
   }
 
   func stop(reason: String) {
@@ -100,7 +109,12 @@ final class SetupSession {
       components.runtime.quit()
     }
     endVisit(reason: reason)
+    let wasVisible = presenter.isVisible
     releasePresentation()
+    if wasVisible, reason != "app_quit" { onProgrammaticDismissal?() }
+    #if DEBUG
+      onDebugEnd?()
+    #endif
   }
 
   func complete() {
@@ -108,6 +122,9 @@ final class SetupSession {
     if ownsVisit { progress?.markCompleted() }
     ownsVisit = false
     releasePresentation()
+    #if DEBUG
+      onDebugEnd?()
+    #endif
     onCompleted?()
   }
 
