@@ -258,12 +258,14 @@ struct KernelDictationRecordingTests {
       ])
   }
 
-  @Test("a lead-trim salvage decodes the conditioned buffer minus its lead, and the shifted map says so")
+  @Test(
+    "a timed lead-trim salvage carries the shifted map end to end, and its sentence lands after the cut lead"
+  )
   func salvageCoordinates() async throws {
     let sink = SinkLog()
     let ctx = context(
       sink: sink, preference: Preference([true]), receipt: Receipt(),
-      behavior: .emptyThenScripted(text: "salvaged text", emptyCalls: 1))
+      behavior: .emptyThenScripted(text: "Salvaged text.", emptyCalls: 1))
     let wrapper = try #require(ctx.sut as? KernelRecordingSession)
     // The measured degraded-lead shape (burst, near-dead window, recovered speech), with a
     // per-sample wobble so every stretch is distinguishable.
@@ -272,7 +274,22 @@ struct KernelDictationRecordingTests {
     }
     let capture = shape(8_000, 0.3, from: 0) + shape(16_000, 0.002, from: 8_000)
       + shape(24_000, 0.25, from: 24_000)
-    let segments = [SpeechSegment(startSample: 0, endSample: 48_000)]
+    // VAD skipped part of the quiet window: the conditioner cuts recording 11,600..<14,400 (the
+    // gap between the padded segments), so the salvage input is NOT a plain offset into the
+    // recording and only the real shifted map places its words.
+    let segments = [
+      SpeechSegment(startSample: 0, endSample: 10_000),
+      SpeechSegment(startSample: 16_000, endSample: 48_000),
+    ]
+    // The salvage decode returns real-shaped word timings on ITS input (the buffer without the
+    // cut lead): "Salvaged text." heard from 100 ms to 600 ms into that input.
+    let text = "Salvaged text."
+    ctx.engine.finalizeWordTimings = [
+      text: [
+        ASRWordTiming(word: "Salvaged", range: 0..<8, startMs: 100, endMs: 350),
+        ASRWordTiming(word: "text.", range: 9..<14, startMs: 400, endMs: 600),
+      ]
+    ]
 
     await wrapper.apply(.start)
     await wrapper.drainReadyWork()
@@ -283,7 +300,7 @@ struct KernelDictationRecordingTests {
     await wrapper.apply(.stop)
     await wrapper.drainUntilConcluded()
 
-    #expect(wrapper.testKernel.deliveredTranscript == "salvaged text")
+    #expect(wrapper.testKernel.deliveredTranscript == text)
     let request = try #require(sink.requests.first)
     #expect(request.asr.source == .leadSalvage)
     guard case .conditionedBatchTrimmed(let lead) = request.asr.input else {
@@ -294,11 +311,31 @@ struct KernelDictationRecordingTests {
     let decoded = try #require(ctx.engine.lastFinalizeBatchSamples)
     let conditioned = CapturedAudioConditioner.condition(rawSamples: capture, vadSegments: segments)
     #expect(decoded == Array(conditioned.samples[lead...]))
+    #expect(conditioned.timeline.count == 2, "the VAD gap splits the conditioned buffer")
+    // The cut lead reaches past the gap, so the salvage input starts in the second stretch.
+    try #require(lead >= 11_600, "precondition: the trim lands after the cut gap (lead \(lead))")
     let shifted = RecordingSessionKernel.trimmedTimeline(conditioned.timeline, leadSamples: lead)
-    #expect(shifted.first?.recordingStartSample == lead)
-    try expectTimelineReproducesDecode(decode: decoded, recording: request.samples, timeline: shifted)
-    // The fake returns no word timings, so this take carries no timing evidence.
-    #expect(request.asr.timing == nil)
+    #expect(shifted.first?.recordingStartSample == lead + 2_800)
+
+    // The evidence the kernel handed over is the salvage decode's own: its words, and the map
+    // shifted by the cut lead, which rebuilds the salvage decode input from the recording.
+    let timing = try #require(request.asr.timing, "a timed salvage must carry timing evidence")
+    #expect(request.asr.wordTimingsAvailable)
+    #expect(timing.words == ctx.engine.finalizeWordTimings?[text])
+    #expect(timing.timeline == shifted)
+    try expectTimelineReproducesDecode(
+      decode: decoded, recording: request.samples, timeline: timing.timeline)
+
+    // On the recording's clock the sentence starts `lead + 2,800` samples (the cut lead plus
+    // the cut gap) later than the salvage decode's own clock says.
+    let sidecar = DictationTimingBuilder.timing(
+      for: request.asr, recordingSampleCount: request.samples.count)
+    #expect(
+      sidecar.anchors == [
+        RecordingTiming.Anchor(
+          utf16Start: 0, utf16End: 14, startSeconds: Double(lead + 2_800 + 1_600) / 16_000,
+          endSeconds: Double(lead + 2_800 + 9_600) / 16_000)
+      ])
   }
 
   @Test("a take whose save gave no receipt (failed or held) is never handed over")
