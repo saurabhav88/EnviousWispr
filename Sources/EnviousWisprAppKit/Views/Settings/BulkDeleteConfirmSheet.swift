@@ -74,18 +74,19 @@ struct BulkDeleteConfirmSheet: View {
 
         Spacer()
 
-        // The ProgressView swap stays a raw Button: this control replaces its
-        // whole label while exporting, which a title-taking control cannot do.
+        // Its own label, not a title: this control swaps its whole label for a
+        // ProgressView while exporting. The Settings button style paints either label (#4506).
         Button {
           exportCopy()
         } label: {
           if isExporting {
             ProgressView().controlSize(.small)
           } else {
-            Text("Export a copy first")
+            EnviousButtonLabel("Export a copy first")
           }
         }
-        .disabled(isExporting)
+        .settingsButton(isEnabled: !isExporting)
+        .settingsArrivalWithoutInheritedPlace()
 
         // Deletes words permanently, and on this sheet it sat in the same grey
         // as Cancel with only the system's destructive ROLE separating them --

@@ -234,12 +234,14 @@ struct MeetingNoticeBanner: View {
         Button {
           Task { await startFlow.fixMicrophone() }
         } label: {
-          Text(
+          EnviousButtonLabel(LocalizedStringResource(
             "Allow Microphone",
             comment:
               "EnviousMeet: asks macOS for microphone access, or opens System Settings if it was refused."
-          )
+          ))
         }
+        .settingsButton(isEnabled: true)
+        .settingsArrivalWithoutInheritedPlace()
         .accessibilityIdentifier("meetings.allowMicrophone")
       }
       Button {

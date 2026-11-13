@@ -107,11 +107,14 @@ struct DiagnosticsSettingsView: View {
           #endif
           BrandedRow(showDivider: false) {
             VStack(alignment: .leading, spacing: 4) {
-              Button("Restart Onboarding…") {
+              Button {
                 settings.onboardingState = .notStarted
                 appWindowCoordinator.openOnboardingWindow()
+              } label: {
+                EnviousButtonLabel("Restart Onboarding…")
               }
-              .disabled(liveRecordingState.pipelineState != .idle)
+              .settingsButton(isEnabled: liveRecordingState.pipelineState == .idle)
+              .settingsArrivalWithoutInheritedPlace()
               Text(
                 "Re-runs the onboarding flow without wiping app state. Disabled during recording."
               )
@@ -151,27 +154,38 @@ struct DiagnosticsSettingsView: View {
       BrandedSection(header: "Log Files") {
         BrandedRow {
           HStack {
-            Button("Open Log Directory") {
+            Button {
               Task {
                 let url = await AppLogger.shared.logDirectoryURL()
                 NSWorkspace.shared.open(url)
               }
+            } label: {
+              EnviousButtonLabel("Open Log Directory")
             }
+            .settingsButton(isEnabled: true)
+            .settingsArrivalWithoutInheritedPlace()
 
-            Button("Copy Log Path") {
+            Button {
               Task {
                 let url = await AppLogger.shared.logDirectoryURL()
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(url.path, forType: .string)
               }
+            } label: {
+              EnviousButtonLabel("Copy Log Path")
             }
+            .settingsButton(isEnabled: true)
+            .settingsArrivalWithoutInheritedPlace()
 
-            Button("Clear Logs") {
+            Button(role: .destructive) {
               Task {
                 try? await AppLogger.shared.clearLogs()
               }
+            } label: {
+              EnviousButtonLabel("Clear Logs")
             }
-            .foregroundStyle(.stError)
+            .settingsButton(isEnabled: true)
+            .settingsArrivalWithoutInheritedPlace()
           }
         }
         BrandedRow(showDivider: false) {
@@ -193,10 +207,14 @@ struct DiagnosticsSettingsView: View {
           .foregroundStyle(.stTextSecondary)
         }
         BrandedRow(showDivider: false) {
-          Button("Open Console.app") {
+          Button {
             NSWorkspace.shared.open(
               URL(fileURLWithPath: "/System/Applications/Utilities/Console.app"))
+          } label: {
+            EnviousButtonLabel("Open Console.app")
           }
+          .settingsButton(isEnabled: true)
+          .settingsArrivalWithoutInheritedPlace()
         }
       }
 
@@ -224,17 +242,25 @@ struct DiagnosticsSettingsView: View {
           }
           BrandedRow {
             HStack {
-              Button("Run ASR Benchmark") {
+              Button {
                 Task {
                   await diagnostics.benchmark.run(activeEngine: activeEngine)
                 }
+              } label: {
+                EnviousButtonLabel("Run ASR Benchmark")
               }
-              Button("Run Pipeline Benchmark") {
+              .settingsButton(isEnabled: true)
+              .settingsArrivalWithoutInheritedPlace()
+              Button {
                 Task {
                   await diagnostics.benchmark.runPipelineBenchmark(
                     using: asrManager, activeEngine: activeEngine)
                 }
+              } label: {
+                EnviousButtonLabel("Run Pipeline Benchmark")
               }
+              .settingsButton(isEnabled: true)
+              .settingsArrivalWithoutInheritedPlace()
             }
           }
         }

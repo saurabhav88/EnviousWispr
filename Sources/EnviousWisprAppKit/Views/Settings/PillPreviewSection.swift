@@ -40,8 +40,20 @@ import SwiftUI
           BrandedRow {
             VStack(alignment: .leading, spacing: 6) {
               HStack {
-                Button("Play") { controller.play() }
-                Button("Dismiss") { controller.dismiss() }
+                Button {
+                  controller.play()
+                } label: {
+                  EnviousButtonLabel("Play")
+                }
+                .settingsButton(isEnabled: true)
+                .settingsArrivalWithoutInheritedPlace()
+                Button {
+                  controller.dismiss()
+                } label: {
+                  EnviousButtonLabel("Dismiss")
+                }
+                .settingsButton(.quiet, isEnabled: true)
+                .settingsArrivalWithoutInheritedPlace()
               }
               Text(statusText)
                 .font(.stHelper)
@@ -68,8 +80,20 @@ import SwiftUI
           BrandedRow {
             VStack(alignment: .leading, spacing: 6) {
               HStack {
-                Button("Play") { callPopups.play() }
-                Button("Dismiss") { callPopups.dismiss() }
+                Button {
+                  callPopups.play()
+                } label: {
+                  EnviousButtonLabel("Play")
+                }
+                .settingsButton(isEnabled: true)
+                .settingsArrivalWithoutInheritedPlace()
+                Button {
+                  callPopups.dismiss()
+                } label: {
+                  EnviousButtonLabel("Dismiss")
+                }
+                .settingsButton(.quiet, isEnabled: true)
+                .settingsArrivalWithoutInheritedPlace()
               }
               Text(callPopupStatusText)
                 .font(.stHelper)

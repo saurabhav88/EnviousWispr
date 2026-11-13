@@ -205,9 +205,13 @@ struct MeetingLiveWordsCard: View {
   /// a download can start instead; the model refuses the command too.
   @ViewBuilder private var action: some View {
     if model.universalDownloadQueued {
-      Button(String(localized: SettingsItemCopy.LivePreview.universalCancel)) {
+      Button {
         model.cancelDownload()
+      } label: {
+        EnviousButtonLabel(SettingsItemCopy.LivePreview.universalCancel, size: .medium)
       }
+      .settingsButton(.filled, shape: .roundedRect, size: .medium, isEnabled: true)
+      .settingsArrivalWithoutInheritedPlace()
     } else {
       actionForStatus
     }
@@ -229,9 +233,13 @@ struct MeetingLiveWordsCard: View {
     case .failed:
       downloadButton(SettingsItemCopy.LivePreview.universalRetry)
     case .downloading(.universal, _, _):
-      Button(String(localized: SettingsItemCopy.LivePreview.universalCancel)) {
+      Button {
         model.cancelDownload()
+      } label: {
+        EnviousButtonLabel(SettingsItemCopy.LivePreview.universalCancel, size: .medium)
       }
+      .settingsButton(.filled, shape: .roundedRect, size: .medium, isEnabled: true)
+      .settingsArrivalWithoutInheritedPlace()
     case .loading, .notSetUp(nil), .ready, .downloading, .appleUnavailable:
       EmptyView()
     }
@@ -244,10 +252,22 @@ struct MeetingLiveWordsCard: View {
       // The refusal, with Download kept beside it: a press after the cause is fixed retries.
       HStack(spacing: 8) {
         meetingStatusText(String(localized: MeetingsCopy.liveWordsDownloadUnavailable))
-        Button(String(localized: title)) { model.download() }
+        Button {
+          model.download()
+        } label: {
+          EnviousButtonLabel(title, size: .medium)
+        }
+        .settingsButton(.filled, shape: .roundedRect, size: .medium, isEnabled: true)
+        .settingsArrivalWithoutInheritedPlace()
       }
     } else {
-      Button(String(localized: title)) { model.download() }
+      Button {
+        model.download()
+      } label: {
+        EnviousButtonLabel(title, size: .medium)
+      }
+      .settingsButton(.filled, shape: .roundedRect, size: .medium, isEnabled: true)
+      .settingsArrivalWithoutInheritedPlace()
     }
   }
 
@@ -330,12 +350,13 @@ struct MeetingLiveLanguageRow: View {
               Text(languageName(engine))
                 .font(.stRowHelper)
                 .foregroundStyle(.stTextSecondary)
-              Button(SettingsItemCopy.Engine.lockedLanguageChange) { showLanguages = true }
-                .controlSize(.small)
-                .font(.stHelper)
-                .disabled(model.languages(for: engine).isEmpty)
-                .accessibilityLabel(String(localized: MeetingsCopy.liveLanguageTitle))
-                .settingsArrivalFocusControl()
+              Button {
+                showLanguages = true
+              } label: {
+                EnviousButtonLabel(SettingsItemCopy.Engine.lockedLanguageChange)
+              }
+              .settingsButton(isEnabled: !model.languages(for: engine).isEmpty)
+              .accessibilityLabel(String(localized: MeetingsCopy.liveLanguageTitle))
             }
           }
         }
@@ -619,23 +640,43 @@ struct MeetingSpeakerLabelsCard: View {
     case .unavailableInThisBuild, .checking, .waitingForMeeting:
       EmptyView()
     case .notDownloaded:
-      Button(String(localized: SettingsItemCopy.LivePreview.universalDownload)) {
+      Button {
         model.download()
+      } label: {
+        EnviousButtonLabel(SettingsItemCopy.LivePreview.universalDownload, size: .medium)
       }
+      .settingsButton(.filled, shape: .roundedRect, size: .medium, isEnabled: true)
+      .settingsArrivalWithoutInheritedPlace()
       .accessibilityLabel(String(localized: MeetingSpeakerLabelsCopy.downloadName))
     case .downloadFailed:
-      Button(String(localized: SettingsItemCopy.LivePreview.universalRetry)) { model.download() }
-        .accessibilityLabel(String(localized: MeetingSpeakerLabelsCopy.retryDownloadName))
+      Button {
+        model.download()
+      } label: {
+        EnviousButtonLabel(SettingsItemCopy.LivePreview.universalRetry, size: .medium)
+      }
+      .settingsButton(.filled, shape: .roundedRect, size: .medium, isEnabled: true)
+      .settingsArrivalWithoutInheritedPlace()
+      .accessibilityLabel(String(localized: MeetingSpeakerLabelsCopy.retryDownloadName))
     case .queuedForMeeting, .downloading:
-      Button(String(localized: SettingsItemCopy.LivePreview.universalCancel)) { model.cancel() }
-        .accessibilityLabel(String(localized: MeetingSpeakerLabelsCopy.cancelName))
+      Button {
+        model.cancel()
+      } label: {
+        EnviousButtonLabel(SettingsItemCopy.LivePreview.universalCancel, size: .medium)
+      }
+      .settingsButton(.filled, shape: .roundedRect, size: .medium, isEnabled: true)
+      .settingsArrivalWithoutInheritedPlace()
+      .accessibilityLabel(String(localized: MeetingSpeakerLabelsCopy.cancelName))
     case .ready:
       removeButton
     case .loadFailed:
       HStack(spacing: 8) {
-        Button(String(localized: SettingsItemCopy.LivePreview.universalRetry)) {
+        Button {
           model.retryCheck()
+        } label: {
+          EnviousButtonLabel(SettingsItemCopy.LivePreview.universalRetry, size: .medium)
         }
+        .settingsButton(.filled, shape: .roundedRect, size: .medium, isEnabled: true)
+        .settingsArrivalWithoutInheritedPlace()
         .accessibilityLabel(String(localized: MeetingSpeakerLabelsCopy.retryCheckName))
         removeButton
       }
@@ -643,9 +684,14 @@ struct MeetingSpeakerLabelsCard: View {
   }
 
   private var removeButton: some View {
-    Button(String(localized: SettingsItemCopy.LivePreview.universalRemove)) { model.remove() }
-      .disabled(model.removeWaitsForMeeting)
-      .accessibilityLabel(String(localized: MeetingSpeakerLabelsCopy.removeName))
+    Button {
+      model.remove()
+    } label: {
+      EnviousButtonLabel(SettingsItemCopy.LivePreview.universalRemove, size: .medium)
+    }
+    .settingsButton(.quiet, shape: .roundedRect, size: .medium, isEnabled: !model.removeWaitsForMeeting)
+    .settingsArrivalWithoutInheritedPlace()
+    .accessibilityLabel(String(localized: MeetingSpeakerLabelsCopy.removeName))
   }
 }
 
@@ -867,7 +913,13 @@ struct MeetingTranscriptEngineCard: View {
     case .error:
       downloadButton(SettingsItemCopy.Engine.whisperTryAgain)
     case .downloading:
-      Button(String(localized: SettingsItemCopy.Engine.whisperCancel)) { model.cancelDownload() }
+      Button {
+        model.cancelDownload()
+      } label: {
+        EnviousButtonLabel(SettingsItemCopy.Engine.whisperCancel, size: .medium)
+      }
+      .settingsButton(.filled, shape: .roundedRect, size: .medium, isEnabled: true)
+      .settingsArrivalWithoutInheritedPlace()
     case .checking, .ready:
       EmptyView()
     }
@@ -877,7 +929,13 @@ struct MeetingTranscriptEngineCard: View {
     if let refusal = model.downloadRefusal {
       meetingStatusText(refusal)
     } else {
-      Button(String(localized: title)) { model.download() }
+      Button {
+        model.download()
+      } label: {
+        EnviousButtonLabel(title, size: .medium)
+      }
+      .settingsButton(.filled, shape: .roundedRect, size: .medium, isEnabled: true)
+      .settingsArrivalWithoutInheritedPlace()
     }
   }
 
