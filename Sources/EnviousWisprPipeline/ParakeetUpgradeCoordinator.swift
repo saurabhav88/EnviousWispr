@@ -1234,6 +1234,35 @@ extension ParakeetUpgradeCoordinator {
     return nil
   }
 
+  /// #3147 PR3, Transcribe again with: every Parakeet install a file may be transcribed with
+  /// now, Ultra first. The same admission rules as `meetingSelection()` (delivery on, location
+  /// usable, admitted now, Ultra within its attempt budget, v3 not rejected this launch), but
+  /// both installs, since the user picks one. Cache-only requests; never fetches.
+  package func importSelections() async -> [ParakeetModelSelection] {
+    guard (delivery ?? target?.delivery)?.isEnabled() == true else { return [] }
+    var selections: [ParakeetModelSelection] = []
+    if let target, target.delivery.locationIsUsable, await target.delivery.isAdmitted(),
+      target.delivery.locationIsUsable, case .state(let state) = target.store.read(),
+      !state.exhausted, state.attempts < Self.attemptBudget
+    {
+      selections.append(
+        ParakeetModelSelection(
+          model: .ultra, revision: target.delivery.modelRevision,
+          directory: target.delivery.installDirectory, cacheOnly: true,
+          displayBytes: target.delivery.modelTotalBytes, repairable: false, generation: 0))
+    }
+    if let delivery, delivery.locationIsUsable, !v3RejectedThisLaunch, await delivery.isAdmitted(),
+      delivery.locationIsUsable, !v3RejectedThisLaunch
+    {
+      selections.append(
+        ParakeetModelSelection(
+          model: .v3, revision: delivery.modelRevision, directory: delivery.installDirectory,
+          cacheOnly: true, displayBytes: delivery.modelTotalBytes, repairable: false,
+          generation: 0))
+    }
+    return selections
+  }
+
   /// Settings' "Model ready" read (#3385) with a target: whether the identity
   /// that serves, or will serve, is admitted and still permitted, from fresh
   /// marker and file-stamp reads. Never fetches. Rejection and load permission
