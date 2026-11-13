@@ -306,6 +306,38 @@ struct MeetingSummaryReferenceValidatorTests {
     let wrongHash = MeetingSummarySource.turn(id: "a", textSHA256: "0")
     #expect(
       Self.check(with(.init(source: wrongHash, quote: quote, rangeUTF16: 0..<31)), item: 0) == nil)
+    // A tampered passage that ends inside a word ("ship" of "shipping") never links; the
+    // whole word does.
+    var cut = base
+    let shipping = MeetingSummaryReferenceSources(
+      turns: [.init(id: "a", speaker: nil, text: "shipping")], notes: [])
+    let shipItem = MeetingSummaryItem(
+      id: UUID(), text: "ship",
+      citations: [
+        .init(
+          source: .turn(id: "a", textSHA256: MeetingDocumentHash.sha256("shipping")),
+          quote: "ship", rangeUTF16: 0..<4)
+      ])
+    cut.sources = shipping
+    cut.shown = "## Action items\n- ship"
+    cut.document = MeetingSummaryDocument(
+      inputs: Self.inputs, renderedMarkdownSHA256: MeetingDocumentHash.sha256(cut.shown!),
+      sections: [MeetingSummarySection(id: UUID(), title: "Action items", items: [shipItem])])
+    cut.saved = .init(
+      sha256: MeetingDocumentHash.sha256(cut.shown!), origin: .generated, inputs: Self.inputs)
+    #expect(Self.check(cut, item: 0) == nil)
+    #expect(
+      MeetingSummaryReferenceValidator.supportingSources(of: shipItem, in: shipping).isEmpty)
+    let wholeWord = MeetingSummaryItem(
+      id: UUID(), text: "shipping",
+      citations: [
+        .init(
+          source: .turn(id: "a", textSHA256: MeetingDocumentHash.sha256("shipping")),
+          quote: "shipping", rangeUTF16: 0..<8)
+      ])
+    #expect(
+      MeetingSummaryReferenceValidator.supportingSources(of: wholeWord, in: shipping).count == 1)
+
     // An item the shown summary does not hold, with a real citation of its own words.
     let other = "Pricing stays the same this year."
     var items = document.sections[0].items

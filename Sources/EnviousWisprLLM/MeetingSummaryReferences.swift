@@ -388,6 +388,16 @@ public enum MeetingSummaryReferences {
     }
   }
 
+  /// Whether the passage `rangeUTF16` of `source` is the whole `claim` (whitespace normalized)
+  /// and starts and ends at a word edge: every condition the builder puts on a citation's
+  /// range, checked again on a saved candidate.
+  public static func supportsWholeClaim(
+    _ claim: String, in source: String, rangeUTF16: Range<Int>
+  ) -> Bool {
+    sameClaim(slice(source, rangeUTF16), claim)
+      && atWordEdges(rangeUTF16, in: Array(source.utf16))
+  }
+
   /// Whether `quote` and `claim` are the same words with whitespace normalized, compared by
   /// UTF-8 bytes (never Swift's canonical equivalence).
   public static func sameClaim(_ quote: String, _ claim: String) -> Bool {
@@ -450,7 +460,7 @@ public enum MeetingSummaryReferences {
 
   /// A passage may not begin or end inside a word of a spaced script ("ship" inside
   /// "shipping"); scripts written without spaces have no such edge to check.
-  private static func atWordEdges(_ range: Range<Int>, in units: [UInt16]) -> Bool {
+  static func atWordEdges(_ range: Range<Int>, in units: [UInt16]) -> Bool {
     func scalar(at index: Int, backward: Bool) -> Unicode.Scalar? {
       guard index >= 0, index < units.count else { return nil }
       var i = index

@@ -26,8 +26,8 @@ struct ValidatedMeetingSummarySource: Equatable, Sendable {
 ///   hashes to the document's Markdown hash and reads as exactly the document's sections and
 ///   items;
 /// - a cited source still exists with the recorded text hash, the recorded range lies inside
-///   it and slices to exactly the recorded quote, and that quote is the WHOLE item with only
-///   whitespace normalized.
+///   it, does not cut a word or a surrogate pair, and slices to exactly the recorded quote,
+///   and that quote is the WHOLE item with only whitespace normalized.
 /// Only the citations meeting the last point are returned; an item with none gets no link.
 /// Paraphrase, partial support, a claim mixing supported and unsupported words, an edited,
 /// legacy or stale summary, and a changed or renamed source all fail closed. No model is asked.
@@ -104,7 +104,8 @@ final class MeetingSummaryReferenceValidator: MeetingSummaryReferencing {
         !citation.quote.isEmpty, !citation.rangeUTF16.isEmpty,
         MeetingDocumentHash.sameBytes(
           MeetingSummaryReferences.slice(current, citation.rangeUTF16), citation.quote),
-        MeetingSummaryReferences.sameClaim(citation.quote, item.text),
+        MeetingSummaryReferences.supportsWholeClaim(
+          item.text, in: current, rangeUTF16: citation.rangeUTF16),
         !result.contains(citation.source)
       else { continue }
       result.append(citation.source)
