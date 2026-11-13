@@ -1,4 +1,5 @@
 import ApplicationServices
+import CoreAudio
 import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprLivePreview
@@ -3087,6 +3088,16 @@ final class MeetingCoordinator {
   func liveRecordingAnchor(meetingID: UUID) -> UInt64? {
     guard case .recording(let current, _) = phase, current == meetingID else { return nil }
     return recorder?.anchor
+  }
+
+  /// #3147 PR4A: how far into its recorded timeline `meetingID` is now, from the recorder's
+  /// host-time anchor (the clock the track writer counts audio from), so a note typed while
+  /// recording seeks to the audio heard then. Nil when that meeting is not recording.
+  func recordingPositionMs(meetingID: UUID) -> Int? {
+    guard let anchor = liveRecordingAnchor(meetingID: meetingID) else { return nil }
+    let now = deps.hostTime()
+    guard now >= anchor else { return 0 }
+    return Int(AudioConvertHostTimeToNanos(now - anchor) / 1_000_000)
   }
 
   /// #4355 PR C: the call-app speaker log collected so far for `meetingID` while it records, for

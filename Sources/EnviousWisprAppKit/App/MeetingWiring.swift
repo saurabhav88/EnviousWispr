@@ -435,7 +435,9 @@ enum MeetingWiring {
       line: { MeetingGapPresentation.localized($0, forms: .interface) })
     let notes = coordinator.documents.snapshot(for: meetingID).document.blocks
       .filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-      .map { MeetingSummaryNoteSource(blockID: $0.id, text: $0.text) }
+      .map {
+        MeetingSummaryNoteSource(blockID: $0.id, text: $0.text, promptText: $0.markdownLine)
+      }
     return MeetingSummaryReferenceSources(turns: turns, notes: notes)
   }
 

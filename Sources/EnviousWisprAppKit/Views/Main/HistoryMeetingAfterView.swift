@@ -846,6 +846,7 @@ extension HistoryMeetingAfterView {
         MeetingAfterNotesPane(
           meetingID: meetingID, notes: notes, snapshot: snapshot,
           highlightedNoteID: highlightedNoteID,
+          requestNonce: noteRequest?.nonce,
           onSeek: { ms in player?.seek(toMs: ms) },
           playbackMs: { notesClockMs() })
       case .summary:
@@ -856,11 +857,11 @@ extension HistoryMeetingAfterView {
   }
 
   /// #3147 PR4A: where a new note block starts on the meeting timeline (plan §3.6). While this
-  /// meeting records, the time since it started; after Stop, the playback position; else
-  /// unknown.
+  /// meeting records, its recorded position (the recorder's clock); after Stop, the playback
+  /// position; else unknown.
   @MainActor fileprivate func notesClockMs() -> Int? {
-    if case .recording(let id, let startedAt) = meetings.phase, id == meetingID {
-      return max(0, Int(Date().timeIntervalSince(startedAt) * 1000))
+    if case .recording(let id, _) = meetings.phase, id == meetingID {
+      return meetings.recordingPositionMs(meetingID: meetingID)
     }
     return player?.positionMs
   }
@@ -1368,6 +1369,8 @@ private struct MeetingAfterNotesPane: View {
   let notes: any MeetingNotesAccessing
   let snapshot: MeetingNotesSnapshot
   let highlightedNoteID: UUID?
+  /// A new marker or View source request, even for the same note: it leaves edit mode.
+  let requestNonce: UUID?
   let onSeek: (Int) -> Void
   /// #3147 PR4A: the playback position, so a block typed after Stop starts there (plan §3.6).
   let playbackMs: @MainActor () -> Int?
@@ -1385,8 +1388,8 @@ private struct MeetingAfterNotesPane: View {
     }
     // A marker or View source that points at a note shows it in read mode, where it is
     // highlighted and its time seeks.
-    .onChange(of: highlightedNoteID) { _, id in
-      if id != nil { editing = false }
+    .onChange(of: requestNonce) { _, nonce in
+      if nonce != nil { editing = false }
     }
   }
 

@@ -18,11 +18,16 @@ public struct MeetingSummaryTurnSource: Sendable, Equatable {
 /// One note block a summary may point back to: the block's id and its text.
 public struct MeetingSummaryNoteSource: Sendable, Equatable {
   public let blockID: UUID
+  /// The block's own text: what citations point into and are hashed against.
   public let text: String
+  /// What the model reads for this block: its Markdown line, so a ticked and an open action
+  /// item stay different (`- [x] ` / `- [ ] `). Defaults to `text`.
+  public let promptText: String
 
-  public init(blockID: UUID, text: String) {
+  public init(blockID: UUID, text: String, promptText: String? = nil) {
     self.blockID = blockID
     self.text = text
+    self.promptText = promptText ?? text
   }
 }
 
@@ -61,7 +66,7 @@ public struct MeetingSummaryReferenceSources: Sendable, Equatable {
   /// The notes the model reads: one line per block, led by its tag.
   public var taggedNotes: String {
     zip(notes.indices, notes).map { index, note in
-      "[N\(index + 1)] \(note.text)"
+      "[N\(index + 1)] \(note.promptText)"
     }.joined(separator: "\n")
   }
 }

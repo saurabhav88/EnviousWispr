@@ -40,6 +40,33 @@ struct MeetingSummaryReferencesTests {
     #expect(Self.sources.taggedNotes == "[N1] Call the vendor about pricing")
   }
 
+  /// #3147 PR4A (Codex integration r1 #3): a ticked and an open action item with the same text
+  /// stay different for the model, while a citation still points into the block's own text.
+  @Test("the model reads a task's tick; citations stay on the block's own text")
+  func taskTickReachesTheModel() throws {
+    let done = UUID()
+    let open = UUID()
+    let sources = MeetingSummaryReferenceSources(
+      turns: [],
+      notes: [
+        .init(blockID: done, text: "Send the deck", promptText: "- [x] Send the deck"),
+        .init(blockID: open, text: "Send the deck", promptText: "- [ ] Send the deck"),
+      ])
+    #expect(sources.taggedNotes == "[N1] - [x] Send the deck\n[N2] - [ ] Send the deck")
+    let tagged = "## Action items\n- Send the deck [N2]"
+    let document = try #require(
+      MeetingSummaryReferences.document(
+        taggedSummary: tagged, summary: MeetingSummaryReferences.strippingTags(tagged),
+        sources: sources, inputs: Self.inputs))
+    #expect(
+      document.sections.first?.items.first?.citations == [
+        .init(
+          source: .note(
+            blockID: open, textSHA256: MeetingDocumentHash.sha256("Send the deck")),
+          quote: "Send the deck", rangeUTF16: 0..<13)
+      ])
+  }
+
   @Test("sources from a meeting row make exactly the transcript History hashes")
   func turnSourcesMatchTheProjection() {
     let text = "  hello there  \nsecond line\n   \nechoed words"

@@ -1,4 +1,5 @@
 import Darwin
+import CoreAudio
 import Foundation
 import Observation
 import Testing
@@ -667,6 +668,29 @@ struct MeetingCoordinatorTests {
   private func onlyMeeting(_ harness: Harness) throws -> MeetingRecord {
     try #require(harness.coordinator.meetings.count == 1)
     return try #require(harness.coordinator.meetings.first)
+  }
+
+  /// #3147 PR4A (Codex integration r1 #1): a note typed while recording is stamped from the
+  /// recorder's own host-time anchor, never the wall clock, so a slow start does not shift it.
+  @Test("the recording position counts from the recorder's anchor, only while recording")
+  func recordingPositionFromTheRecorderAnchor() async throws {
+    let harness = try Harness()
+    let anchor: UInt64 = 1_000_000_000
+    let elapsed = AudioConvertNanosToHostTime(2_500_000_000)
+    var deps = harness.dependencies()
+    deps.hostTime = { anchor + elapsed }
+    let coordinator = MeetingCoordinator(dependencies: deps)
+    await coordinator.start(from: .menu)
+    let meetingID = try #require(coordinator.meetings.first?.id)
+    let recorder = try #require(harness.recorders.first)
+    recorder.anchor = anchor
+    let position = try #require(coordinator.recordingPositionMs(meetingID: meetingID))
+    #expect(abs(position - 2_500) <= 1)
+    #expect(coordinator.recordingPositionMs(meetingID: UUID()) == nil, "another meeting")
+    recorder.anchor = anchor + elapsed + 10
+    #expect(coordinator.recordingPositionMs(meetingID: meetingID) == 0, "a clock before the anchor")
+    await coordinator.stop(reason: .user)
+    #expect(coordinator.recordingPositionMs(meetingID: meetingID) == nil, "not after Stop")
   }
 
   @Test("the bounded wait fails when its signal never comes")
