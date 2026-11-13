@@ -134,6 +134,11 @@ struct HistoryMeetingAfterView: View {
     Group {
       if let record = meetings.record(id: meetingID), !record.deletionRequested {
         content(record)
+          // Cloud review P1: reads the meeting's notes and summary when the page opens, whatever
+          // pane shows. A meeting started this session is not read at launch, and Edit notes
+          // shows only once its notes are read. `flush` reads notes not yet read and saves
+          // nothing that was not typed.
+          .task(id: meetingID) { _ = await notes.flush(meetingID) }
           .task(
             id: AudioSizeKey(meetingID: meetingID, audioKept: record.audioKept, state: record.state)
           ) {
