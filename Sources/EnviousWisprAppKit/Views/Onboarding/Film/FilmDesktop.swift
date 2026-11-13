@@ -86,15 +86,16 @@ struct FilmMenuBar: View {
   }
 }
 
-/// The Dock: seven apps on white tiles, each with its website logo (the mockup's Dock).
+/// The Dock: seven real apps on white tiles, each with its brand's own logo.
 struct FilmDock: View {
-  static let apps: [FilmAppLogo] = ["Gmail", "Slack", "Notes", "Safari", "Notion", "Xcode", "Terminal"]
-    .compactMap(FilmAppLogo.named)
+  static let apps: [FilmAppLogo] = [
+    "Gmail", "Slack", "Safari", "Notion", "Visual Studio Code", "Chrome", "WhatsApp",
+  ].compactMap(FilmAppLogo.named)
 
   var body: some View {
     HStack(spacing: DesignSpacing.sm) {
       ForEach(Self.apps.indices, id: \.self) { i in
-        FilmAppLogoView(logo: Self.apps[i], size: 17)
+        FilmAppLogoView(logo: Self.apps[i], size: 17, onLight: true)
           .frame(width: FilmMetrics.dockTile, height: FilmMetrics.dockTile)
           .background(
             RoundedRectangle(cornerRadius: DesignRadius.sm, style: .continuous).fill(Color.white)

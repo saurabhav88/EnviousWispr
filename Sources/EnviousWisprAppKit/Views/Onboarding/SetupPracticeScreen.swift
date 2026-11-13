@@ -128,9 +128,9 @@ struct SetupPracticeScreen: View {
   @State private var burst = 0
   @State private var glow = false
 
-  /// The recording note is pinned below the screen so it is always fully visible before the
-  /// first take; the screen above scrolls only when the two do not fit (long German copy), and
-  /// otherwise fills the height exactly as before.
+  /// The screen scrolls only when it does not fit (long German copy), and otherwise fills the
+  /// height. #3147 C9's recording note no longer shows here (founder 2026-11-13: recordings are
+  /// taught in the post-install tour, #4565; #3147 plan §17).
   var body: some View {
     GeometryReader { proxy in
       ScrollView {
@@ -138,11 +138,6 @@ struct SetupPracticeScreen: View {
           .frame(maxWidth: .infinity, minHeight: proxy.size.height)
       }
       .scrollBounceBehavior(.basedOnSize)
-    }
-    .safeAreaInset(edge: .bottom, spacing: DesignSpacing.xl) {
-      if state.acceptsFocus && state != .worked && !state.inFlight {
-        recordingNote
-      }
     }
   }
 
@@ -200,23 +195,6 @@ struct SetupPracticeScreen: View {
     .onChange(of: state) { _, new in
       if !new.acceptsFocus { editorFocused = false }
     }
-  }
-
-  /// #3147 C9: fresh-install education, shown before the first practice take can record (it
-  /// moved here from the old onboarding's Practice and warm-up screens with the D7 cutover).
-  /// Reads the live settings, writes none of them; being shown records the disclosure as seen,
-  /// which counts only for a fresh install (`recordOnboardingRecordingNoteShown`).
-  private var recordingNote: some View {
-    Text(
-      verbatim: RecordingDisclosureCopy.onboardingNote(
-        saving: settings.saveDictationRecordings,
-        retention: settings.dictationRecordingRetention)
-    )
-    .font(.firstRunCaption)
-    .foregroundStyle(Color.obTextSecondary)
-    .multilineTextAlignment(.center)
-    .fixedSize(horizontal: false, vertical: true)
-    .onAppear { settings.recordOnboardingRecordingNoteShown() }
   }
 
   private var permissionGuide: some View {

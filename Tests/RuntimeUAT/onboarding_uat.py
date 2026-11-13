@@ -73,8 +73,6 @@ ALLOWLIST = {
         # The record shortcut, changed by the key screen's popular-key row (D5,
         # `ShortcutSettings.assign(_:to: .record, in:)` writes the key code, then the modifiers).
         "toggleKeyCode", "toggleModifiersRaw",
-        # The #3147 recording note on Practice records itself as seen (fresh installs).
-        "recordingDisclosureAcknowledged",
         # The spoken take turns the app's debug log on so its verdict is readable (a fresh
         # Mac's reset turns it off).
         "isDebugModeEnabled",
@@ -2098,11 +2096,7 @@ def s_first_run(run, speech):
     s.expect(st.get("step") == "practice" and st.get("practiceUsable") is True,
              "Practice is ready after a real first-run download and warm-up",
              (st.get("step"), st.get("practiceUsable"), st.get("readiness")))
-    time.sleep(1.0)  # test-fixture-timer: the editor and note settle
-    _, texts = setup_window_ax(pid)
-    s.expect(any("recordings" in t.lower() for t in texts),
-             "the recording note is on Practice before the first take",
-             [t for t in texts if "record" in t.lower()][:2])
+    time.sleep(1.0)  # test-fixture-timer: the editor settles
     shot("practice")
     # Skip practice ends Setup without the film (film_result not_shown, posthog-events.md);
     # the film's own Launch is covered by screens_e after a real take.

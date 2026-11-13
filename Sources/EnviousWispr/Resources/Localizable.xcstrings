@@ -16522,28 +16522,6 @@
         }
       }
     },
-    "New saved dictations have recordings on this Mac by default. By default, they stay until you delete them. In Settings > App Settings > Recordings, turn off Save dictation recordings to stop saving future recordings; existing audio stays subject to your keep period and storage settings. Delete individual recordings in History, or use Delete all dictation recordings on that settings page. The text stays." : {
-      "comment" : "Onboarding: recording note with the default keep period.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Neue gespeicherte Diktate haben standardmäßig eine Aufnahme auf diesem Mac. Standardmäßig bleiben sie, bis du sie löschst. Schalte unter Einstellungen > App-Einstellungen > Aufnahmen „Diktataufnahmen speichern“ aus, damit künftig keine Aufnahmen mehr gespeichert werden; vorhandenes Audio folgt weiterhin deiner Aufbewahrungsdauer und deinen Speichereinstellungen. Lösche einzelne Aufnahmen im Verlauf oder nutze dort „Alle Diktataufnahmen löschen“. Der Text bleibt erhalten."
-          }
-        }
-      }
-    },
-    "New saved dictations have recordings on this Mac, kept for the keep period set in Settings > App Settings > Recordings. Turn off Save dictation recordings there to stop saving future recordings; existing audio stays subject to your keep period and storage settings. Delete individual recordings in History, or use Delete all dictation recordings on that settings page. The text stays." : {
-      "comment" : "Onboarding: recording note when a keep period is set.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Neue gespeicherte Diktate haben eine Aufnahme auf diesem Mac, die für die unter Einstellungen > App-Einstellungen > Aufnahmen festgelegte Aufbewahrungsdauer behalten wird. Schalte dort „Diktataufnahmen speichern“ aus, damit künftig keine Aufnahmen mehr gespeichert werden; vorhandenes Audio folgt weiterhin deiner Aufbewahrungsdauer und deinen Speichereinstellungen. Lösche einzelne Aufnahmen im Verlauf oder nutze dort „Alle Diktataufnahmen löschen“. Der Text bleibt erhalten."
-          }
-        }
-      }
-    },
     "New snippet" : {
       "localizations" : {
         "de" : {
@@ -22402,17 +22380,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Meeting-Aufnahme wird gespeichert"
-          }
-        }
-      }
-    },
-    "Saving dictation recordings is off, so new dictations are not recorded. You can turn it on in Settings > App Settings > Recordings. Any recordings you have can be deleted in History or with Delete all dictation recordings on that page. The text stays." : {
-      "comment" : "Onboarding: recording note when saving is off.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Das Speichern von Diktataufnahmen ist aus. Für neue Diktate werden deshalb keine Aufnahmen gespeichert. Du kannst es unter Einstellungen > App-Einstellungen > Aufnahmen einschalten. Vorhandene Aufnahmen kannst du im Verlauf oder dort mit „Alle Diktataufnahmen löschen“ löschen. Der Text bleibt erhalten."
           }
         }
       }

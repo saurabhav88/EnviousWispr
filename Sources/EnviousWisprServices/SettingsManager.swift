@@ -236,8 +236,8 @@ public final class SettingsManager {
   /// #3147 §3.3: the History tab the user last opened. View memory, not a setting: no change
   /// event, no telemetry, never seeded at load.
   nonisolated static let lastHistoryTabKey = "lastHistoryTab"
-  /// #3147 C9: the user has seen the recording disclosure (dismissed the History banner, or
-  /// saw onboarding's recording note). One authority for every surface.
+  /// #3147 C9: the user dismissed the History banner's recording disclosure. One authority for
+  /// every surface.
   private nonisolated static let recordingDisclosureAcknowledgedKey =
     "recordingDisclosureAcknowledged"
 
@@ -257,14 +257,6 @@ public final class SettingsManager {
     guard !recordingDisclosureAcknowledged else { return }
     recordingDisclosureAcknowledged = true
     defaults.set(true, forKey: Self.recordingDisclosureAcknowledgedKey)
-  }
-
-  /// Records that setup showed its recording note. It counts only for a fresh install: an
-  /// upgrading install that re-runs setup (Diagnostics > Restart Onboarding) keeps its History
-  /// banner, because the setup note is worded for new users and is not the upgrade notice.
-  public func recordOnboardingRecordingNoteShown() {
-    guard !isRecordingDisclosureUpgrade else { return }
-    acknowledgeRecordingDisclosure()
   }
 
   /// Decides the cohort once and loads both values. Runs in `init`, after the durable

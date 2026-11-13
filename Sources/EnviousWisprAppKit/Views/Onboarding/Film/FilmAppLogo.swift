@@ -1,39 +1,43 @@
+import AppKit
 import SwiftUI
 
-/// One app logo the closing film shows: the website's own mark for the app, as one SVG path
-/// on a 24-point grid, in the app's color (founder 2026-11-13: the film shows the real logos).
-/// Data: `FilmAppLogos.generated.swift`, from `website/src/data/home/compatibleApps.json`.
+/// One app logo the closing film shows: the brand's own logo from SVGL, bundled as a PNG
+/// (founder 2026-11-13: real brands and real logos only). Data: `FilmAppLogos.generated.swift`
+/// and `Resources/app-logo-*.png`, both written by `scripts/design/fetch-app-logos.py`.
 struct FilmAppLogo: Equatable {
   let name: String
-  let hex: String
-  /// Near-black marks (Notion, Craft, TextEdit) take the text color, as the mockup draws them.
-  let ink: Bool
-  let path: String
+  /// The bundled PNG's name, without extension.
+  let resource: String
+  /// The brand ships a separate logo for dark backgrounds (`<resource>-dark.png`).
+  let hasDark: Bool
 
   static func named(_ name: String) -> FilmAppLogo? { all.first { $0.name == name } }
-}
 
-/// Draws a `FilmAppLogo` at `size`, filled like the mockup's mask (non-zero fill).
-struct FilmAppLogoView: View {
-  let logo: FilmAppLogo
-  let size: CGFloat
-
-  var body: some View {
-    SVGLogoShape(data: logo.path)
-      .fill(logo.ink ? Color.obTextPrimary : Color(hex: logo.hex))
-      .frame(width: size, height: size)
-      .accessibilityHidden(true)
+  /// The bundled picture for a light or dark background; nil only if the bundle lacks it.
+  func image(dark: Bool) -> NSImage? {
+    let name = dark && hasDark ? "\(resource)-dark" : resource
+    guard let url = Bundle.module.url(forResource: name, withExtension: "png") else { return nil }
+    return NSImage(contentsOf: url)
   }
 }
 
-/// The path, read once per shape and scaled from its 24-point grid to the frame.
-private struct SVGLogoShape: Shape {
-  let data: String
+/// Draws a `FilmAppLogo` at `size`. `onLight` pins the light-background logo (the Dock's white
+/// tiles); otherwise the logo follows the appearance.
+struct FilmAppLogoView: View {
+  let logo: FilmAppLogo
+  let size: CGFloat
+  var onLight = false
+  @Environment(\.colorScheme) private var colorScheme
 
-  func path(in rect: CGRect) -> Path {
-    let scale = min(rect.width, rect.height) / 24
-    return SVGPathData.path(data)
-      .applying(CGAffineTransform(scaleX: scale, y: scale))
-      .offsetBy(dx: rect.minX, dy: rect.minY)
+  var body: some View {
+    Group {
+      if let image = logo.image(dark: !onLight && colorScheme == .dark) {
+        Image(nsImage: image).resizable().interpolation(.high).aspectRatio(contentMode: .fit)
+      } else {
+        Color.clear
+      }
+    }
+    .frame(width: size, height: size)
+    .accessibilityHidden(true)
   }
 }

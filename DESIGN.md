@@ -350,7 +350,7 @@ For any other surface use the `DesignRadius` scale (4, 6, 8, 10, 12, 16) in the 
 ## Icons
 
 - **SF Symbols only.** No custom icon files and no emoji as icons.
-  One exception (founder 2026-11-13, #4528): the Setup closing film's app wall and Dock show other apps' real logos, drawn from the website's `website/src/data/home/compatibleApps.json` by `scripts/design/generate-app-logos.py` (`FilmAppLogo`). Nothing else draws a third-party logo.
+  One exception (founder 2026-11-13, #4528): the Setup closing film's app wall and Dock show real apps with their brands' own logos, fetched from SVGL at a pinned commit by `scripts/design/fetch-app-logos.py` into `Resources/app-logo-*.png` (`FilmAppLogo`). Real brands only, never a stand-in drawing. Nothing else shows a third-party logo.
 - **One symbol per meaning.** Use the symbol the app already uses for that meaning (the most-used meanings today):
 
 | Meaning | Symbol |

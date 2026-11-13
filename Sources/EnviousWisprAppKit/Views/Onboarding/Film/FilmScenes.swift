@@ -361,7 +361,7 @@ struct FilmReadyScene: View {
 struct FilmAppsScene: View {
   let frame: FilmFrame
 
-  /// The website's 18 app logos, in its order (the mockup's wall).
+  /// 18 real apps with their brands' own logos (SVGL), in wall order.
   static let logos = FilmAppLogo.all
   static let tile: CGFloat = 48
   static let columns = 6

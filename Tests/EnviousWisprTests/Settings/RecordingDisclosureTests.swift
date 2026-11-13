@@ -75,7 +75,7 @@ struct RecordingDisclosureTests {
   func copyFollowsLiveSettings() {
     let defaults = suite()
     let settings = SettingsManager(defaults: defaults)
-    _ = RecordingDisclosureCopy.onboardingNote(
+    _ = RecordingDisclosureCopy.bannerBody(
       saving: settings.saveDictationRecordings, retention: settings.dictationRecordingRetention)
     settings.acknowledgeRecordingDisclosure()
     #expect(defaults.object(forKey: "saveDictationRecordings") == nil, "nothing seeded")
@@ -91,46 +91,10 @@ struct RecordingDisclosureTests {
       !chosen.contains("until you delete them"), "a chosen keep period is never called forever")
     let off = RecordingDisclosureCopy.bannerBody(saving: false, retention: .forever)
     #expect(off.contains("is off"))
-    #expect(
-      !RecordingDisclosureCopy.onboardingNote(saving: true, retention: .day30).contains(
-        "until you delete them"))
-    #expect(
-      RecordingDisclosureCopy.onboardingNote(saving: false, retention: .forever).contains("is off"))
     for text in [byDefault, chosen, off] {
       #expect(!text.contains("—") && !text.contains("–"), "no dashes")
       #expect(!text.contains("7 days"), "no seven-day claim")
     }
-  }
-
-  @Test("the onboarding note states every fact: default, keep period, turning off, deleting")
-  func onboardingNoteFacts() {
-    let byDefault = RecordingDisclosureCopy.onboardingNote(saving: true, retention: .forever)
-    #expect(byDefault.contains("stay until you delete them"))
-    #expect(byDefault.contains("Save dictation recordings"))
-    #expect(byDefault.contains("existing audio stays subject to your keep period"))
-    #expect(byDefault.contains("Delete all dictation recordings"))
-    #expect(byDefault.contains("History"))
-    #expect(byDefault.contains("The text stays"))
-    let chosen = RecordingDisclosureCopy.onboardingNote(saving: true, retention: .day30)
-    #expect(!chosen.contains("until you delete them"))
-    #expect(chosen.contains("Delete all dictation recordings"))
-    #expect(chosen.contains("existing audio stays subject to your keep period"))
-    let off = RecordingDisclosureCopy.onboardingNote(saving: false, retention: .forever)
-    #expect(off.contains("is off"))
-    #expect(off.contains("Delete all dictation recordings"))
-    for text in [byDefault, chosen, off] {
-      #expect(!text.contains("—") && !text.contains("–"))
-    }
-  }
-
-  @Test("an upgrading install that re-runs setup still gets its History notice")
-  func rerunSetupKeepsUpgradeNotice() {
-    let defaults = suite()
-    defaults.set(true, forKey: "hasCompletedOnboarding")
-    let settings = SettingsManager(defaults: defaults)
-    settings.recordOnboardingRecordingNoteShown()  // setup's note, worded for new users
-    #expect(settings.showsRecordingUpgradeDisclosure, "only the History dismiss button hides it")
-    #expect(SettingsManager(defaults: defaults).showsRecordingUpgradeDisclosure)
   }
 
   @Test("Open Recordings settings goes to App Settings > Recordings")
