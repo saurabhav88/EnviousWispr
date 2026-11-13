@@ -8,7 +8,11 @@ import Foundation
 /// R15, R22).
 ///
 /// The timeline is in samples at 16 kHz from the meeting's anchor. Each segment file sits at the
-/// start time in its name; the frame count comes from the file itself, never from metadata.
+/// start time in its name; a recorder CAF's frame count comes from the file itself, never from
+/// metadata. A compacted AAC file (#3147 PR4B) keeps the recorder's frame count (`logicalFrames`):
+/// AAC decodes to the same 16 kHz mono Float32 samples a CAF does, and codec padding never moves
+/// a boundary or fills a gap (a decode shorter than the logical count reads as silence at its end,
+/// within `SpeechAudioEncoder.durationToleranceFrames`; a longer one is cut at the logical end).
 /// Anything between segments is a gap and reads as silence. A file that cannot be read, has the
 /// wrong format or holds no audio is left out and listed in `problems`, so missing audio is
 /// never mistaken for a gap; a read that fails later throws. Reads open only the files a range
@@ -18,6 +22,8 @@ public final class MeetingTrackAudio: @unchecked Sendable {
     public let url: URL
     public let startSample: Int
     public let frameCount: Int
+    /// #3147 PR4B: the file holds compacted AAC; `frameCount` is the recorder's logical count.
+    public var compressed = false
     /// Where this segment's audio is read from: its start, or later where an earlier segment
     /// already covers the timeline (the earlier file wins an overlap).
     public let readStartSample: Int
@@ -50,15 +56,48 @@ public final class MeetingTrackAudio: @unchecked Sendable {
   /// boundaries; the tolerance covers files whose start was rounded to a millisecond.
   public static let contiguityToleranceSamples = 160
 
-  /// `files` are one track's segment files, in any order.
-  public init(files: [(url: URL, startMs: Int)]) {
-    var found: [(url: URL, start: Int, frames: Int)] = []
+  /// One file a track reads.
+  public struct SourceFile: Sendable, Equatable {
+    public let url: URL
+    public let startMs: Int
+    /// The recorder's frame count when the file is compacted AAC; nil for a recorder CAF, whose
+    /// length is read from the file.
+    public let logicalFrames: Int?
+
+    public init(url: URL, startMs: Int, logicalFrames: Int?) {
+      self.url = url
+      self.startMs = startMs
+      self.logicalFrames = logicalFrames
+    }
+  }
+
+  /// `files` are one track's recorder CAF segment files, in any order.
+  public convenience init(files: [(url: URL, startMs: Int)]) {
+    self.init(sources: files.map { SourceFile(url: $0.url, startMs: $0.startMs, logicalFrames: nil) })
+  }
+
+  /// #3147 PR4B: one track's segments as recovery listed them (`MeetingTrackRecovery.Report`),
+  /// in any order: a compacted file (by its name) is read at the segment's logical frame count,
+  /// a recorder CAF at its own length.
+  public convenience init(segments: [MeetingSegmentInfo], in folder: URL) {
+    self.init(
+      sources: segments.map { info in
+        let compacted = MeetingSegmentNaming.parseAny(info.fileName)?.encoding == .aacM4A
+        return SourceFile(
+          url: folder.appendingPathComponent(info.fileName), startMs: info.startMs,
+          logicalFrames: compacted ? info.frameCount : nil)
+      })
+  }
+
+  public init(sources files: [SourceFile]) {
+    var found: [(url: URL, start: Int, frames: Int, compressed: Bool)] = []
     var problems: [Problem] = []
     for file in files {
       let name = file.url.lastPathComponent
-      switch Self.inspect(file.url) {
+      switch Self.inspect(file.url, logicalFrames: file.logicalFrames) {
       case .readable(let frames):
-        found.append((file.url, file.startMs * Self.samplesPerMs, frames))
+        found.append(
+          (file.url, file.startMs * Self.samplesPerMs, frames, file.logicalFrames != nil))
       case .empty: problems.append(.empty(fileName: name))
       case .incompatible: problems.append(.incompatibleFormat(fileName: name))
       case .unreadable: problems.append(.unreadable(fileName: name))
@@ -78,7 +117,7 @@ public final class MeetingTrackAudio: @unchecked Sendable {
       segments.append(
         Segment(
           url: file.url, startSample: file.start, frameCount: file.frames,
-          readStartSample: min(readStart, end)))
+          compressed: file.compressed, readStartSample: min(readStart, end)))
       coveredUntil = max(coveredUntil, end)
     }
     self.segments = segments
@@ -129,19 +168,29 @@ public final class MeetingTrackAudio: @unchecked Sendable {
       } catch {
         throw ReadError.unreadable(fileName: name)
       }
-      file.framePosition = AVAudioFramePosition(readStart - segment.startSample)
+      let offset = readStart - segment.startSample
+      // A compacted file may decode a little shorter than its logical length: the frames it
+      // does not have read as silence (the logical boundary stays where the recorder put it).
+      let available = segment.compressed ? max(0, min(frames, Int(file.length) - offset)) : frames
+      let target = destination + (readStart - start)
+      if available < frames {
+        (target + available).update(repeating: 0, count: frames - available)
+      }
+      guard available > 0 else { continue }
+      file.framePosition = AVAudioFramePosition(offset)
       guard
         let buffer = AVAudioPCMBuffer(
-          pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(frames)),
-        (try? file.read(into: buffer, frameCount: AVAudioFrameCount(frames))) != nil,
+          pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(available)),
+        (try? file.read(into: buffer, frameCount: AVAudioFrameCount(available))) != nil,
         let data = buffer.floatChannelData
       else {
         throw ReadError.unreadable(fileName: name)
       }
-      guard Int(buffer.frameLength) == frames else {
-        throw ReadError.shortRead(fileName: name, expected: frames, got: Int(buffer.frameLength))
+      guard Int(buffer.frameLength) == available else {
+        throw ReadError.shortRead(
+          fileName: name, expected: available, got: Int(buffer.frameLength))
       }
-      (destination + (readStart - start)).update(from: data[0], count: frames)
+      target.update(from: data[0], count: available)
     }
   }
 
@@ -163,18 +212,31 @@ public final class MeetingTrackAudio: @unchecked Sendable {
 
   static let samplesPerMs = Int(MeetingAudioFormat.sampleRate) / 1_000
 
-  enum Inspection: Equatable {
+  package enum Inspection: Equatable {
     case readable(frames: Int)
     case empty
     case incompatible
     case unreadable
   }
 
-  /// Whether `url` is a readable 16 kHz mono 16-bit integer PCM file, and its frame count as
-  /// the file itself reports it.
-  static func inspect(_ url: URL) -> Inspection {
+  /// With `logicalFrames` nil: whether `url` is a readable 16 kHz mono 16-bit integer PCM file,
+  /// and its frame count as the file itself reports it. With a logical count (#3147 PR4B):
+  /// whether `url` is 16 kHz mono AAC whose length is within the encoder's tolerance of it; the
+  /// logical count is then the segment's length.
+  package static func inspect(_ url: URL, logicalFrames: Int? = nil) -> Inspection {
     guard let file = try? AVAudioFile(forReading: url) else { return .unreadable }
     let format = file.fileFormat.streamDescription.pointee
+    if let logicalFrames {
+      guard format.mFormatID == kAudioFormatMPEG4AAC, format.mChannelsPerFrame == 1,
+        format.mSampleRate == MeetingAudioFormat.sampleRate,
+        file.processingFormat.sampleRate == MeetingAudioFormat.sampleRate,
+        file.processingFormat.channelCount == 1
+      else { return .incompatible }
+      guard logicalFrames > 0, file.length > 0 else { return .empty }
+      guard abs(file.length - Int64(logicalFrames)) <= SpeechAudioEncoder.durationToleranceFrames
+      else { return .incompatible }
+      return .readable(frames: logicalFrames)
+    }
     guard format.mFormatID == kAudioFormatLinearPCM, format.mChannelsPerFrame == 1,
       format.mBitsPerChannel == 16, format.mSampleRate == MeetingAudioFormat.sampleRate,
       format.mFormatFlags & kAudioFormatFlagIsFloat == 0
@@ -228,12 +290,55 @@ public enum MeetingTrackRecovery {
     public var cleanedProblems: [Problem] = []
     /// #4355 PR B: the twins the cleaned-copy proofs in the folder list as finished whole.
     public var cleanedConfirmed: [MeetingSegmentInfo] = []
+    /// #3147 PR4B: which files the lists name: the recorder's CAF, or the committed compacted
+    /// inventory's AAC.
+    public var representation: MeetingAudioEncoding = .pcmCAF
+    /// #3147 PR4B: what reading a committed inventory found that is not the recording's damage
+    /// (the lists above carry that): a refused inventory, a fall back to the verified originals,
+    /// an original the inventory does not cover. Logged, never read as audio.
+    public var compressedProblems: [CompressedProblem] = []
 
     public init() {}
   }
 
+  /// #3147 PR4B: a finding about the committed compacted inventory.
+  public enum CompressedProblem: Sendable, Equatable {
+    /// The selector refused the inventory; nothing of it was read.
+    case selectionRefused(MeetingAudioSelection.Refusal)
+    /// A compacted file could not be used (missing, wrong size or format, unreadable).
+    case compressedUnusable(Problem)
+    /// The compacted set was not usable, and every original it was made from is still on disk
+    /// with exactly the bytes the inventory recorded: the originals were read instead, whole.
+    case fellBackToOriginals
+    /// The compacted set was not usable and the originals are not all there unchanged.
+    case originalsUnavailable
+    /// A recorder file outside the committed inventory: kept, never read beside it.
+    case uncoveredOriginal(fileName: String)
+  }
+
   /// `syncDirectory` makes the promoting renames durable (nil on success, else errno); nil uses
   /// the writer's directory sync. A parameter so a test can make it fail.
+  ///
+  /// #3147 PR4B: with a committed `inventory` (the record's `compressedAudio`) the lists come
+  /// from it alone, through `MeetingAudioSelection`: its compacted files at the recorder's
+  /// descriptors, and cleaned-copy proof only from the proof files it recorded, unchanged, and
+  /// only for twins whose exact source descriptor it maps. Nothing is promoted or renamed. A
+  /// compacted file that cannot be used is damage, never a reason to read a mix: the originals
+  /// are read instead only when every one is on disk with the bytes the inventory recorded.
+  /// `identity` gives a file's exact bytes (`MeetingStore.audioFileIdentity(at:)`, the one
+  /// definition the inventory was made and committed with).
+  public static func recover(
+    folder: URL, inventory: MeetingCompressedInventory?,
+    identity: (URL) throws -> MeetingAudioFileIdentity,
+    syncDirectory: ((URL) -> Int32?)? = nil
+  ) -> Report {
+    if let inventory {
+      return recoverCompacted(folder: folder, inventory: inventory, identity: identity)
+    }
+    return recover(folder: folder, syncDirectory: syncDirectory)
+  }
+
+  /// The recorder's files alone (a meeting with no committed compacted inventory).
   public static func recover(
     folder: URL, syncDirectory: ((URL) -> Int32?)? = nil
   ) -> Report {
@@ -332,6 +437,191 @@ public enum MeetingTrackRecovery {
       report.cleanedConfirmed.append(contentsOf: proof.segments)
     }
     return report
+  }
+}
+
+extension MeetingTrackRecovery {
+  /// The lists from a committed compacted inventory (see `recover`).
+  static func recoverCompacted(
+    folder: URL, inventory: MeetingCompressedInventory,
+    identity: (URL) throws -> MeetingAudioFileIdentity
+  ) -> Report {
+    var report = Report()
+    report.representation = .aacM4A
+    let names: [String]
+    do {
+      names = try FileManager.default.contentsOfDirectory(atPath: folder.path)
+    } catch {
+      let code = ((error as NSError).userInfo[NSUnderlyingErrorKey] as? NSError)?.code
+      report.problems.append(.folderUnreadable(errno: Int32(code ?? Int(EIO))))
+      return report
+    }
+    for name in names {
+      guard let parsed = MeetingSegmentNaming.parseAny(name) else { continue }
+      report.highestIndex[parsed.track] = max(
+        report.highestIndex[parsed.track] ?? 0, parsed.index)
+    }
+    for segment in inventory.segments {
+      report.highestIndex[segment.track] = max(
+        report.highestIndex[segment.track] ?? 0, segment.source.index)
+    }
+    // Recorder files the inventory does not map are reported, never read beside it.
+    let mapped = Set(inventory.segments.map(\.source.fileName))
+    for name in names.sorted() {
+      guard let parsed = MeetingSegmentNaming.parse(name), !parsed.partial, !mapped.contains(name)
+      else { continue }
+      report.compressedProblems.append(.uncoveredOriginal(fileName: name))
+    }
+
+    // The logical set the inventory describes, each segment once, so the selector itself judges
+    // a repeated or conflicting entry (it refuses the inventory then).
+    var logicalKeys: Set<MeetingAudioSegmentKey> = []
+    let logical = inventory.segments.filter { logicalKeys.insert($0.key).inserted }.map {
+      MeetingLogicalSegment(track: $0.track, variant: $0.variant, segment: $0.source)
+    }
+    var compacted = Report()
+    var usable = true
+    do throws(MeetingAudioSelection.Refusal) {
+      let selected = try MeetingAudioSelection.select(logical: logical, inventory: inventory)
+      let byKey = Dictionary(
+        inventory.segments.map { ($0.key, $0) }, uniquingKeysWith: { first, _ in first })
+      for item in selected {
+        guard let entry = byKey[item.key] else { continue }
+        let info = MeetingSegmentInfo(
+          index: item.logical.index, fileName: item.fileName, startMs: item.logical.startMs,
+          frameCount: item.logical.frameCount)
+        let url = folder.appendingPathComponent(item.fileName)
+        let problem: Problem?
+        // The exact committed bytes, not only a plausible header: a changed payload is damage.
+        if (try? identity(url)) != entry.compressedIdentity {
+          problem =
+            FileManager.default.fileExists(atPath: url.path)
+            ? .incompatibleFinal(fileName: item.fileName)
+            : .unreadableFinal(fileName: item.fileName)
+        } else {
+          switch MeetingTrackAudio.inspect(url, logicalFrames: item.logical.frameCount) {
+          case .readable: problem = nil
+          case .empty: problem = .emptyFinal(fileName: item.fileName)
+          case .incompatible: problem = .incompatibleFinal(fileName: item.fileName)
+          case .unreadable: problem = .unreadableFinal(fileName: item.fileName)
+          }
+        }
+        if let problem {
+          usable = false
+          if item.key.variant == .cleaned {
+            compacted.cleanedProblems.append(problem)
+          } else {
+            compacted.problems.append(problem)
+          }
+        } else if item.key.variant == .cleaned {
+          compacted.cleanedSegments.append(info)
+        } else {
+          compacted.segments[item.key.track, default: []].append(info)
+        }
+      }
+    } catch {
+      usable = false
+      report.compressedProblems.append(.selectionRefused(error))
+    }
+
+    if !usable {
+      for problem in compacted.problems + compacted.cleanedProblems {
+        report.compressedProblems.append(.compressedUnusable(problem))
+      }
+      if let originals = verifiedOriginals(folder: folder, inventory: inventory, identity: identity)
+      {
+        report.compressedProblems.append(.fellBackToOriginals)
+        report.representation = .pcmCAF
+        report.segments = originals.segments
+        report.cleanedSegments = originals.cleanedSegments
+        report.cleanedConfirmed = originals.cleanedConfirmed
+        report.cleanedProblems = originals.cleanedProblems
+        sortLists(&report)
+        return report
+      }
+      report.compressedProblems.append(.originalsUnavailable)
+      // The compacted files' damage stays the recording's damage: never silently a gap.
+    }
+    report.segments = compacted.segments
+    report.cleanedSegments = compacted.cleanedSegments
+    report.problems.append(contentsOf: compacted.problems)
+    report.cleanedProblems.append(contentsOf: compacted.cleanedProblems)
+
+    // Cleaned-copy proof, carried across representations: a proof file counts only when the
+    // inventory recorded it and its bytes are unchanged, and each twin it lists must be the exact
+    // source descriptor of an inventory cleaned segment. A matching file name is not proof.
+    let cleanedEntries = inventory.segments.filter {
+      $0.variant == .cleaned && $0.track == .microphone
+    }
+    for (name, recorded) in inventory.cleanedProofs.sorted(by: { $0.key < $1.key }) {
+      let url = folder.appendingPathComponent(name)
+      guard MeetingSegmentNaming.isCleanedProof(name), !name.contains("/"),
+        (try? identity(url)) == recorded,
+        let data = FileManager.default.contents(atPath: url.path),
+        let proof = try? JSONDecoder().decode(MeetingCleanedProof.self, from: data)
+      else {
+        report.cleanedProblems.append(.unreadableProof(fileName: name))
+        continue
+      }
+      for twin in proof.segments {
+        guard let entry = cleanedEntries.first(where: { $0.source == twin }) else { continue }
+        report.cleanedConfirmed.append(
+          MeetingSegmentInfo(
+            index: entry.source.index, fileName: entry.compressed.fileName,
+            startMs: entry.source.startMs, frameCount: entry.source.frameCount))
+      }
+    }
+    sortLists(&report)
+    return report
+  }
+
+  /// The originals as one complete representation, only when every source file the inventory
+  /// names is on disk with exactly the recorded bytes; nil otherwise. Proof is read the
+  /// recorder's way (the proofs list these exact CAF names).
+  static func verifiedOriginals(
+    folder: URL, inventory: MeetingCompressedInventory,
+    identity: (URL) throws -> MeetingAudioFileIdentity
+  ) -> Report? {
+    var report = Report()
+    var keys: Set<MeetingAudioSegmentKey> = []
+    for segment in inventory.segments {
+      // A repeated segment is read once, and only when every entry names the same original.
+      guard keys.insert(segment.key).inserted else {
+        guard inventory.segments.first(where: { $0.key == segment.key })?.source == segment.source
+        else { return nil }
+        continue
+      }
+      let url = folder.appendingPathComponent(segment.source.fileName)
+      guard (try? identity(url)) == segment.sourceIdentity,
+        case .readable(let frames) = MeetingTrackAudio.inspect(url),
+        frames == segment.source.frameCount
+      else { return nil }
+      if segment.variant == .cleaned {
+        report.cleanedSegments.append(segment.source)
+      } else {
+        report.segments[segment.track, default: []].append(segment.source)
+      }
+    }
+    for (name, recorded) in inventory.cleanedProofs.sorted(by: { $0.key < $1.key }) {
+      let url = folder.appendingPathComponent(name)
+      guard MeetingSegmentNaming.isCleanedProof(name), !name.contains("/"),
+        (try? identity(url)) == recorded,
+        let data = FileManager.default.contents(atPath: url.path),
+        let proof = try? JSONDecoder().decode(MeetingCleanedProof.self, from: data)
+      else {
+        report.cleanedProblems.append(.unreadableProof(fileName: name))
+        continue
+      }
+      report.cleanedConfirmed.append(contentsOf: proof.segments)
+    }
+    return report
+  }
+
+  private static func sortLists(_ report: inout Report) {
+    for track in report.segments.keys {
+      report.segments[track]?.sort { ($0.startMs, $0.index) < ($1.startMs, $1.index) }
+    }
+    report.cleanedSegments.sort { ($0.startMs, $0.index) < ($1.startMs, $1.index) }
   }
 }
 
