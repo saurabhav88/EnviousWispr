@@ -104,6 +104,11 @@ struct MeetingSummaryOwnerTests {
       heldFinish?.resume()
       heldFinish = nil
     }
+    /// #3147 PR4A (D5): whether the route writes references, the sources it reads, and every
+    /// reference document the owner saved (nil: it removed one).
+    var referencing = false
+    var sources: MeetingSummaryReferenceSources?
+    var savedReferences: [MeetingSummaryDocument?] = []
     var borrowAnswers: [MeetingSummaryProviders.BorrowOutcome]?
     var borrows = 0
     var artifactRevision: String?
@@ -214,6 +219,12 @@ struct MeetingSummaryOwnerTests {
           emitFinished: { world.finished.append($0) },
           log: { _ in },
           assignTitle: { _, title in world.titles.append(title) },
+          referenceSources: { _ in world.sources },
+          writesReferences: { _, _ in world.referencing },
+          saveReferences: { _, document in
+            world.savedReferences.append(document)
+            return true
+          },
           artifactRevision: { _ in world.artifactRevision }),
         documents: documents ?? self.documents, lane: lane)
     }
@@ -1803,7 +1814,7 @@ struct MeetingSummaryOwnerTests {
           wakes: nil,
           emitFinished: { world.finished.append($0) },
           log: { _ in },
-          write: { _, _, _, _, _, _, _ in
+          write: { _, _, _, _, _, _, _, _ in
             MeetingSummary.Written(
               text: "Title: Launch\n## Overview\nShip Friday.", inParts: inParts)
           }),
