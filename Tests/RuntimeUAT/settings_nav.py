@@ -30,7 +30,7 @@ TABS = {
     "Dictation Settings": (
         "Engine", "Microphone", "Live Preview", "Recording Pill", "Chimes", "Clipboard",
     ),
-    "App Settings": ("Appearance", "Permissions", "Privacy", "Licenses"),
+    "App Settings": ("Appearance", "Permissions", "Privacy", "Recordings", "Licenses"),
     # #4058: drawn only once EnviousMeet's setup is finished (see SETUP_GATED).
     "EnviousMeet": ("General", "Models", "Summaries", "Call Apps", "Permissions"),
 }

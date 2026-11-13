@@ -14398,7 +14398,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Neue gespeicherte Diktate haben standardmäßig eine Aufnahme auf diesem Mac. Standardmäßig bleiben sie, bis du sie löschst. Schalte unter Einstellungen > App-Einstellungen > Aufnahmen „Diktataufnahmen speichern“ aus, damit künftig keine Aufnahmen mehr gespeichert werden; vorhandenes Audio folgt weiterhin deiner Aufbewahrungsdauer und deinen Speichereinstellungen. Lösche einzelne Aufnahmen im Verlauf oder nutze auf dieser Einstellungsseite „Alle Diktataufnahmen löschen“. Der Text bleibt erhalten."
+            "value" : "Neue gespeicherte Diktate haben standardmäßig eine Aufnahme auf diesem Mac. Standardmäßig bleiben sie, bis du sie löschst. Schalte unter Einstellungen > App-Einstellungen > Aufnahmen „Diktataufnahmen speichern“ aus, damit künftig keine Aufnahmen mehr gespeichert werden; vorhandenes Audio folgt weiterhin deiner Aufbewahrungsdauer und deinen Speichereinstellungen. Lösche einzelne Aufnahmen im Verlauf oder nutze dort „Alle Diktataufnahmen löschen“. Der Text bleibt erhalten."
           }
         }
       }
@@ -14409,7 +14409,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Neue gespeicherte Diktate haben eine Aufnahme auf diesem Mac, die für die unter Einstellungen > App-Einstellungen > Aufnahmen festgelegte Aufbewahrungsdauer behalten wird. Schalte dort „Diktataufnahmen speichern“ aus, damit künftig keine Aufnahmen mehr gespeichert werden; vorhandenes Audio folgt weiterhin deiner Aufbewahrungsdauer und deinen Speichereinstellungen. Lösche einzelne Aufnahmen im Verlauf oder nutze auf dieser Einstellungsseite „Alle Diktataufnahmen löschen“. Der Text bleibt erhalten."
+            "value" : "Neue gespeicherte Diktate haben eine Aufnahme auf diesem Mac, die für die unter Einstellungen > App-Einstellungen > Aufnahmen festgelegte Aufbewahrungsdauer behalten wird. Schalte dort „Diktataufnahmen speichern“ aus, damit künftig keine Aufnahmen mehr gespeichert werden; vorhandenes Audio folgt weiterhin deiner Aufbewahrungsdauer und deinen Speichereinstellungen. Lösche einzelne Aufnahmen im Verlauf oder nutze dort „Alle Diktataufnahmen löschen“. Der Text bleibt erhalten."
           }
         }
       }
@@ -19416,7 +19416,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Das Speichern von Diktataufnahmen ist aus. Für neue Diktate werden deshalb keine Aufnahmen gespeichert. Du kannst es unter Einstellungen > App-Einstellungen > Aufnahmen einschalten. Vorhandene Aufnahmen kannst du im Verlauf oder auf dieser Seite mit „Alle Diktataufnahmen löschen“ löschen. Der Text bleibt erhalten."
+            "value" : "Das Speichern von Diktataufnahmen ist aus. Für neue Diktate werden deshalb keine Aufnahmen gespeichert. Du kannst es unter Einstellungen > App-Einstellungen > Aufnahmen einschalten. Vorhandene Aufnahmen kannst du im Verlauf oder dort mit „Alle Diktataufnahmen löschen“ löschen. Der Text bleibt erhalten."
           }
         }
       }
