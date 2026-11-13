@@ -45,6 +45,9 @@ extension MeetingStore {
     case fileStepFailed(stage: String, file: String, errno: Int32)
     /// Retirement removed `removed` originals, then could not remove `file`; the rest stay.
     case removalIncomplete(removed: Int, file: String, errno: Int32)
+    /// Retirement removed `removed` originals, but the folder sync after it failed: the removal
+    /// may not be durable (a crash can bring originals back, never take the compacted copy).
+    case retirementSyncFailed(removed: Int, errno: Int32)
   }
 
   /// The file system calls compaction makes, so a test can fail any one of them; production
@@ -214,7 +217,13 @@ extension MeetingStore {
       }
       removed += 1
     }
-    if removed > 0 { try Self.syncDirectory(dir, steps: steps) }
+    if removed > 0 {
+      do {
+        try Self.syncDirectory(dir, steps: steps)
+      } catch CompactionError.fileStepFailed(_, _, let failure) {
+        throw CompactionError.retirementSyncFailed(removed: removed, errno: failure)
+      }
+    }
     return removed
   }
 
@@ -295,19 +304,25 @@ extension MeetingStore {
     for name in inventory.cleanedProofs.keys where !MeetingSegmentNaming.isCleanedProof(name) {
       throw CompactionError.invalidInventory("proof_name")
     }
+    // Every proof in the folder is carried, so cleaned-input eligibility survives the change of
+    // representation; a proof the inventory names but the folder lacks is a missing file.
+    let proofsOnDisk = Set(folderNames.filter(MeetingSegmentNaming.isCleanedProof))
+    guard proofsOnDisk.isSubset(of: Set(inventory.cleanedProofs.keys)) else {
+      throw CompactionError.invalidInventory("proof_set")
+    }
 
     // The complete logical set: the record's segments (every track) plus every cleaned original
     // on disk, whose descriptor the inventory carries (the folder is the cleaned copy's
     // authority; its frame count is what preparation decoded and hashed).
     let cleanedOnDisk = Set(
-      folderNames.compactMap { name -> Int? in
-        guard let parsed = MeetingSegmentNaming.parse(name), !parsed.partial,
-          parsed.variant == .cleaned
-        else { return nil }
-        return parsed.index
+      folderNames.filter { name in
+        guard let parsed = MeetingSegmentNaming.parse(name) else { return false }
+        return !parsed.partial && parsed.variant == .cleaned
       })
     let cleanedInInventory = inventory.segments.filter { $0.variant == .cleaned }
-    guard Set(cleanedInInventory.map(\.source.index)) == cleanedOnDisk else {
+    // By file name, never index alone: two cleaned files sharing an index are two entries, and
+    // the selector below refuses the duplicate logical key.
+    guard Set(cleanedInInventory.map(\.source.fileName)) == cleanedOnDisk else {
       throw CompactionError.invalidInventory("cleaned_set")
     }
     var logical: [MeetingLogicalSegment] = []

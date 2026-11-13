@@ -116,8 +116,13 @@ struct MeetingStoreCompactionCommitTests {
           sourceIdentity: try MeetingStore.audioFileIdentity(at: sourceURL), compressed: compressed,
           compressedIdentity: try MeetingStore.audioFileIdentity(at: candidate)))
     }
+    // The writer's real proof: the cleaned twins it finalized, encoded.
     let proof = dir.appendingPathComponent(Fixture.proofName)
-    try Data("{\"twins\":[1,2]}".utf8).write(to: proof)
+    try JSONEncoder().encode(
+      MeetingCleanedProof(segments: [
+        segment(.microphone, 1, cleaned: true), segment(.microphone, 2, cleaned: true),
+      ])
+    ).write(to: proof)
     let inventory = MeetingCompressedInventory(
       id: inventoryID, transcriptGeneration: generation, segments: segments,
       cleanedProofs: [Fixture.proofName: try MeetingStore.audioFileIdentity(at: proof)])
@@ -328,6 +333,7 @@ struct MeetingStoreCompactionCommitTests {
         Self.replacing(f.inventory, proofs: ["notes.json": segments[0].sourceIdentity])
       ),
       ("no segments", Self.replacing(f.inventory, segments: [])),
+      ("the folder's proof left out", Self.replacing(f.inventory, proofs: [:])),
     ]
     for (label, inventory) in cases {
       #expect(throws: (any Error).self, "\(label)") { try f.commit(inventory) }
@@ -337,6 +343,20 @@ struct MeetingStoreCompactionCommitTests {
     for name in f.outputNames { #expect(f.exists(name) == false) }
     // The fixture itself is valid: the same store commits it afterwards.
     #expect(try f.commit().compressedAudio == f.inventory)
+  }
+
+  @Test("two cleaned originals sharing an index are two entries; covering one is refused")
+  func cleanedSetComparesFileNames() throws {
+    let f = try Self.fixture()
+    // A second cleaned final with index 1 but another start, as a damaged or duplicated folder
+    // could hold: the inventory covering only the first must not commit.
+    let twin = MeetingSegmentNaming.fileName(
+      track: .microphone, variant: .cleaned, index: 1, startMs: 30_000, partial: false)
+    try f.write(twin, "pcm twin")
+    #expect(throws: MeetingStore.CompactionError.invalidInventory("cleaned_set")) {
+      try f.commit()
+    }
+    #expect(try f.store.load(id: f.id).compressedAudio == nil)
   }
 
   @Test("changed or missing bytes anywhere refuse the commit before anything is promoted")
@@ -496,6 +516,20 @@ struct MeetingStoreCompactionCommitTests {
     for name in f.outputNames { #expect(f.exists(name)) }
     #expect(try f.retire() == f.cafNames.count - 2)
     #expect(f.cafNames.filter(f.exists).isEmpty)
+  }
+
+  @Test("a failed folder sync after retirement says how many originals went; the copy stays")
+  func retirementSyncFailureKeepsTheCount() throws {
+    let f = try Self.fixture()
+    _ = try f.commit()
+    do {
+      _ = try f.retire(steps: Self.failing(.syncDirectory))
+      Issue.record("the folder sync failed; retirement must say so")
+    } catch MeetingStore.CompactionError.retirementSyncFailed(let removed, _) {
+      #expect(removed == f.cafNames.count)
+    }
+    for name in f.outputNames { #expect(f.exists(name)) }
+    #expect(try f.store.load(id: f.id).compressedAudio == f.inventory)
   }
 
   @Test("a file's identity is its length and full SHA-256")
