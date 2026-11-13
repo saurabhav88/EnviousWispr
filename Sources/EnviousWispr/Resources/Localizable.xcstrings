@@ -6093,6 +6093,7 @@
         }
       }
     },
+    "Change speech model" : {},
     "Change summary engine" : {
       "comment" : "EnviousMeet Summaries tab: VoiceOver name of the Change button for the summary engine.",
       "localizations" : {
@@ -6169,6 +6170,7 @@
         }
       }
     },
+    "Check AI polish key" : {},
     "Check Apple Intelligence availability" : {
       "comment" : "AI Polish, Apple Intelligence: re-checks availability.",
       "localizations" : {
@@ -9627,6 +9629,7 @@
         }
       }
     },
+    "Download stopped · Try again" : {},
     "Download stopped." : {
       "comment" : "Live Preview settings, preview engine: download stopped.",
       "localizations" : {
@@ -9837,6 +9840,7 @@
         }
       }
     },
+    "Downloading models" : {},
     "Downloading speech model..." : {
       "comment" : "Setup progress: the speech model is downloading.\nSpeech engine settings, speech model download: in progress.",
       "localizations" : {
@@ -12732,7 +12736,7 @@
       }
     },
     "History" : {
-      "comment" : "History: the page name.",
+      "comment" : "Feature name in the closing film.\nHistory: the page name.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -16247,6 +16251,7 @@
         }
       }
     },
+    "Models ready" : {},
     "Mongolian" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -21807,6 +21812,7 @@
         }
       }
     },
+    "Restarts downloads" : {},
     "Restore" : {
       "localizations" : {
         "de" : {
@@ -21925,6 +21931,8 @@
         }
       }
     },
+    "Return to getting ready" : {},
+    "Return to setup" : {},
     "Review" : {
       "comment" : "Snippets, import snippets: sheet title, reviewing what will be added.\nTranscribe a File: a step name in the step bar.",
       "localizations" : {
@@ -23479,6 +23487,7 @@
         }
       }
     },
+    "Shows downloads" : {},
     "Shows the %@ Dictionary tab" : {
       "localizations" : {
         "de" : {
