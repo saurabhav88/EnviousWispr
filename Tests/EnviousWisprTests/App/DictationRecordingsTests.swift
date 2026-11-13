@@ -395,6 +395,43 @@ struct DictationRecordingsTests {
     #expect(try await rig.recordings.timing(for: row.id) == timing)
   }
 
+  @Test("a timed Parakeet take is stored with its sentence times, keyed to the decode's own text")
+  func sidecarStoresVerifiedAnchors() async throws {
+    let rig = rig()
+    defer { rig.gate.releaseAll() }
+    let row = try savedRow(rig)
+    rig.gate.release(1)
+    let text = "Hi there. Bye now!"
+    let asr = DictationASREvidence(
+      text: text, backend: .parakeet, source: .batchRescue, input: .conditionedBatch,
+      wordTimingsAvailable: true,
+      timing: DictationTimingEvidence(
+        words: [
+          ASRWordTiming(word: "Hi", range: 0..<2, startMs: 100, endMs: 300),
+          ASRWordTiming(word: "there.", range: 3..<9, startMs: 350, endMs: 800),
+          ASRWordTiming(word: "Bye", range: 10..<13, startMs: 1_200, endMs: 1_500),
+          ASRWordTiming(word: "now!", range: 14..<18, startMs: 1_600, endMs: 2_000),
+        ],
+        timeline: [
+          DictationAudioTimelineSpan(decodeRange: 0..<40_000, recordingStartSample: 4_000)
+        ],
+        sampleRate: 16_000))
+    let samples = [Float](repeating: 0, count: 48_000)
+
+    rig.recordings.submit(
+      DictationRecordingRequest(rowID: row.id, samples: samples, recordingsOn: true, asr: asr))
+    await rig.recordings.waitForSubmissions()
+
+    let timing = try #require(try await rig.recordings.timing(for: row.id))
+    #expect(timing.exactASRText == text)
+    #expect(timing.textVersion == DictationTimingBuilder.textVersion(of: text))
+    #expect(
+      timing.anchors == [
+        RecordingTiming.Anchor(utf16Start: 0, utf16End: 9, startSeconds: 0.35, endSeconds: 1.05),
+        RecordingTiming.Anchor(utf16Start: 10, utf16End: 18, startSeconds: 1.45, endSeconds: 2.25),
+      ])
+  }
+
   @Test("a hand-off returns at once; the recording is kept once its encode finishes")
   func submitDoesNotWait() async throws {
     let rig = rig()

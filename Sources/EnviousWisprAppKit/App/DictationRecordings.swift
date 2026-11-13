@@ -1,4 +1,3 @@
-import CryptoKit
 import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprPipeline
@@ -158,19 +157,15 @@ import Foundation
       let ticket = await admission.result()
       let outcome =
         request.recordingsOn
-        ? await run(ticket, samples: request.samples, timing: Self.timing(for: request.asr))
+        ? await run(
+          ticket, samples: request.samples,
+          timing: DictationTimingBuilder.timing(
+            for: request.asr, recordingSampleCount: request.samples.count))
         : await recordOff(ticket)
       inFlight[key] = nil
       return outcome
     }
     inFlight[key] = task
-  }
-
-  /// PR1's sidecar: the delivering decode's untouched text and the identity of the text the
-  /// anchors index, with no anchors (sentence timings arrive in PR2; none are invented here).
-  nonisolated static func timing(for asr: DictationASREvidence) -> RecordingTiming {
-    let digest = SHA256.hash(data: Data(asr.text.utf8)).map { String(format: "%02x", $0) }.joined()
-    return RecordingTiming(exactASRText: asr.text, textVersion: "asr-sha256:\(digest)", anchors: [])
   }
 
   /// Waits for every submitted recording to finish.
