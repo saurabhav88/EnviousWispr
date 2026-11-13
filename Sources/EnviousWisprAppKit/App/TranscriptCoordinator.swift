@@ -1403,12 +1403,14 @@ final class TranscriptCoordinator {
     return try await transactionExecutor.admit { [self] in
       await transactionExecutor.capture { () async throws -> ImportedReplacementTicket? in
         guard let current = currentRow(id: rowID), current.isImported else { return nil }
-        let digest = try await Self.rowDigest(current)
-        let ticket = ImportedReplacementTicket(
-          rowID: rowID, requestID: UUID(), attemptID: UUID(), expectedRowDigest: digest,
+        // Reserved before the digest (Codex PR3 r2): a Cancel while it is computed wins.
+        let requestID = UUID()
+        replacementTickets[rowID] = requestID
+        let digest = try await rowDigest(current)
+        guard replacementTickets[rowID] == requestID else { return nil }
+        return ImportedReplacementTicket(
+          rowID: rowID, requestID: requestID, attemptID: UUID(), expectedRowDigest: digest,
           source: ImportedSourceReference(current))
-        replacementTickets[rowID] = ticket.requestID
-        return ticket
       }
     }.get()
   }
@@ -1429,8 +1431,12 @@ final class TranscriptCoordinator {
       await transactionExecutor.capture { () async throws -> Bool in
         guard replacementTickets[ticket.rowID] == ticket.requestID,
           let current = currentRow(id: ticket.rowID), current.isImported,
-          ImportedSourceReference(current) == ticket.source,
-          try await Self.rowDigest(current) == ticket.expectedRowDigest
+          ImportedSourceReference(current) == ticket.source
+        else { return false }
+        let digest = try await rowDigest(current)
+        // Checked again after the digest's await: a Cancel during it wins (Codex PR3 r2).
+        guard digest == ticket.expectedRowDigest,
+          replacementTickets[ticket.rowID] == ticket.requestID
         else { return false }
         onImportedContentWillChange?(ticket.rowID)
         let replaced = current.replacingImportedContent(from: result, attemptID: ticket.attemptID)
@@ -1450,9 +1456,21 @@ final class TranscriptCoordinator {
   /// removed, so its players stop first (wired to the playback arbiter). Nil in tests.
   @ObservationIgnored var onImportedContentWillChange: (@MainActor (UUID) -> Void)?
 
-  /// A canonical digest of a stored row (its encoded JSON with sorted keys), computed off the
-  /// main actor; the base a replacement ticket compares against.
-  private static func rowDigest(_ row: Transcript) async throws -> String {
+  /// A canonical digest of a stored row, the base a replacement ticket compares against.
+  private func rowDigest(_ row: Transcript) async throws -> String {
+    #if DEBUG
+      await rowDigestWillRunForTesting?()
+    #endif
+    return try await Self.canonicalDigest(row)
+  }
+
+  #if DEBUG
+    /// Holds a replacement's digest step so a test can cancel during it.
+    @ObservationIgnored var rowDigestWillRunForTesting: (@MainActor () async -> Void)?
+  #endif
+
+  /// Its encoded JSON with sorted keys, hashed off the main actor.
+  private static func canonicalDigest(_ row: Transcript) async throws -> String {
     try await Task.detached(priority: .userInitiated) {
       let encoder = JSONEncoder()
       encoder.outputFormatting = [.sortedKeys]

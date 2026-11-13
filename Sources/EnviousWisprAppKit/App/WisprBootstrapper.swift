@@ -2926,6 +2926,11 @@ package final class WisprBootstrapper {
     let playbackArbiter = PlaybackArbiter()
     meetingCoordinator.playbackArbiter = playbackArbiter
     transcriptCoordinator.recordings?.arbiter = playbackArbiter
+    // #3147 PR3: an import's original-file players stop before its link, content or row
+    // changes (relink, Transcribe again with, deletion, Delete All).
+    transcriptCoordinator.onImportedContentWillChange = { [weak playbackArbiter] rowID in
+      playbackArbiter?.stopForDeletion(.transcript(rowID))
+    }
     // #3147: usage across both recording owners, and the one retention policy acting through
     // each owner's own removal. Starts after both owners exist; each sweep waits for their
     // launch work on its own task.

@@ -45,6 +45,13 @@ struct ImportedSourceFingerprintTests {
     try bytes.write(to: url)
     let changed = try await ImportedSourceFingerprint.read(url: url)
     #expect(changed.digest != first.digest)
+
+    // Same URL object, file grown: the size is read again, never a cached value.
+    bytes.append(contentsOf: [UInt8](repeating: 7, count: 64))
+    try bytes.write(to: url)
+    let grown = try await ImportedSourceFingerprint.read(url: url)
+    #expect(grown.byteCount == Int64(bytes.count))
+    #expect(grown.digest != changed.digest)
   }
 
   @Test("a folder is not a source file")

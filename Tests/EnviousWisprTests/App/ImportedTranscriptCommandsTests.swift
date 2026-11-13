@@ -150,6 +150,24 @@ struct ImportedTranscriptCommandsTests {
     #expect(coordinator.currentRow(id: row.id)?.speakerAnalysis != .labeled(count: 2))
   }
 
+  @Test("a Cancel while the replacement's check runs wins, at the start and at the commit")
+  func cancelDuringDigestWins() async throws {
+    let coordinator = makeCoordinator()
+    let row = importRow()
+    try await coordinator.saveAndShow(row)
+
+    coordinator.rowDigestWillRunForTesting = { coordinator.invalidateImportedReplacement(for: row.id) }
+    #expect(try await coordinator.beginImportedReplacement(for: row.id) == nil)
+
+    coordinator.rowDigestWillRunForTesting = nil
+    let ticket = try #require(try await coordinator.beginImportedReplacement(for: row.id))
+    coordinator.rowDigestWillRunForTesting = { coordinator.invalidateImportedReplacement(for: row.id) }
+    #expect(
+      try await coordinator.commitImportedReplacement(Transcript(text: "new"), ticket: ticket)
+        == false)
+    #expect(coordinator.currentRow(id: row.id)?.text == "old words")
+  }
+
   @Test("deleting an import stops its players")
   func deletionStopsPlayers() async throws {
     let coordinator = makeCoordinator()

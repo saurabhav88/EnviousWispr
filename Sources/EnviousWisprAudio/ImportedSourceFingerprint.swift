@@ -23,9 +23,13 @@ public enum ImportedSourceFingerprint {
   }
 
   private static func regularFileSize(_ url: URL) throws -> Int64 {
+    // A URL caches resource values: without this, a second read of the same URL object
+    // reports the size from before the file changed (found by the replace-during-decode test).
+    var fresh = url
+    fresh.removeAllCachedResourceValues()
     let values: URLResourceValues
     do {
-      values = try url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
+      values = try fresh.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
     } catch {
       throw ReadError.unreadable
     }

@@ -1050,10 +1050,18 @@ final class FileImportCoordinator {
     decodeTask = Task { [weak self] in
       guard let self else { return }
       do {
+        // #3147 PR3 (Codex r2): the file is identified before AND after the decode; a link is
+        // kept only when both agree, so a file replaced mid-decode never gets a trusted link
+        // to audio other than the text's. The import itself always proceeds.
+        let before = await Self.readSource(url)
+        guard generationAtStart == generation else { return }
         let decoded = try await decode(url)
         guard generationAtStart == generation else { return }
-        let source = await Self.readSource(url)
+        let after = await Self.readSource(url)
         guard generationAtStart == generation else { return }
+        let source: (bookmark: Data?, fingerprint: String?) =
+          before.fingerprint != nil && before.fingerprint == after.fingerprint
+          ? after : (nil, nil)
         file = ChosenFile(
           name: name, seconds: decoded.seconds, byteCount: decoded.byteCount,
           codec: decoded.codec, sampleRate: decoded.sampleRate,
