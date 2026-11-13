@@ -138,10 +138,12 @@ struct MeetingStoreCompressedAudioTests {
     // A finished candidate of another attempt, and an attempt's partial: never the audio.
     try rig.write(Self.m4a(.microphone, 1, inventory: UUID()), bytes: 30)
     try rig.write(Self.m4a(.callSound, 1, inventory: committedID, partial: true), bytes: 7)
+    // A final carrying the committed attempt's id that the inventory does not name.
+    try rig.write(Self.m4a(.callSound, 2, inventory: committedID), bytes: 5)
 
     let usage = try #require(try rig.store.audioUsage())
     #expect(usage.committedBytes == 1_100)
-    #expect(usage.temporaryBytes == 87)
+    #expect(usage.temporaryBytes == 92)
     #expect(usage.unreadableFolders == 0)
   }
 

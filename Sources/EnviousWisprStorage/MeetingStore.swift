@@ -246,13 +246,13 @@ public struct MeetingStore: Sendable {
         let files = try segmentFiles(meeting: id)
         // Only compacted output needs the record to classify; a record that cannot be read here
         // (missing, damaged or newer) proves no inventory, so its M4A counts as temporary.
-        let committedInventory: UUID? =
-          files.contains { $0.encoding == .aacM4A } ? (try? load(id: id))?.compressedAudio?.id : nil
+        let committedInventory: MeetingCompressedInventory? =
+          files.contains { $0.encoding == .aacM4A } ? (try? load(id: id))?.compressedAudio : nil
         for file in files {
           guard let size = try file.url.resourceValues(forKeys: [.fileSizeKey]).fileSize else {
             throw StoreError.unmeasurableAudio
           }
-          if Self.isCommittedAudio(file, inventoryID: committedInventory) {
+          if Self.isCommittedAudio(file, inventory: committedInventory) {
             committed += Int64(size)
           } else {
             temporary += Int64(size)
@@ -267,12 +267,15 @@ public struct MeetingStore: Sendable {
     return usage
   }
 
-  /// A final recorder file, or a final compacted file of the committed inventory.
-  static func isCommittedAudio(_ file: SegmentFile, inventoryID: UUID?) -> Bool {
+  /// A final recorder file, or a final compacted file the committed inventory NAMES (an
+  /// unlisted file carrying the same attempt id is not the meeting's audio).
+  static func isCommittedAudio(_ file: SegmentFile, inventory: MeetingCompressedInventory?) -> Bool {
     guard !file.partial else { return false }
     switch file.encoding {
     case .pcmCAF: return true
-    case .aacM4A: return inventoryID != nil && file.inventoryID == inventoryID
+    case .aacM4A:
+      guard let inventory, file.inventoryID == inventory.id else { return false }
+      return inventory.segments.contains { $0.compressed.fileName == file.url.lastPathComponent }
     }
   }
 
@@ -312,7 +315,7 @@ public struct MeetingStore: Sendable {
     try FileManager.default.removeItem(at: dir)
   }
 
-  private func refuseNewerFormat(_ id: UUID) throws {
+  func refuseNewerFormat(_ id: UUID) throws {
     if let header = try? header(id: id), header.formatVersion > MeetingRecord.currentFormatVersion {
       throw StoreError.newerFormat
     }
