@@ -1,3 +1,4 @@
+import AppKit
 import EnviousWisprCore
 import EnviousWisprServices
 import SwiftUI
@@ -73,6 +74,9 @@ struct HistoryMeetingAfterView: View {
   @State private var activeTurnID: String?
   @State private var highlightedTurnID: String?
   @State private var highlightedNoteID: UUID?
+  /// A request to bring a note into view. A fresh request each time, so choosing the same note
+  /// again scrolls back to it.
+  @State private var noteRequest: NoteRequest?
   @State private var renameRequested = false
 
   // Player
@@ -100,6 +104,14 @@ struct HistoryMeetingAfterView: View {
   private struct Notice: Equatable {
     let text: String
     let isError: Bool
+    /// A failed deletion offers Try again here, even when the menu no longer offers it (the
+    /// deletion mark was already saved).
+    var retry: Confirmation? = nil
+  }
+
+  private struct NoteRequest: Equatable {
+    let id: UUID
+    let nonce = UUID()
   }
 
   private struct RosterKey: Hashable {
@@ -140,6 +152,23 @@ struct HistoryMeetingAfterView: View {
     }
     .background(Color.stPageBg)
     .onDisappear { dropPlayer() }
+    .onChange(of: meetingID) {
+      // A reused view never carries one meeting's screen state into another.
+      dropPlayer()
+      leftPane = .notes
+      editingSummary = false
+      follow = .following
+      activeTurnID = nil
+      highlightedTurnID = nil
+      highlightedNoteID = nil
+      noteRequest = nil
+      confirming = nil
+      orphanRefused = false
+      copiedAt = nil
+      notice = nil
+      rosterRead = nil
+      audioSize = .measuring
+    }
     .confirmationDialog(
       Text(confirmationTitle), isPresented: confirmingBinding, presenting: confirming
     ) { kind in
@@ -182,8 +211,32 @@ struct HistoryMeetingAfterView: View {
       Text(verbatim: MeetingHistoryPresentation.unavailableMessage)
         .font(.stBody)
         .foregroundStyle(.stTextSecondary)
+      // A deletion that failed after its mark was saved still says so and offers Try again.
+      noticeView
     }
+    .padding(.horizontal, SettingsLayout.contentH)
     .frame(maxWidth: .infinity, maxHeight: .infinity)
+  }
+
+  @ViewBuilder private var noticeView: some View {
+    if let notice {
+      HStack(alignment: .firstTextBaseline, spacing: DesignSpacing.sm) {
+        Text(verbatim: notice.text)
+          .font(.stHelper)
+          .foregroundStyle(notice.isError ? Color.stError : Color.stTextSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+        if let retry = notice.retry {
+          Button {
+            perform(retry)
+          } label: {
+            Text("Try again", comment: "History meeting: runs the failed deletion again.")
+          }
+          .buttonStyle(.link)
+          .font(.stHelper)
+          .disabled(actionInFlight)
+        }
+      }
+    }
   }
 
   // MARK: - Layout
@@ -208,10 +261,14 @@ struct HistoryMeetingAfterView: View {
             record, row: row, projection: projection, snapshot: snapshot,
             visibleTurns: visibleTurns, width: geometry.size.width, proxy: proxy
           )
-          .onChange(of: highlightedNoteID) { _, id in
-            // A chosen note marker (or a note View source) brings its note into view.
-            guard let id else { return }
-            withAnimation { proxy.scrollTo(id, anchor: .center) }
+          .onChange(of: noteRequest) { _, request in
+            // A chosen note marker (or a note View source) brings its note into view, after the
+            // notes pane has mounted when it was not showing.
+            guard let request else { return }
+            Task { @MainActor in
+              await Task.yield()
+              withAnimation { proxy.scrollTo(request.id, anchor: .center) }
+            }
           }
           .background {
             if let player {
@@ -296,12 +353,7 @@ struct HistoryMeetingAfterView: View {
         }
       }
       statusStrip(record)
-      if let notice {
-        Text(verbatim: notice.text)
-          .font(.stHelper)
-          .foregroundStyle(notice.isError ? Color.stError : Color.stTextSecondary)
-          .fixedSize(horizontal: false, vertical: true)
-      }
+      noticeView
     }
   }
 
@@ -387,10 +439,19 @@ struct HistoryMeetingAfterView: View {
       if case .visible? = projection { return true }
       return false
     }()
+    return HStack(spacing: DesignSpacing.md) {
+      deliveryButtons(title: MeetingsPresentation.title(record), canDeliver: canDeliver)
+      moreMenu(record, canDeliver: canDeliver)
+    }
+    .fixedSize()
+  }
+
+  /// Copy, Share and Save as…, each reading the CURRENT row when it acts.
+  @ViewBuilder
+  private func deliveryButtons(title: String, canDeliver: Bool) -> some View {
     let copy = TranscribeFileExport.copyButtonPresentation(
       label: String(localized: "Copy", comment: "EnviousMeet: copies the visible transcript."),
       copiedAt: copiedAt, now: Date(), holdSeconds: TranscribeFileExport.copiedHoldSeconds)
-    return HStack(spacing: DesignSpacing.md) {
       Button {
         // Read at the press from the live row, never this view's snapshot.
         guard let text = deliveryText() else { return }
@@ -410,7 +471,7 @@ struct HistoryMeetingAfterView: View {
       // over lines that were deleted or hidden meanwhile.
       ShareLink(
         item: DeliverableText(resolve: { deliveryText() }),
-        preview: SharePreview(MeetingsPresentation.title(record))
+        preview: SharePreview(title)
       ) {
         EnviousButtonLabel(
           LocalizedStringResource("Share", comment: "EnviousMeet: shares the visible transcript."),
@@ -419,7 +480,7 @@ struct HistoryMeetingAfterView: View {
       .settingsButton(.quiet, size: .medium, isEnabled: canDeliver)
 
       Button {
-        save(defaultName: MeetingsPresentation.title(record))
+        save(defaultName: title)
       } label: {
         EnviousButtonLabel(
           LocalizedStringResource(
@@ -427,10 +488,6 @@ struct HistoryMeetingAfterView: View {
           size: .medium, systemImage: "square.and.arrow.down")
       }
       .settingsButton(.quiet, size: .medium, isEnabled: canDeliver)
-
-      moreMenu(record, canDeliver: canDeliver)
-    }
-    .fixedSize()
   }
 
   private func moreMenu(_ record: MeetingRecord, canDeliver: Bool) -> some View {
@@ -569,10 +626,16 @@ struct HistoryMeetingAfterView: View {
 
   /// The visible words of the CURRENT row, read at delivery (Copy press, Share request, Paste).
   private func deliveryText() -> String? {
-    guard let record = meetings.record(id: meetingID), !record.deletionRequested,
-      let row = committedRow(record)
-    else { return nil }
-    return transcripts.textForDelivery(row)
+    deliveryRow().flatMap(transcripts.textForDelivery)
+  }
+
+  /// The row whose words are delivered now: the committed row of a meeting EnviousMeet holds
+  /// (nothing while it is being deleted), else the row of a meeting whose folder is gone.
+  private func deliveryRow() -> Transcript? {
+    if let record = meetings.record(id: meetingID) {
+      return record.deletionRequested ? nil : committedRow(record)
+    }
+    return orphanRow
   }
 
   private func perform(_ kind: Confirmation) {
@@ -586,6 +649,8 @@ struct HistoryMeetingAfterView: View {
     Task {
       let outcome = await transcripts.deleteHistoryItem(id: .meeting(meetingID), kind: scope)
       actionInFlight = false
+      // A refused or unsaved deletion leaves the audio: bring its player back.
+      reconcilePlayer()
       if HistoryDictationPresentation.deletionFailed(outcome) {
         notice = Notice(
           text: kind == .deleteAudio
@@ -595,7 +660,7 @@ struct HistoryMeetingAfterView: View {
             : String(
               localized: "The meeting couldn't be deleted. Try again.",
               comment: "History meeting: Delete meeting failed."),
-          isError: true)
+          isError: true, retry: kind)
       }
     }
   }
@@ -635,9 +700,7 @@ struct HistoryMeetingAfterView: View {
 
   /// The document is read AFTER the panel closes, so a meeting deleted meanwhile saves nothing.
   private func save(defaultName: String) {
-    guard let record = meetings.record(id: meetingID), let row = committedRow(record) else {
-      return
-    }
+    guard let row = deliveryRow() else { return }
     let rowID = row.id
     let panel = NSSavePanel()
     panel.allowedContentTypes = [.plainText]
@@ -718,13 +781,16 @@ struct HistoryMeetingAfterView: View {
       content: content,
       markers: P.noteMarkers(snapshot.document, durationMs: player?.durationMs ?? 0),
       participants: participants,
-      onSelectNote: { marker in
-        leftPane = .notes
-        highlightedNoteID = marker.id
-      })
+      onSelectNote: { marker in showNote(marker.id) })
   }
 
   // MARK: - Follow playback
+
+  private func showNote(_ id: UUID) {
+    leftPane = .notes
+    highlightedNoteID = id
+    noteRequest = NoteRequest(id: id)
+  }
 
   private func suspendFollow() {
     if follow == .following { follow = .suspended }
@@ -796,6 +862,8 @@ extension HistoryMeetingAfterView {
           noteBlockIDs: Set(snapshot.document.blocks.map(\.id)),
           onViewSource: { target in viewSource(target, proxy: proxy) })
       }
+    } else if !editingSummary, let text = meetings.documents.summary(meetingID) {
+      readableSummary(text)
     } else {
       VStack(alignment: .leading, spacing: DesignSpacing.md) {
         if editingSummary {
@@ -812,10 +880,74 @@ extension HistoryMeetingAfterView {
             .settingsButton(.quiet, size: .medium, isEnabled: true)
           }
         }
-        // Writing, problems, out-of-date, editing, save failure and edited-summary protection.
+        // Editing, Write again, writing, problems, save failure and edited-summary protection;
+        // also every state before a summary exists.
         MeetingSummaryView(meetingID: meetingID)
       }
     }
+  }
+
+  /// A summary with no validated structure (an edited, older or unqualified summary), read
+  /// only, with no links. Edit summary opens the full summary controls.
+  fileprivate func readableSummary(_ text: String) -> some View {
+    let documents = meetings.documents
+    return VStack(alignment: .leading, spacing: DesignSpacing.md) {
+      HStack {
+        Spacer(minLength: 0)
+        Button {
+          editingSummary = true
+        } label: {
+          EnviousButtonLabel(
+            LocalizedStringResource(
+              "Edit summary", comment: "History meeting: makes the summary editable."),
+            size: .medium, systemImage: "pencil")
+        }
+        .settingsButton(.quiet, size: .medium, isEnabled: true)
+      }
+      if meetings.summaries?.isOutOfDate(meetingID) == true {
+        Text(
+          "The meeting changed after this summary was written. It may be out of date.",
+          comment:
+            "History, a meeting: the summary was written from an older transcript, names or notes."
+        )
+        .font(.stHelper)
+        .foregroundStyle(.stTextSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+      }
+      if documents.summarySaveFailed(meetingID) {
+        HStack(alignment: .firstTextBaseline, spacing: DesignSpacing.sm) {
+          Text(
+            "Your summary changes could not be saved.",
+            comment:
+              "History, a meeting: saving the user's edits to the summary failed; the edits stay in the app until a save works."
+          )
+          .foregroundStyle(.stError)
+          .fixedSize(horizontal: false, vertical: true)
+          Button {
+            Task { await documents.flushSummary(meetingID) }
+          } label: {
+            Text("Try again", comment: "History, a meeting: saves the summary changes again.")
+          }
+          .buttonStyle(.link)
+        }
+        .font(.stHelper)
+      }
+      Text(Self.readable(text))
+        .font(.stBody)
+        .foregroundStyle(.stTextBody)
+        .textSelection(.enabled)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+  }
+
+  /// The summary's Markdown with inline emphasis kept and its lines as written; plain text when
+  /// it does not parse. No run carries its own font, so the 14 pt body size holds.
+  fileprivate static func readable(_ markdown: String) -> AttributedString {
+    (try? AttributedString(
+      markdown: markdown,
+      options: AttributedString.MarkdownParsingOptions(
+        interpretedSyntax: .inlineOnlyPreservingWhitespace)))
+      ?? AttributedString(markdown)
   }
 
   /// View source: scroll to and highlight the source. Never starts playback.
@@ -826,8 +958,7 @@ extension HistoryMeetingAfterView {
       highlightedTurnID = id
       withAnimation { proxy.scrollTo(TurnRowKey(turnID: id, occurrence: 0), anchor: .center) }
     case .note(let id):
-      leftPane = .notes
-      highlightedNoteID = id
+      showNote(id)
     }
   }
 }
@@ -1030,6 +1161,20 @@ extension HistoryMeetingAfterView {
             .font(.stRowTitle)
             .foregroundStyle(.stTextPrimary)
             .frame(maxWidth: .infinity, alignment: .leading)
+          let canDeliver: Bool = {
+            if case .visible = projection { return true }
+            return false
+          }()
+          deliveryButtons(title: P.fallbackTitle, canDeliver: canDeliver)
+          Button {
+            pasteTapped()
+          } label: {
+            EnviousButtonLabel(
+              verbatim: EscapeRecoveryRowPresentation.pasteLabel, size: .medium,
+              systemImage: "arrow.right.doc.on.clipboard")
+          }
+          .settingsButton(
+            .quiet, size: .medium, isEnabled: permissions.accessibilityGranted && canDeliver)
           Button(role: .destructive) {
             actionInFlight = true
             Task {
@@ -1382,7 +1527,32 @@ extension View {
         if phase == .interacting { action() }
       }
     } else {
-      self
+      modifier(MeetingWheelScrollObserver(action: action))
     }
+  }
+}
+
+/// macOS 14: a scroll-wheel or trackpad scroll while the pointer is over this scroll view counts
+/// as the user scrolling (programmatic scrolls send no wheel events). Dragging the scroller is
+/// not seen; Follow playback's toggle still turns it off.
+private struct MeetingWheelScrollObserver: ViewModifier {
+  let action: () -> Void
+  @State private var hovering = false
+  @State private var monitor: Any?
+
+  func body(content: Content) -> some View {
+    content
+      .onHover { hovering = $0 }
+      .onAppear {
+        guard monitor == nil else { return }
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
+          if hovering { action() }
+          return event
+        }
+      }
+      .onDisappear {
+        if let monitor { NSEvent.removeMonitor(monitor) }
+        monitor = nil
+      }
   }
 }
