@@ -5,6 +5,8 @@ import SwiftUI
 /// name draft lives HERE, so typing a name re-renders this header only, not the meeting's
 /// transcript in `MeetingHistoryDetailView`. Present only in that view's record-backed branch;
 /// the draft is seeded once when it appears, as the detail view did, never on a title update.
+/// A rename that was refused or not saved says so and keeps the typed name for another try
+/// (#3147 PR4A: `MeetingCoordinator.rename` returns whether it was saved).
 struct MeetingDetailHeader: View {
   let meetingID: UUID
   let record: MeetingRecord
@@ -12,6 +14,8 @@ struct MeetingDetailHeader: View {
 
   @Environment(MeetingCoordinator.self) private var meetings
   @State private var titleDraft = ""
+  /// #3147 PR4A: the last rename was refused or not saved; the typed name stays in the field.
+  @State private var renameFailed = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
@@ -31,6 +35,12 @@ struct MeetingDetailHeader: View {
           Text("Rename", comment: "EnviousMeet: saves the meeting's new name.")
         }
         .disabled(titleDraft == (record.title ?? "") || !record.isWritableByThisBuild)
+      }
+      if renameFailed {
+        Text(MeetingAfterPresentation.renameFailedLine)
+          .font(.stHelper)
+          .foregroundStyle(.stError)
+          .fixedSize(horizontal: false, vertical: true)
       }
       let status = MeetingsPresentation.status(
         record, processingID: meetings.processing?.meetingID)
@@ -63,6 +73,6 @@ struct MeetingDetailHeader: View {
 
   private func rename() {
     let title = titleDraft
-    Task { await meetings.rename(meetingID: meetingID, title: title) }
+    Task { renameFailed = !(await meetings.rename(meetingID: meetingID, title: title)) }
   }
 }
