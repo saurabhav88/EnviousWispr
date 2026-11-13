@@ -693,7 +693,13 @@
                       event, rulesVersion: coordinator?.state.recommended.rulesVersion ?? "")
                   })
               },
-              filmPlayback: SetupFilmPlayback()),
+              filmPlayback: SetupFilmPlayback(),
+              practice: SetupPracticeSources(
+                settings: owners.settings, devices: owners.audioDevices, live: owners.liveRecording,
+                report: { [weak telemetry] result, seconds in
+                  telemetry?.practiceReported(result, duration: seconds)
+                }),
+              reportStarted: { [weak telemetry] in telemetry?.setupStarted() }),
             activateApp: { owners.application.activate(.standard) },
             downloadsPresentation: { [weak coordinator, weak runtime] in
               guard let coordinator, let runtime else {

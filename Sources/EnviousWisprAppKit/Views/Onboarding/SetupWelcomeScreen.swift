@@ -50,7 +50,11 @@ struct SetupWelcomeScreen: View {
         .modifier(SetupRise(delay: 0.24, reduceMotion: reduceMotion))
       }
       Spacer(minLength: 0)
-      SetupFooter(title: "Set up dictation", action: { model.send(.next) }) {
+      SetupFooter(title: "Set up dictation", action: {
+        guard model.routeEpoch == epoch, model.state.step == .welcome else { return }
+        model.sources.reportStarted?()
+        model.send(.next)
+      }) {
         Text("Six short steps to your first dictation.")
           .font(.firstRunCaption)
           .foregroundStyle(Color.obTextSecondary)

@@ -806,9 +806,12 @@ public final class TelemetryService {
     PostHogSDK.shared.capture("onboarding.started")
   }
 
-  public func onboardingStepCompleted(step: String, result: String, durationSeconds: Double? = nil)
+  public func onboardingStepCompleted(
+    step: String, result: String, durationSeconds: Double? = nil, polishRan: Bool? = nil
+  )
   {
     var props: [String: Any] = ["step": step, "result": result]
+    if let polishRan { props["polish_ran"] = polishRan }
     if let d = durationSeconds {
       // #2980: Double, the same type as `$value`. This and the fifteen other
       // numbers below travelled as `String(format:)`, which typed each PostHog
@@ -825,7 +828,8 @@ public final class TelemetryService {
         CapturedTelemetryEvent(
           name: "onboarding.step_completed",
           stringProps: props.compactMapValues { $0 as? String },
-          doubleProps: props.compactMapValues { $0 as? Double }))
+          doubleProps: props.compactMapValues { $0 as? Double },
+          boolProps: polishRan.map { ["polish_ran": $0] } ?? [:]))
     #endif
     PostHogSDK.shared.capture("onboarding.step_completed", properties: props)
   }

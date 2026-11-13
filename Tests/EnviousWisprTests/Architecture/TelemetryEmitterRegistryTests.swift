@@ -273,8 +273,10 @@ struct TelemetryEmitterRegistryTests {
   /// `DownloadModel`), which changes those two sites' identities only; same events and rows.
   /// F2b (M68): `onboardingChoiceMade` takes `followedRecommendation: Bool?` (unknown agreement
   /// is omitted, never sent as false); that one site's identity only, same event and row.
+  /// D6b (M84): step_completed gains optional polish_ran on the existing Practice result;
+  /// one content-free boolean, same event and once-per-visit cadence.
   static let sitesFingerprint =
-    "2dcf54864f9742c2abbe84e67136522f092fac1ad5225d340498580bc74b4d58"
+    "56ca91d4352d7adfb19b6356a94511d5eb0435108ea0150251fcc09e5217a521"
   static let ungradedFingerprint =
     "676fe038e6e688fa79c33aae8cec75e5996979f10c3f79775755ec23c5dba168"
 

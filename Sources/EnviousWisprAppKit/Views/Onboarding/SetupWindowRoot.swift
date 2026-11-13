@@ -97,7 +97,7 @@ final class SetupScreenModel {
   /// The steps that have a real screen so far (D1 to D3a).
   static let realScreens: Set<OnboardingStep> = [
     .welcome, .language, .speechPick, .speechCompare, .polishIntro, .polishPick, .polishSeeAll,
-    .downloads, .permissions, .key, .gettingReady, .film,
+    .downloads, .permissions, .key, .gettingReady, .practice, .film,
   ]
 
   /// Speech pick/Compare's pending engine (D2, M76): a UI selection only, alive while the flow
@@ -269,6 +269,8 @@ struct SetupScreenSources {
   /// The closing film's place for this Setup session (E review r1); nil: the film keeps it in
   /// its own view only.
   var filmPlayback: SetupFilmPlayback?
+  var practice: SetupPracticeSources?
+  var reportStarted: (@MainActor () -> Void)?
 }
 
 /// The two permissions' owners for Setup's Permissions screen (#4528 D4b, plan M81).
@@ -329,7 +331,12 @@ struct SetupScreenRouter: View {
     case .key: SetupKeyRoute(model: model, epoch: model.routeEpoch)
     case .gettingReady:
       SetupGateScreen(model: model, epoch: model.routeEpoch, screen: .gettingReady)
-    case .practice: SetupPlaceholder(step: .practice, chunk: "D6b")
+    case .practice:
+      if let sources = model.sources.practice {
+        SetupPracticeRoute(model: model, epoch: model.routeEpoch, sources: sources)
+      } else {
+        SetupPlaceholder(step: .practice, chunk: "D6b")
+      }
     case .film: SetupFilmRoute(model: model, epoch: model.routeEpoch)
     case .done: EmptyView()
     }

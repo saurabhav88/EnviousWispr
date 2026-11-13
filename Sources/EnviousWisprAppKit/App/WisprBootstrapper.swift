@@ -2697,7 +2697,8 @@ package final class WisprBootstrapper {
               setupShortcutMonitor: setupShortcutMonitor,
               credentials: CredentialWriter(
                 keychainManager: keychainManager, presence: savedKeyPresence,
-                discovery: llmDiscovery)),
+                discovery: llmDiscovery),
+              liveRecording: liveRecordingState, audioDevices: audioDeviceList),
             workflow: onboardingWorkflow, progress: onboardingProgress)))
     #endif
     // #3972 C4a: EnviousMeet, bootstrapped here so it lives independently of any view.

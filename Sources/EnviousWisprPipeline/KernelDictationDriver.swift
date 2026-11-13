@@ -1106,6 +1106,26 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// the App layer's `dictation.completed` telemetry. LIVE pass-through from the
   /// kernel; never persisted. Reason strings only, never user content.
   public var lastStopReason: String? { kernel.lastStopReason }
+  /// The kernel's identity is assigned at admission, before its first active phase.
+  package var practiceTakeID: String { kernel.currentSessionID.raw.uuidString }
+
+  /// Read a terminal only when its identity agrees with the active or just-concluded take.
+  package var practiceTakeEvidence: PracticeTakeEvidence? {
+    guard let result = kernel.recordingOutcome, lastTakeID == practiceTakeID else { return nil }
+    switch result {
+    case .completed:
+      guard let text = kernel.deliveredTranscript else { return .failed }
+      let polish = outcome.polishTakeOutcome
+      return .delivered(
+        text: outcome.practicePastedText ?? text, pasted: kernel.deliveryOutcome == .pasted,
+        copied: outcome.practiceCopiedToClipboard,
+        polished: polish?.takeID == lastTakeID && polish?.result == .polished)
+    case .discarded, .noSpeech, .asrEmptyDespiteAudio, .noTransport: return .noSpeech
+    case .cancelled: return .cancelled
+    case .failed, .audioInterrupted, .asrInterrupted: return .failed
+    }
+  }
+
   /// #1846: the id of the take that most recently CONCLUDED, for `dictation.completed`
   /// and its three sibling completion events. LIVE pass-through of a value the kernel
   /// FROZE at the accepted terminal — not a live read of the in-flight take key, which
@@ -1367,6 +1387,8 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
         outcome.polishDurationSeconds = 0
         outcome.pasteDurationSeconds = 0
         outcome.pasteResult = nil
+        outcome.practicePastedText = nil
+        outcome.practiceCopiedToClipboard = false
         // #1785: these are written only inside the auto-paste branch, so without
         // clearing them here an auto-copy or no-copy recording would file the
         // PREVIOUS recording's insertion facts as its own.

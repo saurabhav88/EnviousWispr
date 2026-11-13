@@ -73,6 +73,9 @@ final class KernelFinalizationOutcome {
   var polishDurationSeconds: Double = 0
   var pasteDurationSeconds: Double = 0
   var pasteResult: PasteDeliveryResult?
+  /// The payload the delivery owner submitted, for in-process editor verification only.
+  var practicePastedText: String?
+  var practiceCopiedToClipboard = false
   /// #145: deterministic ITN run facts, threaded onto `dictation.completed`.
   /// Metadata only (`telemetry-privacy-boundary`). `itnFloorDelivered` is derived
   /// in `updateTranscriptMetrics` from `itnChanged` + the polish outcome.
@@ -1056,6 +1059,7 @@ struct KernelFinalizationWiring {
           let deliveredText =
             result.submittedPayload == .repaired
             ? (payloads.repairedText ?? pasteText) : pasteText
+          outcome.practicePastedText = deliveredText
           pasteCompletionRegistry?.emit(
             PasteCompletionEvent(
               pastedText: deliveredText,
@@ -1071,6 +1075,7 @@ struct KernelFinalizationWiring {
               takeID: deliveryTakeID))
           deliveryOutcome = .pasted
         } else {
+          outcome.practiceCopiedToClipboard = result.fallbackClipboardChangeCount != nil
           deliveryOutcome = .clipboardOnly
         }
         // #3106: the committed arrival session runs AFTER the outcome above is fixed, off the
@@ -1087,6 +1092,7 @@ struct KernelFinalizationWiring {
         // passing any of the claim sites there. Same ownership failure as Tier 3, one layer up.
         ClipboardCleanup.deliveryClaimsBoard()
         copyToClipboard(text)
+        outcome.practiceCopiedToClipboard = true
         deliveryOutcome = .clipboardOnly
       } else {
         deliveryOutcome = .clipboardOnly

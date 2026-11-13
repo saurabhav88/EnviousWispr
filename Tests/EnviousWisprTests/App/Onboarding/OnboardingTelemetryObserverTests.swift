@@ -87,6 +87,37 @@ struct OnboardingTelemetryObserverTests {
     }
   }
 
+  @Test("Setup start and Practice exit are counted once on the owned visit")
+  func startAndPracticeExit() {
+    let recorder = Recorder()
+    var starts = 0
+    var outcomes: [SetupPracticeResult] = []
+    var inputs = recorder.observerInputs()
+    inputs.emitStarted = { starts += 1 }
+    inputs.emitPractice = { result, _ in outcomes.append(result) }
+    let observer = OnboardingTelemetryObserver(inputs: inputs)
+
+    recorder.owned = false
+    observer.setupStarted()
+    observer.practiceReported(.skipped, duration: 1)
+    #expect(starts == 0)
+    #expect(outcomes.isEmpty)
+
+    recorder.owned = true
+    observer.setupStarted()
+    observer.setupStarted()
+    observer.practiceReported(.completed(polished: true), duration: 2)
+    observer.practiceReported(.skipped, duration: 3)
+    #expect(starts == 1)
+    #expect(outcomes == [.completed(polished: true)])
+
+    recorder.start = recorder.start?.addingTimeInterval(10)
+    observer.setupStarted()
+    observer.practiceReported(.noSpeech, duration: 1)
+    #expect(starts == 2)
+    #expect(outcomes == [.completed(polished: true), .noSpeech])
+  }
+
   @Test("first views carry forward or back with numeric elapsed seconds; a revisit moves only the position")
   func entriesAndElapsed() {
     let r = Recorder()

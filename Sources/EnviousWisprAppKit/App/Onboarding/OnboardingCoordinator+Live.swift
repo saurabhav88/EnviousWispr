@@ -34,6 +34,8 @@ struct OnboardingLiveOwners {
   /// The saved-key writer over the Keychain, presence and discovery owners Settings uses: See
   /// all's Cloud tab saves and checks keys through it (D3b, M82).
   let credentials: CredentialWriter
+  let liveRecording: LiveRecordingState
+  let audioDevices: AudioDeviceList
 }
 
 extension OnboardingCoordinator.Dependencies {

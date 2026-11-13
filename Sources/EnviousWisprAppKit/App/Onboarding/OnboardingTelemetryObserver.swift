@@ -39,6 +39,8 @@ final class OnboardingTelemetryObserver {
     var visitOwned: () -> Bool
     /// Keeps the shared visit box's position current for an abandon row.
     var updatePosition: (OnboardingStep) -> Void
+    var emitStarted: () -> Void = {}
+    var emitPractice: (SetupPracticeResult, TimeInterval) -> Void = { _, _ in }
     var emitScreenViewed: (String, OnboardingTelemetry.Entry, Double) -> Void
     var now: () -> Date
     /// `onboarding.choice_made`: choice, recommended, followed (nil = unknown), rules version.
@@ -95,6 +97,8 @@ final class OnboardingTelemetryObserver {
   }
 
   private let inputs: Inputs
+  private var startedReported = false
+  private var didReportPractice = false
   private var visit: Date?
   private var lastPresented: OnboardingStep?
   private var seenThisVisit: Set<OnboardingStep> = []
@@ -156,6 +160,43 @@ final class OnboardingTelemetryObserver {
     guard ownedVisit(), filmResult == nil else { return }
     filmResult = result
     inputs.emitFilm(result, lastScene.rawValue)
+  }
+
+  func setupStarted() {
+    guard ownedVisit(), !startedReported else { return }
+    startedReported = true
+    inputs.emitStarted()
+  }
+
+  func practiceReported(_ result: SetupPracticeResult, duration: TimeInterval) {
+    guard ownedVisit(), !didReportPractice else { return }
+    didReportPractice = true
+    inputs.emitPractice(result, duration)
+  }
+
+  fileprivate static func emitPracticeResult(_ result: SetupPracticeResult, _ duration: TimeInterval) {
+    let telemetry = TelemetryService.shared
+    let step = "practice_dictation"
+    switch result {
+    case .completed(let polished):
+      telemetry.onboardingStepCompleted(
+        step: step, result: "completed", durationSeconds: duration, polishRan: polished)
+    case .missedBox:
+      telemetry.onboardingStepCompleted(step: step, result: "missed_box", durationSeconds: duration)
+    case .noSpeech:
+      telemetry.onboardingStepCompleted(step: step, result: "no_speech", durationSeconds: duration)
+    case .skipped:
+      telemetry.onboardingStepCompleted(step: step, result: "skipped", durationSeconds: duration)
+    case .pipelineFailed:
+      telemetry.onboardingStepBlocked(step: step, reason: "pipeline_failed", durationSeconds: duration)
+    case .microphoneDenied:
+      telemetry.onboardingStepBlocked(
+        step: step, reason: "mic_denied", permission: "microphone", durationSeconds: duration)
+    case .accessibilityDenied:
+      telemetry.onboardingStepBlocked(
+        step: step, reason: "accessibility_denied", permission: "accessibility",
+        durationSeconds: duration)
+    }
   }
 
   // MARK: Screens (F2a)
@@ -308,6 +349,8 @@ final class OnboardingTelemetryObserver {
   }
 
   private func clearVisit() {
+    startedReported = false
+    didReportPractice = false
     visit = nil
     lastPresented = nil
     seenThisVisit = []
@@ -544,6 +587,8 @@ extension OnboardingTelemetryObserver.Inputs {
       visitStart: box.visitStart,
       visitOwned: visitOwned,
       updatePosition: box.updatePosition,
+      emitStarted: { telemetry.onboardingStarted() },
+      emitPractice: OnboardingTelemetryObserver.emitPracticeResult,
       emitScreenViewed: { step, entry, elapsed in
         telemetry.onboardingScreenViewed(step: step, entry: entry, elapsedSeconds: elapsed)
       },

@@ -413,6 +413,17 @@ import Testing
       }
     }
 
+    @Test("Practice step results carry a boolean for whether polish produced the delivered text")
+    func practicePolishPayload() {
+      withHook { events in
+        TelemetryService.shared.onboardingStepCompleted(
+          step: "practice_dictation", result: "completed", polishRan: false)
+        let event = events.named("onboarding.step_completed").first
+        #expect(event?.boolProps["polish_ran"] == false)
+        #expect(event?.stringProps["polish_ran"] == nil)
+      }
+    }
+
     @Test("activeChecklistStep reports the real beat from the observable statuses")
     func activeChecklistStepDerivation() {
       // #1176 cloud Codex r4: the abandon must report the real checklist beat, not a
