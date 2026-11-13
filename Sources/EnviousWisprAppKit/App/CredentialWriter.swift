@@ -99,7 +99,8 @@ struct CredentialWriter {
   func save(
     _ value: String, for provider: CredentialProvider, settings: SettingsManager,
     surface: ProviderSetupSurface,
-    admission: Admission? = nil
+    admission: Admission? = nil,
+    setupProgress: LLMModelDiscoveryCoordinator.SetupProgress? = nil
   ) async -> SaveOutcome {
     let admitted = admission ?? admit(provider, settings: settings, surface: surface)
     return await access.run(turn: admitted.turn) {
@@ -122,7 +123,8 @@ struct CredentialWriter {
         let discovery = discovery
         let validation = Task {
           await discovery.validateSavedCredential(
-            value, revision: revision, admission: admitted.discovery, settings: settings)
+            value, revision: revision, admission: admitted.discovery, settings: settings,
+            setupProgress: setupProgress)
         }
         return .stored(validation: validation, revision: revision)
       }

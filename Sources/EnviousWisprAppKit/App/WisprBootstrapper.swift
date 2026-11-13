@@ -419,6 +419,10 @@ package final class WisprBootstrapper {
     let cloudModelList = CloudModelListHolder.live()
     let llmDiscovery = LLMModelDiscoveryCoordinator(
       keychainManager: keychainManager, savedKeyPresence: savedKeyPresence,
+      setupDiscovery: { [cloudModelList] provider, apiKey, didListModels in
+        try await LLMModelDiscovery(cloudModelList: cloudModelList.snapshot?.list)
+          .discoverModels(provider: provider, apiKey: apiKey, didListModels: didListModels)
+      },
       discoverModels: { [cloudModelList] provider, apiKey in
         // One read per discovery run: the probes and filters of this run share one list.
         try await LLMModelDiscovery(cloudModelList: cloudModelList.snapshot?.list)

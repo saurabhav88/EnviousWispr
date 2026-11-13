@@ -241,7 +241,10 @@ public struct LLMModelDiscovery: Sendable {
 
   /// Discover and probe models for the given provider.
   /// Returns models sorted: available first, then locked, alphabetically within each group.
-  public func discoverModels(provider: LLMProvider, apiKey: String) async throws -> [LLMModelInfo] {
+  public func discoverModels(
+    provider: LLMProvider, apiKey: String,
+    didListModels: (@Sendable () async -> Void)? = nil
+  ) async throws -> [LLMModelInfo] {
     let candidates: [DiscoveryCandidate]
 
     // #1914: each cloud branch now filters at its own call site. Previously one
@@ -273,6 +276,8 @@ public struct LLMModelDiscovery: Sendable {
     case .none:
       return []
     }
+
+    await didListModels?()
 
     // Probe models with concurrency limit to avoid rate limiting
     var results: [LLMModelInfo] = []
