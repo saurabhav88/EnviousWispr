@@ -1914,6 +1914,70 @@ def s_practice_spoken(run, speech):
     return s
 
 
+def expected_pick(table, facts):
+    """The first row of a Setup rules table whose conditions all hold (plan §3.2), evaluated
+    here from the rules file and this Mac's own facts: an oracle independent of SetupRules."""
+    for row in table:
+        when = row.get("when") or {}
+        ok = True
+        for key, want in when.items():
+            if key == "memoryAtLeastGiB":
+                ok = ok and facts["memory_gib"] >= want
+            elif key == "memoryBelowGiB":
+                ok = ok and facts["memory_gib"] < want
+            elif key == "lockedNonEnglish":
+                ok = ok and facts["locked_non_english"] == want
+            elif key == "languageIn":
+                ok = ok and facts["language_in"].get(want, False)
+            elif key == "primary":
+                ok = ok and facts.get("primary") == want
+            else:
+                raise HarnessError(f"rules condition {key} has no oracle here")
+        if ok:
+            return row["pick"]
+    raise HarnessError("a rules table had no catch-all row")
+
+
+def s_detect(run, speech):
+    """The recommendation on THIS Mac's real hardware (no fake profile): Setup's recommended
+    speech engine and AI polish size must equal the rules file's answer for this Mac's memory and
+    the chosen language, computed independently here. Languages: en (Parakeet's set) and hi
+    (outside it, plan U12). Run it on a fresh Mac (fresh_mac.py prepare) so nothing installed or
+    saved can influence the advice."""
+    s = Scenario("detect")
+    rules_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..",
+                              "Sources/EnviousWisprServices/Resources/setup-rules.json")
+    with open(rules_path) as fh:
+        rules = json.load(fh)
+    memory_gib = int(subprocess.run(["sysctl", "-n", "hw.memsize"], capture_output=True,
+                                    text=True, check=True).stdout) // (1 << 30)
+    s.notes.append(f"this Mac: {memory_gib} GiB; rules {rules.get('rulesVersion')} "
+                   f"revision {rules.get('revision')}")
+    run.app.call("onboarding", "profile", "--clear")
+    # Parakeet's language set, by the languages the plan names (U10 en, U12 hi).
+    for language, in_parakeet in (("en", True), ("hi", False)):
+        run.reset(s, f"a fresh flow for the {language} advice")
+        run.app.call("onboarding", "present")
+        run.send("next")
+        run.send("chooseLanguage", value=language)
+        st = run.status()
+        rec = st.get("recommended") or {}
+        facts = {"memory_gib": memory_gib, "locked_non_english": language != "en",
+                 "language_in": {"parakeet": in_parakeet}}
+        want_speech = expected_pick(rules["speech"]["choice"], facts)
+        want_polish = expected_pick(rules["polish"]["primary"], facts)
+        s.expect(rec.get("speech") == want_speech,
+                 f"{language}: the recommended speech engine follows the rules",
+                 (rec.get("speech"), want_speech))
+        s.expect(rec.get("polish") == want_polish,
+                 f"{language}: the recommended AI polish size follows this Mac's memory",
+                 (rec.get("polish"), want_polish))
+        s.expect(rec.get("rulesVersion") == rules.get("rulesVersion"),
+                 f"{language}: Setup reports the rules it used", rec.get("rulesVersion"))
+    run.app.call("onboarding", "stop")
+    return s
+
+
 SCENARIOS = {
     "fresh": s_fresh, "resume": s_resume, "restart": s_restart, "profiles": s_profiles,
     "permissions": s_permissions, "faults": s_faults, "completion": s_completion,
@@ -1926,6 +1990,7 @@ SCENARIOS = {
     "screens_e": s_screens_e,
     "screens_de": s_screens_de,
     "practice_spoken": s_practice_spoken,
+    "detect": s_detect,
 }
 
 
