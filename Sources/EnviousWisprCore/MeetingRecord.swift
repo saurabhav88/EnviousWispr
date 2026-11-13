@@ -162,9 +162,10 @@ public enum MeetingEngineChoice: String, Sendable, Equatable, Codable, CaseItera
 public struct MeetingRecord: Sendable, Equatable, Codable, Identifiable {
   /// 2 adds `MeetingState.notesOnly` (#3972 R56). 3 adds transcription attempts and the
   /// committed transcript generation (#3973 C2). 4 adds `MeetingEngineChoice.whisper` (#3973
-  /// C3). A record keeps the version it was created with until it needs a newer value:
-  /// `markNotesOnly()` and `beginAttempt(_:)` raise it.
-  public static let currentFormatVersion = 4
+  /// C3). 5 adds the committed compressed audio inventory (#3147 PR4B). A record keeps the
+  /// version it was created with until it needs a newer value: `markNotesOnly()`,
+  /// `beginAttempt(_:)` and `commitCompressedAudio(_:)` raise it.
+  public static let currentFormatVersion = 5
   /// The format that introduced `MeetingState.notesOnly`.
   public static let notesOnlyFormatVersion = 2
   /// The format that introduced attempts (#3973 C2). An older build lists such a meeting
@@ -172,6 +173,9 @@ public struct MeetingRecord: Sendable, Equatable, Codable, Identifiable {
   public static let attemptFormatVersion = 3
   /// The format that introduced `MeetingEngineChoice.whisper` (#3973 C3).
   public static let whisperFormatVersion = 4
+  /// The format that introduced `compressedAudio` (#3147 PR4B). An older build lists a compacted
+  /// meeting read-only rather than reading CAF files that may have been retired.
+  public static let compressedAudioFormatVersion = 5
   /// The generation of a transcript committed before attempts existed (#3973 C2): its History
   /// row carries no attempt ID, and its record no committed ID while it is ready.
   public static let legacyTranscriptAttemptID = UUID(
@@ -229,6 +233,17 @@ public struct MeetingRecord: Sendable, Equatable, Codable, Identifiable {
   /// only one the final pass may use. The cleaned segment files themselves are not listed here:
   /// the folder is their authority, as recovery already is for raw segments.
   public var echoProvenance: MeetingEchoProvenance?
+  /// #3147 PR4B: the verified compacted audio readers use, when committed. Absent (older
+  /// meetings, or not yet compacted) means every segment is its recorder CAF file. Logical
+  /// `segments` and `gaps` never change; `MeetingAudioSelection` picks the physical files.
+  public private(set) var compressedAudio: MeetingCompressedInventory?
+
+  /// #3147 PR4B: makes `inventory` the meeting's reader authority, raising the format so an older
+  /// build never reads around it. Storage calls this on a freshly read record inside its write.
+  public mutating func commitCompressedAudio(_ inventory: MeetingCompressedInventory) {
+    compressedAudio = inventory
+    formatVersion = max(formatVersion, Self.compressedAudioFormatVersion)
+  }
 
   /// The generation of the committed transcript, or nil when none committed. A ready record
   /// written before attempts existed committed the legacy generation.
@@ -320,6 +335,7 @@ public struct MeetingRecord: Sendable, Equatable, Codable, Identifiable {
     self.transcriptEngineUsed = nil
     self.transcriptEngineFallbackReason = nil
     self.echoProvenance = nil
+    self.compressedAudio = nil
   }
 
   /// Nothing was captured, the user's notes are kept (#3972 R53, R56). Raises the format so an
@@ -369,6 +385,43 @@ public enum MeetingSegmentNaming {
     public let index: Int
     public let startMs: Int
     public let partial: Bool
+    /// #3147 PR4B: `.aacM4A` for a compacted file, else `.pcmCAF`.
+    public let encoding: MeetingAudioEncoding
+    /// #3147 PR4B: the inventory attempt a compacted file belongs to; nil for recorder CAF.
+    public let inventoryID: UUID?
+
+    public init(
+      track: MeetingTrackKind, variant: MeetingSegmentVariant, index: Int, startMs: Int,
+      partial: Bool, encoding: MeetingAudioEncoding = .pcmCAF, inventoryID: UUID? = nil
+    ) {
+      self.track = track
+      self.variant = variant
+      self.index = index
+      self.startMs = startMs
+      self.partial = partial
+      self.encoding = encoding
+      self.inventoryID = inventoryID
+    }
+  }
+
+  /// #3147 PR4B: compacted files: `mic-00003-s000120000-c<32 hex inventory id>.m4a`, and
+  /// `.m4a.partial` while being written. The inventory id is in the name so an abandoned or
+  /// retried attempt never overwrites another attempt's output.
+  public static let compactedExtension = "m4a"
+  public static let compactedPartialExtension = "m4a.partial"
+
+  public static func compactedFileName(
+    source: MeetingSegmentInfo, track: MeetingTrackKind, variant: MeetingSegmentVariant,
+    inventoryID: UUID, partial: Bool
+  ) -> String {
+    precondition(
+      source.index > 0 && source.startMs >= 0,
+      "segment index must be positive and start non-negative")
+    precondition(variant == .raw || track == .microphone, "only the microphone has a cleaned copy")
+    let ext = partial ? compactedPartialExtension : compactedExtension
+    let stem = variant == .cleaned ? cleanedMicrophoneStem : track.fileStem
+    let id = inventoryID.uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+    return "\(stem)-\(padded(source.index, 5))-s\(padded(source.startMs, 9))-c\(id).\(ext)"
   }
 
   /// The stem of the microphone's echo-cleaned copy (#4355 PR B): `micclean-00003-s000120000.caf`
@@ -412,14 +465,37 @@ public enum MeetingSegmentNaming {
     return String(repeating: "0", count: max(0, width - digits.count)) + digits
   }
 
+  /// Recorder segment files only (`.caf`, `.caf.partial`), as every existing reader expects.
+  /// Compacted names are NOT recognized here, so a reader cannot mistake an uncommitted or
+  /// committed `.m4a` for a duplicate segment; callers that must see them use `parseAny`.
   public static func parse(_ name: String) -> Parsed? {
-    let partial = name.hasSuffix("." + MeetingAudioFormat.partialExtension)
-    let finalized = !partial && name.hasSuffix("." + MeetingAudioFormat.fileExtension)
-    guard partial || finalized else { return nil }
-    let ext = partial ? MeetingAudioFormat.partialExtension : MeetingAudioFormat.fileExtension
-    let stem = name.dropLast(ext.count + 1)
-    let parts = stem.split(separator: "-")
-    guard parts.count == 3, parts[2].hasPrefix("s") else { return nil }
+    guard let parsed = parseAny(name), parsed.encoding == .pcmCAF else { return nil }
+    return parsed
+  }
+
+  /// #3147 PR4B: recorder AND compacted segment files. For physical accounting and deletion
+  /// (every owned file), never for choosing what a reader opens (`MeetingAudioSelection`).
+  public static func parseAny(_ name: String) -> Parsed? {
+    let forms: [(ext: String, partial: Bool, encoding: MeetingAudioEncoding)] = [
+      (MeetingAudioFormat.partialExtension, true, .pcmCAF),
+      (MeetingAudioFormat.fileExtension, false, .pcmCAF),
+      (compactedPartialExtension, true, .aacM4A),
+      (compactedExtension, false, .aacM4A),
+    ]
+    guard let form = forms.first(where: { name.hasSuffix("." + $0.ext) }) else { return nil }
+    let partial = form.partial
+    let stem = name.dropLast(form.ext.count + 1)
+    let parts = stem.split(separator: "-", omittingEmptySubsequences: false)
+    let inventoryID: UUID?
+    switch form.encoding {
+    case .pcmCAF:
+      guard parts.count == 3 else { return nil }
+      inventoryID = nil
+    case .aacM4A:
+      guard parts.count == 4, let id = compactedInventoryID(parts[3]) else { return nil }
+      inventoryID = id
+    }
+    guard parts[2].hasPrefix("s") else { return nil }
     let identity: (MeetingTrackKind, MeetingSegmentVariant)
     if parts[0] == cleanedMicrophoneStem {
       identity = (.microphone, .cleaned)
@@ -432,6 +508,22 @@ public enum MeetingSegmentNaming {
       let start = Int(parts[2].dropFirst()), start >= 0
     else { return nil }
     return Parsed(
-      track: identity.0, variant: identity.1, index: index, startMs: start, partial: partial)
+      track: identity.0, variant: identity.1, index: index, startMs: start, partial: partial,
+      encoding: form.encoding, inventoryID: inventoryID)
+  }
+
+  /// `c` + 32 lowercase hex digits, back to the inventory id.
+  private static func compactedInventoryID(_ part: Substring) -> UUID? {
+    guard part.count == 33, part.first == "c" else { return nil }
+    let hex = Array(part.dropFirst())
+    guard hex.allSatisfy({ ("0"..."9").contains($0) || ("a"..."f").contains($0) }) else {
+      return nil
+    }
+    let s = String(hex)
+    func cut(_ from: Int, _ to: Int) -> Substring {
+      s[s.index(s.startIndex, offsetBy: from)..<s.index(s.startIndex, offsetBy: to)]
+    }
+    return UUID(
+      uuidString: "\(cut(0, 8))-\(cut(8, 12))-\(cut(12, 16))-\(cut(16, 20))-\(cut(20, 32))")
   }
 }
