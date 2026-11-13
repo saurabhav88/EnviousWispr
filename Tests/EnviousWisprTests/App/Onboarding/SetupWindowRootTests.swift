@@ -71,7 +71,7 @@ struct SetupWindowRootTests {
     coordinator.send(.next)  // Speech pick's default: Polish intro
     coordinator.send(.next)  // AI polish pick
     coordinator.send(.skipPolish)  // Downloads
-    coordinator.debugGoto(.film)  // Film: still a placeholder until E is wired
+    coordinator.debugGoto(.practice)  // Practice: still a placeholder until D6b part 2
     let model = SetupScreenModel(coordinator: coordinator)
     defer { model.detach() }
     let still = try Self.pixels(SetupWindowRoot(model: model), reduceMotion: true)
@@ -450,6 +450,44 @@ struct SetupWindowRootTests {
     coordinator.send(.back)  // AI polish pick: See all is left
     #expect(model.cloudPanel == nil)
     #expect(leaves.log == [.openAI, nil], "the dropped panel did not leave every provider once")
+  }
+
+  @Test(
+    "the film keeps its place when its window goes away, but a Restart that left the film never writes the cleared place back"
+  )
+  func filmPlaybackSurvivesCloseNotRestart() throws {
+    _ = NSApplication.shared
+    func mountedFilm() -> (OnboardingCoordinator, SetupScreenModel, SetupFilmPlayback, NSHostingView<AnyView>) {
+      let world = OnboardingCoordinatorTests.World()
+      let coordinator = world.coordinator()
+      coordinator.begin()
+      coordinator.debugGoto(.film)
+      let model = SetupScreenModel(coordinator: coordinator)
+      let playback = SetupFilmPlayback()
+      model.sources.filmPlayback = playback
+      let host = Self.host(SetupWindowRoot(model: model), reduceMotion: false)
+      host.layoutSubtreeIfNeeded()
+      host.window?.displayIfNeeded()
+      return (coordinator, model, playback, host)
+    }
+
+    // Control: the window's content goes away mid-play, so the film saves its place.
+    let (_, closing, saved, closeHost) = mountedFilm()
+    defer { closing.detach() }
+    #expect(saved.clock != nil, "the playing film never wrote its clock")
+    closeHost.rootView = AnyView(EmptyView())
+    closeHost.layoutSubtreeIfNeeded()
+    #expect(saved.resumeOnAppear && saved.clock?.isPaused == true, "closing did not hold the place")
+
+    // Restart: the session clears the place, then the flow leaves the film.
+    let (coordinator, restarting, cleared, restartHost) = mountedFilm()
+    defer { restarting.detach() }
+    cleared.clear()
+    coordinator.reset()
+    restartHost.layoutSubtreeIfNeeded()
+    restartHost.window?.displayIfNeeded()
+    #expect(coordinator.state.step != .film)
+    #expect(cleared.clock == nil && !cleared.resumeOnAppear, "the outgoing film wrote back the cleared place")
   }
 
   @Test("Polish intro, pick and See all render all their content under Reduce Motion")

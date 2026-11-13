@@ -1662,6 +1662,72 @@ def s_screens_d3b(run, speech):
     run.app.call("settings", "set", "appearance", json.dumps(before))
     return s
 
+
+def s_screens_e(run, speech):
+    """E: the closing film reached the real way (Practice's success event), in light and dark.
+    Light: Watch again, then Launch EnviousWispr before the last scene skips the film; dark: the
+    film plays to its last scene and Launch EnviousWispr finishes it. Both complete Setup
+    durably. Permissions are simulated through the door and cleared at the end."""
+    from ui_helpers import perform_action
+    s = Scenario("screens_e")
+    pid = run.app.client.pid
+    shots = os.path.join(run.artifacts, "shots")
+    os.makedirs(shots, exist_ok=True)
+    before = run.app.call("settings", "get", "appearance").get("value")
+    film_seconds = 35.5  # FilmScript.length (seven scenes)
+
+    def shot(name):
+        wid = window_id(pid, "Setup")
+        path = os.path.join(shots, f"e-{name}.png")
+        s.expect(wid is not None and capture_window(wid, path), f"captured {name}", path)
+
+    def press(name):
+        b = setup_button(pid, name)
+        s.expect(b is not None and perform_action(b, "AXPress"), f"pressed {name}")
+
+    def to_film(label):
+        run.reset(s, f"a fresh flow to the film ({label})")
+        run.app.call("onboarding", "present")
+        run.walk_to_downloads(s, speech)
+        run.send("next")
+        run.app.call("onboarding", "permissions", "--mic", "granted", "--ax", "granted")
+        st = run.until(lambda x: x.get("step") == "key", 8, "key")
+        s.expect(st.get("step") == "key", "granted permissions move to Key", st.get("step"))
+        run.send("next")
+        st = run.until(lambda x: x.get("step") == "practice", 60, "practice")
+        s.expect(st.get("step") == "practice", "readiness opens Practice", st.get("step"))
+        r = run.send("practiceSucceeded")
+        s.expect(r.get("step") == "film", "a practice success opens the film", r.get("step"))
+        time.sleep(1.0)  # test-fixture-timer: the film's first scene rises on screen
+
+    for appearance in ("light", "dark"):
+        run.app.call("settings", "set", "appearance", json.dumps(appearance))
+        to_film(appearance)
+        s.expect(setup_button(pid, "Launch EnviousWispr") is not None
+                 and setup_button(pid, "Watch again") is not None,
+                 "the film shows Launch EnviousWispr and Watch again")
+        shot(f"{appearance}-scene1")
+        time.sleep(9.0)  # test-fixture-timer: into the third scene (words land)
+        shot(f"{appearance}-scene3")
+        if appearance == "light":
+            press("Watch again")
+            time.sleep(1.0)  # test-fixture-timer: back on the first scene
+            shot("light-replayed")
+            press("Launch EnviousWispr")  # before the last scene: skips the film
+        else:
+            time.sleep(film_seconds - 9.0)  # test-fixture-timer: the film reaches its last scene
+            shot("dark-last-scene")
+            press("Launch EnviousWispr")  # on the last scene: finishes the film
+        st = run.until(lambda x: x.get("active") is False, 6, "completed")
+        s.expect(st.get("active") is False and st.get("legacyState") == "completed",
+                 f"{appearance}: Launch EnviousWispr completes Setup durably",
+                 (st.get("active"), st.get("legacyState")))
+        run.app.call("onboarding", "permissions", "--clear")
+    s.uncovered.append("D9 main window after Launch EnviousWispr and the film_finished row in "
+                       "PostHog: D7a cutover and the telemetry round")
+    run.app.call("settings", "set", "appearance", json.dumps(before))
+    return s
+
 SCENARIOS = {
     "fresh": s_fresh, "resume": s_resume, "restart": s_restart, "profiles": s_profiles,
     "permissions": s_permissions, "faults": s_faults, "completion": s_completion,
@@ -1671,6 +1737,7 @@ SCENARIOS = {
     "screens_d4a": s_screens_d4a,
     "screens_d4b": s_screens_d4b,
     "screens_d3b": s_screens_d3b,
+    "screens_e": s_screens_e,
 }
 
 

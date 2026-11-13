@@ -79,6 +79,8 @@ final class SetupScreenModel {
   /// Reports a REAL screen on screen (telemetry M67); the presenter binds it to the session's
   /// observer. Placeholders never call it.
   @ObservationIgnored var onPresented: ((OnboardingStep, _ resumed: Bool) -> Void)?
+  /// How the film ended (E integration); the presenter binds it to the session's observer.
+  @ObservationIgnored var onFilmEnded: ((OnboardingTelemetry.FilmResult, FilmScene) -> Void)?
   /// True only while the window is on screen: a mounted view in a hidden window is not a view.
   @ObservationIgnored private(set) var isWindowVisible = false
   /// Downloads is the CURRENT mounted route AND the window is on screen (plan M83): the runtime's
@@ -95,7 +97,7 @@ final class SetupScreenModel {
   /// The steps that have a real screen so far (D1 to D3a).
   static let realScreens: Set<OnboardingStep> = [
     .welcome, .language, .speechPick, .speechCompare, .polishIntro, .polishPick, .polishSeeAll,
-    .downloads, .permissions, .key, .gettingReady,
+    .downloads, .permissions, .key, .gettingReady, .film,
   ]
 
   /// Speech pick/Compare's pending engine (D2, M76): a UI selection only, alive while the flow
@@ -264,6 +266,9 @@ struct SetupScreenSources {
   /// Builds See all's cloud panel over the saved-key, credential and discovery owners Settings
   /// uses (`SetupCloudPanelModel.live`, D3b). nil hides the Cloud tab.
   var makeCloudPanel: (@MainActor () -> SetupCloudPanelModel)?
+  /// The closing film's place for this Setup session (E review r1); nil: the film keeps it in
+  /// its own view only.
+  var filmPlayback: SetupFilmPlayback?
 }
 
 /// The two permissions' owners for Setup's Permissions screen (#4528 D4b, plan M81).
@@ -325,7 +330,7 @@ struct SetupScreenRouter: View {
     case .gettingReady:
       SetupGateScreen(model: model, epoch: model.routeEpoch, screen: .gettingReady)
     case .practice: SetupPlaceholder(step: .practice, chunk: "D6b")
-    case .film: SetupPlaceholder(step: .film, chunk: "E")
+    case .film: SetupFilmRoute(model: model, epoch: model.routeEpoch)
     case .done: EmptyView()
     }
   }

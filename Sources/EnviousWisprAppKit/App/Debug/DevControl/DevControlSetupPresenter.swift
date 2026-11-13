@@ -58,6 +58,9 @@
       model.onPresented = { [weak telemetry] step, resumed in
         telemetry?.screenPresented(step, resumed: resumed)
       }
+      model.onFilmEnded = { [weak telemetry] result, scene in
+        telemetry?.filmEnded(result, lastScene: scene)
+      }
       let window = NSWindow(
         contentRect: NSRect(
           x: 0, y: 0, width: SetupLayout.windowWidth, height: SetupLayout.contentHeight),

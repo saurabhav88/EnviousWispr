@@ -1,3 +1,4 @@
+import EnviousWisprServices
 import SwiftUI
 
 /// Setup's closing film (#4528 chunk E, plan §3.6 and M79; mockup `isTour`): seven short
@@ -21,6 +22,15 @@ struct SetupFilmScreen: View {
   let onSkip: () -> Void
   /// Tests and render fixtures: show this film second, paused, instead of playing from 0.
   var frozenAt: Double? = nil
+  /// How the film ended, reported once right before `onFinished`/`onSkip`: skipped before the
+  /// last scene, replayed after Watch again, else watched; with the scene on screen (plan §3.8).
+  var onReport: (OnboardingTelemetry.FilmResult, FilmScene) -> Void = { _, _ in }
+  /// Where the film is, kept by the Setup session so a window closed and shown again resumes
+  /// it (nil: this view alone, as in tests and fixtures).
+  var playback: SetupFilmPlayback? = nil
+  /// Whether this film may still save to `playback`: false once its route is left (a Restart),
+  /// so an outgoing film never writes back the place the session just cleared (E review r2).
+  private let canSavePlayback: () -> Bool
 
   @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
   /// Tests and render fixtures inject Reduce Motion here (the same override the lips and the
@@ -34,15 +44,23 @@ struct SetupFilmScreen: View {
   @State private var announcedScene: Int? = nil
   /// The film started once; a later reappearance (the window shown again) keeps its place.
   @State private var started = false
+  /// Watch again was pressed this showing.
+  @State private var replayed = false
 
   init(
     summary: FilmSummary, onFinished: @escaping () -> Void, onSkip: @escaping () -> Void,
-    frozenAt: Double? = nil
+    frozenAt: Double? = nil,
+    onReport: @escaping (OnboardingTelemetry.FilmResult, FilmScene) -> Void = { _, _ in },
+    playback: SetupFilmPlayback? = nil,
+    canSavePlayback: @escaping () -> Bool = { true }
   ) {
     self.summary = summary
     self.onFinished = onFinished
     self.onSkip = onSkip
     self.frozenAt = frozenAt
+    self.onReport = onReport
+    self.playback = playback
+    self.canSavePlayback = canSavePlayback
     // One `now` for every step, so a frozen film sits exactly at `frozenAt` (two reads of the
     // wall clock put it a few nanoseconds later, which moved the lips by a pixel).
     let now = Date()
@@ -51,7 +69,11 @@ struct SetupFilmScreen: View {
       clock.seek(to: frozenAt, at: now)
       clock.pause(at: now)
     }
-    _clock = State(initialValue: clock)
+    // A session-kept film resumes at its place; it already started once.
+    let saved = frozenAt == nil ? playback?.clock : nil
+    _clock = State(initialValue: saved ?? clock)
+    _started = State(initialValue: saved != nil)
+    _replayed = State(initialValue: playback?.replayed ?? false)
   }
 
   var body: some View {
@@ -79,7 +101,10 @@ struct SetupFilmScreen: View {
       SetupFooter(
         title: "Launch EnviousWispr",
         action: {
-          switch Self.exit(at: FilmScript.locate(clock.time(at: Date())).index) {
+          let index = FilmScript.locate(clock.time(at: Date())).index
+          let exit = Self.exit(at: index)
+          onReport(Self.result(exit, replayed: replayed), FilmScript.scenes[index].scene)
+          switch exit {
           case .finished: onFinished()
           case .skipped: onSkip()
           }
@@ -87,6 +112,7 @@ struct SetupFilmScreen: View {
       ) {
         SetupLinkButton(title: "Watch again", quiet: true) {
           clock.seek(to: 0, at: Date())
+          replayed = true
         }
       }
     }
@@ -94,9 +120,28 @@ struct SetupFilmScreen: View {
     .onAppear {
       // The film starts when it is first shown, not when the view value was made, and only
       // the first time: showing the window again must not restart it.
+      if let playback, playback.resumeOnAppear {
+        playback.resumeOnAppear = false
+        clock.play(at: Date())
+      }
       guard !started else { return }
       started = true
       if frozenAt == nil, !clock.isPaused { clock.seek(to: 0, at: Date()) }
+    }
+    .onDisappear {
+      // The window went away mid-film: hold the place, and play on when it is shown again.
+      guard canSavePlayback(), let playback, !clock.isPaused else { return }
+      clock.pause(at: Date())
+      playback.clock = clock
+      playback.resumeOnAppear = true
+    }
+    .onChange(of: clock) { _, now in
+      guard canSavePlayback() else { return }
+      playback?.clock = now
+    }
+    .onChange(of: replayed) { _, now in
+      guard canSavePlayback() else { return }
+      playback?.replayed = now
     }
   }
 
@@ -115,6 +160,14 @@ struct SetupFilmScreen: View {
 
   static func exit(at index: Int) -> Exit {
     index >= FilmScript.scenes.count - 1 ? .finished : .skipped
+  }
+
+  /// The telemetry result for an exit: an early exit is skipped even after Watch again.
+  static func result(_ exit: Exit, replayed: Bool) -> OnboardingTelemetry.FilmResult {
+    switch exit {
+    case .skipped: .skipped
+    case .finished: replayed ? .replayed : .watched
+    }
   }
 
 }
@@ -191,15 +244,34 @@ struct SetupFilmFrame: View {
           .font(.firstRunCaption)
           .underline()
           .foregroundStyle(Color.obTextSecondary)
+          .fixedSize()  // the bars give way; the word is never cut ("Pa…" in the first UAT)
           .padding(.horizontal, DesignSpacing.md)
           .frame(height: Self.toggleHeight)
           .contentShape(Rectangle())
       }
       .buttonStyle(.plain)
+      .layoutPriority(1)
     }
   }
 
   static let barHeight: CGFloat = 3
   static let barHitHeight: CGFloat = 14
   static let toggleHeight: CGFloat = 28
+}
+
+/// Where the closing film is (#4528 E, review r1): kept by the Setup session, not the window, so
+/// closing Setup and showing it again resumes the film at its place, paused or playing, and
+/// still knows Watch again was pressed. Cleared when the flow restarts.
+@MainActor
+final class SetupFilmPlayback {
+  var clock: OnboardingClock?
+  var replayed = false
+  /// The film was playing when its window went away; it plays on when shown again.
+  var resumeOnAppear = false
+
+  func clear() {
+    clock = nil
+    replayed = false
+    resumeOnAppear = false
+  }
 }

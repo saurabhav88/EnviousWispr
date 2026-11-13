@@ -1,4 +1,6 @@
 import AppKit
+import EnviousWisprCore
+import EnviousWisprServices
 import Foundation
 import SwiftUI
 import Testing
@@ -103,7 +105,7 @@ struct SetupFilmScreenTests {
     #expect(light != dark)
   }
 
-  @Test("one film frame draws well inside a 60 fps frame budget on this Mac (timing receipt)")
+  @Test("offscreen film update and software raster timing receipt on this Mac")
   func frameTiming() throws {
     // A receipt, not a gate: a millisecond bound on a loaded Mac is decided by load, so the
     // numbers are written for review and only a gross failure (over 100 ms per frame on
@@ -134,8 +136,8 @@ struct SetupFilmScreenTests {
     var t = 0.0
     while t < FilmScript.length {
       let scene = FilmScript.scenes[FilmScript.locate(t).index].scene
-      host.rootView = frameView(t)
       let begin = ContinuousClock.now
+      host.rootView = frameView(t)
       host.layoutSubtreeIfNeeded()
       host.window?.displayIfNeeded()
       let updated = ContinuousClock.now
@@ -177,10 +179,57 @@ struct SetupFilmScreenTests {
     }
   }
 
+  @Test("the film reports skipped before the last scene, replayed after Watch again, else watched")
+  func filmResult() {
+    #expect(SetupFilmScreen.result(.skipped, replayed: false) == .skipped)
+    #expect(SetupFilmScreen.result(.skipped, replayed: true) == .skipped)
+    #expect(SetupFilmScreen.result(.finished, replayed: false) == .watched)
+    #expect(SetupFilmScreen.result(.finished, replayed: true) == .replayed)
+  }
+
+  @Test("the film's words come from the committed picks and the saved shortcut")
+  func summaryFromPicks() {
+    var sources = SetupScreenSources()
+    sources.parakeetModelName = { "Parakeet Ultra" }
+    var choices = OnboardingChoices(speech: .parakeet)
+    choices.polish = OnboardingChoices.polishOff
+    var s = SetupFilmRoute.summary(choices, sources: sources)
+    #expect(s.speechModel == "Parakeet Ultra" && s.polish == nil)
+    #expect(s.keyLabel == SetupShortcutScreen.display(ShortcutBindings.shipped.record))
+    #expect(s.keyCap == SetupShortcutScreen.cap(ShortcutBindings.shipped.record))
+    choices.polish = "eg1.mini"
+    #expect(SetupFilmRoute.summary(choices, sources: sources).polish == SetupPolish.name("eg1.mini"))
+    choices.polish = OnboardingChoices.polishCloud
+    choices.cloudProvider = .claude
+    s = SetupFilmRoute.summary(choices, sources: sources)
+    #expect(s.polish == LLMProvider.claude.displayName)
+  }
+
+  @Test("a film shown again from the session's saved place opens there, not at the start")
+  func resumesFromSessionPlayback() throws {
+    _ = NSApplication.shared
+    let playback = SetupFilmPlayback()
+    var clock = OnboardingClock(length: FilmScript.length, startingAt: Date())
+    let now = Date()
+    clock.seek(to: 10, at: now)
+    clock.pause(at: now)  // paused on scene 3, then the window closed
+    playback.clock = clock
+    let atTen = try Self.png(Self.host(Self.film(frozenAt: 10), dark: false))
+    let atStart = try Self.png(Self.host(Self.film(frozenAt: 0), dark: false))
+    let shown = try Self.png(Self.host(Self.film(frozenAt: nil, playback: playback), dark: false))
+    #expect(shown == atTen, "the reopened film did not open at its saved place")
+    #expect(shown != atStart)
+    playback.clear()
+    #expect(playback.clock == nil && !playback.replayed && !playback.resumeOnAppear)
+  }
+
   // MARK: - Helpers
 
-  static func film(frozenAt time: Double, reduceMotion: Bool = false) -> some View {
-    SetupFilmScreen(summary: summary, onFinished: {}, onSkip: {}, frozenAt: time)
+  static func film(
+    frozenAt time: Double?, reduceMotion: Bool = false, playback: SetupFilmPlayback? = nil
+  ) -> some View {
+    SetupFilmScreen(
+      summary: summary, onFinished: {}, onSkip: {}, frozenAt: time, playback: playback)
       .environment(\.overlayReduceMotionOverride, reduceMotion)
       .padding(.horizontal, SetupLayout.contentPadding)
       .padding(.top, SetupLayout.stripTop + SetupLayout.stripHeight)

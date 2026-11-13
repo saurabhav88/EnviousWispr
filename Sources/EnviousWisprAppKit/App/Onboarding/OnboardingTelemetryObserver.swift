@@ -56,6 +56,8 @@ final class OnboardingTelemetryObserver {
     /// The settings-telemetry model projection (`SettingsProjection.model`) with the existing
     /// model list; the only way a cloud model value is built.
     var projectModel: (LLMProvider, String) -> OnboardingTelemetry.ProjectedModel
+    /// `onboarding.film_finished`: result, last scene.
+    var emitFilm: (OnboardingTelemetry.FilmResult, String) -> Void = { _, _ in }
   }
 
   /// Plan §3.8: the accepted ceiling, one per Setup screen (`done` is never presented).
@@ -103,6 +105,8 @@ final class OnboardingTelemetryObserver {
   private var polishFailure: String?
   /// Rejected cloud key revisions that already sent `key_check_failed` this visit.
   private var rejectedKeys: Set<String> = []
+  /// How this visit's film ended, for the completion summary.
+  private var filmResult: OnboardingTelemetry.FilmResult?
   var rowsThisVisit: Int { seenThisVisit.count }
 
   init(inputs: Inputs) {
@@ -142,6 +146,16 @@ final class OnboardingTelemetryObserver {
     }
     choices[.key] = ChoiceRecord(
       choice: .key(outcome), recommended: nil, followed: nil, rulesVersion: rulesVersion)
+  }
+
+  // MARK: Film (E integration)
+
+  /// The film ended (Launch EnviousWispr): one `film_finished` row per visit, and the result the
+  /// completion summary carries. Sent from the button action, never from rendering.
+  func filmEnded(_ result: OnboardingTelemetry.FilmResult, lastScene: FilmScene) {
+    guard ownedVisit(), filmResult == nil else { return }
+    filmResult = result
+    inputs.emitFilm(result, lastScene.rawValue)
   }
 
   // MARK: Screens (F2a)
@@ -302,6 +316,7 @@ final class OnboardingTelemetryObserver {
     blocker = nil
     polishFailure = nil
     rejectedKeys = []
+    filmResult = nil
   }
 
   private func record(
@@ -489,7 +504,7 @@ final class OnboardingTelemetryObserver {
     return OnboardingTelemetry.CompletionSummary(
       polishProvider: provider, polishModel: model, speechModel: speech,
       followedAllRecommendations: interrupted ? nil : followedAll(), languageMode: language,
-      rulesVersion: rulesVersion, filmResult: nil)  // Film: chunk E supplies the result.
+      rulesVersion: rulesVersion, filmResult: interrupted ? nil : filmResult)
   }
 
   /// False if any recommended pick this visit differed; true only when both recommended kinds
@@ -560,6 +575,7 @@ extension OnboardingTelemetryObserver.Inputs {
         OnboardingTelemetry.ProjectedModel(
           projectedBySettingsTelemetry: SettingsProjection.model(
             provider: provider, id: id, list: owners.cloudModelList.snapshot?.list))
-      })
+      },
+      emitFilm: { result, scene in telemetry.onboardingFilmFinished(result: result, lastScene: scene) })
   }
 }

@@ -507,6 +507,22 @@ struct OnboardingSetupTelemetryTests {
     #expect(key.first?.1 == nil && key.first?.2 == nil)  // no recommendation for a key
   }
 
+  @Test("the film's end sends one film_finished per visit and only from an owned visit")
+  func filmEndRows() {
+    let r = Recorder()
+    var films: [(OnboardingTelemetry.FilmResult, String)] = []
+    var inputs = r.observerInputs()
+    inputs.emitFilm = { films.append(($0, $1)) }
+    let o = OnboardingTelemetryObserver(inputs: inputs)
+    r.owned = false
+    o.filmEnded(.watched, lastScene: .yours)
+    #expect(films.isEmpty)
+    r.owned = true
+    o.filmEnded(.skipped, lastScene: .copied)
+    o.filmEnded(.watched, lastScene: .yours)  // a second press in the same visit
+    #expect(films.count == 1 && films.first?.0 == .skipped && films.first?.1 == "copied")
+  }
+
   @Test("a disk block is one episode across polls and retries; a new episode after it clears")
   func diskBlockEpisodes() async {
     let world = World()

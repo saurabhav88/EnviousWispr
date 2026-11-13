@@ -103,6 +103,7 @@
     func reset() -> Result {
       guard claim() else { return legacyBusy() }
       let session = ensureSession()
+      session.screenSources.filmPlayback?.clear()  // a restarted flow plays its film from the top
       if session.runtime.isRunning {
         session.runtime.reset()
       } else {
@@ -691,7 +692,8 @@
                     telemetry?.keyReported(
                       event, rulesVersion: coordinator?.state.recommended.rulesVersion ?? "")
                   })
-              }),
+              },
+              filmPlayback: SetupFilmPlayback()),
             activateApp: { owners.application.activate(.standard) },
             downloadsPresentation: { [weak coordinator, weak runtime] in
               guard let coordinator, let runtime else {

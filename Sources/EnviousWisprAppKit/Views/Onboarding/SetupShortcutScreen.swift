@@ -32,22 +32,29 @@ struct SetupShortcutScreen: View {
     inheritedReduceMotion ?? systemReduceMotion
   }
 
-  private var keyCode: UInt16 {
+  private var keyCode: UInt16 { Self.keyCode(binding) }
+  private var display: String { Self.display(binding) }
+  private var demoLabel: String { Self.cap(binding) }
+
+  private static func keyCode(_ binding: ShortcutBinding) -> UInt16 {
     switch binding {
     case .keyboard(let keyCode, _): keyCode
     }
   }
 
-  private var display: String {
-    KeySymbols.format(keyCode: keyCode, modifiers: binding.requiredModifiers)
+  /// The shortcut as words and symbols ("Right ⌥"); the film's key line reads it too.
+  static func display(_ binding: ShortcutBinding) -> String {
+    KeySymbols.format(keyCode: keyCode(binding), modifiers: binding.requiredModifiers)
   }
 
-  private var demoLabel: String {
-    if binding.isBareModifier, let flag = ModifierKeyCodes.flag(for: keyCode) {
-      if keyCode == ModifierKeyCodes.globe { return "fn" }
+  /// The shortcut as it appears on a keycap ("⌥", "fn"); the film's keycap reads it too.
+  static func cap(_ binding: ShortcutBinding) -> String {
+    let code = keyCode(binding)
+    if binding.isBareModifier, let flag = ModifierKeyCodes.flag(for: code) {
+      if code == ModifierKeyCodes.globe { return "fn" }
       return KeySymbols.symbolsForModifiers(flag)
     }
-    return display
+    return display(binding)
   }
 
   var body: some View {
