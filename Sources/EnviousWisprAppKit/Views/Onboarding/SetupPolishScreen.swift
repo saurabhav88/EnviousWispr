@@ -116,6 +116,10 @@ struct SetupPolishScreen: View {
     }
     .padding(.top, DesignSpacing.xs)
     .onAppear { model.screenMounted(seeAll ? .polishSeeAll : .polishPick, epoch: epoch) }
+    // The pick and See all share this view, so a move between them reports the new step here.
+    .onChange(of: epoch) { _, now in
+      model.screenMounted(seeAll ? .polishSeeAll : .polishPick, epoch: now)
+    }
   }
 
   // MARK: Pick (two recommended cards)

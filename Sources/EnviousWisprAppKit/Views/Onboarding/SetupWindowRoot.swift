@@ -27,10 +27,14 @@ struct SetupWindowRoot: View {
           SetupDownloadPill(model: model)
         }
         .frame(height: SetupLayout.stripHeight)
-      SetupScreenRouter(model: model)
-        .id(model.routeEpoch)
-        .transition(reduceMotion ? .opacity : .setupScreenIn)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+      // One screen at a time (mockup: the old screen leaves at once, the new one slides in), so
+      // the two never share the layout during the change.
+      ZStack {
+        SetupScreenRouter(model: model)
+          .id(model.screenIdentity)
+          .transition(reduceMotion ? .identity : .setupScreenIn)
+      }
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     .padding(.horizontal, SetupLayout.contentPadding)
     .padding(.top, SetupLayout.stripTop)
@@ -38,7 +42,7 @@ struct SetupWindowRoot: View {
     .frame(width: SetupLayout.windowWidth, height: SetupLayout.contentHeight)
     .background(Color.obCardBg)
     .foregroundStyle(Color.obTextPrimary)
-    .animation(Self.screenAnimation(reduceMotion: reduceMotion), value: model.routeEpoch)
+    .animation(Self.screenAnimation(reduceMotion: reduceMotion), value: model.screenIdentity)
   }
 }
 
@@ -55,12 +59,13 @@ enum SetupLayout {
   static let segmentGap: CGFloat = 4
 }
 
-/// The mockup's screen entrance (`obIn`): a 16-point slide from the right with a fade.
+/// The mockup's screen entrance (`obIn`): a 16-point slide from the right with a fade; the old
+/// screen is removed at once (each mockup screen is its own branch).
 extension AnyTransition {
   static var setupScreenIn: AnyTransition {
     .asymmetric(
       insertion: .opacity.combined(with: .offset(x: 16)),
-      removal: .opacity)
+      removal: .identity)
   }
 }
 
@@ -78,6 +83,17 @@ final class SetupScreenModel {
   /// renders (a reset from Language straight back to Language) is a new screen with a fresh
   /// draft, never the old view kept alive by an unchanged step.
   private(set) var routeEpoch = 0
+  /// Which on-screen view is showing: changes with the step, except between a pick and its own
+  /// detail (Speech pick and Compare, AI polish pick and See all), which are one screen in the
+  /// mockup, so the lips keep running and only the panel changes. `routeEpoch` still changes on
+  /// every step, so mount reports and stale-action guards stay per step.
+  private(set) var screenIdentity = 0
+
+  /// Steps the mockup draws as one screen.
+  static func sameScreen(_ a: OnboardingStep, _ b: OnboardingStep) -> Bool {
+    let pairs: [Set<OnboardingStep>] = [[.speechPick, .speechCompare], [.polishPick, .polishSeeAll]]
+    return pairs.contains { $0.contains(a) && $0.contains(b) }
+  }
   private weak var coordinator: OnboardingCoordinator?
   /// Reports a REAL screen on screen (telemetry M67); the presenter binds it to the session's
   /// observer. Placeholders never call it.
@@ -202,6 +218,7 @@ final class SetupScreenModel {
     if state.step != previous.step {
       if previous.step == .practice { sources.practiceProgress?.reset() }
       routeEpoch &+= 1
+      if !Self.sameScreen(previous.step, state.step) { screenIdentity &+= 1 }
     }
     updateDownloadsVisibility()
     let languageChanged = state.choices.languageMode != previous.choices.languageMode
@@ -330,11 +347,14 @@ struct SetupScreenRouter: View {
     switch model.state.step {
     case .welcome: SetupWelcomeScreen(model: model, epoch: model.routeEpoch)
     case .language: SetupLanguageScreen(model: model, epoch: model.routeEpoch)
-    case .speechPick: SetupSpeechScreen(model: model, epoch: model.routeEpoch, comparing: false)
-    case .speechCompare: SetupSpeechScreen(model: model, epoch: model.routeEpoch, comparing: true)
+    // One branch per mockup screen, so moving between a pick and its detail keeps the view.
+    case .speechPick, .speechCompare:
+      SetupSpeechScreen(
+        model: model, epoch: model.routeEpoch, comparing: model.state.step == .speechCompare)
     case .polishIntro: SetupPolishIntroScreen(model: model, epoch: model.routeEpoch)
-    case .polishPick: SetupPolishScreen(model: model, epoch: model.routeEpoch, seeAll: false)
-    case .polishSeeAll: SetupPolishScreen(model: model, epoch: model.routeEpoch, seeAll: true)
+    case .polishPick, .polishSeeAll:
+      SetupPolishScreen(
+        model: model, epoch: model.routeEpoch, seeAll: model.state.step == .polishSeeAll)
     case .downloads: SetupGateScreen(model: model, epoch: model.routeEpoch, screen: .downloads)
     case .permissions: SetupPermissionsRoute(model: model, epoch: model.routeEpoch)
     case .key: SetupKeyRoute(model: model, epoch: model.routeEpoch)

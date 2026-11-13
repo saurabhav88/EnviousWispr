@@ -157,6 +157,7 @@ struct SetupPracticeScreen: View {
         } else if state != .worked && !state.inFlight {
           MicrophoneDevicePicker(
             model: MicrophonePickerModel(settingsManager: settings, devices: devices))
+          recordingNote
         }
       }
       Spacer(minLength: 0)
@@ -175,6 +176,23 @@ struct SetupPracticeScreen: View {
     .onChange(of: state) { _, new in
       if !new.acceptsFocus { editorFocused = false }
     }
+  }
+
+  /// #3147 C9: fresh-install education, shown before the first practice take can record (it
+  /// moved here from the old onboarding's Practice and warm-up screens with the D7 cutover).
+  /// Reads the live settings, writes none of them; being shown records the disclosure as seen,
+  /// which counts only for a fresh install (`recordOnboardingRecordingNoteShown`).
+  private var recordingNote: some View {
+    Text(
+      verbatim: RecordingDisclosureCopy.onboardingNote(
+        saving: settings.saveDictationRecordings,
+        retention: settings.dictationRecordingRetention)
+    )
+    .font(.firstRunCaption)
+    .foregroundStyle(Color.obTextSecondary)
+    .multilineTextAlignment(.center)
+    .fixedSize(horizontal: false, vertical: true)
+    .onAppear { settings.recordOnboardingRecordingNoteShown() }
   }
 
   private var permissionGuide: some View {

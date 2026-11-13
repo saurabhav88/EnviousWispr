@@ -42,6 +42,37 @@ struct SetupWindowRootTests {
     #expect(model.state.step == .language && model.routeEpoch != onLanguage)
   }
 
+  @Test("a pick and its own detail are one screen; every other step change is a new screen")
+  func pickAndDetailShareAScreen() {
+    let world = OnboardingCoordinatorTests.World()
+    let coordinator = world.coordinator()
+    coordinator.begin()
+    let model = SetupScreenModel(coordinator: coordinator)
+    defer { model.detach() }
+    coordinator.send(.next)  // Language
+    coordinator.send(.chooseLanguage(.locked("en")))
+    coordinator.send(.next)  // Speech pick
+    #expect(model.state.step == .speechPick)
+    let pickScreen = model.screenIdentity
+    let pickEpoch = model.routeEpoch
+    coordinator.send(.compareSpeech)
+    #expect(model.state.step == .speechCompare)
+    #expect(model.screenIdentity == pickScreen, "Compare replaced the speech screen")
+    #expect(model.routeEpoch != pickEpoch, "the step change must still be its own route")
+    coordinator.send(.back)
+    #expect(model.state.step == .speechPick && model.screenIdentity == pickScreen)
+    for step in OnboardingStep.allCases {
+      for other in OnboardingStep.allCases where other != step {
+        let paired: Set<Set<OnboardingStep>> = [
+          [.speechPick, .speechCompare], [.polishPick, .polishSeeAll],
+        ]
+        #expect(
+          SetupScreenModel.sameScreen(step, other) == paired.contains([step, other]),
+          "\(step) and \(other)")
+      }
+    }
+  }
+
   @Test("the step strip follows the mockup's six steps and hides on Welcome, Film and done")
   func stripIndexMatchesMockup() {
     let expected: [OnboardingStep: Int?] = [
