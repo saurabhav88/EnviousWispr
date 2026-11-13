@@ -996,6 +996,9 @@ extension HistoryMeetingAfterView {
       highlightedTurnID = id
       withAnimation { proxy.scrollTo(TurnRowKey(turnID: id, occurrence: 0), anchor: .center) }
     case .note(let id):
+      // Cloud review P2: in the stacked layout the notes and transcript share one scroll view,
+      // so following playback would scroll the cited note out of view.
+      suspendFollow()
       showNote(id)
     }
   }
