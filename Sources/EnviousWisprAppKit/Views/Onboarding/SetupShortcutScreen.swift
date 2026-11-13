@@ -157,7 +157,7 @@ struct SetupShortcutScreen: View {
     // Mockup: a held key sinks 2 points and shrinks to 98% over 0.12 s.
     .offset(y: rehearsal.isDown && !reduceMotion ? DesignSpacing.xxs : 0)
     .scaleEffect(rehearsal.isDown && !reduceMotion ? 0.98 : 1)
-    .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: rehearsal.isDown)
+    .animation(reduceMotion ? nil : SetupMotion.rise(0.12), value: rehearsal.isDown)
     .accessibilityLabel("Change dictation key")
     .accessibilityValue(
       isCapturing

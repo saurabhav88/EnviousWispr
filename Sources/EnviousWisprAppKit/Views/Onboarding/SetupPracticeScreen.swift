@@ -239,14 +239,17 @@ struct SetupPracticeScreen: View {
       }
       // Mockup obGlow 0.7 s: on success a green ring grows to 8 points and fades back.
       .background {
-        shape.stroke(Color.obSuccessSoft, lineWidth: glow ? 16 : 0)
-          .opacity(glow ? 1 : 0)
+        shape.stroke(Color.obSuccessSoft, lineWidth: glow && !reduceMotion ? 16 : 0)
           .allowsHitTesting(false)
       }
       .onChange(of: state == .worked) { _, worked in
         guard worked, !reduceMotion else { return }
-        withAnimation(.easeOut(duration: 0.28)) { glow = true }
-        withAnimation(.easeOut(duration: 0.42).delay(0.28)) { glow = false }
+        // Out to 8 points, then back: the second step starts when the first one finishes.
+        withAnimation(SetupMotion.rise(0.28), completionCriteria: .logicallyComplete) {
+          glow = true
+        } completion: {
+          withAnimation(reduceMotion ? nil : SetupMotion.rise(0.42)) { glow = false }
+        }
       }
       .background {
         SetupPracticeEditorFocus(

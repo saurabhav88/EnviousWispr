@@ -89,7 +89,8 @@ struct SetupSpeechScreen: View {
       }
     }
     // Mockup: the bubble fades in once (obFade 0.3 s), then its text swaps every 1.4 s.
-    .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: greeting == nil)
+    .animation(
+      reduceMotion ? nil : .timingCurve(0.25, 0.1, 0.25, 1, duration: 0.3), value: greeting == nil)
     .frame(width: SetupMetrics.screenLips, height: SetupMetrics.screenLips)
     .padding(.bottom, DesignSpacing.xl)
   }

@@ -6,6 +6,8 @@ struct SetupShortcutKeycap: View {
   let isCapturing: Bool
   let isDown: Bool
   var reduceMotion = false
+  /// When capture began: the pulse and the caret start from their first frame there.
+  @State private var captureStart = Date()
 
   private var shape: RoundedRectangle {
     RoundedRectangle(cornerRadius: DesignRadius.xxl, style: .continuous)
@@ -28,6 +30,7 @@ struct SetupShortcutKeycap: View {
         radius: DesignRadius.lg, y: 3
       )
       .background { if isCapturing && !reduceMotion { pulse } }
+      .onChange(of: isCapturing) { _, capturing in if capturing { captureStart = Date() } }
       .contentShape(shape)
       .overlay(alignment: .topTrailing) {
         if !isCapturing { changeBadge }
@@ -38,12 +41,16 @@ struct SetupShortcutKeycap: View {
   /// every 1.6 s.
   private var pulse: some View {
     TimelineView(.animation) { timeline in
-      let p = (1 - cos(2 * .pi * timeline.date.timeIntervalSinceReferenceDate / 1.6)) / 2
+      let p = SetupMotion.pulse(at: max(0, timeline.date.timeIntervalSince(captureStart)))
       // Drawn behind the key: the stroke's outer half is the 0 to 6 point ring.
-      shape.stroke(Color.obAccent.opacity(0.3), lineWidth: 12 * p)
+      shape.stroke(Color.obAccent.opacity(0.12), lineWidth: 12 * p)
     }
     .allowsHitTesting(false)
   }
+
+  /// Mockup obCaret: on until 45%, fading out by 50% of each second.
+  private static let caretTrack = FilmTrack(
+    FilmEase(0.42, 0, 0.58, 1), (0, 1), (0.45, 1), (0.5, 0), (1, 0))
 
   @ViewBuilder
   private var legend: some View {
@@ -52,10 +59,11 @@ struct SetupShortcutKeycap: View {
         Text("Press a key").font(.firstRunLabel)
         // Mockup obCaret: the caret blinks once a second (on for the first half).
         TimelineView(.animation(paused: reduceMotion)) { timeline in
-          let phase = timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1)
+          let phase = max(0, timeline.date.timeIntervalSince(captureStart))
+            .truncatingRemainder(dividingBy: 1)
           Capsule().fill(Color.obAccent)
             .frame(width: DesignSpacing.xxs, height: ShortcutLayout.caretHeight)
-            .opacity(reduceMotion || phase < 0.5 ? 1 : 0)
+            .opacity(reduceMotion ? 1 : Self.caretTrack.value(at: phase))
         }
       }
     } else {

@@ -168,6 +168,14 @@ enum SetupMotion {
   static func rise(_ duration: Double) -> Animation {
     DesignMotion.firstRunRise.speed(0.4 / duration)
   }
+
+  /// The mockup's 1.6 s ease-in-out pulse (obRing, obPulse): 0 to 1 and back. `seconds` is time
+  /// since the pulse started.
+  static func pulse(at seconds: Double) -> Double {
+    pulseTrack.value(at: seconds.truncatingRemainder(dividingBy: 1.6))
+  }
+
+  private static let pulseTrack = FilmTrack(FilmEase(0.42, 0, 0.58, 1), (0, 0), (0.8, 1), (1.6, 0))
 }
 
 /// A footer link (mockup `[data-ui="link"]`): accent, underlined, 32 high; `quiet` is the
@@ -334,7 +342,7 @@ struct SetupProgressBar: View {
     }
     .frame(height: SetupMetrics.barHeight)
     // Mockup: the fill glides to each new fraction over 0.3 s.
-    .animation(reduceMotion ? nil : .easeOut(duration: 0.3), value: fraction)
+    .animation(reduceMotion ? nil : SetupMotion.rise(0.3), value: fraction)
     .onAppear { startSweep() }
     .onChange(of: reduceMotion) { startSweep() }
     .accessibilityElement()

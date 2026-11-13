@@ -410,8 +410,8 @@ struct SetupSettingsPreview: View {
   /// 85 %, back off by 100 %. 0 is off, 1 is on.
   static func switchPosition(at date: Date) -> Double {
     let p = date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 3.2) / 3.2
-    // Close to the mockup's --ease-out, cubic-bezier(.22,1,.36,1).
-    func easeOut(_ x: Double) -> Double { 1 - pow(1 - x, 5) }
+    // The mockup's --ease-out, cubic-bezier(.22,1,.36,1).
+    func easeOut(_ x: Double) -> Double { FilmEase.soft(x) }
     switch p {
     case ..<0.25: return 0
     case ..<0.45: return easeOut((p - 0.25) / 0.2)
@@ -423,7 +423,7 @@ struct SetupSettingsPreview: View {
   /// The mockup's `obRing` beside the knob loop: a focus ring growing to 4 points and back
   /// every 1.6 s (ease-in-out). 0 is no ring, 1 the full ring.
   static func ringStrength(at date: Date) -> Double {
-    (1 - cos(2 * .pi * date.timeIntervalSinceReferenceDate / 1.6)) / 2
+    SetupMotion.pulse(at: date.timeIntervalSinceReferenceDate)
   }
 }
 
@@ -447,7 +447,8 @@ private struct SetupDemoSwitch: View {
       width: DesignSpacing.xxl * 2 + DesignSpacing.xs, height: DesignSpacing.xxl + DesignSpacing.xs)
     .overlay(
       Capsule()
-        .stroke(Color(nsColor: .keyboardFocusIndicatorColor).opacity(0.35), lineWidth: 4 * ring)
+        .stroke(
+          Color(nsColor: .keyboardFocusIndicatorColor).opacity(0.35 * ring), lineWidth: 4 * ring)
         .padding(-2 * ring)
     )
   }
