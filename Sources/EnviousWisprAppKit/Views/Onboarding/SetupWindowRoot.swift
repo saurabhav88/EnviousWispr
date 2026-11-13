@@ -6,7 +6,8 @@ import SwiftUI
 
 /// The new Setup's window content (#4528 chunk D0, plan M74): the coordinator's state rendered
 /// through one exhaustive step router. The coordinator is the only navigation authority; this
-/// view never moves the flow on its own. Normal launch keeps the old onboarding until D7a.
+/// view never moves the flow on its own. First launch, the menu and the Dock open it through
+/// SetupSession (D7a); the old onboarding is gone.
 struct SetupWindowRoot: View {
   let model: SetupScreenModel
 
@@ -364,7 +365,7 @@ struct SetupScreenRouter: View {
       if let sources = model.sources.practice, let progress = model.sources.practiceProgress {
         SetupPracticeRoute(model: model, epoch: model.routeEpoch, sources: sources, progress: progress)
       } else {
-        SetupPlaceholder(step: .practice, chunk: "D6b")
+        SetupPracticeUnavailable(model: model)
       }
     case .film: SetupFilmRoute(model: model, epoch: model.routeEpoch)
     case .done: EmptyView()
@@ -418,23 +419,17 @@ private struct SetupKeyRoute: View {
   }
 }
 
-/// DEBUG-only stand-in until a screen's chunk lands. Not user copy: verbatim text, never in the
-/// string catalog, deleted as each screen replaces it.
-private struct SetupPlaceholder: View {
-  let step: OnboardingStep
-  let chunk: String
+/// Practice without its recording inputs. The live session always supplies them
+/// (`SetupSession.live`), so only fixtures reach this; if anything else ever did, the person
+/// still has a way forward (D6): Practice's own Skip practice.
+private struct SetupPracticeUnavailable: View {
+  let model: SetupScreenModel
 
   var body: some View {
-    VStack(spacing: DesignSpacing.md) {
-      Spacer()
-      Text(verbatim: "Placeholder: \(step.rawValue)")
-        .font(.firstRunTitle)
-      Text(verbatim: "Screen arrives in chunk \(chunk)")
-        .font(.firstRunCaption)
-        .foregroundStyle(Color.obTextSecondary)
-      Spacer()
+    VStack(spacing: 0) {
+      Spacer(minLength: 0)
+      SetupFooter(title: "Skip practice", action: { model.send(.skipPractice) }) { EmptyView() }
     }
-    .accessibilityElement(children: .combine)
   }
 }
 

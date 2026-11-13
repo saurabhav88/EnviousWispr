@@ -58,7 +58,8 @@ struct OnboardingDownloadsPresentation: Equatable, Sendable {
     queuedPolish: String?, isNetworkSlow: Bool, isCountingDown: Bool,
     speechPhase: (ASRBackendType) -> OnboardingDownloadPhase,
     polishPhase: (String) -> OnboardingDownloadPhase?, downloadsFinished: Bool,
-    speechStartPending: Bool = false
+    speechStartPending: Bool = false,
+    polishStartRequested: (String) -> Bool = { _ in false }
   ) -> OnboardingDownloadsPresentation {
     let choices = state.choices
     let readiness = state.readiness
@@ -74,7 +75,8 @@ struct OnboardingDownloadsPresentation: Equatable, Sendable {
       speech: speech, speechPhase: presentedSpeechPhase, polish: polish,
       polishPhase: localPhase,
       polishPreparation: preparation(
-        polish: polish, readiness: readiness, phase: localPhase, queued: queuedPolish),
+        polish: polish, readiness: readiness, phase: localPhase, queued: queuedPolish,
+        startRequested: polish.map(polishStartRequested) ?? false),
       block: block,
       engineWarm: speech != nil && readiness.speech == speech && readiness.engineWarm,
       warmFailed: warmFailed, microphoneGranted: readiness.microphoneGranted,
@@ -86,7 +88,7 @@ struct OnboardingDownloadsPresentation: Equatable, Sendable {
   /// pick, then the transfer phase. Readiness for another pick never counts.
   static func preparation(
     polish: String?, readiness: OnboardingReadiness, phase: OnboardingDownloadPhase?,
-    queued: String?
+    queued: String?, startRequested: Bool = false
   ) -> PolishPreparation {
     guard let polish else { return .none }
     if polish == OnboardingChoices.polishOff { return .off }
@@ -104,7 +106,13 @@ struct OnboardingDownloadsPresentation: Equatable, Sendable {
     case .installed: return .loading
     case .downloading, .verifying: return .downloading
     case .paused, .failed, .unavailable: return .downloadStopped
-    case .unknown, .notStarted: return queued == polish ? .queued : .waiting
+    case .unknown: return queued == polish ? .queued : .waiting
+    // Missing and idle: queued behind speech, just requested this visit (the owner has not
+    // published its phase yet), or idle for real (a relaunch after a disk refusal, a cancel),
+    // which must show the stopped card's Resume, Change and Continue without actions (D6).
+    case .notStarted:
+      if queued == polish { return .queued }
+      return startRequested ? .waiting : .downloadStopped
     }
   }
 }

@@ -356,7 +356,8 @@ private struct SetupPermissionButton: View {
     .buttonStyle(.plain)
     .fixedSize()
     .onHover { hovering = $0 }
-    .animation(SettingsHover.animation, value: hovering)
+    .animation(
+      (reduceMotionOverride ?? systemReduceMotion) ? nil : SettingsHover.animation, value: hovering)
     .accessibilityLabel(Text(accessibilityName))
   }
 }

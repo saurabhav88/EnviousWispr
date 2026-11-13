@@ -185,6 +185,8 @@ struct SetupLinkButton: View {
   var quiet = false
   let action: () -> Void
   @State private var hovering = false
+  @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+  @Environment(\.overlayReduceMotionOverride) private var reduceMotionOverride
 
   var body: some View {
     Button(action: action) {
@@ -201,7 +203,8 @@ struct SetupLinkButton: View {
     }
     .buttonStyle(.plain)
     .onHover { hovering = $0 }
-    .animation(SettingsHover.animation, value: hovering)
+    .animation(
+      (reduceMotionOverride ?? systemReduceMotion) ? nil : SettingsHover.animation, value: hovering)
   }
 }
 

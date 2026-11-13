@@ -267,6 +267,8 @@ struct SetupGateScreen: View {
 struct SetupSmallButtonStyle: ButtonStyle {
   @Environment(\.isEnabled) private var isEnabled
   @State private var hovering = false
+  @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+  @Environment(\.overlayReduceMotionOverride) private var reduceMotionOverride
 
   func makeBody(configuration: Configuration) -> some View {
     configuration.label
@@ -281,6 +283,8 @@ struct SetupSmallButtonStyle: ButtonStyle {
       .opacity(isEnabled ? 1 : 0.55)
       .contentShape(RoundedRectangle(cornerRadius: DesignRadius.lg, style: .continuous))
       .onHover { hovering = $0 }
-      .animation(SettingsHover.animation, value: hovering)
+      .animation(
+        (reduceMotionOverride ?? systemReduceMotion) ? nil : SettingsHover.animation,
+        value: hovering)
   }
 }
