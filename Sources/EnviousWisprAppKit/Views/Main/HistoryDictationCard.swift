@@ -331,6 +331,27 @@ struct HistoryDictationCard: View {
 
   private func provenance(_ row: Transcript) -> some View {
     HStack(spacing: DesignSpacing.sm) {
+      // #1408 / #1063 PR2: kept from the old History row (cloud review of PR #4555). A dictation
+      // whose microphone was removed mid-recording may be cut short; one rebuilt from a recovered
+      // recording says so. Icon and text, never colour alone.
+      ForEach(HistoryDictationPresentation.statusFlags(for: row), id: \.self) { flag in
+        switch flag {
+        case .interrupted:
+          HStack(spacing: 2) {
+            Image(systemName: "mic.slash.circle")
+            Text("Interrupted")
+          }
+          .historyChip(tint: .stWarning, fill: Color.stWarning.opacity(0.15))
+          .accessibilityLabel("Interrupted recording")
+        case .recovered:
+          HStack(spacing: 2) {
+            Image(systemName: "arrow.clockwise.circle")
+            Text("Recovered")
+          }
+          .historyChip(tint: .stSuccess, fill: Color.stSuccess.opacity(0.15))
+          .accessibilityLabel("Recovered recording")
+        }
+      }
       Image(systemName: "waveform").accessibilityHidden(true)
       Text(verbatim: row.backendType.displayName)
       if row.polishedText != nil, let model = row.llmModel {

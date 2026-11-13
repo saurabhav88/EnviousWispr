@@ -491,6 +491,20 @@ enum HistoryDictationPresentation {
 
   // MARK: - Footer
 
+  /// The row facts the card's footer must show as chips (#1408, #1063 PR2): a recording cut short
+  /// by a removed microphone, and a dictation rebuilt from a recovered recording.
+  enum StatusFlag: Hashable, Sendable {
+    case interrupted
+    case recovered
+  }
+
+  static func statusFlags(for row: Transcript) -> [StatusFlag] {
+    var flags: [StatusFlag] = []
+    if row.inputDeviceWasRemoved == true { flags.append(.interrupted) }
+    if row.isRecovered == true { flags.append(.recovered) }
+    return flags
+  }
+
   /// "Recording until Nov 18" needs the date the keep period ends; nil when recordings are kept
   /// until the user deletes them, or this one is kept.
   static func recordingExpiry(savedAt: Date, keepDays: Int?, pinned: Bool) -> Date? {

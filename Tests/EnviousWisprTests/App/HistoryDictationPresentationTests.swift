@@ -168,6 +168,17 @@ struct HistoryDictationPresentationTests {
     #expect(kept.map(\.seconds) == [0.0, 4.5])
   }
 
+  @Test("the card flags a dictation cut short by a removed microphone, and a recovered one")
+  func statusFlagsFollowTheRow() {
+    #expect(P.statusFlags(for: Transcript(text: "a")).isEmpty)
+    #expect(P.statusFlags(for: Transcript(text: "a", inputDeviceWasRemoved: true)) == [.interrupted])
+    #expect(P.statusFlags(for: Transcript(text: "a", isRecovered: true)) == [.recovered])
+    #expect(
+      P.statusFlags(for: Transcript(text: "a", isRecovered: true, inputDeviceWasRemoved: true))
+        == [.interrupted, .recovered])
+    #expect(P.statusFlags(for: Transcript(text: "a", inputDeviceWasRemoved: false)).isEmpty)
+  }
+
   @Test("a passage spoken twice stays untimed: which copy survived is not provable")
   func repeatedPassagesStayUntimed() {
     // Two identical sentences at different times; polish keeps one copy.

@@ -849,7 +849,7 @@ extension View {
   }
 
   /// One small capsule chip on a History row card: icon and text, never colour alone.
-  fileprivate func historyChip(tint: Color, fill: Color) -> some View {
+  func historyChip(tint: Color, fill: Color) -> some View {
     self
       .font(.stHelper)
       .padding(.horizontal, 5)
