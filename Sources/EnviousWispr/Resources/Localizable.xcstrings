@@ -130,7 +130,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ Die Zeiten dienen nur zum Lesen."
+            "value" : "%@ Die Zeitangaben dienen nur zur Orientierung und sind nicht anklickbar."
           }
         }
       }
@@ -608,7 +608,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ lang"
+            "value" : "Dauer: %@"
           }
         }
       }
@@ -3897,7 +3897,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Gerade wird eine andere Datei transkribiert. Versuche es erneut, wenn sie fertig ist."
+            "value" : "Gerade wird eine andere Datei transkribiert. Versuche es erneut, sobald die Transkription abgeschlossen ist."
           }
         }
       }
@@ -10919,7 +10919,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "15 Sekunden vor"
+            "value" : "15 Sekunden vorwärts"
           }
         }
       }
@@ -12422,7 +12422,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Der Text wird von diesem Mac entfernt. Deine Originaldatei wird nie gelöscht. Dies kann nicht rückgängig gemacht werden."
+            "value" : "Der Text wird von diesem Mac entfernt. Deine Originaldatei wird nie gelöscht. Das lässt sich nicht rückgängig machen."
           }
         }
       }
@@ -22514,7 +22514,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Angehalten. Das Transkript wurde nicht geändert."
+            "value" : "Abgebrochen. Das Transkript wurde nicht geändert."
           }
         }
       }
@@ -22525,7 +22525,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wird angehalten…"
+            "value" : "Wird abgebrochen…"
           }
         }
       }
@@ -25143,7 +25143,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Dieses Transkript wurde gespeichert, bevor EnviousWispr Dateiangaben aufbewahrte. Daher kann nicht geprüft werden, ob die gewählte Datei das Original ist. Wähle nur die Datei, die du transkribiert hast."
+            "value" : "Dieses Transkript wurde gespeichert, bevor EnviousWispr Dateiinformationen speicherte. Daher kann nicht geprüft werden, ob die gewählte Datei das Original ist. Wähle nur die Datei, die du transkribiert hast."
           }
         }
       }
@@ -25706,7 +25706,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wird erneut transkribiert… %lld %%"
+            "value" : "Wird erneut transkribiert… %lld%%"
           }
         }
       }
