@@ -191,9 +191,12 @@ struct CustomTermsSection<Actions: View>: View {
             // The one irreversible action on this page. The system destructive
             // role renders as ordinary grey here, so the control that deletes a
             // word list looked exactly like the control that cancels.
-            SettingsActionButton(title: "Delete…", isEnabled: true, emphasis: .destructive) {
+            Button(role: .destructive) {
               pendingBulkDelete = BulkDeleteRequest(ids: list.selectedIDs)
+            } label: {
+              EnviousButtonLabel("Delete…")
             }
+            .settingsButton(isEnabled: true)
           }
         }
       }
@@ -331,10 +334,13 @@ struct CustomTermsSection<Actions: View>: View {
         // convention, so the two sheets this section presents never both
         // apply to the same row at once.
         if !isSelecting {
-          SettingsActionButton(title: "Edit", isEnabled: true) {
+          Button {
             customWordsProbe?.emit(.editRequested(wordID: word.id))
             editingWord = word
+          } label: {
+            EnviousButtonLabel("Edit")
           }
+          .settingsButton(isEnabled: true)
         }
       }
     }
@@ -452,24 +458,30 @@ struct CustomTermsSection<Actions: View>: View {
     if isSelecting {
       let allSelected =
         !filteredSelectableIDs.isEmpty && filteredSelectableIDs.isSubset(of: list.selectedIDs)
-      SettingsActionButton(
-        title: allSelected ? "Deselect All" : "Select All",
-        isEnabled: !filteredSelectableIDs.isEmpty
-      ) {
+      Button {
         list.selectedIDs = CustomTermListPolicy.toggledSelection(
           current: list.selectedIDs, target: filteredSelectableIDs)
+      } label: {
+        EnviousButtonLabel(allSelected ? "Deselect All" : "Select All")
       }
+      .settingsButton(isEnabled: !filteredSelectableIDs.isEmpty)
 
-      SettingsActionButton(title: "Cancel", isEnabled: true) {
+      Button {
         list.selectedIDs = []
         isSelecting = false
+      } label: {
+        EnviousButtonLabel("Cancel")
       }
+      .settingsButton(isEnabled: true)
     } else if !filteredSelectableIDs.isEmpty {
       // "Mass edit", not "Select": founder, 2026-10-04, people did not read
       // "Select" as the way to act on many words at once.
-      SettingsActionButton(title: SettingsItemCopy.Dictionary.massEdit, isEnabled: true) {
+      Button {
         isSelecting = true
+      } label: {
+        EnviousButtonLabel(SettingsItemCopy.Dictionary.massEdit)
       }
+      .settingsButton(isEnabled: true)
       .settingsMapRegistration(.yourWordsMassEdit)
     }
   }

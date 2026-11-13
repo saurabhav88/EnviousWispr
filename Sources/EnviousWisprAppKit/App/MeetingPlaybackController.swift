@@ -17,6 +17,26 @@ protocol MeetingPlaybackOutput: AnyObject {
   func stop()
 }
 
+/// What a player reads (#3147): a meeting's track files on the meeting timeline, or one saved
+/// dictation recording (AAC, 16 kHz mono).
+enum PlaybackMedia: Sendable {
+  case meeting(MeetingPlaybackController.TrackFiles)
+  case dictation(URL)
+}
+
+/// Opened audio that answers fixed windows of mono 16 kHz samples. Opened on the first window
+/// (off the main actor) and reused; only one read is ever in flight per player.
+protocol PlaybackWindowAudio: AnyObject, Sendable {
+  /// `count` ms from `startMs`; silence past the end; throws when the audio can no longer be read.
+  func window(startMs: Int, count: Int) throws -> [Float]
+}
+
+/// Which recording a player plays, so the shared now-playing owner can stop the right one.
+enum PlaybackSourceID: Hashable, Sendable {
+  case meeting(UUID)
+  case dictation(UUID)
+}
+
 /// Plays one meeting's kept audio on the meeting timeline (#3972 §3.8, C5 items 29-31): play,
 /// pause, scrub and jump to a turn's time. Both tracks are mixed; a gap between segments plays
 /// as silence. Audio is read in short windows through `MeetingTrackAudio` (only the files a
@@ -45,42 +65,66 @@ final class MeetingPlaybackController {
   /// Each track's segment files and their start times on the meeting timeline.
   typealias TrackFiles = [MeetingTrackKind: [(url: URL, startMs: Int)]]
 
-  @ObservationIgnored private let files: TrackFiles
+  /// The recording this player plays, when it is known to the shared now-playing owner.
+  let sourceID: PlaybackSourceID?
+
+  @ObservationIgnored private let media: PlaybackMedia
   @ObservationIgnored private let output: MeetingPlaybackOutput
   @ObservationIgnored private let windowMs: Int
   @ObservationIgnored private let read: Reader
-  @ObservationIgnored private var tracks: [MeetingTrackAudio]?
+  @ObservationIgnored private weak var arbiter: PlaybackArbiter?
+  @ObservationIgnored private var audio: (any PlaybackWindowAudio)?
   @ObservationIgnored private var generation = 0
   @ObservationIgnored private var nextReadMs = 0
   @ObservationIgnored private var queued = 0
   @ObservationIgnored private var reading = false
   nonisolated static let samplesPerMs = Int(MeetingAudioFormat.sampleRate) / 1_000
 
-  /// Reads one window off the main actor: the tracks (opened on the first window, then
-  /// reused) and the mixed samples. Replaceable so a test can decide which read lands first.
+  /// Reads one window off the main actor: the audio (opened on the first window, then reused)
+  /// and the samples. Replaceable so a test can decide which read lands first.
   typealias Reader =
-    @Sendable (_ files: TrackFiles, _ loaded: [MeetingTrackAudio]?, _ startMs: Int, _ count: Int)
-      async throws -> ([MeetingTrackAudio], [Float])
+    @Sendable (
+      _ media: PlaybackMedia, _ loaded: (any PlaybackWindowAudio)?, _ startMs: Int, _ count: Int
+    ) async throws -> (any PlaybackWindowAudio, [Float])
 
-  nonisolated static let readWindow: Reader = { files, loaded, startMs, count in
-    let tracks = try loaded ?? load(files)
-    return (tracks, try mix(tracks, startMs: startMs, count: count))
+  nonisolated static let readWindow: Reader = { media, loaded, startMs, count in
+    let audio = try loaded ?? open(media)
+    return (audio, try audio.window(startMs: startMs, count: count))
   }
 
   init(
-    files: TrackFiles, durationMs: Int, output: MeetingPlaybackOutput, windowMs: Int = 250,
-    read: @escaping Reader = MeetingPlaybackController.readWindow
+    media: PlaybackMedia, durationMs: Int, output: MeetingPlaybackOutput, windowMs: Int = 250,
+    read: @escaping Reader = MeetingPlaybackController.readWindow,
+    sourceID: PlaybackSourceID? = nil, arbiter: PlaybackArbiter? = nil
   ) {
     self.read = read
-    self.files = files
+    self.media = media
     self.durationMs = max(0, durationMs)
     self.output = output
     self.windowMs = max(10, windowMs)
+    self.sourceID = sourceID
+    self.arbiter = arbiter
+    if let sourceID { arbiter?.register(self, as: sourceID) }
   }
 
-  /// A player for `source`'s files and length.
-  convenience init(source: MeetingPlaybackSource, output: MeetingPlaybackOutput) {
-    self.init(files: source.trackFiles, durationMs: source.durationMs, output: output)
+  /// A meeting player for `files` (the original meeting-only entry).
+  convenience init(
+    files: TrackFiles, durationMs: Int, output: MeetingPlaybackOutput, windowMs: Int = 250,
+    read: @escaping Reader = MeetingPlaybackController.readWindow
+  ) {
+    self.init(
+      media: .meeting(files), durationMs: durationMs, output: output, windowMs: windowMs,
+      read: read)
+  }
+
+  /// A player for `source`'s files and length, known to the shared now-playing owner.
+  convenience init(
+    source: MeetingPlaybackSource, output: MeetingPlaybackOutput, meetingID: UUID? = nil,
+    arbiter: PlaybackArbiter? = nil
+  ) {
+    self.init(
+      media: .meeting(source.trackFiles), durationMs: source.durationMs, output: output,
+      sourceID: meetingID.map { .meeting($0) }, arbiter: arbiter)
   }
 
   func play() {
@@ -96,6 +140,8 @@ final class MeetingPlaybackController {
     nextReadMs = positionMs
     queued = 0
     state = .playing
+    // #3147: one recording plays at a time; whatever played before pauses.
+    arbiter?.didStartPlaying(self)
     fill()
   }
 
@@ -134,8 +180,16 @@ final class MeetingPlaybackController {
   /// Ends playback and lets go of every file: the meeting closed, changed or lost its audio.
   func stop() {
     halt()
-    tracks = nil
+    audio = nil
     if state != .unavailable { state = .idle }
+  }
+
+  /// #3147: the recording is being deleted. Stops at once, lets go of the file, and never plays
+  /// again: a window read already running lands in an old generation and is dropped.
+  func stopForDeletion() {
+    halt()
+    audio = nil
+    state = .unavailable
   }
 
   // MARK: - Windows
@@ -156,13 +210,13 @@ final class MeetingPlaybackController {
     let generation = generation
     let startMs = nextReadMs
     let count = min(windowMs, durationMs - startMs)
-    let files = files
-    let loaded = tracks
+    let media = media
+    let loaded = audio
     let read = read
     Task.detached(priority: .userInitiated) { [weak self] in
-      let result: Result<([MeetingTrackAudio], [Float]), Error>
+      let result: Result<(any PlaybackWindowAudio, [Float]), Error>
       do {
-        result = .success(try await read(files, loaded, startMs, count))
+        result = .success(try await read(media, loaded, startMs, count))
       } catch {
         result = .failure(error)
       }
@@ -171,7 +225,7 @@ final class MeetingPlaybackController {
   }
 
   private func queue(
-    _ result: Result<([MeetingTrackAudio], [Float]), Error>, generation: Int, startMs: Int,
+    _ result: Result<(any PlaybackWindowAudio, [Float]), Error>, generation: Int, startMs: Int,
     count: Int
   ) {
     reading = false
@@ -183,8 +237,8 @@ final class MeetingPlaybackController {
     switch result {
     case .failure:
       becomeUnavailable()
-    case .success(let (tracks, samples)):
-      self.tracks = tracks
+    case .success(let (audio, samples)):
+      self.audio = audio
       let endMs = startMs + count
       nextReadMs = endMs
       queued += 1
@@ -209,7 +263,7 @@ final class MeetingPlaybackController {
 
   private func becomeUnavailable() {
     halt()
-    tracks = nil
+    audio = nil
     state = .unavailable
   }
 
@@ -218,6 +272,14 @@ final class MeetingPlaybackController {
   enum PlaybackError: Error, Equatable {
     /// Not one listed file could be read: the audio is gone.
     case noReadableAudio
+  }
+
+  /// Opens the audio for the first window: the meeting's tracks, or the dictation's file.
+  nonisolated static func open(_ media: PlaybackMedia) throws -> any PlaybackWindowAudio {
+    switch media {
+    case .meeting(let files): return MeetingMixedAudio(tracks: try load(files))
+    case .dictation(let url): return try DictationPlaybackAudio(url: url)
+    }
   }
 
   /// Opens the tracks once, on the first window. A damaged file is left out by
@@ -247,6 +309,15 @@ final class MeetingPlaybackController {
     }
     for i in 0..<samples { out[i] = min(1, max(-1, out[i])) }
     return out
+  }
+}
+
+/// A meeting's tracks, mixed window by window (`MeetingPlaybackController.mix`).
+final class MeetingMixedAudio: PlaybackWindowAudio, @unchecked Sendable {
+  private let tracks: [MeetingTrackAudio]
+  init(tracks: [MeetingTrackAudio]) { self.tracks = tracks }
+  func window(startMs: Int, count: Int) throws -> [Float] {
+    try MeetingPlaybackController.mix(tracks, startMs: startMs, count: count)
   }
 }
 

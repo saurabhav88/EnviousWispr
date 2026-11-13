@@ -1,0 +1,11 @@
+{
+  "language": "it",
+  "title": "al superamento della soglia",
+  "words": [
+    "eliminazione automatica"
+  ],
+  "phrases": [
+    "chiedimi di liberare spazio quando supero il limite",
+    "elimina automaticamente le registrazioni di dettatura più vecchie quando supero il limite"
+  ]
+}

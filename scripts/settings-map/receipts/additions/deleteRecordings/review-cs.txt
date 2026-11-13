@@ -1,0 +1,1 @@
+{"language":"cs","title":"smazat nahrávky","words":["odstranění nahrávek"],"phrases":["smazat všechny nahrávky diktátů","smazat všechny zvukové nahrávky schůzek","smazat zvuk a nechat text"]}

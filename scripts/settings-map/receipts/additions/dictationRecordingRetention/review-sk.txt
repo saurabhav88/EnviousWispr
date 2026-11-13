@@ -1,0 +1,11 @@
+{
+  "language": "sk",
+  "title": "uchovávať nahrávky diktovania",
+  "words": [
+    "nahrávky diktovania"
+  ],
+  "phrases": [
+    "ako dlho uchovávať nahrávky diktovania",
+    "automaticky mazať staré nahrávky diktovania a ponechať text"
+  ]
+}

@@ -1,0 +1,1 @@
+{"language":"tr","title":"dikte kayıtlarını kaydet","words":[],"phrases":["her diktenin sesini sakla","sonradan dinlemek için dikteleri kaydet"]}

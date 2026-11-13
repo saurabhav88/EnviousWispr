@@ -1,0 +1,8 @@
+<!-- Banners. Two looks exist today; merging them is a founder decision (#4506 PR 6). Neither appears in a
+     photo-test picture (they need a live condition), so they are drawn from their Swift source. -->
+<!-- part: banner-meeting | Notice banner inside a page (EnviousMeet; icon exclamationmark.circle; an Allow Microphone button appears when the microphone is denied) | MeetingNoticeBanner (Views/Settings/MeetingControls.swift) | none -->
+<div class="ew-root ew-banner"><span class="ew-banner-icon">&#x24D8;&#xFE0E;</span><span style="flex:1">The microphone could not start. Check your microphone and try again.</span><button class="ew-close" aria-label="Dismiss">&#x2715;</button></div>
+<!-- /part -->
+<!-- part: banner-accessibility | Accessibility warning banner above a page | AccessibilityWarningBanner (Views/Components/AccessibilityWarningBanner.swift) | none -->
+<div class="ew-root ew-banner ew-banner--accessibility"><span class="ew-banner-icon">&#x26E8;&#xFE0E;</span><span style="flex:1;font-size:13px">Paste unavailable — Accessibility permission required</span><button class="ew-btn ew-btn--rect ew-btn--orange">Fix Now</button><button class="ew-close" style="font-size:12px;color:var(--ew-st-text-secondary)">Dismiss</button></div>
+<!-- /part -->

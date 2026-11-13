@@ -37,7 +37,8 @@ struct TranscribeFileButtonTreatmentTests {
       return
     }
     let body = source[helper.lowerBound...].prefix(600)
-    #expect(body.contains("emphasis: .quiet"), "the wizard's secondary is not the quiet one")
+    // #4506: the emphasis is the first argument of `.settingsButton(...)`.
+    #expect(body.contains(".settingsButton(.quiet"), "the wizard's secondary is not the quiet one")
     #expect(body.contains("shape: .roundedRect"), "the wizard's secondary is still a capsule")
   }
 }

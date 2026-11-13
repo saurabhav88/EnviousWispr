@@ -1,14 +1,14 @@
 {
   "counts" : {
-    "nodes" : 312,
-    "searchable" : 285,
-    "vocabularyBlocks" : 9120
+    "nodes" : 324,
+    "searchable" : 295,
+    "vocabularyBlocks" : 9440
   },
   "fingerprints" : {
-    "mapSHA256" : "eea9daea98589fbe29969e0c3bf14476c78e409fe842641923874ead1f4653f0",
-    "uiCatalogSHA256" : "d470eb633bf42fbd1a423bd615ae318dabd9db13c12298b675d5a4f0bce90ce1",
+    "mapSHA256" : "0429303e6605473a5ebb1968eb26eafc653fe747f9fa847dbababdab08ba63ad",
+    "uiCatalogSHA256" : "bb1c05634138d31db464d46d325a3182b001b539322d0d76deb53d841ec868d1",
     "vocabularyCanonicalization" : "length-prefixed-v1",
-    "vocabularySHA256" : "25b4f8c996996005c0e93c5f821e8c181182fe93b056485ca832f7964426e487"
+    "vocabularySHA256" : "33d583304fa73b4547e53f491c69599d47ec82a067b6d6ea657cd0a1e400efd9"
   },
   "interfaceLanguages" : [
     "en",
@@ -7735,6 +7735,70 @@
         "de" : "DATENSCHUTZ",
         "en" : "PRIVACY",
         "key" : "PRIVACY",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "always"
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.appSettings",
+        "appSettings.tab.recordings"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : null,
+      "destination" : {
+        "page" : "appSettings",
+        "tab" : "recordings"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "section.recordings",
+      "kind" : null,
+      "parent" : "appSettings.tab.recordings",
+      "searchable" : false,
+      "structure" : "section",
+      "target" : null,
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Aufnahmen",
+        "en" : "Recordings",
+        "key" : "Recordings",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "always"
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.appSettings",
+        "appSettings.tab.recordings"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : null,
+      "destination" : {
+        "page" : "appSettings",
+        "tab" : "recordings"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "section.recordingStorage",
+      "kind" : null,
+      "parent" : "appSettings.tab.recordings",
+      "searchable" : false,
+      "structure" : "section",
+      "target" : null,
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Speicher",
+        "en" : "Storage",
+        "key" : "Storage",
         "source" : "resource",
         "table" : "Localizable"
       },
@@ -74256,6 +74320,437 @@
       "description" : null,
       "destination" : {
         "page" : "appSettings",
+        "tab" : "recordings"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "appSettings.tab.recordings",
+      "kind" : "feature",
+      "parent" : "page.appSettings",
+      "searchable" : true,
+      "structure" : "tab",
+      "target" : "appSettings.tab.recordings",
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Aufnahmen",
+        "en" : "Recordings",
+        "key" : "Recordings",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "always",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "إعدادات التسجيلات",
+            "تسجيلات الإملاء"
+          ],
+          "title" : "التسجيلات",
+          "words" : [
+            "تسجيلات صوتية"
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "настройки за записите",
+            "записи на диктовки"
+          ],
+          "title" : "записи",
+          "words" : [
+            "аудиозаписи"
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "ukládat nahrávky diktování",
+            "jak dlouho uchovávat zvuk ze schůzek",
+            "smazat nahrávky a ponechat text"
+          ],
+          "title" : "nahrávky",
+          "words" : [
+            "zvukové záznamy",
+            "uložené nahrávky",
+            "doba uchování",
+            "místo na disku"
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "indstillinger for optagelser",
+            "optagelser af diktat"
+          ],
+          "title" : "optagelser",
+          "words" : [
+            "lydoptagelser"
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "speichere meine Diktataufnahmen",
+            "wie lange werden Diktataufnahmen und Meeting-Audio aufbewahrt",
+            "lösche gespeicherte Audioaufnahmen"
+          ],
+          "words" : [
+            "Audioaufnahmen",
+            "Diktataufnahmen",
+            "Aufbewahrungsdauer",
+            "Speicherplatz"
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "αποθήκευση ηχογραφήσεων υπαγόρευσης",
+            "πόσο καιρό κρατάει τις ηχογραφήσεις",
+            "διαγραφή ήχου χωρίς να διαγραφεί το κείμενο"
+          ],
+          "title" : "ηχογραφήσεις",
+          "words" : [
+            "αποθηκευμένες ηχογραφήσεις",
+            "ήχος συναντήσεων"
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "save dictation recordings",
+            "how long to keep meeting audio",
+            "delete saved audio to free up space"
+          ],
+          "words" : [
+            "audio recordings",
+            "voice recordings"
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "guardar las grabaciones de mis dictados",
+            "cuánto tiempo se conservan las grabaciones",
+            "borrar el audio sin borrar el texto"
+          ],
+          "title" : "grabaciones",
+          "words" : [
+            "grabaciones de dictado",
+            "audio de reuniones",
+            "almacenamiento de audio"
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "salvestiste seaded",
+            "dikteerimise salvestised"
+          ],
+          "title" : "salvestised",
+          "words" : [
+            "helisalvestised"
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "äänitteiden asetukset",
+            "sanelun äänitteet"
+          ],
+          "title" : "äänitteet",
+          "words" : [
+            "nauhoitukset",
+            "äänitallenteet"
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "conserver les enregistrements de dictée",
+            "supprimer les enregistrements sans effacer le texte",
+            "régler le seuil d’alerte du stockage audio"
+          ],
+          "title" : "enregistrements",
+          "words" : [
+            "enregistrements audio",
+            "audio des réunions",
+            "durée de conservation",
+            "stockage audio"
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "डिक्टेशन की रिकॉर्डिंग सेव करना चालू करें",
+            "डिक्टेशन और मीटिंग का ऑडियो कितने दिन रखना है",
+            "टेक्स्ट रखकर ऑडियो रिकॉर्डिंग हटाएँ"
+          ],
+          "title" : "रिकॉर्डिंग",
+          "words" : [
+            "सहेजी गई रिकॉर्डिंग",
+            "डिक्टेशन रिकॉर्डिंग",
+            "मीटिंग ऑडियो",
+            "स्टोरेज की चेतावनी"
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "spremanje snimki diktata",
+            "koliko dugo se čuvaju audiosnimke sastanaka",
+            "izbriši snimke bez brisanja teksta"
+          ],
+          "title" : "snimke",
+          "words" : [
+            "audiosnimke",
+            "zvučni zapisi"
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "felvételek beállításai",
+            "diktálás hangfelvételei"
+          ],
+          "title" : "felvételek",
+          "words" : [
+            "hangfelvételek"
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "salvare le registrazioni delle dettature",
+            "per quanto tempo conservare l'audio delle riunioni",
+            "eliminare le registrazioni per liberare spazio"
+          ],
+          "title" : "registrazioni",
+          "words" : [
+            "registrazioni audio",
+            "audio delle riunioni",
+            "spazio su disco"
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "音声入力の録音を保存する",
+            "録音の保存期間を変える",
+            "会議の音声を削除する"
+          ],
+          "title" : "録音",
+          "words" : [
+            "録音データ",
+            "保存期間",
+            "ストレージ使用量",
+            "容量の警告"
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "받아쓰기 녹음 저장하기",
+            "녹음 파일 보관 기간 설정",
+            "받아쓰기 녹음과 회의 음성 삭제하기"
+          ],
+          "title" : "녹음",
+          "words" : [
+            "녹음 파일",
+            "회의 음성",
+            "보관 기간",
+            "저장 공간",
+            "저장 공간 경고"
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "įrašų nustatymai",
+            "diktavimo įrašai"
+          ],
+          "title" : "įrašai",
+          "words" : [
+            "garso įrašai"
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "saglabāt diktēšanas ierakstus",
+            "cik ilgi glabāt sapulču audio",
+            "dzēst audioierakstus, saglabājot tekstu"
+          ],
+          "title" : "ieraksti",
+          "words" : [
+            "audioieraksti",
+            "skaņas ieraksti",
+            "ierakstu glabāšana",
+            "ierakstu aizņemtā vieta"
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "issejvja r-reġistrazzjonijiet tad-dettatura",
+            "kemm idum jinżamm l-awdjo tal-laqgħat",
+            "ħassar ir-reġistrazzjonijiet mingħajr ma tħassar it-test"
+          ],
+          "title" : "reġistrazzjonijiet",
+          "words" : [
+            "reġistrazzjonijiet tal-awdjo",
+            "awdjo ssejvjat",
+            "spazju fuq id-diska"
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "audio van dictaten opslaan",
+            "hoelang audio van vergaderingen bewaren",
+            "opnamen verwijderen en de tekst behouden"
+          ],
+          "title" : "opnamen",
+          "words" : [
+            "opnames",
+            "geluidsopnamen",
+            "bewaartermijn",
+            "schijfgebruik",
+            "opslagwaarschuwing"
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "ustawienia nagrań",
+            "nagrania dyktowania"
+          ],
+          "title" : "nagrania",
+          "words" : [
+            "nagrania dźwiękowe"
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "salvar gravações de ditado",
+            "por quanto tempo guardar o áudio das reuniões",
+            "apagar gravações sem apagar o texto"
+          ],
+          "title" : "gravações",
+          "words" : [
+            "áudio salvo",
+            "espaço em disco",
+            "limite de armazenamento"
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "salvează înregistrările dictărilor",
+            "cât timp se păstrează înregistrările audio",
+            "șterge înregistrările audio ale întâlnirilor"
+          ],
+          "title" : "înregistrări",
+          "words" : [
+            "înregistrări audio",
+            "stocare audio",
+            "spațiu pe disc"
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "сохранять аудиозаписи диктовок",
+            "сколько хранить аудиозаписи встреч",
+            "удалить все аудиозаписи диктовок"
+          ],
+          "title" : "записи",
+          "words" : [
+            "аудиозаписи",
+            "хранение записей",
+            "срок хранения",
+            "место на диске"
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "nastavenia nahrávok",
+            "nahrávky diktovania"
+          ],
+          "title" : "nahrávky",
+          "words" : [
+            "zvukové záznamy"
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "nastavitve posnetkov",
+            "posnetki narekovanja"
+          ],
+          "title" : "posnetki",
+          "words" : [
+            "zvočni posnetki"
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "inställningar för sparade ljudinspelningar",
+            "spara ljud från dikteringar",
+            "radera ljud från dikteringar och möten"
+          ],
+          "title" : "inspelningar",
+          "words" : [
+            "ljudinspelningar",
+            "lagringsutrymme"
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "dikte kayıtlarını kaydet",
+            "toplantı seslerini saklama süresi",
+            "ses kayıtlarını sil"
+          ],
+          "title" : "kayıtlar",
+          "words" : [
+            "ses kayıtları",
+            "saklama süresi",
+            "disk kullanımı",
+            "depolama uyarısı"
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "зберігати записи диктування",
+            "як довго зберігати аудіозаписи",
+            "видалити всі аудіозаписи"
+          ],
+          "title" : "записи",
+          "words" : [
+            "аудіозаписи",
+            "записи диктування",
+            "аудіо зустрічей",
+            "місце на диску"
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "lưu bản ghi âm đọc chính tả",
+            "giữ âm thanh cuộc họp trong bao lâu",
+            "xóa bản ghi âm để giải phóng dung lượng"
+          ],
+          "title" : "bản ghi âm",
+          "words" : [
+            "lưu bản ghi âm",
+            "thời gian lưu",
+            "dung lượng bản ghi âm",
+            "cảnh báo dung lượng"
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "保存听写录音",
+            "设置听写录音和会议音频的保留时间",
+            "删除录音但保留文字"
+          ],
+          "title" : "录音",
+          "words" : [
+            "录音文件",
+            "听写录音",
+            "会议音频",
+            "录音保留时间",
+            "录音占用空间",
+            "录音存储警告"
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.appSettings"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : null,
+      "destination" : {
+        "page" : "appSettings",
         "tab" : "licenses"
       },
       "dictionaryTab" : null,
@@ -80685,6 +81180,3259 @@
           "title" : "打开数据收集详情",
           "words" : [
             "数据收集详情链接"
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.appSettings",
+        "appSettings.tab.recordings",
+        "section.recordings"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Speichert das Audio jedes neuen Diktats auf diesem Mac, damit du es abspielen kannst.",
+        "en" : "Keep the audio of each new dictation on this Mac, so you can play it back.",
+        "key" : "Keep the audio of each new dictation on this Mac, so you can play it back.",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "destination" : {
+        "page" : "appSettings",
+        "tab" : "recordings"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "saveDictationRecordings",
+      "kind" : "setting",
+      "parent" : "section.recordings",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "saveDictationRecordings",
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Diktataufnahmen speichern",
+        "en" : "Save dictation recordings",
+        "key" : "Save dictation recordings",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "always",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "احفظ صوت الإملاء على جهازي",
+            "إيقاف حفظ تسجيلات الإملاء الجديدة"
+          ],
+          "title" : "حفظ تسجيلات الإملاء",
+          "words" : [
+
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "запазвай звука от всяка нова диктовка",
+            "не запазвай аудиозаписи от диктовките"
+          ],
+          "title" : "запазване на записи от диктовка",
+          "words" : [
+
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "ukládat zvuk každého nového diktátu pro pozdější poslech",
+            "vypnout ukládání nahrávek nových diktátů"
+          ],
+          "title" : "ukládat nahrávky diktátů",
+          "words" : [
+
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "gem lyden fra nye diktater så jeg kan høre dem igen",
+            "slå lagring af diktatoptagelser til eller fra"
+          ],
+          "title" : "gem diktatoptagelser",
+          "words" : [
+
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "speichere den Ton neuer Diktate auf diesem Mac zum späteren Anhören",
+            "speichere keine Audioaufnahmen neuer Diktate mehr"
+          ],
+          "words" : [
+            "Audioaufnahmen",
+            "Diktataudio"
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "να αποθηκεύεται ο ήχος κάθε νέας υπαγόρευσης για να τον ακούω ξανά",
+            "να μη σώζεται ο ήχος από τις νέες υπαγορεύσεις"
+          ],
+          "title" : "αποθήκευση ηχογραφήσεων υπαγόρευσης",
+          "words" : [
+
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "save each dictation's audio on my Mac",
+            "keep recordings so I can listen later"
+          ],
+          "words" : [
+            "keep audio"
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "conservar el audio de cada dictado",
+            "guardar mis dictados para escucharlos después"
+          ],
+          "title" : "guardar grabaciones de dictado",
+          "words" : [
+
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "salvesta dikteerimiste heli hilisemaks kuulamiseks",
+            "ära salvesta uute dikteerimiste heli"
+          ],
+          "title" : "salvesta dikteerimiste heli",
+          "words" : [
+
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "tallenna uusien sanelujen ääni myöhempää kuuntelua varten",
+            "älä tallenna uusista saneluista äänitteitä"
+          ],
+          "title" : "tallenna saneluäänitteet",
+          "words" : [
+
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "garder l’audio de chaque dictée",
+            "enregistrer mes dictées pour les réécouter"
+          ],
+          "title" : "conserver les enregistrements des dictées",
+          "words" : [
+
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "हर नए डिक्टेशन का ऑडियो सेव करें",
+            "डिक्टेशन की रिकॉर्डिंग सेव करना बंद करें"
+          ],
+          "title" : "डिक्टेशन की रिकॉर्डिंग सहेजें",
+          "words" : [
+
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "spremaj zvuk novih diktata na ovaj Mac",
+            "spremaj snimke diktata za kasnije slušanje",
+            "ne spremaj zvučne snimke novih diktata"
+          ],
+          "title" : "spremaj snimke diktata",
+          "words" : [
+
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "diktálások hangjának mentése későbbi visszahallgatáshoz",
+            "ne mentse el az új diktálások hangját"
+          ],
+          "title" : "diktálási hangfelvételek mentése",
+          "words" : [
+
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "salvare l'audio delle dettature per riascoltarlo",
+            "non salvare l'audio delle nuove dettature"
+          ],
+          "title" : "salva le registrazioni delle dettature",
+          "words" : [
+
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "音声入力の音声を毎回残す",
+            "あとで聞けるように録音を保存する"
+          ],
+          "title" : "音声入力の録音を保存",
+          "words" : [
+
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "받아쓰기 음성을 매번 보관하기",
+            "나중에 다시 듣도록 녹음 저장하기"
+          ],
+          "title" : "받아쓰기 녹음 저장",
+          "words" : [
+
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "išsaugoti kiekvieno naujo diktavimo garsą",
+            "nesaugoti naujų diktavimo įrašų"
+          ],
+          "title" : "išsaugoti diktavimo įrašus",
+          "words" : [
+
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "saglabāt diktējumu audio vēlākai noklausīšanai",
+            "nesaglabāt jaunu diktējumu audio"
+          ],
+          "title" : "saglabāt diktēšanas ierakstus",
+          "words" : [
+
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "żomm l-awdjo ta’ kull dettatura ġdida",
+            "issejvja l-awdjo tad-dettatura biex nerġa’ nisimgħu"
+          ],
+          "title" : "issejvja r-reġistrazzjonijiet tad-dettatura",
+          "words" : [
+
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "audio van nieuwe dictaten opslaan",
+            "opnamen van dictaten bewaren om later terug te luisteren"
+          ],
+          "title" : "dictaatopnamen opslaan",
+          "words" : [
+
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "zachowaj dźwięk każdego nowego dyktowania",
+            "zapisuj dźwięk dyktowania do późniejszego odsłuchania"
+          ],
+          "title" : "zapisuj nagrania dyktowania",
+          "words" : [
+
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "salvar o áudio de cada ditado",
+            "guardar o áudio dos ditados para ouvir depois"
+          ],
+          "title" : "salvar gravações de ditado",
+          "words" : [
+
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "păstrează sunetul fiecărei dictări",
+            "salvează sunetul dictărilor ca să îl ascult mai târziu"
+          ],
+          "title" : "salvează înregistrările dictărilor",
+          "words" : [
+
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "сохранять звук каждой диктовки",
+            "не сохранять аудиозаписи новых диктовок"
+          ],
+          "title" : "сохранять записи диктовки",
+          "words" : [
+
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "ukladať zvuk každého nového diktovania na neskoršie prehratie",
+            "vypnúť ukladanie nahrávok diktovania"
+          ],
+          "title" : "ukladať nahrávky diktovania",
+          "words" : [
+
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "shrani zvok vsakega nareka",
+            "ne shranjuj zvočnih posnetkov novih narekov"
+          ],
+          "title" : "shranjuj posnetke narekovanja",
+          "words" : [
+
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "spara ljudet från varje ny diktering",
+            "spara dikteringsljudet så jag kan lyssna senare"
+          ],
+          "title" : "spara dikteringsinspelningar",
+          "words" : [
+
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "her diktenin sesini sakla",
+            "sonradan dinlemek için dikteleri kaydet"
+          ],
+          "title" : "dikte kayıtlarını kaydet",
+          "words" : [
+
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "зберігати аудіо диктувань на цьому Mac",
+            "не зберігати аудіозаписи нових диктувань"
+          ],
+          "title" : "зберігати записи диктування",
+          "words" : [
+
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "giữ lại âm thanh mỗi lần đọc chính tả",
+            "lưu ghi âm để nghe lại sau"
+          ],
+          "title" : "lưu bản ghi âm đọc chính tả",
+          "words" : [
+
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "自动把每次听写的录音保存到本机",
+            "不再保存新的听写录音"
+          ],
+          "title" : "保存听写录音",
+          "words" : [
+            "保存听写音频"
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.appSettings",
+        "appSettings.tab.recordings",
+        "section.recordings"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Wähle, wie lange Aufnahmen behalten werden. Der Text bleibt immer erhalten.",
+        "en" : "Choose how long to keep recordings. The text always stays.",
+        "key" : "Choose how long to keep recordings. The text always stays.",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "destination" : {
+        "page" : "appSettings",
+        "tab" : "recordings"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "dictationRecordingRetention",
+      "kind" : "setting",
+      "parent" : "section.recordings",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "dictationRecordingRetention",
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Diktataufnahmen behalten",
+        "en" : "Keep dictation recordings",
+        "key" : "Keep dictation recordings",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "always",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "كم تبقى تسجيلات الإملاء محفوظة",
+            "حذف تسجيلات الإملاء القديمة تلقائيًا مع إبقاء النص",
+            "الاحتفاظ بتسجيلات الإملاء حتى أحذفها"
+          ],
+          "title" : "الاحتفاظ بتسجيلات الإملاء",
+          "words" : [
+            "مدة حفظ تسجيلات الإملاء"
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "колко дълго да се пазят записите от диктовка",
+            "автоматично изтриване на старите записи от диктовка",
+            "пази записите от диктовка, докато не ги изтрия"
+          ],
+          "title" : "срок за съхранение на записите от диктовка",
+          "words" : [
+
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "jak dlouho uchovávat nahrávky diktátů",
+            "automaticky mazat staré nahrávky diktátů a zachovat text",
+            "ponechat nahrávky diktátů, dokud je nesmažu"
+          ],
+          "title" : "uchovávat nahrávky diktátů",
+          "words" : [
+
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "hvor længe gemmes diktatoptagelser",
+            "slet automatisk gamle diktatoptagelser og behold teksten"
+          ],
+          "title" : "behold diktatoptagelser",
+          "words" : [
+            "opbevaringstid"
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "wie lange bleiben meine Diktataufnahmen gespeichert",
+            "alte Diktataufnahmen automatisch löschen und den Text behalten"
+          ],
+          "words" : [
+            "Aufbewahrungsdauer",
+            "Diktataufnahmen"
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "για πόσο καιρό κρατιούνται οι ηχογραφήσεις υπαγόρευσης",
+            "να διαγράφονται αυτόματα οι παλιές ηχογραφήσεις υπαγόρευσης και να μένει το κείμενο",
+            "να μένουν οι ηχογραφήσεις υπαγόρευσης μέχρι να τις διαγράψω"
+          ],
+          "title" : "διατήρηση ηχογραφήσεων υπαγόρευσης",
+          "words" : [
+
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "how long are dictation recordings kept",
+            "automatically delete old dictation recordings but keep the text",
+            "keep dictation recordings until I delete them"
+          ],
+          "words" : [
+            "dictation recording retention"
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "cuánto tiempo se guardan las grabaciones de dictado",
+            "borrar automáticamente las grabaciones antiguas de dictado sin borrar el texto",
+            "guardar las grabaciones de dictado hasta que las borre"
+          ],
+          "title" : "conservar grabaciones de dictado",
+          "words" : [
+
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "kui kaua dikteerimissalvestisi alles hoida",
+            "kustuta vanad dikteerimissalvestised automaatselt"
+          ],
+          "title" : "dikteerimissalvestiste säilitamine",
+          "words" : [
+            "säilitusaeg"
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "kuinka kauan sanelutallenteet säilyvät",
+            "poista sanelutallenteet automaattisesti 7 päivän jälkeen",
+            "säilytä sanelutallenteet kunnes poistan ne itse"
+          ],
+          "title" : "sanelutallenteiden säilytysaika",
+          "words" : [
+
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "choisir combien de temps garder l’audio des dictées",
+            "supprimer automatiquement les anciens enregistrements de dictée sans supprimer le texte"
+          ],
+          "title" : "durée de conservation des enregistrements de dictée",
+          "words" : [
+            "durée de conservation"
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "डिक्टेशन की रिकॉर्डिंग कितने दिन तक रखनी है",
+            "पुराने डिक्टेशन की रिकॉर्डिंग अपने आप कब हटें",
+            "डिक्टेशन की रिकॉर्डिंग मेरे हटाने तक रखें"
+          ],
+          "title" : "डिक्टेशन की रिकॉर्डिंग रखने की अवधि",
+          "words" : [
+            "डिक्टेशन रिकॉर्डिंग की अवधि"
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "koliko dugo se čuvaju snimke diktata",
+            "automatski izbriši snimke diktata nakon 30 dana"
+          ],
+          "title" : "čuvanje snimki diktata",
+          "words" : [
+
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "meddig maradjanak meg a diktálási hangfelvételek",
+            "diktálási hangfelvételek automatikus törlése 7 vagy 30 nap után"
+          ],
+          "title" : "diktálási hangfelvételek megőrzése",
+          "words" : [
+
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "per quanto tempo conservare le registrazioni delle dettature",
+            "eliminare automaticamente le vecchie registrazioni delle dettature senza cancellare il testo"
+          ],
+          "title" : "conserva le registrazioni delle dettature",
+          "words" : [
+
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "音声入力の録音を残す期間を変えたい",
+            "古い音声入力の録音を自動で削除したい",
+            "音声入力の録音をずっと残したい"
+          ],
+          "title" : "音声入力の録音の保存期間",
+          "words" : [
+            "音声入力の録音保存期間"
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "받아쓰기 녹음 보관 기간 바꾸기",
+            "받아쓰기 녹음을 직접 지울 때까지 보관하기",
+            "오래된 받아쓰기 녹음이 자동으로 삭제되는 기간 설정하기"
+          ],
+          "title" : "받아쓰기 녹음 보관 기간",
+          "words" : [
+            "받아쓰기 녹음 자동 삭제"
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "kiek laiko saugoti diktavimo įrašus",
+            "automatiškai ištrinti senus diktavimo įrašus"
+          ],
+          "title" : "diktavimo įrašų saugojimo trukmė",
+          "words" : [
+
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "cik ilgi glabāt diktēšanas ierakstus",
+            "automātiski dzēst vecos diktēšanas ierakstus"
+          ],
+          "title" : "diktēšanas ierakstu glabāšanas ilgums",
+          "words" : [
+
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "kemm idumu jinżammu r-reġistrazzjonijiet tad-dettatura",
+            "ħassar awtomatikament ir-reġistrazzjonijiet tad-dettatura wara 7 ijiem"
+          ],
+          "title" : "żomm ir-reġistrazzjonijiet tad-dettatura",
+          "words" : [
+
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "instellen hoelang dictaatopnamen bewaard blijven",
+            "dictaatopnamen automatisch verwijderen na 7 dagen",
+            "dictaatopnamen bewaren tot ik ze verwijder"
+          ],
+          "title" : "dictaatopnamen bewaren",
+          "words" : [
+            "bewaartermijn"
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "jak długo przechowywać nagrania dyktowania",
+            "automatycznie usuwaj stare nagrania dyktowania",
+            "przechowuj nagrania dyktowania do ręcznego usunięcia"
+          ],
+          "title" : "przechowuj nagrania dyktowania",
+          "words" : [
+
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "por quanto tempo guardar as gravações de ditado",
+            "apagar automaticamente gravações antigas de ditado sem apagar o texto"
+          ],
+          "title" : "manter gravações de ditado",
+          "words" : [
+
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "cât timp se păstrează înregistrările dictărilor",
+            "șterge automat înregistrările vechi ale dictărilor"
+          ],
+          "title" : "păstrează înregistrările dictărilor",
+          "words" : [
+
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "как долго хранить записи диктовки",
+            "автоматически удалять старые записи диктовки",
+            "хранить записи диктовки, пока не удалю"
+          ],
+          "title" : "хранить записи диктовки",
+          "words" : [
+            "срок хранения записей диктовки"
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "ako dlho uchovávať nahrávky diktovania",
+            "automaticky mazať staré nahrávky diktovania"
+          ],
+          "title" : "uchovávať nahrávky diktovania",
+          "words" : [
+
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "kako dolgo se hranijo posnetki narekovanja",
+            "samodejno izbriši stare posnetke narekovanja"
+          ],
+          "title" : "hrani posnetke narekovanja",
+          "words" : [
+
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "hur länge sparas dikteringsinspelningar",
+            "ta bort gamla dikteringsinspelningar automatiskt"
+          ],
+          "title" : "behåll dikteringsinspelningar",
+          "words" : [
+            "lagringstid"
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "dikte kayıtları ne kadar süre saklansın",
+            "eski dikte kayıtlarını otomatik sil",
+            "dikte kayıtlarını ben silene kadar sakla"
+          ],
+          "title" : "dikte kayıtlarını saklama süresi",
+          "words" : [
+            "saklama süresi",
+            "otomatik silme"
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "як довго зберігати записи диктування",
+            "автоматично видаляти старі записи диктування",
+            "зберігати записи диктування, доки не видалю їх самостійно"
+          ],
+          "title" : "термін зберігання записів диктування",
+          "words" : [
+
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "giữ bản ghi âm đọc chính tả trong bao lâu",
+            "tự động xóa bản ghi âm đọc chính tả cũ nhưng giữ lại văn bản"
+          ],
+          "title" : "giữ bản ghi âm đọc chính tả",
+          "words" : [
+
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "听写录音能保存多久",
+            "设置听写录音自动删除的时间",
+            "一直保留听写录音"
+          ],
+          "title" : "保留听写录音",
+          "words" : [
+            "听写录音保留期限"
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.appSettings",
+        "appSettings.tab.recordings",
+        "section.recordings"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Meeting-Text, Notizen und Zusammenfassungen bleiben immer erhalten.",
+        "en" : "Meeting text, notes and summaries always stay.",
+        "key" : "Meeting text, notes and summaries always stay.",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "destination" : {
+        "page" : "appSettings",
+        "tab" : "recordings"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "meetingRecordingRetention",
+      "kind" : "setting",
+      "parent" : "section.recordings",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "meetingRecordingRetention",
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Meeting-Audio behalten",
+        "en" : "Keep meeting audio",
+        "key" : "Keep meeting audio",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "always",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "تغيير مدة الاحتفاظ بصوت الاجتماعات",
+            "حذف صوت الاجتماعات تلقائيًا مع بقاء النص",
+            "الاحتفاظ بصوت الاجتماعات حتى أحذفه"
+          ],
+          "title" : "الاحتفاظ بصوت الاجتماعات",
+          "words" : [
+            "تسجيلات الاجتماعات",
+            "مدة الاحتفاظ"
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "колко дълго да се пази аудиото от срещите",
+            "автоматично изтриване на стари аудиозаписи от срещи",
+            "пази аудиото от срещите, докато не го изтрия"
+          ],
+          "title" : "запазване на аудиото от срещи",
+          "words" : [
+            "аудиозаписи от срещи"
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "jak dlouho uchovávat zvuk ze schůzek",
+            "automaticky mazat staré nahrávky schůzek",
+            "ponechat zvuk ze schůzek, dokud ho nesmažu"
+          ],
+          "title" : "uchovávat zvuk ze schůzek",
+          "words" : [
+            "nahrávky schůzek"
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "vælg hvor længe lyd fra møder gemmes",
+            "slet automatisk gamle mødeoptagelser"
+          ],
+          "title" : "behold lyd fra møder",
+          "words" : [
+            "mødeoptagelser"
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "stell ein, wie lange Meeting-Audio gespeichert bleibt",
+            "bewahre Meeting-Audio 30 oder 90 Tage auf",
+            "behalte Meeting-Audio, bis ich es lösche"
+          ],
+          "words" : [
+            "Meeting-Audio",
+            "Meetingaudio",
+            "Aufbewahrungsdauer"
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "για πόσο καιρό κρατιέται ο ήχος των συναντήσεων",
+            "διαγραφή ήχου συναντήσεων μετά από 30 ή 90 ημέρες",
+            "να μένει ο ήχος των συναντήσεων μέχρι να τον διαγράψω"
+          ],
+          "title" : "διατήρηση ήχου συναντήσεων",
+          "words" : [
+            "ηχογραφήσεις συναντήσεων"
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "choose how long to keep meeting audio",
+            "automatically delete old meeting audio",
+            "keep meeting audio until I delete it"
+          ],
+          "words" : [
+            "meeting recordings",
+            "meeting audio retention"
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "cuánto tiempo guardar el audio de las reuniones",
+            "borrar automáticamente el audio antiguo de las reuniones",
+            "conservar el audio de las reuniones hasta que lo borre"
+          ],
+          "title" : "conservar el audio de las reuniones",
+          "words" : [
+            "retención del audio",
+            "caducidad del audio"
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "kui kaua koosolekute heli alles hoida",
+            "säilita koosolekute heli kuni selle ise kustutan"
+          ],
+          "title" : "koosolekute heli säilitamine",
+          "words" : [
+            "koosolekusalvestised"
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "kuinka kauan kokousten äänitallenteet säilytetään",
+            "poista kokousäänitteet automaattisesti 30 päivän jälkeen",
+            "säilytä kokousäänitteet kunnes poistan ne itse"
+          ],
+          "title" : "kokousäänitteiden säilytysaika",
+          "words" : [
+            "kokousäänitteet",
+            "kokoustallenteet"
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "choisir combien de temps garder l’audio des réunions",
+            "supprimer automatiquement l’audio des anciennes réunions"
+          ],
+          "title" : "conserver l’audio des réunions",
+          "words" : [
+            "enregistrements de réunions"
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "मीटिंग का ऑडियो कितने दिन तक रखना है",
+            "मीटिंग का ऑडियो 30 या 90 दिन बाद अपने आप हटाएँ",
+            "मीटिंग का ऑडियो मेरे हटाने तक रखें"
+          ],
+          "title" : "मीटिंग का ऑडियो रखें",
+          "words" : [
+            "मीटिंग की रिकॉर्डिंग",
+            "ऑडियो रखने की अवधि"
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "koliko dugo čuvati zvuk sastanaka",
+            "automatski izbriši zvuk sastanaka nakon 30 dana"
+          ],
+          "title" : "čuvanje audiosnimki sastanaka",
+          "words" : [
+            "audiosnimke sastanaka"
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "meddig maradjanak meg a megbeszélések hangfelvételei",
+            "megbeszélések hangfelvételeinek automatikus törlése 30 vagy 90 nap után"
+          ],
+          "title" : "megbeszélések hangjának megőrzése",
+          "words" : [
+
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "per quanto tempo conservare l’audio delle riunioni",
+            "eliminare automaticamente l’audio delle riunioni dopo 30 o 90 giorni",
+            "conservare l’audio delle riunioni finché non lo elimino"
+          ],
+          "title" : "conserva l’audio delle riunioni",
+          "words" : [
+            "audio delle riunioni",
+            "durata di conservazione"
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "会議の録音を残す期間を変えたい",
+            "会議の音声を自動で削除したい",
+            "会議の録音をずっと残したい"
+          ],
+          "title" : "会議音声の保存期間",
+          "words" : [
+            "会議録音",
+            "会議音声の保存期間"
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "회의 녹음 보관 기간 바꾸기",
+            "회의 오디오 자동 삭제 기간 설정하기",
+            "회의 녹음 계속 보관하기"
+          ],
+          "title" : "회의 오디오 보관 기간",
+          "words" : [
+            "회의 녹음"
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "kiek laiko saugoti susitikimų garso įrašus",
+            "automatiškai ištrinti senus susitikimų garso įrašus"
+          ],
+          "title" : "saugoti susitikimų garso įrašus",
+          "words" : [
+            "susitikimų garso įrašai"
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "cik ilgi glabāt sapulču audioierakstus",
+            "glabāt sapulču audio, līdz to izdzēšu"
+          ],
+          "title" : "glabāt sapulču audioierakstus",
+          "words" : [
+            "sapulču ieraksti"
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "għal kemm żmien inżomm l-awdjo tal-laqgħat",
+            "ħassar l-awdjo tal-laqgħat wara 30 jew 90 jum"
+          ],
+          "title" : "żomm l-awdjo tal-laqgħat",
+          "words" : [
+            "reġistrazzjonijiet tal-laqgħat"
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "instellen hoelang audio van vergaderingen bewaard blijft",
+            "audio van vergaderingen automatisch verwijderen na 30 of 90 dagen"
+          ],
+          "title" : "audio van vergaderingen bewaren",
+          "words" : [
+            "vergaderopnamen"
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "jak długo przechowywać nagrania spotkań",
+            "automatycznie usuwaj nagrania spotkań po 30 lub 90 dniach",
+            "zachowuj nagrania spotkań do ręcznego usunięcia"
+          ],
+          "title" : "przechowuj nagrania spotkań",
+          "words" : [
+            "nagrania spotkań"
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "por quanto tempo guardar o áudio das reuniões",
+            "apagar automaticamente o áudio de reuniões antigas"
+          ],
+          "title" : "manter o áudio das reuniões",
+          "words" : [
+            "áudio de reuniões"
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "cât timp se păstrează înregistrările audio ale întâlnirilor",
+            "șterge automat înregistrările audio vechi ale întâlnirilor"
+          ],
+          "title" : "păstrează înregistrările audio ale întâlnirilor",
+          "words" : [
+            "audio întâlniri",
+            "audio ședințe"
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "как долго хранить аудио встреч",
+            "автоматически удалять старые аудиозаписи встреч",
+            "хранить аудио встреч, пока не удалю"
+          ],
+          "title" : "хранить аудио встреч",
+          "words" : [
+            "срок хранения",
+            "аудиозаписи встреч"
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "ako dlho uchovávať zvuk zo stretnutí",
+            "automaticky mazať staré nahrávky stretnutí"
+          ],
+          "title" : "uchovávať zvuk zo stretnutí",
+          "words" : [
+            "nahrávky stretnutí"
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "kako dolgo naj se hranijo zvočni posnetki sestankov",
+            "samodejno izbriši stare zvočne posnetke sestankov"
+          ],
+          "title" : "hrani zvočne posnetke sestankov",
+          "words" : [
+            "posnetki sestankov"
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "välj hur länge ljudet från möten sparas",
+            "ta bort gammalt mötesljud automatiskt"
+          ],
+          "title" : "behåll mötesljud",
+          "words" : [
+            "mötesinspelningar"
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "toplantı ses kayıtları ne kadar saklansın",
+            "toplantı sesini ben silene kadar sakla",
+            "eski toplantı ses kayıtlarını otomatik sil"
+          ],
+          "title" : "toplantı sesini saklama süresi",
+          "words" : [
+            "toplantı ses kayıtları"
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "як довго зберігати аудіо зустрічей",
+            "автоматично видаляти старі аудіозаписи зустрічей",
+            "зберігати аудіо зустрічей безстроково"
+          ],
+          "title" : "зберігати аудіо зустрічей",
+          "words" : [
+            "аудіозаписи зустрічей"
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "giữ bản ghi âm cuộc họp trong bao lâu",
+            "tự động xóa âm thanh cuộc họp sau 30 hoặc 90 ngày",
+            "giữ âm thanh cuộc họp cho đến khi tôi xóa"
+          ],
+          "title" : "giữ âm thanh cuộc họp",
+          "words" : [
+            "bản ghi âm cuộc họp"
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "会议录音保留多久",
+            "设置会议录音自动删除的时间",
+            "一直保留会议录音"
+          ],
+          "title" : "保留会议音频",
+          "words" : [
+            "会议录音保留期限"
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.appSettings",
+        "appSettings.tab.recordings",
+        "section.recordingStorage"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : {
+        "role" : "composed by the registering row from live state at display time; never sampled",
+        "runtime" : true,
+        "source" : "runtime"
+      },
+      "destination" : {
+        "page" : "appSettings",
+        "tab" : "recordings"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "recordingStorageUsage",
+      "kind" : "feature",
+      "parent" : "section.recordingStorage",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "recordingStorageUsage",
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Belegter Speicher",
+        "en" : "Storage used",
+        "key" : "Storage used",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "always",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "كم مساحة تشغل التسجيلات",
+            "حجم التسجيلات المحفوظة"
+          ],
+          "title" : "مساحة التخزين المستخدمة",
+          "words" : [
+            "حجم التسجيلات"
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "колко място заемат записите от диктовки",
+            "колко място заема аудиото от срещи"
+          ],
+          "title" : "заето дисково пространство",
+          "words" : [
+            "размер на аудиозаписите"
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "kolik místa zabírají nahrávky",
+            "velikost uložených nahrávek"
+          ],
+          "title" : "využité místo",
+          "words" : [
+            "velikost nahrávek"
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "hvor meget fylder optagelserne",
+            "plads brugt af optagelser"
+          ],
+          "title" : "brugt lagerplads",
+          "words" : [
+            "optagelsernes størrelse"
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "wie viel Platz brauchen meine Aufnahmen",
+            "zeig mir die Größe meiner Aufnahmen"
+          ],
+          "words" : [
+            "Speicherbelegung",
+            "Speicherverbrauch"
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "πόσο χώρο πιάνουν οι ηχογραφήσεις",
+            "πόσο χώρο πιάνει ο ήχος των συναντήσεων"
+          ],
+          "title" : "χρησιμοποιούμενος χώρος",
+          "words" : [
+            "μέγεθος ηχογραφήσεων"
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "how much space do my recordings take",
+            "space taken up by recordings"
+          ],
+          "words" : [
+            "recording size",
+            "disk usage"
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "cuánto ocupan las grabaciones",
+            "espacio que usan mis grabaciones"
+          ],
+          "title" : "espacio utilizado",
+          "words" : [
+            "tamaño de las grabaciones"
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "kui palju ruumi salvestised võtavad",
+            "salvestiste kogumaht"
+          ],
+          "title" : "kasutatud salvestusruum",
+          "words" : [
+            "salvestiste suurus"
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "paljonko tilaa äänitteet vievät",
+            "äänitteiden yhteiskoko"
+          ],
+          "title" : "käytetty tallennustila",
+          "words" : [
+            "äänitteiden koko"
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "combien de place prennent mes enregistrements",
+            "espace occupé par les enregistrements"
+          ],
+          "title" : "espace utilisé",
+          "words" : [
+            "taille des enregistrements"
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "रिकॉर्डिंग कितनी जगह ले रही हैं",
+            "सेव की गई रिकॉर्डिंग का साइज़"
+          ],
+          "title" : "इस्तेमाल किया गया स्टोरेज",
+          "words" : [
+            "रिकॉर्डिंग का साइज़"
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "koliko prostora zauzimaju snimke",
+            "ukupna veličina snimki"
+          ],
+          "title" : "zauzeti prostor",
+          "words" : [
+            "veličina snimki"
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "mennyi helyet foglalnak a felvételek",
+            "mentett felvételek összmérete"
+          ],
+          "title" : "felhasznált tárhely",
+          "words" : [
+            "felvételek mérete"
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "quanto spazio occupano le registrazioni delle dettature",
+            "quanto spazio occupa l'audio delle riunioni"
+          ],
+          "title" : "spazio utilizzato",
+          "words" : [
+            "spazio su disco",
+            "dimensione delle registrazioni"
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "録音はどれくらい容量を使っている",
+            "保存した録音の合計サイズ"
+          ],
+          "title" : "ストレージ使用量",
+          "words" : [
+            "録音サイズ"
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "녹음이 차지하는 공간",
+            "저장된 녹음의 전체 크기"
+          ],
+          "title" : "사용 중인 저장 공간",
+          "words" : [
+            "녹음 용량"
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "kiek vietos užima garso įrašai",
+            "kiek vietos diske užima diktavimo ir susitikimų įrašai"
+          ],
+          "title" : "užimta vieta",
+          "words" : [
+            "garso įrašų dydis"
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "cik vietas diskā aizņem diktēšanas ieraksti",
+            "cik vietas aizņem sapulču audio"
+          ],
+          "title" : "aizņemtā vieta diskā",
+          "words" : [
+            "ierakstu lielums"
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "kemm spazju jieħdu r-reġistrazzjonijiet",
+            "daqs totali tar-reġistrazzjonijiet"
+          ],
+          "title" : "spazju użat",
+          "words" : [
+            "daqs tar-reġistrazzjonijiet"
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "hoeveel ruimte nemen mijn opnames in",
+            "totale grootte van opnames"
+          ],
+          "title" : "gebruikte opslagruimte",
+          "words" : [
+            "opnamegrootte"
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "ile miejsca zajmują nagrania",
+            "łączny rozmiar zapisanych nagrań"
+          ],
+          "title" : "zajęte miejsce",
+          "words" : [
+            "rozmiar nagrań"
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "quanto espaço ocupam as gravações",
+            "tamanho total das gravações"
+          ],
+          "title" : "espaço utilizado",
+          "words" : [
+            "tamanho das gravações"
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "cât spațiu ocupă înregistrările",
+            "dimensiunea totală a înregistrărilor"
+          ],
+          "title" : "spațiu utilizat",
+          "words" : [
+            "dimensiunea înregistrărilor"
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "сколько места на диске занимают аудиозаписи",
+            "общий размер записей диктовок и встреч"
+          ],
+          "title" : "занятое место",
+          "words" : [
+            "размер аудиозаписей"
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "koľko miesta zaberajú nahrávky diktovania",
+            "koľko miesta zaberá zvuk zo stretnutí"
+          ],
+          "title" : "využité miesto na disku",
+          "words" : [
+            "veľkosť nahrávok"
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "koliko prostora zavzamejo posnetki",
+            "skupna velikost shranjenih posnetkov"
+          ],
+          "title" : "zasedeni prostor",
+          "words" : [
+            "velikost posnetkov"
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "hur mycket plats tar inspelningarna",
+            "total storlek på sparade inspelningar"
+          ],
+          "title" : "använt lagringsutrymme",
+          "words" : [
+            "inspelningarnas storlek"
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "kayıtlar ne kadar yer kaplıyor",
+            "kayıtların toplam boyutu"
+          ],
+          "title" : "kullanılan depolama alanı",
+          "words" : [
+            "kayıt boyutu"
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "скільки місця займають аудіозаписи",
+            "розмір записів диктувань і аудіо зустрічей"
+          ],
+          "title" : "зайняте місце",
+          "words" : [
+            "розмір аудіозаписів",
+            "місце на диску"
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "bản ghi âm chiếm bao nhiêu dung lượng",
+            "tổng dung lượng các bản ghi âm"
+          ],
+          "title" : "dung lượng đã dùng",
+          "words" : [
+            "kích thước bản ghi"
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "录音占了多少空间",
+            "已保存录音的总大小"
+          ],
+          "title" : "已用存储空间",
+          "words" : [
+            "录音大小"
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.appSettings",
+        "appSettings.tab.recordings",
+        "section.recordingStorage"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Erhalte eine Warnung, wenn Aufnahmen mehr Speicher als diesen Wert belegen.",
+        "en" : "Get a warning when recordings use more than this.",
+        "key" : "Get a warning when recordings use more than this.",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "destination" : {
+        "page" : "appSettings",
+        "tab" : "recordings"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "recordingStorageWarningThreshold",
+      "kind" : "setting",
+      "parent" : "section.recordingStorage",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "recordingStorageWarningThreshold",
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Speicherwarnschwelle",
+        "en" : "Storage warning threshold",
+        "key" : "Storage warning threshold",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "always",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "نبهني عندما تتجاوز التسجيلات حجماً معيناً",
+            "متى يظهر تحذير مساحة التسجيلات"
+          ],
+          "title" : "حد التنبيه لاستخدام مساحة التخزين",
+          "words" : [
+            "تنبيه حجم التسجيلات"
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "предупреди ме, когато записите заемат твърде много място",
+            "при какъв размер на записите да получавам предупреждение",
+            "изключи предупреждението за мястото, заето от записите"
+          ],
+          "title" : "праг за предупреждение за заетото място",
+          "words" : [
+            "предупреждение за място",
+            "праг за предупреждение"
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "upozornit, když nahrávky zabírají moc místa",
+            "od jaké velikosti nahrávek zobrazit varování",
+            "vypnout upozornění na místo zabrané nahrávkami"
+          ],
+          "title" : "hranice pro upozornění na využití úložiště",
+          "words" : [
+            "práh varování"
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "advar mig når optagelser fylder mere end 2 GB",
+            "vælg hvornår jeg får en advarsel om optagelsernes størrelse",
+            "slå advarslen om lagerplads til optagelser fra"
+          ],
+          "title" : "advarselsgrænse for lagerplads",
+          "words" : [
+            "lageradvarsel",
+            "advarselsgrænse"
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "warne mich, wenn Aufnahmen mehr als 2 GB belegen",
+            "schalte die Speicherplatzwarnung für Aufnahmen aus"
+          ],
+          "words" : [
+            "Warnschwelle",
+            "Speicherplatzwarnung"
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "ειδοποίησέ με όταν οι εγγραφές πιάνουν πολύ χώρο",
+            "πόσο χώρο πρέπει να πιάνουν οι εγγραφές για να εμφανιστεί προειδοποίηση"
+          ],
+          "title" : "όριο προειδοποίησης χώρου αποθήκευσης",
+          "words" : [
+            "προειδοποίηση χώρου",
+            "όριο προειδοποίησης"
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "warn me when recordings take up too much space",
+            "set when the recording storage warning appears"
+          ],
+          "words" : [
+            "recording size alert",
+            "disk usage warning"
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "avísame cuando las grabaciones ocupen demasiado espacio",
+            "elegir a partir de cuántos GB de grabaciones mostrar un aviso",
+            "desactivar el aviso de espacio de las grabaciones"
+          ],
+          "title" : "umbral de aviso de almacenamiento",
+          "words" : [
+            "aviso de almacenamiento",
+            "alerta de espacio"
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "hoiata, kui salvestised võtavad liiga palju ruumi",
+            "vali, kui suure salvestiste mahu juures hoiatus kuvatakse",
+            "lülita salvestiste mahu hoiatus välja"
+          ],
+          "title" : "salvestiste mahu hoiatuslävi",
+          "words" : [
+            "ruumikasutuse hoiatus",
+            "hoiatuslävi"
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "varoita kun äänitteet vievät liikaa tilaa",
+            "muuta äänitteiden tilankäytön varoitusrajaa",
+            "poista tallennustilan varoitus käytöstä"
+          ],
+          "title" : "tallennustilan varoitusraja",
+          "words" : [
+            "tilavaroitus"
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "me prévenir quand les enregistrements prennent trop de place",
+            "régler le seuil d’alerte pour l’espace occupé par les enregistrements",
+            "désactiver l’alerte de stockage des enregistrements"
+          ],
+          "title" : "seuil d’alerte de stockage",
+          "words" : [
+            "alerte de stockage",
+            "seuil d’avertissement"
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "रिकॉर्डिंग ज़्यादा जगह ले तो मुझे चेतावनी दें",
+            "रिकॉर्डिंग के लिए कितनी जगह इस्तेमाल होने पर चेतावनी मिले",
+            "रिकॉर्डिंग की स्टोरेज चेतावनी बंद करनी है"
+          ],
+          "title" : "स्टोरेज चेतावनी की सीमा",
+          "words" : [
+            "स्टोरेज अलर्ट",
+            "रिकॉर्डिंग साइज़ अलर्ट"
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "upozori me kad snimke zauzmu više od 2 GB",
+            "isključi upozorenje o zauzeću prostora"
+          ],
+          "title" : "prag upozorenja o zauzeću prostora",
+          "words" : [
+            "prag upozorenja",
+            "upozorenje o prostoru"
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "figyelmeztessen, ha a felvételek túl sok helyet foglalnak",
+            "hány GB felett kapjak figyelmeztetést a felvételek miatt",
+            "felvételek tárhelyfigyelmeztetésének kikapcsolása"
+          ],
+          "title" : "tárhelyhasználati figyelmeztetés küszöbértéke",
+          "words" : [
+            "tárhelyfigyelmeztetés",
+            "figyelmeztetési küszöb"
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "avvisami quando le registrazioni occupano troppo spazio",
+            "avvisami quando le registrazioni superano 2 GB",
+            "disattiva l'avviso sullo spazio occupato dalle registrazioni"
+          ],
+          "title" : "soglia di avviso per lo spazio occupato",
+          "words" : [
+            "soglia di avviso"
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "録音が何GBを超えたら警告するか設定する",
+            "録音の容量警告をオフにする"
+          ],
+          "title" : "ストレージ警告のしきい値",
+          "words" : [
+            "容量警告"
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "녹음이 공간을 많이 차지하면 알려줘",
+            "녹음 용량이 얼마나 되면 경고할지 설정"
+          ],
+          "title" : "저장 공간 경고 기준",
+          "words" : [
+            "녹음 용량 알림"
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "įspėti, kai įrašai užima per daug vietos",
+            "pasirinkti, kiek vietos užėmus įrašams rodyti įspėjimą",
+            "išjungti įspėjimą apie įrašų užimamą vietą"
+          ],
+          "title" : "įspėjimo apie užimamą vietą slenkstis",
+          "words" : [
+            "įspėjimo slenkstis"
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "brīdināt, kad ieraksti aizņem pārāk daudz vietas",
+            "izvēlēties, pie kāda ierakstu apjoma rādīt brīdinājumu",
+            "izslēgt brīdinājumu par ierakstu aizņemto vietu"
+          ],
+          "title" : "ierakstu apjoma brīdinājuma slieksnis",
+          "words" : [
+            "brīdinājuma slieksnis",
+            "vietas brīdinājums"
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "wissini meta r-reġistrazzjonijiet jieħdu aktar minn 2 GB",
+            "itfi t-twissija dwar l-ispazju li jieħdu r-reġistrazzjonijiet"
+          ],
+          "title" : "livell ta’ twissija dwar il-ħażna",
+          "words" : [
+            "twissija tal-ħażna"
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "bij hoeveel GB aan opnamen krijg ik een waarschuwing",
+            "waarschuwing over opslagruimte voor opnamen uitschakelen"
+          ],
+          "title" : "drempel voor opslagwaarschuwing",
+          "words" : [
+            "opslagwaarschuwing",
+            "waarschuwingsdrempel"
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "ostrzegaj, gdy nagrania zajmują za dużo miejsca",
+            "przy jakim rozmiarze nagrań pokazać ostrzeżenie",
+            "wyłącz ostrzeżenie o rozmiarze nagrań"
+          ],
+          "title" : "próg ostrzeżenia o rozmiarze nagrań",
+          "words" : [
+            "ostrzeżenie o zajętym miejscu"
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "avisar quando as gravações ocuparem muito espaço",
+            "escolher a partir de quantos GB de gravações receber um aviso"
+          ],
+          "title" : "limiar de aviso de armazenamento",
+          "words" : [
+            "alerta de armazenamento",
+            "aviso de espaço"
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "anunță-mă când înregistrările ocupă prea mult spațiu",
+            "dezactivează avertizarea pentru spațiul ocupat de înregistrări"
+          ],
+          "title" : "prag de avertizare pentru spațiul ocupat",
+          "words" : [
+            "avertizare stocare",
+            "prag de avertizare"
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "предупреждать, когда записи занимают слишком много места",
+            "при каком объёме записей показывать предупреждение",
+            "отключить предупреждение о занятом записями месте"
+          ],
+          "title" : "порог предупреждения о занятом месте",
+          "words" : [
+            "порог предупреждения"
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "upozorni ma, keď nahrávky zaberajú priveľa miesta",
+            "pri akej veľkosti nahrávok zobraziť upozornenie",
+            "vypnúť upozornenie na miesto zabraté nahrávkami"
+          ],
+          "title" : "hranica pre upozornenie na využitie úložiska",
+          "words" : [
+            "prah upozornenia",
+            "varovanie o zaplnení"
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "opozori me, ko posnetki zasedejo več kot 2 GB",
+            "izklopi opozorilo o porabi prostora za posnetke"
+          ],
+          "title" : "prag opozorila o porabi prostora",
+          "words" : [
+            "opozorilo o prostoru",
+            "prag opozorila"
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "varna mig när inspelningarna tar mer än 2 GB",
+            "ändra när varningen om lagringsutrymme visas",
+            "stäng av lagringsvarningen"
+          ],
+          "title" : "varningsgräns för lagringsutrymme",
+          "words" : [
+            "lagringsvarning",
+            "varningsgräns"
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "kayıtlar çok yer kaplayınca beni uyar",
+            "kayıtlar ne kadar yer kaplayınca uyarı verilsin"
+          ],
+          "title" : "depolama alanı uyarı eşiği",
+          "words" : [
+            "depolama uyarısı",
+            "uyarı eşiği"
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "попереджати, коли записи займають забагато місця",
+            "вимкнути попередження про місце, зайняте записами",
+            "за якого обсягу записів показувати попередження"
+          ],
+          "title" : "поріг попередження про зайняте місце",
+          "words" : [
+            "попередження про обсяг записів"
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "báo khi bản ghi chiếm quá nhiều chỗ",
+            "bản ghi chiếm bao nhiêu dung lượng thì cảnh báo",
+            "tắt cảnh báo dung lượng bản ghi"
+          ],
+          "title" : "ngưỡng cảnh báo dung lượng",
+          "words" : [
+            "cảnh báo dung lượng",
+            "ngưỡng cảnh báo"
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "录音占用太多空间时提醒我",
+            "录音占用多少空间时发出警告"
+          ],
+          "title" : "存储空间警告阈值",
+          "words" : [
+            "录音容量提醒"
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.appSettings",
+        "appSettings.tab.recordings",
+        "section.recordingStorage"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Dich fragen oder die ältesten Diktataufnahmen entfernen.",
+        "en" : "Ask you, or remove the oldest dictation recordings.",
+        "key" : "Ask you, or remove the oldest dictation recordings.",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "destination" : {
+        "page" : "appSettings",
+        "tab" : "recordings"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "recordingThresholdBehavior",
+      "kind" : "setting",
+      "parent" : "section.recordingStorage",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "recordingThresholdBehavior",
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Über der Schwelle",
+        "en" : "Past the threshold",
+        "key" : "Past the threshold",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "always",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "نبهني لتفريغ مساحة عند تجاوز الحد",
+            "احذف أقدم تسجيلات الإملاء تلقائيًا عند تجاوز حد التخزين"
+          ],
+          "title" : "عند تجاوز حد التخزين",
+          "words" : [
+            "الحذف التلقائي"
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "питай ме как да освободя място при надвишаване на лимита",
+            "изтривай най-старите записи от диктовки при надвишаване на лимита"
+          ],
+          "title" : "при надвишаване на лимита за съхранение",
+          "words" : [
+            "автоматично изтриване"
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "zeptat se na uvolnění místa při překročení limitu",
+            "po překročení limitu automaticky smazat nejstarší nahrávky diktování"
+          ],
+          "title" : "při překročení limitu úložiště",
+          "words" : [
+            "automatické mazání"
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "spørg mig om at frigøre plads, når lagergrænsen overskrides",
+            "slet automatisk de ældste diktatoptagelser, når lagergrænsen overskrides"
+          ],
+          "title" : "når lagergrænsen overskrides",
+          "words" : [
+            "automatisk sletning"
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "frag mich, ob ich Platz schaffen möchte, wenn Aufnahmen die Warnschwelle überschreiten",
+            "lösche die ältesten Diktataufnahmen automatisch, wenn Aufnahmen die Warnschwelle überschreiten"
+          ],
+          "words" : [
+            "Löschverhalten",
+            "automatisches Löschen"
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "να με ρωτάει αν θέλω να ελευθερώσω χώρο όταν ξεπεραστεί το όριο",
+            "αυτόματη διαγραφή των παλαιότερων ηχογραφήσεων υπαγορεύσεων όταν ξεπεραστεί το όριο χώρου"
+          ],
+          "title" : "όταν ξεπεραστεί το όριο αποθήκευσης",
+          "words" : [
+            "αυτόματη διαγραφή"
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "ask me to free space when storage is over the limit",
+            "automatically delete the oldest dictation recordings when over the storage limit"
+          ],
+          "words" : [
+            "automatic deletion"
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "preguntarme antes de liberar espacio al superar el límite",
+            "borrar las grabaciones de dictado más antiguas al superar el límite"
+          ],
+          "title" : "al superar el límite de almacenamiento",
+          "words" : [
+            "borrado automático"
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "hoiata mind, kui salvestiste mahupiir on ületatud",
+            "kustuta vanimad dikteerimissalvestised mahupiiri ületamisel"
+          ],
+          "title" : "mahupiiri ületamisel",
+          "words" : [
+            "automaatne kustutamine",
+            "vanimad dikteerimissalvestised"
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "kysy tilan vapauttamisesta kun tallennustilan raja ylittyy",
+            "poista vanhimmat sanelutallenteet kun tallennustilan raja ylittyy"
+          ],
+          "title" : "kun tallennustilan raja ylittyy",
+          "words" : [
+            "automaattinen poisto"
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "me demander de libérer de l’espace quand le seuil est dépassé",
+            "supprimer automatiquement les plus anciens enregistrements de dictée au-delà du seuil"
+          ],
+          "title" : "en cas de dépassement du seuil",
+          "words" : [
+            "suppression automatique"
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "स्टोरेज की सीमा पार होने पर जगह खाली करने के लिए मुझसे पूछें",
+            "स्टोरेज की सीमा पार होने पर सबसे पुरानी डिक्टेशन रिकॉर्डिंग अपने आप हटाएँ"
+          ],
+          "title" : "स्टोरेज की सीमा पार होने पर",
+          "words" : [
+            "अपने आप हटाना",
+            "पुरानी डिक्टेशन रिकॉर्डिंग"
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "pitaj me želim li osloboditi prostor kad se prekorači ograničenje",
+            "automatski briši najstarije snimke diktiranja kad se prekorači ograničenje pohrane"
+          ],
+          "title" : "pri prekoračenju ograničenja pohrane",
+          "words" : [
+            "automatsko brisanje"
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "csak figyelmeztessen, ha a diktálási felvételek túllépik a tárhelykorlátot",
+            "a legrégebbi diktálási felvételek automatikus törlése a korlát túllépésekor"
+          ],
+          "title" : "a tárhelykorlát túllépésekor",
+          "words" : [
+            "automatikus törlés"
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "chiedimi di liberare spazio quando supero il limite",
+            "elimina automaticamente le registrazioni di dettatura più vecchie quando supero il limite"
+          ],
+          "title" : "al superamento della soglia",
+          "words" : [
+            "eliminazione automatica"
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "録音の容量が上限を超えたら通知する",
+            "上限を超えたら古い音声入力の録音から自動削除する"
+          ],
+          "title" : "保存容量の上限を超えたとき",
+          "words" : [
+            "自動削除"
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "녹음 용량이 한도를 넘으면 알림만 받기",
+            "용량 한도를 넘으면 오래된 받아쓰기 녹음부터 자동 삭제"
+          ],
+          "title" : "저장 용량 한도 초과 시",
+          "words" : [
+            "자동 삭제"
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "viršijus saugyklos limitą paklausti, ar atlaisvinti vietos",
+            "viršijus limitą automatiškai ištrinti seniausius diktavimo įrašus"
+          ],
+          "title" : "viršijus saugyklos limitą",
+          "words" : [
+            "automatinis trynimas"
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "brīdināt, kad diktēšanas ieraksti aizņem pārāk daudz vietas",
+            "automātiski dzēst vecākos diktēšanas ierakstus, kad pārsniegts slieksnis"
+          ],
+          "title" : "ja pārsniegts krātuves slieksnis",
+          "words" : [
+            "automātiska dzēšana"
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "staqsini biex nillibera spazju meta jinqabeż il-limitu",
+            "ħassar awtomatikament l-eqdem reġistrazzjonijiet tad-dettatura meta jinqabeż il-limitu"
+          ],
+          "title" : "meta jinqabeż il-limitu tal-ħażna",
+          "words" : [
+            "tħassir awtomatiku"
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "vraag me om ruimte vrij te maken als de opslaglimiet is overschreden",
+            "oudste dicteeropnamen automatisch verwijderen als de opslaglimiet is overschreden"
+          ],
+          "title" : "bij overschrijding van de opslaglimiet",
+          "words" : [
+            "automatisch verwijderen"
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "zapytaj mnie o zwolnienie miejsca po przekroczeniu limitu",
+            "automatycznie usuwaj najstarsze nagrania dyktowania po przekroczeniu limitu"
+          ],
+          "title" : "po przekroczeniu limitu miejsca",
+          "words" : [
+            "automatyczne usuwanie"
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "pedir para liberar espaço ao ultrapassar o limite",
+            "apagar as gravações de ditado mais antigas ao ultrapassar o limite"
+          ],
+          "title" : "ao ultrapassar o limite de armazenamento",
+          "words" : [
+            "exclusão automática"
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "anunță-mă când înregistrările dictărilor depășesc limita de spațiu",
+            "șterge automat cele mai vechi înregistrări ale dictărilor când se depășește limita"
+          ],
+          "title" : "la depășirea limitei de stocare",
+          "words" : [
+            "ștergere automată audio"
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "спрашивать меня об освобождении места при превышении лимита",
+            "автоматически удалять самые старые аудиозаписи диктовок при превышении лимита"
+          ],
+          "title" : "при превышении лимита хранения",
+          "words" : [
+            "автоматическое удаление"
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "pri prekročení limitu úložiska iba upozorniť",
+            "po prekročení limitu automaticky vymazať najstaršie nahrávky diktovania"
+          ],
+          "title" : "pri prekročení limitu úložiska",
+          "words" : [
+            "automatické mazanie"
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "vprašaj me, ko posnetki narekovanja presežejo omejitev prostora",
+            "samodejno izbriši najstarejše posnetke narekovanja, ko je omejitev prostora presežena"
+          ],
+          "title" : "ob prekoračitvi omejitve prostora",
+          "words" : [
+            "samodejno brisanje"
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "fråga mig om att frigöra utrymme när lagringsgränsen överskrids",
+            "radera automatiskt de äldsta dikteringsinspelningarna när lagringsgränsen överskrids"
+          ],
+          "title" : "när lagringsgränsen överskrids",
+          "words" : [
+            "automatisk radering"
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "depolama sınırı aşılınca yer açmak için bana sor",
+            "depolama sınırı aşılınca en eski dikte kayıtlarını otomatik sil"
+          ],
+          "title" : "depolama sınırı aşıldığında",
+          "words" : [
+            "otomatik silme"
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "запитувати про звільнення місця в разі перевищення ліміту",
+            "автоматично видаляти найстаріші аудіозаписи диктування в разі перевищення ліміту"
+          ],
+          "title" : "у разі перевищення ліміту сховища",
+          "words" : [
+            "автоматичне видалення"
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "nhắc tôi giải phóng dung lượng khi vượt ngưỡng",
+            "tự động xóa bản ghi đọc chính tả cũ nhất khi vượt ngưỡng"
+          ],
+          "title" : "khi vượt ngưỡng dung lượng",
+          "words" : [
+            "tự động xóa"
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "录音占用空间超过阈值时提醒我清理",
+            "超过阈值后自动删除最旧的听写录音"
+          ],
+          "title" : "超过存储阈值时",
+          "words" : [
+            "自动清理",
+            "清理提醒"
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.appSettings",
+        "appSettings.tab.recordings",
+        "section.recordingStorage"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Text, Meeting-Notizen und Zusammenfassungen bleiben erhalten.",
+        "en" : "Text, meeting notes and summaries stay.",
+        "key" : "Text, meeting notes and summaries stay.",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "destination" : {
+        "page" : "appSettings",
+        "tab" : "recordings"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "deleteRecordings",
+      "kind" : "feature",
+      "parent" : "section.recordingStorage",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "deleteRecordings",
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Aufnahmen löschen",
+        "en" : "Delete recordings",
+        "key" : "Delete recordings",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "always",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "احذف الصوت واحتفظ بالنص"
+          ],
+          "title" : "حذف التسجيلات",
+          "words" : [
+            "ملفات صوتية"
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "изтрий аудиото, но запази текста"
+          ],
+          "title" : "изтриване на записи",
+          "words" : [
+            "аудиофайлове"
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "smazat všechny nahrávky diktátů",
+            "smazat všechny zvukové nahrávky schůzek",
+            "smazat zvuk a nechat text"
+          ],
+          "title" : "smazat nahrávky",
+          "words" : [
+            "odstranění nahrávek"
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "slet lyden og behold teksten"
+          ],
+          "title" : "slet optagelser",
+          "words" : [
+            "lydfiler"
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "lösche Audio von Diktaten oder Meetings",
+            "lösche Aufnahmen und behalte Text, Notizen und Zusammenfassungen"
+          ],
+          "words" : [
+            "Audiodateien",
+            "Aufnahmen"
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "σβήσε όλες τις ηχογραφήσεις υπαγόρευσης και κράτα το κείμενο",
+            "σβήσε όλο τον ήχο των συναντήσεων και κράτα τις σημειώσεις και τις περιλήψεις"
+          ],
+          "title" : "διαγραφή ηχογραφήσεων",
+          "words" : [
+            "διαγραφή ήχου"
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "delete audio and keep the text"
+          ],
+          "words" : [
+            "audio files",
+            "remove"
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "borrar el audio y conservar el texto"
+          ],
+          "title" : "eliminar grabaciones",
+          "words" : [
+            "archivos de audio"
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "kustuta heli ja jäta tekst alles"
+          ],
+          "title" : "kustuta salvestised",
+          "words" : [
+            "helifailid"
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "poista ääni ja säilytä teksti"
+          ],
+          "title" : "poista tallenteet",
+          "words" : [
+            "äänitiedostot"
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "supprimer l’audio et garder le texte"
+          ],
+          "title" : "supprimer les enregistrements",
+          "words" : [
+            "fichiers audio",
+            "effacer"
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "ऑडियो हटाएँ और टेक्स्ट रखें"
+          ],
+          "title" : "रिकॉर्डिंग हटाएँ",
+          "words" : [
+            "ऑडियो फ़ाइलें",
+            "डिलीट"
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "izbriši zvuk i zadrži tekst"
+          ],
+          "title" : "izbriši snimke",
+          "words" : [
+            "audiodatoteke"
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "hang törlése a szöveg megtartásával"
+          ],
+          "title" : "felvételek törlése",
+          "words" : [
+            "hangfájlok"
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "eliminare tutte le registrazioni delle dettature mantenendo il testo",
+            "cancellare tutto l'audio delle riunioni senza eliminare note e riepiloghi"
+          ],
+          "title" : "elimina registrazioni",
+          "words" : [
+            "cancella registrazioni",
+            "elimina audio"
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "テキストを残して音声を消す"
+          ],
+          "title" : "録音を削除",
+          "words" : [
+            "音声ファイル"
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "텍스트는 남기고 음성만 지우기"
+          ],
+          "title" : "녹음 삭제",
+          "words" : [
+            "오디오 파일"
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "ištrinti visus diktavimo garso įrašus",
+            "ištrinti visus susitikimų garso įrašus",
+            "ištrinti garsą ir palikti tekstą"
+          ],
+          "title" : "ištrinti garso įrašus",
+          "words" : [
+
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "dzēst audio un paturēt tekstu"
+          ],
+          "title" : "dzēst ierakstus",
+          "words" : [
+            "audio faili"
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "ħassar l-awdjo u żomm it-test"
+          ],
+          "title" : "ħassar ir-reġistrazzjonijiet",
+          "words" : [
+            "fajls awdjo"
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "audio verwijderen en tekst bewaren"
+          ],
+          "title" : "opnamen verwijderen",
+          "words" : [
+            "audiobestanden",
+            "wissen"
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "usuń dźwięk i zachowaj tekst"
+          ],
+          "title" : "usuń nagrania",
+          "words" : [
+            "pliki audio"
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "apagar o áudio e manter o texto"
+          ],
+          "title" : "apagar gravações",
+          "words" : [
+            "ficheiros de áudio",
+            "arquivos de áudio"
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "șterge toate înregistrările dictărilor și păstrează textul",
+            "șterge toate înregistrările audio ale întâlnirilor"
+          ],
+          "title" : "șterge înregistrările",
+          "words" : [
+            "ștergere audio"
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "удалить все аудиозаписи диктовок",
+            "удалить все аудиозаписи встреч",
+            "удалить аудиозаписи, сохранив текст"
+          ],
+          "title" : "удалить записи",
+          "words" : [
+            "аудиофайлы"
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "vymazať zvuk a ponechať text"
+          ],
+          "title" : "vymazať nahrávky",
+          "words" : [
+            "zvukové súbory"
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "izbriši zvok in ohrani besedilo"
+          ],
+          "title" : "izbriši posnetke",
+          "words" : [
+            "zvočne datoteke"
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "radera ljudet och behåll texten"
+          ],
+          "title" : "radera inspelningar",
+          "words" : [
+            "ljudfiler",
+            "ta bort"
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "tüm dikte kayıtlarını sil",
+            "tüm toplantı seslerini sil",
+            "ses kayıtlarını sil ama metinler kalsın"
+          ],
+          "title" : "ses kayıtlarını sil",
+          "words" : [
+            "ses dosyaları"
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "видалити всі записи диктування",
+            "видалити все аудіо зустрічей",
+            "видалити аудіо й зберегти текст"
+          ],
+          "title" : "видалити записи",
+          "words" : [
+            "аудіофайли"
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "xóa âm thanh và giữ lại văn bản"
+          ],
+          "title" : "xóa bản ghi âm",
+          "words" : [
+            "tệp âm thanh"
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "删除所有听写录音",
+            "删除所有会议音频",
+            "删除录音但保留文字、会议笔记和摘要"
+          ],
+          "title" : "删除录音",
+          "words" : [
+            "清空录音",
+            "删除音频"
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.appSettings",
+        "appSettings.tab.recordings",
+        "section.recordingStorage",
+        "deleteRecordings"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : null,
+      "destination" : {
+        "page" : "appSettings",
+        "tab" : "recordings"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+        "deleteRecordings"
+      ],
+      "id" : "deleteRecordings.dictations",
+      "kind" : "action",
+      "parent" : "deleteRecordings",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "deleteRecordings.dictations",
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Alle Diktataufnahmen löschen",
+        "en" : "Delete all dictation recordings",
+        "key" : "Delete all dictation recordings",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "always",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "مسح كل التسجيلات الصوتية للإملاء"
+          ],
+          "title" : "حذف جميع تسجيلات الإملاء",
+          "words" : [
+
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "изтрий всички аудиозаписи на диктовки"
+          ],
+          "title" : "изтриване на всички записи на диктовки",
+          "words" : [
+
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "odstranit všechny zvukové záznamy diktátů",
+            "smazat všechny nahrávky diktátů a ponechat text"
+          ],
+          "title" : "smazat všechny nahrávky diktátů",
+          "words" : [
+
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "fjern alle lydoptagelser af diktater"
+          ],
+          "title" : "slet alle dikteringsoptagelser",
+          "words" : [
+
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "lösch alle Audioaufnahmen meiner Diktate"
+          ],
+          "words" : [
+            "Diktataudio"
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "σβήσε όλες τις ηχογραφήσεις από υπαγορεύσεις"
+          ],
+          "title" : "διαγραφή όλων των ηχογραφήσεων υπαγόρευσης",
+          "words" : [
+
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "remove all my dictation audio recordings"
+          ],
+          "words" : [
+            "dictation audio"
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "borrar todos los audios de dictado"
+          ],
+          "title" : "eliminar todas las grabaciones de dictado",
+          "words" : [
+
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "eemalda kõik dikteerimise helisalvestised"
+          ],
+          "title" : "kustuta kõik dikteerimise salvestised",
+          "words" : [
+
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "poista kaikkien sanelujen äänitteet"
+          ],
+          "title" : "poista kaikki sanelutallenteet",
+          "words" : [
+
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "effacer tous les audios de mes dictées"
+          ],
+          "title" : "supprimer tous les enregistrements de dictée",
+          "words" : [
+
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "डिक्टेशन की सारी ऑडियो रिकॉर्डिंग हटाएँ"
+          ],
+          "title" : "बोलकर लिखने की सभी रिकॉर्डिंग मिटाएँ",
+          "words" : [
+
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "obriši sve audiosnimke diktiranja"
+          ],
+          "title" : "izbriši sve snimke diktiranja",
+          "words" : [
+
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "az összes diktálás hangfelvételének törlése"
+          ],
+          "title" : "az összes diktálási felvétel törlése",
+          "words" : [
+
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "cancella tutti gli audio delle dettature"
+          ],
+          "title" : "elimina tutte le registrazioni di dettatura",
+          "words" : [
+
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "音声入力したときの録音を全部消す",
+            "音声入力のテキストは残して録音だけ全部削除する"
+          ],
+          "title" : "音声入力の録音をすべて削除",
+          "words" : [
+            "録音の一括削除"
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "받아쓰기한 음성 녹음 전부 지우기"
+          ],
+          "title" : "모든 받아쓰기 녹음 삭제",
+          "words" : [
+
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "pašalinti visus diktavimo garso įrašus"
+          ],
+          "title" : "ištrinti visus diktavimo įrašus",
+          "words" : [
+
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "izdzēst visus diktēšanas audioierakstus"
+          ],
+          "title" : "dzēst visus diktēšanas ierakstus",
+          "words" : [
+
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "neħħi l-awdjo kollu tad-dettatura"
+          ],
+          "title" : "ħassar ir-reġistrazzjonijiet kollha tad-dettatura",
+          "words" : [
+
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "alle geluidsopnamen van dictaten wissen"
+          ],
+          "title" : "alle dicteeropnamen verwijderen",
+          "words" : [
+
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "skasuj wszystkie nagrania dyktowania"
+          ],
+          "title" : "usuń wszystkie nagrania dyktowania",
+          "words" : [
+
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "apagar todos os áudios de ditado",
+            "excluir todas as gravações de ditado sem apagar os textos"
+          ],
+          "title" : "excluir todas as gravações de ditado",
+          "words" : [
+
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "șterge toate fișierele audio de la dictare"
+          ],
+          "title" : "șterge toate înregistrările de dictare",
+          "words" : [
+
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "стереть все аудиозаписи диктовки"
+          ],
+          "title" : "удалить все записи диктовки",
+          "words" : [
+
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "odstrániť všetky zvukové záznamy diktovania"
+          ],
+          "title" : "vymazať všetky nahrávky diktovania",
+          "words" : [
+
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "odstrani vse zvočne posnetke narekovanja"
+          ],
+          "title" : "izbriši vse posnetke narekovanja",
+          "words" : [
+
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "ta bort alla ljudinspelningar av diktat"
+          ],
+          "title" : "radera alla dikteringsinspelningar",
+          "words" : [
+
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "dikte ederken alınan tüm ses kayıtlarını sil"
+          ],
+          "title" : "tüm dikte kayıtlarını sil",
+          "words" : [
+
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "стерти всі аудіозаписи диктування"
+          ],
+          "title" : "видалити всі записи диктування",
+          "words" : [
+
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "xóa toàn bộ bản ghi âm đọc chính tả",
+            "xóa âm thanh đọc chính tả nhưng giữ lại văn bản"
+          ],
+          "title" : "xóa tất cả bản ghi âm đọc chính tả",
+          "words" : [
+
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "把语音输入时的录音全部删掉"
+          ],
+          "title" : "删除所有听写录音",
+          "words" : [
+
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.appSettings",
+        "appSettings.tab.recordings",
+        "section.recordingStorage",
+        "deleteRecordings"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : null,
+      "destination" : {
+        "page" : "appSettings",
+        "tab" : "recordings"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+        "deleteRecordings"
+      ],
+      "id" : "deleteRecordings.meetings",
+      "kind" : "action",
+      "parent" : "deleteRecordings",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "deleteRecordings.meetings",
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Gesamtes Meeting-Audio löschen",
+        "en" : "Delete all meeting audio",
+        "key" : "Delete all meeting audio",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "always",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "امسح صوت كل الاجتماعات"
+          ],
+          "title" : "حذف جميع التسجيلات الصوتية للاجتماعات",
+          "words" : [
+
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "изтрий звука от всички срещи"
+          ],
+          "title" : "изтриване на всички аудиозаписи от срещи",
+          "words" : [
+
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "odstranit audio ze všech schůzek"
+          ],
+          "title" : "smazat všechny zvukové záznamy schůzek",
+          "words" : [
+
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "slet lydoptagelser fra alle møder"
+          ],
+          "title" : "slet al mødelyd",
+          "words" : [
+
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "lösch die Audioaufnahmen aller Meetings"
+          ],
+          "words" : [
+            "Besprechungsaufnahmen"
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "σβήσε τις ηχογραφήσεις όλων των συναντήσεων"
+          ],
+          "title" : "διαγραφή όλου του ήχου των συναντήσεων",
+          "words" : [
+
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "delete audio recordings of all meetings"
+          ],
+          "words" : [
+            "meeting recordings"
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "borrar las grabaciones de audio de todas las reuniones"
+          ],
+          "title" : "eliminar todo el audio de las reuniones",
+          "words" : [
+
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "kustuta kõik koosolekute helisalvestised"
+          ],
+          "title" : "kustuta kõigi koosolekute heli",
+          "words" : [
+
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "poista kaikki kokousten äänitallenteet"
+          ],
+          "title" : "poista kaikkien kokousten äänitallenteet",
+          "words" : [
+
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "effacer les enregistrements audio de toutes les réunions"
+          ],
+          "title" : "supprimer tout l’audio des réunions",
+          "words" : [
+
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "सभी मीटिंगों की ऑडियो रिकॉर्डिंग हटाओ"
+          ],
+          "title" : "सभी मीटिंगों का ऑडियो मिटाएँ",
+          "words" : [
+
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "obriši zvučne snimke svih sastanaka"
+          ],
+          "title" : "izbriši sve audiosnimke sastanaka",
+          "words" : [
+
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "töröld az összes értekezlet hangfelvételét"
+          ],
+          "title" : "az összes megbeszélés hangfelvételének törlése",
+          "words" : [
+
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "cancella le registrazioni audio di tutte le riunioni"
+          ],
+          "title" : "elimina tutto l’audio delle riunioni",
+          "words" : [
+
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "会議の録音を全部消す"
+          ],
+          "title" : "すべての会議の音声を削除",
+          "words" : [
+
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "회의 녹음 전부 지우기"
+          ],
+          "title" : "모든 회의 오디오 삭제",
+          "words" : [
+
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "pašalinti visų susitikimų garso įrašus"
+          ],
+          "title" : "ištrinti visus susitikimų garso įrašus",
+          "words" : [
+
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "izdzēst visu sapulču skaņas ierakstus"
+          ],
+          "title" : "dzēst visus sapulču audioierakstus",
+          "words" : [
+
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "neħħi r-reġistrazzjonijiet tal-awdjo tal-laqgħat kollha"
+          ],
+          "title" : "ħassar l-awdjo kollu tal-laqgħat",
+          "words" : [
+
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "geluidsopnames van alle vergaderingen wissen"
+          ],
+          "title" : "alle audio van vergaderingen verwijderen",
+          "words" : [
+
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "skasuj audio ze wszystkich spotkań"
+          ],
+          "title" : "usuń wszystkie nagrania dźwiękowe spotkań",
+          "words" : [
+
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "apagar as gravações de áudio de todas as reuniões"
+          ],
+          "title" : "excluir todo o áudio das reuniões",
+          "words" : [
+
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "șterge sunetul de la toate întâlnirile"
+          ],
+          "title" : "șterge toate înregistrările audio ale întâlnirilor",
+          "words" : [
+
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "удалить аудио всех встреч"
+          ],
+          "title" : "удалить все аудиозаписи встреч",
+          "words" : [
+
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "vymazať audio zo všetkých stretnutí"
+          ],
+          "title" : "odstrániť všetky zvukové záznamy stretnutí",
+          "words" : [
+
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "odstrani zvok vseh sestankov"
+          ],
+          "title" : "izbriši vse zvočne posnetke sestankov",
+          "words" : [
+
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "ta bort ljudinspelningar från alla möten"
+          ],
+          "title" : "radera allt mötesljud",
+          "words" : [
+
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "bütün toplantıların sesini sil"
+          ],
+          "title" : "tüm toplantı ses kayıtlarını sil",
+          "words" : [
+
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "видалити аудіо всіх зустрічей"
+          ],
+          "title" : "видалити всі аудіозаписи зустрічей",
+          "words" : [
+
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "xóa hết bản ghi âm các cuộc họp"
+          ],
+          "title" : "xóa toàn bộ âm thanh cuộc họp",
+          "words" : [
+
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "把所有会议录音都删掉"
+          ],
+          "title" : "删除所有会议音频",
+          "words" : [
+
           ]
         }
       }

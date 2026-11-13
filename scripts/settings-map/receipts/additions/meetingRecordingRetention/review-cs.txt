@@ -1,0 +1,12 @@
+{
+  "language": "cs",
+  "title": "uchovávat zvuk ze schůzek",
+  "words": [
+    "nahrávky schůzek"
+  ],
+  "phrases": [
+    "jak dlouho uchovávat zvuk ze schůzek",
+    "automaticky mazat staré nahrávky schůzek",
+    "ponechat zvuk ze schůzek, dokud ho nesmažu"
+  ]
+}

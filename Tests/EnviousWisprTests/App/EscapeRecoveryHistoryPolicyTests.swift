@@ -255,7 +255,7 @@ struct EscapeRecoveryHistoryPolicyTests {
 
   /// A destructive confirmation must count what it will destroy.
   ///
-  /// `listedCount` is the sidebar statistic and excludes held recoveries,
+  /// `completedItemCount` (the retired sidebar statistic) and excludes held recoveries,
   /// which is right for a sidebar and wrong for a Delete All dialog: a history
   /// showing only held rows would offer to delete "all 0 items" and then
   /// delete them. The two counts are different questions, so they are different
@@ -268,7 +268,7 @@ struct EscapeRecoveryHistoryPolicyTests {
     coordinator.load()
     await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
 
-    #expect(coordinator.listedCount == 0, "a held row is not a dictation")
+    #expect(coordinator.completedItemCount == 0, "a held row is not a dictation")
     #expect(
       coordinator.deletableCount == 1,
       "but Delete All would take it, so the confirmation must say so")
@@ -364,7 +364,7 @@ struct EscapeRecoveryHistoryPolicyTests {
     #expect(
       coordinator.visibleTranscripts.first?.escapeRecoveredAt == nil,
       "the in-memory row stops being pending")
-    #expect(coordinator.listedCount == 1, "and starts counting as a dictation")
+    #expect(coordinator.completedItemCount == 1, "and starts counting as a dictation")
     #expect(
       try await store.loadPending().isEmpty,
       "the pending file is gone, so a relaunch cannot resume the countdown")
@@ -396,16 +396,17 @@ struct EscapeRecoveryHistoryPolicyTests {
     coordinator.load()
     await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
 
-    #expect(coordinator.listedCount == 1, "a held row is an offer, not a dictation")
+    #expect(coordinator.completedItemCount == 1, "a held row is an offer, not a dictation")
 
-    coordinator.searchQuery = "quarterly"
+    coordinator.setHistoryQuery("quarterly", in: .dictations)
     #expect(
-      coordinator.filteredTranscripts.map(\.displayText) == ["quarterly report"],
+      coordinator.matchingHistoryItems(in: .dictations).compactMap(\.row?.displayText)
+        == ["quarterly report"],
       "an accidental Escape must not pollute results for 24 hours")
 
-    coordinator.searchQuery = ""
+    coordinator.setHistoryQuery("", in: .dictations)
     #expect(
-      coordinator.filteredTranscripts.count == 2,
+      coordinator.matchingHistoryItems(in: .dictations).count == 2,
       "but it stays reachable by scrolling History, which is where the user left it")
   }
 
@@ -477,7 +478,7 @@ struct EscapeRecoveryHistoryPolicyTests {
       coordinator.setTranscriptsForTesting([skewed])
 
       #expect(coordinator.visibleTranscripts.isEmpty, "beyond tolerance is corrupt, not fresh")
-      #expect(coordinator.listedCount == 0)
+      #expect(coordinator.completedItemCount == 0)
       #expect(
         coordinator.hasPendingPulseForTesting == false,
         "and nothing counts down toward a deadline that has not begun")
@@ -510,7 +511,7 @@ struct EscapeRecoveryHistoryPolicyTests {
         permanent("kept"),
       ])
 
-      #expect(coordinator.listedCount == 1)
+      #expect(coordinator.completedItemCount == 1)
     }
 
     /// Inert on BOTH sides. An earlier version of this test checked only the
@@ -542,7 +543,7 @@ struct EscapeRecoveryHistoryPolicyTests {
       #expect(
         coordinator.visibleTranscripts.isEmpty,
         "so it stays invisible, which is what the user was promised")
-      #expect(coordinator.listedCount == 0, "and is still not a dictation")
+      #expect(coordinator.completedItemCount == 0, "and is still not a dictation")
     }
 
     @Test("a held row appended mid-session starts its countdown")

@@ -1,0 +1,1 @@
+{"language":"da","title":"behold diktatoptagelser","words":["opbevaringstid"],"phrases":["hvor længe gemmes diktatoptagelser","slet automatisk gamle diktatoptagelser og behold teksten"]}

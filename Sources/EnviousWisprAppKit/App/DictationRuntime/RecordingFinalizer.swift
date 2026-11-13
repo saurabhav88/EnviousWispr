@@ -153,15 +153,4 @@ final class RecordingFinalizer {
       )
     }
   }
-
-  /// Reset the active pipeline to idle (UI "Try Again" / dismiss action).
-  /// Lives here so `DictationRuntime` does not have to store the pipelines
-  /// itself; Finalizer already holds them.
-  func resetActive() {
-    if asrManager.activeBackendType == .whisper {
-      whisperKernelDriver.reset()
-    } else {
-      kernelDriver.reset()
-    }
-  }
 }

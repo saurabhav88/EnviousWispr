@@ -1,0 +1,9 @@
+{
+  "language": "hr",
+  "title": "čuvanje snimki diktata",
+  "words": [],
+  "phrases": [
+    "koliko dugo se čuvaju snimke diktata",
+    "automatski izbriši snimke diktata nakon 30 dana"
+  ]
+}

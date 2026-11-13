@@ -79,12 +79,13 @@ struct MeetingTranscriptLanguageSection: View {
             Text(languageName)
               .font(.stRowHelper)
               .foregroundStyle(.stTextSecondary)
-            Button(SettingsItemCopy.Engine.lockedLanguageChange) { showLanguages = true }
-              .controlSize(.small)
-              .font(.stHelper)
-              .disabled(isAuto)
-              .accessibilityLabel(String(localized: MeetingsCopy.transcriptLanguageTitle))
-              .settingsArrivalFocusControl()
+            Button {
+              showLanguages = true
+            } label: {
+              EnviousButtonLabel(SettingsItemCopy.Engine.lockedLanguageChange)
+            }
+            .settingsButton(isEnabled: !isAuto)
+            .accessibilityLabel(String(localized: MeetingsCopy.transcriptLanguageTitle))
           }
         }
         .rowStatus {

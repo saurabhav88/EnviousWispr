@@ -1,0 +1,1 @@
+{"language":"sl","title":"izbriši posnetke","words":["zvočne datoteke"],"phrases":["izbriši zvok in ohrani besedilo"]}

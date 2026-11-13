@@ -282,6 +282,7 @@
    "appSettings.tab.licenses",
    "appSettings.tab.permissions",
    "appSettings.tab.privacy",
+   "appSettings.tab.recordings",
    "section.appearance",
    "showInDock",
    "theme",
@@ -306,6 +307,7 @@
    "appSettings.tab.licenses",
    "appSettings.tab.permissions",
    "appSettings.tab.privacy",
+   "appSettings.tab.recordings",
    "license.gpl",
    "license.gpl.view",
    "license.notices",
@@ -320,6 +322,7 @@
    "appSettings.tab.licenses",
    "appSettings.tab.permissions",
    "appSettings.tab.privacy",
+   "appSettings.tab.recordings",
    "permission.accessibility",
    "permission.microphone",
    "section.permissions"
@@ -332,6 +335,7 @@
    "appSettings.tab.licenses",
    "appSettings.tab.permissions",
    "appSettings.tab.privacy",
+   "appSettings.tab.recordings",
    "permission.accessibility",
    "permission.accessibility.openSettings",
    "permission.microphone",
@@ -346,6 +350,7 @@
    "appSettings.tab.licenses",
    "appSettings.tab.permissions",
    "appSettings.tab.privacy",
+   "appSettings.tab.recordings",
    "section.privacy",
    "sendCrashReports",
    "shareUsageMetrics",
@@ -362,6 +367,27 @@
    "shareUsageMetrics",
    "whatWeCollect",
    "whatWeCollect.seeDetails"
+  ]
+ },
+ "appSettings.recordings": {
+  "exempt": {},
+  "mapped": [
+   "appSettings.tab.appearance",
+   "appSettings.tab.licenses",
+   "appSettings.tab.permissions",
+   "appSettings.tab.privacy",
+   "appSettings.tab.recordings",
+   "deleteRecordings",
+   "deleteRecordings.dictations",
+   "deleteRecordings.meetings",
+   "dictationRecordingRetention",
+   "meetingRecordingRetention",
+   "recordingStorageUsage",
+   "recordingStorageWarningThreshold",
+   "recordingThresholdBehavior",
+   "saveDictationRecordings",
+   "section.recordingStorage",
+   "section.recordings"
   ]
  },
  "dictation.chimes": {

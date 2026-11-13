@@ -12,8 +12,12 @@ struct HistoryPagingTests {
     (0..<count).map { .transcript(Transcript(text: "row \($0)")) }
   }
 
-  private static let all = HistoryPaging.Context(filter: .all, query: "")
-  private static let searching = HistoryPaging.Context(filter: .all, query: "contract")
+  private static let all = HistoryPaging.Context(tab: .dictations, query: "", filter: .none)
+  private static let searching = HistoryPaging.Context(
+    tab: .dictations, query: "contract", filter: .none)
+  private static let otherTab = HistoryPaging.Context(tab: .transcripts, query: "", filter: .none)
+  private static let filtered = HistoryPaging.Context(
+    tab: .dictations, query: "", filter: HistoryListFilter(app: .named("Slack")))
 
   @Test("the window is the requested limit, or further to the selection's page boundary")
   func effectiveCountIncludesTheSelection() {
@@ -42,7 +46,7 @@ struct HistoryPagingTests {
   func retainedSelectionAfterWidening() {
     let rows = Self.items(200)
     // Selected while searching, then the search is cleared: the row is now at position 75.
-    let state = HistoryPaging.synchronized(HistoryPaging.State(), to: Self.all)
+    let state = HistoryPaging.State(requested: 30, context: Self.all)
     let window = HistoryPaging.window(
       items: rows, context: Self.all, state: state, selected: rows[75].id)
     #expect(window.boundary == 90)
@@ -91,44 +95,43 @@ struct HistoryPagingTests {
     #expect(state == HistoryPaging.State(requested: 60, context: Self.all))
   }
 
-  @Test("a request from before a filter or search change loads nothing")
-  func staleRequestAfterAContextChange() throws {
+  @Test(
+    "a request from before a search, filter or tab change loads nothing",
+    arguments: [Self.searching, Self.filtered, Self.otherTab])
+  func staleRequestAfterAContextChange(newContext: HistoryPaging.Context) throws {
     let rows = Self.items(100)
-    var state = HistoryPaging.State()
-    let old = HistoryPaging.window(items: rows, context: Self.all, state: state, selected: nil)
+    let old = HistoryPaging.window(
+      items: rows, context: Self.all, state: HistoryPaging.State(), selected: nil)
     let request = try #require(HistoryPaging.request(for: old))
-    state = HistoryPaging.synchronized(state, to: Self.searching)
-    let live = HistoryPaging.window(
-      items: rows, context: Self.searching, state: state, selected: nil)
+    let state = HistoryPaging.State(requested: 30, context: newContext)
+    let live = HistoryPaging.window(items: rows, context: newContext, state: state, selected: nil)
     #expect(HistoryPaging.load(request, state: state, current: live) == state)
     #expect(HistoryPaging.accept(request, current: live) == nil)
   }
 
-  @Test("a load accepted for the new context survives the reset that runs after it")
-  func loadBeforeResetIsKept() throws {
-    let rows = Self.items(100)
-    // The search changed; the list rendered for it, and its last row asked for more before
-    // the context reset ran.
-    let fresh = HistoryPaging.window(
-      items: rows, context: Self.searching, state: HistoryPaging.State(), selected: nil)
-    let request = try #require(HistoryPaging.request(for: fresh))
-    var state = HistoryPaging.load(request, state: HistoryPaging.State(), current: fresh)
-    #expect(state == HistoryPaging.State(requested: 60, context: Self.searching))
-    state = HistoryPaging.synchronized(state, to: Self.searching)
-    #expect(state.requested == 60)
-  }
-
-  @Test("a reset that runs first is followed by a normal load")
-  func resetBeforeLoad() throws {
-    let rows = Self.items(100)
-    var state = HistoryPaging.State(requested: 90, context: Self.all)
-    state = HistoryPaging.synchronized(state, to: Self.searching)
-    #expect(state == HistoryPaging.State(requested: 30, context: Self.searching))
-    let live = HistoryPaging.window(
-      items: rows, context: Self.searching, state: state, selected: nil)
-    let request = try #require(HistoryPaging.request(for: live))
-    state = HistoryPaging.load(request, state: state, current: live)
-    #expect(state.requested == 60)
+  @Test("a tab's stored count is its paging state, keyed by that tab and all its filters")
+  func tabStateMapsToItsOwnContext() {
+    var tabState = HistoryTabState()
+    tabState.query = "contract"
+    tabState.app = .named("Slack")
+    tabState.speakerCount = 2...2
+    tabState.requestedCount = 90
+    let state = HistoryPaging.state(tabState, tab: .transcripts)
+    #expect(state.requested == 90)
+    let context = HistoryPaging.Context(
+      tab: .transcripts, query: "contract",
+      filter: HistoryListFilter(app: .named("Slack"), speakerCount: 2...2))
+    #expect(state.context == context)
+    #expect(HistoryPaging.requested(state, for: context) == 90)
+    // The same search and filters on another tab, or one filter changed, start again at 30.
+    #expect(
+      HistoryPaging.requested(
+        state, for: HistoryPaging.Context(tab: .dictations, state: tabState)) == 30)
+    var narrowed = tabState
+    narrowed.dateInterval = DateInterval(start: .distantPast, duration: 1)
+    #expect(
+      HistoryPaging.requested(
+        state, for: HistoryPaging.Context(tab: .transcripts, state: narrowed)) == 30)
   }
 
   @Test("the last page is partial and then nothing more is offered")

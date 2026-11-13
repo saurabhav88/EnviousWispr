@@ -108,6 +108,11 @@ struct SetupPolishScreen: View {
         Spacer(minLength: 0)
         footer
       }
+      if model.state.recoveringReadiness {
+        SetupLinkButton(title: "Return to getting ready", quiet: true) {
+          send(.returnToGettingReady)
+        }
+      }
     }
     .padding(.top, DesignSpacing.xs)
     .onAppear { model.screenMounted(seeAll ? .polishSeeAll : .polishPick, epoch: epoch) }

@@ -1,0 +1,9 @@
+{
+  "language": "lt",
+  "title": "diktavimo įrašų saugojimo trukmė",
+  "words": [],
+  "phrases": [
+    "kiek laiko saugoti diktavimo įrašus",
+    "automatiškai ištrinti senus diktavimo įrašus"
+  ]
+}

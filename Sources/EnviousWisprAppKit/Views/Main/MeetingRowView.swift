@@ -9,10 +9,6 @@ struct MeetingRowView: View {
   @Environment(TranscriptCoordinator.self) private var transcriptCoordinator
   @Environment(MeetingCoordinator.self) private var meetings
 
-  private var isSelected: Bool {
-    transcriptCoordinator.selectedItemID == .meeting(meeting.meetingID)
-  }
-
   private var title: String {
     if let record = meeting.record { return MeetingsPresentation.title(record) }
     return String(
@@ -23,12 +19,6 @@ struct MeetingRowView: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
       HStack(spacing: 5) {
-        if isSelected {
-          Circle()
-            .fill(Color.stAccent)
-            .frame(width: 7, height: 7)
-            .accessibilityHidden(true)
-        }
         Text(meeting.createdAt, format: .dateTime.month().day().hour().minute())
           .font(.caption.monospaced())
           .foregroundStyle(.stTextSecondary)
@@ -76,7 +66,7 @@ struct MeetingRowView: View {
         }
       }
     }
-    .historyRowCard(isSelected: isSelected)
+    .historyRowCard(isSelected: false)
   }
 
   /// The transcript's visible lines when the meeting is ready, else its status.

@@ -2,14 +2,17 @@
 """Generate the app's design tokens from DESIGN.md (#4506).
 
 DESIGN.md's fenced ```json design-tokens block is the only hand-edited source of
-token values. This script writes
-Sources/EnviousWisprAppKit/Views/Design/DesignTokens.generated.swift from it and
-formats the result with the repository's swift-format configuration, so the
-editor's format-on-save hook finds nothing to change.
+token values. This script writes two readers of it:
+- Sources/EnviousWisprAppKit/Views/Design/DesignTokens.generated.swift, formatted
+  with the repository's swift-format configuration so the editor's format-on-save
+  hook finds nothing to change;
+- the generated section of design/atlas/atlas.css (the screen atlas's CSS
+  variables, between the GENERATED markers). The hand-written part classes below
+  the end marker are kept as they are.
 
 Usage:
-  python3 scripts/design/generate-tokens.py           # write the generated file
-  python3 scripts/design/generate-tokens.py --check   # exit 1 if it is out of date
+  python3 scripts/design/generate-tokens.py           # write both generated outputs
+  python3 scripts/design/generate-tokens.py --check   # exit 1 if either is out of date
 
 Fails (exit 2) on: no or several values blocks, invalid JSON, a duplicate key, an
 unknown family or field, a color without both a light and a dark value, a value
@@ -31,6 +34,18 @@ REPO = Path(__file__).resolve().parents[2]
 BOOK = REPO / "DESIGN.md"
 OUTPUT = REPO / "Sources/EnviousWisprAppKit/Views/Design/DesignTokens.generated.swift"
 FORMAT_CONFIG = REPO / ".swift-format"
+ATLAS_CSS = REPO / "design/atlas/atlas.css"
+CSS_BEGIN = "/* GENERATED from DESIGN.md by scripts/design/generate-tokens.py. Do not edit between these markers. */"
+CSS_END = "/* END GENERATED. Hand-written part classes below use only the variables above. */"
+CSS_WEIGHTS = {"ultraLight": 100, "thin": 200, "light": 300, "regular": 400, "medium": 500,
+               "semibold": 600, "bold": 700, "heavy": 800, "black": 900}
+CSS_FAMILIES = {
+    "default": '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif',
+    "rounded": 'ui-rounded, "SF Pro Rounded", -apple-system, BlinkMacSystemFont, sans-serif',
+    "serif": 'ui-serif, "New York", Georgia, serif',
+    "monospaced": 'ui-monospace, "SF Mono", Menlo, monospace',
+}
+CSS_CURVES = {"easeIn": "ease-in", "easeOut": "ease-out", "easeInOut": "ease-in-out", "linear": "linear"}
 
 HEADER = (
     "// GENERATED from DESIGN.md by scripts/design/generate-tokens.py. Do not edit.\n"
@@ -233,6 +248,78 @@ def render(data: dict) -> str:
     return "\n".join(out).rstrip("\n") + "\n"
 
 
+def kebab(name: str) -> str:
+    """`SettingsPR1Layout` -> `settings-pr1-layout`, `stPageBg` -> `st-page-bg`."""
+    name = re.sub(r"([a-z0-9])([A-Z])", r"\1-\2", name)
+    name = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1-\2", name)
+    return name.lower()
+
+
+def css_name(key: str) -> str:
+    namespace, member = key.split(".")
+    if namespace in {"Color", "Font"}:
+        return kebab(member)
+    return f"{kebab(namespace)}-{kebab(member)}"
+
+
+def css_percent(component) -> str:
+    # Exact decimal: 0.973 -> 97.3%, never a rounded 0-255 integer.
+    from decimal import Decimal
+    text = format(Decimal(repr(component)) * 100, "f")
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return f"{text}%"
+
+
+def css_color(value) -> str:
+    r, g, b, a = (css_percent(c) for c in value)
+    return f"rgb({r} {g} {b} / {a})"
+
+
+def render_css_section(data: dict) -> str:
+    """The generated block of atlas.css. `render` has already validated `data`."""
+    light, dark, rest = [], [], []
+    for key, entry in data["colors"].items():
+        name = f"--ew-{css_name(key)}"
+        light.append(f"  {name}: {css_color(entry['light'])};")
+        dark.append(f"  {name}: {css_color(entry['dark'])};")
+    for key, entry in data["fonts"].items():
+        name = f"--ew-font-{css_name(key)}"
+        weight = CSS_WEIGHTS[entry.get("weight", "regular")]
+        family = CSS_FAMILIES[entry.get("design", "default")]
+        rest.append(f"  {name}-size: {number(entry['size'], key)}px;")
+        rest.append(f"  {name}-weight: {weight};")
+        rest.append(f"  {name}-family: {family};")
+    for key, entry in data["layout"].items():
+        rest.append(f"  --ew-{css_name(key)}: {number(entry['value'], key)}px;")
+    for key, entry in data["motion"].items():
+        name = f"--ew-motion-{kebab(key.split('.')[1])}"
+        rest.append(f"  {name}-duration: {number(entry['duration'], key)}s;")
+        rest.append(f"  {name}-curve: {CSS_CURVES[entry['curve']]};")
+    body = [CSS_BEGIN,
+            "/* Light values; also the explicit light choice. */",
+            ":root, :root[data-theme=\"light\"] {", *light, *rest, "}",
+            "/* Dark values when the system is dark and no light choice is set. */",
+            "@media (prefers-color-scheme: dark) {", "  :root:not([data-theme=\"light\"]) {",
+            *("  " + line for line in dark), "  }", "}",
+            "/* The explicit dark choice. */",
+            ":root[data-theme=\"dark\"] {", *dark, "}",
+            CSS_END]
+    return "\n".join(body) + "\n"
+
+
+def merge_css(current: str | None, section: str) -> str:
+    """Replace the generated block of atlas.css, keeping the hand-written classes."""
+    if current is None:
+        return section
+    begin = current.find(CSS_BEGIN)
+    end = current.find(CSS_END)
+    if begin != 0 or end < 0 or current.count(CSS_BEGIN) != 1 or current.count(CSS_END) != 1:
+        raise BookError(f"{ATLAS_CSS.relative_to(REPO)}: expected one generated block at the top of the file")
+    tail = current[end + len(CSS_END):]
+    return section.rstrip("\n") + tail
+
+
 def swift_format(source: str) -> str:
     tool = shutil.which("swift-format")
     if tool is None:
@@ -250,25 +337,33 @@ def main() -> int:
     parser.add_argument("--check", action="store_true", help="exit 1 if the generated file is out of date")
     args = parser.parse_args()
     try:
-        generated = swift_format(render(load_block(BOOK.read_text(encoding="utf-8"))))
+        data = load_block(BOOK.read_text(encoding="utf-8"))
+        generated = swift_format(render(data))
+        current_css = ATLAS_CSS.read_text(encoding="utf-8") if ATLAS_CSS.exists() else None
+        css = merge_css(current_css, render_css_section(data))
     except (BookError, OSError) as error:
         print(f"generate-tokens: {error}", file=sys.stderr)
         return 2
+    outputs = [(OUTPUT, generated), (ATLAS_CSS, css)]
     if args.check:
-        try:
-            current = OUTPUT.read_text(encoding="utf-8")
-        except OSError as error:
-            print(f"generate-tokens: cannot read {OUTPUT}: {error}", file=sys.stderr)
-            return 1
-        if current != generated:
-            print(f"generate-tokens: {OUTPUT.relative_to(REPO)} is out of date; run python3 scripts/design/generate-tokens.py",
+        stale = []
+        for path, text in outputs:
+            try:
+                if path.read_text(encoding="utf-8") != text:
+                    stale.append(path)
+            except OSError:
+                stale.append(path)
+        for path in stale:
+            print(f"generate-tokens: {path.relative_to(REPO)} is out of date; run python3 scripts/design/generate-tokens.py",
                   file=sys.stderr)
+        if stale:
             return 1
         print("generate-tokens: up to date")
         return 0
-    OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT.write_text(generated, encoding="utf-8")
-    print(f"generate-tokens: wrote {OUTPUT.relative_to(REPO)}")
+    for path, text in outputs:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+        print(f"generate-tokens: wrote {path.relative_to(REPO)}")
     return 0
 
 

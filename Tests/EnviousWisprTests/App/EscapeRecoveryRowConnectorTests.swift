@@ -26,7 +26,7 @@ struct EscapeRecoveryRowConnectorTests {
   private static let detailPath =
     "Sources/EnviousWisprAppKit/Views/Main/TranscriptDetailView.swift"
   private static let historyPath =
-    "Sources/EnviousWisprAppKit/Views/Main/TranscriptHistoryView.swift"
+    "Sources/EnviousWisprAppKit/Views/Main/HistoryDiaryView.swift"
   /// #3972: History's Paste transaction, shared by the transcript and meeting details.
   private static let pastePath = "Sources/EnviousWisprAppKit/Views/Main/HistoryPaste.swift"
 

@@ -1,0 +1,11 @@
+{
+  "language": "da",
+  "title": "brugt lagerplads",
+  "words": [
+    "optagelsernes størrelse"
+  ],
+  "phrases": [
+    "hvor meget fylder optagelserne",
+    "plads brugt af optagelser"
+  ]
+}

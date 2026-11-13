@@ -1,0 +1,13 @@
+{
+  "language": "fi",
+  "title": "kokousäänitteiden säilytysaika",
+  "words": [
+    "kokousäänitteet",
+    "kokoustallenteet"
+  ],
+  "phrases": [
+    "kuinka kauan kokousten äänitallenteet säilytetään",
+    "poista kokousäänitteet automaattisesti 30 päivän jälkeen",
+    "säilytä kokousäänitteet kunnes poistan ne itse"
+  ]
+}

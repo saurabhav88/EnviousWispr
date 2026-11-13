@@ -19,7 +19,7 @@ struct AppWindowCoordinatorDockPolicyTests {
     _ effects: RecordingDesktopPresentationEffects, showInDock: Bool
   ) -> AppWindowCoordinator {
     AppWindowCoordinator(
-      application: effects, showInDock: { showInDock }, canOpenOnboarding: { false },
+      application: effects, showInDock: { showInDock },
       isOnboardingComplete: { true })
   }
 

@@ -1,0 +1,13 @@
+{
+  "language": "da",
+  "title": "advarselsgrænse for lagerplads",
+  "words": [
+    "lageradvarsel",
+    "advarselsgrænse"
+  ],
+  "phrases": [
+    "advar mig når optagelser fylder mere end 2 GB",
+    "vælg hvornår jeg får en advarsel om optagelsernes størrelse",
+    "slå advarslen om lagerplads til optagelser fra"
+  ]
+}

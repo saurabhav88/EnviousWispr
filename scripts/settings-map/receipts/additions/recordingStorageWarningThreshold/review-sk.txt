@@ -1,0 +1,13 @@
+{
+  "language": "sk",
+  "title": "hranica pre upozornenie na využitie úložiska",
+  "words": [
+    "prah upozornenia",
+    "varovanie o zaplnení"
+  ],
+  "phrases": [
+    "upozorni ma, keď nahrávky zaberajú priveľa miesta",
+    "pri akej veľkosti nahrávok zobraziť upozornenie",
+    "vypnúť upozornenie na miesto zabraté nahrávkami"
+  ]
+}

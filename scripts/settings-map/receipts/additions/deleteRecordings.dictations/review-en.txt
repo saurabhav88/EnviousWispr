@@ -1,0 +1,9 @@
+{
+  "language": "en",
+  "words": [
+    "dictation audio"
+  ],
+  "phrases": [
+    "remove all my dictation audio recordings"
+  ]
+}

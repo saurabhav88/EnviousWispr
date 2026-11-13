@@ -142,6 +142,87 @@ struct SetupGateTests {
         && SetupGate.gettingReadyRoutes(cloud).withoutPolish)
   }
 
+  @Test("Getting ready recovery controls preserve picks and route through the coordinator")
+  func recoveryActionsReachTheirScreens() throws {
+    let world = OnboardingCoordinatorTests.World()
+    let coordinator = OnboardingRuntimeTests.atDownloads(world)
+    coordinator.send(.next)
+    coordinator.send(.readinessChanged(.init(microphoneGranted: true, accessibilityGranted: true)))
+    coordinator.send(.next)
+    #expect(coordinator.state.step == .gettingReady)
+
+    let model = SetupScreenModel(coordinator: coordinator)
+    defer { model.detach() }
+    let choices = coordinator.state.choices
+    let p = Self.p(
+      speech: .paused, polishPhase: .failed(.whisper("fixture")), prep: .downloadStopped,
+      ax: false)
+    let actions = SetupGate.recoveryActions(p).map(\.event)
+    #expect(actions == [.reviewPermissions, .changeSpeech, .changePolish, .continueWithoutPolish])
+    for (event, destination) in [
+      (OnboardingEvent.reviewPermissions, OnboardingStep.permissions),
+      (.changeSpeech, .speechPick), (.changePolish, .polishPick),
+    ] {
+      model.send(try #require(actions.first { $0 == event }))
+      #expect(model.state.step == destination && model.state.choices == choices)
+      model.send(.returnToGettingReady)
+      #expect(model.state.step == .gettingReady && model.state.choices == choices)
+    }
+
+    model.send(.changeSpeech)
+    model.send(.chooseSpeech(.whisper))
+    #expect(model.state.step == .gettingReady && model.state.choices.speech == .whisper)
+    #expect(!model.state.isReadyForPractice)
+  }
+
+  @Test("skipping AI polish after a disk refusal leaves speech actionable in Getting ready")
+  func diskRefusalSurvivesSkippingPolish() async {
+    let world = OnboardingCoordinatorTests.World()
+    world.free = 1000
+    world.bytes = [.speech(.whisper): 900]
+    let coordinator = world.coordinator()
+    coordinator.begin()
+    let events: [OnboardingEvent] = [
+      .next, .next, .chooseSpeech(.whisper), .next, .choosePolish("eg1.mini"),
+      .changePolish, .skipPolish, .next,
+      .readinessChanged(.init(microphoneGranted: true, accessibilityGranted: true)), .next,
+    ]
+    for event in events { coordinator.send(event) }
+
+    let presentation = P.make(
+      state: coordinator.state, block: coordinator.block, warmFailed: false, queuedPolish: nil,
+      isNetworkSlow: false, isCountingDown: false,
+      speechPhase: { world.speechPhase[$0] ?? .notStarted },
+      polishPhase: { _ in nil }, downloadsFinished: false)
+    #expect(coordinator.state.step == .gettingReady)
+    #expect(presentation.polishPreparation == .off && presentation.speechPhase == .notStarted)
+    #expect(SetupGate.problem(presentation, screen: .gettingReady) == .disk(needed: 1080))
+    #expect(SetupGate.sharedControls(presentation) == [.retryDownloads])
+    #expect(SetupGate.recoveryActions(presentation).map(\.event).contains(.changeSpeech))
+    #expect(!world.log.contains("request(whisper)"))
+
+    world.free = 2000
+    coordinator.retryDownloads()
+    await coordinator.settle()
+    #expect(coordinator.block == nil && world.log.contains("request(whisper)"))
+  }
+
+  @Test("the background pill opens Downloads and Return restores each real origin")
+  func downloadPillReturnsToItsOrigin() {
+    #expect(SetupDownloadPill.status(Self.p()) == .moving)
+    #expect(SetupDownloadPill.status(Self.p(speech: .paused)) == .stopped)
+    #expect(SetupDownloadPill.status(Self.p(speech: .installed, finished: true)) == .ready)
+    for origin in OnboardingFlowState.downloadOrigins {
+      let source = OnboardingFlowState(step: origin, choices: .init(speech: .parakeet))
+      let opened = OnboardingFlow.reduce(source, .inspectDownloads).state
+      #expect(opened.step == .downloads && opened.downloadsReturn == origin)
+      for event in [OnboardingEvent.next, .back] {
+        let returned = OnboardingFlow.reduce(opened, event).state
+        #expect(returned == source)
+      }
+    }
+  }
+
   // MARK: Rendering
 
   @Observable final class Box {
@@ -211,7 +292,13 @@ struct SetupGateTests {
     for (name, step, presentation) in states {
       let world = OnboardingCoordinatorTests.World()
       let coordinator = OnboardingRuntimeTests.atDownloads(world)
-      if step == .gettingReady { coordinator.debugGoto(.gettingReady) }
+      if step == .gettingReady {
+        coordinator.send(.next)
+        coordinator.send(
+          .readinessChanged(.init(microphoneGranted: true, accessibilityGranted: true)))
+        coordinator.send(.next)
+        #expect(coordinator.state.step == .gettingReady)
+      }
       let model = SetupScreenModel(coordinator: coordinator)
       defer { model.detach() }
       model.sources.downloads = { presentation }

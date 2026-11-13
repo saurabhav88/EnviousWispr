@@ -14,7 +14,8 @@ import SwiftUI
 /// - parent-disabled (`.disabled(true)` on a container, control left enabled): buttons, switch;
 /// - selected: tab strip, choice bar, engine card, switch on and off;
 /// - destructive: the destructive button;
-/// - decorative (drawn, not a control): `SettingsActionButton` with no action;
+/// - decorative (drawn, not a control): `EnviousButtonLabel` with `EnviousButtonFace` and no
+///   `Button`;
 /// - keyboard-focused: `.settingsFieldChrome(focused:)`, the one approved part that paints its own
 ///   focused look (accent border at 2pt). `DesignRenderHarness` makes the second field the first
 ///   responder and waits until SwiftUI reports the focus (`focusObserved`) before capturing.
@@ -47,8 +48,10 @@ enum DesignPartsSheets {
     "BrandedSegmentedPicker": "controls",
     "BrandedToggleStyle": "controls",
     "BrandedSlider": "controls",
-    "SettingsActionButton": "controls",
-    "SettingsSheetCloseButton": "controls",
+    ".settingsButton(...)": "controls",
+    "EnviousButtonLabel": "controls",
+    "EnviousButtonFace": "controls",
+    "EnviousCloseGlyph": "controls",
     ".settingsFieldChrome(focused:)": "controls",
     "OnboardingButtonStyle": "controls",
     "SettingsSummaryCard": "cards",
@@ -215,24 +218,30 @@ enum DesignPartsSheets {
             }
             BrandedRow {
               HStack(spacing: 10) {
-                SettingsActionButton(
-                  verbatimTitle: "Back", isEnabled: true, emphasis: .quiet, shape: .roundedRect,
-                  size: .medium
-                ) {}
-                SettingsActionButton(
-                  verbatimTitle: "Continue", isEnabled: true, emphasis: .filled,
-                  shape: .roundedRect,
-                  size: .large, trailingSystemImage: "arrow.right"
-                ) {}
-                SettingsActionButton(
-                  verbatimTitle: "Preview", isEnabled: true, systemImage: "play.fill"
-                ) {}
+                Button {} label: {
+                  EnviousButtonLabel(verbatim: "Back", size: .medium)
+                }
+                .settingsButton(.quiet, shape: .roundedRect, size: .medium, isEnabled: true)
+                Button {} label: {
+                  EnviousButtonLabel(
+                    verbatim: "Continue", size: .large, trailingSystemImage: "arrow.right")
+                }
+                .settingsButton(.filled, shape: .roundedRect, size: .large, isEnabled: true)
+                Button {} label: {
+                  EnviousButtonLabel(verbatim: "Preview", systemImage: "play.fill")
+                }
+                .settingsButton(isEnabled: true)
               }
             }
             BrandedRow {
               HStack(spacing: 10) {
-                SettingsActionButton(verbatimTitle: "Decorative, no action", isEnabled: true)
-                SettingsSheetCloseButton(accessibilityTitle: "Close") {}
+                EnviousButtonLabel(verbatim: "Decorative, no action")
+                  .modifier(EnviousButtonFace(paintsEnabled: true))
+                Button {} label: {
+                  EnviousCloseGlyph()
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close")
               }
             }
             BrandedRow(showDivider: false) {
@@ -270,16 +279,22 @@ enum DesignPartsSheets {
       VStack(alignment: .leading, spacing: 6) {
         DesignPartsSheets.label(label)
         HStack(spacing: 10) {
-          SettingsActionButton(
-            verbatimTitle: "Download", isEnabled: isEnabled, emphasis: .filled
-          ) {}
-          SettingsActionButton(
-            verbatimTitle: "Test", isEnabled: isEnabled, emphasis: .outlined
-          ) {}
-          SettingsActionButton(verbatimTitle: "Back", isEnabled: isEnabled, emphasis: .quiet) {}
-          SettingsActionButton(
-            verbatimTitle: "Delete", isEnabled: isEnabled, emphasis: .destructive
-          ) {}
+          Button {} label: {
+            EnviousButtonLabel(verbatim: "Download")
+          }
+          .settingsButton(.filled, isEnabled: isEnabled)
+          Button {} label: {
+            EnviousButtonLabel(verbatim: "Test")
+          }
+          .settingsButton(isEnabled: isEnabled)
+          Button {} label: {
+            EnviousButtonLabel(verbatim: "Back")
+          }
+          .settingsButton(.quiet, isEnabled: isEnabled)
+          Button(role: .destructive) {} label: {
+            EnviousButtonLabel(verbatim: "Delete")
+          }
+          .settingsButton(isEnabled: isEnabled)
         }
       }
     }

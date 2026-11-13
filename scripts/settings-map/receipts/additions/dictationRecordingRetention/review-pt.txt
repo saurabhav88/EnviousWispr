@@ -1,0 +1,12 @@
+{
+  "language": "pt",
+  "title": "manter gravações de ditado",
+  "words": [
+    "prazo de retenção",
+    "exclusão automática"
+  ],
+  "phrases": [
+    "por quanto tempo ficam guardadas as gravações de ditado",
+    "apagar gravações antigas e manter o texto"
+  ]
+}

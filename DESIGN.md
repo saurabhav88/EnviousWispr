@@ -8,6 +8,7 @@ The single source for how the macOS app looks. Every Claude or Codex session rea
 
 ## How to use this book
 
+0. **See it before you build it.** Before you build, describe or mock up any screen, open the screen atlas in `design/atlas/` (`README.md`, `inventory.md`, `index.html`). It has a picture of every Settings page and tab, the three recording pill designs in their states, one picture per kind of pill notice, the logos as files, a starter page, and copy-ready HTML parts on these tokens. Its README lists what it does not show yet. Copy from it instead of drawing EnviousWispr from scratch.
 1. **Pick a part from "Approved parts".** If a part exists for the job, use it. Never build a second card, banner, button, row or badge.
 2. **Use tokens, never raw values.** Colors, fonts and layout sizes come from the tokens below. `DesignLiteralRatchetTests` rejects new hand-typed corner sizes, font sizes and color literals.
 3. **If nothing fits, stop and ask.** Do not invent a new part, color or size. Propose it to the founder with a mockup that uses these tokens.
@@ -328,9 +329,9 @@ Approved radii today, with their one owner each:
 | 14 | `SettingsLayout.sectionRadius` | Settings cards |
 | 10 | `BrandedSegmentedPicker` track | Choice bars |
 | 9 | `SettingsHover.rowRadius` | Hover and selection pill on rows |
-| 9 | `SettingsActionButton` rounded rectangle | Wizard buttons |
+| 9 | `EnviousButtonFace` rounded rectangle | Wizard buttons |
 | 7 | `BrandedSegmentedPicker` segment | Selected choice segment |
-| capsule | `SettingsActionButton`, status chips | Buttons and badges |
+| capsule | `EnviousButtonFace`, status chips | Buttons and badges |
 
 For any other surface use the `DesignRadius` scale (4, 6, 8, 10, 12, 16) in the values block. Other radii in the code are hand-typed and are being moved onto these owners (#4506 Phase 2). Do not add a new radius.
 
@@ -415,8 +416,9 @@ Use these. All live in `Sources/EnviousWisprAppKit/Views/Settings/SettingsCompon
 | `BrandedSegmentedPicker` | A choice between 2-4 options | `Picker(.segmented)` |
 | `BrandedToggleStyle` | Every on/off switch | `.toggleStyle(.switch)` |
 | `BrandedSlider` | A slider with value badge and Low/High labels | A bare `Slider` |
-| `SettingsActionButton` | Every Settings button (filled, outlined, quiet, destructive) | `.bordered`, `.borderedProminent`, `.plain` buttons |
-| `SettingsSheetCloseButton` | The close X on a sheet | A second worded Cancel |
+| `.settingsButton(...)` with `EnviousButtonLabel` (`Views/Design/EnviousButtonStyle.swift`) | Every Settings button: `Button { action } label: { EnviousButtonLabel(...) }.settingsButton(emphasis, isEnabled:, shortcut:)`, filled, outlined or quiet; Delete-type actions use `Button(role: .destructive)`, which paints the destructive look | `.bordered`, `.borderedProminent`, `.plain` buttons, a red `foregroundStyle` |
+| `EnviousButtonFace` (`Views/Design/EnviousButtonStyle.swift`) | A drawn-only button inside another control (a label with this face and no `Button`) | A real `Button` nested inside a button |
+| `EnviousCloseGlyph` (`Views/Design/EnviousButtonStyle.swift`) | The close X on a sheet: `Button { close } label: { EnviousCloseGlyph() }.buttonStyle(.plain)` plus the sheet's own `.accessibilityLabel` | A second worded Cancel |
 | `.settingsFieldChrome(focused:)` | Every text field on a Settings surface | `.textFieldStyle(.roundedBorder)` |
 | `SettingsSummaryCard` | A summary with status and choices | A new summary card |
 | `EngineCard` | An engine or model choice | A new choice card |

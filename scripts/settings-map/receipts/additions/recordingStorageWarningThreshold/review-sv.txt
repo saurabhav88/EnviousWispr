@@ -1,0 +1,1 @@
+{"language":"sv","title":"varningsgräns för lagringsutrymme","words":["lagringsvarning","varningsgräns"],"phrases":["varna mig när inspelningarna tar mer än 2 GB","ändra när varningen om lagringsutrymme visas","stäng av lagringsvarningen"]}

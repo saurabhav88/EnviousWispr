@@ -18,7 +18,9 @@ INVALID and never evidence. Whether the words really landed is the caller's scre
 
 `--source saved` (default) replays the founder's own saved dictations
 (`~/Library/Application Support/EnviousWispr/dictation-audio/*/raw.wav`, completed, 2 to 8 s,
-some speech above -30 dBFS). The archive is recorded at the mic's own low level, so each clip is
+some speech above -30 dBFS). That folder is the retired DEBUG archive's historical raw corpus
+(#1230); the app stopped writing it in #3147, and History's compressed recordings are not
+equivalent raw samples. The archive is recorded at the mic's own low level, so each clip is
 loudness-normalised into a temporary folder that is deleted at the end; nothing leaves the Mac.
 `--source tts` speaks a fixed sentence instead.
 

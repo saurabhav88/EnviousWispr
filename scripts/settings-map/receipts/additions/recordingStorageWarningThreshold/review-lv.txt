@@ -1,0 +1,1 @@
+{"language":"lv","title":"ierakstu apjoma brīdinājuma slieksnis","words":["brīdinājuma slieksnis","vietas brīdinājums"],"phrases":["brīdināt, kad ieraksti aizņem pārāk daudz vietas","izvēlēties, pie kāda ierakstu apjoma rādīt brīdinājumu","izslēgt brīdinājumu par ierakstu aizņemto vietu"]}

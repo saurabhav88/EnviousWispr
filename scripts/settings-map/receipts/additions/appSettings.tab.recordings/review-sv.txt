@@ -1,0 +1,1 @@
+{"language":"sv","title":"inspelningar","words":["ljudinspelningar","lagringsutrymme"],"phrases":["inställningar för sparade ljudinspelningar","spara ljud från dikteringar","radera ljud från dikteringar och möten"]}

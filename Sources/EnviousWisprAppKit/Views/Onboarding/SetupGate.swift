@@ -1,6 +1,7 @@
 import EnviousWisprCore
 import EnviousWisprServices
 import Foundation
+import SwiftUI
 
 /// Downloads and Getting ready's words and cards (#4528 D4a.2, plan M83; mockup `isGate`,
 /// `gateCards`, `gateMic`, `warmTitle`/`warmSub`, copy verbatim where the live facts support it).
@@ -435,6 +436,30 @@ enum SetupGate {
       }
     }()
     return (permissions, withoutPolish)
+  }
+
+  struct RecoveryAction {
+    let title: LocalizedStringKey
+    let event: OnboardingEvent
+  }
+
+  static func recoveryActions(_ p: OnboardingDownloadsPresentation) -> [RecoveryAction] {
+    let routes = gettingReadyRoutes(p)
+    var actions: [RecoveryAction] = []
+    if routes.permissions {
+      actions.append(.init(title: "Review permissions", event: .reviewPermissions))
+    }
+    if p.warmFailed || p.block != nil || stopped(p.speechPhase) {
+      actions.append(.init(title: "Change speech model", event: .changeSpeech))
+    }
+    if routes.withoutPolish {
+      if case .cloud(passed: false) = p.polishPreparation {
+        actions.append(.init(title: "Check AI polish key", event: .reviewCloudKey))
+      }
+      actions.append(.init(title: "Change AI polish", event: .changePolish))
+      actions.append(.init(title: "Continue without AI polish", event: .continueWithoutPolish))
+    }
+    return actions
   }
 
   // MARK: Shared words

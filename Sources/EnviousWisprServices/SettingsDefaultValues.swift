@@ -165,10 +165,18 @@ enum SettingsDefaultValues {
   // asks, nothing is remembered without a click. See `SettingsManager.learnFromEdits`.
   static let learnFromEdits = true
 
+  // #3147 Gate 2 (founder 2026-11-12): recordings are kept until the user deletes them (D2:
+  // no automatic seven-day removal); meeting audio likewise; warn at 2 GB and ask (D3).
+  /// D1: every new dictation keeps a recording unless the user turns this off.
+  static let saveDictationRecordings = true
+  static let dictationRecordingRetention: DictationRecordingRetention = .forever
+  static let meetingRecordingRetention: MeetingRecordingRetention = .forever
+  static let recordingStorageWarningThreshold: RecordingStorageWarningThreshold = .gb2
+  static let recordingThresholdBehavior: RecordingThresholdBehavior = .ask
+  /// #3147 §3.3: History opens on Dictations until the user picks another tab.
+  static let lastHistoryTab: HistoryTab = .dictations
+
   static let isDebugModeEnabled = false
-  // #1247: off by default, matching the privacy-strict rationale above — local
-  // mic-audio retention is opt-in only, never silently on.
-  static let isDictationAudioArchiveEnabled = false
   static let debugLogLevel: DebugLogLevel = .info
 
   static let whisperKitLanguage = "en"

@@ -1,23 +1,46 @@
+import EnviousWisprCore
 import Foundation
 
-/// How much of History's list `TranscriptHistoryView` hands to `List` (#4001 step 3a). On a
-/// 27,000-row History a `List` of every item made each search letter and filter switch cost
-/// seconds on an M1; the coordinator still decides which items are listed and which is
-/// selected, and this only decides how many of them `List` draws: 30, growing by 30.
-/// Plain value code, so the paging rules are tested without a view.
+/// How much of a History tab's list the diary draws (#4001 step 3a, #3147 §3.3). On a 27,000-row
+/// History drawing every item made each search letter and filter switch cost seconds on an M1;
+/// the coordinator still decides which items match, and this only decides how many of them the
+/// diary draws: 30, growing by 30. Plain value code, so the paging rules are tested without a
+/// view.
+///
+/// The requested count is stored once, in the tab's `HistoryTabState.requestedCount`, which the
+/// coordinator resets to 30 whenever the tab's search or filters change. This type keys every
+/// window and load request by the tab and all of its filters, so a request made for one tab or
+/// one filter is never applied to another.
 enum HistoryPaging {
-  static let pageSize = 30
+  static let pageSize = HistoryTabState.pageSize
 
-  /// The filter and search a requested limit was set for: a new one starts again at 30.
+  /// The tab, search and filters a requested limit was set for: a new one starts again at 30.
   struct Context: Equatable {
-    let filter: HistoryFilter
+    let tab: HistoryTab
     let query: String
+    let filter: HistoryListFilter
+
+    init(tab: HistoryTab, query: String, filter: HistoryListFilter) {
+      self.tab = tab
+      self.query = query
+      self.filter = filter
+    }
+
+    /// The context `state` describes on `tab`.
+    init(tab: HistoryTab, state: HistoryTabState) {
+      self.init(tab: tab, query: state.query, filter: state.listFilter)
+    }
   }
 
   /// The stored request: how many items, for which context.
   struct State: Equatable {
     var requested = HistoryPaging.pageSize
     var context: Context?
+  }
+
+  /// The paging state `tabState` carries on `tab`: its stored count, for its own context.
+  static func state(_ tabState: HistoryTabState, tab: HistoryTab) -> State {
+    State(requested: tabState.requestedCount, context: Context(tab: tab, state: tabState))
   }
 
   /// What one rendering of the list showed: its context, how many items it drew, its last item
@@ -43,15 +66,15 @@ enum HistoryPaging {
     state.context == context ? state.requested : pageSize
   }
 
-  /// At least `requested`, and far enough to include a qualifying selection: its position
-  /// rounded up to the next page boundary. Never more than `total`.
+  /// At least `requested`, and far enough to include an open item: its position rounded up to
+  /// the next page boundary. Never more than `total`.
   static func effectiveCount(requested: Int, selectedIndex: Int?, total: Int) -> Int {
     let throughSelection = selectedIndex.map { ($0 / pageSize + 1) * pageSize } ?? 0
     return min(total, max(requested, throughSelection))
   }
 
-  /// The window `items` give under `context`, `state` and `selected`, computed before `List` is
-  /// built, so the selection is inside it without any callback having run.
+  /// The window `items` give under `context`, `state` and `selected`, computed before the diary
+  /// is built, so an open item is inside it without any callback having run.
   static func window(
     items: [HistoryListItem], context: Context, state: State, selected: HistoryItemID?
   ) -> Window {
@@ -70,7 +93,7 @@ enum HistoryPaging {
   }
 
   /// The next limit when `request` still describes `current`, else nil: a duplicate request,
-  /// one made for an older window or another context, or one with nothing left to load.
+  /// one made for an older window, another tab or other filters, or one with nothing left.
   static func accept(_ request: LoadRequest, current: Window) -> Int? {
     guard request.context == current.context, request.boundary == current.boundary,
       request.tail == current.tail, request.boundary < current.total
@@ -83,11 +106,5 @@ enum HistoryPaging {
   static func load(_ request: LoadRequest, state: State, current: Window) -> State {
     guard let limit = accept(request, current: current) else { return state }
     return State(requested: limit, context: current.context)
-  }
-
-  /// The state after the filter or search moved to `context`: a limit already stored for that
-  /// context (a load accepted before this ran) is kept; any other starts again at 30.
-  static func synchronized(_ state: State, to context: Context) -> State {
-    state.context == context ? state : State(requested: pageSize, context: context)
   }
 }

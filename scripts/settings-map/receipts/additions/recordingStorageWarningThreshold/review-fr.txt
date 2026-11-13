@@ -1,0 +1,13 @@
+{
+  "language": "fr",
+  "title": "seuil d’alerte de stockage",
+  "words": [
+    "alerte de stockage",
+    "seuil d’avertissement"
+  ],
+  "phrases": [
+    "me prévenir quand les enregistrements prennent trop de place",
+    "régler le seuil d’alerte pour l’espace occupé par les enregistrements",
+    "désactiver l’alerte de stockage des enregistrements"
+  ]
+}

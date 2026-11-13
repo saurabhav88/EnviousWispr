@@ -1,0 +1,1 @@
+{"language":"hu","title":"felvételek","words":["hangfelvételek"],"phrases":["felvételek beállításai","diktálás hangfelvételei"]}

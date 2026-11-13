@@ -101,12 +101,12 @@ struct AIPolishProviderPicker: View {
         // button styling says what the card does before anyone hovers (Codex's first pick,
         // after Apple's pop-up button guidance). Drawn only: `action: nil` keeps it from being
         // a second control inside the card, whose whole area stays the one target.
-        SettingsActionButton(
-          title: LocalizedStringResource(
+        EnviousButtonLabel(
+          LocalizedStringResource(
             "Change", comment: "AI Polish: cue on the provider card that opens the provider list."),
-          isEnabled: true, emphasis: .outlined, size: .medium,
-          trailingSystemImage: "chevron.up.chevron.down", action: nil
-        )
+          size: .medium,
+          trailingSystemImage: "chevron.up.chevron.down")
+          .modifier(EnviousButtonFace(emphasis: .outlined, size: .medium, paintsEnabled: true))
         .fixedSize()
         .allowsHitTesting(false)
         .accessibilityHidden(true)

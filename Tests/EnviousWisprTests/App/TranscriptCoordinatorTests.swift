@@ -69,7 +69,7 @@ struct TranscriptCoordinatorTests {
       Transcript(
         text: "an import", language: "en", duration: 61, backendType: .parakeet,
         importedFileName: "sync.m4a"))
-    #expect(coordinator.listedCount == 2, "History lists two rows")
+    #expect(coordinator.completedItemCount == 2, "History lists two rows")
     #expect(coordinator.dictationCount == 1, "only one of them was dictated")
   }
 
@@ -90,13 +90,13 @@ struct TranscriptCoordinatorTests {
     try await coordinator.saveAndShow(imported)
     try await coordinator.saveAndShow(dictated)
 
-    coordinator.searchQuery = "marketing"
-    #expect(coordinator.filteredTranscripts.map(\.id) == [imported.id])
+    coordinator.setHistoryQuery("marketing", in: .transcripts)
+    #expect(coordinator.matchingRowIDs(in: .transcripts) == [imported.id])
     // The words still work, and a name nobody has does not match anything.
-    coordinator.searchQuery = "quarter"
-    #expect(coordinator.filteredTranscripts.map(\.id) == [imported.id])
-    coordinator.searchQuery = "budget"
-    #expect(coordinator.filteredTranscripts.isEmpty)
+    coordinator.setHistoryQuery("quarter", in: .transcripts)
+    #expect(coordinator.matchingRowIDs(in: .transcripts) == [imported.id])
+    coordinator.setHistoryQuery("budget", in: .transcripts)
+    #expect(coordinator.matchingRowIDs(in: .transcripts).isEmpty)
   }
 
   // MARK: - updateExistingRow(_:) contract (#2772)
@@ -342,7 +342,7 @@ struct TranscriptCoordinatorTests {
     #expect(coordinator.actionFailure == nil)
 
     // #4075 S1: the presentation the failed removal must not touch.
-    coordinator.selectedItemID = .transcript(row.id)
+    coordinator.openHistoryItem(.transcript(row.id), in: .dictations)
     coordinator.setShowEcho(true, rowID: row.id)
     var announced: [UUID] = []
     coordinator.onRowDeleted = { announced.append($0) }
@@ -352,7 +352,9 @@ struct TranscriptCoordinatorTests {
     await coordinator.delete(row)
     #expect(coordinator.actionFailure == .delete)
     #expect(coordinator.visibleTranscripts.map(\.id) == [row.id])
-    #expect(coordinator.selectedItemID == .transcript(row.id), "a failed delete moved the selection")
+    #expect(
+      coordinator.openHistoryItemID(in: .dictations) == .transcript(row.id),
+      "a failed delete closed the open item")
     #expect(coordinator.isShowingEcho(rowID: row.id), "a failed delete cleared the echo choice")
     #expect(announced.isEmpty, "a failed delete was announced")
 
@@ -491,7 +493,7 @@ struct TranscriptCoordinatorMeetingTests {
     var announced: [UUID] = []
     coordinator.onRowDeleted = { announced.append($0) }
     var handed: [UUID] = []
-    coordinator.deleteMeeting = { handed.append($0) }
+    coordinator.deleteMeeting = { handed.append($0); return true }
 
     await coordinator.delete(meetingRow)
     #expect(handed == [meetingID])
@@ -532,14 +534,14 @@ struct TranscriptCoordinatorMeetingTests {
     await coordinator.deleteAll()
     #expect(coordinator.actionFailure == .deleteAll)
     #expect(rowExistedWhenMarked == true)
-    #expect(coordinator.listedCount == 2)
+    #expect(coordinator.completedItemCount == 2)
     #expect(FileManager.default.fileExists(atPath: rowURL.path))
 
     coordinator.dismissActionFailure()
     allowed = true
     await coordinator.deleteAll()
     #expect(coordinator.actionFailure == nil)
-    #expect(coordinator.listedCount == 0)
+    #expect(coordinator.completedItemCount == 0)
   }
 
   #if DEBUG
@@ -1458,7 +1460,7 @@ struct TranscriptCoordinatorMeetingTests {
   #if DEBUG
     // MARK: - #4075 S1: remaining queue windows (plan-to-evidence audit)
 
-    @Test("a successful delete moves the selection to the row beside it and clears its echo choice")
+    @Test("a successful delete closes the open item and clears its echo choice")
     func successfulDeleteMovesSelectionAndClearsEcho() async throws {
       let dir = Self.makeTempDir()
       let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
@@ -1466,18 +1468,19 @@ struct TranscriptCoordinatorMeetingTests {
       let newer = Transcript(text: "newer", backendType: .parakeet)
       try await coordinator.saveAndShow(older)
       try await coordinator.saveAndShow(newer)
-      coordinator.selectedItemID = .transcript(newer.id)
+      coordinator.openHistoryItem(.transcript(newer.id), in: .dictations)
       coordinator.setShowEcho(true, rowID: newer.id)
       await coordinator.delete(newer)
-      #expect(coordinator.selectedItemID == .transcript(older.id), "the neighbour was not selected")
+      #expect(coordinator.openHistoryItemID(in: .dictations) == nil, "the deleted row stayed open")
       #expect(coordinator.isShowingEcho(rowID: newer.id) == false)
-      // A second delete of the gone row is a no-op: the selection stays where it moved.
+      #expect(coordinator.matchingRowIDs(in: .dictations) == [older.id])
+      // A second delete of the gone row is a no-op.
       await coordinator.delete(newer)
-      #expect(coordinator.selectedItemID == .transcript(older.id))
+      #expect(coordinator.matchingRowIDs(in: .dictations) == [older.id])
       #expect(coordinator.actionFailure == nil)
     }
 
-    @Test("a selection, search or filter chosen while a write waits survives the write")
+    @Test("an open item, search or tab chosen while a write waits survives the write")
     func choicesMadeWhileAWriteWaitsSurvive() async throws {
       let dir = Self.makeTempDir()
       let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
@@ -1491,14 +1494,16 @@ struct TranscriptCoordinatorMeetingTests {
       let edited = Transcript(id: first.id, text: "first zebra edited", backendType: .parakeet, createdAt: first.createdAt)
       let write = Task { @MainActor in try await coordinator.updateExistingRow(edited) }
       try #require(await gate.waitForStart(), "the write never reached the worker")
-      coordinator.selectedItemID = .transcript(second.id)
-      coordinator.searchQuery = "zebra"
-      coordinator.historyFilter = .dictations
+      coordinator.openHistoryItem(.transcript(second.id), in: .dictations)
+      coordinator.setHistoryQuery("zebra", in: .dictations)
+      coordinator.selectHistoryTab(.transcripts)
       gate.releaseOne()
       #expect(try await write.value)
-      #expect(coordinator.selectedItemID == .transcript(second.id), "the write restored an old selection")
-      #expect(coordinator.searchQuery == "zebra")
-      #expect(coordinator.historyFilter == .dictations)
+      #expect(
+        coordinator.openHistoryItemID(in: .dictations) == .transcript(second.id),
+        "the write restored an old open item")
+      #expect(coordinator.historyState(for: .dictations).query == "zebra")
+      #expect(coordinator.historyTab == .transcripts)
       #expect(coordinator.currentRow(id: first.id)?.text == "first zebra edited")
       #expect(gate.anyTimedOut == false, "a held write was released by its timeout")
     }

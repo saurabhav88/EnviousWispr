@@ -1,0 +1,357 @@
+{
+ "id": "recordingStorageWarningThreshold",
+ "blocks": [
+  {
+   "language": "ar",
+   "title": "حد التحذير من مساحة التخزين",
+   "words": [
+    "تنبيه حجم التسجيلات"
+   ],
+   "phrases": [
+    "نبهني عندما تتجاوز التسجيلات حجماً معيناً",
+    "متى يظهر تحذير مساحة التسجيلات"
+   ]
+  },
+  {
+   "language": "bg",
+   "title": "праг за предупреждение за заетото място",
+   "words": [
+    "известие за размера на записите"
+   ],
+   "phrases": [
+    "предупреди ме, когато записите заемат твърде много място",
+    "при какъв размер на записите да получавам предупреждение"
+   ]
+  },
+  {
+   "language": "cs",
+   "title": "hranice upozornění na využití úložiště",
+   "words": [
+    "varování před velikostí nahrávek"
+   ],
+   "phrases": [
+    "upozornit, když nahrávky zabírají moc místa",
+    "od jaké velikosti nahrávek zobrazit varování"
+   ]
+  },
+  {
+   "language": "da",
+   "title": "grænse for advarsel om lagerplads",
+   "words": [
+    "besked om optagelsernes størrelse"
+   ],
+   "phrases": [
+    "advar mig når optagelser fylder for meget",
+    "vælg hvornår jeg får en advarsel om optagelsernes størrelse"
+   ]
+  },
+  {
+   "language": "de",
+   "words": [
+    "Aufnahmegröße",
+    "Speicherplatzwarnung"
+   ],
+   "phrases": [
+    "warne mich, wenn Aufnahmen zu viel Platz belegen",
+    "ab welcher Aufnahmegröße bekomme ich eine Warnung"
+   ]
+  },
+  {
+   "language": "el",
+   "title": "όριο προειδοποίησης για τον χώρο αποθήκευσης",
+   "words": [
+    "ειδοποίηση μεγέθους εγγραφών"
+   ],
+   "phrases": [
+    "ειδοποίησέ με όταν οι εγγραφές πιάνουν πολύ χώρο",
+    "σε ποιο μέγεθος εγγραφών να εμφανίζεται προειδοποίηση"
+   ]
+  },
+  {
+   "language": "en",
+   "words": [
+    "recording size alert",
+    "disk usage warning"
+   ],
+   "phrases": [
+    "warn me when recordings take up too much space",
+    "set when the recording storage warning appears"
+   ]
+  },
+  {
+   "language": "es",
+   "title": "umbral de aviso de almacenamiento",
+   "words": [
+    "alerta de tamaño de grabaciones"
+   ],
+   "phrases": [
+    "avísame cuando las grabaciones ocupen demasiado",
+    "a partir de qué tamaño de grabaciones mostrar un aviso"
+   ]
+  },
+  {
+   "language": "et",
+   "title": "salvestusruumi hoiatuse piir",
+   "words": [
+    "salvestiste mahu teavitus"
+   ],
+   "phrases": [
+    "hoiata kui salvestised võtavad liiga palju ruumi",
+    "millise salvestiste mahu juures hoiatus kuvatakse"
+   ]
+  },
+  {
+   "language": "fi",
+   "title": "tallennustilan varoitusraja",
+   "words": [
+    "äänitteiden kokoilmoitus"
+   ],
+   "phrases": [
+    "varoita kun äänitteet vievät liikaa tilaa",
+    "millä äänitteiden koolla varoitus näytetään"
+   ]
+  },
+  {
+   "language": "fr",
+   "title": "seuil d’alerte de stockage",
+   "words": [
+    "avertissement taille des enregistrements"
+   ],
+   "phrases": [
+    "me prévenir quand les enregistrements prennent trop de place",
+    "à partir de quelle taille afficher une alerte pour les enregistrements"
+   ]
+  },
+  {
+   "language": "hi",
+   "title": "स्टोरेज चेतावनी की सीमा",
+   "words": [
+    "रिकॉर्डिंग साइज़ अलर्ट"
+   ],
+   "phrases": [
+    "रिकॉर्डिंग ज़्यादा जगह ले तो मुझे चेतावनी दें",
+    "रिकॉर्डिंग का कितना साइज़ होने पर चेतावनी मिले"
+   ]
+  },
+  {
+   "language": "hr",
+   "title": "prag upozorenja o zauzeću prostora",
+   "words": [
+    "obavijest o veličini snimki"
+   ],
+   "phrases": [
+    "upozori me kad snimke zauzimaju previše prostora",
+    "pri kojoj veličini snimki prikazati upozorenje"
+   ]
+  },
+  {
+   "language": "hu",
+   "title": "tárhelyfigyelmeztetés küszöbértéke",
+   "words": [
+    "felvételek méretjelzése"
+   ],
+   "phrases": [
+    "szólj ha a felvételek túl sok helyet foglalnak",
+    "mekkora felvételméretnél jelenjen meg figyelmeztetés"
+   ]
+  },
+  {
+   "language": "it",
+   "title": "soglia di avviso per lo spazio occupato",
+   "words": [
+    "allarme dimensioni registrazioni"
+   ],
+   "phrases": [
+    "avvisami quando le registrazioni occupano troppo spazio",
+    "a quale dimensione delle registrazioni mostrare un avviso"
+   ]
+  },
+  {
+   "language": "ja",
+   "title": "ストレージ警告のしきい値",
+   "words": [
+    "録音容量アラート"
+   ],
+   "phrases": [
+    "録音が容量を使いすぎたら知らせて",
+    "録音がどのくらいの容量になったら警告するか"
+   ]
+  },
+  {
+   "language": "ko",
+   "title": "저장 공간 경고 기준",
+   "words": [
+    "녹음 용량 알림"
+   ],
+   "phrases": [
+    "녹음이 공간을 많이 차지하면 알려줘",
+    "녹음 용량이 얼마나 되면 경고할지 설정"
+   ]
+  },
+  {
+   "language": "lt",
+   "title": "įspėjimo apie užimamą vietą slenkstis",
+   "words": [
+    "įrašų dydžio pranešimas"
+   ],
+   "phrases": [
+    "įspėti kai įrašai užima per daug vietos",
+    "nuo kokio įrašų dydžio rodyti įspėjimą"
+   ]
+  },
+  {
+   "language": "lv",
+   "title": "krātuves vietas brīdinājuma slieksnis",
+   "words": [
+    "ierakstu apjoma paziņojums"
+   ],
+   "phrases": [
+    "brīdini kad ieraksti aizņem pārāk daudz vietas",
+    "pie kāda ierakstu apjoma rādīt brīdinājumu"
+   ]
+  },
+  {
+   "language": "mt",
+   "title": "limitu tat-twissija dwar l-ispazju tal-ħażna",
+   "words": [
+    "avviż dwar id-daqs tar-reġistrazzjonijiet"
+   ],
+   "phrases": [
+    "wissini meta r-reġistrazzjonijiet jieħdu wisq spazju",
+    "f’liema daqs tar-reġistrazzjonijiet tidher it-twissija"
+   ]
+  },
+  {
+   "language": "nl",
+   "title": "waarschuwingsdrempel voor opslagruimte",
+   "words": [
+    "melding opnamegrootte"
+   ],
+   "phrases": [
+    "waarschuw me als opnamen te veel ruimte innemen",
+    "bij welke opnamegrootte krijg ik een waarschuwing"
+   ]
+  },
+  {
+   "language": "pl",
+   "title": "próg ostrzeżenia o zajętym miejscu",
+   "words": [
+    "powiadomienie o rozmiarze nagrań"
+   ],
+   "phrases": [
+    "ostrzegaj gdy nagrania zajmują za dużo miejsca",
+    "przy jakim rozmiarze nagrań pokazać ostrzeżenie"
+   ]
+  },
+  {
+   "language": "pt",
+   "title": "limiar de aviso de armazenamento",
+   "words": [
+    "alerta de tamanho das gravações"
+   ],
+   "phrases": [
+    "avisar quando as gravações ocuparem muito espaço",
+    "a partir de que tamanho das gravações mostrar um aviso"
+   ]
+  },
+  {
+   "language": "ro",
+   "title": "prag de avertizare pentru spațiul ocupat",
+   "words": [
+    "alertă privind dimensiunea înregistrărilor"
+   ],
+   "phrases": [
+    "anunță-mă când înregistrările ocupă prea mult spațiu",
+    "la ce dimensiune a înregistrărilor apare avertizarea"
+   ]
+  },
+  {
+   "language": "ru",
+   "title": "порог предупреждения о занятом месте",
+   "words": [
+    "уведомление о размере записей"
+   ],
+   "phrases": [
+    "предупреждать когда записи занимают слишком много места",
+    "при каком размере записей показывать предупреждение"
+   ]
+  },
+  {
+   "language": "sk",
+   "title": "hranica upozornenia na využitie úložiska",
+   "words": [
+    "varovanie o veľkosti nahrávok"
+   ],
+   "phrases": [
+    "upozorni ma keď nahrávky zaberajú priveľa miesta",
+    "pri akej veľkosti nahrávok zobraziť upozornenie"
+   ]
+  },
+  {
+   "language": "sl",
+   "title": "prag opozorila o zasedenem prostoru",
+   "words": [
+    "obvestilo o velikosti posnetkov"
+   ],
+   "phrases": [
+    "opozori me ko posnetki zavzamejo preveč prostora",
+    "pri kateri velikosti posnetkov se prikaže opozorilo"
+   ]
+  },
+  {
+   "language": "sv",
+   "title": "varningsgräns för lagringsutrymme",
+   "words": [
+    "avisering om inspelningsstorlek"
+   ],
+   "phrases": [
+    "varna mig när inspelningar tar för mycket plats",
+    "vid vilken storlek på inspelningarna ska varningen visas"
+   ]
+  },
+  {
+   "language": "tr",
+   "title": "depolama alanı uyarı eşiği",
+   "words": [
+    "kayıt boyutu bildirimi"
+   ],
+   "phrases": [
+    "kayıtlar çok yer kaplayınca beni uyar",
+    "kayıtlar ne kadar yer kaplayınca uyarı verilsin"
+   ]
+  },
+  {
+   "language": "uk",
+   "title": "поріг попередження про зайняте місце",
+   "words": [
+    "сповіщення про розмір записів"
+   ],
+   "phrases": [
+    "попереджати коли записи займають забагато місця",
+    "за якого розміру записів показувати попередження"
+   ]
+  },
+  {
+   "language": "vi",
+   "title": "ngưỡng cảnh báo dung lượng lưu trữ",
+   "words": [
+    "thông báo kích thước bản ghi"
+   ],
+   "phrases": [
+    "báo khi bản ghi chiếm quá nhiều chỗ",
+    "bản ghi chiếm bao nhiêu dung lượng thì cảnh báo"
+   ]
+  },
+  {
+   "language": "zh",
+   "title": "存储空间警告阈值",
+   "words": [
+    "录音容量提醒"
+   ],
+   "phrases": [
+    "录音占用太多空间时提醒我",
+    "录音占用多少空间时发出警告"
+   ]
+  }
+ ]
+}

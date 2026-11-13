@@ -1,0 +1,1 @@
+{"language":"pt","title":"salvar gravações de ditado","words":[],"phrases":["salvar o áudio de cada ditado","guardar o áudio dos ditados para ouvir depois"]}

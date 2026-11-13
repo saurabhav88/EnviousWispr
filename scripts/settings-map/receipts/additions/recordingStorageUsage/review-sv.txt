@@ -1,0 +1,11 @@
+{
+  "language": "sv",
+  "title": "använt lagringsutrymme",
+  "words": [
+    "inspelningarnas storlek"
+  ],
+  "phrases": [
+    "hur mycket plats tar inspelningarna",
+    "total storlek på sparade inspelningar"
+  ]
+}

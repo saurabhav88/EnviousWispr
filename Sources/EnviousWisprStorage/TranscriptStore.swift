@@ -963,6 +963,48 @@ public final class TranscriptStore {
     }
   }
 
+  /// The ids of every permanent row FILE, read from file names only (#3147 recording
+  /// reconciliation). A file that is there counts even when it cannot be read or decoded, so a
+  /// damaged row never makes its recording look orphaned. Nil when the folder is missing, which
+  /// certifies nothing; throws when the folder cannot be listed. Off the main actor.
+  public func permanentRowIDs() async throws -> Set<UUID>? {
+    let dir = directory
+    return try await Task.detached(priority: .utility) {
+      guard FileManager.default.fileExists(atPath: dir.path) else { return nil }
+      let names = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+      var ids = Set<UUID>()
+      for name in names where name.hasSuffix(".json") && !name.hasPrefix(".") {
+        if let id = UUID(uuidString: String(name.dropLast(".json".count))) { ids.insert(id) }
+      }
+      return ids
+    }.value
+  }
+
+  /// The saved date of each listed permanent row (#3147 retention: a recording's age is its
+  /// dictation's `createdAt`, never a file date). A row with no file is in neither result (it was
+  /// deleted); a file that is there but cannot be read or decoded is in `unreadable`, so the
+  /// caller never treats it as old or new. Off the main actor.
+  public func savedDates(of ids: Set<UUID>) async -> (dates: [UUID: Date], unreadable: Set<UUID>) {
+    let dir = directory
+    return await Task.detached(priority: .utility) {
+      var dates: [UUID: Date] = [:]
+      var unreadable = Set<UUID>()
+      let decoder = JSONDecoder()
+      for id in ids {
+        let url = dir.appendingPathComponent("\(id.uuidString).json")
+        guard FileManager.default.fileExists(atPath: url.path) else { continue }
+        guard let data = try? Data(contentsOf: url),
+          let row = try? decoder.decode(Transcript.self, from: data)
+        else {
+          unreadable.insert(id)
+          continue
+        }
+        dates[id] = row.createdAt
+      }
+      return (dates, unreadable)
+    }.value
+  }
+
   /// The folder tokens as they are now, or nil when they cannot vouch for anything (#4001 H9).
   /// Off the main actor, like the reads it lets History skip.
   public func freshness() async -> TranscriptStoreFreshness? {

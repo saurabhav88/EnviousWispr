@@ -13,6 +13,8 @@ struct OnboardingCheckpoint: Codable, Equatable, Sendable {
   var step: OnboardingStep
   var choices: OnboardingChoices
   var practiceOutcome: OnboardingPracticeOutcome?
+  var downloadsReturn: OnboardingStep?
+  var recoveringReadiness: Bool?
   var startedAt: Date
   var savedAt: Date
 
@@ -20,6 +22,8 @@ struct OnboardingCheckpoint: Codable, Equatable, Sendable {
     step = state.step
     choices = state.choices
     practiceOutcome = state.practiceOutcome
+    downloadsReturn = state.downloadsReturn
+    recoveringReadiness = state.recoveringReadiness ? true : nil
     self.startedAt = startedAt
     self.savedAt = savedAt
   }
@@ -79,6 +83,13 @@ extension OnboardingRestore {
       state.step = checkpoint.step
       state.choices = checkpoint.choices
       state.practiceOutcome = checkpoint.practiceOutcome
+      if state.step == .downloads, let origin = checkpoint.downloadsReturn,
+        OnboardingFlowState.downloadOrigins.contains(origin)
+      {
+        state.downloadsReturn = origin
+      }
+      state.recoveringReadiness = checkpoint.recoveringReadiness == true
+        && OnboardingFlowState.recoverySteps.contains(state.downloadsReturn ?? state.step)
       state.recommended = recommend(checkpoint.choices.languageMode)  // the saved language's advice
       return .resume(state, startedAt: checkpoint.startedAt)
     }

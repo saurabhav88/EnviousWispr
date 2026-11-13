@@ -1,0 +1,12 @@
+{
+  "language": "da",
+  "title": "behold diktatoptagelser",
+  "words": [
+    "opbevaringstid",
+    "automatisk sletning"
+  ],
+  "phrases": [
+    "hvor længe gemmes diktatoptagelser",
+    "slet gamle diktatoptagelser automatisk og behold teksten"
+  ]
+}

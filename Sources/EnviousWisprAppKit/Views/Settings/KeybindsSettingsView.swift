@@ -287,8 +287,11 @@ struct GlobeGuidancePopover: View {
 
       HStack {
         Spacer()
-        Button(GlobeKeyCopy.dismissButton, action: onDismiss)
-          .keyboardShortcut(.defaultAction)
+        Button(action: onDismiss) {
+          EnviousButtonLabel(verbatim: GlobeKeyCopy.dismissButton)
+        }
+        .settingsButton(.filled, isEnabled: true, shortcut: .defaultAction)
+        .settingsArrivalWithoutInheritedPlace()
       }
     }
     .padding(18)

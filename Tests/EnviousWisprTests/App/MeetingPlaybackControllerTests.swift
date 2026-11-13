@@ -23,6 +23,8 @@ struct MeetingPlaybackControllerTests {
     private(set) var starts = 0
     private(set) var stops = 0
     var failStart = false
+    /// Runs inside every stop, so a test can look at the files at the moment playback stops.
+    @ObservationIgnored var onStop: (() -> Void)?
 
     struct StartFailed: Error {}
 
@@ -37,6 +39,7 @@ struct MeetingPlaybackControllerTests {
     }
 
     func stop() {
+      onStop?()
       stops += 1
       stale += pending
       pending = []

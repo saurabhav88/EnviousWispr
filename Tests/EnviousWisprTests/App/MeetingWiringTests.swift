@@ -544,17 +544,19 @@ struct MeetingWiringTests {
     let row = Transcript(
       id: record.transcriptID, text: "standup", backendType: .parakeet, meetingID: record.id)
     try await rig.transcripts.saveAndShowDurably(row)
-    rig.transcripts.searchQuery = "acme.com"
-    #expect(rig.transcripts.filteredTranscripts.isEmpty, "nothing listed before the launch")
+    rig.transcripts.setHistoryQuery("acme.com", in: .meetings)
+    #expect(
+      rig.transcripts.matchingHistoryItems(in: .meetings).isEmpty, "nothing listed before the launch")
 
     let hold = MeetingDocumentsOwnerTests.holdFileQueue()
     let coordinator = MeetingWiring.make(rig.inputs)
     coordinator.launch()
     #expect(
-      rig.transcripts.filteredTranscripts.isEmpty, "no invited match while the launch read waits")
+      rig.transcripts.matchingHistoryItems(in: .meetings).isEmpty,
+      "no invited match while the launch read waits")
     hold.signal()
     await MeetingCoordinatorTests.eventually("invited-only match after the launch read") {
-      rig.transcripts.filteredTranscripts.map(\.id) == [row.id]
+      rig.transcripts.matchingRowIDs(in: .meetings) == [row.id]
     }
     #expect(coordinator.documents.invitedSearchTerms(record.id).contains("acme.com"))
   }

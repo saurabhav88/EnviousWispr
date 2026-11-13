@@ -35,6 +35,7 @@ struct WarmingScreenV2: View {
   let onSkip: () -> Void
 
   @Environment(PermissionsService.self) private var permissions
+  @Environment(SettingsManager.self) private var settings
 
   private var failureMessage: String? {
     if case .failed(let message) = viewModel.warmingOutcome { return message }
@@ -70,6 +71,23 @@ struct WarmingScreenV2: View {
 
       checklist
         .padding(.top, 24)
+
+      // #3147 C9: fresh-install education. Every way out of setup (practice and both skip
+      // buttons) leaves from this screen, so a new person always sees it; practice repeats it.
+      // Reads the live settings (canonical defaults on a fresh install) and writes none.
+      // Being shown is what records the disclosure as seen.
+      Text(
+        verbatim: RecordingDisclosureCopy.onboardingNote(
+          saving: settings.saveDictationRecordings,
+          retention: settings.dictationRecordingRetention)
+      )
+      .font(.obBody)
+      .foregroundStyle(Color.obTextSecondary)
+      .multilineTextAlignment(.center)
+      .fixedSize(horizontal: false, vertical: true)
+      .padding(.top, 16)
+      .onAppear { settings.recordOnboardingRecordingNoteShown() }
+      .accessibilityIdentifier("onboarding.warming.recordingNote")
 
       Spacer()
 

@@ -1,0 +1,12 @@
+{
+  "language": "pl",
+  "title": "przechowuj nagrania spotkań",
+  "words": [
+    "nagrania spotkań"
+  ],
+  "phrases": [
+    "jak długo przechowywać nagrania spotkań",
+    "automatycznie usuwaj nagrania spotkań po 30 lub 90 dniach",
+    "zachowuj nagrania spotkań do ręcznego usunięcia"
+  ]
+}

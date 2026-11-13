@@ -1,0 +1,11 @@
+{
+  "language": "nl",
+  "title": "bij overschrijding van de opslaglimiet",
+  "words": [
+    "automatisch verwijderen"
+  ],
+  "phrases": [
+    "vraag me om ruimte vrij te maken als de opslaglimiet is overschreden",
+    "oudste dicteeropnamen automatisch verwijderen als de opslaglimiet is overschreden"
+  ]
+}

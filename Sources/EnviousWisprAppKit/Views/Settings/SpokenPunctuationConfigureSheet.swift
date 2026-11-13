@@ -71,9 +71,13 @@ struct SpokenPunctuationConfigureSheet: View {
         .font(.system(size: 15, weight: .semibold))
         .foregroundStyle(Color.stTextPrimary)
       Spacer(minLength: 12)
-      SettingsSheetCloseButton(accessibilityTitle: SpokenPunctuationCopy.configureClose) {
+      Button {
         close()
+      } label: {
+        EnviousCloseGlyph()
       }
+      .buttonStyle(.plain)
+      .accessibilityLabel(SpokenPunctuationCopy.configureClose)
     }
     .padding(.horizontal, Self.inset)
     .padding(.vertical, 12)
@@ -83,10 +87,10 @@ struct SpokenPunctuationConfigureSheet: View {
   private var footer: some View {
     HStack {
       Spacer(minLength: 0)
-      SettingsActionButton(
-        verbatimTitle: SpokenPunctuationCopy.configureDone, isEnabled: true, emphasis: .filled,
-        shortcut: .defaultAction
-      ) { close() }
+      Button { close() } label: {
+        EnviousButtonLabel(verbatim: SpokenPunctuationCopy.configureDone)
+      }
+      .settingsButton(.filled, isEnabled: true, shortcut: .defaultAction)
     }
     .padding(.horizontal, Self.inset)
     .padding(.vertical, 12)

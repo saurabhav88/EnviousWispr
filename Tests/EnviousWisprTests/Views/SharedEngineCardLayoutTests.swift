@@ -24,8 +24,10 @@ struct SharedEngineCardLayoutTests {
           specs: [("Model", "Whisper Large v3 Turbo"), ("Languages", "99+ languages"),
             ("Runs on", "Apple GPU"), ("Transcribe time", "Usually 1-2s after you speak")],
           isSelected: true, onSelect: {}, footer: {
-            SettingsActionButton(title: "Remove", isEnabled: true, emphasis: .quiet,
-              shape: .roundedRect, size: .medium, action: {})
+            Button(action: {}) {
+              EnviousButtonLabel("Remove", size: .medium)
+            }
+            .settingsButton(.quiet, shape: .roundedRect, size: .medium, isEnabled: true)
               .background(probe).padding(12)
           })
           .environment(\.settingsPR1Density, true)

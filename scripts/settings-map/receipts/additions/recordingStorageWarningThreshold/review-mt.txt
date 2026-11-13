@@ -1,0 +1,11 @@
+{
+  "language": "mt",
+  "title": "livell ta’ twissija dwar il-ħażna",
+  "words": [
+    "twissija tal-ħażna"
+  ],
+  "phrases": [
+    "wissini meta r-reġistrazzjonijiet jieħdu aktar minn 2 GB",
+    "itfi t-twissija dwar l-ispazju li jieħdu r-reġistrazzjonijiet"
+  ]
+}

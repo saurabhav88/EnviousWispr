@@ -1,0 +1,350 @@
+{
+ "id": "meetingRecordingRetention",
+ "blocks": {
+  "ar": {
+   "title": "الاحتفاظ بصوت الاجتماعات",
+   "words": [
+    "تسجيلات الاجتماعات",
+    "مدة الاحتفاظ"
+   ],
+   "phrases": [
+    "تغيير مدة الاحتفاظ بصوت الاجتماعات",
+    "حذف صوت الاجتماعات تلقائيًا مع بقاء النص",
+    "الاحتفاظ بصوت الاجتماعات حتى أحذفه"
+   ]
+  },
+  "bg": {
+   "title": "запазване на аудиото от срещи",
+   "words": [
+    "аудиозаписи от срещи"
+   ],
+   "phrases": [
+    "колко дълго да се пази аудиото от срещите",
+    "автоматично изтриване на стари аудиозаписи от срещи",
+    "пази аудиото от срещите, докато не го изтрия"
+   ]
+  },
+  "cs": {
+   "title": "uchovávat zvuk ze schůzek",
+   "words": [
+    "nahrávky schůzek"
+   ],
+   "phrases": [
+    "jak dlouho uchovávat zvuk ze schůzek",
+    "automaticky mazat staré nahrávky schůzek",
+    "ponechat zvuk ze schůzek, dokud ho nesmažu"
+   ]
+  },
+  "da": {
+   "title": "behold lyd fra møder",
+   "words": [
+    "mødeoptagelser"
+   ],
+   "phrases": [
+    "vælg hvor længe lyd fra møder gemmes",
+    "slet automatisk gamle mødeoptagelser"
+   ]
+  },
+  "de": {
+   "words": [
+    "Meeting-Audio",
+    "Meetingaudio",
+    "Aufbewahrungsdauer"
+   ],
+   "phrases": [
+    "stell ein, wie lange Meeting-Audio gespeichert bleibt",
+    "bewahre Meeting-Audio 30 oder 90 Tage auf",
+    "behalte Meeting-Audio, bis ich es lösche"
+   ]
+  },
+  "el": {
+   "title": "διατήρηση ήχου συναντήσεων",
+   "words": [
+    "ηχογραφήσεις συναντήσεων"
+   ],
+   "phrases": [
+    "για πόσο καιρό κρατιέται ο ήχος των συναντήσεων",
+    "διαγραφή ήχου συναντήσεων μετά από 30 ή 90 ημέρες",
+    "να μένει ο ήχος των συναντήσεων μέχρι να τον διαγράψω"
+   ]
+  },
+  "en": {
+   "words": [
+    "meeting recordings",
+    "meeting audio retention"
+   ],
+   "phrases": [
+    "choose how long to keep meeting audio",
+    "automatically delete old meeting audio",
+    "keep meeting audio until I delete it"
+   ]
+  },
+  "es": {
+   "title": "conservar el audio de las reuniones",
+   "words": [
+    "retención del audio",
+    "caducidad del audio"
+   ],
+   "phrases": [
+    "cuánto tiempo guardar el audio de las reuniones",
+    "borrar automáticamente el audio antiguo de las reuniones",
+    "conservar el audio de las reuniones hasta que lo borre"
+   ]
+  },
+  "et": {
+   "title": "koosolekute heli säilitamine",
+   "words": [
+    "koosolekusalvestised"
+   ],
+   "phrases": [
+    "kui kaua koosolekute heli alles hoida",
+    "säilita koosolekute heli kuni selle ise kustutan"
+   ]
+  },
+  "fi": {
+   "title": "kokousäänitteiden säilytysaika",
+   "words": [
+    "kokousäänitteet",
+    "kokoustallenteet"
+   ],
+   "phrases": [
+    "kuinka kauan kokousten äänitallenteet säilytetään",
+    "poista kokousäänitteet automaattisesti 30 päivän jälkeen",
+    "säilytä kokousäänitteet kunnes poistan ne itse"
+   ]
+  },
+  "fr": {
+   "title": "conserver l’audio des réunions",
+   "words": [
+    "enregistrements de réunions"
+   ],
+   "phrases": [
+    "choisir combien de temps garder l’audio des réunions",
+    "supprimer automatiquement l’audio des anciennes réunions"
+   ]
+  },
+  "hi": {
+   "title": "मीटिंग का ऑडियो रखें",
+   "words": [
+    "मीटिंग की रिकॉर्डिंग",
+    "ऑडियो रखने की अवधि"
+   ],
+   "phrases": [
+    "मीटिंग का ऑडियो कितने दिन तक रखना है",
+    "मीटिंग का ऑडियो 30 या 90 दिन बाद अपने आप हटाएँ",
+    "मीटिंग का ऑडियो मेरे हटाने तक रखें"
+   ]
+  },
+  "hr": {
+   "title": "čuvanje audiosnimki sastanaka",
+   "words": [
+    "audiosnimke sastanaka"
+   ],
+   "phrases": [
+    "koliko dugo čuvati zvuk sastanaka",
+    "automatski izbriši zvuk sastanaka nakon 30 dana"
+   ]
+  },
+  "hu": {
+   "title": "megbeszélések hangjának megőrzése",
+   "words": [],
+   "phrases": [
+    "meddig maradjanak meg a megbeszélések hangfelvételei",
+    "megbeszélések hangfelvételeinek automatikus törlése 30 vagy 90 nap után"
+   ]
+  },
+  "it": {
+   "title": "conserva l’audio delle riunioni",
+   "words": [
+    "audio delle riunioni",
+    "durata di conservazione"
+   ],
+   "phrases": [
+    "per quanto tempo conservare l’audio delle riunioni",
+    "eliminare automaticamente l’audio delle riunioni dopo 30 o 90 giorni",
+    "conservare l’audio delle riunioni finché non lo elimino"
+   ]
+  },
+  "ja": {
+   "title": "会議音声の保存期間",
+   "words": [
+    "会議録音",
+    "会議音声の保存期間"
+   ],
+   "phrases": [
+    "会議の録音を残す期間を変えたい",
+    "会議の音声を自動で削除したい",
+    "会議の録音をずっと残したい"
+   ]
+  },
+  "ko": {
+   "title": "회의 오디오 보관 기간",
+   "words": [
+    "회의 녹음"
+   ],
+   "phrases": [
+    "회의 녹음 보관 기간 바꾸기",
+    "회의 오디오 자동 삭제 기간 설정하기",
+    "회의 녹음 계속 보관하기"
+   ]
+  },
+  "lt": {
+   "title": "saugoti susitikimų garso įrašus",
+   "words": [
+    "susitikimų garso įrašai"
+   ],
+   "phrases": [
+    "kiek laiko saugoti susitikimų garso įrašus",
+    "automatiškai ištrinti senus susitikimų garso įrašus"
+   ]
+  },
+  "lv": {
+   "title": "glabāt sapulču audioierakstus",
+   "words": [
+    "sapulču ieraksti"
+   ],
+   "phrases": [
+    "cik ilgi glabāt sapulču audioierakstus",
+    "glabāt sapulču audio, līdz to izdzēšu"
+   ]
+  },
+  "mt": {
+   "title": "żomm l-awdjo tal-laqgħat",
+   "words": [
+    "reġistrazzjonijiet tal-laqgħat"
+   ],
+   "phrases": [
+    "għal kemm żmien inżomm l-awdjo tal-laqgħat",
+    "ħassar l-awdjo tal-laqgħat wara 30 jew 90 jum"
+   ]
+  },
+  "nl": {
+   "title": "audio van vergaderingen bewaren",
+   "words": [
+    "vergaderopnamen"
+   ],
+   "phrases": [
+    "instellen hoelang audio van vergaderingen bewaard blijft",
+    "audio van vergaderingen automatisch verwijderen na 30 of 90 dagen"
+   ]
+  },
+  "pl": {
+   "title": "przechowuj nagrania spotkań",
+   "words": [
+    "nagrania spotkań"
+   ],
+   "phrases": [
+    "jak długo przechowywać nagrania spotkań",
+    "automatycznie usuwaj nagrania spotkań po 30 lub 90 dniach",
+    "zachowuj nagrania spotkań do ręcznego usunięcia"
+   ]
+  },
+  "pt": {
+   "title": "manter o áudio das reuniões",
+   "words": [
+    "áudio de reuniões"
+   ],
+   "phrases": [
+    "por quanto tempo guardar o áudio das reuniões",
+    "apagar automaticamente o áudio de reuniões antigas"
+   ]
+  },
+  "ro": {
+   "title": "păstrează înregistrările audio ale întâlnirilor",
+   "words": [
+    "audio întâlniri",
+    "audio ședințe"
+   ],
+   "phrases": [
+    "cât timp se păstrează înregistrările audio ale întâlnirilor",
+    "șterge automat înregistrările audio vechi ale întâlnirilor"
+   ]
+  },
+  "ru": {
+   "title": "хранить аудио встреч",
+   "words": [
+    "срок хранения",
+    "аудиозаписи встреч"
+   ],
+   "phrases": [
+    "как долго хранить аудио встреч",
+    "автоматически удалять старые аудиозаписи встреч",
+    "хранить аудио встреч, пока не удалю"
+   ]
+  },
+  "sk": {
+   "title": "uchovávať zvuk zo stretnutí",
+   "words": [
+    "nahrávky stretnutí"
+   ],
+   "phrases": [
+    "ako dlho uchovávať zvuk zo stretnutí",
+    "automaticky mazať staré nahrávky stretnutí"
+   ]
+  },
+  "sl": {
+   "title": "hrani zvočne posnetke sestankov",
+   "words": [
+    "posnetki sestankov"
+   ],
+   "phrases": [
+    "kako dolgo naj se hranijo zvočni posnetki sestankov",
+    "samodejno izbriši stare zvočne posnetke sestankov"
+   ]
+  },
+  "sv": {
+   "title": "behåll mötesljud",
+   "words": [
+    "mötesinspelningar"
+   ],
+   "phrases": [
+    "välj hur länge ljudet från möten sparas",
+    "ta bort gammalt mötesljud automatiskt"
+   ]
+  },
+  "tr": {
+   "title": "toplantı sesini saklama süresi",
+   "words": [
+    "toplantı ses kayıtları"
+   ],
+   "phrases": [
+    "toplantı ses kayıtları ne kadar saklansın",
+    "toplantı sesini ben silene kadar sakla",
+    "eski toplantı ses kayıtlarını otomatik sil"
+   ]
+  },
+  "uk": {
+   "title": "зберігати аудіо зустрічей",
+   "words": [
+    "аудіозаписи зустрічей"
+   ],
+   "phrases": [
+    "як довго зберігати аудіо зустрічей",
+    "автоматично видаляти старі аудіозаписи зустрічей",
+    "зберігати аудіо зустрічей безстроково"
+   ]
+  },
+  "vi": {
+   "title": "giữ âm thanh cuộc họp",
+   "words": [
+    "bản ghi âm cuộc họp"
+   ],
+   "phrases": [
+    "giữ bản ghi âm cuộc họp trong bao lâu",
+    "tự động xóa âm thanh cuộc họp sau 30 hoặc 90 ngày",
+    "giữ âm thanh cuộc họp cho đến khi tôi xóa"
+   ]
+  },
+  "zh": {
+   "title": "保留会议音频",
+   "words": [
+    "会议录音保留期限"
+   ],
+   "phrases": [
+    "会议录音保留多久",
+    "设置会议录音自动删除的时间",
+    "一直保留会议录音"
+   ]
+  }
+ }
+}

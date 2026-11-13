@@ -48,12 +48,15 @@ final class SetupCloudPanelModel {
   private var results: [LLMProvider: Result] = [:]
   private var busyProvider: LLMProvider?
   private var startedRead = false
-  var provider: LLMProvider = .openAI {
+  var provider: LLMProvider {
     didSet { if oldValue != provider { inputs.leave(oldValue) } }
   }
   private var disposed = false
 
-  init(inputs: Inputs) { self.inputs = inputs }
+  init(inputs: Inputs, provider: LLMProvider = .openAI) {
+    self.inputs = inputs
+    self.provider = provider
+  }
 
   /// Add my key later: the key outcome is skipped. The screen then sends `skipPolish`, which
   /// leaves See all and disposes this panel.
@@ -196,6 +199,7 @@ final class SetupCloudPanelModel {
 
   static func live(
     settings: SettingsManager, writer: CredentialWriter, list: CloudModelListHolder,
+    provider: LLMProvider = .openAI,
     report: @escaping (SetupKeyEvent) -> Void = { _ in }
   ) -> SetupCloudPanelModel {
     let presence = writer.presence
@@ -260,7 +264,7 @@ final class SetupCloudPanelModel {
         list: { list.snapshot?.list },
         leave: { ledger.leave($0) },
         begin: { ledger.begin($0, keep: $1) },
-        report: report))
+        report: report), provider: provider)
   }
 }
 

@@ -120,12 +120,12 @@ struct LocalEngineStatusCard<Middle: View>: View {
             "AI Polish, local model: what downloading the model takes. The first %@ is its size, the second the free space it needs."
         )
       ) {
-        SettingsActionButton(
-          verbatimTitle: SettingsMapRef.id(.localModelDownload).title,
-          isEnabled: true, emphasis: .filled, size: .medium
-        ) {
+        Button {
           runtime.startDownload()
+        } label: {
+          EnviousButtonLabel(verbatim: SettingsMapRef.id(.localModelDownload).title, size: .medium)
         }
+        .settingsButton(.filled, size: .medium, isEnabled: true)
         .settingsMapRegistration(.localModelDownload)
       }
     case .downloading(let fraction, let upgrade):
@@ -165,12 +165,12 @@ struct LocalEngineStatusCard<Middle: View>: View {
     case .paused:
       PolishRow(notInSettingsMap: .statusLine, icon: "pause.circle", title: presentation.message) {
         if presentation.primaryAction != nil {
-          SettingsActionButton(
-            verbatimTitle: SettingsMapRef.id(.localModelResume).title, isEnabled: true, emphasis: .filled,
-            size: .medium
-          ) {
+          Button {
             runtime.startDownload()
+          } label: {
+            EnviousButtonLabel(verbatim: SettingsMapRef.id(.localModelResume).title, size: .medium)
           }
+          .settingsButton(.filled, size: .medium, isEnabled: true)
           .settingsMapRegistration(.localModelResume)
         }
       }
@@ -185,11 +185,12 @@ struct LocalEngineStatusCard<Middle: View>: View {
       ) {
         if presentation.primaryAction != nil {
           let action = SettingsMapRef.id(resumable ? .localModelResumeUpgrade : .localModelFinishUpgrade)
-          SettingsActionButton(
-            verbatimTitle: action.title, isEnabled: true, emphasis: .filled, size: .medium
-          ) {
+          Button {
             runtime.startDownload()
+          } label: {
+            EnviousButtonLabel(verbatim: action.title, size: .medium)
           }
+          .settingsButton(.filled, size: .medium, isEnabled: true)
           .settingsMapRegistration(action.id)
         }
       }
@@ -213,12 +214,13 @@ struct LocalEngineStatusCard<Middle: View>: View {
         adaptsTrailing: true
       ) {
         if presentation.primaryAction != nil {
-          SettingsActionButton(
-            verbatimTitle: SettingsMapRef.id(.localModelTryAgain).title, isEnabled: true, emphasis: .filled,
-            size: .medium
-          ) {
+          Button {
             runtime.startDownload()
+          } label: {
+            EnviousButtonLabel(
+              verbatim: SettingsMapRef.id(.localModelTryAgain).title, size: .medium)
           }
+          .settingsButton(.filled, size: .medium, isEnabled: true)
           .settingsMapRegistration(.localModelTryAgain)
         }
       }

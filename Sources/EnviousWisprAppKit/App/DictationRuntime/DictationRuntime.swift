@@ -236,8 +236,6 @@ final class DictationRuntime {
     func devControlUserStop() async { await finalizer.userStop() }
   #endif
 
-  func resetActivePipeline() { finalizer.resetActive() }
-
   /// #879 Phase D — route onboarding's first-run model warm-up through the
   /// shared `ensureEngineWarm(reason: .onboarding)` on the active engine's
   /// driver, so the onboarding gate uses the same live-readiness check +

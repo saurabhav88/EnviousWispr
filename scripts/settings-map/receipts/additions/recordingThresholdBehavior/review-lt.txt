@@ -1,0 +1,1 @@
+{"language":"lt","title":"viršijus saugyklos limitą","words":["automatinis trynimas"],"phrases":["viršijus saugyklos limitą paklausti, ar atlaisvinti vietos","viršijus limitą automatiškai ištrinti seniausius diktavimo įrašus"]}

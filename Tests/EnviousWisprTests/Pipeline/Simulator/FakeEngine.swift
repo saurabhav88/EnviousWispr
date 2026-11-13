@@ -131,6 +131,15 @@ final class FakeEngine: ASREngineAdapter, @unchecked Sendable {
   /// default: every existing scenario keeps its Parakeet-class capabilities.
   var detectsLanguage = false
 
+  /// #3147: opt-in engine word timings for the transcripts `finalize` returns, keyed by the
+  /// transcript text, so a test can give a batch, rescue or salvage decode the timings a real
+  /// Parakeet batch decode returns. They pass through the production `WordTimingRangeMapper`
+  /// against that decode's own length, exactly as `ParakeetBackend.mapWordTimings` does, so
+  /// coverage and dropped invalid times match production. Nil (the default), or no entry for a
+  /// text, keeps the result untimed exactly as before; `retryDecodeResult` is scripted
+  /// separately.
+  var finalizeWordTimings: [String: [ASRWordTiming]]?
+
   private(set) var readiness: ASREngineReadiness = .notReady
 
   // MARK: #3546 §3.7 T1 — scriptable model attribution
@@ -724,7 +733,17 @@ final class FakeEngine: ASREngineAdapter, @unchecked Sendable {
     // A nil here made the simulator report a state the engine it stands in for
     // cannot reach, which then read as "language unknown" to every consumer
     // that asks (#1785).
-    ASRResult(
-      text: text, language: "en", duration: 0, processingTime: 0, backendType: .parakeet)
+    guard let engineWords = finalizeWordTimings?[text] else {
+      return ASRResult(
+        text: text, language: "en", duration: 0, processingTime: 0, backendType: .parakeet)
+    }
+    // The decode's own length: the batch samples this `finalize` call received.
+    let durationMs = (lastFinalizeBatchSamples?.count ?? 0) * 1000 / 16_000
+    let mapped = WordTimingRangeMapper.map(
+      text: text, audioDurationMs: durationMs,
+      words: engineWords.map { (word: $0.word, startMs: $0.startMs, endMs: $0.endMs) })
+    return ASRResult(
+      text: text, language: "en", duration: 0, processingTime: 0, backendType: .parakeet,
+      wordTimings: mapped.words, wordTimingCoverage: mapped.coverage)
   }
 }

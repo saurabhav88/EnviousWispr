@@ -1,0 +1,11 @@
+{
+  "language": "es",
+  "title": "al superar el límite de almacenamiento",
+  "words": [
+    "borrado automático"
+  ],
+  "phrases": [
+    "preguntarme antes de liberar espacio al superar el límite",
+    "borrar las grabaciones de dictado más antiguas al superar el límite"
+  ]
+}

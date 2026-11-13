@@ -26,9 +26,12 @@ struct OpenSourceLicensesView: View {
               icon: "doc.text",
               help: "Read the GNU General Public License for EnviousWispr."
             ) {
-              SettingsActionButton(title: SettingsItemCopy.AppSettings.viewLicense, isEnabled: true) {
+              Button {
                 open(.license)
+              } label: {
+                EnviousButtonLabel(SettingsItemCopy.AppSettings.viewLicense)
               }
+              .settingsButton(isEnabled: true)
               .settingsMapRegistration(.licenseGplView)
               .focused($focusedDocument, equals: .license)
               .accessibilityFocused($accessibilityDocument, equals: .license)
@@ -40,9 +43,12 @@ struct OpenSourceLicensesView: View {
               icon: "doc.on.doc",
               help: "Read the notices for transcribe.cpp, FluidAudio, Silero VAD, Sparkle and other components."
             ) {
-              SettingsActionButton(title: SettingsItemCopy.AppSettings.viewNotices, isEnabled: true) {
+              Button {
                 open(.notices)
+              } label: {
+                EnviousButtonLabel(SettingsItemCopy.AppSettings.viewNotices)
               }
+              .settingsButton(isEnabled: true)
               .settingsMapRegistration(.licenseNoticesView)
               .focused($focusedDocument, equals: .notices)
               .accessibilityFocused($accessibilityDocument, equals: .notices)

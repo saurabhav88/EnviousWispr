@@ -1,0 +1,12 @@
+{
+  "language": "sv",
+  "title": "behåll dikteringsinspelningar",
+  "words": [
+    "lagringstid",
+    "automatisk radering"
+  ],
+  "phrases": [
+    "hur länge sparas dikteringsinspelningar",
+    "ta bort gamla dikteringsinspelningar automatiskt"
+  ]
+}

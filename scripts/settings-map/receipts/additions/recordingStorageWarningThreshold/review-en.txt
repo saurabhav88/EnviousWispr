@@ -1,0 +1,11 @@
+{
+  "language": "en",
+  "words": [
+    "recording size alert",
+    "disk usage warning"
+  ],
+  "phrases": [
+    "warn me when recordings take up too much space",
+    "set when the recording storage warning appears"
+  ]
+}

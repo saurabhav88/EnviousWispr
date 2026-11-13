@@ -1,0 +1,357 @@
+{
+ "id": "recordingStorageUsage",
+ "blocks": [
+  {
+   "language": "ar",
+   "title": "مساحة التخزين المستخدمة",
+   "words": [
+    "حجم التسجيلات"
+   ],
+   "phrases": [
+    "كم مساحة تشغل التسجيلات",
+    "حجم التسجيلات المحفوظة"
+   ]
+  },
+  {
+   "language": "bg",
+   "title": "използвано място",
+   "words": [
+    "размер на записите"
+   ],
+   "phrases": [
+    "колко място заемат записите",
+    "размер на запазените записи"
+   ]
+  },
+  {
+   "language": "cs",
+   "title": "využité místo",
+   "words": [
+    "velikost nahrávek"
+   ],
+   "phrases": [
+    "kolik místa zabírají nahrávky",
+    "velikost uložených nahrávek"
+   ]
+  },
+  {
+   "language": "da",
+   "title": "brugt lagerplads",
+   "words": [
+    "optagelsernes størrelse"
+   ],
+   "phrases": [
+    "hvor meget fylder optagelserne",
+    "plads brugt af optagelser"
+   ]
+  },
+  {
+   "language": "de",
+   "words": [
+    "Aufnahmegröße",
+    "Speicherverbrauch"
+   ],
+   "phrases": [
+    "wie viel Platz brauchen meine Aufnahmen",
+    "zeig mir die Größe meiner Aufnahmen"
+   ]
+  },
+  {
+   "language": "el",
+   "title": "χρησιμοποιημένος χώρος",
+   "words": [
+    "μέγεθος ηχογραφήσεων"
+   ],
+   "phrases": [
+    "πόσο χώρο πιάνουν οι ηχογραφήσεις",
+    "μέγεθος αποθηκευμένων ηχογραφήσεων"
+   ]
+  },
+  {
+   "language": "en",
+   "words": [
+    "recording size",
+    "disk usage"
+   ],
+   "phrases": [
+    "how much space do my recordings take",
+    "space taken up by recordings"
+   ]
+  },
+  {
+   "language": "es",
+   "title": "espacio utilizado",
+   "words": [
+    "tamaño de las grabaciones"
+   ],
+   "phrases": [
+    "cuánto ocupan las grabaciones",
+    "espacio que usan mis grabaciones"
+   ]
+  },
+  {
+   "language": "et",
+   "title": "kasutatud salvestusruum",
+   "words": [
+    "salvestiste suurus"
+   ],
+   "phrases": [
+    "kui palju ruumi salvestised võtavad",
+    "salvestiste kogumaht"
+   ]
+  },
+  {
+   "language": "fi",
+   "title": "käytetty tallennustila",
+   "words": [
+    "äänitteiden koko"
+   ],
+   "phrases": [
+    "paljonko tilaa äänitteet vievät",
+    "äänitteiden yhteiskoko"
+   ]
+  },
+  {
+   "language": "fr",
+   "title": "espace utilisé",
+   "words": [
+    "taille des enregistrements"
+   ],
+   "phrases": [
+    "combien de place prennent mes enregistrements",
+    "espace occupé par les enregistrements"
+   ]
+  },
+  {
+   "language": "hi",
+   "title": "इस्तेमाल किया गया स्टोरेज",
+   "words": [
+    "रिकॉर्डिंग का साइज़"
+   ],
+   "phrases": [
+    "रिकॉर्डिंग कितनी जगह ले रही हैं",
+    "सेव की गई रिकॉर्डिंग का साइज़"
+   ]
+  },
+  {
+   "language": "hr",
+   "title": "zauzeti prostor",
+   "words": [
+    "veličina snimki"
+   ],
+   "phrases": [
+    "koliko prostora zauzimaju snimke",
+    "ukupna veličina snimki"
+   ]
+  },
+  {
+   "language": "hu",
+   "title": "felhasznált tárhely",
+   "words": [
+    "felvételek mérete"
+   ],
+   "phrases": [
+    "mennyi helyet foglalnak a felvételek",
+    "mentett felvételek összmérete"
+   ]
+  },
+  {
+   "language": "it",
+   "title": "spazio utilizzato",
+   "words": [
+    "dimensione delle registrazioni"
+   ],
+   "phrases": [
+    "quanto spazio occupano le registrazioni",
+    "dimensione totale delle registrazioni"
+   ]
+  },
+  {
+   "language": "ja",
+   "title": "ストレージ使用量",
+   "words": [
+    "録音サイズ"
+   ],
+   "phrases": [
+    "録音はどれくらい容量を使っている",
+    "保存した録音の合計サイズ"
+   ]
+  },
+  {
+   "language": "ko",
+   "title": "사용 중인 저장 공간",
+   "words": [
+    "녹음 용량"
+   ],
+   "phrases": [
+    "녹음이 차지하는 공간",
+    "저장된 녹음의 전체 크기"
+   ]
+  },
+  {
+   "language": "lt",
+   "title": "naudojama saugyklos vieta",
+   "words": [
+    "įrašų dydis"
+   ],
+   "phrases": [
+    "kiek vietos užima įrašai",
+    "bendras išsaugotų įrašų dydis"
+   ]
+  },
+  {
+   "language": "lv",
+   "title": "izmantotā krātuves vieta",
+   "words": [
+    "ierakstu lielums"
+   ],
+   "phrases": [
+    "cik vietas aizņem ieraksti",
+    "saglabāto ierakstu kopējais lielums"
+   ]
+  },
+  {
+   "language": "mt",
+   "title": "spazju użat",
+   "words": [
+    "daqs tar-reġistrazzjonijiet"
+   ],
+   "phrases": [
+    "kemm spazju jieħdu r-reġistrazzjonijiet",
+    "daqs totali tar-reġistrazzjonijiet"
+   ]
+  },
+  {
+   "language": "nl",
+   "title": "gebruikte opslagruimte",
+   "words": [
+    "opnamegrootte"
+   ],
+   "phrases": [
+    "hoeveel ruimte nemen mijn opnames in",
+    "totale grootte van opnames"
+   ]
+  },
+  {
+   "language": "pl",
+   "title": "zajęte miejsce",
+   "words": [
+    "rozmiar nagrań"
+   ],
+   "phrases": [
+    "ile miejsca zajmują nagrania",
+    "łączny rozmiar zapisanych nagrań"
+   ]
+  },
+  {
+   "language": "pt",
+   "title": "espaço utilizado",
+   "words": [
+    "tamanho das gravações"
+   ],
+   "phrases": [
+    "quanto espaço ocupam as gravações",
+    "tamanho total das gravações"
+   ]
+  },
+  {
+   "language": "ro",
+   "title": "spațiu utilizat",
+   "words": [
+    "dimensiunea înregistrărilor"
+   ],
+   "phrases": [
+    "cât spațiu ocupă înregistrările",
+    "dimensiunea totală a înregistrărilor"
+   ]
+  },
+  {
+   "language": "ru",
+   "title": "занятое место",
+   "words": [
+    "размер записей"
+   ],
+   "phrases": [
+    "сколько места занимают записи",
+    "общий размер сохранённых записей"
+   ]
+  },
+  {
+   "language": "sk",
+   "title": "využité miesto",
+   "words": [
+    "veľkosť nahrávok"
+   ],
+   "phrases": [
+    "koľko miesta zaberajú nahrávky",
+    "celková veľkosť uložených nahrávok"
+   ]
+  },
+  {
+   "language": "sl",
+   "title": "zasedeni prostor",
+   "words": [
+    "velikost posnetkov"
+   ],
+   "phrases": [
+    "koliko prostora zavzamejo posnetki",
+    "skupna velikost shranjenih posnetkov"
+   ]
+  },
+  {
+   "language": "sv",
+   "title": "använt lagringsutrymme",
+   "words": [
+    "inspelningarnas storlek"
+   ],
+   "phrases": [
+    "hur mycket plats tar inspelningarna",
+    "total storlek på sparade inspelningar"
+   ]
+  },
+  {
+   "language": "tr",
+   "title": "kullanılan depolama alanı",
+   "words": [
+    "kayıt boyutu"
+   ],
+   "phrases": [
+    "kayıtlar ne kadar yer kaplıyor",
+    "kayıtların toplam boyutu"
+   ]
+  },
+  {
+   "language": "uk",
+   "title": "зайняте місце",
+   "words": [
+    "розмір записів"
+   ],
+   "phrases": [
+    "скільки місця займають записи",
+    "загальний розмір збережених записів"
+   ]
+  },
+  {
+   "language": "vi",
+   "title": "dung lượng đã dùng",
+   "words": [
+    "kích thước bản ghi"
+   ],
+   "phrases": [
+    "bản ghi âm chiếm bao nhiêu dung lượng",
+    "tổng dung lượng các bản ghi âm"
+   ]
+  },
+  {
+   "language": "zh",
+   "title": "已用存储空间",
+   "words": [
+    "录音大小"
+   ],
+   "phrases": [
+    "录音占了多少空间",
+    "已保存录音的总大小"
+   ]
+  }
+ ]
+}

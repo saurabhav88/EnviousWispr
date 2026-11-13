@@ -1,0 +1,1 @@
+{"language":"pt","title":"espaço utilizado","words":["tamanho das gravações"],"phrases":["quanto espaço ocupam as gravações","tamanho total das gravações"]}

@@ -1,0 +1,33 @@
+You are reviewing German Settings-search vocabulary for a macOS dictation app (EnviousWispr). Each block lists short "words" and everyday "phrases" a German user might type into the app's Settings search to find one place. Use du-form, no dashes, lowercase except nouns. The interface title is supplied separately and is not part of the block. Search phrases may use words people type even when the interface avoids them.
+
+1. Place: the App Settings tab „Aufnahmen“: saving new dictation recordings, how long dictation recordings and meeting audio are kept, storage used, storage warning, deleting audio (text stays). Not the recording shortcut, not start/stop sounds, not the microphone.
+   Block: {"words": ["Audioaufnahmen", "Diktataufnahmen", "Aufbewahrungsdauer", "Speicherplatz"], "phrases": ["speichere meine Diktataufnahmen", "wie lange werden Diktataufnahmen und Meeting-Audio aufbewahrt", "lösche gespeicherte Audioaufnahmen"]}
+
+2. Place: the switch „Diktataufnahmen speichern“ (on by default): saves each new dictation's audio on this Mac to play back from History; off stops saving new ones, existing ones stay. Never uploads audio.
+   Block: {"words": ["Audioaufnahmen", "Diktataudio"], "phrases": ["speichere den Ton neuer Diktate auf diesem Mac zum späteren Anhören", "speichere keine Audioaufnahmen neuer Diktate mehr"]}
+
+3. Place: the picker „Diktataufnahmen behalten“: 1 Tag, 7 Tage, 30 Tage, Bis ich sie lösche (default). Older dictation recordings are removed automatically; the text always stays; kept recordings are never removed.
+   Block: {"words": ["Aufbewahrungsdauer", "Diktataufnahmen"], "phrases": ["wie lange bleiben meine Diktataufnahmen gespeichert", "alte Diktataufnahmen automatisch löschen und den Text behalten"]}
+
+4. Place: the picker „Meeting-Audio behalten“: 30 Tage, 90 Tage, Bis ich sie lösche (default). Older meeting audio is removed automatically; meetings, transcripts, notes and summaries stay.
+   Block: {"words": ["Meeting-Audio", "Aufbewahrungsdauer"], "phrases": ["stell ein, wie lange Meeting-Audio gespeichert bleibt", "bewahre Meeting-Audio 30 oder 90 Tage auf", "behalte Meeting-Audio, bis ich es lösche"]}
+
+5. Place: the read-only row „Belegter Speicher“: how much disk dictation recordings and meeting audio use on this Mac.
+   Block: {"words": ["Aufnahmegröße", "Speicherverbrauch"], "phrases": ["wie viel Platz brauchen meine Aufnahmen", "zeig mir die Größe meiner Aufnahmen"]}
+
+6. Place: the picker „Speicherwarnschwelle“: 1 GB, 2 GB (default), 5 GB, Keine Warnung. A warning when recordings use more than this; a warning, NOT a limit.
+   Block: {"words": ["Warnschwelle", "Speicherplatzwarnung"], "phrases": ["warne mich, wenn Aufnahmen mehr als 2 GB belegen", "schalte die Speicherplatzwarnung für Aufnahmen aus"]}
+
+7. Place: the picker „Über der Schwelle“: Mich bitten, Platz zu schaffen (default, deletes nothing) or Älteste Diktataufnahmen entfernen (automatic, dictation recordings only, never meeting audio).
+   Block: {"words": ["Löschverhalten", "automatisches Löschen"], "phrases": ["frag mich, ob ich Speicher freigeben möchte, wenn das Speicherlimit überschritten ist", "älteste Diktataufnahmen automatisch löschen, wenn das Speicherlimit überschritten ist"]}
+
+8. Place: the row „Aufnahmen löschen“ with two buttons (Alle Diktataufnahmen löschen, Gesamtes Meeting-Audio löschen); audio only, text, notes and summaries stay.
+   Block: {"words": ["Audiodateien", "entfernen"], "phrases": ["Aufnahmen löschen und Text behalten"]}
+
+9. Place: the button „Alle Diktataufnahmen löschen“: deletes every dictation's audio after confirmation, including kept ones; the text stays.
+   Block: {"words": ["Diktat-Audio"], "phrases": ["lösch alle Audioaufnahmen meiner Diktate"]}
+
+10. Place: the button „Gesamtes Meeting-Audio löschen“: deletes every meeting's audio after confirmation; meetings, transcripts, notes and summaries stay.
+   Block: {"words": ["Besprechungsaufnahmen"], "phrases": ["lösch die Audioaufnahmen aller Meetings"]}
+
+For each block answer "N. OK" or "N. <corrected JSON block>" plus a one-sentence reason. Keep 0 to 6 words and 1 to 3 phrases.

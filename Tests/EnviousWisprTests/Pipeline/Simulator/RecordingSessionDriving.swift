@@ -320,7 +320,12 @@ final class KernelRecordingSession: RecordingSessionDriving {
     /// #3195 PR B: the key-up Apple session hooks. Defaulted no-ops so every existing
     /// scenario is unchanged; `KernelAFMPrewarmHookTests` passes recorders.
     onAFMPrepare: @escaping @MainActor (String, String?) -> Void = { _, _ in },
-    onAFMClear: @escaping @MainActor (String?) -> Void = { _ in }
+    onAFMClear: @escaping @MainActor (String?) -> Void = { _ in },
+    /// #3147: the saved-recording seams. Defaulted to the kernel's own "records nothing" values
+    /// so every existing scenario is unchanged; `KernelDictationRecordingTests` passes its own.
+    recordingPreference: @escaping @MainActor () -> Bool = { false },
+    recordingSink: (any DictationRecordingSink)? = nil,
+    permanentSaveReceipt: @escaping @MainActor (UUID) -> Bool = { _ in false }
   ) {
     self.vad = vad
     let limb = self.limb
@@ -401,6 +406,9 @@ final class KernelRecordingSession: RecordingSessionDriving {
       sessionTerminalTelemetry: onTerminalSnapshot,
       markASRTimingEnd: { [asrTimingLog] in asrTimingLog.count += 1 },
       telemetryState: telemetryState,
+      recordingPreference: recordingPreference,
+      recordingSink: recordingSink,
+      permanentSaveReceipt: permanentSaveReceipt,
       microphonePermissionIsDenied: microphonePermissionIsDenied,
       prepareAFMSessionAtStop: onAFMPrepare,
       clearAFMSession: onAFMClear)

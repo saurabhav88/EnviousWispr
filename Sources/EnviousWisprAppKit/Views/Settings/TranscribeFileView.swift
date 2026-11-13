@@ -331,9 +331,10 @@ struct TranscribeFileView: View {
     _ title: String, isEnabled: Bool = true, systemImage: String? = nil,
     action: @escaping () -> Void
   ) -> some View {
-    SettingsActionButton(
-      verbatimTitle: title, isEnabled: isEnabled, emphasis: .quiet, shape: .roundedRect,
-      size: .medium, systemImage: systemImage, action: action)
+    Button(action: action) {
+      EnviousButtonLabel(verbatim: title, size: .medium, systemImage: systemImage)
+    }
+    .settingsButton(.quiet, shape: .roundedRect, size: .medium, isEnabled: isEnabled)
   }
 
   /// `showsArrow` is opt-OUT, because the prototype's primaries carry the arrow wherever
@@ -342,14 +343,27 @@ struct TranscribeFileView: View {
   /// carries none in the prototype either.
   /// `action` is OPTIONAL: `nil` draws the treatment without being a control, which the drop
   /// zone needs because the whole box is already the button (#2772 finding 1).
+  @ViewBuilder
   private func wizardPrimary(
-    _ title: String, isEnabled: Bool = true, size: SettingsActionButton.Size = .medium,
+    _ title: String, isEnabled: Bool = true, size: EnviousButtonFace.Size = .medium,
     systemImage: String? = nil, showsArrow: Bool = true, action: (() -> Void)? = nil
   ) -> some View {
-    SettingsActionButton(
-      verbatimTitle: title, isEnabled: isEnabled, emphasis: .filled, shape: .roundedRect,
-      size: size, trailingSystemImage: showsArrow ? "arrow.right" : nil,
-      systemImage: systemImage, action: action)
+    let label = EnviousButtonLabel(
+      verbatim: title,
+      size: size,
+      systemImage: systemImage,
+      trailingSystemImage: showsArrow ? "arrow.right" : nil)
+    if let action {
+      Button(action: action) { label }
+        .settingsButton(.filled, shape: .roundedRect, size: size, isEnabled: isEnabled)
+    } else {
+      label
+        .modifier(
+          EnviousButtonFace(
+            emphasis: .filled, shape: .roundedRect, size: size, paintsEnabled: isEnabled)
+        )
+        .disabled(!isEnabled)
+    }
   }
 
   /// `forwardEnabled` exists for #2772 finding 7a: with a cloud engine selected and no key
@@ -2361,7 +2375,8 @@ struct TranscribeFileView: View {
   /// own button as its label. I first wrapped `NSSharingServicePicker` in a 1x1 anchor view
   /// on the stated reason that `ShareLink` renders its own treatment and could not match the
   /// other three buttons. That was false: Apple provides a label initialiser, and chunk 4
-  /// already made `SettingsActionButton` usable without an action. Found by Codex; the anchor
+  /// already made `SettingsActionButton` usable without an action (since #4506: a label with
+  /// `EnviousButtonFace` and no `Button`). Found by Codex; the anchor
   /// machinery is deleted rather than kept beside a correction.
   ///
   /// Shares the TEXT, and the text it shares is whatever is on screen: with "Show original
@@ -2370,10 +2385,16 @@ struct TranscribeFileView: View {
   /// thing this feature exists to keep on the Mac.
   private var shareButton: some View {
     ShareLink(item: coordinator.exportText) {
-      SettingsActionButton(
-        verbatimTitle: coordinator.exportButtonLabels.share, isEnabled: coordinator.hasDocument,
-        emphasis: .quiet, shape: .roundedRect, size: .medium,
+      EnviousButtonLabel(
+        verbatim: coordinator.exportButtonLabels.share,
+        size: .medium,
         systemImage: "square.and.arrow.up")
+        .modifier(
+          EnviousButtonFace(
+            emphasis: .quiet, shape: .roundedRect, size: .medium,
+            paintsEnabled: coordinator.hasDocument)
+        )
+        .disabled(!coordinator.hasDocument)
     }
     .buttonStyle(.plain)
     // Same rule as Copy and Save: nothing to hand over means no offer, rather than a sheet

@@ -16,7 +16,7 @@ import SwiftUI
 /// timetable.
 struct SetupFilmScreen: View {
   let summary: FilmSummary
-  /// The person pressed "Launch EnviousWispr" on the last scene.
+  /// Launch on the final scene or natural completion of the full film.
   let onFinished: () -> Void
   /// The person pressed "Launch EnviousWispr" before the last scene.
   let onSkip: () -> Void
@@ -31,6 +31,7 @@ struct SetupFilmScreen: View {
   /// Whether this film may still save to `playback`: false once its route is left (a Restart),
   /// so an outgoing film never writes back the place the session just cleared (E review r2).
   private let canSavePlayback: () -> Bool
+  private let isVisible: Bool
 
   @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
   /// Tests and render fixtures inject Reduce Motion here (the same override the lips and the
@@ -46,13 +47,15 @@ struct SetupFilmScreen: View {
   @State private var started = false
   /// Watch again was pressed this showing.
   @State private var replayed = false
+  @State private var didExit = false
+  @State private var resumeWhenVisible = false
 
   init(
     summary: FilmSummary, onFinished: @escaping () -> Void, onSkip: @escaping () -> Void,
     frozenAt: Double? = nil,
     onReport: @escaping (OnboardingTelemetry.FilmResult, FilmScene) -> Void = { _, _ in },
     playback: SetupFilmPlayback? = nil,
-    canSavePlayback: @escaping () -> Bool = { true }
+    canSavePlayback: @escaping () -> Bool = { true }, isVisible: Bool = true
   ) {
     self.summary = summary
     self.onFinished = onFinished
@@ -61,6 +64,7 @@ struct SetupFilmScreen: View {
     self.onReport = onReport
     self.playback = playback
     self.canSavePlayback = canSavePlayback
+    self.isVisible = isVisible
     // One `now` for every step, so a frozen film sits exactly at `frozenAt` (two reads of the
     // wall clock put it a few nanoseconds later, which moved the lips by a pixel).
     let now = Date()
@@ -81,7 +85,7 @@ struct SetupFilmScreen: View {
     // on time; while playing, every display frame.
     VStack(spacing: 0) {
       TimelineView(
-        .animation(minimumInterval: reduceMotion ? 0.25 : nil, paused: clock.isPaused)
+        .animation(minimumInterval: reduceMotion ? 0.25 : nil, paused: clock.isPaused || !isVisible)
       ) { timeline in
         let time = clock.time(at: timeline.date)
         SetupFilmFrame(
@@ -92,7 +96,13 @@ struct SetupFilmScreen: View {
           }
         )
         .onChange(of: FilmScript.locate(time).index, initial: true) { _, index in
-          announce(index)
+          if isVisible { announce(index) }
+        }
+        .onChange(
+          of: time >= clock.length && !clock.isPaused && !resumeWhenVisible && isVisible,
+          initial: true
+        ) { _, canFinish in
+          if canFinish { finish(.finished, index: FilmScript.scenes.count - 1) }
         }
       }
       Spacer(minLength: 0)
@@ -103,11 +113,7 @@ struct SetupFilmScreen: View {
         action: {
           let index = FilmScript.locate(clock.time(at: Date())).index
           let exit = Self.exit(at: index)
-          onReport(Self.result(exit, replayed: replayed), FilmScript.scenes[index].scene)
-          switch exit {
-          case .finished: onFinished()
-          case .skipped: onSkip()
-          }
+          finish(exit, index: index)
         }
       ) {
         SetupLinkButton(title: "Watch again", quiet: true) {
@@ -118,30 +124,49 @@ struct SetupFilmScreen: View {
     }
     .padding(.top, DesignSpacing.xs)
     .onAppear {
-      // The film starts when it is first shown, not when the view value was made, and only
-      // the first time: showing the window again must not restart it.
-      if let playback, playback.resumeOnAppear {
-        playback.resumeOnAppear = false
-        clock.play(at: Date())
+      guard !started else {
+        updateVisibility(isVisible)
+        return
       }
-      guard !started else { return }
       started = true
       if frozenAt == nil, !clock.isPaused { clock.seek(to: 0, at: Date()) }
+      updateVisibility(isVisible)
     }
-    .onDisappear {
-      // The window went away mid-film: hold the place, and play on when it is shown again.
-      guard canSavePlayback(), let playback, !clock.isPaused else { return }
-      clock.pause(at: Date())
-      playback.clock = clock
-      playback.resumeOnAppear = true
-    }
+    .onChange(of: isVisible) { _, visible in updateVisibility(visible) }
+    .onDisappear { updateVisibility(false) }
     .onChange(of: clock) { _, now in
-      guard canSavePlayback() else { return }
+      guard canSavePlayback(), !didExit else { return }
       playback?.clock = now
     }
     .onChange(of: replayed) { _, now in
-      guard canSavePlayback() else { return }
+      guard canSavePlayback(), !didExit else { return }
       playback?.replayed = now
+    }
+  }
+
+  private func updateVisibility(_ visible: Bool) {
+    guard frozenAt == nil, canSavePlayback(), !didExit else { return }
+    if visible {
+      if resumeWhenVisible || playback?.resumeOnAppear == true {
+        resumeWhenVisible = false
+        playback?.resumeOnAppear = false
+        clock.play(at: Date())
+      }
+    } else if !clock.isPaused {
+      clock.pause(at: Date())
+      resumeWhenVisible = true
+      playback?.clock = clock
+      playback?.resumeOnAppear = true
+    }
+  }
+
+  private func finish(_ exit: Exit, index: Int) {
+    guard frozenAt == nil, isVisible, canSavePlayback(), !didExit else { return }
+    didExit = true
+    onReport(Self.result(exit, replayed: replayed), FilmScript.scenes[index].scene)
+    switch exit {
+    case .finished: onFinished()
+    case .skipped: onSkip()
     }
   }
 

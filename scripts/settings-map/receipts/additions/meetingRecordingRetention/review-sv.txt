@@ -1,0 +1,1 @@
+{"language":"sv","title":"behåll mötesljud","words":["mötesinspelningar"],"phrases":["välj hur länge ljudet från möten sparas","ta bort gammalt mötesljud automatiskt"]}

@@ -1,0 +1,269 @@
+{
+ "id": "deleteRecordings.dictations",
+ "blocks": [
+  {
+   "language": "ar",
+   "title": "حذف جميع تسجيلات الإملاء",
+   "words": [],
+   "phrases": [
+    "مسح كل التسجيلات الصوتية للإملاء"
+   ]
+  },
+  {
+   "language": "bg",
+   "title": "изтриване на всички записи на диктовки",
+   "words": [],
+   "phrases": [
+    "изтрий всички аудиозаписи на диктовки"
+   ]
+  },
+  {
+   "language": "cs",
+   "title": "smazat všechny nahrávky diktování",
+   "words": [],
+   "phrases": [
+    "odstranit všechny zvukové záznamy diktování"
+   ]
+  },
+  {
+   "language": "da",
+   "title": "slet alle dikteringsoptagelser",
+   "words": [],
+   "phrases": [
+    "fjern alle lydoptagelser af diktater"
+   ]
+  },
+  {
+   "language": "de",
+   "words": [
+    "Diktat-Audio"
+   ],
+   "phrases": [
+    "lösch alle Audioaufnahmen meiner Diktate"
+   ]
+  },
+  {
+   "language": "el",
+   "title": "διαγραφή όλων των ηχογραφήσεων υπαγόρευσης",
+   "words": [],
+   "phrases": [
+    "σβήσε όλες τις ηχογραφήσεις από υπαγορεύσεις"
+   ]
+  },
+  {
+   "language": "en",
+   "words": [
+    "dictation audio"
+   ],
+   "phrases": [
+    "remove all my dictation audio recordings"
+   ]
+  },
+  {
+   "language": "es",
+   "title": "eliminar todas las grabaciones de dictado",
+   "words": [],
+   "phrases": [
+    "borrar todos los audios de dictado"
+   ]
+  },
+  {
+   "language": "et",
+   "title": "kustuta kõik dikteerimise salvestised",
+   "words": [],
+   "phrases": [
+    "eemalda kõik dikteerimise helisalvestised"
+   ]
+  },
+  {
+   "language": "fi",
+   "title": "poista kaikki sanelutallenteet",
+   "words": [],
+   "phrases": [
+    "poista kaikkien sanelujen äänitteet"
+   ]
+  },
+  {
+   "language": "fr",
+   "title": "supprimer tous les enregistrements de dictée",
+   "words": [],
+   "phrases": [
+    "effacer tous les audios de mes dictées"
+   ]
+  },
+  {
+   "language": "hi",
+   "title": "बोलकर लिखने की सभी रिकॉर्डिंग मिटाएँ",
+   "words": [
+    "डिक्टेशन"
+   ],
+   "phrases": [
+    "डिक्टेशन की सारी ऑडियो रिकॉर्डिंग हटाएँ"
+   ]
+  },
+  {
+   "language": "hr",
+   "title": "izbriši sve snimke diktiranja",
+   "words": [],
+   "phrases": [
+    "obriši sve audiosnimke diktiranja"
+   ]
+  },
+  {
+   "language": "hu",
+   "title": "az összes diktálási felvétel törlése",
+   "words": [],
+   "phrases": [
+    "az összes diktálás hangfelvételének törlése"
+   ]
+  },
+  {
+   "language": "it",
+   "title": "elimina tutte le registrazioni di dettatura",
+   "words": [],
+   "phrases": [
+    "cancella tutti gli audio delle dettature"
+   ]
+  },
+  {
+   "language": "ja",
+   "title": "すべての音声入力の録音を削除",
+   "words": [
+    "ディクテーション"
+   ],
+   "phrases": [
+    "音声入力したときの録音を全部消す"
+   ]
+  },
+  {
+   "language": "ko",
+   "title": "모든 받아쓰기 녹음 삭제",
+   "words": [],
+   "phrases": [
+    "받아쓰기한 음성 녹음 전부 지우기"
+   ]
+  },
+  {
+   "language": "lt",
+   "title": "ištrinti visus diktavimo įrašus",
+   "words": [],
+   "phrases": [
+    "pašalinti visus diktavimo garso įrašus"
+   ]
+  },
+  {
+   "language": "lv",
+   "title": "dzēst visus diktēšanas ierakstus",
+   "words": [],
+   "phrases": [
+    "izdzēst visus diktēšanas audioierakstus"
+   ]
+  },
+  {
+   "language": "mt",
+   "title": "ħassar ir-reġistrazzjonijiet kollha tad-dettatura",
+   "words": [],
+   "phrases": [
+    "neħħi l-awdjo kollu tad-dettatura"
+   ]
+  },
+  {
+   "language": "nl",
+   "title": "alle dicteeropnamen verwijderen",
+   "words": [],
+   "phrases": [
+    "alle geluidsopnamen van dictaten wissen"
+   ]
+  },
+  {
+   "language": "pl",
+   "title": "usuń wszystkie nagrania dyktowania",
+   "words": [],
+   "phrases": [
+    "skasuj wszystkie nagrania głosowe z dyktowania"
+   ]
+  },
+  {
+   "language": "pt",
+   "title": "excluir todas as gravações de ditado",
+   "words": [
+    "apagar"
+   ],
+   "phrases": [
+    "eliminar todos os áudios de ditado"
+   ]
+  },
+  {
+   "language": "ro",
+   "title": "șterge toate înregistrările de dictare",
+   "words": [],
+   "phrases": [
+    "șterge toate fișierele audio de la dictare"
+   ]
+  },
+  {
+   "language": "ru",
+   "title": "удалить все записи диктовки",
+   "words": [],
+   "phrases": [
+    "стереть все аудиозаписи диктовки"
+   ]
+  },
+  {
+   "language": "sk",
+   "title": "vymazať všetky nahrávky diktovania",
+   "words": [],
+   "phrases": [
+    "odstrániť všetky zvukové záznamy diktovania"
+   ]
+  },
+  {
+   "language": "sl",
+   "title": "izbriši vse posnetke narekovanja",
+   "words": [],
+   "phrases": [
+    "odstrani vse zvočne posnetke narekovanja"
+   ]
+  },
+  {
+   "language": "sv",
+   "title": "radera alla dikteringsinspelningar",
+   "words": [],
+   "phrases": [
+    "ta bort alla ljudinspelningar av diktat"
+   ]
+  },
+  {
+   "language": "tr",
+   "title": "tüm dikte kayıtlarını sil",
+   "words": [],
+   "phrases": [
+    "dikte ederken alınan tüm ses kayıtlarını sil"
+   ]
+  },
+  {
+   "language": "uk",
+   "title": "видалити всі записи диктування",
+   "words": [],
+   "phrases": [
+    "стерти всі аудіозаписи диктування"
+   ]
+  },
+  {
+   "language": "vi",
+   "title": "xóa tất cả bản ghi âm nhập liệu bằng giọng nói",
+   "words": [],
+   "phrases": [
+    "xóa hết ghi âm khi đọc để nhập văn bản"
+   ]
+  },
+  {
+   "language": "zh",
+   "title": "删除所有听写录音",
+   "words": [],
+   "phrases": [
+    "把语音输入时的录音全部删掉"
+   ]
+  }
+ ]
+}

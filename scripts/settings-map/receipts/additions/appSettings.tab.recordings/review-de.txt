@@ -1,0 +1,1 @@
+{"language":"de","words":["Audioaufnahmen","Diktataufnahmen","Aufbewahrungsdauer","Speicherplatz"],"phrases":["speichere meine Diktataufnahmen","wie lange werden Diktataufnahmen und Meeting-Audio aufbewahrt","lösche gespeicherte Audioaufnahmen"]}

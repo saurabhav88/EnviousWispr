@@ -1,0 +1,1 @@
+{"language":"sl","title":"izbriši vse posnetke narekovanja","words":[],"phrases":["odstrani vse zvočne posnetke narekovanja"]}

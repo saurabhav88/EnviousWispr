@@ -1,0 +1,1 @@
+{"language":"tr","title":"ses kayıtlarını sil","words":["ses dosyaları"],"phrases":["tüm dikte kayıtlarını sil","tüm toplantı seslerini sil","ses kayıtlarını sil ama metinler kalsın"]}

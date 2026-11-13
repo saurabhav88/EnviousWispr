@@ -1,0 +1,11 @@
+{
+  "language": "hr",
+  "title": "čuvanje audiosnimki sastanaka",
+  "words": [
+    "audiosnimke sastanaka"
+  ],
+  "phrases": [
+    "koliko dugo čuvati zvuk sastanaka",
+    "automatski izbriši zvuk sastanaka nakon 30 dana"
+  ]
+}

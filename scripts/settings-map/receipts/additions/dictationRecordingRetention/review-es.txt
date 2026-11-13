@@ -1,0 +1,1 @@
+{"language":"es","title":"conservar grabaciones de dictado","words":["plazo de conservación","borrado automático"],"phrases":["cuánto tiempo se guardan las grabaciones de dictado","borrar grabaciones antiguas y conservar el texto"]}

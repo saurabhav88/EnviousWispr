@@ -7,6 +7,9 @@ import SwiftUI
 /// controls by the player's identity, so a new player starts with no scrub in progress.
 struct MeetingPlaybackControls: View {
   let player: MeetingPlaybackController
+  /// #3147: the Play button's accessibility identifier; History's dictation recording reuses
+  /// these controls under its own.
+  var identifier = "meetings.detail.play"
   /// The scrubber's place while the user drags it; nil follows the player.
   @State private var scrubMs: Double?
 
@@ -28,7 +31,7 @@ struct MeetingPlaybackControls: View {
             ? Text("Pause", comment: "EnviousMeet: pauses the meeting recording.")
             : Text("Play", comment: "EnviousMeet: plays the meeting recording.")
         )
-        .accessibilityIdentifier("meetings.detail.play")
+        .accessibilityIdentifier(identifier)
         Slider(
           value: Binding(get: { shown }, set: { scrubMs = $0 }), in: 0...duration,
           onEditingChanged: { editing in

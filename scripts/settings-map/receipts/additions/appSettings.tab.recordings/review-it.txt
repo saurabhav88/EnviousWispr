@@ -1,0 +1,14 @@
+{
+  "language": "it",
+  "title": "registrazioni",
+  "words": [
+    "registrazioni audio",
+    "audio delle riunioni",
+    "spazio su disco"
+  ],
+  "phrases": [
+    "salvare le registrazioni delle dettature",
+    "per quanto tempo conservare l'audio delle riunioni",
+    "eliminare le registrazioni per liberare spazio"
+  ]
+}

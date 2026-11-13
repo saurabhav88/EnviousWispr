@@ -84,6 +84,21 @@ struct OnboardingFlowState: Equatable, Sendable {
   var choices = OnboardingChoices()
   var readiness = OnboardingReadiness()
   var practiceOutcome: OnboardingPracticeOutcome?
+  var downloadsReturn: OnboardingStep?
+  var recoveringReadiness = false
+
+  var canInspectDownloads: Bool {
+    Self.downloadOrigins.contains(step)
+  }
+
+  static let downloadOrigins: Set<OnboardingStep> = [
+    .polishIntro, .polishPick, .polishSeeAll, .permissions, .key, .gettingReady,
+  ]
+
+  static let recoverySteps: Set<OnboardingStep> = [
+    .speechPick, .speechCompare, .polishPick, .polishSeeAll, .permissions,
+  ]
+
   /// The recommendation's defaults, used when the person continues without choosing.
   var recommended = OnboardingRecommended()
 
@@ -133,6 +148,11 @@ enum OnboardingEvent: Equatable, Sendable {
   case continueWithoutPolish
   /// Getting ready's way back to Permissions when a grant was turned off (plan M83).
   case reviewPermissions
+  case changeSpeech
+  case changePolish
+  case reviewCloudKey
+  case returnToGettingReady
+  case inspectDownloads
   case readinessChanged(OnboardingReadiness)
   case practiceSucceeded
   case skipPractice
@@ -182,14 +202,15 @@ enum OnboardingFlow {
     func chooseSpeech(_ engine: ASRBackendType) -> OnboardingTransition {
       if s.choices.speech != engine { s.readiness.clearSpeech() }
       s.choices.speech = engine
-      return move(.polishIntro, [.startSpeechDownload(engine)])
+      return finishRecovery(or: .polishIntro, effects: [.startSpeechDownload(engine)])
     }
     func choosePolish(_ id: String) -> OnboardingTransition {
       if s.choices.polish != id { s.readiness.clearPolish() }
       s.choices.polish = id
       s.choices.cloudProvider = nil
       s.choices.cloudModel = nil
-      return move(.downloads, downloadsLocally(id) ? [.startPolishDownload(id)] : [])
+      return finishRecovery(
+        or: .downloads, effects: downloadsLocally(id) ? [.startPolishDownload(id)] : [])
     }
     func chooseCloud(_ provider: LLMProvider, _ model: String) -> OnboardingTransition {
       let same =
@@ -199,7 +220,14 @@ enum OnboardingFlow {
       s.choices.polish = OnboardingChoices.polishCloud
       s.choices.cloudProvider = provider
       s.choices.cloudModel = model
-      return move(.downloads)
+      return finishRecovery(or: .downloads)
+    }
+    func finishRecovery(
+      or step: OnboardingStep, effects: [OnboardingEffect] = []
+    ) -> OnboardingTransition {
+      let recovering = s.recoveringReadiness
+      s.recoveringReadiness = false
+      return move(recovering ? .gettingReady : step, effects)
     }
     let noOp = OnboardingTransition(state: state, outcome: .noOp, effects: [])
     func refuse(_ why: String) -> OnboardingTransition {
@@ -213,7 +241,7 @@ enum OnboardingFlow {
       s.readiness = fact
       switch state.step {
       case .permissions where fact.permissionsGranted:
-        return move(.key)
+        return finishRecovery(or: .key)
       case .gettingReady where s.isReadyForPractice:
         return move(.practice)
       default:
@@ -221,7 +249,23 @@ enum OnboardingFlow {
       }
     }
 
+    if event == .inspectDownloads, state.canInspectDownloads {
+      s.downloadsReturn = state.step
+      return move(.downloads)
+    }
+    if state.step == .downloads, let origin = state.downloadsReturn,
+      event == .next || event == .back
+    {
+      s.downloadsReturn = nil
+      return move(origin)
+    }
+
     if event == .back {
+      if state.recoveringReadiness,
+        [.speechPick, .polishPick, .permissions].contains(state.step)
+      {
+        return finishRecovery(or: .gettingReady)
+      }
       guard let previous = previousStep(state.step) else { return noOp }
       return move(previous)
     }
@@ -268,16 +312,21 @@ enum OnboardingFlow {
       s.choices.polish = OnboardingChoices.polishOff
       s.choices.cloudProvider = nil
       s.choices.cloudModel = nil
-      return move(.downloads)
+      return finishRecovery(or: .downloads)
 
-    case (.downloads, .turnPolishOn): return move(.polishPick)
+    case (.downloads, .turnPolishOn), (.downloads, .changePolish):
+      s.downloadsReturn = nil
+      return move(.polishPick)
+    case (.downloads, .changeSpeech):
+      s.downloadsReturn = nil
+      return move(.speechPick)
     case (.downloads, .next): return move(.permissions)
 
     case (.permissions, .next):
       guard s.readiness.permissionsGranted else {
         return refuse("microphone and accessibility are not both granted")
       }
-      return move(.key)
+      return finishRecovery(or: .key)
 
     case (.key, .next): return move(s.isReadyForPractice ? .practice : .gettingReady)
     case (.gettingReady, .next):
@@ -292,7 +341,25 @@ enum OnboardingFlow {
       if s.isReadyForPractice { return move(.practice) }
       return OnboardingTransition(state: s, outcome: .noOp, effects: [.persistCheckpoint])
     case (.gettingReady, .reviewPermissions):
+      s.recoveringReadiness = true
       return move(.permissions)
+    case (.gettingReady, .changeSpeech):
+      s.recoveringReadiness = true
+      return move(.speechPick)
+    case (.gettingReady, .changePolish):
+      s.recoveringReadiness = true
+      return move(.polishPick)
+    case (.gettingReady, .reviewCloudKey):
+      guard state.choices.polish == OnboardingChoices.polishCloud,
+        let provider = state.choices.cloudProvider, SavedKeyPresence.cloudProviders.contains(provider)
+      else { return noOp }
+      s.recoveringReadiness = true
+      return move(.polishSeeAll)
+    case (.speechPick, .returnToGettingReady), (.speechCompare, .returnToGettingReady),
+      (.polishPick, .returnToGettingReady), (.polishSeeAll, .returnToGettingReady),
+      (.permissions, .returnToGettingReady):
+      guard state.recoveringReadiness else { return noOp }
+      return finishRecovery(or: .gettingReady)
 
     case (.practice, .practiceSucceeded):
       // A resumed Practice opens with empty readiness; a take only counts once the current

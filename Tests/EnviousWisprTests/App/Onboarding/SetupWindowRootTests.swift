@@ -344,7 +344,7 @@ struct SetupWindowRootTests {
     #expect(model.seeAllTab == .mac && model.cloudPanel == nil, "a Cloud tab showed with no panel")
 
     let count = PanelCount()
-    model.sources.makeCloudPanel = {
+    model.sources.makeCloudPanel = { _ in
       let panel = Self.inertCloudPanel()
       count.made.append(panel)
       return panel
@@ -399,20 +399,23 @@ struct SetupWindowRootTests {
     #expect(model.seeAllTab == .mac && model.cloudPanel == nil)  // no factory yet
     let leaves = Leaves()
     var sources = SetupScreenSources()
-    sources.makeCloudPanel = {
+    sources.makeCloudPanel = { provider in
       SetupCloudPanelModel(
         inputs: .init(
           hydrate: { _ in nil }, check: { _, _, _ in .retry }, isCurrent: { _, _ in false },
-          canChoose: { _, _, _ in false }, list: { nil }, leave: { leaves.log.append($0) }))
+          canChoose: { _, _, _ in false }, list: { nil }, leave: { leaves.log.append($0) }),
+        provider: provider)
     }
     model.sources = sources
     #expect(model.seeAllTab == .cloud && model.cloudPanel != nil, "the committed cloud pick reopened on Mac")
 
+    #expect(model.cloudPanel?.provider == .claude)
+    #expect(leaves.log.isEmpty)
     model.cloudPanel?.provider = .gemini  // switching provider leaves the old one
-    #expect(leaves.log == [.openAI])
+    #expect(leaves.log == [.claude])
     coordinator.send(.back)  // AI polish pick: See all is left
     #expect(model.cloudPanel == nil)
-    #expect(leaves.log == [.openAI, nil], "the dropped panel did not leave every provider once")
+    #expect(leaves.log == [.claude, nil], "the dropped panel did not leave every provider once")
   }
 
   @Test(
@@ -420,14 +423,20 @@ struct SetupWindowRootTests {
   )
   func filmPlaybackSurvivesCloseNotRestart() throws {
     _ = NSApplication.shared
-    func mountedFilm() -> (OnboardingCoordinator, SetupScreenModel, SetupFilmPlayback, NSHostingView<AnyView>) {
+    func mountedFilm() throws
+      -> (OnboardingCoordinator, SetupScreenModel, SetupFilmPlayback, NSHostingView<AnyView>)
+    {
       let world = OnboardingCoordinatorTests.World()
+      world.checkpoint = try OnboardingCheckpoint(
+        state: .init(step: .film, practiceOutcome: .succeeded), startedAt: .now, savedAt: .now
+      ).encoded()
       let coordinator = world.coordinator()
-      coordinator.begin()
-      coordinator.debugGoto(.film)
+      #expect(coordinator.begin())
+      #expect(coordinator.state.step == .film)
       let model = SetupScreenModel(coordinator: coordinator)
       let playback = SetupFilmPlayback()
       model.sources.filmPlayback = playback
+      model.setWindowVisible(true)
       let host = Self.host(SetupWindowRoot(model: model), reduceMotion: false)
       host.layoutSubtreeIfNeeded()
       host.window?.displayIfNeeded()
@@ -435,7 +444,7 @@ struct SetupWindowRootTests {
     }
 
     // Control: the window's content goes away mid-play, so the film saves its place.
-    let (_, closing, saved, closeHost) = mountedFilm()
+    let (_, closing, saved, closeHost) = try mountedFilm()
     defer { closing.detach() }
     #expect(saved.clock != nil, "the playing film never wrote its clock")
     closeHost.rootView = AnyView(EmptyView())
@@ -443,7 +452,7 @@ struct SetupWindowRootTests {
     #expect(saved.resumeOnAppear && saved.clock?.isPaused == true, "closing did not hold the place")
 
     // Restart: the session clears the place, then the flow leaves the film.
-    let (coordinator, restarting, cleared, restartHost) = mountedFilm()
+    let (coordinator, restarting, cleared, restartHost) = try mountedFilm()
     defer { restarting.detach() }
     cleared.clear()
     coordinator.reset()
@@ -489,7 +498,7 @@ struct SetupWindowRootTests {
         .write(to: folder.appending(path: "setup-polish-seeall-\(afm.rawValue)-reduce-motion.png"))
       if afm == .available {
         // With the panel factory: the two tabs, then the Cloud tab's panel and its own footer.
-        model.sources.makeCloudPanel = { Self.inertCloudPanel() }
+        model.sources.makeCloudPanel = { _ in Self.inertCloudPanel() }
         let mac = try Self.png(Self.host(SetupWindowRoot(model: model), reduceMotion: true))
         try mac.write(to: folder.appending(path: "setup-polish-seeall-tabs-reduce-motion.png"))
         model.showSeeAllTab(.cloud)

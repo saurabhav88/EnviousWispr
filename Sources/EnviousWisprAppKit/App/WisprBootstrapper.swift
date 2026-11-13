@@ -17,7 +17,7 @@ import SwiftUI
 /// can link this code WITHOUT launching the app. The thin `EnviousWisprApp`
 /// shell (still `@main`, still owning the `@NSApplicationDelegateAdaptor` and
 /// app identity) constructs ONE of these in `App.init()`, attaches it to the
-/// shell `AppDelegate`, and shows `mainWindowContent()` / `onboardingWindowContent()`.
+/// shell `AppDelegate`, and shows `mainWindowContent()`.
 /// App-owned homes stay `internal` to this module (no public leak); only the
 /// bootstrapper type + its init + 4 lifecycle methods + 2 view factories + 2
 /// window-title accessors cross to the shell.
@@ -60,6 +60,9 @@ package final class WisprBootstrapper {
   /// #4012: notices calls and asks to record them.
   let callDetection: CallDetectionCoordinator
   let meetingMemoryPressure: MeetingMemoryPressure
+  /// #3147: recording storage use, and the keep periods and storage warning that act on it.
+  let recordingUsage: RecordingUsage?
+  let recordingRetention: RecordingRetention?
   /// #2648 — Transcribe a File's state machine, held here so the run survives
   /// the page being closed.
   let fileImportCoordinator: FileImportCoordinator
@@ -99,8 +102,7 @@ package final class WisprBootstrapper {
   let permissions: PermissionsService
   /// #1176: in-flight onboarding session, read at app-quit to emit abandon.
   let onboardingProgress = OnboardingProgress()
-  /// #4528 C2c.2: who may run Setup (old onboarding or a new-coordinator session), one at a time.
-  let onboardingWorkflow: OnboardingWorkflowOwner
+  let setupSession: SetupSession
   let asrManager: any ASRManagerInterface
   /// #1386 PR-2: the one door to whichever engine is active. Shared plumbing —
   /// crash recovery (constructed here) and the Diagnostics benchmark (via the
@@ -430,6 +432,7 @@ package final class WisprBootstrapper {
       })
 
     let transcriptStore = TranscriptStore()
+    let recordingArchive = RecordingArchive()
     // The History half of #2811's turn-label telemetry; the wizard half is wired on
     // `FileImportCoordinator` below, and both emit the same shape-only events.
     let transcriptCoordinator = TranscriptCoordinator(
@@ -439,7 +442,17 @@ package final class WisprBootstrapper {
       },
       emitTurnsDisplayedTelemetry: {
         TelemetryService.shared.trackFileImportTurnsDisplayed(screen: .history)
-      })
+      },
+      // #3147: the one dictation recording archive.
+      recordingArchive: recordingArchive)
+    // #3147 §3.3: History opens on the tab the user left it on.
+    transcriptCoordinator.restoreHistoryTab(settings.lastHistoryTab)
+    transcriptCoordinator.onHistoryTabSelected = { [weak settings] tab in
+      settings?.lastHistoryTab = tab
+    }
+    // #3147: interrupted encodes and orphaned recordings are cleaned once, before any new
+    // recording is admitted.
+    transcriptCoordinator.recordings?.start()
 
     // #832/#913 PR8: app-owned output-safety classifier holder. Created before
     // the polish service + both kernel drivers so all three receive the same
@@ -794,7 +807,10 @@ package final class WisprBootstrapper {
         pasteCompletionRegistry: pasteCompletionRegistry,
         engineMutationScope: engineMutationScope,
         outputClassifierHolder: outputClassifierHolder,
-        dictationAudioArchiveOptInProvider: { settings.isDictationAudioArchiveEnabled },
+        // #3147 D1: App Settings > Recordings' switch, read live; the kernel freezes it once
+        // per accepted take.
+        recordingPreference: DictationRecordings.livePreference(settings),
+        recordingSink: transcriptCoordinator.recordings,
         microphonePermissionIsDenied: { permissions.microphonePermissionIsDenied },
         egOneRuntime: egOneRuntime,
         additionalLocalRuntimes: additionalLocalRuntimes,
@@ -865,7 +881,10 @@ package final class WisprBootstrapper {
         whisperModelIdentity: modelDelivery.whisperRegistration?.manifest.identity
           .asrModelIdentity,
         outputClassifierHolder: outputClassifierHolder,
-        dictationAudioArchiveOptInProvider: { settings.isDictationAudioArchiveEnabled },
+        // #3147 D1: App Settings > Recordings' switch, read live; the kernel freezes it once
+        // per accepted take.
+        recordingPreference: DictationRecordings.livePreference(settings),
+        recordingSink: transcriptCoordinator.recordings,
         microphonePermissionIsDenied: { permissions.microphonePermissionIsDenied },
         egOneRuntime: egOneRuntime,
         additionalLocalRuntimes: additionalLocalRuntimes,
@@ -1338,18 +1357,11 @@ package final class WisprBootstrapper {
     // report to it** (the "Show app in Dock" switch, the update dialog). Its inputs,
     // `presentationEffects` and `settings`, already exist, so this is a reorder, not
     // a late-bound seam: same reasoning as `MenuBarController` below.
-    let onboardingWorkflow = OnboardingWorkflowOwner()
-    self.onboardingWorkflow = onboardingWorkflow
     let appWindowCoordinator = AppWindowCoordinator(
       application: presentationEffects.application,
       // Strong: `settings` holds no reference back to the coordinator, and a nil fallback
       // would be a second copy of the default, which lives only in `SettingsDefaultValues`.
       showInDock: { [settings] in settings.showInDock },
-      canOpenOnboarding: { [weak settings] in
-        guard let settings else { return false }
-        // #4528 C2c.2: never open the old writer over a new-coordinator session.
-        return settings.onboardingState != .completed && onboardingWorkflow.legacyMayOpen
-      },
       isOnboardingComplete: { [weak settings] in
         settings?.onboardingState == .completed
       }
@@ -1366,6 +1378,8 @@ package final class WisprBootstrapper {
     // #3289 §8b: the same late binding for the idle-memory observer, built further down; a usage
     // metrics change restarts its idle stretch.
     weak var idleMemoryObserverForSettings: IdleMemoryObserver?
+    // #3147: the same late binding for recording retention, built with the meetings below.
+    weak var recordingRetentionForSettings: RecordingRetention?
 
     settings.onChange = {
       [
@@ -1378,6 +1392,13 @@ package final class WisprBootstrapper {
       guard let settingsSync, let settings else { return }
       settingsSync.handleSettingChanged(key, settings: settings)
       if key == .shareUsageMetrics { idleMemoryObserverForSettings?.usageMetricsChanged() }
+      // #3147: a committed keep period or a threshold change is applied by the next sweep, now.
+      switch key {
+      case .dictationRecordingRetention, .meetingRecordingRetention,
+        .recordingStorageWarningThreshold, .recordingThresholdBehavior:
+        recordingRetentionForSettings?.settingsChanged()
+      default: break
+      }
       // #3438, #4321: dictation's and the summary engine's setup monitors.
       polishSetupMonitorHolder.settingChanged(key)
       // #1173: emit coalesced settings.changed deltas (fire-and-forget, never
@@ -2032,7 +2053,7 @@ package final class WisprBootstrapper {
             waitingOnSummary: coordinator.passWaitsOnSummary)
         },
         showMeeting: { [weak transcriptCoordinator] meetingID in
-          transcriptCoordinator?.showRecordings(meetingID: meetingID)
+          transcriptCoordinator?.showMeetings(meetingID: meetingID)
           navigationCoordinator.request(.history)
           appWindowCoordinator.showWindow()
         },
@@ -2131,7 +2152,6 @@ package final class WisprBootstrapper {
       hotkeyService: hotkeyService,
       applicationRelocationCoordinator: applicationRelocationCoordinator,
       bluetoothAwarenessPresenter: bluetoothAwarenessPresenter,
-      onboardingProgress: onboardingProgress,
       transcriptionCheckpointStore: transcriptionCheckpointStore,
       batchDecodeFaultController: batchDecodeFaultController,
       whisperMemoryPressure: whisperMemoryPressure,
@@ -2550,7 +2570,30 @@ package final class WisprBootstrapper {
         importHoldsEngine: fileImportCoordinator?.isEngineHeld == true,
         importProvider: fileImportRunner?.frozenLLMProvider)
     }
+    let setupOwners = OnboardingLiveOwners(
+      settings: settings, modelDelivery: modelDelivery, whisperSetup: setup.whisperSetup,
+      localPolish: localPolishRuntimes, engineCoordinator: engineCoordinator,
+      aiAvailability: aiAvailability, llmDiscovery: llmDiscovery,
+      savedKeyPresence: savedKeyPresence, permissions: permissions,
+      egOneSizeCatalog: egOneSizeCatalog, cloudModelList: cloudModelList,
+      dictationRuntime: dictationRuntime, application: presentationEffects.application,
+      setupShortcutMonitor: setupShortcutMonitor,
+      credentials: CredentialWriter(
+        keychainManager: keychainManager, presence: savedKeyPresence,
+        discovery: llmDiscovery),
+      liveRecording: liveRecordingState, audioDevices: audioDeviceList)
+    let setupSession = SetupSession.live(setupOwners, progress: onboardingProgress)
+    self.setupSession = setupSession
+    appWindowCoordinator.setupSession = setupSession
+    setupSession.onCompleted = { [weak appWindowCoordinator, weak menuBarController] in
+      menuBarController?.updateIcon()
+      appWindowCoordinator?.finishSetup()
+    }
+    setupSession.onProgrammaticDismissal = { [weak appWindowCoordinator] in
+      appWindowCoordinator?.refreshActivationPolicy(excluding: nil)
+    }
     #if DEBUG
+      let onboardingWorkflow = OnboardingWorkflowOwner()
       self.debugImportDoor = DebugImportDoor(
         coordinator: fileImportCoordinator,
         // The screen's gate, composed from the same coordinators the screen reads; the
@@ -2687,19 +2730,7 @@ package final class WisprBootstrapper {
             sources: DevControlCalls.Sources(
               coordinator: { [meetingBox] in meetingBox.callDetection })),
           onboarding: .live(
-            OnboardingLiveOwners(
-              settings: settings, modelDelivery: modelDelivery, whisperSetup: setup.whisperSetup,
-              localPolish: localPolishRuntimes, engineCoordinator: engineCoordinator,
-              aiAvailability: aiAvailability, llmDiscovery: llmDiscovery,
-              savedKeyPresence: savedKeyPresence, permissions: permissions,
-              egOneSizeCatalog: egOneSizeCatalog, cloudModelList: cloudModelList,
-              dictationRuntime: dictationRuntime, application: presentationEffects.application,
-              setupShortcutMonitor: setupShortcutMonitor,
-              credentials: CredentialWriter(
-                keychainManager: keychainManager, presence: savedKeyPresence,
-                discovery: llmDiscovery),
-              liveRecording: liveRecordingState, audioDevices: audioDeviceList),
-            workflow: onboardingWorkflow, progress: onboardingProgress)))
+            setupOwners, workflow: onboardingWorkflow, setupSession: setupSession)))
     #endif
     // #3972 C4a: EnviousMeet, bootstrapped here so it lives independently of any view.
     engineCoordinator.onMintingEnded = { [meetingWakes] in meetingWakes.poke() }
@@ -2938,6 +2969,25 @@ package final class WisprBootstrapper {
         setupService.setupState == .ready
       })
     let meetingCoordinator = MeetingWiring.make(meetingInputs)
+    // #3147: one now-playing owner for meeting and dictation recordings: starting one pauses
+    // the other, and every deletion stops that recording's players before its files go.
+    let playbackArbiter = PlaybackArbiter()
+    meetingCoordinator.playbackArbiter = playbackArbiter
+    transcriptCoordinator.recordings?.arbiter = playbackArbiter
+    // #3147: usage across both recording owners, and the one retention policy acting through
+    // each owner's own removal. Starts after both owners exist; each sweep waits for their
+    // launch work on its own task.
+    let recordingUsage = RecordingUsage(archive: recordingArchive, meetingStore: MeetingStore())
+    let recordingRetention = transcriptCoordinator.recordings.map { recordings in
+      RecordingRetention(
+        RecordingRetention.Dependencies(
+          settings: settings, recordings: recordings, archive: recordingArchive,
+          savedDates: { [transcriptStore] ids in await transcriptStore.savedDates(of: ids) },
+          meetings: { [weak meetingCoordinator] in meetingCoordinator },
+          usage: recordingUsage))
+    }
+    recordingRetentionForSettings = recordingRetention
+    recordingRetention?.start()
     meetingSummariesForEviction = meetingCoordinator.summaries
     // #4287: an eviction deferred while a summary call used its Ollama model runs once the
     // call releases it, as dictation and file import retry theirs on completion.
@@ -3122,7 +3172,7 @@ package final class WisprBootstrapper {
             ?? .ended
         },
         showMeeting: { [weak transcriptCoordinator] meetingID in
-          transcriptCoordinator?.showRecordings(meetingID: meetingID)
+          transcriptCoordinator?.showMeetings(meetingID: meetingID)
           navigationCoordinator.request(.history)
           appWindowCoordinator.showWindow()
         },
@@ -3150,6 +3200,8 @@ package final class WisprBootstrapper {
         now: callDetectionNow)
     #endif
     self.meetingMemoryPressure = meetingMemoryPressure
+    self.recordingUsage = recordingUsage
+    self.recordingRetention = recordingRetention
     self.transcriptCoordinator = transcriptCoordinator
     self.liveRecordingState = liveRecordingState
     self.lastRecordingResult = lastRecordingResult
@@ -3158,10 +3210,6 @@ package final class WisprBootstrapper {
     self.dictationRuntime = dictationRuntime
     self.hotkeyService = hotkeyService
     self.appWindowCoordinator = appWindowCoordinator
-    appWindowCoordinator.onboardingWorkflow = onboardingWorkflow
-    onboardingWorkflow.legacyWindowVisible = { [weak appWindowCoordinator] in
-      appWindowCoordinator?.isOnboardingWindowVisible ?? false
-    }
     self.previousApplicationTracker = previousApplicationTracker
     self.historyPaste = historyPaste
     self.menuBarController = menuBarController
@@ -3501,6 +3549,7 @@ package final class WisprBootstrapper {
 
   package func applicationDidBecomeActive() {
     appLifecycleCoordinator.runDidBecomeActive()
+    setupSession.components?.runtime.appDidBecomeActive()
     // #3438: after the pane-scoped probe above, so a visible watch is never doubled.
     polishSetup.monitor.applicationDidBecomeActive()
     // #958: proactive foreground check (post-sleep freshness), strict >=3600 gated.
@@ -3545,6 +3594,8 @@ package final class WisprBootstrapper {
     callDetection.discovery.shutDown()
     meetingCoordinator.prepareForTermination(deadline: .now() + 1)
     meetingMemoryPressure.stop()
+    // #3147: no retention pass starts after this.
+    recordingRetention?.stop()
     // #3438, #4321: stop observing before the owners they read are torn down.
     polishSetup.stop()
     // #3269: best effort; the process may exit first, and every outbox write is atomic anyway.
@@ -3563,11 +3614,7 @@ package final class WisprBootstrapper {
     // bypasses this). Capture BEFORE the Phase-1 flush in runWillTerminate so it is
     // durable. Deduped by the box's terminal guard (a clean finish or a prior
     // window-close abandon suppresses it).
-    onboardingWorkflow.backendQuit?()  // #4528: a backend session that owns Setup ends first.
-    onboardingProgress.emitAbandonIfInFlight(
-      reason: "app_quit", micStatus: permissions.microphoneStatusString,
-      // Live read so a just-before-quit grant isn't logged denied (cloud Codex r3).
-      accessibilityStatus: permissions.accessibilityGrantedLive ? "granted" : "denied")
+    setupSession.stop(reason: "app_quit")
     appLifecycleCoordinator.runWillTerminate()
     // #3849: LAST, synchronously, after every step above: free every transcribe.cpp model
     // (Whisper, Universal Live Preview) so the Metal device destructor at exit finds none
@@ -3579,8 +3626,6 @@ package final class WisprBootstrapper {
   // MARK: - Window titles (so the shell needs no EnviousWisprCore dependency)
 
   package var mainWindowTitle: String { LaunchWindowIdentity.mainTitle }
-  package var onboardingWindowTitle: String { LaunchWindowIdentity.onboardingTitle }
-  package var onboardingWindowID: String { LaunchWindowIdentity.onboardingID }
 
   // MARK: - Root content
   // Homes are injected here, INSIDE the kit — the shell injects nothing, so no
@@ -3590,9 +3635,6 @@ package final class WisprBootstrapper {
     MainWindowRoot(b: self)
   }
 
-  package func onboardingWindowContent() -> some View {
-    OnboardingWindowRoot(b: self)
-  }
 }
 
 // MARK: - Engine switch sequence (#3849)
@@ -3628,18 +3670,9 @@ extension WisprBootstrapper {
   }
 }
 
-/// The main window's root view. Owns the onboarding-presented view-state (was
-/// `@State` on the old App struct) and injects every App-owned home.
+/// Injects the App-owned homes into the main window.
 private struct MainWindowRoot: View {
   let b: WisprBootstrapper
-  @State private var isOnboardingPresented: Bool
-
-  init(b: WisprBootstrapper) {
-    self.b = b
-    // #923: derive from the SettingsManager instance, not a raw `.standard` read
-    // (which on the dev build would hit the wrong per-build store).
-    _isOnboardingPresented = State(initialValue: !b.settings.hasCompletedOnboarding)
-  }
 
   var body: some View {
     UnifiedWindowView()
@@ -3659,6 +3692,9 @@ private struct MainWindowRoot: View {
       .environment(b.transcriptCoordinator)
       .environment(b.fileImportCoordinator)
       .environment(b.meetingCoordinator)
+      // #3147: Recordings settings and History's storage warning.
+      .environment(b.recordingRetention)
+      .environment(b.recordingUsage)
       .environment(b.meetingStartFlow)
       .environment(b.meetingOnboardingModel)
       .environment(b.meetingLiveWordsRow)
@@ -3712,72 +3748,27 @@ private struct MainWindowRoot: View {
       .environment(\.asrManager, b.asrManager)
       .environment(\.activeEngine, b.activeEngine)
       .environment(\.keychainManager, b.keychainManager)
-      .background(
-        ActionWirer(
-          settings: b.settings,
-          appWindowCoordinator: b.appWindowCoordinator,
-          menuBarController: b.menuBarController,
-          onboardingProgress: b.onboardingProgress,
-          isOnboardingPresented: $isOnboardingPresented
-        )
-      )
+      .background(ActionWirer(appWindowCoordinator: b.appWindowCoordinator))
   }
 }
 
-
-/// Hidden view that wires SwiftUI environment actions into App-owned homes.
-/// Must live inside a SwiftUI view hierarchy to access @Environment.
+/// Supplies the SwiftUI main opener and admits the first Setup presentation.
 private struct ActionWirer: View {
-  /// The onboarding-auto-open gate reads `onboardingState` off the settings
-  /// store directly (epic #763).
-  let settings: SettingsManager
-  /// PR-B.2 of #763: the three SwiftUI window bridges are wired onto the
-  /// coordinator now, not AppDelegate.
   let appWindowCoordinator: AppWindowCoordinator
-  /// PR-B.3 of #763: onboarding-dismissal icon refresh targets the menu home.
-  let menuBarController: MenuBarController
-  /// #1176: begin a fresh onboarding session on every window open (first-run AND
-  /// Diagnostics restart both funnel through `openOnboardingAction`).
-  let onboardingProgress: OnboardingProgress
-  @Binding var isOnboardingPresented: Bool
   @Environment(\.openWindow) private var openWindow
-  @Environment(\.dismissWindow) private var dismissWindow
 
   var body: some View {
     Color.clear
       .frame(width: 0, height: 0)
       .task {
-        appWindowCoordinator.openMainWindowAction = { [openWindow] in
-          openWindow(id: "main")
-        }
-        appWindowCoordinator.openOnboardingAction = { [openWindow, onboardingProgress, settings] in
-          // #1176: every onboarding presentation funnels through here. `begin` starts
-          // a fresh session only when none is in flight, so a refocus of the open
-          // window (status-menu "Continue Setup…") never rewinds it — see the guard
-          // in `OnboardingProgress.begin`. `source` reads the durable everCompleted
-          // flag from the shared settings store.
-          let source = settings.onboardingEverCompleted ? "diagnostics_restart" : "first_run"
-          onboardingProgress.begin(source: source)
-          openWindow(id: AppConstants.onboardingWindowID)
-        }
-        appWindowCoordinator.dismissOnboardingAction = { [dismissWindow] in
-          dismissWindow(id: AppConstants.onboardingWindowID)
-        }
-        // PR-B.2 of #763: drain any queued onboarding-open request FIRST.
-        let replayed = appWindowCoordinator.consumePendingOpenOnboarding()
-        // Auto-open onboarding if needed (first launch), only if nothing was
-        // already replayed.
-        if !replayed, settings.onboardingState != .completed {
-          appWindowCoordinator.openOnboardingWindow()
-        }
-      }
-      .onChange(of: isOnboardingPresented) { _, newValue in
-        if !newValue {
-          // State-driven dismissal: binding flipped to false → close window.
-          dismissWindow(id: AppConstants.onboardingWindowID)
-          appWindowCoordinator.refreshAfterOnboardingDismissal()
-          menuBarController.updateIcon()
-        }
+        #if DEBUG
+          let automaticallyOpenSetup = !DevControlOnboarding.holdsAutomaticPresentation
+        #else
+          let automaticallyOpenSetup = true
+        #endif
+        appWindowCoordinator.attachMainWindow(
+          open: { [openWindow] in openWindow(id: "main") },
+          automaticallyOpenSetup: automaticallyOpenSetup)
       }
   }
 }

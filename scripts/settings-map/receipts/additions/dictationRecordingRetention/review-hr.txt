@@ -1,0 +1,1 @@
+{"language":"hr","title":"čuvanje snimki diktiranja","words":["rok čuvanja snimki","automatsko brisanje snimki"],"phrases":["koliko dugo se čuvaju snimke diktiranja","čuvaj snimke diktiranja dok ih ne izbrišem"]}

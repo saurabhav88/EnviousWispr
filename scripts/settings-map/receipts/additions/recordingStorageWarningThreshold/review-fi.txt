@@ -1,0 +1,1 @@
+{"language":"fi","title":"tallennustilan varoitusraja","words":["tilavaroitus"],"phrases":["varoita kun äänitteet vievät liikaa tilaa","muuta äänitteiden tilankäytön varoitusrajaa","poista tallennustilan varoitus käytöstä"]}

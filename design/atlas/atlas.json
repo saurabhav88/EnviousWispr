@@ -1,0 +1,643 @@
+{
+  "version": 1,
+  "note": "The screen atlas list (#4506). Harness pictures are refreshed by TEST_RUNNER_EW_RENDER_ATLAS=1 scripts/xcode-test.sh --filter EnviousWisprTests/DesignAtlasRender; hand pictures are taken by hand and never touched by the harness. Each picture is pictures/<id>-light.png and pictures/<id>-dark.png. inventory.md has a '## <id>' section for every picture. A picture may list 'appearances' when only some exist (the menu bar menu follows the macOS appearance, which a session cannot change).",
+  "pictures": [
+    {
+      "id": "page-dictation-engine",
+      "kind": "harness",
+      "group": "Settings pages",
+      "title": "Dictation > Engine",
+      "source": {
+        "page": "dictation.engine"
+      }
+    },
+    {
+      "id": "page-dictation-microphone",
+      "kind": "harness",
+      "group": "Settings pages",
+      "title": "Dictation > Microphone",
+      "source": {
+        "page": "dictation.microphone"
+      }
+    },
+    {
+      "id": "page-dictation-livePreview",
+      "kind": "harness",
+      "group": "Settings pages",
+      "title": "Dictation > Live Preview",
+      "source": {
+        "page": "dictation.livePreview"
+      }
+    },
+    {
+      "id": "page-dictation-pill",
+      "kind": "harness",
+      "group": "Settings pages",
+      "title": "Dictation > Recording Pill",
+      "source": {
+        "page": "dictation.pill"
+      }
+    },
+    {
+      "id": "page-dictation-chimes",
+      "kind": "harness",
+      "group": "Settings pages",
+      "title": "Dictation > Chimes",
+      "source": {
+        "page": "dictation.chimes"
+      }
+    },
+    {
+      "id": "page-dictation-clipboard",
+      "kind": "harness",
+      "group": "Settings pages",
+      "title": "Dictation > Clipboard",
+      "source": {
+        "page": "dictation.clipboard"
+      }
+    },
+    {
+      "id": "page-aiPolish-off",
+      "kind": "harness",
+      "group": "Settings pages",
+      "title": "AI Polish > not set up",
+      "source": {
+        "page": "aiPolish.off"
+      }
+    },
+    {
+      "id": "page-aiPolish-egOne",
+      "kind": "harness",
+      "group": "Settings pages",
+      "title": "AI Polish > EG-1 on this Mac",
+      "source": {
+        "page": "aiPolish.egOne"
+      }
+    },
+    {
+      "id": "page-aiPolish-openAI-savedKey",
+      "kind": "harness",
+      "group": "Settings pages",
+      "title": "AI Polish > OpenAI with a saved key",
+      "source": {
+        "page": "aiPolish.openAI.savedKey"
+      }
+    },
+    {
+      "id": "page-dictionary-yourWords-withWords",
+      "kind": "harness",
+      "group": "Settings pages",
+      "title": "Dictionary > Your Words (with words)",
+      "source": {
+        "page": "dictionary.yourWords.withWords"
+      }
+    },
+    {
+      "id": "page-dictionary-vocabularyPacks",
+      "kind": "harness",
+      "group": "Settings pages",
+      "title": "Dictionary > Vocabulary Packs",
+      "source": {
+        "page": "dictionary.vocabularyPacks"
+      }
+    },
+    {
+      "id": "page-dictionary-learnFrom",
+      "kind": "harness",
+      "group": "Settings pages",
+      "title": "Dictionary > Learn From",
+      "source": {
+        "page": "dictionary.learnFrom"
+      }
+    },
+    {
+      "id": "page-dictionary-quickAdd",
+      "kind": "harness",
+      "group": "Settings pages",
+      "title": "Dictionary > Quick Add",
+      "source": {
+        "page": "dictionary.quickAdd"
+      }
+    },
+    {
+      "id": "page-snippets",
+      "kind": "harness",
+      "group": "Settings pages",
+      "title": "Snippets",
+      "source": {
+        "page": "snippets"
+      }
+    },
+    {
+      "id": "page-keybinds",
+      "kind": "harness",
+      "group": "Settings pages",
+      "title": "Keybinds",
+      "source": {
+        "page": "keybinds"
+      }
+    },
+    {
+      "id": "page-transcribeFile",
+      "kind": "harness",
+      "group": "Settings pages",
+      "title": "Transcribe a File",
+      "source": {
+        "page": "transcribeFile"
+      }
+    },
+    {
+      "id": "page-meetings-general",
+      "kind": "harness",
+      "group": "Settings pages",
+      "title": "EnviousMeet > General",
+      "source": {
+        "page": "meetings.general"
+      }
+    },
+    {
+      "id": "page-meetings-models",
+      "kind": "harness",
+      "group": "Settings pages",
+      "title": "EnviousMeet > Models",
+      "source": {
+        "page": "meetings.models"
+      }
+    },
+    {
+      "id": "page-meetings-summaries",
+      "kind": "harness",
+      "group": "Settings pages",
+      "title": "EnviousMeet > Summaries",
+      "source": {
+        "page": "meetings.summaries"
+      }
+    },
+    {
+      "id": "page-meetings-callApps",
+      "kind": "harness",
+      "group": "Settings pages",
+      "title": "EnviousMeet > Call Apps",
+      "source": {
+        "page": "meetings.callApps"
+      }
+    },
+    {
+      "id": "page-meetings-permissions",
+      "kind": "harness",
+      "group": "Settings pages",
+      "title": "EnviousMeet > Permissions",
+      "source": {
+        "page": "meetings.permissions"
+      }
+    },
+    {
+      "id": "page-appSettings-appearance",
+      "kind": "harness",
+      "group": "Settings pages",
+      "title": "App Settings > Appearance",
+      "source": {
+        "page": "appSettings.appearance"
+      }
+    },
+    {
+      "id": "page-appSettings-permissions",
+      "kind": "harness",
+      "group": "Settings pages",
+      "title": "App Settings > Permissions",
+      "source": {
+        "page": "appSettings.permissions"
+      }
+    },
+    {
+      "id": "page-appSettings-privacy",
+      "kind": "harness",
+      "group": "Settings pages",
+      "title": "App Settings > Privacy",
+      "source": {
+        "page": "appSettings.privacy"
+      }
+    },
+    {
+      "id": "page-appSettings-licenses",
+      "kind": "harness",
+      "group": "Settings pages",
+      "title": "App Settings > Licenses",
+      "source": {
+        "page": "appSettings.licenses"
+      }
+    },
+    {
+      "id": "page-diagnostics",
+      "kind": "harness",
+      "group": "Settings pages",
+      "title": "Diagnostics",
+      "source": {
+        "page": "diagnostics"
+      }
+    },
+    {
+      "id": "pill-classic-rest",
+      "kind": "harness",
+      "group": "Recording pill",
+      "title": "Pill: Capsule, recording",
+      "source": {
+        "manifest": "pill-classic-rest"
+      }
+    },
+    {
+      "id": "pill-classic-locked",
+      "kind": "harness",
+      "group": "Recording pill",
+      "title": "Pill: Capsule, locked (hands-free)",
+      "source": {
+        "manifest": "pill-classic-locked"
+      }
+    },
+    {
+      "id": "pill-classic-notice",
+      "kind": "harness",
+      "group": "Recording pill",
+      "title": "Pill: Capsule, with a notice",
+      "source": {
+        "manifest": "pill-classic-notice"
+      }
+    },
+    {
+      "id": "pill-readingWell-rest",
+      "kind": "harness",
+      "group": "Recording pill",
+      "title": "Pill: Reading Well, recording",
+      "source": {
+        "manifest": "pill-readingWell-rest"
+      }
+    },
+    {
+      "id": "pill-readingWell-locked",
+      "kind": "harness",
+      "group": "Recording pill",
+      "title": "Pill: Reading Well, locked (hands-free)",
+      "source": {
+        "manifest": "pill-readingWell-locked"
+      }
+    },
+    {
+      "id": "pill-readingWell-words",
+      "kind": "harness",
+      "group": "Recording pill",
+      "title": "Pill: Reading Well, with words",
+      "source": {
+        "manifest": "pill-readingWell-words"
+      }
+    },
+    {
+      "id": "pill-readingWell-waiting",
+      "kind": "harness",
+      "group": "Recording pill",
+      "title": "Pill: Reading Well, words on, none yet",
+      "source": {
+        "manifest": "pill-readingWell-waiting"
+      }
+    },
+    {
+      "id": "pill-readingWell-notice",
+      "kind": "harness",
+      "group": "Recording pill",
+      "title": "Pill: Reading Well, with a notice",
+      "source": {
+        "manifest": "pill-readingWell-notice"
+      }
+    },
+    {
+      "id": "pill-levelRail-rest",
+      "kind": "harness",
+      "group": "Recording pill",
+      "title": "Pill: Level Rail, recording",
+      "source": {
+        "manifest": "pill-levelRail-rest"
+      }
+    },
+    {
+      "id": "pill-levelRail-locked",
+      "kind": "harness",
+      "group": "Recording pill",
+      "title": "Pill: Level Rail, locked (hands-free)",
+      "source": {
+        "manifest": "pill-levelRail-locked"
+      }
+    },
+    {
+      "id": "pill-levelRail-notice",
+      "kind": "harness",
+      "group": "Recording pill",
+      "title": "Pill: Level Rail, with a notice",
+      "source": {
+        "manifest": "pill-levelRail-notice"
+      }
+    },
+    {
+      "id": "notice-processing-transcribing",
+      "kind": "harness",
+      "group": "Pill notices",
+      "title": "Notice: Transcribing",
+      "source": {
+        "manifest": "notice-processing-transcribing"
+      }
+    },
+    {
+      "id": "notice-processing-polishing",
+      "kind": "harness",
+      "group": "Pill notices",
+      "title": "Notice: Polishing",
+      "source": {
+        "manifest": "notice-processing-polishing"
+      }
+    },
+    {
+      "id": "notice-clipboard-fallback",
+      "kind": "harness",
+      "group": "Pill notices",
+      "title": "Notice: Copied to clipboard",
+      "source": {
+        "manifest": "notice-clipboard-fallback"
+      }
+    },
+    {
+      "id": "notice-accessibility-toast",
+      "kind": "harness",
+      "group": "Pill notices",
+      "title": "Notice: Accessibility needed",
+      "source": {
+        "manifest": "notice-accessibility-toast"
+      }
+    },
+    {
+      "id": "notice-warning-polish-failed",
+      "kind": "harness",
+      "group": "Pill notices",
+      "title": "Notice: Warning: polish failed",
+      "source": {
+        "manifest": "notice-warning-polish-failed"
+      }
+    },
+    {
+      "id": "notice-error-capture",
+      "kind": "harness",
+      "group": "Pill notices",
+      "title": "Notice: Error: audio capture",
+      "source": {
+        "manifest": "notice-error-capture"
+      }
+    },
+    {
+      "id": "notice-advisory-zero-signal",
+      "kind": "harness",
+      "group": "Pill notices",
+      "title": "Notice: Advisory: no sound",
+      "source": {
+        "manifest": "notice-advisory-zero-signal"
+      }
+    },
+    {
+      "id": "notice-interruption-device-removed",
+      "kind": "harness",
+      "group": "Pill notices",
+      "title": "Notice: Interrupted: mic removed",
+      "source": {
+        "manifest": "notice-interruption-device-removed"
+      }
+    },
+    {
+      "id": "notice-caching-model",
+      "kind": "harness",
+      "group": "Pill notices",
+      "title": "Notice: Preparing a model",
+      "source": {
+        "manifest": "notice-caching-model"
+      }
+    },
+    {
+      "id": "notice-engine-ready",
+      "kind": "harness",
+      "group": "Pill notices",
+      "title": "Notice: Engine ready",
+      "source": {
+        "manifest": "notice-engine-ready"
+      }
+    },
+    {
+      "id": "notice-recovering",
+      "kind": "harness",
+      "group": "Pill notices",
+      "title": "Notice: Recovering last recording",
+      "source": {
+        "manifest": "notice-recovering"
+      }
+    },
+    {
+      "id": "notice-recovery-succeeded",
+      "kind": "harness",
+      "group": "Pill notices",
+      "title": "Notice: Recovery succeeded",
+      "source": {
+        "manifest": "notice-recovery-succeeded"
+      }
+    },
+    {
+      "id": "notice-bluetooth",
+      "kind": "harness",
+      "group": "Pill notices",
+      "title": "Notice: Bluetooth microphone",
+      "source": {
+        "manifest": "notice-bluetooth"
+      }
+    },
+    {
+      "id": "notice-escape-recovery",
+      "kind": "harness",
+      "group": "Pill notices",
+      "title": "Notice: Escape Recovery (Undo)",
+      "source": {
+        "manifest": "notice-escape-recovery"
+      }
+    },
+    {
+      "id": "notice-import-status",
+      "kind": "harness",
+      "group": "Pill notices",
+      "title": "Notice: Import status",
+      "source": {
+        "manifest": "notice-import-status"
+      }
+    },
+    {
+      "id": "notice-correction-learned",
+      "kind": "harness",
+      "group": "Pill notices",
+      "title": "Notice: Word learned (Undo)",
+      "source": {
+        "manifest": "notice-correction-learned"
+      }
+    },
+    {
+      "id": "notice-language-chip",
+      "kind": "harness",
+      "group": "Pill notices",
+      "title": "Notice: Language chip",
+      "source": {
+        "manifest": "notice-language-chip"
+      }
+    },
+    {
+      "id": "notice-correction-save-error",
+      "kind": "harness",
+      "group": "Pill notices",
+      "title": "Notice: Word not saved",
+      "source": {
+        "manifest": "notice-correction-save-error"
+      }
+    },
+    {
+      "id": "notice-polish-setup-card",
+      "kind": "harness",
+      "group": "Pill notices",
+      "title": "Notice: AI Polish setup card",
+      "source": {
+        "manifest": "notice-polish-setup-card"
+      }
+    },
+    {
+      "id": "notice-parakeet-upgrade",
+      "kind": "harness",
+      "group": "Pill notices",
+      "title": "Notice: Parakeet Ultra download",
+      "source": {
+        "manifest": "notice-parakeet-upgrade"
+      }
+    },
+    {
+      "id": "page-appSettings-licenseReader",
+      "kind": "harness",
+      "group": "Settings pages",
+      "title": "App Settings > Licenses > license text",
+      "source": {
+        "manifest": "licenseReader-default-820"
+      }
+    },
+    {
+      "id": "page-appSettings-noticesReader",
+      "kind": "harness",
+      "group": "Settings pages",
+      "title": "App Settings > Licenses > third-party notices",
+      "source": {
+        "manifest": "noticesReader-default-820"
+      }
+    },
+    {
+      "id": "logo-lips",
+      "kind": "harness",
+      "group": "Logos",
+      "title": "Rainbow lips (at rest)",
+      "source": {
+        "manifest": "logo-lips"
+      }
+    },
+    {
+      "id": "logo-lips-open",
+      "kind": "harness",
+      "group": "Logos",
+      "title": "Rainbow lips (speaking)",
+      "source": {
+        "manifest": "logo-lips-open"
+      }
+    },
+    {
+      "id": "logo-logo-mark",
+      "kind": "harness",
+      "group": "Logos",
+      "title": "Logo mark (sidebar)",
+      "source": {
+        "manifest": "logo-logo-mark"
+      }
+    },
+    {
+      "id": "logo-envious-meet",
+      "kind": "harness",
+      "group": "Logos",
+      "title": "EnviousMeet mark",
+      "source": {
+        "manifest": "logo-envious-meet"
+      }
+    },
+    {
+      "id": "logo-menu-bar-idle",
+      "kind": "harness",
+      "group": "Logos",
+      "title": "Menu bar icon, idle",
+      "source": {
+        "manifest": "logo-menu-bar-idle"
+      }
+    },
+    {
+      "id": "logo-menu-bar-recording",
+      "kind": "harness",
+      "group": "Logos",
+      "title": "Menu bar icon, recording",
+      "source": {
+        "manifest": "logo-menu-bar-recording"
+      }
+    },
+    {
+      "id": "parts-structure",
+      "kind": "harness",
+      "group": "Parts sheets",
+      "title": "Parts sheet: cards, rows, headings",
+      "source": {
+        "manifest": "parts-structure"
+      }
+    },
+    {
+      "id": "parts-controls",
+      "kind": "harness",
+      "group": "Parts sheets",
+      "title": "Parts sheet: tabs, choices, switches, fields, buttons",
+      "source": {
+        "manifest": "parts-controls"
+      }
+    },
+    {
+      "id": "parts-cards",
+      "kind": "harness",
+      "group": "Parts sheets",
+      "title": "Parts sheet: summary and engine cards",
+      "source": {
+        "manifest": "parts-cards"
+      }
+    },
+    {
+      "id": "hand-window-dictation",
+      "kind": "hand",
+      "group": "Hand photos",
+      "title": "Full window with sidebar (Dictation)",
+      "captured": "2026-11-12"
+    },
+    {
+      "id": "hand-history",
+      "kind": "hand",
+      "group": "Hand photos",
+      "title": "History",
+      "captured": "2026-11-12"
+    },
+    {
+      "id": "hand-menu-bar-menu",
+      "kind": "hand",
+      "group": "Hand photos",
+      "title": "Menu bar menu (follows the macOS appearance; dark only)",
+      "captured": "2026-11-12",
+      "appearances": [
+        "dark"
+      ]
+    }
+  ],
+  "parts": []
+}

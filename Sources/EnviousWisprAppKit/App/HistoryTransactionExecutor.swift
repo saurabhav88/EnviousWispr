@@ -119,12 +119,21 @@ import Foundation
   func admit<Value: Sendable>(_ body: @escaping @MainActor () async -> Value) async
     -> Value
   {
+    await enqueue(body).result()
+  }
+
+  /// #3147: admits `body` NOW, synchronously, and returns its receipt to await later. For a
+  /// caller that must take its place in the queue before returning, without awaiting (the
+  /// dictation pipeline's recording hand-off).
+  func enqueue<Value: Sendable>(_ body: @escaping @MainActor () async -> Value)
+    -> SerialCommandDrain.Receipt<Value>
+  {
     let receipt = commands.enqueue(body)
     #if DEBUG
       commandsAdmittedForTesting += 1
       didAdmitForTesting?(commandsAdmittedForTesting)
     #endif
-    return await receipt.result()
+    return receipt
   }
 
   func capture<Value: Sendable>(_ work: () async throws -> Value) async -> Result<

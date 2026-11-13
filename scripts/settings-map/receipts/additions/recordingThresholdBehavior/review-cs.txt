@@ -1,0 +1,1 @@
+{"language":"cs","title":"při překročení limitu úložiště","words":["automatické mazání"],"phrases":["zeptat se na uvolnění místa při překročení limitu","po překročení limitu automaticky smazat nejstarší nahrávky diktování"]}

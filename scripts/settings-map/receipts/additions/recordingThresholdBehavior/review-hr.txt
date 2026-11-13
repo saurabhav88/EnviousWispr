@@ -1,0 +1,11 @@
+{
+  "language": "hr",
+  "title": "pri prekoračenju ograničenja pohrane",
+  "words": [
+    "automatsko brisanje"
+  ],
+  "phrases": [
+    "pitaj me želim li osloboditi prostor kad se prekorači ograničenje",
+    "automatski briši najstarije snimke diktiranja kad se prekorači ograničenje pohrane"
+  ]
+}

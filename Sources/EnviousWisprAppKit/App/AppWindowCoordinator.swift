@@ -2,60 +2,17 @@ import AppKit
 import EnviousWisprCore
 import Observation
 
-/// PR-B.2 of #763 — App-owned home for main + onboarding window identity,
-/// the two `NSWindow.willCloseNotification` observers, the SwiftUI
-/// open/dismiss bridges, and activation-policy transitions. Extracted from
-/// `AppDelegate` so the AppKit adapter shrinks toward its ≤120-line target.
-///
-/// Strong owner is `EnviousWisprApp` as `@State`; `AppDelegate` holds a weak
-/// ref pushed via `attach(...)`. Injected into both Window scenes via
-/// `.environment(...)` so `DiagnosticsSettingsView` reaches it through
-/// `@Environment` instead of an `NSApp.delegate` downcast.
+/// Owns the main-window bridge, Setup entry points and application activation policy.
 @MainActor
 @Observable
 final class AppWindowCoordinator: UpdateDialogPresenting {
-  /// Open-eligibility seam. Returns `true` only when onboarding state exists
-  /// and is not `.completed`. Folds today's stacked `guard let appState` +
-  /// `guard onboardingState != .completed` into one closure, preserving the
-  /// `appState`-nil → no-open behavior.
-  private let canOpenOnboarding: @MainActor () -> Bool
-  /// Onboarding-completed seam. Used by the onboarding-close observer's abort
-  /// gate; `appState`-nil → `false`.
   private let isOnboardingComplete: @MainActor () -> Bool
-
-  /// Main window, captured lazily on first titled-window appearance.
   private weak var mainWindow: NSWindow?
-  /// `NSWindow.willCloseNotification` observer token for the main window.
   private var windowCloseObserver: (any NSObjectProtocol)?
-  /// Onboarding window, captured lazily on first open so the close observer
-  /// can match by identity rather than title.
-  private weak var onboardingWindow: NSWindow?
-  /// #4528 C2c.2: the old onboarding window is reserved from the moment an open is requested
-  /// (before SwiftUI creates it) until it closes or is dismissed, so Setup's workflow owner
-  /// never sees a gap a new-coordinator session could claim.
-  private var onboardingWindowReserved = false
-  /// #4528 C2c.2c: Setup's single owner, so Restart Onboarding reaches whichever workflow owns it.
-  var onboardingWorkflow: OnboardingWorkflowOwner?
-  var isOnboardingWindowVisible: Bool {
-    onboardingWindowReserved || (onboardingWindow?.isVisible ?? false)
-  }
-  /// `NSWindow.willCloseNotification` observer token for the onboarding window.
-  private var onboardingCloseObserver: (any NSObjectProtocol)?
-
-  /// SwiftUI `openWindow(id: "main")` bridge, set by `ActionWirer`.
-  var openMainWindowAction: (() -> Void)?
-  /// SwiftUI `openWindow(id: "onboarding")` bridge, set by `ActionWirer`.
-  var openOnboardingAction: (() -> Void)?
-  /// SwiftUI `dismissWindow(id: "onboarding")` bridge, set by `ActionWirer`.
-  var dismissOnboardingAction: (() -> Void)?
-  /// Icon-refresh seam, set by `AppDelegate.attach(...)`. PR-B.3 retargets it
-  /// to `MenuBarController`; the seam keeps the coordinator from reaching back
-  /// into AppDelegate's menu-icon logic.
-  var onOnboardingDismissed: (() -> Void)?
-
-  /// Defensive race flag: set when `openOnboardingWindow()` is called before
-  /// `openOnboardingAction` is wired; drained by `consumePendingOpenOnboarding()`.
-  private var pendingOpenOnboarding: Bool = false
+  var setupSession: SetupSession?
+  private var openMainWindowAction: (() -> Void)?
+  private var pendingMainHandoff = false
+  private var handledInitialSetup = false
 
   /// #2455 C3: required and non-defaulted. Every activation and Dock-policy call
   /// this type makes goes through it, so a default would let a unit test move the
@@ -73,12 +30,10 @@ final class AppWindowCoordinator: UpdateDialogPresenting {
   init(
     application: any ApplicationActivating,
     showInDock: @escaping @MainActor () -> Bool,
-    canOpenOnboarding: @escaping @MainActor () -> Bool,
     isOnboardingComplete: @escaping @MainActor () -> Bool
   ) {
     self.application = application
     self.showInDock = showInDock
-    self.canOpenOnboarding = canOpenOnboarding
     self.isOnboardingComplete = isOnboardingComplete
   }
 
@@ -233,16 +188,10 @@ final class AppWindowCoordinator: UpdateDialogPresenting {
     }
   }
 
-  /// Remove both window-close observers. Called once from
-  /// `AppDelegate.applicationWillTerminate`.
   func tearDown() {
     if let observer = windowCloseObserver {
       NotificationCenter.default.removeObserver(observer)
       windowCloseObserver = nil
-    }
-    if let observer = onboardingCloseObserver {
-      NotificationCenter.default.removeObserver(observer)
-      onboardingCloseObserver = nil
     }
   }
 
@@ -286,147 +235,63 @@ final class AppWindowCoordinator: UpdateDialogPresenting {
     }
     guard !neededWindowOnScreen else { return false }
     guard onboardingDone else {
-      openOnboardingWindow()
-      return true
+      return openOnboardingWindow()
     }
     return showWindow()
   }
 
-  /// Open the onboarding window and begin monitoring for early close (abort flow).
-  func openOnboardingWindow() {
-    // (1) Eligibility — was `guard let appState` + `guard != .completed`.
-    guard canOpenOnboarding() else { return }
-    onboardingWindowReserved = true
-    // (2) Not-yet-wired queue guard: if the SwiftUI bridge has not been wired
-    // yet, queue the request instead of dropping it. Drained by
-    // `consumePendingOpenOnboarding()` once `ActionWirer.task` runs.
-    guard openOnboardingAction != nil else {
-      pendingOpenOnboarding = true
-      return
+  /// The first main-scene task supplies the sole SwiftUI bridge. Attaching it again does not
+  /// reopen Setup after a person has closed it.
+  func attachMainWindow(open: @escaping () -> Void, automaticallyOpenSetup: Bool = true) {
+    openMainWindowAction = open
+    if pendingMainHandoff {
+      pendingMainHandoff = false
+      finishSetup()
     }
-    openOnboardingAction?()
-    application.setPolicy(.regular)
-    application.activate(.ignoringOtherApps)
-    // Hide the main window so only the onboarding window is visible during setup.
-    hideMainWindowForSetup()
-
-    // Capture the onboarding NSWindow by identity on first open.
-    // We defer one run-loop cycle so SwiftUI has time to create/order the window
-    // before we search NSApp.windows.
-    DispatchQueue.main.async { [weak self] in
-      guard let self else { return }
-      // SwiftUI Window(id: "onboarding") sets that id as the window's identifier.
-      // We capture by identity here so the close observer can match by reference.
-      if self.onboardingWindow == nil {
-        self.onboardingWindow = NSApp.windows.first(where: Self.matchesOnboardingWindowIdentity)
-      }
-      // Ensure the window is visible — openWindow(id:) is a silent no-op when
-      // reopening a single-instance Window scene that was previously dismissed.
-      self.onboardingWindow?.makeKeyAndOrderFront(nil)
-      // #3149: again, one run-loop cycle later. On a first launch the main scene is
-      // still being ordered on screen when this method runs, so the first pass can
-      // find nothing to hide and the main window then appears behind Setup.
-      self.hideMainWindowForSetup()
-    }
-
-    // Monitor for user closing the onboarding window before completion.
-    // Match by window identity (captured above), not by title string.
-    if onboardingCloseObserver == nil {
-      onboardingCloseObserver = NotificationCenter.default.addObserver(
-        forName: NSWindow.willCloseNotification,
-        object: nil,
-        queue: .main
-      ) { [weak self] notification in
-        guard let window = notification.object as? NSWindow else { return }
-        MainActor.assumeIsolated {
-          guard let self else { return }
-          // Match by captured identity; fall back to the scene identifier if not yet captured.
-          let isOnboardingWindow =
-            (self.onboardingWindow != nil)
-            ? window === self.onboardingWindow
-            : Self.matchesOnboardingWindowIdentity(window)
-          guard isOnboardingWindow else { return }
-          self.onboardingWindow = nil
-          self.onboardingWindowReserved = false
-          // Only treat as abort if onboarding not yet completed.
-          if !self.isOnboardingComplete() {
-            self.onOnboardingDismissed?()
-          }
-        }
-      }
-    }
+    guard !handledInitialSetup else { return }
+    handledInitialSetup = true
+    if automaticallyOpenSetup { openOnboardingWindow() }
   }
 
-  /// #3149: hide every main-identity window, found by scanning `NSApp.windows`.
-  /// The weak `mainWindow` reference is captured only when the main window first
-  /// closes, so on a first launch it is nil and could not hide anything.
+  @discardableResult
+  func openOnboardingWindow() -> Bool {
+    guard !isOnboardingComplete(), let setupSession, setupSession.begin() else { return false }
+    application.setPolicy(.regular)
+    setupSession.present()
+    hideMainWindowForSetup()
+    // The first SwiftUI main scene may finish ordering itself during this run-loop turn.
+    DispatchQueue.main.async { [weak self, weak setupSession] in
+      guard let setupSession, setupSession.presenter.isVisible else { return }
+      self?.hideMainWindowForSetup()
+    }
+    return true
+  }
+
   private func hideMainWindowForSetup() {
     for window in NSApp.windows where isMainWindow(window) && window.isVisible {
       window.orderOut(nil)
     }
   }
 
-  /// Called by the onboarding Done button via the onComplete callback.
-  /// State-driven: flips isOnboardingPresented to false, ActionWirer's onChange
-  /// dismisses the window.
-  /// #4528 C2c.2c: Diagnostics "Restart Onboarding…". A backend session that owns Setup is reset
-  /// through its runtime; otherwise the old onboarding restarts (`legacyRestart`, then its window).
-  func restartOnboarding(legacyRestart: () -> Void) {
-    if let workflow = onboardingWorkflow, workflow.backendSessionActive {
-      workflow.backendRestart?()
-      return
-    }
-    legacyRestart()
+  func restartOnboarding() {
+    guard let setupSession else { return }
+    setupSession.reset()
     openOnboardingWindow()
   }
 
-  /// #4528 M16: a SUCCESSFUL finish lands in the menu bar. Setup's window goes away and the Dock
-  /// policy is re-decided with no window, but the main (Settings) window is NOT brought back,
-  /// unlike the old completion (`closeOnboardingWindow`). Chunk D wires the new screens to it.
-  func finishOnboardingToMenuBar() {
-    onboardingWindowReserved = false
-    dismissOnboardingAction?()
-    refreshAfterOnboardingDismissal()
-    onOnboardingDismissed?()
-  }
-
-  func closeOnboardingWindow() {
-    onboardingWindowReserved = false
-    dismissOnboardingAction?()
-    // #3149: setup hid the main window, so bring it back now that setup is done;
-    // otherwise a new user finishes onboarding with no window at all. An ABORT (the
-    // Setup window's red X) goes through the close observer instead and leaves main
-    // hidden, because setup is still unfinished there.
-    // The hidden main window is retained, so order it front HERE, synchronously:
-    // `showWindow()` goes through SwiftUI's `openWindow`, which may not have put it
-    // on screen yet when the Dock policy is re-decided below, and with "Show app in
-    // Dock" off that read would drop the app to accessory under a visible window.
-    for window in NSApp.windows where isMainWindow(window) {
+  /// The Setup session has already marked the visit complete and dismissed its window.
+  /// Prefer the existing main window so Dock policy can be reconciled synchronously.
+  func finishSetup() {
+    if let window = NSApp.windows.first(where: isMainWindow) {
       window.makeKeyAndOrderFront(nil)
+      application.setPolicy(.regular)
+      application.activate(.ignoringOtherApps)
+      refreshActivationPolicy(excluding: nil)
+    } else if !showWindow() {
+      pendingMainHandoff = true
     }
-    showWindow()
-    refreshAfterOnboardingDismissal()
-    onOnboardingDismissed?()
   }
 
-  /// #2480: a programmatic onboarding dismissal is its own fall point. SwiftUI's
-  /// `dismissWindow` is not documented to post `willClose`, so this re-decides
-  /// without any onboarding window rather than relying on the observer (which
-  /// repeats the same decision if it does fire).
-  func refreshAfterOnboardingDismissal() {
-    refreshActivationPolicy(
-      excluding: NSApp.windows.first { Self.matchesOnboardingWindowIdentity($0) })
-  }
-
-  /// Drain a queued onboarding-open request. Returns `true` iff it replayed a
-  /// queued open. Called by `ActionWirer.task` after the three SwiftUI bridge
-  /// closures are wired; the return value lets `ActionWirer` avoid a double-open.
-  func consumePendingOpenOnboarding() -> Bool {
-    guard pendingOpenOnboarding else { return false }
-    pendingOpenOnboarding = false
-    openOnboardingWindow()
-    return true
-  }
 }
 
 /// What Sparkle needs from the Dock-policy owner (#2480). A required init

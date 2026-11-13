@@ -1,0 +1,9 @@
+{
+  "language": "pt",
+  "title": "manter gravações de ditado",
+  "words": [],
+  "phrases": [
+    "por quanto tempo guardar as gravações de ditado",
+    "apagar automaticamente gravações antigas de ditado sem apagar o texto"
+  ]
+}

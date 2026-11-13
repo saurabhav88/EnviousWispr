@@ -1,0 +1,1 @@
+{"language":"pt","title":"apagar gravações","words":["ficheiros de áudio","arquivos de áudio"],"phrases":["apagar o áudio e manter o texto"]}
