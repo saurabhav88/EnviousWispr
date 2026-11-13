@@ -159,7 +159,7 @@ struct MeetingHistoryPresentationTests {
   }
 
   @Test("Show meetings opens the Meetings tab with no search and opens the meeting")
-  func showRecordings() async throws {
+  func showMeetings() async throws {
     let rig = Rig()
     let record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
     rig.records = [record]

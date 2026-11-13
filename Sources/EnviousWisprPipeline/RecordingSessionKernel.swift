@@ -758,9 +758,9 @@ final class RecordingSessionKernel {
   /// still `recordingStartedAtTick` from the PRIOR session, not yet cleared
   /// by this session's `resetSessionState()`. Without this gate, a second
   /// PTT press would briefly render the previous recording's stale elapsed
-  /// time during prewarm instead of `0:00`. Both StatusView and the overlay
-  /// already independently gate their OWN reads on `pipelineState ==
-  /// .recording`, so this is redundant-but-safe for them and is the actual
+  /// time during prewarm instead of `0:00`. The overlay already gates its OWN
+  /// reads on `pipelineState == .recording` (History's StatusView did too until
+  /// #3147 PR2 removed it), so this is redundant-but-safe there and is the actual
   /// fix for the two overlay call sites that read before that guard exists.
   var recordingElapsedSeconds: TimeInterval? {
     guard state == .live, let start = recordingStartedAtTick else { return nil }
