@@ -234,13 +234,14 @@ private struct HistoryDiaryList<DictationCard: View>: View {
     .buttonStyle(.plain)
   }
 
-  /// Stores the item at the top as the tab's scroll anchor; a heading at the top stores
-  /// nothing new.
+  /// Stores what is at the top as the tab's scroll anchor: the item there, the first item under
+  /// a heading there, or nothing at the very top.
   private func savePosition() {
-    guard case .item(let id) = position else { return }
+    let anchor = HistoryDiaryLayout.anchorID(
+      for: position, in: coordinator.matchingHistoryItems(in: tab), calendar: .current)
     var live = coordinator.historyState(for: tab)
-    guard live.scrollAnchorID != id else { return }
-    live.scrollAnchorID = id
+    guard live.scrollAnchorID != anchor else { return }
+    live.scrollAnchorID = anchor
     coordinator.setHistoryState(live, for: tab)
   }
 
@@ -458,6 +459,19 @@ enum HistoryDiaryLayout {
   enum EntryID: Hashable {
     case day(Date)
     case item(HistoryItemID)
+  }
+
+  /// The item a scroll position stands for: the item itself, the first listed item on a day
+  /// whose heading is at the top, or nil when nothing is scrolled.
+  static func anchorID(for entry: EntryID?, in items: [HistoryListItem], calendar: Calendar)
+    -> HistoryItemID?
+  {
+    switch entry {
+    case .item(let id): return id
+    case .day(let start):
+      return items.first { calendar.isDate($0.createdAt, inSameDayAs: start) }?.id
+    case nil: return nil
+    }
   }
 
   /// `days` flattened: each heading followed by its drawn items.

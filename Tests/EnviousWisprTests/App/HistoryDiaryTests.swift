@@ -221,6 +221,22 @@ struct HistoryDiaryTests {
     #expect(entries.first?.id == .day(days[0].start))
   }
 
+  @Test("a heading at the top saves the first item under it; nothing scrolled saves no anchor")
+  func scrollAnchorFromPosition() {
+    let items =
+      [600, 500].map { Self.item(daysAgo: 0, minutes: $0) }
+      + [700, 600].map { Self.item(daysAgo: 1, minutes: $0) }
+    let yesterday = Self.calendar.date(
+      byAdding: .day, value: -1, to: Self.calendar.startOfDay(for: Self.now))!
+    #expect(
+      HistoryDiaryLayout.anchorID(for: .day(yesterday), in: items, calendar: Self.calendar)
+        == items[2].id)
+    #expect(
+      HistoryDiaryLayout.anchorID(for: .item(items[1].id), in: items, calendar: Self.calendar)
+        == items[1].id)
+    #expect(HistoryDiaryLayout.anchorID(for: nil, in: items, calendar: Self.calendar) == nil)
+  }
+
   @Test("opening the live meeting under a filter that hides it clears the filters; a listed one keeps them")
   func openingUnderAHidingFilter() async throws {
     let coordinator = TranscriptCoordinator(
