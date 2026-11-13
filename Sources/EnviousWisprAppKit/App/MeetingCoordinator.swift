@@ -1759,7 +1759,11 @@ final class MeetingCoordinator {
       for kind in MeetingTrackKind.allCases { current.segments[kind] = report.segments[kind] }
     }
     guard !tracks.isEmpty else {
-      let noAudio = report.problems.isEmpty && damaged.isEmpty
+      // #3147 PR4B: a committed compacted copy that cannot be read, with no verified originals,
+      // is lost audio (it may come back), never confirmed absence.
+      let noAudio =
+        report.problems.isEmpty && damaged.isEmpty
+        && !report.compressedProblems.contains(.originalsUnavailable)
       // Only confirmed absence with SAVED notes is notes-only (R56; Codex C7 r1): unreadable
       // audio may come back, so it stays failed and keeps Retry.
       let notes: MeetingDocumentsOwner.Durability =
