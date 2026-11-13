@@ -211,12 +211,31 @@ struct FakeEngineTests {
       ASRWordTiming(word: "hello", range: 0..<5, startMs: 0, endMs: 300),
       ASRWordTiming(word: "there", range: 6..<11, startMs: nil, endMs: nil),
     ]
-    engine.finalizeWordTimings = ["hello there": words, "other text": []]
-    guard case .transcript(let timed) = await engine.finalize(batchSamples: []) else {
+    engine.finalizeWordTimings = ["hello there": words]
+    // One second of decode input, so 300 ms is inside it.
+    let second = [Float](repeating: 0, count: 16_000)
+    guard case .transcript(let timed) = await engine.finalize(batchSamples: second) else {
       Issue.record("expected a transcript")
       return
     }
     #expect(timed.wordTimings == words)
     #expect(timed.wordTimingCoverage == ASRWordTimingCoverage(timed: 5, total: 10))
+
+    // Counted the way production counts: no engine words still means every text unit is
+    // untimed, and a time the real mapper rejects (negative, or past the decode) is dropped.
+    for invalid: [ASRWordTiming] in [
+      [],
+      [ASRWordTiming(word: "hello", range: 0..<5, startMs: -1, endMs: 300)],
+      [ASRWordTiming(word: "hello", range: 0..<5, startMs: 0, endMs: 1_001)],
+    ] {
+      let (rejecting, _) = makeEngine(.batchSuccess(text: "hello there"))
+      rejecting.finalizeWordTimings = ["hello there": invalid]
+      guard case .transcript(let result) = await rejecting.finalize(batchSamples: second) else {
+        Issue.record("expected a transcript")
+        return
+      }
+      #expect(result.wordTimingCoverage == ASRWordTimingCoverage(timed: 0, total: 10))
+      #expect(result.wordTimings?.allSatisfy { $0.startMs == nil } == true)
+    }
   }
 }

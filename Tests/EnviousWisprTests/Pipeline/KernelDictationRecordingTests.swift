@@ -274,7 +274,13 @@ struct KernelDictationRecordingTests {
     }
     let capture = shape(8_000, 0.3, from: 0) + shape(16_000, 0.002, from: 8_000)
       + shape(24_000, 0.25, from: 24_000)
-    let segments = [SpeechSegment(startSample: 0, endSample: 48_000)]
+    // VAD skipped part of the quiet window: the conditioner cuts recording 11,600..<14,400 (the
+    // gap between the padded segments), so the salvage input is NOT a plain offset into the
+    // recording and only the real shifted map places its words.
+    let segments = [
+      SpeechSegment(startSample: 0, endSample: 10_000),
+      SpeechSegment(startSample: 16_000, endSample: 48_000),
+    ]
     // The salvage decode returns real-shaped word timings on ITS input (the buffer without the
     // cut lead): "Salvaged text." heard from 100 ms to 600 ms into that input.
     let text = "Salvaged text."
@@ -305,8 +311,11 @@ struct KernelDictationRecordingTests {
     let decoded = try #require(ctx.engine.lastFinalizeBatchSamples)
     let conditioned = CapturedAudioConditioner.condition(rawSamples: capture, vadSegments: segments)
     #expect(decoded == Array(conditioned.samples[lead...]))
+    #expect(conditioned.timeline.count == 2, "the VAD gap splits the conditioned buffer")
+    // The cut lead reaches past the gap, so the salvage input starts in the second stretch.
+    try #require(lead >= 11_600, "precondition: the trim lands after the cut gap (lead \(lead))")
     let shifted = RecordingSessionKernel.trimmedTimeline(conditioned.timeline, leadSamples: lead)
-    #expect(shifted.first?.recordingStartSample == lead)
+    #expect(shifted.first?.recordingStartSample == lead + 2_800)
 
     // The evidence the kernel handed over is the salvage decode's own: its words, and the map
     // shifted by the cut lead, which rebuilds the salvage decode input from the recording.
@@ -317,15 +326,15 @@ struct KernelDictationRecordingTests {
     try expectTimelineReproducesDecode(
       decode: decoded, recording: request.samples, timeline: timing.timeline)
 
-    // On the recording's clock the sentence starts `lead` samples later than the salvage
-    // decode's own clock says: 100 ms into the trimmed input is `lead + 1,600` samples in.
+    // On the recording's clock the sentence starts `lead + 2,800` samples (the cut lead plus
+    // the cut gap) later than the salvage decode's own clock says.
     let sidecar = DictationTimingBuilder.timing(
       for: request.asr, recordingSampleCount: request.samples.count)
     #expect(
       sidecar.anchors == [
         RecordingTiming.Anchor(
-          utf16Start: 0, utf16End: 14, startSeconds: Double(lead + 1_600) / 16_000,
-          endSeconds: Double(lead + 9_600) / 16_000)
+          utf16Start: 0, utf16End: 14, startSeconds: Double(lead + 2_800 + 1_600) / 16_000,
+          endSeconds: Double(lead + 2_800 + 9_600) / 16_000)
       ])
   }
 
