@@ -89,6 +89,7 @@ struct MeetingSummaryReferencesTests {
       ("- Odd [T] [T0] [X1] [T123456]", "- Odd [T] [T0] [X1] [T123456]"),
       ("## Overview\n[T1][T2]\n- Ship", "## Overview\n- Ship"),
       ("- One [T1]\r\n- Two [N1]", "- One\n- Two"),
+      ("- Ship Friday [T1 [N1]]", "- Ship Friday"),
     ])
   func stripping(input: String, expected: String) {
     #expect(MeetingSummaryReferences.strippingTags(input) == expected)
@@ -162,6 +163,14 @@ struct MeetingSummaryReferencesTests {
     let citation = try #require(document.sections.first?.items.first?.citations.first)
     #expect(citation.quote == "the deck by Monday.")
     #expect(citation.rangeUTF16 == 12..<31)
+  }
+
+  @Test("a range that cuts a surrogate pair slices to nothing")
+  func surrogateRanges() {
+    #expect(MeetingSummaryReferences.slice("a😀b", 1..<3) == "😀")
+    #expect(MeetingSummaryReferences.slice("a😀b", 1..<2) == "")
+    #expect(MeetingSummaryReferences.slice("a😀b", 2..<4) == "")
+    #expect(MeetingSummaryReferences.slice("a😀b", 0..<5) == "")
   }
 
   @Test("a summary whose text does not match its tagged answer gets no document")

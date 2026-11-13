@@ -23,7 +23,8 @@ struct ValidatedMeetingSummarySource: Equatable, Sendable {
 /// - the meeting's summary is the generated one (never the user's own text), is not out of date
 ///   (transcript, its attempt, notes revision, speaker names, prompt, provider and facts are
 ///   all current), records exactly the document's inputs, and its text, as saved and as shown,
-///   hashes to the document's Markdown hash;
+///   hashes to the document's Markdown hash and reads as exactly the document's sections and
+///   items;
 /// - a cited source still exists with the recorded text hash, the recorded range lies inside
 ///   it and slices to exactly the recorded quote, and that quote is the WHOLE item with only
 ///   whitespace normalized.
@@ -62,7 +63,8 @@ final class MeetingSummaryReferenceValidator: MeetingSummaryReferencing {
       let shown = deps.shownSummary(meetingID),
       MeetingDocumentHash.sameBytes(
         MeetingDocumentHash.sha256(shown), document.renderedMarkdownSHA256),
-      !deps.isOutOfDate(meetingID)
+      !deps.isOutOfDate(meetingID),
+      MeetingSummaryReferences.describes(document, markdown: shown)
     else { return nil }
     return document
   }

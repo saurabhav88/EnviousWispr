@@ -227,7 +227,10 @@ public enum MeetingSummaryReferences {
     while end > text.startIndex, text[text.index(before: end)].isWhitespace {
       end = text.index(before: end)
     }
-    return (String(text[..<end]), groups.flatMap(\.tags))
+    // Removing a group can complete another ("[T1 [N1]]" leaves "[T1]"): strip again until
+    // none is left. Each pass removes characters, so this ends.
+    let rest = strip(String(text[..<end]))
+    return (rest.text, groups.flatMap(\.tags) + rest.tags)
   }
 
   // MARK: - Building the document
@@ -355,10 +358,34 @@ public enum MeetingSummaryReferences {
   }
 
   /// The UTF-16 slice `range` of `text`, or "" when the range lies outside it.
+  /// A range that cuts a surrogate pair in half is outside the text too: decoding half a
+  /// pair would make a replacement character the source never held.
   public static func slice(_ text: String, _ range: Range<Int>) -> String {
     let units = Array(text.utf16)
-    guard range.lowerBound >= 0, range.upperBound <= units.count else { return "" }
+    guard range.lowerBound >= 0, range.upperBound <= units.count,
+      range.lowerBound == units.count || !UTF16.isTrailSurrogate(units[range.lowerBound]),
+      range.upperBound == units.count || !UTF16.isTrailSurrogate(units[range.upperBound])
+    else { return "" }
     return String(decoding: units[range], as: UTF16.self)
+  }
+
+  /// Whether `document`'s sections and items are exactly the ones `markdown` reads as (titles
+  /// and item texts, in order, by bytes), so a document can never link an item the summary
+  /// does not show.
+  public static func describes(_ document: MeetingSummaryDocument, markdown: String) -> Bool {
+    guard
+      let parsed = self.document(
+        taggedSummary: markdown, summary: markdown,
+        sources: MeetingSummaryReferenceSources(turns: [], notes: []), inputs: document.inputs),
+      parsed.sections.count == document.sections.count
+    else { return false }
+    return zip(parsed.sections, document.sections).allSatisfy { expected, actual in
+      MeetingDocumentHash.sameBytes(expected.title, actual.title)
+        && expected.items.count == actual.items.count
+        && zip(expected.items, actual.items).allSatisfy {
+          MeetingDocumentHash.sameBytes($0.0.text, $0.1.text)
+        }
+    }
   }
 
   /// Whether `quote` and `claim` are the same words with whitespace normalized, compared by

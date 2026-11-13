@@ -306,6 +306,27 @@ struct MeetingSummaryReferenceValidatorTests {
     let wrongHash = MeetingSummarySource.turn(id: "a", textSHA256: "0")
     #expect(
       Self.check(with(.init(source: wrongHash, quote: quote, rangeUTF16: 0..<31)), item: 0) == nil)
+    // An item the shown summary does not hold, with a real citation of its own words.
+    let other = "Pricing stays the same this year."
+    var items = document.sections[0].items
+    items[0] = MeetingSummaryItem(
+      id: items[0].id, text: other,
+      citations: [
+        .init(
+          source: .turn(id: "b", textSHA256: MeetingDocumentHash.sha256(other)), quote: other,
+          rangeUTF16: 0..<33)
+      ])
+    var swapped = base
+    swapped.document = MeetingSummaryDocument(
+      inputs: document.inputs, renderedMarkdownSHA256: document.renderedMarkdownSHA256,
+      sections: [
+        MeetingSummarySection(
+          id: document.sections[0].id, title: document.sections[0].title, items: items)
+      ])
+    #expect(
+      MeetingSummaryReferenceValidator.supportingSources(
+        of: items[0], in: Self.fixtureSources).isEmpty == false)
+    #expect(Self.check(swapped, item: 0) == nil)
     // A real passage that is not the whole line.
     #expect(
       Self.check(with(.init(source: Self.turnA, quote: "the deck", rangeUTF16: 12..<20)), item: 0)
