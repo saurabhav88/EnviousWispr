@@ -106,4 +106,55 @@ struct CapturedAudioConditionerTailTrimTests {
     #expect(!out.usedRawFallbackAfterVAD)
     #expect(out.droppedTailSampleCount == 48_400)  // 200_000 - (150_000 + 1600)
   }
+
+  // MARK: - #3147 §3.2 sample map through every conditioning path
+
+  /// A ramp, so every sample is distinct and a mis-mapped stretch cannot match by accident.
+  private func ramp(_ count: Int) -> [Float] { (0..<count).map { Float($0) } }
+
+  @Test("filtered path: the map is the filter's, and rebuilds the decode samples exactly")
+  func timelineFilteredPath() throws {
+    let raw = ramp(200_000)
+    let out = CapturedAudioConditioner.condition(
+      rawSamples: raw, vadSegments: [seg(20_000, 60_000), seg(100_000, 140_000)])
+
+    #expect(out.conditioningReason == "filtered")
+    #expect(out.timeline.count == 2, "the VAD gap splits the decode into two stretches")
+    #expect(out.timeline.last?.decodeRange.upperBound == out.samples.count)
+    try expectTimelineReproducesDecode(decode: out.samples, recording: raw, timeline: out.timeline)
+  }
+
+  @Test("raw fallback and soft-onset paths map the whole capture from sample 0")
+  func timelineRawPaths() throws {
+    // Sparse voicing in a long take: the filtered audio is under the ASR minimum.
+    let longRaw = ramp(150_000)
+    let fallback = CapturedAudioConditioner.condition(
+      rawSamples: longRaw, vadSegments: [seg(50_000, 55_000)])
+    #expect(fallback.usedRawFallbackAfterVAD)
+    #expect(
+      fallback.timeline == [
+        DictationAudioTimelineSpan(decodeRange: 0..<150_000, recordingStartSample: 0)
+      ])
+
+    // A short take whose filter drops an early-onset prefix keeps the raw capture.
+    let shortRaw = ramp(40_000)
+    let softOnset = CapturedAudioConditioner.condition(
+      rawSamples: shortRaw, vadSegments: [seg(1_000, 20_000)])
+    #expect(softOnset.usedRawSoftOnsetPreservation)
+    try expectTimelineReproducesDecode(
+      decode: softOnset.samples, recording: shortRaw, timeline: softOnset.timeline)
+    #expect(softOnset.timeline.map(\.decodeRange) == [0..<40_000])
+  }
+
+  @Test("padding to the ASR minimum is never mapped onto the recording")
+  func timelineExcludesPadding() throws {
+    let raw = ramp(10_000)
+    let out = CapturedAudioConditioner.condition(rawSamples: raw, vadSegments: [])
+
+    #expect(out.samplesPaddedToMinimum)
+    #expect(out.samples.count == AudioConstants.minimumTranscriptionSamples)
+    #expect(
+      out.timeline == [DictationAudioTimelineSpan(decodeRange: 0..<10_000, recordingStartSample: 0)])
+    try expectTimelineReproducesDecode(decode: out.samples, recording: raw, timeline: out.timeline)
+  }
 }

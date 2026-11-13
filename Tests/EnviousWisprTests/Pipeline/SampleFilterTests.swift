@@ -220,4 +220,80 @@ struct SampleFilterTests {
 
     #expect(result == samples)
   }
+
+  // MARK: - #3147 §3.2 sample map
+
+  @Test("the map rebuilds the filtered samples from the input, gap excluded, exactly")
+  func mapReproducesFilteredSamples() throws {
+    let samples = (0..<40_000).map(Float.init)
+    let segments = [
+      SpeechSegment(startSample: 5_000, endSample: 10_000),
+      SpeechSegment(startSample: 25_000, endSample: 30_000),
+    ]
+
+    let mapped = SampleFilter.filterMapped(from: samples, segments: segments, padding: 100)
+
+    // Independent of the implementation: the padded slices of the input, bit for bit.
+    let expected = Array(samples[4_900..<10_100]) + Array(samples[24_900..<30_100])
+    #expect(mapped.samples.map(\.bitPattern) == expected.map(\.bitPattern))
+    #expect(
+      SampleFilter.filter(from: samples, segments: segments, padding: 100).map(\.bitPattern)
+        == expected.map(\.bitPattern))
+    #expect(
+      mapped.timeline == [
+        DictationAudioTimelineSpan(decodeRange: 0..<5_200, recordingStartSample: 4_900),
+        DictationAudioTimelineSpan(decodeRange: 5_200..<10_400, recordingStartSample: 24_900),
+      ])
+    try expectTimelineReproducesDecode(
+      decode: mapped.samples, recording: samples, timeline: mapped.timeline)
+  }
+
+  @Test("overlapping padded segments map as one stretch; a passthrough maps from sample 0")
+  func mapMergesAndPassesThrough() {
+    let samples = (0..<20_000).map(Float.init)
+    let merged = SampleFilter.filterMapped(
+      from: samples,
+      segments: [
+        SpeechSegment(startSample: 6_000, endSample: 9_000),
+        SpeechSegment(startSample: 9_100, endSample: 12_000),
+      ],
+      padding: 100)
+    #expect(
+      merged.timeline == [
+        DictationAudioTimelineSpan(decodeRange: 0..<6_200, recordingStartSample: 5_900)
+      ])
+
+    // Below the voiced minimum the filter returns its input: one span over all of it.
+    let passthrough = SampleFilter.filterMapped(
+      from: samples, segments: [SpeechSegment(startSample: 1_000, endSample: 5_799)])
+    #expect(passthrough.samples == samples)
+    #expect(
+      passthrough.timeline == [
+        DictationAudioTimelineSpan(decodeRange: 0..<20_000, recordingStartSample: 0)
+      ])
+    #expect(SampleFilter.filterMapped(from: [], segments: []).timeline.isEmpty)
+  }
+}
+
+/// #3147 §3.2: every mapped stretch of `decode` is byte-for-byte the recording at the place the
+/// map names, the stretches are ascending, and samples outside them (padding) are not mapped.
+func expectTimelineReproducesDecode(
+  decode: [Float], recording: [Float], timeline: [DictationAudioTimelineSpan],
+  sourceLocation: SourceLocation = #_sourceLocation
+) throws {
+  var previousDecodeEnd = 0
+  var previousRecordingEnd = 0
+  for span in timeline {
+    let recordingEnd = span.recordingStartSample + span.decodeRange.count
+    try #require(span.decodeRange.lowerBound >= previousDecodeEnd, sourceLocation: sourceLocation)
+    try #require(span.recordingStartSample >= previousRecordingEnd, sourceLocation: sourceLocation)
+    try #require(span.decodeRange.upperBound <= decode.count, sourceLocation: sourceLocation)
+    try #require(recordingEnd <= recording.count, sourceLocation: sourceLocation)
+    #expect(
+      Array(decode[span.decodeRange]) == Array(recording[span.recordingStartSample..<recordingEnd]),
+      "decode \(span.decodeRange) must be the recording from \(span.recordingStartSample)",
+      sourceLocation: sourceLocation)
+    previousDecodeEnd = span.decodeRange.upperBound
+    previousRecordingEnd = recordingEnd
+  }
 }
