@@ -205,13 +205,13 @@ struct SpeechEngineSettingsView: View {
                   icon: "character.bubble",
                   resolvedHelp: String(localized: Copy.lockedLanguageHelp)
                 ) {
-                  Button(SettingsItemCopy.Engine.lockedLanguageChange) {
+                  Button {
                     showLanguageLockSheet = true
+                  } label: {
+                    EnviousButtonLabel(SettingsItemCopy.Engine.lockedLanguageChange)
                   }
-                  .controlSize(.small)
-                  .font(.stHelper)
+                  .settingsButton(isEnabled: true)
                   .accessibilityLabel(String(localized: Copy.changeLanguage))
-                  .settingsArrivalFocusControl()
                   .settingsMapRegistration(.lockedLanguageChange)
                 }
                 // #1678: a lock can outlive the engine that could honour it.
@@ -364,11 +364,13 @@ struct SpeechEngineSettingsView: View {
             HStack(spacing: 10) {
               // #4216: the start word and the English period switch live in their own window.
               if settings.spokenPunctuation.enabled {
-                Button(SpokenPunctuationCopy.configureButton) {
+                Button {
                   showSpokenPunctuationSheet = true
+                } label: {
+                  EnviousButtonLabel(verbatim: SpokenPunctuationCopy.configureButton)
                 }
-                .controlSize(.small)
-                .font(.stHelper)
+                .settingsButton(isEnabled: true)
+                .settingsArrivalWithoutInheritedPlace()
                 .accessibilityLabel(Text(SpokenPunctuationCopy.configureAccessibilityLabel))
               }
               Toggle("", isOn: $settings.spokenPunctuation.enabled)
@@ -1034,12 +1036,12 @@ struct SpeechEngineSettingsView: View {
           .foregroundStyle(.stTextSecondary)
           .fixedSize(horizontal: false, vertical: true)
 
-        Button(SettingsItemCopy.Engine.whisperTryAgain) {
+        Button {
           Task { await setup.whisperSetup.detectState() }
+        } label: {
+          EnviousButtonLabel(SettingsItemCopy.Engine.whisperTryAgain)
         }
-        .controlSize(.small)
-        .font(.stHelper)
-        .settingsArrivalFocusControl()
+        .settingsButton(isEnabled: true)
         .settingsMapRegistration(.whisperModelTryAgain)
       }
     }

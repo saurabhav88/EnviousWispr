@@ -179,12 +179,14 @@ extension MeetingsView {
         Button {
           Task { await startFlow.fixMicrophone() }
         } label: {
-          Text(
+          EnviousButtonLabel(LocalizedStringResource(
             "Allow Microphone",
             comment:
               "EnviousMeet: asks macOS for microphone access, or opens System Settings if it was refused."
-          )
+          ))
         }
+        .settingsButton(isEnabled: true)
+        .settingsArrivalWithoutInheritedPlace()
         .accessibilityIdentifier("meetings.settings.allowMicrophone")
       }
     }
@@ -226,10 +228,12 @@ extension MeetingsView {
       Button {
         permissions.openSystemAudioRecordingSettings()
       } label: {
-        Text(
+        EnviousButtonLabel(LocalizedStringResource(
           "Open System Settings",
-          comment: "EnviousMeet: opens the macOS privacy setting for recording the Mac's sound.")
+          comment: "EnviousMeet: opens the macOS privacy setting for recording the Mac's sound."))
       }
+      .settingsButton(isEnabled: true)
+      .settingsArrivalWithoutInheritedPlace()
       .accessibilityIdentifier("meetings.settings.callSoundSettings")
     }
   }
@@ -250,10 +254,12 @@ extension MeetingsView {
         Button {
           permissions.openCalendarSettings()
         } label: {
-          Text(
+          EnviousButtonLabel(LocalizedStringResource(
             "Open System Settings",
-            comment: "EnviousMeet: opens the macOS privacy setting for calendar access.")
+            comment: "EnviousMeet: opens the macOS privacy setting for calendar access."))
         }
+        .settingsButton(isEnabled: true)
+        .settingsArrivalWithoutInheritedPlace()
         .accessibilityIdentifier("meetings.settings.calendarSettings")
       }
     }
@@ -281,10 +287,12 @@ extension MeetingsView {
         Button {
           _ = permissions.requestAccessibilityAccess()
         } label: {
-          Text(
+          EnviousButtonLabel(LocalizedStringResource(
             "Allow Accessibility",
-            comment: "EnviousMeet: asks macOS for Accessibility access for call detection.")
+            comment: "EnviousMeet: asks macOS for Accessibility access for call detection."))
         }
+        .settingsButton(isEnabled: true)
+        .settingsArrivalWithoutInheritedPlace()
         .accessibilityIdentifier("meetings.settings.allowAccessibility")
       }
     }
