@@ -207,5 +207,20 @@ struct MeetingNotesTextMappingTests {
     #expect(coordinator.undo.canUndo == false)
     #expect(documents.snapshot(for: id).document.blocks[0].kind == .task)
   }
+
+  @Test("typing over a draft that moved on before it was drawn applies nothing over the newer one")
+  func staleTypingIsRefused() async throws {
+    let original = MeetingNotesDocument(blocks: [MeetingNoteBlock(startedAtMs: 1, text: "a")])
+    let (textView, coordinator, documents, id, keep) = try await Self.editor(original)
+    defer { withExtendedLifetime(keep) {} }
+    textView.insertText("x", replacementRange: NSRange(location: 1, length: 0))
+    // Another editor changes the notes; this view has not drawn it yet (as while an input
+    // method composes), then the user's typing lands.
+    documents.setNotes(id, "b")
+    textView.insertText("y", replacementRange: NSRange(location: 2, length: 0))
+    #expect(documents.notes(id) == "b")
+    #expect(textView.string == "b")
+    #expect(coordinator.undo.canUndo == false, "the older history no longer applies")
+  }
 }
 

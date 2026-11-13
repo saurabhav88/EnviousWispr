@@ -335,9 +335,16 @@ struct MeetingNotesTextView: NSViewRepresentable {
         return
       }
       let snapshot = notes.snapshot(for: meetingID)
+      defer { pending = nil }
+      // The view's text was typed over the draft last drawn. When the draft moved on since
+      // (a change made elsewhere while a resync waited for an input method), this change is
+      // stale: the newer draft is drawn instead and nothing is applied over it.
+      guard isDrawn(snapshot) else {
+        sync(snapshot)
+        return
+      }
       let old = MeetingNotesTextMapping.text(snapshot.document)
       let new = textView.string
-      defer { pending = nil }
       guard !MeetingDocumentHash.sameBytes(old, new) else { return }
       var change = MeetingNotesTextMapping.change(from: old, to: new)
       if let pending,
@@ -382,6 +389,11 @@ struct MeetingNotesTextView: NSViewRepresentable {
       sync(after, keepUndo: allApplied)
     }
 
+    /// Whether `snapshot` is the meeting and draft this view last drew.
+    private func isDrawn(_ snapshot: MeetingNotesSnapshot) -> Bool {
+      syncedMeeting == meetingID && Self.same(syncedDocument, snapshot.document)
+    }
+
     /// Registers an Undo step that restores `document`; performing it registers the Redo.
     private func registerUndo(restoring document: MeetingNotesDocument) {
       undo.beginUndoGrouping()
@@ -395,6 +407,10 @@ struct MeetingNotesTextView: NSViewRepresentable {
     private func restore(_ document: MeetingNotesDocument) {
       guard let notes, let meetingID else { return }
       let current = notes.snapshot(for: meetingID)
+      guard isDrawn(current) else {
+        sync(current)
+        return
+      }
       guard current.canEdit,
         notes.apply(
           .restore(document), to: meetingID, expectedRevision: current.revision, atMs: nil)
@@ -432,6 +448,10 @@ struct MeetingNotesTextView: NSViewRepresentable {
       guard let notes, let meetingID, let block = block ?? caretBlock(), let edit = make(block)
       else { return }
       let snapshot = notes.snapshot(for: meetingID)
+      guard isDrawn(snapshot) else {
+        sync(snapshot)
+        return
+      }
       guard snapshot.canEdit,
         notes.apply(edit, to: meetingID, expectedRevision: snapshot.revision, atMs: currentMs())
       else { return }
