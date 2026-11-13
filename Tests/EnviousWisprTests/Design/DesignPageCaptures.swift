@@ -217,7 +217,7 @@ enum DesignPageCaptures {
         engineMutationScope: .alwaysAllowedForTesting, isEngineSwitching: { false }))
     let windows = AppWindowCoordinator(
       application: RecordingDesktopPresentationEffects(), showInDock: { true },
-      canOpenOnboarding: { false }, isOnboardingComplete: { true })
+      isOnboardingComplete: { true })
     return AnyView(
       DiagnosticsSettingsView()
         .environment(settings).environment(diagnostics).environment(recording)
