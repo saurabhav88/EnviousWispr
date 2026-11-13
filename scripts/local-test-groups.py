@@ -370,8 +370,12 @@ def run_groups(opts):
             union.update(cases)
         if cancelled:
             raise InterruptedError(f"interrupted by signal {cancelled[0]}")
-        subprocess.run(["xcrun", "xcresulttool", "merge", "--output-path", str(output),
-                        *(str(group_dir / (name + ".xcresult")) for name, _, _ in groups)], check=True)
+        bundles = [group_dir / (name + ".xcresult") for name, _, _ in groups]
+        if len(bundles) == 1:
+            shutil.copytree(bundles[0], output)
+        else:
+            subprocess.run(["xcrun", "xcresulttool", "merge", "--output-path", str(output),
+                            *(str(bundle) for bundle in bundles)], check=True)
         merged = read_inventory(output)
         if merged != union:
             raise ValueError("merged result does not preserve every original test case and parameter result")
