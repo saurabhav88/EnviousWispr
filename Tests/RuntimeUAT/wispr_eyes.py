@@ -960,19 +960,18 @@ def screenshot(save_path=None, window=True):
         _SCREENSHOT_COUNTER[0] += 1
         save_path = f"{_SCREENSHOT_DIR}/shot_{_SCREENSHOT_COUNTER[0]:03d}.png"
 
-    cmd = ["screencapture", "-x"]  # -x = no sound
-    if window and _pid:
-        # Capture specific window by PID: use -l with window ID
+    cmd = ["screencapture", "-x"]
+    if window:
         wid = _get_window_id()
-        if wid:
-            cmd.extend(["-l", str(wid)])
+        if wid is None:
+            raise RuntimeError(f"No capturable app window for PID {_pid}")
+        cmd.extend(["-o", "-l", str(wid)])
     cmd.append(save_path)
-    subprocess.run(cmd, timeout=10, capture_output=True)
-    if os.path.exists(save_path):
-        sz = os.path.getsize(save_path)
-        print(f"Screenshot: {save_path} ({sz // 1024} KB)")
-    else:
-        print(f"Screenshot FAILED: {save_path}")
+    result = subprocess.run(cmd, timeout=10, capture_output=True, text=True)
+    if result.returncode != 0 or not os.path.isfile(save_path):
+        raise RuntimeError(f"Screenshot failed: {result.stderr.strip() or save_path}")
+    sz = os.path.getsize(save_path)
+    print(f"Screenshot: {save_path} ({sz // 1024} KB)")
     return save_path
 
 
@@ -1068,16 +1067,30 @@ class Recording:
 
 
 def _get_window_id():
-    """Get the CGWindowID for the app's frontmost window via Quartz."""
-    try:
-        from Quartz import CGWindowListCopyWindowInfo, kCGWindowListOptionOnScreenOnly, kCGNullWindowID
-        windows = CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly, kCGNullWindowID)
-        for w in windows:
-            if w.get("kCGWindowOwnerPID") == _pid:
-                return w.get("kCGWindowNumber")
-    except Exception:
-        pass
-    return None
+    """Preserve the frontmost visible app window, including floating panels."""
+    if _pid is None:
+        return None
+    import Quartz
+    windows = Quartz.CGWindowListCopyWindowInfo(
+        Quartz.kCGWindowListOptionAll | Quartz.kCGWindowListExcludeDesktopElements,
+        Quartz.kCGNullWindowID,
+    )
+    largest_area = 0
+    window_id = None
+    for window in windows or ():
+        if window.get("kCGWindowOwnerPID") != _pid:
+            continue
+        candidate = window.get("kCGWindowNumber")
+        bounds = window.get("kCGWindowBounds", {})
+        area = bounds.get("Width", 0) * bounds.get("Height", 0)
+        if not candidate or area <= 0:
+            continue
+        if window.get("kCGWindowIsOnscreen"):
+            return candidate
+        if window.get("kCGWindowLayer") == 0 and area > largest_area:
+            largest_area = area
+            window_id = candidate
+    return window_id
 
 
 def zoom(region, save_path=None):
