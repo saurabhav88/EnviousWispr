@@ -308,6 +308,7 @@ enum MeetingWiring {
       await coordinator?.deleteForHistoryDeleteAll(meetingIDs: ids) ?? false
     }
     coordinator.summaries = makeSummaries(inputs, coordinator: coordinator, lane: lane)
+    coordinator.summaryReferences = makeSummaryReferences(inputs, coordinator: coordinator)
     return coordinator
   }
 
@@ -383,11 +384,61 @@ enum MeetingWiring {
         assignTitle: { [weak coordinator] meetingID, title in
           await coordinator?.assignAITitle(meetingID: meetingID, title: title)
         },
+        referenceSources: {
+          [weak coordinator, transcriptCoordinator = inputs.transcriptCoordinator] meetingID in
+          referenceSources(coordinator, transcriptCoordinator, meetingID: meetingID)
+        },
+        saveReferences: { [weak coordinator] meetingID, document in
+          await coordinator?.documents.saveSummaryReferences(meetingID, document) ?? false
+        },
         artifactRevision: { [egOne = inputs.egOneSummaryEngine] provider in
           provider == .egOne ? egOne?.artifactRevision : nil
         },
         beginTermination: { [egOne = inputs.egOneSummaryEngine] in egOne?.beginTermination() }),
       documents: coordinator.documents, lane: lane)
+  }
+
+  /// #3147 PR4A (D5): the summary links' reader. It trusts a saved reference document only
+  /// while it describes the summary shown now and the sources it names still read the same.
+  static func makeSummaryReferences(
+    _ inputs: Inputs, coordinator: MeetingCoordinator
+  ) -> MeetingSummaryReferenceValidator {
+    MeetingSummaryReferenceValidator(
+      dependencies: .init(
+        storedDocument: { [weak coordinator] in coordinator?.documents.summaryReferences($0) },
+        savedSummary: { [weak coordinator] in coordinator?.documents.manifest($0)?.summary },
+        shownSummary: { [weak coordinator] in coordinator?.documents.summary($0) },
+        // No summary owner means nothing can be judged current: no links.
+        isOutOfDate: { [weak coordinator] in coordinator?.summaries?.isOutOfDate($0) ?? true },
+        sources: {
+          [weak coordinator, transcriptCoordinator = inputs.transcriptCoordinator] meetingID in
+          referenceSources(coordinator, transcriptCoordinator, meetingID: meetingID)
+        }))
+  }
+
+  /// #3147 PR4A (D5): the meeting's visible turns (the committed row, echo hidden, gap lines as
+  /// History shows them, the projection `summaryVisibleText` makes) and its non-empty note
+  /// blocks. Nil when the committed row is not known. The summary owner compares the turns'
+  /// plain text with the transcript it hashes, so a drift costs links, never text.
+  @MainActor static func referenceSources(
+    _ coordinator: MeetingCoordinator?, _ transcriptCoordinator: TranscriptCoordinator,
+    meetingID: UUID
+  ) -> MeetingSummaryReferenceSources? {
+    guard let coordinator, let record = coordinator.record(id: meetingID),
+      let row = transcriptCoordinator.currentRow(id: record.transcriptID),
+      isCommittedRow(row, of: record),
+      let info = historyInfo(coordinator, meetingID: meetingID)?.matching(row)
+    else { return nil }
+    let turns = MeetingSummaryReferences.turnSources(
+      text: row.text, turns: row.turns ?? [], speakerNames: row.speakerNames ?? [:],
+      echoTurnIDs: info.echoTurnIDs, showEcho: false,
+      line: { MeetingGapPresentation.localized($0, forms: .interface) })
+    let notes = coordinator.documents.snapshot(for: meetingID).document.blocks
+      .filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+      .map {
+        MeetingSummaryNoteSource(blockID: $0.id, text: $0.text, promptText: $0.markdownLine)
+      }
+    return MeetingSummaryReferenceSources(turns: turns, notes: notes)
   }
 
   /// #3973 C2: whether `row` is `record`'s committed transcript generation, the only row a

@@ -76,13 +76,6 @@
       "fontSize" : 2,
       "radius" : 4
     },
-    "Sources\/EnviousWisprAppKit\/Views\/Main\/MeetingHistoryDetailView.swift" : {
-      "fontSize" : 2,
-      "radius" : 1
-    },
-    "Sources\/EnviousWisprAppKit\/Views\/Main\/MeetingNotesEditor.swift" : {
-      "radius" : 1
-    },
     "Sources\/EnviousWisprAppKit\/Views\/Main\/MeetingSummaryView.swift" : {
       "radius" : 1
     },

@@ -71,9 +71,19 @@ struct HistoryContentView: View {
           .id(rowID)
         },
         meetingDestination: { meetingID in
-          if let meeting = meeting(meetingID) {
-            MeetingHistoryDetailView(meeting: meeting, showPasteNotice: pasteNotice.show)
-              .id(meetingID)
+          // #3147 PR4A: every meeting, live or finished, opens the meeting page; the live
+          // recording, its live words and the notes sit on it while it records.
+          if meeting(meetingID) != nil {
+            HistoryMeetingAfterView(
+              meetingID: meetingID, notes: meetings.documents,
+              references: meetings.summaryReferences ?? NoMeetingSummaryReferences(),
+              showPasteNotice: pasteNotice.show,
+              restorePasteSurface: {
+                navigation.request(.history)
+                appWindow.showWindow()
+              }
+            )
+            .id(meetingID)
           }
         }
       )

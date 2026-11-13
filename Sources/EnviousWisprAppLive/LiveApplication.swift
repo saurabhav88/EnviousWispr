@@ -56,6 +56,7 @@ package final class LiveApplication {
         scrollWheelMonitor: LiveScrollWheelMonitor(),
         // #3545: the one place the real Settings key monitor is chosen.
         settingsKeyMonitor: LiveSettingsKeyMonitor(),
+        historyScrollMonitor: LiveHistoryScrollMonitor(),
         relocationRelauncher: LiveRelocationRelauncher(),
         // #2455 C4: the pill. `makePanel` is a factory rather than an instance
         // because the host builds its panel lazily, on first presentation.

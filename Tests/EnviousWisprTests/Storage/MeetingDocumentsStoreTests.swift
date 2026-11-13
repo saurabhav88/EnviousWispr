@@ -35,6 +35,38 @@ struct MeetingDocumentsStoreTests {
     #expect(!FileManager.default.fileExists(atPath: store.notesURL(for: record.id).path))
   }
 
+  /// #3147 PR4A (D5): the summary links' file is written beside the summary, removed by a nil
+  /// save, kept by Delete audio, gone with the meeting, and never written for a deleting one.
+  @Test("summary references save, load, remove and refuse a deleting meeting")
+  func summaryReferencesFile() throws {
+    let (store, record) = try makeMeeting()
+    #expect(try store.loadSummaryReferences(meeting: record.id) == nil, "none at first")
+    let bytes = Data("{\"version\":1}".utf8)
+    try store.saveSummaryReferences(bytes, meeting: record.id)
+    #expect(try store.loadSummaryReferences(meeting: record.id) == bytes)
+    #expect(
+      store.summaryReferencesURL(for: record.id).deletingLastPathComponent()
+        == store.summaryURL(for: record.id).deletingLastPathComponent(),
+      "it sits beside summary.md")
+
+    try store.deleteAudio(meeting: record.id)
+    #expect(try store.loadSummaryReferences(meeting: record.id) == bytes, "Delete audio keeps it")
+
+    try store.saveSummaryReferences(nil, meeting: record.id)
+    #expect(try store.loadSummaryReferences(meeting: record.id) == nil, "nil removes it")
+    try store.saveSummaryReferences(nil, meeting: record.id)  // removing nothing is fine
+
+    var deleting = record
+    deleting.deletionRequested = true
+    try store.save(deleting)
+    #expect(throws: MeetingStore.DocumentError.meetingDeleting) {
+      try store.saveSummaryReferences(bytes, meeting: record.id)
+    }
+    #expect(try store.loadSummaryReferences(meeting: record.id) == nil)
+    try store.deleteFolder(meeting: record.id)
+    #expect(!FileManager.default.fileExists(atPath: store.summaryReferencesURL(for: record.id).path))
+  }
+
   @Test("a save never recreates a deleted or deleting meeting")
   func refusesGoneMeetings() throws {
     let (store, record) = try makeMeeting()
@@ -59,11 +91,14 @@ struct MeetingDocumentsStoreTests {
       transcriptSHA256: "t", notesRevision: 1, speakerNamesSHA256: "s", promptVersion: 1,
       providerID: "openAI", configurationSHA256: "c")
     _ = try store.saveSummary("A summary", origin: .generated, inputs: inputs, meeting: record.id)
-    // A crash after notes.md and before documents.json: only the file changed.
-    try Data("second".utf8).write(to: store.notesURL(for: record.id))
+    // A crash after notes.json and before notes.md and documents.json (#3147 PR4: notes.json is
+    // the authority): only the notes document changed.
+    try MeetingStore.encoder.encode(MeetingNotesDocument(blocks: [MeetingNoteBlock(text: "second")]))
+      .write(to: store.notesDocumentURL(for: record.id))
 
     let loaded = try store.loadDocuments(meeting: record.id)
     #expect(loaded.notes == "second")
+    #expect(try String(contentsOf: store.notesURL(for: record.id), encoding: .utf8) == "second")
     #expect(loaded.repaired)
     #expect(loaded.manifest.notes?.revision == 2)
     #expect(loaded.manifest.summary?.inputs?.notesRevision == 1, "the summary is now stale")
@@ -153,7 +188,8 @@ struct MeetingDocumentsStoreTests {
     _ = try store.saveSummary("Generated", origin: .generated, inputs: nil, meeting: record.id)
     try Data("Edited outside".utf8).write(to: store.summaryURL(for: record.id))
 
-    let saved = try store.saveDraftNotes("draft", edits: 2, meeting: record.id)
+    let saved = try store.saveDraftNotes(
+      MeetingNotesDocument(legacyMarkdown: "draft"), edits: 2, meeting: record.id)
     #expect(saved.summary == "Edited outside")
     #expect(saved.manifest.summary?.origin == .userEdited)
     let reread = try store.loadDocuments(meeting: record.id)
