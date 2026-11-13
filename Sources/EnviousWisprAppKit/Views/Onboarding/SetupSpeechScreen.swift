@@ -30,7 +30,12 @@ struct SetupSpeechScreen: View {
   var body: some View {
     VStack(spacing: 0) {
       lips
-      if comparing { comparePanel } else { mainPanel }
+      if comparing {
+        // Mockup: Compare rises in place (obRise 0.3 s); going back re-rises the card and row.
+        comparePanel.modifier(SetupRise(delay: 0, reduceMotion: reduceMotion, duration: 0.3))
+      } else {
+        mainPanel
+      }
       Spacer(minLength: 0)
       SetupFooter(title: "Use \(shownName)", action: accept) {
         if comparing {
@@ -51,6 +56,10 @@ struct SetupSpeechScreen: View {
       // opening it does not bounce again.
       if !comparing, !reduceMotion { burst += 1 }
       model.screenMounted(comparing ? .speechCompare : .speechPick, epoch: epoch)
+    }
+    // Pick and Compare share this view, so a move between them reports the new step here.
+    .onChange(of: epoch) { _, now in
+      model.screenMounted(comparing ? .speechCompare : .speechPick, epoch: now)
     }
     // Keyed on the motion setting too: turning Reduce Motion on stops the tour, off restarts it.
     .task(id: GreetingKey(engine: shown, reduceMotion: reduceMotion)) { await cycleGreetings() }
