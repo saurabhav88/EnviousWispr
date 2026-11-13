@@ -1,0 +1,1 @@
+{"language":"lv","title":"glabāt sapulču audioierakstus","words":["sapulču ieraksti"],"phrases":["cik ilgi glabāt sapulču audioierakstus","glabāt sapulču audio, līdz to izdzēšu"]}

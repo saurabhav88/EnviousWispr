@@ -58,6 +58,9 @@ package final class WisprBootstrapper {
   /// #4012: notices calls and asks to record them.
   let callDetection: CallDetectionCoordinator
   let meetingMemoryPressure: MeetingMemoryPressure
+  /// #3147: recording storage use, and the keep periods and storage warning that act on it.
+  let recordingUsage: RecordingUsage?
+  let recordingRetention: RecordingRetention?
   /// #2648 — Transcribe a File's state machine, held here so the run survives
   /// the page being closed.
   let fileImportCoordinator: FileImportCoordinator
@@ -419,6 +422,7 @@ package final class WisprBootstrapper {
       })
 
     let transcriptStore = TranscriptStore()
+    let recordingArchive = RecordingArchive()
     // The History half of #2811's turn-label telemetry; the wizard half is wired on
     // `FileImportCoordinator` below, and both emit the same shape-only events.
     let transcriptCoordinator = TranscriptCoordinator(
@@ -428,7 +432,12 @@ package final class WisprBootstrapper {
       },
       emitTurnsDisplayedTelemetry: {
         TelemetryService.shared.trackFileImportTurnsDisplayed(screen: .history)
-      })
+      },
+      // #3147: the one dictation recording archive.
+      recordingArchive: recordingArchive)
+    // #3147: interrupted encodes and orphaned recordings are cleaned once, before any new
+    // recording is admitted.
+    transcriptCoordinator.recordings?.start()
 
     // #832/#913 PR8: app-owned output-safety classifier holder. Created before
     // the polish service + both kernel drivers so all three receive the same
@@ -783,7 +792,10 @@ package final class WisprBootstrapper {
         pasteCompletionRegistry: pasteCompletionRegistry,
         engineMutationScope: engineMutationScope,
         outputClassifierHolder: outputClassifierHolder,
-        dictationAudioArchiveOptInProvider: { settings.isDictationAudioArchiveEnabled },
+        // #3147 D1: App Settings > Recordings' switch, read live; the kernel freezes it once
+        // per accepted take.
+        recordingPreference: DictationRecordings.livePreference(settings),
+        recordingSink: transcriptCoordinator.recordings,
         microphonePermissionIsDenied: { permissions.microphonePermissionIsDenied },
         egOneRuntime: egOneRuntime,
         additionalLocalRuntimes: additionalLocalRuntimes,
@@ -854,7 +866,10 @@ package final class WisprBootstrapper {
         whisperModelIdentity: modelDelivery.whisperRegistration?.manifest.identity
           .asrModelIdentity,
         outputClassifierHolder: outputClassifierHolder,
-        dictationAudioArchiveOptInProvider: { settings.isDictationAudioArchiveEnabled },
+        // #3147 D1: App Settings > Recordings' switch, read live; the kernel freezes it once
+        // per accepted take.
+        recordingPreference: DictationRecordings.livePreference(settings),
+        recordingSink: transcriptCoordinator.recordings,
         microphonePermissionIsDenied: { permissions.microphonePermissionIsDenied },
         egOneRuntime: egOneRuntime,
         additionalLocalRuntimes: additionalLocalRuntimes,
@@ -1352,6 +1367,8 @@ package final class WisprBootstrapper {
     // #3289 §8b: the same late binding for the idle-memory observer, built further down; a usage
     // metrics change restarts its idle stretch.
     weak var idleMemoryObserverForSettings: IdleMemoryObserver?
+    // #3147: the same late binding for recording retention, built with the meetings below.
+    weak var recordingRetentionForSettings: RecordingRetention?
 
     settings.onChange = {
       [
@@ -1364,6 +1381,13 @@ package final class WisprBootstrapper {
       guard let settingsSync, let settings else { return }
       settingsSync.handleSettingChanged(key, settings: settings)
       if key == .shareUsageMetrics { idleMemoryObserverForSettings?.usageMetricsChanged() }
+      // #3147: a committed keep period or a threshold change is applied by the next sweep, now.
+      switch key {
+      case .dictationRecordingRetention, .meetingRecordingRetention,
+        .recordingStorageWarningThreshold, .recordingThresholdBehavior:
+        recordingRetentionForSettings?.settingsChanged()
+      default: break
+      }
       // #3438, #4321: dictation's and the summary engine's setup monitors.
       polishSetupMonitorHolder.settingChanged(key)
       // #1173: emit coalesced settings.changed deltas (fire-and-forget, never
@@ -2890,6 +2914,25 @@ package final class WisprBootstrapper {
         setupService.setupState == .ready
       })
     let meetingCoordinator = MeetingWiring.make(meetingInputs)
+    // #3147: one now-playing owner for meeting and dictation recordings: starting one pauses
+    // the other, and every deletion stops that recording's players before its files go.
+    let playbackArbiter = PlaybackArbiter()
+    meetingCoordinator.playbackArbiter = playbackArbiter
+    transcriptCoordinator.recordings?.arbiter = playbackArbiter
+    // #3147: usage across both recording owners, and the one retention policy acting through
+    // each owner's own removal. Starts after both owners exist; each sweep waits for their
+    // launch work on its own task.
+    let recordingUsage = RecordingUsage(archive: recordingArchive, meetingStore: MeetingStore())
+    let recordingRetention = transcriptCoordinator.recordings.map { recordings in
+      RecordingRetention(
+        RecordingRetention.Dependencies(
+          settings: settings, recordings: recordings, archive: recordingArchive,
+          savedDates: { [transcriptStore] ids in await transcriptStore.savedDates(of: ids) },
+          meetings: { [weak meetingCoordinator] in meetingCoordinator },
+          usage: recordingUsage))
+    }
+    recordingRetentionForSettings = recordingRetention
+    recordingRetention?.start()
     meetingSummariesForEviction = meetingCoordinator.summaries
     // #4287: an eviction deferred while a summary call used its Ollama model runs once the
     // call releases it, as dictation and file import retry theirs on completion.
@@ -3102,6 +3145,8 @@ package final class WisprBootstrapper {
         now: callDetectionNow)
     #endif
     self.meetingMemoryPressure = meetingMemoryPressure
+    self.recordingUsage = recordingUsage
+    self.recordingRetention = recordingRetention
     self.transcriptCoordinator = transcriptCoordinator
     self.liveRecordingState = liveRecordingState
     self.lastRecordingResult = lastRecordingResult
@@ -3493,6 +3538,8 @@ package final class WisprBootstrapper {
     callDetection.discovery.shutDown()
     meetingCoordinator.prepareForTermination(deadline: .now() + 1)
     meetingMemoryPressure.stop()
+    // #3147: no retention pass starts after this.
+    recordingRetention?.stop()
     // #3438, #4321: stop observing before the owners they read are torn down.
     polishSetup.stop()
     // #3269: best effort; the process may exit first, and every outbox write is atomic anyway.
@@ -3606,6 +3653,9 @@ private struct MainWindowRoot: View {
       .environment(b.transcriptCoordinator)
       .environment(b.fileImportCoordinator)
       .environment(b.meetingCoordinator)
+      // #3147: Recordings settings and History's storage warning.
+      .environment(b.recordingRetention)
+      .environment(b.recordingUsage)
       .environment(b.meetingStartFlow)
       .environment(b.meetingOnboardingModel)
       .environment(b.meetingLiveWordsRow)

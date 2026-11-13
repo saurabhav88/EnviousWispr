@@ -1,0 +1,9 @@
+{
+  "language": "en",
+  "words": [
+    "meeting recordings"
+  ],
+  "phrases": [
+    "delete audio recordings of all meetings"
+  ]
+}

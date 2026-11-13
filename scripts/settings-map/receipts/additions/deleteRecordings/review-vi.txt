@@ -1,0 +1,1 @@
+{"language":"vi","title":"xóa bản ghi âm","words":["tệp âm thanh"],"phrases":["xóa âm thanh và giữ lại văn bản"]}

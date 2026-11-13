@@ -1,0 +1,12 @@
+{
+  "language": "cs",
+  "title": "hranice pro upozornění na využití úložiště",
+  "words": [
+    "práh varování"
+  ],
+  "phrases": [
+    "upozornit, když nahrávky zabírají moc místa",
+    "od jaké velikosti nahrávek zobrazit varování",
+    "vypnout upozornění na místo zabrané nahrávkami"
+  ]
+}

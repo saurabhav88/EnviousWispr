@@ -1,0 +1,1 @@
+{"language":"fi","title":"äänitteet","words":["nauhoitukset","äänitallenteet"],"phrases":["äänitteiden asetukset","sanelun äänitteet"]}

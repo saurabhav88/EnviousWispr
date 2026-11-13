@@ -1,0 +1,12 @@
+{
+  "language": "lt",
+  "title": "diktavimo įrašų saugojimo trukmė",
+  "words": [
+    "diktavimo įrašų saugojimas",
+    "automatinis diktavimo įrašų šalinimas"
+  ],
+  "phrases": [
+    "kiek laiko saugomi diktavimo įrašai",
+    "automatiškai ištrinti senus diktavimo įrašus ir palikti tekstą"
+  ]
+}

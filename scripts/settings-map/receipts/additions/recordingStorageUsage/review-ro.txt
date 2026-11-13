@@ -1,0 +1,11 @@
+{
+  "language": "ro",
+  "title": "spațiu utilizat",
+  "words": [
+    "dimensiunea înregistrărilor"
+  ],
+  "phrases": [
+    "cât spațiu ocupă înregistrările",
+    "dimensiunea totală a înregistrărilor"
+  ]
+}

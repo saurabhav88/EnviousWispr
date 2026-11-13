@@ -575,6 +575,8 @@ let package = Package(
         "FluidAudio",
         // #3735: TranscribeCppRealBoundaryTests drive the native boundary directly.
         "EnviousWisprTranscribeCpp",
+        // #3147: SpeechAudioCodecRealBoundaryTests measure the production SpeechAudioEncoder.
+        "EnviousWisprAudio",
       ],
       path: "Tests/EnviousWisprASRTests"
     ),

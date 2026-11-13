@@ -1,0 +1,1 @@
+{"language":"da","title":"behold lyd fra møder","words":["mødeoptagelser"],"phrases":["vælg hvor længe lyd fra møder gemmes","slet automatisk gamle mødeoptagelser"]}

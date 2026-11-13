@@ -1,0 +1,11 @@
+{
+  "language": "fr",
+  "title": "conserver l’audio des réunions",
+  "words": [
+    "enregistrements de réunions"
+  ],
+  "phrases": [
+    "choisir combien de temps garder l’audio des réunions",
+    "supprimer automatiquement l’audio des anciennes réunions"
+  ]
+}

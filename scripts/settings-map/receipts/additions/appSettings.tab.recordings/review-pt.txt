@@ -1,0 +1,1 @@
+{"language":"pt","title":"gravações","words":["áudio salvo","espaço em disco","limite de armazenamento"],"phrases":["salvar gravações de ditado","por quanto tempo guardar o áudio das reuniões","apagar gravações sem apagar o texto"]}

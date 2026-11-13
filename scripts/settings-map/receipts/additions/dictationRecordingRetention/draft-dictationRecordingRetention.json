@@ -1,0 +1,388 @@
+{
+ "id": "dictationRecordingRetention",
+ "blocks": [
+  {
+   "language": "ar",
+   "title": "الاحتفاظ بتسجيلات الإملاء",
+   "words": [
+    "حذف تلقائي",
+    "مدة الحفظ"
+   ],
+   "phrases": [
+    "كم تبقى تسجيلات الإملاء",
+    "حذف التسجيلات القديمة مع إبقاء النص"
+   ]
+  },
+  {
+   "language": "bg",
+   "title": "запазване на записите от диктовка",
+   "words": [
+    "срок на съхранение",
+    "автоматично изтриване"
+   ],
+   "phrases": [
+    "колко дълго се пазят записите от диктовка",
+    "изтриване на старите записи без текста"
+   ]
+  },
+  {
+   "language": "cs",
+   "title": "uchovávání nahrávek diktování",
+   "words": [
+    "doba uchování",
+    "automatické mazání"
+   ],
+   "phrases": [
+    "jak dlouho se uchovávají nahrávky diktování",
+    "mazat staré nahrávky a zachovat text"
+   ]
+  },
+  {
+   "language": "da",
+   "title": "behold diktatoptagelser",
+   "words": [
+    "opbevaringstid",
+    "automatisk sletning"
+   ],
+   "phrases": [
+    "hvor længe gemmes diktatoptagelser",
+    "slet gamle optagelser og behold teksten"
+   ]
+  },
+  {
+   "language": "de",
+   "words": [
+    "Aufbewahrungsdauer",
+    "automatisch löschen"
+   ],
+   "phrases": [
+    "wie lange bleiben meine Diktataufnahmen gespeichert",
+    "alte Aufnahmen löschen und den Text behalten"
+   ]
+  },
+  {
+   "language": "el",
+   "title": "διατήρηση ηχογραφήσεων υπαγόρευσης",
+   "words": [
+    "χρόνος αποθήκευσης",
+    "αυτόματη διαγραφή"
+   ],
+   "phrases": [
+    "πόσο καιρό κρατάει τις ηχογραφήσεις υπαγόρευσης",
+    "διαγραφή παλιών ηχογραφήσεων χωρίς να χαθεί το κείμενο"
+   ]
+  },
+  {
+   "language": "en",
+   "words": [
+    "retention",
+    "auto delete",
+    "storage duration"
+   ],
+   "phrases": [
+    "how long are dictation recordings kept",
+    "delete old recordings but keep the text"
+   ]
+  },
+  {
+   "language": "es",
+   "title": "conservar grabaciones de dictado",
+   "words": [
+    "plazo de conservación",
+    "borrado automático"
+   ],
+   "phrases": [
+    "cuánto tiempo se guardan las grabaciones de dictado",
+    "borrar grabaciones antiguas y conservar el texto"
+   ]
+  },
+  {
+   "language": "et",
+   "title": "dikteerimissalvestiste säilitamine",
+   "words": [
+    "säilitusaeg",
+    "automaatne kustutamine"
+   ],
+   "phrases": [
+    "kui kaua dikteerimissalvestisi alles hoitakse",
+    "kustuta vanad salvestised ja jäta tekst alles"
+   ]
+  },
+  {
+   "language": "fi",
+   "title": "sanelutallenteiden säilyttäminen",
+   "words": [
+    "säilytysaika",
+    "automaattinen poisto"
+   ],
+   "phrases": [
+    "kuinka kauan sanelutallenteet säilyvät",
+    "poista vanhat tallenteet ja säilytä teksti"
+   ]
+  },
+  {
+   "language": "fr",
+   "title": "conserver les enregistrements de dictée",
+   "words": [
+    "durée de conservation",
+    "suppression automatique"
+   ],
+   "phrases": [
+    "combien de temps garder les enregistrements de dictée",
+    "supprimer les anciens enregistrements en gardant le texte"
+   ]
+  },
+  {
+   "language": "hi",
+   "title": "डिक्टेशन रिकॉर्डिंग सहेजकर रखें",
+   "words": [
+    "अपने आप हटाना",
+    "रखने की अवधि"
+   ],
+   "phrases": [
+    "डिक्टेशन की रिकॉर्डिंग कितने समय तक रहती है",
+    "पुरानी रिकॉर्डिंग हटाएं लेकिन टेक्स्ट रखें"
+   ]
+  },
+  {
+   "language": "hr",
+   "title": "čuvanje snimki diktiranja",
+   "words": [
+    "rok čuvanja",
+    "automatsko brisanje"
+   ],
+   "phrases": [
+    "koliko dugo se čuvaju snimke diktiranja",
+    "izbriši stare snimke i zadrži tekst"
+   ]
+  },
+  {
+   "language": "hu",
+   "title": "diktálási hangfelvételek megőrzése",
+   "words": [
+    "megőrzési idő",
+    "automatikus törlés"
+   ],
+   "phrases": [
+    "meddig maradnak meg a diktálási hangfelvételek",
+    "régi felvételek törlése a szöveg megtartásával"
+   ]
+  },
+  {
+   "language": "it",
+   "title": "conserva le registrazioni di dettatura",
+   "words": [
+    "periodo di conservazione",
+    "eliminazione automatica"
+   ],
+   "phrases": [
+    "per quanto tempo vengono conservate le registrazioni di dettatura",
+    "eliminare le vecchie registrazioni mantenendo il testo"
+   ]
+  },
+  {
+   "language": "ja",
+   "title": "音声入力の録音を保持",
+   "words": [
+    "保存期間",
+    "自動削除"
+   ],
+   "phrases": [
+    "音声入力の録音はいつまで残る",
+    "古い録音を削除してテキストは残す"
+   ]
+  },
+  {
+   "language": "ko",
+   "title": "받아쓰기 녹음 보관",
+   "words": [
+    "보관 기간",
+    "자동 삭제"
+   ],
+   "phrases": [
+    "받아쓰기 녹음은 얼마나 오래 보관되나요",
+    "오래된 녹음은 지우고 텍스트는 남기기"
+   ]
+  },
+  {
+   "language": "lt",
+   "title": "diktavimo įrašų saugojimas",
+   "words": [
+    "saugojimo trukmė",
+    "automatinis trynimas"
+   ],
+   "phrases": [
+    "kiek laiko saugomi diktavimo įrašai",
+    "ištrinti senus įrašus ir palikti tekstą"
+   ]
+  },
+  {
+   "language": "lv",
+   "title": "diktēšanas ierakstu saglabāšana",
+   "words": [
+    "glabāšanas ilgums",
+    "automātiska dzēšana"
+   ],
+   "phrases": [
+    "cik ilgi tiek glabāti diktēšanas ieraksti",
+    "dzēst vecos ierakstus un paturēt tekstu"
+   ]
+  },
+  {
+   "language": "mt",
+   "title": "żomm ir-reġistrazzjonijiet tad-dettatura",
+   "words": [
+    "żmien taż-żamma",
+    "tħassir awtomatiku"
+   ],
+   "phrases": [
+    "kemm idumu jinżammu r-reġistrazzjonijiet tad-dettatura",
+    "ħassar ir-reġistrazzjonijiet qodma u żomm it-test"
+   ]
+  },
+  {
+   "language": "nl",
+   "title": "dicteeropnamen bewaren",
+   "words": [
+    "bewaartermijn",
+    "automatisch verwijderen"
+   ],
+   "phrases": [
+    "hoelang worden dicteeropnamen bewaard",
+    "oude opnamen verwijderen en de tekst bewaren"
+   ]
+  },
+  {
+   "language": "pl",
+   "title": "zachowuj nagrania dyktowania",
+   "words": [
+    "okres przechowywania",
+    "automatyczne usuwanie"
+   ],
+   "phrases": [
+    "jak długo są przechowywane nagrania dyktowania",
+    "usuń stare nagrania i zachowaj tekst"
+   ]
+  },
+  {
+   "language": "pt",
+   "title": "manter gravações de ditado",
+   "words": [
+    "prazo de retenção",
+    "exclusão automática"
+   ],
+   "phrases": [
+    "por quanto tempo ficam guardadas as gravações de ditado",
+    "apagar gravações antigas e manter o texto"
+   ]
+  },
+  {
+   "language": "ro",
+   "title": "păstrează înregistrările dictării",
+   "words": [
+    "durată de păstrare",
+    "ștergere automată"
+   ],
+   "phrases": [
+    "cât timp se păstrează înregistrările dictării",
+    "șterge înregistrările vechi și păstrează textul"
+   ]
+  },
+  {
+   "language": "ru",
+   "title": "хранить записи диктовки",
+   "words": [
+    "срок хранения",
+    "автоматическое удаление"
+   ],
+   "phrases": [
+    "как долго хранятся записи диктовки",
+    "удалять старые записи и сохранять текст"
+   ]
+  },
+  {
+   "language": "sk",
+   "title": "uchovávanie nahrávok diktovania",
+   "words": [
+    "doba uchovávania",
+    "automatické mazanie"
+   ],
+   "phrases": [
+    "ako dlho sa uchovávajú nahrávky diktovania",
+    "vymazať staré nahrávky a ponechať text"
+   ]
+  },
+  {
+   "language": "sl",
+   "title": "hramba posnetkov narekovanja",
+   "words": [
+    "čas hranjenja",
+    "samodejno brisanje"
+   ],
+   "phrases": [
+    "kako dolgo se hranijo posnetki narekovanja",
+    "izbriši stare posnetke in ohrani besedilo"
+   ]
+  },
+  {
+   "language": "sv",
+   "title": "behåll dikteringsinspelningar",
+   "words": [
+    "lagringstid",
+    "automatisk radering"
+   ],
+   "phrases": [
+    "hur länge sparas dikteringsinspelningar",
+    "radera gamla inspelningar och behåll texten"
+   ]
+  },
+  {
+   "language": "tr",
+   "title": "dikte kayıtlarını sakla",
+   "words": [
+    "saklama süresi",
+    "otomatik silme"
+   ],
+   "phrases": [
+    "dikte kayıtları ne kadar süre saklanır",
+    "eski kayıtları sil ama metni sakla"
+   ]
+  },
+  {
+   "language": "uk",
+   "title": "зберігати записи диктування",
+   "words": [
+    "термін зберігання",
+    "автоматичне видалення"
+   ],
+   "phrases": [
+    "як довго зберігаються записи диктування",
+    "видаляти старі записи й залишати текст"
+   ]
+  },
+  {
+   "language": "vi",
+   "title": "giữ bản ghi âm đọc chính tả",
+   "words": [
+    "thời gian lưu",
+    "tự động xóa"
+   ],
+   "phrases": [
+    "bản ghi âm đọc chính tả được giữ bao lâu",
+    "xóa bản ghi âm cũ nhưng giữ lại văn bản"
+   ]
+  },
+  {
+   "language": "zh",
+   "title": "保留听写录音",
+   "words": [
+    "保存期限",
+    "自动删除"
+   ],
+   "phrases": [
+    "听写录音能保存多久",
+    "删除旧录音但保留文字"
+   ]
+  }
+ ]
+}

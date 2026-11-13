@@ -1,0 +1,1 @@
+{"language":"pt","title":"ao ultrapassar o limite de armazenamento","words":["exclusão automática"],"phrases":["pedir para liberar espaço ao ultrapassar o limite","apagar as gravações de ditado mais antigas ao ultrapassar o limite"]}

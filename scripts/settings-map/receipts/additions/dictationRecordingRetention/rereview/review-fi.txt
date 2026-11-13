@@ -1,0 +1,1 @@
+{"language":"fi","title":"sanelutallenteiden säilytysaika","words":[],"phrases":["kuinka kauan sanelutallenteet säilyvät","poista sanelutallenteet automaattisesti 7 päivän jälkeen","säilytä sanelutallenteet kunnes poistan ne itse"]}

@@ -18,7 +18,8 @@ import os
 /// directory. Override from the shell with `TEST_RUNNER_EW_TRANSCRIBECPP_TURBO_GGUF` (Xcode strips
 /// the forwarding prefix, so the test reads `EW_TRANSCRIBECPP_TURBO_GGUF`). Pinned by size, then
 /// by sha256 inside each test.
-private enum TranscribeCppRealBoundaryFixture {
+/// Internal (not private) so `SpeechAudioCodecRealBoundaryTests` (#3147 P1-0) pins the same model.
+enum TranscribeCppRealBoundaryFixture {
   static let repoRoot = URL(filePath: #filePath)
     .deletingLastPathComponent()  // EnviousWisprASRTests
     .deletingLastPathComponent()  // Tests

@@ -192,6 +192,24 @@
    "parent": "appSettings.tab.privacy"
   },
   {
+   "id": "section.recordings",
+   "kind": "section",
+   "destination": {
+    "page": "appSettings",
+    "tab": "recordings"
+   },
+   "parent": "appSettings.tab.recordings"
+  },
+  {
+   "id": "section.recordingStorage",
+   "kind": "section",
+   "destination": {
+    "page": "appSettings",
+    "tab": "recordings"
+   },
+   "parent": "appSettings.tab.recordings"
+  },
+  {
    "id": "section.about",
    "kind": "section",
    "destination": {
@@ -5136,6 +5154,19 @@
    "dynamicTitle": false
   },
   {
+   "id": "appSettings.tab.recordings",
+   "kind": "feature",
+   "destination": {
+    "page": "appSettings",
+    "tab": "recordings"
+   },
+   "disposition": "mapped",
+   "parent": "page.appSettings",
+   "target": "appSettings.tab.recordings",
+   "fallbacks": [],
+   "dynamicTitle": false
+  },
+  {
    "id": "appSettings.tab.licenses",
    "kind": "feature",
    "destination": {
@@ -5469,6 +5500,163 @@
    "fallbacks": [],
    "dynamicTitle": false,
    "seedParent": "whatWeCollect"
+  },
+  {
+   "id": "saveDictationRecordings",
+   "kind": "setting",
+   "destination": {
+    "page": "appSettings",
+    "tab": "recordings"
+   },
+   "disposition": "mapped",
+   "parent": "section.recordings",
+   "target": "saveDictationRecordings",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Keep the audio of each new dictation on this Mac, so you can play it back."
+   }
+  },
+  {
+   "id": "dictationRecordingRetention",
+   "kind": "setting",
+   "destination": {
+    "page": "appSettings",
+    "tab": "recordings"
+   },
+   "disposition": "mapped",
+   "parent": "section.recordings",
+   "target": "dictationRecordingRetention",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Choose how long to keep recordings. The text always stays."
+   }
+  },
+  {
+   "id": "meetingRecordingRetention",
+   "kind": "setting",
+   "destination": {
+    "page": "appSettings",
+    "tab": "recordings"
+   },
+   "disposition": "mapped",
+   "parent": "section.recordings",
+   "target": "meetingRecordingRetention",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Meeting text, notes and summaries always stay."
+   }
+  },
+  {
+   "id": "recordingStorageUsage",
+   "kind": "feature",
+   "destination": {
+    "page": "appSettings",
+    "tab": "recordings"
+   },
+   "disposition": "mapped",
+   "parent": "section.recordingStorage",
+   "target": "recordingStorageUsage",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "runtime"
+   }
+  },
+  {
+   "id": "recordingStorageWarningThreshold",
+   "kind": "setting",
+   "destination": {
+    "page": "appSettings",
+    "tab": "recordings"
+   },
+   "disposition": "mapped",
+   "parent": "section.recordingStorage",
+   "target": "recordingStorageWarningThreshold",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Get a warning when recordings use more than this."
+   }
+  },
+  {
+   "id": "recordingThresholdBehavior",
+   "kind": "setting",
+   "destination": {
+    "page": "appSettings",
+    "tab": "recordings"
+   },
+   "disposition": "mapped",
+   "parent": "section.recordingStorage",
+   "target": "recordingThresholdBehavior",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Ask you, or remove the oldest dictation recordings."
+   }
+  },
+  {
+   "id": "deleteRecordings",
+   "kind": "feature",
+   "destination": {
+    "page": "appSettings",
+    "tab": "recordings"
+   },
+   "disposition": "mapped",
+   "parent": "section.recordingStorage",
+   "target": "deleteRecordings",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Text, meeting notes and summaries stay."
+   }
+  },
+  {
+   "id": "deleteRecordings.dictations",
+   "kind": "action",
+   "destination": {
+    "page": "appSettings",
+    "tab": "recordings"
+   },
+   "disposition": "mapped",
+   "parent": "deleteRecordings",
+   "target": "deleteRecordings.dictations",
+   "fallbacks": [
+    "deleteRecordings"
+   ],
+   "dynamicTitle": false,
+   "seedParent": null
+  },
+  {
+   "id": "deleteRecordings.meetings",
+   "kind": "action",
+   "destination": {
+    "page": "appSettings",
+    "tab": "recordings"
+   },
+   "disposition": "mapped",
+   "parent": "deleteRecordings",
+   "target": "deleteRecordings.meetings",
+   "fallbacks": [
+    "deleteRecordings"
+   ],
+   "dynamicTitle": false,
+   "seedParent": null
   },
   {
    "id": "license.gpl",

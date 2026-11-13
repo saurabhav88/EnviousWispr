@@ -1,0 +1,12 @@
+{
+  "language": "pl",
+  "title": "próg ostrzeżenia o rozmiarze nagrań",
+  "words": [
+    "ostrzeżenie o zajętym miejscu"
+  ],
+  "phrases": [
+    "ostrzegaj, gdy nagrania zajmują za dużo miejsca",
+    "przy jakim rozmiarze nagrań pokazać ostrzeżenie",
+    "wyłącz ostrzeżenie o rozmiarze nagrań"
+  ]
+}

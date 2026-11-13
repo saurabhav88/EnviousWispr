@@ -362,39 +362,6 @@ private final class SavedBox {
         clean.testInterruptedTerminalFloor(.asrEmptyDespiteAudio) == .asrEmptyDespiteAudio)
     }
 
-    // MARK: Diagnostic-archive relabel (code-diff r2)
-    // `relabeledArchiveOutcome` + the dictation-audio-archive feature are
-    // `#if DEBUG`-only (diagnostic capture), so this test lives in the gated suite.
-
-    @Test(
-      "archive relabel: filler-only .noSpeech archives as .noSpeech, not .finalizationFailed")
-    func archiveOutcomeRelabel() {
-      let transcript = ASREngineOutcome.transcript(
-        ASRResult(
-          text: "uh", language: nil, duration: 0.1, processingTime: 0.05, backendType: .parakeet))
-      // A normal completion keeps its base label.
-      #expect(
-        RecordingSessionKernel.relabeledArchiveOutcome(
-          base: .completed, effectiveOutcome: transcript,
-          reachedCompleted: true, reachedNoSpeech: false) == .completed)
-      // #1358: a filler-only capture emptied by processing → quiet no-speech, NOT a failure.
-      #expect(
-        RecordingSessionKernel.relabeledArchiveOutcome(
-          base: .completed, effectiveOutcome: transcript,
-          reachedCompleted: false, reachedNoSpeech: true) == .noSpeech)
-      // Empty-after-polish `.failed` / superseded mid-finalize stays finalizationFailed.
-      #expect(
-        RecordingSessionKernel.relabeledArchiveOutcome(
-          base: .completed, effectiveOutcome: transcript,
-          reachedCompleted: false, reachedNoSpeech: false) == .finalizationFailed)
-      // A non-`.transcript` decode keeps its base label untouched.
-      #expect(
-        RecordingSessionKernel.relabeledArchiveOutcome(
-          base: .noSpeech, effectiveOutcome: .empty(hadSpeechEvidence: false),
-          reachedCompleted: false, reachedNoSpeech: true) == .noSpeech)
-    }
-
-    /// A fresh kernel legally walked to `.finalizing`.
     private func freshKernelAtFinalizing() -> RecordingSessionKernel {
       let clock = FakeClock()
       let engine = FakeEngine(behavior: .batchSuccess(text: "hello"), clock: clock)

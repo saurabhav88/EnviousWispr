@@ -1,0 +1,9 @@
+{
+  "language": "it",
+  "title": "conserva le registrazioni delle dettature",
+  "words": [],
+  "phrases": [
+    "per quanto tempo conservare le registrazioni delle dettature",
+    "eliminare automaticamente le vecchie registrazioni delle dettature senza cancellare il testo"
+  ]
+}

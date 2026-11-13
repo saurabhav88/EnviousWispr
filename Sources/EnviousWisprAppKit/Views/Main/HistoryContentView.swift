@@ -51,6 +51,10 @@ struct HistoryContentView: View {
       }
       // #3438: beside the Accessibility banner, outside the transcript split; both can show.
       PolishSetupBanner()
+      // #3147 C9: the one-time notice that saved dictations now keep a recording (upgrades only).
+      RecordingDisclosureBanner()
+      // #3147: recordings past the storage warning threshold; beside the other banners.
+      RecordingStorageBanner()
       // #3972 R34: why the last meeting Start or recording needs attention, inside the app only.
       if let notice = meetings.notice {
         MeetingNoticeBanner(notice: notice)

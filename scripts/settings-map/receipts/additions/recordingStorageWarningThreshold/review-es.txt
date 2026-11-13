@@ -1,0 +1,13 @@
+{
+  "language": "es",
+  "title": "umbral de aviso de almacenamiento",
+  "words": [
+    "aviso de almacenamiento",
+    "alerta de espacio"
+  ],
+  "phrases": [
+    "avísame cuando las grabaciones ocupen demasiado espacio",
+    "elegir a partir de cuántos GB de grabaciones mostrar un aviso",
+    "desactivar el aviso de espacio de las grabaciones"
+  ]
+}

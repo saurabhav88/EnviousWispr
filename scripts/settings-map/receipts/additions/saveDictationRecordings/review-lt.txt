@@ -1,0 +1,9 @@
+{
+  "language": "lt",
+  "title": "išsaugoti diktavimo įrašus",
+  "words": [],
+  "phrases": [
+    "išsaugoti kiekvieno naujo diktavimo garsą",
+    "nesaugoti naujų diktavimo įrašų"
+  ]
+}

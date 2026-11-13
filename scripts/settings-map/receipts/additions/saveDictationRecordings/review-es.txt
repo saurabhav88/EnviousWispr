@@ -1,0 +1,9 @@
+{
+  "language": "es",
+  "title": "guardar grabaciones de dictado",
+  "words": [],
+  "phrases": [
+    "conservar el audio de cada dictado",
+    "guardar mis dictados para escucharlos después"
+  ]
+}

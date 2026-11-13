@@ -1,0 +1,1 @@
+{"language":"lt","title":"ištrinti visus diktavimo įrašus","words":[],"phrases":["pašalinti visus diktavimo garso įrašus"]}

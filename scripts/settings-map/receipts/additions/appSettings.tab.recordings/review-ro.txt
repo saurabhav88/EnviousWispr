@@ -1,0 +1,1 @@
+{"language":"ro","title":"înregistrări","words":["înregistrări audio","stocare audio","spațiu pe disc"],"phrases":["salvează înregistrările dictărilor","cât timp se păstrează înregistrările audio","șterge înregistrările audio ale întâlnirilor"]}

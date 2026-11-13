@@ -1124,6 +1124,39 @@
         }
       }
     },
+    "Meetings in use kept their audio: %lld." : {
+      "comment" : "App Settings, Recordings: meetings in use (recording, transcribing, saving) that Delete all meeting audio left alone. %lld is how many.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meetings in Verwendung haben ihr Audio behalten: %lld."
+          }
+        }
+      }
+    },
+    "Meeting audio that couldn't be deleted: %lld. Try again." : {
+      "comment" : "App Settings, Recordings: meetings whose audio could not be deleted. %lld is how many.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meeting-Audio, das nicht gelöscht werden konnte: %lld. Versuch es noch einmal."
+          }
+        }
+      }
+    },
+    "%lld dictation recordings couldn't be deleted. Try again." : {
+      "comment" : "App Settings, Recordings: some recordings remain after Delete all. %lld is how many.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld Diktataufnahmen konnten nicht gelöscht werden. Versuch es noch einmal."
+          }
+        }
+      }
+    },
     "%lld imported" : {
       "localizations" : {
         "de" : {
@@ -1335,6 +1368,17 @@
         }
       }
     },
+    "1 GB" : {
+      "comment" : "App Settings, Recordings: storage warning threshold choice.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 GB"
+          }
+        }
+      }
+    },
     "1 alternate spelling may not be added, because other words already use them." : {
       "comment" : "Your Words, import review: a row's note: one misheard form.",
       "localizations" : {
@@ -1353,6 +1397,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "1 alternative Schreibweise wurde übersprungen, weil ein anderes Wort sie bereits verwendet."
+          }
+        }
+      }
+    },
+    "1 day" : {
+      "comment" : "App Settings, Recordings: keep period choice.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 Tag"
           }
         }
       }
@@ -1555,6 +1610,17 @@
         }
       }
     },
+    "2 GB" : {
+      "comment" : "App Settings, Recordings: storage warning threshold choice.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "2 GB"
+          }
+        }
+      }
+    },
     "25 European" : {
       "comment" : "Transcribe a File, Transcription step: the Fast engine's languages: 25 European languages.",
       "localizations" : {
@@ -1577,6 +1643,17 @@
         }
       }
     },
+    "30 days" : {
+      "comment" : "App Settings, Recordings: keep period choice.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "30 Tage"
+          }
+        }
+      }
+    },
     "30 sec" : {
       "comment" : "Microphone settings: readiness option, 30 seconds.",
       "localizations" : {
@@ -1584,6 +1661,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "30 Sek."
+          }
+        }
+      }
+    },
+    "5 GB" : {
+      "comment" : "App Settings, Recordings: storage warning threshold choice.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "5 GB"
           }
         }
       }
@@ -1606,6 +1694,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "60-Minuten-Limit erreicht. Transkription läuft..."
+          }
+        }
+      }
+    },
+    "7 days" : {
+      "comment" : "App Settings, Recordings: keep period choice.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "7 Tage"
+          }
+        }
+      }
+    },
+    "90 days" : {
+      "comment" : "App Settings, Recordings: keep period choice.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "90 Tage"
           }
         }
       }
@@ -1748,6 +1858,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Eine Aufnahme wurde mit einer neueren Version von EnviousWispr gespeichert. Aktualisiere die App, um die Aufnahme zu öffnen."
+          }
+        }
+      }
+    },
+    "A recording you mark Keep this recording in History is never removed automatically. Choosing a shorter period shows how many recordings it removes before anything changes." : {
+      "comment" : "App Settings, Recordings: help for Keep dictation recordings.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eine Aufnahme, die du im Verlauf mit „Diese Aufnahme behalten“ markierst, wird nie automatisch entfernt. Wählst du eine kürzere Aufbewahrungsdauer, siehst du zuerst, wie viele Aufnahmen entfernt werden."
           }
         }
       }
@@ -2397,6 +2518,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Infos zu %@"
+          }
+        }
+      }
+    },
+    "About %@ in total" : {
+      "comment" : "App Settings, Recordings: short line with the total disk used by recordings. %@ is a size.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Insgesamt etwa %@"
           }
         }
       }
@@ -4038,6 +4170,17 @@
         }
       }
     },
+    "Apply" : {
+      "comment" : "App Settings, Recordings: applies a shorter keep period after its preview.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anwenden"
+          }
+        }
+      }
+    },
     "Arabic" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -4082,6 +4225,17 @@
         }
       }
     },
+    "Ask me to free space" : {
+      "comment" : "App Settings, Recordings: threshold behavior choice.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mich bitten, Speicherplatz freizugeben"
+          }
+        }
+      }
+    },
     "Ask offers to record when a call app uses the microphone. Start by itself can record without asking. Off disables call prompts and automatic recording. A recording you start manually can still be linked to an already detected call. Confirmed endings in the native Zoom or Teams app show a 10-second countdown with Keep recording. For uncertain browser endings, recording continues unless you choose Stop recording. Call detection never auto-stops an unlinked recording." : {
       "comment" : "EnviousMeet page: help for When a call starts.",
       "localizations" : {
@@ -4089,6 +4243,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "„Fragen“ bietet eine Aufnahme an, wenn eine Anruf-App das Mikrofon nutzt. „Automatisch starten“ kann ohne Nachfrage aufnehmen. „Aus“ deaktiviert Anrufhinweise und automatische Aufnahmen. Auch eine manuell gestartete Aufnahme kann mit einem bereits erkannten Anruf verknüpft sein. Bei einem bestätigten Anrufende in der nativen Zoom- oder Teams-App erscheint ein 10-Sekunden-Countdown mit „Weiter aufnehmen“. Bei einem unklaren Ende im Browser läuft die Aufnahme weiter, solange du nicht „Aufnahme stoppen“ auswählst. Die Anruferkennung stoppt eine nicht verknüpfte Aufnahme nie automatisch."
+          }
+        }
+      }
+    },
+    "Ask you, or remove the oldest dictation recordings." : {
+      "comment" : "App Settings, Recordings: short line under Past the threshold.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dich fragen oder die ältesten Diktataufnahmen entfernen."
           }
         }
       }
@@ -4111,6 +4276,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Assamesisch"
+          }
+        }
+      }
+    },
+    "At least %@ in total" : {
+      "comment" : "App Settings, Recordings: short line with a lower bound for the disk used by recordings. %@ is a size.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Insgesamt mindestens %@"
           }
         }
       }
@@ -4187,6 +4363,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Das Audio verlässt diesen Mac nie."
+          }
+        }
+      }
+    },
+    "Audio of a meeting that is recording or being transcribed is never removed. Without its audio, a meeting can't be transcribed again." : {
+      "comment" : "App Settings, Recordings: help for Keep meeting audio.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Audio eines Meetings, das gerade aufgenommen oder transkribiert wird, wird nie entfernt. Ohne Audio kann ein Meeting nicht erneut transkribiert werden."
           }
         }
       }
@@ -4340,6 +4527,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Automatisch"
+          }
+        }
+      }
+    },
+    "Automatic removal never deletes a kept recording. You can still delete it yourself." : {
+      "comment" : "History: explains Keep this recording.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eine behaltene Aufnahme wird nie automatisch entfernt. Du kannst sie weiterhin selbst löschen."
           }
         }
       }
@@ -5012,7 +5210,7 @@
       }
     },
     "Cancel" : {
-      "comment" : "EnviousMeet: closes the call-sound explanation without recording.\nEnviousMeet: keeps the meeting as it is.\nHistory, a meeting: keeps the edited summary.\nLive Preview settings, Universal engine card: button. It stops the download.\nSettings > AI Polish, local model row: button that stops the download.\nYour Words, Learn from: the Forget learning memory confirmation: keeps the memory.\nYour Words, Learn from: the self-learning dictionary row: button that stops the download.",
+      "comment" : "App Settings, Recordings: keeps the current keep period.\nEnviousMeet: closes the call-sound explanation without recording.\nEnviousMeet: keeps the meeting as it is.\nHistory, a meeting: keeps the edited summary.\nLive Preview settings, Universal engine card: button. It stops the download.\nSettings > AI Polish, local model row: button that stops the download.\nYour Words, Learn from: the Forget learning memory confirmation: keeps the memory.\nYour Words, Learn from: the self-learning dictionary row: button that stops the download.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5879,6 +6077,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wähle, wie förmlich dein Text klingt."
+          }
+        }
+      }
+    },
+    "Choose how long to keep recordings. The text always stays." : {
+      "comment" : "App Settings, Recordings: short line under Keep dictation recordings.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle, wie lange Aufnahmen behalten werden. Der Text bleibt immer erhalten."
           }
         }
       }
@@ -6784,6 +6993,17 @@
         }
       }
     },
+    "Couldn't be fully measured" : {
+      "comment" : "App Settings, Recordings: short line when part of the storage use could not be measured.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konnte nicht vollständig gemessen werden"
+          }
+        }
+      }
+    },
     "Couldn't confirm the new %@ call" : {
       "comment" : "EnviousMeet: a switch stopped the old recording, but the new call could not be checked; the app's short name.",
       "localizations" : {
@@ -7092,6 +7312,17 @@
         }
       }
     },
+    "Counts dictation recordings and meeting audio on this Mac. Text, notes, summaries and crash recovery audio are not included." : {
+      "comment" : "App Settings, Recordings: help for Storage used.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zählt Diktataufnahmen und Meeting-Audio auf diesem Mac. Text, Notizen, Zusammenfassungen und Audio zur Absturzwiederherstellung sind nicht enthalten."
+          }
+        }
+      }
+    },
     "Create a new word" : {
       "comment" : "Quick Add panel: the row that creates a word by hand.",
       "localizations" : {
@@ -7298,6 +7529,28 @@
         }
       }
     },
+    "Delete all dictation recordings" : {
+      "comment" : "App Settings, Recordings: button.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle Diktataufnahmen löschen"
+          }
+        }
+      }
+    },
+    "Delete all dictation recordings?" : {
+      "comment" : "App Settings, Recordings: confirmation title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle Diktataufnahmen löschen?"
+          }
+        }
+      }
+    },
     "Delete all history" : {
       "localizations" : {
         "de" : {
@@ -7314,6 +7567,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Gesamten Verlauf löschen?"
+          }
+        }
+      }
+    },
+    "Delete all meeting audio" : {
+      "comment" : "App Settings, Recordings: button.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gesamtes Meeting-Audio löschen"
+          }
+        }
+      }
+    },
+    "Delete all meeting audio?" : {
+      "comment" : "App Settings, Recordings: confirmation title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gesamtes Meeting-Audio löschen?"
           }
         }
       }
@@ -7351,6 +7626,28 @@
         }
       }
     },
+    "Delete recording, keep text" : {
+      "comment" : "History: deletes this dictation's audio and keeps its text.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahme löschen, Text behalten"
+          }
+        }
+      }
+    },
+    "Delete recordings" : {
+      "comment" : "App Settings, Recordings: row title for the delete-all buttons.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahmen löschen"
+          }
+        }
+      }
+    },
     "Delete this meeting's audio? The transcript stays, but you cannot transcribe it again." : {
       "comment" : "EnviousMeet: confirmation before Delete audio.",
       "localizations" : {
@@ -7380,6 +7677,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Transkript löschen"
+          }
+        }
+      }
+    },
+    "Deleted %lld dictation recordings. The text stays." : {
+      "comment" : "App Settings, Recordings: result of Delete all dictation recordings. %lld is how many, not one.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld Diktataufnahmen gelöscht. Der Text bleibt erhalten."
+          }
+        }
+      }
+    },
+    "Deleted 1 dictation recording. The text stays." : {
+      "comment" : "App Settings, Recordings: result of Delete all dictation recordings, one recording.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 Diktataufnahme gelöscht. Der Text bleibt erhalten."
           }
         }
       }
@@ -7417,6 +7736,28 @@
         }
       }
     },
+    "Deleted the audio of %lld meetings." : {
+      "comment" : "App Settings, Recordings: result of Delete all meeting audio. %lld is how many, not one.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Audio von %lld Meetings gelöscht."
+          }
+        }
+      }
+    },
+    "Deleted the audio of 1 meeting." : {
+      "comment" : "App Settings, Recordings: result of Delete all meeting audio, one meeting.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Audio von 1 Meeting gelöscht."
+          }
+        }
+      }
+    },
     "Delete…" : {
       "localizations" : {
         "de" : {
@@ -7445,6 +7786,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wird jetzt gelöscht"
+          }
+        }
+      }
+    },
+    "Deleting removes audio only, including recordings you marked to keep. It can't be undone." : {
+      "comment" : "App Settings, Recordings: help for Delete recordings.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beim Löschen wird nur Audio entfernt, auch Aufnahmen, die du zum Behalten markiert hast. Das lässt sich nicht rückgängig machen."
           }
         }
       }
@@ -7666,6 +8018,28 @@
         }
       }
     },
+    "Dictation recordings: about %@" : {
+      "comment" : "App Settings, Recordings: disk used by dictation recordings. %@ is a size.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktataufnahmen: etwa %@"
+          }
+        }
+      }
+    },
+    "Dictation recordings: couldn't be measured" : {
+      "comment" : "App Settings, Recordings: dictation storage could not be measured.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktataufnahmen: konnten nicht gemessen werden"
+          }
+        }
+      }
+    },
     "Dictation still works normally. Only the on-screen preview is unavailable for it." : {
       "comment" : "Live Preview settings: status unsupported language detail no alternative.",
       "localizations" : {
@@ -7775,7 +8149,7 @@
       }
     },
     "Dismiss" : {
-      "comment" : "EnviousMeet: closes a notice about the last recording.",
+      "comment" : "EnviousMeet: closes a notice about the last recording.\nHistory: closes the one-time recording notice for good.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -8806,6 +9180,28 @@
         }
       }
     },
+    "EnviousWispr keeps a recording of each saved dictation on this Mac, so you can play it back in History. Recordings are kept for the period you chose in Settings > App Settings > Recordings. Turning off Save dictation recordings there stops new ones without deleting the ones you have. Delete a recording in History, or all of them with Delete all dictation recordings. The text always stays." : {
+      "comment" : "History: the one-time recording notice when the user chose a keep period.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr speichert zu jedem gespeicherten Diktat eine Aufnahme auf diesem Mac, damit du sie im Verlauf abspielen kannst. Aufnahmen bleiben für die Aufbewahrungsdauer, die du unter Einstellungen > App-Einstellungen > Aufnahmen gewählt hast. Schaltest du dort „Diktataufnahmen speichern“ aus, entstehen keine neuen, vorhandene bleiben erhalten. Lösche eine Aufnahme im Verlauf oder alle mit „Alle Diktataufnahmen löschen“. Der Text bleibt immer erhalten."
+          }
+        }
+      }
+    },
+    "EnviousWispr keeps a recording of each saved dictation on this Mac, so you can play it back in History. Recordings stay until you delete them, or for a keep period you choose in Settings > App Settings > Recordings. Turning off Save dictation recordings there stops new ones without deleting the ones you have. Delete a recording in History, or all of them with Delete all dictation recordings. The text always stays." : {
+      "comment" : "History: the one-time recording notice with the default keep period.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr speichert zu jedem gespeicherten Diktat eine Aufnahme auf diesem Mac, damit du sie im Verlauf abspielen kannst. Aufnahmen bleiben, bis du sie löschst, oder für eine Aufbewahrungsdauer, die du unter Einstellungen > App-Einstellungen > Aufnahmen wählst. Schaltest du dort „Diktataufnahmen speichern“ aus, entstehen keine neuen, vorhandene bleiben erhalten. Lösche eine Aufnahme im Verlauf oder alle mit „Alle Diktataufnahmen löschen“. Der Text bleibt immer erhalten."
+          }
+        }
+      }
+    },
     "EnviousWispr needs Accessibility permission to read your selection. Turn it on in System Settings, then try again." : {
       "comment" : "Quick Add panel: why the selected text could not be read.",
       "localizations" : {
@@ -8967,6 +9363,17 @@
         }
       }
     },
+    "Every dictation's audio is deleted, including kept recordings. The text stays. This can't be undone." : {
+      "comment" : "App Settings, Recordings: confirmation message.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Audio aller Diktate wird gelöscht, auch behaltene Aufnahmen. Der Text bleibt erhalten. Das lässt sich nicht rückgängig machen."
+          }
+        }
+      }
+    },
     "Every language Apple offers is already on this Mac." : {
       "comment" : "Live Preview settings: catalog nothing to install.",
       "localizations" : {
@@ -8985,6 +9392,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Jede Zeile wurde als wahrscheinliches Echo ausgeblendet. Aktiviere „Wahrscheinliches Echo anzeigen“, um sie zu sehen."
+          }
+        }
+      }
+    },
+    "Every meeting's audio is deleted. Meetings, their text, notes and summaries stay. A meeting that is recording or being transcribed keeps its audio. This can't be undone." : {
+      "comment" : "App Settings, Recordings: confirmation message.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Audio aller Meetings wird gelöscht. Meetings, ihr Text, Notizen und Zusammenfassungen bleiben erhalten. Ein Meeting, das gerade aufgenommen oder transkribiert wird, behält sein Audio. Das lässt sich nicht rückgängig machen."
           }
         }
       }
@@ -10056,6 +10474,17 @@
         }
       }
     },
+    "Get a warning when recordings use more than this." : {
+      "comment" : "App Settings, Recordings: short line under Storage warning threshold.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erhalte eine Warnung, wenn Aufnahmen mehr Speicher als diesen Wert belegen."
+          }
+        }
+      }
+    },
     "Get an API key" : {
       "comment" : "Settings search result: link to the chosen cloud provider's API key page.",
       "localizations" : {
@@ -10911,6 +11340,17 @@
         }
       }
     },
+    "Includes about %@ still being saved" : {
+      "comment" : "App Settings, Recordings: part of the storage use is recordings still being written. %@ is a size.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Davon werden etwa %@ noch gespeichert"
+          }
+        }
+      }
+    },
     "Indonesian" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -11371,6 +11811,17 @@
         }
       }
     },
+    "Keep dictation recordings" : {
+      "comment" : "App Settings, Recordings: picker title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktataufnahmen behalten"
+          }
+        }
+      }
+    },
     "Keep editing" : {
       "localizations" : {
         "de" : {
@@ -11381,12 +11832,73 @@
         }
       }
     },
+    "Keep for %@? %lld recordings are older and will be removed. Their text stays." : {
+      "comment" : "App Settings, Recordings: preview of a shorter keep period. %1$@ is the period, %2$lld how many recordings, more than one.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Keep for %1$@? %2$lld recordings are older and will be removed. Their text stays."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahmen für %1$@ behalten? %2$lld Aufnahmen sind älter und würden entfernt. Der Text bleibt erhalten."
+          }
+        }
+      }
+    },
+    "Keep for %@? 1 recording is older and will be removed. Its text stays." : {
+      "comment" : "App Settings, Recordings: preview of a shorter keep period. %@ is the period.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahmen für %@ behalten? 1 Aufnahme ist älter und würde entfernt. Der Text bleibt erhalten."
+          }
+        }
+      }
+    },
+    "Keep for %@? No recording is old enough to be removed now." : {
+      "comment" : "App Settings, Recordings: preview of a shorter keep period. %@ is the period.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahmen für %@ behalten? Keine Aufnahme ist alt genug, um jetzt entfernt zu werden."
+          }
+        }
+      }
+    },
+    "Keep for %@? The recordings this removes can't be counted right now." : {
+      "comment" : "App Settings, Recordings: preview of a shorter keep period. %@ is the period.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahmen für %@ behalten? Wie viele Aufnahmen dadurch entfernt würden, kann gerade nicht ermittelt werden."
+          }
+        }
+      }
+    },
     "Keep in sync on launch" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Beim Start synchron halten"
+          }
+        }
+      }
+    },
+    "Keep meeting audio" : {
+      "comment" : "App Settings, Recordings: picker title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meeting-Audio behalten"
           }
         }
       }
@@ -11413,6 +11925,17 @@
         }
       }
     },
+    "Keep the audio of each new dictation on this Mac, so you can play it back." : {
+      "comment" : "App Settings, Recordings: short line under Save dictation recordings.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Speichert das Audio jedes neuen Diktats auf diesem Mac, damit du es abspielen kannst."
+          }
+        }
+      }
+    },
     "Keep the microphone engine active for a short time after dictation so the next recording starts instantly and captures your first words." : {
       "comment" : "Microphone settings: explains microphone readiness.",
       "localizations" : {
@@ -11431,6 +11954,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Behalte die Aufnahme und transkribiere sie erneut mit einer anderen Engine."
+          }
+        }
+      }
+    },
+    "Keep this recording" : {
+      "comment" : "History: keeps this dictation's recording from being removed automatically.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Aufnahme behalten"
           }
         }
       }
@@ -13002,6 +13536,17 @@
         }
       }
     },
+    "Measuring…" : {
+      "comment" : "App Settings, Recordings: storage use is being measured.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird gemessen …"
+          }
+        }
+      }
+    },
     "Media during dictation" : {
       "comment" : "Microphone settings, media during dictation: row title for what happens to music and other audio.",
       "localizations" : {
@@ -13046,6 +13591,39 @@
         }
       }
     },
+    "Meeting audio: about %@" : {
+      "comment" : "App Settings, Recordings: disk used by meeting audio. %@ is a size.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meeting-Audio: etwa %@"
+          }
+        }
+      }
+    },
+    "Meeting audio: at least %@; some meetings couldn't be measured" : {
+      "comment" : "App Settings, Recordings: a lower bound for meeting audio. %@ is a size.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meeting-Audio: mindestens %@; einige Meetings konnten nicht gemessen werden"
+          }
+        }
+      }
+    },
+    "Meeting audio: couldn't be measured" : {
+      "comment" : "App Settings, Recordings: meeting storage could not be measured.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meeting-Audio: konnte nicht gemessen werden"
+          }
+        }
+      }
+    },
     "Meeting name" : {
       "comment" : "EnviousMeet: the rename field's placeholder.",
       "localizations" : {
@@ -13086,6 +13664,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Meeting-Zusammenfassungen mit Apple Intelligence erfordern macOS 26 oder neuer. Wähle ein anderes Modell."
+          }
+        }
+      }
+    },
+    "Meeting text, notes and summaries always stay." : {
+      "comment" : "App Settings, Recordings: short line under Keep meeting audio.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meeting-Text, Notizen und Zusammenfassungen bleiben immer erhalten."
           }
         }
       }
@@ -13803,6 +14392,28 @@
         }
       }
     },
+    "New saved dictations have recordings on this Mac by default. By default, they stay until you delete them. In Settings > App Settings > Recordings, turn off Save dictation recordings to stop saving future recordings; existing audio stays subject to your keep period and storage settings. Delete individual recordings in History, or use Delete all dictation recordings on that settings page. The text stays." : {
+      "comment" : "Onboarding: recording note with the default keep period.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neue gespeicherte Diktate haben standardmäßig eine Aufnahme auf diesem Mac. Standardmäßig bleiben sie, bis du sie löschst. Schalte unter Einstellungen > App-Einstellungen > Aufnahmen „Diktataufnahmen speichern“ aus, damit künftig keine Aufnahmen mehr gespeichert werden; vorhandenes Audio folgt weiterhin deiner Aufbewahrungsdauer und deinen Speichereinstellungen. Lösche einzelne Aufnahmen im Verlauf oder nutze dort „Alle Diktataufnahmen löschen“. Der Text bleibt erhalten."
+          }
+        }
+      }
+    },
+    "New saved dictations have recordings on this Mac, kept for the keep period set in Settings > App Settings > Recordings. Turn off Save dictation recordings there to stop saving future recordings; existing audio stays subject to your keep period and storage settings. Delete individual recordings in History, or use Delete all dictation recordings on that settings page. The text stays." : {
+      "comment" : "Onboarding: recording note when a keep period is set.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neue gespeicherte Diktate haben eine Aufnahme auf diesem Mac, die für die unter Einstellungen > App-Einstellungen > Aufnahmen festgelegte Aufbewahrungsdauer behalten wird. Schalte dort „Diktataufnahmen speichern“ aus, damit künftig keine Aufnahmen mehr gespeichert werden; vorhandenes Audio folgt weiterhin deiner Aufbewahrungsdauer und deinen Speichereinstellungen. Lösche einzelne Aufnahmen im Verlauf oder nutze dort „Alle Diktataufnahmen löschen“. Der Text bleibt erhalten."
+          }
+        }
+      }
+    },
     "New snippet" : {
       "localizations" : {
         "de" : {
@@ -14352,6 +14963,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Keine Wortschatzpakete verfügbar."
+          }
+        }
+      }
+    },
+    "No warning" : {
+      "comment" : "App Settings, Recordings: storage warning threshold choice: never warn.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Warnung"
           }
         }
       }
@@ -15647,6 +16269,17 @@
         }
       }
     },
+    "Open Recordings settings" : {
+      "comment" : "History: button on the storage warning that opens App Settings > Recordings.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen für Aufnahmen öffnen"
+          }
+        }
+      }
+    },
     "Open Settings" : {
       "comment" : "EnviousMeet setup: opens System Settings for a permission.\nPill button: opens the macOS microphone privacy settings.",
       "localizations" : {
@@ -16044,6 +16677,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Paschtu"
+          }
+        }
+      }
+    },
+    "Past the threshold" : {
+      "comment" : "App Settings, Recordings: picker title for what happens over the storage warning threshold.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Über der Schwelle"
           }
         }
       }
@@ -17534,6 +18178,50 @@
         }
       }
     },
+    "Recording couldn't be saved." : {
+      "comment" : "History: the recording of this dictation failed to save.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Aufnahme konnte nicht gespeichert werden."
+          }
+        }
+      }
+    },
+    "Recording deleted. The text stays." : {
+      "comment" : "History: the user deleted this dictation's recording and kept its text.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahme gelöscht. Der Text bleibt erhalten."
+          }
+        }
+      }
+    },
+    "Recording expired after %lld days. The text stays." : {
+      "comment" : "History: the recording was removed after the keep period chosen in Settings. %lld is a number of days, more than one.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahme nach %lld Tagen abgelaufen. Der Text bleibt erhalten."
+          }
+        }
+      }
+    },
+    "Recording expired after 1 day. The text stays." : {
+      "comment" : "History: the recording was removed after the one-day keep period chosen in Settings.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahme nach 1 Tag abgelaufen. Der Text bleibt erhalten."
+          }
+        }
+      }
+    },
     "Recording for %@" : {
       "comment" : "EnviousMeet, VoiceOver: how long the meeting has been recording.\nMenu bar menu: how long the meeting has been recording, e.g. 12:34.",
       "localizations" : {
@@ -17609,6 +18297,28 @@
         }
       }
     },
+    "Recording removed after your keep period. The text stays." : {
+      "comment" : "History: the recording was removed by the user's recording keep period.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahme nach deiner Aufbewahrungsdauer entfernt. Der Text bleibt erhalten."
+          }
+        }
+      }
+    },
+    "Recording removed to free space. The text stays." : {
+      "comment" : "History: the recording was removed automatically to free disk space.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahme entfernt, um Speicherplatz freizugeben. Der Text bleibt erhalten."
+          }
+        }
+      }
+    },
     "Recording started" : {
       "comment" : "VoiceOver announcement from the recording overlay: recording began.",
       "localizations" : {
@@ -17653,6 +18363,17 @@
         }
       }
     },
+    "Recording storage couldn't be fully measured. Automatic removal to free space is paused." : {
+      "comment" : "Recordings storage warning: usage could not be measured.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der von Aufnahmen belegte Speicherplatz konnte nicht vollständig ermittelt werden. Das automatische Entfernen zum Freigeben von Speicherplatz ist ausgesetzt."
+          }
+        }
+      }
+    },
     "Recording the call sound" : {
       "comment" : "Menu bar menu, while a meeting records: the sound the Mac plays is recorded.",
       "localizations" : {
@@ -17671,6 +18392,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Der Ton vom Mac wird aufgenommen."
+          }
+        }
+      }
+    },
+    "Recording unavailable." : {
+      "comment" : "History: this dictation has no recording and no recorded reason.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahme nicht verfügbar."
           }
         }
       }
@@ -17703,6 +18435,73 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Erfassung läuft, drücke eine Tastenkombination"
+          }
+        }
+      }
+    },
+    "Recordings" : {
+      "comment" : "App Settings, Recordings: section heading for saving and keeping recordings.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahmen"
+          }
+        }
+      }
+    },
+    "Recordings stay on this Mac and are never sent anywhere. Turning this off stops saving new dictations. Existing recordings still follow your keep period and storage settings." : {
+      "comment" : "App Settings, Recordings: help for Save dictation recordings.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahmen bleiben auf diesem Mac und werden nirgendwohin gesendet. Schaltest du das aus, werden für neue Diktate keine Aufnahmen mehr gespeichert. Vorhandene Aufnahmen folgen weiter deiner Aufbewahrungsdauer und deinen Speichereinstellungen."
+          }
+        }
+      }
+    },
+    "Recordings still use about %@, more than your %@ storage warning threshold. Kept recordings and meeting audio are never removed to free space." : {
+      "comment" : "Recordings storage warning (automatic mode could not get below). %1$@ used, %2$@ threshold.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Recordings still use about %1$@, more than your %2$@ storage warning threshold. Kept recordings and meeting audio are never removed to free space."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahmen belegen noch etwa %1$@, mehr als deine Speicherwarnschwelle von %2$@. Behaltene Aufnahmen und Meeting-Audio werden nie entfernt, um Speicherplatz freizugeben."
+          }
+        }
+      }
+    },
+    "Recordings use about %@, more than your %@ storage warning threshold." : {
+      "comment" : "Recordings storage warning (Ask mode). %1$@ is the size used, %2$@ the threshold.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Recordings use about %1$@, more than your %2$@ storage warning threshold."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahmen belegen etwa %1$@, mehr als deine Speicherwarnschwelle von %2$@."
+          }
+        }
+      }
+    },
+    "Recordings were off for this dictation." : {
+      "comment" : "History: no recording because recordings were off when this dictation started.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für dieses Diktat waren Aufnahmen ausgeschaltet."
           }
         }
       }
@@ -17899,6 +18698,17 @@
         }
       }
     },
+    "Remove oldest dictation recordings" : {
+      "comment" : "App Settings, Recordings: threshold behavior choice.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Älteste Diktataufnahmen entfernen"
+          }
+        }
+      }
+    },
     "Remove speaker labels" : {
       "comment" : "EnviousMeet Models page, Speaker labels: accessibility name of the Remove button.",
       "localizations" : {
@@ -17937,6 +18747,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Entfernt dieses Wort und seine Fehlerkennungen. Das lässt sich nicht rückgängig machen."
+          }
+        }
+      }
+    },
+    "Removing automatically only removes dictation recordings you did not keep, oldest first. Kept recordings and meeting audio are never removed, so they can keep storage above the threshold." : {
+      "comment" : "App Settings, Recordings: help for Past the threshold.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automatisch werden nur Diktataufnahmen entfernt, die du nicht behalten hast, die ältesten zuerst. Behaltene Aufnahmen und Meeting-Audio werden nie entfernt und können den Speicher über der Schwelle halten."
           }
         }
       }
@@ -18480,6 +19301,17 @@
         }
       }
     },
+    "Save dictation recordings" : {
+      "comment" : "App Settings, Recordings: switch title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktataufnahmen speichern"
+          }
+        }
+      }
+    },
     "Save start word" : {
       "comment" : "Speech engine settings, Start word row: spoken name of the Save button.",
       "localizations" : {
@@ -18574,6 +19406,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Meeting-Aufnahme wird gespeichert"
+          }
+        }
+      }
+    },
+    "Saving dictation recordings is off, so new dictations are not recorded. You can turn it on in Settings > App Settings > Recordings. Any recordings you have can be deleted in History or with Delete all dictation recordings on that page. The text stays." : {
+      "comment" : "Onboarding: recording note when saving is off.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Speichern von Diktataufnahmen ist aus. Für neue Diktate werden deshalb keine Aufnahmen gespeichert. Du kannst es unter Einstellungen > App-Einstellungen > Aufnahmen einschalten. Vorhandene Aufnahmen kannst du im Verlauf oder dort mit „Alle Diktataufnahmen löschen“ löschen. Der Text bleibt erhalten."
+          }
+        }
+      }
+    },
+    "Saving dictation recordings is off, so new dictations are not recorded. You can turn it on in Settings > App Settings > Recordings. Recordings you already have can be deleted in History or with Delete all dictation recordings there. The text always stays." : {
+      "comment" : "History: the one-time recording notice when the user already turned saving off.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Speichern von Diktataufnahmen ist aus. Für neue Diktate werden deshalb keine Aufnahmen gespeichert. Du kannst es unter Einstellungen > App-Einstellungen > Aufnahmen einschalten. Vorhandene Aufnahmen kannst du im Verlauf oder dort mit „Alle Diktataufnahmen löschen“ löschen. Der Text bleibt immer erhalten."
           }
         }
       }
@@ -19865,6 +20719,17 @@
         }
       }
     },
+    "Some dictation recordings couldn't be deleted completely. Try again." : {
+      "comment" : "App Settings, Recordings: Delete all failed part-way, or what is left could not be counted.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einige Diktataufnahmen konnten nicht vollständig gelöscht werden. Versuch es noch einmal."
+          }
+        }
+      }
+    },
     "Some places need everyone in the call to agree." : {
       "comment" : "EnviousMeet setup: consent row line under Rules change by place.",
       "localizations" : {
@@ -20513,6 +21378,39 @@
         }
       }
     },
+    "Storage" : {
+      "comment" : "App Settings, Recordings: section heading for disk use and deletion.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Speicher"
+          }
+        }
+      }
+    },
+    "Storage used" : {
+      "comment" : "App Settings, Recordings: row title for how much disk recordings use.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Belegter Speicher"
+          }
+        }
+      }
+    },
+    "Storage warning threshold" : {
+      "comment" : "App Settings, Recordings: picker title. A warning, never a limit.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Speicherwarnschwelle"
+          }
+        }
+      }
+    },
     "Strict" : {
       "localizations" : {
         "de" : {
@@ -20979,6 +21877,17 @@
         }
       }
     },
+    "Text, meeting notes and summaries stay." : {
+      "comment" : "App Settings, Recordings: short line under Delete recordings.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Text, Meeting-Notizen und Zusammenfassungen bleiben erhalten."
+          }
+        }
+      }
+    },
     "Thai" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -21124,6 +22033,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Das hat nicht geklappt"
+          }
+        }
+      }
+    },
+    "That didn't work. Try again." : {
+      "comment" : "History: a recording action (keep or delete) failed.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das hat nicht geklappt. Versuch es erneut."
           }
         }
       }
@@ -22136,6 +23056,17 @@
         }
       }
     },
+    "The recording can't be read right now." : {
+      "comment" : "History: the recording's file or details could not be read just now.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Aufnahme kann gerade nicht gelesen werden."
+          }
+        }
+      }
+    },
     "The recording failed. Your notes are kept." : {
       "comment" : "EnviousMeet detail: nothing was recorded, but the notes the user typed are saved.",
       "localizations" : {
@@ -22680,6 +23611,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dieser Import konnte nicht angewendet werden. Es wurde nichts geändert."
+          }
+        }
+      }
+    },
+    "This is a warning, not a limit: EnviousWispr keeps recording past it." : {
+      "comment" : "App Settings, Recordings: help for Storage warning threshold.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das ist eine Warnung, keine Grenze: EnviousWispr nimmt darüber hinaus weiter auf."
           }
         }
       }
@@ -23862,6 +24804,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Unzuverlässig"
+          }
+        }
+      }
+    },
+    "Until I delete them" : {
+      "comment" : "App Settings, Recordings: keep period choice with no automatic removal.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bis ich sie lösche"
           }
         }
       }
@@ -25962,6 +26915,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dein Diktat bleibt genauso schnell. Schalte „Schnellere Transkription“ aus, um die Vorschau zu sehen."
+          }
+        }
+      }
+    },
+    "Your dictations now have recordings" : {
+      "comment" : "History: title of the one-time notice that saved dictations now keep a recording.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Diktate haben jetzt Aufnahmen"
           }
         }
       }
@@ -29014,6 +29978,78 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "⏎"
+          }
+        }
+      }
+    },
+    "whatsNew.play-back-your-dictations.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry play-back-your-dictations).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Play back your dictations"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Spiel deine Diktate ab"
+          }
+        }
+      }
+    },
+    "whatsNew.play-back-your-dictations.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry play-back-your-dictations).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr now keeps a recording of each saved dictation on your Mac, so you can play it back in History. Recordings stay until you delete them, or for a keep period you choose in Settings > App Settings > Recordings."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr speichert jetzt zu jedem gespeicherten Diktat eine Aufnahme auf deinem Mac, damit du sie im Verlauf abspielen kannst. Aufnahmen bleiben, bis du sie löschst, oder für eine Aufbewahrungsdauer, die du unter Einstellungen > App-Einstellungen > Aufnahmen wählst."
+          }
+        }
+      }
+    },
+    "whatsNew.play-back-your-dictations.bullet.0" : {
+      "comment" : "Settings > What's New: point 1 of the list under one feature announcement (entry play-back-your-dictations).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Turn off Save dictation recordings on that page to stop saving new recordings. Recordings you already have are not deleted."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schalte dort „Diktataufnahmen speichern“ aus, um keine neuen Aufnahmen mehr zu speichern. Vorhandene Aufnahmen werden nicht gelöscht."
+          }
+        }
+      }
+    },
+    "whatsNew.play-back-your-dictations.bullet.1" : {
+      "comment" : "Settings > What's New: point 2 of the list under one feature announcement (entry play-back-your-dictations).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete a recording in History, or all of them with Delete all dictation recordings. The text always stays."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lösche eine Aufnahme im Verlauf oder alle mit „Alle Diktataufnahmen löschen“. Der Text bleibt immer erhalten."
           }
         }
       }

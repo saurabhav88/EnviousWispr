@@ -1,0 +1,13 @@
+{
+  "language": "hr",
+  "title": "snimke",
+  "words": [
+    "audiosnimke",
+    "zvučni zapisi"
+  ],
+  "phrases": [
+    "spremanje snimki diktata",
+    "koliko dugo se čuvaju audiosnimke sastanaka",
+    "izbriši snimke bez brisanja teksta"
+  ]
+}

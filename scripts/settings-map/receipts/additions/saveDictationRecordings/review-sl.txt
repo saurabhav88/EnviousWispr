@@ -1,0 +1,1 @@
+{"language":"sl","title":"shranjuj posnetke narekovanja","words":[],"phrases":["shrani zvok vsakega nareka","ne shranjuj zvočnih posnetkov novih narekov"]}

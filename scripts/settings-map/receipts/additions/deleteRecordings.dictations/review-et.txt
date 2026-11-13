@@ -1,0 +1,1 @@
+{"language":"et","title":"kustuta kõik dikteerimise salvestised","words":[],"phrases":["eemalda kõik dikteerimise helisalvestised"]}

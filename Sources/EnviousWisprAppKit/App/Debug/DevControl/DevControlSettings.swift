@@ -62,12 +62,14 @@
       .escapeRecoveryEnabled, .wordCorrectionEnabled, .fillerRemovalEnabled,
       .emojiFormatterEnabled, .spokenPunctuation, .casualModeEnabled, .crashRecoveryEnabled,
       .shareUsageMetrics, .sendCrashReports, .contactsSyncOnLaunchEnabled, .isDebugModeEnabled,
-      .isDictationAudioArchiveEnabled, .debugLogLevel, .whisperKitLanguage, .languageMode,
+      .debugLogLevel, .whisperKitLanguage, .languageMode,
       .englishSpelling, .egOneSize, .selectedInputDeviceUID, .preferredInputDeviceIDOverride,
       .inputChannelByDeviceUID, .useStreamingASR, .livePreviewEnabled, .livePreviewEngine,
       .warmEnginePolicy, .appearance, .overlayPillPosition, .recordingPillDesignWithoutWords,
       .recordingPillDesignWithWords, .showBluetoothTips, .showInDock, .showMenuBarUpdateAlert,
       .playRecordingSounds, .recordingSoundPairing, .otherAudioWhileDictating, .learnFromEdits,
+      .saveDictationRecordings, .dictationRecordingRetention, .meetingRecordingRetention,
+      .recordingStorageWarningThreshold, .recordingThresholdBehavior,
     ]
 
     /// The wire name: the enum case's own name.
@@ -95,11 +97,11 @@
         .quickAddClipboardFallback, .smartInsertion, .escapeRecoveryEnabled,
         .wordCorrectionEnabled, .fillerRemovalEnabled, .emojiFormatterEnabled,
         .casualModeEnabled, .shareUsageMetrics, .sendCrashReports, .contactsSyncOnLaunchEnabled,
-        .isDebugModeEnabled, .isDictationAudioArchiveEnabled, .debugLogLevel, .useStreamingASR,
+        .isDebugModeEnabled, .debugLogLevel, .useStreamingASR,
         .livePreviewEnabled, .livePreviewEngine, .warmEnginePolicy, .appearance,
         .overlayPillPosition, .showBluetoothTips, .showInDock, .showMenuBarUpdateAlert,
         .playRecordingSounds, .recordingSoundPairing, .otherAudioWhileDictating, .learnFromEdits,
-        .egOneSize:
+        .egOneSize, .saveDictationRecordings:
         return make(.direct)
       case .selectedInputDeviceUID, .preferredInputDeviceIDOverride, .spokenPunctuation,
         .hasCompletedOnboarding, .recordingPillDesignWithoutWords, .recordingPillDesignWithWords,
@@ -113,6 +115,11 @@
         return make(.extractedCheck)
       case .hotkeyEnabled, .vadSensitivity, .vadEnergyGate, .crashRecoveryEnabled,
         .onboardingState:
+        return make(.staging)
+      // #3147: no screen writes these yet; the Settings page (chunk 6) writes a shorter keep
+      // period only after its count preview and Undo.
+      case .dictationRecordingRetention, .meetingRecordingRetention,
+        .recordingStorageWarningThreshold, .recordingThresholdBehavior:
         return make(.staging)
       case .whisperKitLanguage, .pushToTalkKeyCode, .pushToTalkModifiers:
         return make(.staging, legacy: true)
@@ -187,7 +194,6 @@
       case .sendCrashReports: return settings.sendCrashReports
       case .contactsSyncOnLaunchEnabled: return settings.contactsSyncOnLaunchEnabled
       case .isDebugModeEnabled: return settings.isDebugModeEnabled
-      case .isDictationAudioArchiveEnabled: return settings.isDictationAudioArchiveEnabled
       case .debugLogLevel: return settings.debugLogLevel.rawValue
       case .whisperKitLanguage: return settings.whisperKitLanguage
       case .languageMode: return Codec.encode(settings.languageMode)
@@ -216,6 +222,12 @@
       case .recordingSoundPairing: return settings.recordingSoundPairing.rawValue
       case .otherAudioWhileDictating: return settings.otherAudioWhileDictating.rawValue
       case .learnFromEdits: return settings.learnFromEdits
+      case .saveDictationRecordings: return settings.saveDictationRecordings
+      case .dictationRecordingRetention: return settings.dictationRecordingRetention.rawValue
+      case .meetingRecordingRetention: return settings.meetingRecordingRetention.rawValue
+      case .recordingStorageWarningThreshold:
+        return settings.recordingStorageWarningThreshold.rawValue
+      case .recordingThresholdBehavior: return settings.recordingThresholdBehavior.rawValue
       }
     }
 
@@ -394,8 +406,6 @@
         return set(Codec.bool(value)) { settings.contactsSyncOnLaunchEnabled = $0 }
       case .isDebugModeEnabled:
         return set(Codec.bool(value)) { settings.isDebugModeEnabled = $0 }
-      case .isDictationAudioArchiveEnabled:
-        return set(Codec.bool(value)) { settings.isDictationAudioArchiveEnabled = $0 }
       case .debugLogLevel:
         return set(Codec.raw(value, DebugLogLevel.self)) { settings.debugLogLevel = $0 }
       case .whisperKitLanguage:
@@ -477,6 +487,24 @@
         }
       case .learnFromEdits:
         return set(Codec.bool(value)) { settings.learnFromEdits = $0 }
+      case .saveDictationRecordings:
+        return set(Codec.bool(value)) { settings.saveDictationRecordings = $0 }
+      case .dictationRecordingRetention:
+        return set(Codec.raw(value, DictationRecordingRetention.self)) {
+          settings.dictationRecordingRetention = $0
+        }
+      case .meetingRecordingRetention:
+        return set(Codec.raw(value, MeetingRecordingRetention.self)) {
+          settings.meetingRecordingRetention = $0
+        }
+      case .recordingStorageWarningThreshold:
+        return set(Codec.raw(value, RecordingStorageWarningThreshold.self)) {
+          settings.recordingStorageWarningThreshold = $0
+        }
+      case .recordingThresholdBehavior:
+        return set(Codec.raw(value, RecordingThresholdBehavior.self)) {
+          settings.recordingThresholdBehavior = $0
+        }
       }
     }
 
@@ -613,11 +641,13 @@
         .escapeRecoveryEnabled, .wordCorrectionEnabled, .fillerRemovalEnabled,
         .emojiFormatterEnabled, .casualModeEnabled, .crashRecoveryEnabled, .shareUsageMetrics,
         .sendCrashReports, .contactsSyncOnLaunchEnabled, .isDebugModeEnabled,
-        .isDictationAudioArchiveEnabled, .debugLogLevel, .whisperKitLanguage, .useStreamingASR,
+        .debugLogLevel, .whisperKitLanguage, .useStreamingASR,
         .livePreviewEnabled, .livePreviewEngine, .warmEnginePolicy, .appearance,
         .overlayPillPosition, .showBluetoothTips, .showInDock, .showMenuBarUpdateAlert,
         .playRecordingSounds, .recordingSoundPairing, .otherAudioWhileDictating, .learnFromEdits,
-        .egOneSize:
+        .egOneSize, .saveDictationRecordings, .dictationRecordingRetention,
+        .meetingRecordingRetention, .recordingStorageWarningThreshold,
+        .recordingThresholdBehavior:
         return .typed
       }
     }

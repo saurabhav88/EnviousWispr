@@ -33,6 +33,7 @@ struct AppSettingsView: View {
     case .appearance: AppearanceSettingsView()
     case .permissions: PermissionsSettingsView()
     case .privacy: PrivacySettingsView()
+    case .recordings: RecordingsSettingsView()
     case .licenses: OpenSourceLicensesView()
     }
   }

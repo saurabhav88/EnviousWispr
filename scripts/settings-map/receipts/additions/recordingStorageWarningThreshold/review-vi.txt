@@ -1,0 +1,13 @@
+{
+  "language": "vi",
+  "title": "ngưỡng cảnh báo dung lượng",
+  "words": [
+    "cảnh báo dung lượng",
+    "ngưỡng cảnh báo"
+  ],
+  "phrases": [
+    "báo khi bản ghi chiếm quá nhiều chỗ",
+    "bản ghi chiếm bao nhiêu dung lượng thì cảnh báo",
+    "tắt cảnh báo dung lượng bản ghi"
+  ]
+}

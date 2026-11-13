@@ -1,0 +1,11 @@
+{
+  "language": "sv",
+  "title": "när lagringsgränsen överskrids",
+  "words": [
+    "automatisk radering"
+  ],
+  "phrases": [
+    "fråga mig om att frigöra utrymme när lagringsgränsen överskrids",
+    "radera automatiskt de äldsta dikteringsinspelningarna när lagringsgränsen överskrids"
+  ]
+}

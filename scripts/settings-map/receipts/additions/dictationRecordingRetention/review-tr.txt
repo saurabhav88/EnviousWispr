@@ -1,0 +1,13 @@
+{
+  "language": "tr",
+  "title": "dikte kayıtlarını saklama süresi",
+  "words": [
+    "saklama süresi",
+    "otomatik silme"
+  ],
+  "phrases": [
+    "dikte kayıtları ne kadar süre saklanır",
+    "dikte ses kayıtlarını 7 gün sakla",
+    "dikte kayıtlarını ben silene kadar sakla"
+  ]
+}

@@ -199,6 +199,47 @@ public struct MeetingStore: Sendable {
     }
   }
 
+  /// Meeting audio on disk across every meeting folder (#3147 RecordingUsage).
+  public struct AudioUsage: Sendable, Equatable {
+    /// Final segment files, both tracks and both microphone copies, each file once.
+    public var committedBytes: Int64 = 0
+    /// Partial segment files a recording or an interrupted run is still writing.
+    public var temporaryBytes: Int64 = 0
+    /// Meeting folders whose files could not be listed or measured; their audio is not in the
+    /// totals, so a nonzero count makes the totals a lower bound.
+    public var unreadableFolders = 0
+
+    public init() {}
+  }
+
+  /// Measures the audio of every UUID-named folder on disk, whatever build wrote it, by
+  /// recognized segment file names only (never notes, summaries, records, the work folder or
+  /// call-speaker evidence). Nil when the root does not exist yet; throws when the root itself
+  /// cannot be listed, so a failure is never shown as zero. Runs file I/O on the caller.
+  public func audioUsage() throws -> AudioUsage? {
+    let fm = FileManager.default
+    guard fm.fileExists(atPath: root.path) else { return nil }
+    var usage = AudioUsage()
+    for name in try fm.contentsOfDirectory(atPath: root.path) {
+      guard let id = UUID(uuidString: name) else { continue }
+      do {
+        var committed: Int64 = 0
+        var temporary: Int64 = 0
+        for file in try segmentFiles(meeting: id) {
+          guard let size = try file.url.resourceValues(forKeys: [.fileSizeKey]).fileSize else {
+            throw StoreError.unmeasurableAudio
+          }
+          if file.partial { temporary += Int64(size) } else { committed += Int64(size) }
+        }
+        usage.committedBytes += committed
+        usage.temporaryBytes += temporary
+      } catch {
+        usage.unreadableFolders += 1
+      }
+    }
+    return usage
+  }
+
   // MARK: - Deletion
 
   /// Removes every audio file of the meeting (finals and partials, both microphone copies), its

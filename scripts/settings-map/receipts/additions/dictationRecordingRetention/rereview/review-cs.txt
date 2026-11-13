@@ -1,0 +1,1 @@
+{"language":"cs","title":"uchovávat nahrávky diktátů","words":[],"phrases":["jak dlouho uchovávat nahrávky diktátů","automaticky mazat staré nahrávky diktátů a zachovat text","ponechat nahrávky diktátů, dokud je nesmažu"]}

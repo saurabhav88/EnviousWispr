@@ -1,0 +1,1 @@
+{"language":"sk","title":"pri prekročení limitu úložiska","words":["automatické mazanie"],"phrases":["pri prekročení limitu úložiska iba upozorniť","po prekročení limitu automaticky vymazať najstaršie nahrávky diktovania"]}

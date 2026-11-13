@@ -12,9 +12,9 @@ Generated from the compiled Settings Map and the validated search vocabulary. Do
 
 The interface ships in English and German. The other 30 languages (ar, bg, cs, da, el, es, et, fi, fr, hi, hr, hu, it, ja, ko, lt, lv, mt, nl, pl, pt, ro, ru, sk, sl, sv, tr, uk, vi, zh) are search metadata only: words and titles people may type, matched against the same places. Titles below read English / German.
 
-312 nodes, 285 searchable, 9120 vocabulary blocks.
+324 nodes, 295 searchable, 9440 vocabulary blocks.
 
-Fingerprints: mapSHA256 `eea9daea98589fbe29969e0c3bf14476c78e409fe842641923874ead1f4653f0`, uiCatalogSHA256 `cf9398c1a6cf2fa82a3a57002ddd6c0424373c2560f9e16f91da95f5130b93e8`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `25b4f8c996996005c0e93c5f821e8c181182fe93b056485ca832f7964426e487`
+Fingerprints: mapSHA256 `0429303e6605473a5ebb1968eb26eafc653fe747f9fa847dbababdab08ba63ad`, uiCatalogSHA256 `453fbd422fc618ab4628e476a8dd7bc33162ca746b09e334dbeff07659d0f8d0`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `33d583304fa73b4547e53f491c69599d47ec82a067b6d6ea657cd0a1e400efd9`
 
 ## Structure
 
@@ -108,6 +108,18 @@ Fingerprints: mapSHA256 `eea9daea98589fbe29969e0c3bf14476c78e409fe842641923874ea
           - [Restart now / Jetzt neu starten](#node-sendCrashReports-restart) `sendCrashReports.restart` (action)
         - [What we collect / Was wir erfassen](#node-whatWeCollect) `whatWeCollect` (feature)
           - [See details / Details ansehen](#node-whatWeCollect-seeDetails) `whatWeCollect.seeDetails` (action)
+    - [Recordings / Aufnahmen](#node-appSettings-tab-recordings) `appSettings.tab.recordings` (feature)
+      - [Recordings / Aufnahmen](#node-section-recordings) `section.recordings` (section)
+        - [Save dictation recordings / Diktataufnahmen speichern](#node-saveDictationRecordings) `saveDictationRecordings` (setting)
+        - [Keep dictation recordings / Diktataufnahmen behalten](#node-dictationRecordingRetention) `dictationRecordingRetention` (setting)
+        - [Keep meeting audio / Meeting-Audio behalten](#node-meetingRecordingRetention) `meetingRecordingRetention` (setting)
+      - [Storage / Speicher](#node-section-recordingStorage) `section.recordingStorage` (section)
+        - [Storage used / Belegter Speicher](#node-recordingStorageUsage) `recordingStorageUsage` (feature)
+        - [Storage warning threshold / Speicherwarnschwelle](#node-recordingStorageWarningThreshold) `recordingStorageWarningThreshold` (setting)
+        - [Past the threshold / Über der Schwelle](#node-recordingThresholdBehavior) `recordingThresholdBehavior` (setting)
+        - [Delete recordings / Aufnahmen löschen](#node-deleteRecordings) `deleteRecordings` (feature)
+          - [Delete all dictation recordings / Alle Diktataufnahmen löschen](#node-deleteRecordings-dictations) `deleteRecordings.dictations` (action)
+          - [Delete all meeting audio / Gesamtes Meeting-Audio löschen](#node-deleteRecordings-meetings) `deleteRecordings.meetings` (action)
     - [Licenses / Lizenzen](#node-appSettings-tab-licenses) `appSettings.tab.licenses` (feature)
       - [ABOUT / INFO](#node-section-about) `section.about` (section)
         - [EnviousWispr · GPLv3 / EnviousWispr · GPLv3](#node-license-gpl) `license.gpl` (feature)
@@ -795,6 +807,42 @@ Fingerprints: mapSHA256 `eea9daea98589fbe29969e0c3bf14476c78e409fe842641923874ea
 | Title source | catalog key `PRIVACY` |
 | Description | none |
 | Destination | `appSettings` › `privacy` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | none |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+
+<a id="node-section-recordings"></a>
+
+### Recordings / Aufnahmen (`section.recordings`)
+
+| Field | Value |
+|---|---|
+| Structure | section |
+| Kind | structure only, not searchable |
+| Parent | [`appSettings.tab.recordings`](#node-appSettings-tab-recordings) |
+| Title source | catalog key `Recordings` |
+| Description | none |
+| Destination | `appSettings` › `recordings` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | none |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+
+<a id="node-section-recordingStorage"></a>
+
+### Storage / Speicher (`section.recordingStorage`)
+
+| Field | Value |
+|---|---|
+| Structure | section |
+| Kind | structure only, not searchable |
+| Parent | [`appSettings.tab.recordings`](#node-appSettings-tab-recordings) |
+| Title source | catalog key `Storage` |
+| Description | none |
+| Destination | `appSettings` › `recordings` |
 | Dictionary tab | none |
 | Shown when | `always` |
 | Arrival target | none |
@@ -4752,6 +4800,27 @@ Fingerprints: mapSHA256 `eea9daea98589fbe29969e0c3bf14476c78e409fe842641923874ea
 | Search (de) | words: Privatsphäre<br>phrases: den Datenschutzbereich der App-Einstellungen öffnen; wo sind die Einstellungen zur Datenweitergabe |
 | Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
+<a id="node-appSettings-tab-recordings"></a>
+
+### Recordings / Aufnahmen (`appSettings.tab.recordings`)
+
+| Field | Value |
+|---|---|
+| Structure | tab |
+| Kind | feature |
+| Parent | [`page.appSettings`](#node-page-appSettings) |
+| Title source | catalog key `Recordings` |
+| Description | none |
+| Destination | `appSettings` › `recordings` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`appSettings.tab.recordings`](#node-appSettings-tab-recordings) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | words: audio recordings, voice recordings<br>phrases: save dictation recordings; how long to keep meeting audio; delete saved audio to free up space |
+| Search (de) | words: Audioaufnahmen, Diktataufnahmen, Aufbewahrungsdauer, Speicherplatz<br>phrases: speichere meine Diktataufnahmen; wie lange werden Diktataufnahmen und Meeting-Audio aufbewahrt; lösche gespeicherte Audioaufnahmen |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
 <a id="node-appSettings-tab-licenses"></a>
 
 ### Licenses / Lizenzen (`appSettings.tab.licenses`)
@@ -5116,6 +5185,201 @@ Fingerprints: mapSHA256 `eea9daea98589fbe29969e0c3bf14476c78e409fe842641923874ea
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: open the detailed explanation of what data is collected |
 | Search (de) | phrases: die ausführliche Erklärung zur Datenerfassung öffnen |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-saveDictationRecordings"></a>
+
+### Save dictation recordings / Diktataufnahmen speichern (`saveDictationRecordings`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | setting |
+| Parent | [`section.recordings`](#node-section-recordings) |
+| Title source | catalog key `Save dictation recordings` |
+| Description | Keep the audio of each new dictation on this Mac, so you can play it back. / Speichert das Audio jedes neuen Diktats auf diesem Mac, damit du es abspielen kannst. |
+| Description source | catalog key `Keep the audio of each new dictation on this Mac, so you can play it back.` |
+| Destination | `appSettings` › `recordings` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`saveDictationRecordings`](#node-saveDictationRecordings) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | words: keep audio<br>phrases: save each dictation's audio on my Mac; keep recordings so I can listen later |
+| Search (de) | words: Audioaufnahmen, Diktataudio<br>phrases: speichere den Ton neuer Diktate auf diesem Mac zum späteren Anhören; speichere keine Audioaufnahmen neuer Diktate mehr |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-dictationRecordingRetention"></a>
+
+### Keep dictation recordings / Diktataufnahmen behalten (`dictationRecordingRetention`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | setting |
+| Parent | [`section.recordings`](#node-section-recordings) |
+| Title source | catalog key `Keep dictation recordings` |
+| Description | Choose how long to keep recordings. The text always stays. / Wähle, wie lange Aufnahmen behalten werden. Der Text bleibt immer erhalten. |
+| Description source | catalog key `Choose how long to keep recordings. The text always stays.` |
+| Destination | `appSettings` › `recordings` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`dictationRecordingRetention`](#node-dictationRecordingRetention) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | words: dictation recording retention<br>phrases: how long are dictation recordings kept; automatically delete old dictation recordings but keep the text; keep dictation recordings until I delete them |
+| Search (de) | words: Aufbewahrungsdauer, Diktataufnahmen<br>phrases: wie lange bleiben meine Diktataufnahmen gespeichert; alte Diktataufnahmen automatisch löschen und den Text behalten |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-meetingRecordingRetention"></a>
+
+### Keep meeting audio / Meeting-Audio behalten (`meetingRecordingRetention`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | setting |
+| Parent | [`section.recordings`](#node-section-recordings) |
+| Title source | catalog key `Keep meeting audio` |
+| Description | Meeting text, notes and summaries always stay. / Meeting-Text, Notizen und Zusammenfassungen bleiben immer erhalten. |
+| Description source | catalog key `Meeting text, notes and summaries always stay.` |
+| Destination | `appSettings` › `recordings` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`meetingRecordingRetention`](#node-meetingRecordingRetention) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | words: meeting recordings, meeting audio retention<br>phrases: choose how long to keep meeting audio; automatically delete old meeting audio; keep meeting audio until I delete it |
+| Search (de) | words: Meeting-Audio, Meetingaudio, Aufbewahrungsdauer<br>phrases: stell ein, wie lange Meeting-Audio gespeichert bleibt; bewahre Meeting-Audio 30 oder 90 Tage auf; behalte Meeting-Audio, bis ich es lösche |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-recordingStorageUsage"></a>
+
+### Storage used / Belegter Speicher (`recordingStorageUsage`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | feature |
+| Parent | [`section.recordingStorage`](#node-section-recordingStorage) |
+| Title source | catalog key `Storage used` |
+| Description | composed at display time from live state (not exported) |
+| Destination | `appSettings` › `recordings` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`recordingStorageUsage`](#node-recordingStorageUsage) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | words: recording size, disk usage<br>phrases: how much space do my recordings take; space taken up by recordings |
+| Search (de) | words: Speicherbelegung, Speicherverbrauch<br>phrases: wie viel Platz brauchen meine Aufnahmen; zeig mir die Größe meiner Aufnahmen |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-recordingStorageWarningThreshold"></a>
+
+### Storage warning threshold / Speicherwarnschwelle (`recordingStorageWarningThreshold`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | setting |
+| Parent | [`section.recordingStorage`](#node-section-recordingStorage) |
+| Title source | catalog key `Storage warning threshold` |
+| Description | Get a warning when recordings use more than this. / Erhalte eine Warnung, wenn Aufnahmen mehr Speicher als diesen Wert belegen. |
+| Description source | catalog key `Get a warning when recordings use more than this.` |
+| Destination | `appSettings` › `recordings` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`recordingStorageWarningThreshold`](#node-recordingStorageWarningThreshold) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | words: recording size alert, disk usage warning<br>phrases: warn me when recordings take up too much space; set when the recording storage warning appears |
+| Search (de) | words: Warnschwelle, Speicherplatzwarnung<br>phrases: warne mich, wenn Aufnahmen mehr als 2 GB belegen; schalte die Speicherplatzwarnung für Aufnahmen aus |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-recordingThresholdBehavior"></a>
+
+### Past the threshold / Über der Schwelle (`recordingThresholdBehavior`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | setting |
+| Parent | [`section.recordingStorage`](#node-section-recordingStorage) |
+| Title source | catalog key `Past the threshold` |
+| Description | Ask you, or remove the oldest dictation recordings. / Dich fragen oder die ältesten Diktataufnahmen entfernen. |
+| Description source | catalog key `Ask you, or remove the oldest dictation recordings.` |
+| Destination | `appSettings` › `recordings` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`recordingThresholdBehavior`](#node-recordingThresholdBehavior) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | words: automatic deletion<br>phrases: ask me to free space when storage is over the limit; automatically delete the oldest dictation recordings when over the storage limit |
+| Search (de) | words: Löschverhalten, automatisches Löschen<br>phrases: frag mich, ob ich Platz schaffen möchte, wenn Aufnahmen die Warnschwelle überschreiten; lösche die ältesten Diktataufnahmen automatisch, wenn Aufnahmen die Warnschwelle überschreiten |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-deleteRecordings"></a>
+
+### Delete recordings / Aufnahmen löschen (`deleteRecordings`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | feature |
+| Parent | [`section.recordingStorage`](#node-section-recordingStorage) |
+| Title source | catalog key `Delete recordings` |
+| Description | Text, meeting notes and summaries stay. / Text, Meeting-Notizen und Zusammenfassungen bleiben erhalten. |
+| Description source | catalog key `Text, meeting notes and summaries stay.` |
+| Destination | `appSettings` › `recordings` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`deleteRecordings`](#node-deleteRecordings) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | words: audio files, remove<br>phrases: delete audio and keep the text |
+| Search (de) | words: Audiodateien, Aufnahmen<br>phrases: lösche Audio von Diktaten oder Meetings; lösche Aufnahmen und behalte Text, Notizen und Zusammenfassungen |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-deleteRecordings-dictations"></a>
+
+### Delete all dictation recordings / Alle Diktataufnahmen löschen (`deleteRecordings.dictations`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | action |
+| Parent | [`deleteRecordings`](#node-deleteRecordings) |
+| Title source | catalog key `Delete all dictation recordings` |
+| Description | none |
+| Destination | `appSettings` › `recordings` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`deleteRecordings.dictations`](#node-deleteRecordings-dictations) |
+| Fallbacks, in order | [`deleteRecordings`](#node-deleteRecordings) |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | words: dictation audio<br>phrases: remove all my dictation audio recordings |
+| Search (de) | words: Diktataudio<br>phrases: lösch alle Audioaufnahmen meiner Diktate |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-deleteRecordings-meetings"></a>
+
+### Delete all meeting audio / Gesamtes Meeting-Audio löschen (`deleteRecordings.meetings`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | action |
+| Parent | [`deleteRecordings`](#node-deleteRecordings) |
+| Title source | catalog key `Delete all meeting audio` |
+| Description | none |
+| Destination | `appSettings` › `recordings` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`deleteRecordings.meetings`](#node-deleteRecordings-meetings) |
+| Fallbacks, in order | [`deleteRecordings`](#node-deleteRecordings) |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | words: meeting recordings<br>phrases: delete audio recordings of all meetings |
+| Search (de) | words: Besprechungsaufnahmen<br>phrases: lösch die Audioaufnahmen aller Meetings |
 | Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-license-gpl"></a>

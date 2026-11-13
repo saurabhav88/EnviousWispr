@@ -1,0 +1,9 @@
+{
+  "language": "sv",
+  "title": "spara dikteringsinspelningar",
+  "words": [],
+  "phrases": [
+    "spara ljudet från varje ny diktering",
+    "spara dikteringsljudet så jag kan lyssna senare"
+  ]
+}

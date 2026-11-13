@@ -1,0 +1,297 @@
+{
+ "id": "saveDictationRecordings",
+ "blocks": [
+  {
+   "language": "ar",
+   "title": "حفظ تسجيلات الإملاء",
+   "words": [],
+   "phrases": [
+    "احفظ صوت الإملاء على جهازي",
+    "احتفظ بالتسجيل لأسمعه لاحقًا"
+   ]
+  },
+  {
+   "language": "bg",
+   "title": "запазване на записи от диктовка",
+   "words": [],
+   "phrases": [
+    "запазвай звука от всяка диктовка",
+    "пази записите на този Mac"
+   ]
+  },
+  {
+   "language": "cs",
+   "title": "ukládat nahrávky diktování",
+   "words": [],
+   "phrases": [
+    "uchovávat zvuk každého diktátu",
+    "ukládat diktáty pro pozdější poslech"
+   ]
+  },
+  {
+   "language": "da",
+   "title": "gem optagelser af diktat",
+   "words": [],
+   "phrases": [
+    "behold lyden fra hver diktering",
+    "gem diktater så jeg kan høre dem igen"
+   ]
+  },
+  {
+   "language": "de",
+   "words": [
+    "Audioaufnahmen"
+   ],
+   "phrases": [
+    "speichere meine Diktate auf diesem Mac",
+    "behalte den Ton zum späteren Anhören"
+   ]
+  },
+  {
+   "language": "el",
+   "title": "αποθήκευση ηχογραφήσεων υπαγόρευσης",
+   "words": [],
+   "phrases": [
+    "κράτα τον ήχο από κάθε υπαγόρευση",
+    "αποθήκευση υπαγορεύσεων για να τις ακούω ξανά"
+   ]
+  },
+  {
+   "language": "en",
+   "words": [
+    "keep audio"
+   ],
+   "phrases": [
+    "save each dictation's audio on my Mac",
+    "keep recordings so I can listen later"
+   ]
+  },
+  {
+   "language": "es",
+   "title": "guardar grabaciones de dictado",
+   "words": [],
+   "phrases": [
+    "conservar el audio de cada dictado",
+    "guardar mis dictados para escucharlos después"
+   ]
+  },
+  {
+   "language": "et",
+   "title": "dikteerimissalvestiste salvestamine",
+   "words": [],
+   "phrases": [
+    "säilita iga dikteerimise heli",
+    "salvesta dikteerimised hilisemaks kuulamiseks"
+   ]
+  },
+  {
+   "language": "fi",
+   "title": "tallenna saneluäänitteet",
+   "words": [],
+   "phrases": [
+    "säilytä jokaisen sanelun ääni",
+    "tallenna sanelut myöhempää kuuntelua varten"
+   ]
+  },
+  {
+   "language": "fr",
+   "title": "conserver les enregistrements des dictées",
+   "words": [],
+   "phrases": [
+    "garder l’audio de chaque dictée",
+    "enregistrer mes dictées pour les réécouter"
+   ]
+  },
+  {
+   "language": "hi",
+   "title": "डिक्टेशन की रिकॉर्डिंग सहेजें",
+   "words": [],
+   "phrases": [
+    "हर डिक्टेशन की आवाज़ सेव करें",
+    "बाद में सुनने के लिए रिकॉर्डिंग रखें"
+   ]
+  },
+  {
+   "language": "hr",
+   "title": "spremanje snimki diktiranja",
+   "words": [],
+   "phrases": [
+    "sačuvaj zvuk svakog diktata",
+    "spremaj diktate za kasnije slušanje"
+   ]
+  },
+  {
+   "language": "hu",
+   "title": "diktálási hangfelvételek mentése",
+   "words": [],
+   "phrases": [
+    "minden diktálás hangjának megőrzése",
+    "diktálások mentése későbbi visszahallgatáshoz"
+   ]
+  },
+  {
+   "language": "it",
+   "title": "salva le registrazioni delle dettature",
+   "words": [],
+   "phrases": [
+    "conservare l’audio di ogni dettatura",
+    "salvare i dettati per riascoltarli"
+   ]
+  },
+  {
+   "language": "ja",
+   "title": "音声入力の録音を保存",
+   "words": [],
+   "phrases": [
+    "音声入力の音声を毎回残す",
+    "あとで聞けるように録音を保存する"
+   ]
+  },
+  {
+   "language": "ko",
+   "title": "받아쓰기 녹음 저장",
+   "words": [],
+   "phrases": [
+    "받아쓰기 음성을 매번 보관하기",
+    "나중에 다시 듣도록 녹음 저장하기"
+   ]
+  },
+  {
+   "language": "lt",
+   "title": "išsaugoti diktavimo įrašus",
+   "words": [],
+   "phrases": [
+    "išsaugoti kiekvieno diktavimo garsą",
+    "palikti diktavimo įrašus vėlesniam klausymui"
+   ]
+  },
+  {
+   "language": "lv",
+   "title": "saglabāt diktēšanas ierakstus",
+   "words": [],
+   "phrases": [
+    "paturēt katra diktējuma audio",
+    "saglabāt diktēto vēlākai noklausīšanai"
+   ]
+  },
+  {
+   "language": "mt",
+   "title": "issejvja r-reġistrazzjonijiet tad-dettatura",
+   "words": [],
+   "phrases": [
+    "żomm l-awdjo ta’ kull dettatura",
+    "issejvja d-dettaturi biex nerġa’ nismagħhom"
+   ]
+  },
+  {
+   "language": "nl",
+   "title": "dictaatopnamen bewaren",
+   "words": [],
+   "phrases": [
+    "het geluid van elk dictaat opslaan",
+    "dictaten bewaren om later terug te luisteren"
+   ]
+  },
+  {
+   "language": "pl",
+   "title": "zapisuj nagrania dyktowania",
+   "words": [],
+   "phrases": [
+    "zachowaj dźwięk każdego dyktowania",
+    "zapisuj dyktowanie do późniejszego odsłuchania"
+   ]
+  },
+  {
+   "language": "pt",
+   "title": "guardar gravações de ditado",
+   "words": [],
+   "phrases": [
+    "salvar o áudio de cada ditado",
+    "guardar os ditados para ouvir depois"
+   ]
+  },
+  {
+   "language": "ro",
+   "title": "salvează înregistrările dictărilor",
+   "words": [],
+   "phrases": [
+    "păstrează sunetul fiecărei dictări",
+    "salvează dictările ca să le ascult mai târziu"
+   ]
+  },
+  {
+   "language": "ru",
+   "title": "сохранять записи диктовки",
+   "words": [],
+   "phrases": [
+    "сохранять звук каждой диктовки",
+    "оставлять записи, чтобы послушать потом"
+   ]
+  },
+  {
+   "language": "sk",
+   "title": "ukladať nahrávky diktovania",
+   "words": [],
+   "phrases": [
+    "uchovávať zvuk každého diktovania",
+    "ukladať diktáty na neskoršie počúvanie"
+   ]
+  },
+  {
+   "language": "sl",
+   "title": "shranjevanje posnetkov narekovanja",
+   "words": [],
+   "phrases": [
+    "shrani zvok vsakega nareka",
+    "shrani nareke za poznejše poslušanje"
+   ]
+  },
+  {
+   "language": "sv",
+   "title": "spara dikteringsinspelningar",
+   "words": [],
+   "phrases": [
+    "behåll ljudet från varje diktering",
+    "spara diktat så jag kan lyssna senare"
+   ]
+  },
+  {
+   "language": "tr",
+   "title": "dikte kayıtlarını kaydet",
+   "words": [],
+   "phrases": [
+    "her diktenin sesini sakla",
+    "sonradan dinlemek için dikteleri kaydet"
+   ]
+  },
+  {
+   "language": "uk",
+   "title": "зберігати записи диктування",
+   "words": [],
+   "phrases": [
+    "зберігати звук кожного диктування",
+    "залишати записи, щоб послухати пізніше"
+   ]
+  },
+  {
+   "language": "vi",
+   "title": "lưu bản ghi âm đọc chính tả",
+   "words": [],
+   "phrases": [
+    "giữ lại âm thanh mỗi lần đọc chính tả",
+    "lưu ghi âm để nghe lại sau"
+   ]
+  },
+  {
+   "language": "zh",
+   "title": "保存听写录音",
+   "words": [
+    "保留音频"
+   ],
+   "phrases": [
+    "把每次听写的声音存到本机",
+    "保存录音方便以后回听"
+   ]
+  }
+ ]
+}

@@ -476,8 +476,6 @@ final class PipelineSettingsSync {
       // under the rules it began with and a change applies to the NEXT one.
       // Same classification as `crashRecoveryEnabled` above.
       break
-    case .isDictationAudioArchiveEnabled:
-      break  // #1247: kernel pulls this live via `dictationAudioArchiveOptInProvider` — no push needed here.
     case .livePreviewEnabled:
       // #1988: display-only limb, read live by `LivePreviewCoordinator` off the
       // overlay seam. The PIPELINE still never learns it exists, which is the
@@ -510,6 +508,11 @@ final class PipelineSettingsSync {
       break  // #1342: UI-only; read live by RecordingSoundCue, no pipeline sync.
     case .otherAudioWhileDictating:
       break  // #1413: UI-only; snapshotted per-recording by OtherAudioHold, no pipeline sync.
+    case .saveDictationRecordings:
+      break  // #3147 D1: read by the kernel's recording preference once per accepted take.
+    case .dictationRecordingRetention, .meetingRecordingRetention,
+      .recordingStorageWarningThreshold, .recordingThresholdBehavior:
+      break  // #3147: read by RecordingRetention at each sweep; the bootstrapper asks it to re-check.
     }
   }
 

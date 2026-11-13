@@ -1,0 +1,11 @@
+{
+  "language": "es",
+  "title": "espacio utilizado",
+  "words": [
+    "tamaño de las grabaciones"
+  ],
+  "phrases": [
+    "cuánto ocupan las grabaciones",
+    "espacio que usan mis grabaciones"
+  ]
+}

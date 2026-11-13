@@ -1,0 +1,1 @@
+{"language":"et","title":"salvestised","words":["helisalvestised"],"phrases":["salvestiste seaded","dikteerimise salvestised"]}

@@ -1,0 +1,1 @@
+{"language":"fr","title":"durée de conservation des enregistrements de dictée","words":["durée de conservation"],"phrases":["choisir combien de temps garder l’audio des dictées","supprimer automatiquement les anciens enregistrements de dictée sans supprimer le texte"]}

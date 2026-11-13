@@ -1,0 +1,11 @@
+{
+  "language": "en",
+  "words": [
+    "retention",
+    "auto delete"
+  ],
+  "phrases": [
+    "how long are dictation recordings kept",
+    "automatically delete old dictation recordings but keep the text"
+  ]
+}

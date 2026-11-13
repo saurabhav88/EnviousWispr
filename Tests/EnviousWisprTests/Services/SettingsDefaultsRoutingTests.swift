@@ -551,6 +551,57 @@ struct SettingsDefaultsRoutingTests {
     #expect(SettingsManager(defaults: suite).overlayPillPosition == .top)
   }
 
+  // MARK: - Recording keep periods and storage warning (#3147 Gate 2, D2/D3)
+
+  @Test("recordings are kept until deleted, warned at 2 GB, and nothing is removed by default")
+  func recordingRetentionDefaults() {
+    let suite = Self.freshSuite()
+    let settings = SettingsManager(defaults: suite)
+    #expect(settings.saveDictationRecordings, "D1: new dictations are recorded")
+    #expect(settings.dictationRecordingRetention == .forever, "D2: no automatic seven-day removal")
+    #expect(settings.meetingRecordingRetention == .forever)
+    #expect(settings.recordingStorageWarningThreshold == .gb2)
+    #expect(settings.recordingThresholdBehavior == .ask, "D3: past the threshold, only ask")
+    for key in [
+      "saveDictationRecordings", "dictationRecordingRetention", "meetingRecordingRetention",
+      "recordingStorageWarningThreshold", "recordingThresholdBehavior",
+    ] {
+      #expect(suite.object(forKey: key) == nil, "\(key) is never seeded")
+      #expect(SettingsManager.unifiedDefaultsKeys.contains(key))
+    }
+  }
+
+  @Test("unknown stored recording policies load as the defaults, never as a deletion")
+  func recordingRetentionUnknownValuesFallBack() {
+    let suite = Self.freshSuite()
+    suite.set("day0", forKey: "dictationRecordingRetention")
+    suite.set("hour1", forKey: "meetingRecordingRetention")
+    suite.set("gb0", forKey: "recordingStorageWarningThreshold")
+    suite.set("removeEverything", forKey: "recordingThresholdBehavior")
+    let settings = SettingsManager(defaults: suite)
+    #expect(settings.dictationRecordingRetention == .forever)
+    #expect(settings.meetingRecordingRetention == .forever)
+    #expect(settings.recordingStorageWarningThreshold == .gb2)
+    #expect(settings.recordingThresholdBehavior == .ask)
+  }
+
+  @Test("recording policies persist and reload")
+  func recordingRetentionPersists() {
+    let suite = Self.freshSuite()
+    let settings = SettingsManager(defaults: suite)
+    settings.saveDictationRecordings = false
+    settings.dictationRecordingRetention = .day7
+    settings.meetingRecordingRetention = .day90
+    settings.recordingStorageWarningThreshold = .none
+    settings.recordingThresholdBehavior = .removeOldestDictations
+    let reloaded = SettingsManager(defaults: suite)
+    #expect(reloaded.saveDictationRecordings == false)
+    #expect(reloaded.dictationRecordingRetention == .day7)
+    #expect(reloaded.meetingRecordingRetention == .day90)
+    #expect(reloaded.recordingStorageWarningThreshold == .none)
+    #expect(reloaded.recordingThresholdBehavior == .removeOldestDictations)
+  }
+
   // MARK: - What an UPGRADE does to the three 2026-09-01 defaults
 
   /// The founder's question, asserted rather than reasoned about: does an

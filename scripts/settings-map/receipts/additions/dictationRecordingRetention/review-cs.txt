@@ -1,0 +1,12 @@
+{
+  "language": "cs",
+  "title": "uchovávat nahrávky diktátů",
+  "words": [
+    "doba uchování",
+    "automatické mazání"
+  ],
+  "phrases": [
+    "jak dlouho uchovávat nahrávky diktátů",
+    "automaticky mazat staré nahrávky diktátů a zachovat text"
+  ]
+}

@@ -54,6 +54,30 @@ enum WhatsNewContent {
   }
 
   static let entries: [Entry] = [
+    // MARK: - v2.6.1
+
+    // Draft group, 2026-11-12 (#3147 PR1, plan §16 C9): 2.6.0 has shipped, so this opens the next
+    // group (whats-new-protocol.md FACT: whats-new-grouping). Not founder copy yet: the release
+    // checklist puts it before the founder, whose text then ships verbatim. Claims checked against
+    // code: saved dictations only (KernelFinalizationWiring permanentSaveRowID; failed, cancelled
+    // and Escape Recovery takes get none); stored on this Mac (RecordingArchive under Application
+    // Support, nothing uploaded); default keep period forever (SettingsDefaultValues
+    // .dictationRecordingRetention); Save dictation recordings in App Settings > Recordings
+    // affects new dictations only; Delete recording in History and Delete all dictation
+    // recordings remove audio and keep the text.
+    Entry(
+      id: "play-back-your-dictations",
+      icon: "waveform",
+      title: "Play back your dictations",
+      description:
+        "EnviousWispr now keeps a recording of each saved dictation on your Mac, so you can play it back in History. Recordings stay until you delete them, or for a keep period you choose in Settings > App Settings > Recordings.",
+      bullets: [
+        "Turn off Save dictation recordings on that page to stop saving new recordings. Recordings you already have are not deleted.",
+        "Delete a recording in History, or all of them with Delete all dictation recordings. The text always stays.",
+      ],
+      version: "2.6.1"
+    ),
+
     // MARK: - v2.6.0
 
     // Founder-approved group, 2026-11-05 (Claude Doc "EnviousWispr 2.6.0 Release Notes"). The founder

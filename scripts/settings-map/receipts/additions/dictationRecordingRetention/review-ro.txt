@@ -1,0 +1,1 @@
+{"language":"ro","title":"păstrează înregistrările dictărilor","words":["durată de păstrare","ștergere automată"],"phrases":["cât timp se păstrează înregistrările dictărilor","șterge automat înregistrările vechi ale dictărilor și păstrează textul"]}

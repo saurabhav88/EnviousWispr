@@ -1,0 +1,12 @@
+{
+  "language": "nl",
+  "title": "dicteeropnamen bewaren",
+  "words": [
+    "bewaartermijn",
+    "automatisch verwijderen"
+  ],
+  "phrases": [
+    "hoelang worden dicteeropnamen bewaard",
+    "oude dicteeropnamen automatisch verwijderen en de tekst bewaren"
+  ]
+}

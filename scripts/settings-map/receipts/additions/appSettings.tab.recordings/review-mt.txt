@@ -1,0 +1,14 @@
+{
+  "language": "mt",
+  "title": "reġistrazzjonijiet",
+  "words": [
+    "reġistrazzjonijiet tal-awdjo",
+    "awdjo ssejvjat",
+    "spazju fuq id-diska"
+  ],
+  "phrases": [
+    "issejvja r-reġistrazzjonijiet tad-dettatura",
+    "kemm idum jinżamm l-awdjo tal-laqgħat",
+    "ħassar ir-reġistrazzjonijiet mingħajr ma tħassar it-test"
+  ]
+}

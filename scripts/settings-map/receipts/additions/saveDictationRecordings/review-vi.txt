@@ -1,0 +1,1 @@
+{"language":"vi","title":"lưu bản ghi âm đọc chính tả","words":[],"phrases":["giữ lại âm thanh mỗi lần đọc chính tả","lưu ghi âm để nghe lại sau"]}

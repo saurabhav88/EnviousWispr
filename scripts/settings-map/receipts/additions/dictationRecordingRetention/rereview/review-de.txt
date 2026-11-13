@@ -1,0 +1,11 @@
+{
+  "language": "de",
+  "words": [
+    "Aufbewahrungsdauer",
+    "Diktataufnahmen"
+  ],
+  "phrases": [
+    "wie lange bleiben meine Diktataufnahmen gespeichert",
+    "Diktataufnahmen nach 7 Tagen automatisch löschen"
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "language": "hu",
+  "title": "tárhelyhasználati figyelmeztetés küszöbértéke",
+  "words": [
+    "tárhelyfigyelmeztetés",
+    "figyelmeztetési küszöb"
+  ],
+  "phrases": [
+    "figyelmeztessen, ha a felvételek túl sok helyet foglalnak",
+    "hány GB felett kapjak figyelmeztetést a felvételek miatt",
+    "felvételek tárhelyfigyelmeztetésének kikapcsolása"
+  ]
+}

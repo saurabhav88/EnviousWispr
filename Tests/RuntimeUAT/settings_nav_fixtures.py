@@ -21,7 +21,7 @@ GERMAN = {
     "No new release notes": "Keine neuen Versionshinweise", "New release notes": "Neue Versionshinweise",
     "All release notes on GitHub": "Alle Versionshinweise auf GitHub",
     "Check for Updates…": "Nach Updates suchen…",
-    "App Settings": "App-Einstellungen", "Privacy": "Datenschutz", "Licenses": "Lizenzen", "Check for Updates": "Nach Updates suchen",
+    "App Settings": "App-Einstellungen", "Privacy": "Datenschutz", "Recordings": "Aufnahmen", "Licenses": "Lizenzen", "Check for Updates": "Nach Updates suchen",
     "Engine": "Engine", "Microphone": "Mikrofon", "Live Preview": "Live-Vorschau",
     "Recording Pill": "Aufnahmeanzeige", "Chimes": "Signaltöne", "Clipboard": "Zwischenablage",
     "Input device": "Eingabegerät", "Choose a microphone": "Mikrofon auswählen",
@@ -752,7 +752,7 @@ def valued_cases():
     def app_tabs(rows):
         for german in (False, True):
             f = FakeSettings(german=german)
-            for tab in ("Appearance", "Permissions", "Privacy", "Licenses"):
+            for tab in ("Appearance", "Permissions", "Privacy", "Recordings", "Licenses"):
                 route = _nav(f, "App Settings", tab)
                 rows.append((f"App Settings {tab}, German={german}", route.shown_tab, tab))
             _nav(f, "History")

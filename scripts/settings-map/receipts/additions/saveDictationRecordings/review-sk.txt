@@ -1,0 +1,1 @@
+{"language":"sk","title":"ukladať nahrávky diktovania","words":[],"phrases":["ukladať zvuk každého nového diktovania na neskoršie prehratie","vypnúť ukladanie nahrávok diktovania"]}

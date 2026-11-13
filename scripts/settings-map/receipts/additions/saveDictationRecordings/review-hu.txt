@@ -1,0 +1,1 @@
+{"language":"hu","title":"diktálási hangfelvételek mentése","words":[],"phrases":["diktálások hangjának mentése későbbi visszahallgatáshoz","ne mentse el az új diktálások hangját"]}
