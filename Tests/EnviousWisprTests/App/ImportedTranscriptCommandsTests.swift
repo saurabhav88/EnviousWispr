@@ -150,6 +150,7 @@ struct ImportedTranscriptCommandsTests {
     #expect(coordinator.currentRow(id: row.id)?.speakerAnalysis != .labeled(count: 2))
   }
 
+  #if DEBUG
   @Test("a Cancel while the replacement's check runs wins, at the start and at the commit")
   func cancelDuringDigestWins() async throws {
     let coordinator = makeCoordinator()
@@ -167,6 +168,7 @@ struct ImportedTranscriptCommandsTests {
         == false)
     #expect(coordinator.currentRow(id: row.id)?.text == "old words")
   }
+  #endif
 
   @Test("deleting an import stops its players")
   func deletionStopsPlayers() async throws {
