@@ -353,7 +353,7 @@ struct HistoryDictationCard: View {
         } label: {
           EnviousButtonLabel(
             LocalizedStringResource(
-              "Save as", comment: "History dictation card: saves the text to a file."),
+              "Save as…", comment: "Export button: save the transcript to a file."),
             size: .medium, systemImage: "square.and.arrow.down")
         }
         .settingsButton(.quiet, size: .medium, isEnabled: true)
