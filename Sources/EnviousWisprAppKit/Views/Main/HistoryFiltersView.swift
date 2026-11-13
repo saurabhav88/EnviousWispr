@@ -32,9 +32,9 @@ struct HistoryFiltersView: View {
               "Done selecting", comment: "History: leaves selection mode.")
             : LocalizedStringResource(
               "Select", comment: "History: enters selection mode to delete several items."),
-          systemImage: "checkmark.circle")
+          size: .medium, systemImage: "checkmark.circle")
       }
-      .settingsButton(isSelecting ? .filled : .outlined, isEnabled: true)
+      .settingsButton(isSelecting ? .filled : .outlined, size: .medium, isEnabled: true)
       SettingsInfoButton(
         rowTitle: String(localized: "History", comment: "History: the page name."),
         tooltip: String(
@@ -127,9 +127,9 @@ struct HistoryFiltersView: View {
     Button {
       openPicker = picker
     } label: {
-      EnviousButtonLabel(verbatim: title, trailingSystemImage: "chevron.down")
+      EnviousButtonLabel(verbatim: title, size: .medium, trailingSystemImage: "chevron.down")
     }
-    .settingsButton(isActive ? .filled : .outlined, isEnabled: true)
+    .settingsButton(isActive ? .filled : .outlined, size: .medium, isEnabled: true)
     .popover(
       isPresented: Binding(
         get: { openPicker == picker },
@@ -454,7 +454,7 @@ private struct HistoryDatePicker: View {
   private var monthHeader: some View {
     HStack {
       Button { shiftMonth(-1) } label: { Image(systemName: "chevron.left") }
-        .buttonStyle(.borderless)
+        .settingsButton(.quiet, size: .medium, isEnabled: true)
         .accessibilityLabel(String(localized: "Previous month", comment: "History date picker: shows the month before."))
       Spacer()
       Text(month.formatted(.dateTime.month(.wide).year()))
@@ -462,8 +462,9 @@ private struct HistoryDatePicker: View {
         .foregroundStyle(.stTextPrimary)
       Spacer()
       Button { shiftMonth(1) } label: { Image(systemName: "chevron.right") }
-        .buttonStyle(.borderless)
-        .disabled(calendar.isDate(month, equalTo: Date(), toGranularity: .month))
+        .settingsButton(
+          .quiet, size: .medium,
+          isEnabled: calendar.isDate(month, equalTo: Date(), toGranularity: .month) == false)
         .accessibilityLabel(String(localized: "Next month", comment: "History date picker: shows the month after."))
     }
   }

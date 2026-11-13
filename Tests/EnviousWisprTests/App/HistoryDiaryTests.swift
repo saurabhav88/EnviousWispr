@@ -208,6 +208,51 @@ struct HistoryDiaryTests {
       "the dictation player is not a meetings feature")
   }
 
+  @Test("a day of thousands of items on page one still counts every one of them")
+  func largeDayCountsAll() {
+    let items = (0..<5_000).map { Self.item(daysAgo: 0, minutes: 900 - $0 / 10) }
+      + [Self.item(daysAgo: 1, minutes: 10)]
+    let days = HistoryDiaryLayout.days(items: items, boundary: 30, calendar: Self.calendar)
+    #expect(days.count == 1)
+    #expect(days[0].items.count == 30)
+    #expect(days[0].total == 5_000)
+    let entries = HistoryDiaryLayout.entries(days)
+    #expect(entries.count == 31, "one heading, then the 30 drawn items")
+    #expect(entries.first?.id == .day(days[0].start))
+  }
+
+  @Test("opening the live meeting under a filter that hides it clears the filters; a listed one keeps them")
+  func openingUnderAHidingFilter() async throws {
+    let coordinator = TranscriptCoordinator(
+      store: TranscriptStore(
+        directory: TestTemporaryDirectory.url
+          .appendingPathComponent("ew-3147-open-\(UUID().uuidString)", isDirectory: true)))
+    let meetingID = UUID()
+    coordinator.setTranscriptsForTesting([Transcript(text: "standup", meetingID: meetingID)])
+    let id = HistoryItemID.meeting(meetingID)
+
+    var filtered = HistoryTabState()
+    let calendar = Calendar.current
+    let lastWeek = calendar.date(byAdding: .day, value: -7, to: calendar.startOfDay(for: Date()))!
+    filtered.dateInterval = DateInterval(start: lastWeek, duration: 86_400)
+    filtered.query = "budget"
+    coordinator.setHistoryState(filtered, for: .meetings)
+    let listed = coordinator.matchingHistoryItems(in: .meetings).contains { $0.id == id }
+    #expect(listed == false, "precondition: the filter hides today's meeting")
+
+    let opened = HistoryDiaryLayout.opening(
+      id, in: coordinator.historyState(for: .meetings), isListed: listed)
+    coordinator.setHistoryState(opened, for: .meetings)
+    #expect(coordinator.historyState(for: .meetings).openItemID == id)
+    #expect(coordinator.historyState(for: .meetings).dateInterval == nil)
+
+    var kept = HistoryTabState()
+    kept.query = "standup"
+    let stays = HistoryDiaryLayout.opening(id, in: kept, isListed: true)
+    #expect(stays.query == "standup")
+    #expect(stays.openItemID == id)
+  }
+
   @Test("an open transcript stays open on its tab while the person uses another tab")
   func openItemSurvivesTabSwitch() async throws {
     let coordinator = TranscriptCoordinator(

@@ -63,6 +63,8 @@ struct HistoryDiaryView<
         HistoryDiaryList(
           coordinator: coordinator, tab: tab, state: state, selection: selection,
           isSelecting: isSelecting, open: open, dictationCard: dictationCard)
+        // Its own identity per tab, so each tab's list restores and saves its own place.
+        .id(tab)
       }
     }
     .onChange(of: tab) { _, _ in
@@ -114,6 +116,9 @@ private struct HistoryDiaryList<DictationCard: View>: View {
   let open: (HistoryItemID) -> Void
   let dictationCard: (UUID) -> DictationCard
 
+  /// The entry at the top of the scrolled list.
+  @State private var position: HistoryDiaryLayout.EntryID?
+
   var body: some View {
     let items = coordinator.matchingHistoryItems(in: tab)
     let context = HistoryPaging.Context(tab: tab, state: state)
@@ -125,47 +130,54 @@ private struct HistoryDiaryList<DictationCard: View>: View {
       items: items, boundary: window.boundary, calendar: .current)
     let now = Date()
 
-    ScrollViewReader { proxy in
-      ScrollView {
-        LazyVStack(alignment: .leading, spacing: 12) {
-          ForEach(days) { day in
+    ScrollView {
+      // One flat list of day headings and items, so every row is a direct scroll target and
+      // the scroll position can name the item at the top.
+      LazyVStack(alignment: .leading, spacing: 12) {
+        ForEach(HistoryDiaryLayout.entries(days)) { entry in
+          switch entry {
+          case .day(let day):
             HistoryDayHeader(
               tab: tab, day: day, now: now, isSelecting: isSelecting,
               selectDay: { selectDay(day.start, in: items) })
-            ForEach(day.items, id: \.id) { item in
-              row(for: item, items: items)
-                .id(item.id)
-                .onAppear {
-                  // A best-effort prefetch hint: it can come early, together with other rows,
-                  // or twice; `loadMore` accepts one request per window.
-                  if item.id == window.tail, let request { loadMore(request) }
-                }
-            }
-          }
-          if let request {
-            Button {
-              loadMore(request)
-            } label: {
-              Text(
-                "Load more history",
-                comment:
-                  "History list: the button at the end of the shown rows that shows older ones."
-              )
-              .font(.stHelper)
-              .foregroundStyle(.stTextSecondary)
-              .frame(maxWidth: .infinity)
-              .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
+          case .item(let item):
+            row(for: item, items: items)
+              .onAppear {
+                // A best-effort prefetch hint: it can come early, together with other rows,
+                // or twice; `loadMore` accepts one request per window.
+                if item.id == window.tail, let request { loadMore(request) }
+              }
           }
         }
-        .padding(.horizontal, SettingsLayout.contentH)
-        .padding(.bottom, SettingsLayout.contentBottom)
+        if let request {
+          Button {
+            loadMore(request)
+          } label: {
+            Text(
+              "Load more history",
+              comment:
+                "History list: the button at the end of the shown rows that shows older ones."
+            )
+            .font(.stHelper)
+            .foregroundStyle(.stTextSecondary)
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
+          }
+          .buttonStyle(.plain)
+        }
       }
-      .onAppear {
-        if let anchor = state.scrollAnchorID { proxy.scrollTo(anchor, anchor: .center) }
-      }
+      .scrollTargetLayout()
+      .padding(.horizontal, SettingsLayout.contentH)
+      .padding(.bottom, SettingsLayout.contentBottom)
     }
+    .scrollPosition(id: $position, anchor: .top)
+    // Each tab keeps its place (#3147 §3.3): restored when its list appears, saved when it
+    // leaves for another tab or an open item. Saved once, not on every scroll step, so scrolling
+    // does not re-render the page.
+    .onAppear {
+      if let anchor = state.scrollAnchorID { position = .item(anchor) }
+    }
+    .onDisappear(perform: savePosition)
     .scrollContentBackground(.hidden)
     .background(Color.stPageBg)
     // #4001 step 2a: the recording state is read inside the modifier, not by this body.
@@ -196,35 +208,49 @@ private struct HistoryDiaryList<DictationCard: View>: View {
       if isSelecting {
         HistorySelectionBox(
           isSelected: selection.selectedIDs.contains(item.id),
-          toggle: { extending in
-            if extending {
-              selection.extend(to: item.id, in: items.map(\.id))
-            } else {
-              selection.toggle(item.id)
-            }
-          })
+          toggle: { extending in tick(item.id, extending: extending, items: items) })
       }
       switch item {
       case .transcript(let row) where row.isImported == false:
         dictationCard(row.id)
       case .transcript(let row):
-        openableCard(item.id) { TranscriptRowView(transcript: row) }
+        openableCard(item.id, items: items) { TranscriptRowView(transcript: row) }
       case .meeting(let meeting):
-        openableCard(item.id) { MeetingRowView(meeting: meeting) }
+        openableCard(item.id, items: items) { MeetingRowView(meeting: meeting) }
       }
     }
   }
 
   /// A short card that opens its destination, or ticks itself while selecting.
   private func openableCard<Content: View>(
-    _ id: HistoryItemID, @ViewBuilder content: () -> Content
+    _ id: HistoryItemID, items: [HistoryListItem], @ViewBuilder content: () -> Content
   ) -> some View {
     Button {
-      if isSelecting { selection.toggle(id) } else { open(id) }
+      guard isSelecting else { return open(id) }
+      tick(id, extending: NSEvent.modifierFlags.contains(.shift), items: items)
     } label: {
       content()
     }
     .buttonStyle(.plain)
+  }
+
+  /// Stores the item at the top as the tab's scroll anchor; a heading at the top stores
+  /// nothing new.
+  private func savePosition() {
+    guard case .item(let id) = position else { return }
+    var live = coordinator.historyState(for: tab)
+    guard live.scrollAnchorID != id else { return }
+    live.scrollAnchorID = id
+    coordinator.setHistoryState(live, for: tab)
+  }
+
+  /// One tick from a tick box or a card: Shift extends the range from the last ticked item.
+  private func tick(_ id: HistoryItemID, extending: Bool, items: [HistoryListItem]) {
+    if extending {
+      selection.extend(to: id, in: items.map(\.id))
+    } else {
+      selection.toggle(id)
+    }
   }
 
   private func selectDay(_ day: Date, in items: [HistoryListItem]) {
@@ -276,9 +302,10 @@ private struct HistoryDayHeader: View {
         Button(action: selectDay) {
           EnviousButtonLabel(
             LocalizedStringResource(
-              "Select day", comment: "History selection: ticks every item listed on this day."))
+              "Select day", comment: "History selection: ticks every item listed on this day."),
+            size: .medium)
         }
-        .settingsButton(.quiet, isEnabled: true)
+        .settingsButton(.quiet, size: .medium, isEnabled: true)
       }
     }
     .padding(.top, 8)
@@ -323,9 +350,9 @@ private struct HistoryDestinationBar: View {
   var body: some View {
     Button(action: close) {
       EnviousButtonLabel(
-        verbatim: HistoryDiaryLayout.tabTitle(tab), systemImage: "chevron.left")
+        verbatim: HistoryDiaryLayout.tabTitle(tab), size: .medium, systemImage: "chevron.left")
     }
-    .settingsButton(.quiet, isEnabled: true)
+    .settingsButton(.quiet, size: .medium, isEnabled: true)
     .accessibilityLabel(
       String(
         localized: "Back to \(HistoryDiaryLayout.tabTitle(tab))",
@@ -365,9 +392,9 @@ private struct HistoryMeetingsBar: View {
       switch meetings.phase {
       case .idle:
         Button(action: startMeeting) {
-          EnviousButtonLabel(MeetingsCopy.startRecording, systemImage: "record.circle")
+          EnviousButtonLabel(MeetingsCopy.startRecording, size: .medium, systemImage: "record.circle")
         }
-        .settingsButton(.filled, isEnabled: startFlow.waitingForMicrophone == nil)
+        .settingsButton(.filled, size: .medium, isEnabled: startFlow.waitingForMicrophone == nil)
       case .starting, .stopping:
         ProgressView().controlSize(.small)
       case .recording(let meetingID, _):
@@ -378,9 +405,9 @@ private struct HistoryMeetingsBar: View {
             LocalizedStringResource(
               "Show the recording",
               comment: "History, Meetings: opens the meeting that is recording now."),
-            systemImage: "record.circle")
+            size: .medium, systemImage: "record.circle")
         }
-        .settingsButton(.outlined, isEnabled: true)
+        .settingsButton(.outlined, size: .medium, isEnabled: true)
       }
     }
   }
@@ -393,8 +420,10 @@ private struct HistoryMeetingsBar: View {
   }
 
   private func openMeeting(_ meetingID: UUID) {
-    var state = coordinator.historyState(for: .meetings)
-    state.openItemID = .meeting(meetingID)
+    let id = HistoryItemID.meeting(meetingID)
+    let isListed = coordinator.matchingHistoryItems(in: .meetings).contains { $0.id == id }
+    let state = HistoryDiaryLayout.opening(
+      id, in: coordinator.historyState(for: .meetings), isListed: isListed)
     coordinator.setHistoryState(state, for: .meetings)
   }
 }
@@ -410,6 +439,30 @@ enum HistoryDiaryLayout {
     let total: Int
 
     var id: Date { start }
+  }
+
+  /// A day heading or an item, in drawing order.
+  enum Entry: Identifiable {
+    case day(Day)
+    case item(HistoryListItem)
+
+    var id: EntryID {
+      switch self {
+      case .day(let day): .day(day.start)
+      case .item(let item): .item(item.id)
+      }
+    }
+  }
+
+  /// The identity of an entry: the scroll position names one of these.
+  enum EntryID: Hashable {
+    case day(Date)
+    case item(HistoryItemID)
+  }
+
+  /// `days` flattened: each heading followed by its drawn items.
+  static func entries(_ days: [Day]) -> [Entry] {
+    days.flatMap { day in [.day(day)] + day.items.map { .item($0) } }
   }
 
   /// The tabs in the strip, in order, with the Settings tab-strip look.
@@ -453,15 +506,42 @@ enum HistoryDiaryLayout {
     let drawn = min(boundary, items.count)
     while index < drawn {
       let start = calendar.startOfDay(for: items[index].createdAt)
-      var end = index
-      while end < items.count, calendar.startOfDay(for: items[end].createdAt) == start {
-        end += 1
-      }
+      let end = firstIndex(before: start, in: items, from: index)
       result.append(
         Day(start: start, items: Array(items[index..<min(end, drawn)]), total: end - index))
       index = end
     }
     return result
+  }
+
+  /// `state` with `id` open. When a search or filter hides the item (a meeting that just started
+  /// on a tab filtered to yesterday), they are cleared so the item can open, as the old Show the
+  /// recording cleared the search; otherwise the person's filters stay.
+  static func opening(_ id: HistoryItemID, in state: HistoryTabState, isListed: Bool)
+    -> HistoryTabState
+  {
+    var next = state
+    if isListed == false {
+      next.query = ""
+      next.app = .all
+      next.dateInterval = nil
+      next.speakerCount = nil
+      next.callApp = nil
+    }
+    next.openItemID = id
+    return next
+  }
+
+  /// The first index at or after `from` whose item was created before `start`, by binary search
+  /// over the newest-first list, so a day with thousands of items costs a few comparisons.
+  private static func firstIndex(before start: Date, in items: [HistoryListItem], from: Int) -> Int {
+    var low = from
+    var high = items.count
+    while low < high {
+      let mid = (low + high) / 2
+      if items[mid].createdAt < start { high = mid } else { low = mid + 1 }
+    }
+    return low
   }
 
   /// Every listed item on `day`, drawn or not: what Select day ticks.

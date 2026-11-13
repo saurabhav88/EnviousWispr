@@ -30,25 +30,25 @@ struct HistorySelectionToolbar: View {
             "Select all matching",
             comment:
               "History selection: ticks every item in this tab under its search and filters, on every page."
-          ))
+          ), size: .medium)
       }
-      .settingsButton(.outlined, isEnabled: selection.isDeleting == false)
+      .settingsButton(.outlined, size: .medium, isEnabled: selection.isDeleting == false)
       if HistorySelectionCopy.offersRecordingsOnly(tab) {
         Button(role: .destructive) {
           pendingKind = .recordingsOnly
         } label: {
           EnviousButtonLabel(
-            verbatim: HistorySelectionCopy.deleteButton(tab: tab, kind: .recordingsOnly))
+            verbatim: HistorySelectionCopy.deleteButton(tab: tab, kind: .recordingsOnly), size: .medium)
         }
-        .settingsButton(.outlined, isEnabled: count > 0 && selection.isDeleting == false)
+        .settingsButton(.outlined, size: .medium, isEnabled: count > 0 && selection.isDeleting == false)
       }
       Button(role: .destructive) {
         pendingKind = .textAndRecordings
       } label: {
         EnviousButtonLabel(
-          verbatim: HistorySelectionCopy.deleteButton(tab: tab, kind: .textAndRecordings))
+          verbatim: HistorySelectionCopy.deleteButton(tab: tab, kind: .textAndRecordings), size: .medium)
       }
-      .settingsButton(.destructive, isEnabled: count > 0 && selection.isDeleting == false)
+      .settingsButton(.destructive, size: .medium, isEnabled: count > 0 && selection.isDeleting == false)
       if selection.isDeleting {
         ProgressView().controlSize(.small)
       }
