@@ -184,8 +184,11 @@ final class ImportedSources: ImportedSourceAccessing {
     }
     if let fresh = first.refreshedBookmark, let refreshed = await refresh(resolved, with: fresh) {
       resolved = refreshed
-      // The refresh's own write stopped this row's players; that is not a deletion.
-      fence = currentFence(rowID)
+      // The refresh's own write stopped this row's players (one more deletion count); that is
+      // not a deletion. Only that component moves: a Delete All or an invalidation during the
+      // write still fences this lookup.
+      fence = Fence(
+        deletions: currentFence(rowID).deletions, epoch: fence.epoch, sweep: fence.sweep)
     }
 
     let audio: ImportedFilePlaybackAudio
