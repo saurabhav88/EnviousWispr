@@ -9,7 +9,7 @@
   import EnviousWisprAppKitTestSupport
 
   /// #4001: when these fail, History shows a stale list (a row added, replaced, deleted, expired,
-  /// filtered or searched does not appear or disappear), counts, selection or empties disagree
+  /// filtered or searched does not appear or disappear), counts or a tab's open item disagree
   /// with the list, or the window stops redrawing when something changes, because the list is
   /// now built once and kept.
   @MainActor
@@ -80,9 +80,10 @@
       let filteredRowIDs: [UUID]
       let listedCount: Int
       let deletableCount: Int
-      let emptyState: HistoryEmptyState?
-      let detail: String
-      let selected: HistoryItemID?
+      /// Each tab's matching items under its own search and filters, in `HistoryTab` order.
+      let tabItems: [[HistoryItemID]]
+      /// Each tab's open item, as History reads it.
+      let open: [HistoryItemID?]
     }
 
     static func snapshot(_ c: TranscriptCoordinator) -> Snapshot {
@@ -94,17 +95,11 @@
           held: item.row?.escapeRecoveredAt != nil, recordState: record?.state,
           recordTitle: record?.title)
       }
-      let detail: String
-      switch c.detail {
-      case .row(let row): detail = "row \(row.id) \(row.displayText)"
-      case .meeting(let meeting): detail = "meeting \(meeting.meetingID) \(meeting.row?.id as Any)"
-      case .liveFallback: detail = "live"
-      case .empty: detail = "empty"
-      }
       return Snapshot(
         items: items, filteredRowIDs: c.filteredTranscripts.map(\.id),
-        listedCount: c.listedCount, deletableCount: c.deletableCount, emptyState: c.emptyState,
-        detail: detail, selected: c.selectedItemID)
+        listedCount: c.listedCount, deletableCount: c.deletableCount,
+        tabItems: HistoryTab.allCases.map { c.matchingHistoryItems(in: $0).map(\.id) },
+        open: HistoryTab.allCases.map { c.historyState(for: $0).openItemID })
     }
 
     static func expectAgree(_ w: World, _ step: String) {
@@ -233,18 +228,29 @@
             for c in w.both { c.setShowEcho(show, rowID: row.id) }
           }
         case 15:
-          let filter = HistoryFilter.allCases.randomElement(using: &rng)!
-          for c in w.both { c.historyFilter = filter }
+          // A tab's date filter: the last hour, an hour long window in the past, or none.
+          let tab = HistoryTab.allCases.randomElement(using: &rng)!
+          let interval = [
+            nil, DateInterval(start: w.time.addingTimeInterval(-3_600), end: w.time),
+            DateInterval(start: w.time.addingTimeInterval(-7_200), duration: 3_600),
+          ].randomElement(using: &rng)!
+          for c in w.both {
+            var state = c.historyState(for: tab)
+            state.dateInterval = interval
+            c.setHistoryState(state, for: tab)
+          }
         case 16:
+          let tab = HistoryTab.allCases.randomElement(using: &rng)!
           let query = ["", "zebra", "giraffe", "maria", "meeting"].randomElement(using: &rng)!
-          for c in w.both { c.searchQuery = query }
+          for c in w.both { c.setHistoryQuery(query, in: tab) }
         case 17:
-          let pick = w.cached.listedItems.randomElement(using: &rng)?.id
-          for c in w.both { c.selectedItemID = pick }
+          let tab = HistoryTab.allCases.randomElement(using: &rng)!
+          let pick = w.cached.matchingHistoryItems(in: tab).randomElement(using: &rng)?.id
+          for c in w.both { c.openHistoryItem(pick, in: tab) }
         case 18:
-          // Deleting the selected row moves the selection to a neighbour of a warmed list.
-          _ = w.cached.listedItems
-          if case .transcript(let id)? = w.cached.selectedItemID {
+          // Deleting the open dictation of a warmed list.
+          _ = w.cached.matchingHistoryItems(in: .dictations)
+          if case .transcript(let id)? = w.cached.historyState(for: .dictations).openItemID {
             for c in w.both { try? await c.removeRow(id: id) }
             // #4075 S1: each command now suspends, so both lists settle their post-removal
             // refresh before they are compared.
@@ -329,10 +335,10 @@
       let record = Self.record(at: w.time, ready: true)
       w.sources.records = [record]
       w.setRows([Self.meetingRow(record.id, words: "standup", at: w.time)])
-      for c in w.both { c.searchQuery = "zebra" }
-      #expect(w.cached.listedItems.isEmpty)
+      for c in w.both { c.setHistoryQuery("zebra", in: .meetings) }
+      #expect(w.cached.matchingHistoryItems(in: .meetings).isEmpty)
       w.sources.notes[record.id] = "ask about zebra"
-      #expect(w.cached.listedItems.map(\.id) == [.meeting(record.id)])
+      #expect(w.cached.matchingHistoryItems(in: .meetings).map(\.id) == [.meeting(record.id)])
       Self.expectAgree(w, "notes match")
     }
 
@@ -342,21 +348,21 @@
       let record = Self.record(at: w.time, ready: true)
       w.sources.records = [record]
       w.setRows([Self.meetingRow(record.id, words: "standup", at: w.time)])
-      for c in w.both { c.searchQuery = "ACME" }
-      #expect(w.cached.listedItems.isEmpty)
+      for c in w.both { c.setHistoryQuery("ACME", in: .meetings) }
+      #expect(w.cached.matchingHistoryItems(in: .meetings).isEmpty)
       w.sources.invited[record.id] = ["Dana Lee", "dana@acme.com", "acme.com"]
-      #expect(w.cached.listedItems.map(\.id) == [.meeting(record.id)], "case-insensitive substring")
+      #expect(w.cached.matchingHistoryItems(in: .meetings).map(\.id) == [.meeting(record.id)], "case-insensitive substring")
       Self.expectAgree(w, "invited match")
       let builds = w.cached.listBuildsForTesting
-      _ = w.cached.listedItems
+      _ = w.cached.matchingHistoryItems(in: .meetings)
       #expect(w.cached.listBuildsForTesting == builds, "unchanged input reuses the kept list")
       w.sources.invited[record.id] = ["Li Wu", "li@other.org", "other.org"]
-      #expect(w.cached.listedItems.isEmpty, "a changed list no longer matches")
+      #expect(w.cached.matchingHistoryItems(in: .meetings).isEmpty, "a changed list no longer matches")
       Self.expectAgree(w, "invited changed")
-      for c in w.both { c.searchQuery = "li wu" }
-      #expect(w.cached.listedItems.map(\.id) == [.meeting(record.id)])
+      for c in w.both { c.setHistoryQuery("li wu", in: .meetings) }
+      #expect(w.cached.matchingHistoryItems(in: .meetings).map(\.id) == [.meeting(record.id)])
       w.sources.invited[record.id] = nil
-      #expect(w.cached.listedItems.isEmpty, "removed terms no longer match")
+      #expect(w.cached.matchingHistoryItems(in: .meetings).isEmpty, "removed terms no longer match")
       Self.expectAgree(w, "invited removed")
     }
 
@@ -372,20 +378,24 @@
         Self.meetingRow(withheld.id, words: "standup", at: w.time),
       ])
       w.sources.invited = [processing.id: ["acme.com"], withheld.id: ["acme.com"]]
-      for c in w.both { c.searchQuery = "acme" }
-      #expect(w.cached.listedItems.contains { $0.id == .meeting(processing.id) } == false)
-      #expect(w.cached.listedItems.contains { $0.id == .meeting(withheld.id) } == false)
+      for c in w.both { c.setHistoryQuery("acme", in: .meetings) }
+      #expect(w.cached.matchingHistoryItems(in: .meetings).contains { $0.id == .meeting(processing.id) } == false)
+      #expect(w.cached.matchingHistoryItems(in: .meetings).contains { $0.id == .meeting(withheld.id) } == false)
       Self.expectAgree(w, "fenced")
     }
 
     /// After a kept answer, a `listedItems` read must be told about `change`.
-    func expectObserved(_ name: String, _ w: World, change: () -> Void) {
+    /// With `tab`, the reader is that tab's matching list instead.
+    func expectObserved(
+      _ name: String, _ w: World, tab: HistoryTab? = nil, change: () -> Void
+    ) {
       let c = w.cached
-      _ = c.listedItems
-      _ = c.listedItems  // the second read is a kept answer
+      let read = { if let tab { _ = c.matchingHistoryItems(in: tab) } else { _ = c.listedItems } }
+      read()
+      read()  // the second read is a kept answer
       let fired = Flag()
       withObservationTracking {
-        _ = c.listedItems
+        read()
       } onChange: {
         fired.value = true
       }
@@ -427,30 +437,33 @@
       await expectObserved("a row replaced under its id", w) {
         try? await c.saveAndShow(Transcript(id: first.id, text: "changed", createdAt: first.createdAt))
       }
-      expectObserved("a bulk replacement", w) {
+      expectObserved("a bulk replacement", w, tab: nil) {
         c.setTranscriptsForTesting(c.rawTranscriptsForTesting.reversed())
       }
-      expectObserved("the filter", w) { c.historyFilter = .dictations }
-      c.historyFilter = .all
-      expectObserved("the pulse", w) { c.bumpExpiryPulseForTesting() }
-      expectObserved("an echo choice", w) { c.setShowEcho(true, rowID: UUID()) }
-      expectObserved("a meeting record", w) { w.sources.records[0].title = "Zebra" }
-      expectObserved("the search", w) { c.searchQuery = "zebra" }
+      expectObserved("a tab's filter", w, tab: .dictations) {
+        var state = c.historyState(for: .dictations)
+        state.dateInterval = DateInterval(start: w.time.addingTimeInterval(-60), end: w.time)
+        c.setHistoryState(state, for: .dictations)
+      }
+      expectObserved("the pulse", w, tab: nil) { c.bumpExpiryPulseForTesting() }
+      expectObserved("an echo choice", w, tab: nil) { c.setShowEcho(true, rowID: UUID()) }
+      expectObserved("a meeting record", w, tab: nil) { w.sources.records[0].title = "Zebra" }
+      expectObserved("a tab's search", w, tab: .meetings) { c.setHistoryQuery("zebra", in: .meetings) }
       // While searching, each meeting's facts are watched, matching or not. The orphan's words,
       // title and speaker names do not match "zebra", so only its notes can make it a match.
-      expectObserved("an orphan's info", w) {
+      expectObserved("an orphan's info", w, tab: .meetings) {
         w.sources.infoOverride[orphan] = MeetingHistoryInfo(echoTurnIDs: [], title: "Giraffe")
       }
-      #expect(!c.listedItems.contains { $0.id == .meeting(orphan) })
-      expectObserved("unmatched notes", w) { w.sources.notes[orphan] = "zebra" }
-      #expect(c.listedItems.contains { $0.id == .meeting(orphan) })
-      expectObserved("a matched meeting's notes", w) { w.sources.notes[record.id] = "x" }
+      #expect(!c.matchingHistoryItems(in: .meetings).contains { $0.id == .meeting(orphan) })
+      expectObserved("unmatched notes", w, tab: .meetings) { w.sources.notes[orphan] = "zebra" }
+      #expect(c.matchingHistoryItems(in: .meetings).contains { $0.id == .meeting(orphan) })
+      expectObserved("a matched meeting's notes", w, tab: .meetings) { w.sources.notes[record.id] = "x" }
       w.sources.records[0].title = nil
-      #expect(c.listedItems.contains { $0.id == .meeting(record.id) } == false)
-      expectObserved("unmatched invited people", w) { w.sources.invited[record.id] = ["zebra co"] }
-      #expect(c.listedItems.contains { $0.id == .meeting(record.id) })
-      expectObserved("a matched meeting's invited people", w) { w.sources.invited[record.id] = [] }
-      #expect(c.listedItems.contains { $0.id == .meeting(record.id) } == false)
+      #expect(c.matchingHistoryItems(in: .meetings).contains { $0.id == .meeting(record.id) } == false)
+      expectObserved("unmatched invited people", w, tab: .meetings) { w.sources.invited[record.id] = ["zebra co"] }
+      #expect(c.matchingHistoryItems(in: .meetings).contains { $0.id == .meeting(record.id) })
+      expectObserved("a matched meeting's invited people", w, tab: .meetings) { w.sources.invited[record.id] = [] }
+      #expect(c.matchingHistoryItems(in: .meetings).contains { $0.id == .meeting(record.id) } == false)
       let row = try #require(c.rawTranscriptsForTesting.first { !$0.isMeeting })
       await expectObserved("a deletion", w) { try? await c.removeRow(id: row.id) }
     }
@@ -630,9 +643,9 @@
         let row = Self.twoTurnRow(record.id, at: w.time)
         w.setRows([row])
         func search() {
-          c.searchQuery = "friday"
-          _ = c.listedItems
-          c.searchQuery = ""
+          c.setHistoryQuery("friday", in: .meetings)
+          _ = c.matchingHistoryItems(in: .meetings)
+          c.setHistoryQuery("", in: .meetings)
         }
         if searchFirst { search() } else { _ = c.meetingPreviewText(of: row) }
         let built = c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting
@@ -643,9 +656,9 @@
           "searchFirst \(searchFirst): reused")
         // Hidden and unavailable meetings never match a search on their hidden words.
         w.sources.infoOverride[record.id] = MeetingHistoryInfo(echoTurnIDs: ["t0", "t1"])
-        c.searchQuery = "friday"
-        #expect(c.listedItems.isEmpty, "searchFirst \(searchFirst): hidden words do not match")
-        c.searchQuery = ""
+        c.setHistoryQuery("friday", in: .meetings)
+        #expect(c.matchingHistoryItems(in: .meetings).isEmpty, "searchFirst \(searchFirst): hidden words do not match")
+        c.setHistoryQuery("", in: .meetings)
       }
     }
 

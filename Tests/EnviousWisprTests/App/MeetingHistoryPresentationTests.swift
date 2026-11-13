@@ -80,7 +80,7 @@ struct MeetingHistoryPresentationTests {
     }
   }
 
-  @Test("a meeting is a Recording, never a Dictation or a Transcript, and never a dictation")
+  @Test("a meeting is listed on Meetings, never on Dictations or Transcripts, and never a dictation")
   func kindAndCounts() async throws {
     let rig = Rig()
     let dictation = Transcript(text: "a dictation", backendType: .parakeet)
@@ -88,45 +88,35 @@ struct MeetingHistoryPresentationTests {
     let meeting = try await rig.addMeeting()
     let meetingID = try #require(meeting.meetingID)
 
-    rig.coordinator.historyFilter = .dictations
-    #expect(rig.coordinator.listedItems.map(\.id) == [.transcript(dictation.id)])
-    rig.coordinator.historyFilter = .transcripts
-    #expect(rig.coordinator.listedItems.isEmpty)
-    #expect(rig.coordinator.emptyState == .noTranscripts)
-    rig.coordinator.historyFilter = .recordings
-    #expect(rig.coordinator.listedItems.map(\.id) == [.meeting(meetingID)])
-    rig.coordinator.historyFilter = .all
+    #expect(rig.coordinator.matchingHistoryItems(in: .dictations).map(\.id) == [.transcript(dictation.id)])
+    #expect(rig.coordinator.matchingHistoryItems(in: .transcripts).isEmpty)
+    #expect(rig.coordinator.matchingHistoryItems(in: .meetings).map(\.id) == [.meeting(meetingID)])
     #expect(rig.coordinator.listedCount == 2)
     #expect(rig.coordinator.dictationCount == 1)
   }
 
-  @Test("a meeting with no History row yet is one Meetings item, kept when its row lands")
+  @Test("a meeting with no History row yet is one Meetings item, kept open when its row lands")
   func meetingItemFromStartToRow() async throws {
     let rig = Rig()
     var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
     record.title = "Board review"
     rig.records = [record]
-    rig.coordinator.historyFilter = .recordings
-    #expect(rig.coordinator.listedItems.map(\.id) == [.meeting(record.id)])
-    #expect(rig.coordinator.emptyState == nil)
-    rig.coordinator.selectedItemID = .meeting(record.id)
-    guard case .meeting(let shown) = rig.coordinator.detail else {
-      Issue.record("the selected meeting is not the detail")
-      return
-    }
-    #expect(shown.row == nil)
+    let items = rig.coordinator.matchingHistoryItems(in: .meetings)
+    #expect(items.map(\.id) == [.meeting(record.id)])
+    #expect(items.first?.row == nil)
+    rig.coordinator.openHistoryItem(.meeting(record.id), in: .meetings)
+    #expect(rig.coordinator.openHistoryItemID(in: .meetings) == .meeting(record.id))
 
-    // Its row lands under the same meeting id: still one item, still selected.
+    // Its row lands under the same meeting id: still one item, still open.
     let row = MeetingHistoryPresentationTests.meetingRow(
       id: record.transcriptID, meetingID: record.id)
     try await rig.coordinator.saveAndShowDurably(row)
-    #expect(rig.coordinator.listedItems.map(\.id) == [.meeting(record.id)])
-    #expect(rig.coordinator.selectedItemID == .meeting(record.id))
-    #expect(rig.coordinator.listedItems.first?.row?.id == record.transcriptID)
+    #expect(rig.coordinator.matchingHistoryItems(in: .meetings).map(\.id) == [.meeting(record.id)])
+    #expect(rig.coordinator.openHistoryItemID(in: .meetings) == .meeting(record.id))
+    #expect(rig.coordinator.matchingHistoryItems(in: .meetings).first?.row?.id == record.transcriptID)
 
-    // Dictations never list it; the selection leaves with it.
-    rig.coordinator.historyFilter = .dictations
-    #expect(rig.coordinator.selectedItemID == nil)
+    // Dictations never list it.
+    #expect(rig.coordinator.matchingHistoryItems(in: .dictations).isEmpty)
   }
 
   @Test("History lists only meetings when its rows are all gone, and counts them for Delete All")
@@ -142,53 +132,42 @@ struct MeetingHistoryPresentationTests {
     var deleting = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
     deleting.deletionRequested = true
     rig.records = [recording, deleting]
-    #expect(rig.coordinator.emptyState == nil, "a meeting still recording is not nothing")
-    #expect(rig.coordinator.listedItems.map(\.id) == [.meeting(recording.id)])
+    #expect(rig.coordinator.matchingHistoryItems(in: .meetings).map(\.id) == [.meeting(recording.id)])
     #expect(rig.coordinator.deletableCount == 1)
 
     // Search covers finished meetings only (R35): one still recording never matches, even by
     // its title.
-    rig.coordinator.searchQuery = "stand"
-    #expect(rig.coordinator.listedItems.isEmpty)
-    rig.coordinator.searchQuery = ""
+    rig.coordinator.setHistoryQuery("stand", in: .meetings)
+    #expect(rig.coordinator.matchingHistoryItems(in: .meetings).isEmpty)
+    rig.coordinator.setHistoryQuery("", in: .meetings)
 
     await rig.coordinator.deleteAll()
     #expect(Set(marked) == [recording.id, deleting.id])
   }
 
-  @Test("deleting a meeting item asks EnviousMeet and moves the selection beside it")
+  @Test("deleting a meeting item asks EnviousMeet")
   func deleteMeetingItem() async throws {
     let rig = Rig()
     var asked: [UUID] = []
     rig.coordinator.deleteMeeting = { asked.append($0); return true }
-    let dictation = Transcript(
-      text: "older", backendType: .parakeet, createdAt: Date(timeIntervalSinceNow: -60))
-    try await rig.coordinator.saveAndShow(dictation)
     let record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
     rig.records = [record]
-    let item = try #require(rig.coordinator.listedItems.first)
+    let item = try #require(rig.coordinator.matchingHistoryItems(in: .meetings).first)
     #expect(item.id == .meeting(record.id))
-    rig.coordinator.selectedItemID = item.id
     await rig.coordinator.delete(item)
     #expect(asked == [record.id])
-    #expect(rig.coordinator.selectedItemID == .transcript(dictation.id))
   }
 
-  @Test("Show recordings lists Meetings with no search and selects the meeting")
+  @Test("Show meetings opens the Meetings tab with no search and opens the meeting")
   func showRecordings() async throws {
     let rig = Rig()
     let record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
     rig.records = [record]
-    rig.coordinator.searchQuery = "nothing matches"
-    rig.coordinator.showRecordings(meetingID: record.id)
-    #expect(rig.coordinator.historyFilter == .recordings)
-    #expect(rig.coordinator.searchQuery.isEmpty)
-    #expect(rig.coordinator.selectedItemID == .meeting(record.id))
-    // An empty Meetings filter says how to record one, also on a fresh install (R34).
-    rig.records = []
-    #expect(rig.coordinator.emptyState == .noRecordings)
-    rig.coordinator.historyFilter = .all
-    #expect(rig.coordinator.emptyState == .nothingYet)
+    rig.coordinator.setHistoryQuery("nothing matches", in: .meetings)
+    rig.coordinator.showMeetings(meetingID: record.id)
+    #expect(rig.coordinator.historyTab == .meetings)
+    #expect(rig.coordinator.historyState(for: .meetings).query.isEmpty)
+    #expect(rig.coordinator.openHistoryItemID(in: .meetings) == .meeting(record.id))
   }
 
   @Test("a meeting marked for deletion is never listed, not even as its History row")
@@ -200,7 +179,7 @@ struct MeetingHistoryPresentationTests {
     try await rig.coordinator.saveAndShowDurably(row)
     record.deletionRequested = true
     rig.records = [record]
-    #expect(rig.coordinator.listedItems.isEmpty, "its deletion is running, stalled or failed")
+    #expect(rig.coordinator.matchingHistoryItems(in: .meetings).isEmpty, "its deletion is running, stalled or failed")
   }
 
   @Test("a finished meeting is searched by its words; while it is transcribed again it is not")
@@ -214,93 +193,24 @@ struct MeetingHistoryPresentationTests {
     record.state = .ready
     rig.records = [record]
     let word = try #require(row.text.split(separator: " ").first.map(String.init))
-    rig.coordinator.searchQuery = word
-    #expect(rig.coordinator.listedItems.map(\.id) == [.meeting(record.id)])
+    rig.coordinator.setHistoryQuery(word, in: .meetings)
+    #expect(rig.coordinator.matchingHistoryItems(in: .meetings).map(\.id) == [.meeting(record.id)])
     record.state = .processing  // Transcribe again keeps the old row
     rig.records = [record]
-    #expect(rig.coordinator.listedItems.isEmpty)
+    #expect(rig.coordinator.matchingHistoryItems(in: .meetings).isEmpty)
   }
 
-  #if DEBUG
-    @Test("a meeting removed elsewhere leaves no stale selection once EnviousMeet publishes")
-    func externalRemovalClearsSelection() async throws {
-      let rig = Rig()
-      let record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
-      rig.records = [record]
-      rig.coordinator.selectedItemID = .meeting(record.id)
-      rig.records = []
-      rig.coordinator.meetingsDidChange()
-      // #4001 H4: the reconcile is queued; until it runs, the gone meeting shows nothing.
-      guard case .empty = rig.coordinator.detail else {
-        Issue.record("a removed meeting must resolve to an empty detail before the reconcile runs")
-        return
-      }
-      let pending = try #require(rig.coordinator.pendingMeetingReconcileForTesting)
-      await pending.value
-      #expect(rig.coordinator.selectedItemID == nil)
-      guard case .empty = rig.coordinator.detail else {
-        Issue.record("still empty after the reconcile")
-        return
-      }
-    }
-
-    @Test("a burst of meeting changes shares one reconcile and one list build (#4001 H4)")
-    func burstSharesOneReconcile() async throws {
-      let rig = Rig()
-      var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
-      rig.records = [record]
-      rig.coordinator.selectedItemID = .meeting(record.id)
-      _ = rig.coordinator.listedItems.count
-      let before = rig.coordinator.listBuildsForTesting
-      rig.coordinator.meetingsDidChange()
-      let first = try #require(rig.coordinator.pendingMeetingReconcileForTesting)
-      for i in 1...4 {
-        record.title = "title \(i)"
-        rig.records = [record]
-        rig.coordinator.meetingsDidChange()
-        #expect(rig.coordinator.pendingMeetingReconcileForTesting == first)
-      }
-      await first.value
-      #expect(rig.coordinator.listBuildsForTesting - before == 1)
-      #expect(rig.coordinator.selectedItemID == .meeting(record.id))
-      #expect(rig.coordinator.pendingMeetingReconcileForTesting == nil)
-
-      // A later change schedules a new reconcile.
-      rig.records = []
-      rig.coordinator.meetingsDidChange()
-      let second = try #require(rig.coordinator.pendingMeetingReconcileForTesting)
-      #expect(second != first)
-      await second.value
-      #expect(rig.coordinator.selectedItemID == nil)
-    }
-
-    @Test("a selection made before the queued reconcile runs is kept (#4001 H4)")
-    func newerSelectionSurvives() async throws {
-      let rig = Rig()
-      let gone = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
-      let kept = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
-      rig.records = [gone, kept]
-      rig.coordinator.selectedItemID = .meeting(gone.id)
-      rig.records = [kept]
-      rig.coordinator.meetingsDidChange()
-      rig.coordinator.selectedItemID = .meeting(kept.id)
-      await rig.coordinator.pendingMeetingReconcileForTesting?.value
-      #expect(rig.coordinator.selectedItemID == .meeting(kept.id))
-    }
-
-    @Test("a reconcile with nothing to check builds no list (#4001 H4)")
-    func nothingToCheckBuildsNothing() async throws {
-      let rig = Rig()
-      var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
-      rig.records = [record]
-      record.title = "changed"
-      rig.records = [record]
-      let before = rig.coordinator.listBuildsForTesting
-      rig.coordinator.meetingsDidChange()
-      await rig.coordinator.pendingMeetingReconcileForTesting?.value
-      #expect(rig.coordinator.listBuildsForTesting == before, "no selection, no fallback row")
-    }
-  #endif
+  @Test("a meeting removed elsewhere closes once EnviousMeet stops listing it")
+  func externalRemovalClearsSelection() async throws {
+    let rig = Rig()
+    let record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    rig.records = [record]
+    rig.coordinator.openHistoryItem(.meeting(record.id), in: .meetings)
+    #expect(rig.coordinator.openHistoryItemID(in: .meetings) == .meeting(record.id))
+    rig.records = []
+    rig.coordinator.meetingsDidChange()
+    #expect(rig.coordinator.openHistoryItemID(in: .meetings) == nil)
+  }
 
   @Test("a meeting is never the last dictation to paste or copy again")
   func neverReusedAsLastDictation() async throws {
@@ -374,14 +284,14 @@ struct MeetingHistoryPresentationTests {
     rig.infos[meetingID] = MeetingHistoryInfo(echoTurnIDs: ["m1-1000"], title: "Board sync")
     try await rig.coordinator.saveAndShowDurably(row)
 
-    rig.coordinator.searchQuery = "agree"
-    #expect(rig.coordinator.filteredTranscripts.map(\.id) == [row.id])
-    rig.coordinator.searchQuery = "Board"
-    #expect(rig.coordinator.filteredTranscripts.map(\.id) == [row.id])
-    rig.coordinator.searchQuery = "Secret"
-    #expect(rig.coordinator.filteredTranscripts.isEmpty)
+    rig.coordinator.setHistoryQuery("agree", in: .meetings)
+    #expect(rig.coordinator.matchingRowIDs(in: .meetings) == [row.id])
+    rig.coordinator.setHistoryQuery("Board", in: .meetings)
+    #expect(rig.coordinator.matchingRowIDs(in: .meetings) == [row.id])
+    rig.coordinator.setHistoryQuery("Secret", in: .meetings)
+    #expect(rig.coordinator.matchingHistoryItems(in: .meetings).isEmpty)
     rig.coordinator.setShowEcho(true, rowID: row.id)
-    #expect(rig.coordinator.filteredTranscripts.map(\.id) == [row.id])
+    #expect(rig.coordinator.matchingRowIDs(in: .meetings) == [row.id])
   }
 
   @Test("both gap markers stay in the delivered text")
@@ -679,11 +589,11 @@ struct MeetingHistoryPresentationTests {
     record.state = .ready
     rig.records = [record]
     rig.coordinator.meetingNotes = { $0 == record.id ? "Ask Priya about the budget" : nil }
-    rig.coordinator.searchQuery = "priya"
-    #expect(rig.coordinator.listedItems.map(\.id) == [.meeting(record.id)])
+    rig.coordinator.setHistoryQuery("priya", in: .meetings)
+    #expect(rig.coordinator.matchingHistoryItems(in: .meetings).map(\.id) == [.meeting(record.id)])
     record.state = .processing
     rig.records = [record]
-    #expect(rig.coordinator.listedItems.isEmpty, "finished meetings only, notes included")
+    #expect(rig.coordinator.matchingHistoryItems(in: .meetings).isEmpty, "finished meetings only, notes included")
   }
 
   @Test("#4286: a finished meeting is found by an invited name, email or domain absent from its words")
@@ -701,25 +611,25 @@ struct MeetingHistoryPresentationTests {
       $0 == record.id ? ["Dana Lee", "dana@acme.com", "acme.com", "Kim"] : []
     }
     for query in ["dana lee", "DANA@ACME.COM", "acme.com", "kim"] {
-      rig.coordinator.searchQuery = query
-      #expect(rig.coordinator.listedItems.map(\.id) == [.meeting(record.id)], "query: \(query)")
+      rig.coordinator.setHistoryQuery(query, in: .meetings)
+      #expect(rig.coordinator.matchingHistoryItems(in: .meetings).map(\.id) == [.meeting(record.id)], "query: \(query)")
     }
-    rig.coordinator.searchQuery = "globex"
-    #expect(rig.coordinator.listedItems.isEmpty, "a term nobody was invited by")
+    rig.coordinator.setHistoryQuery("globex", in: .meetings)
+    #expect(rig.coordinator.matchingHistoryItems(in: .meetings).isEmpty, "a term nobody was invited by")
 
-    rig.coordinator.searchQuery = "acme"
+    rig.coordinator.setHistoryQuery("acme", in: .meetings)
     rig.infos[record.id] = nil
-    #expect(rig.coordinator.listedItems.isEmpty, "no facts may be shown, so no invited match")
+    #expect(rig.coordinator.matchingHistoryItems(in: .meetings).isEmpty, "no facts may be shown, so no invited match")
     let unrelatedGeneration = UUID()
     try #require(unrelatedGeneration != row.meetingTranscriptGeneration)
     rig.infos[record.id] = MeetingHistoryInfo(
       generation: unrelatedGeneration, echoTurnIDs: [], title: nil)
-    #expect(rig.coordinator.listedItems.isEmpty, "facts belong to another generation")
+    #expect(rig.coordinator.matchingHistoryItems(in: .meetings).isEmpty, "facts belong to another generation")
     rig.infos[record.id] = MeetingHistoryInfo(echoTurnIDs: [], title: nil)
-    #expect(rig.coordinator.listedItems.map(\.id) == [.meeting(record.id)], "valid facts again")
+    #expect(rig.coordinator.matchingHistoryItems(in: .meetings).map(\.id) == [.meeting(record.id)], "valid facts again")
     record.state = .failed
     rig.records = [record]
-    #expect(rig.coordinator.listedItems.isEmpty, "finished meetings only, invited people included")
+    #expect(rig.coordinator.matchingHistoryItems(in: .meetings).isEmpty, "finished meetings only, invited people included")
   }
 
   @Test("#4286: the detail's Invited line names invited people, an email when no name, one per email")

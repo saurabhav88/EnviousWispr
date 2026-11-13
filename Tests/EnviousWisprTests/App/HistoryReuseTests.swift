@@ -87,11 +87,6 @@ struct HistoryReuseTests {
     }
   #endif
 
-  private static func isEmpty(_ detail: HistoryDetail) -> Bool {
-    if case .empty = detail { return true }
-    return false
-  }
-
   // The coordinator's read and reuse counters exist only in Debug builds.
   #if DEBUG
     private func open(_ coordinator: TranscriptCoordinator) async {
@@ -244,22 +239,20 @@ struct HistoryReuseTests {
       let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
       await open(coordinator)
       let shown = try #require(coordinator.filteredTranscripts.first { $0.text == "hello" })
-      coordinator.selectedItemID = .transcript(shown.id)
+      coordinator.openHistoryItem(.transcript(shown.id), in: .dictations)
       try other.deleteAll()
       await open(coordinator)
       #expect(coordinator.diskReconcilerForTesting.historyFullReadsForTesting == 2)
       #expect(texts(coordinator).isEmpty)
       #expect(coordinator.lastPasteableDictation() == nil)
-      // #4075 R8: the selection and the pane let go of the deleted row, and Paste refuses it.
-      #expect(coordinator.selectedItemID == nil)
-      #expect(Self.isEmpty(coordinator.detail))
+      // #4075 R8: the open item lets go of the deleted row, and Paste refuses it.
+      #expect(coordinator.openHistoryItemID(in: .dictations) == nil)
       #expect(coordinator.textForDelivery(shown) == nil)
       // And it stays gone across another open, which reuses the read.
       await open(coordinator)
       #expect(texts(coordinator).isEmpty)
       #expect(coordinator.lastPasteableDictation() == nil)
-      #expect(coordinator.selectedItemID == nil)
-      #expect(Self.isEmpty(coordinator.detail))
+      #expect(coordinator.openHistoryItemID(in: .dictations) == nil)
       #expect(coordinator.textForDelivery(shown) == nil)
     }
 
@@ -275,7 +268,7 @@ struct HistoryReuseTests {
       let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
       await open(coordinator)
       #expect(coordinator.lastPasteableDictation()?.id == deleted.id)
-      coordinator.selectedItemID = .transcript(deleted.id)
+      coordinator.openHistoryItem(.transcript(deleted.id), in: .dictations)
 
       try other.delete(id: deleted.id)
       await open(coordinator)
@@ -283,13 +276,11 @@ struct HistoryReuseTests {
       #expect(texts(coordinator) == ["kept"])
       #expect(coordinator.lastPasteableDictation()?.id == kept.id)
       #expect(coordinator.lastDictationTextForReuse(id: deleted.id) == nil)
-      // #4075 R8, R5: the selection moves off the deleted row, and History Paste refuses it.
-      #expect(coordinator.selectedItemID == nil)
-      #expect(Self.isEmpty(coordinator.detail))
+      // #4075 R8, R5: the open item lets go of the deleted row, and History Paste refuses it.
+      #expect(coordinator.openHistoryItemID(in: .dictations) == nil)
       #expect(coordinator.textForDelivery(deleted) == nil)
       await open(coordinator)
-      #expect(coordinator.selectedItemID == nil)
-      #expect(Self.isEmpty(coordinator.detail))
+      #expect(coordinator.openHistoryItemID(in: .dictations) == nil)
       #expect(coordinator.textForDelivery(deleted) == nil)
     }
 
