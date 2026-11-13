@@ -39,51 +39,12 @@ struct AudioSettingsView: View {
   var body: some View {
     let settingsManager = settings
     @Bindable var settings = settings
-    // #2664: the device this page describes, computed ONCE per body (the Auto
-    // branch runs the resolver ladder, so two computed properties would pay for
-    // it twice). Since #2022 Auto names the device the ladder would actually
-    // OPEN, not the raw system default: printing "Using Krisp" while recording
-    // from the built-in microphone is the one thing the pill must not do. The
-    // "Using X" pill and the socket row both read this local, and the advisory
-    // hint uses the same rule, so the three can never disagree about one state.
-    // (#3385: the "Using X" pill became the dropdown card's own name line; it
-    // still reads this one local.)
-    let socketDevice = InputSocket.socketDevice(
-      preferredInputDeviceIDOverride: settingsManager.preferredInputDeviceIDOverride,
-      devices: audioDeviceList.availableInputDevices,
-      resolvedAutoInputDeviceID: AudioDeviceEnumerator.resolvedAutoInputDeviceID)
-    let inputDeviceSelection = Binding<String>(
-      get: { settingsManager.preferredInputDeviceIDOverride },
-      // #3486: a mic unplugged while the dropdown was open must not be saved.
-      set: { uid in
-        guard MicrophoneChoiceValidation.isSelectable(uid: uid) else { return }
-        settingsManager.chooseInputDevice(uid: uid)
-      }
-    )
-    // #2664: the socket control sits on the SAME line as the device picker,
-    // sized to its own text (founder, 2026-09-05: a full-width segmented bar
-    // for two options read as a giant purple slab). Only for a device
-    // reporting more than one input, and never for one whose UID could not
-    // be read (nothing to key a choice on, and an empty key would be shared
-    // by every such device). The DISPLAYED selection goes through the same
-    // pure rule HAL applies, so a saved index the device no longer has shows
-    // as Input 1. Stored 0-based; labelled from 1 like the sockets on the box.
-    let multiInputDevice = socketDevice.flatMap { device in
-      InputChannelSettings.offersChoice(uid: device.uid, inputChannelCount: device.inputChannelCount)
-        ? device : nil
-    }
-    // #3385: each device's transport, read once per body through the one
-    // vocabulary (`AudioDeviceEnumerator.transportLabel`) and reused by the
-    // menu rows and the card, so the two can never disagree.
-    let transportTokens = Dictionary(
-      audioDeviceList.availableInputDevices.compactMap { device in
-        AudioDeviceEnumerator.transportLabel(for: device.id).map { (device.id, $0) }
-      },
-      uniquingKeysWith: { first, _ in first })
-    let devicePresentation = MicrophoneDevicePresentation.make(
-      preferredUID: settingsManager.preferredInputDeviceIDOverride,
-      resolvedDevice: socketDevice,
-      transportToken: socketDevice.flatMap { transportTokens[$0.id] })
+    // #4528 D6a: the picker's caller logic (the described device, the guarded
+    // selection, multi-input eligibility, transport tokens and the card's text)
+    // lives in `MicrophonePickerModel`, shared with Setup's Practice screen, so
+    // both screens describe and save a microphone the same way. Built once per body.
+    let microphone = MicrophonePickerModel(
+      settingsManager: settingsManager, devices: audioDeviceList.availableInputDevices)
 
     SettingsContentView {
       // The frozen-per-recording rule covers every control on this page, so it
@@ -111,17 +72,13 @@ struct AudioSettingsView: View {
               icon: "waveform",
               help: DictationSettingsCopy.Microphone.inputDeviceHelp
             ) {
-              MicrophoneDevicePicker(
-                selection: inputDeviceSelection,
-                devices: audioDeviceList.availableInputDevices,
-                presentation: devicePresentation,
-                transportTokens: transportTokens)
+              MicrophoneDevicePicker(model: microphone)
             }
             .rowStatus {
-              MicrophoneInUseStatus(displayedUID: devicePresentation.deviceUID)
+              MicrophoneInUseStatus(displayedUID: microphone.presentation.deviceUID)
             }
 
-            if let device = multiInputDevice {
+            if let device = microphone.multiInputDevice {
               let socketSelection = Binding<Int>(
                 get: {
                   InputChannelSettings.selection(
