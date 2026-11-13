@@ -1813,6 +1813,99 @@ def s_screens_de(run, speech):
     s.notes.append(f"VISUAL REVIEW OWED: {shots} de-* for truncation and layout")
     return s
 
+def s_practice_spoken(run, speech):
+    """U10/U11 (plan §11.1): accept every recommendation, reach Practice the real way, and speak
+    the practice line through the audio rig (BlackHole) while holding the real dictation key.
+    The take must land in the Practice box: the editor's text is read back through AX and must
+    contain the cleaned line. Inputs from the operator, run only by name:
+    EW_UAT_PRACTICE_LANG (en|de; for de the app must already run in German),
+    EW_UAT_PRACTICE_AUDIO (the spoken line, e.g. Azure TTS), EW_UAT_PRACTICE_EXPECT (the cleaned
+    line, compared without case or punctuation)."""
+    import re
+    import audio_rig
+    import wispr_eyes as w
+    s = Scenario("practice_spoken")
+    lang = os.environ.get("EW_UAT_PRACTICE_LANG", "en")
+    audio = os.environ.get("EW_UAT_PRACTICE_AUDIO", "")
+    expected = os.environ.get("EW_UAT_PRACTICE_EXPECT", "")
+    if not (audio and os.path.exists(audio) and expected):
+        s.expect(False, "practice audio and expected line given", (audio, expected))
+        return s
+    pid = run.app.client.pid
+    shots = os.path.join(run.artifacts, "shots")
+    os.makedirs(shots, exist_ok=True)
+
+    def norm(text):
+        return " ".join(re.sub(r"[^\w\s]", " ", text.lower()).split())
+
+    run.reset(s, "a fresh flow for the spoken practice take")
+    run.app.call("onboarding", "present")
+    run.send("next")
+    run.send("chooseLanguage", value=lang)
+    run.send("next")
+    rec = run.status().get("recommended") or {}
+    s.notes.append(f"recommended: {rec}")
+    run.send("chooseSpeech", value=rec.get("speech") or speech)
+    run.send("next")
+    run.send("next")  # polish intro to the pick
+    reply = run.send("next")  # the preselected (recommended) card
+    # Downloads, or straight past it when every chosen model is already installed.
+    s.expect(reply.get("step") in ("downloads", "permissions", "key"),
+             "the recommended polish moves on from the pick", reply.get("step"))
+    chosen = run.status().get("choices") or {}
+    s.notes.append(f"choices: {chosen}")
+    s.expect(chosen.get("polish") == rec.get("polish"),
+             "the committed polish is the recommended one", (chosen.get("polish"), rec.get("polish")))
+    if run.status().get("step") == "downloads":
+        run.send("next")
+    run.app.call("onboarding", "permissions", "--mic", "granted", "--ax", "granted")
+    run.until(lambda x: x.get("step") == "key", 8, "key")
+    run.send("next")
+    st = run.until(lambda x: x.get("step") == "practice" and x.get("practiceUsable") is True,
+                   180, "practice usable")
+    s.expect(st.get("step") == "practice" and st.get("practiceUsable") is True,
+             "Practice is ready with the recommended models", (st.get("step"), st.get("practiceUsable")))
+    if st.get("step") != "practice":
+        run.app.call("onboarding", "permissions", "--clear")
+        run.app.call("onboarding", "stop")
+        return s
+    time.sleep(1.0)  # test-fixture-timer: the editor rises and takes focus
+    wid = window_id(pid, SETUP_TITLE)
+    if wid is not None:
+        capture_window(wid, os.path.join(shots, f"practice-{lang}-before.png"))
+    try:
+        # Bring forward THIS build by path: `open -b` can launch another registered copy (#4556).
+        bundle = run.app.bundle
+
+        class ThisBuild(audio_rig.AppTarget):
+            def activate(self):
+                subprocess.run(["open", bundle], capture_output=True)
+
+        with audio_rig.AudioRig(target=ThisBuild("com.enviouswispr.app.dev")):
+            result = w.record_tts(sentence=f"practice line ({lang})", audio=audio,
+                                  wait=25.0, until_terminal=True)
+    except Exception as exc:  # SETUP FAILED or COULD NOT TELL from the rig: not an app result
+        s.expect(False, "the audio rig ran the take", repr(exc))
+        result = {}
+    s.notes.append(f"raw: {result.get('raw_asr')!r}")
+    s.notes.append(f"polished: {result.get('polished')!r} via {result.get('provider')!r}")
+    time.sleep(1.0)  # test-fixture-timer: the editor shows the pasted text
+    _, texts = setup_window_ax(pid)
+    want = norm(expected)
+    hit = [t for t in texts if want in norm(t)]
+    s.expect(bool(hit), "the cleaned practice line landed in the Practice box",
+             [t for t in texts if len(t) > 20][:6])
+    s.expect(bool(result.get("success")), "the take completed in the app's own log",
+             result.get("raw_asr"))
+    wid = window_id(pid, SETUP_TITLE)
+    if wid is not None:
+        capture_window(wid, os.path.join(shots, f"practice-{lang}-after.png"))
+    s.notes.append(f"after the take the step is {run.status().get('step')}")
+    run.app.call("onboarding", "permissions", "--clear")
+    run.app.call("onboarding", "stop")
+    return s
+
+
 SCENARIOS = {
     "fresh": s_fresh, "resume": s_resume, "restart": s_restart, "profiles": s_profiles,
     "permissions": s_permissions, "faults": s_faults, "completion": s_completion,
@@ -1824,6 +1917,7 @@ SCENARIOS = {
     "screens_d3b": s_screens_d3b,
     "screens_e": s_screens_e,
     "screens_de": s_screens_de,
+    "practice_spoken": s_practice_spoken,
 }
 
 
@@ -1945,8 +2039,10 @@ def cmd_run(args):
     live_before = live_protected(app.call)  # read-only, before the first change
     take_snapshot(artifacts)
     run = Run(app, artifacts)
-    # screens_de needs the app in German (AppleLanguages de), so only an explicit --scenario runs it.
-    names = args.scenario or [name for name in SCENARIOS if name != "screens_de"]
+    # Only an explicit --scenario runs these: screens_de needs the app in German (AppleLanguages
+    # de); practice_spoken needs the operator's audio inputs.
+    names = args.scenario or [name for name in SCENARIOS
+                              if name not in ("screens_de", "practice_spoken")]
     result = {"build": app.executable, "pid_at_start": app.client.pid, "scenarios": []}
     restore_report = None
     try:
