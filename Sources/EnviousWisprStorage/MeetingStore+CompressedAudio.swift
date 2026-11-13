@@ -227,6 +227,27 @@ extension MeetingStore {
     return removed
   }
 
+  // MARK: - Leftovers
+
+  /// Removes compacted files the committed inventory does not name: candidates
+  /// (`.m4a.partial`) and finals of an attempt that was never committed (an exit between
+  /// promotion and the record save, or a preparation an exit cut short). Never a recorder file,
+  /// a committed output, a proof or a document. Throws, removing nothing, when the record cannot
+  /// be read (which files are committed is then unknown). Returns how many it removed.
+  public func removeAbandonedCompactedAudio(meeting id: UUID) throws -> Int {
+    try refuseNewerFormat(id)
+    let record = try load(id: id)
+    guard record.isWritableByThisBuild else { throw StoreError.newerFormat }
+    let committed = Set(record.compressedAudio?.segments.map(\.compressed.fileName) ?? [])
+    var removed = 0
+    for file in try segmentFiles(meeting: id) where file.encoding == .aacM4A {
+      if !file.partial, committed.contains(file.url.lastPathComponent) { continue }
+      try FileManager.default.removeItem(at: file.url)
+      removed += 1
+    }
+    return removed
+  }
+
   // MARK: - Identity
 
   /// The exact bytes of `url`: its length and a full streaming SHA-256 (lowercase hex). The one

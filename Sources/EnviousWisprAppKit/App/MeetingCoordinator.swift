@@ -696,6 +696,23 @@ final class MeetingCoordinator {
   private var closeOwned: Set<UUID> = []
   /// Listing, recovery and file reads in flight, on the main actor's books.
   private var fileWorkInFlight = 0
+
+  // MARK: Audio compaction state (#3147 PR4B)
+
+  /// Each meeting's open compaction claim. Withdrawn synchronously by every conflicting ingress
+  /// (deletion, Delete audio, Transcribe again, a pass, quit), so a late preparation can never
+  /// publish over it.
+  private var compactionClaims: [UUID: UUID] = [:]
+  /// Compactions running now, by meeting, so a deletion can cancel one and wait for its end
+  /// before files go.
+  @ObservationIgnored private var compactionWork: [UUID: Task<CompactionAttempt, Never>] = [:]
+  /// Committed inventories this session knows (loaded at launch or committed here). Every record
+  /// write carries a meeting's entry, so no later save drops the meeting's audio authority.
+  private var committedAudio: [UUID: MeetingCompressedInventory] = [:]
+  /// Prepares compacted audio; wired by the composition root (nil in most tests).
+  @ObservationIgnored var audioCompactor: (any MeetingAudioCompacting)?
+  /// The background owner that compacts eligible meetings one at a time; wired by the root.
+  @ObservationIgnored var audioCompaction: MeetingAudioCompactionScheduler?
   /// Checkpoint writes running off the main actor right now.
   @ObservationIgnored private let checkpointWrites = OSAllocatedUnfairLock(initialState: 0)
 
@@ -704,8 +721,14 @@ final class MeetingCoordinator {
 
   init(dependencies: Dependencies) {
     self.deps = dependencies
+    let writeRecord = dependencies.writeRecord
     let writer = MeetingFileWriter(
-      store: dependencies.store, writeRecord: dependencies.writeRecord)
+      store: dependencies.store,
+      writeRecord: { store, record in
+        // #3147 PR4B: a record built before a compaction commit landed never drops the committed
+        // inventory now on disk (writes run in order on this queue, so the disk is current).
+        try writeRecord(store, MeetingCoordinator.carryingCommittedAudio(record, store: store))
+      })
     self.writer = writer
     self.documents = MeetingDocumentsOwner(
       writer: writer,
@@ -872,6 +895,7 @@ final class MeetingCoordinator {
         guard live[record.id] == nil else { continue }
         live[record.id] = record
         records[record.id] = record
+        if let inventory = record.compressedAudio { committedAudio[record.id] = inventory }
         loaded.append(record.id)
       case .newerFormat(let header): newerFormatMeetings.append(header)
       case .unreadable(let id): deps.log("meeting folder unreadable id=\(id.uuidString)")
@@ -912,6 +936,10 @@ final class MeetingCoordinator {
       // the audio is gone).
       if !record.audioKept, record.isWritableByThisBuild {
         await finishAudioDeletion(meetingID)
+      } else if record.isWritableByThisBuild {
+        // #3147 PR4B: compacted output no committed inventory names (a preparation or commit an
+        // exit cut short) is temporary: it goes now. Originals and committed files stay.
+        await removeAbandonedCompaction(meetingID)
       }
       if ![.ready, .failed, .notesOnly].contains(record.state) {
         // Unfinished: the same attempt, its start facts unknown after the relaunch.
@@ -932,6 +960,7 @@ final class MeetingCoordinator {
       }
     }
     startQueueIfNeeded()
+    if !quitting { audioCompaction?.start() }
   }
 
   /// #3973 C2: reads each meeting's commit receipt. A receipt whose candidate the record on disk
@@ -1647,6 +1676,7 @@ final class MeetingCoordinator {
       !isActive(meetingID), isStillOwned(meetingID)
     else { return }
     processing = Processing(meetingID: meetingID, stage: nil)
+    withdrawAudioCompaction(meetingID)
     workChanged()
     // #3973 C2: a meeting queued before attempts existed runs its saved Start values as an
     // attempt, saved with this write; Settings are never read here.
@@ -2206,6 +2236,8 @@ final class MeetingCoordinator {
   /// Queues `attempt` for the meeting and starts the queue.
   private func queue(_ meetingID: UUID, attempt: MeetingAttemptConfiguration) async -> Bool {
     guard canTranscribeAgain(meetingID), var record = live[meetingID] else { return false }
+    // #3147 PR4B: a new attempt over this audio withdraws any compaction before it suspends.
+    withdrawAudioCompaction(meetingID)
     if record.state == .queued, record.pendingAttempt == attempt {
       // Left queued (a full disk, or a pass whose first save failed): nothing to save, the
       // queue starts again and checks the disk again.
@@ -2266,6 +2298,8 @@ final class MeetingCoordinator {
     // Claimed in the same turn as the guard (#3994): a pass cannot start on this audio while
     // its removal is saved and carried out.
     removingAudio.insert(meetingID)
+    // #3147 PR4B: publication authority is withdrawn in the same turn as the claim.
+    withdrawAudioCompaction(meetingID)
     workChanged()
     defer {
       removingAudio.remove(meetingID)
@@ -2402,6 +2436,8 @@ final class MeetingCoordinator {
   /// True when every file went.
   @discardableResult
   private func finishAudioDeletion(_ meetingID: UUID) async -> Bool {
+    // #3147 PR4B: a compaction of this meeting has ended (its own outputs removed) first.
+    await settleAudioCompaction(meetingID)
     playbackArbiter?.stopForDeletion(.meeting(meetingID))
     do {
       try await writer.run { store in
@@ -2430,6 +2466,8 @@ final class MeetingCoordinator {
     }
     guard !deleting.contains(meetingID), var record = live[meetingID] else { return true }
     deleting.insert(meetingID)
+    // #3147 PR4B: publication authority is withdrawn before the first suspension.
+    withdrawAudioCompaction(meetingID)
     workChanged()
     defer {
       deleting.remove(meetingID)
@@ -2490,6 +2528,7 @@ final class MeetingCoordinator {
         continue
       }
       record.deletionRequested = true
+      withdrawAudioCompaction(meetingID)
       #if DEBUG
         deleteAllMarkDeadlinesForTesting.append(deadline)
       #endif
@@ -2562,6 +2601,8 @@ final class MeetingCoordinator {
   private func finishDeletion(_ record: MeetingRecord) async -> Bool {
     if processing?.meetingID == record.id { job?.cancel() }
     await waitUntilNotProcessing(record.id)
+    // #3147 PR4B: a compaction of this meeting has ended before its folder goes.
+    await settleAudioCompaction(record.id)
     guard !closeOwned.contains(record.id) else {
       // A timed-out close still owns its files: the mark stays and the next launch deletes.
       deps.log("meeting delete deferred reason=close_owned")
@@ -2581,6 +2622,7 @@ final class MeetingCoordinator {
       unknownCommits.remove(record.id)
       live.removeValue(forKey: record.id)
       records.removeValue(forKey: record.id)
+      committedAudio.removeValue(forKey: record.id)
       publish()
       return true
     } catch {
@@ -2630,6 +2672,295 @@ final class MeetingCoordinator {
     }
   }
 
+  // MARK: - Audio compaction (#3147 PR4B)
+
+  /// What one `compactAudio` run did, for the scheduler.
+  enum CompactionAttempt: Equatable, Sendable {
+    /// The verified copy is the meeting's audio authority now.
+    case committed
+    /// The meeting was playing when the copy was ready: nothing published; try again later.
+    case deferred
+    /// The copy would save no bytes: nothing to do for this meeting.
+    case noSavings
+    /// The meeting changed, was claimed by other work or could not be claimed: nothing done.
+    case stale
+    /// Preparation or publication failed; the previous representation stays the authority.
+    case failed
+  }
+
+  /// A meeting compaction may claim now: a ready meeting this build can write, keeping its audio,
+  /// not compacted, owned by no other work (recording, a pass, a deletion, Delete audio, a close,
+  /// an unsettled commit) and with no record write still on its way.
+  private func isCompactionEligible(_ meetingID: UUID) -> Bool {
+    guard launched, launchTask == nil, !quitting, let record = live[meetingID],
+      record.isWritableByThisBuild, record.state == .ready, record.audioKept,
+      !record.deletionRequested, record.compressedAudio == nil, committedAudio[meetingID] == nil,
+      !isActive(meetingID), !closeOwned.contains(meetingID), !unknownCommits.contains(meetingID),
+      !unresolvedReceipts.contains(meetingID), unpublishedReceipts[meetingID] == nil,
+      unansweredWrites[meetingID] == nil
+    else { return false }
+    return true
+  }
+
+  /// Meetings the scheduler may compact now, newest first.
+  func audioCompactionCandidates() -> [UUID] {
+    meetings.map(\.id).filter {
+      isCompactionEligible($0) && compactionClaims[$0] == nil && compactionWork[$0] == nil
+    }
+  }
+
+  /// Claims one meeting for compaction, against its record now (generation and segments). Nil
+  /// when it is not eligible or already claimed. Synchronous: nothing can start in between.
+  func claimAudioCompaction(meetingID: UUID) -> MeetingAudioCompactionTicket? {
+    guard isCompactionEligible(meetingID), compactionClaims[meetingID] == nil,
+      let record = live[meetingID]
+    else { return nil }
+    let ticket = MeetingAudioCompactionTicket(
+      meetingID: meetingID, claimID: UUID(),
+      transcriptGeneration: record.committedTranscriptGeneration,
+      sourceSegments: record.segments)
+    compactionClaims[meetingID] = ticket.claimID
+    return ticket
+  }
+
+  /// Releases `ticket`'s claim (a preparation that failed or will not be published). A claim
+  /// withdrawn or replaced meanwhile is left alone.
+  func abandonAudioCompaction(_ ticket: MeetingAudioCompactionTicket) {
+    if compactionClaims[ticket.meetingID] == ticket.claimID {
+      compactionClaims[ticket.meetingID] = nil
+    }
+  }
+
+  /// Publishes a verified compacted copy as the meeting's audio authority, or refuses.
+  ///
+  /// Every check runs in one main-actor turn after the preparation's last suspension: the claim
+  /// is still this ticket's; the meeting is still eligible with the claimed generation and
+  /// segments; it is not playing (else `.skipped`, deferred). Then registered playback stops,
+  /// and the store commits on the writer (`MeetingStore.commitCompressedAudio`, which rechecks
+  /// generation and segments against the record on disk, verifies every byte and never deletes
+  /// an original). A refused or failed publication removes the copy's uncommitted files.
+  func finishAudioCompaction(
+    _ ticket: MeetingAudioCompactionTicket, verified: VerifiedMeetingAudioInventory
+  ) async -> MeetingAudioCompactionOutcome {
+    let meetingID = ticket.meetingID
+    let folder = deps.store.folder(for: meetingID)
+    guard compactionClaims[meetingID] == ticket.claimID, isCompactionEligible(meetingID),
+      let record = live[meetingID],
+      record.committedTranscriptGeneration == ticket.transcriptGeneration,
+      record.segments == ticket.sourceSegments,
+      verified.inventory.transcriptGeneration == ticket.transcriptGeneration
+    else {
+      abandonAudioCompaction(ticket)
+      MeetingAudioCompactor.discard(verified, folder: folder)
+      return .stale
+    }
+    if playbackArbiter?.isPlaying(.meeting(meetingID)) == true {
+      // Never interrupt listening: the copy goes and a later pass tries again.
+      abandonAudioCompaction(ticket)
+      MeetingAudioCompactor.discard(verified, folder: folder)
+      deps.log("meeting compaction deferred reason=playing")
+      return .skipped
+    }
+    // The playback source changes with the representation: paused players of the old files
+    // stop now, and the meeting page builds a new one from the committed copy.
+    playbackArbiter?.stopForDeletion(.meeting(meetingID))
+    let inventory = verified.inventory
+    let generation = ticket.transcriptGeneration
+    let segments = ticket.sourceSegments
+    do {
+      _ = try await writer.run { store in
+        try store.commitCompressedAudio(
+          meeting: meetingID, expectedTranscriptGeneration: generation,
+          expectedSegments: segments, inventory: inventory)
+      }
+    } catch {
+      abandonAudioCompaction(ticket)
+      MeetingAudioCompactor.discard(verified, folder: folder)
+      deps.log("meeting compaction not published error=\(Self.compactionLogCode(error))")
+      return Self.isStaleCompaction(error) ? .stale : .failed
+    }
+    // Durable now: every copy of the record carries it, whatever else happened meanwhile.
+    adoptCommittedAudio(inventory, for: meetingID)
+    abandonAudioCompaction(ticket)
+    return .committed
+  }
+
+  /// Claims, prepares and publishes one meeting's compacted audio with `compactor`. Registered
+  /// while it runs, so a deletion can cancel it and wait for its end.
+  func compactAudio(meetingID: UUID, with compactor: any MeetingAudioCompacting) async
+    -> CompactionAttempt
+  {
+    guard compactionWork[meetingID] == nil, let ticket = claimAudioCompaction(meetingID: meetingID),
+      let record = live[meetingID]
+    else { return .stale }
+    let folder = deps.store.folder(for: meetingID)
+    let work = Task { [weak self] () -> CompactionAttempt in
+      do {
+        let verified = try await compactor.prepare(ticket: ticket, record: record, folder: folder)
+        guard let self else {
+          MeetingAudioCompactor.discard(verified, folder: folder)
+          return .stale
+        }
+        switch await self.finishAudioCompaction(ticket, verified: verified) {
+        case .committed: return .committed
+        case .stale: return .stale
+        case .skipped: return .deferred
+        case .failed: return .failed
+        }
+      } catch MeetingAudioCompactor.PreparationError.noSavings {
+        self?.abandonAudioCompaction(ticket)
+        return .noSavings
+      } catch is CancellationError {
+        self?.abandonAudioCompaction(ticket)
+        return .stale
+      } catch {
+        self?.abandonAudioCompaction(ticket)
+        self?.deps.log("meeting compaction preparation failed error=\(type(of: error))")
+        return .failed
+      }
+    }
+    compactionWork[meetingID] = work
+    let attempt = await work.value
+    compactionWork[meetingID] = nil
+    return attempt
+  }
+
+  /// What one retirement of superseded originals did.
+  enum AudioRetirement: Equatable, Sendable {
+    /// These many originals were removed (0 when none was left: a resumed retirement).
+    case removed(Int)
+    /// Not now: no committed copy, other work owns the meeting, or it is playing.
+    case refused
+    /// Removal stopped part-way (or its folder sync failed); `removed` went, the rest stay.
+    case failed(removed: Int)
+  }
+
+  /// Removes the recorder originals the meeting's committed inventory supersedes
+  /// (`MeetingStore.removeSupersededPCM`, which re-hashes every committed file and every
+  /// original before removing only originals that inventory names).
+  ///
+  /// #3147 PR4B: built and tested only. Nothing in the app calls it until the C6 parity gate
+  /// passes on every required machine (main adds the call site in a later step). Repeatable: a
+  /// relaunch retries only what is left and never publishes another inventory.
+  func retireSupersededAudio(meetingID: UUID) async -> AudioRetirement {
+    guard launched, launchTask == nil, !quitting, let inventory = committedAudio[meetingID],
+      let record = live[meetingID], record.compressedAudio?.id == inventory.id,
+      records[meetingID]?.compressedAudio?.id == inventory.id,
+      inventory.transcriptGeneration == record.committedTranscriptGeneration,
+      record.isWritableByThisBuild, record.audioKept, !record.deletionRequested,
+      !isActive(meetingID), !closeOwned.contains(meetingID), !unknownCommits.contains(meetingID),
+      !unresolvedReceipts.contains(meetingID), compactionClaims[meetingID] == nil,
+      compactionWork[meetingID] == nil,
+      playbackArbiter?.isPlaying(.meeting(meetingID)) != true
+    else { return .refused }
+    let generation = record.committedTranscriptGeneration
+    // Playback stops before any file of this meeting is removed.
+    playbackArbiter?.stopForDeletion(.meeting(meetingID))
+    do {
+      let removed = try await writer.run { store in
+        try store.removeSupersededPCM(
+          meeting: meetingID, expectedTranscriptGeneration: generation,
+          inventoryID: inventory.id)
+      }
+      return .removed(removed)
+    } catch MeetingStore.CompactionError.removalIncomplete(let removed, _, _) {
+      deps.log("meeting compaction retirement incomplete removed=\(removed)")
+      return .failed(removed: removed)
+    } catch MeetingStore.CompactionError.retirementSyncFailed(let removed, _) {
+      deps.log("meeting compaction retirement not durable removed=\(removed)")
+      return .failed(removed: removed)
+    } catch {
+      deps.log("meeting compaction retirement refused error=\(Self.compactionLogCode(error))")
+      return Self.isStaleCompaction(error) ? .refused : .failed(removed: 0)
+    }
+  }
+
+  /// Withdraws the meeting's compaction claim and cancels its preparation. Synchronous, so a
+  /// conflicting ingress withdraws publication authority before its first suspension.
+  private func withdrawAudioCompaction(_ meetingID: UUID) {
+    compactionClaims[meetingID] = nil
+    compactionWork[meetingID]?.cancel()
+  }
+
+  /// Withdraws, then waits until the meeting's compaction has ended (a cancelled preparation
+  /// has removed its own outputs; a publication already on the writer has landed).
+  private func settleAudioCompaction(_ meetingID: UUID) async {
+    withdrawAudioCompaction(meetingID)
+    if let work = compactionWork[meetingID] { _ = await work.value }
+  }
+
+  /// A committed inventory becomes part of every copy of the record this session holds.
+  private func adoptCommittedAudio(_ inventory: MeetingCompressedInventory, for meetingID: UUID) {
+    committedAudio[meetingID] = inventory
+    if let record = live[meetingID] { live[meetingID] = withCommittedAudio(record) }
+    if let record = records[meetingID] { records[meetingID] = withCommittedAudio(record) }
+    if var pending = unansweredWrites[meetingID] {
+      for i in pending.indices { pending[i].record = withCommittedAudio(pending[i].record) }
+      unansweredWrites[meetingID] = pending
+    }
+    publish()
+  }
+
+  /// `record` with the meeting's committed inventory when it lacks one.
+  private func withCommittedAudio(_ record: MeetingRecord) -> MeetingRecord {
+    guard record.compressedAudio == nil, let inventory = committedAudio[record.id] else {
+      return record
+    }
+    var carried = record
+    carried.commitCompressedAudio(inventory)
+    return carried
+  }
+
+  /// On the writer: `record` with the inventory already committed on disk when it lacks one.
+  nonisolated static func carryingCommittedAudio(_ record: MeetingRecord, store: MeetingStore)
+    -> MeetingRecord
+  {
+    guard record.compressedAudio == nil,
+      FileManager.default.fileExists(atPath: store.recordURL(for: record.id).path),
+      let onDisk = try? store.load(id: record.id), let inventory = onDisk.compressedAudio
+    else { return record }
+    var carried = record
+    carried.commitCompressedAudio(inventory)
+    return carried
+  }
+
+  /// Removes compacted output no committed inventory names, at launch (never an original, a
+  /// committed file or a document). A failure is logged; the files stay temporary.
+  private func removeAbandonedCompaction(_ meetingID: UUID) async {
+    do {
+      let removed = try await writer.run { try $0.removeAbandonedCompactedAudio(meeting: meetingID) }
+      if removed > 0 { deps.log("meeting compaction leftovers removed count=\(removed)") }
+    } catch {
+      deps.log("meeting compaction leftovers not removed error=\(type(of: error))")
+    }
+  }
+
+  /// A store refusal that means the meeting changed under the claim (nothing to retry now).
+  nonisolated static func isStaleCompaction(_ error: Error) -> Bool {
+    switch error as? MeetingStore.CompactionError {
+    case .staleGeneration?, .staleSegments?, .audioUnavailable?, .alreadyCompacted?: return true
+    default: return error as? MeetingStore.StoreError == .meetingMissing
+    }
+  }
+
+  /// A closed code for a publication failure, for the log (never a file name).
+  nonisolated static func compactionLogCode(_ error: Error) -> String {
+    switch error as? MeetingStore.CompactionError {
+    case .audioUnavailable?: return "audio_unavailable"
+    case .staleGeneration?: return "stale_generation"
+    case .staleSegments?: return "stale_segments"
+    case .alreadyCompacted?: return "already_compacted"
+    case .invalidInventory?: return "invalid_inventory"
+    case .missingFile?: return "missing_file"
+    case .identityMismatch?: return "identity_mismatch"
+    case .notCommitted?: return "not_committed"
+    case .fileStepFailed(let stage, _, _)?: return "file_step_\(stage)"
+    case .removalIncomplete?: return "removal_incomplete"
+    case .retirementSyncFailed?: return "retirement_sync_failed"
+    case nil: return String(describing: type(of: error))
+    }
+  }
+
   // MARK: - Quit (R18)
 
   /// Synchronous: called from `applicationWillTerminate`. Closes admission, cancels the pass,
@@ -2657,6 +2988,10 @@ final class MeetingCoordinator {
     summaries?.prepareForTermination()
     queueTask?.cancel()
     job?.cancel()
+    // #3147 PR4B: no compaction publishes after Quit; a cancelled preparation removes its own
+    // outputs, and the next launch removes anything an exit left.
+    audioCompaction?.stop()
+    for meetingID in Array(compactionClaims.keys) { withdrawAudioCompaction(meetingID) }
     // #4097: Quit starts live-word cleanup without waiting; process exit frees any native model
     // still loaded (`TranscribeCppProcessExit`).
     deps.liveWords?.quit()
@@ -2829,6 +3164,7 @@ final class MeetingCoordinator {
   }
 
   private func beginWrite(_ record: MeetingRecord) -> Int {
+    let record = withCommittedAudio(record)
     live[record.id] = record
     let sequence = (writeSequence[record.id] ?? 0) + 1
     writeSequence[record.id] = sequence
@@ -2850,9 +3186,9 @@ final class MeetingCoordinator {
     if let pending = unansweredWrites[meetingID]?.last,
       pending.sequence > (durableSequence[meetingID] ?? 0)
     {
-      live[meetingID] = pending.record
+      live[meetingID] = withCommittedAudio(pending.record)
     } else {
-      live[meetingID] = records[meetingID]
+      live[meetingID] = records[meetingID].map(withCommittedAudio)
     }
   }
 
@@ -2863,7 +3199,7 @@ final class MeetingCoordinator {
     // A meeting removed meanwhile (its folder deleted) is not brought back.
     if live[record.id] != nil, sequence > (durableSequence[record.id] ?? 0) {
       durableSequence[record.id] = sequence
-      records[record.id] = record
+      records[record.id] = withCommittedAudio(record)
       publish()
     }
     answered(record.id, sequence: sequence)
