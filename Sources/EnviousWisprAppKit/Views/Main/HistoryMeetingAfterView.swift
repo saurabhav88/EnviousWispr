@@ -283,6 +283,10 @@ struct HistoryMeetingAfterView: View {
             // A chosen note marker (or a note View source) brings its note into view, after the
             // notes pane has mounted when it was not showing.
             guard let request else { return }
+            // Cloud review P2 (twice): below 800 pt the notes and transcript share one scroll
+            // view, so following playback would scroll any revealed note (marker or View source)
+            // away. Every note reveal comes through this request.
+            if P.stacksPanes(width: geometry.size.width) { suspendFollow() }
             Task { @MainActor in
               await Task.yield()
               withAnimation { proxy.scrollTo(request.id, anchor: .center) }
