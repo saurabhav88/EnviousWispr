@@ -66,6 +66,17 @@ struct HistoryCostBenchmarkTests {
       turns: turns, meetingID: meetingID)
   }
 
+  /// Noon today: every fixture is dated back from it, so 1,000 rows (one a minute) always
+  /// reach into yesterday and the date-filter steps change the list at any time of day.
+  static let fixtureNow = Calendar.current.startOfDay(for: Date()).addingTimeInterval(12 * 3_600)
+
+  /// The day before `fixtureNow`'s day, start included and end excluded.
+  static var fixtureYesterday: DateInterval {
+    let today = Calendar.current.startOfDay(for: fixtureNow)
+    return DateInterval(
+      start: Calendar.current.date(byAdding: .day, value: -1, to: today) ?? today, end: today)
+  }
+
   struct Fixture {
     let coordinator: TranscriptCoordinator
     let records: [MeetingRecord]
@@ -77,7 +88,7 @@ struct HistoryCostBenchmarkTests {
     let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
     var rows: [Transcript] = []
     var records: [MeetingRecord] = []
-    let now = Date()
+    let now = fixtureNow
     for i in 0..<dictations {
       let created = now.addingTimeInterval(-TimeInterval(i * 60))
       rows.append(
@@ -164,6 +175,8 @@ struct HistoryCostBenchmarkTests {
       record("matchingDictations", Self.measure { _ = c.matchingHistoryItems(in: .dictations) })
       record("matchingTranscripts", Self.measure { _ = c.matchingHistoryItems(in: .transcripts) })
       record("matchingMeetings", Self.measure { _ = c.matchingHistoryItems(in: .meetings) })
+      record("listedCount", Self.measure { _ = c.listedCount })
+      record("deletableCount", Self.measure { _ = c.deletableCount })
       // The open item is checked against the tab's list on every read of its state.
       let meetingItem = HistoryItemID.meeting(try #require(fixture.records.first).id)
       c.openHistoryItem(meetingItem, in: .meetings)
@@ -198,6 +211,28 @@ struct HistoryCostBenchmarkTests {
           })
       }
       c.selectHistoryTab(.dictations)
+      // A filter change on one tab, each direction timed on its own: it changes the list's key,
+      // so the list is built again (a tab switch above reuses each tab's kept list).
+      func setDate(_ interval: DateInterval?) {
+        var state = c.historyState(for: .dictations)
+        state.dateInterval = interval
+        c.setHistoryState(state, for: .dictations)
+      }
+      for (name, from, to) in [
+        ("redrawAnyTimeToYesterday", nil, Self.fixtureYesterday),
+        ("redrawYesterdayToAnyTime", Self.fixtureYesterday, nil),
+      ] as [(String, DateInterval?, DateInterval?)] {
+        record(
+          name,
+          Self.measure(setup: {
+            setDate(from)
+            redraw(.dictations)
+          }) {
+            setDate(to)
+            redraw(.dictations)
+          })
+      }
+      setDate(nil)
       // Each timed keystroke changes the query, so it measures a search that must run.
       var useZebra = false
       record(
@@ -205,7 +240,7 @@ struct HistoryCostBenchmarkTests {
         Self.measure {
           useZebra.toggle()
           c.setHistoryQuery(useZebra ? "zebra" : "giraffe", in: .dictations)
-          redraw(.dictations)
+          _ = c.matchingHistoryItems(in: .dictations)
         })
       c.setHistoryQuery("", in: .dictations)
       // Select all matching ticks every item the tab lists, every page.
@@ -226,7 +261,7 @@ struct HistoryCostBenchmarkTests {
     }
     try (["step\tdictations\tmin\tmedian\tp95\tmax"] + lines).joined(separator: "\n")
       .appending("\n").write(toFile: out, atomically: true, encoding: .utf8)
-    #expect(lines.count == 10 * Self.sizes.count)
+    #expect(lines.count == 14 * Self.sizes.count)
   }
 
   /// Every home the real History list reads, built from isolated test parts: a private defaults
@@ -417,15 +452,19 @@ struct HistoryCostBenchmarkTests {
       c.setHistoryQuery("", in: .transcripts)
       // A date filter on Dictations: every day, then yesterday only (or an empty yesterday).
       c.selectHistoryTab(.dictations)
-      let today = Calendar.current.startOfDay(for: Date())
-      let yesterday = DateInterval(
-        start: try #require(Calendar.current.date(byAdding: .day, value: -1, to: today)),
-        end: today)
+      let yesterday = Self.fixtureYesterday
       func setDate(_ interval: DateInterval?) {
         var state = c.historyState(for: .dictations)
         state.dateInterval = interval
         c.setHistoryState(state, for: .dictations)
       }
+      // Precondition for the pixel check: both lists hold items, and different ones.
+      setDate(yesterday)
+      let yesterdayIDs = c.matchingHistoryItems(in: .dictations).prefix(30).map(\.id)
+      setDate(nil)
+      let everyDayIDs = c.matchingHistoryItems(in: .dictations).prefix(30).map(\.id)
+      try #require(yesterdayIDs.isEmpty == false && everyDayIDs.isEmpty == false)
+      try #require(yesterdayIDs != everyDayIDs, "the date filter changes the first page")
       try await step("renderDateFilter", setup: { setDate(nil) }) { setDate(yesterday) }
       setDate(nil)
     }

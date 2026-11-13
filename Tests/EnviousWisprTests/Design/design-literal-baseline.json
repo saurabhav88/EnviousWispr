@@ -71,10 +71,10 @@
       "fontSize" : 3,
       "radius" : 1
     },
-    "Sources\/EnviousWisprAppKit\/Views\/Main\/MainWindowView.swift" : {
+    "Sources\/EnviousWisprAppKit\/Views\/Main\/MainWindowParts.swift" : {
       "color" : 4,
-      "fontSize" : 4,
-      "radius" : 11
+      "fontSize" : 2,
+      "radius" : 4
     },
     "Sources\/EnviousWisprAppKit\/Views\/Main\/MeetingHistoryDetailView.swift" : {
       "fontSize" : 2,

@@ -80,14 +80,15 @@
       let filteredRowIDs: [UUID]
       let listedCount: Int
       let deletableCount: Int
-      /// Each tab's matching items under its own search and filters, in `HistoryTab` order.
-      let tabItems: [[HistoryItemID]]
+      /// Each tab's matching items under its own search and filters, in `HistoryTab` order, with
+      /// the same contents as `items` so a stale row kept under its id is caught.
+      let tabItems: [[Item]]
       /// Each tab's open item, as History reads it.
       let open: [HistoryItemID?]
     }
 
     static func snapshot(_ c: TranscriptCoordinator) -> Snapshot {
-      let items = c.listedItems.map { item in
+      func snapshotItem(_ item: HistoryListItem) -> Snapshot.Item {
         let record: MeetingRecord? =
           if case .meeting(let meeting) = item { meeting.record } else { nil }
         return Snapshot.Item(
@@ -95,10 +96,11 @@
           held: item.row?.escapeRecoveredAt != nil, recordState: record?.state,
           recordTitle: record?.title)
       }
+      let items = c.listedItems.map(snapshotItem)
       return Snapshot(
         items: items, filteredRowIDs: c.filteredTranscripts.map(\.id),
         listedCount: c.listedCount, deletableCount: c.deletableCount,
-        tabItems: HistoryTab.allCases.map { c.matchingHistoryItems(in: $0).map(\.id) },
+        tabItems: HistoryTab.allCases.map { c.matchingHistoryItems(in: $0).map(snapshotItem) },
         open: HistoryTab.allCases.map { c.historyState(for: $0).openItemID })
     }
 
