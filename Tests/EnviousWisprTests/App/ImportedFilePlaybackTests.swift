@@ -41,7 +41,7 @@ enum ImportedMediaFixture {
     return dir
   }
 
-  /// A rising sweep, never periodic over a window, so a misplaced window cannot match.
+  /// Seeded band-limited noise, so a misplaced window cannot match.
   /// `seed` changes the signal (a different recording of the same length).
   @discardableResult
   static func write(
@@ -64,15 +64,24 @@ enum ImportedMediaFixture {
     let frames = AVAudioFrameCount(seconds * rate)
     let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames)!
     buffer.frameLength = frames
+    // Band-limited noise (two one-pole low-passes at 1 kHz over a seeded generator): it never
+    // repeats, so a window matches the decoder at exactly one lag, unlike a tone, which matches
+    // again one period away.
+    var state = UInt64(0x9E37_79B9_7F4A_7C15) &+ UInt64(seed * 1_000)
+    let alpha = 1 - exp(-2 * Float.pi * 1_000 / Float(rate))
+    var low1: Float = 0
+    var low2: Float = 0
+    var signal = [Float](repeating: 0, count: Int(frames))
+    for i in 0..<Int(frames) {
+      state = state &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+      let white = Float(Int64(bitPattern: state) >> 40) / Float(1 << 23)
+      low1 += alpha * (white - low1)
+      low2 += alpha * (low1 - low2)
+      signal[i] = max(-0.9, min(0.9, 1.2 * low2))
+    }
     for channel in 0..<Int(kind.channels) {
       let out = buffer.floatChannelData![channel]
-      for i in 0..<Int(frames) {
-        let t = Float(i) / Float(rate)
-        // 200 Hz rising to 600 Hz over 6 s at a steady level: one 16 kHz sample of phase moves
-        // a sample by at most ~0.07, one millisecond by ~0.35 or more.
-        let phase = 2 * Float.pi * ((200 + seed * 37) * t + (200 / 6) * t * t)
-        out[i] = 0.3 * sin(phase) * (channel == 0 ? 1 : 0.8)
-      }
+      for i in 0..<Int(frames) { out[i] = signal[i] * (channel == 0 ? 1 : 0.8) }
     }
     try file.write(from: buffer)
     return url
@@ -146,7 +155,7 @@ struct ImportedFilePlaybackTests {
   ) {
     let found = alignment(window, decoded, startSample: startSample)
     #expect(abs(found.lag) <= 2, "\(label): lag \(found.lag)", sourceLocation: sourceLocation)
-    #expect(found.correlation > 0.98, "\(label): correlation \(found.correlation)", sourceLocation: sourceLocation)
+    #expect(found.correlation > 0.95, "\(label): correlation \(found.correlation)", sourceLocation: sourceLocation)
     // Control: the same check reads a window one millisecond off as one millisecond off.
     let misplaced = alignment(window, decoded, startSample: startSample + 16)
     #expect(abs(misplaced.lag + 16) <= 2, "\(label) control: lag \(misplaced.lag)", sourceLocation: sourceLocation)

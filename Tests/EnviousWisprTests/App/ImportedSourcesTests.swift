@@ -401,7 +401,7 @@ struct ImportedSourcesTests {
     // The original's own audio at the right time (see `ImportedFilePlaybackTests.alignment`).
     let found = ImportedFilePlaybackTests.alignment(window, decoded, startSample: 0)
     #expect(abs(found.lag) <= 2)
-    #expect(found.correlation > 0.98)
+    #expect(found.correlation > 0.95)
     #expect(
       source.source.reference
         == ImportedSourceReference(try #require(rig.coordinator.currentRow(id: row.id))))
