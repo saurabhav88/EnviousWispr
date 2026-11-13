@@ -228,7 +228,7 @@ final class ImportedSources: ImportedSourceAccessing {
     let fence = currentFence(rowID)
     let io = io
     let (identity, bookmark) = try await Self.identify(url, io: io)
-    guard coordinator.currentRow(id: rowID) != nil else { return removed(rowID) }
+    guard coordinator.currentRow(id: rowID) != nil else { return relocationRemoved(rowID) }
     guard isUnchanged(rowID, reference: expected, fence: fence) else { return .stale }
     if let stored, identity.match(stored) != .same { return .wrongFile }
     let fingerprint = stored ?? identity.fingerprint
@@ -236,7 +236,7 @@ final class ImportedSources: ImportedSourceAccessing {
       bookmark: bookmark, fingerprint: fingerprint, for: rowID, expected: expected,
       confirmedLegacy: stored == nil)
     guard linked else {
-      return coordinator.currentRow(id: rowID) == nil ? removed(rowID) : .stale
+      return coordinator.currentRow(id: rowID) == nil ? relocationRemoved(rowID) : .stale
     }
     let reference = ImportedSourceReference(bookmark: bookmark, fingerprint: fingerprint)
     inFlight[rowID] = nil
@@ -272,6 +272,11 @@ final class ImportedSources: ImportedSourceAccessing {
       return false
     }
     return ImportedSourceReference(row) == reference
+  }
+
+  private func relocationRemoved(_ rowID: UUID) -> ImportedRelocationOutcome {
+    _ = removed(rowID)
+    return .removed
   }
 
   private func removed(_ rowID: UUID) -> ImportedSourceState {
