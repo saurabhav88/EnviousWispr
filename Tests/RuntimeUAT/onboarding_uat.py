@@ -1973,6 +1973,126 @@ def s_detect(run, speech):
     return s
 
 
+def s_first_run(run, speech):
+    """A real first launch on a fresh Mac (fresh_mac.py prepare): the new Setup opens at Welcome
+    by itself, takes every recommendation, meets a full disk and a failed download on the way
+    (both through the Setup screen's own Try again), downloads the recommended models for real,
+    reaches Practice, and finishes through the film's Launch EnviousWispr into the main window
+    (founder D9). The only scenario that downloads; run it by name on a fresh Mac."""
+    s = Scenario("first_run")
+    pid = run.app.client.pid
+    shots = os.path.join(run.artifacts, "shots")
+    os.makedirs(shots, exist_ok=True)
+
+    def shot(name):
+        wid = window_id(pid, SETUP_TITLE)
+        if wid is not None:
+            capture_window(wid, os.path.join(shots, f"first-{name}.png"))
+
+    def press(name):
+        b = setup_button(pid, name)
+        s.expect(b is not None and ax_press(b), f"pressed {name}")
+
+    st = run.until(lambda x: x.get("presented") is True and x.get("step") == "welcome", 20,
+                   "automatic Welcome")
+    s.expect(st.get("presented") is True and st.get("step") == "welcome",
+             "a first launch opens the new Setup at Welcome by itself",
+             (st.get("presented"), st.get("step"), st.get("owner")))
+    shot("welcome")
+    catalog = settled_catalog(run)
+    s.notes.append(f"catalog at first launch: {catalog}")
+    run.send("next")
+    run.send("chooseLanguage", value="en")
+    run.send("next")
+    rec = run.status().get("recommended") or {}
+    s.notes.append(f"recommended: {rec}")
+
+    # A full disk when the speech download would start: Setup must refuse honestly, keep Retry.
+    run.app.call("onboarding", "fault", "disk-short")
+    run.send("next")  # speech pick: commits the recommended engine and starts its download
+    run.send("next")  # polish intro
+    run.send("next")  # polish pick: the recommended card
+    st = run.until(lambda x: x.get("step") == "downloads", 6, "downloads")
+    st = run.until(lambda x: (x.get("block") or {}).get("kind") == "insufficientDisk", 10,
+                   "disk refusal")
+    s.expect((st.get("block") or {}).get("kind") == "insufficientDisk",
+             "a full disk is refused before any download", st.get("block"))
+    time.sleep(0.8)  # test-fixture-timer: the screen settles
+    shot("disk-short")
+    run.app.call("onboarding", "fault", "disk-short", "--off")
+    try_again = setup_button(pid, "Try again") or setup_button(pid, "Resume downloads")
+    s.expect(try_again is not None and ax_press(try_again), "the screen's own Try again")
+    st = run.until(lambda x: (x.get("downloads") or {}).get("speech") in
+                   ("downloading", "verifying", "installed"), 30, "speech download starts")
+    s.expect((st.get("downloads") or {}).get("speech") in ("downloading", "verifying", "installed"),
+             "after space frees, Try again starts the real speech download", st.get("downloads"))
+
+    # A failed transfer of a model that is not on this Mac yet: failed, then Try again resumes.
+    run.app.call("onboarding", "fault", "download-fail")
+    st = run.until(lambda x: "failed" in ((x.get("downloads") or {}).values()), 60,
+                   "a download fails")
+    failed = "failed" in (st.get("downloads") or {}).values()
+    s.expect(failed, "the download-fail fault shows a failed download", st.get("downloads"))
+    time.sleep(0.8)  # test-fixture-timer: the screen settles
+    shot("download-failed")
+    run.app.call("onboarding", "fault", "download-fail", "--off")
+    if failed:
+        again = setup_button(pid, "Try again") or setup_button(pid, "Resume downloads")
+        s.expect(again is not None and ax_press(again), "Try again after the failed download")
+
+    # The real downloads to the end.
+    started = time.monotonic()
+    st = run.until(lambda x: all(v in ("installed", None) for v in
+                                 (x.get("downloads") or {"x": "no"}).values()),
+                   2400, "models installed")
+    seconds = round(time.monotonic() - started)
+    s.notes.append(f"downloads finished in about {seconds} s: {st.get('downloads')}")
+    s.expect(all(v in ("installed", None) for v in (st.get("downloads") or {"x": "no"}).values()),
+             "the recommended models download and install", st.get("downloads"))
+    shot("downloads-done")
+    if run.status().get("step") == "downloads":
+        run.send("next")
+    st = run.until(lambda x: x.get("step") in ("key", "permissions"), 10, "after downloads")
+    if st.get("step") == "permissions":
+        s.notes.append("Permissions shown: a grant is missing on this Mac")
+        run.app.call("onboarding", "permissions", "--mic", "granted", "--ax", "granted")
+        st = run.until(lambda x: x.get("step") == "key", 10, "key")
+    s.expect(st.get("step") == "key", "granted permissions lead to the key screen", st.get("step"))
+    run.send("next")
+    st = run.until(lambda x: x.get("step") == "practice" and x.get("practiceUsable") is True,
+                   600, "practice usable")
+    s.expect(st.get("step") == "practice" and st.get("practiceUsable") is True,
+             "Practice is ready after a real first-run download and warm-up",
+             (st.get("step"), st.get("practiceUsable"), st.get("readiness")))
+    time.sleep(1.0)  # test-fixture-timer: the editor and note settle
+    _, texts = setup_window_ax(pid)
+    s.expect(any("recordings" in t.lower() for t in texts),
+             "the recording note is on Practice before the first take",
+             [t for t in texts if "record" in t.lower()][:2])
+    shot("practice")
+    run.send("skipPractice")  # the spoken take is practice_spoken's job
+    st = run.until(lambda x: x.get("step") == "film", 10, "film")
+    s.expect(st.get("step") == "film", "Skip practice reaches the film", st.get("step"))
+    time.sleep(2.0)  # test-fixture-timer: a little of the film plays
+    shot("film")
+    press("Launch EnviousWispr")
+    st = run.until(lambda x: x.get("active") is False, 10, "completed")
+    s.expect(st.get("active") is False and st.get("legacyState") == "completed",
+             "Launch EnviousWispr completes Setup durably",
+             (st.get("active"), st.get("legacyState")))
+    time.sleep(1.5)  # test-fixture-timer: the main window opens
+    from ApplicationServices import AXUIElementCreateApplication, AXUIElementCopyAttributeValue
+    _, windows = AXUIElementCopyAttributeValue(AXUIElementCreateApplication(pid), "AXWindows",
+                                                None)
+    titles = []
+    for w in windows or []:
+        _, t = AXUIElementCopyAttributeValue(w, "AXTitle", None)
+        titles.append(t)
+    s.expect(any(t and t != SETUP_TITLE for t in titles) and SETUP_TITLE not in titles,
+             "Setup closes and the main window opens (D9)", titles)
+    return s
+
+
 SCENARIOS = {
     "fresh": s_fresh, "resume": s_resume, "restart": s_restart, "profiles": s_profiles,
     "permissions": s_permissions, "faults": s_faults, "completion": s_completion,
@@ -1986,6 +2106,7 @@ SCENARIOS = {
     "screens_de": s_screens_de,
     "practice_spoken": s_practice_spoken,
     "detect": s_detect,
+    "first_run": s_first_run,
 }
 
 
@@ -2110,15 +2231,19 @@ def cmd_run(args):
     # Only an explicit --scenario runs these: screens_de needs the app in German (AppleLanguages
     # de); practice_spoken needs the operator's audio inputs.
     names = args.scenario or [name for name in SCENARIOS
-                              if name not in ("screens_de", "practice_spoken")]
+                              if name not in ("screens_de", "practice_spoken", "first_run")]
     result = {"build": app.executable, "pid_at_start": app.client.pid, "scenarios": []}
     restore_report = None
     try:
-        app.call("onboarding", "stop")
+        if names != ["first_run"]:  # first_run must see the Setup that launch opened itself
+            app.call("onboarding", "stop")
         observed = {}
-        speech = installed_speech(run, observed)
+        if names == ["first_run"]:
+            speech = None  # the fresh-Mac scenario downloads the recommended engine itself
+        else:
+            speech = installed_speech(run, observed)
         result["speech_phases_seen"] = observed
-        if speech is None:
+        if speech is None and names != ["first_run"]:
             raise HarnessError("no installed speech engine: the harness never downloads one")
         result["installed_speech"] = speech
         for name in names:
