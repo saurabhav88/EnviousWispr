@@ -309,6 +309,15 @@ enum MeetingWiring {
     }
     coordinator.summaries = makeSummaries(inputs, coordinator: coordinator, lane: lane)
     coordinator.summaryReferences = makeSummaryReferences(inputs, coordinator: coordinator)
+    // #3147 PR4B: compacted meeting audio, in the background behind dictation and the shared
+    // local model lane (started by launch recovery, stopped by Quit).
+    coordinator.audioCompaction = MeetingAudioCompactionScheduler(
+      coordinator: coordinator, compactor: MeetingAudioCompactor(),
+      dependencies: .init(
+        mayRun: { [isIdle = inputs.isDictationIdle, lane] in
+          isIdle() && lane.asrUnits == 0 && !lane.summaryActive
+        },
+        wakes: inputs.dictationWakes, log: inputs.log))
     return coordinator
   }
 
