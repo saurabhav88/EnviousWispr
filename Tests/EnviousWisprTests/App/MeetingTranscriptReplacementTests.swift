@@ -258,7 +258,7 @@ struct MeetingTranscriptReplacementTests {
     #expect(onDisk.committedTranscriptGeneration == committed, "the racing rename kept the commit")
     #expect(onDisk.echoTurnIDs == ["mic-9"])
 
-    await harness.coordinator.rename(meetingID: meetingID, title: "Renamed")
+    #expect(await harness.coordinator.rename(meetingID: meetingID, title: "Renamed"))
     onDisk = try harness.store.load(id: meetingID)
     #expect(onDisk.title == "Renamed")
     #expect(onDisk.committedTranscriptGeneration == committed, "a later rename kept the commit")
@@ -282,7 +282,9 @@ struct MeetingTranscriptReplacementTests {
     #expect(await harness.coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet))
     await eventually("pass over") { !harness.coordinator.hasFinalPassWork }
     #expect(harness.coordinator.isCommitReceiptPending(meetingID))
-    await harness.coordinator.rename(meetingID: meetingID, title: "Refused")
+    #expect(
+      await harness.coordinator.rename(meetingID: meetingID, title: "Refused") == false,
+      "a refused rename reports it (#3147 PR4)")
     #expect(!FileManager.default.fileExists(atPath: recordURL.path), "the rename wrote nothing")
     await harness.coordinator.deleteAudio(meetingID: meetingID)
     #expect(!FileManager.default.fileExists(atPath: recordURL.path), "Delete audio wrote nothing")

@@ -2192,12 +2192,16 @@ final class MeetingCoordinator {
     return true
   }
 
-  func rename(meetingID: UUID, title: String) async {
+  /// #3147 PR4: true only when the new title was saved. A refused rename (unknown commit, a
+  /// meeting that is gone) or a failed write is false, so the inline title can keep the edit and
+  /// offer to try again instead of showing a name that was never stored.
+  @discardableResult
+  func rename(meetingID: UUID, title: String) async -> Bool {
     await waitForCommitSettlement(meetingID)
-    guard !unknownCommits.contains(meetingID), var record = live[meetingID] else { return }
+    guard !unknownCommits.contains(meetingID), var record = live[meetingID] else { return false }
     let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
     record.title = trimmed.isEmpty ? nil : String(trimmed.prefix(120))
-    await persist(record)
+    return await persist(record)
   }
 
   /// #4012 D8, R6: a summary's AI title names a meeting that has no name yet. Read from the

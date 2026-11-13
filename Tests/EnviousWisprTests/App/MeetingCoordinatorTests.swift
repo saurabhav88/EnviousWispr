@@ -2699,7 +2699,9 @@ struct MeetingCoordinatorTests {
     await Self.eventually("ready write failed") {
       coordinator.notice == .storageFailed && coordinator.processing == nil
     }
-    await coordinator.rename(meetingID: meetingID, title: "Lost")
+    #expect(
+      await coordinator.rename(meetingID: meetingID, title: "Lost") == false,
+      "a failed write reports it, so the title editor keeps the edit (#3147 PR4)")
     let disk = try harness.store.load(id: meetingID)
     #expect(coordinator.record(id: meetingID) == disk)
     #expect(disk.state == .processing)
@@ -2707,7 +2709,7 @@ struct MeetingCoordinatorTests {
     // Progress kept: the ready write never landed.
     #expect(FileManager.default.fileExists(atPath: harness.checkpointURL(meetingID).path))
     // The next change is built on what is durable, not on either failed copy.
-    await coordinator.rename(meetingID: meetingID, title: "Kept")
+    #expect(await coordinator.rename(meetingID: meetingID, title: "Kept"))
     let after = try harness.store.load(id: meetingID)
     #expect(after.title == "Kept")
     #expect(after.state == .processing)
