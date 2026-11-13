@@ -155,6 +155,8 @@ final class MeetingPlaybackController {
 
   func play() {
     guard state != .playing, state != .unavailable, durationMs > 0 else { return }
+    // #3147 PR4B: no start while the recording's files are being switched.
+    if let sourceID, arbiter?.mayStart(sourceID) == false { return }
     if state == .finished { positionMs = 0 }
     do {
       try output.start()

@@ -78,6 +78,15 @@ final class PlaybackArbiter {
     players[id] = entries
   }
 
+  /// #3147 PR4B: recordings whose files are being switched (a meeting's compacted copy being
+  /// committed): their players may not start until the switch ends.
+  private var heldStarts: Set<PlaybackSourceID> = []
+
+  func holdStarts(_ id: PlaybackSourceID) { heldStarts.insert(id) }
+  func releaseStarts(_ id: PlaybackSourceID) { heldStarts.remove(id) }
+  /// Whether a player of `id` may start playing now.
+  func mayStart(_ id: PlaybackSourceID) -> Bool { !heldStarts.contains(id) }
+
   func didStartPlaying(_ player: MeetingPlaybackController) {
     if let previous = nowPlaying, previous !== player { previous.pause() }
     nowPlaying = player

@@ -1,3 +1,4 @@
+#if DEBUG
 import EnviousWisprAppKitTestSupport
 import Foundation
 import os
@@ -315,6 +316,13 @@ struct MeetingAudioCompactionLifecycleTests {
     let coordinator = harness.coordinator
     await Self.launched(harness, record.id)
     #expect(coordinator.playbackSource(meetingID: record.id) != nil)
+    let arbiter = PlaybackArbiter()
+    coordinator.playbackArbiter = arbiter
+    // A paused player the page still holds from before the commit.
+    let player = MeetingPlaybackController(
+      media: .transcript(Silence()), durationMs: 3_000,
+      output: MeetingPlaybackControllerTests.FakeOutput(), sourceID: .meeting(record.id),
+      arbiter: arbiter)
     let hold = DispatchSemaphore(value: 0)
     let compactor = WindowedCompactor()
     compactor.afterPrepare = {
@@ -326,6 +334,8 @@ struct MeetingAudioCompactionLifecycleTests {
       // The observed read comes first, so the wait is registered on it.
       coordinator.playbackSource(meetingID: record.id) == nil && compactor.prepared == 1
     }
+    player.play()
+    #expect(player.state != .playing, "no start while the files are switched")
     hold.signal()
     #expect(await compaction.value == .committed)
     #expect(coordinator.playbackSource(meetingID: record.id) != nil)
@@ -351,8 +361,8 @@ struct MeetingAudioCompactionLifecycleTests {
     let compaction = Task { await coordinator.compactAudio(meetingID: record.id, with: compactor) }
     await Task.detached { Self.waitBounded(entered) }.value
     let deletion = Task { await coordinator.delete(meetingID: record.id) }
-    await MeetingCoordinatorTests.eventually("deleting", drainFiles: false) {
-      coordinator.isDeletingForTesting(record.id)
+    await MeetingCoordinatorTests.eventually("deletion waits for the compaction", drainFiles: false) {
+      coordinator.compactionSettlesWaitingForTesting.contains(record.id)
     }
     // The encoder still holds its first segment: the folder must still be there.
     #expect(FileManager.default.fileExists(atPath: harness.store.folder(for: record.id).path))
@@ -544,3 +554,4 @@ struct MeetingAudioCompactionLifecycleTests {
     #expect(coordinator.audioCompaction?.isRunning == false)
   }
 }
+#endif

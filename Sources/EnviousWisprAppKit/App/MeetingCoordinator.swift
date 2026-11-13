@@ -710,7 +710,9 @@ final class MeetingCoordinator {
   /// write carries a meeting's entry, so no later save drops the meeting's audio authority.
   private var committedAudio: [UUID: MeetingCompressedInventory] = [:]
   /// Meetings whose compacted copy is being committed right now: no player is offered for them
-  /// (`playbackSource` is nil), so playback cannot start on the old files and then be replaced.
+  /// (`playbackSource` is nil) and a player the page still holds cannot start
+  /// (`PlaybackArbiter.holdStarts`), so playback never starts on the old files and is then
+  /// replaced.
   private var publishingCompaction: Set<UUID> = []
   /// Prepares compacted audio; wired by the composition root (nil in most tests).
   @ObservationIgnored var audioCompactor: (any MeetingAudioCompacting)?
@@ -2769,7 +2771,11 @@ final class MeetingCoordinator {
     // From here until the commit is answered no player is offered, so none can start on the
     // old files and then be replaced (a paused one is dropped and rebuilt afterwards).
     publishingCompaction.insert(meetingID)
-    defer { publishingCompaction.remove(meetingID) }
+    playbackArbiter?.holdStarts(.meeting(meetingID))
+    defer {
+      publishingCompaction.remove(meetingID)
+      playbackArbiter?.releaseStarts(.meeting(meetingID))
+    }
     let inventory = verified.inventory
     let generation = ticket.transcriptGeneration
     let segments = ticket.sourceSegments
@@ -2895,8 +2901,22 @@ final class MeetingCoordinator {
   /// has removed its own outputs; a publication already on the writer has landed).
   private func settleAudioCompaction(_ meetingID: UUID) async {
     withdrawAudioCompaction(meetingID)
-    if let work = compactionWork[meetingID] { _ = await work.value }
+    if let work = compactionWork[meetingID] {
+      #if DEBUG
+        compactionSettlesWaitingForTesting.insert(meetingID)
+      #endif
+      _ = await work.value
+      #if DEBUG
+        compactionSettlesWaitingForTesting.remove(meetingID)
+      #endif
+    }
   }
+
+  #if DEBUG
+    /// Meetings whose deletion is waiting for their compaction to end, so a test can see the
+    /// wait itself.
+    private(set) var compactionSettlesWaitingForTesting: Set<UUID> = []
+  #endif
 
   /// A committed inventory becomes part of every copy of the record this session holds.
   private func adoptCommittedAudio(_ inventory: MeetingCompressedInventory, for meetingID: UUID) {
