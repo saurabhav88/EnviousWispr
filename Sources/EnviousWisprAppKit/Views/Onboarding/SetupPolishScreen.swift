@@ -56,8 +56,10 @@ struct SetupPolishIntroScreen: View {
 /// Setup's AI polish pick and its local See all (#4528 D3a, plan M77; mockup `polishPickView`
 /// and `polishAll`'s On your Mac tab, copy verbatim). The cards are the flow's held
 /// recommendation; a click changes only the pending pick, and "Continue with <model>" commits
-/// exactly the model the screen names through `choosePolish`. See all's Cloud tab arrives with
-/// D3b, so no cloud control shows before it works.
+/// exactly the model the screen names through `choosePolish`. See all's Cloud tab (D3b, M82)
+/// mounts `SetupCloudPanel` with its own footer; Choose sends `chooseCloud`, Add my key later
+/// sends `skipPolish` and Recommended options sends `back`. The tab shows only when the
+/// presenter supplies the panel factory.
 struct SetupPolishScreen: View {
   let model: SetupScreenModel
   let epoch: Int
@@ -83,15 +85,28 @@ struct SetupPolishScreen: View {
   var body: some View {
     VStack(spacing: 0) {
       SetupPolishLips()
-      if seeAll { seeAllPanel } else { pickPanel }
-      Spacer(minLength: 0)
-      SetupFooter(title: "Continue with \(SetupPolish.name(shown))", action: accept) {
-        if seeAll {
-          SetupLinkButton(title: "Recommended options", quiet: true) { model.send(.back) }
+      if seeAll {
+        seeAllHeader
+        if model.seeAllTab == .cloud, let panel = model.cloudPanel {
+          SetupCloudPanel(
+            model: panel,
+            onChoose: { provider, id in send(.chooseCloud(provider, model: id)) },
+            onLater: {
+              panel.later()
+              skip()
+            },
+            onBack: { send(.back) }
+          )
+          .modifier(SetupRise(delay: 0, reduceMotion: reduceMotion))
         } else {
-          SetupLinkButton(title: "See all") { model.send(.seeAllPolish) }
+          seeAllPanel
+          Spacer(minLength: 0)
+          footer
         }
-        SetupLinkButton(title: "Skip AI polish", quiet: true, action: skip)
+      } else {
+        pickPanel
+        Spacer(minLength: 0)
+        footer
       }
     }
     .padding(.top, DesignSpacing.xs)
@@ -176,10 +191,19 @@ struct SetupPolishScreen: View {
 
   // MARK: See all (On your Mac)
 
-  private var seeAllPanel: some View {
-    let tiles = egOneTiles
-    let measuredOn = model.sources.egOneSizeCatalog.facts.measuredOn
-    return VStack(spacing: 0) {
+  private var footer: some View {
+    SetupFooter(title: "Continue with \(SetupPolish.name(shown))", action: accept) {
+      if seeAll {
+        SetupLinkButton(title: "Recommended options", quiet: true) { send(.back) }
+      } else {
+        SetupLinkButton(title: "See all") { send(.seeAllPolish) }
+      }
+      SetupLinkButton(title: "Skip AI polish", quiet: true, action: skip)
+    }
+  }
+
+  private var seeAllHeader: some View {
+    VStack(spacing: 0) {
       Text("Choose your AI polish")
         .font(.firstRunDisplay)
         .multilineTextAlignment(.center)
@@ -189,6 +213,59 @@ struct SetupPolishScreen: View {
         .foregroundStyle(Color.obTextSecondary)
         .padding(.top, DesignSpacing.md)
         .padding(.bottom, DesignSpacing.xxxl - DesignSpacing.xs)
+      if model.sources.makeCloudPanel != nil { seeAllTabs }
+    }
+  }
+
+  /// Mockup `[role="tablist"]`: two equal tabs in a bordered input-colored well.
+  private var seeAllTabs: some View {
+    HStack(spacing: DesignSpacing.xs) {
+      seeAllTab(.mac, title: "On your Mac", symbol: "laptopcomputer")
+      seeAllTab(.cloud, title: "Cloud", symbol: "cloud")
+    }
+    .padding(DesignSpacing.xxs + 1)
+    .background(Color.stInputBg, in: RoundedRectangle(cornerRadius: DesignRadius.xl))
+    .overlay {
+      RoundedRectangle(cornerRadius: DesignRadius.xl)
+        .strokeBorder(Color.stInputBorder, lineWidth: 1)
+        .allowsHitTesting(false)
+    }
+    .padding(.bottom, DesignSpacing.xxl)
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel(Text("Where AI polish runs"))
+  }
+
+  private func seeAllTab(
+    _ tab: SetupScreenModel.SeeAllTab, title: LocalizedStringKey, symbol: String
+  )
+    -> some View
+  {
+    let selected = model.seeAllTab == tab
+    return Button {
+      model.showSeeAllTab(tab)
+    } label: {
+      HStack(spacing: DesignSpacing.md) {
+        Image(systemName: symbol).accessibilityHidden(true)
+        Text(title)
+      }
+      .font(.firstRunLabel)
+      .foregroundStyle(selected ? Color.firstRunOnAccent : Color.obTextSecondary)
+      .frame(maxWidth: .infinity)
+      .frame(height: SetupMetrics.segmentHeight)
+      .background(
+        selected ? Color.obAccent : Color.clear,
+        in: RoundedRectangle(cornerRadius: DesignRadius.lg)
+      )
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .accessibilityAddTraits(selected ? [.isSelected] : [])
+  }
+
+  private var seeAllPanel: some View {
+    let tiles = egOneTiles
+    let measuredOn = model.sources.egOneSizeCatalog.facts.measuredOn
+    return VStack(spacing: 0) {
       VStack(spacing: DesignSpacing.md) {
         HStack(alignment: .top, spacing: DesignSpacing.md) {
           ForEach(tiles) { tile in egOneTile(tile) }
@@ -369,7 +446,8 @@ struct SetupPolishScreen: View {
     guard let polish = SetupPolish.model(id) else { return "" }
     if polish.provider == .appleIntelligence {
       return String(
-        localized: "Nothing to download", comment: "Setup AI polish card: Apple Intelligence's size.")
+        localized: "Nothing to download",
+        comment: "Setup AI polish card: Apple Intelligence's size.")
     }
     guard let bytes = SetupPolish.downloadBytes(id, sources: model.sources) else { return "" }
     return String(
@@ -386,8 +464,13 @@ struct SetupPolishScreen: View {
   }
 
   private func skip() {
+    send(.skipPolish)
+  }
+
+  /// Every send is guarded by the screen's own step.
+  private func send(_ event: OnboardingEvent) {
     guard model.state.step == (seeAll ? .polishSeeAll : .polishPick) else { return }
-    model.send(.skipPolish)
+    model.send(event)
   }
 }
 

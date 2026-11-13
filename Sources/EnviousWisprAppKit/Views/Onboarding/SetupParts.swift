@@ -61,6 +61,8 @@ enum SetupMetrics {
   static let barHeight: CGFloat = 6
   /// Downloads: a card's status row (mockup min-height 20).
   static let cardStatusRow: CGFloat = 20
+  /// AI polish See all: a tab's height (mockup 38).
+  static let segmentHeight: CGFloat = 38
 }
 
 /// A screen's footer (mockup `[data-ui="footer"]`): the primary action, then the 32-high links

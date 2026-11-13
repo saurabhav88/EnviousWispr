@@ -236,6 +236,12 @@ struct OnboardingFlowTests {
     #expect(
       OnboardingFlow.reduce(Self.at(.polishSeeAll), .choosePolish(OnboardingChoices.polishCloud))
         .outcome == .refused("a cloud pick names its provider and model"))
+    // Setup offers only key-based cloud providers: Ollama and the local providers are refused.
+    for provider in [LLMProvider.ollama, .none, .egOne, .appleIntelligence] {
+      #expect(
+        OnboardingFlow.reduce(Self.at(.polishSeeAll), .chooseCloud(provider, model: "m")).outcome
+          == .refused("Setup's cloud polish is OpenAI, Gemini or Claude"), "accepted \(provider)")
+    }
     var start = Self.at(.polishSeeAll)
     start.choices.speech = .parakeet
     let t = OnboardingFlow.reduce(start, .chooseCloud(.openAI, model: "gpt-4o-mini"))

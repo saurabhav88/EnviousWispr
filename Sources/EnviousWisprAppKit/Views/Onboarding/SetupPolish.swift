@@ -160,17 +160,19 @@ enum SetupPolish {
     }
   }
 
-  /// The one-line reason on a See all EG-1 tile (mockup: the line's first sentence).
+  /// The short reason on a See all EG-1 tile: two or three words (founder; mockup lines'
+  /// first sentence).
   static func tileReason(_ size: EGOneSize) -> String {
     switch size {
     case .full:
-      String(localized: "Our largest model", comment: "Setup AI polish See all: EG-1 tile.")
+      String(localized: "Best quality", comment: "Setup AI polish See all: EG-1 tile, 2-3 words.")
     case .mini:
       String(
-        localized: "Our best balance of quality, speed and size",
-        comment: "Setup AI polish See all: EG-1 Mini tile.")
+        localized: "Fast all-rounder", comment: "Setup AI polish See all: EG-1 Mini tile, 2-3 words.")
     case .micro:
-      String(localized: "Our lightest model", comment: "Setup AI polish See all: EG-1 Micro tile.")
+      String(
+        localized: "Smallest and fastest",
+        comment: "Setup AI polish See all: EG-1 Micro tile, 2-3 words.")
     }
   }
 

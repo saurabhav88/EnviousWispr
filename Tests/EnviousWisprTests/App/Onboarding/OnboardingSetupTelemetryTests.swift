@@ -483,6 +483,30 @@ struct OnboardingSetupTelemetryTests {
     #expect(r.blocked.map(\.1) == [.polishFailed, .polishFailed])
   }
 
+  @Test(
+    "cloud key outcomes: the last is the key row; one key_check_failed per rejected key revision; nothing outside an owned visit"
+  )
+  func keyOutcomes() {
+    let r = Recorder()
+    let o = r.observer()
+    r.owned = false
+    o.keyReported(.rejected(.openAI, revision: 1), rulesVersion: "rules-a")
+    #expect(r.blocked.isEmpty)  // the old onboarding's visit
+    r.owned = true
+    o.keyReported(.saved, rulesVersion: "rules-a")
+    o.keyReported(.rejected(.openAI, revision: 2), rulesVersion: "rules-a")
+    o.keyReported(.rejected(.openAI, revision: 2), rulesVersion: "rules-a")  // a repeated read
+    #expect(r.blocked.map(\.1) == [.keyCheckFailed] && r.blocked.map(\.0) == ["polishSeeAll"])
+    o.keyReported(.rejected(.openAI, revision: 3), rulesVersion: "rules-a")  // a new key
+    #expect(r.blocked.count == 2)
+    o.keyReported(.skipped, rulesVersion: "rules-a")
+    #expect(r.choices.isEmpty)  // a choice row waits for the visit's end
+    o.visitEnded()
+    let key = r.choices.filter { $0.0.kind == .key }
+    #expect(key.count == 1 && key.first?.0 == .key(.skipped) && key.first?.3 == "rules-a")
+    #expect(key.first?.1 == nil && key.first?.2 == nil)  // no recommendation for a key
+  }
+
   @Test("a disk block is one episode across polls and retries; a new episode after it clears")
   func diskBlockEpisodes() async {
     let world = World()

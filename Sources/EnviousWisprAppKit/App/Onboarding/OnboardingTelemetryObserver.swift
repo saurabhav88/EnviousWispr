@@ -101,6 +101,8 @@ final class OnboardingTelemetryObserver {
   private var blocker: OnboardingTelemetry.BlockedReason?
   /// The polish pick whose failed load already sent its row this episode.
   private var polishFailure: String?
+  /// Rejected cloud key revisions that already sent `key_check_failed` this visit.
+  private var rejectedKeys: Set<String> = []
   var rowsThisVisit: Int { seenThisVisit.count }
 
   init(inputs: Inputs) {
@@ -117,6 +119,29 @@ final class OnboardingTelemetryObserver {
         step: coordinator.state.step, block: coordinator.block, choices: coordinator.state.choices,
         readiness: coordinator.state.readiness)
     }
+  }
+
+  // MARK: Cloud key (D3b, M82 r1)
+
+  /// A typed key outcome from See all's cloud panel (its check's current answer, or Add my key
+  /// later; never view rendering, never the key). The last outcome is the visit's key choice
+  /// row; a rejection also sends one `step_blocked key_check_failed` per provider and stored
+  /// revision, so a revisit or a repeated read adds no row.
+  func keyReported(_ event: SetupKeyEvent, rulesVersion: String) {
+    guard ownedVisit() else { return }
+    let outcome: OnboardingTelemetry.KeyOutcome
+    switch event {
+    case .saved: outcome = .saved
+    case .passed: outcome = .checkPassed
+    case .skipped: outcome = .skipped
+    case .rejected(let provider, let revision):
+      outcome = .checkFailed
+      if rejectedKeys.insert("\(provider.rawValue)#\(revision)").inserted {
+        inputs.emitBlocked(OnboardingStep.polishSeeAll.rawValue, .keyCheckFailed)
+      }
+    }
+    choices[.key] = ChoiceRecord(
+      choice: .key(outcome), recommended: nil, followed: nil, rulesVersion: rulesVersion)
   }
 
   // MARK: Screens (F2a)
@@ -221,6 +246,7 @@ final class OnboardingTelemetryObserver {
       choices = [:]
       blocker = nil
       polishFailure = nil
+      rejectedKeys = []
     case .completed(let final, let interrupted, let rulesVersion):
       let owned = !interrupted && ownedVisit()
       // Agreement is read from this visit's picks before they are sent and cleared.
@@ -275,6 +301,7 @@ final class OnboardingTelemetryObserver {
     requests = []
     blocker = nil
     polishFailure = nil
+    rejectedKeys = []
   }
 
   private func record(

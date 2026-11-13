@@ -1520,6 +1520,148 @@ def s_interrupted(run, speech):
     return s
 
 
+
+def s_screens_d3b(run, speech):
+    """D3b: See all's On your Mac / Cloud tabs and the cloud panel through real controls (AX
+    press, keys posted to this app only), light and dark. Only a SYNTHETIC key is typed, into a
+    provider slot the door reports EMPTY in this dev app's own credential store (never the
+    production Keychain, never a founder key); the provider rejects it, and Add my key later must
+    remove it again. Ollama is never offered. An accepted key, the model picker and its VoiceOver
+    label need a real key and stay a human check."""
+    from ui_helpers import set_attr, perform_action
+    s = Scenario("screens_d3b")
+    pid = run.app.client.pid
+    shots = os.path.join(run.artifacts, "shots")
+    os.makedirs(shots, exist_ok=True)
+    before = run.app.call("settings", "get", "appearance").get("value")
+    names = {"openAI": "OpenAI", "gemini": "Google Gemini", "claude": "Claude"}
+    synthetic = "uat-synthetic-0000"  # short on purpose: not a real key shape
+
+    def shot(name):
+        wid = window_id(pid, "Setup")
+        path = os.path.join(shots, f"d3b-{name}.png")
+        s.expect(wid is not None and capture_window(wid, path), f"captured {name}", path)
+
+    def settle(seconds=0.6):
+        time.sleep(seconds)  # test-fixture-timer: the screen entrance and panel rise run on screen
+
+    def press(name):
+        b = setup_button(pid, name)
+        s.expect(b is not None and perform_action(b, "AXPress"), f"pressed {name}")
+        settle(0.4)
+
+    def has(name):
+        return setup_button(pid, name) is not None
+
+    def texts():
+        return setup_window_ax(pid)[1]
+
+    def saved():
+        return run.app.call("status").get("savedKeys") or {}
+
+    def to_see_all():
+        run.app.call("onboarding", "profile", "--ram", "16", "--afm", "available")
+        run.reset(s, "fresh flow to See all")
+        run.app.call("onboarding", "present")
+        run.send("next")
+        run.send("chooseLanguage", value="en")
+        run.send("next")
+        run.send("chooseSpeech", value=speech)
+        run.send("next")  # AI polish pick
+        st = run.until(lambda x: x.get("step") == "polishPick", 4, "polishPick")
+        s.expect(st.get("step") == "polishPick", "reached AI polish pick", st.get("step"))
+        settle()
+        press("See all")
+        st = run.until(lambda x: x.get("step") == "polishSeeAll", 4, "polishSeeAll")
+        s.expect(st.get("step") == "polishSeeAll", "See all is on screen", st.get("step"))
+        settle()
+
+    keys_before, empty = None, None
+    for appearance in ("light", "dark"):
+        run.app.call("settings", "set", "appearance", json.dumps(appearance))
+        to_see_all()
+        s.expect(has("On your Mac") and has("Cloud"), "See all shows the two tabs")
+        s.expect(has("Continue with EG-1 Mini") and has("Skip AI polish"),
+                 "On your Mac keeps the local tiles and footer")
+        shot(f"{appearance}-mac-tab")
+        press("Cloud")
+        if keys_before is None:
+            # The panel's first read settles each slot's presence ("unknown" until something reads
+            # it); the baseline is taken once that read has finished.
+            deadline = time.monotonic() + 5
+            keys_before = saved()
+            while time.monotonic() < deadline and "unknown" in keys_before.values():
+                time.sleep(0.25)  # test-fixture-timer: the panel's key read runs on the lane
+                keys_before = saved()
+            s.expect("unknown" not in keys_before.values(),
+                     "key slots before any key action (presence metadata only)", keys_before)
+            empty = next((p for p in ("claude", "gemini", "openAI")
+                          if keys_before.get(p) == "absent"), None)
+        s.expect(all(has(n) for n in names.values()), "Cloud offers OpenAI, Google Gemini and Claude")
+        t = texts()
+        s.expect(not any("Ollama" in x for x in t) and not has("Set up later"),
+                 "Ollama is never offered in Setup", [x for x in t if "Ollama" in x])
+        s.expect(has("Check my key") and has("Add my key later") and has("Recommended options"),
+                 "the panel's own footer shows")
+        shot(f"{appearance}-cloud-tab")
+        press("On your Mac")
+        s.expect(has("Continue with EG-1 Mini"), "back on On your Mac")
+        press("Cloud")
+        s.expect(has("Check my key"), "Cloud again: the same panel")
+        st = run.status()
+        s.expect(st.get("step") == "polishSeeAll" and (st.get("choices") or {}).get("polish") is None,
+                 "tab switches commit nothing", (st.get("step"), st.get("choices")))
+        if appearance == "light":
+            # Check my key runs ONLY on a provider whose slot is empty: a saved key loads into the
+            # field, and checking it again could remove it if that check did not pass.
+            if empty is None:
+                s.uncovered.append(
+                    f"empty-key and rejected-key checks: no empty provider slot here {keys_before}")
+            else:
+                press(names[empty])
+                press("Check my key")  # empty field
+                s.expect(any("Paste your" in x and "key in the box first" in x for x in texts()),
+                         "an empty key asks for a paste first")
+                field = setup_field(pid)
+                s.expect(field is not None, f"one {names[empty]} key field")
+                if field is not None:
+                    set_attr(field, "AXFocused", True)
+                post_keys(pid, text=synthetic)
+                post_keys(pid, keycode=KEY_RETURN)  # Return checks the key (onSubmit)
+                deadline = time.monotonic() + 30
+                while time.monotonic() < deadline and not any(
+                        "That key did not work" in x for x in texts()):
+                    time.sleep(0.5)  # test-fixture-timer: the provider answers over the network
+                s.expect(any("That key did not work" in x for x in texts()),
+                         f"{names[empty]} rejects the synthetic key and says so")
+                shot(f"{appearance}-rejected")
+                s.expect(saved().get(empty) == "present", "the checked key is stored until leaving",
+                         saved().get(empty))
+                press("Add my key later")
+                st = run.until(lambda x: x.get("step") != "polishSeeAll", 4, "left See all")
+                s.expect((st.get("choices") or {}).get("polish") == "off",
+                         "Add my key later stores AI polish off and moves on",
+                         (st.get("step"), st.get("choices")))
+                after = None
+                deadline = time.monotonic() + 5
+                while time.monotonic() < deadline:
+                    after = saved().get(empty)
+                    if after == "absent":
+                        break
+                    time.sleep(0.25)  # test-fixture-timer: the removal runs on the credential lane
+                s.expect(after == "absent", "the rejected synthetic key was removed", after)
+        else:
+            press("Add my key later")
+            st = run.until(lambda x: x.get("step") != "polishSeeAll", 4, "left See all")
+            s.expect((st.get("choices") or {}).get("polish") == "off", "dark: Add my key later stores off",
+                     st.get("choices"))
+    keys_after = saved()
+    s.expect(keys_after == keys_before, "every key slot ends as it started", (keys_before, keys_after))
+    s.uncovered.append("an accepted key, the model picker and its VoiceOver label: needs a real key "
+                       "(human check)")
+    run.app.call("settings", "set", "appearance", json.dumps(before))
+    return s
+
 SCENARIOS = {
     "fresh": s_fresh, "resume": s_resume, "restart": s_restart, "profiles": s_profiles,
     "permissions": s_permissions, "faults": s_faults, "completion": s_completion,
@@ -1528,6 +1670,7 @@ SCENARIOS = {
     "screens_d3a": s_screens_d3a, "screens_d5": s_screens_d5,
     "screens_d4a": s_screens_d4a,
     "screens_d4b": s_screens_d4b,
+    "screens_d3b": s_screens_d3b,
 }
 
 

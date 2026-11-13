@@ -76,9 +76,9 @@ struct SetupCloudPanelTests {
     try render(model, "picker", folder)
     model.select(Self.sample.id)
     try render(model, "chosen", folder)
-    // The Ollama card is always present; capture it with the uncluttered empty form.
+    // Another provider's empty form (Setup offers no Ollama row).
     model.provider = .gemini
-    try render(model, "ollama-later", folder)
+    try render(model, "gemini-empty", folder)
   }
 
   private func makeModel(_ fixture: Check) -> SetupCloudPanelModel {

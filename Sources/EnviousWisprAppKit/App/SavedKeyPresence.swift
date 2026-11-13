@@ -22,7 +22,7 @@ import Foundation
 /// (`PolishCloudVerdict`). Reading the same key again does not move it.
 @MainActor @Observable
 final class SavedKeyPresence {
-  static let cloudProviders: [LLMProvider] = [.openAI, .gemini, .claude]
+  nonisolated static let cloudProviders: [LLMProvider] = [.openAI, .gemini, .claude]
 
   private(set) var states: [LLMProvider: SavedKeyState] = [
     .openAI: .unknown, .gemini: .unknown, .claude: .unknown,

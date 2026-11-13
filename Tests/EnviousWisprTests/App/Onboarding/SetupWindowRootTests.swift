@@ -147,7 +147,8 @@ struct SetupWindowRootTests {
     host.rootView = AnyView(
       SetupWindowRoot(model: model).environment(\.overlayReduceMotionOverride, false))
     _ = try Self.png(host)
-    #expect(try Self.rowsBand(host) == rowsBefore, "turning Reduce Motion off hid or moved the rows")
+    #expect(
+      try Self.rowsBand(host) == rowsBefore, "turning Reduce Motion off hid or moved the rows")
     coordinator.send(.next)
     let language = Self.host(SetupWindowRoot(model: model), reduceMotion: true)
     try Self.png(language).write(to: folder.appending(path: "setup-language-reduce-motion.png"))
@@ -157,7 +158,8 @@ struct SetupWindowRootTests {
   func speechScreensUnderReduceMotion() throws {
     _ = NSApplication.shared
     let world = OnboardingCoordinatorTests.World()
-    world.recommended = OnboardingRecommended(speech: .whisper, polish: "eg1.mini", rulesVersion: "r")
+    world.recommended = OnboardingRecommended(
+      speech: .whisper, polish: "eg1.mini", rulesVersion: "r")
     let coordinator = world.coordinator()
     coordinator.begin()
     coordinator.send(.next)
@@ -236,7 +238,8 @@ struct SetupWindowRootTests {
 
   /// A world whose advice follows a switchable Apple Intelligence state, as the live owner does.
   private static func polishWorld(afm: AppleIntelligenceSetupState = .available) throws -> (
-    OnboardingCoordinatorTests.World, () -> AppleIntelligenceSetupState, (AppleIntelligenceSetupState) -> Void
+    OnboardingCoordinatorTests.World, () -> AppleIntelligenceSetupState,
+    (AppleIntelligenceSetupState) -> Void
   ) {
     let world = OnboardingCoordinatorTests.World()
     let box = AFMBox(afm)
@@ -273,7 +276,8 @@ struct SetupWindowRootTests {
     coordinator.send(.chooseSpeech(.parakeet))
     setAFM(.available)  // changed before polish: entry must read it
     coordinator.send(.next)
-    #expect(coordinator.state.recommended.polishCards.map(\.model) == ["appleIntelligence", "eg1.mini"])
+    #expect(
+      coordinator.state.recommended.polishCards.map(\.model) == ["appleIntelligence", "eg1.mini"])
     // Off the polish screens, an Apple Intelligence change does not touch the held advice.
     coordinator.send(.seeAllPolish)
     setAFM(.turnedOff)
@@ -309,7 +313,9 @@ struct SetupWindowRootTests {
     let added = world.log.dropFirst(logBefore.count)
     #expect(coordinator.state.choices.polish == nil, "a click committed a pick")
     #expect(
-      !added.contains { $0.hasPrefix("requestPolish") || $0.hasPrefix("selectPolish") || $0.hasPrefix("writePolish") },
+      !added.contains {
+        $0.hasPrefix("requestPolish") || $0.hasPrefix("selectPolish") || $0.hasPrefix("writePolish")
+      },
       "a click wrote or started something: \(added)")
     // Apple Intelligence stops being available on screen: the draft is dropped, never kept.
     setAFM(.unavailable)
@@ -345,7 +351,105 @@ struct SetupWindowRootTests {
     model.send(.skipPolish)
     #expect(coordinator.state.choices.polish == OnboardingChoices.polishOff)
     let after = world.log.dropFirst(logBefore)
-    #expect(!after.contains { $0.hasPrefix("requestPolish") }, "Skip started a polish download: \(after)")
+    #expect(
+      !after.contains { $0.hasPrefix("requestPolish") }, "Skip started a polish download: \(after)")
+  }
+
+  /// A cloud panel over inert owners: nothing is saved, checked or listed.
+  static func inertCloudPanel() -> SetupCloudPanelModel {
+    SetupCloudPanelModel(
+      inputs: .init(
+        hydrate: { _ in nil }, check: { _, _, _ in .retry }, isCurrent: { _, _ in false },
+        canChoose: { _, _, _ in false }, list: { nil }))
+  }
+
+  private final class PanelCount {
+    var made: [SetupCloudPanelModel] = []
+  }
+
+  @Test(
+    "See all's Cloud tab needs the panel factory, keeps one panel across tab switches, opens on a committed cloud pick and drops the panel when See all is left"
+  )
+  func seeAllCloudTab() throws {
+    let (world, _, _) = try Self.polishWorld()
+    let coordinator = world.coordinator()
+    let model = SetupScreenModel(coordinator: coordinator)
+    defer { model.detach() }
+    Self.toPolishPick(coordinator)
+    coordinator.send(.seeAllPolish)
+    model.showSeeAllTab(.cloud)
+    #expect(model.seeAllTab == .mac && model.cloudPanel == nil, "a Cloud tab showed with no panel")
+
+    let count = PanelCount()
+    model.sources.makeCloudPanel = {
+      let panel = Self.inertCloudPanel()
+      count.made.append(panel)
+      return panel
+    }
+    model.showSeeAllTab(.cloud)
+    let first = try #require(model.cloudPanel)
+    #expect(model.seeAllTab == .cloud)
+    model.showSeeAllTab(.mac)
+    model.showSeeAllTab(.cloud)
+    #expect(model.cloudPanel === first && count.made.count == 1, "a tab switch replaced the panel")
+
+    // Choose (the panel's onChoose) commits the cloud pick and leaves See all.
+    model.send(.chooseCloud(.openAI, model: "gpt-4.1-mini"))
+    #expect(coordinator.state.choices.polish == OnboardingChoices.polishCloud)
+    #expect(coordinator.state.step != .polishSeeAll)
+    #expect(model.cloudPanel == nil && model.seeAllTab == .mac, "the panel outlived See all")
+    model.showSeeAllTab(.cloud)
+    #expect(model.cloudPanel == nil, "a panel was made off See all")
+
+    // Back on See all with cloud committed: it opens on Cloud with a fresh panel.
+    while coordinator.state.step != .polishPick, coordinator.state.step != .polishSeeAll {
+      let before = coordinator.state.step
+      coordinator.send(.back)
+      if coordinator.state.step == before { break }
+    }
+    if coordinator.state.step == .polishPick { coordinator.send(.seeAllPolish) }
+    #expect(coordinator.state.step == .polishSeeAll)
+    #expect(model.seeAllTab == .cloud && model.cloudPanel != nil && model.cloudPanel !== first)
+    #expect(count.made.count == 2)
+  }
+
+  private final class Leaves {
+    var log: [LLMProvider?] = []
+  }
+
+  @Test(
+    "a fresh screen model over a restored See all with a cloud pick opens Cloud once sources arrive; leaving See all disposes the panel once"
+  )
+  func restoredSeeAllOpensCloudAndDisposes() throws {
+    let (world, _, _) = try Self.polishWorld()
+    let coordinator = world.coordinator()
+    Self.toPolishPick(coordinator)
+    coordinator.send(.seeAllPolish)
+    coordinator.send(.chooseCloud(.claude, model: "claude-sonnet"))
+    coordinator.send(.back)
+    if coordinator.state.step == .polishPick { coordinator.send(.seeAllPolish) }
+    #expect(coordinator.state.step == .polishSeeAll)
+
+    // Setup closed and reopened: a new screen model over the same flow.
+    let model = SetupScreenModel(coordinator: coordinator)
+    defer { model.detach() }
+    #expect(model.seeAllTab == .mac && model.cloudPanel == nil)  // no factory yet
+    let leaves = Leaves()
+    var sources = SetupScreenSources()
+    sources.makeCloudPanel = {
+      SetupCloudPanelModel(
+        inputs: .init(
+          hydrate: { _ in nil }, check: { _, _, _ in .retry }, isCurrent: { _, _ in false },
+          canChoose: { _, _, _ in false }, list: { nil }, leave: { leaves.log.append($0) }))
+    }
+    model.sources = sources
+    #expect(model.seeAllTab == .cloud && model.cloudPanel != nil, "the committed cloud pick reopened on Mac")
+
+    model.cloudPanel?.provider = .gemini  // switching provider leaves the old one
+    #expect(leaves.log == [.openAI])
+    coordinator.send(.back)  // AI polish pick: See all is left
+    #expect(model.cloudPanel == nil)
+    #expect(leaves.log == [.openAI, nil], "the dropped panel did not leave every provider once")
   }
 
   @Test("Polish intro, pick and See all render all their content under Reduce Motion")
@@ -368,7 +472,8 @@ struct SetupWindowRootTests {
           facts: try JSONDecoder().decode(
             EGOneSizeFacts.self,
             from: Data(
-              contentsOf: RepoRoot.url.appending(path: "Sources/EnviousWispr/Resources/eg1-size-facts.json"))),
+              contentsOf: RepoRoot.url.appending(
+                path: "Sources/EnviousWispr/Resources/eg1-size-facts.json"))),
           downloadBytes: [.full: 3_160_000_000, .mini: 1_450_000_000, .micro: 590_000_000]),
         s1MiniDownloadBytes: 484_219_808, physicalMemoryBytes: 16 << 30)
       if afm == .available {
@@ -381,6 +486,16 @@ struct SetupWindowRootTests {
       coordinator.send(.seeAllPolish)
       try Self.png(Self.host(SetupWindowRoot(model: model), reduceMotion: true))
         .write(to: folder.appending(path: "setup-polish-seeall-\(afm.rawValue)-reduce-motion.png"))
+      if afm == .available {
+        // With the panel factory: the two tabs, then the Cloud tab's panel and its own footer.
+        model.sources.makeCloudPanel = { Self.inertCloudPanel() }
+        let mac = try Self.png(Self.host(SetupWindowRoot(model: model), reduceMotion: true))
+        try mac.write(to: folder.appending(path: "setup-polish-seeall-tabs-reduce-motion.png"))
+        model.showSeeAllTab(.cloud)
+        let cloud = try Self.png(Self.host(SetupWindowRoot(model: model), reduceMotion: true))
+        try cloud.write(to: folder.appending(path: "setup-polish-seeall-cloud-reduce-motion.png"))
+        #expect(cloud != mac, "the Cloud tab did not change the screen")
+      }
     }
   }
 

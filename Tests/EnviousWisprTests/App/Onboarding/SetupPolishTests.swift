@@ -159,4 +159,12 @@ struct SetupPolishTests {
       #expect(!line.localizedCaseInsensitiveContains(claim), "\(claim)")
     }
   }
+
+  @Test("each See all EG-1 tile carries a two- or three-word reason (founder)")
+  func tileReasonsAreShort() {
+    for size in EGOneSize.allCases {
+      let words = SetupPolish.tileReason(size).split(separator: " ").count
+      #expect((2...3).contains(words), "\(size): \(SetupPolish.tileReason(size))")
+    }
+  }
 }

@@ -250,6 +250,10 @@ enum OnboardingFlow {
     case (.polishPick, .choosePolish(let id)), (.polishSeeAll, .choosePolish(let id)):
       return choosePolish(id)
     case (.polishSeeAll, .chooseCloud(let provider, let model)):
+      // Setup offers only the key-based cloud providers; Ollama stays in Settings (founder).
+      guard SavedKeyPresence.cloudProviders.contains(provider) else {
+        return refuse("Setup's cloud polish is OpenAI, Gemini or Claude")
+      }
       return chooseCloud(provider, model)
     case (.polishPick, .next):
       // Continuing an existing cloud pick keeps its provider and model.

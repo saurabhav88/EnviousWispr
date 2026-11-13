@@ -102,7 +102,11 @@ final class SetupScreenModel {
   /// stays on those two screens with the same language; never a choice until "Use <model>".
   private(set) var speechDraft: ASRBackendType?
   /// Owner facts the screens show, injected by the presenter (names, sizes, rechecks).
-  @ObservationIgnored var sources = SetupScreenSources()
+  @ObservationIgnored var sources = SetupScreenSources() {
+    // A model made over a restored See all opens its committed cloud pick on Cloud once the
+    // presenter installs the panel factory (M82 r1).
+    didSet { if cloudPanel == nil { openSeeAll() } }
+  }
 
   func setSpeechDraft(_ engine: ASRBackendType) {
     guard state.step == .speechPick || state.step == .speechCompare else { return }
@@ -121,6 +125,26 @@ final class SetupScreenModel {
         language: state.choices.languageMode)
     else { return }
     polishDraft = id
+  }
+
+  /// See all's two tabs (D3b, M82; mockup `allTabs`). A UI view only, never a choice.
+  enum SeeAllTab: Equatable { case mac, cloud }
+
+  /// The tab See all shows: Cloud when the committed pick is cloud polish, else On your Mac.
+  private(set) var seeAllTab: SeeAllTab = .mac
+  /// One cloud panel per See all visit, kept across tab switches (its typed key, the check for
+  /// that key's revision and an explicit pick survive) and dropped when See all is left.
+  @ObservationIgnored private(set) var cloudPanel: SetupCloudPanelModel?
+
+  /// Shows a See all tab. Cloud needs the presenter's panel factory; without it the tab stays
+  /// hidden and this does nothing.
+  func showSeeAllTab(_ tab: SeeAllTab) {
+    guard state.step == .polishSeeAll else { return }
+    if tab == .cloud {
+      guard let make = sources.makeCloudPanel else { return }
+      if cloudPanel == nil { cloudPanel = make() }
+    }
+    seeAllTab = tab
   }
 
   init(coordinator: OnboardingCoordinator) {
@@ -179,6 +203,24 @@ final class SetupScreenModel {
     {
       polishDraft = nil
     }
+    if state.step != .polishSeeAll {
+      seeAllTab = .mac
+      dropCloudPanel()
+    } else if previous.step != .polishSeeAll {
+      openSeeAll()
+    }
+  }
+
+  /// Entering See all: Cloud when the committed pick is cloud polish, else On your Mac.
+  private func openSeeAll() {
+    guard state.step == .polishSeeAll else { return }
+    showSeeAllTab(state.choices.polish == OnboardingChoices.polishCloud ? .cloud : .mac)
+  }
+
+  /// The panel's unpassed key writes go with it (M82 r1).
+  private func dropCloudPanel() {
+    cloudPanel?.dispose()
+    cloudPanel = nil
   }
 
   /// Stops mirroring. Only this model's subscription is removed.
@@ -187,6 +229,7 @@ final class SetupScreenModel {
     updateDownloadsVisibility()
     onDownloadsVisible = nil
     onPresented = nil
+    dropCloudPanel()
     coordinator?.onChange = nil
     coordinator = nil
   }
@@ -218,6 +261,9 @@ struct SetupScreenSources {
   /// Hides the Setup window; the flow, its transfers and its visit continue (the presenter's
   /// close path). nil hides Getting ready's close link.
   var closeSetup: (@MainActor () -> Void)?
+  /// Builds See all's cloud panel over the saved-key, credential and discovery owners Settings
+  /// uses (`SetupCloudPanelModel.live`, D3b). nil hides the Cloud tab.
+  var makeCloudPanel: (@MainActor () -> SetupCloudPanelModel)?
 }
 
 /// The two permissions' owners for Setup's Permissions screen (#4528 D4b, plan M81).

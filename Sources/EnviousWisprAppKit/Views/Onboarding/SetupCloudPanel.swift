@@ -30,7 +30,6 @@ struct SetupCloudPanel: View {
         .font(.firstRunCaption)
         .foregroundStyle(statusColor)
         .frame(maxWidth: .infinity, alignment: .leading)
-      ollama
       Spacer(minLength: 0)
       SetupFooter(title: actionTitle, isEnabled: !model.isChecking, action: accept) {
         SetupLinkButton(title: "Recommended options", quiet: true, action: onBack)
@@ -48,7 +47,12 @@ struct SetupCloudPanel: View {
 
   private var providers: some View {
     HStack(spacing: DesignSpacing.md) {
-      ForEach(PolishRailCatalog.providers(in: .cloud), id: \.provider) { entry in
+      // Key-based providers only; Setup never offers Ollama (founder; it stays in Settings).
+      ForEach(
+        PolishRailCatalog.providers(in: .cloud).filter {
+          SavedKeyPresence.cloudProviders.contains($0.provider)
+        }, id: \.provider
+      ) { entry in
         let selected = entry.provider == model.provider
         Button {
           model.provider = entry.provider
@@ -195,24 +199,6 @@ struct SetupCloudPanel: View {
     }
     .frame(idealHeight: 240, maxHeight: 300)
     .frame(width: SetupMetrics.buttonMaxWidth)
-  }
-
-  private var ollama: some View {
-    SetupCard {
-      HStack {
-        VStack(alignment: .leading, spacing: DesignSpacing.xs) {
-          Text(verbatim: LLMProvider.ollama.displayName).font(.firstRunLabel)
-          Text("Choose your Ollama model in Settings.")
-            .font(.firstRunCaption)
-            .foregroundStyle(Color.obTextSecondary)
-        }
-        Spacer()
-        Button("Set up later", action: onLater)
-          .buttonStyle(.plain)
-          .font(.firstRunCaption.weight(.semibold))
-          .foregroundStyle(Color.obAccent)
-      }
-    }
   }
 
   private var actionTitle: LocalizedStringKey {

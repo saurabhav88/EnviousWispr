@@ -31,6 +31,9 @@ struct OnboardingLiveOwners {
   let application: any ApplicationActivating
   /// The Setup shortcut screen's rehearsal listener (D5; live type in DesktopEffects).
   let setupShortcutMonitor: any SetupShortcutMonitoring
+  /// The saved-key writer over the Keychain, presence and discovery owners Settings uses: See
+  /// all's Cloud tab saves and checks keys through it (D3b, M82).
+  let credentials: CredentialWriter
 }
 
 extension OnboardingCoordinator.Dependencies {

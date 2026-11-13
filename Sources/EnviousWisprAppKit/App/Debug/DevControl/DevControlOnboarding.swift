@@ -682,7 +682,16 @@
                       keyCode: code, modifiers: record.requiredModifiers)
                   }
                 },
-                actions: .live(owners.permissions))),
+                actions: .live(owners.permissions)),
+              makeCloudPanel: { [weak telemetry, weak coordinator] in
+                SetupCloudPanelModel.live(
+                  settings: owners.settings, writer: owners.credentials,
+                  list: owners.cloudModelList,
+                  report: { event in
+                    telemetry?.keyReported(
+                      event, rulesVersion: coordinator?.state.recommended.rulesVersion ?? "")
+                  })
+              }),
             activateApp: { owners.application.activate(.standard) },
             downloadsPresentation: { [weak coordinator, weak runtime] in
               guard let coordinator, let runtime else {
