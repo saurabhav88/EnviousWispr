@@ -306,6 +306,20 @@ struct MeetingSummaryReferenceValidatorTests {
     let wrongHash = MeetingSummarySource.turn(id: "a", textSHA256: "0")
     #expect(
       Self.check(with(.init(source: wrongHash, quote: quote, rangeUTF16: 0..<31)), item: 0) == nil)
+    // A reworded item given the linked item's id never borrows its link.
+    var twins = document.sections[0].items
+    twins[1] = MeetingSummaryItem(
+      id: twins[0].id, text: twins[1].text, citations: twins[1].citations)
+    var borrowed = base
+    borrowed.document = MeetingSummaryDocument(
+      inputs: document.inputs, renderedMarkdownSHA256: document.renderedMarkdownSHA256,
+      sections: [
+        MeetingSummarySection(
+          id: document.sections[0].id, title: document.sections[0].title, items: twins)
+      ])
+    #expect(Self.check(borrowed, item: 1) == nil)
+    #expect(Self.check(borrowed, item: 0) == nil)
+
     // A tampered passage that ends inside a word ("ship" of "shipping") never links; the
     // whole word does.
     var cut = base

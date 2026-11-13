@@ -372,7 +372,10 @@ public enum MeetingSummaryReferences {
   /// Whether `document`'s sections and items are exactly the ones `markdown` reads as (titles
   /// and item texts, in order, by bytes), so a document can never link an item the summary
   /// does not show.
+  /// Item ids must be unique too: a link is chosen by id.
   public static func describes(_ document: MeetingSummaryDocument, markdown: String) -> Bool {
+    let itemIDs = document.sections.flatMap(\.items).map(\.id)
+    guard Set(itemIDs).count == itemIDs.count else { return false }
     guard
       let parsed = self.document(
         taggedSummary: markdown, summary: markdown,
