@@ -377,7 +377,10 @@ struct ImportedSourcesTests {
     #expect(abs(source.durationMs - 2_000) <= 50)
     let decoded = try await AudioFileDecoder.decode(url: file).samples
     let window = try source.audio.window(startMs: 0, count: 250)
-    #expect(window == Array(decoded.prefix(4_000)))
+    // The original's own audio (within the reader's own read-to-read variation; see
+    // `ImportedFilePlaybackTests.convertedTolerance`).
+    let worst = zip(window, decoded.prefix(4_000)).map { abs($0 - $1) }.max() ?? 1
+    #expect(worst < ImportedFilePlaybackTests.convertedTolerance)
     #expect(
       source.source.reference
         == ImportedSourceReference(try #require(rig.coordinator.currentRow(id: row.id))))

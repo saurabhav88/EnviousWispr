@@ -41,7 +41,7 @@ enum ImportedMediaFixture {
     return dir
   }
 
-  /// A sweep with a slow wobble, never periodic over a window, so a misplaced window cannot match.
+  /// A rising sweep, never periodic over a window, so a misplaced window cannot match.
   /// `seed` changes the signal (a different recording of the same length).
   @discardableResult
   static func write(
@@ -68,9 +68,10 @@ enum ImportedMediaFixture {
       let out = buffer.floatChannelData![channel]
       for i in 0..<Int(frames) {
         let t = Float(i) / Float(rate)
-        let sweep = sin(2 * .pi * (180 + 90 * t + seed * 40) * t)
-        let wobble = 0.6 + 0.4 * sin(2 * .pi * 0.7 * t + seed)
-        out[i] = 0.3 * sweep * wobble * (channel == 0 ? 1 : 0.8)
+        // 200 Hz rising to 600 Hz over 6 s at a steady level: one 16 kHz sample of phase moves
+        // a sample by at most ~0.07, one millisecond by ~0.35 or more.
+        let phase = 2 * Float.pi * ((200 + seed * 37) * t + (200 / 6) * t * t)
+        out[i] = 0.3 * sin(phase) * (channel == 0 ? 1 : 0.8)
       }
     }
     try file.write(from: buffer)
@@ -107,6 +108,12 @@ struct ImportedFilePlaybackTests {
     return out
   }
 
+  /// The most a converted (resampled or decoded) window may differ from the decoder's: about
+  /// one 16 kHz sample of phase on the fixture sweep.
+  static let convertedTolerance: Float = 0.1
+  /// The least a window one millisecond off differs on the fixture sweep.
+  static let misplacedFloor: Float = 0.25
+
   /// Largest sample difference between `window` and the decoder's samples at `startMs`.
   private static func maxDifference(
     _ window: [Float], _ decoded: [Float], startMs: Int, offsetSamples: Int = 0
@@ -130,7 +137,17 @@ struct ImportedFilePlaybackTests {
     let audio = try await ImportedFilePlaybackAudio.open(url: url)
     let played = try Self.readAll(audio, ms: audio.durationMs + 500)
     #expect(abs(audio.durationMs - decoded.count / 16) <= 30, "duration \(audio.durationMs) ms")
-    #expect(Array(played.prefix(decoded.count)) == decoded)
+    if kind == .wav16kMono {
+      // No conversion at all: bit for bit.
+      #expect(Array(played.prefix(decoded.count)) == decoded)
+    } else {
+      // Apple's reader is not bit-reproducible across two of its own reads of one converted file
+      // (measured: two plain decodes of one AAC file differ by up to 0.07 from a buffer boundary
+      // on, a resampler phase step under one 16 kHz sample). So: within that, and never by as
+      // much as a window one millisecond off.
+      #expect(Self.maxDifference(Array(played.prefix(decoded.count)), decoded, startMs: 0) < Self.convertedTolerance)
+      #expect(Self.maxDifference(Array(played.prefix(decoded.count - 16)), decoded, startMs: 0, offsetSamples: 16) > Self.misplacedFloor)
+    }
     #expect(played.dropFirst(decoded.count).allSatisfy { $0 == 0 }, "past the end is silence")
     #expect(audio.readerStarts == 1, "one reader for a front-to-back play")
   }
@@ -146,18 +163,18 @@ struct ImportedFilePlaybackTests {
     _ = try audio.window(startMs: 0, count: 250)
 
     // Far forward (beyond the 2 s read-through), then backwards: each starts a new reader.
-    // Tolerance: a fresh reader starts 100 ms early, so decoder warm-up is gone; what remains
-    // is the resampler's phase on a new start (measured 0.025 at 48 kHz, a fraction of one
-    // 16 kHz sample). A window one millisecond off differs by far more (the control below).
-    let tolerance: Float = kind == .wav16kMono ? 0.005 : 0.05
-    for startMs in [4_000, 1_250, 3_800] {
+    // A fresh reader starts 100 ms early, so decoder warm-up is gone; what remains is the
+    // resampler's phase on a new start (measured 0.025 at 48 kHz). A window one millisecond off
+    // differs by far more (the control below).
+    let tolerance: Float = kind == .wav16kMono ? 0.005 : Self.convertedTolerance
+    for startMs in [4_000, 1_250, 5_000] {
       let before = audio.readerStarts
       let window = try audio.window(startMs: startMs, count: 250)
       #expect(audio.readerStarts == before + 1, "\(startMs) ms reopened")
       let difference = Self.maxDifference(window, decoded, startMs: startMs)
       #expect(difference < tolerance, "\(startMs) ms differs by \(difference)")
       let misplaced = Self.maxDifference(window, decoded, startMs: startMs, offsetSamples: 16)
-      #expect(misplaced > 4 * tolerance, "control: 1 ms off differs by \(misplaced)")
+      #expect(misplaced > Self.misplacedFloor, "control: 1 ms off differs by \(misplaced)")
       // The next window continues the same reader.
       let next = try audio.window(startMs: startMs + 250, count: 250)
       #expect(audio.readerStarts == before + 1)
@@ -166,7 +183,7 @@ struct ImportedFilePlaybackTests {
 
     // A short jump ahead reads through instead of reopening.
     let before = audio.readerStarts
-    _ = try audio.window(startMs: 4_750, count: 250)
+    _ = try audio.window(startMs: 5_750, count: 250)
     #expect(audio.readerStarts == before)
   }
 
