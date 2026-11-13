@@ -7,8 +7,13 @@ import SwiftUI
 /// loses nothing; it saves one second after the last change, and at once when the view closes.
 /// The box takes typing only once the saved notes are on screen (`canEdit`): while they load,
 /// or when they could not be read, it shows that instead of an empty box.
+///
+/// #3147 PR4: the text is the notes' Markdown; lines left unchanged keep their blocks, and a new
+/// line starts at `currentMs` (the recording time while recording; nil, the default, when the
+/// host has none). The block editor for the after view is `MeetingNotesBlockEditor`.
 struct MeetingNotesEditor: View {
   let meetingID: UUID
+  var currentMs: @MainActor () -> Int? = { nil }
   @Environment(MeetingCoordinator.self) private var meetings
 
   var body: some View {
@@ -18,7 +23,7 @@ struct MeetingNotesEditor: View {
       TextEditor(
         text: Binding(
           get: { documents.notes(meetingID) },
-          set: { documents.setNotes(meetingID, $0) })
+          set: { documents.setNotes(meetingID, $0, atMs: currentMs()) })
       )
       .font(.stBody)
       .scrollContentBackground(.hidden)

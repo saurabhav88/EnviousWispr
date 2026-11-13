@@ -59,11 +59,14 @@ struct MeetingDocumentsStoreTests {
       transcriptSHA256: "t", notesRevision: 1, speakerNamesSHA256: "s", promptVersion: 1,
       providerID: "openAI", configurationSHA256: "c")
     _ = try store.saveSummary("A summary", origin: .generated, inputs: inputs, meeting: record.id)
-    // A crash after notes.md and before documents.json: only the file changed.
-    try Data("second".utf8).write(to: store.notesURL(for: record.id))
+    // A crash after notes.json and before notes.md and documents.json (#3147 PR4: notes.json is
+    // the authority): only the notes document changed.
+    try MeetingStore.encoder.encode(MeetingNotesDocument(blocks: [MeetingNoteBlock(text: "second")]))
+      .write(to: store.notesDocumentURL(for: record.id))
 
     let loaded = try store.loadDocuments(meeting: record.id)
     #expect(loaded.notes == "second")
+    #expect(try String(contentsOf: store.notesURL(for: record.id), encoding: .utf8) == "second")
     #expect(loaded.repaired)
     #expect(loaded.manifest.notes?.revision == 2)
     #expect(loaded.manifest.summary?.inputs?.notesRevision == 1, "the summary is now stale")
@@ -153,7 +156,8 @@ struct MeetingDocumentsStoreTests {
     _ = try store.saveSummary("Generated", origin: .generated, inputs: nil, meeting: record.id)
     try Data("Edited outside".utf8).write(to: store.summaryURL(for: record.id))
 
-    let saved = try store.saveDraftNotes("draft", edits: 2, meeting: record.id)
+    let saved = try store.saveDraftNotes(
+      MeetingNotesDocument(legacyMarkdown: "draft"), edits: 2, meeting: record.id)
     #expect(saved.summary == "Edited outside")
     #expect(saved.manifest.summary?.origin == .userEdited)
     let reread = try store.loadDocuments(meeting: record.id)
