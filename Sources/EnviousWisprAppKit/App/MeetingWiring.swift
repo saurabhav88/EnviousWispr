@@ -284,14 +284,12 @@ enum MeetingWiring {
         zoomLabels: { await ZoomLabelsStore.shared.current() },
         // #4248: "Leave my voice out when I'm muted"; changes reach `muteFollowingChanged()`.
         muteFollowingEnabled: { [settings = inputs.settings] in settings.meetingFollowsCallMute }))
-    inputs.transcriptCoordinator.deleteMeeting = {
-      [weak coordinator, weak transcripts = inputs.transcriptCoordinator] meetingID in
-      Task {
-        // #4079: a meeting delete that could not finish now says so in History.
-        if await coordinator?.delete(meetingID: meetingID) == false {
-          transcripts?.reportActionFailure(.delete)
-        }
-      }
+    // #4079 / #3147 PR2: the owner's real outcome; History's caller reports a failure.
+    inputs.transcriptCoordinator.deleteMeeting = { [weak coordinator] meetingID in
+      await coordinator?.delete(meetingID: meetingID) ?? false
+    }
+    inputs.transcriptCoordinator.deleteMeetingAudio = { [weak coordinator] meetingID in
+      await coordinator?.deleteAudioForHistory(meetingID: meetingID) ?? .failed
     }
     inputs.transcriptCoordinator.meetingRecords = { [weak coordinator] in
       coordinator?.meetings ?? []

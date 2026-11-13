@@ -674,7 +674,32 @@ struct SettingsTabItem<Tab: Hashable>: Identifiable {
   let icon: String
   let label: LocalizedStringResource
   /// The tab's Settings Map identity (#3482); the map node names it with this same label.
-  let map: SettingsMapID
+  /// Nil for a tab outside Settings (History's tabs, #3147 PR2): no arrival focus and no map
+  /// registration, the same look.
+  let map: SettingsMapID?
+
+  init(id: Tab, icon: String, label: LocalizedStringResource, map: SettingsMapID? = nil) {
+    self.id = id
+    self.icon = icon
+    self.label = label
+    self.map = map
+  }
+}
+
+/// A Settings tab's arrival focus and map registration, only when the tab has a map identity.
+private struct SettingsTabMapModifier: ViewModifier {
+  let map: SettingsMapID?
+  let focus: @MainActor () -> Void
+
+  func body(content: Content) -> some View {
+    if let map {
+      content
+        .settingsArrivalFocusControl(place: map, perform: focus)
+        .settingsMapRegistration(map)
+    } else {
+      content
+    }
+  }
 }
 
 /// The tabs across the top of a tabbed Settings page (#3385): icon and name
@@ -693,8 +718,7 @@ struct SettingsTabStrip<Tab: Hashable>: View {
           selection = item.id
         }
         .focused($focusedTab, equals: item.id)
-        .settingsArrivalFocusControl(place: item.map) { focusedTab = item.id }
-        .settingsMapRegistration(item.map)
+        .modifier(SettingsTabMapModifier(map: item.map) { focusedTab = item.id })
         .id(item.id)
         .anchorPreference(key: SettingsTabBoundsKey.self, value: .bounds) { [$0] }
       }

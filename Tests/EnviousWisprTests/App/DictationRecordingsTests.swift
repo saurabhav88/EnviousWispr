@@ -395,6 +395,24 @@ struct DictationRecordingsTests {
     #expect(try await rig.recordings.timing(for: row.id) == timing)
   }
 
+  @Test("History's Delete recordings only removes the audio, keeps the text, then is already absent")
+  func historyDeleteRecordingsOnly() async throws {
+    let rig = rig()
+    defer { rig.gate.releaseAll() }
+    let row = try savedRow(rig)
+    rig.gate.release(1)
+    #expect(await rig.recordings.record(rowID: row.id, samples: [0], timing: nil) == .stored)
+
+    let first = await rig.coordinator.deleteHistoryItem(
+      id: .transcript(row.id), kind: .recordingsOnly)
+    #expect(first == .removed)
+    #expect(await rig.archive.url(for: row.id) == nil)
+    #expect(rig.coordinator.currentRow(id: row.id) != nil)
+    #expect(
+      await rig.coordinator.deleteHistoryItem(id: .transcript(row.id), kind: .recordingsOnly)
+        == .alreadyAbsent)
+  }
+
   @Test("a hand-off returns at once; the recording is kept once its encode finishes")
   func submitDoesNotWait() async throws {
     let rig = rig()
