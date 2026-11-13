@@ -284,29 +284,39 @@ struct MeetingAudioCompactionLifecycleTests {
         == .committed)
   }
 
-  @Test("a failed publication leaves a paused player usable; no player was stopped for good")
-  func failedPublicationKeepsPlayer() async throws {
+  @Test("an open paused player defers publication and keeps its place; released, it proceeds")
+  func openPlayerDefers() async throws {
     let harness = try Harness()
     let record = try Self.readyMeeting(harness)
     let coordinator = harness.coordinator
     let arbiter = PlaybackArbiter()
     coordinator.playbackArbiter = arbiter
     await Self.launched(harness, record.id)
-    let player = MeetingPlaybackController(
+    let source = coordinator.playbackSource(meetingID: record.id)
+    var player: MeetingPlaybackController? = MeetingPlaybackController(
       media: .transcript(Silence()), durationMs: 3_000,
       output: MeetingPlaybackControllerTests.FakeOutput(), sourceID: .meeting(record.id),
       arbiter: arbiter)
-    let compactor = WindowedCompactor()
-    let folder = harness.store.folder(for: record.id)
-    compactor.afterPrepare = {
-      _ = try? C.tone(in: folder, index: 2, startMs: 2_000, frames: 8_000, frequency: 665)
-    }
+    player?.setPlaybackRate(1.5)
+    player?.seek(toMs: 1_500)
+    #expect(player?.state != .playing)
 
-    #expect(await coordinator.compactAudio(meetingID: record.id, with: compactor) == .failed)
-    #expect(player.state != .unavailable)
-    player.play()
-    #expect(player.state == .playing)
-    #expect(coordinator.playbackSource(meetingID: record.id) != nil)
+    #expect(
+      await coordinator.compactAudio(meetingID: record.id, with: MeetingAudioCompactor())
+        == .deferred)
+    #expect(try harness.store.load(id: record.id).compressedAudio == nil)
+    #expect(try Self.compactedNames(harness, record.id).isEmpty)
+    #expect(coordinator.playbackSource(meetingID: record.id) == source)
+    #expect(player?.positionMs == 1_500)
+    #expect(player?.playbackRate == 1.5)
+    #expect(player?.state != .unavailable)
+
+    // The page closed: its player is gone, and the next run publishes.
+    player = nil
+    #expect(arbiter.hasPlayer(.meeting(record.id)) == false)
+    #expect(
+      await coordinator.compactAudio(meetingID: record.id, with: MeetingAudioCompactor())
+        == .committed)
   }
 
   @Test("no player is offered while the copy is committed, so none starts on the old files")
@@ -318,11 +328,6 @@ struct MeetingAudioCompactionLifecycleTests {
     #expect(coordinator.playbackSource(meetingID: record.id) != nil)
     let arbiter = PlaybackArbiter()
     coordinator.playbackArbiter = arbiter
-    // A paused player the page still holds from before the commit.
-    let player = MeetingPlaybackController(
-      media: .transcript(Silence()), durationMs: 3_000,
-      output: MeetingPlaybackControllerTests.FakeOutput(), sourceID: .meeting(record.id),
-      arbiter: arbiter)
     let hold = DispatchSemaphore(value: 0)
     let compactor = WindowedCompactor()
     compactor.afterPrepare = {
@@ -334,6 +339,11 @@ struct MeetingAudioCompactionLifecycleTests {
       // The observed read comes first, so the wait is registered on it.
       coordinator.playbackSource(meetingID: record.id) == nil && compactor.prepared == 1
     }
+    // A player a page made from a source it read just before (registered now) cannot start.
+    let player = MeetingPlaybackController(
+      media: .transcript(Silence()), durationMs: 3_000,
+      output: MeetingPlaybackControllerTests.FakeOutput(), sourceID: .meeting(record.id),
+      arbiter: arbiter)
     player.play()
     #expect(player.state != .playing, "no start while the files are switched")
     hold.signal()
@@ -523,6 +533,83 @@ struct MeetingAudioCompactionLifecycleTests {
     for name in Self.originals(record) {
       #expect(try Self.names(harness, record.id).contains(name))
     }
+  }
+
+  @Test("Transcribe again after the commit does not block retirement under the new generation")
+  func retirementAfterRetranscription() async throws {
+    let harness = try Harness()
+    let record = try Self.readyMeeting(harness)
+    let coordinator = harness.coordinator
+    await Self.launched(harness, record.id)
+    #expect(
+      await coordinator.compactAudio(meetingID: record.id, with: MeetingAudioCompactor())
+        == .committed)
+    let inventory = try #require(try harness.store.load(id: record.id).compressedAudio)
+    await MeetingCoordinatorTests.transcribeAgainOnceOffered(coordinator, meetingID: record.id)
+    await MeetingCoordinatorTests.livePassFinished(
+      coordinator, record.id, replacing: record.committedTranscriptGeneration)
+    let current = try harness.store.load(id: record.id)
+    #expect(current.committedTranscriptGeneration != inventory.transcriptGeneration)
+    #expect(current.compressedAudio == inventory, "the same audio inventory stays")
+
+    // A retirement carrying the earlier generation is refused by the store.
+    #expect(throws: MeetingStore.CompactionError.staleGeneration) {
+      try harness.store.removeSupersededPCM(
+        meeting: record.id, expectedTranscriptGeneration: inventory.transcriptGeneration,
+        inventoryID: inventory.id)
+    }
+    #expect(
+      await coordinator.retireSupersededAudio(meetingID: record.id)
+        == .removed(inventory.segments.count))
+  }
+
+  @Test("playback of a compacted meeting falls back to the verified originals, like recovery")
+  func playbackUsesRecoveryFallback() async throws {
+    let harness = try Harness()
+    let record = try Self.readyMeeting(harness)
+    let folder = harness.store.folder(for: record.id)
+    let ticket = MeetingAudioCompactionTicket(
+      meetingID: record.id, claimID: UUID(),
+      transcriptGeneration: record.committedTranscriptGeneration, sourceSegments: record.segments)
+    let verified = try await MeetingAudioCompactor().prepare(
+      ticket: ticket, record: record, folder: folder)
+    let committed = try harness.store.commitCompressedAudio(
+      meeting: record.id, expectedTranscriptGeneration: ticket.transcriptGeneration,
+      expectedSegments: ticket.sourceSegments, inventory: verified.inventory)
+    let source = MeetingPlaybackSource(record: committed, folder: folder)
+    guard case .compactedMeeting = source.media else {
+      Issue.record("a committed copy opens through recovery")
+      return
+    }
+    let originals = MeetingPlaybackController.TrackSources(
+      uniqueKeysWithValues: record.segments.map { track, segments in
+        (
+          track,
+          segments.map {
+            MeetingTrackAudio.SourceFile(
+              url: folder.appendingPathComponent($0.fileName), startMs: $0.startMs,
+              logicalFrames: nil)
+          }
+        )
+      })
+    let expected = try MeetingPlaybackController.open(.meeting(originals))
+      .window(startMs: 0, count: 3_000)
+
+    // Whole copy: the compacted files play on the same timeline (lossy, close).
+    let whole = try MeetingPlaybackController.open(source.media).window(startMs: 0, count: 3_000)
+    #expect(C.maxDifference(whole, expected) < 0.2)
+
+    // One committed file lost: recovery reads the verified originals whole, and playback too.
+    let lost = try #require(verified.inventory.segments.first { $0.variant == .raw })
+    try FileManager.default.removeItem(at: folder.appendingPathComponent(lost.compressed.fileName))
+    let before = try Self.names(harness, record.id)
+    let report = MeetingTrackRecovery.recover(
+      folder: folder, inventory: verified.inventory, identity: MeetingStore.audioFileIdentity(at:))
+    #expect(report.compressedProblems.contains(.fellBackToOriginals))
+    let fallback = try MeetingPlaybackController.open(source.media)
+      .window(startMs: 0, count: 3_000)
+    #expect(fallback == expected, "the originals, whole, never a mix")
+    #expect(try Self.names(harness, record.id) == before, "playback changed no file")
   }
 
   // MARK: - Scheduler

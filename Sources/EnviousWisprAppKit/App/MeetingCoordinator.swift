@@ -2741,7 +2741,7 @@ final class MeetingCoordinator {
   ///
   /// Every check runs in one main-actor turn after the preparation's last suspension: the claim
   /// is still this ticket's; the meeting is still eligible with the claimed generation and
-  /// segments; it is not playing (else `.skipped`, deferred). Then no player is offered while
+  /// segments; no player of it is open (else `.skipped`, deferred). Then no player is offered while
   /// the store commits on the writer (`MeetingStore.commitCompressedAudio`, which rechecks
   /// generation and segments against the record on disk, verifies every byte and never deletes
   /// an original); only after a successful commit do the old players stop and the source change.
@@ -2761,11 +2761,12 @@ final class MeetingCoordinator {
       MeetingAudioCompactor.discard(verified, folder: folder)
       return .stale
     }
-    if playbackArbiter?.isPlaying(.meeting(meetingID)) == true {
-      // Never interrupt listening: the copy goes and a later pass tries again.
+    if playbackArbiter?.hasPlayer(.meeting(meetingID)) == true {
+      // Never under an open player, playing or paused: switching the source would rebuild it
+      // and lose its place. The copy goes and a later pass tries again.
       abandonAudioCompaction(ticket)
       MeetingAudioCompactor.discard(verified, folder: folder)
-      deps.log("meeting compaction deferred reason=playing")
+      deps.log("meeting compaction deferred reason=player_open")
       return .skipped
     }
     // From here until the commit is answered no player is offered, so none can start on the
@@ -2861,7 +2862,6 @@ final class MeetingCoordinator {
     guard launched, launchTask == nil, !quitting, let inventory = committedAudio[meetingID],
       let record = live[meetingID], record.compressedAudio?.id == inventory.id,
       records[meetingID]?.compressedAudio?.id == inventory.id,
-      inventory.transcriptGeneration == record.committedTranscriptGeneration,
       record.isWritableByThisBuild, record.audioKept, !record.deletionRequested,
       !isActive(meetingID), !closeOwned.contains(meetingID), !unknownCommits.contains(meetingID),
       !unresolvedReceipts.contains(meetingID), compactionClaims[meetingID] == nil,
