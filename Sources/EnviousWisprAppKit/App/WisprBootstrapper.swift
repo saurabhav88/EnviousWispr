@@ -1386,7 +1386,7 @@ package final class WisprBootstrapper {
         weak settingsSync, weak settings, weak settingsChangeTelemetry,
         bluetoothAwarenessPresenterHolder, weak egOneCoordinator = egOneUpgrade?.coordinator,
         weak learnFromEdits, weak appWindowCoordinator, polishSetupMonitorHolder,
-        menuBarControllerHolder, meetingBox
+        menuBarControllerHolder, meetingBox, weak kernelDriver, asrManager
       ] key
       in
       guard let settingsSync, let settings else { return }
@@ -1443,6 +1443,16 @@ package final class WisprBootstrapper {
         learnFromEdits?.onboardingDidComplete()
         // #3546 E22: a held background Parakeet upgrade starts now.
         parakeetUpgrade.onboardingDidComplete()
+        // #4528: launch skips the speech warm until Setup completes (LaunchEngineWarm), so
+        // completion warms instead. Setup usually left the engine warm already (this joins or
+        // no-ops); after a completion restored on relaunch, or Skip practice while Practice
+        // was still preparing, it is what keeps the first dictation from starting cold.
+        Task { [weak kernelDriver] in
+          guard settings.selectedBackend == .parakeet,
+            asrManager.activeBackendType == .parakeet
+          else { return }
+          _ = await kernelDriver?.ensureEngineWarm(reason: .onboarding)
+        }
       }
       // #1480: tips on/off, input-device change, and onboarding completion each
       // re-evaluate the Bluetooth card (dismiss/suppress, route re-check, or first
