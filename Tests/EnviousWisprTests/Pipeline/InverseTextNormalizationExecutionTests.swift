@@ -8,14 +8,12 @@ import os
 
 // MARK: - Route execution, snapshotting and deadline (#1677, chunk 3)
 //
-// What the wired step does with the route chunk 2 selects. The production registry is EMPTY, so every
-// language-route case here injects its own immutable registry through the package seam; nothing in
-// production can reach `.language` yet.
+// These execution cases inject their own immutable registry to observe the work selected by each
+// route. `LanguageRuleRegistry.production` owns the rule sets used by the app.
 //
 // EVIDENCE BOUNDARY: the injected "language pass" below is a test-only stand-in. These tests prove
 // ordering (neutral work is visible to the language pass), snapshotting, the single shared deadline,
-// outcome semantics and fail-closed behaviour. They prove NOTHING about linguistic rules; real
-// passes arrive in a later PR.
+// outcome semantics and fail-closed behaviour. The per-language tests cover the real passes.
 
 @MainActor
 @Suite("ITN route execution (#1677)", .tags(.productOutcome))

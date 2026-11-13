@@ -6,16 +6,10 @@ import Testing
 // MARK: - Generated German number data (#1677, PR 2 chunk 1)
 //
 // `GermanNumberData` is emitted by `scripts/itn/generate.py` from pinned CLDR and NeMo files. These
-// checks pin what the compiled table must look like and prove nothing reaches it at runtime.
+// checks pin the compiled data and its one direct reader, `LanguageNumberGrammar.swift`.
 //
-// EVIDENCE BOUNDARY: they prove generation integrity (finite invariants, known atom values from an
-// independent literal list, clean literals, and that exactly one adapter reads the data). They
-// prove NOTHING about whether any German sentence converts correctly: the table is candidate
-// lexical data, not a vetted rule set, and the production `LanguageRuleRegistry` stays empty.
-//
-// Chunk 3 deliberately moves the data from "read by nothing" to "read by one grammar adapter,
-// whose output no runtime caller uses yet": `LanguageNumberGrammar.swift` is the only allowed
-// reader, and the reachability test below still fails on any other one.
+// EVIDENCE BOUNDARY: these checks cover generation integrity, including known atom values from
+// an independent literal list. The per-language execution tests cover sentence conversion.
 
 @Suite("Generated German number data (#1677)", .tags(.driftGuard, .localParallel))
 struct ITNGeneratedDataTests {
