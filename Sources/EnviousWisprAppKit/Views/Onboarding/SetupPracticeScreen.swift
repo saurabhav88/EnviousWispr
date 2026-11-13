@@ -46,7 +46,7 @@ enum SetupPracticeState: Equatable {
     }
   }
 
-  func subtitle(key: String, microphone: String?) -> LocalizedStringKey {
+  func subtitle(key: String) -> LocalizedStringKey {
     switch self {
     case .preparing: "Getting dictation ready…"
     case .waiting: "Hold \(key) and say the line below.\nLet go when you are done."
@@ -59,11 +59,7 @@ enum SetupPracticeState: Equatable {
     case .worked:
       "Those are your words, typed for you.\nIn any other app, click into a text box first."
     case .noSpeech:
-      if let microphone {
-        "EnviousWispr heard only silence from \(microphone).\nPick another microphone, or hold \(key) and speak."
-      } else {
-        "EnviousWispr didn’t hear any speech.\nPick another microphone, or hold \(key) and speak."
-      }
+      "EnviousWispr didn’t hear any speech.\nPick another microphone, or hold \(key) and speak."
     case .missedBox(copiedToClipboard: true):
       "EnviousWispr types where your cursor is.\nThis take is saved on your clipboard."
     case .missedBox(copiedToClipboard: false):
@@ -115,12 +111,13 @@ struct SetupPracticeScreen: View {
   let onBack: () -> Void
   let onOpenPermissions: () -> Void
   var onFocusChange: (Bool) -> Void = { _ in }
-  var showPillPicture = false
+  @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+  @Environment(\.overlayReduceMotionOverride) private var reduceMotionOverride
+  private var reduceMotion: Bool { reduceMotionOverride ?? systemReduceMotion }
 
   @FocusState private var editorFocused: Bool
 
   var body: some View {
-    let mic = MicrophonePickerModel(settingsManager: settings, devices: devices)
     VStack(spacing: DesignSpacing.xl) {
       RainbowLipsView(animationState: state.lips, size: SetupMetrics.screenLips)
         .accessibilityHidden(true)
@@ -129,27 +126,33 @@ struct SetupPracticeScreen: View {
           .font(.firstRunDisplay)
           .foregroundStyle(Color.obTextPrimary)
           .accessibilityAddTraits(.isHeader)
-        Text(state.subtitle(key: key, microphone: mic.presentation.deviceName))
+        Text(state.subtitle(key: key))
           .font(.firstRunBody)
           .foregroundStyle(Color.obTextSecondary)
           .fixedSize(horizontal: false, vertical: true)
       }
       .multilineTextAlignment(.center)
 
-      if state.acceptsFocus {
+      if state.needsPermission {
+        permissionGuide
+      } else if state.acceptsFocus {
         prompt
+      }
+      if state != .preparing {
         editor
+      }
+      if state.acceptsFocus {
         if state == .worked, let note = polish.note {
           Text(note)
             .font(.firstRunCaption)
             .foregroundStyle(Color.obTextSecondary)
             .multilineTextAlignment(.center)
         } else if state != .worked && !state.inFlight {
-          MicrophoneDevicePicker(model: mic)
+          MicrophoneDevicePicker(
+            model: MicrophonePickerModel(settingsManager: settings, devices: devices))
         }
       }
       Spacer(minLength: 0)
-      if showPillPicture { SetupPracticePillPicture(state: state) }
       footer
     }
     .background {
@@ -170,6 +173,23 @@ struct SetupPracticeScreen: View {
         editorFocused = true
       } else if case .missedBox = new {
         editorFocused = true
+      }
+    }
+  }
+
+  private var permissionGuide: some View {
+    SetupCard {
+      VStack(alignment: .leading, spacing: DesignSpacing.xl) {
+        SetupSettingsPreview(
+          pane: state == .microphoneOff
+            ? "Privacy & Security › Microphone" : "Privacy & Security › Accessibility",
+          reduceMotion: reduceMotion)
+        Text(
+          "Flip this switch on. EnviousWispr notices by itself. If it still shows off, quit and reopen EnviousWispr."
+        )
+        .font(.firstRunCaption)
+        .foregroundStyle(Color.obTextSecondary)
+        .fixedSize(horizontal: false, vertical: true)
       }
     }
   }

@@ -22,6 +22,68 @@ struct SetupPracticeScreenTests {
     #expect(SetupPracticeState.microphoneOff.canContinue(hasSucceeded: true) == false)
   }
 
+  @Test("The mounted editor writes to the caller and native shortcuts invoke the supplied actions")
+  func mountedEditorAndActions() throws {
+    _ = NSApplication.shared
+    let settings = SettingsManager(
+      defaults: try #require(TestDefaults.suite("ew.tests.practice-editor.\(UUID())")))
+    var text = ""
+    var continued = 0
+    var backed = 0
+    var openedPermissions = 0
+    func screen(_ state: SetupPracticeState, succeeded: Bool = false) -> SetupPracticeScreen {
+      SetupPracticeScreen(
+        state: state, text: Binding(get: { text }, set: { text = $0 }),
+        hasSucceeded: succeeded, key: "Right ⌥", polish: .off, settings: settings, devices: [],
+        onSucceeded: { continued += 1 }, onSkip: {}, onBack: { backed += 1 },
+        onOpenPermissions: { openedPermissions += 1 })
+    }
+    let rect = NSRect(x: 0, y: 0, width: 460, height: 734)
+    let window = NSWindow(contentRect: rect, styleMask: [.titled], backing: .buffered, defer: false)
+    let host = NSHostingView(rootView: screen(.waiting))
+    window.contentView = host
+    host.frame = rect
+    host.layoutSubtreeIfNeeded()
+    let editor = try #require(textEditor(in: host))
+    editor.insertText("Words in the box", replacementRange: NSRange(location: 0, length: 0))
+    #expect(text == "Words in the box")
+
+    let escape = try keyEvent("\u{1b}", keyCode: 53, window: window)
+    let enter = try keyEvent("\r", keyCode: 36, window: window)
+    _ = host.performKeyEquivalent(with: enter)
+    #expect(continued == 0)
+    _ = host.performKeyEquivalent(with: escape)
+    #expect(backed == 1)
+    host.rootView = screen(.transcribing, succeeded: true)
+    host.layoutSubtreeIfNeeded()
+    _ = host.performKeyEquivalent(with: escape)
+    _ = host.performKeyEquivalent(with: enter)
+    #expect(backed == 1)
+    #expect(continued == 0)
+    host.rootView = screen(.worked, succeeded: true)
+    host.layoutSubtreeIfNeeded()
+    _ = host.performKeyEquivalent(with: enter)
+    #expect(continued == 1)
+    host.rootView = screen(.microphoneOff)
+    host.layoutSubtreeIfNeeded()
+    #expect(textEditor(in: host) != nil)
+    _ = host.performKeyEquivalent(with: enter)
+    #expect(openedPermissions == 1)
+  }
+
+  private func textEditor(in view: NSView) -> NSTextView? {
+    if let editor = view as? NSTextView, editor.isEditable { return editor }
+    return view.subviews.lazy.compactMap { textEditor(in: $0) }.first
+  }
+
+  private func keyEvent(_ character: String, keyCode: UInt16, window: NSWindow) throws -> NSEvent {
+    try #require(
+      NSEvent.keyEvent(
+        with: .keyDown, location: .zero, modifierFlags: [], timestamp: 1,
+        windowNumber: window.windowNumber, context: nil, characters: character,
+        charactersIgnoringModifiers: character, isARepeat: false, keyCode: keyCode))
+  }
+
   @Test("Practice renders each state in light, dark and Reduce Motion")
   func renders() throws {
     _ = NSApplication.shared
@@ -54,8 +116,13 @@ struct SetupPracticeScreenTests {
             text: .constant(state == .worked ? "I think we should meet tomorrow morning." : ""),
             hasSucceeded: state == .worked, key: "Right ⌥", polish: polish,
             settings: settings, devices: [], onSucceeded: {}, onSkip: {}, onBack: {},
-            onOpenPermissions: {}, showPillPicture: true
+            onOpenPermissions: {}
           )
+          .overlay(alignment: .bottom) {
+            SetupPracticePillPicture(state: state)
+              .padding(
+                .bottom, SetupMetrics.buttonHeight + SetupMetrics.linksHeight + DesignSpacing.xxxl)
+          }
           .padding(SetupLayout.contentPadding)
           .frame(width: size.width, height: size.height)
           .background(Color.obCardBg)

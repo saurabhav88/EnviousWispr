@@ -1,6 +1,8 @@
 import EnviousWisprCore
 import SwiftUI
 
+@testable import EnviousWisprAppKit
+
 /// The approved pill views in standalone pictures. In the app the real overlay displays the take.
 struct SetupPracticePillPicture: View {
   let state: SetupPracticeState

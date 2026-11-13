@@ -362,7 +362,7 @@ private struct SetupPermissionButton: View {
 
 /// The System Settings preview (mockup `mock`): the pane's path, the app row and its switch,
 /// which flips on and back every 3.2 s to show what to do; still (off) under Reduce Motion.
-private struct SetupSettingsPreview: View {
+struct SetupSettingsPreview: View {
   let pane: LocalizedStringKey
   let reduceMotion: Bool
 
