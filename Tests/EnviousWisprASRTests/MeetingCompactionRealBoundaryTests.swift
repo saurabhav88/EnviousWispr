@@ -26,11 +26,25 @@ import Testing
 /// - `compacted`: the committed inventory, CAF still on disk;
 /// - `retired`: the committed inventory with the source CAF removed (a temporary copy only).
 ///
-/// Run (the Whisper model is the approved turbo Q8_0; the test checks its sha256):
-/// `TEST_RUNNER_EW_TRANSCRIBECPP_TURBO_GGUF="$HOME/Library/Application Support/EnviousWispr/Models/whisper-gguf/whisper-large-v3-turbo-Q8_0.gguf" scripts/xcode-test.sh --host local --real-boundary --filter EnviousWisprASRTests/MeetingCompactionRealBoundaryTests`,
+/// Run on this Mac (`--host local`) or a backup Mac (`--host <name>`; the backup route forwards
+/// no other test settings, so the harness needs none): the Mac must have the app's Parakeet Ultra
+/// and Whisper turbo Q8_0 models installed (the test checks the Whisper sha256).
+/// `scripts/xcode-test.sh --host <local|name> --real-boundary --filter EnviousWisprASRTests/MeetingCompactionRealBoundaryTests`,
 /// then score the log: `python3 -I Tests/Fixtures/meeting-compaction/score_c6.py <worktree> <log>`.
 /// Every test asserts its own expected count; a missing engine or model fails, never skips.
 enum C6Fixture {
+  /// The approved Whisper turbo Q8_0: the override or #3705 copy the other real-boundary suites
+  /// use when present, else the copy the app itself installs, so a backup Mac with the app's
+  /// models needs no test settings. The sha256 is checked before use either way.
+  static var whisperModelPath: String {
+    if TranscribeCppRealBoundaryFixture.modelIsPresent {
+      return TranscribeCppRealBoundaryFixture.modelPath
+    }
+    return URL.applicationSupportDirectory.appending(
+      path: "EnviousWispr/Models/whisper-gguf/whisper-large-v3-turbo-Q8_0.gguf"
+    ).path
+  }
+
   static let repoRoot = URL(filePath: #filePath)
     .deletingLastPathComponent()  // EnviousWisprASRTests
     .deletingLastPathComponent()  // Tests
@@ -785,12 +799,15 @@ struct MeetingCompactionRealBoundaryTests {
     .realBoundaryRun)
   func whisperParity() async throws {
     try #require(
-      TranscribeCppRealBoundaryFixture.modelIsPresent, "the Whisper model is not on this Mac")
-    try TranscribeCppRealBoundaryFixture.requireExpectedModel()
+      FileManager.default.fileExists(atPath: F.whisperModelPath),
+      "the Whisper model is not on this Mac: \(F.whisperModelPath)")
+    try #require(
+      try TranscribeCppRealBoundaryFixture.modelDigestMatches(at: F.whisperModelPath),
+      "requires the approved turbo Q8_0 model")
     let executor = TranscribeCppExecutor()
     let model = try await executor.load(
-      modelPath: TranscribeCppRealBoundaryFixture.modelPath, lane: .heart)
-    print("C6 engine name=whisper model=\(TranscribeCppRealBoundaryFixture.modelPath)")
+      modelPath: F.whisperModelPath, lane: .heart)
+    print("C6 engine name=whisper model=\(F.whisperModelPath)")
     do {
       try await Self.parity(engine: "whisper") { samples, language in
         try await executor.transcribe(model, samples: samples, language: language, lane: .heart)
