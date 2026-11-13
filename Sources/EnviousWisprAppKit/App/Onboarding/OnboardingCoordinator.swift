@@ -557,10 +557,7 @@ final class OnboardingCoordinator {
       }
     }
     state = transition.state
-    if before.choices.speech != state.choices.speech || before.choices.polish != state.choices.polish {
-      // A previous selection's preflight/refusal cannot describe these choices.
-      block = nil
-    }
+    updateDownloadBlock(after: before.choices, effects: &deferred)
     if let language = state.choices.languageMode, language != before.choices.languageMode {
       // Before any speech work that depends on it.
       deps.writeLanguage(language)
@@ -585,6 +582,30 @@ final class OnboardingCoordinator {
       }
     }
     onChange?()
+  }
+
+  private func updateDownloadBlock(
+    after previous: OnboardingChoices, effects: inout [OnboardingEffect]
+  ) {
+    let picks = state.choices
+    guard let block, previous.speech != picks.speech || previous.polish != picks.polish else {
+      return
+    }
+    switch block {
+    case .speechRefused(let engine):
+      if engine != picks.speech { self.block = nil }
+    case .polishRefused(let id):
+      if id != picks.polish { self.block = nil }
+    case .insufficientDisk:
+      self.block = preflightBlock()
+      // A disk refusal never reached the owner. If the new picks fit and the speech choice
+      // did not change, the reducer has no speech-start effect to retry that missing model.
+      if self.block == nil, let speech = picks.speech, speech == previous.speech,
+        speechStartsInFlight == 0, deps.downloads.speechPhase(speech) == .notStarted
+      {
+        effects.insert(.startSpeechDownload(speech), at: 0)
+      }
+    }
   }
 
   private func complete() {

@@ -175,6 +175,38 @@ struct SetupGateTests {
     #expect(!model.state.isReadyForPractice)
   }
 
+  @Test("skipping AI polish after a disk refusal leaves speech actionable in Getting ready")
+  func diskRefusalSurvivesSkippingPolish() async {
+    let world = OnboardingCoordinatorTests.World()
+    world.free = 1000
+    world.bytes = [.speech(.whisper): 900]
+    let coordinator = world.coordinator()
+    coordinator.begin()
+    let events: [OnboardingEvent] = [
+      .next, .next, .chooseSpeech(.whisper), .next, .choosePolish("eg1.mini"),
+      .changePolish, .skipPolish, .next,
+      .readinessChanged(.init(microphoneGranted: true, accessibilityGranted: true)), .next,
+    ]
+    for event in events { coordinator.send(event) }
+
+    let presentation = P.make(
+      state: coordinator.state, block: coordinator.block, warmFailed: false, queuedPolish: nil,
+      isNetworkSlow: false, isCountingDown: false,
+      speechPhase: { world.speechPhase[$0] ?? .notStarted },
+      polishPhase: { _ in nil }, downloadsFinished: false)
+    #expect(coordinator.state.step == .gettingReady)
+    #expect(presentation.polishPreparation == .off && presentation.speechPhase == .notStarted)
+    #expect(SetupGate.problem(presentation, screen: .gettingReady) == .disk(needed: 1080))
+    #expect(SetupGate.sharedControls(presentation) == [.retryDownloads])
+    #expect(SetupGate.recoveryActions(presentation).map(\.event).contains(.changeSpeech))
+    #expect(!world.log.contains("request(whisper)"))
+
+    world.free = 2000
+    coordinator.retryDownloads()
+    await coordinator.settle()
+    #expect(coordinator.block == nil && world.log.contains("request(whisper)"))
+  }
+
   @Test("the background pill opens Downloads and Return restores each real origin")
   func downloadPillReturnsToItsOrigin() {
     #expect(SetupDownloadPill.status(Self.p()) == .moving)

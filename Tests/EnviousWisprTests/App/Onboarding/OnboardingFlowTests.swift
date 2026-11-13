@@ -17,6 +17,7 @@ struct OnboardingFlowTests {
     .choosePolish("appleIntelligence"), .choosePolish(OnboardingChoices.polishCloud),
     .chooseCloud(.openAI, model: "gpt-4o-mini"), .skipPolish,
     .turnPolishOn, .continueWithoutPolish, .reviewPermissions,
+    .changeSpeech, .changePolish, .reviewCloudKey, .returnToGettingReady, .inspectDownloads,
     .readinessChanged(OnboardingReadiness()), .readinessChanged(granted()),
     .practiceSucceeded, .skipPractice, .filmFinished, .skipFilm,
   ]
@@ -93,8 +94,21 @@ struct OnboardingFlowTests {
 
   @Test("every step can be reached from Welcome")
   func everyStepReachable() {
-    var seen: Set<OnboardingStep> = [.welcome]
-    var frontier = [OnboardingFlowState()]
+    struct Route: Hashable {
+      let step: OnboardingStep
+      let downloadsReturn: OnboardingStep?
+      let recovering: Bool
+
+      init(_ state: OnboardingFlowState) {
+        step = state.step
+        downloadsReturn = state.downloadsReturn
+        recovering = state.recoveringReadiness
+      }
+    }
+    let start = OnboardingFlowState()
+    var seen: Set<OnboardingStep> = [start.step]
+    var visited: Set<Route> = [Route(start)]
+    var frontier = [start]
     // Every pick the event list can make, so practice opens whichever picks the walk reached.
     let picks: [String?] = ["eg1.mini", "appleIntelligence", OnboardingChoices.polishCloud, nil]
     let readiness: [OnboardingEvent] = [ASRBackendType.parakeet, .whisper].flatMap { speech in
@@ -104,7 +118,8 @@ struct OnboardingFlowTests {
     while let state = frontier.popLast() {
       for event in events {
         let next = OnboardingFlow.reduce(state, event).state
-        if seen.insert(next.step).inserted { frontier.append(next) }
+        seen.insert(next.step)
+        if visited.insert(Route(next)).inserted { frontier.append(next) }
       }
     }
     #expect(seen == Set(OnboardingStep.allCases))
