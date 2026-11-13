@@ -106,4 +106,27 @@ struct AppWindowCoordinatorDockPolicyTests {
     sut.refreshActivationPolicy(excluding: window)
     #expect(effects.policies == [.regular, .accessory])
   }
+
+  /// #3147 PR3: Paste needing the user from a transcript window brings back THAT window, through
+  /// the activation seam; a window that was never registered is left alone.
+  @Test("only a registered transcript window is brought back, and it comes forward")
+  func showTranscriptWindowActivates() {
+    let effects = RecordingDesktopPresentationEffects()
+    let sut = coordinator(effects, showInDock: false)
+    let stranger = NSWindow(
+      contentRect: .init(x: 0, y: 0, width: 100, height: 100), styleMask: [.titled],
+      backing: .buffered, defer: true)
+    stranger.isReleasedWhenClosed = false
+    sut.showTranscriptWindow(stranger)
+    #expect(effects.calls.isEmpty, "an unregistered window is not ours to raise")
+    let window = NSWindow(
+      contentRect: .init(x: 0, y: 0, width: 100, height: 100), styleMask: [.titled],
+      backing: .buffered, defer: true)
+    window.isReleasedWhenClosed = false
+    sut.registerTranscriptWindow(window)
+    sut.showTranscriptWindow(window)
+    #expect(
+      effects.calls == [.setPolicy(.regular), .setPolicy(.regular), .activate(.ignoringOtherApps)])
+    window.orderOut(nil)
+  }
 }

@@ -160,6 +160,15 @@ final class AppWindowCoordinator: UpdateDialogPresenting {
     application.setPolicy(.regular)
   }
 
+  /// #3147 PR3: brings a registered transcript window back to the front (Paste needing the user
+  /// from that window). Through the injected activation seam, like every rise here.
+  func showTranscriptWindow(_ window: NSWindow) {
+    guard transcriptWindows.contains(window) else { return }
+    window.makeKeyAndOrderFront(nil)
+    application.setPolicy(.regular)
+    application.activate(.ignoringOtherApps)
+  }
+
   /// Whether `window` is a registered transcript window (for the close observer and tests).
   func isTranscriptWindow(_ window: NSWindow) -> Bool {
     transcriptWindows.contains(window)

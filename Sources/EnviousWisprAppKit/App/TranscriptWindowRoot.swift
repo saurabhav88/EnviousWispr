@@ -33,9 +33,8 @@ struct TranscriptWindowRoot: View {
       // forward, so the action does nothing here.
       openInNewWindow: { _ in },
       showPasteNotice: pasteNotice.show,
-      restorePasteSurface: { [hostWindow] in
-        hostWindow.window?.makeKeyAndOrderFront(nil)
-        NSApp.activate()
+      restorePasteSurface: { [hostWindow, coordinator = b.appWindowCoordinator] in
+        if let window = hostWindow.window { coordinator.showTranscriptWindow(window) }
       }
     )
     .frame(minWidth: 520, minHeight: 420)
