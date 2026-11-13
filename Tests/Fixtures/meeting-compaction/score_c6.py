@@ -73,10 +73,13 @@ for engine in engines:
         if n == 0:
             # No reference words (noise only): weight 0 in the pool, so it is checked on its own,
             # one-sided: the compacted take may not add words the original did not.
-            if (c - o) * 100 > gate:
+            # Word counts, because the eval scorer's empty-reference WER is 1.0 for any words.
+            original_words = ref_words(r["original"])
+            compacted_words = ref_words(r["compressed"])
+            if compacted_words > original_words:
                 print(f"empty-reference engine={engine} track={r['track']} segment={r['segment']} FAIL (compacted added words)")
                 failed = True
-            elif c < o:
+            elif compacted_words < original_words:
                 print(f"empty-reference engine={engine} track={r['track']} segment={r['segment']} IMPROVED")
         words += n
         original_errors += o * n
@@ -97,7 +100,7 @@ for engine in engines:
         continue
     ow, cw = original_errors / words * 100, compressed_errors / words * 100
     delta = cw - ow
-    ok = delta <= gate
+    ok = delta <= gate + 1e-9  # exactly the gate passes despite float rounding
     failed |= not ok
     note = " IMPROVED (compacted WER lower; changed rows above)" if delta < 0 else ""
     print(
