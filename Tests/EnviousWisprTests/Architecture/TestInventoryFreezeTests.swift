@@ -59,6 +59,10 @@ struct TestInventoryFreezeTests {
 
     /// #4279: the local runner's review mark for a suite that may run in a parallel worker process.
     static let localParallelTag = "localParallel"
+
+    /// A real-boundary suite that needs no live audio device, so a backup Mac without real audio
+    /// may run it (`scripts/real-boundary-audio-free.json`, read by `scripts/lib/mac_hosts.py`).
+    static let audioDeviceFreeTag = "audioDeviceFree"
   }
 
   struct SuiteRecord {
@@ -83,6 +87,8 @@ struct TestInventoryFreezeTests {
     let boundaryCount: Int
     /// #4279: the suite's type, or its tag carrier in the same file, declares `.localParallel`.
     let localParallel: Bool
+    /// The suite's type, or its tag carrier in the same file, declares `.audioDeviceFree`.
+    let audioDeviceFree: Bool
 
     var key: String { "\(file)\t\(qualifiedName)" }
   }
@@ -95,6 +101,8 @@ struct TestInventoryFreezeTests {
     var boundaryCarriers: Set<BoundaryCarrier> = []
     /// #4279: identities whose declaring type carries `.localParallel`, resolved like class tags.
     var parallelCarriers: Set<String> = []
+    /// Identities whose declaring type carries `.audioDeviceFree`, resolved like `.localParallel`.
+    var audioFreeCarriers: Set<String> = []
   }
 
   private struct BoundaryCarrier: Hashable {
@@ -152,7 +160,9 @@ struct TestInventoryFreezeTests {
         identity: record.identity, branches: record.branches, classes: classes,
         testCount: record.testCount,
         boundaryCount: boundaryCount,
-        localParallel: record.localParallel || state.parallelCarriers.contains(record.identity))
+        localParallel: record.localParallel || state.parallelCarriers.contains(record.identity),
+        audioDeviceFree: record.audioDeviceFree
+          || state.audioFreeCarriers.contains(record.identity))
     }
   }
 
@@ -236,6 +246,8 @@ struct TestInventoryFreezeTests {
     if !classes.isEmpty { state.tagCarriers[identity, default: []].formUnion(classes) }
     let localParallel = declared.contains(TestClass.localParallelTag)
     if localParallel { state.parallelCarriers.insert(identity) }
+    let audioDeviceFree = declared.contains(TestClass.audioDeviceFreeTag)
+    if audioDeviceFree { state.audioFreeCarriers.insert(identity) }
     if declared.contains(TestClass.realBoundaryTag) {
       state.boundaryCarriers.insert(
         BoundaryCarrier(qualifiedName: qualifiedName, branches: scope.branches))
@@ -252,7 +264,8 @@ struct TestInventoryFreezeTests {
         SuiteRecord(
           file: file, name: named.name, qualifiedName: qualifiedName, identity: identity,
           branches: scope.branches, classes: classes, testCount: directTests,
-          boundaryCount: directBoundary, localParallel: localParallel))
+          boundaryCount: directBoundary, localParallel: localParallel,
+          audioDeviceFree: audioDeviceFree))
     }
   }
 
@@ -807,6 +820,60 @@ struct TestInventoryFreezeTests {
       Tagged but not listed: \(unlisted)
       Keep both or neither. Before adding either, review the suite as the tag's doc comment says
       (Tests/EnviousWisprTests/Support/LocalParallelTag.swift); a list entry also needs a measured cost.
+      """)
+  }
+
+  /// A real-boundary run may go to a backup Mac without real audio only when every selected suite is
+  /// in `scripts/real-boundary-audio-free.json`. The review mark is the `.audioDeviceFree` tag in the
+  /// suite's own source, so an editor sees it. This keeps the list and the tags identical in both
+  /// directions, by target, suite and file, and requires every tagged suite to be a real-boundary one:
+  /// a list entry whose tag was removed would keep sending a suite that now opens a microphone to a Mac
+  /// without one, where it could pass on silence.
+  @Test("the audio-free real-boundary list equals the suites tagged .audioDeviceFree")
+  func audioFreeListMatchesTheTags() throws {
+    let records = try Self.inventory()
+    try #require(
+      records.count > 400,
+      "found only \(records.count) suites — the sweep is broken, not the tree")
+    func target(_ file: String) -> String? {
+      let parts = file.split(separator: "/")
+      return parts.count > 2 && parts[0] == "Tests" ? String(parts[1]) : nil
+    }
+    let free = records.filter(\.audioDeviceFree)
+    let notBoundary = free.filter { $0.boundaryCount == 0 }
+    #expect(
+      notBoundary.isEmpty,
+      """
+      .audioDeviceFree marks a real-boundary suite; these have no .realBoundary test:
+      \(notBoundary.map { "  \($0.file) :: \($0.qualifiedName)" }.joined(separator: "\n"))
+      """)
+    let tagged = Set(
+      free.compactMap { record in
+        target(record.file).map { "\($0)/\(record.qualifiedName) :: \(record.file)" }
+      })
+
+    let data = try Data(contentsOf: RepoRoot.sourceURL("scripts/real-boundary-audio-free.json"))
+    let list = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+    try #require(list["schema"] as? Int == 1, "real-boundary-audio-free.json is not schema 1")
+    let entries = try #require(list["suites"] as? [[String: Any]], "the list has no suites array")
+    var listed: Set<String> = []
+    for entry in entries {
+      let suite = try #require(entry["suite"] as? String, "entry has no suite: \(entry)")
+      let file = try #require(entry["file"] as? String, "entry has no file: \(entry)")
+      listed.insert("\(suite) :: \(file)")
+    }
+    // Fail closed: two empty sets agree, and the list is never meant to be empty.
+    try #require(!listed.isEmpty, "the audio-free list read is empty")
+
+    let untagged = listed.subtracting(tagged).sorted()
+    let unlisted = tagged.subtracting(listed).sorted()
+    #expect(
+      untagged.isEmpty && unlisted.isEmpty,
+      """
+      scripts/real-boundary-audio-free.json and the .audioDeviceFree tags disagree.
+      Listed but not tagged (tag removed, suite renamed or moved): \(untagged)
+      Tagged but not listed: \(unlisted)
+      Keep both or neither, after checking that nothing the suite runs opens an audio device.
       """)
   }
 

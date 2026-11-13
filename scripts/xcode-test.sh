@@ -328,7 +328,10 @@ if [ "$HOST_SELECTION" != "local" ] && [ -z "${EW_REMOTE_CHILD:-}" ] && [ -z "${
    [ -z "${DERIVED_DATA_PATH:-}" ] && [ "$CONFIGURATION" = "Debug" ] && [ -z "$LOG_DIR" ] &&
    [ -z "$RESULT_BUNDLE_PATH" ] && python3 "$PROJECT_ROOT/scripts/lib/remote-lane.py" env-check; then
   ELIGIBLE_ARGS=()
-  [ "$REAL_BOUNDARY" = 1 ] && ELIGIBLE_ARGS+=(--real)
+  # A real-boundary run needs a host with real audio unless every filter names a suite
+  # that needs no live audio device (scripts/real-boundary-audio-free.json, checked
+  # against the suites' `.audioDeviceFree` tags by TestInventoryFreezeTests).
+  [ "$REAL_BOUNDARY" = 1 ] && ELIGIBLE_ARGS+=(--real ${TEST_ARGS[@]+"${TEST_ARGS[@]}"})
   while IFS= read -r name; do
     [ -n "$name" ] || continue
     if [ "$HOST_SELECTION" = "auto" ] || [ "$HOST_SELECTION" = "$name" ]; then

@@ -259,6 +259,47 @@ print(json.dumps({'testNodes': [{'nodeType': 'Test Plan', 'children': nodes}]}))
         self.assertEqual((card['host'], card['kind'], card['config_sha256']), ('local', 'short', 'none'))
         self.assertEqual(card['worktree'], str(self.root))
 
+    def test_real_boundary_routing_reads_the_audio_free_list(self):
+        # A real-boundary run may use a backup Mac without real audio only when every
+        # filter names a suite in scripts/real-boundary-audio-free.json; the runner hands
+        # its filters to the real host-list owner, which says which it decided.
+        for name in ('remote-lane.py', 'remote_ship.py'):
+            shutil.copyfile(RUNNER.with_name('lib') / name, self.root / 'scripts/lib' / name)
+        (self.root / 'scripts/real-boundary-audio-free.json').write_text(json.dumps({
+            'schema': 1, 'about': 'fixture', 'suites': [
+                {'suite': 'EnviousWisprASRTests/Free', 'file': 'Tests/EnviousWisprASRTests/Free.swift'}]}))
+        # Routing needs the default log folder and no DERIVED_DATA_PATH (#4507).
+        (self.root / 'scripts/lib/log-dir.sh').write_text(
+            'ew_resolve_log_dir() { echo "${2:-$1/default-logs}"; }\n'
+            'ew_take_default_lane() { mkdir -p "$1"; }\n'
+            'ew_publish_latest_lane() { :; }\new_prune_stale_lanes() { :; }\n')
+        # Committed, so the unfiltered run's receipt check finds the fixture tree clean.
+        self.git('add', 'scripts')
+        self.git('commit', '-qm', 'routing fixture')
+        # The shared-folder fixture: no DERIVED_DATA_PATH, and a stub `security` (a Linux
+        # runner has none) reporting no Dev identity, so the lane keeps the Debug folder.
+        self.shared_folder_env(identities='     0 valid identities found\n')
+        # Routing runs only outside CI and with no EW_/TEST_RUNNER_ setting it cannot forward
+        # (remote-lane.py env-check); the hosted runner sets CI and TEST_RUNNER_CI.
+        env = {k: v for k, v in self.env.items()
+               if k != 'CI' and not k.startswith(('EW_', 'TEST_RUNNER_'))}
+        for filters, decided in ((['EnviousWisprASRTests/Free'], 'no'),
+                                 (['EnviousWisprASRTests/Free/run()'], 'no'),
+                                 (['EnviousWisprASRTests/Free', 'EnviousWisprTests/Mic'], 'yes'),
+                                 ([], 'yes')):
+            with self.subTest(filters=filters):
+                args = [arg for name in filters for arg in ('--filter', name)]
+                result = subprocess.run(
+                    ['bash', str(self.root / 'scripts/xcode-test.sh'), '--serial', '--real-boundary', *args],
+                    env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=15)
+                self.assertIn(f'==> real-boundary run needs real audio: {decided} (', result.stdout)
+                self.assertEqual(result.stdout.count('real-boundary run needs real audio:'), 1)
+        # Not a real-boundary run: no audio decision is made at all.
+        result = subprocess.run(['bash', str(self.root / 'scripts/xcode-test.sh'), '--serial',
+                                 '--filter', 'EnviousWisprTests/A'],
+                                env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=15)
+        self.assertNotIn('needs real audio', result.stdout)
+
     def test_a_silent_test_step_is_stopped_as_hung(self):
         # #4507 T4: a test step that prints once and then nothing is stopped at the
         # limit; the run says FAIL (hung) with the last test, exits 5, leaves no
