@@ -154,11 +154,10 @@ final class ImportedSources: ImportedSourceAccessing {
       // An `invalidateAll` during the refresh's write: look again rather than cache.
       guard fence.sweep == sweeps else { continue }
       if let refreshed {
-        if coordinator.currentRow(id: rowID).map(ImportedSourceReference.init)
-          == refreshed.reference
-        {
-          store(rowID, reference: refreshed.reference, state: .available(refreshed))
-        }
+        guard
+          isUnchanged(rowID, reference: refreshed.reference, fence: afterSourceWrite(fence))
+        else { continue }
+        store(rowID, reference: refreshed.reference, state: .available(refreshed))
         return .available(refreshed)
       }
       return result.state
@@ -184,11 +183,7 @@ final class ImportedSources: ImportedSourceAccessing {
     }
     if let fresh = first.refreshedBookmark, let refreshed = await refresh(resolved, with: fresh) {
       resolved = refreshed
-      // The refresh's own write stopped this row's players (one more deletion count); that is
-      // not a deletion. Only that component moves: a Delete All or an invalidation during the
-      // write still fences this lookup.
-      fence = Fence(
-        deletions: currentFence(rowID).deletions, epoch: fence.epoch, sweep: fence.sweep)
+      fence = afterSourceWrite(fence)
     }
 
     let audio: ImportedFilePlaybackAudio
@@ -247,10 +242,12 @@ final class ImportedSources: ImportedSourceAccessing {
     guard linked else {
       return coordinator.currentRow(id: rowID) == nil ? relocationRemoved(rowID) : .stale
     }
-    // Stored; but an `invalidateAll` during the save means the next look reads the disk afresh
-    // rather than this earlier read (Codex lane-a r2).
-    guard fence.sweep == sweeps else { return .linked }
     let reference = ImportedSourceReference(bookmark: bookmark, fingerprint: fingerprint)
+    // Stored; but anything else that happened during the save (an invalidation, a deletion, a
+    // newer link) means the next look reads the disk afresh rather than this earlier read.
+    guard isUnchanged(rowID, reference: reference, fence: afterSourceWrite(fence)) else {
+      return .linked
+    }
     inFlight[rowID] = nil
     store(
       rowID, reference: reference,
@@ -275,6 +272,17 @@ final class ImportedSources: ImportedSourceAccessing {
     Fence(
       deletions: arbiter?.deletionCount(for: .transcript(rowID)) ?? 0,
       epoch: arbiter?.transcriptEpoch ?? 0, sweep: sweeps)
+  }
+
+  /// `fence` after one successful source write of ours (`setImportedSource`): the command stops
+  /// the row's players through the wired arbiter callback, which counts one deletion. Only that
+  /// one is expected; any other deletion, Delete All or invalidation still fences the lookup.
+  /// Without the callback wired, the count does not move and the result fails closed (no cache,
+  /// no player).
+  private func afterSourceWrite(_ fence: Fence) -> Fence {
+    Fence(
+      deletions: fence.deletions + (arbiter == nil ? 0 : 1), epoch: fence.epoch,
+      sweep: fence.sweep)
   }
 
   /// The row still holds `reference` and no deletion happened since `fence`.
