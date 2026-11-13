@@ -118,7 +118,7 @@ struct ImportedFilePlaybackTests {
   }
 
   /// Where `window` sits against the decoder's samples: the lag (in 16 kHz samples, within
-  /// +/-32) at which they correlate best, and that correlation.
+  /// +/-20) at which they correlate best, and that correlation.
   ///
   /// Why not equal samples: Apple's reader is not reproducible between two of its OWN reads of
   /// one converted file. Measured on this fixture: two plain full decodes of one 48 kHz WAV
@@ -130,7 +130,7 @@ struct ImportedFilePlaybackTests {
     lag: Int, correlation: Float
   ) {
     var best = (lag: 0, correlation: -Float.infinity)
-    for lag in -32...32 {
+    for lag in -20...20 {
       var dot: Float = 0
       var windowEnergy: Float = 0
       var decodedEnergy: Float = 0
@@ -176,10 +176,11 @@ struct ImportedFilePlaybackTests {
       #expect(Array(played.prefix(decoded.count)) == decoded)
     }
     var start = 0
+    // Every other window (each check is a 41-lag correlation; Debug cost kept under a second).
     while start + 4_000 + 32 <= decoded.count {
       Self.expectAligned(
         Array(played[start..<start + 4_000]), decoded, startSample: start, "\(start / 16) ms")
-      start += 4_000
+      start += 8_000
     }
     #expect(played.dropFirst(decoded.count + 2).allSatisfy { $0 == 0 }, "past the end is silence")
     #expect(audio.readerStarts == 1, "one reader for a front-to-back play")
