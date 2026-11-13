@@ -162,6 +162,23 @@ struct PracticeScreenV2: View {
         .fixedSize(horizontal: false, vertical: true)
         .padding(.top, 10)
 
+      // #3147 C9: fresh-install education, shown before the first practice take can record.
+      // Reads the live settings (canonical defaults on a fresh install; nothing is written to
+      // them here). Being shown is what records the disclosure as seen.
+      Text(
+        verbatim: RecordingDisclosureCopy.onboardingNote(
+          saving: settings.saveDictationRecordings,
+          retention: settings.dictationRecordingRetention)
+      )
+      .font(.obCaptionSmall)
+      .foregroundStyle(Color.obTextSecondary)
+      .multilineTextAlignment(.center)
+      .fixedSize(horizontal: false, vertical: true)
+      .frame(maxWidth: 404)
+      .padding(.top, 8)
+      .onAppear { settings.recordOnboardingRecordingNoteShown() }
+      .accessibilityIdentifier("onboarding.practice.recordingNote")
+
       // The route out. `PermissionsService` exposes request methods rather
       // than a settings opener, and the request is the better offer anyway: an
       // undetermined permission is granted in place, and a denied one lands the

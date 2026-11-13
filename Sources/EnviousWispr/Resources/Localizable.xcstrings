@@ -8149,7 +8149,7 @@
       }
     },
     "Dismiss" : {
-      "comment" : "EnviousMeet: closes a notice about the last recording.",
+      "comment" : "EnviousMeet: closes a notice about the last recording.\nHistory: closes the one-time recording notice for good.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -9176,6 +9176,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "EnviousWispr läuft von einem temporären Speicherort und kann daher keine Updates empfangen. EnviousWispr kann das beheben und sich automatisch neu öffnen."
+          }
+        }
+      }
+    },
+    "EnviousWispr keeps a recording of each saved dictation on this Mac, so you can play it back in History. Recordings are kept for the period you chose in Settings > App Settings > Recordings. Turning off Save dictation recordings there stops new ones without deleting the ones you have. Delete a recording in History, or all of them with Delete all dictation recordings. The text always stays." : {
+      "comment" : "History: the one-time recording notice when the user chose a keep period.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "EnviousWispr speichert zu jedem gespeicherten Diktat eine Aufnahme auf diesem Mac, damit du sie im Verlauf abspielen kannst. Aufnahmen bleiben für den Zeitraum, den du unter Einstellungen > App-Einstellungen > Aufnahmen gewählt hast. Schaltest du dort „Diktataufnahmen speichern“ aus, entstehen keine neuen, vorhandene bleiben erhalten. Lösche eine Aufnahme im Verlauf oder alle mit „Alle Diktataufnahmen löschen“. Der Text bleibt immer erhalten."
+          }
+        }
+      }
+    },
+    "EnviousWispr keeps a recording of each saved dictation on this Mac, so you can play it back in History. Recordings stay until you delete them, or for a keep period you choose in Settings > App Settings > Recordings. Turning off Save dictation recordings there stops new ones without deleting the ones you have. Delete a recording in History, or all of them with Delete all dictation recordings. The text always stays." : {
+      "comment" : "History: the one-time recording notice with the default keep period.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "EnviousWispr speichert zu jedem gespeicherten Diktat eine Aufnahme auf diesem Mac, damit du sie im Verlauf abspielen kannst. Aufnahmen bleiben, bis du sie löschst, oder für eine Aufbewahrungsdauer, die du unter Einstellungen > App-Einstellungen > Aufnahmen wählst. Schaltest du dort „Diktataufnahmen speichern“ aus, entstehen keine neuen, vorhandene bleiben erhalten. Lösche eine Aufnahme im Verlauf oder alle mit „Alle Diktataufnahmen löschen“. Der Text bleibt immer erhalten."
           }
         }
       }
@@ -14370,6 +14392,28 @@
         }
       }
     },
+    "New saved dictations have recordings on this Mac by default. By default, they stay until you delete them. In Settings > App Settings > Recordings, turn off Save dictation recordings to stop saving future recordings; existing audio stays subject to your keep period and storage settings. Delete individual recordings in History, or use Delete all dictation recordings on that settings page. The text stays." : {
+      "comment" : "Onboarding: recording note with the default keep period.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Neue gespeicherte Diktate haben standardmäßig eine Aufnahme auf diesem Mac. Standardmäßig bleiben sie, bis du sie löschst. Schalte unter Einstellungen > App-Einstellungen > Aufnahmen „Diktataufnahmen speichern“ aus, damit künftig keine Aufnahmen mehr gespeichert werden; vorhandenes Audio folgt weiterhin deiner Aufbewahrungsdauer und deinen Speichereinstellungen. Lösche einzelne Aufnahmen im Verlauf oder nutze auf dieser Einstellungsseite „Alle Diktataufnahmen löschen“. Der Text bleibt erhalten."
+          }
+        }
+      }
+    },
+    "New saved dictations have recordings on this Mac, kept for the keep period set in Settings > App Settings > Recordings. Turn off Save dictation recordings there to stop saving future recordings; existing audio stays subject to your keep period and storage settings. Delete individual recordings in History, or use Delete all dictation recordings on that settings page. The text stays." : {
+      "comment" : "Onboarding: recording note when a keep period is set.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Neue gespeicherte Diktate haben eine Aufnahme auf diesem Mac, die für die unter Einstellungen > App-Einstellungen > Aufnahmen festgelegte Aufbewahrungsdauer behalten wird. Schalte dort „Diktataufnahmen speichern“ aus, damit künftig keine Aufnahmen mehr gespeichert werden; vorhandenes Audio folgt weiterhin deiner Aufbewahrungsdauer und deinen Speichereinstellungen. Lösche einzelne Aufnahmen im Verlauf oder nutze auf dieser Einstellungsseite „Alle Diktataufnahmen löschen“. Der Text bleibt erhalten."
+          }
+        }
+      }
+    },
     "New snippet" : {
       "localizations" : {
         "de" : {
@@ -19362,6 +19406,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Meeting-Aufnahme wird gespeichert"
+          }
+        }
+      }
+    },
+    "Saving dictation recordings is off, so new dictations are not recorded. You can turn it on in Settings > App Settings > Recordings. Any recordings you have can be deleted in History or with Delete all dictation recordings on that page. The text stays." : {
+      "comment" : "Onboarding: recording note when saving is off.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Das Speichern von Diktataufnahmen ist aus, neue Diktate werden also nicht aufgenommen. Du kannst es unter Einstellungen > App-Einstellungen > Aufnahmen einschalten. Vorhandene Aufnahmen kannst du im Verlauf oder auf dieser Seite mit „Alle Diktataufnahmen löschen“ löschen. Der Text bleibt erhalten."
+          }
+        }
+      }
+    },
+    "Saving dictation recordings is off, so new dictations are not recorded. You can turn it on in Settings > App Settings > Recordings. Recordings you already have can be deleted in History or with Delete all dictation recordings there. The text always stays." : {
+      "comment" : "History: the one-time recording notice when the user already turned saving off.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Das Speichern von Diktataufnahmen ist aus, neue Diktate werden also nicht aufgenommen. Du kannst es unter Einstellungen > App-Einstellungen > Aufnahmen einschalten. Vorhandene Aufnahmen kannst du im Verlauf oder dort mit „Alle Diktataufnahmen löschen“ löschen. Der Text bleibt immer erhalten."
           }
         }
       }
@@ -26853,6 +26919,17 @@
         }
       }
     },
+    "Your dictations now have recordings" : {
+      "comment" : "History: title of the one-time notice that saved dictations now keep a recording.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Deine Diktate haben jetzt Aufnahmen"
+          }
+        }
+      }
+    },
     "Your dictations, transcripts and recordings will appear here." : {
       "localizations" : {
         "de" : {
@@ -29901,6 +29978,78 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "⏎"
+          }
+        }
+      }
+    },
+    "whatsNew.play-back-your-dictations.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry play-back-your-dictations).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Play back your dictations"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Spiel deine Diktate ab"
+          }
+        }
+      }
+    },
+    "whatsNew.play-back-your-dictations.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry play-back-your-dictations).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr now keeps a recording of each saved dictation on your Mac, so you can play it back in History. Recordings stay until you delete them, or for a keep period you choose in Settings > App Settings > Recordings."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "EnviousWispr speichert jetzt zu jedem gespeicherten Diktat eine Aufnahme auf deinem Mac, damit du sie im Verlauf abspielen kannst. Aufnahmen bleiben, bis du sie löschst, oder für eine Aufbewahrungsdauer, die du unter Einstellungen > App-Einstellungen > Aufnahmen wählst."
+          }
+        }
+      }
+    },
+    "whatsNew.play-back-your-dictations.bullet.0" : {
+      "comment" : "Settings > What's New: point 1 of the list under one feature announcement (entry play-back-your-dictations).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Turn off Save dictation recordings on that page to stop saving new recordings. Recordings you already have are not deleted."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Schalte dort „Diktataufnahmen speichern“ aus, um keine neuen Aufnahmen mehr zu speichern. Vorhandene Aufnahmen werden nicht gelöscht."
+          }
+        }
+      }
+    },
+    "whatsNew.play-back-your-dictations.bullet.1" : {
+      "comment" : "Settings > What's New: point 2 of the list under one feature announcement (entry play-back-your-dictations).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete a recording in History, or all of them with Delete all dictation recordings. The text always stays."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Lösche eine Aufnahme im Verlauf oder alle mit „Alle Diktataufnahmen löschen“. Der Text bleibt immer erhalten."
           }
         }
       }
