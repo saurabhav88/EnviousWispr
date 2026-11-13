@@ -384,6 +384,8 @@ final class OnboardingCoordinator {
       endWarm(cancelLoad: false)  // positioning: the result is stale, the load may continue
       var target = state
       target.step = step
+      target.downloadsReturn = nil
+      target.recoveringReadiness = false
       target.readiness = OnboardingReadiness()
       apply(
         OnboardingTransition(state: target, outcome: .moved, effects: [.persistCheckpoint]),
@@ -555,6 +557,10 @@ final class OnboardingCoordinator {
       }
     }
     state = transition.state
+    if before.choices.speech != state.choices.speech || before.choices.polish != state.choices.polish {
+      // A previous selection's preflight/refusal cannot describe these choices.
+      block = nil
+    }
     if let language = state.choices.languageMode, language != before.choices.languageMode {
       // Before any speech work that depends on it.
       deps.writeLanguage(language)

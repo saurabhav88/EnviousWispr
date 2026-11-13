@@ -16,19 +16,20 @@ struct SetupFilmRoute: View {
       onFinished: { send(.filmFinished) },
       onSkip: { send(.skipFilm) },
       onReport: { result, scene in
-        guard model.state.step == .film else { return }
+        guard model.state.step == .film, model.routeEpoch == epoch, model.isWindowVisible else { return }
         model.onFilmEnded?(result, scene)
       },
       playback: model.sources.filmPlayback,
       canSavePlayback: {
         model.state.step == .film && model.routeEpoch == epoch
-      }
+      },
+      isVisible: model.isWindowVisible
     )
     .onAppear { model.screenMounted(.film, epoch: epoch) }
   }
 
   private func send(_ event: OnboardingEvent) {
-    guard model.state.step == .film else { return }
+    guard model.state.step == .film, model.routeEpoch == epoch, model.isWindowVisible else { return }
     model.send(event)
   }
 

@@ -67,6 +67,22 @@ struct OnboardingCheckpointTests {
     return OnboardingFlow.reduce(state, .readinessChanged(ready)).state.step
   }
 
+  @Test("a restored Downloads inspection returns to the interrupted recovery screen")
+  func restoresDownloadOrigin() throws {
+    var source = Self.midway()
+    source.step = .polishSeeAll
+    source.recoveringReadiness = true
+    let opened = OnboardingFlow.reduce(source, .inspectDownloads).state
+    guard case .resume(let restored, _) = Self.resolve(.settingUp, try Self.data(opened)) else {
+      Issue.record("expected restored Downloads")
+      return
+    }
+    let returned = OnboardingFlow.reduce(restored, .next).state
+    #expect(returned.step == .polishSeeAll && returned.recoveringReadiness)
+    #expect(returned.downloadsReturn == nil && returned.choices == source.choices)
+    #expect(!returned.isReadyForPractice)
+  }
+
   @Test("a saved checkpoint resumes at its step with the choices and no readiness")
   func resumesWithChoicesOnly() throws {
     guard

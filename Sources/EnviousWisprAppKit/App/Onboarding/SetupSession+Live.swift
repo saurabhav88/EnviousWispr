@@ -58,10 +58,10 @@ extension SetupSession {
               }
             },
             actions: .live(owners.permissions)),
-          makeCloudPanel: { [weak telemetry, weak coordinator] in
+          makeCloudPanel: { [weak telemetry, weak coordinator] provider in
             SetupCloudPanelModel.live(
               settings: owners.settings, writer: owners.credentials,
-              list: owners.cloudModelList,
+              list: owners.cloudModelList, provider: provider,
               report: { event in
                 telemetry?.keyReported(
                   event, rulesVersion: coordinator?.state.recommended.rulesVersion ?? "")

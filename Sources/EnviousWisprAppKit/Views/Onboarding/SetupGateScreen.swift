@@ -204,26 +204,33 @@ struct SetupGateScreen: View {
   @ViewBuilder
   private func footer(_ p: OnboardingDownloadsPresentation) -> some View {
     if screen == .downloads {
-      SetupFooter(title: "Continue setup", action: { send(.next) }) {
-        Text(verbatim: SetupGate.note(p))
-          .font(.firstRunCaption)
-          .foregroundStyle(Color.obTextSecondary)
+      SetupFooter(
+        title: model.state.downloadsReturn == nil ? "Continue setup" : "Return to setup",
+        action: { send(.next) }
+      ) {
+        if SetupGate.problem(p, screen: .downloads) != nil {
+          SetupLinkButton(title: "Change speech model", quiet: true) { send(.changeSpeech) }
+          SetupLinkButton(title: "Change AI polish", quiet: true) { send(.changePolish) }
+        } else {
+          Text(verbatim: SetupGate.note(p))
+            .font(.firstRunCaption)
+            .foregroundStyle(Color.obTextSecondary)
+        }
       }
     } else {
-      let routes = SetupGate.gettingReadyRoutes(p)
+      let actions = SetupGate.recoveryActions(p)
+      if !actions.isEmpty {
+        VStack(spacing: DesignSpacing.xxs) {
+          ForEach(Array(actions.enumerated()), id: \.offset) { _, action in
+            SetupLinkButton(title: action.title, quiet: true) { send(action.event) }
+          }
+        }
+      }
       SetupFooter(
         title: "Try your first dictation", isEnabled: model.state.isReadyForPractice,
         action: { send(.next) }
       ) {
-        if routes.permissions {
-          SetupLinkButton(title: "Review permissions") { send(.reviewPermissions) }
-        }
-        if routes.withoutPolish {
-          SetupLinkButton(title: "Continue without AI polish", quiet: true) {
-            send(.continueWithoutPolish)
-          }
-        }
-        if !routes.permissions, !routes.withoutPolish, let close = model.sources.closeSetup {
+        if actions.isEmpty, let close = model.sources.closeSetup {
           SetupLinkButton(
             title: SetupGate.problem(p, screen: screen) == nil
               ? "Close setup. Downloads continue in the menu bar."
@@ -241,12 +248,12 @@ struct SetupGateScreen: View {
     case .retryWarmup: model.sources.downloadActions.retryWarmup()
     case .retryPolish: model.sources.downloadActions.retryPolish()
     case .turnPolishOn: send(.turnPolishOn)
-    case .changePolish: send(.back)  // Downloads' Back is the polish choice (flow table)
+    case .changePolish: send(.changePolish)
     }
   }
 
   private func send(_ event: OnboardingEvent) {
-    guard model.state.step == step else { return }
+    guard model.state.step == step, model.routeEpoch == epoch else { return }
     model.send(event)
   }
 }

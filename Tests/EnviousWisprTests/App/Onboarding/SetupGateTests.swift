@@ -142,6 +142,55 @@ struct SetupGateTests {
         && SetupGate.gettingReadyRoutes(cloud).withoutPolish)
   }
 
+  @Test("Getting ready recovery controls preserve picks and route through the coordinator")
+  func recoveryActionsReachTheirScreens() throws {
+    let world = OnboardingCoordinatorTests.World()
+    let coordinator = OnboardingRuntimeTests.atDownloads(world)
+    coordinator.send(.next)
+    coordinator.send(.readinessChanged(.init(microphoneGranted: true, accessibilityGranted: true)))
+    coordinator.send(.next)
+    #expect(coordinator.state.step == .gettingReady)
+
+    let model = SetupScreenModel(coordinator: coordinator)
+    defer { model.detach() }
+    let choices = coordinator.state.choices
+    let p = Self.p(
+      speech: .paused, polishPhase: .failed(.whisper("fixture")), prep: .downloadStopped,
+      ax: false)
+    let actions = SetupGate.recoveryActions(p).map(\.event)
+    #expect(actions == [.reviewPermissions, .changeSpeech, .changePolish, .continueWithoutPolish])
+    for (event, destination) in [
+      (OnboardingEvent.reviewPermissions, OnboardingStep.permissions),
+      (.changeSpeech, .speechPick), (.changePolish, .polishPick),
+    ] {
+      model.send(try #require(actions.first { $0 == event }))
+      #expect(model.state.step == destination && model.state.choices == choices)
+      model.send(.returnToGettingReady)
+      #expect(model.state.step == .gettingReady && model.state.choices == choices)
+    }
+
+    model.send(.changeSpeech)
+    model.send(.chooseSpeech(.whisper))
+    #expect(model.state.step == .gettingReady && model.state.choices.speech == .whisper)
+    #expect(!model.state.isReadyForPractice)
+  }
+
+  @Test("the background pill opens Downloads and Return restores each real origin")
+  func downloadPillReturnsToItsOrigin() {
+    #expect(SetupDownloadPill.status(Self.p()) == .moving)
+    #expect(SetupDownloadPill.status(Self.p(speech: .paused)) == .stopped)
+    #expect(SetupDownloadPill.status(Self.p(speech: .installed, finished: true)) == .ready)
+    for origin in OnboardingFlowState.downloadOrigins {
+      let source = OnboardingFlowState(step: origin, choices: .init(speech: .parakeet))
+      let opened = OnboardingFlow.reduce(source, .inspectDownloads).state
+      #expect(opened.step == .downloads && opened.downloadsReturn == origin)
+      for event in [OnboardingEvent.next, .back] {
+        let returned = OnboardingFlow.reduce(opened, event).state
+        #expect(returned == source)
+      }
+    }
+  }
+
   // MARK: Rendering
 
   @Observable final class Box {

@@ -37,6 +37,11 @@ struct SetupSpeechScreen: View {
         } else {
           SetupLinkButton(title: "Compare speech models") { model.send(.compareSpeech) }
         }
+        if model.state.recoveringReadiness {
+          SetupLinkButton(title: "Return to getting ready", quiet: true) {
+            model.send(.returnToGettingReady)
+          }
+        }
       }
     }
     .padding(.top, DesignSpacing.xs)

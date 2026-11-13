@@ -23,6 +23,9 @@ struct SetupWindowRoot: View {
   var body: some View {
     VStack(spacing: 0) {
       SetupStepStrip(step: model.state.step)
+        .overlay(alignment: .trailing) {
+          SetupDownloadPill(model: model)
+        }
         .frame(height: SetupLayout.stripHeight)
       SetupScreenRouter(model: model)
         .id(model.routeEpoch)
@@ -82,7 +85,7 @@ final class SetupScreenModel {
   /// How the film ended (E integration); the presenter binds it to the session's observer.
   @ObservationIgnored var onFilmEnded: ((OnboardingTelemetry.FilmResult, FilmScene) -> Void)?
   /// True only while the window is on screen: a mounted view in a hidden window is not a view.
-  @ObservationIgnored private(set) var isWindowVisible = false
+  private(set) var isWindowVisible = false
   /// Downloads is the CURRENT mounted route AND the window is on screen (plan M83): the runtime's
   /// countdown runs only then. The presenter binds it to `OnboardingRuntime.setDownloadsScreenVisible`.
   @ObservationIgnored var onDownloadsVisible: ((Bool) -> Void)?
@@ -144,7 +147,9 @@ final class SetupScreenModel {
     guard state.step == .polishSeeAll else { return }
     if tab == .cloud {
       guard let make = sources.makeCloudPanel else { return }
-      if cloudPanel == nil { cloudPanel = make() }
+      if cloudPanel == nil {
+        cloudPanel = make(state.choices.cloudProvider ?? .openAI)
+      }
     }
     seeAllTab = tab
   }
@@ -268,7 +273,7 @@ struct SetupScreenSources {
   var closeSetup: (@MainActor () -> Void)?
   /// Builds See all's cloud panel over the saved-key, credential and discovery owners Settings
   /// uses (`SetupCloudPanelModel.live`, D3b). nil hides the Cloud tab.
-  var makeCloudPanel: (@MainActor () -> SetupCloudPanelModel)?
+  var makeCloudPanel: (@MainActor (LLMProvider) -> SetupCloudPanelModel)?
   /// The closing film's place for this Setup session (E review r1); nil: the film keeps it in
   /// its own view only.
   var filmPlayback: SetupFilmPlayback?
