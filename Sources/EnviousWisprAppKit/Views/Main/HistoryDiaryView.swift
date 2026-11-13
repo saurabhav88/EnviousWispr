@@ -696,16 +696,6 @@ struct HistoryEmptyView: View {
 /// opens the transcript.
 struct TranscriptRowView: View {
   let transcript: Transcript
-  @Environment(TranscriptCoordinator.self) private var transcriptCoordinator
-
-  /// Reading `expiryPulse` is what re-renders the countdown (#2087). Observation
-  /// invalidates on a property READ by this body; `Date()` alone is invisible to
-  /// it, so without this touch the row would show the remaining time it had when
-  /// something else last changed state.
-  private var escapeRecoveryClock: Date {
-    _ = transcriptCoordinator.expiryPulse
-    return Date()
-  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
@@ -721,35 +711,8 @@ struct TranscriptRowView: View {
       // #2807: the chips WRAP, so a row with a long file name and several chips never squeezes
       // a chip's words across lines at the list's narrowest.
       WrappingHStack(spacing: 6) {
-        // #2087. Deliberately NOT the "Recovered" capsule below: that one means
-        // crash rescue, and a held recovery is an ordinary cancel the user can
-        // still change their mind about. The decision and the wording both come
-        // from `EscapeRecoveryRowPresentation`, because a rule written inline
-        // here would not be unit-drivable.
-        switch EscapeRecoveryRowPresentation.badge(
-          for: transcript, now: escapeRecoveryClock)
-        {
-        case .held(let countdown):
-          HStack(spacing: 2) {
-            Image(systemName: "clock.arrow.circlepath")
-            Text(countdown)
-          }
-          .historyChip(tint: .stWarning, fill: Color.stWarning.opacity(0.15))
-          .accessibilityLabel(
-            EscapeRecoveryRowPresentation.accessibilityLabel(
-              remaining: EscapeRecoveryRowPresentation.remaining(
-                from: transcript.escapeRecoveredAt ?? escapeRecoveryClock,
-                now: escapeRecoveryClock)))
-        case .kept:
-          HStack(spacing: 2) {
-            Image(systemName: "checkmark.seal")
-            Text(EscapeRecoveryRowPresentation.keptLabel)
-          }
-          .historyChip(tint: .stSuccess, fill: Color.stSuccess.opacity(0.15))
-          .accessibilityLabel("Kept recovered recording")
-        case nil:
-          EmptyView()
-        }
+        // #2087: held countdown or Kept, from the shared Escape Recovery badge view.
+        EscapeRecoveryBadge(transcript: transcript)
 
         if let importedFileName = transcript.importedFileName {
           // #2772 finding 11: the FILE NAME is the label rather than the word "Imported": a
@@ -856,5 +819,54 @@ extension View {
       .padding(.vertical, 2)
       .background(fill, in: Capsule())
       .foregroundStyle(tint)
+  }
+}
+
+/// The Escape Recovery chip on a History dictation (#2087): the held row's countdown, or Kept
+/// after the user kept it. Shared by the transcript row, the held dictation's detail and the
+/// dictation card (#3147 PR2, Codex r8), so the rule and wording stay in one place.
+struct EscapeRecoveryBadge: View {
+  let transcript: Transcript
+  @Environment(TranscriptCoordinator.self) private var transcriptCoordinator
+
+  /// Reading `expiryPulse` is what re-renders the countdown (#2087). Observation
+  /// invalidates on a property READ by this body; `Date()` alone is invisible to
+  /// it, so without this touch the badge would show the remaining time it had when
+  /// something else last changed state.
+  private var escapeRecoveryClock: Date {
+    _ = transcriptCoordinator.expiryPulse
+    return Date()
+  }
+
+  var body: some View {
+    // #2087. Deliberately NOT the "Recovered" capsule below: that one means
+    // crash rescue, and a held recovery is an ordinary cancel the user can
+    // still change their mind about. The decision and the wording both come
+    // from `EscapeRecoveryRowPresentation`, because a rule written inline
+    // here would not be unit-drivable.
+    switch EscapeRecoveryRowPresentation.badge(
+      for: transcript, now: escapeRecoveryClock)
+    {
+    case .held(let countdown):
+      HStack(spacing: 2) {
+        Image(systemName: "clock.arrow.circlepath")
+        Text(countdown)
+      }
+      .historyChip(tint: .stWarning, fill: Color.stWarning.opacity(0.15))
+      .accessibilityLabel(
+        EscapeRecoveryRowPresentation.accessibilityLabel(
+          remaining: EscapeRecoveryRowPresentation.remaining(
+            from: transcript.escapeRecoveredAt ?? escapeRecoveryClock,
+            now: escapeRecoveryClock)))
+    case .kept:
+      HStack(spacing: 2) {
+        Image(systemName: "checkmark.seal")
+        Text(EscapeRecoveryRowPresentation.keptLabel)
+      }
+      .historyChip(tint: .stSuccess, fill: Color.stSuccess.opacity(0.15))
+      .accessibilityLabel("Kept recovered recording")
+    case nil:
+      EmptyView()
+    }
   }
 }

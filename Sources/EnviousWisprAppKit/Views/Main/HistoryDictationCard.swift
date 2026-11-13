@@ -334,6 +334,9 @@ struct HistoryDictationCard: View {
       // #1408 / #1063 PR2: kept from the old History row (cloud review of PR #4555). A dictation
       // whose microphone was removed mid-recording may be cut short; one rebuilt from a recovered
       // recording says so. Icon and text, never colour alone.
+      // #2087: Kept, for a held Escape Recovery dictation the user kept (held rows use the
+      // detail view, which shows their countdown).
+      EscapeRecoveryBadge(transcript: row)
       ForEach(HistoryDictationPresentation.statusFlags(for: row), id: \.self) { flag in
         switch flag {
         case .interrupted:

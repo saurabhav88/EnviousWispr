@@ -39,8 +39,12 @@ struct HistoryContentView: View {
             if row.escapeRecoveredAt != nil {
               // A held Escape Recovery dictation keeps its own Paste, Keep and Delete (#2087):
               // it has no recording and no polish history for the dictation card to show.
-              TranscriptDetailView(transcript: row, showPasteNotice: pasteNotice.show)
-                .id(rowID)
+              VStack(alignment: .leading, spacing: 6) {
+                // The countdown says this text expires unless kept (#2087).
+                EscapeRecoveryBadge(transcript: row)
+                TranscriptDetailView(transcript: row, showPasteNotice: pasteNotice.show)
+              }
+              .id(rowID)
             } else {
               HistoryDictationCard(rowID: rowID, showPasteNotice: pasteNotice.show)
                 .id(rowID)

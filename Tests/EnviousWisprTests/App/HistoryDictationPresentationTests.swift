@@ -179,6 +179,23 @@ struct HistoryDictationPresentationTests {
     #expect(P.statusFlags(for: Transcript(text: "a", inputDeviceWasRemoved: false)).isEmpty)
   }
 
+  @Test("a held Escape Recovery dictation shows its countdown; after Keep it shows Kept, never Recovered")
+  func heldThenKeptBadges() {
+    let now = Date()
+    let held = Transcript(
+      text: "a", escapeRecoveredAt: now.addingTimeInterval(-60), escapeRecoveryTakeID: "take")
+    guard case .held = EscapeRecoveryRowPresentation.badge(for: held, now: now) else {
+      Issue.record("a live held row must show its countdown")
+      return
+    }
+    let kept = held.promotedFromPending()
+    #expect(EscapeRecoveryRowPresentation.badge(for: kept, now: now) == .kept)
+    #expect(P.statusFlags(for: kept).isEmpty, "Kept is not crash Recovered")
+    let expired = Transcript(
+      text: "a", escapeRecoveredAt: now.addingTimeInterval(-3 * 86_400), escapeRecoveryTakeID: "t")
+    #expect(EscapeRecoveryRowPresentation.badge(for: expired, now: now) == nil)
+  }
+
   @Test("a passage spoken twice stays untimed: which copy survived is not provable")
   func repeatedPassagesStayUntimed() {
     // Two identical sentences at different times; polish keeps one copy.
