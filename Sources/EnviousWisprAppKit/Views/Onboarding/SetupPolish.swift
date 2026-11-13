@@ -25,6 +25,14 @@ enum SetupPolish {
 
   static func model(_ id: String) -> LocalPolishModelID? { SetupRules.registeredPolish[id] }
 
+  /// A local model's manifest download size from the owners the presenter injects (EG-1's
+  /// catalog, S1-mini's bundled manifest); nil for Apple Intelligence or an unknown id.
+  static func downloadBytes(_ id: String, sources: SetupScreenSources) -> Int64? {
+    guard let model = model(id), model.provider != .appleIntelligence else { return nil }
+    if let size = model.size { return sources.egOneSizeCatalog.downloadBytes[size] }
+    return model.provider == .s1Mini ? sources.s1MiniDownloadBytes : nil
+  }
+
   /// S1-mini in Setup: offered under Auto and for English, as in the approved mockup (`s1Ok`).
   /// No app contract restricts it (Settings offers it everywhere, "happiest in English"); Setup
   /// is the opinionated path, so another locked language sees it disabled with the reason.

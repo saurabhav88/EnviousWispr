@@ -5845,6 +5845,9 @@ public enum OnboardingTelemetry {
     case downloadFailed = "download_failed"
     /// The engine owner's warm-up failed (the old onboarding's reason name, reused).
     case warmupFailed = "warmup_failed"
+    /// The picked local polish model is installed but its owner reports a failed load (#4528
+    /// D4a.2, plan §7).
+    case polishFailed = "polish_failed"
   }
 
   /// What happened with a cloud key on Setup's key step: an outcome, never the key.

@@ -57,6 +57,10 @@ enum SetupMetrics {
   static let radio: CGFloat = 20
   static let radioDot: CGFloat = 8
   static let check: CGFloat = 22
+  /// Downloads: the progress bar's height (mockup 6).
+  static let barHeight: CGFloat = 6
+  /// Downloads: a card's status row (mockup min-height 20).
+  static let cardStatusRow: CGFloat = 20
 }
 
 /// A screen's footer (mockup `[data-ui="footer"]`): the primary action, then the 32-high links
@@ -259,6 +263,75 @@ struct SetupRadio: View {
         .frame(width: SetupMetrics.radioDot, height: SetupMetrics.radioDot)
     }
     .frame(width: SetupMetrics.radio, height: SetupMetrics.radio)
+    .accessibilityHidden(true)
+  }
+}
+
+/// A progress bar (mockup `[data-ui="bar"]`): a 6-point capsule track in the hairline color
+/// with an accent fill, or an error fill. With no measured fraction it shows a short segment
+/// sliding across, which stops at rest under Reduce Motion. Reads to VoiceOver as a progress
+/// indicator with its percent.
+struct SetupProgressBar: View {
+  let fraction: Double?
+  var isError = false
+  let label: String
+  let reduceMotion: Bool
+  @State private var sweep = false
+
+  var body: some View {
+    GeometryReader { proxy in
+      ZStack(alignment: .leading) {
+        Capsule().fill(Color.firstRunRule)
+        if let fraction {
+          Capsule()
+            .fill(isError ? Color.obError : Color.obAccent)
+            .frame(width: proxy.size.width * min(1, max(0, fraction)))
+        } else {
+          Capsule()
+            .fill(Color.obAccent.opacity(0.72))
+            .frame(width: proxy.size.width * 0.3)
+            .offset(x: sweep && !reduceMotion ? proxy.size.width * 0.7 : 0)
+        }
+      }
+    }
+    .frame(height: SetupMetrics.barHeight)
+    .onAppear { startSweep() }
+    .onChange(of: reduceMotion) { startSweep() }
+    .accessibilityElement()
+    .accessibilityLabel(Text(verbatim: label))
+    .accessibilityValue(
+      Text(
+        fraction.map { String(localized: "\(Int(($0 * 100).rounded(.down))) percent", comment: "Setup progress bar value.") }
+          ?? String(localized: "In progress", comment: "Setup progress bar value with no measured percent.")))
+    .accessibilityAddTraits(.updatesFrequently)
+  }
+
+  private func startSweep() {
+    guard fraction == nil, !reduceMotion else {
+      sweep = false
+      return
+    }
+    withAnimation(DesignMotion.gentle.speed(0.3).repeatForever(autoreverses: true)) { sweep = true }
+  }
+}
+
+/// The mockup's small arc spinner; a still arc under Reduce Motion.
+struct SetupSpinner: View {
+  let reduceMotion: Bool
+  var onAccent = false
+
+  var body: some View {
+    TimelineView(.animation(paused: reduceMotion)) { timeline in
+      let turn = timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 0.8)
+      Circle()
+        .trim(from: 0, to: 0.75)
+        .stroke(
+          onAccent ? Color.firstRunOnAccent : Color.obAccent,
+          style: StrokeStyle(lineWidth: DesignSpacing.xxs, lineCap: .round)
+        )
+        .frame(width: DesignSpacing.xl, height: DesignSpacing.xl)
+        .rotationEffect(.degrees(reduceMotion ? 0 : turn / 0.8 * 360))
+    }
     .accessibilityHidden(true)
   }
 }

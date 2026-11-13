@@ -371,9 +371,7 @@ struct SetupPolishScreen: View {
       return String(
         localized: "Nothing to download", comment: "Setup AI polish card: Apple Intelligence's size.")
     }
-    let sources = model.sources
-    let bytes = polish.size.map { sources.egOneSizeCatalog.downloadBytes[$0] } ?? sources.s1MiniDownloadBytes
-    guard let bytes else { return "" }
+    guard let bytes = SetupPolish.downloadBytes(id, sources: model.sources) else { return "" }
     return String(
       localized: "\(EGOneSizeCardCopy.byteCount(bytes)) download",
       comment: "Setup AI polish: a model's download size.")

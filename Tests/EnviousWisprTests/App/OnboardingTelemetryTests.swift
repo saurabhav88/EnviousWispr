@@ -221,6 +221,8 @@ import Testing
         "key_check_failed", "disk_short", "download_failed",
         // C repair (M70): the new Setup reuses the old onboarding's warm-up failure reason.
         "warmup_failed",
+        // D4a.2: Getting ready's failed local polish load.
+        "polish_failed",
       ])
       // Syntax check only (caller-owned closed vocabularies).
       #expect(OnboardingTelemetry.boundedIdentifier("") == "invalid")

@@ -70,7 +70,8 @@ struct SetupWindowRootTests {
     coordinator.send(.next)
     coordinator.send(.next)  // Speech pick's default: Polish intro
     coordinator.send(.next)  // AI polish pick
-    coordinator.send(.skipPolish)  // Downloads, still a placeholder
+    coordinator.send(.skipPolish)  // Downloads
+    coordinator.debugGoto(.film)  // Film: still a placeholder until E is wired
     let model = SetupScreenModel(coordinator: coordinator)
     defer { model.detach() }
     let still = try Self.pixels(SetupWindowRoot(model: model), reduceMotion: true)

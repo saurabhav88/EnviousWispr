@@ -95,7 +95,7 @@ final class SetupScreenModel {
   /// The steps that have a real screen so far (D1 to D3a).
   static let realScreens: Set<OnboardingStep> = [
     .welcome, .language, .speechPick, .speechCompare, .polishIntro, .polishPick, .polishSeeAll,
-    .permissions, .key,
+    .downloads, .permissions, .key, .gettingReady,
   ]
 
   /// Speech pick/Compare's pending engine (D2, M76): a UI selection only, alive while the flow
@@ -215,6 +215,9 @@ struct SetupScreenSources {
   var downloads: (@MainActor () -> OnboardingDownloadsPresentation)?
   /// Downloads and Getting ready actions, all through the coordinator (D4a, M83).
   var downloadActions = SetupDownloadActions()
+  /// Hides the Setup window; the flow, its transfers and its visit continue (the presenter's
+  /// close path). nil hides Getting ready's close link.
+  var closeSetup: (@MainActor () -> Void)?
 }
 
 /// The two permissions' owners for Setup's Permissions screen (#4528 D4b, plan M81).
@@ -270,10 +273,11 @@ struct SetupScreenRouter: View {
     case .polishIntro: SetupPolishIntroScreen(model: model, epoch: model.routeEpoch)
     case .polishPick: SetupPolishScreen(model: model, epoch: model.routeEpoch, seeAll: false)
     case .polishSeeAll: SetupPolishScreen(model: model, epoch: model.routeEpoch, seeAll: true)
-    case .downloads: SetupPlaceholder(step: .downloads, chunk: "D4a")
+    case .downloads: SetupGateScreen(model: model, epoch: model.routeEpoch, screen: .downloads)
     case .permissions: SetupPermissionsRoute(model: model, epoch: model.routeEpoch)
     case .key: SetupKeyRoute(model: model, epoch: model.routeEpoch)
-    case .gettingReady: SetupPlaceholder(step: .gettingReady, chunk: "D4a")
+    case .gettingReady:
+      SetupGateScreen(model: model, epoch: model.routeEpoch, screen: .gettingReady)
     case .practice: SetupPlaceholder(step: .practice, chunk: "D6b")
     case .film: SetupPlaceholder(step: .film, chunk: "E")
     case .done: EmptyView()

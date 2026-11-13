@@ -147,6 +147,7 @@
         runtime?.recheckAppleIntelligence()
       }
       sources.downloads = session.downloadsPresentation
+      sources.closeSetup = { [weak presenter] in presenter?.dismiss() }
       let coordinator = session.coordinator
       sources.downloadActions = SetupDownloadActions(
         retryDownloads: { [weak coordinator] in coordinator?.retryDownloads() },

@@ -59,6 +59,7 @@ struct OnboardingDownloadsPresentationTests {
     // Speech not warm: polish turns off, the person stays on Getting ready.
     var t = OnboardingFlow.reduce(s, .continueWithoutPolish)
     #expect(t.state.step == .gettingReady && t.state.choices.polish == OnboardingChoices.polishOff)
+    #expect(t.outcome == .noOp, "staying put is a saved choice change, not a move")
     #expect(t.state.readiness.polishFailed == false && t.effects == [.persistCheckpoint])
     // Speech warm and both grants: off goes straight to Practice.
     s.readiness.engineWarm = true

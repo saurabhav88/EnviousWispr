@@ -190,7 +190,8 @@ struct OnboardingSetupTelemetryTests {
     #expect(lr.downloads.allSatisfy { $0.1 == .ok })
   }
 
-  @Test("a failure a Retry clears before the next tick still reports, with each attempt's own timing")
+  @Test(
+    "a failure a Retry clears before the next tick still reports, with each attempt's own timing")
   func retryBeforeTick() async {
     let world = World()
     let r = Recorder()
@@ -288,7 +289,9 @@ struct OnboardingSetupTelemetryTests {
     #expect(r.downloads.map(\.2) == [20, 30, 10])
   }
 
-  @Test("Parakeet: a cancelled answer reads cancelled; a late answer is never adopted by a new visit; a joined start adds no row")
+  @Test(
+    "Parakeet: a cancelled answer reads cancelled; a late answer is never adopted by a new visit; a joined start adds no row"
+  )
   func parakeetCancelLateAndJoined() async {
     let world = World()
     world.reportsEnd = [.parakeet]
@@ -346,7 +349,8 @@ struct OnboardingSetupTelemetryTests {
     #expect(jr.downloads.map(\.1) == [.ok])
   }
 
-  @Test("an answer held across Cancel reads cancelled; one held across a new visit is never adopted")
+  @Test(
+    "an answer held across Cancel reads cancelled; one held across a new visit is never adopted")
   func heldAnswers() async {
     let world = World()
     let gate = OnboardingCoordinatorTests.Gate()
@@ -405,6 +409,78 @@ struct OnboardingSetupTelemetryTests {
     }
     #expect(r.blocked.map(\.1) == [.warmupFailed] && r.blocked.map(\.0) == ["downloads"])
     withExtendedLifetime(owner) {}
+  }
+
+  @Test(
+    "a failed polish load is one polish_failed row on Getting ready across polls and a failed Retry; a new row only after recovery"
+  )
+  func polishFailedEpisodes() async {
+    let world = World()
+    let mini = OnboardingDownloads.localModel(forPolish: Self.eg1Mini)!
+    world.speechPhase[.parakeet] = .installed
+    world.polishPhase[mini] = .installed
+    world.local[mini] = OnboardingLocalPolishState(
+      installed: true, serverReady: false, healthy: false)
+    let r = Recorder()
+    let (c, _, tick) = Self.wired(world, r)
+    c.begin()
+    c.send(.next)
+    c.send(.next)
+    c.send(.chooseSpeech(.parakeet))
+    c.send(.next)
+    c.send(.next)  // polish intro → EG-1 mini (recommended)
+    c.refreshReadiness()
+    await c.settle()
+    tick()
+    #expect(c.state.readiness.polishFailed && c.state.step != .gettingReady)
+    #expect(r.blocked.isEmpty)  // the failure is reported where it is shown
+    while c.state.step != .gettingReady, c.isActive {
+      let before = c.state.step
+      c.send(.next)
+      if c.state.step == before { break }
+    }
+    #expect(c.state.step == .gettingReady)
+    for _ in 0..<3 {
+      c.refreshReadiness()
+      await c.settle()
+      tick()
+    }
+    c.retryPolish()  // clears readiness: the pending re-measure ends nothing
+    tick()
+    await c.settle()
+    tick()
+    #expect(r.blocked.map(\.1) == [.polishFailed] && r.blocked.map(\.0) == ["gettingReady"])
+
+    // A cold engine keeps the flow on Getting ready while the polish model loads and recovers.
+    world.engine = (.parakeet, .notReady)
+    // The Retry's measured loading (installed, starting, health not red) is not a recovery:
+    // failed → Retry → loading → failed stays one row (orchestrator D4a.2 round 2).
+    world.local[mini] = OnboardingLocalPolishState(
+      installed: true, serverReady: false, healthy: true)
+    c.refreshReadiness()
+    await c.settle()
+    tick()
+    #expect(c.state.readiness.polish == Self.eg1Mini)
+    #expect(!c.state.readiness.polishFailed && !c.state.readiness.polishReady)
+    world.local[mini] = OnboardingLocalPolishState(
+      installed: true, serverReady: false, healthy: false)
+    c.refreshReadiness()
+    await c.settle()
+    tick()
+    #expect(r.blocked.map(\.1) == [.polishFailed])
+
+    world.local[mini] = OnboardingLocalPolishState(
+      installed: true, serverReady: true, healthy: true)
+    c.refreshReadiness()
+    await c.settle()
+    tick()
+    #expect(c.state.step == .gettingReady && c.state.readiness.polishReady)
+    world.local[mini] = OnboardingLocalPolishState(
+      installed: true, serverReady: false, healthy: false)
+    c.refreshReadiness()
+    await c.settle()
+    tick()
+    #expect(r.blocked.map(\.1) == [.polishFailed, .polishFailed])
   }
 
   @Test("a disk block is one episode across polls and retries; a new episode after it clears")

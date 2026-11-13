@@ -360,27 +360,6 @@ private struct SetupPermissionButton: View {
   }
 }
 
-/// The mockup's small arc spinner; a still arc under Reduce Motion.
-private struct SetupSpinner: View {
-  let reduceMotion: Bool
-  var onAccent = false
-
-  var body: some View {
-    TimelineView(.animation(paused: reduceMotion)) { timeline in
-      let turn = timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 0.8)
-      Circle()
-        .trim(from: 0, to: 0.75)
-        .stroke(
-          onAccent ? Color.firstRunOnAccent : Color.obAccent,
-          style: StrokeStyle(lineWidth: DesignSpacing.xxs, lineCap: .round)
-        )
-        .frame(width: DesignSpacing.xl, height: DesignSpacing.xl)
-        .rotationEffect(.degrees(reduceMotion ? 0 : turn / 0.8 * 360))
-    }
-    .accessibilityHidden(true)
-  }
-}
-
 /// The System Settings preview (mockup `mock`): the pane's path, the app row and its switch,
 /// which flips on and back every 3.2 s to show what to do; still (off) under Reduce Motion.
 private struct SetupSettingsPreview: View {

@@ -283,8 +283,10 @@ enum OnboardingFlow {
       s.choices.polish = OnboardingChoices.polishOff
       s.choices.cloudProvider = nil
       s.choices.cloudModel = nil
-      // Off needs no polish readiness; speech and both grants still decide.
-      return move(s.isReadyForPractice ? .practice : .gettingReady)
+      // Off needs no polish readiness; speech and both grants still decide. Staying on Getting
+      // ready is a saved choice change, not a move (the language pick's shape).
+      if s.isReadyForPractice { return move(.practice) }
+      return OnboardingTransition(state: s, outcome: .noOp, effects: [.persistCheckpoint])
     case (.gettingReady, .reviewPermissions):
       return move(.permissions)
 

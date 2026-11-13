@@ -1318,6 +1318,139 @@ def s_screens_d4b(run, speech):
     return s
 
 
+def s_screens_d4a(run, speech):
+    """D4a: Downloads and Getting ready through their real controls (AX press), light and dark,
+    with the approved faults at their existing boundaries: polish-fail (Getting ready's polish
+    Try again) and warm-fail (the warm-up Try again), each cleared and recovered; the polish-off
+    card's Turn on; Continue setup; entering an already-finished Downloads does not bounce.
+    Installed-only hardware cannot reach a missing-model download, disk-short preflight or a
+    slow transfer while downloading: those stay clean-Mac UAT."""
+    from ui_helpers import perform_action
+    s = Scenario("screens_d4a")
+    pid = run.app.client.pid
+    shots = os.path.join(run.artifacts, "shots")
+    os.makedirs(shots, exist_ok=True)
+    before = run.app.call("settings", "get", "appearance").get("value")
+    have, _ = installed_polish(run)
+    eg = next((m for m in ("eg1.micro", "eg1.mini", "eg1.full") if m in have), None)
+
+    def shot(name):
+        wid = window_id(pid, "Setup")
+        path = os.path.join(shots, f"d4a-{name}.png")
+        s.expect(wid is not None and capture_window(wid, path), f"captured {name}", path)
+
+    def settle(seconds=0.8):
+        time.sleep(seconds)  # test-fixture-timer: the screen entrance and card rise run on screen
+
+    def says(phrase):
+        return any(phrase in t for t in setup_window_ax(pid)[1])
+
+    def press(name):
+        b = setup_button(pid, name)
+        s.expect(b is not None and perform_action(b, "AXPress"), f"pressed {name}")
+        settle(0.6)
+
+    def to_downloads(polish_event):
+        run.reset(s, f"fresh flow to Downloads ({polish_event})")
+        run.send("next")
+        run.send("chooseLanguage", value="en")
+        run.send("next")
+        run.send("chooseSpeech", value=speech)
+        run.send("next")
+        if polish_event == "skip":
+            run.send("skipPolish")
+        else:
+            run.send("choosePolish", value=polish_event)
+        st = run.until(lambda x: x.get("step") == "downloads", 4, "downloads")
+        s.expect(st.get("step") == "downloads", "the polish choice reaches Downloads", st.get("step"))
+        settle()
+
+    for appearance in ("light", "dark"):
+        run.app.call("settings", "set", "appearance", json.dumps(appearance))
+        run.reset(s, "fresh flow")
+        run.app.call("onboarding", "present")
+        to_downloads("skip")
+        s.expect(says("Turned off") and setup_button(pid, "Turn on") is not None,
+                 "polish off: the card offers Turn on")
+        time.sleep(2.5)  # test-fixture-timer: longer than the 1.6 s countdown, to prove no bounce
+        st = run.status()
+        s.expect(st.get("step") == "downloads" and st.get("countingDown") is False,
+                 "an already-finished Downloads does not bounce onward", (st.get("step"), st.get("countingDown")))
+        shot(f"{appearance}-finished-polish-off")
+        if appearance == "light":
+            press("Turn on")
+            s.expect(run.status().get("step") == "polishPick", "Turn on returns to the polish choice")
+            to_downloads("skip")
+            press("Continue setup")
+            st = run.status()
+            # This Mac's real grants may already be on: Permissions then moves on to Key by itself.
+            s.expect(st.get("step") in ("permissions", "key"),
+                     "Continue setup moves on to Permissions", st.get("step"))
+        if not eg:
+            s.uncovered.append("Getting ready with a local polish model: none installed here (clean-Mac UAT)")
+            continue
+        # Getting ready with a failing polish load (fault), then recovery.
+        run.app.call("onboarding", "fault", "polish-fail")
+        run.app.call("onboarding", "permissions", "--mic", "granted", "--ax", "granted")
+        to_downloads(eg)
+        run.send("next")  # Permissions: granted, moves to Key
+        run.until(lambda x: x.get("step") == "key", 4, "key")
+        run.send("next")
+        st = run.until(lambda x: x.get("step") == "gettingReady", 5, "gettingReady")
+        s.expect(st.get("step") == "gettingReady", "a failing polish load holds Getting ready", st.get("step"))
+        st = run.until(lambda x: (x.get("readiness") or {}).get("polishFailed") is True, 8, "polishFailed")
+        settle()
+        s.expect(says("The model did not start") and setup_button(pid, "Try again") is not None
+                 and setup_button(pid, "Continue without AI polish") is not None,
+                 "polish failure: its own Try again and a way forward without polish")
+        shot(f"{appearance}-polish-failed")
+        if appearance == "light":
+            press("Try again")  # with the fault still on: honest, still failed
+            st = run.until(lambda x: (x.get("readiness") or {}).get("polishFailed") is True, 6, "still failed")
+            s.expect((st.get("readiness") or {}).get("polishFailed") is True and run.status().get("step") == "gettingReady",
+                     "Try again under a persisting failure stays honest", st.get("readiness"))
+            run.app.call("onboarding", "fault", "polish-fail", "--off")
+            run.app.call("onboarding", "retry-polish")
+            st = run.until(lambda x: (x.get("readiness") or {}).get("polishReady") is True, 20, "polishReady")
+            s.expect((st.get("readiness") or {}).get("polishReady") is True,
+                     "after the fault clears, Try again loads the model", st.get("readiness"))
+        else:
+            press("Continue without AI polish")
+            st = run.status()
+            s.expect((st.get("choices") or {}).get("polish") == "off",
+                     "Continue without AI polish stores off", st.get("choices"))
+        run.app.call("onboarding", "fault", "--clear")
+        # Warm-up failure on Getting ready, then the door's Try again.
+        if appearance == "light":
+            run.app.call("onboarding", "fault", "warm-fail")
+            to_downloads("skip")
+            run.send("next")
+            run.until(lambda x: x.get("step") == "key", 4, "key")
+            run.send("next")
+            st = run.until(lambda x: x.get("warmFailed") is True or x.get("step") == "practice", 12, "warmFailed")
+            settle()
+            if st.get("warmFailed"):
+                s.expect(says("Start dictation again") and setup_button(pid, "Try again") is not None,
+                         "warm failure: Start dictation again with its Try again")
+                shot("light-warm-failed")
+                run.app.call("onboarding", "fault", "warm-fail", "--off")
+                r = run.app.call("onboarding", "retry-warmup")
+                s.expect(r.get("warmFailed") is False, "retry-warmup clears the failure (not proof of warmth)",
+                         r.get("warmFailed"))
+                st = run.until(lambda x: x.get("step") == "practice", 20, "practice")
+                s.expect(st.get("step") == "practice", "a warm engine moves Getting ready to Practice",
+                         st.get("step"))
+            else:
+                s.uncovered.append("warm-fail: the engine was already warm here")
+            run.app.call("onboarding", "fault", "--clear")
+        run.app.call("onboarding", "permissions", "--clear")
+    run.app.call("settings", "set", "appearance", json.dumps(before))
+    run.app.call("onboarding", "stop")
+    s.uncovered.append("missing-model download, disk-short preflight, slow transfer, countdown hide: clean-Mac UAT")
+    s.notes.append(f"VISUAL REVIEW OWED: {shots} d4a-* against the source-of-truth mockup")
+    return s
+
+
 def s_shell(run, speech):
     """D0: the new Setup shell shown for the session (DEBUG `onboarding present`), captured in
     light and dark at a few steps. Visual evidence only: positioning uses `goto`, which proves
@@ -1393,6 +1526,7 @@ SCENARIOS = {
     "interrupted": s_interrupted, "consent_off": s_consent_off,
     "shell": s_shell, "screens_d1": s_screens_d1, "screens_d2": s_screens_d2,
     "screens_d3a": s_screens_d3a, "screens_d5": s_screens_d5,
+    "screens_d4a": s_screens_d4a,
     "screens_d4b": s_screens_d4b,
 }
 

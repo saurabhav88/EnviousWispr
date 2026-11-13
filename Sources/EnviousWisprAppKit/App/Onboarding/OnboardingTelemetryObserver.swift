@@ -24,7 +24,8 @@ import Foundation
 ///   can be missed. Refusals, superseded starts and installed models send none; a retry is a new
 ///   attempt. An attempt still running when the visit ends is not observed and sends none.
 /// - Blockers: one `onboarding.step_blocked` per episode (a reason's continuous presence): the
-///   coordinator's typed block (disk short, refused start) or a failed download on Downloads.
+///   coordinator's typed block (disk short, refused start) or a failed download on Downloads;
+///   on Getting ready, a measured failed load of the picked local polish model (`polish_failed`).
 /// - Completion: after the durable write, the final choices then `onboarding.completed`; an
 ///   interrupted completion sends only `onboarding.completed` (no visit was shown).
 /// Nothing is sent unless the visit in flight belongs to the new Setup (completion excepted:
@@ -98,6 +99,8 @@ final class OnboardingTelemetryObserver {
   private var choices: [OnboardingTelemetry.ChoiceKind: ChoiceRecord] = [:]
   private var requests: [Request] = []
   private var blocker: OnboardingTelemetry.BlockedReason?
+  /// The polish pick whose failed load already sent its row this episode.
+  private var polishFailure: String?
   var rowsThisVisit: Int { seenThisVisit.count }
 
   init(inputs: Inputs) {
@@ -111,7 +114,8 @@ final class OnboardingTelemetryObserver {
     return { [weak self, weak coordinator] in
       guard let self, let coordinator else { return }
       self.tick(
-        step: coordinator.state.step, block: coordinator.block, choices: coordinator.state.choices)
+        step: coordinator.state.step, block: coordinator.block, choices: coordinator.state.choices,
+        readiness: coordinator.state.readiness)
     }
   }
 
@@ -216,6 +220,7 @@ final class OnboardingTelemetryObserver {
     case .reset:
       choices = [:]
       blocker = nil
+      polishFailure = nil
     case .completed(let final, let interrupted, let rulesVersion):
       let owned = !interrupted && ownedVisit()
       // Agreement is read from this visit's picks before they are sent and cleared.
@@ -230,10 +235,14 @@ final class OnboardingTelemetryObserver {
   }
 
   /// The runtime's existing tick: observed download ends and blockers.
-  func tick(step: OnboardingStep, block: OnboardingDownloadBlock?, choices: OnboardingChoices) {
+  func tick(
+    step: OnboardingStep, block: OnboardingDownloadBlock?, choices: OnboardingChoices,
+    readiness: OnboardingReadiness
+  ) {
     guard ownedVisit() else { return }
     observeAllEnds()
     updateBlocker(step: step, block: block, choices: choices)
+    updatePolishFailure(step: step, choices: choices, readiness: readiness)
   }
 
   /// The visit ended without completion (window close, app quit): the final choices and any
@@ -265,6 +274,7 @@ final class OnboardingTelemetryObserver {
     choices = [:]
     requests = []
     blocker = nil
+    polishFailure = nil
   }
 
   private func record(
@@ -385,6 +395,27 @@ final class OnboardingTelemetryObserver {
     if let reason { inputs.emitBlocked(step.rawValue, reason) }
   }
 
+  /// One `polish_failed` row per failure episode of the picked local polish model, sent from
+  /// Getting ready (where the failure is shown). Only a readiness measured for the current pick
+  /// counts: a cleared, pending re-measure (an unrelated fact change, a Retry) and a measured
+  /// loading (the owner starting the model again) neither end nor start an episode, so a Retry
+  /// that fails again stays one episode. Only the current pick measured ready, a different pick,
+  /// reset or the visit's end ends it; a later failure is a new row.
+  private func updatePolishFailure(
+    step: OnboardingStep, choices: OnboardingChoices, readiness: OnboardingReadiness
+  ) {
+    if let episode = polishFailure, choices.polish != episode { polishFailure = nil }
+    guard let polish = choices.polish, readiness.polish == polish else { return }
+    guard readiness.polishFailed else {
+      // Only a ready model is a recovery; a measured loading (a Retry starting it) is not.
+      if readiness.polishReady { polishFailure = nil }
+      return
+    }
+    guard step == .gettingReady, polishFailure != polish else { return }
+    polishFailure = polish
+    inputs.emitBlocked(step.rawValue, .polishFailed)
+  }
+
   private func currentDownloadFailed(_ choices: OnboardingChoices) -> Bool {
     func failed(_ phase: OnboardingDownloadPhase?) -> Bool {
       switch phase {
@@ -491,7 +522,8 @@ extension OnboardingTelemetryObserver.Inputs {
           recordingMode: settings.recordingMode.rawValue, summary: summary)
       },
       downloadPhase: { model in
-        let downloads = OnboardingDownloads(owners: OnboardingLiveMapping.downloadOwners(owners, facts: facts))
+        let downloads = OnboardingDownloads(
+          owners: OnboardingLiveMapping.downloadOwners(owners, facts: facts))
         switch model {
         case .speech(let engine): return downloads.speechPhase(engine)
         case .polish(let id): return downloads.polishPhase(id)

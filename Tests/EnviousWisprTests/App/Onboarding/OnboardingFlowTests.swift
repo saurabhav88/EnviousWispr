@@ -16,7 +16,8 @@ struct OnboardingFlowTests {
     .chooseSpeech(.parakeet), .chooseSpeech(.whisper), .seeAllPolish, .choosePolish("eg1.mini"),
     .choosePolish("appleIntelligence"), .choosePolish(OnboardingChoices.polishCloud),
     .chooseCloud(.openAI, model: "gpt-4o-mini"), .skipPolish,
-    .turnPolishOn, .readinessChanged(OnboardingReadiness()), .readinessChanged(granted()),
+    .turnPolishOn, .continueWithoutPolish, .reviewPermissions,
+    .readinessChanged(OnboardingReadiness()), .readinessChanged(granted()),
     .practiceSucceeded, .skipPractice, .filmFinished, .skipFilm,
   ]
 
