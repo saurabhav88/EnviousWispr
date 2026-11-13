@@ -292,7 +292,13 @@ struct SetupGateTests {
     for (name, step, presentation) in states {
       let world = OnboardingCoordinatorTests.World()
       let coordinator = OnboardingRuntimeTests.atDownloads(world)
-      if step == .gettingReady { coordinator.debugGoto(.gettingReady) }
+      if step == .gettingReady {
+        coordinator.send(.next)
+        coordinator.send(
+          .readinessChanged(.init(microphoneGranted: true, accessibilityGranted: true)))
+        coordinator.send(.next)
+        #expect(coordinator.state.step == .gettingReady)
+      }
       let model = SetupScreenModel(coordinator: coordinator)
       defer { model.detach() }
       model.sources.downloads = { presentation }

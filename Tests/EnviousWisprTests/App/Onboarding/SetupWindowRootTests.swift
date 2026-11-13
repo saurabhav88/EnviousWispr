@@ -423,11 +423,16 @@ struct SetupWindowRootTests {
   )
   func filmPlaybackSurvivesCloseNotRestart() throws {
     _ = NSApplication.shared
-    func mountedFilm() -> (OnboardingCoordinator, SetupScreenModel, SetupFilmPlayback, NSHostingView<AnyView>) {
+    func mountedFilm() throws
+      -> (OnboardingCoordinator, SetupScreenModel, SetupFilmPlayback, NSHostingView<AnyView>)
+    {
       let world = OnboardingCoordinatorTests.World()
+      world.checkpoint = try OnboardingCheckpoint(
+        state: .init(step: .film, practiceOutcome: .succeeded), startedAt: .now, savedAt: .now
+      ).encoded()
       let coordinator = world.coordinator()
-      coordinator.begin()
-      coordinator.debugGoto(.film)
+      #expect(coordinator.begin())
+      #expect(coordinator.state.step == .film)
       let model = SetupScreenModel(coordinator: coordinator)
       let playback = SetupFilmPlayback()
       model.sources.filmPlayback = playback
@@ -439,7 +444,7 @@ struct SetupWindowRootTests {
     }
 
     // Control: the window's content goes away mid-play, so the film saves its place.
-    let (_, closing, saved, closeHost) = mountedFilm()
+    let (_, closing, saved, closeHost) = try mountedFilm()
     defer { closing.detach() }
     #expect(saved.clock != nil, "the playing film never wrote its clock")
     closeHost.rootView = AnyView(EmptyView())
@@ -447,7 +452,7 @@ struct SetupWindowRootTests {
     #expect(saved.resumeOnAppear && saved.clock?.isPaused == true, "closing did not hold the place")
 
     // Restart: the session clears the place, then the flow leaves the film.
-    let (coordinator, restarting, cleared, restartHost) = mountedFilm()
+    let (coordinator, restarting, cleared, restartHost) = try mountedFilm()
     defer { restarting.detach() }
     cleared.clear()
     coordinator.reset()
