@@ -261,7 +261,7 @@ struct HistoryTranscriptPresentationTests {
     try await withCoordinator { coordinator in
       let attempt = UUID()
       let row = Transcript(
-        text: "hello world", importedFileName: "call.m4a",
+        text: "hello world", importedFileName: "call.m4a", speakerAnalysis: .labeled(count: 1),
         speakerNames: ["s1": "Ariana"],
         turns: [Self.turn("t1", "s1", 0..<11, startMs: 0)], importAttemptID: attempt)
       try await coordinator.saveAndShow(row)
@@ -269,11 +269,10 @@ struct HistoryTranscriptPresentationTests {
         HistoryTranscriptExport.text(
           rowID: row.id, coordinator: coordinator, mode: .cleaned, timesOn: false)
       }
-      let renamed = Transcript(
-        id: row.id, text: "hello world", importedFileName: "call.m4a",
-        speakerNames: ["s1": "Zach"],
-        turns: [Self.turn("t1", "s1", 0..<11, startMs: 0)], importAttemptID: attempt)
-      #expect(try await coordinator.updateExistingRow(renamed))
+      // A rename lands after the Share item exists (rename is the shared command).
+      let failure = await coordinator.renameSpeaker(
+        id: row.id, speakerId: "s1", name: "Zach", isMeeting: false)
+      #expect(failure == nil)
       let shared = String(decoding: try await Self.exportInBackground(item), as: UTF8.self)
       #expect(shared.contains("Zach"))
       #expect(shared.contains("Ariana") == false)

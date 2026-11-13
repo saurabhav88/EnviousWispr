@@ -92,7 +92,7 @@ struct HistoryTranscriptView: View {
     let isError: Bool
   }
 
-  private struct SourceKey: Hashable {
+  private struct SourceKey: Equatable {
     let rowID: UUID
     let revision: Int
     let reference: ImportedSourceReference?

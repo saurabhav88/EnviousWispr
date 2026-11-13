@@ -43,12 +43,9 @@ enum HistoryTranscriptPresentation {
     var chips: [Chip] = []
     if let file = row.importedFileName { chips.append(.file(file)) }
     if let names = speakerList(row) { chips.append(.speakers(names)) }
-    for flag in HistoryDictationPresentation.statusFlags(for: row) {
-      switch flag {
-      case .recovered: chips.append(.recovered)
-      case .interrupted: chips.append(.interrupted)
-      }
-    }
+    // The legacy row's order: Recovered, then the verified-removal-only Interrupted.
+    if row.isRecovered == true { chips.append(.recovered) }
+    if row.inputDeviceWasRemoved == true { chips.append(.interrupted) }
     if row.polishedText != nil { chips.append(.polish(model: row.llmModel)) }
     chips.append(.backend(row.backendType.displayName))
     return chips

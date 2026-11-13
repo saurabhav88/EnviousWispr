@@ -36,7 +36,7 @@ struct HistoryTranscriptCard: View {
 
   private typealias P = HistoryTranscriptPresentation
 
-  private struct SourceKey: Hashable {
+  private struct SourceKey: Equatable {
     let rowID: UUID
     let revision: Int
     let reference: ImportedSourceReference?
