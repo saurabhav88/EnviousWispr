@@ -57,15 +57,21 @@ struct OnboardingDownloadsPresentation: Equatable, Sendable {
     state: OnboardingFlowState, block: OnboardingDownloadBlock?, warmFailed: Bool,
     queuedPolish: String?, isNetworkSlow: Bool, isCountingDown: Bool,
     speechPhase: (ASRBackendType) -> OnboardingDownloadPhase,
-    polishPhase: (String) -> OnboardingDownloadPhase?, downloadsFinished: Bool
+    polishPhase: (String) -> OnboardingDownloadPhase?, downloadsFinished: Bool,
+    speechStartPending: Bool = false
   ) -> OnboardingDownloadsPresentation {
     let choices = state.choices
     let readiness = state.readiness
     let speech = choices.speech
     let polish = choices.polish
     let localPhase = polish.flatMap(polishPhase)
+    let ownerSpeechPhase = speech.map(speechPhase)
+    // A missing model can be idle after a cancelled or synthetic attempt. Only the
+    // coordinator knows whether a start is still pending while the owner reads notStarted.
+    let presentedSpeechPhase: OnboardingDownloadPhase? =
+      ownerSpeechPhase == .notStarted && !speechStartPending ? .paused : ownerSpeechPhase
     return OnboardingDownloadsPresentation(
-      speech: speech, speechPhase: speech.map(speechPhase), polish: polish,
+      speech: speech, speechPhase: presentedSpeechPhase, polish: polish,
       polishPhase: localPhase,
       polishPreparation: preparation(
         polish: polish, readiness: readiness, phase: localPhase, queued: queuedPolish),

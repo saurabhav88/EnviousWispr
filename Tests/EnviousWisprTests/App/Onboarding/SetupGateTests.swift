@@ -195,7 +195,7 @@ struct SetupGateTests {
       speechPhase: { world.speechPhase[$0] ?? .notStarted },
       polishPhase: { _ in nil }, downloadsFinished: false)
     #expect(coordinator.state.step == .gettingReady)
-    #expect(presentation.polishPreparation == .off && presentation.speechPhase == .notStarted)
+    #expect(presentation.polishPreparation == .off && presentation.speechPhase == .paused)
     #expect(SetupGate.problem(presentation, screen: .gettingReady) == .disk(needed: 1080))
     #expect(SetupGate.sharedControls(presentation) == [.retryDownloads])
     #expect(SetupGate.recoveryActions(presentation).map(\.event).contains(.changeSpeech))

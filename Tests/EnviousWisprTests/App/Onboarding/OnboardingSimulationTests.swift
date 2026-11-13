@@ -166,6 +166,49 @@
       #expect(sources.cloudEvidence(.openAI)?.isCurrentPass == false)
     }
 
+    @Test("after disk refusal and synthetic download failure, missing speech keeps Retry")
+    func retryAfterSyntheticFailure() async {
+      defer { OnboardingDebugFaults.active.removeAll() }
+      let world = OnboardingCoordinatorTests.World()
+      world.free = 100
+      world.bytes = [.speech(.parakeet): 900]
+      world.reportsEnd = [.parakeet]
+      let owners = OnboardingDebugFaults.apply(to: world.downloadOwners())
+      let coordinator = world.makeCoordinator(owners: owners)
+      coordinator.begin()
+      for event in [OnboardingEvent.next, .chooseLanguage(.locked("en")), .next,
+                    .chooseSpeech(.parakeet), .next] {
+        coordinator.send(event)
+      }
+      OnboardingDebugFaults.active = [.downloadFail]
+      coordinator.send(.choosePolish("eg1.mini"))
+      #expect(coordinator.block == .insufficientDisk(neededBytes: 1080, freeBytes: 100))
+
+      func presentation() -> OnboardingDownloadsPresentation {
+        OnboardingDownloadsPresentation.make(
+          state: coordinator.state, block: coordinator.block, warmFailed: false, queuedPolish: nil,
+          isNetworkSlow: false, isCountingDown: false, speechPhase: owners.speechPhase,
+          polishPhase: { _ in .installed }, downloadsFinished: false,
+          speechStartPending: coordinator.speechStartsInFlight > 0)
+      }
+
+      world.free = 2000
+      coordinator.retryDownloads()
+      await coordinator.settle()
+      #expect(coordinator.block == nil)
+      #expect(presentation().speechPhase == .failed(.delivery(OnboardingDebugFaults.simulatedDeliveryFailure)))
+      #expect(!world.log.contains("request(parakeet)"))
+
+      OnboardingDebugFaults.active = []
+      #expect(owners.speechPhase(.parakeet) == .notStarted)
+      #expect(SetupGate.sharedControls(presentation()) == [.retryDownloads])
+      #expect(SetupGate.problem(presentation(), screen: .downloads) == .download)
+      coordinator.retryDownloads()
+      #expect(SetupGate.sharedControls(presentation()).isEmpty)
+      await coordinator.settle()
+      #expect(world.log.filter { $0 == "request(parakeet)" }.count == 1)
+    }
+
     @Test("a mic request already waiting when simulation starts answers the simulated value")
     func heldRequestRechecksSimulation() async {
       let (gate, open) = AsyncStream.makeStream(of: Void.self)
