@@ -772,7 +772,7 @@ public enum InverseTextNormalizationGate {
     case neutral(String)
   }
 
-  /// Pure routing over the shipped (currently EMPTY) rule-set registry.
+  /// Pure routing over the shipped rule-set registry.
   ///
   /// **Precedence is the legacy gate's, not a second predicate:** `skipReason` decides first and
   /// stays the only owner of veto-first, the exact lowercase `en` / `en-` / `en_` English test, the
@@ -850,8 +850,8 @@ public enum InverseTextNormalizationGate {
   /// production instead of carrying its own copy (the #2844 drift this gate already exists to
   /// prevent). It accepts a route the caller already selected with `route(...)`; it does not
   /// resolve language or copy the precedence. For `.language` it obtains the production rule-set
-  /// snapshot before executing synchronously, so a route with no vetted production snapshot (which
-  /// is every route today, the registry being empty) runs the neutral subset.
+  /// snapshot before executing synchronously. An explicit language route without a production
+  /// rule set runs the neutral subset.
   public static func normalize(
     _ text: String, route: Route, normalizer: InverseTextNormalizer, spokenPunctuation: Bool
   ) -> String {
