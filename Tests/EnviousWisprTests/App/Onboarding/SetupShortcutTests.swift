@@ -108,8 +108,9 @@ struct SetupShortcutTests {
       let host = NSHostingView(
         rootView: SetupShortcutScreen(
           binding: record, downloadsComplete: true, changeShortcut: { _ in nil },
-          onContinue: {}, onBack: {}, reduceMotionOverride: reduceMotion
+          onContinue: {}, onBack: {}
         )
+        .environment(\.overlayReduceMotionOverride, reduceMotion)
         .padding(SetupLayout.contentPadding)
         .frame(width: size.width, height: size.height)
         .background(Color.obCardBg)

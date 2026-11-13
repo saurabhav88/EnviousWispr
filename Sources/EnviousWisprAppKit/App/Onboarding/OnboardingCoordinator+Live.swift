@@ -29,6 +29,8 @@ struct OnboardingLiveOwners {
   let dictationRuntime: DictationRuntime
   /// Brings the app forward when Setup shows (the desktop-effects owner, #2455 C3).
   let application: any ApplicationActivating
+  /// The Setup shortcut screen's rehearsal listener (D5; live type in DesktopEffects).
+  let setupShortcutMonitor: any SetupShortcutMonitoring
 }
 
 extension OnboardingCoordinator.Dependencies {

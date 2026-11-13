@@ -12,7 +12,6 @@ struct SetupShortcutScreen: View {
   var monitor: (any SetupShortcutMonitoring)? = nil
   var suspendHotkeys: () -> Void = {}
   var resumeHotkeys: () -> Void = {}
-  var reduceMotionOverride: Bool? = nil
 
   @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
   @Environment(\.overlayReduceMotionOverride) private var inheritedReduceMotion
@@ -30,7 +29,7 @@ struct SetupShortcutScreen: View {
   }
 
   private var reduceMotion: Bool {
-    reduceMotionOverride ?? inheritedReduceMotion ?? systemReduceMotion
+    inheritedReduceMotion ?? systemReduceMotion
   }
 
   private var keyCode: UInt16 {
@@ -56,7 +55,6 @@ struct SetupShortcutScreen: View {
       RainbowLipsView(
         animationState: rehearsal.isDown ? .equalizer : .ready, size: SetupMetrics.heroLips
       )
-      .environment(\.overlayReduceMotionOverride, reduceMotion)
       .accessibilityHidden(true)
       .padding(.bottom, DesignSpacing.lg)
       Text(headline)

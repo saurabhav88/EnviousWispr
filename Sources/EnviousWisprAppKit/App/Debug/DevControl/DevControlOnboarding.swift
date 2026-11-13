@@ -619,7 +619,20 @@
             },
             screenSources: SetupScreenSources(
               parakeetModelName: { owners.modelDelivery.parakeetModelLabel },
-              egOneSizeCatalog: owners.egOneSizeCatalog),
+              egOneSizeCatalog: owners.egOneSizeCatalog,
+              shortcut: SetupShortcutSources(
+                binding: { owners.settings.shortcutBindings.record },
+                change: { ShortcutSettings.assign($0, to: .record, in: owners.settings) },
+                downloadsComplete: { [weak coordinator] in
+                  guard let coordinator else { return false }
+                  return OnboardingLiveMapping.downloadsFinished(
+                    coordinator.state.choices,
+                    downloads: OnboardingDownloads(
+                      owners: OnboardingLiveMapping.downloadOwners(owners, facts: facts)))
+                },
+                monitor: owners.setupShortcutMonitor,
+                suspendHotkeys: { owners.dictationRuntime.suspendHotkeys() },
+                resumeHotkeys: { owners.dictationRuntime.resumeHotkeys() })),
             activateApp: { owners.application.activate(.standard) },
             resolveInstalled: {
               let read = OnboardingLiveMapping.downloadOwners(owners, facts: facts)

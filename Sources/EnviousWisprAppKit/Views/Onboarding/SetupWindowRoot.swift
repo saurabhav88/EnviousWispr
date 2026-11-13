@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprServices
 import Observation
 import SwiftUI
 
@@ -82,6 +83,7 @@ final class SetupScreenModel {
   /// The steps that have a real screen so far (D1 to D3a).
   static let realScreens: Set<OnboardingStep> = [
     .welcome, .language, .speechPick, .speechCompare, .polishIntro, .polishPick, .polishSeeAll,
+    .key,
   ]
 
   /// Speech pick/Compare's pending engine (D2, M76): a UI selection only, alive while the flow
@@ -187,6 +189,22 @@ struct SetupScreenSources {
   var physicalMemoryBytes: UInt64 = ProcessInfo.processInfo.physicalMemory
   /// The runtime's approved Apple Intelligence recheck ("Check again"); nil hides the link.
   var recheckAppleIntelligence: (@MainActor () -> Void)?
+  /// The shortcut screen's owners (D5); nil renders the shipped shortcut with no live listener.
+  var shortcut: SetupShortcutSources?
+}
+
+/// The record shortcut's owners for Setup's key screen (#4528 D5, plan M80).
+struct SetupShortcutSources {
+  /// The saved record shortcut, read live (`SettingsManager.shortcutBindings.record`).
+  var binding: @MainActor () -> ShortcutBinding
+  /// The checked save (`ShortcutSettings.assign(_:to: .record, in:)`); a refusal writes nothing.
+  var change: @MainActor (ShortcutBinding) -> ShortcutRefusal?
+  /// Every required download for the current picks is installed (the runtime's own reading).
+  var downloadsComplete: @MainActor () -> Bool
+  var monitor: any SetupShortcutMonitoring
+  /// `DictationRuntime.suspendHotkeys()/resumeHotkeys()`; the screen balances them.
+  var suspendHotkeys: @MainActor () -> Void
+  var resumeHotkeys: @MainActor () -> Void
 }
 
 // MARK: - Router
@@ -208,12 +226,34 @@ struct SetupScreenRouter: View {
     case .polishSeeAll: SetupPolishScreen(model: model, epoch: model.routeEpoch, seeAll: true)
     case .downloads: SetupPlaceholder(step: .downloads, chunk: "D4a")
     case .permissions: SetupPlaceholder(step: .permissions, chunk: "D4b")
-    case .key: SetupPlaceholder(step: .key, chunk: "D5")
+    case .key: SetupKeyRoute(model: model, epoch: model.routeEpoch)
     case .gettingReady: SetupPlaceholder(step: .gettingReady, chunk: "D4a")
     case .practice: SetupPlaceholder(step: .practice, chunk: "D6b")
     case .film: SetupPlaceholder(step: .film, chunk: "E")
     case .done: EmptyView()
     }
+  }
+}
+
+/// The key step: the D5 shortcut screen over the injected owners; it reports its presentation and
+/// sends only `next` and `back`.
+private struct SetupKeyRoute: View {
+  let model: SetupScreenModel
+  let epoch: Int
+
+  var body: some View {
+    let sources = model.sources.shortcut
+    SetupShortcutScreen(
+      binding: sources?.binding() ?? ShortcutBindings.shipped.record,
+      downloadsComplete: sources?.downloadsComplete() ?? false,
+      changeShortcut: { sources?.change($0) },
+      onContinue: { if model.state.step == .key { model.send(.next) } },
+      onBack: { if model.state.step == .key { model.send(.back) } },
+      monitor: sources?.monitor,
+      suspendHotkeys: { sources?.suspendHotkeys() },
+      resumeHotkeys: { sources?.resumeHotkeys() }
+    )
+    .onAppear { model.screenMounted(.key, epoch: epoch) }
   }
 }
 

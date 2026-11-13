@@ -36,6 +36,8 @@ package final class WisprBootstrapper {
   let updateCoordinatorHolder: UpdateCoordinatorHolder
   /// #3545: injected into the main window for the Settings search arrival's key watcher.
   let settingsKeyMonitor: any SettingsKeyMonitoring
+  /// #4528 D5: the Setup shortcut screen's window-scoped rehearsal listener.
+  let setupShortcutMonitor: any SetupShortcutMonitoring
   let sparkleUpdateController: SparkleUpdateController
   let updateTriggerCoordinator: UpdateTriggerCoordinator
   let transcriptCoordinator: TranscriptCoordinator
@@ -224,6 +226,9 @@ package final class WisprBootstrapper {
     // #3545: the Settings search arrival's key watcher. Required and non-defaulted for the same
     // reason as `scrollWheelMonitor`.
     settingsKeyMonitor: any SettingsKeyMonitoring,
+    // #4528 D5: the Setup shortcut rehearsal listener. Required and non-defaulted for the same
+    // reason as `scrollWheelMonitor`.
+    setupShortcutMonitor: any SetupShortcutMonitoring,
     relocationRelauncher: any RelocationRelaunching,
     overlayEffects: DesktopOverlayEffects,
     // #1413: the output-volume and media-player seams. Required and non-defaulted
@@ -2171,6 +2176,7 @@ package final class WisprBootstrapper {
     self.languageSuggestionPresenter = languageSuggestionPresenter
     self.updateCoordinatorHolder = updateCoordinatorHolder
     self.settingsKeyMonitor = settingsKeyMonitor
+    self.setupShortcutMonitor = setupShortcutMonitor
     self.sparkleUpdateController = sparkleUpdateController
     self.updateTriggerCoordinator = updateTriggerCoordinator
     // #2648 — Transcribe a File. Built here because the job outlives every view
@@ -2683,7 +2689,8 @@ package final class WisprBootstrapper {
               aiAvailability: aiAvailability, llmDiscovery: llmDiscovery,
               savedKeyPresence: savedKeyPresence, permissions: permissions,
               egOneSizeCatalog: egOneSizeCatalog, cloudModelList: cloudModelList,
-              dictationRuntime: dictationRuntime, application: presentationEffects.application),
+              dictationRuntime: dictationRuntime, application: presentationEffects.application,
+              setupShortcutMonitor: setupShortcutMonitor),
             workflow: onboardingWorkflow, progress: onboardingProgress)))
     #endif
     // #3972 C4a: EnviousMeet, bootstrapped here so it lives independently of any view.

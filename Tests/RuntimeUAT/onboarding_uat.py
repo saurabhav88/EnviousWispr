@@ -66,6 +66,9 @@ ALLOWLIST = {
         "shareUsageMetrics",
         # App appearance, changed only by the shell screenshots (light and dark).
         "appearancePreference",
+        # The record shortcut, changed by the key screen's popular-key row (D5,
+        # `ShortcutSettings.assign(_:to: .record, in:)` writes the key code, then the modifiers).
+        "toggleKeyCode", "toggleModifiersRaw",
     },
     DEV: set(),
 }
@@ -788,7 +791,7 @@ def post_keys(pid, text=None, keycode=None, flags=0):
     time.sleep(0.2)  # test-fixture-timer: the field publishes its text on the next run loop turn
 
 
-KEY_RETURN, KEY_A, KEY_DELETE = 36, 0, 51
+KEY_RETURN, KEY_A, KEY_DELETE, KEY_ESCAPE = 36, 0, 51, 53
 FLAG_CMD = 1 << 20
 
 
@@ -1136,6 +1139,91 @@ def s_screens_d3a(run, speech):
     return s
 
 
+def s_screens_d5(run, speech):
+    """D5 integration: the key screen reached with real events (permissions simulated as granted,
+    no OS prompt), through its real controls: the popular-key row writes the record shortcut
+    through the settings owner (restored at the end with the rest of the snapshot), the main key
+    reads it back, Back and Continue route. Live keyboard rehearsal stays a human/real-keyboard
+    check (synthetic per-process events bypass the global hotkey path, so they prove nothing
+    about the hotkey pause); the pause/resume balance is covered by SetupShortcutTests."""
+    from ui_helpers import get_attr, perform_action
+    s = Scenario("screens_d5")
+    pid = run.app.client.pid
+    shots = os.path.join(run.artifacts, "shots")
+    os.makedirs(shots, exist_ok=True)
+    before = run.app.call("settings", "get", "appearance").get("value")
+
+    def shot(name):
+        wid = window_id(pid, "Setup")
+        path = os.path.join(shots, f"d5-{name}.png")
+        s.expect(wid is not None and capture_window(wid, path), f"captured {name}", path)
+
+    def settle(seconds=0.7):
+        time.sleep(seconds)  # test-fixture-timer: the screen entrance runs on screen
+
+    def press(name):
+        b = setup_button(pid, name)
+        s.expect(b is not None and perform_action(b, "AXPress"), f"pressed {name}")
+        settle(0.4)
+
+    def main_key_value():
+        b = setup_button(pid, "Change dictation key")
+        return (get_attr(b, "AXValue") or "") if b is not None else ""
+
+    def to_key():
+        run.reset(s, "fresh flow to the key screen")
+        run.app.call("onboarding", "permissions", "--mic", "granted", "--ax", "granted")
+        run.send("next")
+        run.send("chooseLanguage", value="en")
+        run.send("next")
+        run.send("chooseSpeech", value=speech)
+        run.send("next")
+        run.send("skipPolish")
+        run.send("next")
+        st = run.until(lambda x: x.get("step") == "key", 4, "key")
+        s.expect(st.get("step") == "key", "granted permissions lead to the key screen", st.get("step"))
+        settle()
+
+    for appearance in ("light", "dark"):
+        run.app.call("settings", "set", "appearance", json.dumps(appearance))
+        run.reset(s, "fresh flow")
+        run.app.call("onboarding", "present")
+        to_key()
+        _, texts = setup_window_ax(pid)
+        s.expect(any(t in ("Ready to dictate!", "Meet your dictation key") for t in texts),
+                 "the key screen's headline", [t for t in texts if "dictat" in t.lower()][:4])
+        s.expect(main_key_value() != "", "VoiceOver reads the current key", main_key_value())
+        shot(f"{appearance}-key")
+        if appearance == "light":
+            original = main_key_value()
+            # The value spells the key with its symbol ("Right ⌥"), so pick one it cannot be.
+            target = "Left Command" if "⌥" in original else "Right Option"
+            press(target)
+            after = main_key_value()
+            s.expect(after != original and run.status().get("step") == "key",
+                     f"{target} becomes the dictation key and the screen stays", (original, after))
+            shot("light-key-changed")
+            post_keys(pid, keycode=KEY_ESCAPE)  # Escape is the screen's Back (no visible button)
+            st = run.until(lambda x: x.get("step") != "key", 3, "back")
+            s.expect(st.get("step") == "permissions",
+                     "Escape goes Back to Permissions", st.get("step"))
+            if run.status().get("step") != "key":
+                run.send("next")
+                run.until(lambda x: x.get("step") == "key", 4, "key")
+                settle()
+            press("Try your first dictation")
+            st = run.until(lambda x: x.get("step") in ("gettingReady", "practice"), 4, "continue")
+            s.expect(st.get("step") in ("gettingReady", "practice"),
+                     "Continue moves to Getting ready or Practice", st.get("step"))
+    run.app.call("onboarding", "permissions", "--clear")
+    run.app.call("settings", "set", "appearance", json.dumps(before))
+    run.app.call("onboarding", "stop")
+    s.notes.append(f"VISUAL REVIEW OWED: {shots} d5-* against the source-of-truth mockup")
+    s.notes.append("HUMAN CHECK OWED: hold and double-press the real key on the key screen; "
+                   "dictation must not start while the screen is key, and must work after leaving it")
+    return s
+
+
 def s_shell(run, speech):
     """D0: the new Setup shell shown for the session (DEBUG `onboarding present`), captured in
     light and dark at a few steps. Visual evidence only: positioning uses `goto`, which proves
@@ -1210,7 +1298,7 @@ SCENARIOS = {
     "permissions": s_permissions, "faults": s_faults, "completion": s_completion,
     "interrupted": s_interrupted, "consent_off": s_consent_off,
     "shell": s_shell, "screens_d1": s_screens_d1, "screens_d2": s_screens_d2,
-    "screens_d3a": s_screens_d3a,
+    "screens_d3a": s_screens_d3a, "screens_d5": s_screens_d5,
 }
 
 
