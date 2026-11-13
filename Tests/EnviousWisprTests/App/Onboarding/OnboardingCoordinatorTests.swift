@@ -210,7 +210,8 @@ struct OnboardingCoordinatorTests {
           now: { self.clock },
           warmEngine: { self.warm?($0) ?? nil },
           onPracticeOutcome: { self.log.append("practice(\($0.rawValue))") },
-          onCompleted: { self.log.append("onCompleted") }))
+          onCompleted: { self.log.append("onCompleted") }),
+        trackTasksForTests: true)
     }
 
     static func name(_ model: LocalPolishModelID) -> String {
@@ -329,7 +330,6 @@ struct OnboardingCoordinatorTests {
     world.speechGate = Gate()
     let c = Self.atSpeechPick(world)
     c.send(.chooseSpeech(.whisper))
-    c.windowClosed()
     #expect(c.begin() && c.state.step == .polishIntro)
     c.reset()
     world.speechGate?.open()

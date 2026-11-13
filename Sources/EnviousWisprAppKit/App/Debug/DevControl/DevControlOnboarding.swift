@@ -4,23 +4,15 @@
   import EnviousWisprServices
   import Foundation
 
-  /// The door's `onboarding.*` commands (#4528 chunk C2c.2a, plan §3.9): a DEBUG backend session
-  /// of the new Setup coordinator for CLI UAT. The session is built once, on first use, and runs
-  /// only while `OnboardingWorkflowOwner` grants it Setup (the old onboarding is quiet); while it
-  /// runs, the old onboarding window may not open. `send` uses the same events Setup's buttons
-  /// will; `goto` is positioning, never evidence that a prerequisite passed. `status` reads only.
   @MainActor
   final class DevControlOnboarding {
-    /// I1: launched with this set to `1`, the door holds Setup from launch, so the old
-    /// onboarding window does not open over a CLI session on an install whose Setup is
-    /// unfinished (a relaunch mid-run). DEBUG only; `stop` gives Setup back as usual.
+    /// DEBUG harnesses can suppress automatic Setup presentation before arranging their fixtures.
     static let holdAtLaunchEnvironmentKey = "EW_UAT_ONBOARDING_BACKEND"
 
     static var holdsAutomaticPresentation: Bool {
       ProcessInfo.processInfo.environment[holdAtLaunchEnvironmentKey] == "1"
     }
 
-    private let workflow: OnboardingWorkflowOwner
     let setupSession: SetupSession
     private let checkpointData: @MainActor () -> Data?
     private let legacyState: @MainActor () -> OnboardingState
@@ -30,14 +22,12 @@
     private var installedQuery: Task<Void, Never>?
 
     init(
-      workflow: OnboardingWorkflowOwner,
       setupSession: SetupSession,
       checkpointData: @escaping @MainActor () -> Data?,
       legacyState: @escaping @MainActor () -> OnboardingState,
       permissions: PermissionsService? = nil
     ) {
       self.permissions = permissions
-      self.workflow = workflow
       self.setupSession = setupSession
       self.checkpointData = checkpointData
       self.legacyState = legacyState
@@ -54,9 +44,9 @@
 
     /// Starts or resumes the backend session from the checkpoint (resume UAT).
     func begin() -> Result {
-      guard claim() else { return legacyBusy() }
+      trackDebugSession()
       guard setupSession.begin() else {
-        endOwnership()
+        endDebugSession()
         return .ok(snapshot(extra: ["opened": false]))
       }
       return .ok(snapshot(extra: ["opened": true]))
@@ -64,54 +54,34 @@
 
     /// Restart Onboarding through the runtime (owners' cancels, checkpoint deleted, Welcome).
     func reset() -> Result {
-      guard claim() else { return legacyBusy() }
+      trackDebugSession()
       setupSession.reset()
       return .ok(snapshot())
     }
 
-    /// Ends the backend session as an app quit would (checkpoint kept, downloads continue in
-    /// their owners), then clears simulation and returns Setup to the old onboarding.
-    func stop() -> Result {
-      setupSession.stop(reason: "window_closed")
-      endOwnership()
-      return .ok(snapshot())
-    }
-
-    /// App quit while the session owns Setup (installed as `backendQuit`): abandon at most once.
-    func quitSession() {
-      setupSession.stop(reason: "app_quit")
-      endOwnership()
-    }
-
     /// Shows (or refocuses) the new Setup's screens for this session's running flow (D0). A
-    /// mutation: it opens a window. Refused unless this session owns Setup and runs, and while
-    /// the old onboarding's window is open. Never begins, resets or moves the flow.
+    /// mutation: it opens a window over the existing flow.
     func present() -> Result {
-      guard workflow.current == .backend, let session, session.coordinator.isActive else {
+      guard let session, session.coordinator.isActive else {
         return notRunning()
       }
-      guard !workflow.legacyWindowVisible() else { return legacyBusy() }
       setupSession.present()
       return .ok(snapshot())
     }
 
-    /// Holds Setup for a CLI session from launch (`holdAtLaunchEnvironmentKey`).
-    func holdForUAT() -> Bool { claim() }
-
-    /// Claims Setup and installs this session's Restart and quit handlers on the owner.
-    private func claim() -> Bool {
-      guard workflow.claimBackendSession() else { return false }
-      workflow.backendRestart = { [weak self] in _ = self?.reset() }
-      workflow.backendQuit = { [weak self] in self?.quitSession() }
-      setupSession.onDebugEnd = { [weak self] in self?.endOwnership() }
-      return true
+    func stop() -> Result {
+      trackDebugSession()
+      setupSession.stop(reason: "window_closed")
+      return .ok(snapshot())
     }
 
-    /// Gives Setup back to the legacy route after an explicit Stop, quit or completion.
-    func endOwnership() {
+    private func trackDebugSession() {
+      setupSession.onDebugEnd = { [weak self] in self?.endDebugSession() }
+    }
+
+    private func endDebugSession() {
       clearSimulation()
       setupSession.onDebugEnd = nil
-      workflow.releaseBackendSession()
     }
 
     // MARK: Simulation (DEBUG only; cleared by `--clear`, by `stop` and by relaunch)
@@ -154,7 +124,7 @@
         return .failure(.badArgs, "give at least one of ram, os, afm, lang, or clear")
       }
       // Validated: claim Setup immediately before applying (M61).
-      guard claim() else { return legacyBusy() }
+      trackDebugSession()
       SetupAdvice.debugProfile = fake
       // Re-read now, as a real availability change does (owner observation), so a mounted AI
       // polish screen re-forms its cards without waiting for the poll (plan M77).
@@ -189,7 +159,7 @@
         return .failure(.badArgs, "give mic, ax, or clear")
       }
       // Validated: claim Setup immediately before applying (M61).
-      guard claim() else { return legacyBusy() }
+      trackDebugSession()
       permissions.simulated = fake
       session?.runtime.tick()
       return .ok(snapshot())
@@ -205,7 +175,7 @@
         let names = OnboardingFault.allCases.map(\.rawValue).joined(separator: ", ")
         return .failure(.badArgs, "fault must be one of: \(names)")
       }
-      guard claim() else { return legacyBusy() }
+      trackDebugSession()
       if args["off"] as? Bool == true {
         OnboardingDebugFaults.active.remove(fault)
       } else {
@@ -347,17 +317,10 @@
     // MARK: Private
 
     private func activeSession() -> SetupSession.Components? {
-      guard workflow.backendSessionActive, let session, session.coordinator.isActive else {
+      guard let session, session.coordinator.isActive else {
         return nil
       }
       return session
-    }
-
-    private func legacyBusy() -> Result {
-      .failure(
-        .busy,
-        "the current onboarding is open or still working; close it and wait for its setup to finish"
-      )
     }
 
     private func notRunning() -> Result {
@@ -367,9 +330,6 @@
     /// Owner, activation, flow, readiness and checkpoint facts. No keys, no dictated content.
     private func snapshot(extra: [String: Any] = [:]) -> [String: Any] {
       var out: [String: Any] = [
-        "owner": workflow.current.rawValue,
-        "legacyTasks": workflow.legacyTasks,
-        "legacyWindowVisible": workflow.legacyWindowVisible(),
         "legacyState": legacyState().rawValue,
         "checkpoint": OnboardingCheckpoint.decode(checkpointData()).map { $0.step.rawValue }
           ?? NSNull(),
@@ -524,17 +484,10 @@
       }
     }
 
-    static func live(
-      _ owners: OnboardingLiveOwners, workflow: OnboardingWorkflowOwner, setupSession: SetupSession
-    ) -> DevControlOnboarding {
-      let door = DevControlOnboarding(
-        workflow: workflow, setupSession: setupSession,
-        checkpointData: { owners.settings.onboardingCheckpointData },
+    static func live(_ owners: OnboardingLiveOwners, setupSession: SetupSession) -> DevControlOnboarding {
+      DevControlOnboarding(
+        setupSession: setupSession, checkpointData: { owners.settings.onboardingCheckpointData },
         legacyState: { owners.settings.onboardingState }, permissions: owners.permissions)
-      if holdsAutomaticPresentation {
-        _ = door.holdForUAT()
-      }
-      return door
     }
   }
 #endif

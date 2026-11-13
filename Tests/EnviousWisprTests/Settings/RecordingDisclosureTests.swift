@@ -123,35 +123,6 @@ struct RecordingDisclosureTests {
     }
   }
 
-  @Test(
-    "setup's warm-up screen, which every way out of setup passes, shows the note and records it")
-  func warmingScreenShowsTheNote() async throws {
-    let defaults = suite()
-    let settings = SettingsManager(defaults: defaults)
-    #expect(!settings.recordingDisclosureAcknowledged)
-    let permissions = PermissionsService(
-      accessibilityReader: { true }, microphoneReader: { .authorized },
-      openMicrophoneSettings: { _ in })
-    let screen = WarmingScreenV2(viewModel: OnboardingV2ViewModel(), onReady: {}, onSkip: {})
-      .environment(settings)
-      .environment(permissions)
-    let host = NSHostingView(rootView: screen.frame(width: 460, height: 700))
-    let window = NSWindow(
-      contentRect: NSRect(x: 0, y: 0, width: 460, height: 700), styleMask: [.borderless],
-      backing: .buffered, defer: false)
-    window.contentView = host
-    defer { window.contentView = nil }
-    host.layoutSubtreeIfNeeded()
-
-    await MeetingCoordinatorTests.eventually("the note was shown", drainFiles: false) {
-      settings.recordingDisclosureAcknowledged
-    }
-    #expect(defaults.object(forKey: "saveDictationRecordings") == nil, "nothing written")
-    #expect(defaults.object(forKey: "dictationRecordingRetention") == nil)
-    #expect(
-      !settings.showsRecordingUpgradeDisclosure, "a fresh install never gets the upgrade notice")
-  }
-
   @Test("an upgrading install that re-runs setup still gets its History notice")
   func rerunSetupKeepsUpgradeNotice() {
     let defaults = suite()

@@ -34,13 +34,7 @@ struct EnvironmentInjectionFreezeTests {
       source.count > 1000,
       "\(Self.bootstrapperPath) read \(source.count) bytes — this guard is pointed at nothing")
 
-    // **Scoped to the root that HOSTS the page, not to every root that injects
-    // `settings`.** The broader rule was written first and is wrong: the
-    // onboarding root injects `settings` and hosts `OnboardingV2View`, which has
-    // no Appearance page, so requiring the pill home there would demand an
-    // injection nothing reads. A guard that fires on correct code is the
-    // false-positive shape this repo's own precision tally argues against, and it
-    // trains the next person to widen the guard rather than fix the wiring.
+    // Only the root that hosts Appearance needs its pill homes.
     let host = "UnifiedWindowView()"
     let start = try #require(
       source.range(of: host), "positive control failed — \(host) is not in the composition root")

@@ -43,7 +43,6 @@ struct OnboardingDownloadsPresentation: Equatable, Sendable {
   var polishPreparation: PolishPreparation
   /// The coordinator's preflight or refusal block (disk short carries the measured need).
   var block: OnboardingDownloadBlock?
-  var speechInstalled: Bool
   var engineWarm: Bool
   var warmFailed: Bool
   var microphoneGranted: Bool
@@ -71,7 +70,6 @@ struct OnboardingDownloadsPresentation: Equatable, Sendable {
       polishPreparation: preparation(
         polish: polish, readiness: readiness, phase: localPhase, queued: queuedPolish),
       block: block,
-      speechInstalled: speech != nil && readiness.speech == speech && readiness.speechInstalled,
       engineWarm: speech != nil && readiness.speech == speech && readiness.engineWarm,
       warmFailed: warmFailed, microphoneGranted: readiness.microphoneGranted,
       accessibilityGranted: readiness.accessibilityGranted, downloadsFinished: downloadsFinished,

@@ -160,15 +160,16 @@ final class OnboardingCoordinator {
   @ObservationIgnored private var holdsSleepAssertion = false
   @ObservationIgnored private var speechTask: Task<Void, Never>?
   @ObservationIgnored private var readinessTask: Task<Void, Never>?
-  /// Every task this coordinator started and has not yet awaited; `settle()` drains it.
-  @ObservationIgnored private var startedTasks: [Task<Void, Never>] = []
+  /// Test fixtures opt in to retaining tasks for `settle()`. Production never accumulates them.
+  @ObservationIgnored private var startedTasks: [Task<Void, Never>]?
   /// Fires after every published change, so the screens and tests read the new state.
   @ObservationIgnored var onChange: (() -> Void)?
   /// Telemetry's observation hook (F2b); `OnboardingTelemetryObserver.attach` sets it.
   @ObservationIgnored var onObservation: ((OnboardingObservation) -> Void)?
 
-  init(dependencies: Dependencies) {
+  init(dependencies: Dependencies, trackTasksForTests: Bool = false) {
     deps = dependencies
+    startedTasks = trackTasksForTests ? [] : nil
   }
 
   // MARK: Restore and presentation
@@ -214,15 +215,11 @@ final class OnboardingCoordinator {
   /// Completes when every task this coordinator started has finished: the subject's own
   /// completion signal for callers that must observe a result (tests, the door).
   func settle() async {
-    while !startedTasks.isEmpty {
-      let tasks = startedTasks
-      startedTasks.removeAll()
+    while let tasks = startedTasks, !tasks.isEmpty {
+      startedTasks?.removeAll()
       for task in tasks { await task.value }
     }
   }
-
-  /// The window closed: the checkpoint and the downloads stay; `begin()` resumes the same flow.
-  func windowClosed() {}
 
   /// Practice is usable only once the CURRENT picks are re-measured ready (a resumed Practice
   /// starts with empty readiness).
@@ -309,7 +306,7 @@ final class OnboardingCoordinator {
       self.send(.readinessChanged(readiness))
       self.requestWarmIfNeeded(readiness)
     }
-    if let readinessTask { startedTasks.append(readinessTask) }
+    if let readinessTask { startedTasks?.append(readinessTask) }
   }
 
   /// A readiness-relevant fact changed: clear the facts first, so an old pass (a replaced key, a
@@ -469,7 +466,7 @@ final class OnboardingCoordinator {
       }
     }
     warmTask = task
-    startedTasks.append(task)
+    startedTasks?.append(task)
   }
 
   private var currentWarmContext: WarmContext? {
@@ -491,7 +488,8 @@ final class OnboardingCoordinator {
       if let owned = warmOwned {
         warmOwned = nil
         let cancel = owned.cancel
-        startedTasks.append(Task { await cancel() })
+        let cancellation = Task { await cancel() }
+        startedTasks?.append(cancellation)
       }
     }
     warmRequested = nil
@@ -524,13 +522,13 @@ final class OnboardingCoordinator {
         continue
       case .unknown:
         let owner = speechOwnershipStarts[engine, default: 0]
-        startedTasks.append(
-          Task { [weak self] in
-            guard let self else { return }
-            let installed = await self.deps.downloads.resolveSpeechInstalled(engine)
-            guard !installed, self.speechOwnershipStarts[engine, default: 0] == owner else { return }
-            self.deps.downloads.cancelSpeech(engine)
-          })
+        let cancellation = Task { [weak self] in
+          guard let self else { return }
+          let installed = await self.deps.downloads.resolveSpeechInstalled(engine)
+          guard !installed, self.speechOwnershipStarts[engine, default: 0] == owner else { return }
+          self.deps.downloads.cancelSpeech(engine)
+        }
+        startedTasks?.append(cancellation)
       default:
         deps.downloads.cancelSpeech(engine)
       }
@@ -714,7 +712,7 @@ final class OnboardingCoordinator {
       }
       self.onChange?()
     }
-    if let speechTask { startedTasks.append(speechTask) }
+    if let speechTask { startedTasks?.append(speechTask) }
   }
 
   private func startPolish(_ id: String, retry: Bool) {

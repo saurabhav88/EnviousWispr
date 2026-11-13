@@ -2593,7 +2593,6 @@ package final class WisprBootstrapper {
       appWindowCoordinator?.refreshActivationPolicy(excluding: nil)
     }
     #if DEBUG
-      let onboardingWorkflow = OnboardingWorkflowOwner()
       self.debugImportDoor = DebugImportDoor(
         coordinator: fileImportCoordinator,
         // The screen's gate, composed from the same coordinators the screen reads; the
@@ -2730,7 +2729,7 @@ package final class WisprBootstrapper {
             sources: DevControlCalls.Sources(
               coordinator: { [meetingBox] in meetingBox.callDetection })),
           onboarding: .live(
-            setupOwners, workflow: onboardingWorkflow, setupSession: setupSession)))
+            setupOwners, setupSession: setupSession)))
     #endif
     // #3972 C4a: EnviousMeet, bootstrapped here so it lives independently of any view.
     engineCoordinator.onMintingEnded = { [meetingWakes] in meetingWakes.poke() }

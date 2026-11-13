@@ -1206,7 +1206,6 @@ final class StubParakeetASRManager: ASRManagerInterface {
   /// one to stand in for the vendor entering a window of that stream.
   var startedWindowObservers: [ASRInferenceEntryObserver?] = []
   var isStreaming = false
-  var downloadProgress: Double = 0
   var downloadPhase = "idle"
   var downloadDetail = ""
   var onServiceInterrupted: (() -> Void)?

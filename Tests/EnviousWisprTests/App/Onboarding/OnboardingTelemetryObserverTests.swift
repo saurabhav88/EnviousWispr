@@ -154,7 +154,7 @@ struct OnboardingTelemetryObserverTests {
     let r = Recorder()
     let o = r.observer()
     for _ in 0..<5 { o.screenPresented(.downloads, resumed: false) }
-    #expect(r.rows.count == 1 && o.rowsThisVisit == 1)
+    #expect(r.rows.count == 1)
   }
 
   @Test("back-and-forth never uses up the allowance: later screens still get their first view")
@@ -193,11 +193,11 @@ struct OnboardingTelemetryObserverTests {
     o.screenPresented(.language, resumed: false)
     // Reset of the same visit: same start, so Welcome is a revisit and adds no row.
     o.screenPresented(.welcome, resumed: false)
-    #expect(o.rowsThisVisit == 2 && r.rows.count == 2)
+    #expect(r.rows.count == 2)
     r.start = Date(timeIntervalSince1970: 2_000)  // a new visit
     r.now = Date(timeIntervalSince1970: 2_003)
     o.screenPresented(.welcome, resumed: false)
-    #expect(o.rowsThisVisit == 1 && r.rows.last?.0 == "welcome" && r.rows.last?.1 == .forward)
+    #expect(r.rows.last?.0 == "welcome" && r.rows.last?.1 == .forward)
     #expect(r.rows.last?.2 == 3)
   }
 

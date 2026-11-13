@@ -36,7 +36,6 @@ struct RecoverySpoolReplayerTests {
     var onVendorDecodeChunkScheduled: (@MainActor @Sendable () -> Void)?
     var onTranscriptionProgress: (@MainActor @Sendable (Double) -> Void)?
     var isStreaming = false
-    var downloadProgress: Double = 0
     var downloadPhase = "idle"
     var downloadDetail = ""
     var onServiceInterrupted: (() -> Void)?
