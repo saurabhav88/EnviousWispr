@@ -31,6 +31,9 @@ struct TurnDocumentView<Fallback: View>: View {
   /// #4013 r3 F3: the names the rename popover offers for each speaker. `.none` offers nothing,
   /// as before.
   var renameSuggestions: SpeakerRenameSuggestions = .none
+  /// #3147 PR4A: the font of each turn's time. The meeting after view passes the 14 pt helper
+  /// token; other callers keep the caption size they had.
+  var timeFont: Font = .caption
   @ViewBuilder let fallback: () -> Fallback
 
   /// No `ScrollView` of its own (found by chunk review): both callers already embed this
@@ -52,7 +55,7 @@ struct TurnDocumentView<Fallback: View>: View {
         ForEach(TurnRowKey.keyed(turns), id: \.key) { _, turn in
           TurnRowView(
             turn: turn, onRename: onRename, onRenameCancelled: onRenameCancelled,
-            onPlayFrom: onPlayFrom, renameSuggestions: renameSuggestions)
+            onPlayFrom: onPlayFrom, renameSuggestions: renameSuggestions, timeFont: timeFont)
         }
       }
       .onAppear(perform: onTurnsDisplayed)
@@ -120,6 +123,7 @@ private struct TurnRowView: View {
   let onRenameCancelled: () -> Void
   let onPlayFrom: ((Int) -> Void)?
   let renameSuggestions: SpeakerRenameSuggestions
+  let timeFont: Font
   @State private var isRenaming = false
   @State private var draftName = ""
   @State private var renameFailure: RenameFailure?
@@ -134,7 +138,7 @@ private struct TurnRowView: View {
         speakerLabel
         if let timeLabel = turn.timeLabel {
           Text(timeLabel)
-            .font(.caption)
+            .font(timeFont)
             .foregroundStyle(.secondary)
         }
         if let onPlayFrom, let startMs = turn.startMs {

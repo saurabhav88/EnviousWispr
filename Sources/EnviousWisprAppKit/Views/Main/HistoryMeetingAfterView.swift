@@ -1304,6 +1304,7 @@ struct MeetingAfterTurnList: View, Equatable {
             }
           },
           renameSuggestions: renameSuggestions,
+          timeFont: .stHelper,
           fallback: { EmptyView() }
         )
         .padding(DesignSpacing.sm)

@@ -234,7 +234,7 @@ private struct HistoryDiaryList<DictationCard: View>: View {
       case .transcript(let row):
         transcriptCard(row.id, item: item.id, items: items)
       case .meeting(let meeting):
-        openableCard(item.id, items: items) { MeetingRowView(meeting: meeting) }
+        meetingCard(meeting.meetingID, item: item.id, items: items)
       }
     }
   }
@@ -256,6 +256,19 @@ private struct HistoryDiaryList<DictationCard: View>: View {
           get: { locatingRowID == rowID },
           set: { if $0 == false, locatingRowID == rowID { locatingRowID = nil } }),
         onResult: { text, _ in locateNote = LocateNote(text: text) })
+    }
+  }
+
+  /// #3147 PR4A: a meeting's card. Its Open and title rename are its own buttons; while
+  /// selecting, the whole card ticks instead and its buttons take no clicks.
+  @ViewBuilder private func meetingCard(
+    _ meetingID: UUID, item: HistoryItemID, items: [HistoryListItem]
+  ) -> some View {
+    let card = HistoryMeetingCard(meetingID: meetingID, onOpen: { open(item) })
+    if isSelecting {
+      openableCard(item, items: items) { card.allowsHitTesting(false) }
+    } else {
+      card
     }
   }
 
