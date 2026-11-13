@@ -445,6 +445,9 @@ struct MeetingNotesTextView: NSViewRepresentable {
     /// Applies one block edit made outside the text (a kind or a tick).
     func applyOutsideText(_ make: (MeetingNoteBlock) -> MeetingNotesEdit?, block: MeetingNoteBlock?)
     {
+      // Not while an input method is composing: the draft does not hold that text yet, and a
+      // toggle now would make the composed text look stale when it lands.
+      guard textView?.hasMarkedText() != true else { return }
       guard let notes, let meetingID, let block = block ?? caretBlock(), let edit = make(block)
       else { return }
       let snapshot = notes.snapshot(for: meetingID)
