@@ -86,6 +86,12 @@ package final class LiveApplication {
   /// The main window's menu commands: Edit › Find Settings (#3482). Built here, not on the
   /// bootstrapper, whose public surface stays the lifecycle forwards and view factories.
   package func mainWindowCommands() -> some Commands { FindSettingsCommand() }
+  /// #3147 PR3: one transcript opened in its own window.
+  package var transcriptWindowID: String { TranscriptWindowIdentity.sceneID }
+  package var transcriptWindowTitle: String { TranscriptWindowIdentity.title }
+  package func transcriptWindowContent(rowID: UUID) -> some View {
+    LaunchGate(sequencer) { $0.transcriptWindowContent(rowID: rowID) }
+  }
 
   // MARK: - Lifecycle surface
 

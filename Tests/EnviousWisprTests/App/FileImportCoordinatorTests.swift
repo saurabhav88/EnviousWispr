@@ -153,7 +153,7 @@ struct FileImportCoordinatorTests {
       // success is the explicit statement of that, not a default.
       saveToHistory: { _ in },
       updateHistoryRow: { _ in onHistoryUpdate(); return true },
-      mergeSpeakerFields: { _, _, _ in true },
+      mergeSpeakerFields: { _, _, _, _ in true },
       historyRowExists: { _ in true },
       processParts: processPartsOverride ?? serialFileImportTestProcessor { part, _ in try await processPart(part) })
   }

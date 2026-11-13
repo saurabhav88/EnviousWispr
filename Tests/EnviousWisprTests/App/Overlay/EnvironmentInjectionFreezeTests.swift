@@ -42,7 +42,8 @@ struct EnvironmentInjectionFreezeTests {
     // The builder block ends at the next type declaration.
     let rest = source[start.upperBound...]
     let blockEnd = rest.range(of: "\nprivate struct ") ?? rest.range(of: "\nstruct ")
-    let block = blockEnd.map { String(rest[..<$0.lowerBound]) } ?? String(rest)
+    let hostBlock = blockEnd.map { String(rest[..<$0.lowerBound]) } ?? String(rest)
+    let block = try Self.homesBlock(in: source, hostBlock: hostBlock)
 
     try #require(
       block.contains(".environment(b.settings)"),
@@ -92,7 +93,8 @@ struct EnvironmentInjectionFreezeTests {
         source.range(of: host), "positive control failed: \(host) is not in the composition root")
       let rest = source[start.upperBound...]
       let blockEnd = rest.range(of: "\nprivate struct ") ?? rest.range(of: "\nstruct ")
-      let block = blockEnd.map { String(rest[..<$0.lowerBound]) } ?? String(rest)
+      let hostBlock = blockEnd.map { String(rest[..<$0.lowerBound]) } ?? String(rest)
+      let block = try Self.homesBlock(in: source, hostBlock: hostBlock)
       try #require(
         block.contains(".environment(b.settings)"),
         "positive control failed: the Settings host block does not inject settings")
@@ -112,4 +114,18 @@ struct EnvironmentInjectionFreezeTests {
       }
     }
   #endif
+
+  /// #3147 PR3: the homes are injected by `AppHomesEnvironment`, which the Settings host applies
+  /// with `.appHomes(b)` (and each transcript window too). Returns that modifier's block, after
+  /// requiring the host to apply it, so the checks below read the injections the host gets.
+  static func homesBlock(in source: String, hostBlock: String) throws -> String {
+    try #require(
+      hostBlock.contains(".appHomes(b)"),
+      "the Settings host does not apply the shared homes modifier")
+    let marker = "private struct AppHomesEnvironment"
+    let start = try #require(source.range(of: marker), "\(marker) is not in the composition root")
+    let rest = source[start.upperBound...]
+    let end = rest.range(of: "\nextension View") ?? rest.range(of: "\nprivate struct ")
+    return end.map { String(rest[..<$0.lowerBound]) } ?? String(rest)
+  }
 }

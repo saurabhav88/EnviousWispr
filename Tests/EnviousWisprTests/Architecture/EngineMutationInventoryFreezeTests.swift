@@ -1457,8 +1457,46 @@ import EnviousWisprAppKitTestSupport
       classification: .transitivelyCoveredByCaller),
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/WisprBootstrapper.swift", matcher: "unloadForRemoval",
-      text: "whisper.removal.unloadForRemoval = { [weak whisperKernelDriver, meetingWhisperEngine] in",
+      text: "whisper.removal.unloadForRemoval = {",
       classification: .transitivelyCoveredByCaller),
+    // #3147 PR3, Transcribe again with: the chosen model runs on a copy only this job owns
+    // (`ImportedEngineCopies`: its own `MeetingParakeetEngine` backend and its own
+    // `LiveMeetingWhisperEngine`), never dictation's backend or recovery's engine
+    // (structurallySafe (c): a different engine instance), all under the `.fileImport` lease.
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/ImportedFileTranscriber.swift", matcher: "unload",
+      text: "await engines.unload()", classification: .structurallySafe),
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/ImportedFileTranscriber.swift", matcher: "unload",
+      text: "await engines.unload()", classification: .structurallySafe),
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/ImportedFileTranscriber.swift", matcher: "transcribe",
+      text: "asr = try await engines.transcribe(decoded?.samples ?? [], language: language)", classification: .structurallySafe),
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/ImportedFileTranscriber.swift", matcher: "transcribe",
+      text: "case .parakeet: return try await parakeetEngine.transcribe(samples: samples, language: language)", classification: .structurallySafe),
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/ImportedFileTranscriber.swift", matcher: "transcribe",
+      text: "case .whisper: return try await whisper.transcribe(samples, language)", classification: .structurallySafe),
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/ImportedFileTranscriber.swift", matcher: "unload",
+      text: "case .parakeet: await parakeetEngine.unload()", classification: .structurallySafe),
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/ImportedFileTranscriber.swift", matcher: "unload",
+      text: "case .whisper: await whisper.unload()", classification: .structurallySafe),
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/ImportedFileTranscriber.swift", matcher: "transcribe",
+      text: "transcribe: { try await engine.transcribe(samples: $0, language: $1) },", classification: .structurallySafe),
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/ImportedFileTranscriber.swift", matcher: "unload",
+      text: "unload: { await engine.unload() })", classification: .structurallySafe),
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/TranscriptRetranscription.swift", matcher: "transcribe",
+      text: "switch await transcriber.transcribe(", classification: .structurallySafe),
+    // A Hasher over the row's link fields (the source revision), not a model's.
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/ImportedSources.swift", matcher: "finalize",
+      text: "return hasher.finalize()", classification: .unrelatedDomain),
   ]
 
   // MARK: Live scan

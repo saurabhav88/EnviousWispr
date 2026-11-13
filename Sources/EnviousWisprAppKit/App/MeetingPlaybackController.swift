@@ -15,6 +15,9 @@ protocol MeetingPlaybackOutput: AnyObject {
   func enqueue(_ samples: [Float], played: @escaping @MainActor () -> Void)
   /// Stops at once and drops anything queued.
   func stop()
+  /// Plays at `rate` times normal speed with the pitch kept (#3147 PR3); kept across stop and
+  /// start. 1 is normal.
+  func setRate(_ rate: Float)
 }
 
 /// What a player reads (#3147): a meeting's track files on the meeting timeline, or one saved
@@ -22,6 +25,8 @@ protocol MeetingPlaybackOutput: AnyObject {
 enum PlaybackMedia: Sendable {
   case meeting(MeetingPlaybackController.TrackFiles)
   case dictation(URL)
+  /// #3147 PR3: an imported file's original, already opened by its owner (`ImportedSources`).
+  case transcript(any PlaybackWindowAudio)
 }
 
 /// Opened audio that answers fixed windows of mono 16 kHz samples. Opened on the first window
@@ -35,6 +40,8 @@ protocol PlaybackWindowAudio: AnyObject, Sendable {
 enum PlaybackSourceID: Hashable, Sendable {
   case meeting(UUID)
   case dictation(UUID)
+  /// #3147 PR3: an imported transcript's original file, by its History row id.
+  case transcript(UUID)
 }
 
 /// Plays one meeting's kept audio on the meeting timeline (#3972 §3.8, C5 items 29-31): play,
@@ -125,6 +132,20 @@ final class MeetingPlaybackController {
     self.init(
       media: .meeting(source.trackFiles), durationMs: source.durationMs, output: output,
       sourceID: meetingID.map { .meeting($0) }, arbiter: arbiter)
+  }
+
+  /// The speeds a transcript's dock offers (#3147 PR3, the mock's menu).
+  nonisolated static let playbackRates: [Float] = [0.75, 1, 1.25, 1.5, 2]
+
+  /// The current speed; 1 for every player until a transcript's dock changes it.
+  private(set) var playbackRate: Float = 1
+
+  /// Sets the speed (one of `playbackRates`; anything else is ignored), kept across pause,
+  /// stop and play. The position stays on the recording's own timeline.
+  func setPlaybackRate(_ rate: Float) {
+    guard Self.playbackRates.contains(rate) else { return }
+    playbackRate = rate
+    output.setRate(rate)
   }
 
   func play() {
@@ -279,6 +300,7 @@ final class MeetingPlaybackController {
     switch media {
     case .meeting(let files): return MeetingMixedAudio(tracks: try load(files))
     case .dictation(let url): return try DictationPlaybackAudio(url: url)
+    case .transcript(let audio): return audio
     }
   }
 
@@ -363,6 +385,9 @@ struct MeetingPlaybackSource: Hashable, Sendable {
 final class MeetingPlaybackEngineOutput: MeetingPlaybackOutput {
   private var engine: AVAudioEngine?
   private var player: AVAudioPlayerNode?
+  /// Speed with the pitch kept (#3147 PR3), between the player and the mixer.
+  private var timePitch: AVAudioUnitTimePitch?
+  private var rate: Float = 1
   private let format = AVAudioFormat(
     commonFormat: .pcmFormatFloat32, sampleRate: MeetingAudioFormat.sampleRate, channels: 1,
     interleaved: false)!
@@ -374,12 +399,22 @@ final class MeetingPlaybackEngineOutput: MeetingPlaybackOutput {
     }
     let engine = AVAudioEngine()
     let player = AVAudioPlayerNode()
+    let timePitch = AVAudioUnitTimePitch()
+    timePitch.rate = rate
     engine.attach(player)
-    engine.connect(player, to: engine.mainMixerNode, format: format)
+    engine.attach(timePitch)
+    engine.connect(player, to: timePitch, format: format)
+    engine.connect(timePitch, to: engine.mainMixerNode, format: format)
     try engine.start()
     player.play()
     self.engine = engine
     self.player = player
+    self.timePitch = timePitch
+  }
+
+  func setRate(_ rate: Float) {
+    self.rate = rate
+    timePitch?.rate = rate
   }
 
   func enqueue(_ samples: [Float], played: @escaping @MainActor () -> Void) {
@@ -400,7 +435,9 @@ final class MeetingPlaybackEngineOutput: MeetingPlaybackOutput {
     player?.stop()
     engine?.stop()
     if let player { engine?.detach(player) }
+    if let timePitch { engine?.detach(timePitch) }
     player = nil
+    timePitch = nil
     engine = nil
   }
 }

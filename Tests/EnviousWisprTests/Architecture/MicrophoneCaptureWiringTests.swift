@@ -8,11 +8,12 @@ import Testing
 /// establish where reads execute, not a measured recording-latency improvement.
 @Suite("Microphone capture wiring (#3385)", .tags(.driftGuard, .localParallel))
 struct MicrophoneCaptureWiringTests {
-  @Test("main window defers every capture read to the injected reader")
+  @Test("the app windows' homes defer every capture read to the injected reader")
   func mainWindowProjectsCaptureEvidence() throws {
     let tree = try MicrophoneSettingsWiringTests.source(
       "Sources/EnviousWisprAppKit/App/WisprBootstrapper.swift")
-    let root = try #require(Self.structure(named: "MainWindowRoot", in: tree))
+    // #3147 PR3: injected once by the shared homes modifier the main window applies.
+    let root = try #require(Self.structure(named: "AppHomesEnvironment", in: tree))
     let facts = Self.captureReadFacts(in: Syntax(root))
     #expect(facts.readers == 1)
     #expect(facts.deferred == ["isCapturing", "zeroSignalDiscriminatorDevice"])

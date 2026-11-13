@@ -141,22 +141,13 @@ public enum AudioFileDecoder {
     // keeps a file whose tracks are all marked disabled working rather than
     // refusing it. Found by cloud review, one round after the mixing finding
     // this replaced.
-    let chosenTrack = [tracks.first(where: \.isEnabled) ?? tracks[0]]
+    let chosenTrack = [mainProgramTrack(in: tracks)]
 
     // The conversion is the READER's job, not a second pass of ours: these
     // settings make every source format arrive already downmixed to mono and
     // resampled to the rate the engines take.
     let output = AVAssetReaderAudioMixOutput(
-      audioTracks: Array(chosenTrack),
-      audioSettings: [
-        AVFormatIDKey: kAudioFormatLinearPCM,
-        AVSampleRateKey: AudioConstants.sampleRate,
-        AVNumberOfChannelsKey: 1,
-        AVLinearPCMBitDepthKey: 32,
-        AVLinearPCMIsFloatKey: true,
-        AVLinearPCMIsBigEndianKey: false,
-        AVLinearPCMIsNonInterleaved: false,
-      ])
+      audioTracks: Array(chosenTrack), audioSettings: engineOutputSettings())
     guard reader.canAdd(output) else { throw Rejection.decodeFailed("reader_rejected_output") }
     reader.add(output)
     guard reader.startReading() else {
@@ -214,6 +205,28 @@ public enum AudioFileDecoder {
       channelCount: Int(basic?.pointee.mChannelsPerFrame ?? 1))
   }
 
+  /// The track a file's samples come from: the first ENABLED audio track, else the first (the
+  /// reasons are at the call in `decode`). #3147 PR3: the History player reads the original file
+  /// through this too, so the audio a person replays is the audio that was transcribed.
+  /// `tracks` must not be empty.
+  package static func mainProgramTrack(in tracks: [AVAssetTrack]) -> AVAssetTrack {
+    tracks.first(where: \.isEnabled) ?? tracks[0]
+  }
+
+  /// The reader output settings that make every source arrive as 16 kHz mono `Float32`
+  /// (downmix and resample done by the reader). Shared with the History player (#3147 PR3).
+  package static func engineOutputSettings() -> [String: Any] {
+    [
+      AVFormatIDKey: kAudioFormatLinearPCM,
+      AVSampleRateKey: AudioConstants.sampleRate,
+      AVNumberOfChannelsKey: 1,
+      AVLinearPCMBitDepthKey: 32,
+      AVLinearPCMIsFloatKey: true,
+      AVLinearPCMIsBigEndianKey: false,
+      AVLinearPCMIsNonInterleaved: false,
+    ]
+  }
+
   /// The source codec's four-character type, rendered the way a person names it.
   ///
   /// A short table rather than a general decoder: these are the formats the
@@ -237,7 +250,7 @@ public enum AudioFileDecoder {
   /// there is exactly one channel to read and no per-sample conversion to do
   /// here. A buffer with no data block is skipped rather than treated as an
   /// error: it is how a decoder reports a gap, not a failure.
-  private static func appendSamples(from buffer: CMSampleBuffer, into samples: inout [Float]) {
+  package static func appendSamples(from buffer: CMSampleBuffer, into samples: inout [Float]) {
     guard let blockBuffer = CMSampleBufferGetDataBuffer(buffer) else { return }
     var lengthAtOffset = 0
     var totalLength = 0

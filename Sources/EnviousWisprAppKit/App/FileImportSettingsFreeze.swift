@@ -38,16 +38,24 @@ enum FileImportSettingsFreeze {
   /// deliberately does not refill `llmModel` (#1305, #1914), so an Ollama import could
   /// freeze a cloud model id left over from another provider. #2772 §3.3.
   static func snapshot(settings: SettingsManager) -> RecordingSettingsSnapshot {
-    // #3905: frozen as the selected engine can honour it (an unhonoured lock runs as Auto).
+    snapshot(settings: settings, backend: settings.selectedBackend)
+  }
+
+  /// The same freeze for an explicit engine (#3147 PR3, Transcribe again with): the language
+  /// lock, language detection and spelling follow `backend`, never the selected engine.
+  static func snapshot(
+    settings: SettingsManager, backend: ASRBackendType
+  ) -> RecordingSettingsSnapshot {
+    // #3905: frozen as the engine can honour it (an unhonoured lock runs as Auto).
     let languageMode = LanguageLockOptions.effectiveLanguageMode(
-      settings.languageMode, for: settings.selectedBackend)
+      settings.languageMode, for: backend)
     return RecordingSettingsSnapshot(
-      backendType: settings.selectedBackend,
+      backendType: backend,
       // **Asked, not assumed.** Hardcoding false told the resolver to ignore
       // whatever WhisperKit reported, so an automatic-language import fell back
       // to identifying the language from the ASR text — the weakest source in
       // the ladder, on the text least safe to guess from. Found by cloud review.
-      backendSupportsLanguageDetection: settings.selectedBackend == .whisper,
+      backendSupportsLanguageDetection: backend == .whisper,
       languageMode: languageMode,
       wordCorrectionEnabled: settings.wordCorrectionEnabled,
       fillerRemovalEnabled: settings.fillerRemovalEnabled,

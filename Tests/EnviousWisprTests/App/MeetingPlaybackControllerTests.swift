@@ -33,6 +33,9 @@ struct MeetingPlaybackControllerTests {
       starts += 1
     }
 
+    private(set) var rates: [Float] = []
+    func setRate(_ rate: Float) { rates.append(rate) }
+
     func enqueue(_ samples: [Float], played: @escaping @MainActor () -> Void) {
       windows.append(samples)
       pending.append(played)

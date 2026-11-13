@@ -95,15 +95,23 @@ struct HistoryPasteWiringTests {
     #expect(read.lowerBound < perform.lowerBound, "the page before is read before navigating")
   }
 
-  @Test("the main window gets the one History Paste and the one tracker")
+  @Test("every app window gets the one History Paste and the one tracker")
   func mainWindowInjection() throws {
     let (source, tree) = try Self.snapshot("\(Self.sources)/App/WisprBootstrapper.swift")
-    let finder = StructFinder("MainWindowRoot")
+    // #3147 PR3: the homes are injected once, by `AppHomesEnvironment`, which the main window
+    // and every transcript window apply.
+    let finder = StructFinder("AppHomesEnvironment")
     finder.walk(tree)
-    let root = try #require(finder.found, "MainWindowRoot not found")
-    let body = root.memberBlock.trimmedDescription
+    let homes = try #require(finder.found, "AppHomesEnvironment not found")
+    let body = homes.memberBlock.trimmedDescription
     #expect(body.contains(".environment(b.historyPaste)"))
     #expect(body.contains(".environment(b.previousApplicationTracker)"))
+    let mainFinder = StructFinder("MainWindowRoot")
+    mainFinder.walk(tree)
+    let main = try #require(mainFinder.found, "MainWindowRoot not found")
+    #expect(main.memberBlock.trimmedDescription.contains(".appHomes(b)"))
+    let (window, _) = try Self.snapshot("\(Self.sources)/App/TranscriptWindowRoot.swift")
+    #expect(window.contains(".appHomes(b)"), "a transcript window gets the same homes")
     #expect(source.components(separatedBy: "HistoryPaste.live(").count == 2, "one construction")
     #expect(
       source.components(separatedBy: "PreviousApplicationTracker()").count == 2,
@@ -120,7 +128,16 @@ struct HistoryPasteWiringTests {
     #expect(history.contains("TranscriptDetailView(transcript: row, showPasteNotice: pasteNotice.show)"))
     #expect(history.contains("HistoryDictationCard(rowID: rowID, showPasteNotice: pasteNotice.show)"))
     #expect(history.contains("MeetingHistoryDetailView(meeting: meeting, showPasteNotice: pasteNotice.show)"))
-    for detail in ["TranscriptDetailView.swift", "MeetingHistoryDetailView.swift"] {
+    // #3147 PR3: the imported transcript view reports to the page in History, and to its own
+    // window's root when detached; that root holds the window's notice outside the content.
+    #expect(history.contains("showPasteNotice: pasteNotice.show,"), "the transcript view reports to the page")
+    let (window, _) = try Self.snapshot("\(Self.sources)/App/TranscriptWindowRoot.swift")
+    #expect(window.contains("@State private var pasteNotice = HistoryPasteNotice()"))
+    #expect(window.contains("showPasteNotice: pasteNotice.show,"))
+    #expect(window.contains("get: { pasteNotice.text != nil }"), "the window presents its own notice")
+    for detail in [
+      "TranscriptDetailView.swift", "MeetingHistoryDetailView.swift", "HistoryTranscriptView.swift",
+    ] {
       let (source, _) = try Self.snapshot("\(Self.sources)/Views/Main/\(detail)")
       #expect(source.contains("@State private var pasteNotice") == false, "\(detail) holds its own notice")
       #expect(source.contains("showNotice: { showPasteNotice($0) }"), "\(detail) reports to the page")

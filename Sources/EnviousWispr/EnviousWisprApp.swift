@@ -45,5 +45,14 @@ struct EnviousWisprApp: App {
     // #3482: Edit › Find Settings (Command-F), routed to the focused main window.
     .commands { application.mainWindowCommands() }
 
+    // #3147 PR3: one imported transcript in its own window, one window per History row.
+    WindowGroup(application.transcriptWindowTitle, id: application.transcriptWindowID,
+      for: UUID.self
+    ) { $rowID in
+      if let rowID {
+        application.transcriptWindowContent(rowID: rowID)
+      }
+    }
+    .defaultSize(width: 720, height: 640)
   }
 }

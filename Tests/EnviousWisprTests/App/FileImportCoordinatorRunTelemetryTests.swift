@@ -141,7 +141,7 @@ struct FileImportCoordinatorRunTelemetryTests {
       },
       saveToHistory: { _ in },
       updateHistoryRow: updateHistoryRow,
-      mergeSpeakerFields: { _, _, _ in true },
+      mergeSpeakerFields: { _, _, _, _ in true },
       historyRowExists: { _ in true },
       processParts: serialFileImportTestProcessor { part, _ in try await processPart(part) })
   }
