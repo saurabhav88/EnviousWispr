@@ -33,13 +33,16 @@ import wispr_eyes as w
 
 BLACKHOLE_UID = sa.BLACKHOLE_UID
 TEXTEDIT = "com.apple.TextEdit"
+DEV_APP = "com.enviouswispr.app.dev"
 
 
-def _wait_frontmost(bundle_id, seconds=5.0):
-    """Whether `bundle_id` became frontmost within `seconds` (polled; activation has no ack)."""
+def _wait_frontmost(bundle_id, seconds=5.0, is_front=None):
+    """Wait for the target to become frontmost (activation has no acknowledgment)."""
+    if is_front is None:
+        is_front = lambda: tg.frontmost_bundle() == bundle_id
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
-        if tg.frontmost_bundle() == bundle_id:
+        if is_front():
             return True
         time.sleep(0.2)  # settle: app activation is asynchronous and signals nothing we can await
     return False
@@ -51,9 +54,56 @@ class AppTarget:
 
     def __init__(self, bundle_id, prepare=None):
         self.bundle_id, self.prepare = bundle_id, prepare
+        self._dev_client = None
 
     def activate(self):
-        subprocess.run(["open", "-b", self.bundle_id], capture_output=True)
+        if self.bundle_id != DEV_APP:
+            subprocess.run(["open", "-b", self.bundle_id], capture_output=True)
+            return
+        from ui_helpers import activate_app, get_ax_app, get_attr
+        client = self.pin_dev_app()
+        if not self._is_pinned_process(client):
+            raise tg.SetupFailed("paste-target", f"the pinned dev app (PID {client.pid}) is gone")
+        app = get_ax_app(client.pid)
+        if not get_attr(app, "AXWindows"):
+            try:
+                w._open_settings(app, pid=client.pid)
+            except (w.NavigationError, RuntimeError) as error:
+                raise tg.SetupFailed("paste-target", str(error)) from error
+        else:
+            activate_app(client.pid)
+        if not _wait_frontmost(self.bundle_id, is_front=self.dev_app_is_front):
+            raise tg.SetupFailed(
+                "paste-target", f"the pinned dev app (PID {client.pid}) did not come to the front")
+
+    def pin_dev_app(self):
+        """Resolve once from this worktree. Never launch or switch to another copy."""
+        if self._dev_client is None:
+            from dev_control import Boundaries, DoorClient, resolve_instance, resolve_worktree
+            boundaries = Boundaries()
+            pid, _ = resolve_instance(resolve_worktree(None, boundaries), boundaries)
+            self._dev_client = DoorClient(pid, boundaries=boundaries)
+        return self._dev_client
+
+    @staticmethod
+    def _is_pinned_process(client):
+        return client.boundaries.instances().get(str(client.pid)) == client.executable
+
+    def dev_app_is_front(self):
+        from ui_helpers import get_ax_app, get_attr
+        client = self.pin_dev_app()
+        try:
+            asn = subprocess.run(["lsappinfo", "front"], capture_output=True, text=True,
+                                 timeout=5, check=True).stdout.strip()
+            if not asn:
+                return False
+            info = subprocess.run(["lsappinfo", "info", "-only", "pid", asn],
+                                  capture_output=True, text=True, timeout=5, check=True).stdout
+            return any(line.split()[:3] == ["pid", "=", str(client.pid)]
+                       for line in info.splitlines()) and self._is_pinned_process(client) and bool(
+                           get_attr(get_ax_app(client.pid), "AXWindows"))
+        except (OSError, subprocess.SubprocessError) as error:
+            raise tg.SetupFailed("paste-target", f"cannot verify the pinned dev app: {error}") from error
 
     def close(self):
         """Nothing to close: the caller's app and content stay as the test left them."""
@@ -62,7 +112,7 @@ class AppTarget:
         self.activate()
         if self.prepare:
             self.prepare()
-        if not _wait_frontmost(self.bundle_id):
+        if self.bundle_id != DEV_APP and not _wait_frontmost(self.bundle_id):
             raise tg.SetupFailed("paste-target",
                                  f"{self.bundle_id} did not come to the front "
                                  f"(front is {tg.frontmost_bundle()!r})")
@@ -149,7 +199,10 @@ class AudioRig:
         try:
             if self.use_route:
                 # Before any device moves: the dev-app lock and a restorable microphone (#3990).
-                self.route = sa.AudioRoute()
+                if self.target.bundle_id == DEV_APP:
+                    self.route = sa.AudioRoute(client=self.target.pin_dev_app())
+                else:
+                    self.route = sa.AudioRoute()
                 self._install_restore_handlers()
                 self.alerts = sa.AlertSink()
                 if not self.alerts.apply():
@@ -162,7 +215,8 @@ class AudioRig:
             elif not tg.speaker_reason():
                 raise tg.SetupFailed("audio-route", "route=False needs EW_UAT_SPEAKER_REASON")
             self.target.ready()
-            tg.declare_target(self.target.bundle_id, activate=self.target.activate)
+            is_front = self.target.dev_app_is_front if self.target.bundle_id == DEV_APP else None
+            tg.declare_target(self.target.bundle_id, activate=self.target.activate, is_front=is_front)
             route = "BlackHole in/out/alerts, app mic pinned" if self.use_route else "REAL mic and speaker"
             print(f"RIG READY: {route}, paste target {self.target.bundle_id}", flush=True)
             return self
