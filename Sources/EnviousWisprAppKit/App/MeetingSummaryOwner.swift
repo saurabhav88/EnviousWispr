@@ -65,17 +65,33 @@ final class MeetingSummaryOwner {
     /// #4012 D8, R6: names a meeting that has no name yet with the summary's AI title
     /// (`MeetingCoordinator.assignAITitle`).
     var assignTitle: @MainActor (UUID, String) async -> Void = { _, _ in }
+    /// #3147 PR4A (D5): the meeting's visible turns (the same projection `visibleTranscript`
+    /// reads, echo hidden) and its note blocks, for a summary with references. Nil when they
+    /// are not known; read only on a qualified route.
+    var referenceSources: @MainActor (UUID) -> MeetingSummaryReferenceSources? = { _ in nil }
+    /// #3147 PR4A (D5): whether a provider and model write summaries with references. The app
+    /// keeps the qualification table's answer; tests name a route.
+    var writesReferences: @MainActor (LLMProvider, String) -> Bool = {
+      MeetingSummaryReferences.isQualified(provider: $0, model: $1)
+    }
+    /// #3147 PR4A (D5): saves the reference document beside the summary just saved (nil
+    /// removes an older one), through the meeting's writer. False when it could not be saved:
+    /// the summary stays readable and simply has no links.
+    var saveReferences: @MainActor (UUID, MeetingSummaryDocument?) async -> Bool = { _, _ in
+      true
+    }
     /// The summary writer; the real one in the app, a fake in tests.
     var write:
       @MainActor (
         _ transcript: String, _ notes: String, _ facts: String,
         _ window: MeetingSummary.Window, _ timeoutSeconds: Double,
+        _ references: MeetingSummary.ReferenceRequest?,
         _ admit: @escaping MeetingSummary.Admit, _ complete: @escaping MeetingSummary.Complete
       ) async throws -> MeetingSummary.Written = {
-        transcript, notes, facts, window, timeout, admit, complete in
+        transcript, notes, facts, window, timeout, references, admit, complete in
         try await MeetingSummary.write(
           transcript: transcript, notes: notes, facts: facts, window: window,
-          callTimeoutSeconds: timeout, admit: admit, complete: complete)
+          callTimeoutSeconds: timeout, references: references, admit: admit, complete: complete)
       }
     /// Time limits for one model call. Policies until R51's measurements: a local model writes
     /// 1,500 tokens in about a minute on an M-series Mac, a hosted reasoning model in under two.
@@ -305,6 +321,9 @@ final class MeetingSummaryOwner {
     /// the summary is told and `summaryInputs.contextSHA256` records.
     let factsBlock: String
     let summaryInputs: SummaryInputs
+    /// #3147 PR4A (D5): the tagged sources on a qualified route whose sources match the
+    /// transcript; nil writes the plain summary exactly as before.
+    let sources: MeetingSummaryReferenceSources?
   }
 
   private enum End: Equatable {
@@ -501,7 +520,7 @@ final class MeetingSummaryOwner {
         meetingID, selection: selection,
         // The attempt's own captured revision when its preparation carries one (EG-1); a
         // provider whose preparation carries none is read as before.
-        attemptRevision: prepared.artifactRevision.map { Optional($0) })
+        attemptRevision: prepared.artifactRevision.map { Optional($0) }, withSources: true)
     else {
       return Ending(end: deps.hasNoWords(meetingID) ? .nothingToSummarize : .cancelled)
     }
@@ -539,11 +558,20 @@ final class MeetingSummaryOwner {
     // R11: an AI title only when "Write a summary when a meeting ends" is on, here and again
     // after the save; a Write again with it off writes the summary alone.
     let titleWanted = deps.isEnabled()
+    // #3147 PR4A (D5): on a qualified route the model reads tagged turns and note blocks; the
+    // notes are tagged only when their blocks are known, so no notes are lost.
+    let references = inputs.sources.map {
+      MeetingSummary.ReferenceRequest(sources: $0, inputs: inputs.summaryInputs)
+    }
+    let transcriptText = inputs.sources?.taggedTranscript ?? inputs.transcript.text
+    let notesText =
+      inputs.sources.flatMap { $0.notes.isEmpty ? nil : $0.taggedNotes } ?? inputs.notes
     let answer: MeetingSummary.Written
     do {
       answer = try await deps.write(
-        inputs.transcript.text, inputs.notes, inputs.factsBlock, prepared.window,
-        local ? deps.localCallTimeoutSeconds : deps.hostedCallTimeoutSeconds, admit, complete)
+        transcriptText, notesText, inputs.factsBlock, prepared.window,
+        local ? deps.localCallTimeoutSeconds : deps.hostedCallTimeoutSeconds, references, admit,
+        complete)
     } catch let failure as MeetingSummary.Failure {
       if local {
         lane.endSummaryCall()
@@ -581,7 +609,7 @@ final class MeetingSummaryOwner {
 
     // The meeting changed while the summary was written (a rename, new notes, a Retry, a model
     // change): the answer describes something else and is not saved.
-    guard currentInputs(meetingID, selection: deps.selection()) == inputs else {
+    guard currentInputs(meetingID, selection: deps.selection(), withSources: true) == inputs else {
       return Ending(end: .stale)
     }
     // Every answer of the checked save also ends the owed mark. The save holds a relaunch.
@@ -592,9 +620,19 @@ final class MeetingSummaryOwner {
       approvedUserEdit: approvedUserEdit)
     {
     case .saved:
+      // #3147 PR4A (D5): the references of exactly the text just saved, or none (which also
+      // removes an older file). A failed save costs only the links.
+      let document = answer.document.flatMap {
+        MeetingDocumentHash.sameBytes($0.renderedMarkdownSHA256, MeetingDocumentHash.sha256(text))
+          ? $0 : nil
+      }
+      if !(await deps.saveReferences(meetingID, document)) {
+        deps.log("meeting summary references not saved")
+      }
       // Checked once more after the save: a change during the write makes the saved summary
       // show as out of date (its recorded inputs differ), and the attempt counts as stale.
-      let unchanged = currentInputs(meetingID, selection: deps.selection()) == inputs
+      let unchanged =
+        currentInputs(meetingID, selection: deps.selection(), withSources: true) == inputs
       if unchanged, titleWanted, deps.isEnabled(), let title, !Task.isCancelled {
         await deps.assignTitle(meetingID, title)
       }
@@ -666,9 +704,12 @@ final class MeetingSummaryOwner {
   /// `attemptRevision`: given by a running attempt, the artifact revision it was PREPARED with
   /// (#4473), so what it saves names the model that wrote it even when Settings changed while
   /// it waited. Not given: the revision a new attempt would use now, for "is this out of date".
+  /// `withSources` (#3147 PR4A): read the reference sources too (an attempt, and its checks
+  /// before and after the save). Off for "is this out of date", which a view asks often and
+  /// which the recorded summary inputs alone decide.
   private func currentInputs(
     _ meetingID: UUID, selection: (provider: LLMProvider, model: String),
-    attemptRevision: String?? = nil
+    attemptRevision: String?? = nil, withSources: Bool = false
   ) -> Inputs? {
     guard let transcript = deps.visibleTranscript(meetingID) else {
       fingerprints[meetingID] = nil
@@ -680,18 +721,29 @@ final class MeetingSummaryOwner {
     // summary out of date.
     let factsBlock = deps.promptFacts(meetingID).map { MeetingSummary.factsBlock($0) } ?? ""
     let factsHash = factsBlock.isEmpty ? nil : MeetingDocumentHash.sha256(factsBlock)
+    // #3147 PR4A (D5): the route alone decides the prompt version, so "out of date" never
+    // depends on the sources. The sources are used only when they make exactly the transcript
+    // this summary is hashed from; otherwise the plain prompt runs and no document is made.
+    let referencing = deps.writesReferences(selection.provider, selection.model)
+    let sources =
+      referencing && withSources
+      ? deps.referenceSources(meetingID).flatMap {
+        MeetingDocumentHash.sameBytes($0.plainTranscript, transcript.text) ? $0 : nil
+      } : nil
     return Inputs(
       transcript: transcript, notes: notes, factsBlock: factsBlock,
       summaryInputs: SummaryInputs(
         transcriptSHA256: hashes.textSHA,
         notesRevision: documents.manifest(meetingID)?.notes?.revision ?? 0,
         speakerNamesSHA256: hashes.namesSHA,
-        promptVersion: MeetingSummary.promptVersion,
+        promptVersion: referencing
+          ? MeetingSummaryReferences.promptVersion : MeetingSummary.promptVersion,
         providerID: selection.provider.rawValue,
         configurationSHA256: MeetingSummary.configurationFingerprint(
           provider: selection.provider, model: selection.model,
           artifactRevision: attemptRevision ?? deps.artifactRevision(selection.provider)),
-        transcriptAttemptID: transcript.transcriptAttemptID, contextSHA256: factsHash))
+        transcriptAttemptID: transcript.transcriptAttemptID, contextSHA256: factsHash),
+      sources: sources)
   }
 
   /// #4148: true when the meeting is ready and has no visible transcript text, so the Summary

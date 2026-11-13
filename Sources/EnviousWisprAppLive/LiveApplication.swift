@@ -58,6 +58,7 @@ package final class LiveApplication {
         settingsKeyMonitor: LiveSettingsKeyMonitor(),
         // #4528 D5: the one place the real Setup shortcut rehearsal listener is chosen.
         setupShortcutMonitor: LiveSetupShortcutMonitor(),
+        historyScrollMonitor: LiveHistoryScrollMonitor(),
         relocationRelauncher: LiveRelocationRelauncher(),
         // #2455 C4: the pill. `makePanel` is a factory rather than an instance
         // because the host builds its panel lazily, on first presentation.

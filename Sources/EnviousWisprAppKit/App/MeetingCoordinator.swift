@@ -1,4 +1,5 @@
 import ApplicationServices
+import CoreAudio
 import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprLivePreview
@@ -501,6 +502,9 @@ final class MeetingCoordinator {
   let documents: MeetingDocumentsOwner
   /// Writes each ready meeting's summary (#3972 R39). Set by `MeetingWiring`; nil writes none.
   var summaries: MeetingSummaryOwner?
+  /// #3147 PR4A (D5): checks the summary links History shows. Set by `MeetingWiring`; nil
+  /// shows none.
+  var summaryReferences: (any MeetingSummaryReferencing)?
 
   /// The final pass waits for a meeting summary call, not for dictation (R50).
   var passWaitsOnSummary: Bool {
@@ -2192,12 +2196,16 @@ final class MeetingCoordinator {
     return true
   }
 
-  func rename(meetingID: UUID, title: String) async {
+  /// #3147 PR4: true only when the new title was saved. A refused rename (unknown commit, a
+  /// meeting that is gone) or a failed write is false, so the inline title can keep the edit and
+  /// offer to try again instead of showing a name that was never stored.
+  @discardableResult
+  func rename(meetingID: UUID, title: String) async -> Bool {
     await waitForCommitSettlement(meetingID)
-    guard !unknownCommits.contains(meetingID), var record = live[meetingID] else { return }
+    guard !unknownCommits.contains(meetingID), var record = live[meetingID] else { return false }
     let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
     record.title = trimmed.isEmpty ? nil : String(trimmed.prefix(120))
-    await persist(record)
+    return await persist(record)
   }
 
   /// #4012 D8, R6: a summary's AI title names a meeting that has no name yet. Read from the
@@ -3080,6 +3088,16 @@ final class MeetingCoordinator {
   func liveRecordingAnchor(meetingID: UUID) -> UInt64? {
     guard case .recording(let current, _) = phase, current == meetingID else { return nil }
     return recorder?.anchor
+  }
+
+  /// #3147 PR4A: how far into its recorded timeline `meetingID` is now, from the recorder's
+  /// host-time anchor (the clock the track writer counts audio from), so a note typed while
+  /// recording seeks to the audio heard then. Nil when that meeting is not recording.
+  func recordingPositionMs(meetingID: UUID) -> Int? {
+    guard let anchor = liveRecordingAnchor(meetingID: meetingID) else { return nil }
+    let now = deps.hostTime()
+    guard now >= anchor else { return 0 }
+    return Int(AudioConvertHostTimeToNanos(now - anchor) / 1_000_000)
   }
 
   /// #4355 PR C: the call-app speaker log collected so far for `meetingID` while it records, for

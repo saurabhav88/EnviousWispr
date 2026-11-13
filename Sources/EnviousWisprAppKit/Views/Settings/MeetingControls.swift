@@ -59,7 +59,7 @@ struct MeetingLivePanel: View {
   let startedAt: Date
   @Environment(MeetingCoordinator.self) private var meetings
   @Environment(PermissionsService.self) private var permissions
-  /// #4069: its host (`MeetingHistoryDetailView`) already reads this home.
+  /// #4069: its host (`HistoryMeetingAfterView`) already reads this home.
   @Environment(SettingsManager.self) private var settings
   /// One shared 10-per-second timeline for both meters, only while recording; reduced motion
   /// slows it to once a second.

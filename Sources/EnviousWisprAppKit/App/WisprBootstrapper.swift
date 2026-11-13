@@ -38,6 +38,8 @@ package final class WisprBootstrapper {
   let settingsKeyMonitor: any SettingsKeyMonitoring
   /// #4528 D5: the Setup shortcut screen's window-scoped rehearsal listener.
   let setupShortcutMonitor: any SetupShortcutMonitoring
+  /// #3147 PR4A: the meeting page's macOS 14 scroll watcher (`HistoryScrollMonitoring`).
+  let historyScrollMonitor: any HistoryScrollMonitoring
   let sparkleUpdateController: SparkleUpdateController
   let updateTriggerCoordinator: UpdateTriggerCoordinator
   let transcriptCoordinator: TranscriptCoordinator
@@ -237,6 +239,9 @@ package final class WisprBootstrapper {
     // #4528 D5: the Setup shortcut rehearsal listener. Required and non-defaulted for the same
     // reason as `scrollWheelMonitor`.
     setupShortcutMonitor: any SetupShortcutMonitoring,
+    // #3147 PR4A: the meeting page's scroll watcher. Required and non-defaulted for the same
+    // reason as `scrollWheelMonitor`.
+    historyScrollMonitor: any HistoryScrollMonitoring,
     relocationRelauncher: any RelocationRelaunching,
     overlayEffects: DesktopOverlayEffects,
     // #1413: the output-volume and media-player seams. Required and non-defaulted
@@ -2242,6 +2247,7 @@ package final class WisprBootstrapper {
     self.updateCoordinatorHolder = updateCoordinatorHolder
     self.settingsKeyMonitor = settingsKeyMonitor
     self.setupShortcutMonitor = setupShortcutMonitor
+    self.historyScrollMonitor = historyScrollMonitor
     self.sparkleUpdateController = sparkleUpdateController
     self.updateTriggerCoordinator = updateTriggerCoordinator
     // #2648 — Transcribe a File. Built here because the job outlives every view
@@ -3834,6 +3840,7 @@ private struct AppHomesEnvironment: ViewModifier {
         .environment(b.languageSuggestionPresenter)
         .environment(b.updateCoordinatorHolder)
         .environment(\.settingsKeyMonitor, b.settingsKeyMonitor)
+        .environment(\.historyScrollMonitor, b.historyScrollMonitor)
         .environment(b.transcriptCoordinator)
         .environment(b.fileImportCoordinator)
         .environment(b.meetingCoordinator)
