@@ -28,12 +28,10 @@
 
     private static func make(
       _ world: OnboardingCoordinatorTests.World = .init(),
-      workflow: OnboardingWorkflowOwner = .init(),
       box: Box = Box(),
       telemetry: OnboardingTelemetryObserver? = nil
-    ) -> (DevControlOnboarding, OnboardingWorkflowOwner, OnboardingCoordinatorTests.World) {
+    ) -> (DevControlOnboarding, OnboardingCoordinatorTests.World) {
       let door = DevControlOnboarding(
-        workflow: workflow,
         setupSession: SetupSession { _ in
           box.built += 1
           let coordinator = world.coordinator()
@@ -58,15 +56,13 @@
             })
         },
         checkpointData: { world.checkpoint }, legacyState: { world.legacy })
-      return (door, workflow, world)
+      return (door, world)
     }
 
-    @Test("the launch hold keeps the old onboarding closed until stop; status reads the flow's recommendation and download phases")
+    @Test("status reads the flow's recommendation and download phases")
     func launchHoldAndStatusFields() {
-      let (door, workflow, world) = Self.make()
+      let (door, world) = Self.make()
       world.speechPhase[.parakeet] = .installed
-      #expect(door.holdForUAT())
-      #expect(!workflow.legacyMayOpen && workflow.current == .backend)
       _ = door.begin()
       _ = door.send(["event": "next"])
       _ = door.send(["event": "next"])
@@ -87,14 +83,13 @@
       let after = Self.payload(door.status())
       #expect((after?["choices"] as? [String: Any])?["speech"] as? String == "parakeet")
       _ = door.stop()
-      #expect(workflow.legacyMayOpen)
     }
 
     @Test("a cold Parakeet admission with no pick is answered by one read-only owner query, never a choice")
     func catalogResolvesColdAdmission() async {
       let box = Box()
       box.ownerAnswer = .installed  // upgrade-served Parakeet the base mirror does not show
-      let (door, _, world) = Self.make(box: box)
+      let (door, world) = Self.make(box: box)
       world.speechPhase[.parakeet] = .unknown  // empty admission cache
       let queried = AsyncStream<Void> { continuation in
         box.queried = { continuation.yield() }
@@ -128,37 +123,15 @@
     @Test("status only reads: it builds no session and changes nothing")
     func statusReadsOnly() {
       let box = Box()
-      let (door, workflow, world) = Self.make(box: box)
+      let (door, world) = Self.make(box: box)
       let reply = Self.payload(door.status())
-      #expect(reply?["owner"] as? String == "none" && reply?["sessionBuilt"] as? Bool == false)
-      #expect(box.built == 0 && workflow.backendSessionActive == false && world.log.isEmpty)
-    }
-
-    @Test("a session refuses while the old onboarding is open or still working")
-    func refusesWhileLegacyBusy() {
-      let (door, workflow, _) = Self.make()
-      workflow.beginLegacyWork()
-      #expect(Self.code(door.begin()) == "busy")
-      #expect(Self.code(door.reset()) == "busy")
-      workflow.endLegacyWork()
-      workflow.legacyWindowVisible = { true }
-      #expect(Self.code(door.begin()) == "busy")
-      #expect(workflow.backendSessionActive == false)
-    }
-
-    @Test("begin claims Setup and blocks the old window; stop gives it back")
-    func beginAndStopOwnership() {
-      let (door, workflow, _) = Self.make()
-      let reply = Self.payload(door.begin())
-      #expect(reply?["opened"] as? Bool == true && reply?["owner"] as? String == "backend")
-      #expect(workflow.legacyMayOpen == false)
-      _ = door.stop()
-      #expect(workflow.backendSessionActive == false && workflow.legacyMayOpen)
+      #expect(reply?["sessionBuilt"] as? Bool == false)
+      #expect(box.built == 0 && world.log.isEmpty)
     }
 
     @Test("present needs the running backend session, refocuses one window, and stop closes it (D0)")
     func presentLifecycle() {
-      let (door, workflow, _) = Self.make()
+      let (door, _) = Self.make()
       #expect(Self.code(door.present()) == "rejected", "presented with no session")
       _ = door.begin()
       let first = Self.payload(door.present())
@@ -170,14 +143,13 @@
       _ = door.stop()
       #expect(Self.payload(door.status())?["presented"] as? Bool == false)
       #expect(NSApp.windows.filter { $0.title == "Setup" && $0.isVisible }.isEmpty)
-      #expect(workflow.legacyMayOpen)
     }
 
     @Test("closing the Setup window keeps the flow; placeholders send no screen rows (D0, M67)")
     func closeKeepsFlowAndPlaceholdersSendNothing() throws {
       let recorder = OnboardingTelemetryObserverTests.Recorder()
       let observer = recorder.observer()
-      let (door, _, _) = Self.make(telemetry: observer)
+      let (door, _) = Self.make(telemetry: observer)
       _ = door.begin()
       _ = door.send(["event": "next"])
       _ = door.send(["event": "chooseLanguage", "value": "auto"])
@@ -199,7 +171,7 @@
     func hiddenStepsReportNothing() {
       let recorder = OnboardingTelemetryObserverTests.Recorder()
       let observer = recorder.observer()
-      let (door, _, _) = Self.make(telemetry: observer)
+      let (door, _) = Self.make(telemetry: observer)
       _ = door.begin()
       _ = door.send(["event": "next"])  // Language, no window
       _ = door.send(["event": "back"])  // Welcome, still no window
@@ -240,14 +212,13 @@
     func completedOpensNothing() {
       let world = OnboardingCoordinatorTests.World()
       world.legacy = .completed
-      let (door, workflow, _) = Self.make(world)
+      let (door, _) = Self.make(world)
       #expect(Self.payload(door.begin())?["opened"] as? Bool == false)
-      #expect(workflow.backendSessionActive == false)
     }
 
     @Test("send reports moved, stayed and refused honestly; readiness cannot be sent")
     func sendOutcomes() {
-      let (door, _, _) = Self.make()
+      let (door, _) = Self.make()
       #expect(Self.code(door.send(["event": "next"])) == "rejected")  // No session yet.
       _ = door.begin()
       #expect(Self.payload(door.send(["event": "next"]))?["outcome"] as? String == "moved")
@@ -264,7 +235,7 @@
 
     @Test("goto positions and saves the step but proves nothing; done is refused")
     func gotoPositions() {
-      let (door, _, world) = Self.make()
+      let (door, world) = Self.make()
       _ = door.begin()
       let reply = Self.payload(door.goto(["step": "key"]))
       #expect(reply?["step"] as? String == "key")
@@ -276,24 +247,13 @@
     @Test("reset starts at Welcome through the runtime and the session is built once")
     func resetBuildsOnce() {
       let box = Box()
-      let (door, _, world) = Self.make(box: box)
+      let (door, world) = Self.make(box: box)
       _ = door.begin()
       _ = door.send(["event": "next"])
       let reply = Self.payload(door.reset())
       #expect(reply?["step"] as? String == "welcome" && world.log.contains("restart"))
       _ = door.reset()
       #expect(box.built == 1)
-    }
-
-    @Test("old work cannot start once a session owns Setup")
-    func legacyRefusedAfterBackendClaim() {
-      let workflow = OnboardingWorkflowOwner()
-      #expect(workflow.claimBackendSession())
-      let vm = OnboardingV2ViewModel()
-      vm.workflowOwner = workflow
-      vm.currentScreen = .warmingUp
-      vm.kickWarmingIfNeeded(warmUp: { .ready }, displayFloor: 0)
-      #expect(vm.warmingTask == nil && workflow.legacyTasks == 0)
     }
 
     @Test("the door refuses choices no Setup button offers")
@@ -321,7 +281,7 @@
     @Test("Restart Onboarding resets the same session and presents Welcome")
     func restartRouting() {
       let world = OnboardingCoordinatorTests.World()
-      let (door, _, _) = Self.make(world)
+      let (door, _) = Self.make(world)
       let windows = AppWindowCoordinator(
         application: RecordingDesktopPresentationEffects(), showInDock: { true },
         isOnboardingComplete: { false })
@@ -338,7 +298,6 @@
     @Test("a session visit begins once, abandons at most once, and a completed visit never abandons")
     func visitTerminals() {
       let progress = OnboardingProgress()
-      let workflow = OnboardingWorkflowOwner()
       let world = OnboardingCoordinatorTests.World()
       let setupSession = SetupSession(progress: progress) { _ in
         let c = world.coordinator()
@@ -355,22 +314,22 @@
               pollInterval: .seconds(3600))))
       }
       let door = DevControlOnboarding(
-        workflow: workflow, setupSession: setupSession,
+        setupSession: setupSession,
         checkpointData: { nil }, legacyState: { world.legacy })
       _ = door.begin()
       #expect(progress.isInFlight)
       let started = progress.sessionStart
       _ = door.reset()  // a reset of a live visit never rewinds it
       #expect(progress.sessionStart == started)
-      workflow.backendQuit?()  // app quit while the session owns Setup
-      #expect(progress.isInFlight == false && workflow.backendSessionActive == false)
+      setupSession.stop(reason: "app_quit")
+      #expect(!progress.isInFlight)
       _ = door.stop()  // close after quit: no second abandon, nothing in flight
       #expect(progress.isInFlight == false)
 
       _ = door.begin()
       #expect(progress.isInFlight)
       setupSession.complete()
-      #expect(progress.isInFlight == false && workflow.backendSessionActive == false)
+      #expect(!progress.isInFlight)
     }
 
     @Test("ordinary close ends the visit and reopens the same flow with a fresh window")
@@ -423,31 +382,12 @@
       #expect(practice.text.isEmpty && components.coordinator.state.step == .welcome)
     }
 
-    @Test("an idle stop never ends the old onboarding's live visit")
-    func idleStopLeavesLegacyVisit() {
-      let progress = OnboardingProgress()
-      let workflow = OnboardingWorkflowOwner()
-      workflow.legacyWindowVisible = { true }  // the old Setup window is open
-      progress.begin(source: "first_run")  // its visit (the old onboarding's ActionWirer begins it)
-      let setupSession = SetupSession(progress: progress) { _ in
-        fatalError("stop must not build a session")
-      }
-      let door = DevControlOnboarding(
-        workflow: workflow, setupSession: setupSession,
-        checkpointData: { nil }, legacyState: { .notStarted })
-      _ = door.stop()
-      setupSession.complete()
-      #expect(progress.isInFlight)
-      #expect(workflow.current == .legacy)
-    }
-
     @Test("a session's screen rows exist only while its own visit is in flight")
     func sessionScreenRowsFollowOwnership() {
       let progress = OnboardingProgress()
       var rows: [String] = []
       func door(_ world: OnboardingCoordinatorTests.World) -> DevControlOnboarding {
         DevControlOnboarding(
-          workflow: OnboardingWorkflowOwner(),
           setupSession: SetupSession(progress: progress) { door in
             let c = world.coordinator()
             let recorder = OnboardingTelemetryObserverTests.Recorder()
@@ -487,16 +427,5 @@
       #expect(rows == ["welcome"] && progress.isInFlight == false)
     }
 
-    @Test("the old onboarding reports each long-lived task while it runs")
-    func legacyTasksReported() async {
-      let workflow = OnboardingWorkflowOwner()
-      let vm = OnboardingV2ViewModel()
-      vm.workflowOwner = workflow
-      vm.currentScreen = .warmingUp
-      vm.kickWarmingIfNeeded(warmUp: { .ready }, displayFloor: 0)
-      #expect(workflow.legacyTasks == 1 && workflow.current == .legacy)
-      await vm.warmingTask?.value
-      #expect(workflow.legacyTasks == 0 && workflow.current == .none)
-    }
   }
 #endif

@@ -147,13 +147,6 @@ public protocol ASRManagerInterface: AnyObject {
   /// never as a guessed one.
   var publishedModelIdentity: ASRModelIdentity? { get }
 
-  // Download progress (0.0–1.0), phase description, and detail string.
-  // Updated during loadModel() when model download is in progress.
-  // periphery:ignore:all - read via existential type in OnboardingV2View progress polling
-  var downloadProgress: Double { get }
-  var downloadPhase: String { get }
-  var downloadDetail: String { get }
-
   // Model lifecycle
   // #3546: the Parakeet load request (cache-only mode and install directory)
   // is no longer two settable members here. It is one package-visible

@@ -31,7 +31,7 @@ struct SetupGateTests {
   ) -> P {
     P(
       speech: .parakeet, speechPhase: speech, polish: polish, polishPhase: polishPhase,
-      polishPreparation: prep, block: block, speechInstalled: speech == .installed,
+      polishPreparation: prep, block: block,
       engineWarm: warm, warmFailed: warmFailed, microphoneGranted: mic, accessibilityGranted: ax,
       downloadsFinished: finished, isNetworkSlow: slow, isCountingDown: counting)
   }

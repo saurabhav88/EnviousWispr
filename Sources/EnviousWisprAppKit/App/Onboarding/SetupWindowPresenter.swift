@@ -1,4 +1,5 @@
 import AppKit
+import EnviousWisprCore
 import SwiftUI
 
 /// Presents one window for the app's Setup session (#4528 M85).
@@ -64,7 +65,7 @@ final class SetupWindowPresenter: NSObject, NSWindowDelegate {
         x: 0, y: 0, width: SetupLayout.windowWidth, height: SetupLayout.contentHeight),
       styleMask: [.titled, .closable], backing: .buffered, defer: false)
     window.identifier = NSUserInterfaceItemIdentifier(LaunchWindowIdentity.onboardingID)
-    window.title = String(localized: "Setup")
+    window.title = AppConstants.onboardingWindowTitle
     window.isReleasedWhenClosed = false
     window.contentViewController = NSHostingController(rootView: SetupWindowRoot(model: model))
     window.delegate = self

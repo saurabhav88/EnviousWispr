@@ -429,9 +429,6 @@ private final class FakeASRManager: ASRManagerInterface {
   var onVendorDecodeChunkScheduled: (@MainActor @Sendable () -> Void)?
   var onTranscriptionProgress: (@MainActor @Sendable (Double) -> Void)?
   var isStreaming: Bool { false }
-  var downloadProgress: Double { 0 }
-  var downloadPhase: String { "" }
-  var downloadDetail: String { "" }
   var activeBackendSupportsStreaming: Bool { false }
   var onServiceInterrupted: (() -> Void)?
   var loadProgressTickReporter: (@MainActor @Sendable (Date?, String) -> Void)?

@@ -48,9 +48,6 @@ public final class ASRManager: ASRManagerInterface {
   public private(set) var isStreaming = false
 
   // Download progress — updated in-process during loadModel().
-  public private(set) var downloadProgress: Double = 0
-  public private(set) var downloadPhase: String = ""
-  public private(set) var downloadDetail: String = ""
   /// #1707 Phase 3 (§3.2, row 7) / #1741 Chunk 3 — the mutation-side capability
   /// guarding `unloadModel()`'s idle-timer unload, a background actor unrelated
   /// to any active session, so recovery must never race it. Required at
@@ -453,9 +450,6 @@ public final class ASRManager: ASRManagerInterface {
   }
 
   private func performLoad(generation gen: UInt64) async throws {
-    downloadProgress = 0
-    downloadPhase = ModelLoadStallPolicy.listingPhase
-    downloadDetail = ""
     // #1908 Codex review: clear any stale shared-progress entry (e.g. a
     // `validatingCachePhase` write left by delivery's legacy-migration check,
     // `ParakeetModelDelivery.ensureModelLocationReady`) before this attempt's
@@ -505,9 +499,6 @@ public final class ASRManager: ASRManagerInterface {
     let progress: ProgressCallback = { [weak self] fraction, phase, detail in
       Task { @MainActor [weak self] in
         guard let self, gen == self.loadGeneration, !self.isModelLoaded else { return }
-        self.downloadProgress = fraction
-        self.downloadPhase = phase
-        self.downloadDetail = detail
         // #1908: event-driven only — never a fixed cadence. A timer-driven
         // write here would manufacture a fresh timestamp during a genuine
         // hang and hide the wedge from the sessionless guard, which reads
@@ -578,9 +569,6 @@ public final class ASRManager: ASRManagerInterface {
       try await candidate.prepare(progressCallback: progress)
     }
 
-    downloadProgress = 1.0
-    downloadPhase = ""
-    downloadDetail = ""
     // #959: read readiness first, THEN guard, so a cancel/unload/switch that
     // landed during the `isReady` await can't be overwritten by a stale write.
     let ready = await candidate.isReady

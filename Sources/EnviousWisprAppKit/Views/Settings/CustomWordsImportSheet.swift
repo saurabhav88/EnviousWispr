@@ -5,7 +5,7 @@ import SwiftUI
 /// The Custom Words import sheet (#1657 PR-F1 shell, #1669 PR-F2c review).
 ///
 /// One observable model, one root `switch`, one container-level `.animation()`
-/// — the `OnboardingV2View` root-switch pattern without its timers or
+/// — one root switch without timers or
 /// permissions logic. Paste, file, and supported-app sources all feed the same
 /// review and commit path.
 ///

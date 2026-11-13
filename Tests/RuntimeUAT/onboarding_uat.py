@@ -405,9 +405,6 @@ def busy_reasons(call):
         reasons.append(f"a meeting is {phase}")
     if meeting.get("processing"):
         reasons.append("a meeting is still processing")
-    ob = call("onboarding", "status")
-    if ob.get("legacyWindowVisible") or ob.get("legacyTasks"):
-        reasons.append("the old onboarding is open or working")
     return reasons
 
 
@@ -472,7 +469,7 @@ def s_resume(run, speech):
     before = run.status()
     picks = before.get("choices")
     r = run.app.call("onboarding", "stop")
-    s.expect(r.get("owner") != "backend" and r.get("checkpoint") == before.get("checkpoint"),
+    s.expect(not r.get("active") and r.get("checkpoint") == before.get("checkpoint"),
              "stop gives Setup back and keeps the checkpoint", r.get("checkpoint"))
     r = run.app.call("onboarding", "begin")
     s.expect(r.get("opened") is True and r.get("step") == before.get("step")
@@ -483,8 +480,8 @@ def s_resume(run, speech):
     run.app.quit()
     run.app.launch(hold=True)
     st = run.status()
-    s.expect(st.get("owner") == "backend" and not st.get("legacyWindowVisible"),
-             "the launch hold kept the old onboarding closed", st.get("owner"))
+    s.expect(not st.get("presented") and not st.get("sessionBuilt"),
+             "the launch hold kept Setup closed", st.get("presented"))
     s.expect(st.get("checkpoint") == before.get("checkpoint"), "checkpoint survived the relaunch")
     r = run.app.call("onboarding", "begin")
     s.expect(r.get("step") == before.get("step") and r.get("choices") == picks,
@@ -671,7 +668,6 @@ def s_completion(run, speech):
     s.expect(r.get("legacyState") == "completed" and r.get("checkpoint") is None,
              "completion is durable and deletes the checkpoint",
              (r.get("legacyState"), r.get("checkpoint")))
-    s.expect(r.get("owner") != "backend", "completion gives Setup back", r.get("owner"))
     run.app.call("onboarding", "permissions", "--clear")
     return s
 
@@ -1532,7 +1528,6 @@ def s_interrupted(run, speech):
     s.expect(r.get("legacyState") == "completed" and r.get("checkpoint") is None,
              "completion recovered: completed, checkpoint gone",
              (r.get("legacyState"), r.get("checkpoint")))
-    s.expect(r.get("owner") != "backend", "Setup given back", r.get("owner"))
     return s
 
 
@@ -2351,8 +2346,7 @@ def self_test():
         check(sent == [], f"discovery sends no choose event (sent {sent})")
         # M69 (d): the busy preflight only reads, and each kind of busy work refuses.
         idle = {("status",): {"activeDriver": {"state": "idle"}, "fileImportRunning": False},
-                ("meeting", "status"): {"phase": {"name": "idle"}, "processing": None},
-                ("onboarding", "status"): {"legacyWindowVisible": False, "legacyTasks": 0}}
+                ("meeting", "status"): {"phase": {"name": "idle"}, "processing": None}}
         quiet = Recording(idle)
         check(busy_reasons(quiet.call) == [], "an idle app is not busy")
         check(all(c in READ_ONLY_CALLS for c in quiet.calls), "the preflight only reads")
@@ -2360,8 +2354,7 @@ def self_test():
                 (("status",), {"activeDriver": {"state": "recording"}}, "dictating"),
                 (("status",), {"activeDriver": {"state": "idle"}, "fileImportRunning": True},
                  "importing"),
-                (("meeting", "status"), {"phase": {"name": "recording"}}, "in a meeting"),
-                (("onboarding", "status"), {"legacyWindowVisible": True}, "old onboarding open")):
+                (("meeting", "status"), {"phase": {"name": "recording"}}, "in a meeting")):
             replies = dict(idle)
             replies[key] = patch
             check(busy_reasons(Recording(replies).call) != [], f"busy when {label}")

@@ -549,7 +549,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
 
   /// Cold-boot warm-up coordinator (#879). The SINGLE shared entry every warm-up
   /// site routes through — launch (`WisprBootstrapper` for Parakeet,
-  /// `SetupCoordinator` for Whisper), onboarding (`OnboardingV2View`), engine
+  /// `SetupCoordinator` for Whisper), Setup, engine
   /// swap (`PipelineSettingsSync`), and the cold press (`RecordingStarter`) — so
   /// the readiness-check + single-flight + telemetry live in one place and can't
   /// drift. Reads the live `adapter.readiness` (the ONLY gate — no persisted

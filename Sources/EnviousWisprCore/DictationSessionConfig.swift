@@ -19,9 +19,7 @@ public enum TriggerSource: String, Sendable, CaseIterable {
   case toolbar = "toolbar"
   /// macOS menu bar item (system menu bar at top of screen, NOT a status bar tray).
   case menuBar = "menu_bar"
-  /// First-run onboarding triggered the dictation. Forward-compatible; no
-  /// production caller today (OnboardingV2View's `recording` method is hotkey
-  /// capture, not dictation).
+  /// Reserved first-run onboarding trigger value for telemetry compatibility.
   case onboarding = "onboarding"
   /// Internal / test / future automation. Reserve value. Used by
   /// `DictationSessionConfig.testDefault()`; do NOT use from production UI code.

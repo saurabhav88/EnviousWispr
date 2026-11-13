@@ -224,11 +224,9 @@
     @Test("simulation stays inside Setup's ownership and is cleared whenever Setup is given back")
     func simulationOwnership() {
       defer { OnboardingDebugFaults.active.removeAll() }
-      let workflow = OnboardingWorkflowOwner()
       let service = Self.service(Calls())
       let world = OnboardingCoordinatorTests.World()
       let door = DevControlOnboarding(
-        workflow: workflow,
         setupSession: SetupSession { _ in
           let c = world.coordinator()
           return .init(
@@ -248,37 +246,26 @@
         if case .error(let code, _) = r { return code }
         return nil
       }
-      // Refused while the old onboarding is working: nothing shared changes.
-      workflow.beginLegacyWork()
-      #expect(code(door.permissionsCommand(["mic": "granted"])) == "busy")
-      #expect(code(door.fault(["name": "warm-fail"])) == "busy")
-      #expect(service.simulated == nil && OnboardingDebugFaults.active.isEmpty)
-      workflow.endLegacyWork()
-
       // Configuring before begin claims Setup; stop with no session running still cleans up.
       _ = door.permissionsCommand(["mic": "granted"])
       _ = door.fault(["name": "disk-short"])
-      #expect(workflow.backendSessionActive && workflow.legacyMayOpen == false)
       _ = door.stop()
       #expect(service.simulated == nil && OnboardingDebugFaults.active.isEmpty)
-      #expect(workflow.backendSessionActive == false)
 
       // Completion gives Setup back through the same path, which clears simulation first.
       _ = door.begin()
       _ = door.fault(["name": "key-invalid"])
-      door.endOwnership()
-      #expect(OnboardingDebugFaults.active.isEmpty && workflow.backendSessionActive == false)
+      door.setupSession.complete()
+      #expect(OnboardingDebugFaults.active.isEmpty)
     }
 
     @Test("a completed begin clears simulation; rejected arguments claim nothing and change nothing")
     func completedBeginAndRejectedArguments() {
       defer { OnboardingDebugFaults.active.removeAll() }
-      let workflow = OnboardingWorkflowOwner()
       let service = Self.service(Calls())
       let world = OnboardingCoordinatorTests.World()
       world.legacy = .completed
       let door = DevControlOnboarding(
-        workflow: workflow,
         setupSession: SetupSession { _ in
           let c = world.coordinator()
           return .init(
@@ -302,18 +289,17 @@
       #expect(code(door.profile(["ram": 0])) == "badArgs")
       #expect(code(door.permissionsCommand(["mic": "maybe"])) == "badArgs")
       #expect(code(door.permissionsCommand([:])) == "badArgs")
-      #expect(workflow.backendSessionActive == false)
       #expect(service.simulated == nil && SetupAdvice.debugProfile == nil)
 
       // The real completed-begin path: Setup does not open and goes back clean.
       _ = door.permissionsCommand(["mic": "granted"])
-      #expect(workflow.backendSessionActive && service.simulated != nil)
+      #expect(service.simulated != nil)
       guard case .ok(let reply, _) = door.begin() else {
         Issue.record("begin refused")
         return
       }
       #expect(reply["opened"] as? Bool == false)
-      #expect(workflow.backendSessionActive == false && service.simulated == nil)
+      #expect(service.simulated == nil)
     }
 
     @Test("door simulation commands check their values and report what is simulated")
@@ -322,7 +308,6 @@
       let world = OnboardingCoordinatorTests.World()
       let service = Self.service(Calls())
       let door = DevControlOnboarding(
-        workflow: OnboardingWorkflowOwner(),
         setupSession: SetupSession { _ in
           let c = world.coordinator()
           return .init(

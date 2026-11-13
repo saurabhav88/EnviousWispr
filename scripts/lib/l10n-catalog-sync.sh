@@ -158,7 +158,6 @@ DEV_ONLY_KEYS = frozenset({
     'Run Pipeline Benchmark',
     'Save dictation audio for debugging',
     "Saves a local copy of each dictation's audio for diagnosing transcription issues. Stored only on this Mac, newest 500 recordings kept. Persists across rebuilds. Applies starting with your very next dictation.",
-    'Simulate AI polish state',
     'Streaming finalize:',
     'Streaming vs Batch WER:',
     'Total: %lldms',

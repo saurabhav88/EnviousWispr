@@ -97,18 +97,6 @@
       "color" : 9,
       "radius" : 1
     },
-    "Sources\/EnviousWisprAppKit\/Views\/Onboarding\/OnboardingV2View.swift" : {
-      "fontSize" : 18,
-      "radius" : 21
-    },
-    "Sources\/EnviousWisprAppKit\/Views\/Onboarding\/PracticeScreen.swift" : {
-      "fontSize" : 3,
-      "radius" : 3
-    },
-    "Sources\/EnviousWisprAppKit\/Views\/Onboarding\/WarmingScreen.swift" : {
-      "fontSize" : 4,
-      "radius" : 4
-    },
     "Sources\/EnviousWisprAppKit\/Views\/QuickAdd\/QuickAddPanelView.swift" : {
       "fontSize" : 5,
       "radius" : 6

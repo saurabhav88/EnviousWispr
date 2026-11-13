@@ -111,7 +111,6 @@ final class OnboardingTelemetryObserver {
   private var rejectedKeys: Set<String> = []
   /// How this visit's film ended, for the completion summary.
   private var filmResult: OnboardingTelemetry.FilmResult?
-  var rowsThisVisit: Int { seenThisVisit.count }
 
   init(inputs: Inputs) {
     self.inputs = inputs

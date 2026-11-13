@@ -131,7 +131,7 @@ final class OnboardingRuntime {
     var now: () -> Date
     /// Waits out a duration (production: `Task.sleep`); tests inject their own.
     var sleep: (Duration) async -> Void = { try? await Task.sleep(for: $0) }
-    /// The existing onboarding permission cadence (OnboardingV2View.pollPermissions, 2 s).
+    /// The onboarding permission cadence (2 s).
     var pollInterval: Duration = .seconds(2)
     /// Telemetry's read at this tick (download ends, blockers; F2b). Read-only; no new timer.
     var observeTelemetry: () -> Void = {}
