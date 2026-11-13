@@ -5,6 +5,7 @@ struct SetupShortcutKeycap: View {
   let display: String
   let isCapturing: Bool
   let isDown: Bool
+  var reduceMotion = false
 
   private var shape: RoundedRectangle {
     RoundedRectangle(cornerRadius: DesignRadius.xxl, style: .continuous)
@@ -26,10 +27,22 @@ struct SetupShortcutKeycap: View {
         color: Color.obAccent.opacity(isCapturing || isDown ? 0 : 0.12),
         radius: DesignRadius.lg, y: 3
       )
+      .background { if isCapturing && !reduceMotion { pulse } }
       .contentShape(shape)
       .overlay(alignment: .topTrailing) {
         if !isCapturing { changeBadge }
       }
+  }
+
+  /// Mockup obPulse: while waiting for a new key, a soft accent glow grows to 6 points and back
+  /// every 1.6 s.
+  private var pulse: some View {
+    TimelineView(.animation) { timeline in
+      let p = (1 - cos(2 * .pi * timeline.date.timeIntervalSinceReferenceDate / 1.6)) / 2
+      // Drawn behind the key: the stroke's outer half is the 0 to 6 point ring.
+      shape.stroke(Color.obAccent.opacity(0.3), lineWidth: 12 * p)
+    }
+    .allowsHitTesting(false)
   }
 
   @ViewBuilder
@@ -37,8 +50,13 @@ struct SetupShortcutKeycap: View {
     if isCapturing {
       HStack(spacing: DesignSpacing.sm) {
         Text("Press a key").font(.firstRunLabel)
-        Capsule().fill(Color.obAccent)
-          .frame(width: DesignSpacing.xxs, height: ShortcutLayout.caretHeight)
+        // Mockup obCaret: the caret blinks once a second (on for the first half).
+        TimelineView(.animation(paused: reduceMotion)) { timeline in
+          let phase = timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1)
+          Capsule().fill(Color.obAccent)
+            .frame(width: DesignSpacing.xxs, height: ShortcutLayout.caretHeight)
+            .opacity(reduceMotion || phase < 0.5 ? 1 : 0)
+        }
       }
     } else {
       Text(verbatim: display)

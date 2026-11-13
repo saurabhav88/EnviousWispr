@@ -14,6 +14,7 @@ struct SetupGateScreen: View {
   @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
   @Environment(\.overlayReduceMotionOverride) private var reduceMotionOverride
   private var reduceMotion: Bool { reduceMotionOverride ?? systemReduceMotion }
+  @State private var burst = 0
 
   private var step: OnboardingStep { screen == .downloads ? .downloads : .gettingReady }
 
@@ -24,7 +25,8 @@ struct SetupGateScreen: View {
     let problem = SetupGate.problem(p, screen: screen)
     VStack(spacing: 0) {
       RainbowLipsView(
-        animationState: problem == nil ? .pulse : .idle, size: SetupMetrics.screenLips
+        animationState: problem == nil ? .pulse : .idle, size: SetupMetrics.screenLips,
+        burst: burst
       )
       .accessibilityHidden(true)
       .frame(width: SetupMetrics.screenLips, height: SetupMetrics.screenLips)
@@ -55,7 +57,10 @@ struct SetupGateScreen: View {
       footer(p)
     }
     .padding(.top, DesignSpacing.xs)
-    .onAppear { model.screenMounted(step, epoch: epoch) }
+    .onAppear {
+      if !reduceMotion { burst += 1 }  // mockup: a happy bounce when the screen arrives
+      model.screenMounted(step, epoch: epoch)
+    }
   }
 
   // MARK: Names and sizes from the owners
@@ -131,7 +136,7 @@ struct SetupGateScreen: View {
           .resizable()
           .symbolRenderingMode(.palette)
           .foregroundStyle(Color.firstRunErrorText, Color.obErrorSoft)
-      case .working: SetupSpinner(reduceMotion: reduceMotion)
+      case .working: SetupSpinner(reduceMotion: reduceMotion, diameter: SetupMetrics.gateSpinner)
       case .pending:
         Circle().strokeBorder(Color.firstRunTextTertiary.opacity(0.6), lineWidth: 1.8)
       }

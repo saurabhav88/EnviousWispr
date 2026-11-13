@@ -118,11 +118,14 @@ struct SetupPracticeScreen: View {
   private var reduceMotion: Bool { reduceMotionOverride ?? systemReduceMotion }
 
   @FocusState private var editorFocused: Bool
+  @State private var burst = 0
+  @State private var glow = false
 
   var body: some View {
     VStack(spacing: DesignSpacing.xl) {
-      RainbowLipsView(animationState: state.lips, size: SetupMetrics.screenLips)
+      RainbowLipsView(animationState: state.lips, size: SetupMetrics.screenLips, burst: burst)
         .accessibilityHidden(true)
+        .onAppear { if !reduceMotion { burst += 1 } }  // mockup: a happy bounce on arrival
       VStack(spacing: DesignSpacing.md) {
         Text(state.headline)
           .font(.firstRunDisplay)
@@ -231,6 +234,19 @@ struct SetupPracticeScreen: View {
             ? Color.firstRunSuccessText : editorFocused ? Color.obAccent : Color.firstRunRule,
           lineWidth: 1
         ).allowsHitTesting(false)
+        // Mockup: the border turns green over 0.2 s on success.
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: state == .worked)
+      }
+      // Mockup obGlow 0.7 s: on success a green ring grows to 8 points and fades back.
+      .background {
+        shape.stroke(Color.obSuccessSoft, lineWidth: glow ? 16 : 0)
+          .opacity(glow ? 1 : 0)
+          .allowsHitTesting(false)
+      }
+      .onChange(of: state == .worked) { _, worked in
+        guard worked, !reduceMotion else { return }
+        withAnimation(.easeOut(duration: 0.28)) { glow = true }
+        withAnimation(.easeOut(duration: 0.42).delay(0.28)) { glow = false }
       }
       .background {
         SetupPracticeEditorFocus(
