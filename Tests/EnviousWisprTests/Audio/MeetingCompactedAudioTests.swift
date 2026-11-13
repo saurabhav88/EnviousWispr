@@ -256,6 +256,19 @@ struct MeetingCompactedAudioTests {
         == .cleaned(m.cleaned, .compactionFixture))
   }
 
+  @Test("a compacted file whose bytes changed at the same size is unusable, not healthy")
+  func changedCompactedBytes() throws {
+    let m = try meeting()
+    let url = m.folder.appendingPathComponent(try compactedName(m, m.raw[0]))
+    var data = try Data(contentsOf: url)
+    data[data.count - 8] ^= 0xFF
+    try data.write(to: url)
+    let report = MeetingTrackRecovery.recover(
+      folder: m.folder, inventory: m.inventory, identity: MeetingStore.audioFileIdentity(at:))
+    #expect(report.compressedProblems.contains(.fellBackToOriginals))
+    #expect(report.segments[.microphone] == m.raw)
+  }
+
   @Test("a missing compacted file with a changed original is damage, never a mix")
   func damageWithoutVerifiedOriginals() throws {
     let m = try meeting()

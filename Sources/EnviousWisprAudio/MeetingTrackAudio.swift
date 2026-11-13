@@ -492,7 +492,8 @@ extension MeetingTrackRecovery {
           frameCount: item.logical.frameCount)
         let url = folder.appendingPathComponent(item.fileName)
         let problem: Problem?
-        if fileSize(url) != entry.compressedIdentity.byteCount {
+        // The exact committed bytes, not only a plausible header: a changed payload is damage.
+        if (try? identity(url)) != entry.compressedIdentity {
           problem =
             FileManager.default.fileExists(atPath: url.path)
             ? .incompatibleFinal(fileName: item.fileName)
@@ -621,10 +622,6 @@ extension MeetingTrackRecovery {
       report.segments[track]?.sort { ($0.startMs, $0.index) < ($1.startMs, $1.index) }
     }
     report.cleanedSegments.sort { ($0.startMs, $0.index) < ($1.startMs, $1.index) }
-  }
-
-  private static func fileSize(_ url: URL) -> Int64? {
-    (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.int64Value
   }
 }
 

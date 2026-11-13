@@ -232,6 +232,21 @@ struct MeetingAudioCompactorTests {
     #expect(try listing(f.folder) == before)
   }
 
+  @Test("cancelled after the last encode: no result, and no output left")
+  func cancellationAfterEncoding() async throws {
+    let f = try fixture()
+    let outer = TaskBox()
+    let compactor = MeetingAudioCompactor(
+      dependencies: .init(afterEncoding: { _ in outer.cancel() }))
+    let before = try listing(f.folder)
+    let task = Task {
+      try await compactor.prepare(ticket: f.ticket, record: f.record, folder: f.folder)
+    }
+    outer.set(task)
+    await #expect(throws: CancellationError.self) { _ = try await task.value }
+    #expect(try listing(f.folder) == before)
+  }
+
   @Test("a meeting that is not a finished, unchanged recording is refused")
   func refusals() async throws {
     let f = try fixture()
@@ -272,3 +287,22 @@ private final class CompactorEncodeCounter: @unchecked Sendable {
     return value
   }
 }
+
+/// Lets an encode seam cancel the test's own preparation task (set right after it starts; the
+/// seam runs only after every segment is encoded, long after).
+private final class TaskBox: @unchecked Sendable {
+  // One optional task behind one lock: safe from any thread.
+  private let lock = NSLock()
+  private var task: Task<VerifiedMeetingAudioInventory, any Error>?
+  func set(_ task: Task<VerifiedMeetingAudioInventory, any Error>) {
+    lock.lock()
+    defer { lock.unlock() }
+    self.task = task
+  }
+  func cancel() {
+    lock.lock()
+    defer { lock.unlock() }
+    task?.cancel()
+  }
+}
+

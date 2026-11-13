@@ -112,7 +112,13 @@ final class MeetingAudioCompactor: MeetingAudioCompacting {
     } onCancel: {
       work.cancel()
     }
-    return VerifiedMeetingAudioInventory(inventory)
+    let verified = VerifiedMeetingAudioInventory(inventory)
+    // Cancelled after the work's last check: its result is not handed on, and its outputs go.
+    if Task.isCancelled {
+      Self.discard(verified, folder: folder)
+      throw CancellationError()
+    }
+    return verified
   }
 
   /// Removes the uncommitted outputs of `verified` (its `.partial` files), for a preparation that
@@ -190,6 +196,7 @@ final class MeetingAudioCompactor: MeetingAudioCompacting {
         again.sources.map(\.identity) == snapshot.sources.map(\.identity),
         again.proofs == snapshot.proofs
       else { throw PreparationError.sourceChanged }
+      try Task.checkCancellation()
 
       let inventory = MeetingCompressedInventory(
         id: inventoryID, transcriptGeneration: ticket.transcriptGeneration, segments: segments,
