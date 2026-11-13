@@ -1,6 +1,6 @@
 {
   "about": "#3147 PR4B plan section 16 C6: the frozen parity matrix for compacted meeting audio. MeetingCompactionRealBoundaryTests reads this file; score_c6.py scores its printed C6 raw lines with the eval scorer. Changing any value is a new matrix and needs a new review.",
-  "version": 1,
+  "version": 2,
   "corpus": "Tests/Fixtures/meeting-voices/manifest.json",
   "gates": {
     "codec": "AAC-LC (kAudioFormatMPEG4AAC), 16000 Hz, 1 channel, SpeechAudioEncoder.Purpose.meeting",
@@ -8,7 +8,9 @@
     "sampleRate": 16000,
     "durationToleranceMs": 50,
     "maxMBPerTrackHour": 25.0,
-    "maxAbsWERDeltaPoints": 0.5,
+    "maxWERIncreasePoints": 0.5,
+    "werRule": "Version 2 (founder 2026-11-13, plan section 17 'PR4B C6 WER rule amended'): one-sided. Per engine, pooled compacted WER minus pooled original WER must be at most maxWERIncreasePoints; a lower compacted WER passes and is reported as IMPROVED. Every row whose text changed is printed with its reference, original and compacted text. Version 1 gated the absolute delta.",
+    "emptyReferenceRule": "Rows with no reference words carry no weight in the pool and are checked on their own, one-sided: the compacted take may not add words the original did not (the eval scorer's empty-reference WER rising); fewer words is reported as improved.",
     "scorer": "scripts/eval/build_parakeet_corpus.py :: wer (imported unchanged by score_c6.py)",
     "seekMinCorrelation": 0.9,
     "seekMaxLagSamples": 16,

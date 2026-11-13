@@ -76,7 +76,7 @@ enum C6Fixture {
       let sampleRate: Double
       let durationToleranceMs: Double
       let maxMBPerTrackHour: Double
-      let maxAbsWERDeltaPoints: Double
+      let maxWERIncreasePoints: Double
       let seekMinCorrelation: Double
       let seekMaxLagSamples: Int
       let seekSearchLagSamples: Int
@@ -139,7 +139,7 @@ enum C6Fixture {
 
   static func matrix() throws -> Matrix {
     let matrix = try JSONDecoder().decode(Matrix.self, from: Data(contentsOf: matrixURL))
-    try #require(matrix.version == 1, "c6-matrix.json is version \(matrix.version), not 1")
+    try #require(matrix.version == 2, "c6-matrix.json is version \(matrix.version), not 2")
     try #require(
       matrix.gates.meetingBitRate == SpeechAudioEncoder.Purpose.meeting.bitRate,
       "the production meeting bitrate is not the matrix's \(matrix.gates.meetingBitRate)")

@@ -5,8 +5,10 @@ Usage: python3 -I score_c6.py <worktree> <test log>
 Imports `wer` from <worktree>/scripts/eval/build_parakeet_corpus.py and reads the frozen
 expectations from <worktree>/Tests/Fixtures/meeting-compaction/c6-matrix.json. Pools word errors
 per engine over every matrix segment (original vs compacted) and fails (exit 1) when an engine is
-missing, its row count is not the matrix's, or its absolute WER delta exceeds the gate. A missing
-or partial run is never a pass.
+missing, its rows are not the frozen cases, the suite did not pass whole, or (matrix version 2,
+one-sided rule) its compacted WER exceeds its original WER by more than the gate. A lower compacted
+WER passes and is reported as IMPROVED; every changed row is printed against its reference. A
+missing or partial run is never a pass.
 """
 import importlib.util
 import json
@@ -21,7 +23,9 @@ spec = importlib.util.spec_from_file_location("bpc", scorer_path)
 bpc = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(bpc)
 matrix = json.loads((worktree / "Tests/Fixtures/meeting-compaction/c6-matrix.json").read_text())
-gate = matrix["gates"]["maxAbsWERDeltaPoints"]
+if matrix.get("version") != 2:
+    sys.exit(f"c6-matrix.json is version {matrix.get('version')}; this scorer reads version 2")
+gate = matrix["gates"]["maxWERIncreasePoints"]
 expected_rows = matrix["expected"]["transcribedRowsPerEngine"]
 engines = matrix["expected"]["engines"]
 
@@ -67,8 +71,13 @@ for engine in engines:
         o = bpc.wer(r["reference"], r["original"])
         c = bpc.wer(r["reference"], r["compressed"])
         if n == 0:
-            # No reference words (noise only): weight 0 in the pool, so its own change is gated.
-            failed |= abs(c - o) * 100 > gate
+            # No reference words (noise only): weight 0 in the pool, so it is checked on its own,
+            # one-sided: the compacted take may not add words the original did not.
+            if (c - o) * 100 > gate:
+                print(f"empty-reference engine={engine} track={r['track']} segment={r['segment']} FAIL (compacted added words)")
+                failed = True
+            elif c < o:
+                print(f"empty-reference engine={engine} track={r['track']} segment={r['segment']} IMPROVED")
         words += n
         original_errors += o * n
         compressed_errors += c * n
@@ -77,17 +86,24 @@ for engine in engines:
             f"clip={r['clip']} words={n} originalWER={o*100:.2f} compressedWER={c*100:.2f} "
             f"sameText={r['original'] == r['compressed']}"
         )
+        if r["original"] != r["compressed"]:
+            # Every changed row, against its reference, for inspection (committed corpus text).
+            print(f"  changed reference={r['reference']!r}")
+            print(f"  changed original ={r['original']!r}")
+            print(f"  changed compacted={r['compressed']!r}")
     if len(mine) != expected_rows or words == 0:
         print(f"total engine={engine} rows={len(mine)} expected={expected_rows} GATE FAIL (incomplete)")
         failed = True
         continue
     ow, cw = original_errors / words * 100, compressed_errors / words * 100
     delta = cw - ow
-    ok = abs(delta) <= gate
+    ok = delta <= gate
     failed |= not ok
+    note = " IMPROVED (compacted WER lower; changed rows above)" if delta < 0 else ""
     print(
         f"total engine={engine} rows={len(mine)} words={int(words)} originalWER={ow:.2f} "
-        f"compressedWER={cw:.2f} deltaPoints={delta:.2f} GATE {'PASS' if ok else 'FAIL'}"
+        f"compressedWER={cw:.2f} deltaPoints={delta:.2f} maxIncrease={gate} "
+        f"GATE {'PASS' if ok else 'FAIL'}{note}"
     )
 if control:
     print(f"RESULT: CONTROL {'FAIL' if failed else 'PASS'} (not C6 evidence)")
