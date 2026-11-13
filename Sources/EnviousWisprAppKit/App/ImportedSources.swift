@@ -244,6 +244,9 @@ final class ImportedSources: ImportedSourceAccessing {
     guard linked else {
       return coordinator.currentRow(id: rowID) == nil ? relocationRemoved(rowID) : .stale
     }
+    // Stored; but an `invalidateAll` during the save means the next look reads the disk afresh
+    // rather than this earlier read (Codex lane-a r2).
+    guard fence.sweep == sweeps else { return .linked }
     let reference = ImportedSourceReference(bookmark: bookmark, fingerprint: fingerprint)
     inFlight[rowID] = nil
     store(
