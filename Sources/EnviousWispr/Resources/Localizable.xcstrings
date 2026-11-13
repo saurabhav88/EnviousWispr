@@ -2,16 +2,6 @@
   "sourceLanguage" : "en",
   "strings" : {
     "" : {},
-    " to cancel without changing your keybind." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : " zum Abbrechen, ohne dein Tastenkürzel zu ändern."
-          }
-        }
-      }
-    },
     "\"%@\" added to %@" : {
       "comment" : "Quick Add panel: confirmation after adding a spelling. The first %@ is the misheard text, the second the word; use this language's quotation marks.",
       "localizations" : {
@@ -2243,16 +2233,6 @@
         }
       }
     },
-    "AI POLISH · OPTIONAL" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "KI-NACHBEARBEITUNG · OPTIONAL"
-          }
-        }
-      }
-    },
     "AI Polish" : {
       "localizations" : {
         "de" : {
@@ -2610,17 +2590,6 @@
         }
       }
     },
-    "AI polish needs macOS 26" : {
-      "comment" : "Setup notice title on Macs older than macOS 26.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "KI-Nachbearbeitung benötigt macOS 26"
-          }
-        }
-      }
-    },
     "AI polish needs setup" : {
       "comment" : "Menu bar menu, VoiceOver: the icon beside the AI polish setup line.",
       "localizations" : {
@@ -2883,7 +2852,7 @@
       }
     },
     "Accessibility" : {
-      "comment" : "EnviousMeet page: the Accessibility permission row's title.\nSetup Getting ready row.\nSetup permissions: title of the macOS Accessibility permission row.",
+      "comment" : "EnviousMeet page: the Accessibility permission row's title.\nSetup Getting ready row.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3600,17 +3569,6 @@
         }
       }
     },
-    "All quiet" : {
-      "comment" : "Practice screen headline. Nothing was heard.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Alles ruhig"
-          }
-        }
-      }
-    },
     "All release notes on GitHub" : {
       "localizations" : {
         "de" : {
@@ -3791,16 +3749,6 @@
         }
       }
     },
-    "Almost there. Just two permissions." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Fast geschafft. Es fehlen nur zwei Berechtigungen."
-          }
-        }
-      }
-    },
     "Almost there. Three quick permissions." : {
       "comment" : "EnviousMeet setup: permissions title.",
       "localizations" : {
@@ -3808,17 +3756,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Fast geschafft. Noch drei kurze Berechtigungen."
-          }
-        }
-      }
-    },
-    "Almost there... pinky promise" : {
-      "comment" : "Playful status line cycled on the setup screen while the speech model installs.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Fast geschafft... versprochen"
           }
         }
       }
@@ -4510,17 +4447,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Bei der letzten Prüfung war Apple Intelligence nicht aktiviert. Wähle ein anderes Modell oder verlasse die Ansicht ohne Meeting-Zusammenfassungen. In den Systemeinstellungen lässt sich das Problem möglicherweise nicht beheben."
-          }
-        }
-      }
-    },
-    "Apple Intelligence wasn't enabled at the last check. You can keep dictating or choose another model in Settings > AI Polish. System Settings may not offer a fix." : {
-      "comment" : "Onboarding Apple Intelligence notice on macOS 27 or later. The Open System Settings button is not a guaranteed remedy.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Letzte Prüfung: nicht aktiviert. Diktiere weiter oder wähle unter Einstellungen > KI-Nachbearbeitung ein anderes Modell. Systemeinstellungen helfen evtl. nicht."
           }
         }
       }
@@ -5541,17 +5467,6 @@
         }
       }
     },
-    "Built for Apple Silicon." : {
-      "comment" : "Welcome screen feature line under Native Speed.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Für Apple Silicon entwickelt."
-          }
-        }
-      }
-    },
     "Built for Apple Silicon. No internet needed to dictate." : {
       "localizations" : {
         "de" : {
@@ -5688,17 +5603,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Kalender"
-          }
-        }
-      }
-    },
-    "Calibrating whisper detection..." : {
-      "comment" : "Playful status line cycled on the setup screen while the speech model installs.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Flüstererkennung wird kalibriert..."
           }
         }
       }
@@ -5883,16 +5787,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Download der Sprecherkennzeichnung abbrechen"
-          }
-        }
-      }
-    },
-    "Cancelling…" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wird abgebrochen…"
           }
         }
       }
@@ -6125,16 +6019,6 @@
         }
       }
     },
-    "Change your AI model, keybind, and more in Settings." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ändere dein KI-Modell, Tastenkürzel und mehr in den Einstellungen."
-          }
-        }
-      }
-    },
     "Changed: %@." : {
       "comment" : "VoiceOver, marked-up transcript: a word the cleanup changed. %@ is the word.",
       "localizations" : {
@@ -6331,7 +6215,7 @@
       }
     },
     "Checking speech model files..." : {
-      "comment" : "Setup progress: checking already-downloaded speech model files.\nSpeech engine settings, speech model download: checking files already on disk.",
+      "comment" : "Speech engine settings, speech model download: checking files already on disk.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -7267,17 +7151,6 @@
         }
       }
     },
-    "Click the box first" : {
-      "comment" : "Practice screen headline. The words went to the clipboard.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Klicke zuerst in das Feld"
-          }
-        }
-      }
-    },
     "Click the box, then talk" : {
       "localizations" : {
         "de" : {
@@ -7546,17 +7419,6 @@
         }
       }
     },
-    "Configuring on-device AI" : {
-      "comment" : "Setup checklist step.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Lokale KI wird eingerichtet"
-          }
-        }
-      }
-    },
     "Congratulations! You are all set." : {
       "comment" : "Closing film, first scene title after Setup finishes.",
       "localizations" : {
@@ -7667,17 +7529,6 @@
         }
       }
     },
-    "Convincing AI that you said 'duck'..." : {
-      "comment" : "Playful status line cycled on the setup screen while the speech model installs.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die KI davon überzeugen, dass du „Ente“ gesagt hast..."
-          }
-        }
-      }
-    },
     "Copied" : {
       "comment" : "Transcribe a File: the Copy button's title for two seconds after a press.\nVoiceOver announcement after the transcript is copied.",
       "localizations" : {
@@ -7761,16 +7612,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nachbearbeiteten Text kopieren"
-          }
-        }
-      }
-    },
-    "Copy error details" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Fehlerdetails kopieren"
           }
         }
       }
@@ -8051,17 +7892,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Das Modell konnte nicht vorbereitet werden. Klicke, um es erneut zu versuchen."
-          }
-        }
-      }
-    },
-    "Couldn't reach the download server. Please check your internet connection and try again." : {
-      "comment" : "Setup error: the speech model download server could not be reached.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Der Downloadserver ist nicht erreichbar. Prüfe deine Internetverbindung und versuche es erneut."
           }
         }
       }
@@ -8370,17 +8200,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Standard"
-          }
-        }
-      }
-    },
-    "Default: ⌥ Option" : {
-      "comment" : "Setup checklist: the default dictation key. ⌥ is the Option key symbol.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Standard: ⌥ Option"
           }
         }
       }
@@ -9115,16 +8934,6 @@
         }
       }
     },
-    "Dictation keybind" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tastenkürzel fürs Diktieren"
-          }
-        }
-      }
-    },
     "Dictation language" : {
       "comment" : "The language dictation is locked to: the language sheet's title and a Settings search result.",
       "localizations" : {
@@ -9418,16 +9227,6 @@
         }
       }
     },
-    "Double-press to go hands-free." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Zweimal drücken, um freihändig zu diktieren."
-          }
-        }
-      }
-    },
     "Download" : {
       "comment" : "AI Polish, Ollama model list: button that downloads a model to this Mac.\nAI Polish, local model: starts the model download.\nLive Preview settings, Universal engine card: button. It starts the engine download.\nLive Preview settings: pack install.\nSetup Downloads: the eyebrow above the title.\nYour Words, Learn from: the self-learning dictionary row: button that downloads the correction model.",
       "localizations" : {
@@ -9544,17 +9343,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Download fehlgeschlagen. Prüfe deine Internetverbindung und versuche es erneut."
-          }
-        }
-      }
-    },
-    "Download failed: %@" : {
-      "comment" : "Setup error with no friendlier wording. %@ is the system's description of the error.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Download fehlgeschlagen: %@"
           }
         }
       }
@@ -9840,29 +9628,12 @@
       }
     },
     "Downloading model files..." : {
-      "comment" : "Setup progress: the speech model is downloading.\nSpeech engine settings, Whisper model: download status line.",
+      "comment" : "Speech engine settings, Whisper model: download status line.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Modelldateien werden heruntergeladen..."
-          }
-        }
-      }
-    },
-    "Downloading model files... %@ MB of %@ MB (%@%%)" : {
-      "comment" : "Setup download progress: megabytes downloaded, total megabytes, percent done.",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Downloading model files... %1$@ MB of %2$@ MB (%3$@%%)"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Modelldateien werden heruntergeladen … %1$@ MB von %2$@ MB (%3$@%%)"
           }
         }
       }
@@ -9878,29 +9649,12 @@
       }
     },
     "Downloading speech model..." : {
-      "comment" : "Setup progress: the speech model is downloading.\nSpeech engine settings, speech model download: in progress.",
+      "comment" : "Speech engine settings, speech model download: in progress.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sprachmodell wird heruntergeladen..."
-          }
-        }
-      }
-    },
-    "Downloading speech model... %@ MB of %@ MB (%@%%)" : {
-      "comment" : "Setup download progress: megabytes downloaded, total megabytes, percent done.",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Downloading speech model... %1$@ MB of %2$@ MB (%3$@%%)"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sprachmodell wird heruntergeladen … %1$@ MB von %2$@ MB (%3$@%%)"
           }
         }
       }
@@ -9929,16 +9683,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Korrekturmodell wird heruntergeladen (%1$@ von %2$@ MB)"
-          }
-        }
-      }
-    },
-    "Downloading the local speech model so EnviousWispr can run privately on your Mac." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Das lokale Sprachmodell wird heruntergeladen, damit EnviousWispr privat auf deinem Mac laufen kann."
           }
         }
       }
@@ -10209,16 +9953,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Paket %@ aktivieren"
-          }
-        }
-      }
-    },
-    "Enable Accessibility in Settings to use Auto-Paste — transcriptions will paste directly into your active app." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aktiviere den Zugriff auf Bedienungshilfen in den Einstellungen, um automatisches Einfügen zu nutzen. Transkripte werden dann direkt in die aktive App eingefügt."
           }
         }
       }
@@ -10640,17 +10374,6 @@
         }
       }
     },
-    "EnviousWispr needs Accessibility permission to type for you.\nYou can turn it on and come back, or skip ahead." : {
-      "comment" : "Practice screen when Accessibility permission is off. Keep the line break.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "EnviousWispr benötigt Zugriff auf Bedienungshilfen, um für dich Text einzugeben.\nDu kannst den Zugriff aktivieren und zurückkommen oder diesen Schritt überspringen."
-          }
-        }
-      }
-    },
     "EnviousWispr needs microphone access to record a meeting. Allow it in System Settings, Privacy & Security, Microphone." : {
       "comment" : "EnviousMeet: the microphone permission is missing.",
       "localizations" : {
@@ -10658,17 +10381,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "EnviousWispr braucht Zugriff auf dein Mikrofon, um ein Meeting aufzunehmen. Erlaube ihn in den Systemeinstellungen unter „Datenschutz & Sicherheit“, „Mikrofon“."
-          }
-        }
-      }
-    },
-    "EnviousWispr needs permission to use your microphone.\nYou can turn it on and come back, or skip ahead." : {
-      "comment" : "Practice screen when microphone permission is off. Keep the line break.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "EnviousWispr benötigt Zugriff auf dein Mikrofon.\nDu kannst den Zugriff aktivieren und zurückkommen oder diesen Schritt überspringen."
           }
         }
       }
@@ -10784,16 +10496,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Fehler: %@"
-          }
-        }
-      }
-    },
-    "Esc" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Esc"
           }
         }
       }
@@ -11043,16 +10745,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "1 eigenes Wort wird exportiert. Wortschatzpakete sind nicht enthalten."
-          }
-        }
-      }
-    },
-    "FINISH SETUP" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "FERTIG EINRICHTEN"
           }
         }
       }
@@ -11744,17 +11436,6 @@
         }
       }
     },
-    "For a modifier key used on its own and to paste your text into other apps." : {
-      "comment" : "Setup permissions: why Accessibility is needed.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Für eine allein genutzte Sondertaste und zum Einfügen deines Texts in andere Apps."
-          }
-        }
-      }
-    },
     "For apps like Raycast and Maccy." : {
       "comment" : "Clipboard settings: short line under Hide dictations from clipboard manager apps.",
       "localizations" : {
@@ -11811,16 +11492,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sag zum Beispiel „%1$@ %2$@“, um den Textbaustein einzufügen."
-          }
-        }
-      }
-    },
-    "For modifier keybinds and pasting" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Für Sondertasten als Tastenkürzel und zum Einfügen"
           }
         }
       }
@@ -11979,17 +11650,6 @@
         }
       }
     },
-    "Free & Private" : {
-      "comment" : "Welcome screen feature title.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kostenlos & privat"
-          }
-        }
-      }
-    },
     "Free and open source" : {
       "comment" : "EnviousMeet setup: welcome tile title.",
       "localizations" : {
@@ -12073,16 +11733,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aus den Spracheinstellungen deines Macs. Zum Ändern einfach tippen."
-          }
-        }
-      }
-    },
-    "GET STARTED!" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "LOS GEHT'S!"
           }
         }
       }
@@ -12348,16 +11998,6 @@
         }
       }
     },
-    "Getting the speech engine ready\nso your first go is instant." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Spracherkennung wird vorbereitet,\ndamit du sofort loslegen kannst."
-          }
-        }
-      }
-    },
     "Give the snippet something to say. A trigger of only punctuation can never match." : {
       "comment" : "Snippets, edit: error when the trigger is empty.",
       "localizations" : {
@@ -12375,17 +12015,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Los geht's, sprich den Satz.\nLass %@ los, wenn du fertig bist."
-          }
-        }
-      }
-    },
-    "Go ahead. Let go of %@ when you are done." : {
-      "comment" : "Practice screen while recording. %@ is the dictation shortcut, for example ⌥.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sprich los. Lass %@ los, wenn du fertig bist."
           }
         }
       }
@@ -12793,17 +12422,6 @@
         }
       }
     },
-    "Hold %@ and say something.\nLet go when you are done." : {
-      "comment" : "Practice screen before the first try. %@ is the dictation shortcut. Keep the line break.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Halte %@ gedrückt und sag etwas.\nLass los, wenn du fertig bist."
-          }
-        }
-      }
-    },
     "Hold %@ and say the line below.\nLet go when you are done." : {
       "localizations" : {
         "de" : {
@@ -12863,16 +12481,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Zum Diktieren halten"
-          }
-        }
-      }
-    },
-    "Hold to dictate. Release to transcribe." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Zum Diktieren gedrückt halten. Zum Transkribieren loslassen."
           }
         }
       }
@@ -13221,16 +12829,6 @@
         }
       }
     },
-    "In a hurry? Skip ahead" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wenig Zeit? Schritt überspringen"
-          }
-        }
-      }
-    },
     "In progress" : {
       "comment" : "Setup progress bar value with no measured percent.",
       "localizations" : {
@@ -13429,17 +13027,6 @@
         }
       }
     },
-    "Installing 'um' and 'uh' filters..." : {
-      "comment" : "Playful status line cycled on the setup screen while the speech model installs.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Filter für „Ähm“ und „Öh“ werden installiert..."
-          }
-        }
-      }
-    },
     "Installing Parakeet Ultra…" : {
       "comment" : "Pill title when the user presses record while Parakeet Ultra is being loaded.",
       "localizations" : {
@@ -13447,28 +13034,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Parakeet Ultra wird installiert…"
-          }
-        }
-      }
-    },
-    "Installing model..." : {
-      "comment" : "Setup progress: the speech model is being installed.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Modell wird installiert..."
-          }
-        }
-      }
-    },
-    "Installing model... %@" : {
-      "comment" : "Setup progress: %@ is the name of the speech model being installed.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Modell wird installiert... %@"
           }
         }
       }
@@ -14807,17 +14372,6 @@
         }
       }
     },
-    "Listening for input" : {
-      "comment" : "Label under the keybind field while it waits for a key combination.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wartet auf Eingabe"
-          }
-        }
-      }
-    },
     "Listening..." : {
       "comment" : "Recording pill while the preview has not heard words yet. Three ASCII periods.",
       "localizations" : {
@@ -14830,7 +14384,6 @@
       }
     },
     "Listening…" : {
-      "comment" : "Practice screen headline. Shown while the key is held.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -15179,17 +14732,6 @@
         }
       }
     },
-    "Loading all 50,000 words..." : {
-      "comment" : "Playful status line cycled on the setup screen while the speech model installs.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Alle 50.000 Wörter werden geladen..."
-          }
-        }
-      }
-    },
     "Loading model..." : {
       "comment" : "Main window status while the speech model loads. Three ASCII periods.",
       "localizations" : {
@@ -15240,16 +14782,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Korrekturmodell wird geladen"
-          }
-        }
-      }
-    },
-    "Loading the speech model" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sprachmodell wird geladen"
           }
         }
       }
@@ -15978,7 +15510,7 @@
       }
     },
     "Microphone" : {
-      "comment" : "Dictation Settings: tab name for the microphone and what other audio does.\nEnviousMeet page: the microphone permission row's title.\nEnviousMeet setup: a permission name.\nMenu bar menu: the submenu for choosing the microphone used for recording.\nSetup Getting ready row.\nSetup permissions: title of the microphone permission row.",
+      "comment" : "Dictation Settings: tab name for the microphone and what other audio does.\nEnviousMeet page: the microphone permission row's title.\nEnviousMeet setup: a permission name.\nMenu bar menu: the submenu for choosing the microphone used for recording.\nSetup Getting ready row.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -16016,17 +15548,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Mikrofonzugriff ist deaktiviert."
-          }
-        }
-      }
-    },
-    "Microphone access is off. Open System Settings > Privacy & Security > Microphone and turn on EnviousWispr. If access still appears off, quit and reopen EnviousWispr." : {
-      "comment" : "Setup permissions: microphone row after the user turned access off. Names where the switch is, and the quit-and-reopen fallback macOS sometimes needs.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Der Mikrofonzugriff ist deaktiviert. Öffne die Systemeinstellungen > Datenschutz & Sicherheit > Mikrofon und schalte EnviousWispr ein. Wenn der Zugriff danach weiterhin als deaktiviert angezeigt wird, beende EnviousWispr und öffne die App erneut."
           }
         }
       }
@@ -16115,17 +15636,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Mikrofonbereitschaft hält das Mikrofon bis zu 30 Sekunden für weitere Diktate bereit (standardmäßig aktiviert)."
-          }
-        }
-      }
-    },
-    "Microphone ready" : {
-      "comment" : "Setup warm-up checklist item.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mikrofon bereit"
           }
         }
       }
@@ -16447,27 +15957,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Namen aus Anrufen in Zoom, Teams und Meet, wenn verfügbar."
-          }
-        }
-      }
-    },
-    "Native Speed" : {
-      "comment" : "Welcome screen feature title.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Native Geschwindigkeit"
-          }
-        }
-      }
-    },
-    "Nearly there" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Fast geschafft"
           }
         }
       }
@@ -16859,17 +16348,6 @@
         }
       }
     },
-    "No account required. Anonymous analytics only." : {
-      "comment" : "Welcome screen feature line under Free & Private.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kein Konto erforderlich. Nur anonyme Nutzungsdaten."
-          }
-        }
-      }
-    },
     "No account, no subscription. The code is public (GPLv3)." : {
       "comment" : "EnviousMeet setup: welcome tile line under Free and open source. GPLv3 is a license name.",
       "localizations" : {
@@ -17006,17 +16484,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Kein Download"
-          }
-        }
-      }
-    },
-    "No internet connection. Please connect to the internet and try again." : {
-      "comment" : "Setup error: no internet during the speech model download.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Keine Internetverbindung. Stelle eine Verbindung her und versuche es erneut."
           }
         }
       }
@@ -17689,28 +17156,6 @@
         }
       }
     },
-    "Not enough disk space (%@ MB free). EnviousWispr needs about 1 GB to download and install the speech model." : {
-      "comment" : "Setup error before the speech model download. %@ is the free space in megabytes.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nicht genug Speicherplatz (%@ MB frei). EnviousWispr benötigt etwa 1 GB, um das Sprachmodell herunterzuladen und zu installieren."
-          }
-        }
-      }
-    },
-    "Not enough disk space. Please free up space and try again." : {
-      "comment" : "Setup error: the disk filled up during the speech model download.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nicht genug Speicherplatz. Gib Speicherplatz frei und versuche es erneut."
-          }
-        }
-      }
-    },
     "Not enough disk space. The model needs about 2 GB free." : {
       "comment" : "AI Polish, Ollama setup: the disk filled during a model download.",
       "localizations" : {
@@ -18291,17 +17736,6 @@
         }
       }
     },
-    "Offline-Ready" : {
-      "comment" : "Welcome screen feature title: works without internet.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Offline bereit"
-          }
-        }
-      }
-    },
     "Ollama Cloud models could not be loaded. Check your connection and try again." : {
       "localizations" : {
         "de" : {
@@ -18562,17 +17996,6 @@
         }
       }
     },
-    "On-Device" : {
-      "comment" : "Welcome screen feature title: dictation runs on this Mac.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Auf dem Gerät"
-          }
-        }
-      }
-    },
     "On-device polish on supported Macs with macOS 26+." : {
       "comment" : "AI Polish provider card: the line under Apple Intelligence's name.",
       "localizations" : {
@@ -18639,16 +18062,6 @@
         }
       }
     },
-    "One moment, still working on that" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Einen Moment, die Verarbeitung läuft noch"
-          }
-        }
-      }
-    },
     "One more time" : {
       "localizations" : {
         "de" : {
@@ -18686,17 +18099,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Gut zu wissen"
-          }
-        }
-      }
-    },
-    "One-time setup" : {
-      "comment" : "Setup checklist: note under the speech model step.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Einmalige Einrichtung"
           }
         }
       }
@@ -19204,16 +18606,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "BERECHTIGUNGEN"
-          }
-        }
-      }
-    },
-    "POWER USER?" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "FÜR PROFIS?"
           }
         }
       }
@@ -20010,17 +19402,6 @@
         }
       }
     },
-    "Polishing the speech engine..." : {
-      "comment" : "Playful status line cycled on the setup screen while the speech model installs.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Spracherkennung wird aufpoliert..."
-          }
-        }
-      }
-    },
     "Polishing..." : {
       "comment" : "Pill and main window while AI polish rewrites the text. Three ASCII periods.",
       "localizations" : {
@@ -20141,28 +19522,6 @@
         }
       }
     },
-    "Preparing speech model…" : {
-      "comment" : "Setup: shown while the speech model download is being prepared.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sprachmodell wird vorbereitet…"
-          }
-        }
-      }
-    },
-    "Preparing to ignore background noise..." : {
-      "comment" : "Playful status line cycled on the setup screen while the speech model installs.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hintergrundgeräusche werden ausgeblendet..."
-          }
-        }
-      }
-    },
     "Preparing..." : {
       "comment" : "Speech engine settings, Whisper model: download status line.",
       "localizations" : {
@@ -20170,16 +19529,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wird vorbereitet..."
-          }
-        }
-      }
-    },
-    "Press " : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Drücke "
           }
         }
       }
@@ -20244,16 +19593,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Tasten drücken..."
-          }
-        }
-      }
-    },
-    "Press keys…" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tasten drücken…"
           }
         }
       }
@@ -20421,16 +19760,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Priya"
-          }
-        }
-      }
-    },
-    "Pro Tip" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Profi-Tipp"
           }
         }
       }
@@ -20837,16 +20166,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "In weniger als einer Minute fertig"
-          }
-        }
-      }
-    },
-    "Ready to Wispr!" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bereit für Wispr!"
           }
         }
       }
@@ -23163,28 +22482,6 @@
         }
       }
     },
-    "Setting up speech model" : {
-      "comment" : "Setup checklist step.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sprachmodell wird eingerichtet"
-          }
-        }
-      }
-    },
-    "Setting your keybind" : {
-      "comment" : "Setup checklist step.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dein Tastenkürzel wird eingerichtet"
-          }
-        }
-      }
-    },
     "Settings for the chosen provider" : {
       "comment" : "Settings search result: the setup section of the chosen AI Polish provider.",
       "localizations" : {
@@ -23213,27 +22510,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Es geht weiter, sobald beide Berechtigungen aktiv sind."
-          }
-        }
-      }
-    },
-    "Setup didn't finish. Try again, and if it keeps happening, restart the app." : {
-      "comment" : "Setup error: the speech model setup made no progress.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Einrichtung wurde nicht abgeschlossen. Versuch es erneut. Falls das Problem bleibt, starte die App neu."
-          }
-        }
-      }
-    },
-    "Setup paused. Start it again whenever you're ready." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Einrichtung pausiert. Du kannst sie jederzeit fortsetzen."
           }
         }
       }
@@ -23293,17 +22569,6 @@
         }
       }
     },
-    "Sharpening neural networks..." : {
-      "comment" : "Playful status line cycled on the setup screen while the speech model installs.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Neuronale Netze werden geschärft..."
-          }
-        }
-      }
-    },
     "Shona" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -23333,16 +22598,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Kurze Diktate: Zeichensetzung, Großschreibung und Füllwörter. Für längere Aufnahmen, Listen oder Code eignet sich EG-1 oder ein Cloud-Modell besser. Verarbeitet Diktate bis etwa 8 Minuten."
-          }
-        }
-      }
-    },
-    "Shortcut recognition happens on your Mac. Shortcut-health reports do not contain typed text or a history of key presses." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tastenkürzel werden auf deinem Mac erkannt. Berichte zum Zustand der Tastenkürzel enthalten keinen getippten Text und keinen Verlauf deiner Tastendrücke."
           }
         }
       }
@@ -23675,32 +22930,12 @@
         }
       }
     },
-    "Skip and finish setup" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Überspringen und Einrichtung abschließen"
-          }
-        }
-      }
-    },
     "Skip practice" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Übung überspringen"
-          }
-        }
-      }
-    },
-    "Skip this step" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Diesen Schritt überspringen"
           }
         }
       }
@@ -24029,17 +23264,6 @@
         }
       }
     },
-    "Something went wrong on our side, not yours.\nTry once more, or skip ahead and dictate anywhere." : {
-      "comment" : "Practice screen when the dictation failed on our side. Keep the line break.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bei uns ist etwas schiefgelaufen – nicht bei dir.\nVersuch es erneut oder überspringe diesen Schritt und diktiere in einer beliebigen App."
-          }
-        }
-      }
-    },
     "Something went wrong reading that file. Try a different one." : {
       "comment" : "Transcribe a File: why the file was refused.",
       "localizations" : {
@@ -24198,17 +23422,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Erkannte Sprecher"
-          }
-        }
-      }
-    },
-    "Speech engine" : {
-      "comment" : "Setup warm-up checklist item.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Spracherkennung"
           }
         }
       }
@@ -24626,17 +23839,6 @@
         }
       }
     },
-    "Still working: checking download source…" : {
-      "comment" : "Setup: shown when preparing the download takes more than 10 seconds.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Läuft noch: Downloadquelle wird geprüft…"
-          }
-        }
-      }
-    },
     "Stop" : {
       "comment" : "Menu bar menu, VoiceOver: the icon beside Stop Recording.\nTranscribe a File, Done step: button that stops the speaker labelling still running.",
       "localizations" : {
@@ -25017,16 +24219,6 @@
         }
       }
     },
-    "TRY AGAIN" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ERNEUT VERSUCHEN"
-          }
-        }
-      }
-    },
     "Tagalog" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -25178,16 +24370,6 @@
         }
       }
     },
-    "Tap the keycap to change your keybind,\nthen press GET STARTED!" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Klicke auf das Tastensymbol, um dein Tastenkürzel zu ändern,\nund dann auf „LOS GEHT'S!“."
-          }
-        }
-      }
-    },
     "Tatar" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -25195,17 +24377,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Tatarisch"
-          }
-        }
-      }
-    },
-    "Teaching AI to listen politely..." : {
-      "comment" : "Playful status line cycled on the setup screen while the speech model installs.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Der KI wird höfliches Zuhören beigebracht..."
           }
         }
       }
@@ -25446,17 +24617,6 @@
         }
       }
     },
-    "That did not work" : {
-      "comment" : "Practice screen headline. The dictation failed on our side.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Das hat nicht geklappt"
-          }
-        }
-      }
-    },
     "That didn't work. Try again." : {
       "comment" : "History: a recording action (keep or delete) failed.",
       "localizations" : {
@@ -25645,7 +24805,6 @@
       }
     },
     "That is it. You are set." : {
-      "comment" : "Practice screen headline. The first dictation worked.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -26191,17 +25350,6 @@
         }
       }
     },
-    "The download server is busy. Please wait a moment and try again." : {
-      "comment" : "Setup error: the download server refused because of too many requests.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Der Downloadserver ist beschäftigt. Warte kurz und versuche es erneut."
-          }
-        }
-      }
-    },
     "The download stopped." : {
       "comment" : "Setup Downloads card: paused, failed or unavailable; no cause claimed.",
       "localizations" : {
@@ -26220,17 +25368,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Der Download wurde unterbrochen.\nKlicke auf „Downloads fortsetzen“, um es erneut zu versuchen."
-          }
-        }
-      }
-    },
-    "The download timed out. Please check your internet connection and try again." : {
-      "comment" : "Setup error: the speech model download timed out.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Der Download hat zu lange gedauert. Prüfe deine Internetverbindung und versuche es erneut."
           }
         }
       }
@@ -26550,16 +25687,6 @@
         }
       }
     },
-    "The privacy-first dictation app built for macOS." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Diktier-App für macOS, bei der Datenschutz an erster Stelle steht."
-          }
-        }
-      }
-    },
     "The recording can't be played. Its audio may have been deleted or damaged." : {
       "comment" : "EnviousMeet detail: playback could not read the meeting's audio.",
       "localizations" : {
@@ -26600,16 +25727,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Das Tastenkürzel für die Aufnahme (%@) funktioniert nicht. macOS meldet, dass diese Tastenkombination bereits vergeben ist. Wähle eine andere."
-          }
-        }
-      }
-    },
-    "The speech engine did not finish waking up." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Spracherkennung wurde nicht vollständig gestartet."
           }
         }
       }
@@ -26863,16 +25980,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Diese Datei enthält keinen Ton."
-          }
-        }
-      }
-    },
-    "These let EnviousWispr listen and paste for you." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Damit kann EnviousWispr zuhören und Text für dich einfügen."
           }
         }
       }
@@ -27368,16 +26475,6 @@
         }
       }
     },
-    "This usually takes a moment. Nothing else is needed from you." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Das dauert normalerweise nur einen Moment. Du musst nichts weiter tun."
-          }
-        }
-      }
-    },
     "This version is not saved" : {
       "localizations" : {
         "de" : {
@@ -27488,7 +26585,6 @@
       }
     },
     "Those are your words, typed for you.\nIn any other app, click into a text box first." : {
-      "comment" : "Practice screen, after the first dictation worked. Keep the line break.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -27565,7 +26661,6 @@
       }
     },
     "Time for your first dictation!" : {
-      "comment" : "Practice screen headline. Before the first try.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -27625,17 +26720,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Damit die anderen Personen zu hören sind, auch mit AirPods. Nur der Ton vom Mac, nie dein Bildschirm."
-          }
-        }
-      }
-    },
-    "To hear your voice for transcription." : {
-      "comment" : "Setup permissions: why the microphone is needed.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Um deine Stimme für die Transkription aufzunehmen."
           }
         }
       }
@@ -27744,17 +26828,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Oben"
-          }
-        }
-      }
-    },
-    "Training patience module..." : {
-      "comment" : "Playful status line cycled on the setup screen while the speech model installs.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Geduldsmodul wird trainiert..."
           }
         }
       }
@@ -28058,16 +27131,6 @@
         }
       }
     },
-    "Try setup again" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Einrichtung erneut versuchen"
-          }
-        }
-      }
-    },
     "Try these first" : {
       "comment" : "AI Polish, Ollama model list: heading for hosted models that worked without a paid plan when last checked.",
       "localizations" : {
@@ -28085,17 +27148,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dein erstes Diktat ausprobieren"
-          }
-        }
-      }
-    },
-    "Tuning the neural ears..." : {
-      "comment" : "Playful status line cycled on the setup screen while the speech model installs.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Neuronale Ohren werden abgestimmt..."
           }
         }
       }
@@ -28154,17 +27206,6 @@
         }
       }
     },
-    "Turn it on to enable free, on-device AI polish. Dictation works fine without it." : {
-      "comment" : "Apple Intelligence onboarding instruction on macOS 26.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aktiviere es für eine kostenlose KI-Nachbearbeitung auf deinem Gerät. Diktieren funktioniert auch ohne."
-          }
-        }
-      }
-    },
     "Turn it on to start dictating." : {
       "comment" : "Pill line under Microphone access needed.",
       "localizations" : {
@@ -28216,26 +27257,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Einschalten"
-          }
-        }
-      }
-    },
-    "Turn on Accessibility" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bedienungshilfen aktivieren"
-          }
-        }
-      }
-    },
-    "Turn on the microphone" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mikrofon aktivieren"
           }
         }
       }
@@ -28709,17 +27730,6 @@
         }
       }
     },
-    "Update your Mac to macOS 26 to unlock free, on-device Apple Intelligence polish. Dictation works fully right now without it." : {
-      "comment" : "Setup notice on Macs older than macOS 26.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aktualisiere deinen Mac auf macOS 26, um die kostenlose Nachbearbeitung mit Apple Intelligence auf deinem Gerät zu nutzen. Diktieren funktioniert auch jetzt schon ohne sie."
-          }
-        }
-      }
-    },
     "Upgrading" : {
       "comment" : "AI Polish provider status chip.",
       "localizations" : {
@@ -29113,7 +28123,7 @@
       }
     },
     "Verifying download..." : {
-      "comment" : "Setup progress: checking the downloaded speech model.\nSpeech engine settings, speech model download: checking the downloaded files.",
+      "comment" : "Speech engine settings, speech model download: checking the downloaded files.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -29293,37 +28303,6 @@
         }
       }
     },
-    "Warming Up the AI..." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "KI wird gestartet..."
-          }
-        }
-      }
-    },
-    "Warming up" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wird gestartet"
-          }
-        }
-      }
-    },
-    "Warming up Apple Silicon..." : {
-      "comment" : "Playful status line cycled on the setup screen while the speech model installs.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Apple Silicon wird aufgewärmt..."
-          }
-        }
-      }
-    },
     "Warning: %@" : {
       "comment" : "VoiceOver announcement from the recording overlay: %@ is the warning sentence shown on the pill.",
       "localizations" : {
@@ -29389,17 +28368,6 @@
         }
       }
     },
-    "We cannot hear you" : {
-      "comment" : "Practice screen headline. A permission is missing.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wir können dich nicht hören"
-          }
-        }
-      }
-    },
     "We could not check your saved key on this Mac." : {
       "comment" : "AI Polish: the saved API key could not be read from the Keychain.",
       "localizations" : {
@@ -29440,17 +28408,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "EnviousWispr konnte nicht automatisch verschoben werden."
-          }
-        }
-      }
-    },
-    "We heard you. The box was not selected, so your words went to the clipboard.\nClick inside the box, then hold %@ again." : {
-      "comment" : "Practice screen when the text box was not selected. %@ is the dictation shortcut. Keep the line break.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wir haben dich gehört. Das Feld war nicht ausgewählt, deshalb wurden deine Wörter in die Zwischenablage kopiert.\nKlicke in das Feld und halte %@ erneut gedrückt."
           }
         }
       }
@@ -30154,17 +29111,6 @@
         }
       }
     },
-    "Works without internet." : {
-      "comment" : "Welcome screen feature line under Offline-Ready.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Funktioniert ohne Internet."
-          }
-        }
-      }
-    },
     "Write a summary when a meeting ends" : {
       "comment" : "EnviousMeet page: switch that writes a summary of each meeting automatically.",
       "localizations" : {
@@ -30438,17 +29384,6 @@
         }
       }
     },
-    "You can try again, or skip ahead. Your first shortcut press may just wake the engine up, and the one after it will dictate." : {
-      "comment" : "Setup: shown when the speech engine did not finish warming up.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Du kannst es erneut versuchen oder diesen Schritt überspringen. Beim ersten Drücken des Tastenkürzels wacht die Spracherkennung möglicherweise nur auf. Beim nächsten Mal kannst du diktieren."
-          }
-        }
-      }
-    },
     "You changed this summary. Writing it again replaces your changes." : {
       "comment" : "History, a meeting: explains what Replace does to the edited summary.",
       "localizations" : {
@@ -30661,16 +29596,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dein Mac hat fast keinen Speicherplatz mehr. Gib Speicherplatz frei, um ein Meeting aufzunehmen."
-          }
-        }
-      }
-    },
-    "Your Voice, Instantly Captured." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Deine Stimme. Sofort als Text."
           }
         }
       }
@@ -30978,17 +29903,6 @@
         }
       }
     },
-    "Your microphone is working. We just did not hear anything.\nTry holding %@ and saying: tell grandma I will call Sunday." : {
-      "comment" : "Practice screen when nothing was heard. %@ is the dictation shortcut. The sample sentence should be natural to say in the target language. Keep the line break.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dein Mikrofon funktioniert. Wir haben nur nichts gehört.\nHalte %@ gedrückt und sag: Sag Oma, dass ich am Sonntag anrufe."
-          }
-        }
-      }
-    },
     "Your models are ready" : {
       "comment" : "Setup Downloads title: both models are on this Mac.",
       "localizations" : {
@@ -31121,17 +30035,6 @@
         }
       }
     },
-    "Your recording indicator appears while you hold the key." : {
-      "comment" : "Practice screen footnote under the text box.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Aufnahmeanzeige erscheint, solange du die Taste gedrückt hältst."
-          }
-        }
-      }
-    },
     "Your saved notes could not be read." : {
       "comment" : "History, a meeting: the notes file could not be read.",
       "localizations" : {
@@ -31242,17 +30145,6 @@
         }
       }
     },
-    "Your shortcut is set" : {
-      "comment" : "Setup warm-up checklist item.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dein Tastenkürzel ist festgelegt"
-          }
-        }
-      }
-    },
     "Your shortcut keys were still held down. Let go of them, then press the shortcut again." : {
       "comment" : "Quick Add panel: why the selected text could not be read.",
       "localizations" : {
@@ -31335,17 +30227,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Deine unveränderten Wörter bleiben daneben erhalten."
-          }
-        }
-      }
-    },
-    "Your voice never leaves your Mac." : {
-      "comment" : "Welcome screen feature line under On-Device.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Deine Stimme verlässt deinen Mac nie."
           }
         }
       }
@@ -33280,16 +32161,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "macOS fragt beim Start deiner ersten Aufnahme nach deiner Erlaubnis."
-          }
-        }
-      }
-    },
-    "macOS calls this permission \"Accessibility.\" It lets EnviousWispr recognize modifier keys such as Right Option and paste your dictation into other apps. Without it, a modifier key used on its own does not respond. Other supported keybinds can still start dictation, and you paste the finished text from the clipboard." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "macOS nennt diese Berechtigung „Bedienungshilfen“. Damit kann EnviousWispr Sondertasten wie die rechte Wahltaste erkennen und dein Diktat in andere Apps einfügen. Ohne sie reagiert eine allein genutzte Sondertaste nicht. Andere unterstützte Tastenkürzel können das Diktat weiterhin starten, und du fügst den fertigen Text aus der Zwischenablage ein."
           }
         }
       }
