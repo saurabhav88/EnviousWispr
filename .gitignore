@@ -260,6 +260,8 @@ scripts/lib/*
 !scripts/local-test-groups-test.py
 !scripts/local_test_plan.py
 !scripts/local-test-costs.json
+# Real-boundary suites that need no audio device; mac_hosts.py reads it to route them.
+!scripts/real-boundary-audio-free.json
 !scripts/local-test-plan-test.py
 !scripts/local-ci-queue.py
 !scripts/local-ci-queue-test.py
