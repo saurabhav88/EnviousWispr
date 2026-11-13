@@ -228,17 +228,20 @@ struct HistoryTranscriptView: View {
 
   private func header(_ row: Transcript) -> some View {
     VStack(alignment: .leading, spacing: DesignSpacing.lg) {
-      HStack(alignment: .center, spacing: DesignSpacing.lg) {
-        VStack(alignment: .leading, spacing: DesignSpacing.xxs) {
-          Text(verbatim: P.title(for: row))
-            .font(.stRowTitle)
-            .foregroundStyle(.stTextPrimary)
-            .lineLimit(1)
-            .truncationMode(.middle)
-          provenance(row)
+      // Side by side when the title keeps a readable width; otherwise the actions move to their
+      // own row (long German labels at the 750 pt window floor squeezed the date into one
+      // letter per line, #3147 PR3 UAT).
+      ViewThatFits(in: .horizontal) {
+        HStack(alignment: .center, spacing: DesignSpacing.lg) {
+          titleBlock(row)
+            .frame(minWidth: Self.titleMinWidth, maxWidth: .infinity, alignment: .leading)
+          actions(row)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        actions(row)
+        VStack(alignment: .leading, spacing: DesignSpacing.md) {
+          titleBlock(row)
+            .frame(maxWidth: .infinity, alignment: .leading)
+          actions(row)
+        }
       }
       if P.hasRenderableTurns(row) { viewControls }
       retranscriptionStatus
@@ -247,6 +250,20 @@ struct HistoryTranscriptView: View {
           .font(.stHelper)
           .foregroundStyle(notice.isError ? Color.stError : Color.stTextSecondary)
       }
+    }
+  }
+
+  /// The narrowest the file name and its facts may get beside the actions.
+  private static let titleMinWidth: CGFloat = 260
+
+  private func titleBlock(_ row: Transcript) -> some View {
+    VStack(alignment: .leading, spacing: DesignSpacing.xxs) {
+      Text(verbatim: P.title(for: row))
+        .font(.stRowTitle)
+        .foregroundStyle(.stTextPrimary)
+        .lineLimit(1)
+        .truncationMode(.middle)
+      provenance(row)
     }
   }
 
