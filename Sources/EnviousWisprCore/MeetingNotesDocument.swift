@@ -23,8 +23,10 @@ public struct MeetingNoteBlock: Codable, Identifiable, Equatable, Sendable {
   }
 
   public var id: UUID
-  /// Milliseconds into the meeting when this block was first written; nil when it was written
-  /// outside a recording (before, after, or a note migrated from v1 Markdown).
+  /// Meeting-timeline milliseconds when this block's first character was typed:
+  /// recording time while recording, or playback position after Stop.
+  /// Nil for migrated notes or when no timeline position is available.
+  /// Once assigned, later edits do not change it.
   public var startedAtMs: Int?
   public var kind: Kind
   /// For a task block: whether it is ticked. False for every other kind.
