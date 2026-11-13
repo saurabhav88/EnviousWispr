@@ -537,6 +537,12 @@ import EnviousWisprAppKitTestSupport
       file: "Sources/EnviousWisprAppKit/App/HistoryDictationPresentation.swift", matcher: "prepare",
       text: "prepare(texts)",
       classification: .unrelatedDomain),
+    // #3147 PR4B: meeting audio compaction prepares compressed copies of a meeting's recorder
+    // files (encode and verify); no speech engine is loaded, switched or mutated.
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/MeetingCoordinator.swift", matcher: "prepare",
+      text: "let verified = try await compactor.prepare(ticket: ticket, record: record, folder: folder)",
+      classification: .unrelatedDomain),
     // MARK: ActiveEngineOperation — the one door for crash-recovery + the
     // Diagnostics benchmark. Not itself gated. `load` is called from BOTH
     // `RecoverySpoolReplayer` (under `recoveryEngineClaim`) and
