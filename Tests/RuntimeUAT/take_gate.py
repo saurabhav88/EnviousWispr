@@ -31,6 +31,7 @@ REPAIR = "Not an app result. Repair the setup or the harness, rerun the failed s
 
 _target = None
 _activate = None
+_target_is_front = None
 _paste = None
 _takes = 1
 
@@ -120,20 +121,22 @@ def stop_active_take():
     return player_ok, idle
 
 
-def declare_target(bundle_id, activate=None, paste=None, takes=1):
+def declare_target(bundle_id, activate=None, paste=None, takes=1, is_front=None):
     """Name the app that must be frontmost for the take (its bundle id, e.g. com.apple.TextEdit).
     `activate` (optional) brings it back to the front; the gate calls it once before refusing.
     `paste`: where the text must land when that is another app (a launcher panel), or
     CALLER_VERIFIES when the caller checks the landing itself; default: the same app.
     `takes`: recordings the take deliberately makes (default 1).
+    `is_front`: optional process-specific foreground check for a pinned app.
     Scripts that set up their own route call it per take; `clear_target()` when they are done."""
-    global _target, _activate, _paste, _takes
+    global _target, _activate, _paste, _takes, _target_is_front
     _target, _activate, _paste, _takes = bundle_id, activate, paste, takes
+    _target_is_front = is_front
 
 
 def clear_target():
-    global _target, _activate, _paste, _takes
-    _target = _activate = _paste = None
+    global _target, _activate, _paste, _takes, _target_is_front
+    _target = _activate = _paste = _target_is_front = None
     _takes = 1
 
 
@@ -211,6 +214,14 @@ def check_before_play():
         raise SetupFailed(
             "paste-target",
             "no paste target named. Use audio_rig.AudioRig(target=...) or take_gate.declare_target()")
+    if _target_is_front is not None:
+        if _target_is_front():
+            return
+        if _activate is not None:
+            _activate()
+        if not _target_is_front():
+            raise SetupFailed("paste-target", "the pinned app is not frontmost")
+        return
     front = frontmost_bundle()
     if front != _target and _activate is not None:
         _activate()

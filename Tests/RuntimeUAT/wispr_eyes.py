@@ -189,7 +189,7 @@ def _ensure_connected():
 _TABLES = (None, [])  # (pid, tables) for the connected app
 
 
-def _ui_tables():
+def _ui_tables(pid=None):
     """The connected app's own interface translations: one {English key: shown text} dict per
     shipped language, read from its bundle's compiled `*.lproj/Localizable.strings` (#3142 5D).
 
@@ -198,15 +198,16 @@ def _ui_tables():
     would turn every German lookup into "not found".
     """
     global _TABLES
-    if _pid is None:
+    pid = _pid if pid is None else pid
+    if pid is None:
         return []  # a synthetic tree in a self-test: English only
-    if _TABLES[0] == _pid:
+    if _TABLES[0] == pid:
         return _TABLES[1]
-    exe = subprocess.run(["ps", "-ww", "-o", "comm=", "-p", str(_pid)],
+    exe = subprocess.run(["ps", "-ww", "-o", "comm=", "-p", str(pid)],
                          capture_output=True, text=True).stdout.strip()
     resources = pathlib.Path(exe).parents[1] / "Resources"
     if not exe or not resources.is_dir():
-        raise RuntimeError(f"_ui_tables: no bundle Resources for PID {_pid} ({exe!r})")
+        raise RuntimeError(f"_ui_tables: no bundle Resources for PID {pid} ({exe!r})")
     tables = []
     for f in sorted(resources.glob("*.lproj/Localizable.strings")):
         out = subprocess.run(["plutil", "-convert", "json", "-o", "-", str(f)],
@@ -214,14 +215,14 @@ def _ui_tables():
         if out.returncode != 0:
             raise RuntimeError(f"_ui_tables: cannot read {f}: {out.stderr.strip()}")
         tables.append(json.loads(out.stdout))
-    _TABLES = (_pid, tables)
+    _TABLES = (pid, tables)
     return tables
 
 
-def _ui_terms(text):
+def _ui_terms(text, pid=None):
     """*text* plus what the app shows for it in each shipped language, English first."""
     terms = [text]
-    for table in _ui_tables():
+    for table in _ui_tables(pid):
         shown = table.get({"Send feedback": "feedback.title",
                            "Send feedback: your message is waiting": "feedback.help.waiting",
                            # #3454: the menu item's key is the format "Open %@" (the app name).
@@ -664,9 +665,11 @@ def reach_diagnostic():
             f"found: check whether the app's UI changed under the harness. {HARNESS_REPAIR}")
 
 
-def _open_settings():
+def _open_settings(app=None, pid=None):
     # #3454: the menu bar item that opens the window is "Open EnviousWispr" (was "Settings...").
-    settings_item = _find_match(_app, "Open EnviousWispr", "AXMenuItem", exact=True)
+    title = "Open EnviousWispr"
+    settings_item = _find_match(_app if app is None else app, title, "AXMenuItem",
+                                exact=True, _terms=_ui_terms(title, pid))
     if not settings_item:
         raise NavigationError(
             "the Settings window is not open and no Open EnviousWispr item was found")
