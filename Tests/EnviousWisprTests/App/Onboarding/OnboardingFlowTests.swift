@@ -316,11 +316,14 @@ struct OnboardingFlowTests {
     #expect(OnboardingFlow.reduce(s, .practiceSucceeded).state.step == .film)
   }
 
-  @Test("Skip practice finishes Setup and records the skip before completion")
+  @Test("Skip practice records the skip and still plays the closing film, which ends Setup")
   func skipPractice() {
+    // When this fails, a person who skips the practice take never sees the closing film.
     let t = OnboardingFlow.reduce(Self.at(.practice), .skipPractice)
-    #expect(t.state.step == .done && t.state.practiceOutcome == .skipped)
-    #expect(t.effects == [.persistCheckpoint, .recordPracticeOutcome(.skipped), .markCompleted])
+    #expect(t.state.step == .film && t.state.practiceOutcome == .skipped)
+    #expect(t.effects == [.persistCheckpoint, .recordPracticeOutcome(.skipped)])
+    let end = OnboardingFlow.reduce(t.state, .skipFilm)
+    #expect(end.state.step == .done && end.effects.contains(.markCompleted))
     #expect(
       OnboardingFlow.reduce(Self.at(.practice), .next).outcome
         == .refused("practice ends with a take or Skip practice"))

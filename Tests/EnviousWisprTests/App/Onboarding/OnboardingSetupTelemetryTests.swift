@@ -571,11 +571,13 @@ struct OnboardingSetupTelemetryTests {
     c.send(.next)
     c.refreshReadiness()
     await c.settle()
-    c.send(.skipPractice)
+    c.send(.skipPractice)  // plays the film
+    c.send(.skipFilm)
     let tail = world.log.drop { $0 != "practice(skipped)" }
     #expect(
       Array(tail) == [
-        "practice(skipped)", "completed", "choice(language)", "choice(speech)", "choice(polish)",
+        "practice(skipped)", "checkpoint(done)", "completed", "choice(language)",
+        "choice(speech)", "choice(polish)",
         "event(completed)", "onCompleted",
       ])
     let summary = r.completed.first ?? nil

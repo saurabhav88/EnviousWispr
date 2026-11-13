@@ -671,7 +671,9 @@ def s_completion(run, speech):
     s.expect(st.get("step") == "practice" and st.get("practiceUsable") is True,
              "live readiness opens Practice", st.get("step"))
     r = run.send("skipPractice")
-    s.expect(r.get("active") is False, "Skip practice finishes Setup", r)
+    s.expect(r.get("step") == "film", "Skip practice plays the closing film", r.get("step"))
+    r = run.send("skipFilm")
+    s.expect(r.get("active") is False, "the film's Launch finishes Setup", r)
     s.expect(r.get("legacyState") == "completed" and r.get("checkpoint") is None,
              "completion is durable and deletes the checkpoint",
              (r.get("legacyState"), r.get("checkpoint")))
@@ -1751,11 +1753,16 @@ def s_screens_e(run, speech):
             shot("light-replayed")
             press("Launch EnviousWispr")  # before the last scene: skips the film
         else:
-            # Mid-way into the last scene: the film now ends by itself at its full length
-            # (D7a.2 natural finish), so waiting the whole length raced that ending.
-            time.sleep(max(0.0, film_started + film_seconds - 1.5 - time.monotonic()))  # test-fixture-timer
+            # Past the film's full length: it holds its last picture and never closes Setup by
+            # itself (founder 2026-11-13), so Watch again stays reachable.
+            time.sleep(max(0.0, film_started + film_seconds + 2.0 - time.monotonic()))  # test-fixture-timer
+            held = run.app.call("onboarding", "status")
+            s.expect(held.get("step") == "film" and held.get("active") is True,
+                     f"{appearance}: the ended film holds until Launch", held.get("step"))
+            s.expect(setup_button(pid, "Watch again") is not None,
+                     f"{appearance}: Watch again is still there after the film ends")
             shot("dark-last-scene")
-            press("Launch EnviousWispr")  # on the last scene: finishes the film
+            press("Launch EnviousWispr")  # after the last scene: finishes the film
         st = run.until(lambda x: x.get("active") is False, 6, "completed")
         s.expect(st.get("active") is False and st.get("legacyState") == "completed",
                  f"{appearance}: Launch EnviousWispr completes Setup durably",
@@ -2098,9 +2105,11 @@ def s_first_run(run, speech):
              (st.get("step"), st.get("practiceUsable"), st.get("readiness")))
     time.sleep(1.0)  # test-fixture-timer: the editor settles
     shot("practice")
-    # Skip practice ends Setup without the film (film_result not_shown, posthog-events.md);
-    # the film's own Launch is covered by screens_e after a real take.
-    run.send("skipPractice")
+    # Skip practice plays the closing film (founder 2026-11-13); its Launch ends Setup. The
+    # film's held ending is covered by screens_e after a real take.
+    r = run.send("skipPractice")
+    s.expect(r.get("step") == "film", "Skip practice plays the closing film", r.get("step"))
+    run.send("skipFilm")
     st = run.until(lambda x: x.get("active") is False, 10, "completed")
     s.expect(st.get("active") is False and st.get("legacyState") == "completed",
              "Skip practice completes Setup durably", (st.get("active"), st.get("legacyState")))

@@ -182,14 +182,6 @@ struct SetupPracticeScreen: View {
       Spacer(minLength: 0)
       footer
     }
-    .background {
-      Button("Back", action: back)
-        .keyboardShortcut(.cancelAction)
-        .disabled(state.inFlight)
-        .opacity(0)
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
-    }
     .onDisappear { onFocusChange(false) }
     .onChange(of: editorFocused) { _, focused in onFocusChange(focused) }
     .onChange(of: state) { _, new in
@@ -290,6 +282,11 @@ struct SetupPracticeScreen: View {
       isEnabled: state.needsPermission || state.canContinue(hasSucceeded: hasSucceeded),
       action: primary
     ) {
+      // A visible way back (founder 2026-11-13: Escape alone traps mouse-only people); never
+      // while a take is in flight.
+      SetupLinkButton(title: "Back", quiet: true, action: back)
+        .keyboardShortcut(.cancelAction)
+        .disabled(state.inFlight)
       if state.canSkip(hasSucceeded: hasSucceeded) {
         SetupLinkButton(title: "Skip practice", quiet: true) {
           if state.canSkip(hasSucceeded: hasSucceeded) { onSkip() }

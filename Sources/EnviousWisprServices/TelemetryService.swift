@@ -5950,7 +5950,8 @@ public enum OnboardingTelemetry {
     public var followedAllRecommendations: Bool?
     public var languageMode: LanguageMode
     public var rulesVersion: String
-    /// nil when the film was not shown (Skip practice); the summary then says `not_shown`.
+    /// nil when no film result was recorded (e.g. a completion restored after relaunch); the
+    /// summary then says `not_shown`. Skip practice plays the film too (#4528, 2026-11-13).
     public var filmResult: FilmResult?
 
     public init(

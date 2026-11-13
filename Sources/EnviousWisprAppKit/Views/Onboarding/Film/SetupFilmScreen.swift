@@ -16,7 +16,8 @@ import SwiftUI
 /// timetable.
 struct SetupFilmScreen: View {
   let summary: FilmSummary
-  /// Launch on the final scene or natural completion of the full film.
+  /// Launch on the final scene. The film holds its last picture until then, so Watch again
+  /// stays reachable (founder 2026-11-13; the mockup never closed by itself).
   let onFinished: () -> Void
   /// The person pressed "Launch EnviousWispr" before the last scene.
   let onSkip: () -> Void
@@ -97,12 +98,6 @@ struct SetupFilmScreen: View {
         )
         .onChange(of: FilmScript.locate(time).index, initial: true) { _, index in
           if isVisible { announce(index) }
-        }
-        .onChange(
-          of: time >= clock.length && !clock.isPaused && !resumeWhenVisible && isVisible,
-          initial: true
-        ) { _, canFinish in
-          if canFinish { finish(.finished, index: FilmScript.scenes.count - 1) }
         }
       }
       Spacer(minLength: 0)

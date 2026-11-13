@@ -368,8 +368,10 @@ enum OnboardingFlow {
       s.practiceOutcome = .succeeded
       return move(.film, [.recordPracticeOutcome(.succeeded)])
     case (.practice, .skipPractice):
+      // Founder 2026-11-13: skipping the take still plays the closing film, which ends Setup
+      // as a take does (the old onboarding, and the mockup, closed Setup here).
       s.practiceOutcome = .skipped
-      return move(.done, [.recordPracticeOutcome(.skipped), .markCompleted])
+      return move(.film, [.recordPracticeOutcome(.skipped)])
     case (.practice, .next):
       return refuse("practice ends with a take or Skip practice")
 

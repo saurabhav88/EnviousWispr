@@ -81,6 +81,10 @@ struct SetupShortcutScreen: View {
       shortcutCard
       Spacer(minLength: 0)
       SetupFooter(title: "Try your first dictation", action: { leave(onContinue) }) {
+        // A visible way back (founder 2026-11-13: Escape alone traps mouse-only people).
+        SetupLinkButton(title: "Back", quiet: true) { leave(onBack) }
+          .keyboardShortcut(.cancelAction)
+          .disabled(isCapturing)
         Text("You can change the key any time in Settings.")
           .font(.firstRunCaption)
           .foregroundStyle(Color.obTextSecondary)
@@ -93,14 +97,6 @@ struct SetupShortcutScreen: View {
       )
       .frame(width: 0, height: 0)
       .accessibilityHidden(true)
-    }
-    .background(alignment: .topLeading) {
-      Button("Back", action: { leave(onBack) })
-        .keyboardShortcut(.cancelAction)
-        .disabled(isCapturing)
-        .opacity(0)
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
     }
     .onChange(of: binding) {
       rehearsal = SetupShortcutRehearsal()

@@ -40,7 +40,10 @@ struct SetupSpeechScreen: View {
       SetupFooter(title: "Use \(shownName)", action: accept) {
         if comparing {
           SetupLinkButton(title: "Recommended options", quiet: true) { model.send(.back) }
+            .keyboardShortcut(.cancelAction)
         } else {
+          SetupLinkButton(title: "Back", quiet: true) { model.send(.back) }
+            .keyboardShortcut(.cancelAction)
           SetupLinkButton(title: "Compare speech models") { model.send(.compareSpeech) }
         }
         if model.state.recoveringReadiness {

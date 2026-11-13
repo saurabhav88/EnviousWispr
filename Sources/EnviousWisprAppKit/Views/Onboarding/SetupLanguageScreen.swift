@@ -59,7 +59,11 @@ struct SetupLanguageScreen: View {
           .multilineTextAlignment(.center)
       }
       Spacer(minLength: 0)
-      SetupFooter(title: "Continue", isEnabled: match != nil, action: commit) { EmptyView() }
+      // A visible way back on every screen that has one (founder 2026-11-13). No Escape here:
+      // Escape belongs to the language search field.
+      SetupFooter(title: "Continue", isEnabled: match != nil, action: commit) {
+        SetupLinkButton(title: "Back", quiet: true) { model.send(.back) }
+      }
     }
     .padding(.top, DesignSpacing.xs)
     .onAppear(perform: start)

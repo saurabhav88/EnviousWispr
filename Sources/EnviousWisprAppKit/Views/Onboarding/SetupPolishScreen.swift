@@ -41,7 +41,10 @@ struct SetupPolishIntroScreen: View {
         }
       }
       Spacer(minLength: 0)
-      SetupFooter(title: "Choose my AI polish", action: next) { EmptyView() }
+      SetupFooter(title: "Choose my AI polish", action: next) {
+        SetupLinkButton(title: "Back", quiet: true) { model.send(.back) }
+          .keyboardShortcut(.cancelAction)
+      }
     }
     .padding(.top, DesignSpacing.xs)
     .onAppear { model.screenMounted(.polishIntro, epoch: epoch) }
@@ -210,7 +213,10 @@ struct SetupPolishScreen: View {
     SetupFooter(title: "Continue with \(SetupPolish.name(shown))", action: accept) {
       if seeAll {
         SetupLinkButton(title: "Recommended options", quiet: true) { send(.back) }
+          .keyboardShortcut(.cancelAction)
       } else {
+        SetupLinkButton(title: "Back", quiet: true) { send(.back) }
+          .keyboardShortcut(.cancelAction)
         SetupLinkButton(title: "See all") { send(.seeAllPolish) }
       }
       SetupLinkButton(title: "Skip AI polish", quiet: true, action: skip)
