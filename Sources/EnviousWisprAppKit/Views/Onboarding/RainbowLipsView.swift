@@ -417,6 +417,18 @@ private final class LipsGlideMemory {
   var lastTime: Double? = nil
 }
 
+// MARK: - LipsClock
+
+/// An outside clock for the lips (#4528 film): the film's own time and how long the current
+/// mood has played. When a view passes one, the lips draw at that moment instead of the wall
+/// clock, so pausing the film's clock freezes them mid-shape.
+struct LipsClock: Equatable {
+  /// Seconds on the outside clock (drives the looping moods).
+  var time: Double
+  /// Seconds since the current mood began on that clock (drives one-shots and the glow).
+  var moodElapsed: Double
+}
+
 // MARK: - RainbowLipsView
 
 struct RainbowLipsView: View {
@@ -428,6 +440,9 @@ struct RainbowLipsView: View {
   var burst: Int = 0
   /// Test hook: reports the glow peak each time the glow decision changes (0 = no glow).
   var onGlowTarget: ((Double) -> Void)? = nil
+  /// Film use: draw at this clock's moment and run no timeline of our own (the caller's
+  /// timeline redraws us), so the caller's Pause holds the lips still. Nil: the wall clock.
+  var clock: LipsClock? = nil
 
   @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
   @Environment(\.overlayReduceMotionOverride) private var reduceMotionOverride
@@ -442,10 +457,11 @@ struct RainbowLipsView: View {
   @State private var glide = LipsGlideMemory()
 
   var body: some View {
-    TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: reduceMotion)) { timeline in
+    TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: reduceMotion || clock != nil)) {
+      timeline in
       let effective = effectiveMood(at: timeline.date)
       let scales = currentScales(at: timeline.date, effective: effective)
-      let t = timeline.date.timeIntervalSinceReferenceDate
+      let t = clock?.time ?? timeline.date.timeIntervalSinceReferenceDate
       let mood = effective.mood
       // The glow is a function of the clock and the CURRENT effective mood, so it can never
       // outlive the mood that asked for it (no delayed callback exists to go stale), and a
@@ -499,7 +515,8 @@ struct RainbowLipsView: View {
   // MARK: - Mood and scales
 
   private func effectiveMood(at date: Date) -> (mood: LipsAnimationState, elapsed: Double) {
-    LipsMotion.effectiveMood(
+    if let clock { return (animationState, clock.moodElapsed) }
+    return LipsMotion.effectiveMood(
       animationState, sinceStateChange: date.timeIntervalSince(expressionStartTime),
       sinceBurst: burstStartTime.map { date.timeIntervalSince($0) })
   }
@@ -507,7 +524,7 @@ struct RainbowLipsView: View {
   private func currentScales(
     at date: Date, effective: (mood: LipsAnimationState, elapsed: Double)
   ) -> [CGFloat] {
-    let t = date.timeIntervalSinceReferenceDate
+    let t = clock?.time ?? date.timeIntervalSinceReferenceDate
     let mood = effective.mood
     let elapsed = effective.elapsed
     let bars = LipsData.allBars
@@ -522,7 +539,9 @@ struct RainbowLipsView: View {
     }
     let dt = glide.lastTime.map { t - $0 } ?? 0
     let drawn: [CGFloat]
-    if let previous = glide.drawn, previous.count == targets.count, dt > 0 {
+    if dt < 0 {
+      drawn = targets  // the caller's clock jumped back (a film seek): draw the new moment
+    } else if let previous = glide.drawn, previous.count == targets.count, dt > 0 {
       drawn = zip(previous, targets).map { LipsMotion.glide(from: $0, to: $1, dt: dt) }
     } else if let previous = glide.drawn, previous.count == targets.count {
       drawn = previous  // a second render in the same frame

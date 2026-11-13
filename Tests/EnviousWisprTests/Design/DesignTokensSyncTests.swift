@@ -276,6 +276,19 @@ struct DesignTokensSyncTests {
     "Color.firstRunButtonDisabled": .firstRunButtonDisabled,
     "Color.firstRunButtonDisabledText": .firstRunButtonDisabledText,
     "Color.firstRunOnAccent": .firstRunOnAccent, "Color.firstRunAccentSoft": .firstRunAccentSoft, "Color.firstRunRule": .firstRunRule,
+    "Color.firstRunFilmWallTop": .firstRunFilmWallTop,
+    "Color.firstRunFilmWallMid": .firstRunFilmWallMid,
+    "Color.firstRunFilmWallBottom": .firstRunFilmWallBottom,
+    "Color.firstRunFilmMenuBar": .firstRunFilmMenuBar,
+    "Color.firstRunFilmMenuInk": .firstRunFilmMenuInk,
+    "Color.firstRunFilmDock": .firstRunFilmDock,
+    "Color.firstRunFilmLightRed": .firstRunFilmLightRed,
+    "Color.firstRunFilmLightYellow": .firstRunFilmLightYellow,
+    "Color.firstRunFilmLightGreen": .firstRunFilmLightGreen,
+    "Color.firstRunFilmSlack": .firstRunFilmSlack,
+    "Color.firstRunFilmMistakeWash": .firstRunFilmMistakeWash,
+    "Color.firstRunFilmMistakeText": .firstRunFilmMistakeText,
+    "Color.firstRunFilmMistakeStrike": .firstRunFilmMistakeStrike,
   ]
 
   static let compiledFonts: [String: Font] = [

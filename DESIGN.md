@@ -189,7 +189,20 @@ Edit values only here, then run `python3 scripts/design/generate-tokens.py`. Col
     "Color.firstRunButtonDisabledText": {"light": [0.435, 0.38, 0.537, 1], "dark": [0.604, 0.573, 0.69, 1], "group": "First-run Setup", "usage": "Text on firstRunButtonDisabled (4.26:1 in both modes; disabled controls are exempt from WCAG 1.4.3, kept readable)."},
     "Color.firstRunOnAccent": {"light": [1.0, 1.0, 1.0, 1], "dark": [0.082, 0.071, 0.11, 1], "group": "First-run Setup", "usage": "Text or icon on an obAccent fill (selected tab, step dot)."},
     "Color.firstRunAccentSoft": {"light": [0.486, 0.227, 0.929, 0.1], "dark": [0.655, 0.545, 0.98, 0.12], "group": "First-run Setup", "usage": "Setup accent wash (selected card, greeting bubble). Dark alpha 0.12 instead of obAccentSoft 0.16 so text on it keeps 4.5:1."},
-    "Color.firstRunRule": {"light": [0.0, 0.0, 0.0, 0.1], "dark": [1.0, 1.0, 1.0, 0.12], "group": "First-run Setup", "usage": "Setup hairline (mockup --rule): unreached step-strip segments, dividers and keycap edges. obBorder (accent at 6%) is too faint for these."}
+    "Color.firstRunRule": {"light": [0.0, 0.0, 0.0, 0.1], "dark": [1.0, 1.0, 1.0, 0.12], "group": "First-run Setup", "usage": "Setup hairline (mockup --rule): unreached step-strip segments, dividers and keycap edges. obBorder (accent at 6%) is too faint for these."},
+    "Color.firstRunFilmWallTop": {"light": [0.796, 0.725, 0.965, 1.0], "dark": [0.173, 0.137, 0.337, 1.0], "group": "First-run film (film scenes only)", "usage": "Closing film Mac desktop (#4528 chunk E): wallpaper gradient, top-left stop (mockup --wall, 160deg)."},
+    "Color.firstRunFilmWallMid": {"light": [0.604, 0.722, 0.949, 1.0], "dark": [0.114, 0.169, 0.341, 1.0], "group": "First-run film (film scenes only)", "usage": "Film wallpaper gradient, middle stop at 55% (mockup --wall)."},
+    "Color.firstRunFilmWallBottom": {"light": [0.953, 0.761, 0.855, 1.0], "dark": [0.231, 0.129, 0.251, 1.0], "group": "First-run film (film scenes only)", "usage": "Film wallpaper gradient, bottom-right stop (mockup --wall)."},
+    "Color.firstRunFilmMenuBar": {"light": [1, 1, 1, 0.55], "dark": [0.118, 0.102, 0.157, 0.6], "group": "First-run film (film scenes only)", "usage": "Film menu bar fill over the wallpaper (mockup --menubar)."},
+    "Color.firstRunFilmMenuInk": {"light": [0.114, 0.106, 0.133, 1.0], "dark": [0.933, 0.918, 0.957, 1.0], "group": "First-run film (film scenes only)", "usage": "Film menu bar text and the held-key label (mockup --menuink)."},
+    "Color.firstRunFilmDock": {"light": [1, 1, 1, 0.45], "dark": [0.157, 0.141, 0.204, 0.55], "group": "First-run film (film scenes only)", "usage": "Film Dock shelf fill (mockup --dockbg)."},
+    "Color.firstRunFilmLightRed": {"light": [1.0, 0.373, 0.341, 1.0], "dark": [1.0, 0.373, 0.341, 1.0], "group": "First-run film (film scenes only)", "usage": "Film active window close light (gen_film.py lights nth-child(1) #FF5F57)."},
+    "Color.firstRunFilmLightYellow": {"light": [0.996, 0.737, 0.18, 1.0], "dark": [0.996, 0.737, 0.18, 1.0], "group": "First-run film (film scenes only)", "usage": "Film active window minimize light (gen_film.py lights nth-child(2) #FEBC2E)."},
+    "Color.firstRunFilmLightGreen": {"light": [0.157, 0.784, 0.251, 1.0], "dark": [0.157, 0.784, 0.251, 1.0], "group": "First-run film (film scenes only)", "usage": "Film active window zoom light (gen_film.py lights nth-child(3) #28C840)."},
+    "Color.firstRunFilmSlack": {"light": [0.29, 0.082, 0.294, 1.0], "dark": [0.29, 0.082, 0.294, 1.0], "group": "First-run film (film scenes only)", "usage": "Film Slack window sidebar (gen_film.py slack mwin #4A154B)."},
+    "Color.firstRunFilmMistakeWash": {"light": [0.988, 0.337, 0.522, 0.11], "dark": [0.988, 0.337, 0.522, 0.11], "group": "First-run film (film scenes only)", "usage": "Film wash behind the misheard word (mockup #fc56851c)."},
+    "Color.firstRunFilmMistakeText": {"light": [0.694, 0.153, 0.333, 1.0], "dark": [0.694, 0.153, 0.333, 1.0], "group": "First-run film (film scenes only)", "usage": "Film misheard word text (mockup #b12755)."},
+    "Color.firstRunFilmMistakeStrike": {"light": [0.831, 0.263, 0.42, 1.0], "dark": [0.831, 0.263, 0.42, 1.0], "group": "First-run film (film scenes only)", "usage": "Film line through the misheard word (mockup #d4436b)."}
   },
   "fonts": {
     "Font.stSectionHeader": {
@@ -287,6 +300,7 @@ Edit values only here, then run `python3 scripts/design/generate-tokens.py`. Col
 - **No default blue.** macOS settings use the brand accent purple, never the system blue.
 - Onboarding uses the `ob*` family, which mirrors the Settings values.
 - The first-run Setup window (#4528) uses the `firstRun*` family on top of `ob*` surfaces and accent: its type scale (11, 13, 15, 17, 20, 28, 64) and its contrast-raised quiet, success and error text come from the founder-approved Setup mockup. Meetings setup and other `ob*` screens keep their values.
+- The closing film's picture of a Mac desktop (wallpaper, menu bar, Dock, traffic lights, a Slack sidebar, a misheard word) uses the `firstRunFilm*` group, copied from the approved Setup mockup. Film scenes only: no other screen uses these colors.
 
 The founder reasons recorded with the palette and the type scale live in the values block under `reasons`, so the generator can repeat them in the Swift file.
 

@@ -12,6 +12,9 @@ struct SpectrumWheelIcon: View {
   let size: CGFloat
   /// Test hook: reports the spin decision each time it changes (360 spinning, 0 parked).
   var onSpinTarget: ((Double) -> Void)? = nil
+  /// Film use (#4528): seconds on the caller's clock. When set, the wheel turns by that clock
+  /// and runs no timeline of its own, so the caller's Pause holds it. Nil: the wall clock.
+  var clockTime: Double? = nil
 
   @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
   @Environment(\.overlayReduceMotionOverride) private var reduceMotionOverride
@@ -36,14 +39,19 @@ struct SpectrumWheelIcon: View {
   static let turnSeconds: Double = 8
 
   static func angle(at date: Date, reduceMotion: Bool) -> Double {
+    angle(atSeconds: date.timeIntervalSinceReferenceDate, reduceMotion: reduceMotion)
+  }
+
+  static func angle(atSeconds t: Double, reduceMotion: Bool) -> Double {
     guard OverlayMotion.showsAmbientLoop(reduceMotion: reduceMotion) else { return 0 }
-    let t = date.timeIntervalSinceReferenceDate
     return t.truncatingRemainder(dividingBy: turnSeconds) / turnSeconds * 360
   }
 
   var body: some View {
-    TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: reduceMotion)) { timeline in
-      wheel.rotationEffect(.degrees(Self.angle(at: timeline.date, reduceMotion: reduceMotion)))
+    TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: reduceMotion || clockTime != nil))
+    { timeline in
+      let seconds = clockTime ?? timeline.date.timeIntervalSinceReferenceDate
+      wheel.rotationEffect(.degrees(Self.angle(atSeconds: seconds, reduceMotion: reduceMotion)))
     }
     .frame(width: size, height: size)
     .onAppear { reportSpin() }

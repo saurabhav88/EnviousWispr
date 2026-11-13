@@ -172,6 +172,46 @@ extension Color {
   /// Setup hairline (mockup --rule): unreached step-strip segments, dividers and keycap edges. obBorder (accent at 6%) is too faint for these.
   static let firstRunRule = stDynamic(
     lightRGB: (0.0, 0.0, 0.0, 0.1), darkRGB: (1.0, 1.0, 1.0, 0.12))
+  // First-run film (film scenes only)
+  /// Closing film Mac desktop (#4528 chunk E): wallpaper gradient, top-left stop (mockup --wall, 160deg).
+  static let firstRunFilmWallTop = stDynamic(
+    lightRGB: (0.796, 0.725, 0.965, 1.0), darkRGB: (0.173, 0.137, 0.337, 1.0))
+  /// Film wallpaper gradient, middle stop at 55% (mockup --wall).
+  static let firstRunFilmWallMid = stDynamic(
+    lightRGB: (0.604, 0.722, 0.949, 1.0), darkRGB: (0.114, 0.169, 0.341, 1.0))
+  /// Film wallpaper gradient, bottom-right stop (mockup --wall).
+  static let firstRunFilmWallBottom = stDynamic(
+    lightRGB: (0.953, 0.761, 0.855, 1.0), darkRGB: (0.231, 0.129, 0.251, 1.0))
+  /// Film menu bar fill over the wallpaper (mockup --menubar).
+  static let firstRunFilmMenuBar = stDynamic(
+    lightRGB: (1, 1, 1, 0.55), darkRGB: (0.118, 0.102, 0.157, 0.6))
+  /// Film menu bar text and the held-key label (mockup --menuink).
+  static let firstRunFilmMenuInk = stDynamic(
+    lightRGB: (0.114, 0.106, 0.133, 1.0), darkRGB: (0.933, 0.918, 0.957, 1.0))
+  /// Film Dock shelf fill (mockup --dockbg).
+  static let firstRunFilmDock = stDynamic(
+    lightRGB: (1, 1, 1, 0.45), darkRGB: (0.157, 0.141, 0.204, 0.55))
+  /// Film active window close light (gen_film.py lights nth-child(1) #FF5F57).
+  static let firstRunFilmLightRed = stDynamic(
+    lightRGB: (1.0, 0.373, 0.341, 1.0), darkRGB: (1.0, 0.373, 0.341, 1.0))
+  /// Film active window minimize light (gen_film.py lights nth-child(2) #FEBC2E).
+  static let firstRunFilmLightYellow = stDynamic(
+    lightRGB: (0.996, 0.737, 0.18, 1.0), darkRGB: (0.996, 0.737, 0.18, 1.0))
+  /// Film active window zoom light (gen_film.py lights nth-child(3) #28C840).
+  static let firstRunFilmLightGreen = stDynamic(
+    lightRGB: (0.157, 0.784, 0.251, 1.0), darkRGB: (0.157, 0.784, 0.251, 1.0))
+  /// Film Slack window sidebar (gen_film.py slack mwin #4A154B).
+  static let firstRunFilmSlack = stDynamic(
+    lightRGB: (0.29, 0.082, 0.294, 1.0), darkRGB: (0.29, 0.082, 0.294, 1.0))
+  /// Film wash behind the misheard word (mockup #fc56851c).
+  static let firstRunFilmMistakeWash = stDynamic(
+    lightRGB: (0.988, 0.337, 0.522, 0.11), darkRGB: (0.988, 0.337, 0.522, 0.11))
+  /// Film misheard word text (mockup #b12755).
+  static let firstRunFilmMistakeText = stDynamic(
+    lightRGB: (0.694, 0.153, 0.333, 1.0), darkRGB: (0.694, 0.153, 0.333, 1.0))
+  /// Film line through the misheard word (mockup #d4436b).
+  static let firstRunFilmMistakeStrike = stDynamic(
+    lightRGB: (0.831, 0.263, 0.42, 1.0), darkRGB: (0.831, 0.263, 0.42, 1.0))
 }
 
 // MARK: - Fonts (SF Pro)
