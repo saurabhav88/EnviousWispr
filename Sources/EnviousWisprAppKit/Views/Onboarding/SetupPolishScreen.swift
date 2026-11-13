@@ -86,23 +86,28 @@ struct SetupPolishScreen: View {
     VStack(spacing: 0) {
       SetupPolishLips(bounces: !seeAll)
       if seeAll {
-        seeAllHeader
-        if model.seeAllTab == .cloud, let panel = model.cloudPanel {
-          SetupCloudPanel(
-            model: panel,
-            onChoose: { provider, id in send(.chooseCloud(provider, model: id)) },
-            onLater: {
-              panel.later()
-              skip()
-            },
-            onBack: { send(.back) }
-          )
-          .modifier(SetupRise(delay: 0, reduceMotion: reduceMotion, duration: 0.25))
-        } else {
-          seeAllPanel
-          Spacer(minLength: 0)
-          footer
+        // Mockup: the whole See all view rises (0.3 s) as well as its inner panel (0.25 s).
+        VStack(spacing: 0) {
+          seeAllHeader
+          if model.seeAllTab == .cloud, let panel = model.cloudPanel {
+            SetupCloudPanel(
+              model: panel,
+              onChoose: { provider, id in send(.chooseCloud(provider, model: id)) },
+              onLater: {
+                panel.later()
+                skip()
+              },
+              onBack: { send(.back) }
+            )
+            .modifier(SetupRise(delay: 0, reduceMotion: reduceMotion, duration: 0.25))
+          } else {
+            seeAllPanel
+            Spacer(minLength: 0)
+            footer
+          }
         }
+        .frame(maxHeight: .infinity)
+        .modifier(SetupRise(delay: 0, reduceMotion: reduceMotion, duration: 0.3))
       } else {
         pickPanel
         Spacer(minLength: 0)

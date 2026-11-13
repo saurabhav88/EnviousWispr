@@ -121,7 +121,25 @@ struct SetupPracticeScreen: View {
   @State private var burst = 0
   @State private var glow = false
 
+  /// The recording note is pinned below the screen so it is always fully visible before the
+  /// first take; the screen above scrolls only when the two do not fit (long German copy), and
+  /// otherwise fills the height exactly as before.
   var body: some View {
+    GeometryReader { proxy in
+      ScrollView {
+        practiceContent
+          .frame(maxWidth: .infinity, minHeight: proxy.size.height)
+      }
+      .scrollBounceBehavior(.basedOnSize)
+    }
+    .safeAreaInset(edge: .bottom, spacing: DesignSpacing.xl) {
+      if state.acceptsFocus && state != .worked && !state.inFlight {
+        recordingNote
+      }
+    }
+  }
+
+  private var practiceContent: some View {
     VStack(spacing: DesignSpacing.xl) {
       RainbowLipsView(animationState: state.lips, size: SetupMetrics.screenLips, burst: burst)
         .accessibilityHidden(true)
@@ -157,7 +175,6 @@ struct SetupPracticeScreen: View {
         } else if state != .worked && !state.inFlight {
           MicrophoneDevicePicker(
             model: MicrophonePickerModel(settingsManager: settings, devices: devices))
-          recordingNote
         }
       }
       Spacer(minLength: 0)
@@ -252,8 +269,8 @@ struct SetupPracticeScreen: View {
             ? Color.firstRunSuccessText : editorFocused ? Color.obAccent : Color.firstRunRule,
           lineWidth: 1
         ).allowsHitTesting(false)
-        // Mockup: the border turns green over 0.2 s on success.
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: state == .worked)
+          // Mockup: the border turns green over 0.2 s on success.
+          .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: state == .worked)
       }
       // Mockup obGlow 0.7 s: on success a green ring grows to 8 points and fades back.
       .background {
