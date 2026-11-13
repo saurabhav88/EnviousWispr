@@ -73,6 +73,8 @@ ALLOWLIST = {
         # The record shortcut, changed by the key screen's popular-key row (D5,
         # `ShortcutSettings.assign(_:to: .record, in:)` writes the key code, then the modifiers).
         "toggleKeyCode", "toggleModifiersRaw",
+        # The #3147 recording note on Practice records itself as seen (fresh installs).
+        "recordingDisclosureAcknowledged",
     },
     DEV: set(),
 }
@@ -82,7 +84,11 @@ ALLOWLIST = {
 # history) and never a failure.
 AMBIENT = {
     SHARED: set(),
-    DEV: {"SULastCheckTime", "aiDiagnosticsHistory", "aiDiagnosticsLatestReport"},
+    DEV: {"SULastCheckTime", "aiDiagnosticsHistory", "aiDiagnosticsLatestReport",
+          # First-launch records a fresh Mac's first run writes (first_run, fresh-Mac UAT
+          # 2026-11-13): Sparkle's first launch, the Parakeet upgrade telemetry ledger, and the
+          # main window's saved frame once Setup opens it.
+          "SUHasLaunchedBefore", "parakeetUpgradeTelemetry.emitted", "NSWindow Frame main"},
 }
 
 HOLD_ENV = "EW_UAT_ONBOARDING_BACKEND"
