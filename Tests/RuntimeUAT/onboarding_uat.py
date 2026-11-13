@@ -75,6 +75,9 @@ ALLOWLIST = {
         "toggleKeyCode", "toggleModifiersRaw",
         # The #3147 recording note on Practice records itself as seen (fresh installs).
         "recordingDisclosureAcknowledged",
+        # The spoken take turns the app's debug log on so its verdict is readable (a fresh
+        # Mac's reset turns it off).
+        "isDebugModeEnabled",
     },
     DEV: set(),
 }
@@ -772,6 +775,18 @@ def ax_press(element):
     not. A delivered press proves nothing alone: every caller asserts the outcome after it."""
     from ApplicationServices import AXUIElementPerformAction
     return AXUIElementPerformAction(element, "AXPress") in (0, -25200)
+
+
+def app_window_titles(pid):
+    """Every window title the app shows (AX), for the Setup-to-main-window checks."""
+    from ApplicationServices import AXUIElementCreateApplication, AXUIElementCopyAttributeValue
+    _, windows = AXUIElementCopyAttributeValue(AXUIElementCreateApplication(pid), "AXWindows",
+                                                None)
+    titles = []
+    for w in windows or []:
+        _, t = AXUIElementCopyAttributeValue(w, "AXTitle", None)
+        titles.append(t)
+    return titles
 
 
 def setup_button(pid, name):
@@ -1719,6 +1734,13 @@ def s_screens_e(run, speech):
     for appearance in ("light", "dark"):
         run.app.call("settings", "set", "appearance", json.dumps(appearance))
         to_film(appearance)
+        # The film plays only while its window is really visible (D7a.2: hidden playback
+        # pauses and cannot finish). A person sees the window they click; bring it forward as
+        # their click would, so another app's windows on the test Mac never hide it.
+        from ui_helpers import activate_app
+        activate_app(pid)
+        time.sleep(1.0)  # test-fixture-timer: the window comes forward and playback resumes
+        film_started = time.monotonic() - 1.0  # playback (re)starts when the window shows
         s.expect(setup_button(pid, "Launch EnviousWispr") is not None
                  and setup_button(pid, "Watch again") is not None,
                  "the film shows Launch EnviousWispr and Watch again")
@@ -1731,16 +1753,20 @@ def s_screens_e(run, speech):
             shot("light-replayed")
             press("Launch EnviousWispr")  # before the last scene: skips the film
         else:
-            time.sleep(film_seconds - 9.0)  # test-fixture-timer: the film reaches its last scene
+            # Mid-way into the last scene: the film now ends by itself at its full length
+            # (D7a.2 natural finish), so waiting the whole length raced that ending.
+            time.sleep(max(0.0, film_started + film_seconds - 1.5 - time.monotonic()))  # test-fixture-timer
             shot("dark-last-scene")
             press("Launch EnviousWispr")  # on the last scene: finishes the film
         st = run.until(lambda x: x.get("active") is False, 6, "completed")
         s.expect(st.get("active") is False and st.get("legacyState") == "completed",
                  f"{appearance}: Launch EnviousWispr completes Setup durably",
                  (st.get("active"), st.get("legacyState")))
+        time.sleep(1.5)  # test-fixture-timer: the main window opens
+        titles = app_window_titles(pid)
+        s.expect(SETUP_TITLE not in titles and any(t and t != SETUP_TITLE for t in titles),
+                 f"{appearance}: Setup closes and the main window opens (D9)", titles)
         run.app.call("onboarding", "permissions", "--clear")
-    s.uncovered.append("D9 main window after Launch EnviousWispr and the film_finished row in "
-                       "PostHog: D7a cutover and the telemetry round")
     run.app.call("settings", "set", "appearance", json.dumps(before))
     return s
 
@@ -1879,10 +1905,15 @@ def s_practice_spoken(run, speech):
         run.app.call("onboarding", "stop")
         return s
     time.sleep(1.0)  # test-fixture-timer: the editor rises and takes focus
+    # The take's verdict is read from app.log, which the app writes only in Debug Mode.
+    run.app.call("settings", "set", "isDebugModeEnabled", "true")
     wid = window_id(pid, SETUP_TITLE)
     if wid is not None:
         capture_window(wid, os.path.join(shots, f"practice-{lang}-before.png"))
     try:
+        # The take's checks (menu idle, take gate) read wispr_eyes' app handle: pin it to the
+        # pid this run already proved is THIS build, never a lookup by name.
+        w._pid, w._app = pid, w.get_ax_app(pid)
         # Bring forward THIS build by path: `open -b` can launch another registered copy (#4556).
         bundle = run.app.bundle
 
