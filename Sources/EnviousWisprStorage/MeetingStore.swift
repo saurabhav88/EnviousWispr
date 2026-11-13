@@ -161,35 +161,50 @@ public struct MeetingStore: Sendable {
     public let startMs: Int
     public let partial: Bool
     public let url: URL
+    /// #3147 PR4B: `.aacM4A` for a compacted file (committed, candidate or abandoned).
+    public var encoding: MeetingAudioEncoding = .pcmCAF
+    /// #3147 PR4B: the inventory attempt a compacted file belongs to; nil for recorder CAF.
+    public var inventoryID: UUID? = nil
   }
 
-  /// Every recognized segment file in the folder (finals AND partials, duplicates included, both
-  /// microphone copies), in (track, copy, numeric index, partial-after-final) order. Throws when
-  /// the folder cannot be read.
+  /// Every recognized audio file in the folder, PHYSICALLY: recorder CAF and compacted M4A,
+  /// finals AND partials, committed or not, duplicates included, both microphone copies, in
+  /// (track, copy, numeric index, recorder-before-compacted, partial-after-final) order. Throws
+  /// when the folder cannot be read.
+  ///
+  /// #3147 PR4B: this is the physical enumeration for bytes, usage, occupied indices and
+  /// deletion, so retained originals, candidates and abandoned output are all seen. It is never
+  /// reader authority: a reader chooses files through `MeetingAudioSelection` and the committed
+  /// inventory, so an uncommitted `.m4a` found here never becomes readable audio.
   public func segmentFiles(meeting id: UUID) throws -> [SegmentFile] {
     let dir = folder(for: id)
     let names = try FileManager.default.contentsOfDirectory(atPath: dir.path)
     return names.compactMap { name -> SegmentFile? in
-      guard let parsed = MeetingSegmentNaming.parse(name) else { return nil }
+      guard let parsed = MeetingSegmentNaming.parseAny(name) else { return nil }
       return SegmentFile(
         track: parsed.track, variant: parsed.variant, index: parsed.index,
-        startMs: parsed.startMs, partial: parsed.partial, url: dir.appendingPathComponent(name))
+        startMs: parsed.startMs, partial: parsed.partial, url: dir.appendingPathComponent(name),
+        encoding: parsed.encoding, inventoryID: parsed.inventoryID)
     }.sorted { lhs, rhs in
       if lhs.track != rhs.track { return lhs.track.rawValue < rhs.track.rawValue }
       if lhs.variant != rhs.variant { return lhs.variant.rawValue < rhs.variant.rawValue }
       if lhs.index != rhs.index { return lhs.index < rhs.index }
-      return !lhs.partial && rhs.partial
+      if lhs.encoding != rhs.encoding { return lhs.encoding == .pcmCAF }
+      if lhs.partial != rhs.partial { return !lhs.partial }
+      return lhs.url.lastPathComponent < rhs.url.lastPathComponent
     }
   }
 
   /// The highest index any recognized file of `track` occupies, so a writer continues past
-  /// every occupied identity (finals, partials and duplicates alike, either microphone copy).
+  /// every occupied identity (finals, partials and duplicates alike, either microphone copy,
+  /// recorder or compacted: a compacted file keeps its source's index).
   public func highestIndex(meeting id: UUID, track: MeetingTrackKind) throws -> Int {
     try segmentFiles(meeting: id).filter { $0.track == track }.map(\.index).max() ?? 0
   }
 
-  /// Bytes used by the meeting's audio files, both microphone copies. Throws when any listed
-  /// file cannot be measured, so a failed read is never shown as a size.
+  /// Bytes used by the meeting's audio files, both microphone copies, every representation on
+  /// disk (#3147 PR4B: retained CAF and compacted M4A each count while both exist). Throws when
+  /// any listed file cannot be measured, so a failed read is never shown as a size.
   public func audioBytes(meeting id: UUID) throws -> Int64 {
     try segmentFiles(meeting: id).reduce(0) { total, file in
       guard let size = try file.url.resourceValues(forKeys: [.fileSizeKey]).fileSize else {
@@ -201,9 +216,12 @@ public struct MeetingStore: Sendable {
 
   /// Meeting audio on disk across every meeting folder (#3147 RecordingUsage).
   public struct AudioUsage: Sendable, Equatable {
-    /// Final segment files, both tracks and both microphone copies, each file once.
+    /// Final segment files, both tracks and both microphone copies, each file once: recorder CAF
+    /// and the compacted M4A of the meeting's COMMITTED inventory (both count while both exist).
     public var committedBytes: Int64 = 0
-    /// Partial segment files a recording or an interrupted run is still writing.
+    /// Partial segment files a recording or an interrupted run is still writing, and #3147 PR4B
+    /// compacted output no committed inventory names (a candidate, even a finished one, or an
+    /// abandoned attempt): it may be removed and is never the meeting's audio.
     public var temporaryBytes: Int64 = 0
     /// Meeting folders whose files could not be listed or measured; their audio is not in the
     /// totals, so a nonzero count makes the totals a lower bound.
@@ -225,11 +243,20 @@ public struct MeetingStore: Sendable {
       do {
         var committed: Int64 = 0
         var temporary: Int64 = 0
-        for file in try segmentFiles(meeting: id) {
+        let files = try segmentFiles(meeting: id)
+        // Only compacted output needs the record to classify; a record that cannot be read here
+        // (missing, damaged or newer) proves no inventory, so its M4A counts as temporary.
+        let committedInventory: MeetingCompressedInventory? =
+          files.contains { $0.encoding == .aacM4A } ? (try? load(id: id))?.compressedAudio : nil
+        for file in files {
           guard let size = try file.url.resourceValues(forKeys: [.fileSizeKey]).fileSize else {
             throw StoreError.unmeasurableAudio
           }
-          if file.partial { temporary += Int64(size) } else { committed += Int64(size) }
+          if Self.isCommittedAudio(file, inventory: committedInventory) {
+            committed += Int64(size)
+          } else {
+            temporary += Int64(size)
+          }
         }
         usage.committedBytes += committed
         usage.temporaryBytes += temporary
@@ -240,11 +267,24 @@ public struct MeetingStore: Sendable {
     return usage
   }
 
+  /// A final recorder file, or a final compacted file the committed inventory NAMES (an
+  /// unlisted file carrying the same attempt id is not the meeting's audio).
+  static func isCommittedAudio(_ file: SegmentFile, inventory: MeetingCompressedInventory?) -> Bool {
+    guard !file.partial else { return false }
+    switch file.encoding {
+    case .pcmCAF: return true
+    case .aacM4A:
+      guard let inventory, file.inventoryID == inventory.id else { return false }
+      return inventory.segments.contains { $0.compressed.fileName == file.url.lastPathComponent }
+    }
+  }
+
   // MARK: - Deletion
 
-  /// Removes every audio file of the meeting (finals and partials, both microphone copies), its
-  /// work folder and its call-speaker evidence (#4013); keeps `meeting.json` and the notes and
-  /// summary. Refuses a meeting a newer build wrote.
+  /// Removes every audio file of the meeting (finals and partials, both microphone copies, and
+  /// #3147 PR4B every compacted representation: committed, candidate and abandoned), its work
+  /// folder and its call-speaker evidence (#4013); keeps `meeting.json` and the notes, summary
+  /// and reference documents. Refuses a meeting a newer build wrote.
   public func deleteAudio(meeting id: UUID) throws {
     try refuseNewerFormat(id)
     for file in try segmentFiles(meeting: id) {
@@ -275,7 +315,7 @@ public struct MeetingStore: Sendable {
     try FileManager.default.removeItem(at: dir)
   }
 
-  private func refuseNewerFormat(_ id: UUID) throws {
+  func refuseNewerFormat(_ id: UUID) throws {
     if let header = try? header(id: id), header.formatVersion > MeetingRecord.currentFormatVersion {
       throw StoreError.newerFormat
     }
