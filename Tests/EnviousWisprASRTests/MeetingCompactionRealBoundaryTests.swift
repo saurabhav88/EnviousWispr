@@ -109,6 +109,7 @@ enum C6Fixture {
       let segments: Int
       let compactedFiles: Int
       let seekWindowsPerArm: Int
+      let calibrationWindows: Int
       let transcribedRowsPerEngine: Int
       let sizeSegments: Int
       let engines: [String]
@@ -353,6 +354,54 @@ enum C6Fixture {
   }
 
   static func db(_ ratio: Double) -> Double { 20 * log10(max(ratio, 1e-12)) }
+
+  /// Pearson correlation of the two windows' 10 ms RMS envelopes: a content check for noise and
+  /// music, whose waveform a perceptual codec does not keep but whose loudness over time it does.
+  static func envelopeCorrelation(_ a: [Float], _ b: [Float]) -> Double {
+    let frame = 160
+    func envelope(_ x: [Float]) -> [Double] {
+      stride(from: 0, to: x.count - frame + 1, by: frame).map { rms(x[$0..<($0 + frame)]) }
+    }
+    let ea = envelope(a)
+    let eb = envelope(b)
+    let n = min(ea.count, eb.count)
+    guard n > 1 else { return -1 }
+    let ma = ea.prefix(n).reduce(0, +) / Double(n)
+    let mb = eb.prefix(n).reduce(0, +) / Double(n)
+    var dot = 0.0
+    var va = 0.0
+    var vb = 0.0
+    for i in 0..<n {
+      dot += (ea[i] - ma) * (eb[i] - mb)
+      va += (ea[i] - ma) * (ea[i] - ma)
+      vb += (eb[i] - mb) * (eb[i] - mb)
+    }
+    guard va > 0, vb > 0 else { return -1 }
+    return dot / (va * vb).squareRoot()
+  }
+
+  /// One seek window's content check, shared by the reader arms and the codec calibration.
+  /// `a` is the original window; `b` holds the test window at `lead` with `search` samples of
+  /// room on each side. Speech and boundary windows: best waveform correlation and its lag.
+  /// Level windows (noise, music): envelope correlation at the requested time and the level.
+  static func windowMatches(
+    kind: String, _ a: [Float], _ b: [Float], lead: Int, gates: Matrix.Gates
+  ) -> (ok: Bool, detail: String) {
+    let centre = Array(b[lead..<(lead + a.count)])
+    if kind == "level" {
+      let envelope = envelopeCorrelation(a, centre)
+      let delta = db(rms(centre[...]) / max(rms(a[...]), 1e-12))
+      return (
+        envelope >= gates.seekMinCorrelation && abs(delta) <= gates.levelToleranceDb,
+        "envelope=\(String(format: "%.4f", envelope)) deltaDb=\(String(format: "%.2f", delta))"
+      )
+    }
+    let found = bestCorrelation(a, b, base: lead, search: gates.seekSearchLagSamples)
+    return (
+      found.correlation >= gates.seekMinCorrelation && abs(found.lag) <= gates.seekMaxLagSamples,
+      "correlation=\(String(format: "%.4f", found.correlation)) lagSamples=\(found.lag)"
+    )
+  }
 }
 
 struct C6Failure: Error, CustomStringConvertible {
@@ -382,7 +431,7 @@ enum C6Route {
   }
 
   static func open(
-    folder: URL, inventory: MeetingCompressedInventory?, provenance: MeetingEchoProvenance
+    folder: URL, inventory: MeetingCompressedInventory?, provenance: MeetingEchoProvenance?
   ) throws -> Tracks {
     let report = MeetingTrackRecovery.recover(folder: folder)
     guard report.problems.isEmpty, report.cleanedProblems.isEmpty else {
@@ -422,14 +471,16 @@ enum C6Route {
       raw: report.segments[.microphone] ?? [], report: report, provenance: provenance)
     {
     case .cleaned:
-      let cleaned = try audio(.microphone, .cleaned)
-      guard MeetingMicrophoneSelection.readMatches(cleaned, raw: raw) else {
-        throw C6Failure("cleaned copy does not read where its raw twins are")
+      // As the coordinator: a cleaned set that cannot be read where its raw twins are falls
+      // back to the raw copy, whole.
+      if let cleaned = try? audio(.microphone, .cleaned),
+        MeetingMicrophoneSelection.readMatches(cleaned, raw: raw)
+      {
+        transcribed = cleaned
+        usedCleaned = true
       }
-      transcribed = cleaned
-      usedCleaned = true
-    case .raw(let reason):
-      throw C6Failure("the proof-backed cleaned copy was refused: \(reason)")
+    case .raw:
+      break
     }
     return Tracks(
       rawMicrophone: raw, transcribedMicrophone: transcribed, usedCleaned: usedCleaned,
@@ -474,6 +525,42 @@ struct MeetingCompactionRealBoundaryTests {
       checked += 1
     }
     #expect(checked == matrix.expected.compactedFiles)
+
+    // Codec calibration of the seek check: every speech and level window, read from its
+    // segment's source CAF and from the compacted file as the app's file decoder decodes it,
+    // must pass the same check the reader arms use, so a failing arm is the reader's fault.
+    var calibrated = 0
+    for seek in matrix.seeks where seek.kind == "speech" || seek.kind == "level" {
+      let variants: [MeetingSegmentVariant] =
+        seek.track == .microphone ? [.raw, .cleaned] : [.raw]
+      for variant in variants {
+        let segment = try #require(
+          meeting.inventory.segments.first {
+            $0.track == seek.track && $0.variant == variant && $0.source.index == seek.index
+          })
+        let source = try await AudioFileDecoder.decode(
+          url: meeting.folder.appending(path: segment.source.fileName)
+        ).samples
+        let decoded = try await AudioFileDecoder.decode(
+          url: meeting.folder.appending(path: segment.compressed.fileName)
+        ).samples
+        let start = F.sampleIndex(ms: seek.offsetMs)
+        let count = F.sampleIndex(ms: seek.lengthMs)
+        let search = matrix.gates.seekSearchLagSamples
+        let from = max(0, start - search)
+        try #require(start + count + search <= min(source.count, decoded.count), "\(seek.id)")
+        let checkedWindow = F.windowMatches(
+          kind: seek.kind, Array(source[start..<(start + count)]),
+          Array(decoded[from..<(start + count + search)]), lead: start - from,
+          gates: matrix.gates)
+        print(
+          "C6 calibration id=\(seek.id) variant=\(variant.rawValue) kind=\(seek.kind) "
+            + checkedWindow.detail)
+        #expect(checkedWindow.ok, "\(seek.id) \(variant.rawValue): \(checkedWindow.detail)")
+        calibrated += 1
+      }
+    }
+    #expect(calibrated == matrix.expected.calibrationWindows)
   }
 
   /// One track-hour in recorder-length segments, each compacted on its own, fits the size gate.
@@ -544,6 +631,13 @@ struct MeetingCompactionRealBoundaryTests {
       folder: meeting.folder, inventory: nil, provenance: meeting.provenance)
     #expect(original.selected.allSatisfy { $0.encoding == .pcmCAF })
     #expect(original.usedCleaned)
+    // The raw-selection branch: with no recorded provenance the coordinator reads the raw
+    // microphone copy, whole.
+    let rawAttempt = try C6Route.open(folder: meeting.folder, inventory: nil, provenance: nil)
+    #expect(rawAttempt.usedCleaned == false)
+    #expect(
+      try rawAttempt.transcribedMicrophone.read(from: 0, count: original.rawMicrophone.endSample)
+        == original.rawMicrophone.read(from: 0, count: original.rawMicrophone.endSample))
     print("C6 mode control=\(F.identityControl ? "identity" : "none")")
     for (arm, armFolder) in [("compacted", meeting.folder), ("retired", retired)] {
       let (folder, inventory) = F.arm(meeting, folder: armFolder)
@@ -632,22 +726,21 @@ struct MeetingCompactionRealBoundaryTests {
             print("C6 seek arm=\(arm) copy=\(copy) id=\(seek.id) kind=gap peak=\(peak)")
             #expect(peak == 0, "\(arm) \(copy) \(seek.id): a gap is not silent")
           case "level":
-            let delta = F.db(F.rms(bCentre[...]) / max(F.rms(a[...]), 1e-12))
+            let checked = F.windowMatches(kind: "level", a, b, lead: lead, gates: matrix.gates)
+            // The same window one second later must not pass: the check sees content.
+            let later = try test.read(from: start + F.sampleIndex(ms: 1_000), count: count)
+            let wrongTime = F.envelopeCorrelation(a, later)
             print(
-              "C6 seek arm=\(arm) copy=\(copy) id=\(seek.id) kind=level deltaDb=\(String(format: "%.2f", delta))"
-            )
-            #expect(abs(delta) <= matrix.gates.levelToleranceDb, "\(arm) \(copy) \(seek.id)")
+              "C6 seek arm=\(arm) copy=\(copy) id=\(seek.id) kind=level \(checked.detail) "
+                + "wrongTimeEnvelope=\(String(format: "%.4f", wrongTime))")
+            #expect(checked.ok, "\(arm) \(copy) \(seek.id): \(checked.detail)")
+            #expect(
+              wrongTime < matrix.gates.seekMinCorrelation,
+              "\(arm) \(copy) \(seek.id): the level check cannot tell times apart")
           default:
-            let found = F.bestCorrelation(a, b, base: lead, search: search)
-            let lag = found.lag
-            print(
-              "C6 seek arm=\(arm) copy=\(copy) id=\(seek.id) kind=\(seek.kind) "
-                + "correlation=\(String(format: "%.4f", found.correlation)) lagSamples=\(lag)")
-            #expect(
-              found.correlation >= matrix.gates.seekMinCorrelation,
-              "\(arm) \(copy) \(seek.id): correlation \(found.correlation)")
-            #expect(
-              abs(lag) <= matrix.gates.seekMaxLagSamples, "\(arm) \(copy) \(seek.id): lag \(lag)")
+            let checked = F.windowMatches(kind: seek.kind, a, b, lead: lead, gates: matrix.gates)
+            print("C6 seek arm=\(arm) copy=\(copy) id=\(seek.id) kind=\(seek.kind) \(checked.detail)")
+            #expect(checked.ok, "\(arm) \(copy) \(seek.id): \(checked.detail)")
           }
           windows += 1
         }

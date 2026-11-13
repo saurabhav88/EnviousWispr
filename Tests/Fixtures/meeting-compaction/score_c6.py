@@ -44,14 +44,31 @@ for line in text.splitlines():
     rows[(row["engine"], row["track"], row["variant"], row["segment"])] = row  # echoed lines
 
 print(f"scorer: {scorer_path} :: wer")
-failed = False
+# The whole suite must have run and passed, not only its transcription rows.
+count = matrix["expected"]["testsInSuite"]
+failed = re.search(rf"Test run with {count} tests(?: in \d+ suites?)? passed\b", text) is None
+if failed:
+    print(f"suite: no passing 'Test run with {count} tests' line")
+expected_keys = {
+    (t["track"], v, str(s["index"]), s["clip"], s["language"])
+    for t in matrix["meeting"]["tracks"]
+    for s in t["segments"]
+    for v in (["raw", "cleaned"] if t["cleanedTwin"] else ["raw"])
+}
 for engine in engines:
     mine = [r for k, r in sorted(rows.items()) if k[0] == engine]
+    actual_keys = {(r["track"], r["variant"], r["segment"], r["clip"], r["language"]) for r in mine}
+    if actual_keys != expected_keys:
+        print(f"engine={engine}: rows are not the frozen cases: missing={sorted(expected_keys - actual_keys)} extra={sorted(actual_keys - expected_keys)}")
+        failed = True
     words = original_errors = compressed_errors = 0.0
     for r in mine:
         n = ref_words(r["reference"])
         o = bpc.wer(r["reference"], r["original"])
         c = bpc.wer(r["reference"], r["compressed"])
+        if n == 0:
+            # No reference words (noise only): weight 0 in the pool, so its own change is gated.
+            failed |= abs(c - o) * 100 > gate
         words += n
         original_errors += o * n
         compressed_errors += c * n

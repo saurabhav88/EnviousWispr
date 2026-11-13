@@ -14,6 +14,7 @@
     "seekMaxLagSamples": 16,
     "seekSearchLagSamples": 64,
     "levelToleranceDb": 1.0,
+    "levelMetric": "level windows (noise, music): Pearson correlation of 10 ms RMS envelopes >= seekMinCorrelation and RMS within levelToleranceDb; speech and boundary windows: waveform correlation",
     "cleanedLevelRatio": 0.5,
     "cleanedLevelRatioTolerance": 0.1
   },
@@ -66,6 +67,7 @@
     "segments": 9,
     "compactedFiles": 9,
     "seekWindowsPerArm": 18,
+    "calibrationWindows": 12,
     "transcribedRowsPerEngine": 9,
     "sizeSegments": 60,
     "engines": ["parakeet", "whisper"],
