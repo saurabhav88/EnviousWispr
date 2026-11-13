@@ -761,6 +761,17 @@ def setup_elements(pid, role, title=None):
     return found
 
 
+def ax_press(element):
+    """AXPress through the real accessibility path; True when the press was delivered.
+    A SwiftUI button whose action moves Setup on answers kAXErrorFailure (-25200) although the
+    action ran (measured 2026-11-13 on "Try your first dictation" and "Continue without AI
+    polish": the next state check passed every time, and the element was still valid 0.3 s
+    later while the screen faded out). So -25200 counts as delivered; any other error does
+    not. A delivered press proves nothing alone: every caller asserts the outcome after it."""
+    from ApplicationServices import AXUIElementPerformAction
+    return AXUIElementPerformAction(element, "AXPress") in (0, -25200)
+
+
 def setup_button(pid, name):
     from ui_helpers import get_attr
     for b in setup_elements(pid, "AXButton"):
@@ -805,7 +816,7 @@ def s_screens_d1(run, speech):
     """D1: Welcome and Language through their real controls (AX press, AX value, AX confirm),
     with light/dark captures of each state. The Mac's language is faked for advice only
     (`onboarding profile --lang`); appearance is set through the door and restored."""
-    from ui_helpers import get_attr, set_attr, perform_action
+    from ui_helpers import get_attr, set_attr
     s = Scenario("screens_d1")
     pid = run.app.client.pid
     shots = os.path.join(run.artifacts, "shots")
@@ -838,7 +849,7 @@ def s_screens_d1(run, speech):
         settle()
         shot(f"{appearance}-welcome")
         start = setup_button(pid, "Set up dictation")
-        s.expect(start is not None and perform_action(start, "AXPress"),
+        s.expect(start is not None and ax_press(start),
                  f"pressed Set up dictation ({appearance})")
         st = run.until(lambda x: x.get("step") == "language", 4, "language")
         s.expect(st.get("step") == "language", "Set up dictation reaches Language", st.get("step"))
@@ -855,7 +866,7 @@ def s_screens_d1(run, speech):
                  "Continue is disabled for unmatched text", cont is not None and get_attr(cont, "AXEnabled"))
         shot(f"{appearance}-language-nomatch")
         if appearance == "light":
-            perform_action(cont, "AXPress")
+            ax_press(cont)
             st = run.status()
             s.expect(st.get("step") == "language" and (st.get("choices") or {}).get("language") is None,
                      "a disabled Continue commits nothing", (st.get("step"), st.get("choices")))
@@ -876,7 +887,7 @@ def s_screens_d1(run, speech):
                      field is not None and get_attr(field, "AXValue"))
             type_language("Deutsch")
             cont = setup_button(pid, "Continue")
-            s.expect(cont is not None and perform_action(cont, "AXPress"), "pressed Continue")
+            s.expect(cont is not None and ax_press(cont), "pressed Continue")
             st = run.until(lambda x: x.get("step") == "speechPick", 4, "speechPick")
             s.expect((st.get("choices") or {}).get("language") == "de",
                      "Continue commits German through the same path", st.get("choices"))
@@ -903,7 +914,7 @@ def s_screens_d2(run, speech):
     open Compare, select a tile WITHOUT advancing, go back to the card, accept; plus Japanese,
     where Parakeet's tile is disabled. Only engines installed on this Mac are accepted (the
     read-only catalog); a missing-model download is clean-Mac UAT."""
-    from ui_helpers import get_attr, perform_action
+    from ui_helpers import get_attr
     s = Scenario("screens_d2")
     pid = run.app.client.pid
     shots = os.path.join(run.artifacts, "shots")
@@ -920,7 +931,7 @@ def s_screens_d2(run, speech):
 
     def press(name):
         b = setup_button(pid, name)
-        s.expect(b is not None and perform_action(b, "AXPress"), f"pressed {name}")
+        s.expect(b is not None and ax_press(b), f"pressed {name}")
         settle(0.4)
 
     def to_speech(language):
@@ -995,7 +1006,7 @@ def s_screens_d3a(run, speech):
     Card/tile clicks must commit nothing; Continue commits exactly the named model; an Apple
     Intelligence change on a mounted screen re-forms the cards. Only installed local models are
     accepted; a missing-model download is clean-Mac UAT."""
-    from ui_helpers import get_attr, perform_action
+    from ui_helpers import get_attr
     s = Scenario("screens_d3a")
     pid = run.app.client.pid
     shots = os.path.join(run.artifacts, "shots")
@@ -1012,7 +1023,7 @@ def s_screens_d3a(run, speech):
 
     def press(name):
         b = setup_button(pid, name)
-        s.expect(b is not None and perform_action(b, "AXPress"), f"pressed {name}")
+        s.expect(b is not None and ax_press(b), f"pressed {name}")
         settle(0.4)
 
     def has(name):
@@ -1152,7 +1163,7 @@ def s_screens_d5(run, speech):
     reads it back, Back and Continue route. Live keyboard rehearsal stays a human/real-keyboard
     check (synthetic per-process events bypass the global hotkey path, so they prove nothing
     about the hotkey pause); the pause/resume balance is covered by SetupShortcutTests."""
-    from ui_helpers import get_attr, perform_action
+    from ui_helpers import get_attr
     s = Scenario("screens_d5")
     pid = run.app.client.pid
     shots = os.path.join(run.artifacts, "shots")
@@ -1169,7 +1180,7 @@ def s_screens_d5(run, speech):
 
     def press(name):
         b = setup_button(pid, name)
-        s.expect(b is not None and perform_action(b, "AXPress"), f"pressed {name}")
+        s.expect(b is not None and ax_press(b), f"pressed {name}")
         settle(0.4)
 
     def main_key_value():
@@ -1236,7 +1247,7 @@ def s_screens_d4b(run, speech):
     telemetry): not asked, microphone allowed, a row waiting for System Settings, both allowed
     (the flow's own auto-advance to the key screen) and microphone turned off. A real OS grant is
     clean-Mac UAT."""
-    from ui_helpers import get_attr, perform_action
+    from ui_helpers import get_attr
     s = Scenario("screens_d4b")
     pid = run.app.client.pid
     shots = os.path.join(run.artifacts, "shots")
@@ -1259,7 +1270,7 @@ def s_screens_d4b(run, speech):
 
     def press(name):
         b = setup_button(pid, name)
-        s.expect(b is not None and perform_action(b, "AXPress"), f"pressed {name}")
+        s.expect(b is not None and ax_press(b), f"pressed {name}")
         settle(0.5)
 
     def simulate(mic, ax):
@@ -1331,7 +1342,6 @@ def s_screens_d4a(run, speech):
     card's Turn on; Continue setup; entering an already-finished Downloads does not bounce.
     Installed-only hardware cannot reach a missing-model download, disk-short preflight or a
     slow transfer while downloading: those stay clean-Mac UAT."""
-    from ui_helpers import perform_action
     s = Scenario("screens_d4a")
     pid = run.app.client.pid
     shots = os.path.join(run.artifacts, "shots")
@@ -1353,7 +1363,7 @@ def s_screens_d4a(run, speech):
 
     def press(name):
         b = setup_button(pid, name)
-        s.expect(b is not None and perform_action(b, "AXPress"), f"pressed {name}")
+        s.expect(b is not None and ax_press(b), f"pressed {name}")
         settle(0.6)
 
     def to_downloads(polish_event):
@@ -1534,7 +1544,7 @@ def s_screens_d3b(run, speech):
     production Keychain, never a founder key); the provider rejects it, and Add my key later must
     remove it again. Ollama is never offered. An accepted key, the model picker and its VoiceOver
     label need a real key and stay a human check."""
-    from ui_helpers import set_attr, perform_action
+    from ui_helpers import set_attr
     s = Scenario("screens_d3b")
     pid = run.app.client.pid
     shots = os.path.join(run.artifacts, "shots")
@@ -1553,7 +1563,7 @@ def s_screens_d3b(run, speech):
 
     def press(name):
         b = setup_button(pid, name)
-        s.expect(b is not None and perform_action(b, "AXPress"), f"pressed {name}")
+        s.expect(b is not None and ax_press(b), f"pressed {name}")
         settle(0.4)
 
     def has(name):
@@ -1674,7 +1684,6 @@ def s_screens_e(run, speech):
     Light: Watch again, then Launch EnviousWispr before the last scene skips the film; dark: the
     film plays to its last scene and Launch EnviousWispr finishes it. Both complete Setup
     durably. Permissions are simulated through the door and cleared at the end."""
-    from ui_helpers import perform_action
     s = Scenario("screens_e")
     pid = run.app.client.pid
     shots = os.path.join(run.artifacts, "shots")
@@ -1689,7 +1698,7 @@ def s_screens_e(run, speech):
 
     def press(name):
         b = setup_button(pid, name)
-        s.expect(b is not None and perform_action(b, "AXPress"), f"pressed {name}")
+        s.expect(b is not None and ax_press(b), f"pressed {name}")
 
     def to_film(label):
         run.reset(s, f"a fresh flow to the film ({label})")
@@ -1744,7 +1753,6 @@ def s_screens_de(run, speech):
     review (plan §3.7). The app must already run in German (`AppleLanguages (de)` in the dev
     domain, set and removed by the operator around the run). Positioning uses `goto`, so this
     is visual evidence only; the See all Cloud tab and the film's last scene are captured too."""
-    from ui_helpers import perform_action
     s = Scenario("screens_de")
     pid = run.app.client.pid
     shots = os.path.join(run.artifacts, "shots")
@@ -1782,7 +1790,7 @@ def s_screens_de(run, speech):
                          [t for t in texts if "Schritt" in t or "Step" in t])
             if step == "polishSeeAll":
                 cloud = setup_button(pid, "Cloud")
-                s.expect(cloud is not None and perform_action(cloud, "AXPress"), "pressed Cloud")
+                s.expect(cloud is not None and ax_press(cloud), "pressed Cloud")
                 time.sleep(0.6)  # test-fixture-timer: the panel rises
                 shot(f"{appearance}-polishSeeAll-cloud")
             if step == "film":
