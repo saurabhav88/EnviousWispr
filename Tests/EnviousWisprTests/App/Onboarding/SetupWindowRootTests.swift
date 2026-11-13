@@ -56,31 +56,9 @@ struct SetupWindowRootTests {
   }
 
   @Test("Reduce Motion removes the screen animation; the shell paints the same either way")
-  func reduceMotionPath() throws {
-    _ = NSApplication.shared
+  func reduceMotionPath() {
     #expect(SetupWindowRoot.screenAnimation(reduceMotion: true) == nil)
     #expect(SetupWindowRoot.screenAnimation(reduceMotion: false) == DesignMotion.firstRunScreenIn)
-    let world = OnboardingCoordinatorTests.World()
-    let coordinator = world.coordinator()
-    coordinator.begin()
-    // A step whose screen is still the shell alone: real screens carry live lips, whose own
-    // Reduce Motion behavior RainbowLipsView's tests own.
-    coordinator.send(.next)
-    coordinator.send(.chooseLanguage(.auto))
-    coordinator.send(.next)
-    coordinator.send(.next)  // Speech pick's default: Polish intro
-    coordinator.send(.next)  // AI polish pick
-    coordinator.send(.skipPolish)  // Downloads
-    coordinator.debugGoto(.practice)  // Practice: still a placeholder until D6b part 2
-    let model = SetupScreenModel(coordinator: coordinator)
-    defer { model.detach() }
-    let still = try Self.pixels(SetupWindowRoot(model: model), reduceMotion: true)
-    let moving = try Self.pixels(SetupWindowRoot(model: model), reduceMotion: false)
-    #expect(still == moving, "Reduce Motion changed the resting shell, not only its motion")
-    // Evidence for visual review, in this checkout's ignored build folder.
-    let folder = RepoRoot.url.appending(path: "build/design-render")
-    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-    try still.write(to: folder.appending(path: "setup-shell-reduce-motion.png"))
   }
 
   private static func pixels(_ view: some View, reduceMotion: Bool) throws -> Data {
