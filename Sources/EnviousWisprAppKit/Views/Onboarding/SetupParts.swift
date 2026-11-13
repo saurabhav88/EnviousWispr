@@ -53,6 +53,10 @@ enum SetupMetrics {
   static let tagHeight: CGFloat = 20
   static let iconWell: CGFloat = 52
   static let tagOverlap: CGFloat = 10
+  /// AI polish: the choice radio and its dot (mockup 20, 8) and the check badge (22).
+  static let radio: CGFloat = 20
+  static let radioDot: CGFloat = 8
+  static let check: CGFloat = 22
 }
 
 /// A screen's footer (mockup `[data-ui="footer"]`): the primary action, then the 32-high links
@@ -188,5 +192,73 @@ struct SetupTag: View {
       .background(
         Capsule().fill(recommended ? Color.obSuccessSoft : Color.firstRunAccentSoft)
           .background(Capsule().fill(Color.obCardBg)))
+  }
+}
+
+/// The mockup's check pop (`obPop` 0.4 s: from 60% scale and clear), staggered by `delay`; none
+/// under Reduce Motion. The mockup's pop curve equals its rise curve, so it shares that token.
+struct SetupPop: ViewModifier {
+  let delay: Double
+  let reduceMotion: Bool
+  @State private var shown = false
+
+  func body(content: Content) -> some View {
+    content
+      .opacity(shown || reduceMotion ? 1 : 0)
+      .scaleEffect(shown || reduceMotion ? 1 : 0.6)
+      .onAppear {
+        if reduceMotion {
+          shown = true
+        } else {
+          withAnimation(DesignMotion.firstRunRise.delay(delay)) { shown = true }
+        }
+      }
+  }
+}
+
+/// A selectable card (mockup `[data-ui="choice"]`): card fill, 2-point hairline border, 16
+/// corners; selected is the accent wash and border; hover tints the border; disabled fades to
+/// 55%. Native `Button` semantics, so keyboard and VoiceOver activation come from the button.
+struct SetupChoiceStyle: ButtonStyle {
+  let selected: Bool
+  var cornerRadius: CGFloat = DesignRadius.xxl
+  @Environment(\.isEnabled) private var isEnabled
+  @State private var hovering = false
+
+  func makeBody(configuration: Configuration) -> some View {
+    let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+    return configuration.label
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(shape.fill(selected ? Color.firstRunAccentSoft : Color.obCardBg))
+      .overlay(shape.strokeBorder(border, lineWidth: 2))
+      .contentShape(shape)
+      .opacity(isEnabled ? 1 : 0.55)
+      .scaleEffect(configuration.isPressed && isEnabled ? 0.99 : 1)
+      .animation(SettingsHover.animation, value: hovering)
+      .onHover { hovering = $0 }
+  }
+
+  private var border: Color {
+    if selected { return .obAccent }
+    return hovering && isEnabled ? Color.obAccent.opacity(0.72) : .firstRunRule
+  }
+}
+
+/// The choice card's radio (mockup `[data-ui="radio"]`): a 20-point ring, filled accent with an
+/// 8-point dot when selected.
+struct SetupRadio: View {
+  let selected: Bool
+
+  var body: some View {
+    ZStack {
+      Circle()
+        .strokeBorder(selected ? Color.obAccent : Color.firstRunTextTertiary, lineWidth: 2)
+        .background(Circle().fill(selected ? Color.obAccent : .clear))
+      Circle()
+        .fill(selected ? Color.firstRunOnAccent : .clear)
+        .frame(width: SetupMetrics.radioDot, height: SetupMetrics.radioDot)
+    }
+    .frame(width: SetupMetrics.radio, height: SetupMetrics.radio)
+    .accessibilityHidden(true)
   }
 }

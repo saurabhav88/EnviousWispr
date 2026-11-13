@@ -68,7 +68,9 @@ struct SetupWindowRootTests {
     coordinator.send(.next)
     coordinator.send(.chooseLanguage(.auto))
     coordinator.send(.next)
-    coordinator.send(.next)  // Speech pick's default: Polish intro, still a placeholder
+    coordinator.send(.next)  // Speech pick's default: Polish intro
+    coordinator.send(.next)  // AI polish pick
+    coordinator.send(.skipPolish)  // Downloads, still a placeholder
     let model = SetupScreenModel(coordinator: coordinator)
     defer { model.detach() }
     let still = try Self.pixels(SetupWindowRoot(model: model), reduceMotion: true)
@@ -227,5 +229,157 @@ struct SetupWindowRootTests {
     model.setSpeechDraft(.whisper)
     coordinator.reset()
     #expect(model.speechDraft == nil, "the draft outlived a reset")
+  }
+
+  // MARK: AI polish (D3a, plan M77)
+
+  /// A world whose advice follows a switchable Apple Intelligence state, as the live owner does.
+  private static func polishWorld(afm: AppleIntelligenceSetupState = .available) throws -> (
+    OnboardingCoordinatorTests.World, () -> AppleIntelligenceSetupState, (AppleIntelligenceSetupState) -> Void
+  ) {
+    let world = OnboardingCoordinatorTests.World()
+    let box = AFMBox(afm)
+    world.advice = { language in
+      SetupPolishTests.held(memory: 16, afm: box.value, language: language ?? .auto)
+    }
+    world.recommended = SetupPolishTests.held(memory: 16, afm: afm)
+    return (world, { box.value }, { box.value = $0 })
+  }
+
+  private final class AFMBox {
+    var value: AppleIntelligenceSetupState
+    init(_ value: AppleIntelligenceSetupState) { self.value = value }
+  }
+
+  /// Welcome to AI polish pick with English and Parakeet.
+  private static func toPolishPick(_ coordinator: OnboardingCoordinator) {
+    coordinator.begin()
+    coordinator.send(.next)
+    coordinator.send(.chooseLanguage(.locked("en")))
+    coordinator.send(.next)
+    coordinator.send(.chooseSpeech(.parakeet))  // Polish intro
+    coordinator.send(.next)  // AI polish pick
+  }
+
+  @Test("entering AI polish re-reads the advice; an Apple Intelligence change re-forms the cards")
+  func polishAdviceRefreshPoints() throws {
+    let (world, _, setAFM) = try Self.polishWorld(afm: .unavailable)
+    let coordinator = world.coordinator()
+    coordinator.begin()
+    coordinator.send(.next)
+    coordinator.send(.chooseLanguage(.locked("en")))
+    coordinator.send(.next)
+    coordinator.send(.chooseSpeech(.parakeet))
+    setAFM(.available)  // changed before polish: entry must read it
+    coordinator.send(.next)
+    #expect(coordinator.state.recommended.polishCards.map(\.model) == ["appleIntelligence", "eg1.mini"])
+    // Off the polish screens, an Apple Intelligence change does not touch the held advice.
+    coordinator.send(.seeAllPolish)
+    setAFM(.turnedOff)
+    coordinator.refreshReadiness()
+    #expect(coordinator.state.recommended.appleIntelligence == .turnedOff)
+    #expect(coordinator.state.recommended.polishCards.map(\.model) == ["eg1.mini", "eg1.full"])
+    #expect(coordinator.state.choices.polish == nil, "a refresh wrote a pick")
+    // Same state again: no new read replaces the advice.
+    let held = coordinator.state.recommended
+    coordinator.refreshReadiness()
+    #expect(coordinator.state.recommended == held)
+  }
+
+  @Test("the polish draft lives on pick and See all only, and never commits or downloads by itself")
+  func polishDraftLifetime() throws {
+    let (world, _, setAFM) = try Self.polishWorld()
+    let coordinator = world.coordinator()
+    let model = SetupScreenModel(coordinator: coordinator)
+    defer { model.detach() }
+    coordinator.begin()
+    model.setPolishDraft("eg1.full")
+    #expect(model.polishDraft == nil, "a draft was taken off the polish screens")
+    Self.toPolishPick(coordinator)
+    let logBefore = world.log
+    model.setPolishDraft("appleIntelligence")
+    #expect(model.polishDraft == "appleIntelligence")
+    model.setPolishDraft("eg1.huge")
+    #expect(model.polishDraft == "appleIntelligence", "an unknown model became the draft")
+    coordinator.send(.seeAllPolish)
+    #expect(model.polishDraft == "appleIntelligence", "See all lost the pending pick")
+    coordinator.send(.back)
+    #expect(model.polishDraft == "appleIntelligence")
+    let added = world.log.dropFirst(logBefore.count)
+    #expect(coordinator.state.choices.polish == nil, "a click committed a pick")
+    #expect(
+      !added.contains { $0.hasPrefix("requestPolish") || $0.hasPrefix("selectPolish") || $0.hasPrefix("writePolish") },
+      "a click wrote or started something: \(added)")
+    // Apple Intelligence stops being available on screen: the draft is dropped, never kept.
+    setAFM(.unavailable)
+    coordinator.refreshReadiness()
+    #expect(model.polishDraft == nil, "a draft for an unavailable model survived")
+    model.setPolishDraft("appleIntelligence")
+    #expect(model.polishDraft == nil, "an unavailable model was accepted as the draft")
+    model.setPolishDraft("eg1.full")
+    coordinator.send(.back)  // Polish intro
+    #expect(model.polishDraft == nil, "the draft outlived the polish screens")
+  }
+
+  @Test("Continue commits exactly the shown model once; Skip stores off with no polish download")
+  func polishCommitAndSkip() throws {
+    let (world, _, _) = try Self.polishWorld()
+    let coordinator = world.coordinator()
+    let model = SetupScreenModel(coordinator: coordinator)
+    defer { model.detach() }
+    Self.toPolishPick(coordinator)
+    model.setPolishDraft("appleIntelligence")
+    let shown = SetupPolish.pickDisplayed(
+      draft: model.polishDraft, committed: coordinator.state.choices.polish,
+      recommended: coordinator.state.recommended, language: coordinator.state.choices.languageMode)
+    #expect(shown == "appleIntelligence")
+    model.send(.choosePolish(shown))
+    #expect(coordinator.state.step == .downloads && coordinator.state.choices.polish == shown)
+    coordinator.send(.back)  // AI polish pick again, with the committed pick shown
+    #expect(
+      SetupPolish.pickDisplayed(
+        draft: model.polishDraft, committed: coordinator.state.choices.polish,
+        recommended: coordinator.state.recommended, language: .locked("en")) == "appleIntelligence")
+    let logBefore = world.log.count
+    model.send(.skipPolish)
+    #expect(coordinator.state.choices.polish == OnboardingChoices.polishOff)
+    let after = world.log.dropFirst(logBefore)
+    #expect(!after.contains { $0.hasPrefix("requestPolish") }, "Skip started a polish download: \(after)")
+  }
+
+  @Test("Polish intro, pick and See all render all their content under Reduce Motion")
+  func polishScreensUnderReduceMotion() throws {
+    _ = NSApplication.shared
+    let folder = RepoRoot.url.appending(path: "build/design-render")
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    for afm in [AppleIntelligenceSetupState.available, .turnedOff] {
+      let (world, _, _) = try Self.polishWorld(afm: afm)
+      let coordinator = world.coordinator()
+      coordinator.begin()
+      coordinator.send(.next)
+      coordinator.send(.chooseLanguage(.locked("en")))
+      coordinator.send(.next)
+      coordinator.send(.chooseSpeech(.parakeet))
+      let model = SetupScreenModel(coordinator: coordinator)
+      defer { model.detach() }
+      model.sources = SetupScreenSources(
+        egOneSizeCatalog: EGOneSizeCatalog(
+          facts: try JSONDecoder().decode(
+            EGOneSizeFacts.self,
+            from: Data(
+              contentsOf: RepoRoot.url.appending(path: "Sources/EnviousWispr/Resources/eg1-size-facts.json"))),
+          downloadBytes: [.full: 3_160_000_000, .mini: 1_450_000_000, .micro: 590_000_000]),
+        s1MiniDownloadBytes: 484_219_808, physicalMemoryBytes: 16 << 30)
+      if afm == .available {
+        try Self.png(Self.host(SetupWindowRoot(model: model), reduceMotion: true))
+          .write(to: folder.appending(path: "setup-polish-intro-reduce-motion.png"))
+      }
+      coordinator.send(.next)
+      try Self.png(Self.host(SetupWindowRoot(model: model), reduceMotion: true))
+        .write(to: folder.appending(path: "setup-polish-pick-\(afm.rawValue)-reduce-motion.png"))
+      coordinator.send(.seeAllPolish)
+      try Self.png(Self.host(SetupWindowRoot(model: model), reduceMotion: true))
+        .write(to: folder.appending(path: "setup-polish-seeall-\(afm.rawValue)-reduce-motion.png"))
+    }
   }
 }

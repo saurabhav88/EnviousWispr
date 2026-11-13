@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprServices
 import Foundation
 
 /// The first-run Setup screens, in order (#4528 plan §3.3).
@@ -60,11 +61,16 @@ enum OnboardingPracticeOutcome: String, Codable, Equatable, Sendable {
 
 /// The recommendation a Setup visit holds (#4528 B2, plan M71): the picks and the rules version
 /// they came from, captured from ONE recommendation read, so telemetry never pairs a pick with a
-/// rules version that did not produce it.
+/// rules version that did not produce it. The AI polish cards and the Apple Intelligence state
+/// they were ordered for come from that same read (D3a, plan M77), so the screen never re-ranks.
 struct OnboardingRecommended: Equatable, Sendable {
   var speech: ASRBackendType = .parakeet
   var polish: String = "eg1.mini"
   var rulesVersion: String = ""
+  /// The recommender's two AI polish cards, in screen order, with labels and preselection.
+  var polishCards: [SetupRecommendation.PolishCard] = []
+  /// What Setup may say about Apple Intelligence, as the cards were ordered for it.
+  var appleIntelligence: AppleIntelligenceSetupState = .unavailable
 }
 
 /// The flow's whole state. Pure value; C2's coordinator owns the one live copy.

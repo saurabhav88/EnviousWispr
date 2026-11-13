@@ -979,6 +979,163 @@ def s_screens_d2(run, speech):
     return s
 
 
+def s_screens_d3a(run, speech):
+    """D3a: Polish intro, AI polish pick and local See all through their real controls (AX
+    press), light and dark. The Mac's memory and Apple Intelligence state are faked for ADVICE
+    only (`onboarding profile`, a labelled fixture: it never proves Apple Intelligence runs).
+    Card/tile clicks must commit nothing; Continue commits exactly the named model; an Apple
+    Intelligence change on a mounted screen re-forms the cards. Only installed local models are
+    accepted; a missing-model download is clean-Mac UAT."""
+    from ui_helpers import get_attr, perform_action
+    s = Scenario("screens_d3a")
+    pid = run.app.client.pid
+    shots = os.path.join(run.artifacts, "shots")
+    os.makedirs(shots, exist_ok=True)
+    before = run.app.call("settings", "get", "appearance").get("value")
+
+    def shot(name):
+        wid = window_id(pid, "Setup")
+        path = os.path.join(shots, f"d3a-{name}.png")
+        s.expect(wid is not None and capture_window(wid, path), f"captured {name}", path)
+
+    def settle(seconds=0.7):
+        time.sleep(seconds)  # test-fixture-timer: the screen entrance and card rise run on screen
+
+    def press(name):
+        b = setup_button(pid, name)
+        s.expect(b is not None and perform_action(b, "AXPress"), f"pressed {name}")
+        settle(0.4)
+
+    def has(name):
+        return setup_button(pid, name) is not None
+
+    def value(name):
+        b = setup_button(pid, name)
+        return (get_attr(b, "AXValue") or "") if b is not None else ""
+
+    def to_intro(language, ram, afm):
+        run.app.call("onboarding", "profile", "--ram", str(ram), "--afm", afm)
+        run.reset(s, f"fresh flow: {language}, {ram} GB, Apple Intelligence {afm} (advice fixture)")
+        run.send("next")
+        run.send("chooseLanguage", value=language)
+        run.send("next")
+        run.send("chooseSpeech", value=speech)
+        st = run.until(lambda x: x.get("step") == "polishIntro", 4, "polishIntro")
+        s.expect(st.get("step") == "polishIntro", "Speech commit reaches Polish intro", st.get("step"))
+        settle()
+
+    have, _ = installed_polish(run)
+    for appearance in ("light", "dark"):
+        run.app.call("settings", "set", "appearance", json.dumps(appearance))
+        run.reset(s, "fresh flow")
+        run.app.call("onboarding", "present")
+        to_intro("en", 16, "available")
+        _, texts = setup_window_ax(pid)
+        points = ["Fixes filler words", "Formats numbers, dates and times", "Corrects grammar",
+                  "Formats lists", "Recognizes when you misspeak", "Formats emails"]
+        s.expect(all(any(p in t for t in texts) for p in points), "the intro shows all six capabilities",
+                 [p for p in points if not any(p in t for t in texts)])
+        shot(f"{appearance}-intro")
+        press("Choose my AI polish")
+        st = run.until(lambda x: x.get("step") == "polishPick", 4, "polishPick")
+        s.expect(st.get("step") == "polishPick", "Choose my AI polish opens the cards", st.get("step"))
+        settle()
+        s.expect(has("Apple Intelligence") and has("EG-1 Mini") and has("Continue with EG-1 Mini"),
+                 "available: Apple Intelligence + EG-1 Mini, EG-1 Mini preselected",
+                 (has("Apple Intelligence"), has("EG-1 Mini"), has("Continue with EG-1 Mini")))
+        s.expect("Recommended" in value("EG-1 Mini") and "download" in value("EG-1 Mini"),
+                 "VoiceOver reads the card's tag and size", value("EG-1 Mini"))
+        shot(f"{appearance}-pick-afm")
+        press("Apple Intelligence")
+        st = run.status()
+        s.expect(st.get("step") == "polishPick" and (st.get("choices") or {}).get("polish") is None
+                 and has("Continue with Apple Intelligence"),
+                 "a card click commits nothing and the CTA names it", (st.get("step"), st.get("choices")))
+        press("See all")
+        s.expect(run.status().get("step") == "polishSeeAll" and has("Continue with Apple Intelligence"),
+                 "See all keeps the pending pick", run.status().get("step"))
+        s.expect(all(has(n) for n in ("EG-1", "EG-1 Mini", "EG-1 Micro", "Apple Intelligence", "S1-mini")),
+                 "See all lists three EG-1 sizes, Apple Intelligence and S1-mini")
+        s.expect("Best for this Mac" in value("EG-1 Mini") and "milliseconds polish" in value("EG-1 Mini"),
+                 "VoiceOver reads the tile's recommendation and measured speed", value("EG-1 Mini"))
+        shot(f"{appearance}-seeall-afm")
+        press("EG-1")
+        st = run.status()
+        s.expect(st.get("step") == "polishSeeAll" and (st.get("choices") or {}).get("polish") is None
+                 and has("Continue with EG-1"), "a tile click commits nothing", st.get("choices"))
+        press("Recommended options")
+        s.expect(run.status().get("step") == "polishPick" and has("Continue with EG-1")
+                 and (run.status().get("choices") or {}).get("polish") is None,
+                 "back on the cards, the See all EG-1 pick survives and the CTA names it (mockup hideAll)")
+        press("EG-1 Mini")  # pick the recommended card again before Apple Intelligence changes
+        # Apple Intelligence turns off while the cards are on screen (advice fixture).
+        run.app.call("onboarding", "profile", "--ram", "16", "--afm", "turnedOff")
+        settle(1.0)
+        s.expect(not has("Apple Intelligence") and has("EG-1 Mini") and has("EG-1")
+                 and has("Continue with EG-1 Mini"),
+                 "the cards re-form to EG-1 Mini + EG-1 with no stale Apple card or CTA",
+                 (has("Apple Intelligence"), has("EG-1"), has("Continue with EG-1 Mini")))
+        shot(f"{appearance}-pick-noafm")
+        press("See all")
+        apple = setup_button(pid, "Apple Intelligence")
+        s.expect(apple is not None and get_attr(apple, "AXEnabled") is False
+                 and "Turn it on in System Settings first." in value("Apple Intelligence"),
+                 "turned off: Apple Intelligence disabled with its reason", value("Apple Intelligence"))
+        s.expect(has("Open Settings"), "turned off offers Open Settings (not pressed: opens System Settings)")
+        shot(f"{appearance}-seeall-noafm")
+        if appearance == "light":
+            run.app.call("onboarding", "profile", "--ram", "16", "--afm", "gettingReady")
+            settle(1.0)
+            s.expect(has("Check again"), "getting ready offers Check again")
+            press("Check again")
+            s.expect(run.status().get("step") == "polishSeeAll", "Check again keeps the screen")
+            run.app.call("onboarding", "profile", "--ram", "16", "--afm", "unavailable")
+            settle(1.0)
+            s.expect("Not available on this Mac right now." in value("Apple Intelligence"),
+                     "unknown availability claims no reason", value("Apple Intelligence"))
+            press("Skip AI polish")
+            st = run.until(lambda x: x.get("step") == "downloads", 4, "downloads")
+            s.expect(st.get("step") == "downloads" and (st.get("choices") or {}).get("polish") == "off",
+                     "Skip AI polish stores off and moves on", (st.get("step"), st.get("choices")))
+            s.expect(((st.get("downloads") or {}).get("polish")) in (None, "notNeeded", "none"),
+                     "Skip starts no polish download", st.get("downloads"))
+            eg = next((m for m in ("eg1.micro", "eg1.mini", "eg1.full") if m in have), None)
+            if eg:
+                name = {"eg1.micro": "EG-1 Micro", "eg1.mini": "EG-1 Mini", "eg1.full": "EG-1"}[eg]
+                to_intro("en", 16, "turnedOff")
+                run.send("next")
+                settle()
+                press("See all")
+                press(name)
+                press(f"Continue with {name}")
+                st = run.until(lambda x: x.get("step") == "downloads", 4, "downloads")
+                s.expect(st.get("step") == "downloads" and (st.get("choices") or {}).get("polish") == eg,
+                         f"Continue commits exactly {name}", (st.get("step"), st.get("choices")))
+            else:
+                s.uncovered.append("accepting a local EG-1 size: none installed here (clean-Mac UAT)")
+        # 8 GB English: Micro recommended with Mini beside it; a locked other language disables S1-mini.
+        to_intro("en", 8, "unavailable")
+        run.send("next")
+        settle()
+        s.expect(has("EG-1 Micro") and has("EG-1 Mini") and has("Continue with EG-1 Micro"),
+                 "8 GB: EG-1 Micro preselected with EG-1 Mini")
+        shot(f"{appearance}-pick-8gb")
+        to_intro("ja", 16, "unavailable")
+        run.send("next")
+        settle()
+        press("See all")
+        s1 = setup_button(pid, "S1-mini")
+        s.expect(s1 is not None and get_attr(s1, "AXEnabled") is False
+                 and "For English dictation" in value("S1-mini") and "Superwhisper" in value("S1-mini"),
+                 "Japanese: S1-mini disabled with its reason and credit", value("S1-mini"))
+        shot(f"{appearance}-seeall-japanese")
+    run.app.call("onboarding", "profile", "--clear")
+    run.app.call("settings", "set", "appearance", json.dumps(before))
+    run.app.call("onboarding", "stop")
+    s.notes.append(f"VISUAL REVIEW OWED: {shots} d3a-* against the source-of-truth mockup")
+    return s
+
+
 def s_shell(run, speech):
     """D0: the new Setup shell shown for the session (DEBUG `onboarding present`), captured in
     light and dark at a few steps. Visual evidence only: positioning uses `goto`, which proves
@@ -1053,6 +1210,7 @@ SCENARIOS = {
     "permissions": s_permissions, "faults": s_faults, "completion": s_completion,
     "interrupted": s_interrupted, "consent_off": s_consent_off,
     "shell": s_shell, "screens_d1": s_screens_d1, "screens_d2": s_screens_d2,
+    "screens_d3a": s_screens_d3a,
 }
 
 

@@ -238,6 +238,17 @@ final class OnboardingCoordinator {
     if before.choices.languageMode != transition.state.choices.languageMode {
       transition.state.recommended = deps.recommended(transition.state.choices.languageMode)
     }
+    // M77: entering AI polish (not returning from See all) checks Apple Intelligence again, so
+    // the cards are ordered for what this Mac can run now. Only a changed state replaces the held
+    // advice: a rules refresh alone never re-stamps the visit's recommendation (M71).
+    if transition.state.step == .polishPick, before.step != .polishPick,
+      before.step != .polishSeeAll
+    {
+      let advice = deps.recommended(transition.state.choices.languageMode)
+      if advice.appleIntelligence != transition.state.recommended.appleIntelligence {
+        transition.state.recommended = advice
+      }
+    }
     if before.choices != transition.state.choices {
       // Before effects, so a final transition's completion follows its picks.
       onObservation?(
@@ -259,10 +270,23 @@ final class OnboardingCoordinator {
     apply(transition, after: before)
   }
 
+  /// While AI polish is on screen, a changed Apple Intelligence state re-forms the held advice
+  /// (plan M77): the cards follow what the Mac can run now. The runtime's samples and rechecks
+  /// (M53) arrive here through `refreshReadiness`. Nothing else re-forms it here, so a background
+  /// rules adoption alone never rewrites the cards on screen, and picks are never touched.
+  private func refreshPolishAdviceIfAppleIntelligenceChanged() {
+    guard [.polishIntro, .polishPick, .polishSeeAll].contains(state.step) else { return }
+    let advice = deps.recommended(state.choices.languageMode)
+    guard advice.appleIntelligence != state.recommended.appleIntelligence else { return }
+    state.recommended = advice
+    onChange?()
+  }
+
   /// Re-measures readiness for the current picks and feeds it to the flow. Live producers
   /// (polling, owner observers) call this; a result for an older generation or pick drops.
   func refreshReadiness() {
     guard isActive else { return }
+    refreshPolishAdviceIfAppleIntelligenceChanged()
     let generation = generation
     let choices = state.choices
     readinessTask?.cancel()

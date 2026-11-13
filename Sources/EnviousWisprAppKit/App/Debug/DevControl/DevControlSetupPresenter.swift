@@ -43,7 +43,8 @@
     /// reported to the session's telemetry observer (M67); nil sends nothing.
     func show(
       coordinator: OnboardingCoordinator, telemetry: OnboardingTelemetryObserver?,
-      parakeetModelName: (@MainActor () -> String)? = nil
+      sources: SetupScreenSources = SetupScreenSources(),
+      activateApp: (@MainActor () -> Void)? = nil
     ) {
       if let window {
         window.makeKeyAndOrderFront(nil)
@@ -51,7 +52,7 @@
         return
       }
       let model = SetupScreenModel(coordinator: coordinator)
-      model.parakeetModelName = parakeetModelName
+      model.sources = sources
       model.onPresented = { [weak telemetry] step, resumed in
         telemetry?.screenPresented(step, resumed: resumed)
       }
@@ -66,7 +67,9 @@
       window.center()
       self.model = model
       self.window = window
-      NSApp.activate()
+      // Bring the app forward through the desktop-effects owner (dependency direction:
+      // live desktop calls live only in EnviousWisprDesktopEffects).
+      activateApp?()
       window.makeKeyAndOrderFront(nil)
       updateVisibility()
     }

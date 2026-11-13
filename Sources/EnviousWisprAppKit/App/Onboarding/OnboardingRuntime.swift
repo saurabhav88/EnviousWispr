@@ -227,6 +227,14 @@ final class OnboardingRuntime {
     }
   }
 
+  /// "Check again" on AI polish (D3a): the availability owner's approved recheck plus a fresh
+  /// live sample; the coordinator re-forms the cards if the answer changed (plan M77).
+  func recheckAppleIntelligence() {
+    guard isRunning else { return }
+    inputs.recheckAppleIntelligence()
+    sampleAppleIntelligence()
+  }
+
   /// The app came back to the front while Setup is open.
   func appDidBecomeActive() {
     guard isRunning else { return }

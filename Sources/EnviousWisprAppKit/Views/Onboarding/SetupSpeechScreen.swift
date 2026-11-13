@@ -17,7 +17,7 @@ struct SetupSpeechScreen: View {
 
   private var language: LanguageMode? { model.state.choices.languageMode }
   private var parakeetModel: String {
-    model.parakeetModelName?() ?? EngineChoicePresentation.fast.model
+    model.sources.parakeetModelName?() ?? EngineChoicePresentation.fast.model
   }
   private var shown: ASRBackendType {
     SetupSpeech.displayed(

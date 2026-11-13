@@ -20,8 +20,12 @@
       var telemetry: OnboardingTelemetryObserver? = nil
       /// The owners' download phase for the current picks, read for `status` only (I1).
       var downloadPhases: ((OnboardingChoices) -> [String: Any])? = nil
-      /// The Parakeet model the Mac presents, for the Setup screens' names and sizes (D2).
-      var parakeetModelName: (@MainActor () -> String)? = nil
+      /// The owner facts the Setup screens show (D2 Parakeet name, D3a EG-1 catalog); the
+      /// runtime's Apple Intelligence recheck is added when the screens are presented.
+      var screenSources = SetupScreenSources()
+      /// Brings the app forward when the Setup screens show (`ApplicationActivating`, the
+      /// desktop-effects owner); nil leaves activation alone (tests).
+      var activateApp: (@MainActor () -> Void)? = nil
       /// Asks each speech engine's owner, read-only, whether it is installed (the same
       /// `speechInstalled` query Setup's readiness uses), so the catalog can answer Parakeet's
       /// upgrade-aware "installed" with no pick (I1, plan M69). Never selects or downloads.
@@ -136,9 +140,13 @@
         return notRunning()
       }
       guard !workflow.legacyWindowVisible() else { return legacyBusy() }
+      var sources = session.screenSources
+      sources.recheckAppleIntelligence = { [weak runtime = session.runtime] in
+        runtime?.recheckAppleIntelligence()
+      }
       presenter.show(
-        coordinator: session.coordinator, telemetry: session.telemetry,
-        parakeetModelName: session.parakeetModelName)
+        coordinator: session.coordinator, telemetry: session.telemetry, sources: sources,
+        activateApp: session.activateApp)
       return .ok(snapshot())
     }
 
@@ -194,6 +202,7 @@
     func profile(_ args: [String: Any]) -> Result {
       if args["clear"] as? Bool == true {
         SetupAdvice.debugProfile = nil
+        session?.runtime.tick()
         return .ok(snapshot())
       }
       var fake = SetupAdvice.DebugProfile()
@@ -229,6 +238,9 @@
       // Validated: claim Setup immediately before applying (M61).
       guard claim() else { return legacyBusy() }
       SetupAdvice.debugProfile = fake
+      // Re-read now, as a real availability change does (owner observation), so a mounted AI
+      // polish screen re-forms its cards without waiting for the poll (plan M77).
+      session?.runtime.tick()
       return .ok(snapshot())
     }
 
@@ -605,7 +617,10 @@
                 "polish": choices.polish.map { phaseName(downloads.polishPhase($0)) } ?? NSNull(),
               ]
             },
-            parakeetModelName: { owners.modelDelivery.parakeetModelLabel },
+            screenSources: SetupScreenSources(
+              parakeetModelName: { owners.modelDelivery.parakeetModelLabel },
+              egOneSizeCatalog: owners.egOneSizeCatalog),
+            activateApp: { owners.application.activate(.standard) },
             resolveInstalled: {
               let read = OnboardingLiveMapping.downloadOwners(owners, facts: facts)
               for engine in [ASRBackendType.parakeet, .whisper] {

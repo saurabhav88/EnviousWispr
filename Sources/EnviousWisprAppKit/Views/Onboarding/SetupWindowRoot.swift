@@ -79,20 +79,34 @@ final class SetupScreenModel {
   @ObservationIgnored var onPresented: ((OnboardingStep, _ resumed: Bool) -> Void)?
   /// True only while the window is on screen: a mounted view in a hidden window is not a view.
   @ObservationIgnored private(set) var isWindowVisible = false
-  /// The steps that have a real screen so far (D1).
-  static let realScreens: Set<OnboardingStep> = [.welcome, .language, .speechPick, .speechCompare]
+  /// The steps that have a real screen so far (D1 to D3a).
+  static let realScreens: Set<OnboardingStep> = [
+    .welcome, .language, .speechPick, .speechCompare, .polishIntro, .polishPick, .polishSeeAll,
+  ]
 
   /// Speech pick/Compare's pending engine (D2, M76): a UI selection only, alive while the flow
   /// stays on those two screens with the same language; never a choice until "Use <model>".
   private(set) var speechDraft: ASRBackendType?
-  /// The Parakeet model the Mac presents (`ModelDeliveryHome.parakeetModelLabel`), injected by
-  /// the presenter so the card's name and download size describe the same model. nil: the
-  /// shipped model's presentation.
-  @ObservationIgnored var parakeetModelName: (() -> String)?
+  /// Owner facts the screens show, injected by the presenter (names, sizes, rechecks).
+  @ObservationIgnored var sources = SetupScreenSources()
 
   func setSpeechDraft(_ engine: ASRBackendType) {
     guard state.step == .speechPick || state.step == .speechCompare else { return }
     speechDraft = engine
+  }
+
+  /// AI polish pick/See all's pending model (D3a, M77): a UI selection only, alive while the flow
+  /// stays on those two screens with the same language and Apple Intelligence state; never a
+  /// choice until "Continue with <model>". Only a model that can be chosen now is accepted.
+  private(set) var polishDraft: String?
+
+  func setPolishDraft(_ id: String) {
+    guard state.step == .polishPick || state.step == .polishSeeAll,
+      SetupPolish.isSelectable(
+        id, appleIntelligence: state.recommended.appleIntelligence,
+        language: state.choices.languageMode)
+    else { return }
+    polishDraft = id
   }
 
   init(coordinator: OnboardingCoordinator) {
@@ -139,9 +153,14 @@ final class SetupScreenModel {
     state = coordinator.state
     isPracticeUsable = coordinator.isPracticeUsable
     if state.step != previous.step { routeEpoch &+= 1 }
+    let languageChanged = state.choices.languageMode != previous.choices.languageMode
     let onSpeechPair = state.step == .speechPick || state.step == .speechCompare
-    if !onSpeechPair || state.choices.languageMode != previous.choices.languageMode {
-      speechDraft = nil
+    if !onSpeechPair || languageChanged { speechDraft = nil }
+    let onPolishPair = state.step == .polishPick || state.step == .polishSeeAll
+    if !onPolishPair || languageChanged
+      || state.recommended.appleIntelligence != previous.recommended.appleIntelligence
+    {
+      polishDraft = nil
     }
   }
 
@@ -152,6 +171,22 @@ final class SetupScreenModel {
     coordinator?.onChange = nil
     coordinator = nil
   }
+}
+
+/// Owner facts the Setup screens show, gathered by the presenter from the session's owners
+/// (plan M76, M77). Values and closures only: nothing here stores or decides.
+struct SetupScreenSources {
+  /// The Parakeet model the Mac presents (`ModelDeliveryHome.parakeetModelLabel`), so the speech
+  /// card's name and download size describe the same model. nil: the shipped model's.
+  var parakeetModelName: (@MainActor () -> String)?
+  /// EG-1's manifest sizes, measured facts and versions (`PolishSetupWiring.egOneSizeCatalog`).
+  var egOneSizeCatalog = EGOneSizeCatalog()
+  /// S1-mini's manifest total (`OnboardingLiveMapping.s1MiniBundledBytes`).
+  var s1MiniDownloadBytes: Int64? = OnboardingLiveMapping.s1MiniBundledBytes
+  /// This Mac's installed memory, for the EG-1 tiles' "Tight on this Mac".
+  var physicalMemoryBytes: UInt64 = ProcessInfo.processInfo.physicalMemory
+  /// The runtime's approved Apple Intelligence recheck ("Check again"); nil hides the link.
+  var recheckAppleIntelligence: (@MainActor () -> Void)?
 }
 
 // MARK: - Router
@@ -168,9 +203,9 @@ struct SetupScreenRouter: View {
     case .language: SetupLanguageScreen(model: model, epoch: model.routeEpoch)
     case .speechPick: SetupSpeechScreen(model: model, epoch: model.routeEpoch, comparing: false)
     case .speechCompare: SetupSpeechScreen(model: model, epoch: model.routeEpoch, comparing: true)
-    case .polishIntro: SetupPlaceholder(step: .polishIntro, chunk: "D3a")
-    case .polishPick: SetupPlaceholder(step: .polishPick, chunk: "D3a")
-    case .polishSeeAll: SetupPlaceholder(step: .polishSeeAll, chunk: "D3a/D3b")
+    case .polishIntro: SetupPolishIntroScreen(model: model, epoch: model.routeEpoch)
+    case .polishPick: SetupPolishScreen(model: model, epoch: model.routeEpoch, seeAll: false)
+    case .polishSeeAll: SetupPolishScreen(model: model, epoch: model.routeEpoch, seeAll: true)
     case .downloads: SetupPlaceholder(step: .downloads, chunk: "D4a")
     case .permissions: SetupPlaceholder(step: .permissions, chunk: "D4b")
     case .key: SetupPlaceholder(step: .key, chunk: "D5")

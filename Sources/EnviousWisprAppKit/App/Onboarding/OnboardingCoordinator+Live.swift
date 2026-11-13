@@ -19,13 +19,16 @@ struct OnboardingLiveOwners {
   let llmDiscovery: LLMModelDiscoveryCoordinator
   let savedKeyPresence: SavedKeyPresence
   let permissions: PermissionsService
-  /// EG-1 manifest totals by size, as the bootstrapper already stores them
-  /// (`PolishSetupWiring.egOneSizeCatalog.downloadBytes`).
-  let egOneDownloadBytes: [EGOneSize: Int64]
+  /// The EG-1 sizes' manifest totals, measured facts and versions, as the bootstrapper already
+  /// stores them (`PolishSetupWiring.egOneSizeCatalog`): download sizes for the preflight and the
+  /// Setup polish tiles (D3a, plan M77).
+  let egOneSizeCatalog: EGOneSizeCatalog
   /// The cloud model list settings telemetry projects model ids with (F2b).
   let cloudModelList: CloudModelListHolder
   /// The engine warm-up owner (P2, `onboardingWarmup()`).
   let dictationRuntime: DictationRuntime
+  /// Brings the app forward when Setup shows (the desktop-effects owner, #2455 C3).
+  let application: any ApplicationActivating
 }
 
 extension OnboardingCoordinator.Dependencies {
@@ -80,9 +83,7 @@ extension OnboardingCoordinator.Dependencies {
       savedChoices: { OnboardingLiveMapping.savedChoices(settings) },
       recommended: { language in
         let advice = recommendation(language)
-        return OnboardingRecommended(
-          speech: advice.speech, polish: OnboardingLiveMapping.preselectedPolish(advice),
-          rulesVersion: advice.rulesVersion)
+        return OnboardingLiveMapping.recommended(advice)
       },
       // Memory only (§3.2 `parallelDownloadsMinMemoryGiB`): no language dependence.
       downloadsInParallel: { recommendation(nil).parallelDownloads },
@@ -90,7 +91,7 @@ extension OnboardingCoordinator.Dependencies {
         let bytes = OnboardingLiveMapping.downloadBytes(
           model, parakeet: owners.modelDelivery.parakeetHandle?.modelTotalBytes,
           whisper: owners.modelDelivery.whisperRegistration?.manifest.totalBytes,
-          egOne: owners.egOneDownloadBytes, s1Mini: OnboardingLiveMapping.s1MiniBundledBytes)
+          egOne: owners.egOneSizeCatalog.downloadBytes, s1Mini: OnboardingLiveMapping.s1MiniBundledBytes)
         // Every model Setup offers ships a manifest: a missing size is a wiring defect, never 0.
         assert(bytes != nil, "no manifest size for \(model)")
         return bytes
@@ -149,7 +150,7 @@ extension OnboardingRuntime.Inputs {
             OnboardingLiveMapping.downloadBytes(
               model, parakeet: owners.modelDelivery.parakeetHandle?.modelTotalBytes,
               whisper: owners.modelDelivery.whisperRegistration?.manifest.totalBytes,
-              egOne: owners.egOneDownloadBytes, s1Mini: OnboardingLiveMapping.s1MiniBundledBytes)
+              egOne: owners.egOneSizeCatalog.downloadBytes, s1Mini: OnboardingLiveMapping.s1MiniBundledBytes)
           })
       },
       downloadsFinished: { [weak coordinator] in
@@ -266,6 +267,13 @@ enum OnboardingLiveMapping {
       choices.polish = SetupRules.registeredPolish.first { $0.value == model }?.key
     }
     return choices
+  }
+
+  /// The advice a Setup visit holds, every field from this one read (plan M71, M77).
+  static func recommended(_ advice: SetupRecommendation) -> OnboardingRecommended {
+    OnboardingRecommended(
+      speech: advice.speech, polish: preselectedPolish(advice), rulesVersion: advice.rulesVersion,
+      polishCards: advice.polishCards, appleIntelligence: advice.appleIntelligence)
   }
 
   /// The polish card the recommendation preselects (`SetupAdvice.recommendedPolishProvider`'s
