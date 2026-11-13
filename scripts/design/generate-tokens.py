@@ -309,7 +309,11 @@ def render_css_section(data: dict) -> str:
     for key, entry in data["motion"].items():
         name = f"--ew-motion-{kebab(key.split('.')[1])}"
         rest.append(f"  {name}-duration: {number(entry['duration'], key)}s;")
-        rest.append(f"  {name}-curve: {CSS_CURVES[entry['curve']]};")
+        if entry["curve"] == "timingCurve":
+            curve = "cubic-bezier(" + ", ".join(number(p, key) for p in entry["points"]) + ")"
+        else:
+            curve = CSS_CURVES[entry["curve"]]
+        rest.append(f"  {name}-curve: {curve};")
     body = [CSS_BEGIN,
             "/* Light values; also the explicit light choice. */",
             ":root, :root[data-theme=\"light\"] {", *light, *rest, "}",

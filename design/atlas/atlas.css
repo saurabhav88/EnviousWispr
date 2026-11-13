@@ -153,9 +153,9 @@
   --ew-motion-gentle-duration: 0.35s;
   --ew-motion-gentle-curve: ease-in-out;
   --ew-motion-first-run-screen-in-duration: 0.32s;
-  --ew-motion-first-run-screen-in-curve: ease-out;
+  --ew-motion-first-run-screen-in-curve: cubic-bezier(0.22, 1, 0.36, 1);
   --ew-motion-first-run-rise-duration: 0.4s;
-  --ew-motion-first-run-rise-curve: ease-out;
+  --ew-motion-first-run-rise-curve: cubic-bezier(0.22, 1, 0.36, 1);
 }
 /* Dark values when the system is dark and no light choice is set. */
 @media (prefers-color-scheme: dark) {
