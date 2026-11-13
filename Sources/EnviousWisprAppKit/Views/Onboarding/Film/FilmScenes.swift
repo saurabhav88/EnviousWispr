@@ -361,21 +361,14 @@ struct FilmReadyScene: View {
 struct FilmAppsScene: View {
   let frame: FilmFrame
 
-  static let symbols = [
-    "envelope.fill", "number", "note.text", "safari.fill", "doc.richtext.fill", "hammer.fill",
-    "terminal.fill", "message.fill", "bubble.left.and.bubble.right.fill", "calendar",
-    "checklist", "doc.text.fill", "globe", "video.fill", "music.note",
-    "chevron.left.forwardslash.chevron.right", "paperplane.fill", "book.fill",
-  ]
-  static let tints: [Color] = [
-    .obError, .obAccent, .obWarning, .obSuccessText, .obTextPrimary, .obTextSecondary,
-  ]
+  /// The website's 18 app logos, in its order (the mockup's wall).
+  static let logos = FilmAppLogo.all
   static let tile: CGFloat = 48
   static let columns = 6
   static let drift: CGFloat = 36
 
   var body: some View {
-    let tiles = Self.symbols + Self.symbols.prefix(6)
+    let tiles = Self.logos + Self.logos.prefix(6)
     let drift = frame.still ? 0 : frame.value(FilmScript.Apps.drift)
     let box = frame.value(FilmScript.Apps.textBox)
     let pill = frame.value(FilmScript.Apps.pill)
@@ -386,9 +379,7 @@ struct FilmAppsScene: View {
           GridRow {
             ForEach(0..<Self.columns, id: \.self) { column in
               let i = row * Self.columns + column
-              Image(systemName: tiles[i])
-                .font(.firstRunTitle)
-                .foregroundStyle(Self.tints[i % Self.tints.count])
+              FilmAppLogoView(logo: tiles[i], size: 24)
                 .frame(width: Self.tile, height: Self.tile)
                 .background(
                   RoundedRectangle(cornerRadius: DesignRadius.xl, style: .continuous)
@@ -838,7 +829,8 @@ private struct FilmRevealLayout: Layout {
 struct FilmMoreScene: View {
   let frame: FilmFrame
 
-  /// The features, with the symbols the app uses for them (SettingsPage icons).
+  /// The features, with the symbols the app uses for them (SettingsPage icons). An even count:
+  /// the wall is two columns.
   static let features: [(symbol: String, name: String)] = [
     (
       "waveform.badge.plus",
@@ -860,6 +852,24 @@ struct FilmMoreScene: View {
     ),
     ("eye", String(localized: "Live preview", comment: "Feature name in the closing film.")),
     ("globe", String(localized: "Many languages", comment: "Feature name in the closing film.")),
+    // #4528 (founder 2026-11-13): four more real features, so the wall runs past the faded
+    // bottom edge while it drifts and reads as "there is more", not as the end of a list.
+    (
+      "keyboard",
+      String(localized: "Keyboard shortcuts", comment: "Feature name in the closing film.")
+    ),
+    (
+      "lock",
+      String(localized: "Hands-free mode", comment: "Feature name in the closing film.")
+    ),
+    (
+      "doc.on.doc",
+      String(localized: "Copy last dictation", comment: "Feature name in the closing film.")
+    ),
+    (
+      "speaker.wave.2",
+      String(localized: "Dictation sounds", comment: "Feature name in the closing film.")
+    ),
   ]
 
   var body: some View {

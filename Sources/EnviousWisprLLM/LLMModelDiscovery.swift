@@ -279,36 +279,36 @@ public struct LLMModelDiscovery: Sendable {
 
     await didListModels?()
 
-    // Probe models with concurrency limit to avoid rate limiting
-    var results: [LLMModelInfo] = []
-
-    // Process in batches to limit concurrent requests
-    for batch in candidates.chunked(into: LLMConstants.maxConcurrentProbes) {
-      let batchResults = await withTaskGroup(of: LLMModelInfo.self, returning: [LLMModelInfo].self)
-      { group in
-        for model in batch {
-          group.addTask {
-            let availability = await probeModel(
-              id: model.id, provider: provider, apiKey: apiKey)
-            // #4353: this model's answer arrived now, inside its own probe task; neither the
-            // discovery's start nor the list's publication stands in for it.
-            let observedAt = ContinuousClock.now
-            return Self.modelInfo(
-              from: model,
-              provider: provider,
-              availability: availability,
-              observedAt: observedAt
-            )
-          }
-        }
-
-        var batchItems: [LLMModelInfo] = []
-        for await result in group {
-          batchItems.append(result)
-        }
-        return batchItems
+    // Probe with at most `maxConcurrentProbes` requests in flight, to avoid rate limiting.
+    // A sliding window, not fixed batches: a new probe starts the moment any probe answers,
+    // so one slow model no longer holds back every model after it (#4528: the key check
+    // waited for the slowest model of each batch in turn).
+    let probe: @Sendable (DiscoveryCandidate) async -> LLMModelInfo = { model in
+      let availability = await probeModel(id: model.id, provider: provider, apiKey: apiKey)
+      // #4353: this model's answer arrived now, inside its own probe task; neither the
+      // discovery's start nor the list's publication stands in for it.
+      let observedAt = ContinuousClock.now
+      return Self.modelInfo(
+        from: model, provider: provider, availability: availability, observedAt: observedAt)
+    }
+    let results = await withTaskGroup(of: LLMModelInfo.self, returning: [LLMModelInfo].self) {
+      group in
+      var next = 0
+      while next < Swift.min(LLMConstants.maxConcurrentProbes, candidates.count) {
+        let model = candidates[next]
+        group.addTask { await probe(model) }
+        next += 1
       }
-      results.append(contentsOf: batchResults)
+      var collected: [LLMModelInfo] = []
+      for await result in group {
+        collected.append(result)
+        if next < candidates.count {
+          let model = candidates[next]
+          group.addTask { await probe(model) }
+          next += 1
+        }
+      }
+      return collected
     }
 
     return Self.sortedForPicker(results)
@@ -952,18 +952,6 @@ public struct LLMModelDiscovery: Sendable {
     }
 
     return nil
-  }
-}
-
-// MARK: - Array Helper Extension
-
-extension Array {
-  /// Split array into chunks of specified size.
-  fileprivate func chunked(into size: Int) -> [[Element]] {
-    guard size > 0 else { return [self] }
-    return stride(from: 0, to: count, by: size).map {
-      Array(self[$0..<Swift.min($0 + size, count)])
-    }
   }
 }
 

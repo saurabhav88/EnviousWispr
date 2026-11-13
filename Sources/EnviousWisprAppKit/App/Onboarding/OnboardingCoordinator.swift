@@ -437,6 +437,14 @@ final class OnboardingCoordinator {
   /// Asks the engine owner to warm the current pick once per context, when a readiness pass
   /// for that pick reads installed and not warm. Never per poll; never after a failure.
   private func requestWarmIfNeeded(_ readiness: OnboardingReadiness) {
+    // The pick read warm: its request is fulfilled. A later cold read for the same pick is an
+    // unload (the unload-after-each-take policy after a Practice take), so it asks once more
+    // instead of waiting forever on a context that already succeeded.
+    if readiness.engineWarm, readiness.speech == state.choices.speech,
+      warmRequested == currentWarmContext
+    {
+      warmRequested = nil
+    }
     guard isActive, !warmFailed, Self.warmSteps.contains(state.step),
       let speech = state.choices.speech, readiness.speech == speech, readiness.speechInstalled,
       !readiness.engineWarm

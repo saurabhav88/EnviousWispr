@@ -91,6 +91,28 @@ struct OnboardingWarmupTests {
     #expect(c.state.step == .practice && c.isPracticeUsable)
   }
 
+  @Test("an engine unloaded after it warmed (unload after each take) is warmed once more, not per pass")
+  func unloadAfterWarmIsWarmedAgainOnce() async {
+    // When this fails, a person whose engine unloads after every take finishes the Practice take
+    // and Setup waits on "Getting ready" forever, with no Continue and no Skip.
+    let world = World()
+    let owner = Owner(world)
+    // The second load is cancelled, so the engine stays cold for every later pass.
+    owner.answers = [.ready, .cancelled]
+    let c = Self.atDownloads(world)
+    c.refreshReadiness()
+    await c.settle()
+    c.refreshReadiness()  // reads it warm
+    await c.settle()
+    #expect(owner.runs == [.parakeet] && c.state.readiness.engineWarm)
+    world.engine = (.parakeet, .notReady)  // the policy unloaded it
+    for _ in 0..<3 {
+      c.refreshReadiness()
+      await c.settle()
+    }
+    #expect(owner.runs == [.parakeet, .parakeet], "one new load, never one per pass")
+  }
+
   @Test("a failed warm-up waits for Retry: no loop, one blocker observation, Retry recovers")
   func failureWaitsForRetry() async {
     let world = World()

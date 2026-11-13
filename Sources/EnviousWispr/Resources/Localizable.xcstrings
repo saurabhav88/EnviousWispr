@@ -7779,7 +7779,8 @@
             "value" : "Letztes Diktat kopieren"
           }
         }
-      }
+      },
+      "comment" : "Feature name in the closing film."
     },
     "Copy last dictation (%@) isn't working. macOS says this key combination is already taken. Choose another." : {
       "comment" : "Keybinds settings: an external conflict warning. Copy last dictation is the name of a keybind. %@ is a key combination, such as Right ⌘.",
@@ -9217,6 +9218,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Diktataufnahmen: konnten nicht gemessen werden"
+          }
+        }
+      }
+    },
+    "Dictation sounds" : {
+      "comment" : "Feature name in the closing film.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Töne beim Diktieren"
           }
         }
       }
@@ -12448,6 +12460,17 @@
         }
       }
     },
+    "Hands-free mode" : {
+      "comment" : "Feature name in the closing film.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Freihändiges Diktieren"
+          }
+        }
+      }
+    },
     "Has items" : {
       "comment" : "History date picker: this day has items.",
       "localizations" : {
@@ -14036,6 +14059,17 @@
     },
     "Keyboard shortcut" : {
       "comment" : "Dictionary settings, Quick Add teaching card: label of the shortcut callout.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tastenkürzel"
+          }
+        }
+      }
+    },
+    "Keyboard shortcuts" : {
+      "comment" : "Feature name in the closing film.",
       "localizations" : {
         "de" : {
           "stringUnit" : {

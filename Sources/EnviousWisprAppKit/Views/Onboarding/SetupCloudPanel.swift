@@ -200,7 +200,7 @@ struct SetupCloudPanel: View {
             .padding(DesignSpacing.md)
             .contentShape(Rectangle())
           }
-          .buttonStyle(.plain)
+          .buttonStyle(SetupModelRowStyle(selected: model.chosen?.id == entry.id))
           .accessibilityAddTraits(model.chosen?.id == entry.id ? .isSelected : [])
         }
       }
@@ -275,5 +275,27 @@ struct SetupCloudPanel: View {
     case .claude: URL(string: "https://platform.claude.com/settings/keys")
     default: nil
     }
+  }
+}
+
+/// One row of the model list: the pointer's row and the chosen row take the soft accent fill
+/// (as `SetupLinkButton` does on hover), so a person always sees which model a click picks.
+private struct SetupModelRowStyle: ButtonStyle {
+  let selected: Bool
+  @State private var hovering = false
+  @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+  @Environment(\.overlayReduceMotionOverride) private var reduceMotionOverride
+
+  func makeBody(configuration: Configuration) -> some View {
+    configuration.label
+      .background(
+        RoundedRectangle(cornerRadius: DesignRadius.md, style: .continuous)
+          .fill(
+            hovering || selected || configuration.isPressed
+              ? Color.firstRunAccentSoft : .clear))
+      .onHover { hovering = $0 }
+      .animation(
+        (reduceMotionOverride ?? systemReduceMotion) ? nil : SettingsHover.animation,
+        value: hovering)
   }
 }
