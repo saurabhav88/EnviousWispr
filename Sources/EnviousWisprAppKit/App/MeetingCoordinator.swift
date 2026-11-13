@@ -1719,7 +1719,10 @@ final class MeetingCoordinator {
     }
     var onDisk: [MeetingStore.SegmentFile] = []
     do {
+      // #3147 PR4B: damage bounds come from recorder CAF only; an abandoned or uncommitted
+      // compacted file must never shorten a damaged segment's gap.
       onDisk = try await writer.run { try $0.segmentFiles(meeting: meetingID) }
+        .filter { $0.encoding == .pcmCAF }
     } catch {
       // Recovery already listed this folder; a second listing failing is reported, and the
       // damaged files then have no known bounds to mark.

@@ -961,7 +961,8 @@ public final class MeetingTrackWriter: @unchecked Sendable {
         .map { Int32($0.code) } ?? EIO
       return nil
     }
-    return names.compactMap { MeetingSegmentNaming.parse($0) }
+    // #3147 PR4B: a compacted file occupies its source's index, so a new segment never reuses it.
+    return names.compactMap { MeetingSegmentNaming.parseAny($0) }
       .filter { $0.track == config.track }
       .map(\.index)
       .max() ?? 0

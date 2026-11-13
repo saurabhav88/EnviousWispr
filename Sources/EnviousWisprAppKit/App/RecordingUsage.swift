@@ -7,8 +7,10 @@ import Observation
 /// Byte definition: dictations are every file in the recording archive's folder except its
 /// Spotlight marker, so audio, timing sidecars and the small Keep and reason files count, with
 /// encodes in progress and interrupted metadata writes as temporary. Meetings are recognized
-/// segment files only (finals committed, partials temporary; both tracks and both microphone
-/// copies, each file once), never notes, summaries, records, work folders or speaker evidence.
+/// segment files only (recorder finals and the compacted finals the committed inventory names
+/// count as committed; partials, finished candidates and abandoned compacted output count as
+/// temporary; both tracks and both microphone copies, each file once, #3147 PR4B), never notes,
+/// summaries, records, work folders or speaker evidence.
 /// The crash-recovery spool, the retired `dictation-audio` folder, imported originals and models
 /// are outside both folders and never counted.
 struct RecordingUsageSnapshot: Sendable, Equatable {
