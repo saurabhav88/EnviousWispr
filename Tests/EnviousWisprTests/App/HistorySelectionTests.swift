@@ -196,6 +196,54 @@ struct HistorySelectionTests {
     #expect(selection.selectedIDs.isEmpty)
   }
 
+  @Test("clearing during a deletion: a late failure changes nothing and no summary appears")
+  func clearDuringDeletionIgnoresLateResults() async {
+    let selection = HistorySelection()
+    let items = Self.ids(1)
+    selection.select(Set(items))
+    await selection.deleteSelected(kind: .textAndRecordings) { _, _ in
+      selection.clear()
+      return .failed
+    }
+    #expect(selection.selectedIDs.isEmpty)
+    #expect(selection.retryKinds.isEmpty)
+    #expect(selection.lastDeletion == nil)
+  }
+
+  @Test("retries keep each target's frozen kind even if the selection clears mid-way")
+  func frozenKindsSurviveClear() async {
+    let selection = HistorySelection()
+    let items = Self.ids(2)
+    selection.select(Set(items))
+    let fake = FakeDelete()
+    fake.outcomes = [items[0]: .failed, items[1]: .failed]
+    await selection.deleteSelected(kind: .recordingsOnly, using: fake.run)
+    #expect(selection.retryKinds.count == 2)
+
+    var sent: [HistoryDeleteKind] = []
+    await selection.deleteSelected(kind: .textAndRecordings) { _, kind in
+      if sent.isEmpty { selection.clear() }
+      sent.append(kind)
+      return .failed
+    }
+    #expect(sent == [.recordingsOnly, .recordingsOnly])
+    #expect(selection.selectedIDs.isEmpty)
+    #expect(selection.retryKinds.isEmpty)
+  }
+
+  @Test("an item unticked while its deletion runs stays dismissed when it fails")
+  func untickDuringDeletionStaysDismissed() async {
+    let selection = HistorySelection()
+    let items = Self.ids(1)
+    selection.select(Set(items))
+    await selection.deleteSelected(kind: .textAndRecordings) { id, _ in
+      selection.toggle(id)
+      return .failed
+    }
+    #expect(selection.selectedIDs.isEmpty)
+    #expect(selection.retryKinds.isEmpty)
+  }
+
   @Test("a second deletion while one runs is refused and sends nothing")
   func secondDeletionIsRefused() async {
     let selection = HistorySelection()

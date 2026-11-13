@@ -343,6 +343,14 @@ enum HistoryDictationPresentation {
     .sorted { $0.range.lowerBound < $1.range.lowerBound }
   }
 
+  /// `polishedTimeline` off the main actor: it aligns and searches whole texts (Codex PR2 r6).
+  @concurrent
+  static func polishedTimelineInBackground(
+    _ spans: [TimedSpan], original: String, polished: String, alignment: WordDiff.Alignment
+  ) async -> [TimedSpan] {
+    polishedTimeline(spans, original: original, polished: polished, alignment: alignment)
+  }
+
   /// Carries original-text passage times onto the polished text through the same rule.
   static func polishedTimeline(
     _ spans: [TimedSpan], original: String, polished: String, alignment: WordDiff.Alignment

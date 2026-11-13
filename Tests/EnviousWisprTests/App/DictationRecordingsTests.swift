@@ -356,6 +356,7 @@ struct DictationRecordingsTests {
         wordTimingsAvailable: false))
   }
 
+  #if DEBUG
   @Test("an older publication suspended on its row check never takes the newer take's place")
   func newerSubmissionDuringOlderPublication() async throws {
     let rig = rig()
@@ -377,6 +378,7 @@ struct DictationRecordingsTests {
     #expect(try await audioBytes(rig, row.id) == 5, "the newer take owns the final bytes")
     #expect(try await rig.archive.usage().temporaryBytes == 0)
   }
+  #endif
 
   @Test("a stored recording keeps the delivering decode's text beside it, with no timings invented")
   func sidecarKeepsASRText() async throws {

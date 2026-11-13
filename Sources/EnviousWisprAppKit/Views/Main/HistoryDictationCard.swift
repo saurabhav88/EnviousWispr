@@ -53,6 +53,9 @@ struct HistoryDictationCard: View {
   @State private var player: MeetingPlaybackController?
   @State private var playerURL: URL?
   @State private var timeline: [HistoryDictationPresentation.TimedSpan] = []
+  /// Passage times carried onto the polished text, prepared off the main actor for the texts and
+  /// timeline in `key` (Codex PR2 r6): `blocks` never aligns or searches the whole text.
+  @State private var polishedSpans: PolishedSpans?
   @State private var actionFailed = false
 
   // Text
@@ -146,6 +149,9 @@ struct HistoryDictationCard: View {
       await refreshTiming(original: row.text)
     }
     .task(id: texts) { await prepareComparison(texts) }
+    .task(id: PolishedSpans.Key(texts: prepared?.texts, timeline: timeline)) {
+      await preparePolishedSpans()
+    }
     .onDisappear { dropPlayer() }
     .confirmationDialog(
       Text(Self.confirmTitle(confirming ?? .textAndRecordings)),
@@ -266,10 +272,10 @@ struct HistoryDictationCard: View {
     let spans: [HistoryDictationPresentation.TimedSpan]
     if view == .original {
       spans = timeline
-    } else if let prepared {
-      spans = HistoryDictationPresentation.polishedTimeline(
-        timeline, original: prepared.texts.original, polished: prepared.texts.polished,
-        alignment: prepared.alignment)
+    } else if let prepared, let polishedSpans,
+      polishedSpans.key == PolishedSpans.Key(texts: prepared.texts, timeline: timeline)
+    {
+      spans = polishedSpans.spans
     } else {
       spans = []
     }
@@ -278,6 +284,31 @@ struct HistoryDictationCard: View {
         id: $0.offset, content: .plain($0.element.text),
         seconds: HistoryDictationPresentation.time(of: $0.element.range, in: spans))
     }
+  }
+
+  /// The prepared polished-text times and the inputs they were computed from.
+  struct PolishedSpans: Equatable {
+    struct Key: Equatable {
+      let texts: HistoryDictationPresentation.Texts?
+      let timeline: [HistoryDictationPresentation.TimedSpan]
+    }
+    let key: Key
+    let spans: [HistoryDictationPresentation.TimedSpan]
+  }
+
+  private func preparePolishedSpans() async {
+    let key = PolishedSpans.Key(texts: prepared?.texts, timeline: timeline)
+    guard let prepared, !timeline.isEmpty else {
+      polishedSpans = nil
+      return
+    }
+    let spans = await HistoryDictationPresentation.polishedTimelineInBackground(
+      timeline, original: prepared.texts.original, polished: prepared.texts.polished,
+      alignment: prepared.alignment)
+    // Stored only for the inputs it was computed from; a newer key restarts this task.
+    guard !Task.isCancelled, key == PolishedSpans.Key(texts: self.prepared?.texts, timeline: timeline)
+    else { return }
+    polishedSpans = PolishedSpans(key: key, spans: spans)
   }
 
   private func prepareComparison(_ texts: HistoryDictationPresentation.Texts) async {

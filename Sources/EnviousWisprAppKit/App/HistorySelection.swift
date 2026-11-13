@@ -38,6 +38,9 @@ final class HistorySelection {
   /// even when their text row is already gone (text removed, audio cleanup failed), until a
   /// retry succeeds or the person unticks them. A list disappearance is never read as success.
   private(set) var retryKinds: [HistoryItemID: HistoryDeleteKind] = [:]
+  /// Advanced by `clear()`: a deletion started under an older epoch may finish its storage
+  /// commands but never changes the newer selection, retry state or summary (Codex PR2 r6).
+  private var epoch = 0
 
   /// Ticks `id` when it is not selected, else unticks it.
   func toggle(_ id: HistoryItemID) {
@@ -78,6 +81,8 @@ final class HistorySelection {
     anchorID = nil
     lastDeletion = nil
     retryKinds = [:]
+    pendingTargets = []
+    epoch &+= 1
   }
 
   /// Drops selected items that the tab no longer lists (deleted elsewhere, expired, or hidden by
@@ -105,29 +110,35 @@ final class HistorySelection {
   ) async {
     guard isDeleting == false, selectedIDs.isEmpty == false else { return }
     isDeleting = true
-    let targets = selectedIDs
-    pendingTargets = targets
+    let started = epoch
+    // Frozen before the first await: each target with its kind (a failed item retries with
+    // the kind that failed, since its text may already be gone).
+    let targets = selectedIDs.map { (id: $0, kind: retryKinds[$0] ?? kind) }
+    pendingTargets = Set(targets.map(\.id))
     defer {
       isDeleting = false
-      pendingTargets = []
+      if epoch == started { pendingTargets = [] }
     }
     var summary = DeletionSummary()
-    for id in targets {
-      // A failed item retries with the kind that failed (its text may already be gone).
-      let itemKind = retryKinds[id] ?? kind
-      switch await delete(id, itemKind) {
+    for target in targets {
+      let outcome = await delete(target.id, target.kind)
+      // A clear() while this awaited ends this deletion's say over the selection.
+      guard epoch == started else { continue }
+      switch outcome {
       case .removed, .alreadyAbsent:
         summary.removed += 1
-        selectedIDs.remove(id)
-        retryKinds[id] = nil
-        if anchorID == id { anchorID = nil }
+        selectedIDs.remove(target.id)
+        retryKinds[target.id] = nil
+        if anchorID == target.id { anchorID = nil }
       case .skipped:
         summary.skipped += 1
       case .failed:
         summary.failed += 1
-        retryKinds[id] = itemKind
+        // An item unticked while it was deleting stays dismissed.
+        if selectedIDs.contains(target.id) { retryKinds[target.id] = target.kind }
       }
     }
+    guard epoch == started else { return }
     lastDeletion = summary
   }
 }
