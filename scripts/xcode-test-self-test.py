@@ -279,7 +279,10 @@ print(json.dumps({'testNodes': [{'nodeType': 'Test Plan', 'children': nodes}]}))
         # The shared-folder fixture: no DERIVED_DATA_PATH, and a stub `security` (a Linux
         # runner has none) reporting no Dev identity, so the lane keeps the Debug folder.
         self.shared_folder_env(identities='     0 valid identities found\n')
-        env = self.env
+        # Routing runs only outside CI and with no EW_/TEST_RUNNER_ setting it cannot forward
+        # (remote-lane.py env-check); the hosted runner sets CI and TEST_RUNNER_CI.
+        env = {k: v for k, v in self.env.items()
+               if k != 'CI' and not k.startswith(('EW_', 'TEST_RUNNER_'))}
         for filters, decided in ((['EnviousWisprASRTests/Free'], 'no'),
                                  (['EnviousWisprASRTests/Free/run()'], 'no'),
                                  (['EnviousWisprASRTests/Free', 'EnviousWisprTests/Mic'], 'yes'),
