@@ -92,7 +92,7 @@ final class SetupGreetingTour {
     while !Task.isCancelled {
       try? await Task.sleep(for: interval)
       guard !Task.isCancelled else { return }
-      withAnimation(DesignMotion.quick) { index += 1 }
+      index += 1  // mockup: the text swaps in place; only the bubble's first appearance fades
     }
   }
 }

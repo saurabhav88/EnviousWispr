@@ -19,6 +19,7 @@ struct SetupShortcutScreen: View {
   @State private var rehearsal = SetupShortcutRehearsal()
   @State private var isCapturing = false
   @State private var refusal: ShortcutRefusal?
+  @State private var burst = 0
 
   private var headline: LocalizedStringKey {
     downloadsComplete ? "Ready to dictate!" : "Meet your dictation key"
@@ -60,7 +61,8 @@ struct SetupShortcutScreen: View {
   var body: some View {
     VStack(spacing: 0) {
       RainbowLipsView(
-        animationState: rehearsal.isDown ? .equalizer : .ready, size: SetupMetrics.heroLips
+        animationState: rehearsal.isDown ? .equalizer : .ready, size: SetupMetrics.heroLips,
+        burst: burst
       )
       .accessibilityHidden(true)
       .padding(.bottom, DesignSpacing.lg)
@@ -103,7 +105,16 @@ struct SetupShortcutScreen: View {
     .onChange(of: binding) {
       rehearsal = SetupShortcutRehearsal()
       refusal = nil
+      bounce()  // mockup: the lips bounce when a new key is set
     }
+    // Mockup: a happy bounce on arrival and on each first successful hold or double-press.
+    .onAppear { bounce() }
+    .onChange(of: rehearsal.triedHold) { _, tried in if tried { bounce() } }
+    .onChange(of: rehearsal.triedDoublePress) { _, tried in if tried { bounce() } }
+  }
+
+  private func bounce() {
+    if !reduceMotion { burst += 1 }
   }
 
   private var shortcutCard: some View {
@@ -138,11 +149,15 @@ struct SetupShortcutScreen: View {
   private var mainKey: some View {
     Button(action: toggleCapture) {
       SetupShortcutKeycap(
-        display: display, isCapturing: isCapturing, isDown: rehearsal.isDown)
+        display: display, isCapturing: isCapturing, isDown: rehearsal.isDown,
+        reduceMotion: reduceMotion)
     }
     .buttonStyle(.plain)
     .padding(.top, DesignSpacing.xs)
+    // Mockup: a held key sinks 2 points and shrinks to 98% over 0.12 s.
     .offset(y: rehearsal.isDown && !reduceMotion ? DesignSpacing.xxs : 0)
+    .scaleEffect(rehearsal.isDown && !reduceMotion ? 0.98 : 1)
+    .animation(reduceMotion ? nil : SetupMotion.rise(0.12), value: rehearsal.isDown)
     .accessibilityLabel("Change dictation key")
     .accessibilityValue(
       isCapturing

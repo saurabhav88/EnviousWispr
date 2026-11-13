@@ -71,6 +71,7 @@ struct SetupShortcutDemos: View {
           .symbolRenderingMode(.palette)
           .foregroundStyle(Color.white, Color.obSuccess)
           .padding(DesignSpacing.sm)
+          .modifier(SetupPop(delay: 0, reduceMotion: reduceMotion))  // mockup obPop 0.4 s
           .accessibilityHidden(true)
       }
     }
@@ -84,7 +85,8 @@ struct SetupShortcutDemos: View {
   private static func barScale(seconds: TimeInterval, delay: TimeInterval) -> CGFloat {
     let beat = max(0, seconds - delay).truncatingRemainder(dividingBy: 0.9)
     let progress = beat <= 0.45 ? beat / 0.45 : (0.9 - beat) / 0.45
-    return 0.35 + 0.65 * progress
+    // Mockup obBarBob: CSS ease-in-out between the ends, so the bars turn softly.
+    return 0.35 + 0.65 * FilmEase(0.42, 0, 0.58, 1)(progress)
   }
 
   private enum Gesture {

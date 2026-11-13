@@ -25,18 +25,27 @@ struct SetupCloudPanel: View {
       providers
       keyHeading
       keyField
-      if model.phase == .picker { modelField }
+      Group {
+        if model.phase == .picker {
+          modelField.transition(
+            reduceMotion
+              ? .identity
+              : .asymmetric(insertion: .opacity.combined(with: .offset(y: 8)), removal: .identity))
+        }
+      }
+      // Mockup: only the model list's entrance animates (0.25 s rise).
+      .animation(reduceMotion ? nil : SetupMotion.rise(0.25), value: model.phase == .picker)
       statusText
         .font(.firstRunCaption)
         .foregroundStyle(statusColor)
         .frame(maxWidth: .infinity, alignment: .leading)
       Spacer(minLength: 0)
-      SetupFooter(title: actionTitle, isEnabled: !model.isChecking, action: accept) {
+      // Mockup: the button stays enabled while checking; `accept` ignores repeat presses.
+      SetupFooter(title: actionTitle, busy: model.isChecking, action: accept) {
         SetupLinkButton(title: "Recommended options", quiet: true, action: onBack)
         SetupLinkButton(title: "Add my key later", action: onLater)
       }
     }
-    .animation(reduceMotion ? nil : DesignMotion.firstRunRise, value: model.phase)
     .onAppear { model.hydrate() }
     .onDisappear { revealed = false }
     .onChange(of: model.provider) {

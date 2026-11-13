@@ -10,6 +10,7 @@ struct SetupSpeechScreen: View {
   let comparing: Bool
 
   @State private var tour = SetupGreetingTour()
+  @State private var burst = 0
 
   @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
   @Environment(\.overlayReduceMotionOverride) private var reduceMotionOverride
@@ -45,7 +46,12 @@ struct SetupSpeechScreen: View {
       }
     }
     .padding(.top, DesignSpacing.xs)
-    .onAppear { model.screenMounted(comparing ? .speechCompare : .speechPick, epoch: epoch) }
+    .onAppear {
+      // Mockup: a happy bounce when the screen arrives; Compare is the same screen there, so
+      // opening it does not bounce again.
+      if !comparing, !reduceMotion { burst += 1 }
+      model.screenMounted(comparing ? .speechCompare : .speechPick, epoch: epoch)
+    }
     // Keyed on the motion setting too: turning Reduce Motion on stops the tour, off restarts it.
     .task(id: GreetingKey(engine: shown, reduceMotion: reduceMotion)) { await cycleGreetings() }
   }
@@ -65,7 +71,7 @@ struct SetupSpeechScreen: View {
     return ZStack(alignment: .topLeading) {
       RainbowLipsView(
         animationState: shown == .parakeet ? .modelFast : .modelVoice,
-        size: SetupMetrics.screenLips
+        size: SetupMetrics.screenLips, burst: burst
       )
       .accessibilityHidden(true)
       if let greeting {
@@ -83,11 +89,13 @@ struct SetupSpeechScreen: View {
             ).fill(Color.firstRunAccentSoft)
           )
           .offset(x: SetupMetrics.screenLips + DesignSpacing.xxs, y: SetupMetrics.bubbleTop)
-          .id(tour.index)
           .transition(reduceMotion ? .identity : .opacity)
           .accessibilityHidden(true)
       }
     }
+    // Mockup: the bubble fades in once (obFade 0.3 s), then its text swaps every 1.4 s.
+    .animation(
+      reduceMotion ? nil : .timingCurve(0.25, 0.1, 0.25, 1, duration: 0.3), value: greeting == nil)
     .frame(width: SetupMetrics.screenLips, height: SetupMetrics.screenLips)
     .padding(.bottom, DesignSpacing.xl)
   }

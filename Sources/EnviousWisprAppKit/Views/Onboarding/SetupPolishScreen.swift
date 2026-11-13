@@ -84,7 +84,7 @@ struct SetupPolishScreen: View {
 
   var body: some View {
     VStack(spacing: 0) {
-      SetupPolishLips()
+      SetupPolishLips(bounces: !seeAll)
       if seeAll {
         seeAllHeader
         if model.seeAllTab == .cloud, let panel = model.cloudPanel {
@@ -97,7 +97,7 @@ struct SetupPolishScreen: View {
             },
             onBack: { send(.back) }
           )
-          .modifier(SetupRise(delay: 0, reduceMotion: reduceMotion))
+          .modifier(SetupRise(delay: 0, reduceMotion: reduceMotion, duration: 0.25))
         } else {
           seeAllPanel
           Spacer(minLength: 0)
@@ -264,6 +264,8 @@ struct SetupPolishScreen: View {
         in: RoundedRectangle(cornerRadius: DesignRadius.lg)
       )
       .contentShape(Rectangle())
+      // Mockup: the tab's fill and text color fade over 0.12 s.
+      .animation(reduceMotion ? nil : SettingsHover.animation, value: selected)
     }
     .buttonStyle(.plain)
     .accessibilityAddTraits(selected ? [.isSelected] : [])
@@ -291,7 +293,7 @@ struct SetupPolishScreen: View {
         appleIntelligenceRow
         s1MiniRow
       }
-      .modifier(SetupRise(delay: 0, reduceMotion: reduceMotion))
+      .modifier(SetupRise(delay: 0, reduceMotion: reduceMotion, duration: 0.25))
     }
   }
 
@@ -485,11 +487,17 @@ struct SetupPolishScreen: View {
 /// The AI polish screens' lips: the mockup's `shimmer` mood (static under Reduce Motion, which
 /// the lips read themselves).
 struct SetupPolishLips: View {
+  /// Mockup: a happy bounce when the screen arrives (the lips skip it under Reduce Motion). See
+  /// all is the same screen as the cards there, so it does not bounce again.
+  var bounces = true
+  @State private var burst = 0
+
   var body: some View {
-    RainbowLipsView(animationState: .shimmer, size: SetupMetrics.screenLips)
+    RainbowLipsView(animationState: .shimmer, size: SetupMetrics.screenLips, burst: burst)
       .accessibilityHidden(true)
       .frame(width: SetupMetrics.screenLips, height: SetupMetrics.screenLips)
       .padding(.bottom, DesignSpacing.xl)
+      .onAppear { if bounces { burst += 1 } }
   }
 }
 

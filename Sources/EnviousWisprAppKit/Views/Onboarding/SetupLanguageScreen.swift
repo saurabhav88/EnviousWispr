@@ -70,7 +70,10 @@ struct SetupLanguageScreen: View {
   @ViewBuilder private var statusRow: some View {
     ZStack {
       if let match {
+        // Mockup: the chip pops in (obPop 0.35 s).
         SetupMatchChip(label: match.label)
+          .modifier(SetupPop(delay: 0, reduceMotion: reduceMotion, duration: 0.35))
+          .id(match.label)
       } else if SetupLanguage.showsNoMatch(text) {
         Text("No match yet. Try the language's own name, such as Deutsch.")
           .font(.firstRunCaption)
@@ -115,7 +118,8 @@ struct SetupLanguageScreen: View {
     guard let code, let next = SetupLanguage.greeting(for: code) else { return }
     try? await Task.sleep(for: .seconds(SetupLanguage.greetingDelay))
     guard !Task.isCancelled else { return }
-    greeting = next
+    // Mockup: the bubble pops in (obPop 0.35 s from 60% and clear).
+    withAnimation(reduceMotion ? nil : SetupMotion.rise(0.35)) { greeting = next }
     if !reduceMotion { lips = .speaking(beats: next.beats) }
     try? await Task.sleep(for: .seconds(next.seconds))
     guard !Task.isCancelled else { return }
@@ -209,6 +213,9 @@ private struct SetupGreetingBubble: View {
         )
         .fill(Color.firstRunAccentSoft)
       )
-      .transition(reduceMotion ? .identity : .scale(scale: 0.9).combined(with: .opacity))
+      .transition(
+        reduceMotion
+          ? .identity
+          : .asymmetric(insertion: .scale(scale: 0.6).combined(with: .opacity), removal: .identity))
   }
 }

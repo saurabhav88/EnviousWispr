@@ -81,6 +81,7 @@ struct SetupPermissionsScreen: View {
         .padding(.top, DesignSpacing.xs)
     }
     .padding(.top, DesignSpacing.xs)
+    .onAppear { if !reduceMotion { burst += 1 } }  // mockup: a happy bounce on arrival
     .onChange(of: microphone) { old, new in
       if new == .allowed, old != .allowed { granted() }
     }
@@ -181,7 +182,7 @@ struct SetupPermissionsScreen: View {
           }
         }
       }
-      .modifier(SetupRise(delay: 0, reduceMotion: reduceMotion))
+      .modifier(SetupRise(delay: 0, reduceMotion: reduceMotion, duration: 0.3))
     }
   }
 
@@ -238,7 +239,6 @@ struct SetupPermissionsScreen: View {
 
   private var footer: some View {
     HStack(spacing: DesignSpacing.sm) {
-      if isWaiting { SetupSpinner(reduceMotion: reduceMotion) }
       Text(
         SetupPermissions.note(
           microphone, accessibilityAllowed: accessibilityAllowed, waiting: isWaiting)
@@ -375,14 +375,20 @@ struct SetupSettingsPreview: View {
         .tracking(0.8)
         .foregroundStyle(Color.obTextPrimary)
       HStack(spacing: DesignSpacing.lg) {
-        RainbowLipsView(animationState: .idle, size: DesignSpacing.xxxl)
-          .accessibilityHidden(true)
+        // Mockup: the tiny app icon in the Settings picture holds still (a fixed clock draws
+        // one frame and runs no timeline).
+        RainbowLipsView(
+          animationState: .idle, size: DesignSpacing.xxxl, clock: LipsClock(time: 0, moodElapsed: 0)
+        )
+        .accessibilityHidden(true)
         Text(verbatim: "EnviousWispr")
           .font(.firstRunLabel)
           .foregroundStyle(Color.obTextPrimary)
           .frame(maxWidth: .infinity, alignment: .leading)
         TimelineView(.animation(paused: reduceMotion)) { timeline in
-          SetupDemoSwitch(on: reduceMotion ? 0 : Self.switchPosition(at: timeline.date))
+          SetupDemoSwitch(
+            on: reduceMotion ? 0 : Self.switchPosition(at: timeline.date),
+            ring: reduceMotion ? 0 : Self.ringStrength(at: timeline.date))
         }
       }
     }
@@ -404,7 +410,8 @@ struct SetupSettingsPreview: View {
   /// 85 %, back off by 100 %. 0 is off, 1 is on.
   static func switchPosition(at date: Date) -> Double {
     let p = date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 3.2) / 3.2
-    func easeOut(_ x: Double) -> Double { 1 - pow(1 - x, 3) }
+    // The mockup's --ease-out, cubic-bezier(.22,1,.36,1).
+    func easeOut(_ x: Double) -> Double { FilmEase.soft(x) }
     switch p {
     case ..<0.25: return 0
     case ..<0.45: return easeOut((p - 0.25) / 0.2)
@@ -412,11 +419,19 @@ struct SetupSettingsPreview: View {
     default: return 1 - easeOut((p - 0.85) / 0.15)
     }
   }
+
+  /// The mockup's `obRing` beside the knob loop: a focus ring growing to 4 points and back
+  /// every 1.6 s (ease-in-out). 0 is no ring, 1 the full ring.
+  static func ringStrength(at date: Date) -> Double {
+    SetupMotion.pulse(at: date.timeIntervalSinceReferenceDate)
+  }
 }
 
-/// A macOS-style switch drawn at a position between off (0) and on (1).
+/// A macOS-style switch drawn at a position between off (0) and on (1), with the focus ring
+/// that draws the eye to it.
 private struct SetupDemoSwitch: View {
   let on: Double
+  var ring: Double = 0
 
   var body: some View {
     ZStack(alignment: .leading) {
@@ -430,5 +445,11 @@ private struct SetupDemoSwitch: View {
     }
     .frame(
       width: DesignSpacing.xxl * 2 + DesignSpacing.xs, height: DesignSpacing.xxl + DesignSpacing.xs)
+    .overlay(
+      Capsule()
+        .stroke(
+          Color(nsColor: .keyboardFocusIndicatorColor).opacity(0.35 * ring), lineWidth: 4 * ring)
+        .padding(-2 * ring)
+    )
   }
 }

@@ -8,7 +8,10 @@ import SwiftUI
 /// activation, focus and the accessibility name come from the button itself.
 struct SetupPrimaryButtonStyle: ButtonStyle {
   @Environment(\.isEnabled) private var isEnabled
+  @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+  @Environment(\.overlayReduceMotionOverride) private var reduceMotionOverride
   @State private var hovering = false
+  private var reduceMotion: Bool { reduceMotionOverride ?? systemReduceMotion }
 
   func makeBody(configuration: Configuration) -> some View {
     configuration.label
@@ -21,8 +24,10 @@ struct SetupPrimaryButtonStyle: ButtonStyle {
           .fill(fill(pressed: configuration.isPressed))
       )
       .contentShape(RoundedRectangle(cornerRadius: DesignRadius.xl, style: .continuous))
-      .scaleEffect(configuration.isPressed && isEnabled ? 0.98 : 1)
-      .animation(SettingsHover.animation, value: hovering)
+      .scaleEffect(configuration.isPressed && isEnabled && !reduceMotion ? 0.98 : 1)
+      // Mockup: color and the press scale ease over 0.12 s; none under Reduce Motion.
+      .animation(reduceMotion ? nil : SettingsHover.animation, value: hovering)
+      .animation(reduceMotion ? nil : SettingsHover.animation, value: configuration.isPressed)
       .onHover { hovering = $0 }
   }
 
@@ -57,6 +62,8 @@ enum SetupMetrics {
   static let radio: CGFloat = 20
   static let radioDot: CGFloat = 8
   static let check: CGFloat = 22
+  /// Downloads: the gate card's working spinner (mockup 22-point icon, an 18-point ring).
+  static let gateSpinner: CGFloat = 18
   /// Downloads: the progress bar's height (mockup 6).
   static let barHeight: CGFloat = 6
   /// Downloads: a card's status row (mockup min-height 20).
@@ -70,12 +77,24 @@ enum SetupMetrics {
 struct SetupFooter<Links: View>: View {
   let title: LocalizedStringKey
   var isEnabled = true
+  /// Mockup: a small spinner turns inside the button while its work runs (the key check).
+  var busy = false
   let action: () -> Void
   @ViewBuilder var links: Links
 
+  @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+  @Environment(\.overlayReduceMotionOverride) private var reduceMotionOverride
+
   var body: some View {
     VStack(spacing: DesignSpacing.xxl) {
-      Button(title, action: action)
+      Button(action: action) {
+        HStack(spacing: DesignSpacing.md) {
+          if busy {
+            SetupSpinner(reduceMotion: reduceMotionOverride ?? systemReduceMotion, onAccent: true)
+          }
+          Text(title)
+        }
+      }
         .buttonStyle(SetupPrimaryButtonStyle())
         .disabled(!isEnabled)
         .keyboardShortcut(.defaultAction)
@@ -125,6 +144,8 @@ struct SetupRow: View {
 struct SetupRise: ViewModifier {
   let delay: Double
   let reduceMotion: Bool
+  /// The mockup rises rows and cards over 0.4 s, panels over 0.3 or 0.25 s, on one curve.
+  var duration: Double = 0.4
   @State private var shown = false
 
   func body(content: Content) -> some View {
@@ -136,10 +157,25 @@ struct SetupRise: ViewModifier {
         if reduceMotion {
           shown = true
         } else {
-          withAnimation(DesignMotion.firstRunRise.delay(delay)) { shown = true }
+          withAnimation(SetupMotion.rise(duration).delay(delay)) { shown = true }
         }
       }
   }
+}
+
+/// The mockup's rise and pop curve at other durations than the 0.4 s token.
+enum SetupMotion {
+  static func rise(_ duration: Double) -> Animation {
+    DesignMotion.firstRunRise.speed(0.4 / duration)
+  }
+
+  /// The mockup's 1.6 s ease-in-out pulse (obRing, obPulse): 0 to 1 and back. `seconds` is time
+  /// since the pulse started.
+  static func pulse(at seconds: Double) -> Double {
+    pulseTrack.value(at: seconds.truncatingRemainder(dividingBy: 1.6))
+  }
+
+  private static let pulseTrack = FilmTrack(FilmEase(0.42, 0, 0.58, 1), (0, 0), (0.8, 1), (1.6, 0))
 }
 
 /// A footer link (mockup `[data-ui="link"]`): accent, underlined, 32 high; `quiet` is the
@@ -206,6 +242,8 @@ struct SetupTag: View {
 struct SetupPop: ViewModifier {
   let delay: Double
   let reduceMotion: Bool
+  /// Checks pop over 0.4 s; the Language chip and greeting over 0.35 s.
+  var duration: Double = 0.4
   @State private var shown = false
 
   func body(content: Content) -> some View {
@@ -216,7 +254,7 @@ struct SetupPop: ViewModifier {
         if reduceMotion {
           shown = true
         } else {
-          withAnimation(DesignMotion.firstRunRise.delay(delay)) { shown = true }
+          withAnimation(SetupMotion.rise(duration).delay(delay)) { shown = true }
         }
       }
   }
@@ -229,7 +267,10 @@ struct SetupChoiceStyle: ButtonStyle {
   let selected: Bool
   var cornerRadius: CGFloat = DesignRadius.xxl
   @Environment(\.isEnabled) private var isEnabled
+  @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+  @Environment(\.overlayReduceMotionOverride) private var reduceMotionOverride
   @State private var hovering = false
+  private var reduceMotion: Bool { reduceMotionOverride ?? systemReduceMotion }
 
   func makeBody(configuration: Configuration) -> some View {
     let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
@@ -239,8 +280,11 @@ struct SetupChoiceStyle: ButtonStyle {
       .overlay(shape.strokeBorder(border, lineWidth: 2))
       .contentShape(shape)
       .opacity(isEnabled ? 1 : 0.55)
-      .scaleEffect(configuration.isPressed && isEnabled ? 0.99 : 1)
-      .animation(SettingsHover.animation, value: hovering)
+      .scaleEffect(configuration.isPressed && isEnabled && !reduceMotion ? 0.99 : 1)
+      // Mockup: border and fill fade over 0.15 s on selection, the press scale over 0.12 s.
+      .animation(reduceMotion ? nil : SettingsHover.animation, value: hovering)
+      .animation(reduceMotion ? nil : DesignMotion.quick, value: selected)
+      .animation(reduceMotion ? nil : SettingsHover.animation, value: configuration.isPressed)
       .onHover { hovering = $0 }
   }
 
@@ -297,6 +341,8 @@ struct SetupProgressBar: View {
       }
     }
     .frame(height: SetupMetrics.barHeight)
+    // Mockup: the fill glides to each new fraction over 0.3 s.
+    .animation(reduceMotion ? nil : SetupMotion.rise(0.3), value: fraction)
     .onAppear { startSweep() }
     .onChange(of: reduceMotion) { startSweep() }
     .accessibilityElement()
@@ -321,6 +367,8 @@ struct SetupProgressBar: View {
 struct SetupSpinner: View {
   let reduceMotion: Bool
   var onAccent = false
+  /// 12 in buttons; the gate cards use the mockup's larger 18.
+  var diameter: CGFloat = DesignSpacing.xl
 
   var body: some View {
     TimelineView(.animation(paused: reduceMotion)) { timeline in
@@ -329,9 +377,11 @@ struct SetupSpinner: View {
         .trim(from: 0, to: 0.75)
         .stroke(
           onAccent ? Color.firstRunOnAccent : Color.obAccent,
-          style: StrokeStyle(lineWidth: DesignSpacing.xxs, lineCap: .round)
+          style: StrokeStyle(
+            lineWidth: diameter > DesignSpacing.xl ? diameter * 0.14 : DesignSpacing.xxs,
+            lineCap: .round)
         )
-        .frame(width: DesignSpacing.xl, height: DesignSpacing.xl)
+        .frame(width: diameter, height: diameter)
         .rotationEffect(.degrees(reduceMotion ? 0 : turn / 0.8 * 360))
     }
     .accessibilityHidden(true)

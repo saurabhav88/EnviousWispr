@@ -345,9 +345,11 @@ enum DesignMotion {
   /// Larger panels appearing or moving.
   static let gentle = Animation.easeInOut(duration: 0.35)
   /// Setup screen entering (slide and fade).
-  static let firstRunScreenIn = Animation.easeOut(duration: 0.32)
+  ///
+  /// The approved mockup's --ease-out, cubic-bezier(.22,1,.36,1): fast start, long settle.
+  static let firstRunScreenIn = Animation.timingCurve(0.22, 1, 0.36, 1, duration: 0.32)
   /// Setup card, caption or check rising into place.
   ///
-  /// The approved mockup (the founder's source of truth, 2026-11-12) rises rows and cards with obRise 0.4s on cubic-bezier(.22,1,.36,1); the generator offers standard curves only, so easeOut at the same duration is the closest token.
-  static let firstRunRise = Animation.easeOut(duration: 0.4)
+  /// The approved mockup (the founder's source of truth, 2026-11-12) rises rows and cards with obRise 0.4s on cubic-bezier(.22,1,.36,1).
+  static let firstRunRise = Animation.timingCurve(0.22, 1, 0.36, 1, duration: 0.4)
 }

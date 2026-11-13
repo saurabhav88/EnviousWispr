@@ -491,8 +491,12 @@ struct RainbowLipsView: View {
       applyGlobalModifiers(for: animationState)
       reportGlow()
     }
-    .onChange(of: animationState) { _, newExpression in
-      expressionStartTime = Date()
+    .onChange(of: animationState) { oldExpression, newExpression in
+      // Mockup: the speech screen's lips stay in one "model" mode whichever engine is picked, so
+      // moving between the two engine moods keeps the clock (no second triumph bounce).
+      if !(Self.isModelMood(oldExpression) && Self.isModelMood(newExpression)) {
+        expressionStartTime = Date()
+      }
       applyGlobalModifiers(for: newExpression)
       reportGlow()
     }
@@ -504,6 +508,13 @@ struct RainbowLipsView: View {
     .onChange(of: reduceMotion) { _, _ in
       applyGlobalModifiers(for: animationState)
       reportGlow()
+    }
+  }
+
+  private static func isModelMood(_ expression: LipsAnimationState) -> Bool {
+    switch expression {
+    case .modelFast, .modelVoice: return true
+    default: return false
     }
   }
 
