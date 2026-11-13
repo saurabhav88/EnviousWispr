@@ -200,6 +200,7 @@ struct MeetingTrackWriterCleanedSetTests {
     #expect(Set(released.map(\.0.run)).count == 3)
   }
 
+  #if DEBUG
   @Test(
     "a cleaned-copy failure at write, at finalize, or a chunk without its copy leaves raw writing whole and leaves no partial twin"
   )
@@ -232,6 +233,7 @@ struct MeetingTrackWriterCleanedSetTests {
       #expect(released.last.map { Self.near($0.1, Self.rawLevel) } == true)
     }
   }
+  #endif
 
   @Test(
     "recovery keeps the copies apart, promotes both partials, and the final pass uses cleaned only as a complete set"
@@ -394,6 +396,7 @@ struct MeetingTrackWriterCleanedSetTests {
     for file in files { #expect(!FileManager.default.fileExists(atPath: file.url.path)) }
   }
 
+  #if DEBUG
   @Test("a twin whose finalization fails after its rename, on the last segment, never completes a set the pass would choose")
   func failedLastTwinNeverQualifies() async throws {
     let rig = try Rig(hold: nil)
@@ -417,7 +420,9 @@ struct MeetingTrackWriterCleanedSetTests {
       MeetingMicrophoneSelection.decide(raw: raw, report: report, provenance: Self.provenance)
         == .raw(.incomplete))
   }
+  #endif
 
+  #if DEBUG
   @Test("when cleanup of a failed twin fails too, or the proof cannot be written, every twin can be readable and the pass still reads raw")
   func noProofMeansRaw() async throws {
     for fault in [MeetingTrackWriter.CleanedFault.afterRenameKeepingTwin, .proof] {
@@ -444,6 +449,7 @@ struct MeetingTrackWriterCleanedSetTests {
           == .raw(.unconfirmed))
     }
   }
+  #endif
 
   @Test("closing twice publishes the proof once: both closes succeed, nothing is marked failed, and the set is still chosen")
   func repeatedCloseKeepsTheProof() async throws {

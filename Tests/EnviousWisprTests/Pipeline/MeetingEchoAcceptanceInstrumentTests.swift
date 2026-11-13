@@ -1,3 +1,4 @@
+#if DEBUG
 @preconcurrency import AVFoundation
 import Foundation
 import Testing
@@ -203,3 +204,4 @@ struct MeetingEchoAcceptanceInstrumentTests {
     ]
   }
 }
+#endif

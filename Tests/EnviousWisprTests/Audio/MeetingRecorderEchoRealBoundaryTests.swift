@@ -1,3 +1,4 @@
+#if DEBUG
 @preconcurrency import AVFoundation
 import CoreAudio
 import Foundation
@@ -108,3 +109,4 @@ struct MeetingRecorderEchoRealBoundaryTests {
     #expect(after < before * 0.1, "echo energy kept: \(after / before)")
   }
 }
+#endif
