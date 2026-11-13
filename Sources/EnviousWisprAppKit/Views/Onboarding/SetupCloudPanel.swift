@@ -26,7 +26,7 @@ struct SetupCloudPanel: View {
       keyHeading
       keyField
       if model.phase == .picker { modelField }
-      Text(status)
+      statusText
         .font(.firstRunCaption)
         .foregroundStyle(statusColor)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -158,6 +158,11 @@ struct SetupCloudPanel: View {
         .contentShape(Rectangle())
       }
       .buttonStyle(.plain)
+      .accessibilityLabel(Text("Model for \(name)"))
+      .accessibilityValue(
+        model.chosen?.localizedDisplayName ?? String(localized: "Choose a model")
+      )
+      .accessibilityHint("Opens the model list")
       .popover(isPresented: $showModels, arrowEdge: .bottom) { choices }
     }
   }
@@ -224,6 +229,11 @@ struct SetupCloudPanel: View {
     }
   }
 
+  private var statusText: Text {
+    if let waiting = model.waitingForOtherProviderMessage { return Text(waiting) }
+    return Text(status)
+  }
+
   private var status: LocalizedStringKey {
     switch model.phase {
     case .idle: "Sends text and dictation context to \(name). Never audio."
@@ -243,7 +253,8 @@ struct SetupCloudPanel: View {
   }
 
   private var statusColor: Color {
-    switch model.phase {
+    if model.waitingForOtherProviderMessage != nil { return .obTextSecondary }
+    return switch model.phase {
     case .empty, .rejected, .retry: .firstRunErrorText
     case .picker: .firstRunSuccessText
     case .idle, .checking, .loading, .noModels: .obTextSecondary

@@ -21,14 +21,22 @@ struct SetupCloudPanelTests {
     let task = try #require(model.check())
     try await BoundedWait.until(fixture.started)
     #expect(model.phase == .checking)
+    #expect(model.waitingForOtherProviderMessage == nil)
     fixture.progress?(.probingModels, 1)
     #expect(model.phase == .loading)
     model.provider = .gemini
     model.edit("another fixture")
+    #expect(model.isChecking)
+    let waiting = try #require(model.waitingForOtherProviderMessage)
+    #expect(
+      String(localized: waiting)
+        == "Finishing the previous key check. You can check this provider next.")
     fixture.finish(.accepted(1, [Self.sample]))
     await task.value
     #expect(model.phase == .idle)
     #expect(model.key == "another fixture")
+    #expect(model.isChecking == false)
+    #expect(model.waitingForOtherProviderMessage == nil)
     model.provider = .openAI
     #expect(model.key == "fixture")
     #expect(model.phase == .picker)
@@ -51,6 +59,9 @@ struct SetupCloudPanelTests {
     let rejected = try #require(model.check())
     try await BoundedWait.until(fixture.started)
     try render(model, "checking", folder)
+    model.provider = .gemini
+    try render(model, "waiting-for-provider", folder)
+    model.provider = .openAI
     fixture.finish(.rejected(1))
     await rejected.value
     #expect(model.phase == .rejected)

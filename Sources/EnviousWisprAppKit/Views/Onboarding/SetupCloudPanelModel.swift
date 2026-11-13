@@ -71,6 +71,11 @@ final class SetupCloudPanelModel {
 
   var isChecking: Bool { busyProvider != nil }
 
+  var waitingForOtherProviderMessage: LocalizedStringResource? {
+    guard let busyProvider, busyProvider != provider else { return nil }
+    return "Finishing the previous key check. You can check this provider next."
+  }
+
   private var current: Result {
     guard let result = results[provider] else { return Result() }
     if let revision = result.revision, !inputs.isCurrent(provider, revision) { return Result() }
