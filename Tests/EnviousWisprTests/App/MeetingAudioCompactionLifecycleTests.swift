@@ -1,5 +1,6 @@
 import EnviousWisprAppKitTestSupport
 import Foundation
+import os
 import Testing
 
 @testable import EnviousWisprAppKit
@@ -67,6 +68,11 @@ struct MeetingAudioCompactionLifecycleTests {
     record.echoProvenance = .compactionFixture
     try harness.store.save(record)
     return record
+  }
+
+  /// Waits on `semaphore` off the main actor, at most 10 s (a hang guard, never a timing).
+  nonisolated static func waitBounded(_ semaphore: DispatchSemaphore) {
+    _ = semaphore.wait(timeout: .now() + 10)
   }
 
   static func launched(_ harness: Harness, _ meetingID: UUID) async {
@@ -275,6 +281,86 @@ struct MeetingAudioCompactionLifecycleTests {
     #expect(
       await coordinator.compactAudio(meetingID: record.id, with: MeetingAudioCompactor())
         == .committed)
+  }
+
+  @Test("a failed publication leaves a paused player usable; no player was stopped for good")
+  func failedPublicationKeepsPlayer() async throws {
+    let harness = try Harness()
+    let record = try Self.readyMeeting(harness)
+    let coordinator = harness.coordinator
+    let arbiter = PlaybackArbiter()
+    coordinator.playbackArbiter = arbiter
+    await Self.launched(harness, record.id)
+    let player = MeetingPlaybackController(
+      media: .transcript(Silence()), durationMs: 3_000,
+      output: MeetingPlaybackControllerTests.FakeOutput(), sourceID: .meeting(record.id),
+      arbiter: arbiter)
+    let compactor = WindowedCompactor()
+    let folder = harness.store.folder(for: record.id)
+    compactor.afterPrepare = {
+      _ = try? C.tone(in: folder, index: 2, startMs: 2_000, frames: 8_000, frequency: 665)
+    }
+
+    #expect(await coordinator.compactAudio(meetingID: record.id, with: compactor) == .failed)
+    #expect(player.state != .unavailable)
+    player.play()
+    #expect(player.state == .playing)
+    #expect(coordinator.playbackSource(meetingID: record.id) != nil)
+  }
+
+  @Test("no player is offered while the copy is committed, so none starts on the old files")
+  func noPlayerDuringCommit() async throws {
+    let harness = try Harness()
+    let record = try Self.readyMeeting(harness)
+    let coordinator = harness.coordinator
+    await Self.launched(harness, record.id)
+    #expect(coordinator.playbackSource(meetingID: record.id) != nil)
+    let hold = DispatchSemaphore(value: 0)
+    let compactor = WindowedCompactor()
+    compactor.afterPrepare = {
+      // The writer is busy with earlier work when the commit is asked for.
+      MeetingFileWriter.queue.async { _ = hold.wait(timeout: .now() + 10) }
+    }
+    let compaction = Task { await coordinator.compactAudio(meetingID: record.id, with: compactor) }
+    await MeetingCoordinatorTests.eventually("commit waiting, no player offered", drainFiles: false) {
+      // The observed read comes first, so the wait is registered on it.
+      coordinator.playbackSource(meetingID: record.id) == nil && compactor.prepared == 1
+    }
+    hold.signal()
+    #expect(await compaction.value == .committed)
+    #expect(coordinator.playbackSource(meetingID: record.id) != nil)
+  }
+
+  @Test("deleting a meeting while its audio is being encoded waits for the encoder to stop")
+  func deletionDuringEncoding() async throws {
+    let harness = try Harness()
+    let record = try Self.readyMeeting(harness)
+    let coordinator = harness.coordinator
+    await Self.launched(harness, record.id)
+    let entered = DispatchSemaphore(value: 0)
+    let release = DispatchSemaphore(value: 0)
+    let first = OSAllocatedUnfairLock(initialState: true)
+    let compactor = MeetingAudioCompactor(
+      dependencies: .init(encode: { source, destination in
+        if first.withLock({ value in defer { value = false }; return value }) {
+          entered.signal()
+          _ = release.wait(timeout: .now() + 10)
+        }
+        return try SpeechAudioEncoder.encode(fileAt: source, purpose: .meeting, to: destination)
+      }))
+    let compaction = Task { await coordinator.compactAudio(meetingID: record.id, with: compactor) }
+    await Task.detached { Self.waitBounded(entered) }.value
+    let deletion = Task { await coordinator.delete(meetingID: record.id) }
+    await MeetingCoordinatorTests.eventually("deleting", drainFiles: false) {
+      coordinator.isDeletingForTesting(record.id)
+    }
+    // The encoder still holds its first segment: the folder must still be there.
+    #expect(FileManager.default.fileExists(atPath: harness.store.folder(for: record.id).path))
+    release.signal()
+    #expect(await compaction.value == .stale)
+    #expect(await deletion.value == true)
+    #expect(FileManager.default.fileExists(atPath: harness.store.folder(for: record.id).path)
+      == false)
   }
 
   // MARK: - Edits and Delete audio after a commit

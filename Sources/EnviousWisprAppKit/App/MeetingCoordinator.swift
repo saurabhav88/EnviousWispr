@@ -709,6 +709,9 @@ final class MeetingCoordinator {
   /// Committed inventories this session knows (loaded at launch or committed here). Every record
   /// write carries a meeting's entry, so no later save drops the meeting's audio authority.
   private var committedAudio: [UUID: MeetingCompressedInventory] = [:]
+  /// Meetings whose compacted copy is being committed right now: no player is offered for them
+  /// (`playbackSource` is nil), so playback cannot start on the old files and then be replaced.
+  private var publishingCompaction: Set<UUID> = []
   /// Prepares compacted audio; wired by the composition root (nil in most tests).
   @ObservationIgnored var audioCompactor: (any MeetingAudioCompacting)?
   /// The background owner that compacts eligible meetings one at a time; wired by the root.
@@ -805,6 +808,7 @@ final class MeetingCoordinator {
   /// meeting being transcribed plays: its files are final.
   func playbackSource(meetingID: UUID) -> MeetingPlaybackSource? {
     guard let record = records[meetingID], record.audioKept, !deleting.contains(meetingID),
+      !publishingCompaction.contains(meetingID),
       !closeOwned.contains(meetingID), !record.deletionRequested, record.state != .recording,
       record.state != .stopping,
       // #4118: an interrupted meeting's saved list may be only its recording checkpoint until
@@ -2735,10 +2739,11 @@ final class MeetingCoordinator {
   ///
   /// Every check runs in one main-actor turn after the preparation's last suspension: the claim
   /// is still this ticket's; the meeting is still eligible with the claimed generation and
-  /// segments; it is not playing (else `.skipped`, deferred). Then registered playback stops,
-  /// and the store commits on the writer (`MeetingStore.commitCompressedAudio`, which rechecks
+  /// segments; it is not playing (else `.skipped`, deferred). Then no player is offered while
+  /// the store commits on the writer (`MeetingStore.commitCompressedAudio`, which rechecks
   /// generation and segments against the record on disk, verifies every byte and never deletes
-  /// an original). A refused or failed publication removes the copy's uncommitted files.
+  /// an original); only after a successful commit do the old players stop and the source change.
+  /// A refused or failed publication removes the copy's uncommitted files and changes no player.
   func finishAudioCompaction(
     _ ticket: MeetingAudioCompactionTicket, verified: VerifiedMeetingAudioInventory
   ) async -> MeetingAudioCompactionOutcome {
@@ -2761,9 +2766,10 @@ final class MeetingCoordinator {
       deps.log("meeting compaction deferred reason=playing")
       return .skipped
     }
-    // The playback source changes with the representation: paused players of the old files
-    // stop now, and the meeting page builds a new one from the committed copy.
-    playbackArbiter?.stopForDeletion(.meeting(meetingID))
+    // From here until the commit is answered no player is offered, so none can start on the
+    // old files and then be replaced (a paused one is dropped and rebuilt afterwards).
+    publishingCompaction.insert(meetingID)
+    defer { publishingCompaction.remove(meetingID) }
     let inventory = verified.inventory
     let generation = ticket.transcriptGeneration
     let segments = ticket.sourceSegments
@@ -2779,7 +2785,10 @@ final class MeetingCoordinator {
       deps.log("meeting compaction not published error=\(Self.compactionLogCode(error))")
       return Self.isStaleCompaction(error) ? .stale : .failed
     }
-    // Durable now: every copy of the record carries it, whatever else happened meanwhile.
+    // Durable now. Players of the old files are obsolete (the source changes with the
+    // representation; the originals are still there, so nothing broke meanwhile), then every
+    // copy of the record carries the inventory, whatever else happened meanwhile.
+    playbackArbiter?.stopForDeletion(.meeting(meetingID))
     adoptCommittedAudio(inventory, for: meetingID)
     abandonAudioCompaction(ticket)
     return .committed
