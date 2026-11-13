@@ -170,7 +170,7 @@ struct PracticeScreenV2: View {
           saving: settings.saveDictationRecordings,
           retention: settings.dictationRecordingRetention)
       )
-      .font(.obCaptionSmall)
+      .font(.obBody)
       .foregroundStyle(Color.obTextSecondary)
       .multilineTextAlignment(.center)
       .fixedSize(horizontal: false, vertical: true)
