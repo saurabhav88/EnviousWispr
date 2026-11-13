@@ -110,14 +110,15 @@ struct HistoryPasteWiringTests {
       "one construction")
   }
 
-  @Test("the History page holds the Paste notice and feeds both details; neither detail holds one")
+  @Test("the History page holds the Paste notice and feeds the card and both details; neither detail holds one")
   func noticeOwnership() throws {
     let (history, _) = try Self.snapshot("\(Self.sources)/Views/Main/HistoryContentView.swift")
     #expect(history.contains("@State private var pasteNotice = HistoryPasteNotice()"))
     #expect(history.contains("pasteNotice.text ?? \"\""), "the alert shows the page's notice")
     #expect(history.contains("get: { pasteNotice.text != nil }"))
     #expect(history.contains("pasteNotice.dismiss()"), "OK clears it")
-    #expect(history.contains("TranscriptDetailView(transcript: transcript, showPasteNotice: pasteNotice.show)"))
+    #expect(history.contains("TranscriptDetailView(transcript: row, showPasteNotice: pasteNotice.show)"))
+    #expect(history.contains("HistoryDictationCard(rowID: rowID, showPasteNotice: pasteNotice.show)"))
     #expect(history.contains("MeetingHistoryDetailView(meeting: meeting, showPasteNotice: pasteNotice.show)"))
     for detail in ["TranscriptDetailView.swift", "MeetingHistoryDetailView.swift"] {
       let (source, _) = try Self.snapshot("\(Self.sources)/Views/Main/\(detail)")

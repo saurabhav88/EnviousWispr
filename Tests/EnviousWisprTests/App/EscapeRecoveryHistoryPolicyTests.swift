@@ -398,14 +398,15 @@ struct EscapeRecoveryHistoryPolicyTests {
 
     #expect(coordinator.listedCount == 1, "a held row is an offer, not a dictation")
 
-    coordinator.searchQuery = "quarterly"
+    coordinator.setHistoryQuery("quarterly", in: .dictations)
     #expect(
-      coordinator.filteredTranscripts.map(\.displayText) == ["quarterly report"],
+      coordinator.matchingHistoryItems(in: .dictations).compactMap(\.row?.displayText)
+        == ["quarterly report"],
       "an accidental Escape must not pollute results for 24 hours")
 
-    coordinator.searchQuery = ""
+    coordinator.setHistoryQuery("", in: .dictations)
     #expect(
-      coordinator.filteredTranscripts.count == 2,
+      coordinator.matchingHistoryItems(in: .dictations).count == 2,
       "but it stays reachable by scrolling History, which is where the user left it")
   }
 
