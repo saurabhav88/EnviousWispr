@@ -564,13 +564,13 @@ struct DictationRecordingsTests {
     }
     #expect(url == file)
     #expect(
-      DictationRecordingSection.needsNewPlayer(current: player, currentURL: file, read: url),
+      HistoryDictationCard.needsNewPlayer(current: player, currentURL: file, read: url),
       "the fresh read builds a new player, so Play works again")
     let live = MeetingPlaybackController(
       media: .dictation(file), durationMs: 1_000,
       output: MeetingPlaybackControllerTests.FakeOutput())
     #expect(
-      !DictationRecordingSection.needsNewPlayer(current: live, currentURL: file, read: file),
+      !HistoryDictationCard.needsNewPlayer(current: live, currentURL: file, read: file),
       "a working player for the same file is kept")
   }
 
