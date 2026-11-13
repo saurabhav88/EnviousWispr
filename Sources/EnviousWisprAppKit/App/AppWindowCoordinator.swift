@@ -339,7 +339,9 @@ final class AppWindowCoordinator: UpdateDialogPresenting {
       ) { [weak self] notification in
         guard let window = notification.object as? NSWindow else { return }
         MainActor.assumeIsolated {
-          guard let self else { return }
+          guard let self, self.onboardingWindowReserved else { return }
+          // Only the reserved legacy scene belongs to this observer. The new Setup presenter
+          // uses the same native identifier and owns its own close.
           // Match by captured identity; fall back to the scene identifier if not yet captured.
           let isOnboardingWindow =
             (self.onboardingWindow != nil)

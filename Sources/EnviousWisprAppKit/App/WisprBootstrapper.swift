@@ -101,6 +101,7 @@ package final class WisprBootstrapper {
   let onboardingProgress = OnboardingProgress()
   /// #4528 C2c.2: who may run Setup (old onboarding or a new-coordinator session), one at a time.
   let onboardingWorkflow: OnboardingWorkflowOwner
+  let setupSession: SetupSession
   let asrManager: any ASRManagerInterface
   /// #1386 PR-2: the one door to whichever engine is active. Shared plumbing —
   /// crash recovery (constructed here) and the Diagnostics benchmark (via the
@@ -2550,6 +2551,20 @@ package final class WisprBootstrapper {
         importHoldsEngine: fileImportCoordinator?.isEngineHeld == true,
         importProvider: fileImportRunner?.frozenLLMProvider)
     }
+    let setupOwners = OnboardingLiveOwners(
+      settings: settings, modelDelivery: modelDelivery, whisperSetup: setup.whisperSetup,
+      localPolish: localPolishRuntimes, engineCoordinator: engineCoordinator,
+      aiAvailability: aiAvailability, llmDiscovery: llmDiscovery,
+      savedKeyPresence: savedKeyPresence, permissions: permissions,
+      egOneSizeCatalog: egOneSizeCatalog, cloudModelList: cloudModelList,
+      dictationRuntime: dictationRuntime, application: presentationEffects.application,
+      setupShortcutMonitor: setupShortcutMonitor,
+      credentials: CredentialWriter(
+        keychainManager: keychainManager, presence: savedKeyPresence,
+        discovery: llmDiscovery),
+      liveRecording: liveRecordingState, audioDevices: audioDeviceList)
+    let setupSession = SetupSession.live(setupOwners, progress: onboardingProgress)
+    self.setupSession = setupSession
     #if DEBUG
       self.debugImportDoor = DebugImportDoor(
         coordinator: fileImportCoordinator,
@@ -2687,19 +2702,7 @@ package final class WisprBootstrapper {
             sources: DevControlCalls.Sources(
               coordinator: { [meetingBox] in meetingBox.callDetection })),
           onboarding: .live(
-            OnboardingLiveOwners(
-              settings: settings, modelDelivery: modelDelivery, whisperSetup: setup.whisperSetup,
-              localPolish: localPolishRuntimes, engineCoordinator: engineCoordinator,
-              aiAvailability: aiAvailability, llmDiscovery: llmDiscovery,
-              savedKeyPresence: savedKeyPresence, permissions: permissions,
-              egOneSizeCatalog: egOneSizeCatalog, cloudModelList: cloudModelList,
-              dictationRuntime: dictationRuntime, application: presentationEffects.application,
-              setupShortcutMonitor: setupShortcutMonitor,
-              credentials: CredentialWriter(
-                keychainManager: keychainManager, presence: savedKeyPresence,
-                discovery: llmDiscovery),
-              liveRecording: liveRecordingState, audioDevices: audioDeviceList),
-            workflow: onboardingWorkflow, progress: onboardingProgress)))
+            setupOwners, workflow: onboardingWorkflow, setupSession: setupSession)))
     #endif
     // #3972 C4a: EnviousMeet, bootstrapped here so it lives independently of any view.
     engineCoordinator.onMintingEnded = { [meetingWakes] in meetingWakes.poke() }

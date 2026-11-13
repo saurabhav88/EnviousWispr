@@ -11,66 +11,30 @@
   /// will; `goto` is positioning, never evidence that a prerequisite passed. `status` reads only.
   @MainActor
   final class DevControlOnboarding {
-    struct Session {
-      let coordinator: OnboardingCoordinator
-      let runtime: OnboardingRuntime
-      /// Setup telemetry (F2a, F2b). The door session presents no screens, so it emits no screen
-      /// rows (chunk D's screens call `screenPresented`); choices, downloads, blockers and
-      /// completion come from the coordinator and runtime it is attached to.
-      var telemetry: OnboardingTelemetryObserver? = nil
-      /// The owners' download phase for the current picks, read for `status` only (I1).
-      var downloadPhases: ((OnboardingChoices) -> [String: Any])? = nil
-      /// The owner facts the Setup screens show (D2 Parakeet name, D3a EG-1 catalog); the
-      /// runtime's Apple Intelligence recheck is added when the screens are presented.
-      var screenSources = SetupScreenSources()
-      /// Brings the app forward when the Setup screens show (`ApplicationActivating`, the
-      /// desktop-effects owner); nil leaves activation alone (tests).
-      var activateApp: (@MainActor () -> Void)? = nil
-      /// Downloads and Getting ready's typed picture from the live owners (D4a, M83).
-      var downloadsPresentation: (@MainActor () -> OnboardingDownloadsPresentation)? = nil
-      /// Asks each speech engine's owner, read-only, whether it is installed (the same
-      /// `speechInstalled` query Setup's readiness uses), so the catalog can answer Parakeet's
-      /// upgrade-aware "installed" with no pick (I1, plan M69). Never selects or downloads.
-      var resolveInstalled: (@MainActor () async -> Void)? = nil
-    }
-
     /// I1: launched with this set to `1`, the door holds Setup from launch, so the old
     /// onboarding window does not open over a CLI session on an install whose Setup is
     /// unfinished (a relaunch mid-run). DEBUG only; `stop` gives Setup back as usual.
     static let holdAtLaunchEnvironmentKey = "EW_UAT_ONBOARDING_BACKEND"
 
     private let workflow: OnboardingWorkflowOwner
-    /// Builds the session; it receives this door so completion can end ownership here.
-    private let makeSession: @MainActor (DevControlOnboarding) -> Session
+    private let setupSession: SetupSession
     private let checkpointData: @MainActor () -> Data?
     private let legacyState: @MainActor () -> OnboardingState
-    /// The app's permissions service, for M5 simulation (nil when not wired).
     private let permissions: PermissionsService?
-    /// The visit box shared with the old onboarding (one owner at a time), for begin/abandon/complete.
-    private let progress: OnboardingProgress?
-    private let everCompleted: @MainActor () -> Bool
-    /// Whether the visit in the shared box is this session's (M63): only then may this door
-    /// abandon or complete it. The old onboarding's live visit is never touched from here.
-    private(set) var ownsVisit = false
-    private(set) var session: Session?
-    /// The new Setup's screens for this session (D0); closed by the single ownership release.
-    private let presenter = DevControlSetupPresenter()
+    var session: SetupSession.Components? { setupSession.components }
     /// The catalog's in-flight owner query, so repeated `status` reads start at most one.
     private var installedQuery: Task<Void, Never>?
 
     init(
       workflow: OnboardingWorkflowOwner,
-      makeSession: @escaping @MainActor (DevControlOnboarding) -> Session,
+      setupSession: SetupSession,
       checkpointData: @escaping @MainActor () -> Data?,
       legacyState: @escaping @MainActor () -> OnboardingState,
-      permissions: PermissionsService? = nil, progress: OnboardingProgress? = nil,
-      everCompleted: @escaping @MainActor () -> Bool = { false }
+      permissions: PermissionsService? = nil
     ) {
       self.permissions = permissions
-      self.progress = progress
-      self.everCompleted = everCompleted
       self.workflow = workflow
-      self.makeSession = makeSession
+      self.setupSession = setupSession
       self.checkpointData = checkpointData
       self.legacyState = legacyState
     }
@@ -87,52 +51,31 @@
     /// Starts or resumes the backend session from the checkpoint (resume UAT).
     func begin() -> Result {
       guard claim() else { return legacyBusy() }
-      let session = ensureSession()
-      guard session.coordinator.begin() else {
-        // Completed, or an interrupted completion just finished: Setup does not open, and
-        // Setup goes back through the one release path (simulation cleared first, M61).
+      guard setupSession.begin() else {
         endOwnership()
         return .ok(snapshot(extra: ["opened": false]))
       }
-      session.runtime.start()
-      beginVisit()
       return .ok(snapshot(extra: ["opened": true]))
     }
 
     /// Restart Onboarding through the runtime (owners' cancels, checkpoint deleted, Welcome).
     func reset() -> Result {
       guard claim() else { return legacyBusy() }
-      let session = ensureSession()
-      session.screenSources.filmPlayback?.clear()  // a restarted flow plays its film from the top
-      session.screenSources.practiceProgress?.reset()
-      if session.runtime.isRunning {
-        session.runtime.reset()
-      } else {
-        session.coordinator.reset()
-        session.runtime.start()
-      }
-      beginVisit()
+      setupSession.reset()
       return .ok(snapshot())
     }
 
     /// Ends the backend session as an app quit would (checkpoint kept, downloads continue in
-    /// their owners), and returns Setup to the old onboarding.
-    /// Ends any session as an app quit would and always clears simulation before Setup goes
-    /// back to the old onboarding; with nothing running it only cleans up.
+    /// their owners), then clears simulation and returns Setup to the old onboarding.
     func stop() -> Result {
-      endVisit(abandonReason: "window_closed")
+      setupSession.stop(reason: "window_closed")
+      endOwnership()
       return .ok(snapshot())
     }
 
     /// App quit while the session owns Setup (installed as `backendQuit`): abandon at most once.
     func quitSession() {
-      endVisit(abandonReason: "app_quit")
-    }
-
-    /// The session's flow completed: the visit is complete (no abandon), then Setup goes back.
-    func sessionCompleted() {
-      if ownsVisit { progress?.markCompleted() }
-      ownsVisit = false
+      setupSession.stop(reason: "app_quit")
       endOwnership()
     }
 
@@ -144,24 +87,7 @@
         return notRunning()
       }
       guard !workflow.legacyWindowVisible() else { return legacyBusy() }
-      var sources = session.screenSources
-      sources.recheckAppleIntelligence = { [weak runtime = session.runtime] in
-        runtime?.recheckAppleIntelligence()
-      }
-      sources.downloads = session.downloadsPresentation
-      sources.closeSetup = { [weak presenter] in presenter?.dismiss() }
-      let coordinator = session.coordinator
-      sources.downloadActions = SetupDownloadActions(
-        retryDownloads: { [weak coordinator] in coordinator?.retryDownloads() },
-        cancelDownloads: { [weak coordinator] in coordinator?.cancelDownloads() },
-        retryWarmup: { [weak coordinator] in coordinator?.retryWarmup() },
-        retryPolish: { [weak coordinator] in coordinator?.retryPolish() })
-      presenter.show(
-        coordinator: session.coordinator, telemetry: session.telemetry, sources: sources,
-        activateApp: session.activateApp,
-        downloadsVisible: { [weak runtime = session.runtime] visible in
-          runtime?.setDownloadsScreenVisible(visible)
-        })
+      setupSession.present()
       return .ok(snapshot())
     }
 
@@ -173,42 +99,14 @@
       guard workflow.claimBackendSession() else { return false }
       workflow.backendRestart = { [weak self] in _ = self?.reset() }
       workflow.backendQuit = { [weak self] in self?.quitSession() }
+      setupSession.onCompleted = { [weak self] in self?.endOwnership() }
       return true
     }
 
-    /// A visit starts when the session opens Setup; a refocus or reset of a live visit is a
-    /// no-op inside the box (it never rewinds).
-    private func beginVisit() {
-      guard let progress, !ownsVisit else { return }
-      // Never adopt a visit the old onboarding still has in flight.
-      guard !progress.isInFlight else { return }
-      progress.begin(source: everCompleted() ? "diagnostics_restart" : "first_run")
-      ownsVisit = true
-    }
-
-    /// Ends any running session as an app quit would, records the abandon at most once (a
-    /// completed visit records none), then gives Setup back.
-    private func endVisit(abandonReason: String) {
-      if let session, session.runtime.isRunning || session.coordinator.isActive {
-        session.runtime.quit()
-      }
-      if ownsVisit {
-        // The visit's final choices and observed download ends, before its abandon row.
-        session?.telemetry?.visitEnded()
-        progress?.emitAbandonIfInFlight(
-          reason: abandonReason, micStatus: permissions?.microphoneStatusString ?? "unknown",
-          accessibilityStatus: (permissions?.accessibilityGrantedLive ?? false) ? "granted" : "denied")
-      }
-      ownsVisit = false
-      endOwnership()
-    }
-
-    /// The one way this door gives Setup back (stop, and completion through the session's
-    /// observer): simulation is cleared first, so no override outlives the session (M60).
+    /// Gives Setup back to the legacy route after an explicit Stop, quit or completion.
     func endOwnership() {
-      session?.screenSources.practiceProgress?.reset()
-      presenter.dismiss()
       clearSimulation()
+      setupSession.onCompleted = nil
       workflow.releaseBackendSession()
     }
 
@@ -444,14 +342,7 @@
 
     // MARK: Private
 
-    private func ensureSession() -> Session {
-      if let session { return session }
-      let made = makeSession(self)
-      session = made
-      return made
-    }
-
-    private func activeSession() -> Session? {
+    private func activeSession() -> SetupSession.Components? {
       guard workflow.backendSessionActive, let session, session.coordinator.isActive else {
         return nil
       }
@@ -479,7 +370,7 @@
         "checkpoint": OnboardingCheckpoint.decode(checkpointData()).map { $0.step.rawValue }
           ?? NSNull(),
         "sessionBuilt": session != nil,
-        "presented": presenter.isVisible,
+        "presented": setupSession.presenter.isVisible,
         "simulated": simulatedSnapshot(),
       ]
       if let coordinator = session?.coordinator {
@@ -501,8 +392,9 @@
           "speech": state.recommended.speech.rawValue, "polish": state.recommended.polish,
           "rulesVersion": state.recommended.rulesVersion,
         ]
-        out["downloads"] = session?.downloadPhases?(state.choices) ?? NSNull()
-        let catalog = session?.downloadPhases.map(Self.catalog)
+        let phases = session?.downloadPhases
+        out["downloads"] = phases.map { Self.phasePayload($0(state.choices)) as Any } ?? NSNull()
+        let catalog = phases.map { phases in Self.catalog { Self.phasePayload(phases($0)) } }
         out["catalog"] = catalog ?? NSNull()
         resolveUnknownSpeech(catalog)
       }
@@ -598,6 +490,12 @@
       ]
     }
 
+    private static func phasePayload(
+      _ phases: (speech: OnboardingDownloadPhase?, polish: OnboardingDownloadPhase?)
+    ) -> [String: Any] {
+      ["speech": phaseName(phases.speech), "polish": phaseName(phases.polish)]
+    }
+
     /// A download phase's name for `status` (no failure text).
     static func phaseName(_ phase: OnboardingDownloadPhase?) -> Any {
       switch phase {
@@ -622,120 +520,13 @@
       }
     }
 
-    /// The production door handler: the session is assembled on first use from the live owners
-    /// (C2c.1), so every owner is fully built by then. Completing Setup returns it to nobody.
     static func live(
-      _ owners: OnboardingLiveOwners, workflow: OnboardingWorkflowOwner, progress: OnboardingProgress
+      _ owners: OnboardingLiveOwners, workflow: OnboardingWorkflowOwner, setupSession: SetupSession
     ) -> DevControlOnboarding {
       let door = DevControlOnboarding(
-        workflow: workflow,
-        makeSession: { [weak workflow] door in
-          let facts = OnboardingLiveFacts()
-          let coordinator = OnboardingCoordinator(
-            dependencies: .live(
-              owners, facts: facts, sleepAssertion: OnboardingSleepAssertion(),
-              onPracticeOutcome: { _ in },
-              // Completion gives Setup back through the door, which clears simulation first.
-              onCompleted: { [weak door] in
-                if let door {
-                  door.sessionCompleted()
-                } else {
-                  DevControlOnboarding.clearSimulation(permissions: owners.permissions)
-                  workflow?.releaseBackendSession()
-                }
-              }))
-          let telemetry = OnboardingTelemetryObserver(
-            inputs: .live(
-              progress: progress, owners: owners, facts: facts,
-              visitOwned: { [weak door] in door?.ownsVisit ?? false }))
-          var inputs = OnboardingRuntime.Inputs.live(owners, facts: facts, coordinator: coordinator)
-          inputs.observeTelemetry = telemetry.attach(to: coordinator)
-          let runtime = OnboardingRuntime(coordinator: coordinator, facts: facts, inputs: inputs)
-          return Session(
-            coordinator: coordinator, runtime: runtime, telemetry: telemetry,
-            downloadPhases: { choices in
-              let downloads = OnboardingDownloads(
-                owners: OnboardingLiveMapping.downloadOwners(owners, facts: facts))
-              return [
-                "speech": choices.speech.map { phaseName(downloads.speechPhase($0)) } ?? NSNull(),
-                "polish": choices.polish.map { phaseName(downloads.polishPhase($0)) } ?? NSNull(),
-              ]
-            },
-            screenSources: SetupScreenSources(
-              parakeetModelName: { owners.modelDelivery.parakeetModelLabel },
-              egOneSizeCatalog: owners.egOneSizeCatalog,
-              shortcut: SetupShortcutSources(
-                binding: { owners.settings.shortcutBindings.record },
-                change: { ShortcutSettings.assign($0, to: .record, in: owners.settings) },
-                downloadsComplete: { [weak coordinator] in
-                  guard let coordinator else { return false }
-                  return OnboardingLiveMapping.downloadsFinished(
-                    coordinator.state.choices,
-                    downloads: OnboardingDownloads(
-                      owners: OnboardingLiveMapping.downloadOwners(owners, facts: facts)))
-                },
-                monitor: owners.setupShortcutMonitor,
-                suspendHotkeys: { owners.dictationRuntime.suspendHotkeys() },
-                resumeHotkeys: { owners.dictationRuntime.resumeHotkeys() }),
-              permissions: SetupPermissionsSources(
-                microphone: { owners.permissions.microphoneStatusLive },
-                accessibilityAllowed: { owners.permissions.accessibilityGrantedLive },
-                dictationKey: {
-                  // The same spoken name the key screen reads for this binding.
-                  let record = owners.settings.shortcutBindings.record
-                  switch record {
-                  case .keyboard(let code, _):
-                    return KeySymbols.accessibilityDescription(
-                      keyCode: code, modifiers: record.requiredModifiers)
-                  }
-                },
-                actions: .live(owners.permissions)),
-              makeCloudPanel: { [weak telemetry, weak coordinator] in
-                SetupCloudPanelModel.live(
-                  settings: owners.settings, writer: owners.credentials,
-                  list: owners.cloudModelList,
-                  report: { event in
-                    telemetry?.keyReported(
-                      event, rulesVersion: coordinator?.state.recommended.rulesVersion ?? "")
-                  })
-              },
-              filmPlayback: SetupFilmPlayback(),
-              practice: SetupPracticeSources(
-                settings: owners.settings, devices: owners.audioDevices, live: owners.liveRecording,
-                report: { [weak telemetry] result, seconds in
-                  telemetry?.practiceReported(result, duration: seconds)
-                }),
-              practiceProgress: SetupPracticeProgress(),
-              reportStarted: { [weak telemetry] in telemetry?.setupStarted() }),
-            activateApp: { owners.application.activate(.standard) },
-            downloadsPresentation: { [weak coordinator, weak runtime] in
-              guard let coordinator, let runtime else {
-                return OnboardingDownloadsPresentation.make(
-                  state: OnboardingFlowState(), block: nil, warmFailed: false, queuedPolish: nil,
-                  isNetworkSlow: false, isCountingDown: false, speechPhase: { _ in .unknown },
-                  polishPhase: { _ in nil }, downloadsFinished: false)
-              }
-              let downloads = OnboardingDownloads(
-                owners: OnboardingLiveMapping.downloadOwners(owners, facts: facts))
-              return OnboardingDownloadsPresentation.make(
-                state: coordinator.state, block: coordinator.block,
-                warmFailed: coordinator.warmFailed, queuedPolish: coordinator.queuedPolishID,
-                isNetworkSlow: runtime.isNetworkSlow, isCountingDown: runtime.isCountingDown,
-                speechPhase: { downloads.speechPhase($0) }, polishPhase: { downloads.polishPhase($0) },
-                downloadsFinished: OnboardingLiveMapping.downloadsFinished(
-                  coordinator.state.choices, downloads: downloads))
-            },
-            resolveInstalled: {
-              let read = OnboardingLiveMapping.downloadOwners(owners, facts: facts)
-              for engine in [ASRBackendType.parakeet, .whisper] {
-                _ = await read.speechInstalled(engine)
-              }
-            })
-        },
+        workflow: workflow, setupSession: setupSession,
         checkpointData: { owners.settings.onboardingCheckpointData },
-        legacyState: { owners.settings.onboardingState },
-        permissions: owners.permissions, progress: progress,
-        everCompleted: { owners.settings.onboardingEverCompleted })
+        legacyState: { owners.settings.onboardingState }, permissions: owners.permissions)
       if ProcessInfo.processInfo.environment[holdAtLaunchEnvironmentKey] == "1" {
         _ = door.holdForUAT()
       }

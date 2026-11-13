@@ -34,7 +34,7 @@
     ) -> (DevControlOnboarding, OnboardingWorkflowOwner, OnboardingCoordinatorTests.World) {
       let door = DevControlOnboarding(
         workflow: workflow,
-        makeSession: { _ in
+        setupSession: SetupSession { _ in
           box.built += 1
           let coordinator = world.coordinator()
           let runtime = OnboardingRuntime(
@@ -49,9 +49,7 @@
           return .init(
             coordinator: coordinator, runtime: runtime, telemetry: telemetry,
             downloadPhases: { choices in
-              ["speech": DevControlOnboarding.phaseName(choices.speech.map {
-                world.speechPhase[$0] ?? .notStarted
-              })]
+              (choices.speech.map { world.speechPhase[$0] ?? .notStarted }, nil)
             },
             resolveInstalled: {
               box.queries += 1
@@ -216,7 +214,7 @@
       let world = OnboardingCoordinatorTests.World()
       let coordinator = world.coordinator()
       coordinator.begin()
-      let presenter = DevControlSetupPresenter()
+      let presenter = SetupWindowPresenter()
       presenter.isOnScreen = { $0.isVisible }  // no window-server occlusion in a test process
       presenter.show(coordinator: coordinator, telemetry: observer)
       let model = try #require(presenter.screenModel)
@@ -379,23 +377,23 @@
       let progress = OnboardingProgress()
       let workflow = OnboardingWorkflowOwner()
       let world = OnboardingCoordinatorTests.World()
+      let setupSession = SetupSession(progress: progress) { _ in
+        let c = world.coordinator()
+        return .init(
+          coordinator: c,
+          runtime: OnboardingRuntime(
+            coordinator: c, facts: OnboardingLiveFacts(),
+            inputs: .init(
+              readObservedFacts: { AnyHashable(0) }, downloadProgress: { nil },
+              downloadsFinished: { false }, sampleAppleIntelligence: { .available },
+              recheckAppleIntelligence: {}, now: { .now },
+              // deadline-fallback: timers wait until stop() cancels them.
+              sleep: { _ in try? await Task.sleep(for: .seconds(3600)) },
+              pollInterval: .seconds(3600))))
+      }
       let door = DevControlOnboarding(
-        workflow: workflow,
-        makeSession: { _ in
-          let c = world.coordinator()
-          return .init(
-            coordinator: c,
-            runtime: OnboardingRuntime(
-              coordinator: c, facts: OnboardingLiveFacts(),
-              inputs: .init(
-                readObservedFacts: { AnyHashable(0) }, downloadProgress: { nil },
-                downloadsFinished: { false }, sampleAppleIntelligence: { .available },
-                recheckAppleIntelligence: {}, now: { .now },
-                // deadline-fallback: timers wait until stop() cancels them.
-                sleep: { _ in try? await Task.sleep(for: .seconds(3600)) },
-                pollInterval: .seconds(3600))))
-        },
-        checkpointData: { nil }, legacyState: { world.legacy }, progress: progress)
+        workflow: workflow, setupSession: setupSession,
+        checkpointData: { nil }, legacyState: { world.legacy })
       _ = door.begin()
       #expect(progress.isInFlight)
       let started = progress.sessionStart
@@ -408,8 +406,56 @@
 
       _ = door.begin()
       #expect(progress.isInFlight)
-      door.sessionCompleted()
+      setupSession.complete()
       #expect(progress.isInFlight == false && workflow.backendSessionActive == false)
+    }
+
+    @Test("ordinary close ends the visit and reopens the same flow with a fresh window")
+    func closeAndReopenKeepFlow() throws {
+      let progress = OnboardingProgress()
+      let world = OnboardingCoordinatorTests.World()
+      let setupSession = SetupSession(progress: progress) { _ in
+        let coordinator = world.coordinator()
+        return .init(
+          coordinator: coordinator,
+          runtime: OnboardingRuntime(
+            coordinator: coordinator, facts: OnboardingLiveFacts(),
+            inputs: .init(
+              readObservedFacts: { AnyHashable(0) }, downloadProgress: { nil },
+              downloadsFinished: { false }, sampleAppleIntelligence: { .available },
+              recheckAppleIntelligence: {}, now: { .now },
+              // deadline-fallback: timers wait until stop() cancels them.
+              sleep: { _ in try? await Task.sleep(for: .seconds(3600)) },
+              pollInterval: .seconds(3600))),
+          screenSources: SetupScreenSources(practiceProgress: SetupPracticeProgress()))
+      }
+      defer { setupSession.stop(reason: "app_quit") }
+      #expect(setupSession.components == nil)
+      #expect(setupSession.begin())
+      let components = try #require(setupSession.components)
+      let practice = try #require(components.screenSources.practiceProgress)
+      components.coordinator.send(.next)
+      practice.text = "Practice draft"
+      setupSession.present()
+      let model = try #require(setupSession.presenter.screenModel)
+      let window = try #require(NSApp.windows.first {
+        $0.identifier?.rawValue == "onboarding" && $0.isVisible
+      })
+      setupSession.present()
+      #expect(setupSession.presenter.screenModel === model)
+      window.close()
+      #expect(!progress.isInFlight)
+      #expect(setupSession.presenter.screenModel == nil && components.coordinator.onChange == nil)
+      #expect(components.runtime.isRunning && components.coordinator.state.step == .language)
+      #expect(practice.text == "Practice draft")
+
+      setupSession.present()
+      #expect(progress.isInFlight)
+      #expect(setupSession.presenter.screenModel !== model)
+      #expect(setupSession.components?.coordinator === components.coordinator)
+      #expect(setupSession.components?.screenSources.practiceProgress === practice)
+      setupSession.reset()
+      #expect(practice.text.isEmpty && components.coordinator.state.step == .welcome)
     }
 
     @Test("an idle stop never ends the old onboarding's live visit")
@@ -418,11 +464,14 @@
       let workflow = OnboardingWorkflowOwner()
       workflow.legacyWindowVisible = { true }  // the old Setup window is open
       progress.begin(source: "first_run")  // its visit (the old onboarding's ActionWirer begins it)
+      let setupSession = SetupSession(progress: progress) { _ in
+        fatalError("stop must not build a session")
+      }
       let door = DevControlOnboarding(
-        workflow: workflow, makeSession: { _ in fatalError("stop must not build a session") },
-        checkpointData: { nil }, legacyState: { .notStarted }, progress: progress)
+        workflow: workflow, setupSession: setupSession,
+        checkpointData: { nil }, legacyState: { .notStarted })
       _ = door.stop()
-      door.sessionCompleted()
+      setupSession.complete()
       #expect(progress.isInFlight)
       #expect(workflow.current == .legacy)
     }
@@ -434,7 +483,7 @@
       func door(_ world: OnboardingCoordinatorTests.World) -> DevControlOnboarding {
         DevControlOnboarding(
           workflow: OnboardingWorkflowOwner(),
-          makeSession: { door in
+          setupSession: SetupSession(progress: progress) { door in
             let c = world.coordinator()
             let recorder = OnboardingTelemetryObserverTests.Recorder()
             var inputs = recorder.observerInputs()
@@ -455,7 +504,7 @@
                   pollInterval: .seconds(3600))),
               telemetry: telemetry)
           },
-          checkpointData: { nil }, legacyState: { world.legacy }, progress: progress)
+          checkpointData: { nil }, legacyState: { world.legacy })
       }
       let world = OnboardingCoordinatorTests.World()
       let d = door(world)

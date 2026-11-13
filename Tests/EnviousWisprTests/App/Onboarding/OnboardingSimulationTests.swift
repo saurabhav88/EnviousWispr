@@ -229,7 +229,7 @@
       let world = OnboardingCoordinatorTests.World()
       let door = DevControlOnboarding(
         workflow: workflow,
-        makeSession: { _ in
+        setupSession: SetupSession { _ in
           let c = world.coordinator()
           return .init(
             coordinator: c,
@@ -279,7 +279,7 @@
       world.legacy = .completed
       let door = DevControlOnboarding(
         workflow: workflow,
-        makeSession: { _ in
+        setupSession: SetupSession { _ in
           let c = world.coordinator()
           return .init(
             coordinator: c,
@@ -323,7 +323,7 @@
       let service = Self.service(Calls())
       let door = DevControlOnboarding(
         workflow: OnboardingWorkflowOwner(),
-        makeSession: { _ in
+        setupSession: SetupSession { _ in
           let c = world.coordinator()
           return .init(
             coordinator: c,
