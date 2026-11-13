@@ -115,9 +115,6 @@ enum ImportedRetranscriptionState: Equatable, Sendable {
   case finished(ImportedRetranscriptionOutcome)
 }
 
-/// Runs Transcribe again with in place (lane C implements it). Confirmation happens before
-/// `startConfirmed`; nothing runs without it.
-@MainActor
 /// One installed speech model the Transcribe again with menu can offer.
 struct ImportedASRChoice: Identifiable, Equatable, Sendable {
   let id: String
@@ -127,6 +124,9 @@ struct ImportedASRChoice: Identifiable, Equatable, Sendable {
   let isCurrent: Bool
 }
 
+/// Runs Transcribe again with in place (lane C implements it). Confirmation happens before
+/// `startConfirmed`; nothing runs without it.
+@MainActor
 protocol ImportedTranscriptRetranscribing: AnyObject {
   /// The installed models the user can pick for this row; empty means no usable model.
   /// Never downloads and never changes the global engine.
