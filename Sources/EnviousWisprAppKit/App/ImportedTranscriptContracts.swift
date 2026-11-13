@@ -118,7 +118,19 @@ enum ImportedRetranscriptionState: Equatable, Sendable {
 /// Runs Transcribe again with in place (lane C implements it). Confirmation happens before
 /// `startConfirmed`; nothing runs without it.
 @MainActor
+/// One installed speech model the Transcribe again with menu can offer.
+struct ImportedASRChoice: Identifiable, Equatable, Sendable {
+  let id: String
+  let title: String
+  let selection: ImportedASRSelection
+  /// The model that produced the row's current text.
+  let isCurrent: Bool
+}
+
 protocol ImportedTranscriptRetranscribing: AnyObject {
+  /// The installed models the user can pick for this row; empty means no usable model.
+  /// Never downloads and never changes the global engine.
+  func choices(for rowID: UUID) -> [ImportedASRChoice]
   func state(for rowID: UUID) -> ImportedRetranscriptionState
   func startConfirmed(rowID: UUID, selection: ImportedASRSelection) async
     -> ImportedRetranscriptionOutcome
