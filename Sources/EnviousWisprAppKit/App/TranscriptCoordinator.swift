@@ -72,6 +72,87 @@ final class TranscriptCoordinator {
     didSet { reconcileSelectionWithDisplayedSet() }
   }
 
+  // MARK: - History tabs (#3147 §3.3)
+
+  /// The History tab on screen. Set through `selectHistoryTab(_:)`, which also remembers it.
+  private(set) var historyTab: HistoryTab = .dictations
+  /// Each tab's own search, filters, open item and paging; a tab never resets another.
+  private var historyTabStates: [HistoryTab: HistoryTabState] = [:]
+  /// Remembers the chosen tab across launches (`SettingsManager.lastHistoryTab`). Nil in tests.
+  @ObservationIgnored var onHistoryTabSelected: (@MainActor (HistoryTab) -> Void)?
+
+  /// Opens History on `tab` at launch without saving it again.
+  func restoreHistoryTab(_ tab: HistoryTab) {
+    historyTab = tab
+  }
+
+  /// Switches History to `tab` and remembers the choice.
+  func selectHistoryTab(_ tab: HistoryTab) {
+    guard historyTab != tab else { return }
+    historyTab = tab
+    onHistoryTabSelected?(tab)
+  }
+
+  /// `tab`'s state. An open item or scroll anchor that is no longer listed reads as nil, so a
+  /// deleted, expired or filtered-out item never stays open.
+  func historyState(for tab: HistoryTab) -> HistoryTabState {
+    var state = historyTabStates[tab] ?? HistoryTabState()
+    guard state.openItemID != nil || state.scrollAnchorID != nil else { return state }
+    let listed = Set(matchingHistoryItems(in: tab, state: state).map(\.id))
+    if let open = state.openItemID, !listed.contains(open) { state.openItemID = nil }
+    if let anchor = state.scrollAnchorID, !listed.contains(anchor) { state.scrollAnchorID = nil }
+    return state
+  }
+
+  /// Replaces `tab`'s state. A changed search or filter starts paging again from the top.
+  func setHistoryState(_ state: HistoryTabState, for tab: HistoryTab) {
+    var next = state
+    let previous = historyTabStates[tab] ?? HistoryTabState()
+    if previous.query != next.query || previous.listFilter != next.listFilter {
+      next.requestedCount = HistoryTabState.pageSize
+      next.scrollAnchorID = nil
+    }
+    historyTabStates[tab] = next
+  }
+
+  /// Every item `tab` lists now under its search and filters, all pages, newest first, with the
+  /// same visibility, expiry and deletion rules as `listedItems`. Paging only limits drawing.
+  func matchingHistoryItems(in tab: HistoryTab) -> [HistoryListItem] {
+    matchingHistoryItems(in: tab, state: historyTabStates[tab] ?? HistoryTabState())
+  }
+
+  private func matchingHistoryItems(in tab: HistoryTab, state: HistoryTabState)
+    -> [HistoryListItem]
+  {
+    let now = clock()
+    let key = listKey(
+      at: now, kind: HistoryListKind(tab), filter: state.listFilter, query: state.query)
+    #if DEBUG
+      if listCacheDisabledForTesting { return buildListedItems(at: now, from: key) }
+    #endif
+    if let kept = tabListCache[tab], kept.key == key { return kept.items }
+    let kept = KeptList(key: key, items: buildListedItems(at: now, from: key))
+    tabListCache[tab] = kept
+    return kept.items
+  }
+
+  /// How many of `tab`'s items fall on each day under its search and other filters (the date
+  /// filter left out), for the calendar's activity dots. Days are `calendar`'s start of day.
+  /// The dates are read here; grouping runs off the main actor.
+  func historyActivity(in tab: HistoryTab, calendar: Calendar) async -> [Date: Int] {
+    var state = historyTabStates[tab] ?? HistoryTabState()
+    state.dateInterval = nil
+    let dates = matchingHistoryItems(in: tab, state: state).map(\.createdAt)
+    return await Task.detached(priority: .userInitiated) {
+      var counts: [Date: Int] = [:]
+      for date in dates { counts[calendar.startOfDay(for: date), default: 0] += 1 }
+      return counts
+    }.value
+  }
+
+  /// Each tab's kept list (#4001's cache, one per tab). Not observed, like `listCache`.
+  @ObservationIgnored private var tabListCache: [HistoryTab: KeptList] = [:]
+
   /// #2807: whether the detail pane may show the live transcript when nothing is selected.
   ///
   /// The live fallback exists for one moment: a dictation just finished and History is open
@@ -152,7 +233,13 @@ final class TranscriptCoordinator {
   /// of a meeting row hands the meeting id here instead of deleting; EnviousMeet marks the
   /// meeting, removes the row through `removeRow(id:)` and then the meeting folder. Nil (tests,
   /// or before wiring) deletes the row the ordinary way.
-  @ObservationIgnored var deleteMeeting: (@MainActor (UUID) -> Void)?
+  /// True when EnviousMeet deleted the meeting (or a deletion it already owns is under way),
+  /// false when it could not now (#4079); History says so. Awaited, never inferred from the
+  /// list (#3147 PR2).
+  @ObservationIgnored var deleteMeeting: (@MainActor (UUID) async -> Bool)?
+  /// #3147 PR2: Delete recordings only for one meeting, as EnviousMeet reports it (active
+  /// meetings are skipped, meetings with no audio left are already absent). Nil fails.
+  @ObservationIgnored var deleteMeetingAudio: (@MainActor (UUID) async -> HistoryDeleteOutcome)?
   /// #3972 R19: called by Delete All with every meeting id among the rows, BEFORE the store is
   /// emptied, so each meeting is marked for deletion first and a crash cannot leave a finished
   /// meeting whose History row is gone.
@@ -248,7 +335,8 @@ final class TranscriptCoordinator {
   private struct ListKey: Equatable {
     let revision: Int
     let pulse: Int
-    let filter: HistoryFilter
+    let kind: HistoryListKind
+    let filter: HistoryListFilter
     let query: String
     let echoShown: Set<UUID>
     let meetings: [MeetingRecord]
@@ -272,6 +360,14 @@ final class TranscriptCoordinator {
   }
 
   private func listKey(at now: Date) -> ListKey {
+    listKey(
+      at: now, kind: HistoryListKind(historyFilter), filter: .none, query: searchQuery)
+  }
+
+  /// The key for one list: its kind, filters and search, plus every input the build reads.
+  private func listKey(
+    at now: Date, kind: HistoryListKind, filter: HistoryListFilter, query searchQuery: String
+  ) -> ListKey {
     _ = expiryPulse
     let index = rowIndex
     let pendingVisible = index.pending.map { Self.isVisible(transcripts[$0], at: now) }
@@ -285,7 +381,8 @@ final class TranscriptCoordinator {
           invited: meetingInvited?($0) ?? [])
       }
     return ListKey(
-      revision: transcriptsRevision, pulse: expiryPulse, filter: historyFilter, query: searchQuery,
+      revision: transcriptsRevision, pulse: expiryPulse, kind: kind, filter: filter,
+      query: searchQuery,
       echoShown: echoShownRowIDs, meetings: meetingRecords?() ?? [], pendingVisible: pendingVisible,
       searchFacts: facts, locale: Locale.current.identifier,
       localizations: Bundle.main.preferredLocalizations)
@@ -368,14 +465,7 @@ final class TranscriptCoordinator {
     }
     let merged = Self.mergeMeetings(meetings, into: items)
     let listed = merged.filter { item in
-      switch (key.filter, item) {
-      case (.all, _): return true
-      case (.dictations, .transcript(let row)): return !row.isImported
-      case (.transcripts, .transcript(let row)): return row.isImported
-      case (.recordings, .meeting): return true
-      case (.dictations, .meeting), (.transcripts, .meeting), (.recordings, .transcript):
-        return false
-      }
+      Self.matchesKind(key.kind, item) && Self.matchesFilter(key.filter, item)
     }
     guard !key.query.isEmpty else { return listed }
     let facts = Dictionary(
@@ -406,6 +496,49 @@ final class TranscriptCoordinator {
           } ?? false)
       }
     }
+  }
+
+  /// Whether `item` is of the kind a list shows.
+  private static func matchesKind(_ kind: HistoryListKind, _ item: HistoryListItem) -> Bool {
+    switch (kind, item) {
+    case (.all, _): return true
+    case (.dictations, .transcript(let row)): return !row.isImported
+    case (.transcripts, .transcript(let row)): return row.isImported
+    case (.meetings, .meeting): return true
+    case (.dictations, .meeting), (.transcripts, .meeting), (.meetings, .transcript):
+      return false
+    }
+  }
+
+  /// Whether `item` passes a History tab's filters (#3147 §3.3). A filter a kind does not carry
+  /// (App on a meeting, Call app on a dictation) never lets that item through once it is set.
+  private static func matchesFilter(_ filter: HistoryListFilter, _ item: HistoryListItem) -> Bool {
+    if let interval = filter.dateInterval {
+      // Start-inclusive, end-exclusive: a day ending at the next midnight never takes the next
+      // day's first instant (`DateInterval.contains` includes its end).
+      guard item.createdAt >= interval.start, item.createdAt < interval.end else { return false }
+    }
+    switch filter.app {
+    case .all: break
+    case .unknown:
+      guard case .transcript(let row) = item, !row.isImported,
+        (row.metrics?.targetApp ?? "").isEmpty
+      else { return false }
+    case .named(let app):
+      guard case .transcript(let row) = item, !row.isImported, row.metrics?.targetApp == app
+      else { return false }
+    }
+    if let range = filter.speakerCount {
+      guard case .transcript(let row) = item, row.isImported,
+        let count = row.historySpeakerCount, range.contains(count)
+      else { return false }
+    }
+    if let callApp = filter.callApp {
+      guard case .meeting(let meeting) = item, meeting.record?.callApp == callApp else {
+        return false
+      }
+    }
+    return true
   }
 
   /// The History rows `listedItems` shows: every listed dictation and import, and each listed
@@ -1296,7 +1429,7 @@ final class TranscriptCoordinator {
         selectedItemID = Self.neighbour(of: item.id, in: listedItems)
       }
       if let deleteMeeting {
-        deleteMeeting(meeting.meetingID)
+        if await !deleteMeeting(meeting.meetingID) { reportActionFailure(.delete) }
       } else if let row = meeting.row {
         await removeRowAnnouncing(row.id)
       }
@@ -1321,10 +1454,144 @@ final class TranscriptCoordinator {
     // A meeting goes to EnviousMeet before any History command is admitted; its own History
     // removal joins the queue from there, so the queue is never held across that orchestration.
     if let meetingID = transcript.meetingID, let deleteMeeting {
-      deleteMeeting(meetingID)
+      if await !deleteMeeting(meetingID) { reportActionFailure(.delete) }
       return
     }
     await removeRowAnnouncing(transcript.id)
+  }
+
+  // MARK: - History commands (#3147 PR2)
+
+  /// Whether History may store a text preference on `row`: a permanent, visible dictation.
+  /// Imports, meetings and held Escape-recovery rows have no preference.
+  private func acceptsHistoryPreference(_ row: Transcript) -> Bool {
+    !row.isImported && !row.isMeeting && row.escapeRecoveredAt == nil
+      && Self.isVisible(row, at: clock())
+  }
+
+  /// Sets which text History shows and delivers for dictation `rowID` (Restore original text,
+  /// Use polished text). One queued command that reads the row when it runs and changes only
+  /// the preference. Nil when the row is gone or takes no preference; an unchanged preference
+  /// writes nothing and still returns its change.
+  func setHistoryPreferredVersion(
+    _ version: Transcript.PreferredVersion?, for rowID: UUID
+  ) async throws -> HistoryPreferenceChange? {
+    guard !transactionExecutor.isDurableWriteInFlight(rowID) else { throw RowWriteInFlight() }
+    try Task.checkCancellation()
+    return try await transactionExecutor.admit { [self] in
+      await transactionExecutor.capture { () async throws -> HistoryPreferenceChange? in
+        guard let current = currentRow(id: rowID), acceptsHistoryPreference(current) else {
+          return nil
+        }
+        let change = HistoryPreferenceChange(
+          rowID: rowID, before: current.preferredVersion, after: version)
+        guard change.before != version else { return change }
+        guard try await performWrite(current.preferring(version), insertIfAbsent: false) else {
+          return nil
+        }
+        return change
+      }
+    }.get()
+  }
+
+  /// Puts back what `change` replaced, only while the row still holds `change.after`: a later
+  /// different choice is never overwritten. False when nothing was put back.
+  func undoHistoryPreference(_ change: HistoryPreferenceChange) async throws -> Bool {
+    guard !transactionExecutor.isDurableWriteInFlight(change.rowID) else {
+      throw RowWriteInFlight()
+    }
+    try Task.checkCancellation()
+    return try await transactionExecutor.admit { [self] in
+      await transactionExecutor.capture { () async throws -> Bool in
+        guard let current = currentRow(id: change.rowID), acceptsHistoryPreference(current),
+          current.preferredVersion == change.after
+        else { return false }
+        guard change.before != change.after else { return true }
+        return try await performWrite(
+          current.preferring(change.before), insertIfAbsent: false)
+      }
+    }.get()
+  }
+
+  /// One History deletion with what its owner actually did (#3147 selection mode). A meeting,
+  /// or a row that belongs to one, goes to EnviousMeet outside any History command; a dictation
+  /// or import is one queued command. Failures are returned, not reported here.
+  func deleteHistoryItem(id: HistoryItemID, kind: HistoryDeleteKind) async
+    -> HistoryDeleteOutcome
+  {
+    switch id {
+    case .meeting(let meetingID):
+      return await deleteMeetingItem(meetingID, kind: kind)
+    case .transcript(let rowID):
+      if let meetingID = currentRow(id: rowID)?.meetingID {
+        return await deleteMeetingItem(meetingID, kind: kind)
+      }
+      switch kind {
+      case .textAndRecordings: return await removeRowReporting(rowID)
+      case .recordingsOnly: return await deleteRecordingReporting(rowID)
+      }
+    }
+  }
+
+  private func deleteMeetingItem(_ meetingID: UUID, kind: HistoryDeleteKind) async
+    -> HistoryDeleteOutcome
+  {
+    switch kind {
+    case .textAndRecordings:
+      if let deleteMeeting { return await deleteMeeting(meetingID) ? .removed : .failed }
+      // Unwired (tests): the meeting's rows go the ordinary way.
+      let rowIDs = transcripts.filter { $0.meetingID == meetingID }.map(\.id)
+      guard !rowIDs.isEmpty else { return .alreadyAbsent }
+      var outcome = HistoryDeleteOutcome.alreadyAbsent
+      for rowID in rowIDs {
+        switch await removeRowReporting(rowID) {
+        case .failed: outcome = .failed
+        case .removed where outcome != .failed: outcome = .removed
+        default: break
+        }
+      }
+      return outcome
+    case .recordingsOnly:
+      guard let deleteMeetingAudio else { return .failed }
+      return await deleteMeetingAudio(meetingID)
+    }
+  }
+
+  /// The removal command with its announcement, returning its outcome instead of reporting it.
+  private func removeRowReporting(_ id: UUID) async -> HistoryDeleteOutcome {
+    guard !Task.isCancelled else { return .failed }
+    return await transactionExecutor.admit { [self] in
+      do {
+        let result = try await performRemovalWithCleanup(id)
+        if result.removal == .removed { onRowDeleted?(id) }
+        // Text gone but its recording left behind is not done: the item stays selected and a
+        // retry finishes the cleanup (Codex r3).
+        if result.recordingCleanupFailed { return .failed }
+        return result.removal == .removed ? .removed : .alreadyAbsent
+      } catch {
+        return .failed
+      }
+    }
+  }
+
+  /// Delete recordings only for one row: a dictation's recording goes and its text stays. An
+  /// import has no recording to delete; a dictation without one is already absent.
+  private func deleteRecordingReporting(_ rowID: UUID) async -> HistoryDeleteOutcome {
+    guard let recordings else { return .skipped }
+    guard !Task.isCancelled else { return .failed }
+    return await transactionExecutor.admit { [self] in
+      guard let row = currentRow(id: rowID) else { return .alreadyAbsent }
+      guard !row.isImported, !row.isMeeting else { return .skipped }
+      guard await recordings.hasRecordingOrPendingInCommand(rowID: rowID) else {
+        return .alreadyAbsent
+      }
+      do {
+        try await recordings.deleteRecordingInCommand(rowID: rowID, reason: .deleted)
+        return .removed
+      } catch {
+        return .failed
+      }
+    }
   }
 
   /// One removal command with its announcement. A row already absent from History and from
@@ -1374,7 +1641,8 @@ final class TranscriptCoordinator {
     // #4075 R5: the row as it is now, never the caller's copy. History Paste reads this after
     // hiding the app, and an import's cleanup or a deletion can land in that wait.
     if let current = transcripts.first(where: { $0.id == transcript.id }) {
-      return Self.isVisible(current, at: Date()) ? current.displayText : nil
+      // #3147 §3.4: History delivers the row's preferred text (original or polished).
+      return Self.isVisible(current, at: Date()) ? current.historyText : nil
     }
     // Not in History. A held recovery that is gone has lapsed, and a row History held and
     // removed was deleted: both are refused. A dictation History never held (the live pane's
@@ -1672,7 +1940,7 @@ final class TranscriptCoordinator {
     of row: Transcript, info: MeetingHistoryInfo?, showEcho: Bool, locale: String,
     localizations: [String]
   ) -> String {
-    guard row.isMeeting else { return row.displayText }
+    guard row.isMeeting else { return row.historyText }
     let text = meetingDocuments.text(
       of: row, info: info, showEcho: showEcho, locale: locale, localizations: localizations,
       bypass: meetingDocumentsBypass)
@@ -1727,6 +1995,14 @@ final class TranscriptCoordinator {
   /// absent from History and confirmed absent from both folders is `alreadyAbsent`, and
   /// changes nothing on screen.
   private func performRemoval(_ id: UUID) async throws -> Removal {
+    try await performRemovalWithCleanup(id).removal
+  }
+
+  /// `performRemoval` with whether the row's recording cleanup failed (the text can still have
+  /// gone), for History's deletion outcomes (#3147 PR2).
+  private func performRemovalWithCleanup(_ id: UUID) async throws
+    -> (removal: Removal, recordingCleanupFailed: Bool)
+  {
     let known = transcripts.first { $0.id == id }
     let listed = known != nil
     // #3147: meetings and imports never have a dictation recording, so their removal never
@@ -1736,8 +2012,8 @@ final class TranscriptCoordinator {
     // #3147: a dictation's recording goes with it, also when the text was already gone (a
     // leftover). A failure is reported, never hidden behind the text's removal; launch
     // reconciliation removes the leftover later.
-    if mayHaveRecording { await forgetRecording(of: id) }
-    guard listed || existed else { return .alreadyAbsent }
+    let recordingCleanupFailed = mayHaveRecording ? !(await forgetRecording(of: id)) : false
+    guard listed || existed else { return (.alreadyAbsent, recordingCleanupFailed) }
     // #2807: the displayed set BEFORE the removal, so the neighbour is the row the user
     // saw beside the one they deleted.
     let displayed = listedItems
@@ -1756,7 +2032,7 @@ final class TranscriptCoordinator {
     }
     if id == liveFallbackRowID { liveFallbackRowID = nil }
     refreshDiskStateThenStopIfIdle()
-    return .removed
+    return (.removed, recordingCleanupFailed)
   }
 
   func deleteAll() async {
@@ -1822,10 +2098,13 @@ final class TranscriptCoordinator {
   }
 
   /// Inside a removal command: withdraws and deletes the row's recording, reporting a failure.
-  private func forgetRecording(of id: UUID) async {
-    guard let recordings else { return }
+  /// False when the recording could not be removed (reported as a delete failure as before).
+  @discardableResult
+  private func forgetRecording(of id: UUID) async -> Bool {
+    guard let recordings else { return true }
     do {
       try await recordings.forgetInCommand(rowID: id)
+      return true
     } catch {
       actionFailure = .delete
       Task {
@@ -1833,6 +2112,7 @@ final class TranscriptCoordinator {
           "Deleted transcript left its recording: \(type(of: error))",
           level: .info, category: "TranscriptCoordinator")
       }
+      return false
     }
   }
 
@@ -2089,6 +2369,28 @@ enum HistoryDetail {
   case liveFallback
   /// Nothing to show, and the live transcript must not stand in.
   case empty
+}
+
+/// Which kind of item a History list shows: the legacy filter's All, or one tab's kind.
+enum HistoryListKind: Equatable, Sendable {
+  case all, dictations, transcripts, meetings
+
+  init(_ filter: HistoryFilter) {
+    switch filter {
+    case .all: self = .all
+    case .dictations: self = .dictations
+    case .transcripts: self = .transcripts
+    case .recordings: self = .meetings
+    }
+  }
+
+  init(_ tab: HistoryTab) {
+    switch tab {
+    case .dictations: self = .dictations
+    case .transcripts: self = .transcripts
+    case .meetings: self = .meetings
+    }
+  }
 }
 
 /// One History list item's identity (#3972 R45): a dictation or an import by its row's id, a
