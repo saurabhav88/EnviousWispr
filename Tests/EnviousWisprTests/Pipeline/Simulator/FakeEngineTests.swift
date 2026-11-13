@@ -193,4 +193,30 @@ struct FakeEngineTests {
     engine.applyUnloadPolicy(.immediately)
     #expect(engine.lastUnloadPolicy == .immediately)
   }
+
+  // MARK: #3147 opt-in word timings
+
+  @Test("finalize results stay untimed by default and carry scripted timings only when asked")
+  func finalizeWordTimingsAreOptIn() async throws {
+    let (untimedEngine, _) = makeEngine(.batchSuccess(text: "hello there"))
+    guard case .transcript(let untimed) = await untimedEngine.finalize(batchSamples: []) else {
+      Issue.record("expected a transcript")
+      return
+    }
+    #expect(untimed.wordTimings == nil)
+    #expect(untimed.wordTimingCoverage == nil)
+
+    let (engine, _) = makeEngine(.batchSuccess(text: "hello there"))
+    let words = [
+      ASRWordTiming(word: "hello", range: 0..<5, startMs: 0, endMs: 300),
+      ASRWordTiming(word: "there", range: 6..<11, startMs: nil, endMs: nil),
+    ]
+    engine.finalizeWordTimings = ["hello there": words, "other text": []]
+    guard case .transcript(let timed) = await engine.finalize(batchSamples: []) else {
+      Issue.record("expected a transcript")
+      return
+    }
+    #expect(timed.wordTimings == words)
+    #expect(timed.wordTimingCoverage == ASRWordTimingCoverage(timed: 5, total: 10))
+  }
 }
