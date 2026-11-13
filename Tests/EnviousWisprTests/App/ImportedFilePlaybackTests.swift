@@ -108,27 +108,52 @@ struct ImportedFilePlaybackTests {
     return out
   }
 
-  /// The most a converted (resampled or decoded) window may differ from the decoder's: about
-  /// one 16 kHz sample of phase on the fixture sweep.
-  static let convertedTolerance: Float = 0.1
-  /// The least a window one millisecond off differs on the fixture sweep.
-  static let misplacedFloor: Float = 0.25
-
-  /// Largest sample difference between `window` and the decoder's samples at `startMs`.
-  private static func maxDifference(
-    _ window: [Float], _ decoded: [Float], startMs: Int, offsetSamples: Int = 0
-  ) -> Float {
-    let start = startMs * 16 + offsetSamples
-    var worst: Float = 0
-    for i in 0..<window.count {
-      let expected = start + i < decoded.count ? decoded[start + i] : 0
-      worst = max(worst, abs(window[i] - expected))
+  /// Where `window` sits against the decoder's samples: the lag (in 16 kHz samples, within
+  /// +/-32) at which they correlate best, and that correlation.
+  ///
+  /// Why not equal samples: Apple's reader is not reproducible between two of its OWN reads of
+  /// one converted file. Measured on this fixture: two plain full decodes of one 48 kHz WAV
+  /// differed by up to 0.17 and by one sample in length, from a buffer boundary on (every run);
+  /// one AAC file differed by up to 0.07 in about half the runs. The decoder that made the
+  /// transcript has the same variation, so the user-visible question is whether a window lands
+  /// at the right time: within two samples (0.125 ms), never one millisecond (16) off.
+  static func alignment(_ window: [Float], _ decoded: [Float], startSample: Int) -> (
+    lag: Int, correlation: Float
+  ) {
+    var best = (lag: 0, correlation: -Float.infinity)
+    for lag in -32...32 {
+      var dot: Float = 0
+      var windowEnergy: Float = 0
+      var decodedEnergy: Float = 0
+      for i in 0..<window.count {
+        let j = startSample + i + lag
+        let d = j >= 0 && j < decoded.count ? decoded[j] : 0
+        dot += window[i] * d
+        windowEnergy += window[i] * window[i]
+        decodedEnergy += d * d
+      }
+      let correlation =
+        windowEnergy > 0 && decodedEnergy > 0 ? dot / (windowEnergy * decodedEnergy).squareRoot() : 0
+      if correlation > best.correlation { best = (lag, correlation) }
     }
-    return worst
+    return best
+  }
+
+  /// `window` (played from file sample `startSample`) is the decoder's audio at that time.
+  private static func expectAligned(
+    _ window: [Float], _ decoded: [Float], startSample: Int, _ label: String,
+    sourceLocation: SourceLocation = #_sourceLocation
+  ) {
+    let found = alignment(window, decoded, startSample: startSample)
+    #expect(abs(found.lag) <= 2, "\(label): lag \(found.lag)", sourceLocation: sourceLocation)
+    #expect(found.correlation > 0.98, "\(label): correlation \(found.correlation)", sourceLocation: sourceLocation)
+    // Control: the same check reads a window one millisecond off as one millisecond off.
+    let misplaced = alignment(window, decoded, startSample: startSample + 16)
+    #expect(abs(misplaced.lag + 16) <= 2, "\(label) control: lag \(misplaced.lag)", sourceLocation: sourceLocation)
   }
 
   @Test(
-    "sequential windows are exactly the samples the transcript was made from",
+    "front-to-back play is the audio the transcript was made from, at the right time",
     arguments: ImportedMediaFixture.Kind.allCases)
   func sequentialMatchesDecoder(kind: ImportedMediaFixture.Kind) async throws {
     let url = try ImportedMediaFixture.write(
@@ -140,20 +165,19 @@ struct ImportedFilePlaybackTests {
     if kind == .wav16kMono {
       // No conversion at all: bit for bit.
       #expect(Array(played.prefix(decoded.count)) == decoded)
-    } else {
-      // Apple's reader is not bit-reproducible across two of its own reads of one converted file
-      // (measured: two plain decodes of one AAC file differ by up to 0.07 from a buffer boundary
-      // on, a resampler phase step under one 16 kHz sample). So: within that, and never by as
-      // much as a window one millisecond off.
-      #expect(Self.maxDifference(Array(played.prefix(decoded.count)), decoded, startMs: 0) < Self.convertedTolerance)
-      #expect(Self.maxDifference(Array(played.prefix(decoded.count - 16)), decoded, startMs: 0, offsetSamples: 16) > Self.misplacedFloor)
     }
-    #expect(played.dropFirst(decoded.count).allSatisfy { $0 == 0 }, "past the end is silence")
+    var start = 0
+    while start + 4_000 + 32 <= decoded.count {
+      Self.expectAligned(
+        Array(played[start..<start + 4_000]), decoded, startSample: start, "\(start / 16) ms")
+      start += 4_000
+    }
+    #expect(played.dropFirst(decoded.count + 2).allSatisfy { $0 == 0 }, "past the end is silence")
     #expect(audio.readerStarts == 1, "one reader for a front-to-back play")
   }
 
   @Test(
-    "a seek lands on the decoder's samples, backwards and far forward",
+    "a seek lands on the decoder's audio at the right time, backwards and far forward",
     arguments: ImportedMediaFixture.Kind.allCases)
   func seekMatchesDecoder(kind: ImportedMediaFixture.Kind) async throws {
     let url = try ImportedMediaFixture.write(
@@ -162,23 +186,17 @@ struct ImportedFilePlaybackTests {
     let audio = try await ImportedFilePlaybackAudio.open(url: url)
     _ = try audio.window(startMs: 0, count: 250)
 
-    // Far forward (beyond the 2 s read-through), then backwards: each starts a new reader.
-    // A fresh reader starts 100 ms early, so decoder warm-up is gone; what remains is the
-    // resampler's phase on a new start (measured 0.025 at 48 kHz). A window one millisecond off
-    // differs by far more (the control below).
-    let tolerance: Float = kind == .wav16kMono ? 0.005 : Self.convertedTolerance
+    // Far forward (beyond the 2 s read-through), then backwards: each starts a new reader,
+    // 100 ms early so the decoder is warm at the target.
     for startMs in [4_000, 1_250, 5_000] {
       let before = audio.readerStarts
       let window = try audio.window(startMs: startMs, count: 250)
       #expect(audio.readerStarts == before + 1, "\(startMs) ms reopened")
-      let difference = Self.maxDifference(window, decoded, startMs: startMs)
-      #expect(difference < tolerance, "\(startMs) ms differs by \(difference)")
-      let misplaced = Self.maxDifference(window, decoded, startMs: startMs, offsetSamples: 16)
-      #expect(misplaced > Self.misplacedFloor, "control: 1 ms off differs by \(misplaced)")
+      Self.expectAligned(window, decoded, startSample: startMs * 16, "seek \(startMs) ms")
       // The next window continues the same reader.
       let next = try audio.window(startMs: startMs + 250, count: 250)
       #expect(audio.readerStarts == before + 1)
-      #expect(Self.maxDifference(next, decoded, startMs: startMs + 250) < tolerance)
+      Self.expectAligned(next, decoded, startSample: (startMs + 250) * 16, "after \(startMs) ms")
     }
 
     // A short jump ahead reads through instead of reopening.
@@ -204,6 +222,19 @@ struct ImportedFilePlaybackTests {
     let siblings = try FileManager.default.contentsOfDirectory(
       atPath: url.deletingLastPathComponent().path)
     #expect(siblings == [url.lastPathComponent], "no copy or side file appeared")
+  }
+
+  @Test("a seek after the original changed on disk stops instead of playing different audio")
+  func seekAfterSourceChangedStops() async throws {
+    let dir = try ImportedMediaFixture.directory()
+    let url = try ImportedMediaFixture.write(.wav16kMono, seconds: 6, in: dir)
+    let audio = try await ImportedFilePlaybackAudio.open(url: url)
+    _ = try audio.window(startMs: 0, count: 250)
+    // Another app saves a different recording over it (same name, same length).
+    try ImportedMediaFixture.write(.wav16kMono, seconds: 6, in: dir, seed: 3)
+    #expect(throws: ImportedFilePlaybackAudio.Failure.sourceChanged) {
+      try audio.window(startMs: 4_000, count: 250)
+    }
   }
 
   @Test("a file that is not audio is refused; a missing one too")

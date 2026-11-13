@@ -80,10 +80,11 @@ final class ImportedSources: ImportedSourceAccessing {
     let state: ImportedSourceState
   }
 
-  /// What the arbiter said about a row when a lookup began.
+  /// What the arbiter said about a row, and the cache sweep, when a lookup began.
   private struct Fence: Equatable {
     let deletions: Int
     let epoch: Int
+    let sweep: Int
   }
 
   private struct Lookup: Sendable {
@@ -101,7 +102,9 @@ final class ImportedSources: ImportedSourceAccessing {
   @ObservationIgnored private var inFlight: [UUID: (ImportedSourceReference, Task<Lookup, Never>)] =
     [:]
   /// Disk lookups started (shared ones count once).
-  @ObservationIgnored private(set) var lookupsStarted = 0
+  private(set) var lookupsStarted = 0
+  /// Lookups that joined one already in flight for the same row and reference.
+  private(set) var lookupsJoined = 0
 
   init(coordinator: TranscriptCoordinator, arbiter: PlaybackArbiter?, io: ImportedSourceIO = .live)
   {
@@ -147,7 +150,10 @@ final class ImportedSources: ImportedSourceAccessing {
         return result.state
       }
       // Stale bookmark: cached only once the refreshed link is stored, so the next look retries.
-      if let refreshed = await refresh(resolved, with: fresh) {
+      let refreshed = await refresh(resolved, with: fresh)
+      // An `invalidateAll` during the refresh's write: look again rather than cache.
+      guard fence.sweep == sweeps else { continue }
+      if let refreshed {
         if coordinator.currentRow(id: rowID).map(ImportedSourceReference.init)
           == refreshed.reference
         {
@@ -262,7 +268,7 @@ final class ImportedSources: ImportedSourceAccessing {
   private func currentFence(_ rowID: UUID) -> Fence {
     Fence(
       deletions: arbiter?.deletionCount(for: .transcript(rowID)) ?? 0,
-      epoch: arbiter?.transcriptEpoch ?? 0)
+      epoch: arbiter?.transcriptEpoch ?? 0, sweep: sweeps)
   }
 
   /// The row still holds `reference` and no deletion happened since `fence`.
@@ -293,7 +299,10 @@ final class ImportedSources: ImportedSourceAccessing {
   }
 
   private func sharedLookup(rowID: UUID, reference: ImportedSourceReference) async -> Lookup {
-    if let shared = inFlight[rowID], shared.0 == reference { return await shared.1.value }
+    if let shared = inFlight[rowID], shared.0 == reference {
+      lookupsJoined += 1
+      return await shared.1.value
+    }
     lookupsStarted += 1
     let io = io
     let task = Task { await Self.lookup(rowID: rowID, reference: reference, io: io) }

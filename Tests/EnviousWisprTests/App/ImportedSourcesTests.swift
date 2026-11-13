@@ -19,7 +19,8 @@ import os
 @Suite("Imported sources (#3147 PR3)", .tags(.productOutcome))
 struct ImportedSourcesTests {
 
-  /// Holds one identity read so a test can change the world while a lookup is in flight.
+  /// Holds one lookup just after its identity read, so a test can change the world before the
+  /// lookup answers.
   @MainActor
   @Observable
   final class Probe {
@@ -72,8 +73,10 @@ struct ImportedSourcesTests {
       },
       fileExists: live.fileExists,
       identity: { url in
+        // Held AFTER the read, so the world can change between the read and the answer.
+        let identity = try await live.identity(url)
         await probe.identityCalled()
-        return try await live.identity(url)
+        return identity
       },
       makeBookmark: live.makeBookmark,
       openAudio: live.openAudio)
@@ -130,6 +133,7 @@ struct ImportedSourcesTests {
     async let a = rig.sources.state(for: row.id)
     async let b = rig.sources.state(for: row.id)
     await eventually("lookup held") { rig.probe.held }
+    await eventually("second caller joined") { rig.sources.lookupsJoined == 1 }
     rig.probe.release()
     let (first, second) = await (a, b)
     #expect(first == second)
@@ -333,6 +337,23 @@ struct ImportedSourcesTests {
     #expect(rig.probe.identityCalls == 2, "the overtaken lookup was redone")
   }
 
+  @Test("forgetting cached answers during a lookup makes it look again, never cache the old answer")
+  func invalidateDuringLookup() async throws {
+    let rig = try makeRig()
+    let file = try ImportedMediaFixture.write(.wav16kMono, seconds: 2, in: rig.dir)
+    let row = try await importRow(linkedTo: file, rig: rig)
+    rig.probe.holdOnCall = 1
+    async let state = rig.sources.state(for: row.id)
+    await eventually("lookup held") { rig.probe.held }
+    // The original is replaced while the lookup is held, then History comes to the front.
+    try ImportedMediaFixture.write(.wav16kMono, seconds: 2, in: rig.dir, seed: 6)
+    rig.sources.invalidateAll()
+    rig.probe.release()
+    #expect(await state == .changed)
+    #expect(await rig.sources.state(for: row.id) == .changed, "the cache holds the new answer")
+    #expect(rig.probe.identityCalls == 2)
+  }
+
   @Test("Play that began before the entry was deleted never gets a player")
   func lateCompletionAfterDeletion() async throws {
     let rig = try makeRig()
@@ -377,10 +398,10 @@ struct ImportedSourcesTests {
     #expect(abs(source.durationMs - 2_000) <= 50)
     let decoded = try await AudioFileDecoder.decode(url: file).samples
     let window = try source.audio.window(startMs: 0, count: 250)
-    // The original's own audio (within the reader's own read-to-read variation; see
-    // `ImportedFilePlaybackTests.convertedTolerance`).
-    let worst = zip(window, decoded.prefix(4_000)).map { abs($0 - $1) }.max() ?? 1
-    #expect(worst < ImportedFilePlaybackTests.convertedTolerance)
+    // The original's own audio at the right time (see `ImportedFilePlaybackTests.alignment`).
+    let found = ImportedFilePlaybackTests.alignment(window, decoded, startSample: 0)
+    #expect(abs(found.lag) <= 2)
+    #expect(found.correlation > 0.98)
     #expect(
       source.source.reference
         == ImportedSourceReference(try #require(rig.coordinator.currentRow(id: row.id))))

@@ -26,6 +26,25 @@ final class ImportedFilePlaybackAudio: PlaybackWindowAudio, @unchecked Sendable 
     case noAudioTrack
     /// The file could not be opened, or reading it failed part-way.
     case unreadable
+    /// The file on disk is no longer the one opened (size or modification date changed), so a
+    /// new reader would play different audio. The owner re-checks the original from scratch.
+    case sourceChanged
+  }
+
+  /// The file's size and modification date when opened, re-read before every new reader.
+  private struct DiskStamp: Equatable {
+    let size: Int
+    let modified: Date?
+
+    static func read(_ url: URL) -> DiskStamp? {
+      var fresh = url
+      // A URL caches resource values; a stale cache would hide the change this guards.
+      fresh.removeAllCachedResourceValues()
+      guard let values = try? fresh.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey]),
+        let size = values.fileSize
+      else { return nil }
+      return DiskStamp(size: size, modified: values.contentModificationDate)
+    }
   }
 
   /// Samples per second of every window (the engines' and the player's rate).
@@ -37,6 +56,7 @@ final class ImportedFilePlaybackAudio: PlaybackWindowAudio, @unchecked Sendable 
 
   private let asset: AVURLAsset
   private let track: AVAssetTrack
+  private let stamp: DiskStamp
   /// The audio track's length in whole milliseconds.
   let durationMs: Int
 
@@ -56,9 +76,10 @@ final class ImportedFilePlaybackAudio: PlaybackWindowAudio, @unchecked Sendable 
   private var readersStarted = 0
   var readerStarts: Int { lock.withLock { readersStarted } }
 
-  private init(asset: AVURLAsset, track: AVAssetTrack, durationMs: Int) {
+  private init(asset: AVURLAsset, track: AVAssetTrack, stamp: DiskStamp, durationMs: Int) {
     self.asset = asset
     self.track = track
+    self.stamp = stamp
     self.durationMs = durationMs
   }
 
@@ -67,6 +88,7 @@ final class ImportedFilePlaybackAudio: PlaybackWindowAudio, @unchecked Sendable 
   /// Opens `url` for windowed reading. Off the main actor; cooperative cancellation.
   @concurrent
   static func open(url: URL) async throws -> ImportedFilePlaybackAudio {
+    guard let stamp = DiskStamp.read(url) else { throw Failure.unreadable }
     let asset = AVURLAsset(url: url)
     let tracks: [AVAssetTrack]
     do {
@@ -89,7 +111,8 @@ final class ImportedFilePlaybackAudio: PlaybackWindowAudio, @unchecked Sendable 
     let end = CMTimeRangeGetEnd(range)
     guard end.isNumeric, end.seconds.isFinite, end.seconds >= 0 else { throw Failure.unreadable }
     let audio = ImportedFilePlaybackAudio(
-      asset: asset, track: track, durationMs: Int((end.seconds * 1_000).rounded(.down)))
+      asset: asset, track: track, stamp: stamp,
+      durationMs: Int((end.seconds * 1_000).rounded(.down)))
     // Proves now, not at the first Play, that a reader can start on this file.
     try audio.lock.withLock { try audio.startReader(at: 0) }
     return audio
@@ -153,6 +176,13 @@ final class ImportedFilePlaybackAudio: PlaybackWindowAudio, @unchecked Sendable 
   }
 
   private func startReader(at sample: Int) throws {
+    // Every new reader (a seek) re-checks the file; the owner checked identity at open.
+    guard DiskStamp.read(asset.url) == stamp else {
+      reader?.cancelReading()
+      reader = nil
+      output = nil
+      throw Failure.sourceChanged
+    }
     reader?.cancelReading()
     reader = nil
     output = nil
