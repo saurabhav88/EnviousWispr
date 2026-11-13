@@ -6,7 +6,10 @@ import Foundation
 /// hash. The Markdown files are the user's text; `documents.json` only describes them, so a
 /// disagreement is always settled in favour of the file.
 public struct MeetingDocumentsManifest: Sendable, Equatable, Codable {
-  public static let currentFormatVersion = 1
+  /// 2: notes.json (MeetingNotesDocument) is the notes authority and notes.md its projection
+  /// (#3147 PR4); v2.6.0 builds refuse to read or write a format-2 manifest, so they never write
+  /// notes.md over newer blocks.
+  public static let currentFormatVersion = 2
 
   public var formatVersion: Int
   public var notes: Notes?
