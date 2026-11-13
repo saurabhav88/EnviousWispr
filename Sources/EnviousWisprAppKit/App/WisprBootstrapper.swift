@@ -3725,6 +3725,11 @@ package final class WisprBootstrapper {
   package func onboardingWindowContent() -> some View {
     OnboardingWindowRoot(b: self)
   }
+
+  /// #3147 PR3: one detached transcript window's content.
+  package func transcriptWindowContent(rowID: UUID) -> some View {
+    TranscriptWindowRoot(b: self, rowID: rowID)
+  }
 }
 
 // MARK: - Engine switch sequence (#3849)
@@ -3760,6 +3765,94 @@ extension WisprBootstrapper {
   }
 }
 
+/// Every App-owned home the app's windows read, injected the same way into the main window and
+/// each transcript window (#3147 PR3), so both see the very same objects.
+private struct AppHomesEnvironment: ViewModifier {
+  let b: WisprBootstrapper
+
+  func body(content: Content) -> some View {
+    content
+        .environment(b.navigationCoordinator)
+        .environment(b.diagnosticsCoordinator)
+        #if DEBUG
+          .environment(b.pillPreviewController)
+          .environment(b.callPopupPreviewController)
+        #endif
+        .environment(b.languageSuggestionPresenter)
+        .environment(b.updateCoordinatorHolder)
+        .environment(\.settingsKeyMonitor, b.settingsKeyMonitor)
+        .environment(b.transcriptCoordinator)
+        .environment(b.fileImportCoordinator)
+        .environment(b.meetingCoordinator)
+        // #3147: Recordings settings and History's storage warning.
+        .environment(b.recordingRetention)
+        .environment(b.recordingUsage)
+        .environment(b.meetingStartFlow)
+        .environment(b.meetingOnboardingModel)
+        .environment(b.meetingLiveWordsRow)
+        .environment(b.meetingSpeakerLabels)
+        .environment(b.meetingTranscriptEngineRow)
+        .environment(b.liveRecordingState)
+        .environment(b.lastRecordingResult)
+        .environment(b.backendMetadata)
+        .environment(b.engineCoordinator)
+        .environment(b.modelDelivery)
+        .environment(b.checkerEligibility)
+        .environment(b.dictationRuntime)
+        .environment(b.appWindowCoordinator)
+        .environment(b.previousApplicationTracker)
+        .environment(b.historyPaste)
+        // The nine view-facing homes (epic #763).
+        .environment(b.settings)
+        .environment(b.pillAppearance)
+        .environment(b.permissions)
+        .environment(b.customWordsCoordinator)
+        .environment(b.snippetsCoordinator)
+        .environment(b.contactsImportCoordinator)
+        .environment(b.setup)
+        .environment(\.egOneSizeCatalog, b.polishSetup.egOneSizeCatalog)
+        // #2649: both engines are `LocalPolishRuntime`, and `@Environment` keys by TYPE,
+        // so injecting the second directly would silently replace the first. The
+        // set names them instead.
+        .environment(b.localPolishRuntimes)
+        .environment(b.audioDeviceList)
+        // Only the microphone status view invokes this reader and observes capture changes.
+        // No second state owner or capture command; the diagnostic UID survives stop.
+        .environment(
+          \.microphoneCapturePresentation,
+          {
+            MicrophoneCapturePresentation(
+              isCapturing: b.liveRecordingState.audioCapture.isCapturing,
+              boundDeviceUID:
+                b.liveRecordingState.audioCapture.zeroSignalDiscriminatorDevice?.deviceUID)
+          }
+        )
+        .environment(b.aiAvailability)
+        .environment(b.llmDiscovery)
+        // #4353 D6: the cloud model list the model menus and labels read.
+        .environment(b.cloudModelList)
+        .environment(b.polishSetup.savedKeyPresence)
+        .environment(b.polishSetup.monitor)
+        .environment(b.polishSetup.summary)
+        .environment(b.vocabularyPackManager)
+        // #996: the Learning row's enabled state (auto-learn, 2026-09-21 plan).
+        .environment(b.learnFromEdits.availability)
+        .environment(\.asrManager, b.asrManager)
+        .environment(\.activeEngine, b.activeEngine)
+        .environment(\.keychainManager, b.keychainManager)
+      // #3147 PR3: the transcript owners.
+      .environment(b.importedSources)
+      .environment(b.transcriptRetranscription)
+      .environment(b.importedModelCatalog)
+  }
+}
+
+extension View {
+  func appHomes(_ b: WisprBootstrapper) -> some View {
+    modifier(AppHomesEnvironment(b: b))
+  }
+}
+
 /// The main window's root view. Owns the onboarding-presented view-state (was
 /// `@State` on the old App struct) and injects every App-owned home.
 private struct MainWindowRoot: View {
@@ -3779,74 +3872,7 @@ private struct MainWindowRoot: View {
       // 242) + the History split floors inside the detail card (230+8+260=498),
       // so the window can never crush the History split (#1024; #1296 frame).
       .frame(minWidth: 750, minHeight: 400)
-      .environment(b.navigationCoordinator)
-      .environment(b.diagnosticsCoordinator)
-      #if DEBUG
-        .environment(b.pillPreviewController)
-        .environment(b.callPopupPreviewController)
-      #endif
-      .environment(b.languageSuggestionPresenter)
-      .environment(b.updateCoordinatorHolder)
-      .environment(\.settingsKeyMonitor, b.settingsKeyMonitor)
-      .environment(b.transcriptCoordinator)
-      .environment(b.fileImportCoordinator)
-      .environment(b.meetingCoordinator)
-      // #3147: Recordings settings and History's storage warning.
-      .environment(b.recordingRetention)
-      .environment(b.recordingUsage)
-      .environment(b.meetingStartFlow)
-      .environment(b.meetingOnboardingModel)
-      .environment(b.meetingLiveWordsRow)
-      .environment(b.meetingSpeakerLabels)
-      .environment(b.meetingTranscriptEngineRow)
-      .environment(b.liveRecordingState)
-      .environment(b.lastRecordingResult)
-      .environment(b.backendMetadata)
-      .environment(b.engineCoordinator)
-      .environment(b.modelDelivery)
-      .environment(b.checkerEligibility)
-      .environment(b.dictationRuntime)
-      .environment(b.appWindowCoordinator)
-      .environment(b.previousApplicationTracker)
-      .environment(b.historyPaste)
-      // The nine view-facing homes (epic #763).
-      .environment(b.settings)
-      .environment(b.pillAppearance)
-      .environment(b.permissions)
-      .environment(b.customWordsCoordinator)
-      .environment(b.snippetsCoordinator)
-      .environment(b.contactsImportCoordinator)
-      .environment(b.setup)
-      .environment(\.egOneSizeCatalog, b.polishSetup.egOneSizeCatalog)
-      // #2649: both engines are `LocalPolishRuntime`, and `@Environment` keys by TYPE,
-      // so injecting the second directly would silently replace the first. The
-      // set names them instead.
-      .environment(b.localPolishRuntimes)
-      .environment(b.audioDeviceList)
-      // Only the microphone status view invokes this reader and observes capture changes.
-      // No second state owner or capture command; the diagnostic UID survives stop.
-      .environment(
-        \.microphoneCapturePresentation,
-        {
-          MicrophoneCapturePresentation(
-            isCapturing: b.liveRecordingState.audioCapture.isCapturing,
-            boundDeviceUID:
-              b.liveRecordingState.audioCapture.zeroSignalDiscriminatorDevice?.deviceUID)
-        }
-      )
-      .environment(b.aiAvailability)
-      .environment(b.llmDiscovery)
-      // #4353 D6: the cloud model list the model menus and labels read.
-      .environment(b.cloudModelList)
-      .environment(b.polishSetup.savedKeyPresence)
-      .environment(b.polishSetup.monitor)
-      .environment(b.polishSetup.summary)
-      .environment(b.vocabularyPackManager)
-      // #996: the Learning row's enabled state (auto-learn, 2026-09-21 plan).
-      .environment(b.learnFromEdits.availability)
-      .environment(\.asrManager, b.asrManager)
-      .environment(\.activeEngine, b.activeEngine)
-      .environment(\.keychainManager, b.keychainManager)
+      .appHomes(b)
       .background(
         ActionWirer(
           settings: b.settings,

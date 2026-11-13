@@ -118,6 +118,15 @@ private struct HistoryDiaryList<DictationCard: View>: View {
 
   /// The entry at the top of the scrolled list.
   @State private var position: HistoryDiaryLayout.EntryID?
+  /// #3147 PR3: the import whose Locate original flow is running, and its one-line result.
+  @State private var locatingRowID: UUID?
+  @State private var locateNote: LocateNote?
+  @Environment(ImportedSources.self) private var importedSources
+
+  private struct LocateNote: Identifiable {
+    let id = UUID()
+    let text: String
+  }
 
   var body: some View {
     let items = coordinator.matchingHistoryItems(in: tab)
@@ -195,6 +204,15 @@ private struct HistoryDiaryList<DictationCard: View>: View {
     .onChange(of: RetainKey(context: context, count: items.count)) { _, _ in
       selection.retain(Set(coordinator.matchingHistoryItems(in: tab).map(\.id)))
     }
+    .alert(
+      Text("Locate original", comment: "History: title of the Locate original result message."),
+      isPresented: Binding(
+        get: { locateNote != nil }, set: { if $0 == false { locateNote = nil } })
+    ) {
+      Button(String(localized: "OK", comment: "History: dismisses the Locate original result.")) {}
+    } message: {
+      Text(verbatim: locateNote?.text ?? "")
+    }
   }
 
   /// When the selection is re-checked against the tab's list.
@@ -214,10 +232,30 @@ private struct HistoryDiaryList<DictationCard: View>: View {
       case .transcript(let row) where row.isImported == false:
         dictationCard(row.id)
       case .transcript(let row):
-        openableCard(item.id, items: items) { TranscriptRowView(transcript: row) }
+        transcriptCard(row.id, item: item.id, items: items)
       case .meeting(let meeting):
         openableCard(item.id, items: items) { MeetingRowView(meeting: meeting) }
       }
+    }
+  }
+
+  /// #3147 PR3: an import's card. Its Open and Locate original are its own buttons; while
+  /// selecting, the whole card ticks instead and its buttons take no clicks.
+  @ViewBuilder private func transcriptCard(
+    _ rowID: UUID, item: HistoryItemID, items: [HistoryListItem]
+  ) -> some View {
+    let card = HistoryTranscriptCard(
+      rowID: rowID, sources: importedSources, onOpen: { open(item) },
+      onLocate: { locatingRowID = rowID })
+    if isSelecting {
+      openableCard(item, items: items) { card.allowsHitTesting(false) }
+    } else {
+      card.historyTranscriptLocate(
+        rowID: rowID, sources: importedSources,
+        isPresented: Binding(
+          get: { locatingRowID == rowID },
+          set: { if $0 == false, locatingRowID == rowID { locatingRowID = nil } }),
+        onResult: { text, _ in locateNote = LocateNote(text: text) })
     }
   }
 
@@ -689,96 +727,6 @@ struct HistoryEmptyView: View {
         description: Text("Try a different search, or another filter.")
       )
     }
-  }
-}
-
-/// One Transcribe a File transcript in the Transcripts tab, rendered as a bordered card that
-/// opens the transcript.
-struct TranscriptRowView: View {
-  let transcript: Transcript
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 6) {
-      Text(transcript.createdAt, format: .dateTime.hour().minute())
-        .font(.stHelper.monospacedDigit())
-        .foregroundStyle(.stTextSecondary)
-
-      Text(transcript.historyText)
-        .lineLimit(3)
-        .font(.stBody)
-        .foregroundStyle(.stTextPrimary)
-
-      // #2807: the chips WRAP, so a row with a long file name and several chips never squeezes
-      // a chip's words across lines at the list's narrowest.
-      WrappingHStack(spacing: 6) {
-        // #2087: held countdown or Kept, from the shared Escape Recovery badge view.
-        EscapeRecoveryBadge(transcript: transcript)
-
-        if let importedFileName = transcript.importedFileName {
-          // #2772 finding 11: the FILE NAME is the label rather than the word "Imported": a
-          // person scanning History for a meeting they transcribed is looking for the
-          // recording's name, and the badge is the only place it appears.
-          HStack(spacing: 2) {
-            Image(systemName: "doc.badge.plus")
-            Text(importedFileName)
-          }
-          .lineLimit(1)
-          .truncationMode(.middle)
-          .historyChip(tint: .stAccent, fill: Color.stAccentLight)
-          .accessibilityLabel("Imported from \(importedFileName)")
-        }
-
-        if let speakerNames = transcript.speakerNames, !speakerNames.isEmpty {
-          // #2811, phase 4 of #2807: rendered/exported speaker names never enter
-          // `displayText`, so scanning the list is the OTHER half of the epic's own "find
-          // the row with 'Zach, Ariana' on it" walkthrough. Sorted for a stable order across
-          // renders; a dictionary's own iteration order is not guaranteed.
-          HStack(spacing: 2) {
-            Image(systemName: "person.2")
-            Text(speakerNames.values.sorted().joined(separator: ", "))
-          }
-          .lineLimit(1)
-          .truncationMode(.middle)
-          .historyChip(tint: .stTextSecondary, fill: Color.stTextSecondary.opacity(0.14))
-        }
-
-        if transcript.isRecovered == true {
-          // #1063 PR2: marks a transcript reconstructed from a recovered recording after an
-          // abnormal exit. Icon + text (never color-only).
-          HStack(spacing: 2) {
-            Image(systemName: "arrow.clockwise.circle")
-            Text("Recovered")
-          }
-          .historyChip(tint: .stSuccess, fill: Color.stSuccess.opacity(0.15))
-          .accessibilityLabel("Recovered recording")
-        }
-
-        if transcript.inputDeviceWasRemoved == true {
-          // #1408: the microphone died mid-recording and this is what survived, so the text
-          // may be cut short. `stWarning`, not `stSuccess`: "Recovered" is good news,
-          // "Interrupted" is not. It renders ONLY for a verified removal, never for other
-          // interruption causes (the field takes the strictest predicate).
-          HStack(spacing: 2) {
-            Image(systemName: "mic.slash.circle")
-            Text("Interrupted")
-          }
-          .historyChip(tint: .stWarning, fill: Color.stWarning.opacity(0.15))
-          .accessibilityLabel("Interrupted recording")
-        }
-
-        if transcript.polishedText != nil {
-          HStack(spacing: 2) {
-            Image(systemName: "sparkles")
-            Text(transcript.llmModel ?? "AI")
-          }
-          .historyChip(tint: .stAccent, fill: Color.stAccent.opacity(0.16))
-        }
-
-        Text(transcript.backendType.displayName)
-          .historyChip(tint: .stTextSecondary, fill: Color.stTextSecondary.opacity(0.14))
-      }
-    }
-    .historyRowCard(isSelected: false)
   }
 }
 
