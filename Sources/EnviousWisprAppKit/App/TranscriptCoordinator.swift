@@ -233,7 +233,13 @@ final class TranscriptCoordinator {
   /// of a meeting row hands the meeting id here instead of deleting; EnviousMeet marks the
   /// meeting, removes the row through `removeRow(id:)` and then the meeting folder. Nil (tests,
   /// or before wiring) deletes the row the ordinary way.
-  @ObservationIgnored var deleteMeeting: (@MainActor (UUID) -> Void)?
+  /// True when EnviousMeet deleted the meeting (or a deletion it already owns is under way),
+  /// false when it could not now (#4079); History says so. Awaited, never inferred from the
+  /// list (#3147 PR2).
+  @ObservationIgnored var deleteMeeting: (@MainActor (UUID) async -> Bool)?
+  /// #3147 PR2: Delete recordings only for one meeting, as EnviousMeet reports it (active
+  /// meetings are skipped, meetings with no audio left are already absent). Nil fails.
+  @ObservationIgnored var deleteMeetingAudio: (@MainActor (UUID) async -> HistoryDeleteOutcome)?
   /// #3972 R19: called by Delete All with every meeting id among the rows, BEFORE the store is
   /// emptied, so each meeting is marked for deletion first and a crash cannot leave a finished
   /// meeting whose History row is gone.
@@ -507,7 +513,11 @@ final class TranscriptCoordinator {
   /// Whether `item` passes a History tab's filters (#3147 §3.3). A filter a kind does not carry
   /// (App on a meeting, Call app on a dictation) never lets that item through once it is set.
   private static func matchesFilter(_ filter: HistoryListFilter, _ item: HistoryListItem) -> Bool {
-    if let interval = filter.dateInterval, !interval.contains(item.createdAt) { return false }
+    if let interval = filter.dateInterval {
+      // Start-inclusive, end-exclusive: a day ending at the next midnight never takes the next
+      // day's first instant (`DateInterval.contains` includes its end).
+      guard item.createdAt >= interval.start, item.createdAt < interval.end else { return false }
+    }
     switch filter.app {
     case .all: break
     case .unknown:
@@ -1419,7 +1429,7 @@ final class TranscriptCoordinator {
         selectedItemID = Self.neighbour(of: item.id, in: listedItems)
       }
       if let deleteMeeting {
-        deleteMeeting(meeting.meetingID)
+        if await !deleteMeeting(meeting.meetingID) { reportActionFailure(.delete) }
       } else if let row = meeting.row {
         await removeRowAnnouncing(row.id)
       }
@@ -1444,10 +1454,143 @@ final class TranscriptCoordinator {
     // A meeting goes to EnviousMeet before any History command is admitted; its own History
     // removal joins the queue from there, so the queue is never held across that orchestration.
     if let meetingID = transcript.meetingID, let deleteMeeting {
-      deleteMeeting(meetingID)
+      if await !deleteMeeting(meetingID) { reportActionFailure(.delete) }
       return
     }
     await removeRowAnnouncing(transcript.id)
+  }
+
+  // MARK: - History commands (#3147 PR2)
+
+  /// Whether History may store a text preference on `row`: a permanent, visible dictation.
+  /// Imports, meetings and held Escape-recovery rows have no preference.
+  private func acceptsHistoryPreference(_ row: Transcript) -> Bool {
+    !row.isImported && !row.isMeeting && row.escapeRecoveredAt == nil
+      && Self.isVisible(row, at: clock())
+  }
+
+  /// Sets which text History shows and delivers for dictation `rowID` (Restore original text,
+  /// Use polished text). One queued command that reads the row when it runs and changes only
+  /// the preference. Nil when the row is gone or takes no preference; an unchanged preference
+  /// writes nothing and still returns its change.
+  func setHistoryPreferredVersion(
+    _ version: Transcript.PreferredVersion?, for rowID: UUID
+  ) async throws -> HistoryPreferenceChange? {
+    guard !transactionExecutor.isDurableWriteInFlight(rowID) else { throw RowWriteInFlight() }
+    try Task.checkCancellation()
+    return try await transactionExecutor.admit { [self] in
+      await transactionExecutor.capture { () async throws -> HistoryPreferenceChange? in
+        guard let current = currentRow(id: rowID), acceptsHistoryPreference(current) else {
+          return nil
+        }
+        let change = HistoryPreferenceChange(
+          rowID: rowID, before: current.preferredVersion, after: version)
+        guard change.before != version else { return change }
+        guard try await performWrite(current.preferring(version), insertIfAbsent: false) else {
+          return nil
+        }
+        return change
+      }
+    }.get()
+  }
+
+  /// Puts back what `change` replaced, only while the row still holds `change.after`: a later
+  /// different choice is never overwritten. False when nothing was put back.
+  func undoHistoryPreference(_ change: HistoryPreferenceChange) async throws -> Bool {
+    guard !transactionExecutor.isDurableWriteInFlight(change.rowID) else {
+      throw RowWriteInFlight()
+    }
+    try Task.checkCancellation()
+    return try await transactionExecutor.admit { [self] in
+      await transactionExecutor.capture { () async throws -> Bool in
+        guard let current = currentRow(id: change.rowID), acceptsHistoryPreference(current),
+          current.preferredVersion == change.after
+        else { return false }
+        guard change.before != change.after else { return true }
+        return try await performWrite(
+          current.preferring(change.before), insertIfAbsent: false)
+      }
+    }.get()
+  }
+
+  /// One History deletion with what its owner actually did (#3147 selection mode). A meeting,
+  /// or a row that belongs to one, goes to EnviousMeet outside any History command; a dictation
+  /// or import is one queued command. Failures are returned, not reported here.
+  func deleteHistoryItem(id: HistoryItemID, kind: HistoryDeleteKind) async
+    -> HistoryDeleteOutcome
+  {
+    switch id {
+    case .meeting(let meetingID):
+      return await deleteMeetingItem(meetingID, kind: kind)
+    case .transcript(let rowID):
+      if let meetingID = currentRow(id: rowID)?.meetingID {
+        return await deleteMeetingItem(meetingID, kind: kind)
+      }
+      switch kind {
+      case .textAndRecordings: return await removeRowReporting(rowID)
+      case .recordingsOnly: return await deleteRecordingReporting(rowID)
+      }
+    }
+  }
+
+  private func deleteMeetingItem(_ meetingID: UUID, kind: HistoryDeleteKind) async
+    -> HistoryDeleteOutcome
+  {
+    switch kind {
+    case .textAndRecordings:
+      if let deleteMeeting { return await deleteMeeting(meetingID) ? .removed : .failed }
+      // Unwired (tests): the meeting's rows go the ordinary way.
+      let rowIDs = transcripts.filter { $0.meetingID == meetingID }.map(\.id)
+      guard !rowIDs.isEmpty else { return .alreadyAbsent }
+      var outcome = HistoryDeleteOutcome.alreadyAbsent
+      for rowID in rowIDs {
+        switch await removeRowReporting(rowID) {
+        case .failed: outcome = .failed
+        case .removed where outcome != .failed: outcome = .removed
+        default: break
+        }
+      }
+      return outcome
+    case .recordingsOnly:
+      guard let deleteMeetingAudio else { return .failed }
+      return await deleteMeetingAudio(meetingID)
+    }
+  }
+
+  /// The removal command with its announcement, returning its outcome instead of reporting it.
+  private func removeRowReporting(_ id: UUID) async -> HistoryDeleteOutcome {
+    guard !Task.isCancelled else { return .failed }
+    return await transactionExecutor.admit { [self] in
+      do {
+        switch try await performRemoval(id) {
+        case .removed:
+          onRowDeleted?(id)
+          return .removed
+        case .alreadyAbsent:
+          return .alreadyAbsent
+        }
+      } catch {
+        return .failed
+      }
+    }
+  }
+
+  /// Delete recordings only for one row: a dictation's recording goes and its text stays. An
+  /// import has no recording to delete; a dictation without one is already absent.
+  private func deleteRecordingReporting(_ rowID: UUID) async -> HistoryDeleteOutcome {
+    guard let recordings else { return .skipped }
+    guard !Task.isCancelled else { return .failed }
+    return await transactionExecutor.admit { [self] in
+      guard let row = currentRow(id: rowID) else { return .alreadyAbsent }
+      guard !row.isImported, !row.isMeeting else { return .skipped }
+      guard await recordings.hasRecordingInCommand(rowID: rowID) else { return .alreadyAbsent }
+      do {
+        try await recordings.deleteRecordingInCommand(rowID: rowID, reason: .deleted)
+        return .removed
+      } catch {
+        return .failed
+      }
+    }
   }
 
   /// One removal command with its announcement. A row already absent from History and from

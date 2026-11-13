@@ -17,7 +17,7 @@ struct HistoryTabState: Equatable, Sendable {
   var query = ""
   /// Dictations tab.
   var app: HistoryAppFilter = .all
-  /// Every tab: items created inside this interval.
+  /// Every tab: items created inside this interval, start-inclusive, end-exclusive.
   var dateInterval: DateInterval?
   /// Transcripts tab: speaker count from the row's speaker analysis (One speaker = 1).
   var speakerCount: ClosedRange<Int>?
