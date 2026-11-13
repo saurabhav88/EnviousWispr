@@ -23,20 +23,24 @@ struct AppWindowCoordinatorDockPolicyTests {
       isOnboardingComplete: { true })
   }
 
-  /// All sixteen input combinations against an independent literal rule: accessory ONLY when the
+  /// All thirty-two input combinations against an independent literal rule: accessory ONLY when the
   /// user turned the Dock icon off AND nothing of ours is on screen.
   @Test(
     "regular unless the switch is off and no window or update dialog is up",
     arguments: [false, true], [false, true])
   func decisionTable(showInDock: Bool, mainWindowPresented: Bool) {
     for onboarding in [false, true] {
-      for dialog in [false, true] {
-        let expected: ApplicationPolicy =
-          (!showInDock && !mainWindowPresented && !onboarding && !dialog) ? .accessory : .regular
-        #expect(
-          AppWindowCoordinator.activationPolicy(
-            showInDock: showInDock, mainWindowPresented: mainWindowPresented,
-            onboardingPresented: onboarding, updateDialogActive: dialog) == expected)
+      for transcript in [false, true] {
+        for dialog in [false, true] {
+          let expected: ApplicationPolicy =
+            (!showInDock && !mainWindowPresented && !onboarding && !transcript && !dialog)
+            ? .accessory : .regular
+          #expect(
+            AppWindowCoordinator.activationPolicy(
+              showInDock: showInDock, mainWindowPresented: mainWindowPresented,
+              onboardingPresented: onboarding, transcriptWindowPresented: transcript,
+              updateDialogActive: dialog) == expected)
+        }
       }
     }
   }
@@ -83,5 +87,46 @@ struct AppWindowCoordinatorDockPolicyTests {
     sut.updateDialogWillShow()
     sut.updateSessionDidEnd()
     #expect(effects.policies == [.regular, .regular])
+  }
+
+  /// #3147 PR3: a transcript window opened with the main window closed must get an app menu and
+  /// Dock icon, and closing it must give them back when the switch is off.
+  @Test("a transcript window rises to regular, and its close falls back to accessory")
+  func transcriptWindowRiseAndFall() {
+    let effects = RecordingDesktopPresentationEffects()
+    let sut = coordinator(effects, showInDock: false)
+    let window = NSWindow(
+      contentRect: .init(x: 0, y: 0, width: 100, height: 100), styleMask: [.titled],
+      backing: .buffered, defer: true)
+    window.isReleasedWhenClosed = false
+    sut.registerTranscriptWindow(window)
+    sut.registerTranscriptWindow(window)
+    #expect(effects.policies == [.regular], "a second registration of the same window is a no-op")
+    #expect(sut.isTranscriptWindow(window))
+    sut.refreshActivationPolicy(excluding: window)
+    #expect(effects.policies == [.regular, .accessory])
+  }
+
+  /// #3147 PR3: Paste needing the user from a transcript window brings back THAT window, through
+  /// the activation seam; a window that was never registered is left alone.
+  @Test("only a registered transcript window is brought back, and it comes forward")
+  func showTranscriptWindowActivates() {
+    let effects = RecordingDesktopPresentationEffects()
+    let sut = coordinator(effects, showInDock: false)
+    let stranger = NSWindow(
+      contentRect: .init(x: 0, y: 0, width: 100, height: 100), styleMask: [.titled],
+      backing: .buffered, defer: true)
+    stranger.isReleasedWhenClosed = false
+    sut.showTranscriptWindow(stranger)
+    #expect(effects.calls.isEmpty, "an unregistered window is not ours to raise")
+    let window = NSWindow(
+      contentRect: .init(x: 0, y: 0, width: 100, height: 100), styleMask: [.titled],
+      backing: .buffered, defer: true)
+    window.isReleasedWhenClosed = false
+    sut.registerTranscriptWindow(window)
+    sut.showTranscriptWindow(window)
+    #expect(
+      effects.calls == [.setPolicy(.regular), .setPolicy(.regular), .activate(.ignoringOtherApps)])
+    window.orderOut(nil)
   }
 }

@@ -89,7 +89,7 @@ struct SettingsAdvisoryRenderHarness {
       },
       saveToHistory: { _ in throw HarnessFailure.unexpectedWork },
       updateHistoryRow: { _ in throw HarnessFailure.unexpectedWork },
-      mergeSpeakerFields: { _, _, _ in throw HarnessFailure.unexpectedWork },
+      mergeSpeakerFields: { _, _, _, _ in throw HarnessFailure.unexpectedWork },
       historyRowExists: { _ in false },
       processParts: { _, _, _ in throw HarnessFailure.unexpectedWork })
     coordinator.choose(url: URL(fileURLWithPath: "/fixture/Meeting.m4a"))

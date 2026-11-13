@@ -97,8 +97,8 @@
       saveToHistory: @escaping @MainActor (Transcript) async throws -> Void = { _ in },
       updateHistoryRow: @escaping @MainActor (Transcript) async throws -> Bool = { _ in true },
       mergeSpeakerFields:
-        @escaping @MainActor (UUID, TranscriptSpeakerAnalysis, [Turn]?) async throws -> Bool = {
-          _, _, _ in true
+        @escaping @MainActor (UUID, UUID?, TranscriptSpeakerAnalysis, [Turn]?) async throws -> Bool = {
+          _, _, _, _ in true
         },
       polisherStarts: Bool = true,
       cleanedPrefix: String = "",
@@ -415,7 +415,7 @@
           refusingHistory.rows[row.id] = row
           return true
         },
-        mergeSpeakerFields: { _, _, _ in true },
+        mergeSpeakerFields: { _, _, _, _ in true },
         currentHistoryRow: { refusingHistory.rows[$0] },
         historyRowExists: { _ in true },
         processParts: serialFileImportTestProcessor { part, _ in
@@ -545,7 +545,7 @@
             if polisherStarts { try await held() }
             return true
           },
-          mergeSpeakerFields: { _, _, _ in
+          mergeSpeakerFields: { _, _, _, _ in
             if polisherStarts == false { try await held() }
             return true
           },

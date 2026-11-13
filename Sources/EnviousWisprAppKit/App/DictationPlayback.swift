@@ -110,6 +110,18 @@ final class PlaybackArbiter {
   /// Bumped by Delete All, so a dictation lookup that began before it is stale even for a row
   /// whose id the owner had never seen.
   private(set) var dictationEpoch = 0
+
+  /// #3147 PR3: Delete All stops every imported transcript's player for good, too.
+  func stopAllTranscriptsForDeletion() {
+    transcriptEpoch += 1
+    for id in Array(players.keys) {
+      if case .transcript = id { stopForDeletion(id) }
+    }
+  }
+
+  /// Bumped by `stopAllTranscriptsForDeletion`, so a transcript source lookup that began before
+  /// it is stale even for a row the owner had never seen.
+  private(set) var transcriptEpoch = 0
 }
 
 /// History's view of one dictation's recording (#3147 §3.4).

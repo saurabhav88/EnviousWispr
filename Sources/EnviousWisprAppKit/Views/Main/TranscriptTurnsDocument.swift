@@ -23,10 +23,15 @@ struct TranscriptTurnsDocument: View, Equatable {
     let documentFinished: Bool
     /// #4013 r3 F3: what the rename popover offers; a change to it alone redraws.
     var renameSuggestions: SpeakerRenameSuggestions = .none
+    /// #3147 PR3: the player a turn's "play from here" drives, by identity; nil offers no play
+    /// control (the import wizard and the legacy detail). Compared here so an original that
+    /// becomes playable (or a new player replacing a stopped one) redraws the time buttons
+    /// instead of keeping a document drawn for the old player.
+    var playerIdentity: ObjectIdentifier? = nil
 
     static func == (a: Inputs, b: Inputs) -> Bool {
       a.rowID == b.rowID && a.mode == b.mode && a.timesOn == b.timesOn
-        && a.renameSuggestions == b.renameSuggestions
+        && a.renameSuggestions == b.renameSuggestions && a.playerIdentity == b.playerIdentity
         && a.documentFinished == b.documentFinished && a.isMeeting == b.isMeeting
         && a.language == b.language
         && MeetingDocumentHash.sameBytes(a.text, b.text)
@@ -92,6 +97,9 @@ struct TranscriptTurnsDocument: View, Equatable {
   }
 
   let inputs: Inputs
+  /// #3147 PR3: plays the original from a turn's start (ms). Read only while
+  /// `inputs.playerIdentity` is set, so equal inputs always mean the same player.
+  var onPlayFrom: ((Int) -> Void)? = nil
   @Environment(TranscriptCoordinator.self) private var transcriptCoordinator
   @State private var turnDiffCache:
     (input: FileImportCoordinator.TurnDiffInput, results: [String: WordDiff.Result])?
@@ -114,6 +122,7 @@ struct TranscriptTurnsDocument: View, Equatable {
       onTurnsDisplayed: {
         transcriptCoordinator.noteTurnsDisplayed(id: inputs.rowID, isMeeting: inputs.isMeeting)
       },
+      onPlayFrom: inputs.playerIdentity == nil ? nil : onPlayFrom,
       renameSuggestions: inputs.renameSuggestions,
       fallback: { EmptyView() }
     )

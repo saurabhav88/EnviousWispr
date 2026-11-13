@@ -1,3 +1,4 @@
+import AVFoundation
 import EnviousWisprASR
 import EnviousWisprCore
 import EnviousWisprPipeline
@@ -113,10 +114,13 @@ struct FileImportHistoryTests {
     onSpeakerStep: (@MainActor () -> Void)? = nil,
     onTranscribe: (@MainActor ([Float]) -> Void)? = nil,
     onRunTelemetry: (@MainActor () -> Void)? = nil,
-    onEngineReleased: (@MainActor () -> Void)? = nil
+    onEngineReleased: (@MainActor () -> Void)? = nil,
+    decode: @escaping @Sendable (URL) async throws -> AudioFileDecoder.Decoded = { _ in
+      Self.decoded()
+    }
   ) -> FileImportCoordinator {
     FileImportCoordinator(
-      decode: { _ in Self.decoded() },
+      decode: decode,
       transcribe: { samples, _, _ in
         onTranscribe?(samples)
         return ASRResult(
@@ -137,7 +141,7 @@ struct FileImportHistoryTests {
       prepareLocalPolish: { _ in polisherStarts },
       saveToHistory: { try await spy.submit($0) },
       updateHistoryRow: { try spy.update($0) },
-      mergeSpeakerFields: { _, _, _ in true },
+      mergeSpeakerFields: { _, _, _, _ in true },
       currentHistoryRow: { spy.current($0) },
       historyRowExists: { spy.exists($0) },
       processParts: serialFileImportTestProcessor { _, _ in
@@ -161,6 +165,47 @@ struct FileImportHistoryTests {
     await settleUntil { if case .ready = c.state { return true } else { return false } }
     c.start()
     await settleUntil { c.state == .finished }
+  }
+
+  /// Half a second of 16 kHz mono silence written as a WAV file.
+  private static func writeClip() throws -> URL {
+    let url = TestTemporaryDirectory.url
+      .appendingPathComponent("ew-3147-import-\(UUID().uuidString).wav")
+    let format = try #require(
+      AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16_000, channels: 1, interleaved: false))
+    let file = try AVAudioFile(forWriting: url, settings: format.settings)
+    let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 8_000))
+    buffer.frameLength = 8_000
+    try file.write(from: buffer)
+    return url
+  }
+
+  @Test("#3147 PR3: an unchanged file keeps its link; one replaced during the decode keeps none")
+  func sourceLinkOnlyForTheDecodedFile() async throws {
+    let steady = try Self.writeClip()
+    defer { try? FileManager.default.removeItem(at: steady) }
+    let kept = Self.coordinator(spy: HistorySpy())
+    kept.choose(url: steady)
+    await settleUntil { if case .ready = kept.state { return true } else { return false } }
+    #expect(kept.file?.sourceBookmark != nil)
+    #expect(kept.file?.sourceFingerprint?.hasPrefix("v1:") == true)
+
+    let swapped = try Self.writeClip()
+    defer { try? FileManager.default.removeItem(at: swapped) }
+    let replaced = Self.coordinator(
+      spy: HistorySpy(),
+      decode: { url in
+        // Another app finishes rewriting the file while it is being decoded.
+        var bytes = try Data(contentsOf: url)
+        bytes.append(contentsOf: [UInt8](repeating: 7, count: 64))
+        try bytes.write(to: url)
+        return Self.decoded()
+      })
+    replaced.choose(url: swapped)
+    await settleUntil { if case .ready = replaced.state { return true } else { return false } }
+    #expect(replaced.file != nil, "the import itself still proceeds")
+    #expect(replaced.file?.sourceBookmark == nil)
+    #expect(replaced.file?.sourceFingerprint == nil)
   }
 
   /// The whole finding, in one row.
@@ -516,7 +561,7 @@ struct FileImportHistoryTests {
       },
       saveToHistory: { try await history.saveAndShow($0) },
       updateHistoryRow: { try await history.updateExistingRow($0) },
-      mergeSpeakerFields: { id, analysis, turns in
+      mergeSpeakerFields: { id, _, analysis, turns in
         try await history.mergeSpeakerFields(id: id, analysis: analysis, turns: turns)
       },
       writeExplicitRename: { id, analysis, turns, rename in
@@ -987,7 +1032,7 @@ struct FileImportHistoryTests {
       },
       saveToHistory: { try spy.save($0) },
       updateHistoryRow: { try spy.update($0) },
-      mergeSpeakerFields: { _, _, _ in true },
+      mergeSpeakerFields: { _, _, _, _ in true },
       currentHistoryRow: { spy.current($0) },
       historyRowExists: { spy.exists($0) },
       // Every part comes back with NO polished text, which is what a bypassed or entirely

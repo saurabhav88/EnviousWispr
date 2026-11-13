@@ -64,6 +64,12 @@ package final class WisprBootstrapper {
   /// #2648 — Transcribe a File's state machine, held here so the run survives
   /// the page being closed.
   let fileImportCoordinator: FileImportCoordinator
+  /// #3147 PR3: the original files of imported transcripts (lookup, relink, playback reader).
+  let importedSources: ImportedSources
+  /// #3147 PR3: the installed models Transcribe again with offers.
+  let importedModelCatalog: ImportedModelCatalog
+  /// #3147 PR3: Transcribe again with, one job state shared by every window.
+  let transcriptRetranscription: TranscriptRetranscription
   #if DEBUG
     /// #2885 — the DEBUG-only door through which Live UAT hands a file to
     /// `fileImportCoordinator` without the screen. Installed after launch, removed at quit.
@@ -350,6 +356,9 @@ package final class WisprBootstrapper {
     // both constructed long before the import coordinator exists, and both have
     // to be able to see a running import.
     weak var fileImportCoordinatorForGates: FileImportCoordinator?
+    // #3147 PR3: Transcribe again with is a file import too (same lease, same cleanup runner),
+    // so every gate that sees a running import sees it.
+    weak var transcriptRetranscriptionForGates: TranscriptRetranscription?
     // #4287: same pattern; the settings sync is built long before the meeting summary owner,
     // and its eviction check must see a summary call that is running on an Ollama model.
     weak var meetingSummariesForEviction: MeetingSummaryOwner?
@@ -488,6 +497,8 @@ package final class WisprBootstrapper {
     // #3973 C3: EnviousMeet's own Whisper Large v3 Turbo (used only while dictation runs
     // Parakeet). One instance for the process; loaded for one engine operation at a time.
     let meetingWhisperEngine = LiveMeetingWhisperEngine(driver: LiveWhisperExecutorDriver())
+    // #3147 PR3: Transcribe again with's own Whisper copy, freed by Remove like the meeting's.
+    let importWhisperEngine = LiveMeetingWhisperEngine(driver: LiveWhisperExecutorDriver())
 
     // #1707 Phase 2: DEBUG fault-injection oracle (§11.1/§3.2a-i) — the SOLE
     // owner of every batch-decode fault command, dispatching to whichever
@@ -945,12 +956,17 @@ package final class WisprBootstrapper {
     // before them. L1: the drain awaits this BEFORE the delivery deletion.
     // #3973 C3: EnviousMeet's own Turbo copy is freed too, before the bytes go, and it
     // starts no load until the deletion has finished.
-    whisper.removal.unloadForRemoval = { [weak whisperKernelDriver, meetingWhisperEngine] in
+    whisper.removal.unloadForRemoval = {
+      [weak whisperKernelDriver, meetingWhisperEngine, importWhisperEngine] in
       await whisperKernelDriver?.unloadEngine()
       await meetingWhisperEngine.closeForRemoval()
+      // #3147 PR3: Transcribe again with's own Whisper copy goes too; its decode then fails
+      // and the old History text stays.
+      await importWhisperEngine.closeForRemoval()
     }
-    whisper.removal.finishRemoval = { [meetingWhisperEngine] in
+    whisper.removal.finishRemoval = { [meetingWhisperEngine, importWhisperEngine] in
       await meetingWhisperEngine.reopenAfterRemoval()
+      await importWhisperEngine.reopenAfterRemoval()
     }
     // ONE lookup, three readers: the polish-runtime eviction rule below, the
     // import page's privacy line, and the configuration an import freezes at
@@ -1052,11 +1068,17 @@ package final class WisprBootstrapper {
         await checkerEligibility.selection(model: model, language: language)
       },
       ollamaRemotenessLookup: ollamaRemoteness,
-      importPinnedLocalModel: { fileImportCoordinatorForGates?.pinnedLocalPolishModel },
+      importPinnedLocalModel: {
+        fileImportCoordinatorForGates?.pinnedLocalPolishModel
+          ?? transcriptRetranscriptionForGates?.heldRun?.configuration.localPolishModel
+      },
       summaryPinnedLocalModel: { [localPolishRuntimes] in
         localPolishRuntimes.summaryHeldModel
       },
-      importPinnedOllamaModel: { fileImportCoordinatorForGates?.pinnedOllamaModel },
+      importPinnedOllamaModel: {
+        fileImportCoordinatorForGates?.pinnedOllamaModel
+          ?? transcriptRetranscriptionForGates?.heldRun?.configuration.ollamaModel
+      },
       summaryPinnedOllamaModel: { meetingSummariesForEviction?.summaryPinnedOllamaModel },
       outputClassifierHolder: outputClassifierHolder,
       loadOutputClassifier: { [outputClassifierHolder] in
@@ -1064,7 +1086,10 @@ package final class WisprBootstrapper {
       },
       // #3853: the same held-engine-plus-frozen-provider read the word check uses (#3289).
       importPinnedPolishProvider: {
-        guard fileImportCoordinatorForGates?.isEngineHeld == true else { return nil }
+        guard
+          fileImportCoordinatorForGates?.isEngineHeld == true
+            || transcriptRetranscriptionForGates?.isEngineHeld == true
+        else { return nil }
         return fileImportRunnerForGates?.frozenLLMProvider
       }
     )
@@ -1662,7 +1687,10 @@ package final class WisprBootstrapper {
         // `isEngineHeld`, not `isRunning`: Stop flips the visible state at the
         // press while the cancelled work is still inside the engine, and a
         // switch admitted in that window unloads the backend underneath it.
-        isFileImportRunning: { fileImportCoordinatorForGates?.isEngineHeld ?? false },
+        isFileImportRunning: {
+          fileImportCoordinatorForGates?.isEngineHeld == true
+            || transcriptRetranscriptionForGates?.isEngineHeld == true
+        },
         isEngineHeld: { [engineLease] in engineLease.isBusy },
         isMeetingEngineResident: { [meetingBox] in
           meetingBox.coordinator?.isMeetingModelWorkActive ?? false
@@ -2087,6 +2115,7 @@ package final class WisprBootstrapper {
         // An import is running from Start, including while it readies the engine before it claims
         // the lease (#3289 final review).
         || fileImportCoordinatorForGates?.isRunning == true
+        || transcriptRetranscriptionForGates?.isEngineHeld == true
     }
     // #3289 §8b: one idle-memory sample per launch. Its task keeps it alive until it sends.
     let idleMemoryObserver = IdleMemoryObserver(
@@ -2512,8 +2541,10 @@ package final class WisprBootstrapper {
       },
       // The speaker-fields write (#2810 addendum §3 E) — reads the row's CURRENT state at
       // call time, so it can never clobber a rename that landed while cleanup was running.
-      mergeSpeakerFields: { [transcriptCoordinator] id, analysis, turns in
-        try await transcriptCoordinator.mergeSpeakerFields(id: id, analysis: analysis, turns: turns)
+      // #3147 PR3: fenced by the import attempt the wizard's document came from.
+      mergeSpeakerFields: { [transcriptCoordinator] id, attemptID, analysis, turns in
+        try await transcriptCoordinator.mergeImportedSpeakerFields(
+          id: id, expectedAttemptID: attemptID, analysis: analysis, turns: turns)
       },
       // The rename write (#2811, phase 4) — same underlying method, an explicit rename pair
       // this time.
@@ -2557,7 +2588,8 @@ package final class WisprBootstrapper {
           kernelDriver?.currentSessionConfig, whisperKernelDriver?.currentSessionConfig,
         ]
         .compactMap { $0?.llmProvider },
-        importHoldsEngine: fileImportCoordinator?.isEngineHeld == true,
+        importHoldsEngine: fileImportCoordinator?.isEngineHeld == true
+          || transcriptRetranscriptionForGates?.isEngineHeld == true,
         importProvider: fileImportRunner?.frozenLLMProvider)
     }
     #if DEBUG
@@ -2865,6 +2897,7 @@ package final class WisprBootstrapper {
     // #4319: an EG-1 summary waits while a file import holds a bundled server.
     meetingInputs.importPinnedLocalProvider = {
       fileImportCoordinatorForGates?.pinnedLocalPolishProvider
+        ?? transcriptRetranscriptionForGates?.heldRun?.configuration.localPolishModel?.provider
     }
     // #4319: EG-1 summaries borrow the bundled server and give it back to dictation's engine
     // through the same forced reconcile a file import uses.
@@ -2924,6 +2957,103 @@ package final class WisprBootstrapper {
     let playbackArbiter = PlaybackArbiter()
     meetingCoordinator.playbackArbiter = playbackArbiter
     transcriptCoordinator.recordings?.arbiter = playbackArbiter
+    // #3147 PR3: an import's original-file players stop before its link, content or row
+    // changes (relink, Transcribe again with, deletion, Delete All).
+    transcriptCoordinator.onImportedContentWillChange = { [weak playbackArbiter] rowID in
+      playbackArbiter?.stopForDeletion(.transcript(rowID))
+    }
+    // #3147 PR3: the original files, read through the same arbiter the line above stops, so a
+    // relink this owner writes is recognised as its own (`ImportedSources.afterSourceWrite`).
+    let importedSources = ImportedSources(coordinator: transcriptCoordinator, arbiter: playbackArbiter)
+    let importedModelCatalog = ImportedModelCatalog(
+      parakeetSelections: { [parakeetUpgrade] in await parakeetUpgrade.importSelections() },
+      whisperModelPath: whisper.admittedModelPath,
+      whisperIdentity: { [modelDelivery] in
+        modelDelivery.whisperRegistration?.manifest.identity.asrModelIdentity
+      },
+      whisperTitle: "Whisper Large v3 Turbo")
+    // #3147 PR3: Transcribe again with. Same `.fileImport` lease and the same cleanup runner and
+    // polisher hold as Transcribe a File (the lease keeps the two from overlapping), the chosen
+    // model on its own copy, and the wizard's release retries afterwards.
+    let importedFileTranscriber = ImportedFileTranscriber(
+      admission: .live(lease: engineLease, as: .fileImport),
+      engines: ImportedEngineCopies(
+        parakeet: .init(
+          offlineModeAdmission: concreteASRManager,
+          isModelSourceUsable: { [modelDelivery] in
+            modelDelivery.parakeetHandle?.isEnabled() ?? false
+          },
+          isInstallAdmitted: { [parakeetUpgrade] directory in
+            await parakeetUpgrade.importSelections().contains {
+              $0.directory.standardizedFileURL == directory.standardizedFileURL
+            }
+          },
+          modelUseGate: modelDelivery.controller.meetingModelUseGate),
+        whisper: .live(
+          engine: importWhisperEngine, admittedModelPath: whisper.admittedModelPath,
+          isDeliveryEnabled: whisper.isDeliveryEnabled)),
+      cleanup: .init(
+        freeze: {
+          [settings, customWordsPropagator, cloudModelList, checkerEligibility, fileImportRunner]
+          backend in
+          // The wizard's freeze (`beginRun`) for the CHOSEN engine. No `asrModel` from
+          // dictation's serving model: this run never uses dictation's engine.
+          let snapshot = FileImportSettingsFreeze.snapshot(settings: settings, backend: backend)
+          fileImportRunner.freeze(
+            settings: snapshot, vocabulary: customWordsPropagator.corrector,
+            cloudModelList: cloudModelList.snapshot?.list)
+          checkerEligibility.wordCheck?.fileImportStarted(
+            needsWordCheck: !LearnedWordCheckerEngine.hasOwnChecker(
+              LLMProvider(rawValue: snapshot.llmProvider) ?? .none))
+          let configuration = FileImportSettingsFreeze.configuration(
+            for: snapshot,
+            ollamaModelIsRemote: snapshot.llmProvider == LLMProvider.ollama.rawValue
+              ? ollamaRemoteness(snapshot.llmModel) : false)
+          return ImportedFileTranscriber.FrozenRun(settings: snapshot, configuration: configuration)
+        },
+        prepareLocalPolish: { [localPolishRuntimes] configuration in
+          // The wizard's `prepareLocalPolish`, verbatim in behaviour.
+          guard let localPolish = configuration.localPolishModel else { return true }
+          guard let runtime = localPolishRuntimes.runtime(for: localPolish),
+            let activation = runtime.activateAndProbe()
+          else { return false }
+          await activation.value
+          guard await runtime.activeEndpoint() != nil else { return false }
+          return await localPolishRuntimes.holdForImport(localPolish)
+        },
+        processParts: { [fileImportRunner] parts, language, onOutcome in
+          try await fileImportRunner.process(
+            parts: parts, engineLanguage: language, onOutcome: onOutcome)
+        },
+        release: {
+          [
+            weak engineCoordinator, weak settingsSync, settings, localPolishRuntimes,
+            fileImportRunner
+          ] in
+          // The wizard's `onEngineReleased` retries, for the same deferred work.
+          let releaseHold = localPolishRuntimes.releaseImportHold()
+          fileImportRunner.releaseCheckerSelections()
+          engineCoordinator?.poke(.driverStateChanged)
+          settingsSync?.retryDeferredOllamaEviction(settings: settings)
+          settingsSync?.retryDeferredOutputClassifierRelease(settings: settings)
+          Task { @MainActor in
+            await releaseHold?.value
+            settingsSync?.retryDeferredEGOneDeactivation(
+              settings: settings, forceReconciliation: true)
+          }
+          recoveryCoordinatorForEngineMutationScope?.requestRecoveryRecheck()
+        }),
+      captureASRFailure: { error, backend in
+        SentryBreadcrumb.captureError(
+          SentryCaptureBoundaryError.normalizingTranscriptionFailure(error),
+          category: .asrFailed, stage: "file_import",
+          extra: ["backend": backend.rawValue, "trigger": "transcribe_again"])
+      })
+    let transcriptRetranscription = TranscriptRetranscription(
+      history: transcriptCoordinator, sources: importedSources,
+      transcriber: importedFileTranscriber,
+      installedModels: { [importedModelCatalog] in importedModelCatalog.choices })
+    transcriptRetranscriptionForGates = transcriptRetranscription
     // #3147: usage across both recording owners, and the one retention policy acting through
     // each owner's own removal. Starts after both owners exist; each sweep waits for their
     // launch work on its own task.
@@ -3152,6 +3282,9 @@ package final class WisprBootstrapper {
     self.meetingMemoryPressure = meetingMemoryPressure
     self.recordingUsage = recordingUsage
     self.recordingRetention = recordingRetention
+    self.importedSources = importedSources
+    self.importedModelCatalog = importedModelCatalog
+    self.transcriptRetranscription = transcriptRetranscription
     self.transcriptCoordinator = transcriptCoordinator
     self.liveRecordingState = liveRecordingState
     self.lastRecordingResult = lastRecordingResult
@@ -3592,6 +3725,11 @@ package final class WisprBootstrapper {
   package func onboardingWindowContent() -> some View {
     OnboardingWindowRoot(b: self)
   }
+
+  /// #3147 PR3: one detached transcript window's content.
+  package func transcriptWindowContent(rowID: UUID) -> some View {
+    TranscriptWindowRoot(b: self, rowID: rowID)
+  }
 }
 
 // MARK: - Engine switch sequence (#3849)
@@ -3627,6 +3765,94 @@ extension WisprBootstrapper {
   }
 }
 
+/// Every App-owned home the app's windows read, injected the same way into the main window and
+/// each transcript window (#3147 PR3), so both see the very same objects.
+private struct AppHomesEnvironment: ViewModifier {
+  let b: WisprBootstrapper
+
+  func body(content: Content) -> some View {
+    content
+        .environment(b.navigationCoordinator)
+        .environment(b.diagnosticsCoordinator)
+        #if DEBUG
+          .environment(b.pillPreviewController)
+          .environment(b.callPopupPreviewController)
+        #endif
+        .environment(b.languageSuggestionPresenter)
+        .environment(b.updateCoordinatorHolder)
+        .environment(\.settingsKeyMonitor, b.settingsKeyMonitor)
+        .environment(b.transcriptCoordinator)
+        .environment(b.fileImportCoordinator)
+        .environment(b.meetingCoordinator)
+        // #3147: Recordings settings and History's storage warning.
+        .environment(b.recordingRetention)
+        .environment(b.recordingUsage)
+        .environment(b.meetingStartFlow)
+        .environment(b.meetingOnboardingModel)
+        .environment(b.meetingLiveWordsRow)
+        .environment(b.meetingSpeakerLabels)
+        .environment(b.meetingTranscriptEngineRow)
+        .environment(b.liveRecordingState)
+        .environment(b.lastRecordingResult)
+        .environment(b.backendMetadata)
+        .environment(b.engineCoordinator)
+        .environment(b.modelDelivery)
+        .environment(b.checkerEligibility)
+        .environment(b.dictationRuntime)
+        .environment(b.appWindowCoordinator)
+        .environment(b.previousApplicationTracker)
+        .environment(b.historyPaste)
+        // The nine view-facing homes (epic #763).
+        .environment(b.settings)
+        .environment(b.pillAppearance)
+        .environment(b.permissions)
+        .environment(b.customWordsCoordinator)
+        .environment(b.snippetsCoordinator)
+        .environment(b.contactsImportCoordinator)
+        .environment(b.setup)
+        .environment(\.egOneSizeCatalog, b.polishSetup.egOneSizeCatalog)
+        // #2649: both engines are `LocalPolishRuntime`, and `@Environment` keys by TYPE,
+        // so injecting the second directly would silently replace the first. The
+        // set names them instead.
+        .environment(b.localPolishRuntimes)
+        .environment(b.audioDeviceList)
+        // Only the microphone status view invokes this reader and observes capture changes.
+        // No second state owner or capture command; the diagnostic UID survives stop.
+        .environment(
+          \.microphoneCapturePresentation,
+          {
+            MicrophoneCapturePresentation(
+              isCapturing: b.liveRecordingState.audioCapture.isCapturing,
+              boundDeviceUID:
+                b.liveRecordingState.audioCapture.zeroSignalDiscriminatorDevice?.deviceUID)
+          }
+        )
+        .environment(b.aiAvailability)
+        .environment(b.llmDiscovery)
+        // #4353 D6: the cloud model list the model menus and labels read.
+        .environment(b.cloudModelList)
+        .environment(b.polishSetup.savedKeyPresence)
+        .environment(b.polishSetup.monitor)
+        .environment(b.polishSetup.summary)
+        .environment(b.vocabularyPackManager)
+        // #996: the Learning row's enabled state (auto-learn, 2026-09-21 plan).
+        .environment(b.learnFromEdits.availability)
+        .environment(\.asrManager, b.asrManager)
+        .environment(\.activeEngine, b.activeEngine)
+        .environment(\.keychainManager, b.keychainManager)
+      // #3147 PR3: the transcript owners.
+      .environment(b.importedSources)
+      .environment(b.transcriptRetranscription)
+      .environment(b.importedModelCatalog)
+  }
+}
+
+extension View {
+  func appHomes(_ b: WisprBootstrapper) -> some View {
+    modifier(AppHomesEnvironment(b: b))
+  }
+}
+
 /// The main window's root view. Owns the onboarding-presented view-state (was
 /// `@State` on the old App struct) and injects every App-owned home.
 private struct MainWindowRoot: View {
@@ -3646,74 +3872,7 @@ private struct MainWindowRoot: View {
       // 242) + the History split floors inside the detail card (230+8+260=498),
       // so the window can never crush the History split (#1024; #1296 frame).
       .frame(minWidth: 750, minHeight: 400)
-      .environment(b.navigationCoordinator)
-      .environment(b.diagnosticsCoordinator)
-      #if DEBUG
-        .environment(b.pillPreviewController)
-        .environment(b.callPopupPreviewController)
-      #endif
-      .environment(b.languageSuggestionPresenter)
-      .environment(b.updateCoordinatorHolder)
-      .environment(\.settingsKeyMonitor, b.settingsKeyMonitor)
-      .environment(b.transcriptCoordinator)
-      .environment(b.fileImportCoordinator)
-      .environment(b.meetingCoordinator)
-      // #3147: Recordings settings and History's storage warning.
-      .environment(b.recordingRetention)
-      .environment(b.recordingUsage)
-      .environment(b.meetingStartFlow)
-      .environment(b.meetingOnboardingModel)
-      .environment(b.meetingLiveWordsRow)
-      .environment(b.meetingSpeakerLabels)
-      .environment(b.meetingTranscriptEngineRow)
-      .environment(b.liveRecordingState)
-      .environment(b.lastRecordingResult)
-      .environment(b.backendMetadata)
-      .environment(b.engineCoordinator)
-      .environment(b.modelDelivery)
-      .environment(b.checkerEligibility)
-      .environment(b.dictationRuntime)
-      .environment(b.appWindowCoordinator)
-      .environment(b.previousApplicationTracker)
-      .environment(b.historyPaste)
-      // The nine view-facing homes (epic #763).
-      .environment(b.settings)
-      .environment(b.pillAppearance)
-      .environment(b.permissions)
-      .environment(b.customWordsCoordinator)
-      .environment(b.snippetsCoordinator)
-      .environment(b.contactsImportCoordinator)
-      .environment(b.setup)
-      .environment(\.egOneSizeCatalog, b.polishSetup.egOneSizeCatalog)
-      // #2649: both engines are `LocalPolishRuntime`, and `@Environment` keys by TYPE,
-      // so injecting the second directly would silently replace the first. The
-      // set names them instead.
-      .environment(b.localPolishRuntimes)
-      .environment(b.audioDeviceList)
-      // Only the microphone status view invokes this reader and observes capture changes.
-      // No second state owner or capture command; the diagnostic UID survives stop.
-      .environment(
-        \.microphoneCapturePresentation,
-        {
-          MicrophoneCapturePresentation(
-            isCapturing: b.liveRecordingState.audioCapture.isCapturing,
-            boundDeviceUID:
-              b.liveRecordingState.audioCapture.zeroSignalDiscriminatorDevice?.deviceUID)
-        }
-      )
-      .environment(b.aiAvailability)
-      .environment(b.llmDiscovery)
-      // #4353 D6: the cloud model list the model menus and labels read.
-      .environment(b.cloudModelList)
-      .environment(b.polishSetup.savedKeyPresence)
-      .environment(b.polishSetup.monitor)
-      .environment(b.polishSetup.summary)
-      .environment(b.vocabularyPackManager)
-      // #996: the Learning row's enabled state (auto-learn, 2026-09-21 plan).
-      .environment(b.learnFromEdits.availability)
-      .environment(\.asrManager, b.asrManager)
-      .environment(\.activeEngine, b.activeEngine)
-      .environment(\.keychainManager, b.keychainManager)
+      .appHomes(b)
       .background(
         ActionWirer(
           settings: b.settings,

@@ -61,6 +61,11 @@ final class AppWindowCoordinator: UpdateDialogPresenting {
   /// underneath it cannot drop the app to accessory and strand the dialog.
   private var updateDialogActive = false
 
+  /// #3147 PR3: open transcript windows, registered by the window's own content
+  /// (`TranscriptWindowRoot`) once AppKit gives it a window. Weak, so a closed window
+  /// leaves on its own. Never matched by title: the title is the translated file name.
+  private let transcriptWindows = NSHashTable<NSWindow>.weakObjects()
+
   init(
     application: any ApplicationActivating,
     showInDock: @escaping @MainActor () -> Bool,
@@ -88,9 +93,10 @@ final class AppWindowCoordinator: UpdateDialogPresenting {
   /// `.accessory` (menu bar icon only).
   static func activationPolicy(
     showInDock: Bool, mainWindowPresented: Bool, onboardingPresented: Bool,
-    updateDialogActive: Bool
+    transcriptWindowPresented: Bool, updateDialogActive: Bool
   ) -> ApplicationPolicy {
-    showInDock || mainWindowPresented || onboardingPresented || updateDialogActive
+    showInDock || mainWindowPresented || onboardingPresented || transcriptWindowPresented
+      || updateDialogActive
       ? .regular : .accessory
   }
 
@@ -140,7 +146,32 @@ final class AppWindowCoordinator: UpdateDialogPresenting {
         onboardingPresented: windows.contains {
           Self.matchesOnboardingWindowIdentity($0) && ($0.isVisible || $0.isMiniaturized)
         },
+        transcriptWindowPresented: transcriptWindows.allObjects.contains {
+          $0 !== closing && ($0.isVisible || $0.isMiniaturized)
+        },
         updateDialogActive: updateDialogActive))
+  }
+
+  /// #3147 PR3: a transcript window appeared. A rise, so the window has an app menu,
+  /// Dock icon and Cmd-Tab entry even when the main window is closed.
+  func registerTranscriptWindow(_ window: NSWindow) {
+    guard !transcriptWindows.contains(window) else { return }
+    transcriptWindows.add(window)
+    application.setPolicy(.regular)
+  }
+
+  /// #3147 PR3: brings a registered transcript window back to the front (Paste needing the user
+  /// from that window). Through the injected activation seam, like every rise here.
+  func showTranscriptWindow(_ window: NSWindow) {
+    guard transcriptWindows.contains(window) else { return }
+    window.makeKeyAndOrderFront(nil)
+    application.setPolicy(.regular)
+    application.activate(.ignoringOtherApps)
+  }
+
+  /// Whether `window` is a registered transcript window (for the close observer and tests).
+  func isTranscriptWindow(_ window: NSWindow) -> Bool {
+    transcriptWindows.contains(window)
   }
 
   /// Install the main/onboarding window close observer (#2480: the Dock-policy
@@ -169,9 +200,12 @@ final class AppWindowCoordinator: UpdateDialogPresenting {
           self.mainWindow = window
         }
         // Match by identity so status-bar/panel windows never trigger a re-decision.
-        guard window === self.mainWindow || Self.matchesOnboardingWindowIdentity(window)
+        guard
+          window === self.mainWindow || Self.matchesOnboardingWindowIdentity(window)
+            || self.transcriptWindows.contains(window)
         else { return }
         self.refreshActivationPolicy(excluding: window)
+        self.transcriptWindows.remove(window)
       }
     }
   }

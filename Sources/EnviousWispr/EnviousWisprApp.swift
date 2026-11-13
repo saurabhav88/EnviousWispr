@@ -51,5 +51,15 @@ struct EnviousWisprApp: App {
     }
     .windowResizability(.contentSize)
     .defaultSize(width: 500, height: 550)
+
+    // #3147 PR3: one imported transcript in its own window, one window per History row.
+    WindowGroup(application.transcriptWindowTitle, id: application.transcriptWindowID,
+      for: UUID.self
+    ) { $rowID in
+      if let rowID {
+        application.transcriptWindowContent(rowID: rowID)
+      }
+    }
+    .defaultSize(width: 720, height: 640)
   }
 }

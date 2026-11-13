@@ -196,7 +196,9 @@ struct PolishSetupCompositionTests {
       "positive control failed: UnifiedWindowView() is not in the composition root")
     let rest = source[start.upperBound...]
     let blockEnd = rest.range(of: "\nprivate struct ") ?? rest.range(of: "\nstruct ")
-    let block = blockEnd.map { String(rest[..<$0.lowerBound]) } ?? String(rest)
+    let hostBlock = blockEnd.map { String(rest[..<$0.lowerBound]) } ?? String(rest)
+    // #3147 PR3: the host applies the shared homes modifier; read the injections there.
+    let block = try EnvironmentInjectionFreezeTests.homesBlock(in: source, hostBlock: hostBlock)
     try #require(
       block.contains(".environment(b.polishSetup.monitor)"),
       "positive control failed: the Settings host does not inject dictation's monitor")

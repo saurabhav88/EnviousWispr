@@ -74,6 +74,17 @@
         }
       }
     },
+    "%@ (current)" : {
+      "comment" : "History transcript, Transcribe again with menu: the model this transcript was made with. %@ is the model name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ (aktuell)"
+          }
+        }
+      }
+    },
     "%@ GB" : {
       "comment" : "A file size in gigabytes. %@ is a number such as 4.7.",
       "localizations" : {
@@ -109,6 +120,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ Es wurde nichts exportiert."
+          }
+        }
+      }
+    },
+    "%@ The times are for reading only." : {
+      "comment" : "History transcript dock: why the original can't play, then that turn times can't be clicked. %@ is the reason sentence.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Die Zeitangaben dienen nur zur Orientierung und sind nicht anklickbar."
           }
         }
       }
@@ -576,6 +598,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ doppelt aufgeführt"
+          }
+        }
+      }
+    },
+    "%@ long" : {
+      "comment" : "History transcript card: how long the original file is. %@ is a time like 12:04.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dauer: %@"
           }
         }
       }
@@ -3858,6 +3891,17 @@
         }
       }
     },
+    "Another file is being transcribed. Try again when it finishes." : {
+      "comment" : "History transcript: Transcribe again with could not start because another file transcription runs.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gerade wird eine andere Datei transkribiert. Versuche es erneut, sobald die Transkription abgeschlossen ist."
+          }
+        }
+      }
+    },
     "Any call app" : {
       "comment" : "History, Meetings: the Call app filter shows every meeting.",
       "localizations" : {
@@ -4878,6 +4922,17 @@
         }
       }
     },
+    "Back 15 seconds" : {
+      "comment" : "History transcript dock: jumps 15 seconds back.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "15 Sekunden zurück"
+          }
+        }
+      }
+    },
     "Back to %@" : {
       "comment" : "History: returns from an open item to its tab's list. %@ is the tab's name.",
       "localizations" : {
@@ -5480,7 +5535,7 @@
       }
     },
     "Cancel" : {
-      "comment" : "App Settings, Recordings: keeps the current keep period.\nEnviousMeet: closes the call-sound explanation without recording.\nEnviousMeet: keeps the meeting as it is.\nHistory selection: keeps the selected items.\nHistory, a meeting: keeps the edited summary.\nLive Preview settings, Universal engine card: button. It stops the download.\nSettings > AI Polish, local model row: button that stops the download.\nYour Words, Learn from: the Forget learning memory confirmation: keeps the memory.\nYour Words, Learn from: the self-learning dictionary row: button that stops the download.",
+      "comment" : "App Settings, Recordings: keeps the current keep period.\nEnviousMeet: closes the call-sound explanation without recording.\nEnviousMeet: keeps the meeting as it is.\nHistory selection: keeps the selected items.\nHistory transcript: stops Transcribe again with.\nHistory, a meeting: keeps the edited summary.\nLive Preview settings, Universal engine card: button. It stops the download.\nSettings > AI Polish, local model row: button that stops the download.\nYour Words, Learn from: the Forget learning memory confirmation: keeps the memory.\nYour Words, Learn from: the self-learning dictionary row: button that stops the download.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -6341,6 +6396,17 @@
         }
       }
     },
+    "Choose file…" : {
+      "comment" : "History transcript, Locate original: opens the file chooser after the confirmation.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datei wählen…"
+          }
+        }
+      }
+    },
     "Choose how EnviousWispr looks." : {
       "localizations" : {
         "de" : {
@@ -6455,6 +6521,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wähle das Modell, das deinen Text verbessert."
+          }
+        }
+      }
+    },
+    "Choose the original audio or video file for this transcript." : {
+      "comment" : "History transcript, Locate original: the file chooser's message.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle die ursprüngliche Audio- oder Videodatei für dieses Transkript."
           }
         }
       }
@@ -6625,6 +6702,7 @@
       }
     },
     "Cleaned" : {
+      "comment" : "History transcript: the cleaned-up words view.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -6743,6 +6821,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Klicke auf ein markiertes Wort, um zu vergleichen"
+          }
+        }
+      }
+    },
+    "Click a turn's play button to hear that part" : {
+      "comment" : "History transcript: hint beside the Cleaned view when the original can play.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klicke auf die Wiedergabetaste eines Abschnitts, um ihn anzuhören"
           }
         }
       }
@@ -7340,6 +7429,17 @@
         }
       }
     },
+    "Couldn't delete the transcript. Try again." : {
+      "comment" : "History transcript: deleting the transcript failed; it is still here.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Transkript konnte nicht gelöscht werden. Versuche es erneut."
+          }
+        }
+      }
+    },
     "Couldn't delete this item. Try again." : {
       "comment" : "History: deleting one dictation or transcript failed; nothing was removed.",
       "localizations" : {
@@ -7402,6 +7502,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Diese Aufnahme konnte nicht behalten werden. Versuche es erneut."
+          }
+        }
+      }
+    },
+    "Couldn't link that file. Try again." : {
+      "comment" : "History transcript: Locate original failed with an error.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Datei konnte nicht verknüpft werden. Versuche es erneut."
           }
         }
       }
@@ -7568,6 +7679,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ollama konnte nicht automatisch gestartet werden. Versuche, `ollama serve` im Terminal auszuführen."
+          }
+        }
+      }
+    },
+    "Couldn't transcribe again. The transcript wasn't changed." : {
+      "comment" : "History transcript: Transcribe again with failed.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erneutes Transkribieren fehlgeschlagen. Das Transkript wurde nicht geändert."
           }
         }
       }
@@ -7770,7 +7892,7 @@
       }
     },
     "Delete" : {
-      "comment" : "EnviousMeet: confirms a deletion.\nHistory: confirms deleting one dictation.",
+      "comment" : "EnviousMeet: confirms a deletion.\nHistory transcript: confirms deleting one transcript.\nHistory: confirms deleting one dictation.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -8168,6 +8290,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dieses Meeting samt Audioaufnahme und Transkript löschen? Das lässt sich nicht rückgängig machen."
+          }
+        }
+      }
+    },
+    "Delete this transcript?" : {
+      "comment" : "History transcript: confirmation title before deleting one transcript.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieses Transkript löschen?"
           }
         }
       }
@@ -10780,6 +10913,17 @@
         }
       }
     },
+    "Forward 15 seconds" : {
+      "comment" : "History transcript dock: jumps 15 seconds forward.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "15 Sekunden vorwärts"
+          }
+        }
+      }
+    },
     "Found %@ entries, but none could be imported. Nothing was changed." : {
       "comment" : "Snippets, import result: %@ is the number of entries found, never 1; none could be imported.",
       "localizations" : {
@@ -11814,6 +11958,7 @@
       }
     },
     "Imported from %@" : {
+      "comment" : "History transcript card: VoiceOver label of the file chip. %@ is the file name.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -12267,6 +12412,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Text und Aufnahme werden von diesem Mac entfernt. Das lässt sich nicht rückgängig machen."
+          }
+        }
+      }
+    },
+    "Its text is removed from this Mac. Your original file is never deleted. This can't be undone." : {
+      "comment" : "History transcript: confirmation message before deleting one transcript.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Text wird von diesem Mac entfernt. Deine Originaldatei wird nie gelöscht. Das lässt sich nicht rückgängig machen."
           }
         }
       }
@@ -13777,6 +13933,28 @@
         }
       }
     },
+    "Locate original" : {
+      "comment" : "History: title of the Locate original result message.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Original suchen"
+          }
+        }
+      }
+    },
+    "Locate original…" : {
+      "comment" : "History transcript: choose where the original audio or video file is now.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Original suchen…"
+          }
+        }
+      }
+    },
     "Location not checked" : {
       "comment" : "Transcribe a File, Review step: where the cleanup runs is not known yet.",
       "localizations" : {
@@ -14034,7 +14212,7 @@
       }
     },
     "Marked up" : {
-      "comment" : "History dictation card: the view showing what AI Polish changed.",
+      "comment" : "History dictation card: the view showing what AI Polish changed.\nHistory transcript: the view showing what cleanup changed.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -14694,7 +14872,7 @@
       }
     },
     "More actions" : {
-      "comment" : "History dictation card: opens the More menu.",
+      "comment" : "History dictation card: opens the More menu.\nHistory transcript: opens the More menu.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -15498,6 +15676,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Noch keine Textbausteine"
+          }
+        }
+      }
+    },
+    "No speech models are ready" : {
+      "comment" : "History transcript, Transcribe again with menu: no installed speech model can be used.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Sprachmodelle bereit"
           }
         }
       }
@@ -16407,7 +16596,7 @@
       }
     },
     "OK" : {
-      "comment" : "AI Polish, notice button.\nButton that closes a message.\nDismisses an alert.\nEnviousMeet: closes the Save error.\nHistory: closes the Paste message.\nHistory: closes the message about a failed action.",
+      "comment" : "AI Polish, notice button.\nButton that closes a message.\nDismisses an alert.\nEnviousMeet: closes the Save error.\nHistory: closes the Paste message.\nHistory: closes the message about a failed action.\nHistory: dismisses the Locate original result.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -16865,7 +17054,7 @@
       }
     },
     "Open" : {
-      "comment" : "EnviousMeet: opens the recorded meeting in History.",
+      "comment" : "EnviousMeet: opens the recorded meeting in History.\nHistory transcript card: opens the full transcript.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -16876,7 +17065,7 @@
       }
     },
     "Open %@" : {
-      "comment" : "Menu bar menu: opens the app's main window on History. %@ is the app name, EnviousWispr.",
+      "comment" : "History transcript card: VoiceOver label of Open. %@ is the file name.\nMenu bar menu: opens the app's main window on History. %@ is the app name, EnviousWispr.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -17003,6 +17192,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ein Transkript öffnen"
+          }
+        }
+      }
+    },
+    "Open in new window" : {
+      "comment" : "History transcript: opens this transcript in its own window.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In neuem Fenster öffnen"
           }
         }
       }
@@ -17135,12 +17335,78 @@
       }
     },
     "Original" : {
-      "comment" : "History change details: label before the words before AI polish.\nHistory detail section title: the words as first transcribed.\nHistory dictation card: the view showing your words before AI polish.",
+      "comment" : "History change details: label before the words before AI polish.\nHistory detail section title: the words as first transcribed.\nHistory dictation card: the view showing your words before AI polish.\nHistory transcript: the words as the speech engine wrote them.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Original"
+          }
+        }
+      }
+    },
+    "Original file linked. It plays again." : {
+      "comment" : "History transcript: Locate original linked the chosen file.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Originaldatei verknüpft. Sie lässt sich wieder abspielen."
+          }
+        }
+      }
+    },
+    "Original file unavailable, so it can't play." : {
+      "comment" : "History transcript: the original audio or video file can't be found. No cause is claimed.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Originaldatei nicht verfügbar, daher kann sie nicht abgespielt werden."
+          }
+        }
+      }
+    },
+    "Original file unavailable. It can't be opened for playback." : {
+      "comment" : "History transcript: the original file was found but could not be opened to play.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Originaldatei nicht verfügbar. Sie kann nicht zum Abspielen geöffnet werden."
+          }
+        }
+      }
+    },
+    "Original file unavailable. It can't be read right now." : {
+      "comment" : "History transcript: the original file is there but could not be read.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Originaldatei nicht verfügbar. Sie kann gerade nicht gelesen werden."
+          }
+        }
+      }
+    },
+    "Original file unavailable. It was linked by a newer version of EnviousWispr." : {
+      "comment" : "History transcript: the stored file details come from a newer app version this one cannot read.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Originaldatei nicht verfügbar. Sie wurde von einer neueren Version von EnviousWispr verknüpft."
+          }
+        }
+      }
+    },
+    "Original file unavailable. The file there now is a different one." : {
+      "comment" : "History transcript: the file at the original's place is not the file that was transcribed.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Originaldatei nicht verfügbar. An ihrer Stelle liegt jetzt eine andere Datei."
           }
         }
       }
@@ -17588,7 +17854,7 @@
       }
     },
     "Pause" : {
-      "comment" : "EnviousMeet setup: stops the how-it-works cards from moving on by themselves.\nEnviousMeet: pauses the meeting recording.\nMicrophone settings, media during dictation: option that pauses what is playing.",
+      "comment" : "EnviousMeet setup: stops the how-it-works cards from moving on by themselves.\nEnviousMeet: pauses the meeting recording.\nHistory transcript dock: pauses the original file.\nMicrophone settings, media during dictation: option that pauses what is playing.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -17819,12 +18085,23 @@
       }
     },
     "Play" : {
-      "comment" : "EnviousMeet setup: turns the how-it-works cards' auto-advance back on.\nEnviousMeet: plays the meeting recording.",
+      "comment" : "EnviousMeet setup: turns the how-it-works cards' auto-advance back on.\nEnviousMeet: plays the meeting recording.\nHistory transcript dock: plays the original file.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Abspielen"
+          }
+        }
+      }
+    },
+    "Play again from the start" : {
+      "comment" : "History transcript dock: the original finished; plays it again from the start.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Von vorn abspielen"
           }
         }
       }
@@ -17906,6 +18183,17 @@
         }
       }
     },
+    "Playback speed %@" : {
+      "comment" : "History transcript dock: the speed menu. %@ is a speed like 1.25×.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wiedergabegeschwindigkeit %@"
+          }
+        }
+      }
+    },
     "Plays a short chime when recording starts and stops." : {
       "comment" : "Chimes settings: short line under Play recording chimes.",
       "localizations" : {
@@ -17924,6 +18212,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Spielt beim Start und Ende einer Aufnahme einen kurzen Ton ab. Personen in deiner Nähe können ihn hören."
+          }
+        }
+      }
+    },
+    "Plays from the original file" : {
+      "comment" : "History transcript card: the original audio or video file was found and can play.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird aus der Originaldatei abgespielt"
           }
         }
       }
@@ -18050,7 +18349,7 @@
       }
     },
     "Position" : {
-      "comment" : "EnviousMeet: the playback scrubber.",
+      "comment" : "EnviousMeet: the playback scrubber.\nHistory transcript dock: the playback scrubber.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -22209,6 +22508,28 @@
         }
       }
     },
+    "Stopped. The transcript wasn't changed." : {
+      "comment" : "History transcript: Transcribe again with was cancelled.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abgebrochen. Das Transkript wurde nicht geändert."
+          }
+        }
+      }
+    },
+    "Stopping…" : {
+      "comment" : "History transcript: Transcribe again with is being cancelled.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird abgebrochen…"
+          }
+        }
+      }
+    },
     "Stops recording when the silence reaches your chosen pause duration." : {
       "comment" : "Speech engine settings: explains Stop recording on silence.",
       "localizations" : {
@@ -22269,6 +22590,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Entfernt häufige Füllwörter aus Transkripten."
+          }
+        }
+      }
+    },
+    "Struck through: removed by cleanup. Highlighted: added." : {
+      "comment" : "History transcript: hint beside the Marked up view, explaining the marks.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Durchgestrichen: durch die Bereinigung entfernt. Hervorgehoben: hinzugefügt."
           }
         }
       }
@@ -23088,6 +23420,17 @@
         }
       }
     },
+    "That isn't the file this transcript came from. Choose the original." : {
+      "comment" : "History transcript: Locate original refused a file that differs from the one transcribed.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das ist nicht die Datei, aus der dieses Transkript stammt. Wähle das Original."
+          }
+        }
+      }
+    },
     "That model runs on this Mac, so nothing leaves it." : {
       "comment" : "Transcribe a File, Polish step: where the chosen Ollama model runs.",
       "localizations" : {
@@ -23391,6 +23734,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Das Tastenkürzel zum Abbrechen (%@) funktioniert während der Aufnahme nicht. macOS meldet, dass diese Tastenkombination bereits vergeben ist. Wähle eine andere."
+          }
+        }
+      }
+    },
+    "The cleaned-up transcript" : {
+      "comment" : "History transcript: hint beside the Cleaned view when the original can't play.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das bereinigte Transkript"
           }
         }
       }
@@ -23833,6 +24187,17 @@
         }
       }
     },
+    "The new text replaces this transcript, including speaker names and cleanup. Your original file isn't changed." : {
+      "comment" : "History transcript: confirmation message before Transcribe again with.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der neue Text ersetzt dieses Transkript, einschließlich Sprechernamen und Bereinigung. Deine Originaldatei wird nicht verändert."
+          }
+        }
+      }
+    },
     "The on-device model is not ready. It may still be downloading or restricted by your organization. Try again later or use a different provider." : {
       "comment" : "AI polish error: Apple Intelligence's on-device model can't be used yet. Shown after 'AI polish failed:'.",
       "localizations" : {
@@ -23851,6 +24216,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Das Modell auf dem Gerät ist noch nicht bereit. Es wird möglicherweise noch heruntergeladen. Versuche es später erneut."
+          }
+        }
+      }
+    },
+    "The original file can't be played right now." : {
+      "comment" : "History transcript dock: reading the original file failed while playing.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Originaldatei kann gerade nicht abgespielt werden."
+          }
+        }
+      }
+    },
+    "The original file is unavailable, so it can't be transcribed again." : {
+      "comment" : "History transcript: Transcribe again with needs the original file, which is unavailable.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Originaldatei ist nicht verfügbar, daher kann sie nicht erneut transkribiert werden."
           }
         }
       }
@@ -24653,6 +25040,17 @@
         }
       }
     },
+    "This older transcript can't confirm which file it came from." : {
+      "comment" : "History transcript: a transcript saved before the app stored file details; a file is there but nothing confirms it is the original.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bei diesem älteren Transkript lässt sich nicht bestätigen, aus welcher Datei es stammt."
+          }
+        }
+      }
+    },
     "This only picks which start word you edit. It does not change your dictation language." : {
       "comment" : "Speech engine settings, Start word row: the language picker does not set the dictation language.",
       "localizations" : {
@@ -24691,6 +25089,61 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Diese Aufnahme wurde aus dem Verlauf entfernt."
+          }
+        }
+      }
+    },
+    "This transcript changed meanwhile, so nothing was replaced. Try again." : {
+      "comment" : "History transcript: Transcribe again with was refused because the transcript changed or was deleted.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieses Transkript hat sich inzwischen geändert, daher wurde nichts ersetzt. Versuche es erneut."
+          }
+        }
+      }
+    },
+    "This transcript changed while you were choosing. Try again." : {
+      "comment" : "History transcript: Locate original was refused because the transcript's file link changed meanwhile.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieses Transkript hat sich während der Auswahl geändert. Versuche es erneut."
+          }
+        }
+      }
+    },
+    "This transcript is no longer in History." : {
+      "comment" : "History transcript: the transcript shown here was deleted.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieses Transkript ist nicht mehr im Verlauf."
+          }
+        }
+      }
+    },
+    "This transcript was deleted." : {
+      "comment" : "History transcript: the transcript was deleted while Locate original ran.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieses Transkript wurde gelöscht."
+          }
+        }
+      }
+    },
+    "This transcript was saved before EnviousWispr kept file details, so it can't check that the file you choose is the original. Choose only the file you transcribed." : {
+      "comment" : "History transcript, Locate original: why a legacy transcript needs confirmation.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieses Transkript wurde gespeichert, bevor EnviousWispr Dateiinformationen speicherte. Daher kann nicht geprüft werden, ob die gewählte Datei das Original ist. Wähle nur die Datei, die du transkribiert hast."
           }
         }
       }
@@ -24903,6 +25356,7 @@
       }
     },
     "Times" : {
+      "comment" : "History transcript: shows each turn's start time.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -25087,12 +25541,34 @@
       }
     },
     "Transcribe again" : {
-      "comment" : "EnviousMeet setup: welcome tile title.\nEnviousMeet: makes the meeting's transcript again from its kept audio.",
+      "comment" : "EnviousMeet setup: welcome tile title.\nEnviousMeet: makes the meeting's transcript again from its kept audio.\nHistory transcript: confirms Transcribe again with.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Erneut transkribieren"
+          }
+        }
+      }
+    },
+    "Transcribe again with" : {
+      "comment" : "History transcript, More menu: transcribes the original file again with a chosen speech model.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erneut transkribieren mit"
+          }
+        }
+      }
+    },
+    "Transcribe again with %@?" : {
+      "comment" : "History transcript: confirmation title before Transcribe again with. %@ is a speech model name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erneut mit %@ transkribieren?"
           }
         }
       }
@@ -25115,6 +25591,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Transkribiert"
+          }
+        }
+      }
+    },
+    "Transcribed again. The new text replaced the old one." : {
+      "comment" : "History transcript: Transcribe again with finished and replaced the text.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erneut transkribiert. Der neue Text hat den alten ersetzt."
           }
         }
       }
@@ -25202,6 +25689,28 @@
         }
       }
     },
+    "Transcribing again…" : {
+      "comment" : "History transcript: Transcribe again with is running; no progress is known.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird erneut transkribiert…"
+          }
+        }
+      }
+    },
+    "Transcribing again… %lld%%" : {
+      "comment" : "History transcript: Transcribe again with is running. %lld is a percentage.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird erneut transkribiert… %lld%%"
+          }
+        }
+      }
+    },
     "Transcribing..." : {
       "comment" : "Pill and main window while speech is turned into text. Three ASCII periods.",
       "localizations" : {
@@ -25225,7 +25734,7 @@
       }
     },
     "Transcript" : {
-      "comment" : "History detail title for a row made with Transcribe a File. Also the default file name when saving it.\nHistory, a meeting: the tab with the meeting's transcript.\nTranscribe a File, Done step: the document title when the file has no name.",
+      "comment" : "History detail title for a row made with Transcribe a File. Also the default file name when saving it.\nHistory, a meeting: the tab with the meeting's transcript.\nTranscribe a File, Done step: the document title when the file has no name.\nWindow menu name for a transcript opened in its own window.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -26001,6 +26510,17 @@
         }
       }
     },
+    "Use a file for this older transcript?" : {
+      "comment" : "History transcript, Locate original: confirmation title for a transcript saved without file details.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eine Datei für dieses ältere Transkript verwenden?"
+          }
+        }
+      }
+    },
     "Use at least %lld letters. The last start word was kept." : {
       "comment" : "Start word row: refusal shown when the word is too short.",
       "localizations" : {
@@ -26062,6 +26582,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nachbearbeiteten Text verwenden"
+          }
+        }
+      }
+    },
+    "Use this file" : {
+      "comment" : "History transcript, Locate original: links the chosen file after the confirmation.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Datei verwenden"
           }
         }
       }
@@ -26713,6 +27244,17 @@
         }
       }
     },
+    "What the speech engine wrote, before cleanup" : {
+      "comment" : "History transcript: hint beside the Original view.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Was die Spracherkennung vor der Bereinigung geschrieben hat"
+          }
+        }
+      }
+    },
     "What was pasted" : {
       "comment" : "History dictation card: hint beside the Polished view.",
       "localizations" : {
@@ -26863,7 +27405,7 @@
       }
     },
     "Which words to show" : {
-      "comment" : "History dictation card: the Polished, Marked up and Original choice.",
+      "comment" : "History dictation card: the Polished, Marked up and Original choice.\nHistory transcript: the Cleaned, Marked up and Original choice.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
