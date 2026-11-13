@@ -276,7 +276,10 @@ print(json.dumps({'testNodes': [{'nodeType': 'Test Plan', 'children': nodes}]}))
         # Committed, so the unfiltered run's receipt check finds the fixture tree clean.
         self.git('add', 'scripts')
         self.git('commit', '-qm', 'routing fixture')
-        env = {k: v for k, v in self.env.items() if k != 'DERIVED_DATA_PATH'}
+        # The shared-folder fixture: no DERIVED_DATA_PATH, and a stub `security` (a Linux
+        # runner has none) reporting no Dev identity, so the lane keeps the Debug folder.
+        self.shared_folder_env(identities='     0 valid identities found\n')
+        env = self.env
         for filters, decided in ((['EnviousWisprASRTests/Free'], 'no'),
                                  (['EnviousWisprASRTests/Free/run()'], 'no'),
                                  (['EnviousWisprASRTests/Free', 'EnviousWisprTests/Mic'], 'yes'),
