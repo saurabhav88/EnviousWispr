@@ -2991,7 +2991,7 @@ struct OllamaDownloadConfirmation: ViewModifier {
       titleVisibility: .visible
     ) {
       Button("Download anyway") { ProviderSetupDownloads.confirmPending(model: model, setup: setup) }
-      // Empty action deliberately, matching `CustomWordEditSheet` and `TranscriptHistoryView`.
+      // Empty action deliberately, matching `CustomWordEditSheet`.
       // SwiftUI sets `isPresented` false on dismissal, which invokes the setter above and clears
       // the id. Clearing it here too would mean two paths doing one job.
       Button("Cancel", role: .cancel) {}

@@ -112,7 +112,7 @@ struct MeetingsView: View {
               .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
             Button {
-              transcripts.showRecordings()
+              transcripts.showMeetings()
               navigation.request(.history)
             } label: {
               Text(MeetingsCopy.showRecordings)

@@ -274,10 +274,13 @@ struct HistoryCostBenchmarkTests {
     init(_ coordinator: TranscriptCoordinator, homes: Homes) throws {
       host = NSHostingView(
         rootView: AnyView(
-          TranscriptHistoryView()
+          HistoryDiaryView(
+            coordinator: coordinator, dictationCard: { _ in EmptyView() },
+            transcriptDestination: { _ in EmptyView() }, meetingDestination: { _ in EmptyView() }
+          )
             .environment(coordinator).environment(homes.recording).environment(homes.metadata)
             .environment(homes.meetings.coordinator).environment(homes.flow)))
-      host.frame = CGRect(x: 0, y: 0, width: HistorySplitMetrics.listIdeal, height: 800)
+      host.frame = CGRect(x: 0, y: 0, width: 578, height: 800)
       window = NSWindow(
         contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
       window.contentView = host

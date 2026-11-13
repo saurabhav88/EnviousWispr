@@ -582,13 +582,15 @@ private struct MeetingHowToHistory: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
       HStack(spacing: 6) {
-        ForEach(HistoryFilter.allCases, id: \.self) { filter in
-          Text(filter.shortTitle)
+        // #3147 PR2: History's three tabs, Meetings chosen.
+        ForEach(HistoryTab.allCases, id: \.self) { tab in
+          Text(HistoryDiaryLayout.tabTitle(tab))
             .font(.system(size: 14, weight: .bold))
-            .foregroundStyle(filter == .recordings ? Color.white : Color.obTextSecondary)
-            .frame(width: 26, height: 22)
+            .foregroundStyle(tab == .meetings ? Color.white : Color.obTextSecondary)
+            .padding(.horizontal, 8)
+            .frame(height: 22)
             .background(
-              filter == .recordings ? Color.obAccent : Color.obTextTertiary.opacity(0.15),
+              tab == .meetings ? Color.obAccent : Color.obTextTertiary.opacity(0.15),
               in: RoundedRectangle(cornerRadius: 6))
         }
       }

@@ -35,9 +35,16 @@ struct HistoryContentView: View {
       HistoryDiaryView(
         coordinator: transcriptCoordinator,
         dictationCard: { rowID in
-          // Stand-in until the dictation card is wired at integration: the row's summary card.
           if let row = row(rowID, in: .dictations) {
-            TranscriptRowView(transcript: row)
+            if row.escapeRecoveredAt != nil {
+              // A held Escape Recovery dictation keeps its own Paste, Keep and Delete (#2087):
+              // it has no recording and no polish history for the dictation card to show.
+              TranscriptDetailView(transcript: row, showPasteNotice: pasteNotice.show)
+                .id(rowID)
+            } else {
+              HistoryDictationCard(rowID: rowID, showPasteNotice: pasteNotice.show)
+                .id(rowID)
+            }
           }
         },
         transcriptDestination: { rowID in

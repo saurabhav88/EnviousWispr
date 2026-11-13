@@ -2043,7 +2043,7 @@ package final class WisprBootstrapper {
             waitingOnSummary: coordinator.passWaitsOnSummary)
         },
         showMeeting: { [weak transcriptCoordinator] meetingID in
-          transcriptCoordinator?.showRecordings(meetingID: meetingID)
+          transcriptCoordinator?.showMeetings(meetingID: meetingID)
           navigationCoordinator.request(.history)
           appWindowCoordinator.showWindow()
         },
@@ -3122,7 +3122,7 @@ package final class WisprBootstrapper {
             ?? .ended
         },
         showMeeting: { [weak transcriptCoordinator] meetingID in
-          transcriptCoordinator?.showRecordings(meetingID: meetingID)
+          transcriptCoordinator?.showMeetings(meetingID: meetingID)
           navigationCoordinator.request(.history)
           appWindowCoordinator.showWindow()
         },

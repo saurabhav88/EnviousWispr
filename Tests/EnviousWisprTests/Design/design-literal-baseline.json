@@ -86,15 +86,9 @@
     "Sources\/EnviousWisprAppKit\/Views\/Main\/MeetingSummaryView.swift" : {
       "radius" : 1
     },
-    "Sources\/EnviousWisprAppKit\/Views\/Main\/SidebarStatsHeader.swift" : {
-      "radius" : 2
-    },
     "Sources\/EnviousWisprAppKit\/Views\/Main\/TranscriptDetailView.swift" : {
       "fontSize" : 6,
       "radius" : 2
-    },
-    "Sources\/EnviousWisprAppKit\/Views\/Main\/TranscriptHistoryView.swift" : {
-      "radius" : 5
     },
     "Sources\/EnviousWisprAppKit\/Views\/Main\/TurnDocumentView.swift" : {
       "radius" : 1

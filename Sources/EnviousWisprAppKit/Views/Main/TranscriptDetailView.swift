@@ -89,15 +89,6 @@ struct TranscriptDetailView: View {
         VStack(alignment: .leading, spacing: 20) {
           header
 
-          // #3147: an ordinary saved dictation's recording. Imports (PR3), meetings (their own
-          // view) and held Escape Recovery rows (never recorded) show nothing here.
-          if let recordings = transcriptCoordinator.recordings, !transcript.isImported,
-            !transcript.isMeeting, transcript.escapeRecoveredAt == nil
-          {
-            DictationRecordingSection(rowID: transcript.id, recordings: recordings)
-              .id(transcript.id)
-          }
-
           if let turns = displayTurns, !turns.isEmpty {
             transcriptSection(kindWord, icon: "doc.text") {
               // #4001 H10: compared on its inputs, so a detail redraw that leaves the
