@@ -148,6 +148,10 @@ final class OnboardingCoordinator {
   /// has gone stale), so a later quit, reset, Cancel or engine change can still cancel it.
   @ObservationIgnored private var warmOwned: (request: Int, cancel: @MainActor () async -> Void)?
   /// The queued or running warm task (a queued one is cancelled before it reaches the owner).
+  /// Historical rationale from the retired view model (its `setupTask` is gone):
+  /// Owned HERE rather than in the view's `.task`, for the reason #1388
+  /// established for `setupTask`: window churn cancels a view task, and an
+  /// outcome landing in a cancelled context is dropped in silence.
   @ObservationIgnored private var warmTask: Task<Void, Never>?
   @ObservationIgnored private var warmRequests = 0
   @ObservationIgnored private var warmAttempt = 0

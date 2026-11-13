@@ -98,6 +98,13 @@ enum SetupPracticePolish: Equatable {
 
 /// Practice receives the real editor binding. The parent decides whether a take reached that
 /// editor and owns the normal overlay, readiness, recovery and flow actions.
+///
+/// Historical rationale from the original Practice screen:
+/// Deliberately quiet while recording: the pill is NOT suppressed during
+/// onboarding (nothing under App/Overlay/ reads `onboardingState`), so it
+/// appears over this window and carries the recording state — which is what
+/// this person will see in every other app forever after. A second waveform
+/// here would teach them a UI that only exists during setup.
 struct SetupPracticeScreen: View {
   let state: SetupPracticeState
   @Binding var text: String
