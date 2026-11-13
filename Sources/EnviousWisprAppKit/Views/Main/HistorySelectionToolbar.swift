@@ -10,6 +10,8 @@ struct HistorySelectionToolbar: View {
   let selection: HistorySelection
 
   @State private var pendingKind: HistoryDeleteKind?
+  /// The global Delete all history (#2807), kept from the old sidebar: every tab, text and audio.
+  @State private var confirmingDeleteAll = false
 
   var body: some View {
     let count = selection.selectedIDs.count
@@ -52,6 +54,14 @@ struct HistorySelectionToolbar: View {
       if selection.isDeleting {
         ProgressView().controlSize(.small)
       }
+      // #3147 PR2: the old sidebar's global delete lives beside the bulk deletions. "history",
+      // because it is GLOBAL while this tab can be filtered or searched (#2807).
+      Button(role: .destructive) {
+        confirmingDeleteAll = true
+      } label: {
+        EnviousButtonLabel("Delete all history", size: .medium, systemImage: "trash")
+      }
+      .settingsButton(.outlined, size: .medium, isEnabled: selection.isDeleting == false)
     }
     .padding(12)
     .background(Color.stSectionBg, in: RoundedRectangle(cornerRadius: DesignRadius.xl))
@@ -70,6 +80,17 @@ struct HistorySelectionToolbar: View {
       ) {}
     } message: { kind in
       Text(HistorySelectionCopy.confirmMessage(tab: tab, kind: kind))
+    }
+    .alert("Delete all history?", isPresented: $confirmingDeleteAll) {
+      Button("Cancel", role: .cancel) {}
+      Button("Delete all", role: .destructive) {
+        selection.clear()
+        // #4075 S1: admitted behind earlier History commands; a failure shows its alert.
+        Task { await coordinator.deleteAll() }
+      }
+    } message: {
+      // The coordinator owns this sentence (#2087): the global count, hidden rows included.
+      Text(coordinator.deleteAllConfirmationMessage)
     }
   }
 
