@@ -212,6 +212,30 @@ struct HistoryDictationPresentationTests {
     #expect(P.detail(of: 9, in: p, timeline: spans) == nil)
   }
 
+  // MARK: - Preference and deletion
+
+  @Test("the More menu offers Restore while polished words differ, Use polished while original")
+  func preferenceActions() {
+    let polished = Transcript(text: "so um yes", polishedText: "So, yes.")
+    #expect(P.preferenceAction(for: polished) == .restoreOriginal)
+    #expect(P.preferenceAction(for: polished.preferring(.original)) == .usePolished)
+    // Nothing to restore when polish changed nothing.
+    #expect(P.preferenceAction(for: Transcript(text: "hello")) == nil)
+    // Imports and held Escape Recovery rows keep no History preference.
+    let imported = Transcript(text: "a", polishedText: "A.", importedFileName: "x.m4a")
+    #expect(P.preferenceAction(for: imported) == nil)
+    let held = Transcript(text: "a", polishedText: "A.", escapeRecoveredAt: Date())
+    #expect(P.preferenceAction(for: held) == nil)
+  }
+
+  @Test("only a failed deletion is reported as not working")
+  func deletionOutcomes() {
+    #expect(P.deletionFailed(.failed))
+    #expect(P.deletionFailed(.removed) == false)
+    #expect(P.deletionFailed(.alreadyAbsent) == false)
+    #expect(P.deletionFailed(.skipped) == false)
+  }
+
   // MARK: - Footer
 
   @Test("the recording's end date follows the keep period, unless kept or kept forever")

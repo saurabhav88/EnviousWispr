@@ -411,6 +411,30 @@ enum HistoryDictationPresentation {
       polished: slice(prepared.texts.polished, change.cleanedRange), seconds: seconds)
   }
 
+  // MARK: - Preference and deletion
+
+  /// The More menu's text choice for a row: Restore original text while History uses the
+  /// polished words and they differ from the original, Use polished text while it uses the
+  /// original. Nil for rows History keeps no preference on (imports, meetings, held rows).
+  enum PreferenceAction: Equatable, Sendable {
+    case restoreOriginal
+    case usePolished
+  }
+
+  static func preferenceAction(for row: Transcript) -> PreferenceAction? {
+    guard !row.isImported, !row.isMeeting, row.escapeRecoveredAt == nil else { return nil }
+    switch row.effectivePreferredVersion {
+    case .original: return .usePolished
+    case .polished: return Texts(row).differ ? .restoreOriginal : nil
+    }
+  }
+
+  /// Whether a deletion outcome means the card must say it did not work. Already gone is not a
+  /// failure; a deliberate skip is not either.
+  static func deletionFailed(_ outcome: HistoryDeleteOutcome) -> Bool {
+    outcome == .failed
+  }
+
   // MARK: - Footer
 
   /// "Recording until Nov 18" needs the date the keep period ends; nil when recordings are kept

@@ -25,7 +25,7 @@ import SwiftUI
 struct HistoryDictationCard: View {
   let rowID: UUID
   /// #4101: why a History Paste did not happen; the History page holds the notice.
-  let showPasteNotice: @MainActor (String) -> Void
+  let showPasteNotice: (String) -> Void
 
   init(rowID: UUID, showPasteNotice: @escaping (String) -> Void) {
     self.rowID = rowID
@@ -66,6 +66,9 @@ struct HistoryDictationCard: View {
   @FocusState private var focus: Focus?
   @State private var copiedAt: Date?
   @State private var saveError: String?
+  @State private var confirming: HistoryDeleteKind?
+  /// The last preference change made here, offered for Undo until another action replaces it.
+  @State private var preferenceNotice: HistoryPreferenceChange?
 
   private struct RecordingKey: Hashable {
     let rowID: UUID
@@ -111,6 +114,9 @@ struct HistoryDictationCard: View {
       }
       provenance(row)
       actions(row: row, hasChanges: current?.hasChanges == true)
+      if let change = preferenceNotice {
+        preferenceNoticeRow(change)
+      }
       if actionFailed {
         Text(
           "That didn't work. Try again.",
@@ -139,6 +145,19 @@ struct HistoryDictationCard: View {
     }
     .task(id: texts) { await prepareComparison(texts) }
     .onDisappear { dropPlayer() }
+    .confirmationDialog(
+      Text(Self.confirmTitle(confirming ?? .textAndRecordings)),
+      isPresented: Binding(get: { confirming != nil }, set: { if !$0 { confirming = nil } }),
+      presenting: confirming
+    ) { kind in
+      Button(role: .destructive) {
+        delete(kind)
+      } label: {
+        Text(Self.confirmButton(kind))
+      }
+    } message: { kind in
+      Text(Self.confirmMessage(kind))
+    }
     .alert(
       Text(
         "Couldn't save the file", comment: "History: the save panel's file could not be written."),
@@ -374,7 +393,7 @@ struct HistoryDictationCard: View {
       .settingsButton(.quiet, size: .medium, isEnabled: true)
       .focused($focus, equals: .control("copy"))
 
-      moreMenu
+      moreMenu(row)
     }
   }
 
@@ -401,7 +420,7 @@ struct HistoryDictationCard: View {
         comment: "History dictation card: tooltip of Paste."))
   }
 
-  private var moreMenu: some View {
+  private func moreMenu(_ row: Transcript) -> some View {
     Menu {
       if case .available(_, _, let pinned) = status {
         Toggle(
@@ -410,6 +429,59 @@ struct HistoryDictationCard: View {
           Text(
             "Keep this recording",
             comment: "History: keeps this dictation's recording from being removed automatically.")
+        }
+      }
+      // The escape route sits beside the action that set it (§3.4: "The same menu offers Use
+      // polished text when original is preferred").
+      switch HistoryDictationPresentation.preferenceAction(for: row) {
+      case .restoreOriginal:
+        Button {
+          setPreference(.original)
+        } label: {
+          Label {
+            Text(
+              "Restore original text",
+              comment: "History dictation card, More menu: shows and delivers your words before AI polish instead of the polished text.")
+          } icon: {
+            Image(systemName: "arrow.uturn.backward")
+          }
+        }
+      case .usePolished:
+        Button {
+          setPreference(nil)
+        } label: {
+          Label {
+            Text(
+              "Use polished text",
+              comment: "History dictation card, More menu: shows and delivers the AI-polished text again.")
+          } icon: {
+            Image(systemName: "sparkles")
+          }
+        }
+      case nil:
+        EmptyView()
+      }
+      Divider()
+      if case .available = status {
+        Button {
+          confirming = .recordingsOnly
+        } label: {
+          Label {
+            Text(
+              "Delete recording, keep text",
+              comment: "History: deletes this dictation's audio and keeps its text.")
+          } icon: {
+            Image(systemName: "waveform.slash")
+          }
+        }
+      }
+      Button(role: .destructive) {
+        confirming = .textAndRecordings
+      } label: {
+        Label {
+          Text("Delete dictation", comment: "VoiceOver label of the History delete button for a dictation.")
+        } icon: {
+          Image(systemName: "trash")
         }
       }
     } label: {
@@ -590,6 +662,115 @@ struct HistoryDictationCard: View {
       } catch {
         actionFailed = true
       }
+    }
+  }
+
+  // MARK: - Preference and deletion
+
+  /// Restore original text (`.original`) or Use polished text (`nil`, the default). The card
+  /// shows the new preference at once (edits off, the preference's own view) and offers Undo.
+  private func setPreference(_ version: Transcript.PreferredVersion?) {
+    actionFailed = false
+    Task {
+      do {
+        guard let change = try await transcripts.setHistoryPreferredVersion(version, for: rowID)
+        else {
+          actionFailed = true
+          return
+        }
+        editsOn = false
+        openChange = nil
+        preferenceNotice = change
+      } catch {
+        actionFailed = true
+      }
+    }
+  }
+
+  private func undo(_ change: HistoryPreferenceChange) {
+    actionFailed = false
+    Task {
+      do {
+        // False when a later choice replaced this one: nothing to put back, nothing failed.
+        _ = try await transcripts.undoHistoryPreference(change)
+        if preferenceNotice == change { preferenceNotice = nil }
+      } catch {
+        actionFailed = true
+      }
+    }
+  }
+
+  private func preferenceNoticeRow(_ change: HistoryPreferenceChange) -> some View {
+    HStack(spacing: DesignSpacing.md) {
+      Text(Self.preferenceNoticeLine(change))
+        .font(.stHelper)
+        .foregroundStyle(.stTextSecondary)
+      Button {
+        undo(change)
+      } label: {
+        EnviousButtonLabel(
+          LocalizedStringResource("Undo", comment: "History dictation card: undoes the text choice just made."),
+          size: .medium)
+      }
+      .settingsButton(.quiet, size: .medium, isEnabled: true)
+      .focused($focus, equals: .control("undo"))
+    }
+    .accessibilityElement(children: .contain)
+  }
+
+  /// Deletion through History's one command, with the outcome its owner reports. The recording
+  /// stops playing before its file goes (the owner's own fence); a failure keeps the card and
+  /// says so.
+  private func delete(_ kind: HistoryDeleteKind) {
+    confirming = nil
+    actionFailed = false
+    Task {
+      let outcome = await transcripts.deleteHistoryItem(id: .transcript(rowID), kind: kind)
+      if HistoryDictationPresentation.deletionFailed(outcome) { actionFailed = true }
+    }
+  }
+
+  static func preferenceNoticeLine(_ change: HistoryPreferenceChange) -> LocalizedStringResource {
+    change.after == .original
+      ? LocalizedStringResource(
+        "Original restored in History",
+        comment: "History dictation card: History now shows and delivers your words before AI polish.")
+      : LocalizedStringResource(
+        "Polished text back in History",
+        comment: "History dictation card: History shows and delivers the AI-polished text again.")
+  }
+
+  static func confirmTitle(_ kind: HistoryDeleteKind) -> LocalizedStringResource {
+    switch kind {
+    case .recordingsOnly:
+      LocalizedStringResource(
+        "Delete the recording?", comment: "History: confirmation title before deleting one dictation's audio.")
+    case .textAndRecordings:
+      LocalizedStringResource(
+        "Delete this dictation?", comment: "History: confirmation title before deleting one dictation.")
+    }
+  }
+
+  static func confirmMessage(_ kind: HistoryDeleteKind) -> LocalizedStringResource {
+    switch kind {
+    case .recordingsOnly:
+      LocalizedStringResource(
+        "The text stays in History. Only the audio is removed from this Mac.",
+        comment: "History: confirmation message before deleting one dictation's audio.")
+    case .textAndRecordings:
+      LocalizedStringResource(
+        "Its text and recording are removed from this Mac. This can't be undone.",
+        comment: "History: confirmation message before deleting one dictation.")
+    }
+  }
+
+  static func confirmButton(_ kind: HistoryDeleteKind) -> LocalizedStringResource {
+    switch kind {
+    case .recordingsOnly:
+      LocalizedStringResource(
+        "Delete recording", comment: "History: confirms deleting one dictation's audio.")
+    case .textAndRecordings:
+      LocalizedStringResource("Delete", comment: "History: confirms deleting one dictation.")
     }
   }
 
