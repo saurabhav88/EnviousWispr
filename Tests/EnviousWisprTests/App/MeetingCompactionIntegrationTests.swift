@@ -230,4 +230,3 @@ extension MeetingRecord {
     commitCompressedAudio(inventory)
   }
 }
-

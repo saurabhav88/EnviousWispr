@@ -186,9 +186,11 @@ extension MeetingStore {
     guard let inventory = record.compressedAudio, inventory.id == inventoryID else {
       throw CompactionError.notCommitted
     }
-    guard record.committedTranscriptGeneration == expectedTranscriptGeneration,
-      inventory.transcriptGeneration == expectedTranscriptGeneration
-    else { throw CompactionError.staleGeneration }
+    // The CURRENT committed generation, captured by the caller for this attempt: a Transcribe
+    // again after the commit changes the transcript, not the audio the inventory describes.
+    guard record.committedTranscriptGeneration == expectedTranscriptGeneration else {
+      throw CompactionError.staleGeneration
+    }
 
     let dir = folder(for: id)
     let names = Set(try FileManager.default.contentsOfDirectory(atPath: dir.path))

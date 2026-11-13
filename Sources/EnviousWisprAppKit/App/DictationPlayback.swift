@@ -94,6 +94,12 @@ final class PlaybackArbiter {
 
   /// Whether a player of `id` is the one playing now. Retention never removes a recording
   /// someone is listening to; the next sweep takes it.
+  /// #3147 PR4B: whether any player of `id` is open (playing, paused or idle), so background
+  /// compaction never changes a recording under a page that is showing it.
+  func hasPlayer(_ id: PlaybackSourceID) -> Bool {
+    players[id]?.contains { $0.player != nil } ?? false
+  }
+
   func isPlaying(_ id: PlaybackSourceID) -> Bool {
     guard let nowPlaying, nowPlaying.state == .playing else { return false }
     return players[id]?.contains { $0.player === nowPlaying } ?? false

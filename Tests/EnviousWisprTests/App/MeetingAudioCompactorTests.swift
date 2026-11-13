@@ -305,4 +305,3 @@ private final class TaskBox: @unchecked Sendable {
     task?.cancel()
   }
 }
-
