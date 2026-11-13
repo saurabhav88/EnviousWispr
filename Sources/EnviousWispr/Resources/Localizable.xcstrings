@@ -6093,7 +6093,16 @@
         }
       }
     },
-    "Change speech model" : {},
+    "Change speech model" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprachmodell ändern"
+          }
+        }
+      }
+    },
     "Change summary engine" : {
       "comment" : "EnviousMeet Summaries tab: VoiceOver name of the Change button for the summary engine.",
       "localizations" : {
@@ -6170,7 +6179,16 @@
         }
       }
     },
-    "Check AI polish key" : {},
+    "Check AI polish key" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "API-Schlüssel prüfen"
+          }
+        }
+      }
+    },
     "Check Apple Intelligence availability" : {
       "comment" : "AI Polish, Apple Intelligence: re-checks availability.",
       "localizations" : {
@@ -9629,7 +9647,16 @@
         }
       }
     },
-    "Download stopped · Try again" : {},
+    "Download stopped · Try again" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Download gestoppt · Erneut versuchen"
+          }
+        }
+      }
+    },
     "Download stopped." : {
       "comment" : "Live Preview settings, preview engine: download stopped.",
       "localizations" : {
@@ -9840,7 +9867,16 @@
         }
       }
     },
-    "Downloading models" : {},
+    "Downloading models" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modelle werden heruntergeladen"
+          }
+        }
+      }
+    },
     "Downloading speech model..." : {
       "comment" : "Setup progress: the speech model is downloading.\nSpeech engine settings, speech model download: in progress.",
       "localizations" : {
@@ -16251,7 +16287,16 @@
         }
       }
     },
-    "Models ready" : {},
+    "Models ready" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modelle bereit"
+          }
+        }
+      }
+    },
     "Mongolian" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -21812,7 +21857,16 @@
         }
       }
     },
-    "Restarts downloads" : {},
+    "Restarts downloads" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Startet die Downloads neu"
+          }
+        }
+      }
+    },
     "Restore" : {
       "localizations" : {
         "de" : {
@@ -21931,8 +21985,26 @@
         }
       }
     },
-    "Return to getting ready" : {},
-    "Return to setup" : {},
+    "Return to getting ready" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zurück zu „Wird vorbereitet“"
+          }
+        }
+      }
+    },
+    "Return to setup" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zurück zur Einrichtung"
+          }
+        }
+      }
+    },
     "Review" : {
       "comment" : "Snippets, import snippets: sheet title, reviewing what will be added.\nTranscribe a File: a step name in the step bar.",
       "localizations" : {
@@ -23487,7 +23559,16 @@
         }
       }
     },
-    "Shows downloads" : {},
+    "Shows downloads" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zeigt die Downloads"
+          }
+        }
+      }
+    },
     "Shows the %@ Dictionary tab" : {
       "localizations" : {
         "de" : {
