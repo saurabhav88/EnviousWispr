@@ -1,10 +1,12 @@
+import EnviousWisprASR
 import EnviousWisprCore
-import EnviousWisprPipeline
 import EnviousWisprStorage
+@preconcurrency import FluidAudio
 import Foundation
 import Testing
 
 @testable import EnviousWisprAppKit
+@testable import EnviousWisprPipeline
 
 /// #3147 §3.2: the sentence times a saved dictation shows. When these fail, a History paragraph
 /// time seeks to the wrong passage, plays padding that was never recorded, or shows a time the
@@ -218,5 +220,77 @@ struct DictationTimingTests {
     #expect(anchoredText == sentences)
     #expect(anchors.first?.startSeconds == 0)
     #expect(anchors.last?.endSeconds == 2.2)
+  }
+
+  // MARK: - Real boundary: the shipped engine's own word times
+
+  /// A shipped Parakeet model installed in the directory the app installs it into: Ultra
+  /// (the current shipped model) first, else v3.
+  static var installedParakeet: ParakeetModel? {
+    [ParakeetModel.ultra, .v3].first { model in
+      AsrModels.modelsExist(
+        at: ParakeetInstallLocation.directory(
+          for: model, dataDirectory: StorageRoot.live.dataDirectory),
+        version: model == .ultra ? .ultra : .v3)
+    }
+  }
+
+  @Test(
+    "the shipped engine's word times, through the real conditioner, place the sentence where it was said",
+    .enabled(if: DictationTimingTests.installedParakeet != nil),
+    .tags(.realBoundary), .realBoundaryRun
+  )
+  func shippedEngineSentenceLandsOnTheRecording() async throws {
+    // A committed spoken clip, placed 2 s into a recording of silence. VAD heard only the clip,
+    // so the conditioner cuts the silence and the engine's times start near the clip, not 2 s in.
+    let clipURL = URL(filePath: #filePath)
+      .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+      .deletingLastPathComponent().appending(path: "scripts/freeze-suite/clips/normal-speech.wav")
+    let clip = try await AudioFileDecoder.decode(url: clipURL).samples
+    let lead = 32_000
+    let recording = [Float](repeating: 0, count: lead) + clip + [Float](repeating: 0, count: 8_000)
+    let conditioned = CapturedAudioConditioner.condition(
+      rawSamples: recording,
+      vadSegments: [SpeechSegment(startSample: lead, endSample: lead + clip.count)])
+    #expect(conditioned.conditioningReason == "filtered")
+
+    let model = try #require(Self.installedParakeet)
+    let backend = ParakeetBackend()
+    let result: EnviousWisprCore.ASRResult
+    do {
+      try await backend.prepare(
+        selection: ParakeetModelSelection(
+          model: model, revision: nil,
+          directory: ParakeetInstallLocation.directory(
+            for: model, dataDirectory: StorageRoot.live.dataDirectory),
+          cacheOnly: true, displayBytes: ParakeetModel.v3ShippedBytes, repairable: false,
+          generation: 1),
+        progressCallback: nil)
+      result = try await backend.transcribe(audioSamples: conditioned.samples, options: .default)
+      await backend.unload()
+    } catch {
+      await backend.unload()
+      throw error
+    }
+
+    let asr = RecordingSessionKernel.evidence(
+      result, source: .batch, input: .conditionedBatch, timeline: conditioned.timeline)
+    let timing = DictationTimingBuilder.timing(for: asr, recordingSampleCount: recording.count)
+    #expect(timing.exactASRText == result.text)
+    let first = try #require(timing.anchors.first, "no anchor from: \(result.text)")
+    let last = try #require(timing.anchors.last)
+    // The decode input starts at the VAD segment minus its 0.1 s padding (recording sample
+    // 30,400), so that is the earliest place an engine time can land.
+    let decodeStart = Double(lead - AudioConstants.speechPaddingSamples) / Double(Self.rate)
+    let clipEnd = Double(lead + clip.count) / Double(Self.rate)
+    // On the recording's clock the speech is inside the clip: never in the leading silence the
+    // decode never saw, never past the clip's end.
+    #expect(
+      first.startSeconds >= decodeStart,
+      "starts at \(first.startSeconds)s, decode input begins at \(decodeStart)s")
+    #expect(first.startSeconds < clipEnd)
+    #expect(last.endSeconds <= clipEnd + 0.1, "ends at \(last.endSeconds)s, clip ends \(clipEnd)s")
+    #expect(first.utf16Start >= 0)
+    #expect(last.utf16End <= result.text.utf16.count)
   }
 }
