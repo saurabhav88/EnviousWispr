@@ -111,6 +111,24 @@ struct HistoryTabStateTests {
     #expect(rowIDs(coordinator.matchingHistoryItems(in: .dictations)) == [none.id])
   }
 
+  @Test("date filter: start included, end excluded")
+  func dateFilterBounds() async throws {
+    let coordinator = makeCoordinator()
+    let start = Date(timeIntervalSinceReferenceDate: 800_000_000)
+    let end = start.addingTimeInterval(86_400)
+    let atStart = Transcript(text: "at start", createdAt: start)
+    let beforeEnd = Transcript(text: "before end", createdAt: end.addingTimeInterval(-0.001))
+    let atEnd = Transcript(text: "at end", createdAt: end)
+    for row in [atStart, beforeEnd, atEnd] { try await coordinator.saveAndShow(row) }
+
+    var state = HistoryTabState()
+    state.dateInterval = DateInterval(start: start, end: end)
+    coordinator.setHistoryState(state, for: .dictations)
+    #expect(
+      Set(rowIDs(coordinator.matchingHistoryItems(in: .dictations)))
+        == [atStart.id, beforeEnd.id])
+  }
+
   @Test("date filter keeps only items inside the interval")
   func dateFilter() async throws {
     let coordinator = makeCoordinator()

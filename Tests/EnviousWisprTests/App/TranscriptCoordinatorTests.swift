@@ -491,7 +491,7 @@ struct TranscriptCoordinatorMeetingTests {
     var announced: [UUID] = []
     coordinator.onRowDeleted = { announced.append($0) }
     var handed: [UUID] = []
-    coordinator.deleteMeeting = { handed.append($0) }
+    coordinator.deleteMeeting = { handed.append($0); return true }
 
     await coordinator.delete(meetingRow)
     #expect(handed == [meetingID])

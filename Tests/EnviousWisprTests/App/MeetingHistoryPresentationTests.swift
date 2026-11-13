@@ -160,7 +160,7 @@ struct MeetingHistoryPresentationTests {
   func deleteMeetingItem() async throws {
     let rig = Rig()
     var asked: [UUID] = []
-    rig.coordinator.deleteMeeting = { asked.append($0) }
+    rig.coordinator.deleteMeeting = { asked.append($0); return true }
     let dictation = Transcript(
       text: "older", backendType: .parakeet, createdAt: Date(timeIntervalSinceNow: -60))
     try await rig.coordinator.saveAndShow(dictation)
