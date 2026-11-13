@@ -25,6 +25,8 @@ struct MeetingInlineTitle: View {
   @State private var edit = MeetingAfterPresentation.TitleEdit()
   @State private var hovering = false
   @State private var pushedCursor = false
+  /// Bumped when the title shows another meeting, so a rename that answers later leaves it alone.
+  @State private var presentation = 0
   @FocusState private var fieldFocused: Bool
   @FocusState private var controlFocused: TitleControl?
 
@@ -51,6 +53,12 @@ struct MeetingInlineTitle: View {
       begin(storedTitle: meetings.record(id: meetingID)?.title)
     }
     .onDisappear { popCursor() }
+    .onChange(of: meetingID) {
+      // Another meeting's title: a rename still in flight finishes into the old state only.
+      presentation += 1
+      edit = MeetingAfterPresentation.TitleEdit()
+      popCursor()
+    }
   }
 
   private func titleText(_ title: String) -> some View {
@@ -163,8 +171,10 @@ struct MeetingInlineTitle: View {
     case .rename(let title):
       let coordinator = meetings
       let id = meetingID
+      let shown = presentation
       Task {
         let saved = await coordinator.rename(meetingID: id, title: title)
+        guard shown == presentation else { return }
         edit.finish(saved: saved)
         if saved { controlFocused = .title } else { fieldFocused = true }
       }

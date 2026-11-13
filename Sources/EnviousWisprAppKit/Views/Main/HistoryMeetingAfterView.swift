@@ -93,6 +93,9 @@ struct HistoryMeetingAfterView: View {
   @State private var copiedAt: Date?
   @State private var notice: Notice?
   @State private var rosterRead: KeyedRosterRead<RosterKey>?
+  /// Bumped when the view shows another meeting or goes away, so an action that finishes later
+  /// never writes its result (a notice, a player, a refusal) into another meeting's screen.
+  @State private var presentation = 0
 
   private typealias P = MeetingAfterPresentation
 
@@ -122,6 +125,7 @@ struct HistoryMeetingAfterView: View {
   }
 
   private struct AudioSizeKey: Hashable {
+    let meetingID: UUID
     let audioKept: Bool
     let state: MeetingState
   }
@@ -130,9 +134,13 @@ struct HistoryMeetingAfterView: View {
     Group {
       if let record = meetings.record(id: meetingID), !record.deletionRequested {
         content(record)
-          .task(id: AudioSizeKey(audioKept: record.audioKept, state: record.state)) {
+          .task(
+            id: AudioSizeKey(meetingID: meetingID, audioKept: record.audioKept, state: record.state)
+          ) {
             audioSize = .measuring
-            audioSize = await meetings.audioSize(meetingID: meetingID)
+            let size = await meetings.audioSize(meetingID: meetingID)
+            guard !Task.isCancelled else { return }
+            audioSize = size
           }
           .task(id: meetings.playbackSource(meetingID: meetingID)) { reconcilePlayer() }
           .task(id: rosterKey(record)) {
@@ -151,9 +159,14 @@ struct HistoryMeetingAfterView: View {
       }
     }
     .background(Color.stPageBg)
-    .onDisappear { dropPlayer() }
+    .onDisappear {
+      presentation += 1
+      dropPlayer()
+    }
     .onChange(of: meetingID) {
       // A reused view never carries one meeting's screen state into another.
+      presentation += 1
+      actionInFlight = false
       dropPlayer()
       leftPane = .notes
       editingSummary = false
@@ -646,8 +659,10 @@ struct HistoryMeetingAfterView: View {
     actionInFlight = true
     notice = nil
     let scope: HistoryDeleteKind = kind == .deleteAudio ? .recordingsOnly : .textAndRecordings
+    let shown = presentation
     Task {
       let outcome = await transcripts.deleteHistoryItem(id: .meeting(meetingID), kind: scope)
+      guard shown == presentation else { return }
       actionInFlight = false
       // A refused or unsaved deletion leaves the audio: bring its player back.
       reconcilePlayer()
@@ -671,8 +686,10 @@ struct HistoryMeetingAfterView: View {
     notice = nil
     let coordinator = meetings
     let id = meetingID
+    let shown = presentation
     Task {
       let started = await coordinator.transcribeAgain(meetingID: id, engine: engine)
+      guard shown == presentation else { return }
       actionInFlight = false
       if !started {
         notice = Notice(
@@ -942,12 +959,16 @@ extension HistoryMeetingAfterView {
 
   /// The summary's Markdown with inline emphasis kept and its lines as written; plain text when
   /// it does not parse. No run carries its own font, so the 14 pt body size holds.
-  fileprivate static func readable(_ markdown: String) -> AttributedString {
-    (try? AttributedString(
-      markdown: markdown,
-      options: AttributedString.MarkdownParsingOptions(
-        interpretedSyntax: .inlineOnlyPreservingWhitespace)))
+  /// Links are removed: only View source, after validation, may lead anywhere.
+  static func readable(_ markdown: String) -> AttributedString {
+    var text =
+      (try? AttributedString(
+        markdown: markdown,
+        options: AttributedString.MarkdownParsingOptions(
+          interpretedSyntax: .inlineOnlyPreservingWhitespace)))
       ?? AttributedString(markdown)
+    text.link = nil
+    return text
   }
 
   /// View source: scroll to and highlight the source. Never starts playback.
@@ -1177,8 +1198,11 @@ extension HistoryMeetingAfterView {
             .quiet, size: .medium, isEnabled: permissions.accessibilityGranted && canDeliver)
           Button(role: .destructive) {
             actionInFlight = true
+            let shown = presentation
             Task {
-              orphanRefused = !(await meetings.deleteOrphan(meetingID: meetingID))
+              let deleted = await meetings.deleteOrphan(meetingID: meetingID)
+              guard shown == presentation else { return }
+              orphanRefused = !deleted
               actionInFlight = false
             }
           } label: {
@@ -1532,9 +1556,9 @@ extension View {
   }
 }
 
-/// macOS 14: a scroll-wheel or trackpad scroll while the pointer is over this scroll view counts
-/// as the user scrolling (programmatic scrolls send no wheel events). Dragging the scroller is
-/// not seen; Follow playback's toggle still turns it off.
+/// macOS 14: a scroll-wheel or trackpad scroll, or a drag (the scroller, or selecting text),
+/// while the pointer is over this scroll view counts as the user scrolling. Programmatic scrolls
+/// send neither event.
 private struct MeetingWheelScrollObserver: ViewModifier {
   let action: () -> Void
   @State private var hovering = false
@@ -1545,7 +1569,9 @@ private struct MeetingWheelScrollObserver: ViewModifier {
       .onHover { hovering = $0 }
       .onAppear {
         guard monitor == nil else { return }
-        monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
+        // A wheel or trackpad scroll, or a drag on the scroller or in the text, over this view.
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel, .leftMouseDragged]) {
+          event in
           if hovering { action() }
           return event
         }

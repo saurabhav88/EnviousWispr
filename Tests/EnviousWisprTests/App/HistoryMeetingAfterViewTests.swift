@@ -127,4 +127,13 @@ struct HistoryMeetingAfterViewTests {
       notes.snapshot(for: UUID()).document, durationMs: 60_000)
     #expect(markers.map(\.id) == [note.id])
   }
+
+  @Test("a summary shown without validated sources carries no link, whatever its Markdown says")
+  func readableSummaryHasNoLinks() {
+    let text = HistoryMeetingAfterView.readable(
+      "Ship it. [View source](https://example.com) and **bold**\nNext line")
+    #expect(text.runs.allSatisfy { $0.link == nil })
+    #expect(String(text.characters) == "Ship it. View source and bold\nNext line")
+    #expect(text.runs.allSatisfy { $0.font == nil })
+  }
 }
