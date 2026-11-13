@@ -157,13 +157,45 @@ struct HistoryDictationPresentationTests {
     // Onto polished text that capitalised both first words: neither passage start is literal.
     let polished = "We have 20 items. Then we ship it."
     let alignment = WordDiff.alignment(original: original, cleaned: polished)
-    let onPolished = P.polishedTimeline(spans, alignment: alignment)
+    let onPolished = P.polishedTimeline(
+      spans, original: original, polished: polished, alignment: alignment)
     #expect(onPolished.isEmpty)
     // A polish that leaves both ends of a passage alone keeps its time.
     let kind = "we have 20 good items. then we ship."
     let kept = P.polishedTimeline(
-      spans, alignment: WordDiff.alignment(original: original, cleaned: kind))
+      spans, original: original, polished: kind,
+      alignment: WordDiff.alignment(original: original, cleaned: kind))
     #expect(kept.map(\.seconds) == [0.0, 4.5])
+  }
+
+  @Test("a passage spoken twice stays untimed: which copy survived is not provable")
+  func repeatedPassagesStayUntimed() {
+    // Two identical sentences at different times; polish keeps one copy.
+    let exact = "send the file. send the file. thanks."
+    let t = Self.timing(exact: exact, anchors: [(0, 14, 1.0), (15, 29, 6.0), (30, 37, 9.0)])
+    let spans = P.timeline(t, original: exact)
+    // Only the unique passage is timed on the original.
+    #expect(spans.map(\.seconds) == [9.0])
+    #expect(P.slice(exact, spans[0].range) == "thanks.")
+
+    // Onto a polish that collapsed the repeat, neither copy's time is borrowed.
+    let original = "send the file. thanks."
+    let collapsed = P.timeline(
+      Self.timing(exact: exact, anchors: [(0, 14, 1.0), (15, 29, 6.0), (30, 37, 9.0)]),
+      original: original)
+    #expect(collapsed.map(\.seconds) == [9.0])
+    #expect(P.slice(original, collapsed[0].range) == "thanks.")
+
+    // Original to polished: a passage repeated in the original stays untimed there too.
+    let twice = [
+      P.TimedSpan(range: 0..<14, seconds: 1.0), P.TimedSpan(range: 15..<29, seconds: 6.0),
+    ]
+    let polished = "send the file. send the file."
+    #expect(
+      P.polishedTimeline(
+        twice, original: polished, polished: polished,
+        alignment: WordDiff.alignment(original: polished, cleaned: polished)
+      ).isEmpty)
   }
 
   @Test("anchors for another text version, out of range or unplaceable stay untimed")

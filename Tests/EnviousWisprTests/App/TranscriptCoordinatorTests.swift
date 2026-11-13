@@ -69,7 +69,7 @@ struct TranscriptCoordinatorTests {
       Transcript(
         text: "an import", language: "en", duration: 61, backendType: .parakeet,
         importedFileName: "sync.m4a"))
-    #expect(coordinator.listedCount == 2, "History lists two rows")
+    #expect(coordinator.completedItemCount == 2, "History lists two rows")
     #expect(coordinator.dictationCount == 1, "only one of them was dictated")
   }
 
@@ -534,14 +534,14 @@ struct TranscriptCoordinatorMeetingTests {
     await coordinator.deleteAll()
     #expect(coordinator.actionFailure == .deleteAll)
     #expect(rowExistedWhenMarked == true)
-    #expect(coordinator.listedCount == 2)
+    #expect(coordinator.completedItemCount == 2)
     #expect(FileManager.default.fileExists(atPath: rowURL.path))
 
     coordinator.dismissActionFailure()
     allowed = true
     await coordinator.deleteAll()
     #expect(coordinator.actionFailure == nil)
-    #expect(coordinator.listedCount == 0)
+    #expect(coordinator.completedItemCount == 0)
   }
 
   #if DEBUG

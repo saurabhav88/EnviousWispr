@@ -29,7 +29,7 @@ struct TranscriptCoordinatorMergeTests {
   }
 
   private func row(_ coordinator: TranscriptCoordinator, _ id: UUID) -> Transcript? {
-    coordinator.filteredTranscripts.first { $0.id == id }
+    coordinator.visibleTranscripts.first { $0.id == id }
   }
 
   private func freshlyLoaded(from dir: URL) async -> TranscriptCoordinator {

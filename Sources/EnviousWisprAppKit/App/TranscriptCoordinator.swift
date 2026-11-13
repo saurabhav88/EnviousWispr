@@ -17,7 +17,7 @@ final class TranscriptCoordinator {
   /// Guarding it was tried and is not enough: a scanner over the source can
   /// match a name, not a type, so it flags an unrelated `transcripts` elsewhere
   /// and misses a bare access from an extension. The compiler makes the mistake
-  /// unavailable instead. Read `visibleTranscripts`, `listedItems` or `filteredTranscripts`.
+  /// unavailable instead. Read `visibleTranscripts` or `matchingHistoryItems(in:)`.
   private var transcripts: [Transcript] = [] {
     // Every mutation (assignment, insert, subscript, removeAll) passes here, so the list key
     // sees it without each mutation site remembering to (#4001).
@@ -81,7 +81,7 @@ final class TranscriptCoordinator {
   }
 
   /// Every item `tab` lists now under its search and filters, all pages, newest first, with the
-  /// same visibility, expiry and deletion rules as `listedItems`. Paging only limits drawing.
+  /// same visibility, expiry and deletion rules as every History list. Paging only limits drawing.
   func matchingHistoryItems(in tab: HistoryTab) -> [HistoryListItem] {
     matchingHistoryItems(in: tab, state: historyTabStates[tab] ?? HistoryTabState())
   }
@@ -98,8 +98,17 @@ final class TranscriptCoordinator {
     if let kept = tabListCache[tab], kept.key == key { return kept.items }
     let kept = KeptList(key: key, items: buildListedItems(at: now, from: key))
     tabListCache[tab] = kept
+    // #4001: the meeting text cache drops rows that are gone, once per row change, on the list
+    // path production reads (Codex PR2 r5: it used to sit on the retired all-kinds list).
+    if prunedRevision != transcriptsRevision {
+      meetingDocuments.prune(keeping: transcripts)
+      prunedRevision = transcriptsRevision
+    }
     return kept.items
   }
+
+  /// The row revision the meeting text cache was last pruned at.
+  @ObservationIgnored private var prunedRevision = -1
 
   /// How many of `tab`'s items fall on each day under its search and other filters (the date
   /// filter left out), for the calendar's activity dots. Days are `calendar`'s start of day.
@@ -115,7 +124,8 @@ final class TranscriptCoordinator {
     }.value
   }
 
-  /// Each tab's kept list (#4001's cache, one per tab). Not observed, like `listCache`.
+  /// Each tab's kept list (#4001's cache, one per tab). Not observed: storing it while a view reads
+  /// the list is not a change anyone needs to see.
   @ObservationIgnored private var tabListCache: [HistoryTab: KeptList] = [:]
 
   /// Re-render pulse for pending Escape Recovery rows (#2087).
@@ -232,50 +242,9 @@ final class TranscriptCoordinator {
   /// across an expiry boundary without sleeping (#4001).
   @ObservationIgnored var clock: () -> Date = Date.init
 
-  /// What History lists: visible rows and every meeting, inside the kind filter, then inside
-  /// the search, newest first.
-  ///
-  /// #2807: the kind filter runs FIRST. A pending Escape-recovery row is a dictation that was
-  /// cancelled, so it stays under All and Dictations exactly as it did before the filter
-  /// existed. #3972 R45: a meeting is one item (`.meeting`) whether or not its History row
-  /// exists yet; it is listed under All and Meetings, never under Dictations or Transcripts.
-  /// A meeting marked for deletion is not listed. The search then keeps its own rule below.
-  var listedItems: [HistoryListItem] { keptList.items }
-
-  /// #4001: the list, built once and kept while its inputs are unchanged. The key is read on
-  /// every call, through the same observable properties and closures the build reads, so a view
-  /// that reads the list subscribes to every input on a kept answer too.
-  private var keptList: KeptList {
-    let now = clock()
-    let key = listKey(at: now)
-    #if DEBUG
-      if listCacheDisabledForTesting {
-        return KeptList(key: key, items: buildListedItems(at: now, from: key))
-      }
-    #endif
-    if let kept = listCache, kept.key == key { return kept }
-    let kept = KeptList(key: key, items: buildListedItems(at: now, from: key))
-    listCache = kept
-    meetingDocuments.prune(keeping: transcripts)
-    return kept
-  }
-
   private struct KeptList {
     let key: ListKey
     let items: [HistoryListItem]
-    /// Listed items that are not held rows, counted once with the list.
-    let completedCount: Int
-
-    init(key: ListKey, items: [HistoryListItem]) {
-      self.key = key
-      self.items = items
-      completedCount = items.reduce(0) { count, item in
-        switch item {
-        case .transcript(let row): count + (row.escapeRecoveredAt == nil ? 1 : 0)
-        case .meeting(let meeting): count + (meeting.row?.escapeRecoveredAt == nil ? 1 : 0)
-        }
-      }
-    }
   }
 
   /// Everything `buildListedItems` and the search read, captured at one `now` (#4001).
@@ -306,10 +275,6 @@ final class TranscriptCoordinator {
     let invited: [String]
   }
 
-  private func listKey(at now: Date) -> ListKey {
-    listKey(at: now, kind: .all, filter: .none, query: "")
-  }
-
   /// The key for one list: its kind, filters and search, plus every input the build reads.
   private func listKey(
     at now: Date, kind: HistoryListKind, filter: HistoryListFilter, query searchQuery: String
@@ -333,10 +298,6 @@ final class TranscriptCoordinator {
       searchFacts: facts, locale: Locale.current.identifier,
       localizations: Bundle.main.preferredLocalizations)
   }
-
-  /// The kept list and its key (#4001). Not observed: storing it while a view reads the list is
-  /// not a change anyone needs to see.
-  @ObservationIgnored private var listCache: KeptList?
 
   /// Where the held rows sit in `transcripts` and which meetings have a row, rebuilt only when
   /// the rows change (#4001), so checking the kept list does not scan every row.
@@ -447,7 +408,6 @@ final class TranscriptCoordinator {
   /// Whether `item` is of the kind a list shows.
   private static func matchesKind(_ kind: HistoryListKind, _ item: HistoryListItem) -> Bool {
     switch (kind, item) {
-    case (.all, _): return true
     case (.dictations, .transcript(let row)): return !row.isImported
     case (.transcripts, .transcript(let row)): return row.isImported
     case (.meetings, .meeting): return true
@@ -485,12 +445,6 @@ final class TranscriptCoordinator {
       }
     }
     return true
-  }
-
-  /// The History rows `listedItems` shows: every listed dictation and import, and each listed
-  /// meeting's row when it has one.
-  var filteredTranscripts: [Transcript] {
-    listedItems.compactMap(\.row)
   }
 
   private func matchesSearch(
@@ -542,28 +496,6 @@ final class TranscriptCoordinator {
     return result
   }
 
-  /// Completed rows. A held recovery is an OFFER, not a dictation the
-  /// user made — counting it would inflate the stat the moment they cancelled
-  /// something, which is the opposite of what cancelling meant.
-  ///
-  /// **Two questions, two counts (#2772).** This one is the sidebar's, beside the search
-  /// field: how many rows History lists, so an import that appears in the list is counted
-  /// in it. `dictationCount` is onboarding's: how many DICTATIONS exist, read as
-  /// `producedWords = transcriptCount > transcriptCountAtTakeStart`, where an import
-  /// finishing during a practice take must not mark that take successful for a user who
-  /// said nothing. One count serving both was wrong for one of them whichever way it went:
-  /// first it counted imports and broke onboarding, then it excluded them and History
-  /// showed a row its own count did not have. Found by Codex, twice.
-  ///
-  /// `deletableCount` deliberately counts imports too: it answers "how many rows would
-  /// Delete All take", where an uncounted row is a row destroyed without warning.
-  ///
-  /// #2807: counts inside the filter and the search, because the number sits beside the list
-  /// it describes. Under All with an empty search it is exactly the pre-filter count. Renamed
-  /// from `transcriptCount`, because a Transcript is now a file import and this counts every
-  /// kind.
-  var listedCount: Int { keptList.completedCount }
-
   /// How many dictations exist: every completed row that is not an import, whatever the
   /// filter shows. Onboarding's success detector reads this one.
   var dictationCount: Int {
@@ -579,11 +511,9 @@ final class TranscriptCoordinator {
   /// How many rows a Delete All would actually take, from the user's point of
   /// view (#2087).
   ///
-  /// Deliberately NOT `listedCount`. That one answers "how many rows does the
-  /// list show" and excludes held recoveries, which is right for a statistic
-  /// and wrong for a destructive confirmation: with only held rows on screen it
-  /// reads zero, so the dialog would offer to delete "all 0 transcripts" and
-  /// then delete them. A confirmation must count what it is about to destroy.
+  /// Held recoveries are counted: with only held rows on screen a count that excluded them
+  /// would read zero, so the dialog would offer to delete "all 0 transcripts" and then delete
+  /// them. A confirmation must count what it is about to destroy.
   ///
   /// #3972 R45: a meeting that has no History row yet (recording, transcribing, failed) is
   /// deleted by Delete All too, so it is counted.
@@ -1468,7 +1398,7 @@ final class TranscriptCoordinator {
   /// The newest dictation the menu bar and the Paste/Copy Last Dictation shortcuts may offer
   /// again (#3106), or nil when there is none.
   ///
-  /// Read from every visible row, NOT `filteredTranscripts`: those shortcuts work from any app, so
+  /// Read from every visible row, NOT a History tab's list: those shortcuts work from any app, so
   /// what History's own filter or search happens to show must not decide which text they reuse.
   /// Returns the full `displayText`; the menu shortens it for display.
   ///
@@ -2078,9 +2008,9 @@ enum HistoryEmptyState: Equatable, Sendable {
   case noMatches
 }
 
-/// Which kind of item a History list shows: every kind, or one tab's kind.
+/// Which kind of item a History list shows: one tab's kind.
 enum HistoryListKind: Equatable, Sendable {
-  case all, dictations, transcripts, meetings
+  case dictations, transcripts, meetings
 
   init(_ tab: HistoryTab) {
     switch tab {

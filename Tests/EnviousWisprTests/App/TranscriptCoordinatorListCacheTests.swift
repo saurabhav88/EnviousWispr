@@ -76,9 +76,6 @@
         let recordState: MeetingState?
         let recordTitle: String?
       }
-      let items: [Item]
-      let filteredRowIDs: [UUID]
-      let listedCount: Int
       let deletableCount: Int
       /// Each tab's matching items under its own search and filters, in `HistoryTab` order, with
       /// the same contents as `items` so a stale row kept under its id is caught.
@@ -96,10 +93,8 @@
           held: item.row?.escapeRecoveredAt != nil, recordState: record?.state,
           recordTitle: record?.title)
       }
-      let items = c.listedItems.map(snapshotItem)
       return Snapshot(
-        items: items, filteredRowIDs: c.filteredTranscripts.map(\.id),
-        listedCount: c.listedCount, deletableCount: c.deletableCount,
+        deletableCount: c.deletableCount,
         tabItems: HistoryTab.allCases.map { c.matchingHistoryItems(in: $0).map(snapshotItem) },
         open: HistoryTab.allCases.map { c.historyState(for: $0).openItemID })
     }
@@ -276,10 +271,10 @@
       let pulse = w.cached.expiryPulse
       let expiry = stamp.addingTimeInterval(AppConstants.pendingTranscriptRetention)
       w.time = expiry.addingTimeInterval(-0.001)
-      #expect(w.cached.listedItems.map(\.id) == [.transcript(held.id)])
+      #expect(w.cached.matchingHistoryItems(in: .dictations).map(\.id) == [.transcript(held.id)])
       Self.expectAgree(w, "just before")
       w.time = expiry
-      #expect(w.cached.listedItems.isEmpty)
+      #expect(w.cached.matchingHistoryItems(in: .dictations).isEmpty)
       Self.expectAgree(w, "at expiry")
       #expect(w.cached.expiryPulse == pulse, "no pulse ran")
     }
@@ -292,10 +287,10 @@
       let held = Transcript(
         text: "held", createdAt: w.time, escapeRecoveredAt: stamp, escapeRecoveryTakeID: "take")
       w.setRows([held])
-      #expect(w.cached.listedItems.isEmpty, "a stamp past the tolerance is corrupt")
+      #expect(w.cached.matchingHistoryItems(in: .dictations).isEmpty, "a stamp past the tolerance is corrupt")
       Self.expectAgree(w, "corrupt")
       w.time = w.time.addingTimeInterval(1)
-      #expect(w.cached.listedItems.map(\.id) == [.transcript(held.id)])
+      #expect(w.cached.matchingHistoryItems(in: .dictations).map(\.id) == [.transcript(held.id)])
       Self.expectAgree(w, "within tolerance")
     }
 
@@ -323,8 +318,9 @@
       ])
       // Listed: a, held, ready, rowless (once per record), orphan, expiredOnly without its row;
       // the marked meeting is not.
-      #expect(w.cached.listedItems.count == 7)
-      #expect(w.cached.listedCount == 6, "the held row is not counted")
+      #expect(
+        HistoryTab.allCases.reduce(0) { $0 + w.cached.matchingHistoryItems(in: $1).count } == 7)
+      #expect(w.cached.completedItemCount == 6, "the held row is not counted")
       // Every visible row (5) plus each unmarked record without a visible row (rowless twice,
       // expiredOnly once).
       #expect(w.cached.deletableCount == 8)
@@ -386,13 +382,15 @@
       Self.expectAgree(w, "fenced")
     }
 
-    /// After a kept answer, a `listedItems` read must be told about `change`.
-    /// With `tab`, the reader is that tab's matching list instead.
+    /// After a kept answer, a reader of the tab lists must be told about `change`.
+    /// With `tab`, the reader is that one tab's matching list; without, all three.
     func expectObserved(
       _ name: String, _ w: World, tab: HistoryTab? = nil, change: () -> Void
     ) {
       let c = w.cached
-      let read = { if let tab { _ = c.matchingHistoryItems(in: tab) } else { _ = c.listedItems } }
+      let read = {
+        for each in tab.map({ [$0] }) ?? HistoryTab.allCases { _ = c.matchingHistoryItems(in: each) }
+      }
       read()
       read()  // the second read is a kept answer
       let fired = Flag()
@@ -408,11 +406,12 @@
     /// #4075 S1: the same check for a change made by an awaited History command.
     func expectObserved(_ name: String, _ w: World, change: () async -> Void) async {
       let c = w.cached
-      _ = c.listedItems
-      _ = c.listedItems  // the second read is a kept answer
+      let readAll = { for tab in HistoryTab.allCases { _ = c.matchingHistoryItems(in: tab) } }
+      readAll()
+      readAll()  // the second read is a kept answer
       let fired = Flag()
       withObservationTracking {
-        _ = c.listedItems
+        readAll()
       } onChange: {
         fired.value = true
       }
@@ -863,7 +862,7 @@
       _ = c.summaryVisibleText(of: row, info: info)
       let built = c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting
       w.setRows([])
-      _ = c.listedItems  // a rebuild prunes
+      _ = c.matchingHistoryItems(in: .meetings)  // a rebuild prunes
       w.setRows([row])
       _ = c.summaryVisibleText(of: row, info: info)
       #expect(

@@ -95,7 +95,7 @@ struct HistoryReuseTests {
     }
 
     private func texts(_ coordinator: TranscriptCoordinator) -> [String] {
-      coordinator.filteredTranscripts.map(\.text)
+      coordinator.visibleTranscripts.map(\.text)
     }
 
     // MARK: - Reuse
@@ -238,7 +238,7 @@ struct HistoryReuseTests {
       try other.savePending(Self.heldRow())
       let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
       await open(coordinator)
-      let shown = try #require(coordinator.filteredTranscripts.first { $0.text == "hello" })
+      let shown = try #require(coordinator.visibleTranscripts.first { $0.text == "hello" })
       coordinator.openHistoryItem(.transcript(shown.id), in: .dictations)
       try other.deleteAll()
       await open(coordinator)

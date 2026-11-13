@@ -267,7 +267,9 @@ struct HistoryDictationCard: View {
     if view == .original {
       spans = timeline
     } else if let prepared {
-      spans = HistoryDictationPresentation.polishedTimeline(timeline, alignment: prepared.alignment)
+      spans = HistoryDictationPresentation.polishedTimeline(
+        timeline, original: prepared.texts.original, polished: prepared.texts.polished,
+        alignment: prepared.alignment)
     } else {
       spans = []
     }
@@ -585,7 +587,12 @@ struct HistoryDictationCard: View {
     }
     let timing = try? await recordings.timing(for: rowID)
     guard !Task.isCancelled else { return }
-    timeline = HistoryDictationPresentation.timeline(timing, original: original)
+    let spans = await HistoryDictationPresentation.timelineInBackground(timing, original: original)
+    // Published only for the row, recording and text it was computed for.
+    // A new recording or row change restarts this task (`.task(id:)`), which cancels it.
+    guard !Task.isCancelled, isAvailable, transcripts.currentRow(id: rowID)?.text == original
+    else { return }
+    timeline = spans
   }
 
   /// One line per recorded reason (#3147 §3.4). Legacy or unexplained absence never guesses. An

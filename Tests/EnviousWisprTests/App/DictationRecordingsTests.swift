@@ -494,6 +494,30 @@ struct DictationRecordingsTests {
     #expect(await rig.archive.url(for: row.id) == nil)
   }
 
+  @Test("selection keeps a dictation whose recording cleanup failed, and a retry finishes it")
+  func selectionRetriesLeftoverRecording() async throws {
+    let rig = rig()
+    defer { rig.gate.releaseAll() }
+    let row = try savedRow(rig)
+    rig.gate.release(1)
+    #expect(await rig.recordings.record(rowID: row.id, samples: [0], timing: nil) == .stored)
+    let pins = rig.archive.directory.appendingPathComponent("pins.json")
+    try Data("not json".utf8).write(to: pins)
+
+    let selection = HistorySelection()
+    selection.select([.transcript(row.id)])
+    await selection.deleteSelected(kind: .textAndRecordings, coordinator: rig.coordinator)
+    #expect(rig.coordinator.currentRow(id: row.id) == nil)
+    // The diary's production prune: the row is no longer listed.
+    selection.retain(Set(rig.coordinator.matchingHistoryItems(in: .dictations).map(\.id)))
+    #expect(selection.selectedIDs == [.transcript(row.id)])
+
+    try FileManager.default.removeItem(at: pins)
+    await selection.deleteSelected(kind: .textAndRecordings, coordinator: rig.coordinator)
+    #expect(selection.selectedIDs.isEmpty)
+    #expect(await rig.archive.url(for: row.id) == nil)
+  }
+
   @Test("a hand-off returns at once; the recording is kept once its encode finishes")
   func submitDoesNotWait() async throws {
     let rig = rig()

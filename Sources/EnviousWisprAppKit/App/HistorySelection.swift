@@ -31,11 +31,19 @@ final class HistorySelection {
   private(set) var isDeleting = false
   /// The last bulk deletion's result, until the selection changes again.
   private(set) var lastDeletion: DeletionSummary?
+  /// Targets of the deletion running now. They stay selected while their outcomes settle, even
+  /// when their text leaves the list first (Codex PR2 r5).
+  private var pendingTargets: Set<HistoryItemID> = []
+  /// Items whose deletion failed, with the kind that failed. They stay selected and retryable
+  /// even when their text row is already gone (text removed, audio cleanup failed), until a
+  /// retry succeeds or the person unticks them. A list disappearance is never read as success.
+  private(set) var retryKinds: [HistoryItemID: HistoryDeleteKind] = [:]
 
   /// Ticks `id` when it is not selected, else unticks it.
   func toggle(_ id: HistoryItemID) {
     if selectedIDs.contains(id) {
       selectedIDs.remove(id)
+      retryKinds[id] = nil
     } else {
       selectedIDs.insert(id)
     }
@@ -69,14 +77,17 @@ final class HistorySelection {
     selectedIDs = []
     anchorID = nil
     lastDeletion = nil
+    retryKinds = [:]
   }
 
   /// Drops selected items that the tab no longer lists (deleted elsewhere, expired, or hidden by
   /// a changed search or filter), so a deletion never acts on an item the person cannot see.
+  /// A deletion target still settling, and an item whose deletion failed, stay selected.
   func retain(_ listed: Set<HistoryItemID>) {
-    guard selectedIDs.isSubset(of: listed) == false else { return }
-    selectedIDs.formIntersection(listed)
-    if let anchorID, listed.contains(anchorID) == false { self.anchorID = nil }
+    let keep = listed.union(pendingTargets).union(retryKinds.keys)
+    guard selectedIDs.isSubset(of: keep) == false else { return }
+    selectedIDs.formIntersection(keep)
+    if let anchorID, keep.contains(anchorID) == false { self.anchorID = nil }
   }
 
   /// Deletes the selected items through `coordinator`, one owner command per item.
@@ -94,19 +105,27 @@ final class HistorySelection {
   ) async {
     guard isDeleting == false, selectedIDs.isEmpty == false else { return }
     isDeleting = true
-    defer { isDeleting = false }
     let targets = selectedIDs
+    pendingTargets = targets
+    defer {
+      isDeleting = false
+      pendingTargets = []
+    }
     var summary = DeletionSummary()
     for id in targets {
-      switch await delete(id, kind) {
+      // A failed item retries with the kind that failed (its text may already be gone).
+      let itemKind = retryKinds[id] ?? kind
+      switch await delete(id, itemKind) {
       case .removed, .alreadyAbsent:
         summary.removed += 1
         selectedIDs.remove(id)
+        retryKinds[id] = nil
         if anchorID == id { anchorID = nil }
       case .skipped:
         summary.skipped += 1
       case .failed:
         summary.failed += 1
+        retryKinds[id] = itemKind
       }
     }
     lastDeletion = summary

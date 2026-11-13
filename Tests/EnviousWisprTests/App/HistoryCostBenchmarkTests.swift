@@ -175,7 +175,6 @@ struct HistoryCostBenchmarkTests {
       record("matchingDictations", Self.measure { _ = c.matchingHistoryItems(in: .dictations) })
       record("matchingTranscripts", Self.measure { _ = c.matchingHistoryItems(in: .transcripts) })
       record("matchingMeetings", Self.measure { _ = c.matchingHistoryItems(in: .meetings) })
-      record("listedCount", Self.measure { _ = c.listedCount })
       record("deletableCount", Self.measure { _ = c.deletableCount })
       // The open item is checked against the tab's list on every read of its state.
       let meetingItem = HistoryItemID.meeting(try #require(fixture.records.first).id)

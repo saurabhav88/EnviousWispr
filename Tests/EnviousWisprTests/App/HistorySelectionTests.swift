@@ -145,6 +145,57 @@ struct HistorySelectionTests {
     #expect(selection.selectedIDs == [items[2]])
   }
 
+  @Test("a failed item stays ticked after its row leaves the list, and retries with the kind that failed")
+  func failedItemSurvivesPruningAndRetries() async {
+    let selection = HistorySelection()
+    let items = Self.ids(2)
+    selection.select(Set(items))
+    let fake = FakeDelete()
+    fake.outcomes[items[0]] = .failed
+    await selection.deleteSelected(kind: .textAndRecordings, using: fake.run)
+    // Its text left the list (text removed, audio cleanup failed): the prune keeps it.
+    selection.retain([])
+    #expect(selection.selectedIDs == [items[0]])
+    #expect(selection.retryKinds[items[0]] == .textAndRecordings)
+
+    // Retried under another chosen kind, it still uses the kind that failed; success clears it.
+    fake.outcomes[items[0]] = .alreadyAbsent
+    await selection.deleteSelected(kind: .recordingsOnly, using: fake.run)
+    #expect(fake.calls.last.map { $0.1 } == .textAndRecordings)
+    #expect(selection.selectedIDs.isEmpty)
+    #expect(selection.retryKinds.isEmpty)
+    selection.retain([])
+    #expect(selection.selectedIDs.isEmpty)
+  }
+
+  @Test("targets stay ticked while their outcomes settle, even if the list drops them first")
+  func pruneDuringDeletionKeepsTargets() async {
+    let selection = HistorySelection()
+    let items = Self.ids(2)
+    selection.select(Set(items))
+    await selection.deleteSelected(kind: .textAndRecordings) { id, _ in
+      // The list redraws mid-deletion without either item.
+      selection.retain([])
+      #expect(selection.selectedIDs.isSuperset(of: Set(items).subtracting([items[0]])))
+      return id == items[0] ? .removed : .failed
+    }
+    #expect(selection.selectedIDs == [items[1]])
+  }
+
+  @Test("unticking a failed item or clearing dismisses its retry")
+  func untickDismissesRetry() async {
+    let selection = HistorySelection()
+    let items = Self.ids(1)
+    selection.select(Set(items))
+    let fake = FakeDelete()
+    fake.outcomes[items[0]] = .failed
+    await selection.deleteSelected(kind: .recordingsOnly, using: fake.run)
+    selection.toggle(items[0])
+    #expect(selection.retryKinds.isEmpty)
+    selection.retain([])
+    #expect(selection.selectedIDs.isEmpty)
+  }
+
   @Test("a second deletion while one runs is refused and sends nothing")
   func secondDeletionIsRefused() async {
     let selection = HistorySelection()

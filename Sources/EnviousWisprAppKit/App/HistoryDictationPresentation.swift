@@ -315,6 +315,14 @@ enum HistoryDictationPresentation {
   /// that text, and each anchor is kept only when both its first and last character fall in
   /// text the processing left literally unchanged. Everything else stays untimed: a time
   /// button is never guessed from a neighbour.
+  /// Off the main actor: the alignment behind the timeline scales with the text (Codex PR2 r5).
+  @concurrent
+  static func timelineInBackground(_ timing: RecordingTiming?, original: String) async
+    -> [TimedSpan]
+  {
+    timeline(timing, original: original)
+  }
+
   static func timeline(_ timing: RecordingTiming?, original: String) -> [TimedSpan] {
     guard let timing, let exact = timing.exactASRText, !timing.anchors.isEmpty,
       timing.textVersion == exactASRVersionPrefix + sha256Hex(exact)
@@ -325,7 +333,10 @@ enum HistoryDictationPresentation {
       guard anchor.utf16Start >= 0, anchor.utf16Start < anchor.utf16End,
         anchor.utf16End <= count, anchor.startSeconds.isFinite, anchor.startSeconds >= 0
       else { return nil }
-      guard let range = project(anchor.utf16Start..<anchor.utf16End, through: alignment.equalSpans)
+      guard
+        let range = projectForTiming(
+          anchor.utf16Start..<anchor.utf16End, original: exact, cleaned: original,
+          alignment: alignment)
       else { return nil }
       return TimedSpan(range: range, seconds: anchor.startSeconds)
     }
@@ -333,14 +344,39 @@ enum HistoryDictationPresentation {
   }
 
   /// Carries original-text passage times onto the polished text through the same rule.
-  static func polishedTimeline(_ spans: [TimedSpan], alignment: WordDiff.Alignment)
-    -> [TimedSpan]
-  {
+  static func polishedTimeline(
+    _ spans: [TimedSpan], original: String, polished: String, alignment: WordDiff.Alignment
+  ) -> [TimedSpan] {
     spans.compactMap { span in
-      project(span.range, through: alignment.equalSpans).map {
-        TimedSpan(range: $0, seconds: span.seconds)
-      }
+      projectForTiming(span.range, original: original, cleaned: polished, alignment: alignment)
+        .map { TimedSpan(range: $0, seconds: span.seconds) }
     }
+  }
+
+  /// `range` carried from `original` onto `cleaned` for a passage TIME, or nil when the
+  /// correspondence is not certain (Codex PR2 r5). The display alignment is deterministic but
+  /// not proof: when the passage's words occur more than once in the source, a single Myers
+  /// alignment cannot tell which copy the target kept, so the passage stays untimed rather than
+  /// borrowing the other copy's time. Unique passages use the endpoint rule of `project`.
+  static func projectForTiming(
+    _ range: Range<Int>, original: String, cleaned: String, alignment: WordDiff.Alignment
+  ) -> Range<Int>? {
+    guard let projected = project(range, through: alignment.equalSpans) else { return nil }
+    let passage = slice(original, range).trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !passage.isEmpty, occurrences(of: passage, in: original) == 1 else { return nil }
+    return projected
+  }
+
+  /// Non-overlapping occurrences of `needle` in `text`, compared literally.
+  static func occurrences(of needle: String, in text: String) -> Int {
+    var count = 0
+    var searchRange = text.startIndex..<text.endIndex
+    while let found = text.range(of: needle, options: .literal, range: searchRange) {
+      count += 1
+      if count > 1 { return count }
+      searchRange = found.upperBound..<text.endIndex
+    }
+    return count
   }
 
   /// `range` in the target text, when its first and last characters both sit in literally
@@ -353,9 +389,8 @@ enum HistoryDictationPresentation {
   /// not move its start. Requiring the whole passage to be literally unchanged would leave
   /// almost every polished sentence untimed, because polish almost always changes a word.
   ///
-  /// **Known limit, stated:** when the same words occur twice and the cleanup keeps one copy,
-  /// the alignment decides which copy was kept, so the kept passage may carry the other copy's
-  /// time. Both copies are the same words; the seek plays one of them.
+  /// Passage TIMES go through `projectForTiming`, which also refuses passages whose words occur
+  /// more than once in the source (which copy the target kept is not provable).
   static func project(_ range: Range<Int>, through spans: [WordDiff.EqualSpan]) -> Range<Int>? {
     guard !range.isEmpty, let start = project(range.lowerBound, through: spans),
       let last = project(range.upperBound - 1, through: spans), last >= start

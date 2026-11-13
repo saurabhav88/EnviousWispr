@@ -147,7 +147,7 @@ struct TranscriptCoordinatorFilterTests {
   // MARK: The counts
 
   @Test("the listed count never counts a held offer; onboarding's count is dictations only")
-  func listedCountFollowsTheFilter() async throws {
+  func completedCountSkipsHeldOffers() async throws {
     let (coordinator, store) = makeCoordinator()
     try store.savePending(held("cancelled", age: 60))
     coordinator.load()
@@ -156,7 +156,7 @@ struct TranscriptCoordinatorFilterTests {
     try await coordinator.saveAndShow(dictation("two", ageSeconds: 20))
     try await coordinator.saveAndShow(transcript("three", file: "three.m4a", ageSeconds: 10))
 
-    #expect(coordinator.listedCount == 3, "three completed rows, the held offer is not one")
+    #expect(coordinator.completedItemCount == 3, "three completed rows, the held offer is not one")
     #expect(coordinator.dictationCount == 2)
     coordinator.setHistoryQuery("two", in: .dictations)
     #expect(coordinator.dictationCount == 2, "onboarding's count does not follow a tab's search")
@@ -210,7 +210,7 @@ struct TranscriptCoordinatorFilterTests {
   /// The kind filter is one more pass over the same array as the search, so it must cost the
   /// same order as the pass History already makes. A relation between two passes measured in
   /// one process, never an absolute: an absolute would freeze this machine, not the code.
-  @Test("filtering 25,000 rows costs the same order as listing them")
+  @Test("listing one kind of 25,000 rows costs the same order as listing another")
   func filterCostIsTheSameOrderAsListing() throws {
     let (coordinator, _) = makeCoordinator()
     var rows: [Transcript] = []
@@ -237,12 +237,12 @@ struct TranscriptCoordinatorFilterTests {
       return (best, count)
     }
 
-    let (unfiltered, allCount) = fastest { coordinator.listedItems.count }
+    let (unfiltered, allCount) = fastest { coordinator.matchingHistoryItems(in: .dictations).count }
     let (filtered, transcriptCount) = fastest {
       coordinator.matchingHistoryItems(in: .transcripts).count
     }
 
-    #expect(allCount == 25_000)
+    #expect(allCount == 20_000)
     #expect(transcriptCount == 5_000)
     #expect(
       filtered <= unfiltered * 4,
@@ -265,7 +265,7 @@ struct TranscriptCoordinatorFilterTests {
           coordinator.matchingRowIDs(in: tab).contains(expired.id) == false, "expired under \(tab)")
       }
       #expect(coordinator.matchingRowIDs(in: .dictations) == [kept.id])
-      #expect(coordinator.listedCount == 1, "the kept dictation is the only row counted")
+      #expect(coordinator.completedItemCount == 1, "the kept dictation is the only row counted")
     }
 
     @Test("an open recovery that expires closes")

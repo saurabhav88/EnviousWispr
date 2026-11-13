@@ -25,6 +25,15 @@ extension TranscriptCoordinator {
     historyState(for: tab).openItemID
   }
 
+  /// Completed items across the three tabs under their current searches and filters: every
+  /// listed item except held Escape Recovery rows (a meeting with no row yet counts). The
+  /// count the retired sidebar showed, for tests about held rows and Delete All.
+  var completedItemCount: Int {
+    HistoryTab.allCases.reduce(0) { total, tab in
+      total + matchingHistoryItems(in: tab).filter { $0.row?.escapeRecoveredAt == nil }.count
+    }
+  }
+
   /// The row IDs `tab` lists now under its search and filters, all pages.
   func matchingRowIDs(in tab: HistoryTab) -> [UUID] {
     matchingHistoryItems(in: tab).compactMap(\.row?.id)

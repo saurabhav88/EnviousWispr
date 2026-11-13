@@ -91,7 +91,7 @@ struct MeetingHistoryPresentationTests {
     #expect(rig.coordinator.matchingHistoryItems(in: .dictations).map(\.id) == [.transcript(dictation.id)])
     #expect(rig.coordinator.matchingHistoryItems(in: .transcripts).isEmpty)
     #expect(rig.coordinator.matchingHistoryItems(in: .meetings).map(\.id) == [.meeting(meetingID)])
-    #expect(rig.coordinator.listedCount == 2)
+    #expect(rig.coordinator.completedItemCount == 2)
     #expect(rig.coordinator.dictationCount == 1)
   }
 
