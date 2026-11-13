@@ -65,8 +65,16 @@ struct HistoryMeetingCard: View {
       HStack(alignment: .top, spacing: DesignSpacing.lg) {
         VStack(alignment: .leading, spacing: DesignSpacing.xxs) {
           subtitle(card)
-          // The rename controls sit beside Open, never inside it.
-          MeetingInlineTitle(meetingID: meetingID)
+          // The rename controls sit beside Open, never inside it. A row whose meeting folder is
+          // gone has no record to rename, so it shows its name only.
+          if card.canRename {
+            MeetingInlineTitle(meetingID: meetingID)
+          } else {
+            Text(verbatim: card.title)
+              .font(.stRowTitle)
+              .foregroundStyle(.stTextPrimary)
+              .lineLimit(1)
+          }
           if let people = card.speakers {
             Label {
               Text(verbatim: people)
@@ -94,6 +102,9 @@ struct HistoryMeetingCard: View {
             comment: "History meeting card: VoiceOver label of Open. %@ is the meeting's name."))
       }
       line(card.line)
+      if let attention = card.attentionLine {
+        line(.status(attention, .error))
+      }
       if let audio = card.audioLine {
         Label {
           Text(verbatim: audio)

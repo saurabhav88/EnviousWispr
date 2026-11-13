@@ -26,7 +26,9 @@ struct MeetingInlineTitle: View {
   @State private var hovering = false
   @State private var pushedCursor = false
   @FocusState private var fieldFocused: Bool
-  @FocusState private var controlFocused: Bool
+  @FocusState private var controlFocused: TitleControl?
+
+  private enum TitleControl: Hashable { case title, pencil }
 
   private typealias P = MeetingAfterPresentation
 
@@ -68,7 +70,7 @@ struct MeetingInlineTitle: View {
           .contentShape(Rectangle())
       }
       .buttonStyle(.plain)
-      .focused($controlFocused)
+      .focused($controlFocused, equals: .title)
       .help(Text(verbatim: P.renameHelp))
       .accessibilityLabel(Text(verbatim: title))
       .accessibilityHint(Text(verbatim: P.renameHelp))
@@ -85,11 +87,12 @@ struct MeetingInlineTitle: View {
           .contentShape(Rectangle())
       }
       .buttonStyle(.borderless)
+      .focused($controlFocused, equals: .pencil)
       .foregroundStyle(.stTextSecondary)
       .help(Text(verbatim: P.renameHelp))
       .accessibilityLabel(Text(verbatim: P.renameHelp))
       // Kept in the layout so the title never shifts; shown on hover and keyboard focus.
-      .opacity(hovering || controlFocused ? 1 : 0)
+      .opacity(hovering || controlFocused != nil ? 1 : 0)
     }
     .onHover { hovering = $0 }
   }
@@ -149,7 +152,7 @@ struct MeetingInlineTitle: View {
 
   private func cancel() {
     edit.cancel()
-    if !edit.isEditing { controlFocused = true }
+    if !edit.isEditing { controlFocused = .title }
   }
 
   private func commit() {
@@ -163,7 +166,7 @@ struct MeetingInlineTitle: View {
       Task {
         let saved = await coordinator.rename(meetingID: id, title: title)
         edit.finish(saved: saved)
-        if saved { controlFocused = true } else { fieldFocused = true }
+        if saved { controlFocused = .title } else { fieldFocused = true }
       }
     }
   }

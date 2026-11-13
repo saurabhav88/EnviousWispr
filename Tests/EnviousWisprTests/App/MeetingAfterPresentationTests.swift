@@ -94,6 +94,31 @@ struct MeetingAfterPresentationTests {
     #expect(card.line == .preview("Ana: Hello there."))
     #expect(card.status?.label == MeetingsPresentation.statusLabel(.transcribing))
     #expect(card.speakers == MeetingsPresentation.speakers(.labeled(count: 2)))
+    #expect(card.attentionLine == nil)
+  }
+
+  @Test("a retained preview never hides a retry that waits for space or failed")
+  func retainedPreviewKeepsTheReason() {
+    let queued = Self.record(.queued, committed: true)
+    let waiting = P.card(
+      P.CardInputs(
+        record: queued, row: Self.row(meetingID: queued.id), queueWaitsForSpace: true,
+        previewText: "Ana: Hello there."))
+    #expect(waiting.line == .preview("Ana: Hello there."))
+    #expect(waiting.attentionLine == P.waitingForSpaceLine)
+
+    let failedRecord = Self.record(.failed, failure: "audio_deleted", committed: true)
+    let failed = P.card(
+      P.CardInputs(
+        record: failedRecord, row: Self.row(meetingID: failedRecord.id),
+        previewText: "Ana: Hello there."))
+    #expect(failed.line == .preview("Ana: Hello there."))
+    #expect(failed.attentionLine == MeetingsPresentation.failureLine(failedRecord))
+
+    let plainWait = P.card(
+      P.CardInputs(
+        record: queued, row: Self.row(meetingID: queued.id), previewText: "Ana: Hello there."))
+    #expect(plainWait.attentionLine == nil)
   }
 
   @Test("ready: the summary's first line wins over the transcript; no summary says so")

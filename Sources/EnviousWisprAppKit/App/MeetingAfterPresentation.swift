@@ -28,6 +28,9 @@ enum MeetingAfterPresentation {
     /// Shown beside the title while the meeting is not ready (Recording, Waiting, …).
     let status: Status?
     let line: Line
+    /// What the user must act on while a committed transcript stays shown (a retry waiting for
+    /// disk space, or a retry that failed), so the retained preview never hides it.
+    let attentionLine: String?
     /// The quiet facts under the line: the speech engine and who wrote the summary.
     let footer: [String]
     /// A sentence about the recording when it is gone, or nil.
@@ -79,7 +82,7 @@ enum MeetingAfterPresentation {
         callApp: nil, length: nil,
         speakers: MeetingsPresentation.speakers(row?.speakerAnalysis), status: nil,
         line: .preview(inputs.previewText ?? MeetingHistoryPresentation.unavailableMessage),
-        footer: row.map { [$0.backendType.displayName] } ?? [], audioLine: nil, canRename: false)
+        attentionLine: nil, footer: row.map { [$0.backendType.displayName] } ?? [], audioLine: nil, canRename: false)
     }
     let status = MeetingsPresentation.status(record, processingID: inputs.processingID)
     let committed = record.committedTranscriptGeneration != nil
@@ -94,6 +97,7 @@ enum MeetingAfterPresentation {
       speakers: hasRow ? MeetingsPresentation.speakers(inputs.row?.speakerAnalysis) : nil,
       status: status == .ready ? nil : cardStatus(status, record: record, inputs: inputs),
       line: cardLine(record, status: status, hasRow: hasRow, inputs: inputs),
+      attentionLine: hasRow ? attentionLine(record, status: status, inputs: inputs) : nil,
       footer: footer(record, committed: committed, inputs: inputs),
       audioLine: audioLine(record, committed: committed),
       canRename: record.isWritableByThisBuild && !record.deletionRequested)
@@ -145,6 +149,19 @@ enum MeetingAfterPresentation {
     case .ready:
       // Ready, but History has not listed its row yet, or the row could not be read.
       return .status(MeetingHistoryPresentation.unavailableMessage, .neutral)
+    }
+  }
+
+  /// A reason the retained preview would otherwise hide. Only for a meeting whose committed
+  /// transcript is shown; without one, `cardLine` already says it.
+  private static func attentionLine(
+    _ record: MeetingRecord, status: MeetingsPresentation.Status, inputs: CardInputs
+  ) -> String? {
+    switch status {
+    case .waiting where inputs.queueWaitsForSpace: return waitingForSpaceLine
+    case .needsAttention: return MeetingsPresentation.failureLine(record) ?? needsAttentionLine
+    case .recording, .saving, .waiting, .interrupted, .transcribing, .ready, .notesOnly:
+      return nil
     }
   }
 
