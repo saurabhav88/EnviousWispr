@@ -46,7 +46,7 @@ struct DictationRecordingSection: View {
           }
         }
       case .absent(let reason):
-        Text(Self.absenceLine(reason))
+        Text(HistoryDictationCard.absenceLine(reason))
           .font(.stHelper)
           .foregroundStyle(.stTextSecondary)
       case .unreadable:
@@ -102,47 +102,6 @@ struct DictationRecordingSection: View {
     .settingsButton(.quiet, size: .medium, isEnabled: true)
   }
 
-  /// One line per recorded reason (#3147 §3.4). Legacy or unexplained absence never guesses. An
-  /// expiry names the keep period recorded when it happened, never today's setting.
-  static func absenceLine(_ absence: RecordedAbsence?) -> LocalizedStringResource {
-    switch absence?.reason {
-    case .recordingsOff:
-      LocalizedStringResource(
-        "Recordings were off for this dictation.",
-        comment: "History: no recording because recordings were off when this dictation started.")
-    case .saveFailed:
-      LocalizedStringResource(
-        "Recording couldn't be saved.",
-        comment: "History: the recording of this dictation failed to save.")
-    case .deleted:
-      LocalizedStringResource(
-        "Recording deleted. The text stays.",
-        comment: "History: the user deleted this dictation's recording and kept its text.")
-    case .expired:
-      if absence?.expiredAfterDays == 1 {
-        LocalizedStringResource(
-          "Recording expired after 1 day. The text stays.",
-          comment: "History: the recording was removed after the one-day keep period chosen in Settings.")
-      } else if let days = absence?.expiredAfterDays {
-        LocalizedStringResource(
-          "Recording expired after \(days) days. The text stays.",
-          comment: "History: the recording was removed after the keep period chosen in Settings. %lld is a number of days, more than one.")
-      } else {
-        LocalizedStringResource(
-          "Recording removed after your keep period. The text stays.",
-          comment: "History: the recording was removed by the user's recording keep period.")
-      }
-    case .removedForSpace:
-      LocalizedStringResource(
-        "Recording removed to free space. The text stays.",
-        comment: "History: the recording was removed automatically to free disk space.")
-    case nil:
-      LocalizedStringResource(
-        "Recording unavailable.",
-        comment: "History: this dictation has no recording and no recorded reason.")
-    }
-  }
-
   /// Reads the recording's state and keeps a player only for the current file. A lookup that a
   /// deletion overtook is dropped, so a stale answer never builds a player for deleted audio.
   private func refresh() async {
@@ -157,22 +116,12 @@ struct DictationRecordingSection: View {
       dropPlayer()
       return
     }
-    guard Self.needsNewPlayer(current: player, currentURL: playerURL, read: url) else { return }
+    guard HistoryDictationCard.needsNewPlayer(current: player, currentURL: playerURL, read: url) else { return }
     dropPlayer()
     player = MeetingPlaybackController(
       media: .dictation(url), durationMs: durationMs, output: MeetingPlaybackEngineOutput(),
       sourceID: id, arbiter: arbiter)
     playerURL = url
-  }
-
-  /// Whether a fresh, deletion-fenced read of available audio at `url` needs a new player. A
-  /// player a deletion stopped stays stopped for good; when that removal failed and the audio is
-  /// still there, a new player replaces it, so Play works again.
-  static func needsNewPlayer(
-    current: MeetingPlaybackController?, currentURL: URL?, read url: URL
-  ) -> Bool {
-    guard let current else { return true }
-    return currentURL != url || current.state == .unavailable
   }
 
   private func dropPlayer() {

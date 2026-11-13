@@ -289,3 +289,187 @@ struct WordDiffTests {
     }
   }
 }
+
+/// #3147: the History card's alignment. What fails when these fail is a time button that
+/// seeks to the wrong words, or an edit drawn on a word the cleanup never touched.
+@Suite("WordDiff alignment (#3147)", .tags(.productOutcome))
+struct WordDiffAlignmentTests {
+
+  private static func slice(_ s: String, _ r: Range<Int>) -> String {
+    (s as NSString).substring(with: NSRange(location: r.lowerBound, length: r.count))
+  }
+
+  /// The promises every alignment keeps: an equal span reads identically on both sides,
+  /// every word on each side sits in exactly one span or change, and both lists run in
+  /// reading order without overlapping.
+  private static func checkInvariants(
+    _ al: WordDiff.Alignment, original: String, cleaned: String,
+    sourceLocation: SourceLocation = #_sourceLocation
+  ) {
+    for span in al.equalSpans {
+      // UTF-16 units, not String ==, which calls canonically equivalent spellings equal.
+      #expect(
+        Array(slice(original, span.originalRange).utf16)
+          == Array(slice(cleaned, span.cleanedRange).utf16),
+        "span \(span) is not literal", sourceLocation: sourceLocation)
+    }
+    for (side, text) in [(0, original), (1, cleaned)] {
+      let words = WordDiff.tokenize(text).map(\.range)
+      let ranges =
+        (al.equalSpans.map { side == 0 ? $0.originalRange : $0.cleanedRange }
+        + al.changes.map { side == 0 ? $0.originalRange : $0.cleanedRange })
+        .filter { !$0.isEmpty }
+        .sorted { $0.lowerBound < $1.lowerBound }
+      for (x, y) in zip(ranges, ranges.dropFirst()) {
+        #expect(x.upperBound <= y.lowerBound, "overlap \(x) \(y)", sourceLocation: sourceLocation)
+      }
+      for word in words {
+        let holders = ranges.filter { $0.contains(word.lowerBound) }
+        #expect(holders.count == 1, "word \(word) held by \(holders)", sourceLocation: sourceLocation)
+        if let holder = holders.first {
+          #expect(holder.upperBound >= word.upperBound, sourceLocation: sourceLocation)
+        }
+      }
+      let total = text.utf16.count
+      for r in ranges { #expect(r.lowerBound >= 0 && r.upperBound <= total) }
+    }
+    let spanOrder = al.equalSpans.map(\.originalRange.lowerBound)
+    #expect(spanOrder == spanOrder.sorted(), sourceLocation: sourceLocation)
+    let changeOrder = al.changes.map(\.cleanedRange.lowerBound)
+    #expect(changeOrder == changeOrder.sorted(), sourceLocation: sourceLocation)
+  }
+
+  @Test("text the cleanup never touched is one equal span and no change")
+  func noPolishIsOneSpan() {
+    let text = "  call the doctor\ntomorrow morning  "
+    let al = WordDiff.alignment(original: text, cleaned: text)
+    #expect(al.changes.isEmpty)
+    #expect(al.equalSpans.count == 1)
+    // Leading and trailing whitespace is layout, outside the span.
+    #expect(Self.slice(text, al.equalSpans[0].originalRange) == "call the doctor\ntomorrow morning")
+    #expect(al.equalSpans[0].originalRange == al.equalSpans[0].cleanedRange)
+    Self.checkInvariants(al, original: text, cleaned: text)
+  }
+
+  @Test("empty text aligns to nothing; an empty side is one insertion or one removal")
+  func emptySides() {
+    #expect(WordDiff.alignment(original: "", cleaned: "") == .init(equalSpans: [], changes: []))
+    let added = WordDiff.alignment(original: "", cleaned: "Hi there")
+    #expect(added == .init(equalSpans: [], changes: [.init(originalRange: 0..<0, cleanedRange: 0..<8)]))
+    let removed = WordDiff.alignment(original: "um uh", cleaned: "   ")
+    #expect(
+      removed == .init(equalSpans: [], changes: [.init(originalRange: 0..<5, cleanedRange: 0..<0)]))
+  }
+
+  @Test("a case or punctuation edit is a change here, though compare calls it the same word")
+  func caseAndPunctuationAreChanges() {
+    let original = "hello there how are you"
+    let cleaned = "Hello there, how are you?"
+    // compare's word count ignores them; the alignment must not.
+    #expect(WordDiff.compare(original: original, cleaned: cleaned).segments.allSatisfy { $0.kind == .same })
+    let al = WordDiff.alignment(original: original, cleaned: cleaned)
+    #expect(
+      al.equalSpans == [.init(originalRange: 12..<19, cleanedRange: 13..<20)],
+      "\(al.equalSpans)")
+    #expect(
+      al.changes == [
+        .init(originalRange: 0..<11, cleanedRange: 0..<12),
+        .init(originalRange: 20..<23, cleanedRange: 21..<25),
+      ], "\(al.changes)")
+    #expect(Self.slice(original, al.changes[0].originalRange) == "hello there")
+    #expect(Self.slice(cleaned, al.changes[0].cleanedRange) == "Hello there,")
+    Self.checkInvariants(al, original: original, cleaned: cleaned)
+  }
+
+  @Test("a repeated word removed once leaves the other copies equal")
+  func repeatedWords() {
+    let original = "I I I want want it"
+    let cleaned = "I want it."
+    let al = WordDiff.alignment(original: original, cleaned: cleaned)
+    Self.checkInvariants(al, original: original, cleaned: cleaned)
+    let removedText = al.changes.filter { $0.cleanedRange.isEmpty }
+      .map { Self.slice(original, $0.originalRange) }
+    // Two extra "I" and one extra "want" are removed; exactly one of each survives.
+    #expect(removedText.joined(separator: " ").split(separator: " ").sorted() == ["I", "I", "want"])
+    let kept = al.equalSpans.map { Self.slice(cleaned, $0.cleanedRange) }
+    #expect(kept.joined(separator: " ").split(separator: " ") == ["I", "want"])
+    // "it" against "it." is a punctuation change.
+    #expect(al.changes.last.map { Self.slice(cleaned, $0.cleanedRange) } == "it.")
+
+    let stutter = WordDiff.alignment(original: "the the cat sat", cleaned: "the cat sat")
+    #expect(stutter.changes.count == 1)
+    #expect(stutter.changes[0].originalRange.count == 3)
+    #expect(stutter.changes[0].cleanedRange.isEmpty)
+    Self.checkInvariants(stutter, original: "the the cat sat", cleaned: "the cat sat")
+  }
+
+  @Test("ranges count UTF-16 units, so emoji and accents land on the right characters")
+  func unicodeRanges() {
+    let original = "café 👋🏽 naïve résumé"
+    let cleaned = "Café 👋🏽 naïve résumé."
+    let al = WordDiff.alignment(original: original, cleaned: cleaned)
+    Self.checkInvariants(al, original: original, cleaned: cleaned)
+    // The waving hand with a skin tone is four UTF-16 units; "naïve" ends at 15.
+    #expect(al.equalSpans == [.init(originalRange: 5..<15, cleanedRange: 5..<15)])
+    #expect(Self.slice(original, al.equalSpans[0].originalRange) == "👋🏽 naïve")
+    #expect(al.changes.map { Self.slice(cleaned, $0.cleanedRange) } == ["Café", "résumé."])
+    // A diacritic is a different word in compare too, so an accent edit is a change.
+    let accent = WordDiff.alignment(original: "si claro", cleaned: "sí claro")
+    #expect(accent.changes == [.init(originalRange: 0..<2, cleanedRange: 0..<2)])
+    // The same accented word in two Unicode spellings has different UTF-16 lengths, so it can
+    // never be an equal span, even though Swift's == calls the two strings equal.
+    let composed = "caf\u{00E9} ok"
+    let decomposed = "cafe\u{0301} ok"
+    let spelled = WordDiff.alignment(original: composed, cleaned: decomposed)
+    Self.checkInvariants(spelled, original: composed, cleaned: decomposed)
+    #expect(spelled.equalSpans == [.init(originalRange: 5..<7, cleanedRange: 6..<8)])
+    #expect(spelled.changes == [.init(originalRange: 0..<4, cleanedRange: 0..<5)])
+  }
+
+  @Test("an insertion sits after the word before it; a replacement covers both sides")
+  func insertionAndReplacement() {
+    let added = WordDiff.alignment(
+      original: "call the doctor tomorrow", cleaned: "call the doctor tomorrow morning")
+    #expect(added.equalSpans == [.init(originalRange: 0..<24, cleanedRange: 0..<24)])
+    #expect(added.changes == [.init(originalRange: 24..<24, cleanedRange: 25..<32)])
+
+    let original = "we gonna ship it"
+    let cleaned = "we are going to ship it"
+    let replaced = WordDiff.alignment(original: original, cleaned: cleaned)
+    Self.checkInvariants(replaced, original: original, cleaned: cleaned)
+    #expect(replaced.changes.count == 1)
+    #expect(Self.slice(original, replaced.changes[0].originalRange) == "gonna")
+    #expect(Self.slice(cleaned, replaced.changes[0].cleanedRange) == "are going to")
+  }
+
+  @Test("different whitespace between kept words breaks the span without inventing a change")
+  func whitespaceBreaksSpan() {
+    let al = WordDiff.alignment(original: "alpha  beta\ngamma", cleaned: "alpha beta gamma")
+    #expect(al.changes.isEmpty)
+    #expect(al.equalSpans.count == 3)
+    Self.checkInvariants(al, original: "alpha  beta\ngamma", cleaned: "alpha beta gamma")
+  }
+
+  @Test("the invariants hold and agree with compare on 300 random cases")
+  func randomCases() {
+    var rng = WordDiffTests.SeededGenerator(seed: 3147)
+    let vocabulary = ["the", "The", "cat", "cat,", "sat", "um", "é", "👋🏽", "on", "mat."]
+    for _ in 0..<300 {
+      let original = (0..<Int.random(in: 0...12, using: &rng)).map { _ in
+        vocabulary.randomElement(using: &rng)!
+      }.joined(separator: " ")
+      let cleaned = (0..<Int.random(in: 0...12, using: &rng)).map { _ in
+        vocabulary.randomElement(using: &rng)!
+      }.joined(separator: Bool.random(using: &rng) ? " " : "  ")
+      let al = WordDiff.alignment(original: original, cleaned: cleaned)
+      Self.checkInvariants(al, original: original, cleaned: cleaned)
+      // Every word inside an equal span is a word compare also calls the same.
+      let spanWords = al.equalSpans.reduce(0) {
+        $0 + WordDiff.tokenize(Self.slice(original, $1.originalRange)).count
+      }
+      let sameWords = WordDiff.compare(original: original, cleaned: cleaned).segments
+        .filter { $0.kind == .same && !$0.text.allSatisfy(\.isWhitespace) }.count
+      #expect(spanWords <= sameWords, "\(original) | \(cleaned)")
+    }
+  }
+}
