@@ -1124,24 +1124,24 @@
         }
       }
     },
-    "%lld can't be deleted right now and kept their audio." : {
+    "Meetings in use kept their audio: %lld." : {
       "comment" : "App Settings, Recordings: meetings in use (recording, transcribing, saving) that Delete all meeting audio left alone. %lld is how many.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "%lld können gerade nicht gelöscht werden und behalten ihr Audio."
+            "state" : "translated",
+            "value" : "Meetings in Verwendung haben ihr Audio behalten: %lld."
           }
         }
       }
     },
-    "%lld couldn't be deleted. Try again." : {
+    "Meeting audio that couldn't be deleted: %lld. Try again." : {
       "comment" : "App Settings, Recordings: meetings whose audio could not be deleted. %lld is how many.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "%lld konnten nicht gelöscht werden. Versuch es noch einmal."
+            "state" : "translated",
+            "value" : "Meeting-Audio, das nicht gelöscht werden konnte: %lld. Versuch es noch einmal."
           }
         }
       }
@@ -1151,7 +1151,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "%lld Diktataufnahmen konnten nicht gelöscht werden. Versuch es noch einmal."
           }
         }
@@ -1373,7 +1373,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "1 GB"
           }
         }
@@ -1406,7 +1406,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "1 Tag"
           }
         }
@@ -1615,7 +1615,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "2 GB"
           }
         }
@@ -1648,7 +1648,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "30 Tage"
           }
         }
@@ -1670,7 +1670,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "5 GB"
           }
         }
@@ -1703,7 +1703,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "7 Tage"
           }
         }
@@ -1714,7 +1714,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "90 Tage"
           }
         }
@@ -1867,8 +1867,8 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Eine Aufnahme, die du im Verlauf mit „Diese Aufnahme behalten“ markierst, wird nie automatisch entfernt. Wählst du einen kürzeren Zeitraum, siehst du zuerst, wie viele Aufnahmen er entfernt."
+            "state" : "translated",
+            "value" : "Eine Aufnahme, die du im Verlauf mit „Diese Aufnahme behalten“ markierst, wird nie automatisch entfernt. Wählst du eine kürzere Aufbewahrungsdauer, siehst du zuerst, wie viele Aufnahmen entfernt werden."
           }
         }
       }
@@ -2527,7 +2527,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Insgesamt etwa %@"
           }
         }
@@ -4175,7 +4175,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Anwenden"
           }
         }
@@ -4230,8 +4230,8 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Mich bitten, Platz zu schaffen"
+            "state" : "translated",
+            "value" : "Mich bitten, Speicherplatz freizugeben"
           }
         }
       }
@@ -4252,7 +4252,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Dich fragen oder die ältesten Diktataufnahmen entfernen."
           }
         }
@@ -4285,7 +4285,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Insgesamt mindestens %@"
           }
         }
@@ -4372,8 +4372,8 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Das Audio eines Meetings, das gerade aufnimmt oder transkribiert wird, wird nie entfernt. Ohne Audio kann ein Meeting nicht erneut transkribiert werden."
+            "state" : "translated",
+            "value" : "Das Audio eines Meetings, das gerade aufgenommen oder transkribiert wird, wird nie entfernt. Ohne Audio kann ein Meeting nicht erneut transkribiert werden."
           }
         }
       }
@@ -4536,7 +4536,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Eine behaltene Aufnahme wird nie automatisch entfernt. Du kannst sie weiterhin selbst löschen."
           }
         }
@@ -6086,7 +6086,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Wähle, wie lange Aufnahmen behalten werden. Der Text bleibt immer erhalten."
           }
         }
@@ -6998,7 +6998,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Konnte nicht vollständig gemessen werden"
           }
         }
@@ -7317,7 +7317,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Zählt Diktataufnahmen und Meeting-Audio auf diesem Mac. Text, Notizen, Zusammenfassungen und Audio zur Absturzwiederherstellung sind nicht enthalten."
           }
         }
@@ -7534,7 +7534,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Alle Diktataufnahmen löschen"
           }
         }
@@ -7545,7 +7545,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Alle Diktataufnahmen löschen?"
           }
         }
@@ -7576,7 +7576,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Gesamtes Meeting-Audio löschen"
           }
         }
@@ -7587,7 +7587,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Gesamtes Meeting-Audio löschen?"
           }
         }
@@ -7631,7 +7631,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Aufnahme löschen, Text behalten"
           }
         }
@@ -7642,7 +7642,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Aufnahmen löschen"
           }
         }
@@ -7686,7 +7686,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "%lld Diktataufnahmen gelöscht. Der Text bleibt erhalten."
           }
         }
@@ -7697,7 +7697,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "1 Diktataufnahme gelöscht. Der Text bleibt erhalten."
           }
         }
@@ -7741,7 +7741,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Audio von %lld Meetings gelöscht."
           }
         }
@@ -7752,7 +7752,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Audio von 1 Meeting gelöscht."
           }
         }
@@ -7795,8 +7795,8 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Beim Löschen wird nur Audio entfernt, auch Aufnahmen, die du behalten wolltest. Das lässt sich nicht rückgängig machen."
+            "state" : "translated",
+            "value" : "Beim Löschen wird nur Audio entfernt, auch Aufnahmen, die du zum Behalten markiert hast. Das lässt sich nicht rückgängig machen."
           }
         }
       }
@@ -8023,7 +8023,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Diktataufnahmen: etwa %@"
           }
         }
@@ -8034,7 +8034,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Diktataufnahmen: konnten nicht gemessen werden"
           }
         }
@@ -9185,8 +9185,8 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "EnviousWispr speichert zu jedem gespeicherten Diktat eine Aufnahme auf diesem Mac, damit du sie im Verlauf abspielen kannst. Aufnahmen bleiben für den Zeitraum, den du unter Einstellungen > App-Einstellungen > Aufnahmen gewählt hast. Schaltest du dort „Diktataufnahmen speichern“ aus, entstehen keine neuen, vorhandene bleiben erhalten. Lösche eine Aufnahme im Verlauf oder alle mit „Alle Diktataufnahmen löschen“. Der Text bleibt immer erhalten."
+            "state" : "translated",
+            "value" : "EnviousWispr speichert zu jedem gespeicherten Diktat eine Aufnahme auf diesem Mac, damit du sie im Verlauf abspielen kannst. Aufnahmen bleiben für die Aufbewahrungsdauer, die du unter Einstellungen > App-Einstellungen > Aufnahmen gewählt hast. Schaltest du dort „Diktataufnahmen speichern“ aus, entstehen keine neuen, vorhandene bleiben erhalten. Lösche eine Aufnahme im Verlauf oder alle mit „Alle Diktataufnahmen löschen“. Der Text bleibt immer erhalten."
           }
         }
       }
@@ -9196,7 +9196,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "EnviousWispr speichert zu jedem gespeicherten Diktat eine Aufnahme auf diesem Mac, damit du sie im Verlauf abspielen kannst. Aufnahmen bleiben, bis du sie löschst, oder für eine Aufbewahrungsdauer, die du unter Einstellungen > App-Einstellungen > Aufnahmen wählst. Schaltest du dort „Diktataufnahmen speichern“ aus, entstehen keine neuen, vorhandene bleiben erhalten. Lösche eine Aufnahme im Verlauf oder alle mit „Alle Diktataufnahmen löschen“. Der Text bleibt immer erhalten."
           }
         }
@@ -9368,7 +9368,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Das Audio aller Diktate wird gelöscht, auch behaltene Aufnahmen. Der Text bleibt erhalten. Das lässt sich nicht rückgängig machen."
           }
         }
@@ -9401,8 +9401,8 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Das Audio aller Meetings wird gelöscht. Meetings, ihr Text, Notizen und Zusammenfassungen bleiben erhalten. Ein Meeting, das gerade aufnimmt oder transkribiert wird, behält sein Audio. Das lässt sich nicht rückgängig machen."
+            "state" : "translated",
+            "value" : "Das Audio aller Meetings wird gelöscht. Meetings, ihr Text, Notizen und Zusammenfassungen bleiben erhalten. Ein Meeting, das gerade aufgenommen oder transkribiert wird, behält sein Audio. Das lässt sich nicht rückgängig machen."
           }
         }
       }
@@ -10479,8 +10479,8 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Erhalte eine Warnung, wenn Aufnahmen mehr Speicher belegen."
+            "state" : "translated",
+            "value" : "Erhalte eine Warnung, wenn Aufnahmen mehr Speicher als diesen Wert belegen."
           }
         }
       }
@@ -11345,7 +11345,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Davon werden etwa %@ noch gespeichert"
           }
         }
@@ -11816,7 +11816,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Diktataufnahmen behalten"
           }
         }
@@ -11843,8 +11843,8 @@
         },
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "%1$@ behalten? %2$lld Aufnahmen sind älter und werden entfernt. Ihr Text bleibt erhalten."
+            "state" : "translated",
+            "value" : "Aufnahmen für %1$@ behalten? %2$lld Aufnahmen sind älter und würden entfernt. Der Text bleibt erhalten."
           }
         }
       }
@@ -11854,8 +11854,8 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "%@ behalten? 1 Aufnahme ist älter und wird entfernt. Ihr Text bleibt erhalten."
+            "state" : "translated",
+            "value" : "Aufnahmen für %@ behalten? 1 Aufnahme ist älter und würde entfernt. Der Text bleibt erhalten."
           }
         }
       }
@@ -11865,8 +11865,8 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "%@ behalten? Keine Aufnahme ist alt genug, um jetzt entfernt zu werden."
+            "state" : "translated",
+            "value" : "Aufnahmen für %@ behalten? Keine Aufnahme ist alt genug, um jetzt entfernt zu werden."
           }
         }
       }
@@ -11876,8 +11876,8 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "%@ behalten? Die Aufnahmen, die dadurch entfernt werden, können gerade nicht gezählt werden."
+            "state" : "translated",
+            "value" : "Aufnahmen für %@ behalten? Wie viele Aufnahmen dadurch entfernt würden, kann gerade nicht ermittelt werden."
           }
         }
       }
@@ -11897,7 +11897,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Meeting-Audio behalten"
           }
         }
@@ -11930,7 +11930,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Speichert das Audio jedes neuen Diktats auf diesem Mac, damit du es abspielen kannst."
           }
         }
@@ -11963,7 +11963,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Diese Aufnahme behalten"
           }
         }
@@ -13541,7 +13541,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Wird gemessen …"
           }
         }
@@ -13596,7 +13596,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Meeting-Audio: etwa %@"
           }
         }
@@ -13607,7 +13607,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Meeting-Audio: mindestens %@; einige Meetings konnten nicht gemessen werden"
           }
         }
@@ -13618,7 +13618,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Meeting-Audio: konnte nicht gemessen werden"
           }
         }
@@ -13673,7 +13673,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Meeting-Text, Notizen und Zusammenfassungen bleiben immer erhalten."
           }
         }
@@ -14397,7 +14397,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Neue gespeicherte Diktate haben standardmäßig eine Aufnahme auf diesem Mac. Standardmäßig bleiben sie, bis du sie löschst. Schalte unter Einstellungen > App-Einstellungen > Aufnahmen „Diktataufnahmen speichern“ aus, damit künftig keine Aufnahmen mehr gespeichert werden; vorhandenes Audio folgt weiterhin deiner Aufbewahrungsdauer und deinen Speichereinstellungen. Lösche einzelne Aufnahmen im Verlauf oder nutze auf dieser Einstellungsseite „Alle Diktataufnahmen löschen“. Der Text bleibt erhalten."
           }
         }
@@ -14408,7 +14408,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Neue gespeicherte Diktate haben eine Aufnahme auf diesem Mac, die für die unter Einstellungen > App-Einstellungen > Aufnahmen festgelegte Aufbewahrungsdauer behalten wird. Schalte dort „Diktataufnahmen speichern“ aus, damit künftig keine Aufnahmen mehr gespeichert werden; vorhandenes Audio folgt weiterhin deiner Aufbewahrungsdauer und deinen Speichereinstellungen. Lösche einzelne Aufnahmen im Verlauf oder nutze auf dieser Einstellungsseite „Alle Diktataufnahmen löschen“. Der Text bleibt erhalten."
           }
         }
@@ -14972,7 +14972,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Keine Warnung"
           }
         }
@@ -16274,8 +16274,8 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Aufnahme-Einstellungen öffnen"
+            "state" : "translated",
+            "value" : "Einstellungen für Aufnahmen öffnen"
           }
         }
       }
@@ -16686,7 +16686,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Über der Schwelle"
           }
         }
@@ -18183,7 +18183,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Die Aufnahme konnte nicht gespeichert werden."
           }
         }
@@ -18194,7 +18194,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Aufnahme gelöscht. Der Text bleibt erhalten."
           }
         }
@@ -18205,7 +18205,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Aufnahme nach %lld Tagen abgelaufen. Der Text bleibt erhalten."
           }
         }
@@ -18216,7 +18216,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Aufnahme nach 1 Tag abgelaufen. Der Text bleibt erhalten."
           }
         }
@@ -18302,7 +18302,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Aufnahme nach deiner Aufbewahrungsdauer entfernt. Der Text bleibt erhalten."
           }
         }
@@ -18313,7 +18313,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Aufnahme entfernt, um Speicherplatz freizugeben. Der Text bleibt erhalten."
           }
         }
@@ -18368,8 +18368,8 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Der Speicher für Aufnahmen konnte nicht vollständig gemessen werden. Das automatische Entfernen zum Freigeben von Speicher ist pausiert."
+            "state" : "translated",
+            "value" : "Der von Aufnahmen belegte Speicherplatz konnte nicht vollständig ermittelt werden. Das automatische Entfernen zum Freigeben von Speicherplatz ist ausgesetzt."
           }
         }
       }
@@ -18401,7 +18401,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Aufnahme nicht verfügbar."
           }
         }
@@ -18444,7 +18444,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Aufnahmen"
           }
         }
@@ -18455,8 +18455,8 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Aufnahmen bleiben auf diesem Mac und werden nirgendwohin gesendet. Schaltest du das aus, werden neue Diktate nicht mehr gespeichert. Vorhandene Aufnahmen folgen weiter deiner Aufbewahrungsdauer und deinen Speichereinstellungen."
+            "state" : "translated",
+            "value" : "Aufnahmen bleiben auf diesem Mac und werden nirgendwohin gesendet. Schaltest du das aus, werden für neue Diktate keine Aufnahmen mehr gespeichert. Vorhandene Aufnahmen folgen weiter deiner Aufbewahrungsdauer und deinen Speichereinstellungen."
           }
         }
       }
@@ -18472,8 +18472,8 @@
         },
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Aufnahmen belegen noch etwa %1$@, mehr als deine Speicherwarnschwelle von %2$@. Behaltene Aufnahmen und Meeting-Audio werden nie entfernt, um Platz zu schaffen."
+            "state" : "translated",
+            "value" : "Aufnahmen belegen noch etwa %1$@, mehr als deine Speicherwarnschwelle von %2$@. Behaltene Aufnahmen und Meeting-Audio werden nie entfernt, um Speicherplatz freizugeben."
           }
         }
       }
@@ -18489,7 +18489,7 @@
         },
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Aufnahmen belegen etwa %1$@, mehr als deine Speicherwarnschwelle von %2$@."
           }
         }
@@ -18500,7 +18500,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Für dieses Diktat waren Aufnahmen ausgeschaltet."
           }
         }
@@ -18703,7 +18703,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Älteste Diktataufnahmen entfernen"
           }
         }
@@ -18756,7 +18756,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Automatisch werden nur Diktataufnahmen entfernt, die du nicht behalten hast, die ältesten zuerst. Behaltene Aufnahmen und Meeting-Audio werden nie entfernt und können den Speicher über der Schwelle halten."
           }
         }
@@ -19306,7 +19306,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Diktataufnahmen speichern"
           }
         }
@@ -19415,8 +19415,8 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Das Speichern von Diktataufnahmen ist aus, neue Diktate werden also nicht aufgenommen. Du kannst es unter Einstellungen > App-Einstellungen > Aufnahmen einschalten. Vorhandene Aufnahmen kannst du im Verlauf oder auf dieser Seite mit „Alle Diktataufnahmen löschen“ löschen. Der Text bleibt erhalten."
+            "state" : "translated",
+            "value" : "Das Speichern von Diktataufnahmen ist aus. Für neue Diktate werden deshalb keine Aufnahmen gespeichert. Du kannst es unter Einstellungen > App-Einstellungen > Aufnahmen einschalten. Vorhandene Aufnahmen kannst du im Verlauf oder auf dieser Seite mit „Alle Diktataufnahmen löschen“ löschen. Der Text bleibt erhalten."
           }
         }
       }
@@ -19426,8 +19426,8 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Das Speichern von Diktataufnahmen ist aus, neue Diktate werden also nicht aufgenommen. Du kannst es unter Einstellungen > App-Einstellungen > Aufnahmen einschalten. Vorhandene Aufnahmen kannst du im Verlauf oder dort mit „Alle Diktataufnahmen löschen“ löschen. Der Text bleibt immer erhalten."
+            "state" : "translated",
+            "value" : "Das Speichern von Diktataufnahmen ist aus. Für neue Diktate werden deshalb keine Aufnahmen gespeichert. Du kannst es unter Einstellungen > App-Einstellungen > Aufnahmen einschalten. Vorhandene Aufnahmen kannst du im Verlauf oder dort mit „Alle Diktataufnahmen löschen“ löschen. Der Text bleibt immer erhalten."
           }
         }
       }
@@ -20724,7 +20724,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Einige Diktataufnahmen konnten nicht vollständig gelöscht werden. Versuch es noch einmal."
           }
         }
@@ -21383,7 +21383,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Speicher"
           }
         }
@@ -21394,7 +21394,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Belegter Speicher"
           }
         }
@@ -21405,7 +21405,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Speicherwarnschwelle"
           }
         }
@@ -21882,7 +21882,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Text, Meeting-Notizen und Zusammenfassungen bleiben erhalten."
           }
         }
@@ -22042,7 +22042,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Das hat nicht geklappt. Versuch es erneut."
           }
         }
@@ -23061,7 +23061,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Die Aufnahme kann gerade nicht gelesen werden."
           }
         }
@@ -23620,7 +23620,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Das ist eine Warnung, keine Grenze: EnviousWispr nimmt darüber hinaus weiter auf."
           }
         }
@@ -24813,7 +24813,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Bis ich sie lösche"
           }
         }
@@ -26924,7 +26924,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Deine Diktate haben jetzt Aufnahmen"
           }
         }
@@ -29994,7 +29994,7 @@
         },
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Spiel deine Diktate ab"
           }
         }
@@ -30012,7 +30012,7 @@
         },
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "EnviousWispr speichert jetzt zu jedem gespeicherten Diktat eine Aufnahme auf deinem Mac, damit du sie im Verlauf abspielen kannst. Aufnahmen bleiben, bis du sie löschst, oder für eine Aufbewahrungsdauer, die du unter Einstellungen > App-Einstellungen > Aufnahmen wählst."
           }
         }
@@ -30030,7 +30030,7 @@
         },
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Schalte dort „Diktataufnahmen speichern“ aus, um keine neuen Aufnahmen mehr zu speichern. Vorhandene Aufnahmen werden nicht gelöscht."
           }
         }
@@ -30048,7 +30048,7 @@
         },
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Lösche eine Aufnahme im Verlauf oder alle mit „Alle Diktataufnahmen löschen“. Der Text bleibt immer erhalten."
           }
         }

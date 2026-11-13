@@ -654,13 +654,13 @@ enum RecordingsSettingsCopy {
     if result.skipped > 0 {
       parts.append(
         String(
-          localized: "\(result.skipped) can't be deleted right now and kept their audio.",
+          localized: "Meetings in use kept their audio: \(result.skipped).",
           comment: "App Settings, Recordings: meetings in use (recording, transcribing, saving) that Delete all meeting audio left alone. %lld is how many."))
     }
     if result.failed > 0 {
       parts.append(
         String(
-          localized: "\(result.failed) couldn't be deleted. Try again.",
+          localized: "Meeting audio that couldn't be deleted: \(result.failed). Try again.",
           comment: "App Settings, Recordings: meetings whose audio could not be deleted. %lld is how many."))
     }
     return parts.joined(separator: " ")

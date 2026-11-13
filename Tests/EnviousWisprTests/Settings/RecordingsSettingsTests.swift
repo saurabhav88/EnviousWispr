@@ -107,8 +107,8 @@ struct RecordingsSettingsTests {
     let meetings = RecordingsSettingsCopy.meetingDeletionResult(
       .init(removed: 2, skipped: 1, failed: 1))
     #expect(meetings.contains("2 meetings"))
-    #expect(meetings.contains("1 can't be deleted right now and kept their audio"))
-    #expect(meetings.contains("1 couldn't be deleted"))
+    #expect(meetings.contains("Meetings in use kept their audio: 1."))
+    #expect(meetings.contains("Meeting audio that couldn't be deleted: 1. Try again."))
     #expect(
       RecordingsSettingsCopy.meetingDeletionResult(.init(removed: 1, skipped: 0, failed: 0))
         == "Deleted the audio of 1 meeting.")
