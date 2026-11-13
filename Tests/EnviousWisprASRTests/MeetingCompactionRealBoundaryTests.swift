@@ -444,22 +444,40 @@ enum C6Route {
     let selected: [MeetingSelectedSegment]
   }
 
+  /// The production reader route, as `MeetingCoordinator`'s final pass runs it (#3147 PR4B
+  /// I1): recovery with the meeting's committed inventory (identities by full streaming
+  /// SHA-256, the store's definition), each track built from recovery's lists with
+  /// `MeetingTrackAudio(segments:in:)` (a compacted file at the recorder's frame count), then
+  /// the microphone decision. `selected` is the selector's answer for the complete logical key
+  /// set (raw, cleaned and call), and must name exactly the files recovery listed.
   static func open(
     folder: URL, inventory: MeetingCompressedInventory?, provenance: MeetingEchoProvenance?
   ) throws -> Tracks {
-    let report = MeetingTrackRecovery.recover(folder: folder)
-    guard report.problems.isEmpty, report.cleanedProblems.isEmpty else {
+    let report = MeetingTrackRecovery.recover(
+      folder: folder, inventory: inventory, identity: C6Fixture.identity)
+    guard report.problems.isEmpty, report.cleanedProblems.isEmpty,
+      report.compressedProblems.isEmpty
+    else {
       throw C6Failure(
-        "recovery problems \(report.problems) cleaned \(report.cleanedProblems)")
+        "recovery problems \(report.problems) cleaned \(report.cleanedProblems) compacted \(report.compressedProblems)"
+      )
     }
     var logical: [MeetingLogicalSegment] = []
-    for track in MeetingTrackKind.allCases {
-      for segment in report.segments[track] ?? [] {
-        logical.append(MeetingLogicalSegment(track: track, variant: .raw, segment: segment))
+    if let inventory {
+      for entry in inventory.segments {
+        logical.append(
+          MeetingLogicalSegment(track: entry.track, variant: entry.variant, segment: entry.source))
       }
-    }
-    for segment in report.cleanedSegments {
-      logical.append(MeetingLogicalSegment(track: .microphone, variant: .cleaned, segment: segment))
+    } else {
+      for track in MeetingTrackKind.allCases {
+        for segment in report.segments[track] ?? [] {
+          logical.append(MeetingLogicalSegment(track: track, variant: .raw, segment: segment))
+        }
+      }
+      for segment in report.cleanedSegments {
+        logical.append(
+          MeetingLogicalSegment(track: .microphone, variant: .cleaned, segment: segment))
+      }
     }
     let selected: [MeetingSelectedSegment]
     do {
@@ -467,12 +485,16 @@ enum C6Route {
     } catch {
       throw C6Failure("selector refused: \(error)")
     }
+    let listed = Set(
+      (report.segments.values.flatMap { $0 } + report.cleanedSegments).map(\.fileName))
+    guard listed == Set(selected.map(\.fileName)) else {
+      throw C6Failure("recovery listed other files than the selector chose")
+    }
     func audio(_ track: MeetingTrackKind, _ variant: MeetingSegmentVariant) throws
       -> MeetingTrackAudio
     {
-      let files = selected.filter { $0.key.track == track && $0.key.variant == variant }
-        .map { (url: folder.appending(path: $0.fileName), startMs: $0.logical.startMs) }
-      let audio = MeetingTrackAudio(files: files)
+      let segments = variant == .cleaned ? report.cleanedSegments : (report.segments[track] ?? [])
+      let audio = MeetingTrackAudio(segments: segments, in: folder)
       guard audio.problems.isEmpty, !audio.isEmpty else {
         throw C6Failure("\(track.rawValue)/\(variant.rawValue) unreadable: \(audio.problems)")
       }

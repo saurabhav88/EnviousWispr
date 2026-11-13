@@ -23,7 +23,7 @@ protocol MeetingPlaybackOutput: AnyObject {
 /// What a player reads (#3147): a meeting's track files on the meeting timeline, or one saved
 /// dictation recording (AAC, 16 kHz mono).
 enum PlaybackMedia: Sendable {
-  case meeting(MeetingPlaybackController.TrackFiles)
+  case meeting(MeetingPlaybackController.TrackSources)
   case dictation(URL)
   /// #3147 PR3: an imported file's original, already opened by its owner (`ImportedSources`).
   case transcript(any PlaybackWindowAudio)
@@ -71,6 +71,9 @@ final class MeetingPlaybackController {
 
   /// Each track's segment files and their start times on the meeting timeline.
   typealias TrackFiles = [MeetingTrackKind: [(url: URL, startMs: Int)]]
+  /// #3147 PR4B: each track's files as a reader opens them (a compacted file with the
+  /// recorder's frame count).
+  typealias TrackSources = [MeetingTrackKind: [MeetingTrackAudio.SourceFile]]
 
   /// The recording this player plays, when it is known to the shared now-playing owner.
   let sourceID: PlaybackSourceID?
@@ -120,8 +123,10 @@ final class MeetingPlaybackController {
     read: @escaping Reader = MeetingPlaybackController.readWindow
   ) {
     self.init(
-      media: .meeting(files), durationMs: durationMs, output: output, windowMs: windowMs,
-      read: read)
+      media: .meeting(
+        files.mapValues { list in
+          list.map { MeetingTrackAudio.SourceFile(url: $0.url, startMs: $0.startMs, logicalFrames: nil) }
+        }), durationMs: durationMs, output: output, windowMs: windowMs, read: read)
   }
 
   /// A player for `source`'s files and length, known to the shared now-playing owner.
@@ -130,7 +135,7 @@ final class MeetingPlaybackController {
     arbiter: PlaybackArbiter? = nil
   ) {
     self.init(
-      media: .meeting(source.trackFiles), durationMs: source.durationMs, output: output,
+      media: .meeting(source.trackSources), durationMs: source.durationMs, output: output,
       sourceID: meetingID.map { .meeting($0) }, arbiter: arbiter)
   }
 
@@ -307,10 +312,10 @@ final class MeetingPlaybackController {
   /// Opens the tracks once, on the first window. A damaged file is left out by
   /// `MeetingTrackAudio` and its stretch plays as silence, as the transcript marks it; only a
   /// meeting with no readable file at all is unavailable.
-  nonisolated static func load(_ files: TrackFiles) throws -> [MeetingTrackAudio] {
+  nonisolated static func load(_ files: TrackSources) throws -> [MeetingTrackAudio] {
     let tracks = MeetingTrackKind.allCases.compactMap { kind -> MeetingTrackAudio? in
       guard let list = files[kind], !list.isEmpty else { return nil }
-      return MeetingTrackAudio(files: list)
+      return MeetingTrackAudio(sources: list)
     }
     guard tracks.contains(where: { !$0.isEmpty }) else { throw PlaybackError.noReadableAudio }
     return tracks
@@ -346,24 +351,69 @@ final class MeetingMixedAudio: PlaybackWindowAudio, @unchecked Sendable {
 /// What one meeting's playback reads: its kept files and its length, from the saved record
 /// (#3972 C5). The detail view keeps a player only while this is unchanged, so a recovery that
 /// rewrote the inventory, a deletion or a lost file ends or replaces the player.
+///
+/// #3147 PR4B: with a committed compacted inventory the files are the ones
+/// `MeetingAudioSelection` chooses for the recorder's raw segments (asked with the complete
+/// logical set, the inventory's cleaned twins included, then filtered to raw: playback is raw),
+/// read at the recorder's frame counts. The inventory's id is part of the source, so committing
+/// a compacted copy is a different source and rebuilds the player instead of changing files under
+/// an unchanged one. An inventory the selector refuses plays the recorder files as listed, whole,
+/// never a mix.
 struct MeetingPlaybackSource: Hashable, Sendable {
   struct File: Hashable, Sendable {
     let url: URL
     let startMs: Int
+    /// The recorder's frame count for a compacted file; nil for a recorder CAF.
+    var logicalFrames: Int? = nil
   }
 
   let files: [MeetingTrackKind: [File]]
   let durationMs: Int
+  /// The committed compacted inventory the files come from; nil for the recorder's files.
+  let inventoryID: UUID?
 
   init(record: MeetingRecord, folder: URL) {
-    files = record.segments.mapValues { segments in
+    durationMs = record.recordedDurationMs
+    let recorderFiles = record.segments.mapValues { segments in
       segments.map { File(url: folder.appendingPathComponent($0.fileName), startMs: $0.startMs) }
     }
-    durationMs = record.recordedDurationMs
+    guard let inventory = record.compressedAudio else {
+      files = recorderFiles
+      inventoryID = nil
+      return
+    }
+    var logical: [MeetingLogicalSegment] = []
+    for track in MeetingTrackKind.allCases {
+      for segment in record.segments[track] ?? [] {
+        logical.append(MeetingLogicalSegment(track: track, variant: .raw, segment: segment))
+      }
+    }
+    for entry in inventory.segments where entry.variant == .cleaned {
+      logical.append(
+        MeetingLogicalSegment(track: entry.track, variant: .cleaned, segment: entry.source))
+    }
+    guard let selected = try? MeetingAudioSelection.select(logical: logical, inventory: inventory)
+    else {
+      files = recorderFiles
+      inventoryID = nil
+      return
+    }
+    var chosen: [MeetingTrackKind: [File]] = [:]
+    for item in selected where item.key.variant == .raw {
+      chosen[item.key.track, default: []].append(
+        File(
+          url: folder.appendingPathComponent(item.fileName), startMs: item.logical.startMs,
+          logicalFrames: item.encoding == .aacM4A ? item.logical.frameCount : nil))
+    }
+    files = chosen
+    inventoryID = inventory.id
   }
 
-  var trackFiles: MeetingPlaybackController.TrackFiles {
-    files.mapValues { $0.map { (url: $0.url, startMs: $0.startMs) } }
+  /// What a reader opens (`MeetingTrackAudio(sources:)`).
+  var trackSources: MeetingPlaybackController.TrackSources {
+    files.mapValues {
+      $0.map { MeetingTrackAudio.SourceFile(url: $0.url, startMs: $0.startMs, logicalFrames: $0.logicalFrames) }
+    }
   }
 
   /// What the detail view does with its player when the source changes.

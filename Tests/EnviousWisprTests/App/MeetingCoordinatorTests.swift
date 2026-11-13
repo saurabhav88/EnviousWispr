@@ -509,12 +509,13 @@ struct MeetingCoordinatorTests {
           return NSObject()
         },
         endActivity: { [self] _ in activitiesEnded += 1 },
-        recoverFolder: { [recoveryHold, recoveryEntered] folder in
+        recoverFolder: { [recoveryHold, recoveryEntered] folder, inventory in
           if let recoveryHold {
             recoveryEntered.signal()
             _ = recoveryHold.wait(timeout: .now() + 10)
           }
-          return MeetingTrackRecovery.recover(folder: folder)
+          return MeetingTrackRecovery.recover(
+            folder: folder, inventory: inventory, identity: MeetingStore.audioFileIdentity(at:))
         },
         saveCheckpoint: { [checkpointHold, checkpointEntered] store, checkpoint in
           if let checkpointHold {

@@ -424,10 +424,14 @@ final class MeetingCoordinator {
     var endActivity: @MainActor (NSObjectProtocol) -> Void = {
       ProcessInfo.processInfo.endActivity($0)
     }
-    /// Track recovery, run off the main actor by the coordinator.
-    var recoverFolder: @Sendable (URL) -> MeetingTrackRecovery.Report = {
-      MeetingTrackRecovery.recover(folder: $0)
-    }
+    /// Track recovery, run off the main actor by the coordinator. #3147 PR4B: with the meeting's
+    /// committed compacted inventory, recovery reads that inventory alone (identities compared
+    /// with the store's one definition).
+    var recoverFolder: @Sendable (URL, MeetingCompressedInventory?) -> MeetingTrackRecovery.Report =
+      {
+        MeetingTrackRecovery.recover(
+          folder: $0, inventory: $1, identity: MeetingStore.audioFileIdentity(at:))
+      }
     /// The pass's checkpoint write (a durable file write), run off the main actor by the job.
     var saveCheckpoint:
       @Sendable (MeetingProcessingCheckpointStore, MeetingProcessingCheckpoint) throws -> Void = {
@@ -1305,10 +1309,12 @@ final class MeetingCoordinator {
   private func cleanUpFailedStart(_ meetingID: UUID) async {
     let folder = deps.store.folder(for: meetingID)
     let recover = deps.recoverFolder
+    let inventory = live[meetingID]?.compressedAudio
     fileWorkInFlight += 1
     // Detached, not `Task {}`: this type is @MainActor and a plain Task inherits it; recovery
     // reads and syncs files. Awaited at once.
-    let report = await Task.detached(priority: .userInitiated) { recover(folder) }.value
+    let report = await Task.detached(priority: .userInitiated) { recover(folder, inventory) }
+      .value
     fileWorkInFlight -= 1
     // A quit meanwhile leaves the folder to launch recovery.
     guard !quitting, var record = live[meetingID] else { return }
@@ -1665,23 +1671,29 @@ final class MeetingCoordinator {
     // Audio from the files themselves (C2a): partials promoted, frame counts real.
     let folder = deps.store.folder(for: meetingID)
     let recover = deps.recoverFolder
+    // #3147 PR4B: the committed compacted inventory, when there is one, is the audio authority.
+    let inventory = (live[meetingID] ?? records[meetingID])?.compressedAudio
     fileWorkInFlight += 1
     // Detached, not `Task {}`: this type is @MainActor and a plain Task inherits it, and these
     // are synchronous file reads and fsyncs (minutes of audio). Awaited at once, so nothing
     // outlives the pass or loses its cancellation (the pass checks ownership after each).
-    let report = await Task.detached(priority: .utility) { recover(folder) }.value
+    let report = await Task.detached(priority: .utility) { recover(folder, inventory) }.value
     for problem in report.problems { deps.log("meeting recovery problem \(problem)") }
     for problem in report.cleanedProblems { deps.log("meeting cleaned copy problem \(problem)") }
+    for finding in report.compressedProblems {
+      deps.log("meeting compacted audio finding=\(Self.logCode(finding))")
+    }
     var tracks: [MeetingTrackKind: MeetingTrackAudio] = [:]
     var damaged: Set<String> = Set(
       report.problems.compactMap(MeetingDamagedAudio.damagedFileName))
     for kind in MeetingTrackKind.allCases {
-      let files = (report.segments[kind] ?? []).map {
-        (url: folder.appendingPathComponent($0.fileName), startMs: $0.startMs)
-      }
-      guard !files.isEmpty else { continue }
+      let listed = report.segments[kind] ?? []
+      guard !listed.isEmpty else { continue }
       // Detached for the same reason: a synchronous header and frame-count read of every file.
-      let audio = await Task.detached(priority: .utility) { MeetingTrackAudio(files: files) }.value
+      // A compacted file is read at the recorder's frame count (#3147 PR4B).
+      let audio = await Task.detached(priority: .utility) {
+        MeetingTrackAudio(segments: listed, in: folder)
+      }.value
       for problem in audio.problems { deps.log("meeting track problem \(problem)") }
       damaged.formUnion(audio.problems.compactMap(MeetingDamagedAudio.damagedFileName))
       if !audio.isEmpty { tracks[kind] = audio }
@@ -1700,11 +1712,9 @@ final class MeetingCoordinator {
         provenance: record.echoProvenance)
       {
       case .cleaned(let cleaned, let provenance):
-        let files = cleaned.map {
-          (url: folder.appendingPathComponent($0.fileName), startMs: $0.startMs)
-        }
-        let audio = await Task.detached(priority: .utility) { MeetingTrackAudio(files: files) }
-          .value
+        let audio = await Task.detached(priority: .utility) {
+          MeetingTrackAudio(segments: cleaned, in: folder)
+        }.value
         if MeetingMicrophoneSelection.readMatches(audio, raw: rawMic) {
           tracks[.microphone] = audio
           microphoneCopy = .cleaned(provenance)
@@ -1730,11 +1740,24 @@ final class MeetingCoordinator {
     }
     fileWorkInFlight -= 1
     // Damaged files stay on disk; their stretch of the timeline becomes a visible gap (R3).
-    let missingAudio = MeetingDamagedAudio.missingAudio(
-      damaged: damaged, onDisk: onDisk, readable: tracks)
+    // #3147 PR4B: a read of the committed compacted files is bounded by that inventory, so a
+    // missing committed file still claims only its own stretch.
+    let missingAudio: [MeetingTrackKind: [MeetingTranscriptionJob.MissingAudio]]
+    if report.representation == .aacM4A, let inventory {
+      missingAudio = MeetingDamagedAudio.missingAudio(
+        damaged: damaged, bounds: MeetingDamagedAudio.bounds(of: inventory), readable: tracks)
+    } else {
+      missingAudio = MeetingDamagedAudio.missingAudio(
+        damaged: damaged, onDisk: onDisk, readable: tracks)
+    }
     let started = Date()
     guard isStillOwned(meetingID), var current = live[meetingID] else { return }
-    for kind in MeetingTrackKind.allCases { current.segments[kind] = report.segments[kind] }
+    // #3147 PR4B: with a committed inventory the record keeps the recorder's descriptors (the
+    // inventory's sources, which the selector matches); only a recorder-file read rebuilds them.
+    let rebuildSegments = inventory == nil
+    if rebuildSegments {
+      for kind in MeetingTrackKind.allCases { current.segments[kind] = report.segments[kind] }
+    }
     guard !tracks.isEmpty else {
       let noAudio = report.problems.isEmpty && damaged.isEmpty
       // Only confirmed absence with SAVED notes is notes-only (R56; Codex C7 r1): unreadable
@@ -1743,7 +1766,9 @@ final class MeetingCoordinator {
         noAudio ? await documents.ensureNotesDurable(meetingID) : .none
       // Read again after the await: a rename or a deletion mark meanwhile stays.
       guard isStillOwned(meetingID), var failed = live[meetingID] else { return }
-      for kind in MeetingTrackKind.allCases { failed.segments[kind] = report.segments[kind] }
+      if rebuildSegments {
+        for kind in MeetingTrackKind.allCases { failed.segments[kind] = report.segments[kind] }
+      }
       failed.failureCode = noAudio ? "no_audio" : "audio_unreadable"
       if notes == .saved {
         failed.markNotesOnly()
@@ -2586,6 +2611,18 @@ final class MeetingCoordinator {
     case .recording(let id, _), .stopping(let id): return id == meetingID
     case .starting: return activeMeetingID == meetingID
     case .idle: return false
+    }
+  }
+
+  /// #3147 PR4B: a closed code for a compacted-audio finding, for the log (never a file name or
+  /// any meeting content).
+  nonisolated static func logCode(_ finding: MeetingTrackRecovery.CompressedProblem) -> String {
+    switch finding {
+    case .selectionRefused: return "selection_refused"
+    case .compressedUnusable: return "compacted_unusable"
+    case .fellBackToOriginals: return "fell_back_to_originals"
+    case .originalsUnavailable: return "originals_unavailable"
+    case .uncoveredOriginal: return "uncovered_original"
     }
   }
 
