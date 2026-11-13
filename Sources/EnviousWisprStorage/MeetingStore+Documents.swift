@@ -220,8 +220,12 @@ extension MeetingStore {
   {
     try refuseDocumentWrite(id)
     let read = try readDocuments(meeting: id)
+    // Notes already on disk (a retry after a save that committed `notes.json` and failed later)
+    // were counted by the read's reconciliation: they are not counted again.
+    let increment =
+      MeetingDocumentHash.sameBytes(read.loaded.notes, document.markdown) ? 0 : max(1, edits)
     let manifest = try writeNotes(
-      document, revision: (read.loaded.manifest.notes?.revision ?? 0) + max(1, edits),
+      document, revision: (read.loaded.manifest.notes?.revision ?? 0) + increment,
       base: read.loaded.manifest, formatOld: read.manifestFormatOld, meeting: id)
     var stored = document
     stored.version = MeetingNotesDocument.currentVersion

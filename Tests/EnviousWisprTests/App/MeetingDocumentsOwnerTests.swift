@@ -1067,5 +1067,48 @@ struct MeetingDocumentsOwnerTests {
     #expect(documents.snapshot(for: id).canEdit == false)
     #expect(documents.hasPendingWork == false)
   }
+
+  @Test("text that changes only its Unicode form is still a change, and is saved")
+  func canonicallyEquivalentEditSaves() async throws {
+    let harness = try Harness()
+    let (coordinator, id) = try await Self.loadedMeeting(harness)
+    let documents = coordinator.documents
+    documents.setNotes(id, "Cafe\u{301}")
+    #expect(await documents.flush(id))
+    let snapshot = documents.snapshot(for: id)
+    let block = try #require(snapshot.document.blocks.first)
+    #expect(
+      documents.apply(
+        .replaceText(blockID: block.id, rangeUTF16: 3..<5, text: "\u{E9}"), to: id,
+        expectedRevision: snapshot.revision, atMs: nil))
+    #expect(documents.snapshot(for: id).revision == snapshot.revision + 1)
+    #expect(await documents.flush(id))
+    let disk = try #require(Self.notesOnDisk(harness, id))
+    #expect(Array(disk.utf8) == Array("Caf\u{E9}".utf8))
+  }
+
+  @Test("an edit undone before its save keeps the notes revision, so the summary stays current")
+  func undoneEditKeepsRevision() async throws {
+    let harness = try Harness()
+    let (coordinator, id) = try await Self.loadedMeeting(harness) {
+      _ = try harness.store.saveNotes(
+        MeetingNotesDocument(blocks: [MeetingNoteBlock(text: "send deck")]), revision: 3,
+        meeting: $0)
+    }
+    let documents = coordinator.documents
+    let before = documents.snapshot(for: id)
+    let block = try #require(before.document.blocks.first)
+    #expect(
+      documents.apply(
+        .setKind(blockID: block.id, kind: .task), to: id, expectedRevision: before.revision,
+        atMs: nil))
+    let toggled = documents.snapshot(for: id)
+    #expect(
+      documents.apply(
+        .restore(before.document), to: id, expectedRevision: toggled.revision, atMs: nil))
+    #expect(await documents.flush(id))
+    #expect(documents.manifest(id)?.notes?.revision == 3)
+    #expect(try harness.store.loadDocuments(meeting: id).manifest.notes?.revision == 3)
+  }
 }
 

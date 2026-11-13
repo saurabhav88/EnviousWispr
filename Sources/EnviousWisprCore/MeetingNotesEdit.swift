@@ -10,12 +10,16 @@ public enum MeetingNotesEdit: Equatable, Sendable {
   case joinWithPrevious(blockID: UUID)
   case setKind(blockID: UUID, kind: MeetingNoteBlock.Kind)
   case setDone(blockID: UUID, done: Bool)
+  /// Undo and Redo: the whole draft as it was before (or after) an edit, ids, kinds and times
+  /// included. Refused when its version is not the current one or two blocks share an id.
+  case restore(MeetingNotesDocument)
 }
 
 extension MeetingNotesDocument {
   /// The document after `edit`, or nil when the edit does not apply: an unknown block, a
   /// range outside the block's text or inside a character's UTF-16 pair, a new id already in
-  /// use, a join of the first block, or a tick on a block that is not a task.
+  /// use, a join of the first block, a tick on a block that is not a task, or a restore of a
+  /// document of another version or with a repeated id.
   ///
   /// Text with line breaks (a paste) becomes blocks: the first line joins the edited block, each
   /// further line starts a new text block. A block's time is set when its first character is
@@ -88,6 +92,12 @@ extension MeetingNotesDocument {
         blocks[index].kind == .task
       else { return nil }
       next.blocks[index].done = done
+
+    case .restore(let document):
+      guard document.version == MeetingNotesDocument.currentVersion,
+        Set(document.blocks.map(\.id)).count == document.blocks.count
+      else { return nil }
+      next = document
     }
     return next
   }

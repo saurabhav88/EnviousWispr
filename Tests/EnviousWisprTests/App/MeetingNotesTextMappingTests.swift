@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Testing
 
@@ -7,8 +8,10 @@ import Testing
 /// #3147 PR4 notes v2 block editor: when these fail, what the user types into the meeting notes
 /// box is not what the saved notes hold (text lost, duplicated or moved to another note), or
 /// Return and Backspace give notes the wrong id or time.
+@MainActor
 @Suite("Meeting notes editor text to block edits", .tags(.productOutcome))
 struct MeetingNotesTextMappingTests {
+  init() { _ = NSApplication.shared }
   private static let document = MeetingNotesDocument(blocks: [
     MeetingNoteBlock(startedAtMs: 1_000, text: "Budget"),
     MeetingNoteBlock(startedAtMs: 2_000, kind: .task, text: "send deck"),
@@ -101,4 +104,70 @@ struct MeetingNotesTextMappingTests {
       MeetingNotesTextMapping.edits(Self.document, range: length..<(length + 1), replacement: "")
         == nil)
   }
+
+  // MARK: - The text view, through the real documents owner
+
+  /// A notes text view and its coordinator over a loaded meeting holding `document`.
+  private static func editor(_ document: MeetingNotesDocument) async throws -> (
+    NotesTextView, MeetingNotesTextView.Coordinator, MeetingDocumentsOwner, UUID, [Any]
+  ) {
+    let harness = try MeetingCoordinatorTests.Harness()
+    let record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    try harness.store.create(record)
+    _ = try harness.store.saveNotes(document, revision: 1, meeting: record.id)
+    let meetings = MeetingDocumentsOwnerTests.coordinator(harness)
+    let documents = meetings.documents
+    #expect(await documents.load(record.id))
+    let textView = NotesTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+    let coordinator = MeetingNotesTextView.Coordinator()
+    textView.delegate = coordinator
+    textView.coordinator = coordinator
+    coordinator.textView = textView
+    coordinator.notes = documents
+    coordinator.meetingID = record.id
+    coordinator.currentMs = { 60_000 }
+    coordinator.sync(documents.snapshot(for: record.id))
+    // The harness and coordinator stay alive for the test: they own the store and its queue.
+    return (textView, coordinator, documents, record.id, [harness, meetings])
+  }
+
+  @Test("Backspace joins in the draft; Undo brings the note back with its id, kind and time")
+  func backspaceUndoRedo() async throws {
+    let original = MeetingNotesDocument(blocks: [
+      MeetingNoteBlock(startedAtMs: 1_000, text: "one"),
+      MeetingNoteBlock(startedAtMs: 20_000, kind: .task, done: true, text: "two"),
+    ])
+    let (textView, coordinator, documents, id, keep) = try await Self.editor(original)
+    defer { withExtendedLifetime(keep) {} }
+    #expect(textView.string == "one\ntwo")
+    textView.setSelectedRange(NSRange(location: 4, length: 0))
+    textView.deleteBackward(nil)
+    #expect(documents.snapshot(for: id).document.blocks.map(\.text) == ["onetwo"])
+    #expect(documents.snapshot(for: id).document.blocks[0].id == original.blocks[0].id)
+
+    coordinator.undo.undo()
+    #expect(documents.snapshot(for: id).document == original)
+    #expect(textView.string == "one\ntwo")
+    coordinator.undo.redo()
+    #expect(documents.snapshot(for: id).document.blocks.map(\.text) == ["onetwo"])
+  }
+
+  @Test("a pasted run of lines becomes blocks in one Undo step; typed text starts at the time")
+  func pasteAndType() async throws {
+    let original = MeetingNotesDocument(blocks: [MeetingNoteBlock(startedAtMs: 1_000, text: "ab")])
+    let (textView, coordinator, documents, id, keep) = try await Self.editor(original)
+    defer { withExtendedLifetime(keep) {} }
+    textView.setSelectedRange(NSRange(location: 1, length: 0))
+    textView.insertText("x\r\ny", replacementRange: NSRange(location: 1, length: 0))
+    let pasted = documents.snapshot(for: id).document.blocks
+    #expect(pasted.map(\.text) == ["ax", "yb"])
+    #expect(pasted[0].id == original.blocks[0].id)
+    #expect(pasted[1].startedAtMs == 60_000)
+    #expect(textView.string == "ax\nyb")
+    coordinator.undo.undo()
+    #expect(documents.snapshot(for: id).document == original)
+    #expect(textView.string == "ab")
+    #expect(coordinator.undo.canUndo == false)
+  }
 }
+

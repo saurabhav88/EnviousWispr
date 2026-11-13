@@ -163,4 +163,16 @@ struct MeetingNotesEditTests {
       #expect(doc.blocks.allSatisfy { $0.kind == .text && $0.startedAtMs == nil })
     }
   }
+
+  @Test("restore puts back an earlier draft exactly; another version or a repeated id is refused")
+  func restore() throws {
+    let a = MeetingNoteBlock(startedAtMs: 1, text: "a")
+    let b = MeetingNoteBlock(startedAtMs: 2, kind: .task, done: true, text: "b")
+    let earlier = MeetingNotesDocument(blocks: [a, b])
+    let now = try #require(earlier.applying(.joinWithPrevious(blockID: b.id), atMs: 9))
+    #expect(now.applying(.restore(earlier), atMs: 9) == earlier)
+    #expect(now.applying(.restore(MeetingNotesDocument(version: 3, blocks: [a])), atMs: nil) == nil)
+    #expect(now.applying(.restore(MeetingNotesDocument(blocks: [a, a])), atMs: nil) == nil)
+  }
 }
+

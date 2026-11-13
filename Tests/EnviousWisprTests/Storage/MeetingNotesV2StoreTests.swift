@@ -248,4 +248,18 @@ struct MeetingNotesV2StoreTests {
     #expect(Array(blocks.prefix(2)) == [a, b])
     #expect(blocks[2].text == "c" && blocks[2].startedAtMs == nil)
   }
+
+  @Test("a draft save retried after its notes.json landed counts the change once")
+  func draftRetryCountsOnce() throws {
+    let (store, record) = try makeMeeting()
+    _ = try store.saveNotes(
+      MeetingNotesDocument(blocks: [MeetingNoteBlock(text: "A")]), revision: 7, meeting: record.id)
+    let draft = MeetingNotesDocument(blocks: [MeetingNoteBlock(text: "B")])
+    // The first attempt committed notes.json and failed before notes.md and the manifest.
+    try MeetingStore.encoder.encode(draft).write(to: store.notesDocumentURL(for: record.id))
+    let saved = try store.saveDraftNotes(draft, edits: 1, meeting: record.id)
+    #expect(saved.manifest.notes?.revision == 8)
+    #expect(saved.notes == "B")
+  }
 }
+

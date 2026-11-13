@@ -348,6 +348,17 @@ final class MeetingDocumentsOwner {
     return .saved
   }
 
+  /// The notes revision a save of `entry`'s draft writes: `edits` after the saved one, or the
+  /// saved one when the draft's Markdown is what was saved (a kind toggled back, an Undo, a
+  /// restore): a summary reads only the Markdown, so it stays current.
+  private static func revision(after entry: Entry, edits: Int) -> Int {
+    let saved = entry.manifest.notes
+    let markdown = entry.document.markdown
+    let unchanged =
+      saved.map { $0.sha256 == MeetingDocumentHash.sha256(markdown) } ?? markdown.isEmpty
+    return (saved?.revision ?? 0) + (unchanged ? 0 : edits)
+  }
+
   /// Queues one save behind the meeting's previous one, and waits for it.
   private func saveNotes(_ meetingID: UUID) async {
     await enqueueSave(meetingID) { owner in await owner.saveOnce(meetingID) }
@@ -362,7 +373,7 @@ final class MeetingDocumentsOwner {
     let result: Result<(MeetingDocumentsManifest, MeetingStore.LoadedDocuments?), Error>
     switch entry.load {
     case .loaded:
-      let revision = (entry.manifest.notes?.revision ?? 0) + edits
+      let revision = Self.revision(after: entry, edits: edits)
       result = await perform(meetingID) {
         (try $0.saveNotes(document, revision: revision, meeting: meetingID), nil)
       }
@@ -564,7 +575,7 @@ final class MeetingDocumentsOwner {
       let document = entry.document
       let edits = entry.unsavedEdits
       let loaded = entry.load == .loaded
-      let revision = (entry.manifest.notes?.revision ?? 0) + edits
+      let revision = Self.revision(after: entry, edits: edits)
       let outcome = writer.runBounded(
         until: deadline,
         {
@@ -706,7 +717,11 @@ extension MeetingDocumentsOwner: MeetingNotesAccessing {
       entry.load == .loaded, entry.revision == expectedRevision,
       let next = entry.document.applying(edit, atMs: atMs)
     else { return false }
-    guard next != entry.document else { return true }
+    // `==` alone is not "unchanged": Swift treats canonically equivalent text as equal, and
+    // the user's bytes must still be saved (#4001).
+    guard next != entry.document
+      || !MeetingDocumentHash.sameBytes(next.markdown, entry.document.markdown)
+    else { return true }
     entry.document = Self.editable(next)
     accept(&entry, meetingID)
     return true
