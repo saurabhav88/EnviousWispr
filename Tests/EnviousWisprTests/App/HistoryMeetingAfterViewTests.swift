@@ -57,6 +57,20 @@ struct HistoryMeetingAfterViewTests {
     }
   }
 
+  /// UAT (PR4A): a summary shown read-only (no validated structure, or out of date) drew its raw
+  /// Markdown markers. It is drawn as headings, bullets and paragraphs instead.
+  @Test("a read-only summary's lines become headings, bullets and paragraphs, markers removed")
+  func readableBlocks() {
+    let markdown = "\n## Overview\nThe report went out.\n\n\n## Key points\n- Budget *needs* review\n* Hiring plan\n#hashtag stays text\n  + Agenda today  \n\n"
+    #expect(
+      HistoryMeetingAfterView.readableBlocks(markdown) == [
+        .heading("Overview"), .paragraph("The report went out."), .gap,
+        .heading("Key points"), .bullet("Budget *needs* review"), .bullet("Hiring plan"),
+        .paragraph("#hashtag stays text"), .bullet("Agenda today"),
+      ])
+    #expect(HistoryMeetingAfterView.readableBlocks("") == [])
+  }
+
   @Test("the dock is the mock's 88 points with markers and participants, playing or not")
   func dockHeight() {
     let markers = [

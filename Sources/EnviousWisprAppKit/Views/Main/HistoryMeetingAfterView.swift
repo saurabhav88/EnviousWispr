@@ -966,12 +966,50 @@ extension HistoryMeetingAfterView {
         }
         .font(.stHelper)
       }
-      Text(Self.readable(text))
-        .font(.stBody)
-        .foregroundStyle(.stTextBody)
-        .textSelection(.enabled)
-        .fixedSize(horizontal: false, vertical: true)
+      MeetingReadableSummary(blocks: Self.readableBlocks(text))
     }
+  }
+
+  /// One line of a summary drawn read-only: a heading (`#` to `######`), a bullet (`- `, `* `,
+  /// `+ `), a paragraph line, or a gap between paragraphs (UAT: the read mode showed the raw
+  /// Markdown markers).
+  enum ReadableBlock: Equatable {
+    case heading(String)
+    case bullet(String)
+    case paragraph(String)
+    case gap
+  }
+
+  /// The summary's lines as headings, bullets and paragraphs, markers removed, in order. Runs of
+  /// blank lines become one gap; leading and trailing gaps are dropped.
+  static func readableBlocks(_ markdown: String) -> [ReadableBlock] {
+    var blocks: [ReadableBlock] = []
+    for raw in markdown.split(separator: "\n", omittingEmptySubsequences: false) {
+      let line = raw.trimmingCharacters(in: .whitespaces)
+      let block: ReadableBlock
+      if line.isEmpty {
+        block = .gap
+      } else if let heading = headingText(line) {
+        block = .heading(heading)
+      } else if let marker = ["- ", "* ", "+ "].first(where: line.hasPrefix) {
+        block = .bullet(String(line.dropFirst(marker.count)))
+      } else {
+        block = .paragraph(line)
+      }
+      if block == .gap, blocks.last == .gap || blocks.isEmpty { continue }
+      blocks.append(block)
+    }
+    if blocks.last == .gap { blocks.removeLast() }
+    return blocks
+  }
+
+  /// The text of a Markdown heading line (one to six `#`, then a space), or nil.
+  private static func headingText(_ line: String) -> String? {
+    let hashes = line.prefix { $0 == "#" }.count
+    guard (1...6).contains(hashes) else { return nil }
+    let rest = line.dropFirst(hashes)
+    guard rest.first == " " else { return nil }
+    return rest.trimmingCharacters(in: .whitespaces)
   }
 
   /// The summary's Markdown with inline emphasis kept and its lines as written; plain text when
@@ -1549,6 +1587,46 @@ private struct MeetingAfterNotesPane: View {
         }
       }
     }
+  }
+}
+
+/// A summary drawn read-only from its lines (`HistoryMeetingAfterView.readableBlocks`): headings
+/// as the structured summary draws section titles, bullets with a bullet, paragraphs as body
+/// text. Inline emphasis is kept; links are removed (`readable`).
+private struct MeetingReadableSummary: View {
+  let blocks: [HistoryMeetingAfterView.ReadableBlock]
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: DesignSpacing.sm) {
+      ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
+        switch block {
+        case .heading(let title):
+          Text(verbatim: title.uppercased())
+            .font(.stSectionHeader)
+            .tracking(0.6)
+            .foregroundStyle(.stAccent)
+            .padding(.top, DesignSpacing.sm)
+            .accessibilityAddTraits(.isHeader)
+        case .bullet(let line):
+          HStack(alignment: .firstTextBaseline, spacing: DesignSpacing.sm) {
+            Text(verbatim: "•").foregroundStyle(.stTextSecondary).accessibilityHidden(true)
+            lineText(line)
+          }
+        case .paragraph(let line):
+          lineText(line)
+        case .gap:
+          Color.clear.frame(height: DesignSpacing.xs)
+        }
+      }
+    }
+    .textSelection(.enabled)
+  }
+
+  private func lineText(_ line: String) -> some View {
+    Text(HistoryMeetingAfterView.readable(line))
+      .font(.stBody)
+      .foregroundStyle(.stTextBody)
+      .fixedSize(horizontal: false, vertical: true)
   }
 }
 
