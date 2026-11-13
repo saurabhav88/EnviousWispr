@@ -19,6 +19,12 @@ import Observation
 /// whether the notes are durable; `flushForQuit` saves inside the quit's shared deadline
 /// (best effort). `hasPendingWork` is true from a change until its save was answered, so a
 /// relaunch waits for typed notes.
+///
+/// **Notes v2 (#3147 PR4).** The draft is a `MeetingNotesDocument` of blocks; `notes(_:)` is its
+/// Markdown, what the summary, Save, Share and search read. The block editor edits it through
+/// `MeetingNotesAccessing` (one edit at a time, over the draft revision it drew); the plain notes
+/// box replaces the whole Markdown (`setNotes`), and unchanged lines keep their blocks. Both are
+/// the same draft, saved by the same debounce, chain and fences.
 @MainActor
 @Observable
 final class MeetingDocumentsOwner {
@@ -48,8 +54,12 @@ final class MeetingDocumentsOwner {
 
   /// One meeting's documents as this session knows them.
   struct Entry: Equatable {
-    /// The notes as typed (the draft), saved or not.
-    var notes = ""
+    /// The notes as typed (the draft), saved or not. Never without a block, so an empty meeting
+    /// still has one block to type into.
+    var document = MeetingDocumentsOwner.editable(MeetingNotesDocument(blocks: []))
+    /// Counts every change to the draft (an accepted edit, a read that replaced it), so an edit
+    /// made over an older draft is refused.
+    var revision = 0
     var summary: String?
     /// The manifest as last read or written.
     var manifest = MeetingDocumentsManifest()
@@ -106,7 +116,14 @@ final class MeetingDocumentsOwner {
 
   // MARK: - Reads
 
-  func notes(_ meetingID: UUID) -> String { entries[meetingID]?.notes ?? "" }
+  /// The notes as Markdown (the draft's projection).
+  func notes(_ meetingID: UUID) -> String { entries[meetingID]?.document.markdown ?? "" }
+
+  /// A draft with at least one block: an empty one gets a single empty text block.
+  nonisolated static func editable(_ document: MeetingNotesDocument) -> MeetingNotesDocument {
+    guard document.blocks.isEmpty else { return document }
+    return MeetingNotesDocument(version: document.version, blocks: [MeetingNoteBlock(text: "")])
+  }
   func summary(_ meetingID: UUID) -> String? { entries[meetingID]?.summary }
   func manifest(_ meetingID: UUID) -> MeetingDocumentsManifest? { entries[meetingID]?.manifest }
   func loadState(_ meetingID: UUID) -> LoadState { entries[meetingID]?.load ?? .notLoaded }
@@ -222,7 +239,10 @@ final class MeetingDocumentsOwner {
     case .success(let loaded):
       entry.manifest = loaded.manifest
       if entry.unsavedSummaryEdits == 0 { entry.summary = loaded.summary }
-      if entry.unsavedEdits == 0 { entry.notes = loaded.notes }
+      if entry.unsavedEdits == 0 {
+        entry.document = Self.editable(loaded.notesDocument)
+        entry.revision += 1
+      }
       entry.load = .loaded
       entries[meetingID] = entry
       if entry.unsavedEdits > 0 { scheduleSave(meetingID) }
@@ -231,12 +251,20 @@ final class MeetingDocumentsOwner {
 
   // MARK: - Notes
 
-  /// The user's typing. Saved one debounce interval after the last change.
-  func setNotes(_ meetingID: UUID, _ text: String) {
+  /// The user's typing in the plain notes box, the whole Markdown at once. Lines that did not
+  /// change keep their blocks; a new block starts at `atMs`, the meeting time, when known.
+  /// Saved one debounce interval after the last change.
+  func setNotes(_ meetingID: UUID, _ text: String, atMs: Int? = nil) {
     guard !forgotten.contains(meetingID) else { return }
     var entry = entries[meetingID] ?? Entry()
-    guard entry.notes != text else { return }
-    entry.notes = text
+    guard !MeetingDocumentHash.sameBytes(entry.document.markdown, text) else { return }
+    entry.document = Self.editable(entry.document.replacingMarkdown(text, atMs: atMs))
+    accept(&entry, meetingID)
+  }
+
+  /// Records an accepted change to the draft and schedules its save.
+  private func accept(_ entry: inout Entry, _ meetingID: UUID) {
+    entry.revision += 1
     entry.unsavedEdits += 1
     entries[meetingID] = entry
     switch entry.load {
@@ -293,9 +321,10 @@ final class MeetingDocumentsOwner {
   func flush(_ meetingID: UUID) async -> Bool {
     guard !forgotten.contains(meetingID) else { return false }
     debounceTasks.removeValue(forKey: meetingID)?.cancel()
-    // A meeting this session never touched is `notLoaded` too: its file is read first.
+    // A meeting this session never touched is `notLoaded` too: its file is read first. A read
+    // that failed with nothing typed is tried again (Try again on unreadable notes).
     let state = entries[meetingID]?.load ?? .notLoaded
-    if state == .notLoaded || state == .loading {
+    if state == .notLoaded || state == .loading || (state == .failed && !hasUnsavedNotes(meetingID)) {
       await load(meetingID)
       // A draft typed before the read is still unsaved; the read scheduled a debounced save.
       debounceTasks.removeValue(forKey: meetingID)?.cancel()
@@ -313,7 +342,7 @@ final class MeetingDocumentsOwner {
     // A failed save comes first: `.none` means confirmed, saved emptiness (Codex C7 r3), so an
     // emptied draft that could not be saved is `.failed`, never `.none`.
     guard durable else { return .failed }
-    if entry.notes.isEmpty {
+    if entry.document.markdown.isEmpty {
       return entry.load == .loaded ? .none : .unknown
     }
     return .saved
@@ -326,7 +355,7 @@ final class MeetingDocumentsOwner {
 
   private func saveOnce(_ meetingID: UUID) async {
     guard let entry = entries[meetingID], entry.unsavedEdits > 0 else { return }
-    let text = entry.notes
+    let document = entry.document
     let edits = entry.unsavedEdits
     let gen = generation(meetingID)
     /// The manifest the save wrote, and the documents as read when the save read them first.
@@ -335,11 +364,11 @@ final class MeetingDocumentsOwner {
     case .loaded:
       let revision = (entry.manifest.notes?.revision ?? 0) + edits
       result = await perform(meetingID) {
-        (try $0.saveNotes(text, revision: revision, meeting: meetingID), nil)
+        (try $0.saveNotes(document, revision: revision, meeting: meetingID), nil)
       }
     case .failed, .notLoaded:
       result = await perform(meetingID) {
-        let saved = try $0.saveDraftNotes(text, edits: edits, meeting: meetingID)
+        let saved = try $0.saveDraftNotes(document, edits: edits, meeting: meetingID)
         return (saved.manifest, saved)
       }
     case .loading:
@@ -532,7 +561,7 @@ final class MeetingDocumentsOwner {
       }
     }
     for (meetingID, entry) in entries where entry.unsavedEdits > 0 {
-      let text = entry.notes
+      let document = entry.document
       let edits = entry.unsavedEdits
       let loaded = entry.load == .loaded
       let revision = (entry.manifest.notes?.revision ?? 0) + edits
@@ -540,9 +569,9 @@ final class MeetingDocumentsOwner {
         until: deadline,
         {
           if loaded {
-            _ = try $0.saveNotes(text, revision: revision, meeting: meetingID)
+            _ = try $0.saveNotes(document, revision: revision, meeting: meetingID)
           } else {
-            _ = try $0.saveDraftNotes(text, edits: edits, meeting: meetingID)
+            _ = try $0.saveDraftNotes(document, edits: edits, meeting: meetingID)
           }
         },
         late: { _ in })
@@ -557,7 +586,7 @@ final class MeetingDocumentsOwner {
   /// no further edit is accepted (Codex C7 r2). False means notes may exist: keep the folder.
   /// The returned token lets `reopen` undo this fence, and only this one, if the removal fails.
   func fenceEmptyForRemoval(_ meetingID: UUID) -> UUID? {
-    guard let entry = entries[meetingID], entry.load == .loaded, entry.notes.isEmpty,
+    guard let entry = entries[meetingID], entry.load == .loaded, entry.document.markdown.isEmpty,
       entry.unsavedEdits == 0, debounceTasks[meetingID] == nil, loadTasks[meetingID] == nil,
       saveChains[meetingID] == nil, (operations[meetingID] ?? 0) == 0
     else { return nil }
@@ -637,3 +666,50 @@ final class MeetingDocumentsOwner {
     }
   }
 }
+
+// MARK: - Notes v2 block editing (#3147 PR4)
+
+extension MeetingDocumentsOwner: MeetingNotesAccessing {
+  /// The draft the block editor draws. Editable only once the saved notes are read and shown
+  /// (`canEdit`). "Saved" only when nothing typed is waiting and the notes on disk are the
+  /// draft; a failed save (or an unreadable notes file) is `failed` until a save or read works.
+  func snapshot(for meetingID: UUID) -> MeetingNotesSnapshot {
+    let entry = forgotten.contains(meetingID) ? nil : entries[meetingID]
+    let state: MeetingNotesSaveState
+    switch entry?.load ?? .notLoaded {
+    case .notLoaded, .loading:
+      state = .loading
+    case .failed:
+      state = .failed
+    case .loaded:
+      if entry?.notesSaveFailed == true {
+        state = .failed
+      } else if (entry?.unsavedEdits ?? 0) > 0 {
+        state = .saving
+      } else {
+        state = .saved
+      }
+    }
+    return MeetingNotesSnapshot(
+      document: entry?.document ?? Self.editable(MeetingNotesDocument(blocks: [])),
+      revision: entry?.revision ?? 0, canEdit: canEdit(meetingID) && entry != nil,
+      saveState: state)
+  }
+
+  /// Applies one block edit over the draft revision the editor drew. A block whose first
+  /// character this edit types starts at `atMs` (recording time while recording, the playback
+  /// position after Stop, nil when neither is known).
+  func apply(
+    _ edit: MeetingNotesEdit, to meetingID: UUID, expectedRevision: Int, atMs: Int?
+  ) -> Bool {
+    guard !forgotten.contains(meetingID), var entry = entries[meetingID],
+      entry.load == .loaded, entry.revision == expectedRevision,
+      let next = entry.document.applying(edit, atMs: atMs)
+    else { return false }
+    guard next != entry.document else { return true }
+    entry.document = Self.editable(next)
+    accept(&entry, meetingID)
+    return true
+  }
+}
+

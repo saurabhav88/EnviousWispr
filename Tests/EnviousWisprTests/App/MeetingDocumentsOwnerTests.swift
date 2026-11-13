@@ -908,4 +908,164 @@ struct MeetingDocumentsOwnerTests {
     #expect(documents.context(record.id)?.attendees.map(\.name) == ["Ana"])
     #expect(documents.invitedSearchTerms(record.id) == ["Ana", "ana@acme.com", "acme.com"])
   }
+
+  // MARK: - Notes v2 block editing (#3147 PR4)
+
+  /// A meeting record on disk and a coordinator that has read its documents.
+  private static func loadedMeeting(
+    _ harness: Harness, gate: DebounceGate? = nil, before: (UUID) throws -> Void = { _ in }
+  ) async throws -> (MeetingCoordinator, UUID) {
+    let record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    try harness.store.create(record)
+    try before(record.id)
+    let coordinator = Self.coordinator(harness, gate: gate)
+    await coordinator.documents.load(record.id)
+    return (coordinator, record.id)
+  }
+
+  @Test("block edits apply over the drawn revision, start at the given time and save as blocks")
+  func blockEditsSave() async throws {
+    let harness = try Harness()
+    let gate = DebounceGate()
+    defer { gate.open() }
+    let (coordinator, id) = try await Self.loadedMeeting(harness, gate: gate)
+    let documents = coordinator.documents
+    let first = documents.snapshot(for: id)
+    #expect(first.canEdit && first.saveState == .saved)
+    let block = try #require(first.document.blocks.first)
+    #expect(first.document.blocks.count == 1 && block.text.isEmpty)
+
+    let typed = MeetingNotesEdit.replaceText(blockID: block.id, rangeUTF16: 0..<0, text: "Budget")
+    #expect(documents.apply(typed, to: id, expectedRevision: first.revision, atMs: 42_000))
+    #expect(
+      documents.apply(typed, to: id, expectedRevision: first.revision, atMs: 1) == false,
+      "an edit over an older draft is refused")
+    let saving = documents.snapshot(for: id)
+    #expect(saving.saveState == .saving && saving.revision == first.revision + 1)
+    #expect(documents.notes(id) == "Budget")
+
+    #expect(await documents.flush(id))
+    #expect(documents.snapshot(for: id).saveState == .saved)
+    let disk = try harness.store.loadDocuments(meeting: id).notesDocument
+    #expect(disk.blocks.map(\.id) == [block.id])
+    #expect(disk.blocks[0].startedAtMs == 42_000 && disk.blocks[0].text == "Budget")
+  }
+
+  @Test("the plain notes box and the block editor edit one draft; unchanged lines keep blocks")
+  func plainAndBlockShareDraft() async throws {
+    let harness = try Harness()
+    let (coordinator, id) = try await Self.loadedMeeting(harness)
+    let documents = coordinator.documents
+    documents.setNotes(id, "one\ntwo", atMs: 1_000)
+    let snapshot = documents.snapshot(for: id)
+    #expect(snapshot.document.blocks.map(\.text) == ["one", "two"])
+    #expect(snapshot.document.blocks.map(\.startedAtMs) == [1_000, 1_000])
+    let second = snapshot.document.blocks[1]
+    #expect(
+      documents.apply(
+        .setKind(blockID: second.id, kind: .task), to: id, expectedRevision: snapshot.revision,
+        atMs: nil))
+    #expect(documents.notes(id) == "one\n- [ ] two")
+
+    documents.setNotes(id, "one\n- [ ] two!\nthree", atMs: 5_000)
+    let after = documents.snapshot(for: id).document.blocks
+    #expect(after.map(\.id).prefix(2) == snapshot.document.blocks.map(\.id).prefix(2))
+    #expect(after[1].kind == .task && after[1].text == "two!" && after[1].startedAtMs == 1_000)
+    #expect(after[2].startedAtMs == 5_000)
+    #expect(await documents.flush(id))
+    #expect(Self.notesOnDisk(harness, id) == "one\n- [ ] two!\nthree")
+  }
+
+  @Test("a failed save shows failed, keeps the draft, and Try again saves it")
+  func blockSaveFailure() async throws {
+    let harness = try Harness()
+    let (coordinator, id) = try await Self.loadedMeeting(harness)
+    let documents = coordinator.documents
+    let folder = harness.store.notesURL(for: id).deletingLastPathComponent()
+    try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: folder.path)
+    defer {
+      try? FileManager.default.setAttributes(
+        [.posixPermissions: 0o700], ofItemAtPath: folder.path)
+    }
+    let snapshot = documents.snapshot(for: id)
+    let block = try #require(snapshot.document.blocks.first)
+    #expect(
+      documents.apply(
+        .replaceText(blockID: block.id, rangeUTF16: 0..<0, text: "kept"), to: id,
+        expectedRevision: snapshot.revision, atMs: 3))
+    #expect(await documents.flush(id) == false)
+    #expect(documents.snapshot(for: id).saveState == .failed)
+    #expect(documents.snapshot(for: id).document.blocks[0].text == "kept")
+
+    try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: folder.path)
+    #expect(await documents.flush(id))
+    #expect(documents.snapshot(for: id).saveState == .saved)
+    #expect(try harness.store.loadDocuments(meeting: id).notesDocument.blocks[0].text == "kept")
+  }
+
+  @Test("unreadable notes.json: not editable, never replaced; Try again reads it once fixed")
+  func unreadableNotesJSON() async throws {
+    let harness = try Harness()
+    let bad = Data("not json".utf8)
+    let (coordinator, id) = try await Self.loadedMeeting(harness) {
+      try bad.write(to: harness.store.notesDocumentURL(for: $0))
+    }
+    let documents = coordinator.documents
+    let snapshot = documents.snapshot(for: id)
+    #expect(snapshot.canEdit == false && snapshot.saveState == .failed)
+    let block = try #require(snapshot.document.blocks.first)
+    #expect(
+      documents.apply(
+        .replaceText(blockID: block.id, rangeUTF16: 0..<0, text: "x"), to: id,
+        expectedRevision: snapshot.revision, atMs: nil) == false)
+    // Try again while still unreadable: nothing typed is lost, the box stays locked.
+    _ = await documents.flush(id)
+    #expect(documents.snapshot(for: id).saveState == .failed)
+    #expect(documents.snapshot(for: id).canEdit == false)
+    #expect(try Data(contentsOf: harness.store.notesDocumentURL(for: id)) == bad)
+
+    try MeetingStore.encoder.encode(
+      MeetingNotesDocument(blocks: [MeetingNoteBlock(text: "readable")])
+    ).write(to: harness.store.notesDocumentURL(for: id))
+    #expect(await documents.flush(id), "Try again reads the notes again")
+    #expect(documents.snapshot(for: id).canEdit)
+    #expect(documents.notes(id) == "readable")
+  }
+
+  @Test("v2.6.0 notes load migrated, with nothing to save and their revision kept")
+  func ownerMigration() async throws {
+    let harness = try Harness()
+    // Notes and documents.json exactly as v2.6.0 wrote them.
+    let other = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    try harness.store.create(other)
+    try Data("Agenda\nRisks".utf8).write(to: harness.store.notesURL(for: other.id))
+    try Data(
+      #"{"formatVersion":1,"notes":{"revision":7,"sha256":"\#(MeetingDocumentHash.sha256("Agenda\nRisks"))"}}"#
+        .utf8
+    ).write(to: harness.store.documentsURL(for: other.id))
+    let documents = Self.coordinator(harness).documents
+    #expect(await documents.load(other.id))
+    let snapshot = documents.snapshot(for: other.id)
+    #expect(snapshot.document.blocks.map(\.text) == ["Agenda", "Risks"])
+    #expect(snapshot.document.blocks.allSatisfy { $0.startedAtMs == nil })
+    #expect(snapshot.saveState == .saved && documents.hasPendingWork == false)
+    #expect(documents.manifest(other.id)?.notes?.revision == 7)
+  }
+
+  @Test("a deleted meeting takes no block edit")
+  func deletedMeetingRefusesEdits() async throws {
+    let harness = try Harness()
+    let (coordinator, id) = try await Self.loadedMeeting(harness)
+    let documents = coordinator.documents
+    let snapshot = documents.snapshot(for: id)
+    let block = try #require(snapshot.document.blocks.first)
+    documents.forget(id)
+    #expect(
+      documents.apply(
+        .replaceText(blockID: block.id, rangeUTF16: 0..<0, text: "late"), to: id,
+        expectedRevision: snapshot.revision, atMs: nil) == false)
+    #expect(documents.snapshot(for: id).canEdit == false)
+    #expect(documents.hasPendingWork == false)
+  }
 }
+
