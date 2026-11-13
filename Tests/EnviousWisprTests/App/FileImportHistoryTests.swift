@@ -137,7 +137,7 @@ struct FileImportHistoryTests {
       prepareLocalPolish: { _ in polisherStarts },
       saveToHistory: { try await spy.submit($0) },
       updateHistoryRow: { try spy.update($0) },
-      mergeSpeakerFields: { _, _, _ in true },
+      mergeSpeakerFields: { _, _, _, _ in true },
       currentHistoryRow: { spy.current($0) },
       historyRowExists: { spy.exists($0) },
       processParts: serialFileImportTestProcessor { _, _ in
@@ -516,7 +516,7 @@ struct FileImportHistoryTests {
       },
       saveToHistory: { try await history.saveAndShow($0) },
       updateHistoryRow: { try await history.updateExistingRow($0) },
-      mergeSpeakerFields: { id, analysis, turns in
+      mergeSpeakerFields: { id, _, analysis, turns in
         try await history.mergeSpeakerFields(id: id, analysis: analysis, turns: turns)
       },
       writeExplicitRename: { id, analysis, turns, rename in
@@ -987,7 +987,7 @@ struct FileImportHistoryTests {
       },
       saveToHistory: { try spy.save($0) },
       updateHistoryRow: { try spy.update($0) },
-      mergeSpeakerFields: { _, _, _ in true },
+      mergeSpeakerFields: { _, _, _, _ in true },
       currentHistoryRow: { spy.current($0) },
       historyRowExists: { spy.exists($0) },
       // Every part comes back with NO polished text, which is what a bypassed or entirely

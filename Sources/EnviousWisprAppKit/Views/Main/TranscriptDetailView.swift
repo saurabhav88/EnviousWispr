@@ -487,16 +487,9 @@ struct TranscriptDetailView: View {
   /// being deleted. `nil` for a row that no longer exists, so nothing is delivered for a
   /// recording the user was told is gone.
   private var exportText: String? {
-    guard let live = transcriptCoordinator.currentRow(id: transcript.id) else { return nil }
-    guard let base = transcriptCoordinator.textForDelivery(live) else { return nil }
-    if let turns = live.turns,
-      let result = TranscriptDocumentPresenter.exportText(
-        turns: turns, rawText: live.text, speakerNames: live.speakerNames ?? [:],
-        timesOn: timesOn, mode: documentView)
-    {
-      return result.text
-    }
-    return base
+    HistoryTranscriptExport.text(
+      rowID: transcript.id, coordinator: transcriptCoordinator, mode: documentView,
+      timesOn: timesOn)
   }
 
   private var defaultFileName: String { kindWord }

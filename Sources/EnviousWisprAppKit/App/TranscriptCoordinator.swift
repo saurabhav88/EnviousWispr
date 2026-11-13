@@ -1,3 +1,4 @@
+import CryptoKit
 import EnviousWisprCore
 import EnviousWisprServices
 import EnviousWisprStorage
@@ -983,8 +984,16 @@ final class TranscriptCoordinator {
         // #4075 S1: prepared when it runs. A cleaned update owns its text and provenance; the
         // speaker fields are whatever earlier commands (a rename, a speaker merge) left.
         guard let current = currentRow(id: transcript.id) else { return false }
-        return try await performWrite(
-          transcript.carryingSpeakerFields(from: current), insertIfAbsent: false)
+        var candidate = transcript.carryingSpeakerFields(from: current)
+        if current.isImported {
+          // #3147 PR3: a write from an older transcription of this import (its text replaced
+          // since by Transcribe again with) is refused, even when the text matches; and the
+          // row's current source link stands, whatever link the caller's copy carried.
+          guard candidate.importAttemptID == current.importAttemptID else { return false }
+          candidate = candidate.withSource(
+            bookmark: current.sourceBookmark, fingerprint: current.sourceFingerprint)
+        }
+        return try await performWrite(candidate, insertIfAbsent: false)
       }
     }.get()
   }
@@ -1330,6 +1339,127 @@ final class TranscriptCoordinator {
         return .failed
       }
     }
+  }
+
+  // MARK: - Imported transcripts (#3147 PR3)
+
+  /// The import background speaker write: `mergeSpeakerFields` for a document whose import
+  /// attempt is `expectedAttemptID`, refused (false) when the row's text has since been
+  /// replaced by Transcribe again with, or the row is not an import.
+  @discardableResult
+  func mergeImportedSpeakerFields(
+    id: UUID, expectedAttemptID: UUID?, analysis: TranscriptSpeakerAnalysis, turns: [Turn]?
+  ) async throws -> Bool {
+    guard !transactionExecutor.isDurableWriteInFlight(id) else { throw RowWriteInFlight() }
+    try Task.checkCancellation()
+    return try await transactionExecutor.admit { [self] in
+      await transactionExecutor.capture { () async throws -> Bool in
+        guard let existing = currentRow(id: id), existing.isImported,
+          existing.importAttemptID == expectedAttemptID
+        else { return false }
+        let merged = existing.mergingSpeakerFields(analysis: analysis, turns: turns)
+        return try await performWrite(merged, insertIfAbsent: false)
+      }
+    }.get()
+  }
+
+  /// Links import `rowID` to `bookmark` (Locate original, or a refreshed stale bookmark), only
+  /// while the row still holds `expected`. A known fingerprint is never erased or replaced
+  /// through the legacy route: `fingerprint` must equal the stored one when one is stored.
+  /// A row without one (legacy) takes `fingerprint` only with `confirmedLegacy`.
+  @discardableResult
+  func setImportedSource(
+    bookmark: Data, fingerprint: String?, for rowID: UUID, expected: ImportedSourceReference,
+    confirmedLegacy: Bool
+  ) async throws -> Bool {
+    guard !transactionExecutor.isDurableWriteInFlight(rowID) else { throw RowWriteInFlight() }
+    try Task.checkCancellation()
+    return try await transactionExecutor.admit { [self] in
+      await transactionExecutor.capture { () async throws -> Bool in
+        guard let current = currentRow(id: rowID), current.isImported,
+          ImportedSourceReference(current) == expected
+        else { return false }
+        if let stored = current.sourceFingerprint {
+          guard fingerprint == stored else { return false }
+        } else {
+          guard confirmedLegacy else { return false }
+        }
+        onImportedContentWillChange?(rowID)
+        return try await performWrite(
+          current.withSource(bookmark: bookmark, fingerprint: fingerprint ?? current.sourceFingerprint),
+          insertIfAbsent: false)
+      }
+    }.get()
+  }
+
+  /// The newest replacement ticket per row; a commit with any other ticket is stale.
+  private var replacementTickets: [UUID: UUID] = [:]
+
+  /// Starts Transcribe again with for import `rowID` (after the user confirmed): records the
+  /// row's current state so the commit can refuse if anything changed. Nil when the row is
+  /// gone or not an import. A newer ticket for the same row makes an older one stale.
+  func beginImportedReplacement(for rowID: UUID) async throws -> ImportedReplacementTicket? {
+    try Task.checkCancellation()
+    return try await transactionExecutor.admit { [self] in
+      await transactionExecutor.capture { () async throws -> ImportedReplacementTicket? in
+        guard let current = currentRow(id: rowID), current.isImported else { return nil }
+        let digest = try await Self.rowDigest(current)
+        let ticket = ImportedReplacementTicket(
+          rowID: rowID, requestID: UUID(), attemptID: UUID(), expectedRowDigest: digest,
+          source: ImportedSourceReference(current))
+        replacementTickets[rowID] = ticket.requestID
+        return ticket
+      }
+    }.get()
+  }
+
+  /// Replaces import `ticket.rowID`'s content with `result` (a fresh transcription of the same
+  /// file) in one write, keeping its id, date, file name, source link and preference, and
+  /// minting `ticket.attemptID`. False when the ticket is stale, the row is gone, or its stored
+  /// state or source changed since the ticket. Stops the row's players first.
+  @discardableResult
+  func commitImportedReplacement(_ result: Transcript, ticket: ImportedReplacementTicket)
+    async throws -> Bool
+  {
+    guard !transactionExecutor.isDurableWriteInFlight(ticket.rowID) else {
+      throw RowWriteInFlight()
+    }
+    try Task.checkCancellation()
+    return try await transactionExecutor.admit { [self] in
+      await transactionExecutor.capture { () async throws -> Bool in
+        guard replacementTickets[ticket.rowID] == ticket.requestID,
+          let current = currentRow(id: ticket.rowID), current.isImported,
+          ImportedSourceReference(current) == ticket.source,
+          try await Self.rowDigest(current) == ticket.expectedRowDigest
+        else { return false }
+        onImportedContentWillChange?(ticket.rowID)
+        let replaced = current.replacingImportedContent(from: result, attemptID: ticket.attemptID)
+        let written = try await performWrite(replaced, insertIfAbsent: false)
+        if written { replacementTickets[ticket.rowID] = nil }
+        return written
+      }
+    }.get()
+  }
+
+  /// Makes any outstanding replacement ticket for `rowID` stale (Cancel, deletion).
+  func invalidateImportedReplacement(for rowID: UUID) {
+    replacementTickets[rowID] = nil
+  }
+
+  /// Called inside the command, before an import's content or source changes or the row is
+  /// removed, so its players stop first (wired to the playback arbiter). Nil in tests.
+  @ObservationIgnored var onImportedContentWillChange: (@MainActor (UUID) -> Void)?
+
+  /// A canonical digest of a stored row (its encoded JSON with sorted keys), computed off the
+  /// main actor; the base a replacement ticket compares against.
+  private static func rowDigest(_ row: Transcript) async throws -> String {
+    try await Task.detached(priority: .userInitiated) {
+      let encoder = JSONEncoder()
+      encoder.outputFormatting = [.sortedKeys]
+      encoder.dateEncodingStrategy = .millisecondsSince1970
+      let data = try encoder.encode(row)
+      return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }.value
   }
 
   /// One removal command with its announcement. A row already absent from History and from
@@ -1746,6 +1876,11 @@ final class TranscriptCoordinator {
     // #3147: meetings and imports never have a dictation recording, so their removal never
     // depends on the dictation archive. Decided from the row before its text goes.
     let mayHaveRecording = known.map { $0.meetingID == nil && !$0.isImported } ?? true
+    // #3147 PR3: an import's players stop and its pending Transcribe again goes stale first.
+    if known?.isImported == true {
+      onImportedContentWillChange?(id)
+      replacementTickets[id] = nil
+    }
     let existed = try await transactionExecutor.remove(id: id)
     // #3147: a dictation's recording goes with it, also when the text was already gone (a
     // leftover). A failure is reported, never hidden behind the text's removal; launch
@@ -1784,6 +1919,9 @@ final class TranscriptCoordinator {
       }
       return
     }
+    // #3147 PR3: every import's players stop and pending Transcribe again runs go stale first.
+    for row in transcripts where row.isImported { onImportedContentWillChange?(row.id) }
+    replacementTickets.removeAll()
     do {
       try transactionExecutor.deleteAll()
       // #3147: every recording goes with the rows. A failure is reported as a failed Delete All

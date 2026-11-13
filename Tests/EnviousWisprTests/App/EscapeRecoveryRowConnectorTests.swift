@@ -74,17 +74,24 @@ struct EscapeRecoveryRowConnectorTests {
     let source = try source(Self.detailPath)
 
     let guarded = source.components(separatedBy: "transcriptCoordinator.textForDelivery(").count - 1
-    // Three sites: Copy/Save/Share's `exportText` (the live row), Paste, and Save and Share's
-    // enabled state (#4001 H10, which only decides whether the buttons are enabled).
+    // Two sites in the view: Paste, and Save and Share's enabled state (#4001 H10, which only
+    // decides whether the buttons are enabled). Copy/Save/Share's `exportText` reads the live
+    // row through the shared export owner (#3147 PR3), checked below.
     #expect(
-      guarded == 3,
+      guarded == 2,
       """
       Copy and Paste must BOTH ask for the text by id, and the toolbar's enabled state too; \
       found \(guarded). A button reading `transcript.displayText` directly would paste a row \
       that lapsed between render and click.
       """)
     #expect(
-      source.contains("transcriptCoordinator.textForDelivery(live)"),
+      source.contains("HistoryTranscriptExport.text("),
+      "Copy, Save and Share go through the shared export owner")
+    let export = try String(
+      contentsOf: RepoRoot.sourceURL("Sources/EnviousWisprAppKit/App/HistoryTranscriptExport.swift"),
+      encoding: .utf8)
+    #expect(
+      export.contains("coordinator.textForDelivery(live)"),
       "Copy, Save and Share deliver the LIVE row's text, never the displayed snapshot")
     #expect(
       source.contains("PasteService.copyToClipboard(transcript.displayText)") == false,
@@ -177,8 +184,8 @@ struct EscapeRecoveryRowConnectorTests {
       copyAction.contains("pasteAllowed") == false,
       "and must not borrow Paste's policy either")
     #expect(
-      copyAction.contains("transcriptCoordinator.textForDelivery("),
-      "control: it still routes through the lapse guard, which IS in scope")
+      copyAction.contains("exportText"),
+      "control: it still routes through the lapse guard (exportText reads textForDelivery through HistoryTranscriptExport), which IS in scope")
   }
 
 }

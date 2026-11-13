@@ -534,6 +534,52 @@ public struct Transcript: Codable, Identifiable, Sendable {
     return copy
   }
 
+  /// An import's link to its original file (#3147 PR3): ordinary bookmark data for this
+  /// non-sandboxed app. Nil for every row imported before PR3 and for every non-import.
+  public private(set) var sourceBookmark: Data?
+  /// An import's `ImportedSourceIdentity.fingerprint` ("v1:<bytes>:<ms>:<sha256>"), captured
+  /// at import. Nil when it could not be read, and for every legacy row.
+  public private(set) var sourceFingerprint: String?
+  /// Which transcription of this import produced the current text (#3147 PR3): minted at
+  /// import and again by Transcribe again with, so a late write from an older attempt
+  /// cannot publish onto newer text, even when the text happens to match.
+  public private(set) var importAttemptID: UUID?
+
+  /// The same row with only its source link changed.
+  public func withSource(bookmark: Data?, fingerprint: String?) -> Transcript {
+    var copy = self
+    copy.sourceBookmark = bookmark
+    copy.sourceFingerprint = fingerprint
+    return copy
+  }
+
+  /// The same row with only its import attempt changed.
+  public func withImportAttempt(_ id: UUID?) -> Transcript {
+    var copy = self
+    copy.importAttemptID = id
+    return copy
+  }
+
+  /// This import with its content replaced by `result`, a fresh transcription of the same
+  /// file (#3147 PR3, Transcribe again with). Keeps this row's identity: id, creation date,
+  /// file name, source link and History preference. Replaces every field the transcription
+  /// and processing produce, together, and takes `result`'s speaker fields as they are, so
+  /// old turn ranges never index the new text.
+  public func replacingImportedContent(from result: Transcript, attemptID: UUID) -> Transcript {
+    let copy = Transcript(
+      id: id, text: result.text, polishedText: result.polishedText, language: result.language,
+      duration: duration, processingTime: result.processingTime, backendType: result.backendType,
+      createdAt: createdAt, llmProvider: result.llmProvider, llmModel: result.llmModel,
+      metrics: result.metrics, importedFileName: importedFileName,
+      processedText: result.processedText, speakerAnalysis: result.speakerAnalysis,
+      speakerNames: result.speakerNames, turns: result.turns,
+      speakerNameSources: result.speakerNameSources,
+      unassignedSpeakerNames: result.unassignedSpeakerNames,
+      preferredVersion: preferredVersion, sourceBookmark: sourceBookmark,
+      sourceFingerprint: sourceFingerprint, importAttemptID: attemptID)
+    return copy
+  }
+
   public init(
     id: UUID = UUID(),
     text: String,
@@ -560,7 +606,10 @@ public struct Transcript: Codable, Identifiable, Sendable {
     unassignedSpeakerNames: [String]? = nil,
     meetingID: UUID? = nil,
     meetingTranscriptAttemptID: UUID? = nil,
-    preferredVersion: PreferredVersion? = nil
+    preferredVersion: PreferredVersion? = nil,
+    sourceBookmark: Data? = nil,
+    sourceFingerprint: String? = nil,
+    importAttemptID: UUID? = nil
   ) {
     precondition(
       meetingID == nil || importedFileName == nil,
@@ -591,6 +640,9 @@ public struct Transcript: Codable, Identifiable, Sendable {
     self.meetingID = meetingID
     self.meetingTranscriptAttemptID = meetingTranscriptAttemptID
     self.preferredVersion = preferredVersion
+    self.sourceBookmark = sourceBookmark
+    self.sourceFingerprint = sourceFingerprint
+    self.importAttemptID = importAttemptID
   }
 
   /// A copy promoted to permanent History: the clock is cleared, everything else is

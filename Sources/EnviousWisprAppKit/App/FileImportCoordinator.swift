@@ -1,5 +1,6 @@
 import CryptoKit
 import EnviousWisprASR
+import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprPipeline
 import EnviousWisprServices
@@ -98,6 +99,10 @@ final class FileImportCoordinator {
     let codec: String
     let sampleRate: Double
     let channelCount: Int
+    /// #3147 PR3: the original file's link and identity, read beside the decode. Nil when
+    /// either could not be read: the import still saves, as a row with no trusted link.
+    var sourceBookmark: Data? = nil
+    var sourceFingerprint: String? = nil
 
     /// "1 hr 12 min · 68.4 MB · AAC · 44.1 kHz · mono"
     var detailLine: String {
@@ -717,12 +722,21 @@ final class FileImportCoordinator {
   /// with a flag: the first CREATES and must be allowed to, the second may not.
   private let updateHistoryRow: @MainActor (Transcript) async throws -> Bool
 
+  /// The import attempt the wizard's document for `rowID` came from (#3147 PR3), so its late
+  /// History writes refuse once Transcribe again with replaced the row's text. Nil for a
+  /// document this wizard does not hold.
+  private func importAttempt(of rowID: UUID) -> UUID? {
+    originalHistoryRow?.id == rowID ? originalHistoryRow?.importAttemptID : nil
+  }
+
   /// The speaker-fields write (#2810 addendum §3 E), separate from `updateHistoryRow` because
   /// it merges speaker fields against the row's CURRENT state at call time — never a value
   /// captured earlier — which is what makes it safe against a rename racing this write.
   /// Returns false when the row is no longer in History, same meaning as `updateHistoryRow`.
+  /// #3147 PR3: the second argument is the import attempt this document's text came from;
+  /// History refuses the write once Transcribe again with replaced that text.
   private let mergeSpeakerFields:
-    @MainActor (UUID, TranscriptSpeakerAnalysis, [Turn]?) async throws -> Bool
+    @MainActor (UUID, UUID?, TranscriptSpeakerAnalysis, [Turn]?) async throws -> Bool
 
   /// The rename write (#2811, phase 4 of #2807) — a SEPARATE closure from `mergeSpeakerFields`
   /// rather than a widened one, so every existing turn-storage call site (which never renames)
@@ -922,7 +936,7 @@ final class FileImportCoordinator {
     saveToHistory: @escaping @MainActor (Transcript) async throws -> Void,
     updateHistoryRow: @escaping @MainActor (Transcript) async throws -> Bool,
     mergeSpeakerFields:
-      @escaping @MainActor (UUID, TranscriptSpeakerAnalysis, [Turn]?) async throws -> Bool,
+      @escaping @MainActor (UUID, UUID?, TranscriptSpeakerAnalysis, [Turn]?) async throws -> Bool,
     // Defaulted, unlike the four closures above (#2772's "no defaults" rule protects the
     // MAIN import write path — every new import always calls those four; rename and retry
     // are opt-in UI actions most tests never exercise, so a harmless default here does not
@@ -1038,10 +1052,13 @@ final class FileImportCoordinator {
       do {
         let decoded = try await decode(url)
         guard generationAtStart == generation else { return }
+        let source = await Self.readSource(url)
+        guard generationAtStart == generation else { return }
         file = ChosenFile(
           name: name, seconds: decoded.seconds, byteCount: decoded.byteCount,
           codec: decoded.codec, sampleRate: decoded.sampleRate,
-          channelCount: decoded.channelCount)
+          channelCount: decoded.channelCount, sourceBookmark: source.bookmark,
+          sourceFingerprint: source.fingerprint)
         state = .ready(fileName: name, seconds: decoded.seconds)
         decodedSamples = decoded.samples
       } catch is CancellationError {
@@ -1051,6 +1068,16 @@ final class FileImportCoordinator {
         showRejection(FileImportDocumentMath.rejection(for: error))
       }
     }
+  }
+
+  /// The chosen file's bookmark and `ImportedSourceIdentity` fingerprint (#3147 PR3), read off
+  /// the main actor. Either is nil when it could not be read; a bookmark without an identity
+  /// is not kept, so a row never claims a link nothing can verify.
+  nonisolated private static func readSource(_ url: URL) async -> (bookmark: Data?, fingerprint: String?) {
+    guard let identity = try? await ImportedSourceFingerprint.read(url: url),
+      let bookmark = try? url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
+    else { return (nil, nil) }
+    return (bookmark, identity.fingerprint)
   }
 
   /// Where a refusal is READ, which is not always where it was produced.
@@ -1684,7 +1711,9 @@ final class FileImportCoordinator {
     if let turns {
       var held = currentHistoryRow(historyID)?.turns == turns.final
       if !held {
-        held = (try? await mergeSpeakerFields(historyID, turns.analysis, turns.final)) == true
+        held =
+          (try? await mergeSpeakerFields(
+            historyID, importAttempt(of: historyID), turns.analysis, turns.final)) == true
         if held, originalHistoryRow?.id == historyID {
           originalHistoryRow = originalHistoryRow?.mergingSpeakerFields(
             analysis: turns.analysis, turns: turns.final)
@@ -2890,7 +2919,7 @@ final class FileImportCoordinator {
     let saveFailed: Bool
     let rowDeleted: Bool
     do {
-      let saved = try await mergeSpeakerFields(historyID, analysis, turns)
+      let saved = try await mergeSpeakerFields(historyID, importAttempt(of: historyID), analysis, turns)
       saveFailed = false
       rowDeleted = !saved
       // Keeps this coordinator's OWN in-memory snapshot in step with what was just
@@ -3170,7 +3199,11 @@ final class FileImportCoordinator {
         language: engineReportedLanguage,
         duration: file.seconds,
         backendType: configuration.backendType,
-        importedFileName: file.name)
+        importedFileName: file.name,
+        // #3147 PR3: the original's link, and the attempt this transcription is.
+        sourceBookmark: file.sourceBookmark,
+        sourceFingerprint: file.sourceFingerprint,
+        importAttemptID: UUID())
     }
     guard let row = originalHistoryRow else { return false }
     guard generationAtStart == generation, !Task.isCancelled else { return nil }

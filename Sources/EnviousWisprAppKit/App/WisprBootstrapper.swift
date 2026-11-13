@@ -2512,8 +2512,10 @@ package final class WisprBootstrapper {
       },
       // The speaker-fields write (#2810 addendum §3 E) — reads the row's CURRENT state at
       // call time, so it can never clobber a rename that landed while cleanup was running.
-      mergeSpeakerFields: { [transcriptCoordinator] id, analysis, turns in
-        try await transcriptCoordinator.mergeSpeakerFields(id: id, analysis: analysis, turns: turns)
+      // #3147 PR3: fenced by the import attempt the wizard's document came from.
+      mergeSpeakerFields: { [transcriptCoordinator] id, attemptID, analysis, turns in
+        try await transcriptCoordinator.mergeImportedSpeakerFields(
+          id: id, expectedAttemptID: attemptID, analysis: analysis, turns: turns)
       },
       // The rename write (#2811, phase 4) — same underlying method, an explicit rename pair
       // this time.

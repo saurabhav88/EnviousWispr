@@ -122,8 +122,8 @@ struct FileImportCoordinatorSpeakerTests {
     speakerLabeler: @escaping @MainActor ([Float], TimeInterval) async -> SpeakerAnalysis,
     saveToHistory: @escaping @MainActor (Transcript) async throws -> Void = { _ in },
     updateHistoryRow: @escaping @MainActor (Transcript) async throws -> Bool = { _ in true },
-    mergeSpeakerFields: @escaping @MainActor (UUID, TranscriptSpeakerAnalysis, [Turn]?) async throws ->
-      Bool = { _, _, _ in true },
+    mergeSpeakerFields: @escaping @MainActor (UUID, UUID?, TranscriptSpeakerAnalysis, [Turn]?) async throws ->
+      Bool = { _, _, _, _ in true },
     writeExplicitRename: @escaping @MainActor (
       UUID, TranscriptSpeakerAnalysis, [Turn]?, (speakerId: String, name: String)
     ) async throws -> Bool = { _, _, _, _ in false },
@@ -411,7 +411,7 @@ struct FileImportCoordinatorSpeakerTests {
       transcribedText: "hello there friend",
       wordTimings: Self.twoSpeakerWordTimings(),
       speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) },
-      mergeSpeakerFields: { _, analysis, turns in
+      mergeSpeakerFields: { _, _, analysis, turns in
         recorder.record(analysis, turns)
         return true
       })
@@ -444,7 +444,7 @@ struct FileImportCoordinatorSpeakerTests {
       lease: EngineLease(),
       wordTimings: nil,
       speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) },
-      mergeSpeakerFields: { _, analysis, turns in
+      mergeSpeakerFields: { _, _, analysis, turns in
         recorder.record(analysis)
         #expect(turns == nil)
         return true
@@ -481,7 +481,7 @@ struct FileImportCoordinatorSpeakerTests {
         ASRWordTiming(word: "hello there friend", range: 0..<19, startMs: nil, endMs: nil)
       ],
       speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) },
-      mergeSpeakerFields: { _, analysis, turns in
+      mergeSpeakerFields: { _, _, analysis, turns in
         recorder.record(analysis)
         #expect(
           turns == nil, "a contradictory labeled-with-all-unknown-turns row must never be stored")
@@ -516,7 +516,7 @@ struct FileImportCoordinatorSpeakerTests {
       // `runTurnStorage` passes `outcome: nil` into `mergeAndReport` — the branch found by
       // chunk review round 2 to have silently dropped a write failure.
       speakerLabeler: { _, _ in .failed(.modelsUnavailable) },
-      mergeSpeakerFields: { _, _, _ in throw WriteError() },
+      mergeSpeakerFields: { _, _, _, _ in throw WriteError() },
       emitTurnTelemetry: { outcome, _, _ in telemetry.record(outcome) })
 
     coordinator.choose(url: Self.anyURL)
@@ -542,7 +542,7 @@ struct FileImportCoordinatorSpeakerTests {
     let coordinator = makeCoordinator(
       lease: EngineLease(),
       speakerLabeler: { _, _ in .failed(.modelsUnavailable) },
-      mergeSpeakerFields: { _, _, _ in false },
+      mergeSpeakerFields: { _, _, _, _ in false },
       emitTurnTelemetry: { outcome, _, _ in telemetry.record(outcome) })
 
     coordinator.choose(url: Self.anyURL)
@@ -581,7 +581,7 @@ struct FileImportCoordinatorSpeakerTests {
         recorder.record(row)
         return store.update(row)
       },
-      mergeSpeakerFields: { try store.mergeSpeakerFields($0, $1, $2) },
+      mergeSpeakerFields: { try store.mergeSpeakerFields($0, $2, $3) },
       currentHistoryRow: { store.current($0) },
       emitTurnTelemetry: { outcome, _, _ in telemetry.record(outcome) })
 
@@ -626,7 +626,7 @@ struct FileImportCoordinatorSpeakerTests {
         await speakerGate.waitUntilOpen()
         return .labeled(count: 2, segments: Self.twoSpeakerSegments)
       },
-      mergeSpeakerFields: { _, analysis, _ in
+      mergeSpeakerFields: { _, _, analysis, _ in
         recorder.record(analysis)
         return true
       })
@@ -671,7 +671,7 @@ struct FileImportCoordinatorSpeakerTests {
         await speakerGate.waitUntilOpen()
         return .labeled(count: 2, segments: Self.twoSpeakerSegments)
       },
-      mergeSpeakerFields: { _, _, _ in true })
+      mergeSpeakerFields: { _, _, _, _ in true })
     #expect(!AppRelauncher.workInFlight(dictationActive: false, fileImport: coordinator))
 
     coordinator.choose(url: Self.anyURL)
@@ -800,7 +800,7 @@ struct FileImportCoordinatorSpeakerTests {
       wordTimings: wordTimings, segmentTimings: segmentTimings, speakerLabeler: speakerLabeler,
       saveToHistory: { store.save($0) },
       updateHistoryRow: { store.update($0) },
-      mergeSpeakerFields: { try store.mergeSpeakerFields($0, $1, $2) },
+      mergeSpeakerFields: { try store.mergeSpeakerFields($0, $2, $3) },
       writeExplicitRename: { try await store.submitRename($0, $1, $2, $3) },
       currentHistoryRow: { store.current($0) },
       emitTurnTelemetry: emitTurnTelemetry, emitRenameTelemetry: emitRenameTelemetry,
@@ -1792,7 +1792,7 @@ struct FileImportCoordinatorSpeakerTests {
         }
         return store.update(row)
       },
-      mergeSpeakerFields: { id, analysis, turns in
+      mergeSpeakerFields: { id, _, analysis, turns in
         await script.holdIfArmed(merge: true)
         script.note("merge")
         let saved = try store.mergeSpeakerFields(id, analysis, turns)
@@ -3432,7 +3432,7 @@ struct FileImportCoordinatorSpeakerTests {
       speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) },
       saveToHistory: { store.save($0) },
       updateHistoryRow: { store.update($0) },
-      mergeSpeakerFields: { _, _, _ in throw WriteError() },
+      mergeSpeakerFields: { _, _, _, _ in throw WriteError() },
       currentHistoryRow: { store.current($0) })
 
     coordinator.choose(url: Self.anyURL)
