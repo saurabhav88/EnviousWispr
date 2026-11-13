@@ -292,7 +292,7 @@ struct WordDiffTests {
 
 /// #3147: the History card's alignment. What fails when these fail is a time button that
 /// seeks to the wrong words, or an edit drawn on a word the cleanup never touched.
-@Suite("WordDiff alignment (#3147)", .tags(.productOutcome, .localParallel))
+@Suite("WordDiff alignment (#3147)", .tags(.productOutcome))
 struct WordDiffAlignmentTests {
 
   private static func slice(_ s: String, _ r: Range<Int>) -> String {
