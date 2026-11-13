@@ -40,7 +40,7 @@ struct EGOneAdapterLifecycleTests {
       try Data("checker".utf8).write(to: adapter)
       let script = #"""
         #!/usr/bin/env python3
-        import http.server, json, os, signal, socketserver, sys, time
+        import http.server, json, os, signal, socketserver, sys, threading, time
         args = sys.argv[1:]
         root = os.path.dirname(os.path.realpath(sys.argv[0]))
         with open(os.path.join(root, 'pids.txt'), 'a') as pids:
@@ -52,6 +52,21 @@ struct EGOneAdapterLifecycleTests {
                         if '--lora-scaled' in args else None)
         with open(os.path.join(root, 'launches.jsonl'), 'a') as log:
             log.write(json.dumps(args) + '\n')
+        # #4493: llama-server's launch has a Unix socket as its host and the bearer in a key
+        # file; envious-decode's has --socket and the bearer as the first line of its input.
+        if '--host' in args:
+            socket_path = args[args.index('--host') + 1]
+            key_file = args[args.index('--api-key-file') + 1]
+            token = open(key_file).read().strip()
+        else:
+            socket_path = args[args.index('--socket') + 1]
+            key_file = None
+            token = sys.stdin.readline().strip()
+        # Mirror both real helpers: a dead parent closes this launch pipe.
+        def stop_on_parent_exit():
+            sys.stdin.read()
+            os._exit(0)
+        threading.Thread(target=stop_on_parent_exit, daemon=True).start()
         if os.path.exists(os.path.join(root, 'exit_on_start')):
             sys.exit(0)
         if os.path.exists(os.path.join(root, 'hold_ready')):
@@ -64,16 +79,6 @@ struct EGOneAdapterLifecycleTests {
             while True:
                 # test-fixture-timer: hold the child alive past the readiness deadline
                 time.sleep(0.1)
-        # #4493: llama-server's launch has a Unix socket as its host and the bearer in a key
-        # file; envious-decode's has --socket and the bearer as the first line of its input.
-        if '--host' in args:
-            socket_path = args[args.index('--host') + 1]
-            key_file = args[args.index('--api-key-file') + 1]
-            token = open(key_file).read().strip()
-        else:
-            socket_path = args[args.index('--socket') + 1]
-            key_file = None
-            token = sys.stdin.readline().strip()
         class Handler(http.server.BaseHTTPRequestHandler):
             # The app's client takes exactly one Content-Length and one request per connection.
             def answer(self, status, body=b'', content_type=None):
