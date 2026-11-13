@@ -974,9 +974,8 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// existing `handle(.reset)` body for `RecordingFinalizer.swift:117`'s
   /// sync call site.
   ///
-  /// Bridge matrix #5 — the App's "Try Again / dismiss" path
-  /// (`RecordingFinalizer.resetActive()`) is wired to `MainWindowView`'s
-  /// "Try Again" button, which renders only when the driver's
+  /// Bridge matrix #5 — History's status-pane "Try Again" reset path was removed
+  /// with the split shell in #3147 PR2; `reset()` still matters when the driver's
   /// `pipelineState` is `.error`. Most `.error` mappings come from
   /// terminal kernel states (`.failed`, `.audioInterrupted`,
   /// `.asrInterrupted`), but `lastTerminalReason` can also surface

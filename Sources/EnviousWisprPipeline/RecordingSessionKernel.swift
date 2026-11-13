@@ -758,9 +758,9 @@ final class RecordingSessionKernel {
   /// still `recordingStartedAtTick` from the PRIOR session, not yet cleared
   /// by this session's `resetSessionState()`. Without this gate, a second
   /// PTT press would briefly render the previous recording's stale elapsed
-  /// time during prewarm instead of `0:00`. Both StatusView and the overlay
-  /// already independently gate their OWN reads on `pipelineState ==
-  /// .recording`, so this is redundant-but-safe for them and is the actual
+  /// time during prewarm instead of `0:00`. The overlay already gates its OWN
+  /// reads on `pipelineState == .recording` (History's StatusView did too until
+  /// #3147 PR2 removed it), so this is redundant-but-safe there and is the actual
   /// fix for the two overlay call sites that read before that guard exists.
   var recordingElapsedSeconds: TimeInterval? {
     guard state == .live, let start = recordingStartedAtTick else { return nil }
@@ -2671,6 +2671,9 @@ final class RecordingSessionKernel {
       voicedFraction: tailFraction)
     markStage(.tailChecked)
     let asrSamples: [Float]
+    // #3147 §3.2: where each stretch of `asrSamples` sits in `captureResult.samples` (the saved
+    // recording), extended in the same branch that extends the samples.
+    var asrTimeline = conditioned.timeline
     var recoveredTailMs: Int? = nil
     // nil when ineligible (engine/streaming); a real Bool on the eligible path so
     // `false` is a valid false-fire-rate denominator.
@@ -2685,6 +2688,10 @@ final class RecordingSessionKernel {
       // Contiguous: `tailSlice == raw[keptThrough..<rawCount]`, the exact region
       // the trim discarded, appended immediately after the filtered buffer.
       asrSamples = conditioned.samples + tailSlice
+      asrTimeline.append(
+        DictationAudioTimelineSpan(
+          decodeRange: conditioned.samples.count..<asrSamples.count,
+          recordingStartSample: captureResult.samples.count - tailSlice.count))
       recoveredTailMs = tailDroppedMs
       usedTailPreservation = true
     case .refuse(let reason):
@@ -2950,7 +2957,7 @@ final class RecordingSessionKernel {
           + "lastTokenEndMs=\(tailClip.asrLastTokenEndMs.map(String.init) ?? "n/a") "
           + "tokenGapMs=\(tailClip.asrLastTokenGapMs.map(String.init) ?? "n/a") "
           + "chunked=\(tailClip.asrChunked.map(String.init) ?? "n/a")")
-      deliveredASR = primaryDecodeEvidence(result)
+      deliveredASR = primaryDecodeEvidence(result, timeline: asrTimeline)
       await runFinalizing(sid, asrText: result.text, transcriptID: transcriptID)
     case .empty(let hadSpeechEvidence):
       mergeAdapterDiagnosticsIntoASREmpty()
@@ -3025,7 +3032,8 @@ final class RecordingSessionKernel {
           telemetryState.asrCompletedTelemetry = completed
           deliveredASR = Self.evidence(
             salvaged.result, source: .leadSalvage,
-            input: .conditionedBatchTrimmed(leadSamples: salvaged.trimSamples))
+            input: .conditionedBatchTrimmed(leadSamples: salvaged.trimSamples),
+            timeline: asrTimeline)
           await runFinalizing(sid, asrText: salvaged.result.text, transcriptID: transcriptID)
           salvageDelivered = true
         }
@@ -3249,7 +3257,8 @@ final class RecordingSessionKernel {
         deliveredASR = Self.evidence(
           retryResult, source: .phase2Retry,
           input: adapter.capabilities.decodesConditionedBatchSamples
-            ? .conditionedBatch : .paddedRawCapture)
+            ? .conditionedBatch : .paddedRawCapture,
+          timeline: asrTimeline)
         await runFinalizing(sid, asrText: retryResult.text, transcriptID: transcriptID)
       case .failed(let retryError):
         // Codex r3: the retry's OWN failure, not the stale primary-decode
@@ -3309,35 +3318,71 @@ final class RecordingSessionKernel {
   /// a batch decode or a streaming session that fell back to batch rescue decoded the
   /// conditioned batch buffer; Whisper (no conditioned batch decode) read the raw capture padded
   /// to its minimum. Read at the delivery site, before any later state change.
-  private func primaryDecodeEvidence(_ result: ASRResult) -> DictationASREvidence {
+  private func primaryDecodeEvidence(
+    _ result: ASRResult, timeline: [DictationAudioTimelineSpan]
+  ) -> DictationASREvidence {
     let conditioned = adapter.capabilities.decodesConditionedBatchSamples
     guard conditioned else {
       return Self.evidence(
-        result, source: isStreamingSession ? .streaming : .batch, input: .paddedRawCapture)
+        result, source: isStreamingSession ? .streaming : .batch, input: .paddedRawCapture,
+        timeline: timeline)
     }
     let rescued =
       (adapter as? ASREngineTelemetryProviding)?.lastASRDiagnostics?.batchRescueAttempted == true
     if isStreamingSession, !rescued {
-      return Self.evidence(result, source: .streaming, input: .rawCapture)
+      return Self.evidence(result, source: .streaming, input: .rawCapture, timeline: timeline)
     }
     return Self.evidence(
-      result, source: rescued ? .batchRescue : .batch, input: .conditionedBatch)
+      result, source: rescued ? .batchRescue : .batch, input: .conditionedBatch,
+      timeline: timeline)
   }
 
   /// Word timings count as available only for a conditioned batch decode that returned timed
   /// text; Whisper's segment timing and a streaming win never do.
+  ///
+  /// #3147 §3.2: `timeline` maps the conditioned batch buffer (`asrSamples`) onto the raw
+  /// capture. Only a conditioned batch decode carries timing evidence: its word timings sit on
+  /// that buffer's timeline (lead-trim salvage on the buffer without its first `leadSamples`,
+  /// so the map is shifted to match). A raw-fed decode (a streaming win, Whisper) gets none.
   nonisolated static func evidence(
     _ result: ASRResult, source: DictationASREvidence.Source,
-    input: DictationASREvidence.DecodeInput
+    input: DictationASREvidence.DecodeInput, timeline: [DictationAudioTimelineSpan]
   ) -> DictationASREvidence {
-    let batchInput: Bool
+    let decodeTimeline: [DictationAudioTimelineSpan]?
     switch input {
-    case .conditionedBatch, .conditionedBatchTrimmed: batchInput = true
-    case .rawCapture, .paddedRawCapture: batchInput = false
+    case .conditionedBatch: decodeTimeline = timeline
+    case .conditionedBatchTrimmed(let leadSamples):
+      decodeTimeline = trimmedTimeline(timeline, leadSamples: leadSamples)
+    case .rawCapture, .paddedRawCapture: decodeTimeline = nil
+    }
+    let available = decodeTimeline != nil && (result.wordTimingCoverage?.timed ?? 0) > 0
+    var timing: DictationTimingEvidence?
+    if available, let decodeTimeline, !decodeTimeline.isEmpty, let words = result.wordTimings,
+      !words.isEmpty
+    {
+      timing = DictationTimingEvidence(
+        words: words, timeline: decodeTimeline, sampleRate: Int(AudioConstants.sampleRate))
     }
     return DictationASREvidence(
       text: result.text, backend: result.backendType, source: source, input: input,
-      wordTimingsAvailable: batchInput && (result.wordTimingCoverage?.timed ?? 0) > 0)
+      wordTimingsAvailable: available, timing: timing)
+  }
+
+  /// #3147 §3.2: the map of a buffer with its first `leadSamples` removed. Spans wholly inside
+  /// the removed lead disappear; a span the cut splits keeps only its later part, whose
+  /// recording position moves forward by the samples cut from it.
+  nonisolated static func trimmedTimeline(
+    _ timeline: [DictationAudioTimelineSpan], leadSamples: Int
+  ) -> [DictationAudioTimelineSpan] {
+    let lead = max(0, leadSamples)
+    return timeline.compactMap { span in
+      guard span.decodeRange.upperBound > lead else { return nil }
+      let cut = max(0, lead - span.decodeRange.lowerBound)
+      let lower = span.decodeRange.lowerBound + cut - lead
+      let upper = span.decodeRange.upperBound - lead
+      return DictationAudioTimelineSpan(
+        decodeRange: lower..<upper, recordingStartSample: span.recordingStartSample + cut)
+    }
   }
 
   /// The finalizing phase — the transcript is in hand, the safe point is in

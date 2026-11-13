@@ -346,7 +346,7 @@ struct TranscriptStoreDeleteAllTests {
       await store.deletionCleanupForTesting?.value
 
       #expect(coordinator.currentRow(id: meetingRow.id) == nil)
-      #expect(coordinator.filteredTranscripts.isEmpty)
+      #expect(coordinator.visibleTranscripts.isEmpty)
       #expect(box.jsonNames(in: box.directory).isEmpty)
       #expect(box.siblings().isEmpty)
       #expect(coordinator.actionFailure == nil)

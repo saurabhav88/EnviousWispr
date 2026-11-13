@@ -356,6 +356,7 @@ struct DictationRecordingsTests {
         wordTimingsAvailable: false))
   }
 
+  #if DEBUG
   @Test("an older publication suspended on its row check never takes the newer take's place")
   func newerSubmissionDuringOlderPublication() async throws {
     let rig = rig()
@@ -377,6 +378,7 @@ struct DictationRecordingsTests {
     #expect(try await audioBytes(rig, row.id) == 5, "the newer take owns the final bytes")
     #expect(try await rig.archive.usage().temporaryBytes == 0)
   }
+  #endif
 
   @Test("a stored recording keeps the delivering decode's text beside it, with no timings invented")
   func sidecarKeepsASRText() async throws {
@@ -392,6 +394,130 @@ struct DictationRecordingsTests {
     #expect(timing.exactASRText == "hello")
     #expect(timing.textVersion.hasPrefix("asr-sha256:"))
     #expect(timing.anchors.isEmpty)
+    #expect(try await rig.recordings.timing(for: row.id) == timing)
+  }
+
+  @Test("a timed Parakeet take is stored with its sentence times, keyed to the decode's own text")
+  func sidecarStoresVerifiedAnchors() async throws {
+    let rig = rig()
+    defer { rig.gate.releaseAll() }
+    let row = try savedRow(rig)
+    rig.gate.release(1)
+    let text = "Hi there. Bye now!"
+    let asr = DictationASREvidence(
+      text: text, backend: .parakeet, source: .batchRescue, input: .conditionedBatch,
+      wordTimingsAvailable: true,
+      timing: DictationTimingEvidence(
+        words: [
+          ASRWordTiming(word: "Hi", range: 0..<2, startMs: 100, endMs: 300),
+          ASRWordTiming(word: "there.", range: 3..<9, startMs: 350, endMs: 800),
+          ASRWordTiming(word: "Bye", range: 10..<13, startMs: 1_200, endMs: 1_500),
+          ASRWordTiming(word: "now!", range: 14..<18, startMs: 1_600, endMs: 2_000),
+        ],
+        timeline: [
+          DictationAudioTimelineSpan(decodeRange: 0..<40_000, recordingStartSample: 4_000)
+        ],
+        sampleRate: 16_000))
+    let samples = [Float](repeating: 0, count: 48_000)
+
+    rig.recordings.submit(
+      DictationRecordingRequest(rowID: row.id, samples: samples, recordingsOn: true, asr: asr))
+    await rig.recordings.waitForSubmissions()
+
+    let timing = try #require(try await rig.recordings.timing(for: row.id))
+    #expect(timing.exactASRText == text)
+    #expect(timing.textVersion == DictationTimingBuilder.textVersion(of: text))
+    #expect(
+      timing.anchors == [
+        RecordingTiming.Anchor(utf16Start: 0, utf16End: 9, startSeconds: 0.35, endSeconds: 1.05),
+        RecordingTiming.Anchor(utf16Start: 10, utf16End: 18, startSeconds: 1.45, endSeconds: 2.25),
+      ])
+  }
+
+  @Test("History's Delete recordings only removes the audio, keeps the text, then is already absent")
+  func historyDeleteRecordingsOnly() async throws {
+    let rig = rig()
+    defer { rig.gate.releaseAll() }
+    let row = try savedRow(rig)
+    rig.gate.release(1)
+    #expect(await rig.recordings.record(rowID: row.id, samples: [0], timing: nil) == .stored)
+
+    let first = await rig.coordinator.deleteHistoryItem(
+      id: .transcript(row.id), kind: .recordingsOnly)
+    #expect(first == .removed)
+    #expect(await rig.archive.url(for: row.id) == nil)
+    #expect(rig.coordinator.currentRow(id: row.id) != nil)
+    #expect(
+      await rig.coordinator.deleteHistoryItem(id: .transcript(row.id), kind: .recordingsOnly)
+        == .alreadyAbsent)
+  }
+
+  @Test("Delete recordings only during an encode withdraws it: no recording, reason deleted, text kept")
+  func historyDeleteRecordingsOnlyWhileEncoding() async throws {
+    let rig = rig()
+    defer { rig.gate.releaseAll() }
+    let row = try savedRow(rig)
+    let pending = Task {
+      await rig.recordings.record(rowID: row.id, samples: [0, 0, 0], timing: nil)
+    }
+    try await rig.gate.waitUntilStarted(1)
+
+    #expect(
+      await rig.coordinator.deleteHistoryItem(id: .transcript(row.id), kind: .recordingsOnly)
+        == .removed)
+    rig.gate.release(1)
+
+    #expect(await pending.value == .discarded)
+    #expect(await rig.archive.url(for: row.id) == nil)
+    #expect(try await rig.archive.absence(for: row.id) == .deleted)
+    #expect(rig.coordinator.currentRow(id: row.id) != nil)
+  }
+
+  @Test("deleting a dictation whose recording cannot be removed fails until a retry finishes it")
+  func historyDeleteReportsLeftoverRecording() async throws {
+    let rig = rig()
+    defer { rig.gate.releaseAll() }
+    let row = try savedRow(rig)
+    rig.gate.release(1)
+    #expect(await rig.recordings.record(rowID: row.id, samples: [0], timing: nil) == .stored)
+    let pins = rig.archive.directory.appendingPathComponent("pins.json")
+    try Data("not json".utf8).write(to: pins)
+
+    #expect(
+      await rig.coordinator.deleteHistoryItem(id: .transcript(row.id), kind: .textAndRecordings)
+        == .failed)
+    #expect(rig.coordinator.currentRow(id: row.id) == nil)
+    #expect(await rig.archive.url(for: row.id) != nil)
+
+    try FileManager.default.removeItem(at: pins)
+    let retry = await rig.coordinator.deleteHistoryItem(
+      id: .transcript(row.id), kind: .textAndRecordings)
+    #expect(retry == .alreadyAbsent)
+    #expect(await rig.archive.url(for: row.id) == nil)
+  }
+
+  @Test("selection keeps a dictation whose recording cleanup failed, and a retry finishes it")
+  func selectionRetriesLeftoverRecording() async throws {
+    let rig = rig()
+    defer { rig.gate.releaseAll() }
+    let row = try savedRow(rig)
+    rig.gate.release(1)
+    #expect(await rig.recordings.record(rowID: row.id, samples: [0], timing: nil) == .stored)
+    let pins = rig.archive.directory.appendingPathComponent("pins.json")
+    try Data("not json".utf8).write(to: pins)
+
+    let selection = HistorySelection()
+    selection.select([.transcript(row.id)])
+    await selection.deleteSelected(kind: .textAndRecordings, coordinator: rig.coordinator)
+    #expect(rig.coordinator.currentRow(id: row.id) == nil)
+    // The diary's production prune: the row is no longer listed.
+    selection.retain(Set(rig.coordinator.matchingHistoryItems(in: .dictations).map(\.id)))
+    #expect(selection.selectedIDs == [.transcript(row.id)])
+
+    try FileManager.default.removeItem(at: pins)
+    await selection.deleteSelected(kind: .textAndRecordings, coordinator: rig.coordinator)
+    #expect(selection.selectedIDs.isEmpty)
+    #expect(await rig.archive.url(for: row.id) == nil)
   }
 
   @Test("a hand-off returns at once; the recording is kept once its encode finishes")
@@ -563,13 +689,13 @@ struct DictationRecordingsTests {
     }
     #expect(url == file)
     #expect(
-      DictationRecordingSection.needsNewPlayer(current: player, currentURL: file, read: url),
+      HistoryDictationCard.needsNewPlayer(current: player, currentURL: file, read: url),
       "the fresh read builds a new player, so Play works again")
     let live = MeetingPlaybackController(
       media: .dictation(file), durationMs: 1_000,
       output: MeetingPlaybackControllerTests.FakeOutput())
     #expect(
-      !DictationRecordingSection.needsNewPlayer(current: live, currentURL: file, read: file),
+      !HistoryDictationCard.needsNewPlayer(current: live, currentURL: file, read: file),
       "a working player for the same file is kept")
   }
 

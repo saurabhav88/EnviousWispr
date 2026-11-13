@@ -981,11 +981,7 @@ final class MeetingCoordinator {
 
   private func publish() {
     meetings = records.values.sorted { $0.createdAt > $1.createdAt }
-    onMeetingsPublished?()
   }
-
-  /// Told after `meetings` changes, so History drops a selection whose meeting is gone.
-  @ObservationIgnored var onMeetingsPublished: (@MainActor () -> Void)?
 
   #if DEBUG
     /// The deadline each Delete All mark was given, in order (#4102), so a test can see one
@@ -2290,6 +2286,19 @@ final class MeetingCoordinator {
       }
     }
     return result
+  }
+
+  /// History's Delete recordings only for one meeting (#3147 PR2), with Delete all meeting
+  /// audio's per-meeting rule: a meeting recording, stopping or owned by other work is skipped;
+  /// one with no audio left is already absent; an unknown meeting is skipped (no record to edit).
+  func deleteAudioForHistory(meetingID: UUID) async -> HistoryDeleteOutcome {
+    if let launchTask { await launchTask.value }
+    guard let record = live[meetingID] else { return .skipped }
+    guard needsAudioDeletion(record) else { return .alreadyAbsent }
+    guard !isActive(meetingID), !closeOwned.contains(meetingID),
+      !unknownCommits.contains(meetingID), record.state != .recording, record.state != .stopping
+    else { return .skipped }
+    return await deleteAudio(meetingID: meetingID) ? .removed : .failed
   }
 
   /// Audio still kept, or marked as deleted with files left behind by a failed removal.

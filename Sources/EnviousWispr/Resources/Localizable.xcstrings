@@ -247,6 +247,28 @@
         }
       }
     },
+    "%@ dictations" : {
+      "comment" : "History day heading: how many dictations that day. Never 1.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Diktate"
+          }
+        }
+      }
+    },
+    "%@ dictations selected" : {
+      "comment" : "History selection: how many dictations are ticked. Never 1.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Diktate ausgewählt"
+          }
+        }
+      }
+    },
     "%@ did not accept your API key" : {
       "comment" : "Short reason, no full stop. %@ is a provider name, such as OpenAI.",
       "localizations" : {
@@ -514,6 +536,28 @@
         }
       }
     },
+    "%@ items couldn't be deleted and are still selected. Try again." : {
+      "comment" : "History selection: how many items of a bulk deletion were not removed. Never 1.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Einträge konnten nicht gelöscht werden und bleiben ausgewählt. Versuche es erneut."
+          }
+        }
+      }
+    },
+    "%@ items deleted." : {
+      "comment" : "History selection: how many items a bulk deletion removed. Never 1.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Einträge gelöscht."
+          }
+        }
+      }
+    },
     "%@ lines skipped because they have no trigger and text." : {
       "comment" : "Snippets, import review: notice. %@ is the number of unreadable lines, never 1.",
       "localizations" : {
@@ -532,6 +576,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ doppelt aufgeführt"
+          }
+        }
+      }
+    },
+    "%@ meetings" : {
+      "comment" : "History day heading: how many meetings that day. Never 1.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Meetings"
+          }
+        }
+      }
+    },
+    "%@ meetings selected" : {
+      "comment" : "History selection: how many meetings are ticked. Never 1.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Meetings ausgewählt"
           }
         }
       }
@@ -709,6 +775,17 @@
         }
       }
     },
+    "%@ or more speakers" : {
+      "comment" : "History, Transcripts: transcripts with at least this many speakers.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ oder mehr Sprecher"
+          }
+        }
+      }
+    },
     "%@ recordings were saved by a newer version of EnviousWispr. Update the app to open them." : {
       "comment" : "History, Meetings: how many meetings this version cannot open because a newer version saved them. Never 1.",
       "localizations" : {
@@ -821,6 +898,45 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ wurde gestoppt und startet bei deinem nächsten Diktat neu"
+          }
+        }
+      }
+    },
+    "%@ to %@" : {
+      "comment" : "History date filter: a range of days. The first %@ is the first day, the second the last.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ to %2$@"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ bis %2$@"
+          }
+        }
+      }
+    },
+    "%@ transcripts" : {
+      "comment" : "History day heading: how many transcripts that day. Never 1.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Transkripte"
+          }
+        }
+      }
+    },
+    "%@ transcripts selected" : {
+      "comment" : "History selection: how many transcripts are ticked. Never 1.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Transkripte ausgewählt"
           }
         }
       }
@@ -1124,28 +1240,6 @@
         }
       }
     },
-    "Meetings in use kept their audio: %lld." : {
-      "comment" : "App Settings, Recordings: meetings in use (recording, transcribing, saving) that Delete all meeting audio left alone. %lld is how many.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Meetings in Verwendung haben ihr Audio behalten: %lld."
-          }
-        }
-      }
-    },
-    "Meeting audio that couldn't be deleted: %lld. Try again." : {
-      "comment" : "App Settings, Recordings: meetings whose audio could not be deleted. %lld is how many.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Meeting-Audio, das nicht gelöscht werden konnte: %lld. Versuch es noch einmal."
-          }
-        }
-      }
-    },
     "%lld dictation recordings couldn't be deleted. Try again." : {
       "comment" : "App Settings, Recordings: some recordings remain after Delete all. %lld is how many.",
       "localizations" : {
@@ -1412,6 +1506,28 @@
         }
       }
     },
+    "1 dictation" : {
+      "comment" : "History day heading: one dictation that day.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 Diktat"
+          }
+        }
+      }
+    },
+    "1 dictation selected" : {
+      "comment" : "History selection: one item ticked.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 Diktat ausgewählt"
+          }
+        }
+      }
+    },
     "1 entry was left out because EnviousWispr can't use it." : {
       "comment" : "Snippets, import review: notice, one entry could not be used.",
       "localizations" : {
@@ -1445,6 +1561,28 @@
         }
       }
     },
+    "1 item couldn't be deleted and is still selected. Try again." : {
+      "comment" : "History selection: one item of a bulk deletion was not removed.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 Eintrag konnte nicht gelöscht werden und bleibt ausgewählt. Versuche es erneut."
+          }
+        }
+      }
+    },
+    "1 item deleted." : {
+      "comment" : "History selection: a bulk deletion removed one item.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 Eintrag gelöscht."
+          }
+        }
+      }
+    },
     "1 line skipped because it has no trigger and text." : {
       "comment" : "Snippets, import review: notice, one unreadable line.",
       "localizations" : {
@@ -1452,6 +1590,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "1 Zeile wurde übersprungen, weil Auslöser und Text fehlen."
+          }
+        }
+      }
+    },
+    "1 meeting" : {
+      "comment" : "History day heading: one meeting that day.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 Meeting"
+          }
+        }
+      }
+    },
+    "1 meeting selected" : {
+      "comment" : "History selection: one item ticked.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 Meeting ausgewählt"
           }
         }
       }
@@ -1545,7 +1705,7 @@
       }
     },
     "1 speaker" : {
-      "comment" : "EnviousMeet list: the transcript found one person.",
+      "comment" : "EnviousMeet list: the transcript found one person.\nHistory, Transcripts: transcripts with one speaker.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1562,6 +1722,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "1 Schreibweise"
+          }
+        }
+      }
+    },
+    "1 transcript" : {
+      "comment" : "History day heading: one transcript that day.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 Transkript"
+          }
+        }
+      }
+    },
+    "1 transcript selected" : {
+      "comment" : "History selection: one item ticked.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 Transkript ausgewählt"
           }
         }
       }
@@ -1617,6 +1799,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "2 GB"
+          }
+        }
+      }
+    },
+    "2 speakers" : {
+      "comment" : "History, Transcripts: transcripts with two speakers.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "2 Sprecher"
           }
         }
       }
@@ -3231,17 +3424,6 @@
         }
       }
     },
-    "All" : {
-      "comment" : "History filter: show every row.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Alle"
-          }
-        }
-      }
-    },
     "All Languages" : {
       "comment" : "Speech engine settings, engine card: the multilingual engine's name.\nTranscribe a File: the Whisper transcription engine's name.",
       "localizations" : {
@@ -3249,6 +3431,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Alle Sprachen"
+          }
+        }
+      }
+    },
+    "All apps" : {
+      "comment" : "History, Dictations: the App filter shows every app.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle Apps"
           }
         }
       }
@@ -3665,6 +3858,17 @@
         }
       }
     },
+    "Any call app" : {
+      "comment" : "History, Meetings: the Call app filter shows every meeting.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle Anruf-Apps"
+          }
+        }
+      }
+    },
     "Any model you run in Ollama." : {
       "comment" : "Transcribe a File, Polish step: the description of the selected cleanup engine. Ollama.",
       "localizations" : {
@@ -3672,6 +3876,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Jedes Modell, das du in Ollama ausführst."
+          }
+        }
+      }
+    },
+    "Any number of speakers" : {
+      "comment" : "History, Transcripts: the Speakers filter shows every transcript.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beliebig viele Sprecher"
+          }
+        }
+      }
+    },
+    "Any time" : {
+      "comment" : "History date filter: no date limit.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beliebiger Zeitraum"
           }
         }
       }
@@ -4334,6 +4560,50 @@
         }
       }
     },
+    "Audio is not uploaded. Dictation recordings are kept for 1 day unless you choose Keep this recording. Change this in Settings > Recordings." : {
+      "comment" : "History help: where recordings are stored and for how long (1 day).",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Audio wird nicht hochgeladen. Diktataufnahmen werden 1 Tag lang aufbewahrt, außer du wählst „Diese Aufnahme behalten“. Ändere das unter Einstellungen > Aufnahmen."
+          }
+        }
+      }
+    },
+    "Audio is not uploaded. Dictation recordings are kept for 30 days unless you choose Keep this recording. Change this in Settings > Recordings." : {
+      "comment" : "History help: where recordings are stored and for how long (30 days).",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Audio wird nicht hochgeladen. Diktataufnahmen werden 30 Tage lang aufbewahrt, außer du wählst „Diese Aufnahme behalten“. Ändere das unter Einstellungen > Aufnahmen."
+          }
+        }
+      }
+    },
+    "Audio is not uploaded. Dictation recordings are kept for 7 days unless you choose Keep this recording. Change this in Settings > Recordings." : {
+      "comment" : "History help: where recordings are stored and for how long (7 days).",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Audio wird nicht hochgeladen. Diktataufnahmen werden 7 Tage lang aufbewahrt, außer du wählst „Diese Aufnahme behalten“. Ändere das unter Einstellungen > Aufnahmen."
+          }
+        }
+      }
+    },
+    "Audio is not uploaded. Dictation recordings are kept until you delete them. Change this in Settings > Recordings." : {
+      "comment" : "History help: where recordings are stored; they are kept until deleted.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Audio wird nicht hochgeladen. Diktataufnahmen bleiben erhalten, bis du sie löschst. Ändere das unter Einstellungen > Aufnahmen."
+          }
+        }
+      }
+    },
     "Audio isn't capturing from %@. Try a different input under Settings > Dictation Settings > Microphone." : {
       "comment" : "Pill when a multi-input audio interface delivered only silence. %@ is the device name. Settings > Dictation Settings > Microphone is a place in this app.",
       "localizations" : {
@@ -4531,17 +4801,6 @@
         }
       }
     },
-    "Automatic removal never deletes a kept recording. You can still delete it yourself." : {
-      "comment" : "History: explains Keep this recording.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Eine behaltene Aufnahme wird nie automatisch entfernt. Du kannst sie weiterhin selbst löschen."
-          }
-        }
-      }
-    },
     "Automatically detects when you correct a dictation and adds the corrected word to your dictionary. Undo it from the notification, or remove it later in Your Words." : {
       "comment" : "Your Words, Learn from: the self-learning dictionary row: what the feature does. Your Words is a page name.",
       "localizations" : {
@@ -4615,6 +4874,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Zurück"
+          }
+        }
+      }
+    },
+    "Back to %@" : {
+      "comment" : "History: returns from an open item to its tab's list. %@ is the tab's name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zurück zum Tab „%@“"
           }
         }
       }
@@ -5210,7 +5480,7 @@
       }
     },
     "Cancel" : {
-      "comment" : "App Settings, Recordings: keeps the current keep period.\nEnviousMeet: closes the call-sound explanation without recording.\nEnviousMeet: keeps the meeting as it is.\nHistory, a meeting: keeps the edited summary.\nLive Preview settings, Universal engine card: button. It stops the download.\nSettings > AI Polish, local model row: button that stops the download.\nYour Words, Learn from: the Forget learning memory confirmation: keeps the memory.\nYour Words, Learn from: the self-learning dictionary row: button that stops the download.",
+      "comment" : "App Settings, Recordings: keeps the current keep period.\nEnviousMeet: closes the call-sound explanation without recording.\nEnviousMeet: keeps the meeting as it is.\nHistory selection: keeps the selected items.\nHistory, a meeting: keeps the edited summary.\nLive Preview settings, Universal engine card: button. It stops the download.\nSettings > AI Polish, local model row: button that stops the download.\nYour Words, Learn from: the Forget learning memory confirmation: keeps the memory.\nYour Words, Learn from: the self-learning dictionary row: button that stops the download.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5793,6 +6063,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wähle „Keine Aktion“"
+          }
+        }
+      }
+    },
+    "Choose Select, then tick items, Shift-click for a range, or use Select day or Select all matching. Anything that could not be deleted stays ticked." : {
+      "comment" : "History help: selection mode and bulk deletion.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle „Auswählen“ und hake Einträge an. Klicke mit gedrückter Umschalttaste auf einen weiteren Eintrag, um einen Bereich auszuwählen. Du kannst auch „Tag auswählen“ oder „Alle Treffer auswählen“ nutzen. Einträge, die nicht gelöscht werden konnten, bleiben ausgewählt."
           }
         }
       }
@@ -6444,6 +6725,28 @@
         }
       }
     },
+    "Click a card to open it. Back returns to the list where you were." : {
+      "comment" : "History help: opening a transcript or meeting and coming back.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klicke auf eine Karte, um sie zu öffnen. Mit „Zurück“ kehrst du zur vorherigen Stelle in der Liste zurück."
+          }
+        }
+      }
+    },
+    "Click a marked word to compare" : {
+      "comment" : "History dictation card: hint beside the Marked up view.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klicke auf ein markiertes Wort, um zu vergleichen"
+          }
+        }
+      }
+    },
     "Click the \"Press 🌐 key to\" menu" : {
       "comment" : "Globe key tip (a popover after choosing the Globe key as the keybind): step 2. Quote the menu exactly as macOS labels it in this language.",
       "localizations" : {
@@ -6835,7 +7138,7 @@
       }
     },
     "Copy" : {
-      "comment" : "EnviousMeet: copies the visible transcript.",
+      "comment" : "EnviousMeet: copies the visible transcript.\nHistory dictation card: copies the text.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -6904,6 +7207,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Tastenkürzel zum Kopieren des letzten Diktats"
+          }
+        }
+      }
+    },
+    "Copy original" : {
+      "comment" : "History change details: copies the words before AI polish.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Original kopieren"
           }
         }
       }
@@ -7160,6 +7474,7 @@
       }
     },
     "Couldn't save the file" : {
+      "comment" : "History: the save panel's file could not be written.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -7455,7 +7770,7 @@
       }
     },
     "Delete" : {
-      "comment" : "EnviousMeet: confirms a deletion.",
+      "comment" : "EnviousMeet: confirms a deletion.\nHistory: confirms deleting one dictation.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -7471,6 +7786,39 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "„%@“ löschen?"
+          }
+        }
+      }
+    },
+    "Delete %@ dictations?" : {
+      "comment" : "History selection: confirmation title. Never 1.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Diktate löschen?"
+          }
+        }
+      }
+    },
+    "Delete %@ meetings?" : {
+      "comment" : "History selection: confirmation title. Never 1.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Meetings löschen?"
+          }
+        }
+      }
+    },
+    "Delete %@ transcripts?" : {
+      "comment" : "History selection: confirmation title. Never 1.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Transkripte löschen?"
           }
         }
       }
@@ -7493,6 +7841,39 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ Wörter löschen?"
+          }
+        }
+      }
+    },
+    "Delete 1 dictation?" : {
+      "comment" : "History selection: confirmation title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 Diktat löschen?"
+          }
+        }
+      }
+    },
+    "Delete 1 meeting?" : {
+      "comment" : "History selection: confirmation title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 Meeting löschen?"
+          }
+        }
+      }
+    },
+    "Delete 1 transcript?" : {
+      "comment" : "History selection: confirmation title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 Transkript löschen?"
           }
         }
       }
@@ -7626,6 +8007,28 @@
         }
       }
     },
+    "Delete meetings" : {
+      "comment" : "History selection: deletes the ticked meetings.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meetings löschen"
+          }
+        }
+      }
+    },
+    "Delete recording" : {
+      "comment" : "History: confirms deleting one dictation's audio.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahme löschen"
+          }
+        }
+      }
+    },
     "Delete recording, keep text" : {
       "comment" : "History: deletes this dictation's audio and keeps its text.",
       "localizations" : {
@@ -7638,12 +8041,111 @@
       }
     },
     "Delete recordings" : {
-      "comment" : "App Settings, Recordings: row title for the delete-all buttons.",
+      "comment" : "App Settings, Recordings: row title for the delete-all buttons.\nHistory selection: confirms deleting only the audio.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aufnahmen löschen"
+          }
+        }
+      }
+    },
+    "Delete recordings only" : {
+      "comment" : "History selection: deletes the audio, keeps the text.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nur Aufnahmen löschen"
+          }
+        }
+      }
+    },
+    "Delete several at once" : {
+      "comment" : "History help: item title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mehrere auf einmal löschen"
+          }
+        }
+      }
+    },
+    "Delete text and recordings" : {
+      "comment" : "History selection: deletes the ticked dictations, text and audio.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Text und Aufnahmen löschen"
+          }
+        }
+      }
+    },
+    "Delete the recording of 1 dictation?" : {
+      "comment" : "History selection: confirmation title for deleting only audio.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahme eines Diktats löschen?"
+          }
+        }
+      }
+    },
+    "Delete the recording of 1 meeting?" : {
+      "comment" : "History selection: confirmation title for deleting only audio.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahme eines Meetings löschen?"
+          }
+        }
+      }
+    },
+    "Delete the recording?" : {
+      "comment" : "History: confirmation title before deleting one dictation's audio.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahme löschen?"
+          }
+        }
+      }
+    },
+    "Delete the recordings of %@ dictations?" : {
+      "comment" : "History selection: confirmation title for deleting only audio. Never 1.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Aufnahmen von %@ Diktaten löschen?"
+          }
+        }
+      }
+    },
+    "Delete the recordings of %@ meetings?" : {
+      "comment" : "History selection: confirmation title for deleting only audio. Never 1.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Aufnahmen von %@ Meetings löschen?"
+          }
+        }
+      }
+    },
+    "Delete this dictation?" : {
+      "comment" : "History: confirmation title before deleting one dictation.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieses Diktat löschen?"
           }
         }
       }
@@ -7677,6 +8179,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Transkript löschen"
+          }
+        }
+      }
+    },
+    "Delete transcripts" : {
+      "comment" : "History selection: deletes the ticked transcripts.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkripte löschen"
           }
         }
       }
@@ -8193,12 +8706,23 @@
       }
     },
     "Done" : {
-      "comment" : "AI Polish, Ollama: closes the model list sheet.\nLive Preview settings: catalog done button.\nSpoken punctuation window: button that closes the window.\nTranscribe a File: a step name in the step bar.\nVoiceOver: an Ollama setup step that is finished.",
+      "comment" : "AI Polish, Ollama: closes the model list sheet.\nHistory change details: closes the details.\nLive Preview settings: catalog done button.\nSpoken punctuation window: button that closes the window.\nTranscribe a File: a step name in the step bar.\nVoiceOver: an Ollama setup step that is finished.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Fertig"
+          }
+        }
+      }
+    },
+    "Done selecting" : {
+      "comment" : "History: leaves selection mode.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auswahl beenden"
           }
         }
       }
@@ -8775,6 +9299,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Audiodaten jeder Aufnahme bleiben gespeichert, bis du sie löschst. Lösche nur die Audioaufnahme, um das Transkript zu behalten."
+          }
+        }
+      }
+    },
+    "Each tab keeps its own search and filters. Pick a day in the date filter; a dot marks days with items." : {
+      "comment" : "History help: search and filters are per tab; dots in the date picker.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jeder Tab hat seine eigene Suche und eigene Filter. Wähle im Datumsfilter einen Tag; ein Punkt markiert Tage mit Einträgen."
           }
         }
       }
@@ -10791,6 +11326,17 @@
         }
       }
     },
+    "Has items" : {
+      "comment" : "History date picker: this day has items.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hat Einträge"
+          }
+        }
+      }
+    },
     "Hausa" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -10809,6 +11355,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hawaiisch"
+          }
+        }
+      }
+    },
+    "Hear it" : {
+      "comment" : "History change details: plays the recording where this change was said.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anhören"
           }
         }
       }
@@ -10899,6 +11456,17 @@
         }
       }
     },
+    "Hide edits" : {
+      "comment" : "History dictation card: hides what AI Polish changed.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Änderungen ausblenden"
+          }
+        }
+      }
+    },
     "Hide key" : {
       "comment" : "AI Polish: hides the API key text.",
       "localizations" : {
@@ -10944,6 +11512,7 @@
       }
     },
     "History" : {
+      "comment" : "History: the page name.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -11024,6 +11593,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Von Ollama gehostet · Text wird an Ollamas Server gesendet"
+          }
+        }
+      }
+    },
+    "How History works" : {
+      "comment" : "History help: the panel's title.\nHistory: hover text of the help button.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "So funktioniert der Verlauf"
           }
         }
       }
@@ -11680,6 +12260,17 @@
         }
       }
     },
+    "Its text and recording are removed from this Mac. This can't be undone." : {
+      "comment" : "History: confirmation message before deleting one dictation.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Text und Aufnahme werden von diesem Mac entfernt. Das lässt sich nicht rückgängig machen."
+          }
+        }
+      }
+    },
     "Japanese" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -12142,16 +12733,6 @@
         }
       }
     },
-    "Keybind: %@" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tastenkürzel: %@"
-          }
-        }
-      }
-    },
     "Keybinds" : {
       "localizations" : {
         "de" : {
@@ -12343,6 +12924,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Laotisch"
+          }
+        }
+      }
+    },
+    "Last 30 days" : {
+      "comment" : "History date filter: items from the last 30 days.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Letzte 30 Tage"
+          }
+        }
+      }
+    },
+    "Last 7 days" : {
+      "comment" : "History date filter: items from the last seven days.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Letzte 7 Tage"
           }
         }
       }
@@ -13431,6 +14034,7 @@
       }
     },
     "Marked up" : {
+      "comment" : "History dictation card: the view showing what AI Polish changed.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -13591,6 +14195,17 @@
         }
       }
     },
+    "Meeting audio that couldn't be deleted: %lld. Try again." : {
+      "comment" : "App Settings, Recordings: meetings whose audio could not be deleted. %lld is how many.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meeting-Audio, das nicht gelöscht werden konnte: %lld. Versuch es noch einmal."
+          }
+        }
+      }
+    },
     "Meeting audio: about %@" : {
       "comment" : "App Settings, Recordings: disk used by meeting audio. %@ is a size.",
       "localizations" : {
@@ -13723,6 +14338,17 @@
         }
       }
     },
+    "Meetings in use kept their audio: %lld." : {
+      "comment" : "App Settings, Recordings: meetings in use (recording, transcribing, saving) that Delete all meeting audio left alone. %lld is how many.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meetings in Verwendung haben ihr Audio behalten: %lld."
+          }
+        }
+      }
+    },
     "Memory" : {
       "comment" : "AI Polish, EG-1 size card: memory the size uses.",
       "localizations" : {
@@ -13763,16 +14389,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Mikrofon"
-          }
-        }
-      }
-    },
-    "Microphone Settings" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mikrofoneinstellungen"
           }
         }
       }
@@ -14073,6 +14689,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Mongolisch"
+          }
+        }
+      }
+    },
+    "More actions" : {
+      "comment" : "History dictation card: opens the More menu.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weitere Aktionen"
           }
         }
       }
@@ -14467,6 +15094,17 @@
         }
       }
     },
+    "Next month" : {
+      "comment" : "History date picker: shows the month after.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nächster Monat"
+          }
+        }
+      }
+    },
     "Next page" : {
       "localizations" : {
         "de" : {
@@ -14549,16 +15187,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Es war keine App im Vordergrund. Deshalb gab es nichts zu lesen."
-          }
-        }
-      }
-    },
-    "No audio captured" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kein Audio aufgenommen"
           }
         }
       }
@@ -14657,6 +15285,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Keine Internetverbindung. Stelle eine Verbindung her und versuche es erneut."
+          }
+        }
+      }
+    },
+    "No items" : {
+      "comment" : "History date picker: this day has no items.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Einträge"
           }
         }
       }
@@ -15473,7 +16112,7 @@
       }
     },
     "Not selected" : {
-      "comment" : "VoiceOver: the value of an option that is not chosen.",
+      "comment" : "History selection: this item is not ticked.\nVoiceOver: the value of an option that is not chosen.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -15545,6 +16184,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nur Notizen"
+          }
+        }
+      }
+    },
+    "Notes, transcripts and summaries stay. Only the audio is removed from this Mac." : {
+      "comment" : "History selection: what deleting meeting recordings removes.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notizen, Transkripte und Zusammenfassungen bleiben erhalten. Nur das Audio wird von diesem Mac entfernt."
           }
         }
       }
@@ -15757,7 +16407,7 @@
       }
     },
     "OK" : {
-      "comment" : "AI Polish, notice button.\nButton that closes a message.\nEnviousMeet: closes the Save error.\nHistory: closes the Paste message.\nHistory: closes the message about a failed action.",
+      "comment" : "AI Polish, notice button.\nButton that closes a message.\nDismisses an alert.\nEnviousMeet: closes the Save error.\nHistory: closes the Paste message.\nHistory: closes the message about a failed action.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -16335,6 +16985,28 @@
         }
       }
     },
+    "Open a meeting" : {
+      "comment" : "History help: item title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Meeting öffnen"
+          }
+        }
+      }
+    },
+    "Open a transcript" : {
+      "comment" : "History help: item title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Transkript öffnen"
+          }
+        }
+      }
+    },
     "Open settings" : {
       "comment" : "EnviousMeet: opens the EnviousMeet settings page.",
       "localizations" : {
@@ -16463,7 +17135,7 @@
       }
     },
     "Original" : {
-      "comment" : "History detail section title: the words as first transcribed.",
+      "comment" : "History change details: label before the words before AI polish.\nHistory detail section title: the words as first transcribed.\nHistory dictation card: the view showing your words before AI polish.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -16480,6 +17152,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Original bleibt erhalten"
+          }
+        }
+      }
+    },
+    "Original restored in History" : {
+      "comment" : "History dictation card: History now shows and delivers your words before AI polish.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Original im Verlauf wiederhergestellt"
           }
         }
       }
@@ -16764,6 +17447,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "In aktive App einfügen"
+          }
+        }
+      }
+    },
+    "Paste into the app you were just using" : {
+      "comment" : "History dictation card: tooltip of Paste.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In die App einfügen, die du gerade verwendet hast"
           }
         }
       }
@@ -17157,6 +17851,28 @@
         }
       }
     },
+    "Play from %@" : {
+      "comment" : "History dictation card: plays the recording from where this paragraph starts. %@ is a time like 0:07.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ab %@ abspielen"
+          }
+        }
+      }
+    },
+    "Play from a paragraph" : {
+      "comment" : "History help: item title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ab einem Absatz abspielen"
+          }
+        }
+      }
+    },
     "Play from here" : {
       "comment" : "EnviousMeet transcript: plays the recording from this turn's start.",
       "localizations" : {
@@ -17175,6 +17891,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aufnahmesignaltöne abspielen"
+          }
+        }
+      }
+    },
+    "Play your recording" : {
+      "comment" : "History help: item title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahme abspielen"
           }
         }
       }
@@ -17235,7 +17962,7 @@
       }
     },
     "Polished" : {
-      "comment" : "History detail section title: the AI-polished text.",
+      "comment" : "History change details: label before the words AI polish wrote.\nHistory detail section title: the AI-polished text.\nHistory dictation card: the view showing the AI-polished words.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -17252,6 +17979,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nachbearbeitet mit %@"
+          }
+        }
+      }
+    },
+    "Polished text back in History" : {
+      "comment" : "History dictation card: History shows and delivers the AI-polished text again.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nachbearbeiteter Text wieder im Verlauf"
           }
         }
       }
@@ -17484,12 +18222,13 @@
         }
       }
     },
-    "Press the record button to start dictating." : {
+    "Press play, or drag along the wave to jump. The left number is where you are, the right number is the length." : {
+      "comment" : "History help: how the dictation player works.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Drücke die Aufnahmetaste, um zu diktieren."
+            "value" : "Klicke auf „Abspielen“ oder ziehe über die Wellenform, um zu einer anderen Stelle zu springen. Die linke Zahl zeigt deine Position, die rechte die Dauer."
           }
         }
       }
@@ -17553,6 +18292,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Während einer Aufnahme ist die Vorschau nicht verfügbar."
+          }
+        }
+      }
+    },
+    "Previous month" : {
+      "comment" : "History date picker: shows the month before.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorheriger Monat"
           }
         }
       }
@@ -17983,16 +18733,6 @@
         }
       }
     },
-    "Ready to Transcribe" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bereit zum Transkribieren"
-          }
-        }
-      }
-    },
     "Ready to Wispr!" : {
       "localizations" : {
         "de" : {
@@ -18266,6 +19006,17 @@
         }
       }
     },
+    "Recording kept" : {
+      "comment" : "History dictation card footer: this recording is never removed automatically.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahme bleibt erhalten"
+          }
+        }
+      }
+    },
     "Recording keybind" : {
       "localizations" : {
         "de" : {
@@ -18407,6 +19158,17 @@
         }
       }
     },
+    "Recording until %@" : {
+      "comment" : "History dictation card footer: the recording is removed automatically after this date. %@ is a short date like Nov 18.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahme bleibt bis %@ erhalten"
+          }
+        }
+      }
+    },
     "Recording your microphone only" : {
       "comment" : "Menu bar menu, while a meeting records: the call sound is switched off.",
       "localizations" : {
@@ -18414,16 +19176,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nur dein Mikrofon wird aufgenommen"
-          }
-        }
-      }
-    },
-    "Recording · %@" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aufnahme · %@"
           }
         }
       }
@@ -18446,6 +19198,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aufnahmen"
+          }
+        }
+      }
+    },
+    "Recordings are stored on this Mac" : {
+      "comment" : "History help: item title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahmen werden auf diesem Mac gespeichert"
           }
         }
       }
@@ -18939,6 +19702,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Zwischenablage nach dem Einfügen wiederherstellen"
+          }
+        }
+      }
+    },
+    "Restore original text" : {
+      "comment" : "History dictation card, More menu: shows and delivers your words before AI polish instead of the polished text.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Originaltext wiederherstellen"
           }
         }
       }
@@ -19571,6 +20345,17 @@
         }
       }
     },
+    "Search and filters" : {
+      "comment" : "History help: item title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suche und Filter"
+          }
+        }
+      }
+    },
     "Search by name or code" : {
       "comment" : "Live Preview settings: packs search placeholder.",
       "localizations" : {
@@ -19593,6 +20378,7 @@
       }
     },
     "Search history" : {
+      "comment" : "History: the search box placeholder.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -19719,6 +20505,17 @@
         }
       }
     },
+    "See what AI Polish changed. Click a marked word to compare your words before AI polish with the polished words, or hear it. Your words before AI polish can include the speech engine's own mistakes." : {
+      "comment" : "History help: what Show edits does. Never say the original is exactly what the person said.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sieh dir an, was die KI-Nachbearbeitung geändert hat. Klicke auf ein markiertes Wort, um deine Worte vor der KI-Nachbearbeitung mit dem nachbearbeiteten Text zu vergleichen oder die Stelle anzuhören. Deine Worte vor der KI-Nachbearbeitung können Fehler der Spracherkennung enthalten."
+          }
+        }
+      }
+    },
     "See what we collect" : {
       "comment" : "Permissions settings, Privacy: link to the What Data Is Collected help article.",
       "localizations" : {
@@ -19737,6 +20534,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sieh den Text schon während des Diktierens."
+          }
+        }
+      }
+    },
+    "Select" : {
+      "comment" : "History selection: the tick box beside one item.\nHistory: enters selection mode to delete several items.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auswählen"
           }
         }
       }
@@ -19793,12 +20601,24 @@
         }
       }
     },
-    "Select an item from the sidebar to view it." : {
+    "Select all matching" : {
+      "comment" : "History selection: ticks every item in this tab under its search and filters, on every page.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wähle in der Seitenleiste einen Eintrag aus, um ihn anzuzeigen."
+            "value" : "Alle Treffer auswählen"
+          }
+        }
+      }
+    },
+    "Select day" : {
+      "comment" : "History selection: ticks every item listed on this day.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tag auswählen"
           }
         }
       }
@@ -19848,7 +20668,7 @@
       }
     },
     "Selected" : {
-      "comment" : "VoiceOver: the value spoken for the chosen card or option.",
+      "comment" : "History selection: this item is ticked.\nVoiceOver: the value spoken for the chosen card or option.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -20099,7 +20919,7 @@
       }
     },
     "Share" : {
-      "comment" : "EnviousMeet: shares the visible transcript.",
+      "comment" : "EnviousMeet: shares the visible transcript.\nHistory dictation card: shares the text.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -20239,6 +21059,28 @@
         }
       }
     },
+    "Show change: %@" : {
+      "comment" : "History dictation card, VoiceOver action: opens the details of one AI Polish change. %@ is the changed words.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Änderung anzeigen: %@"
+          }
+        }
+      }
+    },
+    "Show edits" : {
+      "comment" : "History dictation card: shows what AI Polish changed.\nHistory help: item title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Änderungen einblenden"
+          }
+        }
+      }
+    },
     "Show gold lips when an update is ready." : {
       "localizations" : {
         "de" : {
@@ -20316,7 +21158,7 @@
       }
     },
     "Show the recording" : {
-      "comment" : "History, Meetings: selects the meeting that is recording now.",
+      "comment" : "History, Meetings: opens the meeting that is recording now.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -23210,6 +24052,17 @@
         }
       }
     },
+    "The text stays in History. Only the audio is removed from this Mac." : {
+      "comment" : "History selection: what deleting dictation recordings removes.\nHistory: confirmation message before deleting one dictation's audio.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Text bleibt im Verlauf. Nur das Audio wird von diesem Mac entfernt."
+          }
+        }
+      }
+    },
     "The transcript could not be made. Transcribe again to try once more." : {
       "comment" : "EnviousMeet detail: why a meeting has no transcript, with what to do.",
       "localizations" : {
@@ -23272,6 +24125,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Das Wort, das du vor einem Zeichen sagst."
+          }
+        }
+      }
+    },
+    "Their notes, transcripts, summaries and recordings are removed from this Mac. This can't be undone." : {
+      "comment" : "History selection: what deleting meetings removes.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notizen, Transkripte, Zusammenfassungen und Aufnahmen werden von diesem Mac entfernt. Das lässt sich nicht rückgängig machen."
+          }
+        }
+      }
+    },
+    "Their text and recordings are removed from this Mac. This can't be undone." : {
+      "comment" : "History selection: what deleting dictations removes.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Text und Aufnahmen werden von diesem Mac entfernt. Das lässt sich nicht rückgängig machen."
           }
         }
       }
@@ -23346,6 +24221,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Diese Wörter sind nur hier sichtbar. Kopiere oder speichere sie, bevor du die Ansicht verlässt."
+          }
+        }
+      }
+    },
+    "They are removed from History. Your original files are never deleted. This can't be undone." : {
+      "comment" : "History selection: what deleting imported transcripts removes.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sie werden aus dem Verlauf entfernt. Deine Originaldateien werden nie gelöscht. Das lässt sich nicht rückgängig machen."
           }
         }
       }
@@ -23492,6 +24378,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Das lässt sich nicht rückgängig machen."
+          }
+        }
+      }
+    },
+    "This change" : {
+      "comment" : "History change details: VoiceOver name of the panel.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Änderung"
           }
         }
       }
@@ -23676,26 +24573,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Das passt zu mehreren Wörtern, die du bereits hast."
-          }
-        }
-      }
-    },
-    "This may take a moment on first run while the model loads." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Beim ersten Start kann das Laden des Modells einen Moment dauern."
-          }
-        }
-      }
-    },
-    "This may take a moment on first run." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Beim ersten Start kann das einen Moment dauern."
           }
         }
       }
@@ -23981,6 +24858,17 @@
         }
       }
     },
+    "Tick items, or Shift-click for a range." : {
+      "comment" : "History selection: how to choose items.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hake Einträge an. Für einen Bereich klicke mit gedrückter Umschalttaste auf einen weiteren Eintrag."
+          }
+        }
+      }
+    },
     "Tight on this Mac" : {
       "comment" : "AI Polish, EG-1 size card: the size needs more than half of the Mac's memory.",
       "localizations" : {
@@ -24097,6 +24985,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Um eine freihändige Aufnahme zu stoppen, drücke das Tastenkürzel einmal."
+          }
+        }
+      }
+    },
+    "Today" : {
+      "comment" : "History: the day heading for today's items.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heute"
           }
         }
       }
@@ -24365,16 +25264,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Transkription"
-          }
-        }
-      }
-    },
-    "Transcription Complete" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Transkription abgeschlossen"
           }
         }
       }
@@ -24722,7 +25611,7 @@
       }
     },
     "Undo" : {
-      "comment" : "Button on the pill shown after a word is added to the dictionary. Removes it again.\nPill button after Escape: brings the cancelled dictation back.",
+      "comment" : "Button on the pill shown after a word is added to the dictionary. Removes it again.\nHistory dictation card: undoes the text choice just made.\nPill button after Escape: brings the cancelled dictation back.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -24761,6 +25650,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Unbekannt"
+          }
+        }
+      }
+    },
+    "Unknown app" : {
+      "comment" : "History, Dictations: dictations with no recorded app they went to.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unbekannte App"
           }
         }
       }
@@ -25155,6 +26055,17 @@
         }
       }
     },
+    "Use polished text" : {
+      "comment" : "History dictation card, More menu: shows and delivers the AI-polished text again.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nachbearbeiteten Text verwenden"
+          }
+        }
+      }
+    },
     "Use your Claude API key for cloud polish." : {
       "comment" : "AI Polish provider card: the line under Claude's name.",
       "localizations" : {
@@ -25294,16 +26205,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Usbekisch"
-          }
-        }
-      }
-    },
-    "VAD: Active" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "VAD: Aktiv"
           }
         }
       }
@@ -25812,6 +26713,17 @@
         }
       }
     },
+    "What was pasted" : {
+      "comment" : "History dictation card: hint beside the Polished view.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der eingefügte Text"
+          }
+        }
+      }
+    },
     "What we collect" : {
       "comment" : "Permissions settings, Privacy: row title.",
       "localizations" : {
@@ -25887,6 +26799,17 @@
         }
       }
     },
+    "When a recording has times, point at a paragraph to see when you said it, or Tab to it. Click the time to hear that part." : {
+      "comment" : "History help: the time beside each paragraph of a dictation.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn eine Aufnahme Zeitangaben hat, zeige auf einen Absatz oder wechsle mit der Tabulatortaste dorthin. So siehst du, wann du ihn gesagt hast. Klicke auf die Zeitangabe, um die Stelle anzuhören."
+          }
+        }
+      }
+    },
     "When off, the Dock icon appears only while an EnviousWispr window is open. The menu bar icon always stays." : {
       "localizations" : {
         "de" : {
@@ -25940,6 +26863,7 @@
       }
     },
     "Which words to show" : {
+      "comment" : "History dictation card: the Polished, Marked up and Original choice.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -26424,6 +27348,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ja, ich sage heute dem Support Bescheid."
+          }
+        }
+      }
+    },
+    "Yesterday" : {
+      "comment" : "History: the day heading for yesterday's items.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gestern"
           }
         }
       }
@@ -27417,6 +28352,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Deine Wortliste ist zu groß für eine einzelne Datei, die EnviousWispr wieder einlesen könnte. Es wurde nichts exportiert."
+          }
+        }
+      }
+    },
+    "Your words before AI polish" : {
+      "comment" : "History dictation card: hint beside the Original view.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Worte vor der KI-Nachbearbeitung"
           }
         }
       }
@@ -28479,78 +29425,6 @@
         }
       }
     },
-    "history.filter.all.short" : {
-      "comment" : "History tab letter for All. The full name is the tab's hover and VoiceOver text.",
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "A"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "A"
-          }
-        }
-      }
-    },
-    "history.filter.dictations.short" : {
-      "comment" : "History tab letter for Dictations. The full name is the tab's hover and VoiceOver text.",
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "D"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "D"
-          }
-        }
-      }
-    },
-    "history.filter.meetings.short" : {
-      "comment" : "History tab letter for Meetings. The full name is the tab's hover and VoiceOver text.",
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "M"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "M"
-          }
-        }
-      }
-    },
-    "history.filter.transcripts.short" : {
-      "comment" : "History tab letter for Transcripts. The full name is the tab's hover and VoiceOver text.",
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "T"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "T"
-          }
-        }
-      }
-    },
     "import.appList.more" : {
       "comment" : "Import: three or more app names. The first %@ is the earlier names already separated by commas, the second the last name.",
       "extractionState" : "extracted_with_value",
@@ -29464,6 +30338,17 @@
         }
       }
     },
+    "nothing" : {
+      "comment" : "History change details: shown in quotes when AI polish added words that had no original.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "nichts"
+          }
+        }
+      }
+    },
     "notification.update.install" : {
       "comment" : "Update notification: the button that installs the new version.",
       "extractionState" : "extracted_with_value",
@@ -29582,6 +30467,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "qwen2.5:3b war in unseren Bereinigungstests am besten, folgt aber eventuell diktierten Anweisungen. %@ Wie lange Diktate es verarbeitet, hängt vom gewählten Modell ab."
+          }
+        }
+      }
+    },
+    "removed" : {
+      "comment" : "History change details: shown in quotes when AI polish removed the original words.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "entfernt"
           }
         }
       }
@@ -29915,16 +30811,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "deine eigene Einrichtung"
-          }
-        }
-      }
-    },
-    "·" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "·"
           }
         }
       }

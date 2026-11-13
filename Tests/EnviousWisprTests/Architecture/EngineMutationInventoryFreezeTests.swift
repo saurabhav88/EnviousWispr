@@ -530,6 +530,13 @@ import EnviousWisprAppKitTestSupport
       file: "Sources/EnviousWisprAppKit/App/MeetingSummaryOwner.swift", matcher: "prepare",
       text: "let preparation = await deps.prepare(selection.provider, selection.model, cloudModelList)",
       classification: .unrelatedDomain),
+    // #3147 PR2: the History dictation card's text comparison (word alignment and marked-up runs)
+    // prepared off the main actor. Pure text work; no engine, adapter or audio. Matched only by
+    // method-name coincidence.
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/HistoryDictationPresentation.swift", matcher: "prepare",
+      text: "prepare(texts)",
+      classification: .unrelatedDomain),
     // MARK: ActiveEngineOperation — the one door for crash-recovery + the
     // Diagnostics benchmark. Not itself gated. `load` is called from BOTH
     // `RecoverySpoolReplayer` (under `recoveryEngineClaim`) and

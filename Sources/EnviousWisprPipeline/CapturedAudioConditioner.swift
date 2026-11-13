@@ -59,6 +59,11 @@ package struct ConditionedAudio: Equatable, Sendable {
   /// `filteredSampleCount`. Computed by `droppedTrailingSamples`.
   package let droppedTailSampleCount: Int
 
+  /// #3147 §3.2: where each stretch of `samples` sits in `rawSamples`, ascending. The raw paths
+  /// map one span from sample 0; appended padding has no span, so it never maps onto the
+  /// recording. Built with the samples themselves, never recomputed.
+  package let timeline: [DictationAudioTimelineSpan]
+
   /// Final sample count of `samples` — redundant with `samples.count` but
   /// kept explicit so the telemetry surface does not depend on whether the
   /// caller bothered to recompute.
@@ -96,10 +101,12 @@ enum CapturedAudioConditioner {
     // `SampleFilter.filter` already returns `rawSamples` unchanged when
     // segments are empty OR when total voiced audio is sub-threshold — the
     // "too-aggressive-filter" raw fallback at the SampleFilter layer.
-    let filtered = SampleFilter.filter(from: rawSamples, segments: vadSegments)
+    let mapped = SampleFilter.filterMapped(from: rawSamples, segments: vadSegments)
+    let filtered = mapped.samples
     let filteredCount = filtered.count
 
     var working = filtered
+    var timeline = mapped.timeline
     var usedRawFallback = false
     var usedRawSoftOnset = false
     let rawMeetsMinimum = rawSamples.count >= minimumSamples
@@ -121,6 +128,7 @@ enum CapturedAudioConditioner {
         vadSegments: vadSegments)
     {
       working = rawSamples
+      timeline = SampleFilter.identityTimeline(sampleCount: rawSamples.count)
       usedRawSoftOnset = true
     } else if working.count < minimumSamples && rawMeetsMinimum {
       // Step 2b: too-aggressive-filter raw fallback (pre-existing). Even with
@@ -128,6 +136,7 @@ enum CapturedAudioConditioner {
       // `minimumSamples` if voiced regions were sparse. Prefer raw — losing
       // words is worse than ASR seeing extra silence.
       working = rawSamples
+      timeline = SampleFilter.identityTimeline(sampleCount: rawSamples.count)
       usedRawFallback = true
     }
 
@@ -156,7 +165,8 @@ enum CapturedAudioConditioner {
       usedRawFallbackAfterVAD: usedRawFallback,
       usedRawSoftOnsetPreservation: usedRawSoftOnset,
       samplesPaddedToMinimum: padded,
-      droppedTailSampleCount: droppedTail)
+      droppedTailSampleCount: droppedTail,
+      timeline: timeline)
   }
 
   /// #950 — trailing raw samples discarded by the VAD trim after the last valid

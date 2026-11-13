@@ -2,54 +2,24 @@ import EnviousWisprCore
 import EnviousWisprServices
 import SwiftUI
 
-/// Inner content for the History tab: transcript list (left) + detail/status (right).
-///
-/// #1024: a custom width-tracking split replaces `HSplitView`, which never
-/// renegotiates pane widths when its container shrinks (the content canvas kept
-/// its old total and clipped under the sidebar / off the window edge). Here the
-/// effective list width is re-clamped against the live container width on every
-/// render, so window shrink compresses the detail pane first, then the list down
-/// to its readable floor; the root window minimum in WisprBootstrapper covers
-/// sidebar + both floors so neither column can ever render broken.
+/// The History page (#3147 §3.3): the app's banners, then the diary of the chosen tab. The
+/// banners, the failed-action alert and the Paste notice stay here, outside the diary, so
+/// switching tabs or opening an item never loses them.
 struct HistoryContentView: View {
   @Environment(PermissionsService.self) private var permissions
   @Environment(TranscriptCoordinator.self) private var transcriptCoordinator
-  // PR7 of #763: live-recording fallback transcript comes from LiveRecordingState.
-  @Environment(LiveRecordingState.self) private var liveRecordingState
   @Environment(MeetingCoordinator.self) private var meetings
   /// #3875, #4101: why a History Paste did not happen, shown once History is back in front. Held
-  /// by this page, outside the detail branches, so deleting the row or selecting another one
-  /// (which replaces the detail view) does not lose it.
+  /// by this page, outside the diary and its items, so deleting the row or opening another one
+  /// does not lose it.
   @State private var pasteNotice = HistoryPasteNotice()
-
-  /// User's preferred list width from divider drags; the effective width shown
-  /// is this value re-clamped to the live container (see `effectiveListWidth`).
-  @State private var preferredListWidth: CGFloat = HistorySplitMetrics.listIdeal
-
-  /// PR7 of #763: compose the displayed transcript inline. History selection
-  /// from `TranscriptCoordinator` wins over the in-flight live fallback —
-  /// same priority the pre-PR7 root-state getter delivered.
-  ///
-  /// #2807: the coordinator resolves the row from the DISPLAYED set and says whether the live
-  /// fallback may stand in. That set is built on `visibleTranscripts`, which keeps #2087's
-  /// rule: a row selected before it expired does not stay open in the detail pane after it
-  /// stopped being offered, which is the one thing the 24-hour promise says will not happen.
-  /// And a selection a filter, a search or a deletion cleared shows nothing, never a transcript
-  /// from another time.
-  private var displayedTranscript: Transcript? {
-    switch transcriptCoordinator.detail {
-    case .row(let row): return row
-    case .liveFallback: return liveRecordingState.currentTranscript
-    case .meeting, .empty: return nil
-    }
-  }
 
   var body: some View {
     VStack(spacing: 0) {
       if permissions.shouldShowAccessibilityWarning {
         AccessibilityWarningBanner()
       }
-      // #3438: beside the Accessibility banner, outside the transcript split; both can show.
+      // #3438: beside the Accessibility banner, outside the diary; both can show.
       PolishSetupBanner()
       // #3147 C9: the one-time notice that saved dictations now keep a recording (upgrades only).
       RecordingDisclosureBanner()
@@ -62,31 +32,38 @@ struct HistoryContentView: View {
           .padding(.top, 8)
       }
 
-      GeometryReader { geo in
-        let listWidth = HistorySplitMetrics.effectiveListWidth(
-          preferred: preferredListWidth, available: geo.size.width)
-
-        HStack(spacing: 0) {
-          TranscriptHistoryView()
-            .frame(width: listWidth)
-
-          HistorySplitDivider(
-            preferredListWidth: $preferredListWidth, currentListWidth: listWidth)
-
-          Group {
-            if case .meeting(let meeting) = transcriptCoordinator.detail {
-              MeetingHistoryDetailView(meeting: meeting, showPasteNotice: pasteNotice.show)
-                .id(meeting.meetingID)
-            } else if let transcript = displayedTranscript {
-              TranscriptDetailView(transcript: transcript, showPasteNotice: pasteNotice.show)
+      HistoryDiaryView(
+        coordinator: transcriptCoordinator,
+        dictationCard: { rowID in
+          if let row = row(rowID, in: .dictations) {
+            if row.escapeRecoveredAt != nil {
+              // A held Escape Recovery dictation keeps its own Paste, Keep and Delete (#2087):
+              // it has no recording and no polish history for the dictation card to show.
+              VStack(alignment: .leading, spacing: 6) {
+                // The countdown says this text expires unless kept (#2087).
+                EscapeRecoveryBadge(transcript: row)
+                TranscriptDetailView(transcript: row, showPasteNotice: pasteNotice.show)
+              }
+              .id(rowID)
             } else {
-              StatusView()
+              HistoryDictationCard(rowID: rowID, showPasteNotice: pasteNotice.show)
+                .id(rowID)
             }
           }
-          .frame(
-            width: max(0, geo.size.width - listWidth - HistorySplitMetrics.dividerWidth))
+        },
+        transcriptDestination: { rowID in
+          if let row = row(rowID, in: .transcripts) {
+            TranscriptDetailView(transcript: row, showPasteNotice: pasteNotice.show)
+              .id(rowID)
+          }
+        },
+        meetingDestination: { meetingID in
+          if let meeting = meeting(meetingID) {
+            MeetingHistoryDetailView(meeting: meeting, showPasteNotice: pasteNotice.show)
+              .id(meetingID)
+          }
         }
-      }
+      )
       .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -115,6 +92,19 @@ struct HistoryContentView: View {
     }
   }
 
+  /// The listed row `rowID` in `tab`, as the coordinator holds it now.
+  private func row(_ rowID: UUID, in tab: HistoryTab) -> Transcript? {
+    transcriptCoordinator.matchingHistoryItems(in: tab).first { $0.id == .transcript(rowID) }?.row
+  }
+
+  /// The listed meeting `meetingID`, as the coordinator holds it now.
+  private func meeting(_ meetingID: UUID) -> HistoryMeetingItem? {
+    for item in transcriptCoordinator.matchingHistoryItems(in: .meetings) {
+      if case .meeting(let meeting) = item, meeting.meetingID == meetingID { return meeting }
+    }
+    return nil
+  }
+
   /// #4075 G10: the sentence for the failed action. Empty when none is showing.
   private var actionFailureTitle: String {
     switch transcriptCoordinator.actionFailure {
@@ -134,79 +124,6 @@ struct HistoryContentView: View {
     case nil:
       ""
     }
-  }
-}
-
-/// Width allocation for the History split (#1024). Pure so the clamp
-/// boundaries are unit-testable.
-enum HistorySplitMetrics {
-  static let listMin: CGFloat = 230
-  static let listIdeal: CGFloat = 260
-  static let listMax: CGFloat = 340
-  static let detailMin: CGFloat = 260
-  static let dividerWidth: CGFloat = 8
-
-  /// Clamp the preferred list width to what the container can host: the list
-  /// holds its preferred width until the detail pane would drop below its
-  /// floor, then compresses to `listMin`. Containers too small for both floors
-  /// degrade without negative frames (list keeps up to its floor, detail gets
-  /// the non-negative remainder); the root window minimum prevents that state
-  /// outside transient live-resize.
-  static func effectiveListWidth(preferred: CGFloat, available: CGFloat) -> CGFloat {
-    let maxHostable = min(listMax, available - detailMin - dividerWidth)
-    guard maxHostable >= listMin else {
-      return min(listMin, max(0, available - dividerWidth))
-    }
-    return min(max(preferred, listMin), maxHostable)
-  }
-}
-
-/// Draggable boundary between the transcript list and the detail pane:
-/// 1pt separator line inside an 8pt hit target.
-private struct HistorySplitDivider: View {
-  @Binding var preferredListWidth: CGFloat
-  let currentListWidth: CGFloat
-
-  @State private var dragBaseWidth: CGFloat?
-  @State private var isHovering = false
-
-  var body: some View {
-    ZStack {
-      Color.clear
-      Rectangle()
-        .fill(Color(nsColor: .separatorColor))
-        .frame(width: 1)
-    }
-    .frame(width: HistorySplitMetrics.dividerWidth)
-    .contentShape(Rectangle())
-    .onHover { inside in
-      if inside, !isHovering {
-        NSCursor.resizeLeftRight.push()
-        isHovering = true
-      } else if !inside, isHovering {
-        NSCursor.pop()
-        isHovering = false
-      }
-    }
-    .onDisappear {
-      if isHovering {
-        NSCursor.pop()
-        isHovering = false
-      }
-    }
-    .gesture(
-      DragGesture(minimumDistance: 1)
-        .onChanged { value in
-          let base = dragBaseWidth ?? currentListWidth
-          if dragBaseWidth == nil { dragBaseWidth = base }
-          preferredListWidth = base + value.translation.width
-        }
-        .onEnded { _ in
-          preferredListWidth = min(
-            max(preferredListWidth, HistorySplitMetrics.listMin), HistorySplitMetrics.listMax)
-          dragBaseWidth = nil
-        }
-    )
   }
 }
 

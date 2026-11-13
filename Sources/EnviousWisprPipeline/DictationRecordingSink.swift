@@ -35,16 +35,20 @@ public struct DictationASREvidence: Sendable, Equatable {
   /// (segment timing only) and for a Parakeet streaming win; only Parakeet batch evidence can
   /// carry word timings. Availability only: no timing is converted or stored here.
   public let wordTimingsAvailable: Bool
+  /// The delivering decode's real word timings and its map onto the recording, when that decode
+  /// produced any. `nil` means untimed: History shows no times rather than guessing them.
+  public let timing: DictationTimingEvidence?
 
   public init(
     text: String, backend: ASRBackendType, source: Source, input: DecodeInput,
-    wordTimingsAvailable: Bool
+    wordTimingsAvailable: Bool, timing: DictationTimingEvidence? = nil
   ) {
     self.text = text
     self.backend = backend
     self.source = source
     self.input = input
     self.wordTimingsAvailable = wordTimingsAvailable
+    self.timing = timing
   }
 }
 

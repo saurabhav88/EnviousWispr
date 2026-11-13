@@ -239,9 +239,12 @@ def build_server():
         return call("words", "remove", "--", id, mutation=True)
 
     @server.tool()
-    def ew_history_list(limit: int | None = None) -> CallToolResult:
-        """History rows, newest first (summaries)."""
-        return call("history", "list", *([] if limit is None else ["--limit", str(limit)]))
+    def ew_history_list(limit: int | None = None, tab: str | None = None) -> CallToolResult:
+        """History rows, newest first (summaries); tab is dictations, transcripts or meetings."""
+        return call(
+            "history", "list",
+            *([] if limit is None else ["--limit", str(limit)]),
+            *([] if tab is None else ["--tab", tab]))
 
     @server.tool()
     def ew_history_get(id: str) -> CallToolResult:

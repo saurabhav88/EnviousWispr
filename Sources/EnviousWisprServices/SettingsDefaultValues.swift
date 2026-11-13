@@ -173,6 +173,8 @@ enum SettingsDefaultValues {
   static let meetingRecordingRetention: MeetingRecordingRetention = .forever
   static let recordingStorageWarningThreshold: RecordingStorageWarningThreshold = .gb2
   static let recordingThresholdBehavior: RecordingThresholdBehavior = .ask
+  /// #3147 §3.3: History opens on Dictations until the user picks another tab.
+  static let lastHistoryTab: HistoryTab = .dictations
 
   static let isDebugModeEnabled = false
   static let debugLogLevel: DebugLogLevel = .info

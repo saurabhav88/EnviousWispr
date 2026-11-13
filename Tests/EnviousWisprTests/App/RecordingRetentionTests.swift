@@ -470,6 +470,7 @@ struct RecordingRetentionTests {
     #expect(await hasRecording(rig, recent))
   }
 
+  #if DEBUG
   @Test("a policy change or a Play during a removal's own reads keeps the recording")
   func finalChecksFollowTheLastSuspension() async throws {
     let rig = rig()
@@ -502,6 +503,7 @@ struct RecordingRetentionTests {
     #expect(player.state == .playing)
     player.stop()
   }
+  #endif
 
   @Test("space freed between the scan and a removal, meeting audio included, saves the recording")
   func spaceFreedMeanwhileStopsTrimming() async throws {

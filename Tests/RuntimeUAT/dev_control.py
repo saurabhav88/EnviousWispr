@@ -396,6 +396,7 @@ def build_parser():
         dest="action", required=True, metavar="ACTION")
     history_list = history.add_parser("list")
     history_list.add_argument("--limit", type=int)
+    history_list.add_argument("--tab", choices=("dictations", "transcripts", "meetings"))
     history_get = history.add_parser("get")
     history_get.add_argument("id")
 
@@ -638,7 +639,10 @@ def route(args):
             wire["engine"] = args.engine
         return MEETING_ID_ACTIONS[args.action], wire, True
     if key == ("history", "list"):
-        return "history.list", ({} if args.limit is None else {"limit": args.limit}), False
+        wire = {} if args.limit is None else {"limit": args.limit}
+        if args.tab is not None:
+            wire["tab"] = args.tab
+        return "history.list", wire, False
     if key == ("history", "get"):
         return "history.get", {"id": args.id}, False
     if key == ("file", "transcribe"):

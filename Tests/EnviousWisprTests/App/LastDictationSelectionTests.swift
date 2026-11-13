@@ -70,15 +70,17 @@ struct LastDictationSelectionTests {
         == "Send the draft to Maya tomorrow morning.")
   }
 
-  @Test("History's filter and search do not change which dictation is reused")
+  @Test("History's tab and search do not change which dictation is reused")
   func ignoresHistoryFilterAndSearch() {
     let coordinator = makeCoordinator()
     let target = dictation("reply to the thread", ageSeconds: 10)
     coordinator.setTranscriptsForTesting([target, imported("a file transcript", ageSeconds: 20)])
 
-    coordinator.historyFilter = .transcripts
-    coordinator.searchQuery = "no row contains this"
-    #expect(coordinator.filteredTranscripts.isEmpty, "precondition: History lists nothing")
+    coordinator.selectHistoryTab(.transcripts)
+    for tab in HistoryTab.allCases { coordinator.setHistoryQuery("no row contains this", in: tab) }
+    for tab in HistoryTab.allCases {
+      #expect(coordinator.matchingHistoryItems(in: tab).isEmpty, "precondition: History lists nothing")
+    }
 
     #expect(coordinator.lastPasteableDictation()?.id == target.id)
     #expect(coordinator.lastDictationTextForReuse(id: target.id) == "reply to the thread")
