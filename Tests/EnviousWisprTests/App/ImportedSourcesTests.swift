@@ -164,7 +164,9 @@ struct ImportedSourcesTests {
     let stored = try #require(rig.coordinator.currentRow(id: row.id))
     #expect(stored.sourceFingerprint == row.sourceFingerprint)
     #expect(stored.sourceBookmark != nil)
-    #expect(stored.sourceBookmark != row.sourceBookmark, "the refreshed bookmark was stored")
+    // The same file yields the same bookmark bytes, so the write itself is the evidence: the
+    // command ran (it stops the row's players first, which the arbiter counts).
+    #expect(rig.arbiter.deletionCount(for: .transcript(row.id)) == 1, "the refresh went through setImportedSource")
     guard case .available(let resolved) = state else {
       Issue.record("expected available, got \(state)")
       return

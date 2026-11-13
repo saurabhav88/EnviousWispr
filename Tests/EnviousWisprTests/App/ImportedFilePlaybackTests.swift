@@ -108,8 +108,10 @@ struct ImportedFilePlaybackTests {
   }
 
   /// Largest sample difference between `window` and the decoder's samples at `startMs`.
-  private static func maxDifference(_ window: [Float], _ decoded: [Float], startMs: Int) -> Float {
-    let start = startMs * 16
+  private static func maxDifference(
+    _ window: [Float], _ decoded: [Float], startMs: Int, offsetSamples: Int = 0
+  ) -> Float {
+    let start = startMs * 16 + offsetSamples
     var worst: Float = 0
     for i in 0..<window.count {
       let expected = start + i < decoded.count ? decoded[start + i] : 0
@@ -144,21 +146,22 @@ struct ImportedFilePlaybackTests {
     _ = try audio.window(startMs: 0, count: 250)
 
     // Far forward (beyond the 2 s read-through), then backwards: each starts a new reader.
-    for startMs in [4_000, 1_250, 3_500] {
+    // Tolerance: a fresh reader starts 100 ms early, so decoder warm-up is gone; what remains
+    // is the resampler's phase on a new start (measured 0.025 at 48 kHz, a fraction of one
+    // 16 kHz sample). A window one millisecond off differs by far more (the control below).
+    let tolerance: Float = kind == .wav16kMono ? 0.005 : 0.05
+    for startMs in [4_000, 1_250, 3_800] {
       let before = audio.readerStarts
       let window = try audio.window(startMs: startMs, count: 250)
       #expect(audio.readerStarts == before + 1, "\(startMs) ms reopened")
       let difference = Self.maxDifference(window, decoded, startMs: startMs)
-      // A fresh reader's resampler and AAC decoder start 100 ms early; what is left is filter
-      // warm-up, far below the signal (0.3) and far below a misplaced window (measured ~0.3+).
-      #expect(
-        difference < (kind.isCompressed ? 0.02 : 0.005), "\(startMs) ms differs by \(difference)")
-      // The next window continues the same reader exactly.
+      #expect(difference < tolerance, "\(startMs) ms differs by \(difference)")
+      let misplaced = Self.maxDifference(window, decoded, startMs: startMs, offsetSamples: 16)
+      #expect(misplaced > 4 * tolerance, "control: 1 ms off differs by \(misplaced)")
+      // The next window continues the same reader.
       let next = try audio.window(startMs: startMs + 250, count: 250)
       #expect(audio.readerStarts == before + 1)
-      #expect(
-        Self.maxDifference(next, decoded, startMs: startMs + 250)
-          < (kind.isCompressed ? 0.02 : 0.005))
+      #expect(Self.maxDifference(next, decoded, startMs: startMs + 250) < tolerance)
     }
 
     // A short jump ahead reads through instead of reopening.
