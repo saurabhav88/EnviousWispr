@@ -270,13 +270,39 @@ struct MeetingNotesTextView: NSViewRepresentable {
     private var syncing = false
     /// The block plain typing is going into: further typing there joins the same Undo step.
     private var typingBlock: UUID?
+    /// The meeting and draft last drawn: a different one (a change made elsewhere, even one the
+    /// text does not show, such as a kind) makes the Undo history stale.
+    private var syncedMeeting: UUID?
+    private var syncedDocument: MeetingNotesDocument?
+
+    override init() {
+      super.init()
+      // Each step is grouped here, not by the event loop, so one edit is one step wherever
+      // it comes from.
+      undo.groupsByEvent = false
+    }
+
+    /// Whether two drafts are the same, text compared by bytes (`==` treats canonically
+    /// equivalent text as equal).
+    static func same(_ a: MeetingNotesDocument?, _ b: MeetingNotesDocument?) -> Bool {
+      guard let a, let b else { return a == nil && b == nil }
+      return a == b && MeetingDocumentHash.sameBytes(a.markdown, b.markdown)
+    }
 
     /// Draws `snapshot`. The text is replaced only when it differs from the draft (a read, a
-    /// refused edit, another editor), keeping the caret where it was, and the Undo history is
-    /// cleared then unless the change was this editor's own Undo or Redo; otherwise only the
-    /// gutter and styles follow.
+    /// refused edit, another editor), keeping the caret where it was. The Undo history is
+    /// cleared when the draft differs from the one last drawn and the change is not this
+    /// editor's own (`keepUndo`).
     func sync(_ snapshot: MeetingNotesSnapshot, keepUndo: Bool = false) {
       guard let textView, !textView.hasMarkedText() else { return }
+      if !keepUndo,
+        syncedMeeting != meetingID || !Self.same(syncedDocument, snapshot.document)
+      {
+        undo.removeAllActions()
+        typingBlock = nil
+      }
+      syncedMeeting = meetingID
+      syncedDocument = snapshot.document
       textView.blocks = snapshot.document.blocks
       textView.isEditable = snapshot.canEdit
       let text = MeetingNotesTextMapping.text(snapshot.document)
@@ -285,10 +311,6 @@ struct MeetingNotesTextView: NSViewRepresentable {
         syncing = true
         textView.string = text
         syncing = false
-        if !keepUndo {
-          undo.removeAllActions()
-          typingBlock = nil
-        }
         let length = (text as NSString).length
         textView.setSelectedRange(
           NSRange(location: min(selection.location, length), length: 0))
@@ -343,12 +365,12 @@ struct MeetingNotesTextView: NSViewRepresentable {
       // Plain typing in one block is one Undo step until something else happens.
       var typedInto: UUID?
       if edits.count == 1, case .replaceText(let blockID, let range, let text) = edits[0],
-        range.isEmpty, !text.isEmpty
+        range.isEmpty, !text.isEmpty, !text.contains("\n"), !text.contains("\r")
       {
         typedInto = blockID
       }
       let after = notes.snapshot(for: meetingID)
-      if after.document != snapshot.document {
+      if !Self.same(after.document, snapshot.document) {
         if typedInto == nil || typedInto != typingBlock {
           registerUndo(restoring: snapshot.document)
         }
@@ -362,9 +384,11 @@ struct MeetingNotesTextView: NSViewRepresentable {
 
     /// Registers an Undo step that restores `document`; performing it registers the Redo.
     private func registerUndo(restoring document: MeetingNotesDocument) {
+      undo.beginUndoGrouping()
       undo.registerUndo(withTarget: self) { coordinator in
         MainActor.assumeIsolated { coordinator.restore(document) }
       }
+      undo.endUndoGrouping()
     }
 
     /// Undo or Redo: puts `document` back as the draft and registers the way back.
@@ -413,7 +437,7 @@ struct MeetingNotesTextView: NSViewRepresentable {
       else { return }
       typingBlock = nil
       registerUndo(restoring: snapshot.document)
-      sync(notes.snapshot(for: meetingID))
+      sync(notes.snapshot(for: meetingID), keepUndo: true)
     }
 
     func toggleTask() {
@@ -536,13 +560,23 @@ final class NotesTextView: NSTextView {
   }
 
   // Edit > Undo and Redo, and their keys, go to the editor's own history.
-  @objc func undo(_ sender: Any?) { coordinator?.undo.undo() }
-  @objc func redo(_ sender: Any?) { coordinator?.undo.redo() }
+  // Not while an input method is composing: the draft does not hold that text yet.
+  @objc func undo(_ sender: Any?) {
+    guard !hasMarkedText() else { return }
+    coordinator?.undo.undo()
+  }
+
+  @objc func redo(_ sender: Any?) {
+    guard !hasMarkedText() else { return }
+    coordinator?.undo.redo()
+  }
 
   override func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {
     switch item.action {
-    case #selector(undo(_:)): return isEditable && coordinator?.undo.canUndo == true
-    case #selector(redo(_:)): return isEditable && coordinator?.undo.canRedo == true
+    case #selector(undo(_:)):
+      return isEditable && !hasMarkedText() && coordinator?.undo.canUndo == true
+    case #selector(redo(_:)):
+      return isEditable && !hasMarkedText() && coordinator?.undo.canRedo == true
     default: return super.validateUserInterfaceItem(item)
     }
   }

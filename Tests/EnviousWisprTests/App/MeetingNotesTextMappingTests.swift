@@ -169,5 +169,43 @@ struct MeetingNotesTextMappingTests {
     #expect(textView.string == "ab")
     #expect(coordinator.undo.canUndo == false)
   }
+
+  @Test("a paste after typing is its own Undo step; a Unicode-only change can be undone")
+  func undoSteps() async throws {
+    let original = MeetingNotesDocument(blocks: [MeetingNoteBlock(startedAtMs: 1, text: "Cafe\u{301}")])
+    let (textView, coordinator, documents, id, keep) = try await Self.editor(original)
+    defer { withExtendedLifetime(keep) {} }
+    textView.insertText("!", replacementRange: NSRange(location: 5, length: 0))
+    textView.insertText("?", replacementRange: NSRange(location: 6, length: 0))
+    let typed = documents.snapshot(for: id).document
+    textView.insertText("x\ny", replacementRange: NSRange(location: 7, length: 0))
+    #expect(documents.snapshot(for: id).document.blocks.count == 2)
+    coordinator.undo.undo()
+    #expect(documents.snapshot(for: id).document == typed, "only the paste is undone")
+    coordinator.undo.undo()
+    #expect(documents.snapshot(for: id).document == original, "then the typing")
+
+    textView.insertText("\u{E9}", replacementRange: NSRange(location: 3, length: 2))
+    #expect(Array(documents.notes(id).utf8) == Array("Caf\u{E9}".utf8))
+    coordinator.undo.undo()
+    #expect(Array(documents.notes(id).utf8) == Array("Cafe\u{301}".utf8))
+  }
+
+  @Test("a change made elsewhere that the text does not show still clears the Undo history")
+  func externalKindChangeClearsHistory() async throws {
+    let original = MeetingNotesDocument(blocks: [MeetingNoteBlock(startedAtMs: 1, text: "a")])
+    let (textView, coordinator, documents, id, keep) = try await Self.editor(original)
+    defer { withExtendedLifetime(keep) {} }
+    textView.insertText("b", replacementRange: NSRange(location: 1, length: 0))
+    #expect(coordinator.undo.canUndo)
+    let snapshot = documents.snapshot(for: id)
+    #expect(
+      documents.apply(
+        .setKind(blockID: original.blocks[0].id, kind: .task), to: id,
+        expectedRevision: snapshot.revision, atMs: nil))
+    coordinator.sync(documents.snapshot(for: id))
+    #expect(coordinator.undo.canUndo == false)
+    #expect(documents.snapshot(for: id).document.blocks[0].kind == .task)
+  }
 }
 
