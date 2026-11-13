@@ -160,7 +160,7 @@ struct TranscriptRetranscriptionTests {
     #expect(f.owner.isEngineHeld == false)
   }
 
-  @Test("choices list the installed models and mark current only when the engine has one model")
+  @Test("choices list exactly the installed models and claim none made the current text")
   func choicesFromInstalledModels() async throws {
     let f = try await fixture()
     let ultra = ImportedASRChoice(
@@ -186,11 +186,11 @@ struct TranscriptRetranscriptionTests {
     f.rig.installed = [ultra, whisper]
     let one = f.owner.choices(for: f.row.id)
     #expect(one.map(\.id) == ["parakeet.ultra", "whisper"])
-    #expect(one.map(\.isCurrent) == [true, false], "the row was made by Parakeet")
-    f.rig.installed = [v3, ultra, whisper]
     #expect(
-      f.owner.choices(for: f.row.id).map(\.isCurrent) == [false, false, false],
-      "two Parakeet models: which one made the text is unknown")
+      one.map(\.isCurrent) == [false, false],
+      "the row stores its engine, not its model: one installed Parakeet proves nothing")
+    f.rig.installed = [v3, ultra, whisper]
+    #expect(f.owner.choices(for: f.row.id).map(\.id) == ["parakeet.v3", "parakeet.ultra", "whisper"])
     #expect(f.owner.choices(for: UUID()).isEmpty, "a row that is gone offers nothing")
     #expect(f.rig.engines.loads.isEmpty && f.rig.frozenBackends.isEmpty, "listing runs nothing")
   }

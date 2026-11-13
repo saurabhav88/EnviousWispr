@@ -50,20 +50,17 @@ final class TranscriptRetranscription: ImportedTranscriptRetranscribing {
   var isEngineHeld: Bool { transcriber.isEngineHeld }
 
   /// The installed, usable models for an import, in the composition's order (`installedModels`
-  /// reads delivery's admitted installs now and never downloads; its `isCurrent` is ignored).
-  /// Empty for a row that is gone or not an import.
+  /// reads delivery's admitted installs now and never downloads). Empty for a row that is gone
+  /// or not an import.
   ///
-  /// **Current is marked only when it is known.** A row records its engine, not its model, so
-  /// a choice is current only when it is the one installed model of the row's engine; with two
-  /// installed Parakeet models neither is claimed, rather than guessing which made the text.
+  /// **No choice is marked current.** A row records its engine, not its model, and what is
+  /// installed today does not say which model made old text (Parakeet v3 may have been removed
+  /// since), so claiming one would be a guess.
   func choices(for rowID: UUID) -> [ImportedASRChoice] {
     guard let row = history.currentRow(id: rowID), row.isImported else { return [] }
-    let models = installedModels()
-    let sameEngine = models.filter { $0.selection.backendType == row.backendType }.count
-    return models.map { model in
+    return installedModels().map { model in
       ImportedASRChoice(
-        id: model.id, title: model.title, selection: model.selection,
-        isCurrent: sameEngine == 1 && model.selection.backendType == row.backendType)
+        id: model.id, title: model.title, selection: model.selection, isCurrent: false)
     }
   }
 
@@ -104,7 +101,7 @@ final class TranscriptRetranscription: ImportedTranscriptRetranscribing {
     let ticket: ImportedReplacementTicket
     do {
       guard let minted = try await history.beginImportedReplacement(for: rowID) else {
-        return .stale
+        return Task.isCancelled ? .cancelled : .stale
       }
       ticket = minted
     } catch {
@@ -138,8 +135,9 @@ final class TranscriptRetranscription: ImportedTranscriptRetranscribing {
     }
     guard !Task.isCancelled else { return .cancelled }
     do {
-      return try await history.commitImportedReplacement(result, ticket: ticket)
-        ? .replaced : .stale
+      if try await history.commitImportedReplacement(result, ticket: ticket) { return .replaced }
+      // A Cancel during the command makes it refuse; that is the user's Cancel, not a change.
+      return Task.isCancelled ? .cancelled : .stale
     } catch {
       return Task.isCancelled || error is CancellationError ? .cancelled : .failed
     }
