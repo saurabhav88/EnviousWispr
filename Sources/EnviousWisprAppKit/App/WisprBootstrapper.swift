@@ -1477,7 +1477,9 @@ package final class WisprBootstrapper {
       _ = await kernelDriver?.ensureEngineWarm(reason: .explicitRetry)
     }
 
-    if settings.selectedBackend == .parakeet {
+    if LaunchEngineWarm.allowed(
+      selectedBackend: settings.selectedBackend, onboardingState: settings.onboardingState)
+    {
       // #3546: launch is a model-selection point.
       parakeetUpgrade.markSelectionPoint()
       Task { [weak kernelDriver] in

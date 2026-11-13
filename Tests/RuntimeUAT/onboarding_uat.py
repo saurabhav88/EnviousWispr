@@ -2011,6 +2011,9 @@ def s_first_run(run, speech):
     run.app.call("onboarding", "fault", "disk-short")
     run.send("next")  # speech pick: commits the recommended engine and starts its download
     run.send("next")  # polish intro
+    # A failed transfer must hit a model that is not on this Mac yet: arm it before the polish
+    # pick starts its download (a fast link finishes a download within the first poll).
+    run.app.call("onboarding", "fault", "download-fail")
     run.send("next")  # polish pick: the recommended card
     st = run.until(lambda x: x.get("step") == "downloads", 6, "downloads")
     st = run.until(lambda x: (x.get("block") or {}).get("kind") == "insufficientDisk", 10,
@@ -2022,13 +2025,7 @@ def s_first_run(run, speech):
     run.app.call("onboarding", "fault", "disk-short", "--off")
     try_again = setup_button(pid, "Try again") or setup_button(pid, "Resume downloads")
     s.expect(try_again is not None and ax_press(try_again), "the screen's own Try again")
-    st = run.until(lambda x: (x.get("downloads") or {}).get("speech") in
-                   ("downloading", "verifying", "installed"), 30, "speech download starts")
-    s.expect((st.get("downloads") or {}).get("speech") in ("downloading", "verifying", "installed"),
-             "after space frees, Try again starts the real speech download", st.get("downloads"))
-
-    # A failed transfer of a model that is not on this Mac yet: failed, then Try again resumes.
-    run.app.call("onboarding", "fault", "download-fail")
+    # With download-fail armed, the polish download (not on this Mac) must fail honestly.
     st = run.until(lambda x: "failed" in ((x.get("downloads") or {}).values()), 60,
                    "a download fails")
     failed = "failed" in (st.get("downloads") or {}).values()
@@ -2070,16 +2067,12 @@ def s_first_run(run, speech):
              "the recording note is on Practice before the first take",
              [t for t in texts if "record" in t.lower()][:2])
     shot("practice")
-    run.send("skipPractice")  # the spoken take is practice_spoken's job
-    st = run.until(lambda x: x.get("step") == "film", 10, "film")
-    s.expect(st.get("step") == "film", "Skip practice reaches the film", st.get("step"))
-    time.sleep(2.0)  # test-fixture-timer: a little of the film plays
-    shot("film")
-    press("Launch EnviousWispr")
+    # Skip practice ends Setup without the film (film_result not_shown, posthog-events.md);
+    # the film's own Launch is covered by screens_e after a real take.
+    run.send("skipPractice")
     st = run.until(lambda x: x.get("active") is False, 10, "completed")
     s.expect(st.get("active") is False and st.get("legacyState") == "completed",
-             "Launch EnviousWispr completes Setup durably",
-             (st.get("active"), st.get("legacyState")))
+             "Skip practice completes Setup durably", (st.get("active"), st.get("legacyState")))
     time.sleep(1.5)  # test-fixture-timer: the main window opens
     from ApplicationServices import AXUIElementCreateApplication, AXUIElementCopyAttributeValue
     _, windows = AXUIElementCopyAttributeValue(AXUIElementCreateApplication(pid), "AXWindows",
