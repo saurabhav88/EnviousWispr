@@ -1,0 +1,1 @@
+{"language":"sk","title":"vymazať nahrávky","words":["zvukové súbory"],"phrases":["vymazať zvuk a ponechať text"]}

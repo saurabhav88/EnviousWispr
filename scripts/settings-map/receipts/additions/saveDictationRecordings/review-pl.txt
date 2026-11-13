@@ -1,0 +1,9 @@
+{
+  "language": "pl",
+  "title": "zapisuj nagrania dyktowania",
+  "words": [],
+  "phrases": [
+    "zachowaj dźwięk każdego nowego dyktowania",
+    "zapisuj dźwięk dyktowania do późniejszego odsłuchania"
+  ]
+}

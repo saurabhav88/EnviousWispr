@@ -1,0 +1,357 @@
+{
+ "id": "meetingRecordingRetention",
+ "blocks": [
+  {
+   "language": "ar",
+   "title": "الاحتفاظ بصوت الاجتماعات",
+   "words": [
+    "تسجيلات الاجتماعات"
+   ],
+   "phrases": [
+    "حفظ التسجيل الصوتي للاجتماع",
+    "الاحتفاظ بصوت الاجتماع دون النص"
+   ]
+  },
+  {
+   "language": "bg",
+   "title": "запазване на аудиото от срещи",
+   "words": [
+    "записи от срещи"
+   ],
+   "phrases": [
+    "да се пази звукът от срещите",
+    "запазване на аудиозаписа от срещата"
+   ]
+  },
+  {
+   "language": "cs",
+   "title": "uchovávat zvuk ze schůzek",
+   "words": [
+    "nahrávky schůzek"
+   ],
+   "phrases": [
+    "ponechat zvukový záznam schůzky",
+    "ukládání audia ze schůzek"
+   ]
+  },
+  {
+   "language": "da",
+   "title": "behold mødelyd",
+   "words": [
+    "mødeoptagelser"
+   ],
+   "phrases": [
+    "gem lyden fra møder",
+    "behold lydoptagelser af møder"
+   ]
+  },
+  {
+   "language": "de",
+   "words": [
+    "Meeting-Aufzeichnung",
+    "Besprechungsaufnahme"
+   ],
+   "phrases": [
+    "Audio von Besprechungen speichern",
+    "Ton vom Meeting behalten"
+   ]
+  },
+  {
+   "language": "el",
+   "title": "διατήρηση ήχου συναντήσεων",
+   "words": [
+    "ηχογραφήσεις συναντήσεων"
+   ],
+   "phrases": [
+    "να κρατάω τον ήχο της συνάντησης",
+    "αποθήκευση ηχογραφήσεων συναντήσεων"
+   ]
+  },
+  {
+   "language": "en",
+   "words": [
+    "meeting recordings",
+    "meeting audio retention"
+   ],
+   "phrases": [
+    "save audio from meetings",
+    "keep meeting sound recordings"
+   ]
+  },
+  {
+   "language": "es",
+   "title": "conservar el audio de las reuniones",
+   "words": [
+    "grabaciones de reuniones"
+   ],
+   "phrases": [
+    "guardar el sonido de las reuniones",
+    "mantener las grabaciones de las reuniones"
+   ]
+  },
+  {
+   "language": "et",
+   "title": "koosolekute heli säilitamine",
+   "words": [
+    "koosolekusalvestised"
+   ],
+   "phrases": [
+    "jäta koosoleku helisalvestis alles",
+    "salvesta koosolekute heli"
+   ]
+  },
+  {
+   "language": "fi",
+   "title": "säilytä kokousten ääni",
+   "words": [
+    "kokoustallenteet"
+   ],
+   "phrases": [
+    "säilytä kokouksen äänitallenne",
+    "kokousäänen tallentaminen"
+   ]
+  },
+  {
+   "language": "fr",
+   "title": "conserver l’audio des réunions",
+   "words": [
+    "enregistrements de réunions"
+   ],
+   "phrases": [
+    "garder le son des réunions",
+    "sauvegarder les enregistrements audio des réunions"
+   ]
+  },
+  {
+   "language": "hi",
+   "title": "मीटिंग का ऑडियो रखें",
+   "words": [
+    "बैठक की रिकॉर्डिंग"
+   ],
+   "phrases": [
+    "मीटिंग की आवाज़ सेव करें",
+    "बैठक की ऑडियो रिकॉर्डिंग रखनी है"
+   ]
+  },
+  {
+   "language": "hr",
+   "title": "čuvanje zvuka sa sastanaka",
+   "words": [
+    "snimke sastanaka"
+   ],
+   "phrases": [
+    "zadrži zvučnu snimku sastanka",
+    "spremanje audiosnimki sastanaka"
+   ]
+  },
+  {
+   "language": "hu",
+   "title": "megbeszélések hangjának megőrzése",
+   "words": [
+    "értekezletfelvételek"
+   ],
+   "phrases": [
+    "megbeszélés hangfelvételének megtartása",
+    "értekezlet hangjának mentése"
+   ]
+  },
+  {
+   "language": "it",
+   "title": "conserva l’audio delle riunioni",
+   "words": [
+    "registrazioni delle riunioni"
+   ],
+   "phrases": [
+    "salvare il suono delle riunioni",
+    "tenere le registrazioni audio delle riunioni"
+   ]
+  },
+  {
+   "language": "ja",
+   "title": "会議の音声を保持",
+   "words": [
+    "会議録音"
+   ],
+   "phrases": [
+    "会議の録音を残したい",
+    "ミーティングの音声を保存"
+   ]
+  },
+  {
+   "language": "ko",
+   "title": "회의 오디오 보관",
+   "words": [
+    "회의 녹음"
+   ],
+   "phrases": [
+    "회의 녹음 남기기",
+    "회의 음성 저장하기"
+   ]
+  },
+  {
+   "language": "lt",
+   "title": "išsaugoti susitikimų garsą",
+   "words": [
+    "susitikimų įrašai"
+   ],
+   "phrases": [
+    "palikti susitikimo garso įrašą",
+    "saugoti susitikimų garso įrašus"
+   ]
+  },
+  {
+   "language": "lv",
+   "title": "saglabāt sapulču audio",
+   "words": [
+    "sapulču ieraksti"
+   ],
+   "phrases": [
+    "paturēt sapulces skaņas ierakstu",
+    "saglabāt sapulču skaņu"
+   ]
+  },
+  {
+   "language": "mt",
+   "title": "żomm l-awdjo tal-laqgħat",
+   "words": [
+    "reġistrazzjonijiet tal-laqgħat"
+   ],
+   "phrases": [
+    "issejvja l-ħoss tal-laqgħat",
+    "żomm ir-reġistrazzjoni tal-laqgħa"
+   ]
+  },
+  {
+   "language": "nl",
+   "title": "audio van vergaderingen bewaren",
+   "words": [
+    "vergaderopnamen"
+   ],
+   "phrases": [
+    "geluid van vergaderingen opslaan",
+    "opnames van vergaderingen houden"
+   ]
+  },
+  {
+   "language": "pl",
+   "title": "zachowuj dźwięk ze spotkań",
+   "words": [
+    "nagrania spotkań"
+   ],
+   "phrases": [
+    "zapisuj nagrania audio ze spotkań",
+    "zachowaj nagranie głosowe spotkania"
+   ]
+  },
+  {
+   "language": "pt",
+   "title": "guardar o áudio das reuniões",
+   "words": [
+    "gravações de reuniões"
+   ],
+   "phrases": [
+    "manter as gravações das reuniões",
+    "salvar o som das reuniões"
+   ]
+  },
+  {
+   "language": "ro",
+   "title": "păstrează sunetul întâlnirilor",
+   "words": [
+    "înregistrări audio ale ședințelor"
+   ],
+   "phrases": [
+    "salvează înregistrarea audio a întâlnirii",
+    "păstrează înregistrările ședințelor"
+   ]
+  },
+  {
+   "language": "ru",
+   "title": "сохранять аудио встреч",
+   "words": [
+    "записи совещаний"
+   ],
+   "phrases": [
+    "оставить звуковую запись встречи",
+    "хранить записи звука совещаний"
+   ]
+  },
+  {
+   "language": "sk",
+   "title": "uchovávať zvuk zo stretnutí",
+   "words": [
+    "nahrávky stretnutí"
+   ],
+   "phrases": [
+    "ponechať zvukový záznam stretnutia",
+    "ukladanie audia zo stretnutí"
+   ]
+  },
+  {
+   "language": "sl",
+   "title": "ohrani zvok sestankov",
+   "words": [
+    "posnetki sestankov"
+   ],
+   "phrases": [
+    "shrani zvočni posnetek sestanka",
+    "obdrži zvočne posnetke sestankov"
+   ]
+  },
+  {
+   "language": "sv",
+   "title": "behåll mötesljud",
+   "words": [
+    "mötesinspelningar"
+   ],
+   "phrases": [
+    "spara ljudet från möten",
+    "behåll ljudinspelningar från möten"
+   ]
+  },
+  {
+   "language": "tr",
+   "title": "toplantı sesini sakla",
+   "words": [
+    "toplantı kayıtları"
+   ],
+   "phrases": [
+    "toplantının ses kaydını tut",
+    "toplantı ses kayıtlarını saklama"
+   ]
+  },
+  {
+   "language": "uk",
+   "title": "зберігати аудіо зустрічей",
+   "words": [
+    "записи нарад"
+   ],
+   "phrases": [
+    "залишити звуковий запис зустрічі",
+    "зберігати записи звуку нарад"
+   ]
+  },
+  {
+   "language": "vi",
+   "title": "giữ âm thanh cuộc họp",
+   "words": [
+    "bản ghi âm cuộc họp"
+   ],
+   "phrases": [
+    "lưu lại ghi âm cuộc họp",
+    "giữ bản thu âm buổi họp"
+   ]
+  },
+  {
+   "language": "zh",
+   "title": "保留会议音频",
+   "words": [
+    "会议录音"
+   ],
+   "phrases": [
+    "保存开会的录音",
+    "留下会议的声音记录"
+   ]
+  }
+ ]
+}

@@ -1,0 +1,1 @@
+{"language":"vi","title":"giữ âm thanh cuộc họp","words":["bản ghi âm cuộc họp"],"phrases":["giữ bản ghi âm cuộc họp trong bao lâu","tự động xóa âm thanh cuộc họp sau 30 hoặc 90 ngày","giữ âm thanh cuộc họp cho đến khi tôi xóa"]}

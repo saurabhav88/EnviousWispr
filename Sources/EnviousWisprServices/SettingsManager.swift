@@ -96,7 +96,6 @@ public final class SettingsManager {
     case sendCrashReports
     case contactsSyncOnLaunchEnabled
     case isDebugModeEnabled
-    case isDictationAudioArchiveEnabled
     case debugLogLevel
     case whisperKitLanguage
     case languageMode
@@ -126,6 +125,13 @@ public final class SettingsManager {
     case otherAudioWhileDictating
     /// #996: ask before remembering a word the user fixed in pasted text.
     case learnFromEdits
+    /// #3147: save a recording of each new dictation (D1), how long dictation and meeting
+    /// recordings are kept, and the storage warning.
+    case saveDictationRecordings
+    case dictationRecordingRetention
+    case meetingRecordingRetention
+    case recordingStorageWarningThreshold
+    case recordingThresholdBehavior
   }
 
   public var onChange: ((SettingKey) -> Void)?
@@ -176,7 +182,7 @@ public final class SettingsManager {
     "fillerRemovalEnabled", "emojiFormatterEnabled", "spokenPunctuationEnabled",
     "spokenPunctuationStartWords", "spokenPunctuationEnglishPeriodWord", "casualModeEnabled",
     "crashRecoveryEnabled", "shareUsageMetrics", "sendCrashReports", "contactsSyncOnLaunchEnabled",
-    "isDebugModeEnabled", "isDictationAudioArchiveEnabled", "debugLogLevel",
+    "isDebugModeEnabled", "debugLogLevel",
     "egOneSize", "whisperKitLanguage", "languageMode", "englishSpelling",
     "selectedInputDeviceUID", "preferredInputDeviceIDOverride", "inputChannelByDeviceUID",
     "useStreamingASR", "livePreviewEnabled", "livePreviewEngine",
@@ -185,8 +191,12 @@ public final class SettingsManager {
     "recordingPillDesignWithoutWords", "recordingPillDesignWithWords",
     "showBluetoothTips", "showInDock", "showMenuBarUpdateAlert", "playRecordingSounds", "recordingSoundPairing",
     "otherAudioWhileDictating", "learnFromEdits",
+    "saveDictationRecordings", "dictationRecordingRetention", "meetingRecordingRetention",
+    "recordingStorageWarningThreshold", "recordingThresholdBehavior",
     WhatsNewConstants.lastSeenVersionDefaultsKey,
     globeGuidanceClaimKey,
+    recordingDisclosureCohortKey, recordingDisclosureAcknowledgedKey,
+    lastHistoryTabKey,
   ]
 
   /// A stored language choice as it may be used: a supported locked code, lowercased, or Auto
@@ -217,6 +227,59 @@ public final class SettingsManager {
   /// build-unification list carried the other, and the user would be re-shown the
   /// explanation after an update with every test still green.
   private nonisolated static let globeGuidanceClaimKey = "hasClaimedGlobeKeyGuidance"
+
+  /// #3147 C9: whether this install was set up before dictation recordings existed, decided
+  /// ONCE (the first launch of a build that has recordings) from durable onboarding history and
+  /// stored, so finishing onboarding later never turns a fresh install into an upgrade. Not a
+  /// user setting: no `SettingKey`, no settings delta, no snapshot (like the Globe-key claim).
+  private nonisolated static let recordingDisclosureCohortKey = "recordingDisclosureCohort"
+  /// #3147 §3.3: the History tab the user last opened. View memory, not a setting: no change
+  /// event, no telemetry, never seeded at load.
+  nonisolated static let lastHistoryTabKey = "lastHistoryTab"
+  /// #3147 C9: the user has seen the recording disclosure (dismissed the History banner, or
+  /// saw onboarding's recording note). One authority for every surface.
+  private nonisolated static let recordingDisclosureAcknowledgedKey =
+    "recordingDisclosureAcknowledged"
+
+  /// True when this install predates recordings, so History shows the one-time disclosure.
+  public private(set) var isRecordingDisclosureUpgrade = false
+  /// True once the recording disclosure was seen on any surface.
+  public private(set) var recordingDisclosureAcknowledged = false
+
+  /// The History banner shows only to an upgrading install that has not seen the disclosure.
+  public var showsRecordingUpgradeDisclosure: Bool {
+    isRecordingDisclosureUpgrade && !recordingDisclosureAcknowledged
+  }
+
+  /// Records that the History banner was dismissed. Opening Settings from the banner is not a
+  /// dismissal.
+  public func acknowledgeRecordingDisclosure() {
+    guard !recordingDisclosureAcknowledged else { return }
+    recordingDisclosureAcknowledged = true
+    defaults.set(true, forKey: Self.recordingDisclosureAcknowledgedKey)
+  }
+
+  /// Records that setup showed its recording note. It counts only for a fresh install: an
+  /// upgrading install that re-runs setup (Diagnostics > Restart Onboarding) keeps its History
+  /// banner, because the setup note is worded for new users and is not the upgrade notice.
+  public func recordOnboardingRecordingNoteShown() {
+    guard !isRecordingDisclosureUpgrade else { return }
+    acknowledgeRecordingDisclosure()
+  }
+
+  /// Decides the cohort once and loads both values. Runs in `init`, after the durable
+  /// onboarding flag's backfill and before any onboarding screen can complete.
+  private func loadRecordingDisclosure() {
+    let cohort: String
+    if let stored = defaults.string(forKey: Self.recordingDisclosureCohortKey) {
+      cohort = stored
+    } else {
+      cohort = defaults.bool(forKey: Self.onboardingEverCompletedKey) ? "upgrade" : "fresh"
+      defaults.set(cohort, forKey: Self.recordingDisclosureCohortKey)
+    }
+    isRecordingDisclosureUpgrade = cohort == "upgrade"
+    recordingDisclosureAcknowledged = defaults.bool(forKey: Self.recordingDisclosureAcknowledgedKey)
+  }
 
   /// Claim the right to present the Globe-key guidance, exactly once per install.
   ///
@@ -1467,6 +1530,51 @@ public final class SettingsManager {
     }
   }
 
+  /// #3147 D1: save a compressed recording of each new dictation. Read once when a take is
+  /// accepted (the kernel freezes it for that take). Off affects new dictations only: existing
+  /// recordings stay, keep their expiry, still play and still count toward storage.
+  public var saveDictationRecordings: Bool {
+    didSet {
+      defaults.set(saveDictationRecordings, forKey: "saveDictationRecordings")
+      onChange?(.saveDictationRecordings)
+    }
+  }
+
+  /// #3147 D2: how long a dictation's recording is kept. Read by `RecordingRetention` at each
+  /// sweep and again inside each removal. A shorter value reaches here only after the Settings
+  /// page's count preview and Undo (`RecordingRetention.stage`), never on a bare picker change.
+  public var dictationRecordingRetention: DictationRecordingRetention {
+    didSet {
+      defaults.set(dictationRecordingRetention.rawValue, forKey: "dictationRecordingRetention")
+      onChange?(.dictationRecordingRetention)
+    }
+  }
+
+  /// #3147 D3: how long a finished meeting's audio is kept; text, notes and summary stay.
+  public var meetingRecordingRetention: MeetingRecordingRetention {
+    didSet {
+      defaults.set(meetingRecordingRetention.rawValue, forKey: "meetingRecordingRetention")
+      onChange?(.meetingRecordingRetention)
+    }
+  }
+
+  /// #3147 D3: the recording storage size that raises a warning (never a hard limit).
+  public var recordingStorageWarningThreshold: RecordingStorageWarningThreshold {
+    didSet {
+      defaults.set(
+        recordingStorageWarningThreshold.rawValue, forKey: "recordingStorageWarningThreshold")
+      onChange?(.recordingStorageWarningThreshold)
+    }
+  }
+
+  /// #3147 D3: warn only, or remove the oldest unpinned dictation recordings, past the threshold.
+  public var recordingThresholdBehavior: RecordingThresholdBehavior {
+    didSet {
+      defaults.set(recordingThresholdBehavior.rawValue, forKey: "recordingThresholdBehavior")
+      onChange?(.recordingThresholdBehavior)
+    }
+  }
+
   /// #3809: eligibility of the selected settings, not readiness of the active engine.
   /// Whisper must commit to a language before streaming; an early guess can spoil a take.
   /// Parakeet streams in Auto too. Keep this choice shared between both engines.
@@ -1659,16 +1767,6 @@ public final class SettingsManager {
     }
   }
 
-  /// Sticky, founder-controlled opt-in for the DEBUG-only per-dictation audio
-  /// archive (#1230). Survives rebuilds/relaunches, unlike the env-var opt-in
-  /// (`EW_KEEP_DICTATION_AUDIO`) it ORs with at `DictationAudioArchive.archive()`.
-  public var isDictationAudioArchiveEnabled: Bool {
-    didSet {
-      defaults.set(isDictationAudioArchiveEnabled, forKey: "isDictationAudioArchiveEnabled")
-      onChange?(.isDictationAudioArchiveEnabled)
-    }
-  }
-
   public var debugLogLevel: DebugLogLevel {
     didSet {
       defaults.set(debugLogLevel.rawValue, forKey: "debugLogLevel")
@@ -1839,6 +1937,14 @@ public final class SettingsManager {
   }
 
   public private(set) var hasUnreadWhatsNew: Bool
+
+  // MARK: - History
+
+  /// The History tab opened last (#3147 §3.3). Absent or unknown reads as Dictations; loading
+  /// never writes it.
+  public var lastHistoryTab: HistoryTab {
+    didSet { defaults.set(lastHistoryTab.rawValue, forKey: Self.lastHistoryTabKey) }
+  }
 
   public func markWhatsNewSeen() {
     guard hasUnreadWhatsNew else { return }
@@ -2175,12 +2281,30 @@ public final class SettingsManager {
       learnFromEdits = SettingsDefaultValues.learnFromEdits
       defaults.set(SettingsDefaultValues.learnFromEdits, forKey: "learnFromEdits")
     }
+    // #3147: absent or unknown values resolve to the canonical defaults, never seeded, so an
+    // unreadable value cannot turn on deletion.
+    saveDictationRecordings =
+      defaults.object(forKey: "saveDictationRecordings") as? Bool
+      ?? SettingsDefaultValues.saveDictationRecordings
+    dictationRecordingRetention =
+      DictationRecordingRetention(
+        rawValue: defaults.string(forKey: "dictationRecordingRetention") ?? ""
+      ) ?? SettingsDefaultValues.dictationRecordingRetention
+    meetingRecordingRetention =
+      MeetingRecordingRetention(
+        rawValue: defaults.string(forKey: "meetingRecordingRetention") ?? ""
+      ) ?? SettingsDefaultValues.meetingRecordingRetention
+    recordingStorageWarningThreshold =
+      RecordingStorageWarningThreshold(
+        rawValue: defaults.string(forKey: "recordingStorageWarningThreshold") ?? ""
+      ) ?? SettingsDefaultValues.recordingStorageWarningThreshold
+    recordingThresholdBehavior =
+      RecordingThresholdBehavior(
+        rawValue: defaults.string(forKey: "recordingThresholdBehavior") ?? ""
+      ) ?? SettingsDefaultValues.recordingThresholdBehavior
     isDebugModeEnabled =
       defaults.object(forKey: "isDebugModeEnabled") as? Bool
       ?? SettingsDefaultValues.isDebugModeEnabled
-    isDictationAudioArchiveEnabled =
-      defaults.object(forKey: "isDictationAudioArchiveEnabled") as? Bool
-      ?? SettingsDefaultValues.isDictationAudioArchiveEnabled
     debugLogLevel =
       DebugLogLevel(
         rawValue: defaults.string(forKey: "debugLogLevel") ?? ""
@@ -2329,6 +2453,10 @@ public final class SettingsManager {
     lastSeenWhatsNewVersion = storedWhatsNew
     hasUnreadWhatsNew = (storedWhatsNew != WhatsNewConstants.currentContentVersion)
 
+    lastHistoryTab =
+      HistoryTab(rawValue: defaults.string(forKey: Self.lastHistoryTabKey) ?? "")
+      ?? SettingsDefaultValues.lastHistoryTab
+
     // #4353 D1: seed each absent memory from raw stored values, run the summary migration on
     // the still-raw dictation model, seed the summary memory, and only then canonicalize.
     // Dictation turned off keeps its pick under the engine the on/off toggle restores.
@@ -2354,6 +2482,8 @@ public final class SettingsManager {
     // #4287: the same launch-time repair for the summary fields (the one-time summary
     // migration ran above, before any canonicalization; #4353 D1).
     canonicalizeMeetingSummaryLLMModelForProvider()
+    // #3147 C9: decide the recording disclosure cohort once, before onboarding can complete.
+    loadRecordingDisclosure()
     // Initial assignments bypass didSet; repair old incompatible ON values once loaded.
     normalizeStreamingPreference()
   }

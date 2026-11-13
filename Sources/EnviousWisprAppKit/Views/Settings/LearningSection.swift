@@ -185,13 +185,15 @@ struct LearningSection: View {
               .fixedSize(horizontal: false, vertical: true)
             if checkerStatus.canRetry {
               Spacer(minLength: 8)
-              SettingsActionButton(title: LearnedCheckerSettingsStatus.retryTitle,
-                isEnabled: true) {
+              Button {
                 // "Try again" retries the selected engine's word check (#3105), or the
                 // shared word check for an engine without its own (#3242).
                 let provider = settings.wrappedValue.llmProvider
                 Task { await checkerEligibility.retryDownload(for: provider) }
+              } label: {
+                EnviousButtonLabel(LearnedCheckerSettingsStatus.retryTitle)
               }
+              .settingsButton(isEnabled: true)
               .settingsArrivalWithoutInheritedPlace()
             }
           }
@@ -220,9 +222,12 @@ struct LearningSection: View {
               .fixedSize(horizontal: false, vertical: true)
             if let action = learnFromEdits.action {
               Spacer(minLength: 8)
-              SettingsActionButton(verbatimTitle: Self.actionTitle(action), isEnabled: true) {
+              Button {
                 availability.perform(action)
+              } label: {
+                EnviousButtonLabel(verbatim: Self.actionTitle(action))
               }
+              .settingsButton(isEnabled: true)
               .settingsArrivalWithoutInheritedPlace()
             }
           }
@@ -241,9 +246,12 @@ struct LearningSection: View {
           .foregroundStyle(.stTextSecondary)
           .fixedSize(horizontal: false, vertical: true)
         Spacer(minLength: 8)
-        SettingsActionButton(verbatimTitle: LearnFromEditsSettingsPresentation.forgetButton, isEnabled: true) {
+        Button {
           confirmingForget = true
+        } label: {
+          EnviousButtonLabel(verbatim: LearnFromEditsSettingsPresentation.forgetButton)
         }
+        .settingsButton(isEnabled: true)
         .settingsArrivalFocusControl()
         .settingsMapRegistration(.selfLearningDictionaryForgetMemory)
       }
@@ -412,17 +420,21 @@ struct LearningSection: View {
       ProgressView()
         .controlSize(.small)
     case .denied:
-      SettingsActionButton(title: "Open Settings", isEnabled: true, emphasis: .filled) {
+      Button {
         openContactsSettings()
+      } label: {
+        EnviousButtonLabel("Open Settings")
       }
+      .settingsButton(.filled, isEnabled: true)
       .settingsArrivalWithoutInheritedPlace()
       .settingsArrivalFocusControl(place: .importContacts)
     default:
-      SettingsActionButton(
-        title: contactsImport.importedCount > 0 ? "Re-scan" : "Import", isEnabled: true
-      ) {
+      Button {
         Task { await contactsImport.prepareImport() }
+      } label: {
+        EnviousButtonLabel(contactsImport.importedCount > 0 ? "Re-scan" : "Import")
       }
+      .settingsButton(isEnabled: true)
       .settingsArrivalWithoutInheritedPlace()
       .settingsArrivalFocusControl(place: .importContacts)
     }

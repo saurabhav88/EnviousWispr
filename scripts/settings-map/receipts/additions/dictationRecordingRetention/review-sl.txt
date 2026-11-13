@@ -1,0 +1,12 @@
+{
+  "language": "sl",
+  "title": "hramba posnetkov narekovanja",
+  "words": [
+    "čas hranjenja",
+    "samodejno brisanje"
+  ],
+  "phrases": [
+    "kako dolgo se hranijo posnetki narekovanja",
+    "samodejno izbriši stare posnetke narekovanja in ohrani besedilo"
+  ]
+}

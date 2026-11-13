@@ -999,6 +999,8 @@ let project = Project(
         .target(name: "EnviousWisprFluidAudioBridge"),
         // #3735: TranscribeCppRealBoundaryTests import the boundary directly.
         .target(name: "EnviousWisprTranscribeCpp"),
+        // #3147: SpeechAudioCodecRealBoundaryTests measure the production SpeechAudioEncoder.
+        .target(name: "EnviousWisprAudio"),
         .package(product: "CTranscribe"),  // #3735: transcribe.cpp; Xcode does not propagate it transitively
         .package(product: "CWebRTCAEC"),  // #4355: meeting echo cleaner; Xcode does not propagate it transitively
         // Static-link FluidAudio: the test bundle links EnviousWisprASR (a

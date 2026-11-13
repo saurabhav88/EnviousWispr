@@ -1,0 +1,1 @@
+{"language":"en","words":["automatic deletion"],"phrases":["ask me to free space when storage is over the limit","automatically delete the oldest dictation recordings when over the storage limit"]}

@@ -1,0 +1,12 @@
+{
+  "language": "ro",
+  "title": "păstrează înregistrările audio ale întâlnirilor",
+  "words": [
+    "audio întâlniri",
+    "audio ședințe"
+  ],
+  "phrases": [
+    "cât timp se păstrează înregistrările audio ale întâlnirilor",
+    "șterge automat înregistrările audio vechi ale întâlnirilor"
+  ]
+}

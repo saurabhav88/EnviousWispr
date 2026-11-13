@@ -1,0 +1,1 @@
+{"language":"et","title":"mahupiiri ületamisel","words":["automaatne kustutamine","vanimad dikteerimissalvestised"],"phrases":["hoiata mind, kui salvestiste mahupiir on ületatud","kustuta vanimad dikteerimissalvestised mahupiiri ületamisel"]}

@@ -1,0 +1,1 @@
+{"language":"sk","title":"nahrávky","words":["zvukové záznamy"],"phrases":["nastavenia nahrávok","nahrávky diktovania"]}

@@ -1,0 +1,13 @@
+{
+  "language": "it",
+  "title": "conserva l’audio delle riunioni",
+  "words": [
+    "audio delle riunioni",
+    "durata di conservazione"
+  ],
+  "phrases": [
+    "per quanto tempo conservare l’audio delle riunioni",
+    "eliminare automaticamente l’audio delle riunioni dopo 30 o 90 giorni",
+    "conservare l’audio delle riunioni finché non lo elimino"
+  ]
+}

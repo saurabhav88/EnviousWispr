@@ -205,13 +205,13 @@ struct SpeechEngineSettingsView: View {
                   icon: "character.bubble",
                   resolvedHelp: String(localized: Copy.lockedLanguageHelp)
                 ) {
-                  Button(SettingsItemCopy.Engine.lockedLanguageChange) {
+                  Button {
                     showLanguageLockSheet = true
+                  } label: {
+                    EnviousButtonLabel(SettingsItemCopy.Engine.lockedLanguageChange)
                   }
-                  .controlSize(.small)
-                  .font(.stHelper)
+                  .settingsButton(isEnabled: true)
                   .accessibilityLabel(String(localized: Copy.changeLanguage))
-                  .settingsArrivalFocusControl()
                   .settingsMapRegistration(.lockedLanguageChange)
                 }
                 // #1678: a lock can outlive the engine that could honour it.
@@ -364,11 +364,13 @@ struct SpeechEngineSettingsView: View {
             HStack(spacing: 10) {
               // #4216: the start word and the English period switch live in their own window.
               if settings.spokenPunctuation.enabled {
-                Button(SpokenPunctuationCopy.configureButton) {
+                Button {
                   showSpokenPunctuationSheet = true
+                } label: {
+                  EnviousButtonLabel(verbatim: SpokenPunctuationCopy.configureButton)
                 }
-                .controlSize(.small)
-                .font(.stHelper)
+                .settingsButton(isEnabled: true)
+                .settingsArrivalWithoutInheritedPlace()
                 .accessibilityLabel(Text(SpokenPunctuationCopy.configureAccessibilityLabel))
               }
               Toggle("", isOn: $settings.spokenPunctuation.enabled)
@@ -603,22 +605,28 @@ struct SpeechEngineSettingsView: View {
             // colour as each other and as this app's disabled treatment, with
             // no hover to contradict it.
             if row.showsCancel {
-              SettingsActionButton(title: SettingsItemCopy.Engine.fastCancel, isEnabled: true, emphasis: .quiet, shape: .roundedRect, size: .medium) {
+              Button {
                 switch row.owner {
                 case .foreground, .retry: modelDelivery.cancelParakeetDownload()
                 case .backgroundUpgrade: modelDelivery.cancelParakeetUpgradeDownload()
                 }
+              } label: {
+                EnviousButtonLabel(SettingsItemCopy.Engine.fastCancel, size: .medium)
               }
+              .settingsButton(.quiet, shape: .roundedRect, size: .medium, isEnabled: true)
               .settingsMapRegistration(.fastModelCancelDownload)
             }
             if let action = row.action {
-              SettingsActionButton(verbatimTitle: SettingsMapRef.id(action).title, isEnabled: true, emphasis: .filled, shape: .roundedRect, size: .medium) {
+              Button {
                 switch row.owner {
                 case .foreground: modelDelivery.resumeParakeetDownload()
                 case .backgroundUpgrade: modelDelivery.resumeParakeetUpgradeDownload()
                 case .retry: modelDelivery.retryParakeetUpgradeAndWarm()
                 }
+              } label: {
+                EnviousButtonLabel(verbatim: SettingsMapRef.id(action).title, size: .medium)
               }
+              .settingsButton(.filled, shape: .roundedRect, size: .medium, isEnabled: true)
               .settingsMapRegistration(action)
             }
           }
@@ -873,11 +881,12 @@ struct SpeechEngineSettingsView: View {
         help: Copy.modelSetupHelp
       ) {
         HStack {
-          SettingsActionButton(
-            title: Copy.setUpModel, isEnabled: true, emphasis: .filled, shape: .roundedRect, size: .medium
-          ) {
+          Button {
             setup.whisperSetup.downloadModel()
+          } label: {
+            EnviousButtonLabel(Copy.setUpModel, size: .medium)
           }
+          .settingsButton(.filled, shape: .roundedRect, size: .medium, isEnabled: true)
           .settingsMapRegistration(.whisperModelSetUp)
 
           whisperRefreshButton
@@ -928,9 +937,12 @@ struct SpeechEngineSettingsView: View {
         Text("Download paused. Resume anytime.")
           .settingsReadingCopy()
         HStack {
-          SettingsActionButton(title: SettingsItemCopy.Engine.whisperResume, isEnabled: true, emphasis: .filled, shape: .roundedRect, size: .medium) {
+          Button {
             setup.whisperSetup.downloadModel()
+          } label: {
+            EnviousButtonLabel(SettingsItemCopy.Engine.whisperResume, size: .medium)
           }
+          .settingsButton(.filled, shape: .roundedRect, size: .medium, isEnabled: true)
           .settingsMapRegistration(.whisperModelResume)
           whisperRefreshButton
         }
@@ -1025,12 +1037,12 @@ struct SpeechEngineSettingsView: View {
           .foregroundStyle(.stTextSecondary)
           .fixedSize(horizontal: false, vertical: true)
 
-        Button(SettingsItemCopy.Engine.whisperTryAgain) {
+        Button {
           Task { await setup.whisperSetup.detectState() }
+        } label: {
+          EnviousButtonLabel(SettingsItemCopy.Engine.whisperTryAgain)
         }
-        .controlSize(.small)
-        .font(.stHelper)
-        .settingsArrivalFocusControl()
+        .settingsButton(isEnabled: true)
         .settingsMapRegistration(.whisperModelTryAgain)
       }
     }

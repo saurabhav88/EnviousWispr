@@ -57,12 +57,12 @@
       return nil
     }
 
-    @Test("settings.list returns all 89 rows; settings.get returns one, and refuses bad keys")
+    @Test("settings.list returns all 93 rows; settings.get returns one, and refuses bad keys")
     func listAndGet() async throws {
       let (settings, dispatcher) = Self.make()
       let listed = try #require(payload(await dispatcher.handle(.settingsList, args: [:])))
       let rows = try #require(listed["settings"] as? [[String: Any]])
-      #expect(rows.count == 89)
+      #expect(rows.count == 93)
 
       settings.fillerRemovalEnabled = false
       let got = try #require(
@@ -704,6 +704,37 @@
         #expect(code(await dispatcher.handle(.historyGet, args: ["id": bad])) == "badArgs")
       }
       #expect(code(await dispatcher.handle(.historyGet, args: [:])) == "badArgs")
+    }
+
+    @Test("history.list keeps one tab's kind; rows carry the preferred version, get the History text")
+    func historyTabsAndPreferredText() async throws {
+      let dictation = Transcript(text: "um raw", polishedText: "Raw.").preferring(.original)
+      let imported = Transcript(text: "talk", importedFileName: "talk.m4a")
+      let meeting = Transcript(text: "meet", meetingID: UUID())
+      let rows = [dictation, imported, meeting]
+      let (_, dispatcher) = Self.make(status: DevControlFixtures.StatusFake(), rows: { rows })
+
+      for (tab, want) in [("dictations", dictation), ("transcripts", imported), ("meetings", meeting)] {
+        let listed = try #require(payload(await dispatcher.handle(.historyList, args: ["tab": tab])))
+        let summaries = try #require(listed["rows"] as? [[String: Any]])
+        #expect(summaries.map { $0["id"] as? String } == [want.id.uuidString], "\(tab)")
+        #expect(listed["total"] as? Int == 1)
+      }
+      let all = try #require(payload(await dispatcher.handle(.historyList, args: [:])))
+      let summaries = try #require(all["rows"] as? [[String: Any]])
+      #expect(summaries.count == 3)
+      #expect(summaries[0]["preferredVersion"] as? String == "original")
+      #expect(summaries[1]["preferredVersion"] is NSNull)
+      for bad in ["recordings", 3, NSNull()] as [Any] {
+        #expect(code(await dispatcher.handle(.historyList, args: ["tab": bad])) == "badArgs")
+      }
+
+      let got = try #require(
+        payload(await dispatcher.handle(.historyGet, args: ["id": dictation.id.uuidString])))
+      let row = try object(got["row"])
+      #expect(row["historyText"] as? String == "um raw")
+      #expect(row["polishedText"] as? String == "Raw.")
+      #expect(row["text"] as? String == "um raw")
     }
 
     @Test("History reads go through the real coordinator: expired rows and deleted rows are gone")

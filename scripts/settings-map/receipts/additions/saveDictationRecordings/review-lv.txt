@@ -1,0 +1,1 @@
+{"language":"lv","title":"saglabāt diktēšanas ierakstus","words":[],"phrases":["saglabāt diktējumu audio vēlākai noklausīšanai","nesaglabāt jaunu diktējumu audio"]}

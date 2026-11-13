@@ -172,6 +172,12 @@ final class KernelFinalizationOutcome {
   /// driver maps it to a normalized class + privacy-safe user reason via
   /// `HistorySaveErrorClass`.
   var historySaveError: Error?
+  /// #3147: the row id of THIS take's ordinary permanent History save, set only after that save
+  /// returned successfully. Nil for a pending Escape Recovery save, a failed save, or before any
+  /// save; reset per session by the driver. The kernel's recording receipt reads it, bound to the
+  /// row id it minted, so an optimistic `historySaved` or another take's row never qualifies.
+  /// Not a power-loss durability guarantee.
+  var permanentSaveRowID: UUID?
 
   init() {}
 }
@@ -784,10 +790,12 @@ struct KernelFinalizationWiring {
         escapeRecoveryTakeID:
           disposition.isEscapeRecovery ? telemetryState.takeID : nil)
       outcome.transcript = transcript
+      outcome.permanentSaveRowID = nil
       do {
         try save(transcript, disposition)
         outcome.historySaved = true
         outcome.historySaveError = nil
+        if disposition == .ordinary { outcome.permanentSaveRowID = transcriptID }
       } catch {
         outcome.historySaved = false
         outcome.historySaveError = error

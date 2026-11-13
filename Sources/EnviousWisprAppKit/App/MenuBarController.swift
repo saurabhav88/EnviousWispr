@@ -284,7 +284,7 @@ final class MenuBarController: NSObject {
   /// an item carrying a key equivalent can respond to a different physical key than the shortcut it
   /// claims to advertise. That is not cosmetic, and it is unique to key equivalents.
   ///
-  /// Formatted by `KeySymbols.format`, which is what `HotkeyRecorderView`, `MainWindowView` and
+  /// Formatted by `KeySymbols.format`, which is what `HotkeyRecorderView` and
   /// onboarding already use for this same binding, so the menu says exactly what Settings says. Any
   /// residual inaccuracy on an exotic layout is the app-wide one and belongs where that formatter
   /// lives — fixing it HERE alone would make the menu disagree with the Keybinds screen, which is

@@ -1,0 +1,11 @@
+{
+  "language": "pl",
+  "title": "po przekroczeniu limitu miejsca",
+  "words": [
+    "automatyczne usuwanie"
+  ],
+  "phrases": [
+    "zapytaj mnie o zwolnienie miejsca po przekroczeniu limitu",
+    "automatycznie usuwaj najstarsze nagrania dyktowania po przekroczeniu limitu"
+  ]
+}

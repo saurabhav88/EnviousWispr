@@ -17,7 +17,29 @@ internal enum SampleFilter {
     segments: [SpeechSegment],
     padding: Int = AudioConstants.speechPaddingSamples
   ) -> [Float] {
-    guard !segments.isEmpty else { return allSamples }
+    filterMapped(from: allSamples, segments: segments, padding: padding).samples
+  }
+
+  /// The filter's output with the place each kept stretch came from (#3147 §3.2).
+  struct Filtered: Equatable, Sendable {
+    /// Exactly what `filter` returns.
+    let samples: [Float]
+    /// One span per kept stretch, ascending: `decodeRange` indexes `samples`,
+    /// `recordingStartSample` is where that stretch starts in the input. A passthrough is one
+    /// span over everything; empty only for empty input.
+    let timeline: [DictationAudioTimelineSpan]
+  }
+
+  /// `filter`, also returning the sample map. Built from the SAME merged ranges that copy the
+  /// samples, in the same loop, so the map can never describe audio the filter did not keep.
+  static func filterMapped(
+    from allSamples: [Float],
+    segments: [SpeechSegment],
+    padding: Int = AudioConstants.speechPaddingSamples
+  ) -> Filtered {
+    let passthrough = Filtered(
+      samples: allSamples, timeline: identityTimeline(sampleCount: allSamples.count))
+    guard !segments.isEmpty else { return passthrough }
 
     let sampleCount = allSamples.count
     let pad = max(0, padding)
@@ -39,7 +61,7 @@ internal enum SampleFilter {
       }
       totalVoiced = newTotal
     }
-    guard totalVoiced >= 4800 else { return allSamples }
+    guard totalVoiced >= 4800 else { return passthrough }
 
     var merged: [(start: Int, end: Int)] = []
     for segment in sortedSegments {
@@ -68,10 +90,21 @@ internal enum SampleFilter {
     }
 
     var result: [Float] = []
+    var timeline: [DictationAudioTimelineSpan] = []
     for range in merged {
       guard range.start < range.end else { continue }
+      timeline.append(
+        DictationAudioTimelineSpan(
+          decodeRange: result.count..<(result.count + range.end - range.start),
+          recordingStartSample: range.start))
       result.append(contentsOf: allSamples[range.start..<range.end])
     }
-    return result.isEmpty ? allSamples : result
+    return result.isEmpty ? passthrough : Filtered(samples: result, timeline: timeline)
+  }
+
+  /// The map of audio decoded as captured: one span from sample 0, none for empty audio.
+  static func identityTimeline(sampleCount: Int) -> [DictationAudioTimelineSpan] {
+    sampleCount > 0
+      ? [DictationAudioTimelineSpan(decodeRange: 0..<sampleCount, recordingStartSample: 0)] : []
   }
 }

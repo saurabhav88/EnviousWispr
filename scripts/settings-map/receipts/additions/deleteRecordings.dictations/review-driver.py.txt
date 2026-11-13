@@ -1,0 +1,168 @@
+#!/usr/bin/env python3
+"""#3147 PR1 chunk 6 (driver modeled on #4058's): one fresh isolated Codex session per language and place reviews
+the drafted search block for the new App Settings > Recordings tab and its places (accuracy, naturalness,
+collisions with sibling places). Mirrors scripts/settings-map/draft-vocabulary.sh isolation.
+Usage: review-driver.py <worktree> <drafts-dir> <outdir>"""
+import concurrent.futures
+import glob
+import json
+import os
+import pathlib
+import subprocess
+import sys
+import tempfile
+
+wt = pathlib.Path(sys.argv[1])
+drafts = pathlib.Path(sys.argv[2])
+out = pathlib.Path(sys.argv[3])
+vocab = json.load(open(wt / "Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json", encoding="utf-8"))
+by_id = {e["id"]: {b["language"]: b for b in e["blocks"]} for e in vocab["entries"]}
+
+PAGE = ("App Settings > Recordings is a tab of the app's App Settings page (beside Appearance, Permissions, Privacy, "
+        "Licenses). EnviousWispr can keep a compressed audio recording of each dictation, and EnviousMeet keeps the audio "
+        "of each meeting, on this Mac only (never uploaded). This tab controls saving new dictation recordings, how long "
+        "dictation recordings and meeting audio are kept, how much disk they use, a storage warning, and deleting audio "
+        "while the text stays. Text, notes and summaries are never deleted here.")
+SIB_COMMON = ["appSettings.tab.privacy", "recordingChimes", "recordingMode", "meetingCaptureCallSound",
+              "meetings.tab.general", "keepOutOfClipboardHistory", "sendCrashReports"]
+PLACES = {
+    "appSettings.tab.recordings": dict(
+        en_title="Recordings", de_title="Aufnahmen", desc="(none)",
+        does=("a TAB of App Settings for saved audio recordings: the Save dictation recordings switch, Keep dictation "
+              "recordings, Keep meeting audio, Storage used, Storage warning threshold, what happens past the "
+              "threshold, and Delete all dictation recordings / Delete all meeting audio. It is NOT the recording "
+              "shortcut, NOT the start/stop sounds and NOT microphone selection."),
+        siblings=SIB_COMMON + ["saveDictationRecordings", "deleteRecordings"]),
+    "saveDictationRecordings": dict(
+        en_title="Save dictation recordings", de_title="Diktataufnahmen speichern",
+        desc="Keep the audio of each new dictation on this Mac, so you can play it back.",
+        does=("a switch, ON by default. On: each new dictation's audio is saved (compressed) on this Mac so it can be "
+              "played back from History. Off: new dictations are not recorded; recordings already saved stay until "
+              "deleted. It does NOT turn off dictation itself, does NOT change the microphone and never uploads audio."),
+        siblings=SIB_COMMON + ["dictationRecordingRetention", "deleteRecordings"]),
+    "dictationRecordingRetention": dict(
+        en_title="Keep dictation recordings", de_title="Diktataufnahmen behalten",
+        desc="Older recordings are removed automatically. The text always stays.",
+        does=("a picker: 1 day, 7 days, 30 days, or Until I delete them (the default). Older dictation recordings are "
+              "removed automatically; the dictated text always stays. A recording marked Keep this recording in "
+              "History is never removed. Choosing a shorter period first shows how many recordings it removes, with "
+              "Apply and Cancel. It does NOT delete History text and is NOT about meetings."),
+        siblings=SIB_COMMON + ["meetingRecordingRetention", "saveDictationRecordings", "deleteRecordings"]),
+    "meetingRecordingRetention": dict(
+        en_title="Keep meeting audio", de_title="Meeting-Audio behalten",
+        desc="Meeting text, notes and summaries always stay.",
+        does=("a picker: 30 days, 90 days, or Until I delete them (the default). Meeting audio older than that is "
+              "removed automatically; the meeting, its transcript, notes and summary stay. A meeting still recording "
+              "or being transcribed is never touched. Without its audio a meeting cannot be transcribed again."),
+        siblings=SIB_COMMON + ["dictationRecordingRetention", "deleteRecordings"]),
+    "recordingStorageUsage": dict(
+        en_title="Storage used", de_title="Belegter Speicher", desc="(shows sizes such as 'Dictation recordings: about 120 MB')",
+        does=("a read-only row showing how much disk space dictation recordings and meeting audio use on this Mac. "
+              "It counts audio only, not text, notes, summaries or crash recovery audio. It is NOT a setting and does "
+              "NOT free space by itself."),
+        siblings=SIB_COMMON + ["recordingStorageWarningThreshold", "deleteRecordings"]),
+    "recordingStorageWarningThreshold": dict(
+        en_title="Storage warning threshold", de_title="Speicherwarnschwelle",
+        desc="Get a warning when recordings use more than this.",
+        does=("a picker: 1 GB, 2 GB (default), 5 GB or No warning. When recordings use more than this, History and "
+              "this tab show a warning. It is a warning, NOT a limit: recording continues past it."),
+        siblings=SIB_COMMON + ["recordingThresholdBehavior", "recordingStorageUsage"]),
+    "recordingThresholdBehavior": dict(
+        en_title="Past the threshold", de_title="Über der Schwelle",
+        desc="Ask you, or remove the oldest dictation recordings.",
+        does=("a picker: Ask me to free space (default: only warns, deletes nothing) or Remove oldest dictation "
+              "recordings (automatically removes the oldest dictation recordings not marked to keep until usage is "
+              "under the threshold). Meeting audio is never removed by it; text always stays."),
+        siblings=SIB_COMMON + ["recordingStorageWarningThreshold", "deleteRecordings"]),
+    "deleteRecordings": dict(
+        en_title="Delete recordings", de_title="Aufnahmen löschen",
+        desc="Text, meeting notes and summaries stay.",
+        does=("a row with two buttons, Delete all dictation recordings and Delete all meeting audio, each asking for "
+              "confirmation. They delete audio only, including recordings marked to keep; dictated text, meetings, "
+              "notes and summaries stay. It does NOT delete History entries (History has its own Delete All for text)."),
+        siblings=SIB_COMMON + ["deleteRecordings.dictations", "deleteRecordings.meetings", "dictationRecordingRetention"]),
+    "deleteRecordings.dictations": dict(
+        en_title="Delete all dictation recordings", de_title="Alle Diktataufnahmen löschen", desc="(none)",
+        does=("a button that, after confirmation, deletes the audio of every dictation, including kept recordings; "
+              "every dictated text stays in History. It cannot be undone. It does NOT delete History text and does "
+              "NOT touch meeting audio."),
+        siblings=SIB_COMMON + ["deleteRecordings.meetings", "deleteRecordings"]),
+    "deleteRecordings.meetings": dict(
+        en_title="Delete all meeting audio", de_title="Gesamtes Meeting-Audio löschen", desc="(none)",
+        does=("a button that, after confirmation, deletes the audio of every meeting; the meetings, transcripts, notes "
+              "and summaries stay. A meeting still recording or being transcribed keeps its audio. It cannot be undone."),
+        siblings=SIB_COMMON + ["deleteRecordings.dictations", "deleteRecordings"]),
+}
+
+BRIEF = """You are reviewing a draft search vocabulary block for ONE place in the Settings search box of EnviousWispr, a macOS dictation app (press a key and speak, it types your words into any app). The language you review is "{lang}".
+
+Use ONLY this brief and the data below. Do not open, search or read any file, folder, repository or website. Do not run commands.
+
+{page}
+
+The place (English title and description are the source of truth; the page is App Settings > Recordings):
+- English title: {en_title}
+- German title: {de_title}
+- English description: {desc}
+- What it really is: {does}
+
+Review the draft block for language "{lang}" below:
+1. Accuracy: remove or rewrite anything the place does not do or hold.
+2. Collisions: the block must not fit the sibling places equally well. The siblings' current blocks in this language are listed below (a sibling may be missing when it is new).
+3. Naturalness: wording a native speaker of "{lang}" would really type or see in an app's settings. For the title: how an app in that language would label this. Keep product names unchanged. Lowercase except nouns the language capitalises. "words" 0 to 6 short terms; "phrases" 1 to 3 everyday searches, at least one. For en and de there is no title (the interface supplies it); for de use du-form.
+
+Draft block:
+{draft}
+
+Sibling blocks in "{lang}" (id -> block):
+{siblings}
+
+Output: one JSON object only, no commentary, no code fence, with the corrected block in exactly the draft's shape: {{"language": "{lang}", "title": "...", "words": [...], "phrases": [...]}} (omit "title" for en and de). If the draft is already right, return it unchanged. After the JSON add nothing.
+"""
+
+
+def draft_for(pid):
+    paths = sorted(glob.glob(str(drafts / f"{pid}-*" / "draft.json")))
+    assert len(paths) == 1, (pid, paths)
+    return json.load(open(paths[0], encoding="utf-8"))
+
+
+def run(job):
+    pid, lang, block = job
+    p = PLACES[pid]
+    prompt = BRIEF.format(
+        lang=lang, page=PAGE, en_title=p["en_title"], de_title=p["de_title"], desc=p["desc"], does=p["does"],
+        draft=json.dumps(block, ensure_ascii=False, indent=1),
+        siblings=json.dumps({i: by_id[i][lang] for i in p["siblings"] if lang in by_id.get(i, {})},
+                            ensure_ascii=False, indent=1))
+    dest = out / pid
+    dest.mkdir(parents=True, exist_ok=True)
+    if (dest / f"review-{lang}.txt").exists():
+        return pid, lang, 0
+    iso = pathlib.Path(tempfile.mkdtemp(prefix="ew-vocab-review."))
+    (iso / "work").mkdir()
+    (iso / "codex-home").mkdir()
+    os.symlink(os.path.expanduser("~/.codex/auth.json"), iso / "codex-home" / "auth.json")
+    answer = iso / "out.txt"
+    env = dict(os.environ, CODEX_HOME=str(iso / "codex-home"))
+    proc = subprocess.run(
+        [os.path.expanduser("~/.claude/bin/codex-run"), str(answer), "-c", "tools.web_search=false", "exec",
+         "--sandbox", "read-only", "--skip-git-repo-check", "--ignore-rules", "--ephemeral", "-C", str(iso / "work")],
+        input=prompt, text=True, env=env, cwd=str(iso / "work"), capture_output=True)
+    last = pathlib.Path(str(answer) + ".last")
+    if proc.returncode == 0 and last.exists():
+        (dest / f"review-{lang}.txt").write_text(last.read_text(encoding="utf-8"), encoding="utf-8")
+    else:
+        (dest / f"review-{lang}.FAILED").write_text(f"exit {proc.returncode}\n{proc.stderr[-2000:]}", encoding="utf-8")
+    return pid, lang, proc.returncode
+
+
+jobs = []
+for pid in PLACES:
+    d = draft_for(pid)
+    for b in d["blocks"]:
+        jobs.append((pid, b["language"], b))
+with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
+    for pid, lang, rc in pool.map(run, jobs):
+        print(f"{pid} {lang}: exit {rc}", flush=True)
+print("DONE", flush=True)

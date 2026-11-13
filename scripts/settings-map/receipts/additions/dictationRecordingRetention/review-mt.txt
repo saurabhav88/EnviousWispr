@@ -1,0 +1,12 @@
+{
+  "language": "mt",
+  "title": "żomm ir-reġistrazzjonijiet tad-dettatura",
+  "words": [
+    "żmien taż-żamma",
+    "tħassir awtomatiku"
+  ],
+  "phrases": [
+    "kemm idumu jinżammu r-reġistrazzjonijiet tad-dettatura",
+    "żomm ir-reġistrazzjonijiet tad-dettatura għal 30 jum"
+  ]
+}

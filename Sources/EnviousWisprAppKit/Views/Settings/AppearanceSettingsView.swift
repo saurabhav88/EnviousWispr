@@ -96,10 +96,13 @@ struct AppearanceSettingsView: View {
                     .font(.stRowHelper)
                     .foregroundStyle(.stTextSecondary)
                     .fixedSize(horizontal: false, vertical: true)
-                  SettingsActionButton(title: SettingsItemCopy.AppSettings.relaunch, isEnabled: !isBusy) {
+                  Button {
                     guard !isBusy else { return }
                     AppRelauncher.relaunchWhenSafe { isBusy }
+                  } label: {
+                    EnviousButtonLabel(SettingsItemCopy.AppSettings.relaunch)
                   }
+                  .settingsButton(isEnabled: !isBusy)
                   .settingsMapRegistration(.appLanguageRelaunch)
                 }
               }

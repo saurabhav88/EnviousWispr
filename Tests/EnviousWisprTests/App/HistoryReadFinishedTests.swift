@@ -50,7 +50,7 @@ struct HistoryReadFinishedTests {
       await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
       // The read really failed: it published nothing and never reached the merge.
       #expect(coordinator.diskReconcilerForTesting.historyFullReadsForTesting == 0)
-      #expect(coordinator.filteredTranscripts.isEmpty)
+      #expect(coordinator.visibleTranscripts.isEmpty)
       #expect(coordinator.historyReadFinished)
     }
   #endif

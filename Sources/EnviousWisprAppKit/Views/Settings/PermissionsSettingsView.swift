@@ -20,10 +20,10 @@ struct PermissionsSettingsView: View {
                   LocalizedStringResource(
                     "Microphone access granted", comment: "Permissions settings: status when granted."))
               } else {
-                SettingsActionButton(
-                  title: SettingsItemCopy.AppSettings.requestAccess, isEnabled: true,
-                  action: requestMicrophone
-                )
+                Button(action: requestMicrophone) {
+                  EnviousButtonLabel(SettingsItemCopy.AppSettings.requestAccess)
+                }
+                .settingsButton(isEnabled: true)
                 .settingsMapRegistration(.permissionMicrophoneRequest)
               }
             }
@@ -44,9 +44,12 @@ struct PermissionsSettingsView: View {
                   LocalizedStringResource(
                     "Accessibility access granted", comment: "Permissions settings: status when granted."))
               } else {
-                SettingsActionButton(title: SettingsItemCopy.AppSettings.openSystemSettings, isEnabled: true) {
+                Button {
                   _ = permissions.requestAccessibilityAccess()
+                } label: {
+                  EnviousButtonLabel(SettingsItemCopy.AppSettings.openSystemSettings)
                 }
+                .settingsButton(isEnabled: true)
                 .settingsMapRegistration(.permissionAccessibilityOpenSettings)
               }
             }

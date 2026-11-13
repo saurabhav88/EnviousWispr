@@ -502,13 +502,17 @@ final class RecordingSessionKernel {
   private let markASRTimingEnd: @MainActor () -> Void
   private let telemetryState: KernelTelemetryState
 
-  /// #1247: live read of the persisted Settings opt-in for the DEBUG-only
-  /// dictation-audio archive (#1230). A closure (not a frozen `Bool`) so
-  /// flipping the toggle off stops archiving on the VERY NEXT dictation, not
-  /// only after a relaunch — cloud review (PR #1250) flagged the asymmetric
-  /// risk of an off-flip silently continuing to save mic audio until quit.
-  /// ORs with the `EW_KEEP_DICTATION_AUDIO` env var at the archive call site.
-  private let dictationAudioArchiveOptInProvider: @MainActor () -> Bool
+  /// #3147: whether saved recordings are on, read ONCE when a take is accepted and frozen in
+  /// `takeRecordingsOn`, so a mid-take settings change never alters this take.
+  private let recordingPreference: @MainActor () -> Bool
+  /// #3147: receives each successfully saved dictation's audio for History's recordings.
+  private let recordingSink: (any DictationRecordingSink)?
+  /// #3147: whether this take's ORDINARY permanent History save returned successfully, asked
+  /// with the row id the take minted (the finalization wiring's receipt). A pending Escape
+  /// Recovery save, a failed save or another take's row answers false.
+  private let permanentSaveReceipt: @MainActor (UUID) -> Bool
+  /// The current take's frozen recording preference (`recordingPreference` at `start`).
+  private var takeRecordingsOn = false
 
   /// #2549: live, uncached mic-permission read consulted immediately before
   /// each capture-start attempt. macOS does not reliably throw from the
@@ -754,9 +758,9 @@ final class RecordingSessionKernel {
   /// still `recordingStartedAtTick` from the PRIOR session, not yet cleared
   /// by this session's `resetSessionState()`. Without this gate, a second
   /// PTT press would briefly render the previous recording's stale elapsed
-  /// time during prewarm instead of `0:00`. Both StatusView and the overlay
-  /// already independently gate their OWN reads on `pipelineState ==
-  /// .recording`, so this is redundant-but-safe for them and is the actual
+  /// time during prewarm instead of `0:00`. The overlay already gates its OWN
+  /// reads on `pipelineState == .recording` (History's StatusView did too until
+  /// #3147 PR2 removed it), so this is redundant-but-safe there and is the actual
   /// fix for the two overlay call sites that read before that guard exists.
   var recordingElapsedSeconds: TimeInterval? {
     guard state == .live, let start = recordingStartedAtTick else { return nil }
@@ -1073,7 +1077,11 @@ final class RecordingSessionKernel {
     markASRTimingStart: @escaping @MainActor (_ streaming: Bool) -> Void = { _ in },
     markASRTimingEnd: @escaping @MainActor () -> Void = {},
     telemetryState: KernelTelemetryState = KernelTelemetryState(),
-    dictationAudioArchiveOptInProvider: @escaping @MainActor () -> Bool = { false },
+    // #3147: see the stored properties' doc comments. Off by default: a kernel built without
+    // them (tests) records nothing.
+    recordingPreference: @escaping @MainActor () -> Bool = { false },
+    recordingSink: (any DictationRecordingSink)? = nil,
+    permanentSaveReceipt: @escaping @MainActor (UUID) -> Bool = { _ in false },
     // #2549: see the stored property's doc comment.
     microphonePermissionIsDenied: @escaping @MainActor () -> Bool = { false },
     // #1707 Phase 2: oracle for the shared-backend overlap Live UAT
@@ -1153,7 +1161,9 @@ final class RecordingSessionKernel {
     self.markASRTimingStart = markASRTimingStart
     self.markASRTimingEnd = markASRTimingEnd
     self.telemetryState = telemetryState
-    self.dictationAudioArchiveOptInProvider = dictationAudioArchiveOptInProvider
+    self.recordingPreference = recordingPreference
+    self.recordingSink = recordingSink
+    self.permanentSaveReceipt = permanentSaveReceipt
     self.microphonePermissionIsDenied = microphonePermissionIsDenied
     self.batchDecodeFaultController = batchDecodeFaultController
     self.prepareAFMSessionAtStop = prepareAFMSessionAtStop
@@ -1180,6 +1190,8 @@ final class RecordingSessionKernel {
     // #3195: an Apple session prepared for an earlier take never reaches this one.
     clearAFMSession(nil)
     sessionConfig = config
+    // #3147: frozen at acceptance; a later settings change applies to the next take only.
+    takeRecordingsOn = recordingPreference()
     // #1846: project the session id just minted above. No second identity is
     // created; `transcriptID` keeps its own independent mint.
     telemetryState.resetForNewSession(
@@ -2659,6 +2671,9 @@ final class RecordingSessionKernel {
       voicedFraction: tailFraction)
     markStage(.tailChecked)
     let asrSamples: [Float]
+    // #3147 §3.2: where each stretch of `asrSamples` sits in `captureResult.samples` (the saved
+    // recording), extended in the same branch that extends the samples.
+    var asrTimeline = conditioned.timeline
     var recoveredTailMs: Int? = nil
     // nil when ineligible (engine/streaming); a real Bool on the eligible path so
     // `false` is a valid false-fire-rate denominator.
@@ -2673,6 +2688,10 @@ final class RecordingSessionKernel {
       // Contiguous: `tailSlice == raw[keptThrough..<rawCount]`, the exact region
       // the trim discarded, appended immediately after the filtered buffer.
       asrSamples = conditioned.samples + tailSlice
+      asrTimeline.append(
+        DictationAudioTimelineSpan(
+          decodeRange: conditioned.samples.count..<asrSamples.count,
+          recordingStartSample: captureResult.samples.count - tailSlice.count))
       recoveredTailMs = tailDroppedMs
       usedTailPreservation = true
     case .refuse(let reason):
@@ -2829,25 +2848,13 @@ final class RecordingSessionKernel {
     let asrEnd = CFAbsoluteTimeGetCurrent()
     markASRTimingEnd()
 
-    // #1230 — one id minted here, before the outcome switch, so it (a) names the
-    // debug audio-archive folder for EVERY post-decode outcome and (b) is
-    // threaded through `runFinalizing` → `store` → `Transcript(id:)` on the
-    // `.transcript` path, making the History entry id == the archive folder name.
+    // One id minted here, before the outcome switch, threaded through `runFinalizing` → `store`
+    // → `Transcript(id:)` on the `.transcript` path. #3147: the saved recording is keyed by the
+    // same id, so a recording always names the row this take saved.
     let transcriptID = UUID()
-    // #1230 archive metadata collected across the switch cases, read once by the
-    // single archive call after it. Setting these is data collection, not a
-    // second archive site (mirrors how `telemetryState` is stamped per case).
-    // DEBUG-only: the archive that reads them is DEBUG-only, so gating here keeps
-    // the release build free of write-only-variable warnings.
-    #if DEBUG
-      var archiveClassification = "notEvaluated"
-      var archiveSpeechEvidence = false
-      // #1434: effective archive inputs. Default to the primary decode's
-      // values; the salvage-success path rebinds them so the archive labels
-      // and replays the SALVAGED delivery (Codex r2 rev 3).
-      var archiveEffectiveOutcome = outcome
-      var salvageArchiveFed: [Float]? = nil
-    #endif
+    // #3147: what produced the delivered text, frozen at the decode that delivers (primary,
+    // salvage or retry), for History's saved recording.
+    var deliveredASR: DictationASREvidence?
 
     switch outcome {
     case .transcript(let result):
@@ -2950,10 +2957,7 @@ final class RecordingSessionKernel {
           + "lastTokenEndMs=\(tailClip.asrLastTokenEndMs.map(String.init) ?? "n/a") "
           + "tokenGapMs=\(tailClip.asrLastTokenGapMs.map(String.init) ?? "n/a") "
           + "chunked=\(tailClip.asrChunked.map(String.init) ?? "n/a")")
-      // #1230 — the tail-clip verdict is the diagnostic key for a clipped take.
-      #if DEBUG
-        archiveClassification = tailClip.classification.rawValue
-      #endif
+      deliveredASR = primaryDecodeEvidence(result, timeline: asrTimeline)
       await runFinalizing(sid, asrText: result.text, transcriptID: transcriptID)
     case .empty(let hadSpeechEvidence):
       mergeAdapterDiagnosticsIntoASREmpty()
@@ -2966,11 +2970,6 @@ final class RecordingSessionKernel {
       // segments were empty, so it owns the final routing decision.
       let effectiveSpeechEvidence =
         hadSpeechEvidence && !attemptedFromEnergyDespiteNoSegments
-      // #1230 — distinguishes the asrEmpty vs noSpeech archive label; the audio
-      // is saved by the single post-switch archive call (no per-terminal dump).
-      #if DEBUG
-        archiveSpeechEvidence = effectiveSpeechEvidence
-      #endif
       // #1434 degraded-lead salvage ladder. Runs ONLY where today's outcome is
       // the user-visible asrEmpty failure: real speech evidence (the #964
       // energy-only path keeps its quiet noSpeech routing), batch mode, and a
@@ -3031,14 +3030,10 @@ final class RecordingSessionKernel {
           completed.salvageRemainingAudioMs =
             (asrSamples.count - salvaged.trimSamples) * 1000 / Int(AudioConstants.sampleRate)
           telemetryState.asrCompletedTelemetry = completed
-          #if DEBUG
-            // Effective archive inputs (Codex r2 rev 3 / grounded r1 rev 3):
-            // the post-switch archive must label + replay the SALVAGED
-            // delivery, not the primary empty outcome.
-            archiveClassification = "salvagedLeadTrim(trimMs=\(trimMs))"
-            archiveEffectiveOutcome = .transcript(salvaged.result)
-            salvageArchiveFed = Array(asrSamples[salvaged.trimSamples...])
-          #endif
+          deliveredASR = Self.evidence(
+            salvaged.result, source: .leadSalvage,
+            input: .conditionedBatchTrimmed(leadSamples: salvaged.trimSamples),
+            timeline: asrTimeline)
           await runFinalizing(sid, asrText: salvaged.result.text, transcriptID: transcriptID)
           salvageDelivered = true
         }
@@ -3113,7 +3108,7 @@ final class RecordingSessionKernel {
       // construction, not by an explicit check.
       guard !hasUsedPhase2Retry else {
         finishTerminal(.failed(.asrFailed), sid: sid)
-        break  // fall through to the shared archive tail, matching every other case
+        break  // fall through to the shared tail after the switch, matching every other case
       }
       hasUsedPhase2Retry = true
       telemetryState.asrRetryOutcome = .attempted  // breadcrumb BEFORE the await
@@ -3259,26 +3254,11 @@ final class RecordingSessionKernel {
         // mislabel a batch retry as "streaming" whenever the ORIGINAL,
         // non-retry attempt happened to be a streaming session.
         stampAcceptedTranscriptTelemetry(result: retryResult, mode: "batch")
-        #if DEBUG
-          // The archive tail below still reads the ORIGINAL failed outcome
-          // unless rebound here — mirrors the salvage-ladder's identical
-          // rebind (Codex r1 finding): a successfully delivered, retry-
-          // rescued dictation must archive as its own success, not as the
-          // primary decode's failure.
-          archiveClassification = "phase2RetrySucceeded"
-          archiveEffectiveOutcome = .transcript(retryResult)
-          // Codex r2 finding: for an originally-STREAMING Parakeet session,
-          // the retry's own diagnostics report `batchRescueAttempted ==
-          // false` (this is a Phase-2 retry, not the adapter's internal
-          // streaming-then-batch-rescue fallback), so the archive tail's
-          // heuristic would otherwise misclassify this as a streaming win
-          // and archive an empty fed buffer. Reuse the salvage ladder's own
-          // override slot — the same "what did this delivery actually
-          // decode" escape hatch, mutually exclusive with the salvage
-          // ladder's own use of it (that lives in the sibling `.empty` case
-          // of this same switch).
-          salvageArchiveFed = retryInput
-        #endif
+        deliveredASR = Self.evidence(
+          retryResult, source: .phase2Retry,
+          input: adapter.capabilities.decodesConditionedBatchSamples
+            ? .conditionedBatch : .paddedRawCapture,
+          timeline: asrTimeline)
         await runFinalizing(sid, asrText: retryResult.text, transcriptID: transcriptID)
       case .failed(let retryError):
         // Codex r3: the retry's OWN failure, not the stale primary-decode
@@ -3313,144 +3293,97 @@ final class RecordingSessionKernel {
       }
     }
 
-    // #1230 — the single dictation-audio archive call. Runs AFTER the outcome
-    // switch (so delivery on the `.transcript` path has already happened) and
-    // for EVERY post-decode outcome (the switch above is exhaustive over
-    // `ASREngineOutcome`), guarded only by "raw samples present." Pre-decode
-    // terminals return before this point and are correctly never archived. The
-    // actual file IO runs in a detached, failure-isolated task off the kernel's
-    // actor — nothing here touches the heart path's latency.
-    #if DEBUG
-      if !captureResult.samples.isEmpty {
-        let archiveID = transcriptID
-        let archiveSid = sid.raw.uuidString
-        let archiveRaw = captureResult.samples
-        // What the engine ACTUALLY decoded, so the #1237 chunk replay is faithful
-        // (Codex r6). `asrSamples` (the conditioned batch buffer) is the decode
-        // input ONLY for a conditioned-batch decode — a batch session or a
-        // streaming session that fell to batch rescue. A streaming WIN decoded the
-        // raw live feed (`acceptAudio` forwards `captureResult.samples`, not the
-        // conditioned buffer — :1150-1163 / :1878), so raw.wav is authoritative and
-        // there is no distinct fed buffer. Whisper always decodes the raw
-        // capture padded to the transcription minimum.
-        let decodesConditionedBatch = adapter.capabilities.decodesConditionedBatchSamples
-        let cameFromBatchRescue =
-          decodesConditionedBatch
-          && (adapter as? ASREngineTelemetryProviding)?
-            .lastASRDiagnostics?.batchRescueAttempted == true
-        let archiveFed: [Float]
-        if let salvageArchiveFed {
-          // #1434: a salvaged delivery decoded the TRIMMED buffer — archive
-          // that, so the #1237 chunk replay is faithful to what the engine
-          // actually transcribed.
-          archiveFed = salvageArchiveFed
-        } else if Self.dictationFedUsesBatchBuffer(
-          decodesConditionedBatch: decodesConditionedBatch,
-          isStreaming: isStreamingSession,
-          cameFromBatchRescue: cameFromBatchRescue)
-        {
-          archiveFed = asrSamples
-        } else if decodesConditionedBatch {
-          archiveFed = []  // streaming win: raw.wav is the decoded audio
-        } else {
-          archiveFed = WhisperPipelineSpeechRouting.paddedASRSamples(
-            rawSamples: captureResult.samples,
-            minimumSamples: AudioConstants.minimumTranscriptionSamples)
-        }
-        // #1434: label from the EFFECTIVE outcome (the salvage path rebinds it
-        // to the retry's `.transcript`), never the primary `.empty`.
-        // A `.transcript` decode whose finalization did NOT reach `.completed`
-        // is not a real completion — relabel so it stays distinct in the archive
-        // metadata (Codex r6 P3). `runFinalizing`/`finishTerminal` have already
-        // run by here, so `recordingOutcome` holds the ending verdict (state has
-        // returned to `.idle`, #1548 D1). #1434: applies to salvaged deliveries
-        // too via the effective outcome.
-        let reachedNoSpeech: Bool = {
-          if case .noSpeech = recordingOutcome { return true }
-          return false
-        }()
-        let archiveOutcome = Self.relabeledArchiveOutcome(
-          base: Self.dictationArchiveOutcome(
-            for: archiveEffectiveOutcome, effectiveSpeechEvidence: archiveSpeechEvidence),
-          effectiveOutcome: archiveEffectiveOutcome,
-          reachedCompleted: isCurrent(sid) && recordingOutcome == .completed,
-          reachedNoSpeech: isCurrent(sid) && reachedNoSpeech)
-        let archiveClass = archiveClassification
-        let archiveBackend = adapter.engineIdentity.backendType.rawValue
-        let archiveSettingsOptIn = dictationAudioArchiveOptInProvider()
-        Task.detached(priority: .utility) {
-          let path = await DictationAudioArchive.archive(
-            transcriptID: archiveID,
-            sid: archiveSid,
-            raw: archiveRaw,
-            fed: archiveFed,
-            outcome: archiveOutcome,
-            classification: archiveClass,
-            backend: archiveBackend,
-            settingsOptIn: archiveSettingsOptIn)
-          await AppLogger.shared.log(
-            path.map { "Dictation audio archived: \($0)" }
-              ?? "Dictation audio archive skipped/failed (diagnostic limb, ignored)",
-            level: .info, category: "Pipeline"
-          )
-        }
-      }
-    #endif
+    // #3147: History's saved recording. AFTER the outcome switch, so delivery has already
+    // happened on every successful path (ordinary, streaming, batch rescue, lead-trim salvage,
+    // Phase 2 retry). Only a take that COMPLETED and whose ordinary permanent save returned
+    // successfully qualifies; the sink returns at once and encodes on its own task.
+    submitRecordingIfSaved(
+      sid: sid, transcriptID: transcriptID, samples: captureResult.samples, asr: deliveredASR)
   }
 
-  #if DEBUG
-    /// Maps the exhaustive `ASREngineOutcome` to the archive's terminal label.
-    /// Compiler-checked exhaustiveness is the coverage freeze: a new outcome
-    /// case forces a conscious decision here, and `DictationAudioArchiveTests`
-    /// locks the mapping. `effectiveSpeechEvidence` only differentiates the
-    /// `.empty` terminal (asrEmpty vs noSpeech); ignored otherwise.
-    nonisolated static func dictationArchiveOutcome(
-      for outcome: ASREngineOutcome,
-      effectiveSpeechEvidence: Bool
-    ) -> DictationAudioArchive.Outcome {
-      switch outcome {
-      case .transcript: return .completed
-      case .empty: return effectiveSpeechEvidence ? .asrEmpty : .noSpeech
-      case .cancelled: return .cancelled
-      case .failed(.wedged): return .wedged
-      case .failed: return .failed
-      }
-    }
+  /// #3147: hands this take's audio to History's recordings. The audio is the raw capture (what
+  /// the user said, the timeline playback uses), never a conditioned or trimmed decode buffer.
+  private func submitRecordingIfSaved(
+    sid: SessionID, transcriptID: UUID, samples: [Float], asr: DictationASREvidence?
+  ) {
+    guard let recordingSink, let asr, isCurrent(sid), recordingOutcome == .completed,
+      !samples.isEmpty, permanentSaveReceipt(transcriptID)
+    else { return }
+    recordingSink.submit(
+      DictationRecordingRequest(
+        rowID: transcriptID, samples: samples, recordingsOn: takeRecordingsOn, asr: asr))
+  }
 
-    /// Relabel the archive outcome for a `.transcript` decode whose finalization
-    /// did NOT reach `.completed`. #1358: a filler-only capture emptied by the
-    /// text steps now ends `.noSpeech` (quiet, not a failure) — archive it as
-    /// `.noSpeech` so diagnostic triage isn't skewed. An empty-after-polish
-    /// `.failed(.emptyAfterProcessing)` or a superseded mid-finalize decode
-    /// stays `.finalizationFailed`. Non-`.transcript` and completed decodes keep
-    /// their base label. Pure so a test can freeze the mapping (Codex r6 P3,
-    /// #1358 code-diff r2).
-    nonisolated static func relabeledArchiveOutcome(
-      base: DictationAudioArchive.Outcome,
-      effectiveOutcome: ASREngineOutcome,
-      reachedCompleted: Bool,
-      reachedNoSpeech: Bool
-    ) -> DictationAudioArchive.Outcome {
-      guard case .transcript = effectiveOutcome, !reachedCompleted else { return base }
-      return reachedNoSpeech ? .noSpeech : .finalizationFailed
+  /// #3147: the primary decode's provenance. A Parakeet streaming win decoded the raw live feed;
+  /// a batch decode or a streaming session that fell back to batch rescue decoded the
+  /// conditioned batch buffer; Whisper (no conditioned batch decode) read the raw capture padded
+  /// to its minimum. Read at the delivery site, before any later state change.
+  private func primaryDecodeEvidence(
+    _ result: ASRResult, timeline: [DictationAudioTimelineSpan]
+  ) -> DictationASREvidence {
+    let conditioned = adapter.capabilities.decodesConditionedBatchSamples
+    guard conditioned else {
+      return Self.evidence(
+        result, source: isStreamingSession ? .streaming : .batch, input: .paddedRawCapture,
+        timeline: timeline)
     }
+    let rescued =
+      (adapter as? ASREngineTelemetryProviding)?.lastASRDiagnostics?.batchRescueAttempted == true
+    if isStreamingSession, !rescued {
+      return Self.evidence(result, source: .streaming, input: .rawCapture, timeline: timeline)
+    }
+    return Self.evidence(
+      result, source: rescued ? .batchRescue : .batch, input: .conditionedBatch,
+      timeline: timeline)
+  }
 
-    /// Whether the conditioned batch buffer (`asrSamples`) is the buffer the
-    /// engine actually decoded — true ONLY for a conditioned-batch decode: a
-    /// batch session, or a streaming session that fell back to batch rescue. A
-    /// streaming WIN decodes the raw live feed (`acceptAudio` forwards the raw
-    /// capture, not the conditioned buffer), so `asrSamples` is NOT its decode
-    /// input and `raw.wav` is the faithful replay. Same `tailEligible ||
-    /// cameFromBatchRescue` identity the tail-clip diagnostics use. Returns false
-    /// for Whisper (decodes raw padded to the transcription minimum).
-    nonisolated static func dictationFedUsesBatchBuffer(
-      decodesConditionedBatch: Bool,
-      isStreaming: Bool,
-      cameFromBatchRescue: Bool
-    ) -> Bool {
-      decodesConditionedBatch && (!isStreaming || cameFromBatchRescue)
+  /// Word timings count as available only for a conditioned batch decode that returned timed
+  /// text; Whisper's segment timing and a streaming win never do.
+  ///
+  /// #3147 §3.2: `timeline` maps the conditioned batch buffer (`asrSamples`) onto the raw
+  /// capture. Only a conditioned batch decode carries timing evidence: its word timings sit on
+  /// that buffer's timeline (lead-trim salvage on the buffer without its first `leadSamples`,
+  /// so the map is shifted to match). A raw-fed decode (a streaming win, Whisper) gets none.
+  nonisolated static func evidence(
+    _ result: ASRResult, source: DictationASREvidence.Source,
+    input: DictationASREvidence.DecodeInput, timeline: [DictationAudioTimelineSpan]
+  ) -> DictationASREvidence {
+    let decodeTimeline: [DictationAudioTimelineSpan]?
+    switch input {
+    case .conditionedBatch: decodeTimeline = timeline
+    case .conditionedBatchTrimmed(let leadSamples):
+      decodeTimeline = trimmedTimeline(timeline, leadSamples: leadSamples)
+    case .rawCapture, .paddedRawCapture: decodeTimeline = nil
     }
-  #endif
+    let available = decodeTimeline != nil && (result.wordTimingCoverage?.timed ?? 0) > 0
+    var timing: DictationTimingEvidence?
+    if available, let decodeTimeline, !decodeTimeline.isEmpty, let words = result.wordTimings,
+      !words.isEmpty
+    {
+      timing = DictationTimingEvidence(
+        words: words, timeline: decodeTimeline, sampleRate: Int(AudioConstants.sampleRate))
+    }
+    return DictationASREvidence(
+      text: result.text, backend: result.backendType, source: source, input: input,
+      wordTimingsAvailable: available, timing: timing)
+  }
+
+  /// #3147 §3.2: the map of a buffer with its first `leadSamples` removed. Spans wholly inside
+  /// the removed lead disappear; a span the cut splits keeps only its later part, whose
+  /// recording position moves forward by the samples cut from it.
+  nonisolated static func trimmedTimeline(
+    _ timeline: [DictationAudioTimelineSpan], leadSamples: Int
+  ) -> [DictationAudioTimelineSpan] {
+    let lead = max(0, leadSamples)
+    return timeline.compactMap { span in
+      guard span.decodeRange.upperBound > lead else { return nil }
+      let cut = max(0, lead - span.decodeRange.lowerBound)
+      let lower = span.decodeRange.lowerBound + cut - lead
+      let upper = span.decodeRange.upperBound - lead
+      return DictationAudioTimelineSpan(
+        decodeRange: lower..<upper, recordingStartSample: span.recordingStartSample + cut)
+    }
+  }
 
   /// The finalizing phase — the transcript is in hand, the safe point is in
   /// force (PR-1 §B.5). Cancel / interruption from here are ignored. Stays in

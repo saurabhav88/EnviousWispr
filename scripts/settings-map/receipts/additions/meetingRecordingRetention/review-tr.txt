@@ -1,0 +1,1 @@
+{"language":"tr","title":"toplantı sesini saklama süresi","words":["toplantı ses kayıtları"],"phrases":["toplantı ses kayıtları ne kadar saklansın","toplantı sesini ben silene kadar sakla","eski toplantı ses kayıtlarını otomatik sil"]}

@@ -162,9 +162,12 @@ struct SnippetEditSheet: View {
   private var fillInButtons: some View {
     HStack(spacing: 8) {
       ForEach(SnippetPlaceholder.allCases, id: \.self) { placeholder in
-        SettingsActionButton(verbatimTitle: Self.fillInTitle(for: placeholder), isEnabled: true) {
+        Button {
           expansion += placeholder.token
+        } label: {
+          EnviousButtonLabel(verbatim: Self.fillInTitle(for: placeholder))
         }
+        .settingsButton(isEnabled: true)
         .background { layoutProbe?("fillIn-\(placeholder.token)") }
       }
       Spacer(minLength: 0)
@@ -213,22 +216,27 @@ struct SnippetEditSheet: View {
       }
       HStack(spacing: 8) {
         if let existing = draft.snippet {
-          SettingsActionButton(title: "Delete", isEnabled: true, emphasis: .destructive) {
+          Button(role: .destructive) {
             if coordinator.delete(existing) { dismiss() } else { error = coordinator.errorMessage }
+          } label: {
+            EnviousButtonLabel("Delete")
           }
+          .settingsButton(isEnabled: true)
           .background { layoutProbe?("Delete") }
         }
         Spacer(minLength: 0)
-        SettingsActionButton(
-          title: "Cancel", isEnabled: true, emphasis: .outlined, shape: .roundedRect,
-          size: .medium, shortcut: .cancelAction
-        ) { dismiss() }
+        Button { dismiss() } label: {
+          EnviousButtonLabel("Cancel", size: .medium)
+        }
+        .settingsButton(
+          shape: .roundedRect, size: .medium,
+          isEnabled: true, shortcut: .cancelAction)
         .background { layoutProbe?("Cancel") }
         // A new snippet's confirm says what it does (mockup 15); an edit keeps Save.
-        SettingsActionButton(
-          title: isEditing ? "Save" : "Add snippet", isEnabled: canSave, emphasis: .filled,
-          shape: .roundedRect, size: .medium
-        ) { save() }
+        Button { save() } label: {
+          EnviousButtonLabel(isEditing ? "Save" : "Add snippet", size: .medium)
+        }
+        .settingsButton(.filled, shape: .roundedRect, size: .medium, isEnabled: canSave)
           .background { layoutProbe?("Save") }
       }
     }

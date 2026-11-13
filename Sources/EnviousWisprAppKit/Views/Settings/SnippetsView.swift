@@ -236,18 +236,17 @@ struct SnippetsView: View {
       }
       // Enabled even when the store is unreadable, like Export: the import itself then
       // refuses with the coordinator's own sentence rather than the button going dark.
-      SettingsActionButton(
-        title: SettingsItemCopy.Snippets.importSnippets, isEnabled: true, emphasis: .outlined,
-        shape: .roundedRect, size: .medium, systemImage: "square.and.arrow.down"
-      ) {
+      Button {
         sheetRoute = .importSnippets
+      } label: {
+        EnviousButtonLabel(
+          SettingsItemCopy.Snippets.importSnippets,
+          size: .medium,
+          systemImage: "square.and.arrow.down")
       }
+      .settingsButton(shape: .roundedRect, size: .medium, isEnabled: true)
       .settingsMapRegistration(.snippetsImport)
-      SettingsActionButton(
-        title: SettingsItemCopy.Snippets.exportSnippets, isEnabled: !coordinator.snippets.isEmpty,
-        emphasis: .outlined,
-        shape: .roundedRect, size: .medium, systemImage: "square.and.arrow.up"
-      ) {
+      Button {
         let vocabulary = coordinator.vocabulary
         Task {
           exportMessage = SnippetsExportAction.message(
@@ -255,14 +254,20 @@ struct SnippetsView: View {
               vocabulary: vocabulary,
               currentVocabulary: { coordinator.refreshFromDisk() }))
         }
+      } label: {
+        EnviousButtonLabel(
+          SettingsItemCopy.Snippets.exportSnippets,
+          size: .medium,
+          systemImage: "square.and.arrow.up")
       }
+      .settingsButton(shape: .roundedRect, size: .medium, isEnabled: !coordinator.snippets.isEmpty)
       .settingsMapRegistration(.snippetsExport)
-      SettingsActionButton(
-        title: SettingsItemCopy.Snippets.add, isEnabled: true, emphasis: .filled,
-        shape: .roundedRect, size: .medium, systemImage: "plus"
-      ) {
+      Button {
         sheetRoute = .edit(SnippetDraft(snippet: nil))
+      } label: {
+        EnviousButtonLabel(SettingsItemCopy.Snippets.add, size: .medium, systemImage: "plus")
       }
+      .settingsButton(.filled, shape: .roundedRect, size: .medium, isEnabled: true)
       .settingsMapRegistration(.snippetsAdd)
     }
     .padding(.horizontal, SettingsLayout.rowPaddingH)
@@ -316,9 +321,12 @@ struct SnippetsView: View {
       VStack(spacing: 8) {
         Text("No snippets match \u{201C}\(query.trimmingCharacters(in: .whitespaces))\u{201D}")
           .settingsRowLabel()
-        SettingsActionButton(title: SettingsItemCopy.Snippets.clearSearch, isEnabled: true, emphasis: .outlined) {
+        Button {
           query = ""
+        } label: {
+          EnviousButtonLabel(SettingsItemCopy.Snippets.clearSearch)
         }
+        .settingsButton(isEnabled: true)
         .settingsMapRegistration(.snippetsClearSearch)
       }
       .frame(maxWidth: .infinity)
@@ -431,9 +439,12 @@ struct SnippetsView: View {
       .settingsHelperCopy()
       .multilineTextAlignment(.center)
       .frame(maxWidth: 340)
-      SettingsActionButton(title: SettingsItemCopy.Snippets.addFirst, isEnabled: true, emphasis: .filled) {
+      Button {
         sheetRoute = .edit(SnippetDraft(snippet: nil))
+      } label: {
+        EnviousButtonLabel(SettingsItemCopy.Snippets.addFirst)
       }
+      .settingsButton(.filled, isEnabled: true)
       .settingsMapRegistration(.snippetsAddFirst)
       .padding(.top, 4)
     }

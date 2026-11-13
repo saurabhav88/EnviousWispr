@@ -123,3 +123,70 @@ public enum RecordingSoundPairing: String, CaseIterable, Sendable {
   case satinShift
   case airGlint
 }
+
+/// How long a dictation's recording is kept before automatic removal (#3147 D2). Persisted by
+/// rawValue; unknown or missing values resolve to `.forever`, so an unreadable value never
+/// turns on deletion. Pinned ("Keep this recording") recordings are never removed by age.
+public enum DictationRecordingRetention: String, CaseIterable, Sendable {
+  case day1
+  case day7
+  case day30
+  case forever
+
+  /// The keep period in whole days, or nil for no expiry.
+  public var days: Int? {
+    switch self {
+    case .day1: 1
+    case .day7: 7
+    case .day30: 30
+    case .forever: nil
+    }
+  }
+}
+
+/// How long a finished meeting's audio is kept before automatic removal (#3147 D3). The text,
+/// notes and summary always stay. Persisted by rawValue; unknown or missing values resolve to
+/// `.forever`.
+public enum MeetingRecordingRetention: String, CaseIterable, Sendable {
+  case day30
+  case day90
+  case forever
+
+  /// The keep period in whole days, or nil for no expiry.
+  public var days: Int? {
+    switch self {
+    case .day30: 30
+    case .day90: 90
+    case .forever: nil
+    }
+  }
+}
+
+/// The recording storage size at which EnviousWispr warns (#3147 D3). A warning threshold, never
+/// a hard limit. Persisted by rawValue; unknown or missing values resolve to `.gb2`.
+public enum RecordingStorageWarningThreshold: String, CaseIterable, Sendable {
+  case gb1
+  case gb2
+  case gb5
+  case none
+
+  /// The threshold in bytes (decimal gigabytes, as Finder shows sizes), or nil for no threshold.
+  public var bytes: Int64? {
+    switch self {
+    case .gb1: 1_000_000_000
+    case .gb2: 2_000_000_000
+    case .gb5: 5_000_000_000
+    case .none: nil
+    }
+  }
+}
+
+/// What happens when recordings pass the storage warning threshold (#3147 D3). Persisted by
+/// rawValue; unknown or missing values resolve to `.ask`, which deletes nothing.
+public enum RecordingThresholdBehavior: String, CaseIterable, Sendable {
+  /// Warn in History and Settings; delete nothing.
+  case ask
+  /// Remove the oldest unpinned dictation recordings until usage is at or below the threshold.
+  /// Never meeting audio.
+  case removeOldestDictations
+}

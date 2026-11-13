@@ -92,6 +92,10 @@ struct DesignRenderHarness {
     let appearance: String
     let locale: String
     let state: String?
+    /// Pages (`page:<label>` fixtures, #4506 Phase 2): the reference viewport height and which
+    /// scroll position, from 0, this capture is.
+    let viewport: Double?
+    let scroll: Int?
   }
 
   static func loadManifest() throws -> Manifest {
@@ -106,6 +110,12 @@ struct DesignRenderHarness {
         #expect(
           SettingsRenderGeometry.pageWidth(window: CGFloat(window)) == CGFloat(entry.pageWidth),
           "\(entry.name): page width does not match its window")
+      }
+      if entry.fixture.hasPrefix("page:") {
+        #expect(
+          entry.viewport.map { CGFloat($0) } == DesignPageCaptures.viewport && entry.scroll != nil
+            && entry.window != nil,
+          "\(entry.name): a page capture needs its window, the reference viewport and a scroll position")
       }
     }
     return manifest
@@ -320,7 +330,10 @@ struct DesignRenderHarness {
           }.rowStatus {
             Text(verbatim: de["EnviousWispr uses the new language after it relaunches."]!)
               .font(.stRowHelper).fixedSize(horizontal: false, vertical: true)
-            SettingsActionButton(verbatimTitle: de["Relaunch to apply"]!, isEnabled: true) {}
+            Button {} label: {
+              EnviousButtonLabel(verbatim: de["Relaunch to apply"]!)
+            }
+            .settingsButton(isEnabled: true)
           }
         }
         BrandedRow(showDivider: false) {
@@ -362,6 +375,28 @@ struct DesignRenderHarness {
     let view: AnyView
     if entry.fixture == "germanFit" {
       view = try germanFitSheet(pageWidth: width)
+    } else if entry.fixture.hasPrefix("pill-") {
+      // pill-<design>-<rest|locked|words|waiting|notice>
+      let parts = entry.fixture.split(separator: "-").map(String.init)
+      let design = try #require(
+        parts.count == 3 ? RecordingPillDesign(rawValue: parts[1]) : nil,
+        "\(entry.name): unknown pill fixture \(entry.fixture)")
+      switch parts[2] {
+      case "rest": view = DesignPageCaptures.pill(design, locked: false)
+      case "locked": view = DesignPageCaptures.pill(design, locked: true)
+      case "words":
+        view = DesignPageCaptures.pill(
+          design, locked: false, preview: .text(DesignPageCaptures.atlasWords))
+      case "waiting": view = DesignPageCaptures.pill(design, locked: false, preview: .waiting)
+      case "notice":
+        view = DesignPageCaptures.pill(
+          design, locked: false, noticeText: DictationNarrator.copy(for: .secureInputActive))
+      default: throw RenderError("\(entry.name): unknown pill state \(parts[2])")
+      }
+    } else if entry.fixture.hasPrefix("notice-") {
+      view = try DesignPageCaptures.notice(String(entry.fixture.dropFirst("notice-".count)))
+    } else if entry.fixture.hasPrefix("logo-") {
+      view = try DesignPageCaptures.logo(String(entry.fixture.dropFirst("logo-".count)))
     } else if entry.fixture.hasPrefix("parts-") {
       let sheet = try #require(
         DesignPartsSheets.sheet(String(entry.fixture.dropFirst("parts-".count))),
@@ -385,11 +420,17 @@ struct DesignRenderHarness {
       .transaction { $0.disablesAnimations = true }
     let host = NSHostingView(rootView: AnyView(root))
     host.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
-    let german = entry.fixture == "germanFit"
-    // The size a measurement asks for: German sheets take their own size; pages keep the
-    // declared width and the predecessor's 400pt minimum height.
+    // The size a measurement asks for: German sheets and pills take their own size; pages keep
+    // the declared width and the predecessor's 400pt minimum height.
+    let ownSize = ["germanFit", "pill-", "notice-", "logo-"].contains { entry.fixture.hasPrefix($0) }
+    // Screen atlas notices and marks (#4506) can measure a fractional point, which the capture
+    // window rounds; they take their size rounded up to whole points. Older fixtures keep theirs.
+    let wholePoints = ["notice-", "logo-"].contains { entry.fixture.hasPrefix($0) }
     func target(_ fitting: CGSize) -> CGSize {
-      german ? fitting : CGSize(width: width, height: max(fitting.height, 400))
+      if wholePoints {
+        return CGSize(width: fitting.width.rounded(.up), height: fitting.height.rounded(.up))
+      }
+      return ownSize ? fitting : CGSize(width: width, height: max(fitting.height, 400))
     }
     var size = target(host.fittingSize)
     host.frame = NSRect(origin: .zero, size: size)
@@ -398,7 +439,16 @@ struct DesignRenderHarness {
       contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
     window.isReleasedWhenClosed = false
     window.appearance = host.appearance
-    window.contentView = host
+    // Overlay notices (#4506 atlas): production hosts them inside a plain container so the
+    // hosting view never resizes its window (`OverlayWindowHost`, #3850); the capture does the same.
+    if entry.fixture.hasPrefix("notice-") {
+      let container = NSView(frame: host.frame)
+      host.autoresizingMask = [.width, .height]
+      container.addSubview(host)
+      window.contentView = container
+    } else {
+      window.contentView = host
+    }
     defer {
       window.contentView = nil
       window.close()
@@ -426,16 +476,22 @@ struct DesignRenderHarness {
     try #require(converged, "\(entry.name): layout did not settle: \(passes)")
     if entry.fixture == "parts-controls" { try focusTheFocusedField(in: host, window: window) }
 
+    return try writePNG(of: host, size: size, name: entry.name, into: directory)
+  }
+
+  /// Write what `host` draws now to `<name>.png` at backing scale 2, and check it decodes.
+  static func writePNG(of host: NSView, size: CGSize, name: String, into directory: URL) throws
+    -> Capture
+  {
     let rep = try #require(
       host.bitmapImageRepForCachingDisplay(in: host.bounds),
-      "\(entry.name): the host produced no bitmap rep, so this render proved nothing")
+      "\(name): the host produced no bitmap rep, so this render proved nothing")
     host.cacheDisplay(in: host.bounds, to: rep)
     #expect(
       rep.pixelsWide == Int(size.width * 2) && rep.pixelsHigh == Int(size.height * 2),
-      "\(entry.name): backing scale is not 2 (\(rep.pixelsWide)x\(rep.pixelsHigh) for \(size))")
-    let png = try #require(
-      rep.representation(using: .png, properties: [:]), "\(entry.name): no PNG")
-    let url = directory.appending(path: entry.name + ".png")
+      "\(name): backing scale is not 2 (\(rep.pixelsWide)x\(rep.pixelsHigh) for \(size))")
+    let png = try #require(rep.representation(using: .png, properties: [:]), "\(name): no PNG")
+    let url = directory.appending(path: name + ".png")
     #expect(
       FileManager.default.fileExists(atPath: url.path) == false,
       "\(url.lastPathComponent) rendered twice")
@@ -522,7 +578,7 @@ struct DesignRenderHarness {
   // MARK: - The run
 
   @Test("render every manifest capture once, and nothing else", .enabled(if: enabled))
-  func renderManifest() throws {
+  func renderManifest() async throws {
     let manifest = try Self.loadManifest()
     let directory = RepoRoot.url.appending(
       path:
@@ -531,7 +587,28 @@ struct DesignRenderHarness {
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 
     var made: [Capture] = []
+    var pagesDone: Set<String> = []
     for entry in manifest.entries {
+      if entry.fixture.hasPrefix("page:") {
+        // One render per page, width and appearance; every scroll position in manifest order.
+        let key = "\(entry.fixture)|\(entry.window ?? 0)|\(entry.appearance)"
+        guard pagesDone.insert(key).inserted else { continue }
+        let shots = manifest.entries.filter {
+          $0.fixture == entry.fixture && $0.window == entry.window
+            && $0.appearance == entry.appearance
+        }
+        #expect(
+          shots.map(\.scroll) == Array(0..<shots.count).map { Optional($0) },
+          "\(key): scroll positions are not 0..<\(shots.count) in order")
+        let captures = try await DesignPageCaptures.capturePage(
+          label: String(entry.fixture.dropFirst("page:".count)), width: CGFloat(entry.pageWidth),
+          dark: entry.appearance == "dark", names: shots.map(\.name), into: directory)
+        for (shot, capture) in zip(shots, captures) {
+          print("RENDERED \(shot.name): png \(capture.pixelsWide)x\(capture.pixelsHigh)")
+        }
+        made += captures
+        continue
+      }
       let capture = try Self.capture(entry, into: directory)
       print("RENDERED \(entry.name): png \(capture.pixelsWide)x\(capture.pixelsHigh)")
       made.append(capture)

@@ -1,0 +1,1 @@
+{"language":"hu","title":"megbeszélések hangjának megőrzése","words":[],"phrases":["meddig maradjanak meg a megbeszélések hangfelvételei","megbeszélések hangfelvételeinek automatikus törlése 30 vagy 90 nap után"]}

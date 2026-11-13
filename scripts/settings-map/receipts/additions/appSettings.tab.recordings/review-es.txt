@@ -1,0 +1,1 @@
+{"language":"es","title":"grabaciones","words":["grabaciones de dictado","audio de reuniones","almacenamiento de audio"],"phrases":["guardar las grabaciones de mis dictados","cuánto tiempo se conservan las grabaciones","borrar el audio sin borrar el texto"]}

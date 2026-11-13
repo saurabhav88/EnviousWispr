@@ -1,0 +1,12 @@
+{
+  "language": "en",
+  "words": [
+    "meeting recordings",
+    "meeting audio retention"
+  ],
+  "phrases": [
+    "choose how long to keep meeting audio",
+    "automatically delete old meeting audio",
+    "keep meeting audio until I delete it"
+  ]
+}

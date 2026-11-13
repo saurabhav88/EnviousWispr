@@ -1,0 +1,1 @@
+{"language":"tr","title":"depolama sınırı aşıldığında","words":["otomatik silme"],"phrases":["depolama sınırı aşılınca yer açmak için bana sor","depolama sınırı aşılınca en eski dikte kayıtlarını otomatik sil"]}

@@ -7,14 +7,22 @@ import SwiftUI
 struct MeetingRainbowLogo: View {
   var size: CGFloat = 28
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @Environment(\.holdsAnimatedMarksStill) private var holdsStill
 
   var body: some View {
     Image(systemName: "person.2.wave.2")
       .font(.system(size: size, weight: .semibold))
       .foregroundStyle(Color.obRainbow)
-      .symbolEffect(.variableColor.iterative, isActive: !reduceMotion)
+      .symbolEffect(.variableColor.iterative, isActive: !reduceMotion && !holdsStill)
       .accessibilityHidden(true)
   }
+}
+
+extension EnvironmentValues {
+  /// #4506 (founder 2026-11-11): the design render harness sets this so an animated mark draws its
+  /// still Reduce Motion picture and two renders of a page match pixel for pixel. Nothing in the
+  /// app sets it.
+  @Entry var holdsAnimatedMarksStill = false
 }
 
 /// The BETA tag on EnviousMeet (#4346 plan §3.5): setup heading, completed settings heading and

@@ -5,6 +5,7 @@ enum AppSettingsTab: String, CaseIterable, Hashable, Identifiable {
   case appearance
   case permissions
   case privacy
+  case recordings
   case licenses
 
   var id: Self { self }
@@ -15,6 +16,7 @@ enum AppSettingsTab: String, CaseIterable, Hashable, Identifiable {
     case .appearance: .appSettingsTabAppearance
     case .permissions: .appSettingsTabPermissions
     case .privacy: .appSettingsTabPrivacy
+    case .recordings: .appSettingsTabRecordings
     case .licenses: .appSettingsTabLicenses
     }
   }
@@ -24,6 +26,7 @@ enum AppSettingsTab: String, CaseIterable, Hashable, Identifiable {
     case .appearance: "Appearance"
     case .permissions: "Permissions"
     case .privacy: "Privacy"
+    case .recordings: "Recordings"
     case .licenses: "Licenses"
     }
   }
@@ -33,6 +36,7 @@ enum AppSettingsTab: String, CaseIterable, Hashable, Identifiable {
     case .appearance: "circle.lefthalf.filled"
     case .permissions: "hand.raised"
     case .privacy: "lock.shield"
+    case .recordings: "waveform"
     case .licenses: "doc.text"
     }
   }

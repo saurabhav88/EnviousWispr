@@ -105,10 +105,11 @@ classify() {
   # 26-minute build because README.md was missing here). A path joins this list only after
   # checking Project.swift, Package.swift and Tests/ for a reader; a file a test reads goes in
   # the build-forcing list above instead. Checked 2026-10-08: README.md, .mailmap and
-  # benchmark-results/ have no reader. Kept OUT on purpose: assets/ (the release DMG
+  # benchmark-results/ have no reader. The two README images are referenced only there.
+  # Other assets stay build inputs (the release DMG
   # background and the app icon), LICENSE and THIRD-PARTY-NOTICES.txt (bundled by
   # Project.swift), reference/ (SettingsMapExportSyncTests), workers/ (DeliveryManifestTests).
-  elif grep -qvE '^(website/|docs/|\.github/|\.claude/|CLAUDE\.md|README\.md$|\.mailmap$|benchmark-results/)' <<<"$changed"; then
+  elif grep -qvE '^(website/|docs/|\.github/|\.claude/|CLAUDE\.md|README\.md$|assets/readme/(hero\.gif|icon\.svg)$|\.mailmap$|benchmark-results/)' <<<"$changed"; then
     printf 'needs_build=true\n' >>"$GITHUB_OUTPUT"
     printf 'needs_website=%s\n' "$website" >>"$GITHUB_OUTPUT"
     echo "==> Swift source changes detected — full Xcode build required (needs_website=$website)"
@@ -392,7 +393,7 @@ self_test() {
   _expect_classify $'README.md
 website/src/content/help/using-snippets.md
 website/src/pages/index.astro' false "PR #3531 shape: README + help + pages -> website only" true
-  _expect_classify "README.md" false "README alone -> no build" false
+  _expect_classify $'README.md\nassets/readme/hero.gif\nassets/readme/icon.svg' false "README and its images -> no build" false
   _expect_classify ".mailmap" false "mailmap alone -> no build" false
   _expect_classify "benchmark-results/eval/x.json" false "benchmark results -> no build" false
   _expect_classify "Sources/EnviousWispr/README.md" true "a README under Sources still builds" false

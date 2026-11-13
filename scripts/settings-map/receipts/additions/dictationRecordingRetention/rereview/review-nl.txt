@@ -1,0 +1,1 @@
+{"language":"nl","title":"dictaatopnamen bewaren","words":["bewaartermijn"],"phrases":["instellen hoelang dictaatopnamen bewaard blijven","dictaatopnamen automatisch verwijderen na 7 dagen","dictaatopnamen bewaren tot ik ze verwijder"]}

@@ -1,0 +1,11 @@
+{
+  "language": "de",
+  "words": [
+    "Warnschwelle",
+    "Speicherplatzwarnung"
+  ],
+  "phrases": [
+    "warne mich, wenn Aufnahmen mehr als 2 GB belegen",
+    "schalte die Speicherplatzwarnung für Aufnahmen aus"
+  ]
+}

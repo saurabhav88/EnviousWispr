@@ -1,0 +1,11 @@
+{
+  "language": "de",
+  "words": [
+    "Löschverhalten",
+    "automatisches Löschen"
+  ],
+  "phrases": [
+    "frag mich, ob ich Speicher freigeben möchte, wenn das Speicherlimit überschritten ist",
+    "älteste Diktataufnahmen automatisch löschen, wenn das Speicherlimit überschritten ist"
+  ]
+}

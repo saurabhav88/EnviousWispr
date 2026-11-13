@@ -166,6 +166,18 @@ enum SettingsMap {
       parent: .appSettingsTabPrivacy, destination: .appSettings(.privacy), dictionaryTab: nil,
       visibility: .always, target: nil, fallbacks: []),
     SettingsMapNode(
+      id: .sectionRecordings, structure: .section, item: nil,
+      title: .resource(RecordingsSettingsCopy.recordingsSection),
+      description: nil,
+      parent: .appSettingsTabRecordings, destination: .appSettings(.recordings), dictionaryTab: nil,
+      visibility: .always, target: nil, fallbacks: []),
+    SettingsMapNode(
+      id: .sectionRecordingStorage, structure: .section, item: nil,
+      title: .resource(RecordingsSettingsCopy.storageSection),
+      description: nil,
+      parent: .appSettingsTabRecordings, destination: .appSettings(.recordings), dictionaryTab: nil,
+      visibility: .always, target: nil, fallbacks: []),
+    SettingsMapNode(
       id: .sectionAbout, structure: .section, item: nil,
       title: .resource(SettingsItemCopy.AppSettings.aboutSection),
       description: nil,
@@ -1309,6 +1321,12 @@ enum SettingsMap {
       parent: .pageAppSettings, destination: .appSettings(.privacy), dictionaryTab: nil,
       visibility: .always, target: .appSettingsTabPrivacy, fallbacks: []),
     SettingsMapNode(
+      id: .appSettingsTabRecordings, structure: .tab, item: .feature,
+      title: .resource(AppSettingsTab.recordings.label),
+      description: nil,
+      parent: .pageAppSettings, destination: .appSettings(.recordings), dictionaryTab: nil,
+      visibility: .always, target: .appSettingsTabRecordings, fallbacks: []),
+    SettingsMapNode(
       id: .appSettingsTabLicenses, structure: .tab, item: .feature,
       title: .resource(AppSettingsTab.licenses.label),
       description: nil,
@@ -1410,6 +1428,60 @@ enum SettingsMap {
       description: nil,
       parent: .whatWeCollect, destination: .appSettings(.privacy), dictionaryTab: nil,
       visibility: .always, target: .whatWeCollectSeeDetails, fallbacks: []),
+    SettingsMapNode(
+      id: .saveDictationRecordings, structure: .item, item: .setting,
+      title: .resource(RecordingsSettingsCopy.saveTitle),
+      description: .resource(RecordingsSettingsCopy.saveShort),
+      parent: .sectionRecordings, destination: .appSettings(.recordings), dictionaryTab: nil,
+      visibility: .always, target: .saveDictationRecordings, fallbacks: []),
+    SettingsMapNode(
+      id: .dictationRecordingRetention, structure: .item, item: .setting,
+      title: .resource(RecordingsSettingsCopy.keepDictationsTitle),
+      description: .resource(RecordingsSettingsCopy.keepDictationsShort),
+      parent: .sectionRecordings, destination: .appSettings(.recordings), dictionaryTab: nil,
+      visibility: .always, target: .dictationRecordingRetention, fallbacks: []),
+    SettingsMapNode(
+      id: .meetingRecordingRetention, structure: .item, item: .setting,
+      title: .resource(RecordingsSettingsCopy.keepMeetingsTitle),
+      description: .resource(RecordingsSettingsCopy.keepMeetingsShort),
+      parent: .sectionRecordings, destination: .appSettings(.recordings), dictionaryTab: nil,
+      visibility: .always, target: .meetingRecordingRetention, fallbacks: []),
+    SettingsMapNode(
+      id: .recordingStorageUsage, structure: .item, item: .feature,
+      title: .resource(RecordingsSettingsCopy.usageTitle),
+      description: .runtime,
+      parent: .sectionRecordingStorage, destination: .appSettings(.recordings), dictionaryTab: nil,
+      visibility: .always, target: .recordingStorageUsage, fallbacks: []),
+    SettingsMapNode(
+      id: .recordingStorageWarningThreshold, structure: .item, item: .setting,
+      title: .resource(RecordingsSettingsCopy.thresholdTitle),
+      description: .resource(RecordingsSettingsCopy.thresholdShort),
+      parent: .sectionRecordingStorage, destination: .appSettings(.recordings), dictionaryTab: nil,
+      visibility: .always, target: .recordingStorageWarningThreshold, fallbacks: []),
+    SettingsMapNode(
+      id: .recordingThresholdBehavior, structure: .item, item: .setting,
+      title: .resource(RecordingsSettingsCopy.behaviorTitle),
+      description: .resource(RecordingsSettingsCopy.behaviorShort),
+      parent: .sectionRecordingStorage, destination: .appSettings(.recordings), dictionaryTab: nil,
+      visibility: .always, target: .recordingThresholdBehavior, fallbacks: []),
+    SettingsMapNode(
+      id: .deleteRecordings, structure: .item, item: .feature,
+      title: .resource(RecordingsSettingsCopy.deleteTitle),
+      description: .resource(RecordingsSettingsCopy.deleteShort),
+      parent: .sectionRecordingStorage, destination: .appSettings(.recordings), dictionaryTab: nil,
+      visibility: .always, target: .deleteRecordings, fallbacks: []),
+    SettingsMapNode(
+      id: .deleteAllDictationRecordings, structure: .item, item: .action,
+      title: .resource(RecordingsSettingsCopy.deleteDictationsAction),
+      description: nil,
+      parent: .deleteRecordings, destination: .appSettings(.recordings), dictionaryTab: nil,
+      visibility: .always, target: .deleteAllDictationRecordings, fallbacks: [.deleteRecordings]),
+    SettingsMapNode(
+      id: .deleteAllMeetingAudio, structure: .item, item: .action,
+      title: .resource(RecordingsSettingsCopy.deleteMeetingsAction),
+      description: nil,
+      parent: .deleteRecordings, destination: .appSettings(.recordings), dictionaryTab: nil,
+      visibility: .always, target: .deleteAllMeetingAudio, fallbacks: [.deleteRecordings]),
     SettingsMapNode(
       id: .licenseGpl, structure: .item, item: .feature,
       title: .resource(SettingsItemCopy.AppSettings.gplLicense),

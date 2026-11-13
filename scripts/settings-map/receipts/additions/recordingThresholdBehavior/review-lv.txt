@@ -1,0 +1,11 @@
+{
+  "language": "lv",
+  "title": "ja pārsniegts krātuves slieksnis",
+  "words": [
+    "automātiska dzēšana"
+  ],
+  "phrases": [
+    "brīdināt, kad diktēšanas ieraksti aizņem pārāk daudz vietas",
+    "automātiski dzēst vecākos diktēšanas ierakstus, kad pārsniegts slieksnis"
+  ]
+}

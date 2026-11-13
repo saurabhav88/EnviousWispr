@@ -1,0 +1,1 @@
+{"language":"pt","title":"manter o áudio das reuniões","words":["áudio de reuniões"],"phrases":["por quanto tempo guardar o áudio das reuniões","apagar automaticamente o áudio de reuniões antigas"]}

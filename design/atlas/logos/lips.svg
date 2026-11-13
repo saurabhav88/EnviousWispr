@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Derived asset (#4506 screen atlas). Owner: Sources/EnviousWisprAppKit/App/Brand/RainbowLipsIcon.swift. State: audio level 0 (lips closed, at rest). Refresh: re-translate the owner's bar tables and lipsCanvas formula. -->
+  <rect x="4" y="24.5" width="4.5" height="2.75" rx="1.5" fill="#ff2a40"/>
+  <rect x="10" y="21.2375" width="4.5" height="4.4" rx="1.5" fill="#ff8c00"/>
+  <rect x="16" y="17.44" width="4.5" height="6.6" rx="1.5" fill="#ffd700"/>
+  <rect x="22" y="21.01" width="4.5" height="4.95" rx="1.5" fill="#adff2f"/>
+  <rect x="28" y="24.2575" width="4.5" height="3.3" rx="1.5" fill="#00fa9a"/>
+  <rect x="34" y="21.01" width="4.5" height="4.95" rx="1.5" fill="#00ffff"/>
+  <rect x="40" y="17.44" width="4.5" height="6.6" rx="1.5" fill="#1e90ff"/>
+  <rect x="46" y="21.2375" width="4.5" height="4.4" rx="1.5" fill="#4169e1"/>
+  <rect x="52" y="24.5" width="4.5" height="2.75" rx="1.5" fill="#8a2be2"/>
+  <rect x="4" y="30.25" width="4.5" height="2.75" rx="1.5" fill="#4169e1"/>
+  <rect x="10" y="28.6375" width="4.5" height="4.95" rx="1.5" fill="#1e90ff"/>
+  <rect x="16" y="27.04" width="4.5" height="6.6" rx="1.5" fill="#00ffff"/>
+  <rect x="22" y="28.96" width="4.5" height="8.25" rx="1.5" fill="#00fa9a"/>
+  <rect x="28" y="30.5575" width="4.5" height="9.35" rx="1.5" fill="#adff2f"/>
+  <rect x="34" y="28.96" width="4.5" height="8.25" rx="1.5" fill="#ffd700"/>
+  <rect x="40" y="27.04" width="4.5" height="6.6" rx="1.5" fill="#ff8c00"/>
+  <rect x="46" y="28.6375" width="4.5" height="4.95" rx="1.5" fill="#ff2a40"/>
+  <rect x="52" y="30.25" width="4.5" height="2.75" rx="1.5" fill="#8a2be2"/>
+</svg>

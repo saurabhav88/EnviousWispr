@@ -1,0 +1,9 @@
+{
+  "language": "cs",
+  "title": "ukládat nahrávky diktátů",
+  "words": [],
+  "phrases": [
+    "ukládat zvuk každého nového diktátu pro pozdější poslech",
+    "vypnout ukládání nahrávek nových diktátů"
+  ]
+}

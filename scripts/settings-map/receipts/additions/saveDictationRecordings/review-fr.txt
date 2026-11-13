@@ -1,0 +1,9 @@
+{
+  "language": "fr",
+  "title": "conserver les enregistrements des dictées",
+  "words": [],
+  "phrases": [
+    "garder l’audio de chaque dictée",
+    "enregistrer mes dictées pour les réécouter"
+  ]
+}

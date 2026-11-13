@@ -113,6 +113,7 @@ struct MeetingRecorderEchoTests {
     }
   }
 
+  #if DEBUG
   @Test(
     "paired capture: every microphone sample reaches both copies once, in order; the clean close proves the set and it is chosen"
   )
@@ -166,7 +167,9 @@ struct MeetingRecorderEchoTests {
     #expect(echo.initOutcome == .ok)
     #expect(echo.resetCount == 0 && echo.resetReason == "none")
   }
+  #endif
 
+  #if DEBUG
   @Test(
     "no call sound (off, unsupported, failed) or no library: raw is whole, no cleaned set can be chosen"
   )
@@ -213,7 +216,9 @@ struct MeetingRecorderEchoTests {
       }
     }
   }
+  #endif
 
+  #if DEBUG
   @Test(
     "results reach the writer with no further microphone buffer: the timer's pump alone delivers them"
   )
@@ -233,6 +238,7 @@ struct MeetingRecorderEchoTests {
     #expect(writer.currentHealth.framesWritten == 1_600)
     await rig.recorder.stop()
   }
+  #endif
 
   @Test(
     "Stop and Quit while AEC3 is parked in a call settle raw within the budget; every sample is written once"
@@ -301,6 +307,7 @@ struct MeetingRecorderEchoTests {
     }
   }
 
+  #if DEBUG
   @Test(
     "the call sound ending mid-meeting (its failure, a layout stop, a failed rebuild) ends trust: later audio is raw in the cleaned copy, earlier cleaning stays"
   )
@@ -351,7 +358,9 @@ struct MeetingRecorderEchoTests {
       #expect(counters.resetCauses[.callLost] == 1, "\(loss): the reset ran")
     }
   }
+  #endif
 
+  #if DEBUG
   @Test(
     "Quit during an unfinished Stop: Quit takes over at its own deadline, every sample is written once"
   )
@@ -427,7 +436,9 @@ struct MeetingRecorderEchoTests {
     #expect(total == 8_000)
     #expect(MeetingTrackRecovery.recover(folder: folder).problems.isEmpty)
   }
+  #endif
 
+  #if DEBUG
   @Test(
     "a reset that ran is in the frozen summary even when the next native call parks through Stop"
   )
@@ -507,7 +518,9 @@ struct MeetingRecorderEchoTests {
     let bridge = try #require(recorder.echoBridgeForTesting)
     #expect(bridge.summary == echo)
   }
+  #endif
 
+  #if DEBUG
   @Test("a microphone reopen and a call-sound rebuild restart AEC3")
   func reopenAndRebuildReset() async throws {
     let rig = try rig()
@@ -540,4 +553,5 @@ struct MeetingRecorderEchoTests {
     #expect(echo.resetCauses == [.callRebuild: 1, .micRun: 1])
     #expect(echo.resetReason == "multiple")
   }
+  #endif
 }

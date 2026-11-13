@@ -1,0 +1,31 @@
+<!-- Cards. A Settings page is a column of these with 18pt gaps on the page background. -->
+<!-- part: card-section | Titled card of rows (eyebrow above, rows inside) | BrandedSection + BrandedRow + SettingsRow | page-dictation-engine -->
+<div class="ew-root">
+  <p class="ew-eyebrow">Applies to both engines</p>
+  <div class="ew-card">
+    <div class="ew-row"><span class="ew-row-icon">&#x23F1;&#xFE0E;</span><div class="ew-row-label"><span class="ew-row-title">Stop recording on silence <button class="ew-help" aria-label="Help">?</button></span><span class="ew-row-short">Ends recording after you stop speaking.</span></div><span class="ew-row-control"><button class="ew-switch" role="switch" aria-checked="false"></button></span></div>
+    <div class="ew-row"><span class="ew-row-icon">&#x2728;&#xFE0E;</span><div class="ew-row-label"><span class="ew-row-title">Remove filler words (um, uh, hmm...) <button class="ew-help" aria-label="Help">?</button></span><span class="ew-row-short">Strips common filler words from transcriptions.</span></div><span class="ew-row-control"><button class="ew-switch" role="switch" aria-checked="true"></button></span></div>
+  </div>
+</div>
+<!-- /part -->
+<!-- part: card-panel | Panel: icon, eyebrow header, description, inset notice | BrandedPanel + InsetNotice | parts-structure -->
+<div class="ew-root ew-panel">
+  <div class="ew-panel-head"><p class="ew-eyebrow"><span>&#9432;</span>Branded panel</p><p class="ew-reading">A card with an icon, a header and a description.</p></div>
+  <div class="ew-inset"><span class="ew-inset-icon">&#9432;</span>An inset notice sits inside a panel.</div>
+</div>
+<!-- /part -->
+<!-- part: card-summary | Summary card with status and a Change button | SettingsSummaryCard | parts-cards -->
+<div class="ew-root ew-summary">
+  <div style="display:flex;align-items:center;gap:12px"><span class="ew-icon-tile">&#x26A1;</span><div style="flex:1"><b>Fast</b> <span class="ew-row-short">Parakeet v3</span><div class="ew-row-short">For everyday English and European dictation</div></div><button class="ew-btn ew-btn--rect ew-btn--medium">Change</button></div>
+  <span class="ew-chip ew-chip--ready" style="color:var(--ew-st-text-primary);font-weight:600">Ready</span>
+</div>
+<!-- /part -->
+<!-- part: card-engine | Engine choice card, selected and not | EngineCard | parts-cards -->
+<div class="ew-root" style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+  <div class="ew-engine" role="radio" aria-checked="true"><div class="ew-engine-head">&#x26A1; Fast<span class="ew-radio"></span></div><div class="ew-row-short">For everyday English and European dictation</div><div class="ew-engine-fact">Model <b>Parakeet v3</b></div><div class="ew-engine-fact">Runs on <b>Apple Neural Engine</b></div></div>
+  <div class="ew-engine" role="radio" aria-checked="false"><div class="ew-engine-head">&#x1F310;&#xFE0E; All Languages<span class="ew-radio"></span></div><div class="ew-row-short">For other languages or the toughest audio</div><div class="ew-engine-fact">Model <b>Whisper Large v3 Turbo</b></div><div class="ew-engine-fact">Runs on <b>Apple GPU</b></div></div>
+</div>
+<!-- /part -->
+<!-- part: status-chips | Status chips | ProviderStatusChip | parts-structure -->
+<span class="ew-root" style="display:inline-flex;gap:12px"><span class="ew-chip ew-chip--ready">Ready</span><span class="ew-chip ew-chip--setup">Needs setup</span><span class="ew-chip ew-chip--off">Not available</span><span class="ew-chip ew-chip--error">Error</span></span>
+<!-- /part -->

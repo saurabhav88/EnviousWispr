@@ -1,0 +1,15 @@
+{
+  "language": "cs",
+  "title": "nahrávky",
+  "words": [
+    "zvukové záznamy",
+    "uložené nahrávky",
+    "doba uchování",
+    "místo na disku"
+  ],
+  "phrases": [
+    "ukládat nahrávky diktování",
+    "jak dlouho uchovávat zvuk ze schůzek",
+    "smazat nahrávky a ponechat text"
+  ]
+}

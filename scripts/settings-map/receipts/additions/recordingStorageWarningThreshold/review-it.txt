@@ -1,0 +1,12 @@
+{
+  "language": "it",
+  "title": "soglia di avviso per lo spazio occupato",
+  "words": [
+    "soglia di avviso"
+  ],
+  "phrases": [
+    "avvisami quando le registrazioni occupano troppo spazio",
+    "avvisami quando le registrazioni superano 2 GB",
+    "disattiva l'avviso sullo spazio occupato dalle registrazioni"
+  ]
+}

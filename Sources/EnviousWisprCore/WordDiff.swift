@@ -442,3 +442,150 @@ public enum WordDiff {
     return (a0, b0, a0, b0)
   }
 }
+
+// MARK: - Range-aware alignment (#3147)
+
+extension WordDiff {
+
+  /// A stretch the cleanup left LITERALLY untouched: the UTF-16 slice `originalRange` of the
+  /// original reads character for character the same as the slice `cleanedRange` of the
+  /// cleaned text, so an offset inside one maps onto the same offset inside the other.
+  public struct EqualSpan: Equatable, Sendable {
+    public let originalRange: Range<Int>
+    public let cleanedRange: Range<Int>
+
+    public init(originalRange: Range<Int>, cleanedRange: Range<Int>) {
+      self.originalRange = originalRange
+      self.cleanedRange = cleanedRange
+    }
+  }
+
+  /// A stretch the cleanup changed, in UTF-16 coordinates of each side. An empty
+  /// `originalRange` is an insertion (the cleanup added words); an empty `cleanedRange` is a
+  /// removal. The empty side sits at the point where the other side's words belong.
+  public struct Change: Equatable, Sendable {
+    public let originalRange: Range<Int>
+    public let cleanedRange: Range<Int>
+
+    public init(originalRange: Range<Int>, cleanedRange: Range<Int>) {
+      self.originalRange = originalRange
+      self.cleanedRange = cleanedRange
+    }
+  }
+
+  /// Both lists are in reading order and never overlap on either side.
+  public struct Alignment: Equatable, Sendable {
+    public let equalSpans: [EqualSpan]
+    public let changes: [Change]
+
+    public init(equalSpans: [EqualSpan], changes: [Change]) {
+      self.equalSpans = equalSpans
+      self.changes = changes
+    }
+  }
+
+  /// Where the original and the cleaned text agree and where they differ, as UTF-16 ranges
+  /// on both sides (#3147). The History card reads it to draw edits on the displayed text and
+  /// to carry recording times from the original onto the polished words.
+  ///
+  /// It runs the same tokenizer and the same Myers alignment as `compare`, so the two never
+  /// disagree on which words line up. It is STRICTER about identity: `compare` folds case
+  /// and edge punctuation because its count is about words, but a span is only "equal" here
+  /// when the words, their spelling, case and punctuation, and the whitespace between them
+  /// are identical. "hello" against "Hello," is a `Change`, never an `EqualSpan`, because
+  /// an offset map across it would point at the wrong characters.
+  ///
+  /// Whitespace that differs between two otherwise identical words is in neither list: the
+  /// equal span breaks there and no change is recorded, because no word changed. Leading and
+  /// trailing whitespace is likewise outside every range. `language` decides the case fold
+  /// used to line words up, exactly as in `compare`.
+  ///
+  /// Cost is that of `compare`: run it off the main actor for long text.
+  public static func alignment(original: String, cleaned: String, language: String? = nil)
+    -> Alignment
+  {
+    let locale = language.map { Locale(identifier: $0) }
+    let a = tokenize(original, locale: locale)
+    let b = tokenize(cleaned, locale: locale)
+    let ops = edits(a.map(\.key), b.map(\.key))
+    return align(ops, original: a, cleaned: b)
+  }
+
+  /// Same UTF-16 code units. Swift's `==` treats canonically equivalent strings as equal
+  /// ("é" precomposed against "e" plus a combining accent), but their UTF-16 lengths differ,
+  /// so an offset map across them would land on the wrong characters.
+  private static func literal(_ x: String, _ y: String) -> Bool {
+    x.utf16.elementsEqual(y.utf16)
+  }
+
+  static func align(_ ops: [Op], original a: [Token], cleaned b: [Token]) -> Alignment {
+    var spans: [EqualSpan] = []
+    var changes: [Change] = []
+    // The open equal span: its first and last token index on each side.
+    var span: (a0: Int, b0: Int, a1: Int, b1: Int)?
+    // The open change: the token indices it holds on each side.
+    var changeA: [Int] = []
+    var changeB: [Int] = []
+    // The end of the last original/cleaned token already consumed: where an empty side of a
+    // change sits when nothing precedes it on that side, the next token's start is used.
+    var lastA: Int?
+    var lastB: Int?
+
+    func closeSpan() {
+      guard let s = span else { return }
+      spans.append(
+        EqualSpan(
+          originalRange: a[s.a0].range.lowerBound..<a[s.a1].range.upperBound,
+          cleanedRange: b[s.b0].range.lowerBound..<b[s.b1].range.upperBound))
+      span = nil
+    }
+
+    func closeChange(nextA: Int?, nextB: Int?) {
+      guard !changeA.isEmpty || !changeB.isEmpty else { return }
+      func range(_ indices: [Int], _ tokens: [Token], last: Int?, next: Int?) -> Range<Int> {
+        if let first = indices.first, let final = indices.last {
+          return tokens[first].range.lowerBound..<tokens[final].range.upperBound
+        }
+        let point = last ?? next.map { tokens[$0].range.lowerBound } ?? 0
+        return point..<point
+      }
+      changes.append(
+        Change(
+          originalRange: range(changeA, a, last: lastA, next: nextA),
+          cleanedRange: range(changeB, b, last: lastB, next: nextB)))
+      if let final = changeA.last { lastA = a[final].range.upperBound }
+      if let final = changeB.last { lastB = b[final].range.upperBound }
+      changeA = []
+      changeB = []
+    }
+
+    for op in ops {
+      switch op {
+      case .equal(let ai, let bi) where literal(a[ai].text, b[bi].text):
+        closeChange(nextA: ai, nextB: bi)
+        if let s = span, literal(a[s.a1].trailing, b[s.b1].trailing) {
+          span = (s.a0, s.b0, ai, bi)
+        } else {
+          closeSpan()
+          span = (ai, bi, ai, bi)
+        }
+        lastA = a[ai].range.upperBound
+        lastB = b[bi].range.upperBound
+      case .equal(let ai, let bi):
+        // Lined up by the folded key but spelled differently: a case or punctuation edit.
+        closeSpan()
+        changeA.append(ai)
+        changeB.append(bi)
+      case .delete(let ai):
+        closeSpan()
+        changeA.append(ai)
+      case .insert(let bi):
+        closeSpan()
+        changeB.append(bi)
+      }
+    }
+    closeSpan()
+    closeChange(nextA: nil, nextB: nil)
+    return Alignment(equalSpans: spans, changes: changes)
+  }
+}

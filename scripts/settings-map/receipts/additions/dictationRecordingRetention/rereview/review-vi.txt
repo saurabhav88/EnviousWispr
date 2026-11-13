@@ -1,0 +1,9 @@
+{
+  "language": "vi",
+  "title": "giữ bản ghi âm đọc chính tả",
+  "words": [],
+  "phrases": [
+    "giữ bản ghi âm đọc chính tả trong bao lâu",
+    "tự động xóa bản ghi âm đọc chính tả cũ nhưng giữ lại văn bản"
+  ]
+}

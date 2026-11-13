@@ -1,0 +1,11 @@
+{
+  "language": "sk",
+  "title": "uchovávať zvuk zo stretnutí",
+  "words": [
+    "nahrávky stretnutí"
+  ],
+  "phrases": [
+    "ako dlho uchovávať zvuk zo stretnutí",
+    "automaticky mazať staré nahrávky stretnutí"
+  ]
+}

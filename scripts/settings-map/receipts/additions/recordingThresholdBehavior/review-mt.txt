@@ -1,0 +1,1 @@
+{"language":"mt","title":"meta jinqabeż il-limitu tal-ħażna","words":["tħassir awtomatiku"],"phrases":["staqsini biex nillibera spazju meta jinqabeż il-limitu","ħassar awtomatikament l-eqdem reġistrazzjonijiet tad-dettatura meta jinqabeż il-limitu"]}

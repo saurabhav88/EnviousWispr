@@ -777,10 +777,19 @@
 
     // MARK: - History
 
-    /// `{limit?}`: an integer from 1 to `maxHistoryLimit`; anything else is refused, never
-    /// clamped. Rows keep the owner's order (newest first). A summary carries no text and
-    /// no file name, only fixed-size fields, so the reply's size is bounded by the limit.
+    /// `{limit?, tab?}`: `limit` an integer from 1 to `maxHistoryLimit`; anything else is
+    /// refused, never clamped. `tab` (#3147 PR2) one of `dictations`, `transcripts`,
+    /// `meetings` keeps that tab's kind of row (no search or filters); omitted lists every
+    /// visible row as before. Rows keep the owner's order (newest first). A summary carries no
+    /// text and no file name, only fixed-size fields, so the reply's size is bounded by the limit.
     private func historyList(_ args: [String: Any]) -> Result {
+      var tab: HistoryTab?
+      if let raw = args["tab"] {
+        guard let name = raw as? String, let value = HistoryTab(rawValue: name) else {
+          return .failure(.badArgs, "tab must be one of dictations, transcripts, meetings")
+        }
+        tab = value
+      }
       var limit = Self.defaultHistoryLimit
       if let raw = args["limit"] {
         guard let value = DevControlSettings.Codec.exactInteger(raw, Int.self),
@@ -790,7 +799,14 @@
         }
         limit = value
       }
-      let visible = history.visibleTranscripts()
+      let visible = history.visibleTranscripts().filter { row in
+        switch tab {
+        case nil: return true
+        case .dictations: return !row.isImported && !row.isMeeting
+        case .transcripts: return row.isImported
+        case .meetings: return row.isMeeting
+        }
+      }
       return .ok([
         "rows": visible.prefix(limit).map(Self.summary),
         "total": visible.count,
@@ -823,6 +839,9 @@
         "textBytes": row.text.utf8.count,
         "hasPolishedText": row.polishedText != nil,
         "hasProcessedText": row.processedText != nil,
+        // #3147 PR2: the text History uses for a dictation; null for rows that take none.
+        "preferredVersion": row.isImported || row.isMeeting
+          ? NSNull() as Any : row.effectivePreferredVersion.rawValue as Any,
       ]
     }
 
@@ -842,6 +861,8 @@
       detail["escapeRecoveredAt"] =
         row.escapeRecoveredAt.map { $0.formatted(timestamp) as Any } ?? NSNull()
       detail["importedFileName"] = row.importedFileName as Any? ?? NSNull()
+      // #3147 PR2: the text History shows and delivers, beside the stored fields above.
+      detail["historyText"] = row.historyText
       return detail
     }
 

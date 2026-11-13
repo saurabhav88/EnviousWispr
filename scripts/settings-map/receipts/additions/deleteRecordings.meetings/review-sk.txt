@@ -1,0 +1,8 @@
+{
+  "language": "sk",
+  "title": "odstrániť všetky zvukové záznamy stretnutí",
+  "words": [],
+  "phrases": [
+    "vymazať audio zo všetkých stretnutí"
+  ]
+}

@@ -30,9 +30,12 @@ struct LicenseDocumentReader: View {
       }
       HStack {
         Spacer()
-        SettingsActionButton(title: "Done", isEnabled: true, shortcut: .cancelAction) {
+        Button {
           dismiss()
+        } label: {
+          EnviousButtonLabel("Done")
         }
+        .settingsButton(isEnabled: true, shortcut: .cancelAction)
       }
     }
     .padding(24)

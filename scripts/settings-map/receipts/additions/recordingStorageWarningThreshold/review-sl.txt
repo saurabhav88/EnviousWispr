@@ -1,0 +1,12 @@
+{
+  "language": "sl",
+  "title": "prag opozorila o porabi prostora",
+  "words": [
+    "opozorilo o prostoru",
+    "prag opozorila"
+  ],
+  "phrases": [
+    "opozori me, ko posnetki zasedejo več kot 2 GB",
+    "izklopi opozorilo o porabi prostora za posnetke"
+  ]
+}

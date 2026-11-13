@@ -1,0 +1,15 @@
+{
+  "language": "tr",
+  "title": "kayıtlar",
+  "words": [
+    "ses kayıtları",
+    "saklama süresi",
+    "disk kullanımı",
+    "depolama uyarısı"
+  ],
+  "phrases": [
+    "dikte kayıtlarını kaydet",
+    "toplantı seslerini saklama süresi",
+    "ses kayıtlarını sil"
+  ]
+}

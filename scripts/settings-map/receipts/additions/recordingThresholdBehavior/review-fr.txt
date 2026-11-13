@@ -1,0 +1,11 @@
+{
+  "language": "fr",
+  "title": "en cas de dépassement du seuil",
+  "words": [
+    "suppression automatique"
+  ],
+  "phrases": [
+    "me demander de libérer de l’espace quand le seuil est dépassé",
+    "supprimer automatiquement les plus anciens enregistrements de dictée au-delà du seuil"
+  ]
+}

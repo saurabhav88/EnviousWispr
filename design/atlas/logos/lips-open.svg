@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Derived asset (#4506 screen atlas). Owner: Sources/EnviousWisprAppKit/App/Brand/RainbowLipsIcon.swift. State: audio level 0.4 (the recording pill's photo level). Refresh: re-translate the owner's bar tables and lipsCanvas formula. -->
+  <rect x="4" y="22.26" width="4.5" height="4.01" rx="1.5" fill="#ff2a40"/>
+  <rect x="10" y="17.8135" width="4.5" height="6.704" rx="1.5" fill="#ff8c00"/>
+  <rect x="16" y="12.292" width="4.5" height="10.488" rx="1.5" fill="#ffd700"/>
+  <rect x="22" y="16.602" width="4.5" height="8.028" rx="1.5" fill="#adff2f"/>
+  <rect x="28" y="20.6975" width="4.5" height="5.46" rx="1.5" fill="#00fa9a"/>
+  <rect x="34" y="16.602" width="4.5" height="8.028" rx="1.5" fill="#00ffff"/>
+  <rect x="40" y="12.292" width="4.5" height="10.488" rx="1.5" fill="#1e90ff"/>
+  <rect x="46" y="17.8135" width="4.5" height="6.704" rx="1.5" fill="#4169e1"/>
+  <rect x="52" y="22.26" width="4.5" height="4.01" rx="1.5" fill="#8a2be2"/>
+  <rect x="4" y="31.23" width="4.5" height="4.01" rx="1.5" fill="#4169e1"/>
+  <rect x="10" y="29.7575" width="4.5" height="7.542" rx="1.5" fill="#1e90ff"/>
+  <rect x="16" y="28.3" width="4.5" height="10.488" rx="1.5" fill="#00ffff"/>
+  <rect x="22" y="30.29" width="4.5" height="13.38" rx="1.5" fill="#00fa9a"/>
+  <rect x="28" y="31.9575" width="4.5" height="15.47" rx="1.5" fill="#adff2f"/>
+  <rect x="34" y="30.29" width="4.5" height="13.38" rx="1.5" fill="#ffd700"/>
+  <rect x="40" y="28.3" width="4.5" height="10.488" rx="1.5" fill="#ff8c00"/>
+  <rect x="46" y="29.7575" width="4.5" height="7.542" rx="1.5" fill="#ff2a40"/>
+  <rect x="52" y="31.23" width="4.5" height="4.01" rx="1.5" fill="#8a2be2"/>
+</svg>

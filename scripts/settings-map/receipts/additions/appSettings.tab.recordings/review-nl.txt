@@ -1,0 +1,16 @@
+{
+  "language": "nl",
+  "title": "opnamen",
+  "words": [
+    "opnames",
+    "geluidsopnamen",
+    "bewaartermijn",
+    "schijfgebruik",
+    "opslagwaarschuwing"
+  ],
+  "phrases": [
+    "audio van dictaten opslaan",
+    "hoelang audio van vergaderingen bewaren",
+    "opnamen verwijderen en de tekst behouden"
+  ]
+}

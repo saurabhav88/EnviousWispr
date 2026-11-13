@@ -194,12 +194,15 @@ private struct BluetoothGuideRow: View {
     ) {
       BluetoothGuidePopoverContent(showBluetoothTips: $showBluetoothTips)
     } control: {
-      SettingsActionButton(
-        title: SettingsItemCopy.Microphone.bluetoothLearnMore, isEnabled: true, size: .large,
-        trailingSystemImage: "chevron.right"
-      ) {
+      Button {
         showGuide = true
+      } label: {
+        EnviousButtonLabel(
+          SettingsItemCopy.Microphone.bluetoothLearnMore,
+          size: .large,
+          trailingSystemImage: "chevron.right")
       }
+      .settingsButton(size: .large, isEnabled: true)
       .settingsMapRegistration(.bluetoothGuideLearnMore)
       .popover(isPresented: $showGuide, arrowEdge: .bottom) {
         BluetoothGuidePopoverContent(showBluetoothTips: $showBluetoothTips)

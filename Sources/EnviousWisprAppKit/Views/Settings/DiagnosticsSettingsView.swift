@@ -107,10 +107,13 @@ struct DiagnosticsSettingsView: View {
           #endif
           BrandedRow(showDivider: false) {
             VStack(alignment: .leading, spacing: 4) {
-              Button("Restart Onboarding…") {
+              Button {
                 appWindowCoordinator.restartOnboarding()
+              } label: {
+                EnviousButtonLabel("Restart Onboarding…")
               }
-              .disabled(liveRecordingState.pipelineState != .idle)
+              .settingsButton(isEnabled: liveRecordingState.pipelineState == .idle)
+              .settingsArrivalWithoutInheritedPlace()
               Text(
                 "Re-runs the onboarding flow without wiping app state. Disabled during recording."
               )
@@ -119,28 +122,6 @@ struct DiagnosticsSettingsView: View {
             }
           }
         }
-        #if DEBUG
-          // Intentionally NOT gated by `isDebugModeEnabled` above (Codex review,
-          // #1247): the archive opt-in is a sticky, independently-persisted flag,
-          // so if it's already on, the control that turns it off must stay
-          // visible regardless of whether debug mode is currently toggled —
-          // otherwise active mic-audio retention could be invisible. `#if DEBUG`
-          // keeps the row itself out of release, where the archive doesn't exist.
-          BrandedRow(showDivider: false) {
-            VStack(alignment: .leading, spacing: 4) {
-              Toggle(
-                "Save dictation audio for debugging",
-                isOn: $settings.isDictationAudioArchiveEnabled
-              )
-              .toggleStyle(BrandedToggleStyle())
-              Text(
-                "Saves a local copy of each dictation's audio for diagnosing transcription issues. Stored only on this Mac, newest 500 recordings kept. Persists across rebuilds. Applies starting with your very next dictation."
-              )
-              .font(.stHelper)
-              .foregroundStyle(.stTextSecondary)
-            }
-          }
-        #endif
       }
 
       // ── Pill Preview (#3736) ──────────────────────────────────────────
@@ -150,27 +131,38 @@ struct DiagnosticsSettingsView: View {
       BrandedSection(header: "Log Files") {
         BrandedRow {
           HStack {
-            Button("Open Log Directory") {
+            Button {
               Task {
                 let url = await AppLogger.shared.logDirectoryURL()
                 NSWorkspace.shared.open(url)
               }
+            } label: {
+              EnviousButtonLabel("Open Log Directory")
             }
+            .settingsButton(isEnabled: true)
+            .settingsArrivalWithoutInheritedPlace()
 
-            Button("Copy Log Path") {
+            Button {
               Task {
                 let url = await AppLogger.shared.logDirectoryURL()
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(url.path, forType: .string)
               }
+            } label: {
+              EnviousButtonLabel("Copy Log Path")
             }
+            .settingsButton(isEnabled: true)
+            .settingsArrivalWithoutInheritedPlace()
 
-            Button("Clear Logs") {
+            Button(role: .destructive) {
               Task {
                 try? await AppLogger.shared.clearLogs()
               }
+            } label: {
+              EnviousButtonLabel("Clear Logs")
             }
-            .foregroundStyle(.stError)
+            .settingsButton(isEnabled: true)
+            .settingsArrivalWithoutInheritedPlace()
           }
         }
         BrandedRow(showDivider: false) {
@@ -192,10 +184,14 @@ struct DiagnosticsSettingsView: View {
           .foregroundStyle(.stTextSecondary)
         }
         BrandedRow(showDivider: false) {
-          Button("Open Console.app") {
+          Button {
             NSWorkspace.shared.open(
               URL(fileURLWithPath: "/System/Applications/Utilities/Console.app"))
+          } label: {
+            EnviousButtonLabel("Open Console.app")
           }
+          .settingsButton(isEnabled: true)
+          .settingsArrivalWithoutInheritedPlace()
         }
       }
 
@@ -223,17 +219,25 @@ struct DiagnosticsSettingsView: View {
           }
           BrandedRow {
             HStack {
-              Button("Run ASR Benchmark") {
+              Button {
                 Task {
                   await diagnostics.benchmark.run(activeEngine: activeEngine)
                 }
+              } label: {
+                EnviousButtonLabel("Run ASR Benchmark")
               }
-              Button("Run Pipeline Benchmark") {
+              .settingsButton(isEnabled: true)
+              .settingsArrivalWithoutInheritedPlace()
+              Button {
                 Task {
                   await diagnostics.benchmark.runPipelineBenchmark(
                     using: asrManager, activeEngine: activeEngine)
                 }
+              } label: {
+                EnviousButtonLabel("Run Pipeline Benchmark")
               }
+              .settingsButton(isEnabled: true)
+              .settingsArrivalWithoutInheritedPlace()
             }
           }
         }

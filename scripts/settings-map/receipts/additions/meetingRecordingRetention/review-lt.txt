@@ -1,0 +1,1 @@
+{"language":"lt","title":"saugoti susitikimų garso įrašus","words":["susitikimų garso įrašai"],"phrases":["kiek laiko saugoti susitikimų garso įrašus","automatiškai ištrinti senus susitikimų garso įrašus"]}

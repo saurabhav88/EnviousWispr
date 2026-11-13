@@ -501,6 +501,39 @@ public struct Transcript: Codable, Identifiable, Sendable {
     return meetingTranscriptAttemptID ?? MeetingRecord.legacyTranscriptAttemptID
   }
 
+  /// Which stored text a dictation's History card shows and delivers (#3147 §3.4).
+  public enum PreferredVersion: String, Codable, CaseIterable, Sendable {
+    /// The polished (or processed) text: the default.
+    case polished
+    /// The user's words before AI polish (`text`).
+    case original
+  }
+
+  /// The user's History choice for this dictation; nil means polished. Optional so rows written
+  /// before #3147 PR2 decode to nil (synthesized `Codable`). Only History reads it: Copy Last and
+  /// Paste Last keep `displayText`.
+  public private(set) var preferredVersion: PreferredVersion?
+
+  /// The version History uses for this row.
+  public var effectivePreferredVersion: PreferredVersion {
+    preferredVersion ?? .polished
+  }
+
+  /// The text History shows, previews, searches, copies, pastes, shares and saves for this row.
+  /// A dictation that prefers original gives `text`; everything else gives `displayText`.
+  /// Imports and meetings keep `displayText`; their own views own their text rules.
+  public var historyText: String {
+    guard !isImported, !isMeeting else { return displayText }
+    return effectivePreferredVersion == .original ? text : displayText
+  }
+
+  /// The same row with only its History preference changed.
+  public func preferring(_ version: PreferredVersion?) -> Transcript {
+    var copy = self
+    copy.preferredVersion = version
+    return copy
+  }
+
   public init(
     id: UUID = UUID(),
     text: String,
@@ -526,7 +559,8 @@ public struct Transcript: Codable, Identifiable, Sendable {
     speakerNameSources: [String: SpeakerNameSource]? = nil,
     unassignedSpeakerNames: [String]? = nil,
     meetingID: UUID? = nil,
-    meetingTranscriptAttemptID: UUID? = nil
+    meetingTranscriptAttemptID: UUID? = nil,
+    preferredVersion: PreferredVersion? = nil
   ) {
     precondition(
       meetingID == nil || importedFileName == nil,
@@ -556,6 +590,7 @@ public struct Transcript: Codable, Identifiable, Sendable {
     self.unassignedSpeakerNames = unassignedSpeakerNames
     self.meetingID = meetingID
     self.meetingTranscriptAttemptID = meetingTranscriptAttemptID
+    self.preferredVersion = preferredVersion
   }
 
   /// A copy promoted to permanent History: the clock is cleared, everything else is

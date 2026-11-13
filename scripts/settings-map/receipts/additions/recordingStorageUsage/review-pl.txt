@@ -1,0 +1,11 @@
+{
+  "language": "pl",
+  "title": "zajęte miejsce",
+  "words": [
+    "rozmiar nagrań"
+  ],
+  "phrases": [
+    "ile miejsca zajmują nagrania",
+    "łączny rozmiar zapisanych nagrań"
+  ]
+}

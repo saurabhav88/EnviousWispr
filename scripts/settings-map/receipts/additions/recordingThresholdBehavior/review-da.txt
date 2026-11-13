@@ -1,0 +1,11 @@
+{
+  "language": "da",
+  "title": "når lagergrænsen overskrides",
+  "words": [
+    "automatisk sletning"
+  ],
+  "phrases": [
+    "spørg mig om at frigøre plads, når lagergrænsen overskrides",
+    "slet automatisk de ældste diktatoptagelser, når lagergrænsen overskrides"
+  ]
+}

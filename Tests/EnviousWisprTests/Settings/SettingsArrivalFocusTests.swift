@@ -401,7 +401,7 @@ struct SettingsArrivalFocusTests {
   /// A panel or heading must never appear here.
   static let otherRealControls: Set<String> = [
     "appSettings.tab.appearance", "appSettings.tab.licenses", "appSettings.tab.permissions",
-    "appSettings.tab.privacy", "dictation.tab.chimes", "dictation.tab.clipboard",
+    "appSettings.tab.privacy", "appSettings.tab.recordings", "dictation.tab.chimes", "dictation.tab.clipboard",
     "dictation.tab.engine", "dictation.tab.livePreview", "dictation.tab.microphone",
     "dictation.tab.pill", "aiPolish.link.openAIRateLimits", "apiKey.reveal", "polishModel.refresh",
     "snippets.export", "snippets.import", "cancelKeybind", "copyLastKeybind", "pasteLastKeybind",

@@ -1,0 +1,358 @@
+{
+ "id": "recordingThresholdBehavior",
+ "blocks": [
+  {
+   "language": "ar",
+   "title": "عند تجاوز حد التخزين",
+   "words": [
+    "الحذف التلقائي"
+   ],
+   "phrases": [
+    "اسألني عند تجاوز حد التسجيلات",
+    "احذف أقدم التسجيلات عند تجاوز الحد"
+   ]
+  },
+  {
+   "language": "bg",
+   "title": "при надвишаване на лимита за съхранение",
+   "words": [
+    "автоматично изтриване"
+   ],
+   "phrases": [
+    "питай ме при надвишаване на лимита за записи",
+    "изтривай най-старите записи при надвишаване на лимита"
+   ]
+  },
+  {
+   "language": "cs",
+   "title": "při překročení limitu úložiště",
+   "words": [
+    "automatické mazání"
+   ],
+   "phrases": [
+    "zeptat se při překročení limitu nahrávek",
+    "po překročení limitu smazat nejstarší nahrávky"
+   ]
+  },
+  {
+   "language": "da",
+   "title": "når lagergrænsen overskrides",
+   "words": [
+    "automatisk sletning"
+   ],
+   "phrases": [
+    "spørg mig når optagelserne overskrider grænsen",
+    "slet de ældste optagelser når grænsen overskrides"
+   ]
+  },
+  {
+   "language": "de",
+   "words": [
+    "Löschverhalten",
+    "automatisches Löschen"
+   ],
+   "phrases": [
+    "frag mich wenn die Aufnahmen das Speicherlimit überschreiten",
+    "älteste Aufnahmen löschen wenn die Grenze überschritten ist"
+   ]
+  },
+  {
+   "language": "el",
+   "title": "όταν ξεπεραστεί το όριο αποθήκευσης",
+   "words": [
+    "αυτόματη διαγραφή"
+   ],
+   "phrases": [
+    "να με ρωτάει όταν οι ηχογραφήσεις ξεπερνούν το όριο",
+    "διαγραφή των παλαιότερων ηχογραφήσεων όταν ξεπεραστεί το όριο"
+   ]
+  },
+  {
+   "language": "en",
+   "words": [
+    "automatic deletion",
+    "storage overflow"
+   ],
+   "phrases": [
+    "ask me when recordings exceed the storage limit",
+    "delete oldest recordings when over the limit"
+   ]
+  },
+  {
+   "language": "es",
+   "title": "al superar el límite de almacenamiento",
+   "words": [
+    "borrado automático"
+   ],
+   "phrases": [
+    "preguntarme cuando las grabaciones superen el límite",
+    "borrar las grabaciones más antiguas al superar el límite"
+   ]
+  },
+  {
+   "language": "et",
+   "title": "salvestusruumi piirangu ületamisel",
+   "words": [
+    "automaatne kustutamine"
+   ],
+   "phrases": [
+    "küsi minult kui salvestiste mahu piir on ületatud",
+    "kustuta vanimad salvestised piirangu ületamisel"
+   ]
+  },
+  {
+   "language": "fi",
+   "title": "kun tallennustilan raja ylittyy",
+   "words": [
+    "automaattinen poisto"
+   ],
+   "phrases": [
+    "kysy minulta kun tallenteiden tilaraja ylittyy",
+    "poista vanhimmat tallenteet kun raja ylittyy"
+   ]
+  },
+  {
+   "language": "fr",
+   "title": "en cas de dépassement de la limite de stockage",
+   "words": [
+    "suppression automatique"
+   ],
+   "phrases": [
+    "me demander quand les enregistrements dépassent la limite",
+    "supprimer les enregistrements les plus anciens au-delà de la limite"
+   ]
+  },
+  {
+   "language": "hi",
+   "title": "स्टोरेज सीमा पार होने पर",
+   "words": [
+    "अपने आप हटाना"
+   ],
+   "phrases": [
+    "रिकॉर्डिंग की सीमा पार होने पर मुझसे पूछें",
+    "सीमा पार होने पर सबसे पुरानी रिकॉर्डिंग हटाएँ"
+   ]
+  },
+  {
+   "language": "hr",
+   "title": "pri prekoračenju ograničenja pohrane",
+   "words": [
+    "automatsko brisanje"
+   ],
+   "phrases": [
+    "pitaj me kad snimke prijeđu ograničenje",
+    "izbriši najstarije snimke kad se prijeđe ograničenje"
+   ]
+  },
+  {
+   "language": "hu",
+   "title": "a tárhelykorlát túllépésekor",
+   "words": [
+    "automatikus törlés"
+   ],
+   "phrases": [
+    "kérdezzen rá ha a felvételek túllépik a tárhelykorlátot",
+    "a legrégebbi felvételek törlése a korlát túllépésekor"
+   ]
+  },
+  {
+   "language": "it",
+   "title": "al superamento del limite di archiviazione",
+   "words": [
+    "eliminazione automatica"
+   ],
+   "phrases": [
+    "chiedimi quando le registrazioni superano il limite",
+    "elimina le registrazioni più vecchie quando supero il limite"
+   ]
+  },
+  {
+   "language": "ja",
+   "title": "保存容量の上限を超えたとき",
+   "words": [
+    "自動削除"
+   ],
+   "phrases": [
+    "録音の容量が上限を超えたら確認する",
+    "上限を超えたら古い録音から削除する"
+   ]
+  },
+  {
+   "language": "ko",
+   "title": "저장 용량 한도 초과 시",
+   "words": [
+    "자동 삭제"
+   ],
+   "phrases": [
+    "녹음 용량이 한도를 넘으면 물어보기",
+    "한도를 넘으면 가장 오래된 녹음부터 삭제"
+   ]
+  },
+  {
+   "language": "lt",
+   "title": "viršijus saugyklos limitą",
+   "words": [
+    "automatinis trynimas"
+   ],
+   "phrases": [
+    "paklausti manęs kai įrašai viršija limitą",
+    "viršijus limitą ištrinti seniausius įrašus"
+   ]
+  },
+  {
+   "language": "lv",
+   "title": "pārsniedzot krātuves ierobežojumu",
+   "words": [
+    "automātiska dzēšana"
+   ],
+   "phrases": [
+    "jautāt man kad ieraksti pārsniedz ierobežojumu",
+    "dzēst vecākos ierakstus kad pārsniegts ierobežojums"
+   ]
+  },
+  {
+   "language": "mt",
+   "title": "meta jinqabeż il-limitu tal-ħażna",
+   "words": [
+    "tħassir awtomatiku"
+   ],
+   "phrases": [
+    "staqsini meta r-reġistrazzjonijiet jaqbżu l-limitu",
+    "ħassar l-eqdem reġistrazzjonijiet meta jinqabeż il-limitu"
+   ]
+  },
+  {
+   "language": "nl",
+   "title": "bij overschrijding van de opslaglimiet",
+   "words": [
+    "automatisch verwijderen"
+   ],
+   "phrases": [
+    "vraag het me als opnamen de opslaglimiet overschrijden",
+    "oudste opnamen verwijderen als de limiet is overschreden"
+   ]
+  },
+  {
+   "language": "pl",
+   "title": "po przekroczeniu limitu miejsca",
+   "words": [
+    "automatyczne usuwanie"
+   ],
+   "phrases": [
+    "zapytaj mnie gdy nagrania przekroczą limit",
+    "usuń najstarsze nagrania po przekroczeniu limitu"
+   ]
+  },
+  {
+   "language": "pt",
+   "title": "ao ultrapassar o limite de armazenamento",
+   "words": [
+    "eliminação automática",
+    "exclusão automática"
+   ],
+   "phrases": [
+    "perguntar quando as gravações ultrapassarem o limite",
+    "apagar as gravações mais antigas ao ultrapassar o limite"
+   ]
+  },
+  {
+   "language": "ro",
+   "title": "la depășirea limitei de stocare",
+   "words": [
+    "ștergere automată"
+   ],
+   "phrases": [
+    "întreabă-mă când înregistrările depășesc limita",
+    "șterge cele mai vechi înregistrări când se depășește limita"
+   ]
+  },
+  {
+   "language": "ru",
+   "title": "при превышении лимита хранения",
+   "words": [
+    "автоматическое удаление"
+   ],
+   "phrases": [
+    "спрашивать меня при превышении лимита записей",
+    "удалять самые старые записи при превышении лимита"
+   ]
+  },
+  {
+   "language": "sk",
+   "title": "pri prekročení limitu úložiska",
+   "words": [
+    "automatické mazanie"
+   ],
+   "phrases": [
+    "opýtať sa ma pri prekročení limitu nahrávok",
+    "po prekročení limitu vymazať najstaršie nahrávky"
+   ]
+  },
+  {
+   "language": "sl",
+   "title": "ob prekoračitvi omejitve prostora",
+   "words": [
+    "samodejno brisanje"
+   ],
+   "phrases": [
+    "vprašaj me ko posnetki presežejo omejitev",
+    "izbriši najstarejše posnetke ko je omejitev presežena"
+   ]
+  },
+  {
+   "language": "sv",
+   "title": "när lagringsgränsen överskrids",
+   "words": [
+    "automatisk radering"
+   ],
+   "phrases": [
+    "fråga mig när inspelningarna överskrider gränsen",
+    "radera de äldsta inspelningarna när gränsen överskrids"
+   ]
+  },
+  {
+   "language": "tr",
+   "title": "depolama sınırı aşıldığında",
+   "words": [
+    "otomatik silme"
+   ],
+   "phrases": [
+    "kayıtlar sınırı aştığında bana sor",
+    "sınır aşılınca en eski kayıtları sil"
+   ]
+  },
+  {
+   "language": "uk",
+   "title": "у разі перевищення ліміту сховища",
+   "words": [
+    "автоматичне видалення"
+   ],
+   "phrases": [
+    "запитувати мене коли записи перевищують ліміт",
+    "видаляти найстаріші записи в разі перевищення ліміту"
+   ]
+  },
+  {
+   "language": "vi",
+   "title": "khi vượt giới hạn lưu trữ",
+   "words": [
+    "tự động xóa"
+   ],
+   "phrases": [
+    "hỏi tôi khi bản ghi vượt giới hạn dung lượng",
+    "xóa bản ghi cũ nhất khi vượt giới hạn"
+   ]
+  },
+  {
+   "language": "zh",
+   "title": "超出存储上限时",
+   "words": [
+    "自动删除"
+   ],
+   "phrases": [
+    "录音超出容量上限时询问我",
+    "超出上限后删除最旧的录音"
+   ]
+  }
+ ]
+}

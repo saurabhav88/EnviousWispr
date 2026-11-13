@@ -1,0 +1,9 @@
+{
+  "language": "sl",
+  "title": "hrani posnetke narekovanja",
+  "words": [],
+  "phrases": [
+    "kako dolgo se hranijo posnetki narekovanja",
+    "samodejno izbriši stare posnetke narekovanja"
+  ]
+}

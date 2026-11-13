@@ -27,8 +27,6 @@
   ///     await (timing invariant — Starter's wedge guard reads it after).
   ///   - `markLocked()` flips the shared lock-state setter to true and
   ///     updates the overlay.
-  ///   - `resetActive()` calls the active backend's `reset()` (Parakeet vs
-  ///     Whisper branching).
   ///   - Construction does not crash.
   @MainActor
   @Suite(.tags(.localParallel)) struct RecordingFinalizerCancelPathTests {
@@ -314,34 +312,6 @@
       fx.lockBox.isLocked = true
       await fx.finalizer.userStop()
       #expect(fx.lockBox.isLocked == false)
-    }
-
-    @Test func resetActiveCallsCorrectBackend() {
-      // #881 TO-3: seed BOTH drivers with a distinct external error so each
-      // driver's state getter reports `.error(...)`. resetActive() must clear
-      // ONLY the active backend's driver (reset() nils lastExternalError) and
-      // leave the other backend's error intact — proving the branch routes to
-      // exactly the active backend. The prior test asserted nothing ("does not
-      // crash"), so it stayed green under always-reset-parakeet, inverted-branch,
-      // and reset-neither regressions alike.
-      do {  // Parakeet active.
-        let fx = Self.makeFixture()
-        fx.kernelDriver.setTerminalReason(.modelWedged)
-        fx.whisperKernelDriver.setTerminalReason(.asrFailed)
-        fx.asr.activeBackendType = .parakeet
-        fx.finalizer.resetActive()
-        #expect(fx.kernelDriver.state == .idle)
-        #expect(fx.whisperKernelDriver.state == .error(.asrFailed))
-      }
-      do {  // Whisper active.
-        let fx = Self.makeFixture()
-        fx.kernelDriver.setTerminalReason(.modelWedged)
-        fx.whisperKernelDriver.setTerminalReason(.asrFailed)
-        fx.asr.activeBackendType = .whisper
-        fx.finalizer.resetActive()
-        #expect(fx.whisperKernelDriver.state == .idle)
-        #expect(fx.kernelDriver.state == .error(.modelWedged))
-      }
     }
   }
 

@@ -49,9 +49,9 @@ struct SettingsShellEnglishTests {
   @Test("App Settings tabs keep their names and order")
   func appTabs() {
     #expect(AppSettingsTab.allCases.map { String(localized: $0.label) }
-      == ["Appearance", "Permissions", "Privacy", "Licenses"])
+      == ["Appearance", "Permissions", "Privacy", "Recordings", "Licenses"])
     #expect(AppSettingsTab.allCases.map(\.icon)
-      == ["circle.lefthalf.filled", "hand.raised", "lock.shield", "doc.text"])
+      == ["circle.lefthalf.filled", "hand.raised", "lock.shield", "waveform", "doc.text"])
   }
 
   /// #3385: the Dictionary page's heading row replaced its banner. The "?" keeps the sentence

@@ -1,0 +1,1 @@
+{"language":"hu","title":"felhasznált tárhely","words":["felvételek mérete"],"phrases":["mennyi helyet foglalnak a felvételek","mentett felvételek összmérete"]}

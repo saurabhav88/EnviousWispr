@@ -1,0 +1,12 @@
+{
+  "language": "ro",
+  "title": "prag de avertizare pentru spațiul ocupat",
+  "words": [
+    "avertizare stocare",
+    "prag de avertizare"
+  ],
+  "phrases": [
+    "anunță-mă când înregistrările ocupă prea mult spațiu",
+    "dezactivează avertizarea pentru spațiul ocupat de înregistrări"
+  ]
+}

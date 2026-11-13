@@ -1016,7 +1016,7 @@ final class KernelLifecycleTelemetrySink {
       // a non-bug AND auto-filed issues via the Sentry->GitHub triage) to a
       // context-only breadcrumb. Frequency still lives in PostHog
       // pipeline.failed (error_code "asr_empty_with_speech"); engineering
-      // evidence still lives in the DEBUG DictationAudioArchive. Both remain intact.
+      // evidence lives in the app log's ASR-empty diagnostics.
       breadcrumb(
         "asr", "ASR returned empty text despite speech evidence",
         telemetryState.asrEmptyDiagnostics?.sentryExtra() ?? ["backend": backend.rawValue])

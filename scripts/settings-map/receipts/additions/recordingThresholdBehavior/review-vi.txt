@@ -1,0 +1,11 @@
+{
+  "language": "vi",
+  "title": "khi vượt ngưỡng dung lượng",
+  "words": [
+    "tự động xóa"
+  ],
+  "phrases": [
+    "nhắc tôi giải phóng dung lượng khi vượt ngưỡng",
+    "tự động xóa bản ghi đọc chính tả cũ nhất khi vượt ngưỡng"
+  ]
+}

@@ -381,23 +381,24 @@ struct YourWordsView: View {
     // on this dark surface renders as the same grey as a disabled control
     // and gives no hover of its own. Add word is the primary, so it is the
     // one that fills.
-    SettingsActionButton(
-      title: SettingsItemCopy.Dictionary.addWord, isEnabled: true, emphasis: .filled,
-      systemImage: "plus"
-    ) {
+    Button {
       sheetRoute = .addTerm
+    } label: {
+      EnviousButtonLabel(SettingsItemCopy.Dictionary.addWord, systemImage: "plus")
     }
+    .settingsButton(.filled, isEnabled: true)
     .settingsMapRegistration(.yourWordsAdd)
     // The ONLY doorway into Custom Words import (epic #1619). Shipped to
     // release users from v2.4.1 by founder decision, 2026-07-24; every
     // import PR still carries "adds no second entry point" in its
     // definition of done, so this stays the single doorway.
-    SettingsActionButton(
-      title: SettingsItemCopy.Dictionary.importWords, isEnabled: true,
-      systemImage: "square.and.arrow.down"
-    ) {
+    Button {
       sheetRoute = .importWords
+    } label: {
+      EnviousButtonLabel(
+        SettingsItemCopy.Dictionary.importWords, systemImage: "square.and.arrow.down")
     }
+    .settingsButton(isEnabled: true)
     .settingsMapRegistration(.yourWordsImport)
     // Export (#1680). ONE body-render snapshot drives both the count shown
     // in the save dialog and the array handed to the action, so the number
@@ -407,12 +408,13 @@ struct YourWordsView: View {
     // (#1715).
     let proposed = CustomWordsExportAction.exportableWords(
       from: customWordsCoordinator.customWords)
-    SettingsActionButton(
-      title: SettingsItemCopy.Dictionary.exportWords, isEnabled: true,
-      systemImage: "square.and.arrow.up"
-    ) {
+    Button {
       exportWords(proposed: proposed)
+    } label: {
+      EnviousButtonLabel(
+        SettingsItemCopy.Dictionary.exportWords, systemImage: "square.and.arrow.up")
     }
+    .settingsButton(isEnabled: true)
     .settingsMapRegistration(.yourWordsExport)
   }
 

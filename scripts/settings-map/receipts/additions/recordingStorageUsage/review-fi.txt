@@ -1,0 +1,11 @@
+{
+  "language": "fi",
+  "title": "käytetty tallennustila",
+  "words": [
+    "äänitteiden koko"
+  ],
+  "phrases": [
+    "paljonko tilaa äänitteet vievät",
+    "äänitteiden yhteiskoko"
+  ]
+}

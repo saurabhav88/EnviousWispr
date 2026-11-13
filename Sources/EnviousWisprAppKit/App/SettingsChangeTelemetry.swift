@@ -234,7 +234,7 @@ enum SettingsProjection {
     case .showMenuBarUpdateAlert: return [.menuBarUpdateAlert]
     // Not instrumented.
     case .selectedBackend, .onboardingState, .hasCompletedOnboarding,
-      .isDebugModeEnabled, .isDictationAudioArchiveEnabled, .debugLogLevel, .whisperKitLanguage,
+      .isDebugModeEnabled, .debugLogLevel, .whisperKitLanguage,
       .selectedInputDeviceUID, .preferredInputDeviceIDOverride,
       // #2664: a UID-keyed map is device identity, which never leaves the Mac;
       // the effective channel is already carried per take by
@@ -250,6 +250,11 @@ enum SettingsProjection {
       // shape rather than content, so `CLAUDE.md`'s privacy test permits it
       // whenever a consumer appears; it simply has not.
       .recordingPillDesignWithoutWords, .recordingPillDesignWithWords:
+      return []
+    case .saveDictationRecordings, .dictationRecordingRetention, .meetingRecordingRetention,
+      .recordingStorageWarningThreshold, .recordingThresholdBehavior:
+      // #3147: not instrumented in PR1. Telemetry for recordings follows the plan's §16 C8
+      // budget review first (reader, cadence, existing-event reuse); none is added here.
       return []
     case .shareUsageMetrics, .sendCrashReports:
       // #3269: the privacy switches themselves are never reported. The founder ruled out a

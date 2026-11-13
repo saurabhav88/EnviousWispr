@@ -1111,13 +1111,15 @@ private var cloudRows: some View {
         localized: "We could not check your saved key on this Mac.",
         comment: "AI Polish: the saved API key could not be read from the Keychain.")
     ) {
-      SettingsActionButton(
-        title: LocalizedStringResource(
-          "Check again", comment: "AI Polish: reads the saved API key again."),
-        isEnabled: true, emphasis: .quiet, size: .medium
-      ) {
+      Button {
         ProviderSetupKeys.load(into: model, using: keychainManager, presence: savedKeyPresence)
+      } label: {
+        EnviousButtonLabel(
+          LocalizedStringResource(
+            "Check again", comment: "AI Polish: reads the saved API key again."),
+          size: .medium)
       }
+      .settingsButton(.quiet, size: .medium, isEnabled: true)
     }
     PolishRowDivider()
   }
@@ -1461,27 +1463,28 @@ private var apiKeyRow: some View {
         VStack(alignment: .leading, spacing: 6) {
           HStack(spacing: 8) {
             keyField(descriptor)
-            SettingsActionButton(
-              title: SettingsItemCopy.AIPolish.keySave,
-              isEnabled: !activeKeyBinding.wrappedValue.isEmpty && keyDraftIsEdited && model.hasPendingKeyMutation == false,
-              emphasis: .filled, size: .medium
-            ) {
+            Button {
               ProviderSetupKeyActions.save(
                 activeKeyBinding.wrappedValue, provider: provider, model: model,
                 owners: keyActionOwners)
+            } label: {
+              EnviousButtonLabel(SettingsItemCopy.AIPolish.keySave, size: .medium)
             }
+            .settingsButton(
+              .filled, size: .medium,
+              isEnabled: !activeKeyBinding.wrappedValue.isEmpty && keyDraftIsEdited && model.hasPendingKeyMutation == false)
             .settingsMapRegistration(.apiKeySave)
             // Clear destroys a stored key, so it is offered only when one is stored, and in
             // the destructive style so it never reads like an inert button.
             if savedKeyIsPresentForCurrentProvider {
-              SettingsActionButton(
-                title: SettingsItemCopy.AIPolish.keyClear,
-                isEnabled: model.hasPendingKeyMutation == false, emphasis: .destructive, size: .medium
-              ) {
+              Button(role: .destructive) {
                 ProviderSetupKeyActions.clear(
                   provider: provider, model: model, owners: keyActionOwners,
                   onCleared: { revealsKey = false })
+              } label: {
+                EnviousButtonLabel(SettingsItemCopy.AIPolish.keyClear, size: .medium)
               }
+              .settingsButton(size: .medium, isEnabled: model.hasPendingKeyMutation == false)
               .settingsMapRegistration(.apiKeyClear)
             }
           }
@@ -1973,14 +1976,14 @@ private var ollamaSetupContent: some View {
       adaptsTrailing: true
     ) {
       HStack(spacing: 8) {
-        SettingsActionButton(
-          title: SettingsItemCopy.AIPolish.downloadOllama,
-          isEnabled: true, emphasis: .filled, size: .medium
-        ) {
+        Button {
           if let url = URL(string: "https://ollama.com/download") {
             NSWorkspace.shared.open(url)
           }
+        } label: {
+          EnviousButtonLabel(SettingsItemCopy.AIPolish.downloadOllama, size: .medium)
         }
+        .settingsButton(.filled, size: .medium, isEnabled: true)
         .settingsMapRegistration(.ollamaDownloadOllama)
         ollamaRefreshButton()
       }
@@ -1999,12 +2002,12 @@ private var ollamaSetupContent: some View {
       adaptsTrailing: true
     ) {
       HStack(spacing: 8) {
-        SettingsActionButton(
-          title: SettingsItemCopy.AIPolish.startOllama,
-          isEnabled: true, emphasis: .filled, size: .medium
-        ) {
+        Button {
           setup.ollamaSetup.startServer()
+        } label: {
+          EnviousButtonLabel(SettingsItemCopy.AIPolish.startOllama, size: .medium)
         }
+        .settingsButton(.filled, size: .medium, isEnabled: true)
         .settingsMapRegistration(.ollamaStart)
         ollamaRefreshButton()
       }
@@ -2023,20 +2026,21 @@ private var ollamaSetupContent: some View {
         // slot, so if this is pressed while a hosted Add is still probing, the resolution's
         // own pull arrives second and cancels this download. Both pull entry points read
         // the same signal.
-        SettingsActionButton(
-          verbatimTitle: SettingsMapRef.dynamic(
-            .ollamaDownloadModel,
-            .ollamaModel(name: surface.guidedDownloadModel(remembered: surfaceOllamaModel))
-          ).title,
-          isEnabled: !hostedAddIsResolving,
-          emphasis: .filled, size: .medium
-        ) {
+        Button {
           // #1950: through the funnel, not straight to `pullModel`. The shipped default is a
           // recommended model so this normally downloads immediately, but a user who has
           // changed the setting to something that failed every test gets asked first.
           ProviderSetupDownloads.request(
             surface.guidedDownloadModel(remembered: surfaceOllamaModel), model: model, setup: setup)
+        } label: {
+          EnviousButtonLabel(
+            verbatim: SettingsMapRef.dynamic(
+              .ollamaDownloadModel,
+              .ollamaModel(name: surface.guidedDownloadModel(remembered: surfaceOllamaModel))
+              ).title,
+            size: .medium)
         }
+        .settingsButton(.filled, size: .medium, isEnabled: !hostedAddIsResolving)
         .settingsMapRegistration(.ollamaDownloadModel)
         ollamaRefreshButton()
       }
@@ -2107,10 +2111,7 @@ private var ollamaSetupContent: some View {
         localized: "Something went wrong", comment: "AI Polish, Ollama: an unexpected error."),
       subtitle: message
     ) {
-      SettingsActionButton(
-        title: SettingsItemCopy.AIPolish.ollamaTryAgain,
-        isEnabled: true, emphasis: .quiet, size: .medium
-      ) {
+      Button {
         Task {
           await setup.ollamaSetup.detectState(trigger: "try_again")
           if case .ready = setup.ollamaSetup.setupState {
@@ -2118,7 +2119,10 @@ private var ollamaSetupContent: some View {
               provider: .ollama, settings: settings, surface: surface)
           }
         }
+      } label: {
+        EnviousButtonLabel(SettingsItemCopy.AIPolish.ollamaTryAgain, size: .medium)
       }
+      .settingsButton(.quiet, size: .medium, isEnabled: true)
       .settingsMapRegistration(.ollamaTryAgain)
     }
   }
@@ -2386,12 +2390,14 @@ private var ollamaBrowseModelsCard: some View {
           .foregroundStyle(Color.stTextPrimary)
           .accessibilityAddTraits(.isHeader)
         Spacer()
-        SettingsSheetCloseButton(
-          accessibilityTitle: String(
-            localized: "Close Models", comment: "AI Polish, Ollama: closes the model list sheet.")
-        ) {
+        Button {
           model.modelsSheetOpen = false
+        } label: {
+          EnviousCloseGlyph()
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel(String(
+            localized: "Close Models", comment: "AI Polish, Ollama: closes the model list sheet."))
       }
       .padding(.horizontal, 18)
       .padding(.vertical, 14)
@@ -2406,13 +2412,15 @@ private var ollamaBrowseModelsCard: some View {
       Divider().overlay(Color.stDivider)
       HStack {
         Spacer()
-        SettingsActionButton(
-          title: LocalizedStringResource(
-            "Done", comment: "AI Polish, Ollama: closes the model list sheet."),
-          isEnabled: true, emphasis: .filled, size: .medium, shortcut: .defaultAction
-        ) {
+        Button {
           model.modelsSheetOpen = false
+        } label: {
+          EnviousButtonLabel(
+            LocalizedStringResource(
+              "Done", comment: "AI Polish, Ollama: closes the model list sheet."),
+            size: .medium)
         }
+        .settingsButton(.filled, size: .medium, isEnabled: true, shortcut: .defaultAction)
       }
       .padding(.horizontal, 18)
       .padding(.vertical, 12)
@@ -2983,7 +2991,7 @@ struct OllamaDownloadConfirmation: ViewModifier {
       titleVisibility: .visible
     ) {
       Button("Download anyway") { ProviderSetupDownloads.confirmPending(model: model, setup: setup) }
-      // Empty action deliberately, matching `CustomWordEditSheet` and `TranscriptHistoryView`.
+      // Empty action deliberately, matching `CustomWordEditSheet`.
       // SwiftUI sets `isPresented` false on dismissal, which invokes the setter above and clears
       // the id. Clearing it here too would mean two paths doing one job.
       Button("Cancel", role: .cancel) {}

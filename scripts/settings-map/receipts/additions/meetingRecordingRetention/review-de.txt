@@ -1,0 +1,12 @@
+{
+  "language": "de",
+  "words": [
+    "Meeting-Audio",
+    "Aufbewahrungsdauer"
+  ],
+  "phrases": [
+    "stell ein, wie lange Meeting-Audio gespeichert bleibt",
+    "bewahre Meeting-Audio 30 oder 90 Tage auf",
+    "behalte Meeting-Audio, bis ich es lösche"
+  ]
+}

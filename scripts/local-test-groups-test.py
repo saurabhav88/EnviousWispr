@@ -85,6 +85,8 @@ if args[1] == 'get':
     bundle = Path(args[args.index('--path') + 1])
     print((bundle / 'result.json').read_text()); sys.exit(0)
 assert args[1:3] == ['merge', '--output-path'], args
+if len(args[4:]) < 2:
+    sys.exit(64)  # xcresulttool requires at least two input bundles.
 if os.environ.get('FAIL_MERGE'): sys.exit(70)
 output = Path(args[3]); output.mkdir()
 roots = []

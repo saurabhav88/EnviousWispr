@@ -1,0 +1,12 @@
+{
+  "language": "lv",
+  "title": "diktēšanas ierakstu glabāšanas ilgums",
+  "words": [
+    "glabāšanas ilgums",
+    "automātiska dzēšana"
+  ],
+  "phrases": [
+    "cik ilgi tiek glabāti diktēšanas ieraksti",
+    "automātiski dzēst vecos diktēšanas ierakstus un paturēt tekstu"
+  ]
+}

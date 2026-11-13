@@ -1,0 +1,12 @@
+{
+  "language": "hu",
+  "title": "diktálási hangfelvételek megőrzése",
+  "words": [
+    "megőrzési idő",
+    "automatikus törlés"
+  ],
+  "phrases": [
+    "meddig maradnak meg a diktálási hangfelvételek",
+    "diktálási hangfelvételek automatikus törlése"
+  ]
+}

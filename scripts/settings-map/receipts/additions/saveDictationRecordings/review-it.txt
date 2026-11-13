@@ -1,0 +1,1 @@
+{"language":"it","title":"salva le registrazioni delle dettature","words":[],"phrases":["salvare l'audio delle dettature per riascoltarlo","non salvare l'audio delle nuove dettature"]}

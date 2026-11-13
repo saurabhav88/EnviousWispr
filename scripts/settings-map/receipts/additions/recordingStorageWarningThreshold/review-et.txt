@@ -1,0 +1,13 @@
+{
+  "language": "et",
+  "title": "salvestiste mahu hoiatuslävi",
+  "words": [
+    "ruumikasutuse hoiatus",
+    "hoiatuslävi"
+  ],
+  "phrases": [
+    "hoiata, kui salvestised võtavad liiga palju ruumi",
+    "vali, kui suure salvestiste mahu juures hoiatus kuvatakse",
+    "lülita salvestiste mahu hoiatus välja"
+  ]
+}

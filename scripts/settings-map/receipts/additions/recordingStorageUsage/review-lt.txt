@@ -1,0 +1,11 @@
+{
+  "language": "lt",
+  "title": "užimta vieta",
+  "words": [
+    "garso įrašų dydis"
+  ],
+  "phrases": [
+    "kiek vietos užima garso įrašai",
+    "kiek vietos diske užima diktavimo ir susitikimų įrašai"
+  ]
+}

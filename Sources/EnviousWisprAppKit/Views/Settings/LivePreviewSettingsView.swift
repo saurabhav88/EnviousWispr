@@ -503,13 +503,12 @@ struct LivePreviewSettingsView: View {
             case .browseDownloads(let initialSearch):
               // The last system-styled button left on this page after #2445
               // replaced the other three. Same fact, same fix.
-              SettingsActionButton(
-                verbatimTitle: LivePreviewSettingsCopy.browseDownloadsButton,
-                isEnabled: true,
-                emphasis: .filled
-              ) {
+              Button {
                 catalogRequest = CatalogRequest(search: initialSearch)
+              } label: {
+                EnviousButtonLabel(verbatim: LivePreviewSettingsCopy.browseDownloadsButton)
               }
+              .settingsButton(.filled, isEnabled: true)
               .settingsMapRegistration(.livePreviewBrowseDownloads)
             }
           }
@@ -658,13 +657,14 @@ struct LivePreviewSettingsView: View {
                 // (Codex UX review, 2026-08-26) — the same defect already measured
                 // on Download and Browse. Outlined is the quiet-but-alive rung, and
                 // it has a hover state, which the flat one did not.
-                SettingsActionButton(
-                  verbatimTitle: Self.label(for: action),
-                  isEnabled: !(action == .remove && meetingIsActive),
-                  emphasis: action == .remove ? .quiet : .filled, shape: .roundedRect, size: .medium
-                ) {
+                Button {
                   perform(action)
+                } label: {
+                  EnviousButtonLabel(verbatim: Self.label(for: action), size: .medium)
                 }
+                .settingsButton(
+                  action == .remove ? .quiet : .filled, shape: .roundedRect, size: .medium,
+                  isEnabled: !(action == .remove && meetingIsActive))
                 .settingsMapRegistration(Self.mapID(for: action))
               }
               // #4325: after a failed download, switch to Apple where it can run.
@@ -786,12 +786,12 @@ struct LivePreviewSettingsView: View {
         {
           // A sibling of the selection button, never a child (see above).
           VStack(alignment: .leading, spacing: 6) {
-            SettingsActionButton(
-              verbatimTitle: Self.label(for: action), isEnabled: !meetingIsActive,
-              emphasis: .quiet, shape: .roundedRect, size: .medium
-            ) {
+            Button {
               perform(action)
+            } label: {
+              EnviousButtonLabel(verbatim: Self.label(for: action), size: .medium)
             }
+            .settingsButton(.quiet, shape: .roundedRect, size: .medium, isEnabled: !meetingIsActive)
             .settingsMapRegistration(Self.mapID(for: action))
             // #4325: Remove waits for an active meeting, on both pages.
             if meetingIsActive {
