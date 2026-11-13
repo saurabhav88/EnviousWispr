@@ -58,8 +58,7 @@ struct OnboardingDownloadsPresentation: Equatable, Sendable {
     queuedPolish: String?, isNetworkSlow: Bool, isCountingDown: Bool,
     speechPhase: (ASRBackendType) -> OnboardingDownloadPhase,
     polishPhase: (String) -> OnboardingDownloadPhase?, downloadsFinished: Bool,
-    speechStartPending: Bool = false,
-    polishStartRequested: (String) -> Bool = { _ in false }
+    speechStartPending: Bool = false
   ) -> OnboardingDownloadsPresentation {
     let choices = state.choices
     let readiness = state.readiness
@@ -75,8 +74,7 @@ struct OnboardingDownloadsPresentation: Equatable, Sendable {
       speech: speech, speechPhase: presentedSpeechPhase, polish: polish,
       polishPhase: localPhase,
       polishPreparation: preparation(
-        polish: polish, readiness: readiness, phase: localPhase, queued: queuedPolish,
-        startRequested: polish.map(polishStartRequested) ?? false),
+        polish: polish, readiness: readiness, phase: localPhase, queued: queuedPolish),
       block: block,
       engineWarm: speech != nil && readiness.speech == speech && readiness.engineWarm,
       warmFailed: warmFailed, microphoneGranted: readiness.microphoneGranted,
@@ -88,7 +86,7 @@ struct OnboardingDownloadsPresentation: Equatable, Sendable {
   /// pick, then the transfer phase. Readiness for another pick never counts.
   static func preparation(
     polish: String?, readiness: OnboardingReadiness, phase: OnboardingDownloadPhase?,
-    queued: String?, startRequested: Bool = false
+    queued: String?
   ) -> PolishPreparation {
     guard let polish else { return .none }
     if polish == OnboardingChoices.polishOff { return .off }
@@ -107,12 +105,12 @@ struct OnboardingDownloadsPresentation: Equatable, Sendable {
     case .downloading, .verifying: return .downloading
     case .paused, .failed, .unavailable: return .downloadStopped
     case .unknown: return queued == polish ? .queued : .waiting
-    // Missing and idle: queued behind speech, just requested this visit (the owner has not
-    // published its phase yet), or idle for real (a relaunch after a disk refusal, a cancel),
-    // which must show the stopped card's Resume, Change and Continue without actions (D6).
+    // Missing and idle, not queued behind speech: always the stopped card with its Resume, Change
+    // and Continue without actions (D6). A start the owner refuses later and silently (the
+    // EG-1 adapter's disabled-delivery path) leaves exactly this phase, so no "requested" fact
+    // can prove work is still running; a fresh start may show stopped until its first phase.
     case .notStarted:
-      if queued == polish { return .queued }
-      return startRequested ? .waiting : .downloadStopped
+      return queued == polish ? .queued : .downloadStopped
     }
   }
 }

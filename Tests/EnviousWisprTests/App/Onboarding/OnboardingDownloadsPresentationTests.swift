@@ -28,12 +28,8 @@ struct OnboardingDownloadsPresentationTests {
         == .appleIntelligence(available: false))
     #expect(P.preparation(polish: "eg1.mini", readiness: r, phase: .notStarted, queued: "eg1.mini") == .queued)
     #expect(P.preparation(polish: "eg1.mini", readiness: r, phase: .unknown, queued: nil) == .waiting)
-    // Missing and idle: just requested this visit waits; nobody asked (a relaunch after a disk
-    // refusal) shows the stopped card with its recovery actions, never an endless start (D6).
-    #expect(
-      P.preparation(
-        polish: "eg1.mini", readiness: r, phase: .notStarted, queued: nil, startRequested: true)
-        == .waiting)
+    // Missing, idle and not queued (a relaunch after a disk refusal, a silent owner refusal):
+    // the stopped card with its recovery actions, never an endless start (D6).
     #expect(P.preparation(polish: "eg1.mini", readiness: r, phase: .notStarted, queued: nil) == .downloadStopped)
     #expect(P.preparation(polish: "eg1.mini", readiness: r, phase: .downloading(fraction: 0.4), queued: nil) == .downloading)
     #expect(P.preparation(polish: "eg1.mini", readiness: r, phase: .verifying, queued: nil) == .downloading)

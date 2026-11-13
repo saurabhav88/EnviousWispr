@@ -125,9 +125,6 @@ final class OnboardingCoordinator {
   /// unfinished ones (plan M18, M50).
   @ObservationIgnored private var ownedSpeech: Set<ASRBackendType> = []
   @ObservationIgnored private var ownedPolish: Set<String> = []
-  /// Whether this visit already asked the owner for that polish model (presentation: an idle
-  /// missing model nobody asked for shows the stopped card, D6).
-  func polishStartRequested(_ id: String) -> Bool { ownedPolish.contains(id) }
   private(set) var speechStartsInFlight = 0
   /// Per engine, bumped whenever a speech start takes ownership: a delayed Cancel decision
   /// (an `unknown` phase resolved later) only acts if no newer start owns that engine.
