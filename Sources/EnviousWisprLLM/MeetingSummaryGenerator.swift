@@ -515,8 +515,17 @@ public enum MeetingSummary {
   /// from the summary that remains after `splitTitle`, the text the store saves.
   static func withReferences(_ written: Written, _ references: ReferenceRequest) -> Written {
     let stripped = MeetingSummaryReferences.strippingTags(written.text)
-    let tagged = splitTitle(written.text).summary
     let summary = splitTitle(stripped).summary
+    // The tagged lines without the title line `splitTitle` removes from the stripped answer.
+    // Found on the stripped lines, so a tag written before "Title:" still finds it.
+    var lines = written.text.replacingOccurrences(of: "\r\n", with: "\n")
+      .replacingOccurrences(of: "\r", with: "\n").components(separatedBy: "\n")
+    if let first = lines.firstIndex(where: {
+      !MeetingSummaryReferences.strip($0).text.trimmingCharacters(in: .whitespaces).isEmpty
+    }), splitTitle(MeetingSummaryReferences.strip(lines[first]).text).summary.isEmpty {
+      lines.remove(at: first)
+    }
+    let tagged = lines.joined(separator: "\n")
     let document = MeetingSummaryReferences.document(
       taggedSummary: tagged, summary: summary, sources: references.sources,
       inputs: references.inputs)

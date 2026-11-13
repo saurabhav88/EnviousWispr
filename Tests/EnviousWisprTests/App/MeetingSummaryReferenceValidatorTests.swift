@@ -138,9 +138,15 @@ struct MeetingSummaryReferenceValidatorTests {
     #expect(rig.summaryOnDisk(id) == "## Overview\nShip Friday.")
   }
 
-  @Test("the production qualification table names no hosted route")
-  func hostedRoutesUnqualified() {
-    for provider in [LLMProvider.openAI, .gemini, .claude, .s1Mini, .none] {
+  @Test("the qualification table: the qualified local routes only, never a hosted one")
+  func qualificationTable() {
+    #expect(MeetingSummaryReferences.isQualified(provider: .appleIntelligence, model: ""))
+    #expect(MeetingSummaryReferences.isQualified(provider: .ollama, model: "qwen3:8b"))
+    #expect(MeetingSummaryReferences.isQualified(provider: .ollama, model: "qwen3:14b") == false)
+    #expect(
+      MeetingSummaryReferences.isQualified(provider: .ollama, model: "gpt-oss:120b-cloud")
+        == false)
+    for provider in [LLMProvider.egOne, .openAI, .gemini, .claude, .s1Mini, .none] {
       #expect(MeetingSummaryReferences.isQualified(provider: provider, model: "any") == false)
     }
   }

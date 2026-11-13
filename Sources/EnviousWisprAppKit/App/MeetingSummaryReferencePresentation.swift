@@ -78,7 +78,7 @@ final class MeetingSummaryReferenceValidator: MeetingSummaryReferencing {
   }
 
   /// The citations of `item` that hold the whole item in a current source, in order.
-  static func supportingSources(
+  nonisolated static func supportingSources(
     of item: MeetingSummaryItem, in sources: MeetingSummaryReferenceSources
   ) -> [MeetingSummarySource] {
     var turns: [String: String] = [:]

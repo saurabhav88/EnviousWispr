@@ -237,6 +237,24 @@ struct MeetingSummaryReferencesTests {
         == "I will send the deck by Monday.")
   }
 
+  @Test("a tag before the title line still leaves the summary its document")
+  func tagBeforeTitle() async throws {
+    let calls = Calls()
+    calls.answer = { _ in "[T1] Title: Launch\n\n## Overview\nI will send the deck by Monday. [T1]" }
+    let written = try await MeetingSummary.write(
+      transcript: Self.sources.taggedTranscript, notes: "", facts: "",
+      window: .init(contextTokens: 128_000, outputReserveTokens: 1_500), callTimeoutSeconds: 60,
+      references: .init(sources: Self.sources, inputs: Self.inputs), admit: {},
+      complete: calls.complete)
+    #expect(written.text == "Title: Launch\n\n## Overview\nI will send the deck by Monday.")
+    #expect(MeetingSummary.splitTitle(written.text).title == "Launch")
+    let document = try #require(written.document)
+    #expect(document.sections.map(\.title) == ["Overview"])
+    #expect(
+      document.sections.first?.items.first?.citations.first?.quote
+        == "I will send the deck by Monday.")
+  }
+
   @Test("a meeting written in parts keeps each line's tag through parts, combining and the end")
   func chunkedProvenance() async throws {
     // Many tagged turns and long part answers, so the small window needs parts and at least

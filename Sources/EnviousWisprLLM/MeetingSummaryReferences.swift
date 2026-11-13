@@ -91,14 +91,18 @@ public enum MeetingSummaryReferences {
     switch provider {
     case .appleIntelligence: return qualifiedAppleIntelligence
     case .ollama: return qualifiedOllamaModels.contains(model)
-    // Not qualified: EG-1 (no real summary run in this lane), hosted routes (qualifying them
-    // is cloud spend that needs the founder's approval), and engines that write no summary.
+    // Not qualified: EG-1 (the 2026-11-13 run: the mini and micro sizes wrote no tags, and
+    // every size failed the long meeting, as its plain prompt also does), hosted routes
+    // (qualifying them is cloud spend that needs the founder's approval), and engines that
+    // write no summary.
     case .egOne, .openAI, .gemini, .claude, .s1Mini, .none: return false
     }
   }
 
-  static let qualifiedAppleIntelligence = false
-  static let qualifiedOllamaModels: Set<String> = []
+  /// Qualified 2026-11-13 on macOS 27.2 (three made-up meetings, one written in parts).
+  static let qualifiedAppleIntelligence = true
+  /// Exact Ollama model names qualified on this Mac (2026-11-13, the same three meetings).
+  static let qualifiedOllamaModels: Set<String> = ["qwen3:8b"]
 
   // MARK: - Sources from a meeting row
 
