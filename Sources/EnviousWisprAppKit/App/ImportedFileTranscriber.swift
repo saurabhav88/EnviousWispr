@@ -112,10 +112,13 @@ final class ImportedFileTranscriber {
     let outcome = await runHoldingClaim(
       url: url, identity: identity, selection: selection, froze: &froze)
     // Every path of the run has unloaded the engine copy and returned from the cleanup by now.
-    if froze { cleanup.release() }
+    // The guards clear BEFORE the release retries run (the wizard's order): a deferred Ollama
+    // eviction or classifier release retried while this job still read as holding the engine
+    // would only defer again.
     heldRun = nil
     isEngineHeld = false
     admission.release(token)
+    if froze { cleanup.release() }
     return outcome
   }
 

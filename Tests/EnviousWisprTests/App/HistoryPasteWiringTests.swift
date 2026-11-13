@@ -128,7 +128,16 @@ struct HistoryPasteWiringTests {
     #expect(history.contains("TranscriptDetailView(transcript: row, showPasteNotice: pasteNotice.show)"))
     #expect(history.contains("HistoryDictationCard(rowID: rowID, showPasteNotice: pasteNotice.show)"))
     #expect(history.contains("MeetingHistoryDetailView(meeting: meeting, showPasteNotice: pasteNotice.show)"))
-    for detail in ["TranscriptDetailView.swift", "MeetingHistoryDetailView.swift"] {
+    // #3147 PR3: the imported transcript view reports to the page in History, and to its own
+    // window's root when detached; that root holds the window's notice outside the content.
+    #expect(history.contains("showPasteNotice: pasteNotice.show,"), "the transcript view reports to the page")
+    let (window, _) = try Self.snapshot("\(Self.sources)/App/TranscriptWindowRoot.swift")
+    #expect(window.contains("@State private var pasteNotice = HistoryPasteNotice()"))
+    #expect(window.contains("showPasteNotice: pasteNotice.show,"))
+    #expect(window.contains("get: { pasteNotice.text != nil }"), "the window presents its own notice")
+    for detail in [
+      "TranscriptDetailView.swift", "MeetingHistoryDetailView.swift", "HistoryTranscriptView.swift",
+    ] {
       let (source, _) = try Self.snapshot("\(Self.sources)/Views/Main/\(detail)")
       #expect(source.contains("@State private var pasteNotice") == false, "\(detail) holds its own notice")
       #expect(source.contains("showNotice: { showPasteNotice($0) }"), "\(detail) reports to the page")

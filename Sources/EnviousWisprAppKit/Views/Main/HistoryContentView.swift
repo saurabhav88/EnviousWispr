@@ -13,6 +13,8 @@ struct HistoryContentView: View {
   @Environment(TranscriptRetranscription.self) private var retranscription
   @Environment(ImportedModelCatalog.self) private var modelCatalog
   @Environment(\.openWindow) private var openWindow
+  @Environment(NavigationCoordinator.self) private var navigation
+  @Environment(AppWindowCoordinator.self) private var appWindow
   /// #3875, #4101: why a History Paste did not happen, shown once History is back in front. Held
   /// by this page, outside the diary and its items, so deleting the row or opening another one
   /// does not lose it.
@@ -59,7 +61,12 @@ struct HistoryContentView: View {
           HistoryTranscriptView(
             rowID: rowID, context: .history, sources: importedSources,
             retranscription: retranscription,
-            openInNewWindow: { openWindow(id: TranscriptWindowIdentity.sceneID, value: $0) }
+            openInNewWindow: { openWindow(id: TranscriptWindowIdentity.sceneID, value: $0) },
+            showPasteNotice: pasteNotice.show,
+            restorePasteSurface: {
+              navigation.request(.history)
+              appWindow.showWindow()
+            }
           )
           .id(rowID)
         },

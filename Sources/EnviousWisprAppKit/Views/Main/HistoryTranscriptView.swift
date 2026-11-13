@@ -43,19 +43,30 @@ struct HistoryTranscriptView: View {
   let sources: any ImportedSourceAccessing
   let retranscription: any ImportedTranscriptRetranscribing
   let openInNewWindow: (UUID) -> Void
+  /// #4101: why a Paste did not happen, shown by the surface that outlives this view (the History
+  /// page, or the transcript window's root), so replacing this view while Paste waits does not
+  /// lose it.
+  let showPasteNotice: @MainActor (String) -> Void
+  /// Brings that same surface back to the front when Paste needs the user (main History, or the
+  /// transcript window Paste was pressed in).
+  let restorePasteSurface: @MainActor () -> Void
 
   init(
     rowID: UUID,
     context: TranscriptViewContext,
     sources: any ImportedSourceAccessing,
     retranscription: any ImportedTranscriptRetranscribing,
-    openInNewWindow: @escaping (UUID) -> Void
+    openInNewWindow: @escaping (UUID) -> Void,
+    showPasteNotice: @escaping @MainActor (String) -> Void,
+    restorePasteSurface: @escaping @MainActor () -> Void
   ) {
     self.rowID = rowID
     self.context = context
     self.sources = sources
     self.retranscription = retranscription
     self.openInNewWindow = openInNewWindow
+    self.showPasteNotice = showPasteNotice
+    self.restorePasteSurface = restorePasteSurface
   }
 
   @Environment(TranscriptCoordinator.self) private var transcripts
@@ -63,7 +74,6 @@ struct HistoryTranscriptView: View {
   @Environment(PermissionsService.self) private var permissions
   @Environment(NavigationCoordinator.self) private var navigation
   @Environment(LiveRecordingState.self) private var liveRecordingState
-  @Environment(AppWindowCoordinator.self) private var appWindow
   @Environment(HistoryPaste.self) private var historyPaste
   @Environment(PreviousApplicationTracker.self) private var previousApplication
 
@@ -660,11 +670,8 @@ struct HistoryTranscriptView: View {
       text: { [transcripts, rowID] in
         HistoryTranscriptExport.pasteText(rowID: rowID, coordinator: transcripts)
       },
-      showHistory: {
-        navigation.request(.history)
-        appWindow.showWindow()
-      },
-      showNotice: { notice = Notice(text: $0, isError: true) },
+      showHistory: { restorePasteSurface() },
+      showNotice: { showPasteNotice($0) },
       dispatched: { [transcripts, rowID] in
         if let live = transcripts.currentRow(id: rowID) {
           transcripts.reportRestoredFromHistory(live)

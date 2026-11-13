@@ -73,6 +73,9 @@ final class ImportedTranscriberRig {
   let engines = FakeImportedEngines()
   var frozenBackends: [ASRBackendType] = []
   var releases = 0
+  /// Per release: whether the lease and the job's guards were already clear inside it.
+  var clearAtRelease: [Bool] = []
+  weak var transcriber: ImportedFileTranscriber?
   var polisherReady = true
   var processedParts: [[String]] = []
   /// Per part: the polished words, or nil for a part whose polish failed.
@@ -103,7 +106,7 @@ final class ImportedTranscriberRig {
   }
 
   func makeTranscriber() -> ImportedFileTranscriber {
-    ImportedFileTranscriber(
+    let made = ImportedFileTranscriber(
       admission: .live(lease: lease, as: .fileImport),
       engines: engines,
       cleanup: .init(
@@ -129,13 +132,20 @@ final class ImportedTranscriberRig {
             else { return }
           }
         },
-        release: { [unowned self] in releases += 1 }),
+        release: { [unowned self] in
+          releases += 1
+          clearAtRelease.append(
+            lease.currentHolder == nil && transcriber?.heldRun == nil
+              && transcriber?.isEngineHeld == false)
+        }),
       decode: { _ in
         AudioFileDecoder.Decoded(
           samples: [Float](repeating: 0.1, count: 16_000), seconds: 1, byteCount: 10,
           codec: "PCM", sampleRate: 16_000, channelCount: 1)
       },
       readIdentity: { [identityNow] _ in identityNow })
+    transcriber = made
+    return made
   }
 
   /// True when nothing holds the shared engine any more.
@@ -168,6 +178,9 @@ struct ImportedFileTranscriberTests {
     #expect(row.turns == nil, "no turn can index the new words")
     #expect(rig.engines.unloads == 1)
     #expect(rig.releases == 1)
+    #expect(
+      rig.clearAtRelease == [true],
+      "the retries run after the lease and job guards clear, or a deferred eviction defers again")
     #expect(rig.engineIsFree)
   }
 
@@ -258,6 +271,7 @@ struct ImportedFileTranscriberTests {
     #expect(outcome.failure == .cancelled)
     #expect(rig.engines.unloads == 1 && rig.releases == 1)
     #expect(rig.engineIsFree && transcriber.isEngineHeld == false && transcriber.heldRun == nil)
+    #expect(rig.clearAtRelease == [true], "a cancelled run's retries also see the engine free")
     #expect(rig.processedParts.isEmpty, "a cancelled run cleans nothing")
   }
 }

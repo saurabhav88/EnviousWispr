@@ -20,6 +20,10 @@ package enum TranscriptWindowIdentity {
 struct TranscriptWindowRoot: View {
   let b: WisprBootstrapper
   let rowID: UUID
+  /// #4101: this window's Paste notice, held outside the replaceable transcript content.
+  @State private var pasteNotice = HistoryPasteNotice()
+  /// The window this root is in, so Paste brings back THIS window. Weak.
+  @State private var hostWindow = WeakWindow()
 
   var body: some View {
     HistoryTranscriptView(
@@ -27,11 +31,26 @@ struct TranscriptWindowRoot: View {
       retranscription: b.transcriptRetranscription,
       // Already in its own window: another window for the same row would only bring this one
       // forward, so the action does nothing here.
-      openInNewWindow: { _ in }
+      openInNewWindow: { _ in },
+      showPasteNotice: pasteNotice.show,
+      restorePasteSurface: { [hostWindow] in
+        hostWindow.window?.makeKeyAndOrderFront(nil)
+        NSApp.activate()
+      }
     )
     .frame(minWidth: 520, minHeight: 420)
     .background(Color.stPageBg)
-    .background(TranscriptWindowRegistrar(coordinator: b.appWindowCoordinator))
+    .background(
+      TranscriptWindowRegistrar(coordinator: b.appWindowCoordinator, hostWindow: hostWindow))
+    .alert(
+      pasteNotice.text ?? "",
+      isPresented: Binding(
+        get: { pasteNotice.text != nil }, set: { if !$0 { pasteNotice.dismiss() } })
+    ) {
+      Button(String(localized: "OK", comment: "History: closes the Paste message.")) {
+        pasteNotice.dismiss()
+      }
+    }
     .task {
       b.importedSources.invalidateAll()
       await b.importedModelCatalog.refresh()
@@ -40,21 +59,30 @@ struct TranscriptWindowRoot: View {
   }
 }
 
+/// A weak reference to the transcript window, filled in by the registrar.
+@MainActor
+private final class WeakWindow {
+  weak var window: NSWindow?
+}
+
 /// Hands the hosting window to the coordinator once the view is in it.
 private struct TranscriptWindowRegistrar: NSViewRepresentable {
   let coordinator: AppWindowCoordinator
+  let hostWindow: WeakWindow
 
   func makeNSView(context: Context) -> RegistrarView {
-    RegistrarView(coordinator: coordinator)
+    RegistrarView(coordinator: coordinator, hostWindow: hostWindow)
   }
 
   func updateNSView(_ nsView: RegistrarView, context: Context) {}
 
   final class RegistrarView: NSView {
     private let coordinator: AppWindowCoordinator
+    private let hostWindow: WeakWindow
 
-    init(coordinator: AppWindowCoordinator) {
+    init(coordinator: AppWindowCoordinator, hostWindow: WeakWindow) {
       self.coordinator = coordinator
+      self.hostWindow = hostWindow
       super.init(frame: .zero)
     }
 
@@ -64,6 +92,7 @@ private struct TranscriptWindowRegistrar: NSViewRepresentable {
     override func viewDidMoveToWindow() {
       super.viewDidMoveToWindow()
       guard let window else { return }
+      hostWindow.window = window
       coordinator.registerTranscriptWindow(window)
     }
   }
