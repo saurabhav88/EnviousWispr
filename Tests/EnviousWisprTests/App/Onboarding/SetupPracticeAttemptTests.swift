@@ -4,67 +4,72 @@ import Testing
 
 @testable import EnviousWisprAppKit
 
+@MainActor
 @Suite("Setup Practice take evidence", .tags(.productOutcome))
 struct SetupPracticeAttemptTests {
-  @Test("Only the delivered words reaching the focused editor unlock Continue")
-  func deliveredWords() {
-    var attempt = SetupPracticeAttempt()
-    let recording = take(.recording)
-    attempt.observe(recording, focused: true)
-    attempt.editorChanged(from: "", to: "Manually typed", take: recording, focused: true)
-    #expect(attempt.success == nil)
-    attempt.editorChanged(
-      from: "Manually typed", to: "My dictated words", take: take(.transcribing), focused: true)
-    attempt.observe(take(.complete, terminal: delivered(pasted: true)), focused: true)
-    #expect(attempt.state == .worked)
-    #expect(attempt.success == .completed(polished: true))
-
-    attempt.observe(take(.recording, id: "next"), focused: true)
-    attempt.observe(take(.idle, id: "next", terminal: .noSpeech), focused: true)
-    #expect(attempt.state == .noSpeech)
-    #expect(attempt.success == .completed(polished: true))
+  @Test("Typing after a missed paste and deleting around old text cannot prove delivery")
+  func ordinaryEdits() {
+    let progress = SetupPracticeProgress()
+    progress.text = "hello"
+    progress.attempt.observe(take(.recording), focusedEditor: "editor")
+    progress.attempt.observe(
+      take(.complete, terminal: delivered()), focusedEditor: "editor")
+    progress.text = "hello "
+    #expect(progress.attempt.success == nil)
+    progress.text = "before hello after"
+    progress.text = "hello"
+    #expect(progress.attempt.success == nil)
+    #expect(progress.attempt.state == .missedBox(copiedToClipboard: false))
   }
 
-  @Test("Unfocused or already-running takes cannot count as delivery to the editor")
+  @Test("Only this take's verified write to the editor succeeds and survives reopening")
+  func verifiedWrite() {
+    let progress = SetupPracticeProgress()
+    progress.attempt.observe(take(.recording, id: "old"), focusedEditor: "old editor")
+    progress.attempt.detachEditor()
+    progress.attempt.observe(take(.recording), focusedEditor: "editor")
+    progress.attempt.observe(
+      take(.complete, id: "old", terminal: delivered(editor: "editor")), focusedEditor: "editor")
+    #expect(progress.attempt.success == nil)
+    progress.attempt.observe(
+      take(.complete, terminal: delivered(editor: "editor")), focusedEditor: "editor")
+    progress.text = "My dictated words"
+    progress.attempt.detachEditor()
+    #expect(progress.attempt.success == .completed(polished: true))
+    #expect(progress.text == "My dictated words")
+    progress.reset()
+    #expect(progress.attempt.success == nil)
+    #expect(progress.text.isEmpty)
+  }
+
+  @Test("The previous editor and clipboard-only delivery cannot verify success")
   func missedBox() {
     var attempt = SetupPracticeAttempt()
-    attempt.observe(take(.recording), focused: true, mounted: true)
-    attempt.editorChanged(
-      from: "", to: "My dictated words", take: take(.transcribing), focused: true)
-    attempt.observe(take(.complete, terminal: delivered(pasted: true)), focused: true)
+    attempt.observe(take(.recording), focusedEditor: "new editor")
+    attempt.observe(
+      take(.complete, terminal: delivered(editor: "old editor")), focusedEditor: "new editor")
     #expect(attempt.state == .missedBox(copiedToClipboard: false))
     #expect(attempt.success == nil)
 
-    attempt.observe(take(.recording, id: "next"), focused: false)
+    attempt.observe(take(.recording, id: "next"), focusedEditor: nil)
     attempt.observe(
-      take(.complete, id: "next", terminal: delivered(pasted: false, copied: true)),
-      focused: false)
+      take(.complete, id: "next", terminal: delivered(copied: true)), focusedEditor: nil)
     #expect(attempt.state == .missedBox(copiedToClipboard: true))
     #expect(attempt.success == nil)
   }
 
-  @Test("The editor may receive a posted paste after the take has concluded")
-  func delayedPaste() {
+  @Test("Cancellation, silence and failure remain distinct")
+  func terminalStates() {
     var attempt = SetupPracticeAttempt()
-    attempt.observe(take(.recording), focused: true)
-    let complete = take(.complete, terminal: delivered(pasted: true))
-    attempt.observe(complete, focused: true)
-    #expect(attempt.success == nil)
-    attempt.editorChanged(from: "", to: "My dictated words", take: complete, focused: true)
-    #expect(attempt.success == .completed(polished: true))
-  }
-
-  @Test("A cancelled or stale terminal does not overwrite the current attempt")
-  func cancelledAndStale() {
-    var attempt = SetupPracticeAttempt()
-    attempt.observe(take(.recording), focused: true)
-    attempt.observe(take(.idle, terminal: .cancelled), focused: true)
+    attempt.observe(take(.recording), focusedEditor: "editor")
+    attempt.observe(take(.idle, terminal: .cancelled), focusedEditor: "editor")
     #expect(attempt.state == .waiting)
-
-    attempt.observe(take(.recording, id: "next"), focused: true)
-    attempt.observe(take(.complete, terminal: delivered(pasted: true)), focused: true)
-    #expect(attempt.success == nil)
-    attempt.observe(take(.error(.asrInterrupted), id: "next", terminal: .failed), focused: true)
+    attempt.observe(take(.recording, id: "quiet"), focusedEditor: "editor")
+    attempt.observe(take(.idle, id: "quiet", terminal: .noSpeech), focusedEditor: "editor")
+    #expect(attempt.state == .noSpeech)
+    attempt.observe(take(.recording, id: "next"), focusedEditor: "editor")
+    attempt.observe(
+      take(.error(.asrInterrupted), id: "next", terminal: .failed), focusedEditor: "editor")
     #expect(attempt.state == .pipelineFailed)
   }
 
@@ -74,7 +79,7 @@ struct SetupPracticeAttemptTests {
     SetupPracticeTake(id: id, phase: phase, locked: false, terminal: terminal)
   }
 
-  private func delivered(pasted: Bool, copied: Bool = false) -> PracticeTakeEvidence {
-    .delivered(text: "My dictated words", pasted: pasted, copied: copied, polished: true)
+  private func delivered(editor: String? = nil, copied: Bool = false) -> PracticeTakeEvidence {
+    .delivered(verifiedEditor: editor, copied: copied, polished: true)
   }
 }

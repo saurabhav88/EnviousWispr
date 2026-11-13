@@ -194,7 +194,10 @@ final class SetupScreenModel {
     let previous = state
     state = coordinator.state
     isPracticeUsable = coordinator.isPracticeUsable
-    if state.step != previous.step { routeEpoch &+= 1 }
+    if state.step != previous.step {
+      if previous.step == .practice { sources.practiceProgress?.reset() }
+      routeEpoch &+= 1
+    }
     updateDownloadsVisibility()
     let languageChanged = state.choices.languageMode != previous.choices.languageMode
     let onSpeechPair = state.step == .speechPick || state.step == .speechCompare
@@ -270,6 +273,7 @@ struct SetupScreenSources {
   /// its own view only.
   var filmPlayback: SetupFilmPlayback?
   var practice: SetupPracticeSources?
+  var practiceProgress: SetupPracticeProgress?
   var reportStarted: (@MainActor () -> Void)?
 }
 
@@ -332,8 +336,8 @@ struct SetupScreenRouter: View {
     case .gettingReady:
       SetupGateScreen(model: model, epoch: model.routeEpoch, screen: .gettingReady)
     case .practice:
-      if let sources = model.sources.practice {
-        SetupPracticeRoute(model: model, epoch: model.routeEpoch, sources: sources)
+      if let sources = model.sources.practice, let progress = model.sources.practiceProgress {
+        SetupPracticeRoute(model: model, epoch: model.routeEpoch, sources: sources, progress: progress)
       } else {
         SetupPlaceholder(step: .practice, chunk: "D6b")
       }

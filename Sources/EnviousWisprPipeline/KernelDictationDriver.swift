@@ -1114,10 +1114,10 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     guard let result = kernel.recordingOutcome, lastTakeID == practiceTakeID else { return nil }
     switch result {
     case .completed:
-      guard let text = kernel.deliveredTranscript else { return .failed }
+      guard kernel.deliveredTranscript != nil else { return .failed }
       let polish = outcome.polishTakeOutcome
       return .delivered(
-        text: outcome.practicePastedText ?? text, pasted: kernel.deliveryOutcome == .pasted,
+        verifiedEditor: outcome.practiceVerifiedEditor,
         copied: outcome.practiceCopiedToClipboard,
         polished: polish?.takeID == lastTakeID && polish?.result == .polished)
     case .discarded, .noSpeech, .asrEmptyDespiteAudio, .noTransport: return .noSpeech
@@ -1387,7 +1387,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
         outcome.polishDurationSeconds = 0
         outcome.pasteDurationSeconds = 0
         outcome.pasteResult = nil
-        outcome.practicePastedText = nil
+        outcome.practiceVerifiedEditor = nil
         outcome.practiceCopiedToClipboard = false
         // #1785: these are written only inside the auto-paste branch, so without
         // clearing them here an auto-copy or no-copy recording would file the

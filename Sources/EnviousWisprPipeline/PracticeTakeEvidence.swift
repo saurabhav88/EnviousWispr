@@ -1,7 +1,7 @@
-/// Read-only projection of the existing kernel terminal for Setup. Text stays in process and is
-/// used only to verify delivery to the practice editor, never to fill it or report telemetry.
+/// Read-only projection of the existing kernel terminal for Setup. A target identifier
+/// is available only when the paste owner verified the direct write to that editor.
 package enum PracticeTakeEvidence: Equatable {
-  case delivered(text: String, pasted: Bool, copied: Bool, polished: Bool)
+  case delivered(verifiedEditor: String?, copied: Bool, polished: Bool)
   case noSpeech
   case failed
   case cancelled

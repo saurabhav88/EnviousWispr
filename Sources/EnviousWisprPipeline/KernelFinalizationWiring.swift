@@ -73,8 +73,8 @@ final class KernelFinalizationOutcome {
   var polishDurationSeconds: Double = 0
   var pasteDurationSeconds: Double = 0
   var pasteResult: PasteDeliveryResult?
-  /// The payload the delivery owner submitted, for in-process editor verification only.
-  var practicePastedText: String?
+  /// The exact local editor the direct paste wrote to, if verified. Never sent to telemetry.
+  var practiceVerifiedEditor: String?
   var practiceCopiedToClipboard = false
   /// #145: deterministic ITN run facts, threaded onto `dictation.completed`.
   /// Metadata only (`telemetry-privacy-boundary`). `itnFloorDelivered` is derived
@@ -1059,7 +1059,7 @@ struct KernelFinalizationWiring {
           let deliveredText =
             result.submittedPayload == .repaired
             ? (payloads.repairedText ?? pasteText) : pasteText
-          outcome.practicePastedText = deliveredText
+          outcome.practiceVerifiedEditor = result.verifiedPracticeEditor
           pasteCompletionRegistry?.emit(
             PasteCompletionEvent(
               pastedText: deliveredText,

@@ -104,6 +104,7 @@
       guard claim() else { return legacyBusy() }
       let session = ensureSession()
       session.screenSources.filmPlayback?.clear()  // a restarted flow plays its film from the top
+      session.screenSources.practiceProgress?.reset()
       if session.runtime.isRunning {
         session.runtime.reset()
       } else {
@@ -205,6 +206,7 @@
     /// The one way this door gives Setup back (stop, and completion through the session's
     /// observer): simulation is cleared first, so no override outlives the session (M60).
     func endOwnership() {
+      session?.screenSources.practiceProgress?.reset()
       presenter.dismiss()
       clearSimulation()
       workflow.releaseBackendSession()
@@ -347,6 +349,7 @@
         let steps = OnboardingStep.allCases.filter { $0 != .done }.map(\.rawValue)
         return .failure(.badArgs, "step must be one of: " + steps.joined(separator: ", "))
       }
+      session.screenSources.practiceProgress?.reset()
       session.coordinator.debugGoto(step)
       session.runtime.tick()
       return .ok(snapshot(extra: ["positioned": true]))
@@ -363,6 +366,9 @@
       session.coordinator.send(event)
       session.runtime.tick()
       let coordinator = session.coordinator
+      if before == .practice, coordinator.state.step != .practice {
+        session.screenSources.practiceProgress?.reset()
+      }
       let outcome: String
       if let refusal = coordinator.lastRefusal {
         outcome = "refused"
@@ -699,6 +705,7 @@
                 report: { [weak telemetry] result, seconds in
                   telemetry?.practiceReported(result, duration: seconds)
                 }),
+              practiceProgress: SetupPracticeProgress(),
               reportStarted: { [weak telemetry] in telemetry?.setupStarted() }),
             activateApp: { owners.application.activate(.standard) },
             downloadsPresentation: { [weak coordinator, weak runtime] in

@@ -3,6 +3,7 @@ import AppKit
 import EnviousWisprCore
 import EnviousWisprPipeline
 import EnviousWisprServices
+import Observation
 import SwiftUI
 
 struct SetupPracticeTake: Equatable {
@@ -25,70 +26,49 @@ struct SetupPracticeSources {
   var report: (SetupPracticeResult, TimeInterval) -> Void
 }
 
-/// The editor owns the visible text. The kernel owns whether a take concluded and what was
-/// delivered. History is not delivery evidence: a paste can succeed even if History fails.
-struct SetupPracticeAttempt {
-  private struct Start {
-    let id: String
-    let focused: Bool
-    var edits: [(before: String, after: String)] = []
-  }
+/// The backend session retains this across presenter destruction, but not a route or visit reset.
+@MainActor @Observable
+final class SetupPracticeProgress {
+  var text = ""
+  var attempt = SetupPracticeAttempt()
 
-  private var start: Start?
-  /// A posted paste can reach TextEditor after the terminal, as with a key-event paste.
-  /// Keep only the current take's expected text until the next take or route exit.
-  private var awaitingEditor: (id: String, text: String, polished: Bool)?
-  private var lastFinishedID: String?
+  func reset() {
+    text = ""
+    attempt = SetupPracticeAttempt()
+  }
+}
+
+/// Only a take-bound receipt from the synchronous, verified paste can establish success.
+struct SetupPracticeAttempt {
+  private var activeID: String?
+  private var expectedEditor: String?
   private(set) var state: SetupPracticeState = .waiting
   private(set) var result: SetupPracticeResult = .skipped
   private(set) var success: SetupPracticeResult?
 
-  mutating func editorChanged(
-    from before: String, to after: String, take: SetupPracticeTake,
-    focused: Bool
-  ) {
-    if focused, let pending = awaitingEditor, pending.id == take.id,
-      Self.received(pending.text, before: before, after: after)
-    {
-      awaitingEditor = nil
-      markSuccess(polished: pending.polished)
-      return
-    }
-    guard focused, start?.focused == true, start?.id == take.id, before != after,
-      take.phase == .transcribing || take.phase == .polishing || take.phase == .complete
-    else { return }
-    start?.edits.append((before, after))
+  mutating func detachEditor() {
+    activeID = nil
+    expectedEditor = nil
   }
 
-  mutating func lostEditorFocus() {
-    awaitingEditor = nil
-  }
-
-  mutating func observe(_ take: SetupPracticeTake, focused: Bool, mounted: Bool = false) {
+  mutating func observe(_ take: SetupPracticeTake, focusedEditor: String?) {
     if take.phase.isActive {
-      guard take.id != lastFinishedID else { return }
-      if start?.id != take.id {
-        awaitingEditor = nil
-        // A take already running at mount chose its target before this editor existed.
-        start = Start(id: take.id, focused: focused && !mounted)
+      if activeID != take.id {
+        activeID = take.id
+        expectedEditor = focusedEditor
       }
       return
     }
-    guard let terminal = take.terminal, let attempt = start, attempt.id == take.id else {
-      return
-    }
-    start = nil
-    lastFinishedID = take.id
+    guard let terminal = take.terminal, activeID == take.id else { return }
+    let editor = expectedEditor
+    detachEditor()
     switch terminal {
-    case .delivered(let text, let pasted, let copied, let polished):
-      if pasted,
-        attempt.edits.contains(where: { Self.received(text, before: $0.before, after: $0.after) })
-      {
-        markSuccess(polished: polished)
+    case .delivered(let verifiedEditor, let copied, let polished):
+      if let editor, verifiedEditor == editor {
+        success = .completed(polished: polished)
+        state = .worked
+        result = .completed(polished: polished)
       } else {
-        if pasted, attempt.focused, focused {
-          awaitingEditor = (take.id, text, polished)
-        }
         state = .missedBox(copiedToClipboard: copied)
         result = .missedBox
       }
@@ -102,42 +82,16 @@ struct SetupPracticeAttempt {
       break
     }
   }
-
-  private mutating func markSuccess(polished: Bool) {
-    let completed = SetupPracticeResult.completed(polished: polished)
-    success = completed
-    state = .worked
-    result = completed
-  }
-
-  /// A normal editor paste replaces one contiguous range. Require the delivered text itself
-  /// and preserve the original prefix and suffix. This also works when the user selected text.
-  static func received(_ text: String, before: String, after: String) -> Bool {
-    guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, after != before else {
-      return false
-    }
-    var lower = after.startIndex
-    while let match = after.range(of: text, options: .literal, range: lower..<after.endIndex) {
-      let prefix = after[..<match.lowerBound]
-      let suffix = after[match.upperBound...]
-      if before.count >= prefix.count + suffix.count,
-        before.hasPrefix(prefix), before.hasSuffix(suffix)
-      {
-        return true
-      }
-      lower = after.index(after: match.lowerBound)
-    }
-    return false
-  }
 }
 
 struct SetupPracticeRoute: View {
   let model: SetupScreenModel
   let epoch: Int
   let sources: SetupPracticeSources
+  @Bindable var progress: SetupPracticeProgress
 
-  @State private var text = ""
-  @State private var attempt = SetupPracticeAttempt()
+  @State private var editorID = PasteService.practiceEditorIdentifierPrefix + UUID().uuidString
+  private var attempt: SetupPracticeAttempt { progress.attempt }
   @State private var editorFocused = false
   @State private var window = EGOneHostWindow()
   @State private var entered = Date()
@@ -149,7 +103,7 @@ struct SetupPracticeRoute: View {
     let take = sources.live.practiceTake
     let state = displayed(take)
     SetupPracticeScreen(
-      state: state, text: Binding(get: { text }, set: edit),
+      state: state, text: $progress.text,
       hasSucceeded: attempt.success != nil, key: key,
       polish: (model.state.choices.polish ?? OnboardingChoices.polishOff)
         == OnboardingChoices.polishOff ? .off : .live,
@@ -158,20 +112,19 @@ struct SetupPracticeRoute: View {
       onSkip: { finish(.skipPractice) },
       onBack: { if isCurrent && !sources.live.isDictationActive { model.send(.back) } },
       onOpenPermissions: openPermissions,
-      onFocusChange: { focused in
-        editorFocused = focused
-        if !focused { attempt.lostEditorFocus() }
-      }
+      onFocusChange: { editorFocused = $0 },
+      editorIdentifier: editorID
     )
     .background(EGOneHostWindowReader(host: window).allowsHitTesting(false))
     .onAppear {
       entered = Date()
-      attempt.observe(take, focused: false, mounted: true)
+      progress.attempt.detachEditor()
+      progress.attempt.observe(take, focusedEditor: nil)
       model.screenMounted(.practice, epoch: epoch)
     }
     .onChange(of: take) { _, next in
       guard isCurrent else { return }
-      attempt.observe(next, focused: editorOwnsFocus)
+      progress.attempt.observe(next, focusedEditor: editorOwnsFocus ? editorID : nil)
     }
   }
 
@@ -195,12 +148,6 @@ struct SetupPracticeRoute: View {
       if !permissions.accessibilityAllowed() { return .accessibilityOff }
     }
     return model.isPracticeUsable ? attempt.state : .preparing
-  }
-
-  private func edit(_ value: String) {
-    let take = sources.live.practiceTake
-    attempt.editorChanged(from: text, to: value, take: take, focused: editorOwnsFocus)
-    text = value
   }
 
   private func finish(_ event: OnboardingEvent) {

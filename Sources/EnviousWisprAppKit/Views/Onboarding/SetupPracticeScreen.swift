@@ -111,6 +111,7 @@ struct SetupPracticeScreen: View {
   let onBack: () -> Void
   let onOpenPermissions: () -> Void
   var onFocusChange: (Bool) -> Void = { _ in }
+  var editorIdentifier: String = "Your first dictation"
   @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
   @Environment(\.overlayReduceMotionOverride) private var reduceMotionOverride
   private var reduceMotion: Bool { reduceMotionOverride ?? systemReduceMotion }
@@ -237,6 +238,7 @@ struct SetupPracticeScreen: View {
       }
       .focused($editorFocused)
       .accessibilityLabel("Your first dictation")
+      .accessibilityIdentifier(editorIdentifier)
   }
 
   private var footer: some View {
