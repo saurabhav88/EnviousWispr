@@ -35,6 +35,38 @@ struct MeetingDocumentsStoreTests {
     #expect(!FileManager.default.fileExists(atPath: store.notesURL(for: record.id).path))
   }
 
+  /// #3147 PR4A (D5): the summary links' file is written beside the summary, removed by a nil
+  /// save, kept by Delete audio, gone with the meeting, and never written for a deleting one.
+  @Test("summary references save, load, remove and refuse a deleting meeting")
+  func summaryReferencesFile() throws {
+    let (store, record) = try makeMeeting()
+    #expect(try store.loadSummaryReferences(meeting: record.id) == nil, "none at first")
+    let bytes = Data("{\"version\":1}".utf8)
+    try store.saveSummaryReferences(bytes, meeting: record.id)
+    #expect(try store.loadSummaryReferences(meeting: record.id) == bytes)
+    #expect(
+      store.summaryReferencesURL(for: record.id).deletingLastPathComponent()
+        == store.summaryURL(for: record.id).deletingLastPathComponent(),
+      "it sits beside summary.md")
+
+    try store.deleteAudio(meeting: record.id)
+    #expect(try store.loadSummaryReferences(meeting: record.id) == bytes, "Delete audio keeps it")
+
+    try store.saveSummaryReferences(nil, meeting: record.id)
+    #expect(try store.loadSummaryReferences(meeting: record.id) == nil, "nil removes it")
+    try store.saveSummaryReferences(nil, meeting: record.id)  // removing nothing is fine
+
+    var deleting = record
+    deleting.deletionRequested = true
+    try store.save(deleting)
+    #expect(throws: MeetingStore.DocumentError.meetingDeleting) {
+      try store.saveSummaryReferences(bytes, meeting: record.id)
+    }
+    #expect(try store.loadSummaryReferences(meeting: record.id) == nil)
+    try store.deleteFolder(meeting: record.id)
+    #expect(!FileManager.default.fileExists(atPath: store.summaryReferencesURL(for: record.id).path))
+  }
+
   @Test("a save never recreates a deleted or deleting meeting")
   func refusesGoneMeetings() throws {
     let (store, record) = try makeMeeting()

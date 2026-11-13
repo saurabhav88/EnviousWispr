@@ -11,7 +11,7 @@ import UniformTypeIdentifiers
 /// with Follow playback and Rename speaker; and the 88 pt docked player with note markers and
 /// Participants. Below 800 pt the left pane stacks above the transcript; the dock stays.
 ///
-/// **What it keeps from the legacy detail (`MeetingHistoryDetailView`)**, every row of the
+/// **What it keeps from the legacy detail (`MeetingHistoryDetailView`, removed in PR4A)**, every row of the
 /// brief's acceptance matrix:
 /// - The meeting is re-read by `meetingID` on every render and action. A committed transcript
 ///   stays shown while Transcribe again runs, waits or fails; loading is told apart from a
@@ -847,12 +847,22 @@ extension HistoryMeetingAfterView {
           meetingID: meetingID, notes: notes, snapshot: snapshot,
           highlightedNoteID: highlightedNoteID,
           onSeek: { ms in player?.seek(toMs: ms) },
-          playbackMs: { player?.positionMs })
+          playbackMs: { notesClockMs() })
       case .summary:
         summaryPane(
           record, snapshot: snapshot, visibleTurnIDs: visibleTurnIDs, proxy: proxy)
       }
     }
+  }
+
+  /// #3147 PR4A: where a new note block starts on the meeting timeline (plan §3.6). While this
+  /// meeting records, the time since it started; after Stop, the playback position; else
+  /// unknown.
+  @MainActor fileprivate func notesClockMs() -> Int? {
+    if case .recording(let id, let startedAt) = meetings.phase, id == meetingID {
+      return max(0, Int(Date().timeIntervalSince(startedAt) * 1000))
+    }
+    return player?.positionMs
   }
 
   @ViewBuilder

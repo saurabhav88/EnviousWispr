@@ -2,9 +2,8 @@ import SwiftUI
 
 /// Play, Pause, the scrubber and the clock for one meeting's recording (#4001 step 2b-A). The
 /// position and state are read HERE, so a playback tick (about four a second) re-renders these
-/// controls only, not the meeting's transcript. The player stays owned by
-/// `MeetingHistoryDetailView`, so audio keeps playing across its tabs; that view keys these
-/// controls by the player's identity, so a new player starts with no scrub in progress.
+/// controls only, not the transcript. The host owns the player and keys these controls by the
+/// player's identity, so a new player starts with no scrub in progress.
 struct MeetingPlaybackControls: View {
   let player: MeetingPlaybackController
   /// #3147: the Play button's accessibility identifier; History's dictation recording reuses

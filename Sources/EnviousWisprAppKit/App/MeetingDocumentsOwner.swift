@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprLLM
 import EnviousWisprStorage
 import Foundation
 import Observation
@@ -77,6 +78,10 @@ final class MeetingDocumentsOwner {
     var summarySaveFailed = false
     /// The meeting's saved facts (#4286), as last read or written; nil when none were read.
     var context: MeetingContext?
+    /// #3147 PR4A (D5): the summary's reference document as last read or written; nil when
+    /// there is none or it cannot be read. Never trusted alone: the reference validator checks
+    /// it against the summary shown.
+    var summaryReferences: MeetingSummaryDocument?
   }
 
   /// What `ensureNotesDurable` found.
@@ -125,6 +130,10 @@ final class MeetingDocumentsOwner {
     return MeetingNotesDocument(version: document.version, blocks: [MeetingNoteBlock(text: "")])
   }
   func summary(_ meetingID: UUID) -> String? { entries[meetingID]?.summary }
+  /// #3147 PR4A (D5): the saved reference document, unchecked (see `Entry.summaryReferences`).
+  func summaryReferences(_ meetingID: UUID) -> MeetingSummaryDocument? {
+    entries[meetingID]?.summaryReferences
+  }
   func manifest(_ meetingID: UUID) -> MeetingDocumentsManifest? { entries[meetingID]?.manifest }
   func loadState(_ meetingID: UUID) -> LoadState { entries[meetingID]?.load ?? .notLoaded }
 
@@ -210,14 +219,17 @@ final class MeetingDocumentsOwner {
     // #4286: the facts are read in the same file operation; an absent or unreadable
     // `context.json` reads as no facts and never fails the documents.
     let read = await perform(meetingID, counted: false) {
-      store -> (Result<MeetingStore.LoadedDocuments, any Error>, MeetingContext?) in
+      store -> (Result<MeetingStore.LoadedDocuments, any Error>, MeetingContext?, Data?) in
       let context: MeetingContext?
       if case .loaded(let loaded) = store.loadContext(meeting: meetingID) {
         context = loaded
       } else {
         context = nil
       }
-      return (Result { try store.loadDocuments(meeting: meetingID) }, context)
+      // #3147 PR4A (D5): an unreadable reference file reads as none: no links, never a
+      // failed load.
+      let references = (try? store.loadSummaryReferences(meeting: meetingID)) ?? nil
+      return (Result { try store.loadDocuments(meeting: meetingID) }, context, references)
     }
     await deps.afterDocumentsRead()
     guard generation(meetingID) == gen, var entry = entries[meetingID] else { return }
@@ -225,8 +237,9 @@ final class MeetingDocumentsOwner {
     switch read {
     case .failure(let error):
       result = .failure(error)
-    case .success(let (documents, context)):
+    case .success(let (documents, context, references)):
       result = documents
+      entry.summaryReferences = references.flatMap(MeetingSummaryReferences.decode)
       // A fact save that finished while this read was on its way already holds the newest
       // saved facts (it rereads the file after appending): never replace them with this read.
       if entry.context == nil { entry.context = context }
@@ -524,6 +537,37 @@ final class MeetingDocumentsOwner {
         entries[meetingID] = entry
       }
       return outcome
+    }
+  }
+
+  /// #3147 PR4A (D5): saves the reference document of the generated summary just saved, or
+  /// removes an older one (nil). False when the meeting was deleted or the write failed: the
+  /// summary stays readable with no links.
+  func saveSummaryReferences(_ meetingID: UUID, _ document: MeetingSummaryDocument?) async -> Bool
+  {
+    guard !forgotten.contains(meetingID) else { return false }
+    let data: Data?
+    if let document {
+      guard let encoded = try? MeetingSummaryReferences.encode(document) else { return false }
+      data = encoded
+    } else {
+      data = nil
+    }
+    let gen = generation(meetingID)
+    let result = await perform(meetingID) {
+      try $0.saveSummaryReferences(data, meeting: meetingID)
+    }
+    guard generation(meetingID) == gen else { return false }
+    switch result {
+    case .failure(let error):
+      deps.log("meeting summary references save failed error=\(type(of: error))")
+      return false
+    case .success:
+      if var entry = entries[meetingID] {
+        entry.summaryReferences = document
+        entries[meetingID] = entry
+      }
+      return true
     }
   }
 

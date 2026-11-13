@@ -34,7 +34,7 @@ struct ValidatedMeetingSummarySource: Equatable, Sendable {
 @MainActor
 final class MeetingSummaryReferenceValidator: MeetingSummaryReferencing {
   struct Dependencies {
-    /// The saved reference document (`MeetingSummaryReferences.sidecarFileName`), decoded with
+    /// The saved reference document (`MeetingStore.summaryReferencesFileName`), decoded with
     /// `MeetingSummaryReferences.decode`; nil when there is none or it cannot be read.
     var storedDocument: @MainActor (UUID) -> MeetingSummaryDocument?
     /// The saved summary's manifest entry (`documents.json` `summary`).

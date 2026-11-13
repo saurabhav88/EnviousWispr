@@ -106,6 +106,46 @@ struct MeetingDocumentsOwnerTests {
     await coordinator.stop(reason: .user)
   }
 
+  /// #3147 PR4A (D5): the owner saves the summary links' document through the meeting's
+  /// writer, a fresh owner reads it back with the documents, a damaged file reads as none (no
+  /// links, never a failed load), and nil removes it.
+  @Test("summary references: saved, read back on load, damaged reads as none, nil removes")
+  func summaryReferences() async throws {
+    let harness = try Harness()
+    let coordinator = Self.coordinator(harness)
+    await coordinator.start(from: .menu)
+    let meetingID = try #require(coordinator.meetings.first?.id)
+    await coordinator.documents.load(meetingID)
+    let inputs = SummaryInputs(
+      transcriptSHA256: "t", notesRevision: 0, speakerNamesSHA256: "s", promptVersion: 6,
+      providerID: "appleIntelligence", configurationSHA256: "c")
+    let document = MeetingSummaryDocument(
+      inputs: inputs, renderedMarkdownSHA256: "m",
+      sections: [
+        MeetingSummarySection(
+          id: UUID(), title: "Decisions",
+          items: [MeetingSummaryItem(id: UUID(), text: "Ship Friday", citations: [])])
+      ])
+
+    #expect(await coordinator.documents.saveSummaryReferences(meetingID, document))
+    #expect(coordinator.documents.summaryReferences(meetingID) == document)
+    #expect(FileManager.default.fileExists(atPath: harness.store.summaryReferencesURL(for: meetingID).path))
+
+    let fresh = Self.coordinator(harness)
+    await fresh.documents.load(meetingID)
+    #expect(fresh.documents.summaryReferences(meetingID) == document, "read back with the documents")
+
+    try Data("not json".utf8).write(to: harness.store.summaryReferencesURL(for: meetingID))
+    let damaged = Self.coordinator(harness)
+    #expect(await damaged.documents.load(meetingID), "a damaged file never fails the load")
+    #expect(damaged.documents.summaryReferences(meetingID) == nil)
+
+    #expect(await coordinator.documents.saveSummaryReferences(meetingID, nil))
+    #expect(coordinator.documents.summaryReferences(meetingID) == nil)
+    #expect(!FileManager.default.fileExists(atPath: harness.store.summaryReferencesURL(for: meetingID).path))
+    await coordinator.stop(reason: .user)
+  }
+
   @Test("typed notes hold a relaunch: during the first read, the debounce and the write")
   func relaunchWaitsForNotes() async throws {
     let harness = try Harness()

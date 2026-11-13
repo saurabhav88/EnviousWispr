@@ -24,6 +24,9 @@ extension MeetingStore {
   public static let notesDocumentFileName = "notes.json"
   public static let summaryFileName = "summary.md"
   public static let documentsFileName = "documents.json"
+  /// #3147 PR4A (D5): the summary's reference document, beside `summary.md`. Delete audio keeps
+  /// it; Delete meeting removes it with the folder.
+  public static let summaryReferencesFileName = "summary-references.json"
 
   public enum DocumentError: Error, Equatable {
     /// The meeting's folder or `meeting.json` is gone.
@@ -250,6 +253,29 @@ extension MeetingStore {
     try Self.atomicWrite(Data(text.utf8), to: summaryURL(for: id))
     try writeManifest(next, meeting: id)
     return next
+  }
+
+  public func summaryReferencesURL(for id: UUID) -> URL {
+    folder(for: id).appendingPathComponent(Self.summaryReferencesFileName)
+  }
+
+  /// #3147 PR4A (D5): the saved reference document's bytes, or nil when there is none.
+  public func loadSummaryReferences(meeting id: UUID) throws -> Data? {
+    try Self.readData(summaryReferencesURL(for: id))
+  }
+
+  /// #3147 PR4A (D5): writes the reference document for the summary just saved, or removes an
+  /// older one when `data` is nil. Refused like every document write (meeting gone, being
+  /// deleted, newer build). The reader checks the document against the shown summary, so a
+  /// document left from an older summary only ever means no links.
+  public func saveSummaryReferences(_ data: Data?, meeting id: UUID) throws {
+    try refuseDocumentWrite(id)
+    let url = summaryReferencesURL(for: id)
+    if let data {
+      try Self.atomicWrite(data, to: url)
+    } else if FileManager.default.fileExists(atPath: url.path) {
+      try FileManager.default.removeItem(at: url)
+    }
   }
 
   /// What `saveGeneratedSummary` did.

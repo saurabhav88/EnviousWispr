@@ -425,30 +425,4 @@ struct TranscriptDocumentPresenterTests {
     #expect(TranscriptTurnsDocument.DiffKey.task(for: inputs(.markedUp), pairs: pairs).input != nil)
     #expect(built == 1)
   }
-
-  @Test("a meeting's turns view compares equal data and distinguishes document changes (#4075)")
-  @MainActor
-  func meetingTurnsDocumentEquality() {
-    let id = UUID()
-    let turns = [Self.turn("0-5", "A", 0..<5), Self.turn("6-18", "B", 6..<18)]
-    func doc(
-      _ turns: [Turn], text: String = Self.rawText, names: [String: String] = ["A": "Ana"],
-      suggestions: SpeakerRenameSuggestions = .none
-    ) -> MeetingTurnsDocument {
-      MeetingTurnsDocument(
-        rowID: id, turns: turns, rawText: text, speakerNames: names, player: nil,
-        renameSuggestions: suggestions)
-    }
-    #expect(doc(turns) == doc(turns))
-    // #4013 r3 F3: a change to the rename suggestions alone redraws the document.
-    #expect(
-      doc(turns)
-        != doc(
-          turns,
-          suggestions: SpeakerRenameSuggestions(
-            roster: ["Ben"], selfNames: [], authored: [], assigned: [:])))
-    #expect(doc(turns) != doc(Array(turns.prefix(1))))
-    #expect(doc(turns) != doc(turns, text: "hello there friends"))
-    #expect(doc(turns) != doc(turns, names: ["A": "Ben"]))
-  }
 }

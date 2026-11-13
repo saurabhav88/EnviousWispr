@@ -38,3 +38,11 @@ protocol MeetingSummaryReferencing: AnyObject {
   /// The sources a summary item may link to, only when the validator accepted them now.
   func validatedSource(for itemID: UUID, meetingID: UUID) -> ValidatedMeetingSummarySource?
 }
+
+/// #3147 PR4A: no summary links, for a meeting screen built without the app's validator.
+final class NoMeetingSummaryReferences: MeetingSummaryReferencing {
+  func document(for meetingID: UUID) -> MeetingSummaryDocument? { nil }
+  func validatedSource(for itemID: UUID, meetingID: UUID) -> ValidatedMeetingSummarySource? {
+    nil
+  }
+}

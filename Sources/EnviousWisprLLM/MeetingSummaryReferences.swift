@@ -79,9 +79,6 @@ public enum MeetingSummaryReferences {
   /// `MeetingSummary.promptVersion`.
   public static let promptVersion = 6
 
-  /// The file beside `summary.md` that holds the reference document.
-  public static let sidecarFileName = "summary-references.json"
-
   // MARK: - Qualification
 
   /// The routes whose reference output was qualified on real runs (receipt: the #3147 PR4A

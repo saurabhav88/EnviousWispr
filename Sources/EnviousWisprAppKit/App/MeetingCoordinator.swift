@@ -501,6 +501,9 @@ final class MeetingCoordinator {
   let documents: MeetingDocumentsOwner
   /// Writes each ready meeting's summary (#3972 R39). Set by `MeetingWiring`; nil writes none.
   var summaries: MeetingSummaryOwner?
+  /// #3147 PR4A (D5): checks the summary links History shows. Set by `MeetingWiring`; nil
+  /// shows none.
+  var summaryReferences: (any MeetingSummaryReferencing)?
 
   /// The final pass waits for a meeting summary call, not for dictation (R50).
   var passWaitsOnSummary: Bool {
