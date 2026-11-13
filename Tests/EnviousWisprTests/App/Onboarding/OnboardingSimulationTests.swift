@@ -69,6 +69,37 @@
       #expect(events.requests == 0)
     }
 
+    @Test("a simulated Accessibility request never reaches the macOS prompt; a real one does")
+    func accessibilityPromptIsIntercepted() {
+      let calls = Calls()
+      var prompts = 0
+      let service = PermissionsService(
+        accessibilityReader: { false }, microphoneReader: { .denied },
+        microphoneRequester: { false },
+        openMicrophoneSettings: { calls.opened.append($0) },
+        accessibilityPrompter: {
+          prompts += 1
+          return false
+        },
+        calendarReader: { .notAsked })
+      let actions = SetupPermissionsActions.live(service)
+      service.simulated = .init(microphone: .authorized, accessibility: false)
+      actions.accessibility(false)  // Setup's first press: the macOS alert
+      actions.accessibility(true)  // a repeat press: the Accessibility pane
+      _ = service.requestAccessibilityAccess()
+      service.openAccessibilitySettings()
+      #expect(prompts == 0, "a simulated request showed the real macOS prompt")
+      #expect(calls.opened.isEmpty, "a simulated request opened System Settings")
+      // Two-way control: the same presses with the simulation off reach the real calls.
+      service.simulated = nil
+      actions.accessibility(false)
+      actions.accessibility(true)
+      #expect(prompts == 1)
+      #expect(
+        calls.opened.map(\.absoluteString)
+          == ["x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"])
+    }
+
     @Test("a faked Mac changes advice only, field by field")
     func profileOverride() {
       let real = MacProfile(

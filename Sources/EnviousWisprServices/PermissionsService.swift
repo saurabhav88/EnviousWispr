@@ -56,6 +56,11 @@ public final class PermissionsService {
   /// `NSWorkspace` call.
   private let openMicrophoneSettings: @MainActor (URL) -> Void
 
+  /// #4528 M81: injected so tests can count the real Accessibility prompt (and prove a simulated
+  /// request never reaches it); defaults to the system call that shows the macOS alert and lists
+  /// the app in Privacy & Security, Accessibility.
+  private let accessibilityPrompter: () -> Bool
+
   /// #2549: injected so tests can drive the monitor loop through several real
   /// ticks in milliseconds instead of `TimingConstants.accessibilityPollIntervalSec`;
   /// defaults to that same production value.
@@ -70,6 +75,10 @@ public final class PermissionsService {
       await AVCaptureDevice.requestAccess(for: .audio)
     },
     openMicrophoneSettings: @escaping @MainActor (URL) -> Void = { NSWorkspace.shared.open($0) },
+    accessibilityPrompter: @escaping () -> Bool = {
+      AXIsProcessTrustedWithOptions(
+        ["AXTrustedCheckOptionPrompt" as CFString: true as CFBoolean] as CFDictionary)
+    },
     calendarReader: @escaping () -> CalendarAccess.Status = { CalendarAccess.status() },
     permissionPollIntervalNanoseconds: UInt64 = UInt64(
       TimingConstants.accessibilityPollIntervalSec * 1_000_000_000)
@@ -78,6 +87,7 @@ public final class PermissionsService {
     self.microphoneReader = microphoneReader
     self.microphoneRequester = microphoneRequester
     self.openMicrophoneSettings = openMicrophoneSettings
+    self.accessibilityPrompter = accessibilityPrompter
     self.calendarReader = calendarReader
     self.permissionPollIntervalNanoseconds = permissionPollIntervalNanoseconds
     microphoneStatus = microphoneReader()
@@ -207,6 +217,19 @@ public final class PermissionsService {
     openMicrophoneSettings(url)
   }
 
+  /// #4528 M81: opens System Settings on Privacy & Security, Accessibility, where the switch for
+  /// EnviousWispr lives. Only on an explicit user action (Setup's second Open Settings press); it
+  /// grants nothing by itself. Opens nothing while simulated. NOT VERIFIED on hardware until #4528
+  /// Live UAT checks the pane anchor.
+  public func openAccessibilitySettings() {
+    if isSimulated { return }
+    guard
+      let url = URL(
+        string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+    else { return }
+    openMicrophoneSettings(url)
+  }
+
   /// #4017: opens System Settings on Privacy & Security, Calendars, where EnviousMeet's calendar
   /// access is allowed. Only on an explicit user action. NOT VERIFIED on hardware until #4017
   /// Live UAT checks the pane anchor.
@@ -243,11 +266,7 @@ public final class PermissionsService {
       accessibilityGranted = readAccessibility()
       return accessibilityGranted
     }
-    let options =
-      [
-        "AXTrustedCheckOptionPrompt" as CFString: true as CFBoolean
-      ] as CFDictionary
-    let trusted = AXIsProcessTrustedWithOptions(options)
+    let trusted = accessibilityPrompter()
     accessibilityGranted = trusted
     TelemetryService.shared.permissionStatus(
       permission: "accessibility", status: trusted ? "granted" : "denied", context: "request")
