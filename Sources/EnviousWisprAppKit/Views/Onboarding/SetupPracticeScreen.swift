@@ -232,8 +232,8 @@ struct SetupPracticeScreen: View {
       }
       .background {
         SetupPracticeEditorFocus(
-          canFocus: state.acceptsFocus && !state.inFlight,
-          retryAfterMiss: isMissedBox, mayFocusNow: mayFocusEditor
+          canFocus: state.acceptsFocus,
+          mayFocusNow: { !state.inFlight && mayFocusEditor() }
         )
         .frame(width: 0, height: 0)
         .accessibilityHidden(true)
@@ -241,11 +241,6 @@ struct SetupPracticeScreen: View {
       .focused($editorFocused)
       .accessibilityLabel("Your first dictation")
       .accessibilityIdentifier(editorIdentifier)
-  }
-
-  private var isMissedBox: Bool {
-    if case .missedBox = state { return true }
-    return false
   }
 
   private var footer: some View {

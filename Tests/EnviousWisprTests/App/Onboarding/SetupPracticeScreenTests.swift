@@ -104,6 +104,14 @@ struct SetupPracticeScreenTests {
     await drainFocusRequest()
     #expect(window.firstResponder === textEditor(in: host))
 
+    host.rootView = screen(.transcribing)
+    host.layoutSubtreeIfNeeded()
+    window.makeFirstResponder(nil)
+    host.rootView = screen(.missedBox(copiedToClipboard: false))
+    host.layoutSubtreeIfNeeded()
+    await drainFocusRequest()
+    #expect(window.firstResponder !== textEditor(in: host))
+
     host.rootView = screen(.accessibilityOff)
     host.layoutSubtreeIfNeeded()
     window.makeFirstResponder(nil)

@@ -55,25 +55,10 @@ struct SetupWindowRootTests {
     }
   }
 
-  @Test("Reduce Motion removes the screen animation; the shell paints the same either way")
+  @Test("Reduce Motion removes the Setup screen animation")
   func reduceMotionPath() {
     #expect(SetupWindowRoot.screenAnimation(reduceMotion: true) == nil)
     #expect(SetupWindowRoot.screenAnimation(reduceMotion: false) == DesignMotion.firstRunScreenIn)
-  }
-
-  private static func pixels(_ view: some View, reduceMotion: Bool) throws -> Data {
-    let size = CGSize(width: SetupLayout.windowWidth, height: SetupLayout.contentHeight)
-    let host = NSHostingView(
-      rootView: AnyView(view.environment(\.overlayReduceMotionOverride, reduceMotion)))
-    host.frame = NSRect(origin: .zero, size: size)
-    let window = NSWindow(
-      contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
-    window.contentView = host
-    host.layoutSubtreeIfNeeded()
-    window.displayIfNeeded()
-    let rep = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
-    host.cacheDisplay(in: host.bounds, to: rep)
-    return try #require(rep.representation(using: .png, properties: [:]))
   }
 
   @Test("only the current route's mounted real screen, in a visible window, reports a presentation")

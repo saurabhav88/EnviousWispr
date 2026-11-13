@@ -4,27 +4,24 @@ import SwiftUI
 /// Requests keyboard focus once the actual Practice editor and its key window are both present.
 struct SetupPracticeEditorFocus: NSViewRepresentable {
   let canFocus: Bool
-  let retryAfterMiss: Bool
   let mayFocusNow: @MainActor () -> Bool
 
   func makeNSView(context: Context) -> Probe { Probe() }
 
   func updateNSView(_ probe: Probe, context: Context) {
-    probe.configure(canFocus: canFocus, retryAfterMiss: retryAfterMiss, mayFocusNow: mayFocusNow)
+    probe.configure(canFocus: canFocus, mayFocusNow: mayFocusNow)
   }
 
   final class Probe: NSView {
     private var canFocus = false
-    private var retryAfterMiss = false
     private var mayFocusNow: @MainActor () -> Bool = { false }
     private var requestQueued = false
 
     func configure(
-      canFocus: Bool, retryAfterMiss: Bool, mayFocusNow: @escaping @MainActor () -> Bool
+      canFocus: Bool, mayFocusNow: @escaping @MainActor () -> Bool
     ) {
-      let request = canFocus && (!self.canFocus || (retryAfterMiss && !self.retryAfterMiss))
+      let request = canFocus && !self.canFocus
       self.canFocus = canFocus
-      self.retryAfterMiss = retryAfterMiss
       self.mayFocusNow = mayFocusNow
       if request { requestFocus() }
     }
