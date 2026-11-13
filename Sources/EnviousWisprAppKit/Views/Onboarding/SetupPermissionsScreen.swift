@@ -72,6 +72,12 @@ struct SetupPermissionsScreen: View {
       }
       Spacer(minLength: 0)
       footer
+      // Visible way back (D6, orchestrator D4b r0): a mouse-only person on a Mac whose
+      // microphone is restricted by management cannot turn it on and must not be stuck here.
+      // Escape triggers the same link.
+      SetupLinkButton(title: "Back", quiet: true, action: onBack)
+        .keyboardShortcut(.cancelAction)
+        .padding(.top, DesignSpacing.xs)
     }
     .padding(.top, DesignSpacing.xs)
     .onChange(of: microphone) { old, new in
@@ -242,14 +248,13 @@ struct SetupPermissionsScreen: View {
     .frame(height: SetupMetrics.linksHeight)
     .padding(.top, DesignSpacing.xl)
     .background {
-      // The mockup shows no Back or Continue control here: Return continues once both are on (the
-      // flow refuses it before), Escape goes back. Kept out of sight and out of the pointer's way.
+      // The mockup shows no Continue control here: Return continues once both are on (the flow
+      // refuses it before). Kept out of sight and out of the pointer's way; Back is the visible
+      // link below.
       Group {
         Button("Continue", action: onContinue)
           .keyboardShortcut(.defaultAction)
           .disabled(!both)
-        Button("Back", action: onBack)
-          .keyboardShortcut(.cancelAction)
       }
       .opacity(0)
       .allowsHitTesting(false)

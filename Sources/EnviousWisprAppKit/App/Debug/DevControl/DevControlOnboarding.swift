@@ -632,7 +632,20 @@
                 },
                 monitor: owners.setupShortcutMonitor,
                 suspendHotkeys: { owners.dictationRuntime.suspendHotkeys() },
-                resumeHotkeys: { owners.dictationRuntime.resumeHotkeys() })),
+                resumeHotkeys: { owners.dictationRuntime.resumeHotkeys() }),
+              permissions: SetupPermissionsSources(
+                microphone: { owners.permissions.microphoneStatusLive },
+                accessibilityAllowed: { owners.permissions.accessibilityGrantedLive },
+                dictationKey: {
+                  // The same spoken name the key screen reads for this binding.
+                  let record = owners.settings.shortcutBindings.record
+                  switch record {
+                  case .keyboard(let code, _):
+                    return KeySymbols.accessibilityDescription(
+                      keyCode: code, modifiers: record.requiredModifiers)
+                  }
+                },
+                actions: .live(owners.permissions))),
             activateApp: { owners.application.activate(.standard) },
             resolveInstalled: {
               let read = OnboardingLiveMapping.downloadOwners(owners, facts: facts)

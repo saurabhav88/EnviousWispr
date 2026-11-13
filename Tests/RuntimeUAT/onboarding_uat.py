@@ -1224,6 +1224,100 @@ def s_screens_d5(run, speech):
     return s
 
 
+def s_screens_d4b(run, speech):
+    """D4b integration: the Permissions screen reached with real events, every state driven by
+    the DEBUG permission simulation (no macOS prompt, no System Settings pane, no permission
+    telemetry): not asked, microphone allowed, a row waiting for System Settings, both allowed
+    (the flow's own auto-advance to the key screen) and microphone turned off. A real OS grant is
+    clean-Mac UAT."""
+    from ui_helpers import get_attr, perform_action
+    s = Scenario("screens_d4b")
+    pid = run.app.client.pid
+    shots = os.path.join(run.artifacts, "shots")
+    os.makedirs(shots, exist_ok=True)
+    before = run.app.call("settings", "get", "appearance").get("value")
+
+    def shot(name):
+        wid = window_id(pid, "Setup")
+        path = os.path.join(shots, f"d4b-{name}.png")
+        s.expect(wid is not None and capture_window(wid, path), f"captured {name}", path)
+
+    def settle(seconds=0.8):
+        time.sleep(seconds)  # test-fixture-timer: the screen entrance and grant bounce run on screen
+
+    def texts():
+        return setup_window_ax(pid)[1]
+
+    def says(phrase):
+        return any(phrase in t for t in texts())
+
+    def press(name):
+        b = setup_button(pid, name)
+        s.expect(b is not None and perform_action(b, "AXPress"), f"pressed {name}")
+        settle(0.5)
+
+    def simulate(mic, ax):
+        run.app.call("onboarding", "permissions", "--mic", mic, "--ax", ax)
+        settle()
+
+    def to_permissions(mic, ax):
+        run.reset(s, f"fresh flow to Permissions (simulated mic {mic}, ax {ax})")
+        simulate(mic, ax)
+        run.send("next")
+        run.send("chooseLanguage", value="en")
+        run.send("next")
+        run.send("chooseSpeech", value=speech)
+        run.send("next")
+        run.send("skipPolish")
+        run.send("next")
+        st = run.until(lambda x: x.get("step") == "permissions", 4, "permissions")
+        s.expect(st.get("step") == "permissions", "Downloads continues to Permissions", st.get("step"))
+        settle()
+
+    for appearance in ("light", "dark"):
+        run.app.call("settings", "set", "appearance", json.dumps(appearance))
+        run.reset(s, "fresh flow")
+        run.app.call("onboarding", "present")
+        to_permissions("notDetermined", "denied")
+        s.expect(says("Two quick permissions") and setup_button(pid, "Allow microphone") is not None,
+                 "not asked: two permissions, the microphone row offers Allow")
+        shot(f"{appearance}-not-asked")
+        if appearance == "light":
+            press("Allow microphone")
+            s.expect(run.status().get("step") == "permissions",
+                     "Allow under simulation shows no prompt and stays", run.status().get("step"))
+        simulate("granted", "denied")
+        s.expect(says("Two quick permissions") and setup_button(pid, "Open System Settings") is not None,
+                 "microphone allowed: the screen redraws live and Accessibility offers System Settings")
+        shot(f"{appearance}-mic-allowed")
+        if appearance == "light":
+            press("Open System Settings")
+            s.expect(says("Waiting for the switch in System Settings")
+                     and setup_button(pid, "Open System Settings again") is not None,
+                     "Accessibility waits for System Settings, and a repeat press reopens it")
+            shot("light-waiting")
+        simulate("granted", "granted")
+        st = run.until(lambda x: x.get("step") == "key", 5, "key")
+        s.expect(st.get("step") == "key", "both allowed: the flow moves on to the key screen by itself",
+                 st.get("step"))
+        to_permissions("denied", "denied")
+        s.expect(says("One switch to flip") and setup_button(pid, "Open System Settings") is not None,
+                 "microphone turned off: one switch to flip, Open System Settings")
+        shot(f"{appearance}-mic-off")
+        if appearance == "light":
+            press("Back")
+            st = run.until(lambda x: x.get("step") == "downloads", 4, "back")
+            s.expect(st.get("step") == "downloads",
+                     "the visible Back leaves Permissions (no dead end on a restricted Mac)",
+                     st.get("step"))
+    run.app.call("onboarding", "permissions", "--clear")
+    run.app.call("settings", "set", "appearance", json.dumps(before))
+    run.app.call("onboarding", "stop")
+    s.notes.append(f"VISUAL REVIEW OWED: {shots} d4b-* against the source-of-truth mockup")
+    s.notes.append("CLEAN-MAC UAT OWED: real macOS microphone prompt and Accessibility grant")
+    return s
+
+
 def s_shell(run, speech):
     """D0: the new Setup shell shown for the session (DEBUG `onboarding present`), captured in
     light and dark at a few steps. Visual evidence only: positioning uses `goto`, which proves
@@ -1299,6 +1393,7 @@ SCENARIOS = {
     "interrupted": s_interrupted, "consent_off": s_consent_off,
     "shell": s_shell, "screens_d1": s_screens_d1, "screens_d2": s_screens_d2,
     "screens_d3a": s_screens_d3a, "screens_d5": s_screens_d5,
+    "screens_d4b": s_screens_d4b,
 }
 
 

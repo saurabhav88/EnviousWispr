@@ -1,3 +1,4 @@
+import AVFoundation
 import EnviousWisprCore
 import EnviousWisprServices
 import Observation
@@ -83,7 +84,7 @@ final class SetupScreenModel {
   /// The steps that have a real screen so far (D1 to D3a).
   static let realScreens: Set<OnboardingStep> = [
     .welcome, .language, .speechPick, .speechCompare, .polishIntro, .polishPick, .polishSeeAll,
-    .key,
+    .permissions, .key,
   ]
 
   /// Speech pick/Compare's pending engine (D2, M76): a UI selection only, alive while the flow
@@ -191,6 +192,19 @@ struct SetupScreenSources {
   var recheckAppleIntelligence: (@MainActor () -> Void)?
   /// The shortcut screen's owners (D5); nil renders the shipped shortcut with no live listener.
   var shortcut: SetupShortcutSources?
+  /// The permissions screen's owners (D4b); nil renders "not asked" with inert actions.
+  var permissions: SetupPermissionsSources?
+}
+
+/// The two permissions' owners for Setup's Permissions screen (#4528 D4b, plan M81).
+struct SetupPermissionsSources {
+  /// `PermissionsService.microphoneStatusLive` (the DEBUG simulation answers here too).
+  var microphone: @MainActor () -> AVAuthorizationStatus
+  /// `PermissionsService.accessibilityGrantedLive`.
+  var accessibilityAllowed: @MainActor () -> Bool
+  /// The dictation key's spoken name for the Accessibility card ("Right Option").
+  var dictationKey: @MainActor () -> String
+  var actions: SetupPermissionsActions
 }
 
 /// The record shortcut's owners for Setup's key screen (#4528 D5, plan M80).
@@ -225,13 +239,37 @@ struct SetupScreenRouter: View {
     case .polishPick: SetupPolishScreen(model: model, epoch: model.routeEpoch, seeAll: false)
     case .polishSeeAll: SetupPolishScreen(model: model, epoch: model.routeEpoch, seeAll: true)
     case .downloads: SetupPlaceholder(step: .downloads, chunk: "D4a")
-    case .permissions: SetupPlaceholder(step: .permissions, chunk: "D4b")
+    case .permissions: SetupPermissionsRoute(model: model, epoch: model.routeEpoch)
     case .key: SetupKeyRoute(model: model, epoch: model.routeEpoch)
     case .gettingReady: SetupPlaceholder(step: .gettingReady, chunk: "D4a")
     case .practice: SetupPlaceholder(step: .practice, chunk: "D6b")
     case .film: SetupPlaceholder(step: .film, chunk: "E")
     case .done: EmptyView()
     }
+  }
+}
+
+/// The permissions step: the D4b screen over the injected owners. The states are read on every
+/// render; the coordinator's readiness changes (the runtime observes both permissions) re-render it,
+/// and the flow's own auto-advance moves on once both are on. Sends only `next` and `back`.
+private struct SetupPermissionsRoute: View {
+  let model: SetupScreenModel
+  let epoch: Int
+
+  var body: some View {
+    let sources = model.sources.permissions
+    // Reading the flow's grants subscribes this route to them, so a change re-renders it with
+    // fresh live states (the screen keeps its own waiting rows and bounce).
+    let _ = (model.state.readiness.microphoneGranted, model.state.readiness.accessibilityGranted)
+    SetupPermissionsScreen(
+      microphone: .init(sources?.microphone() ?? .notDetermined),
+      accessibilityAllowed: sources?.accessibilityAllowed() ?? false,
+      dictationKey: sources?.dictationKey() ?? "",
+      actions: sources?.actions ?? SetupPermissionsActions(microphone: {}, accessibility: { _ in }),
+      onContinue: { if model.state.step == .permissions { model.send(.next) } },
+      onBack: { if model.state.step == .permissions { model.send(.back) } }
+    )
+    .onAppear { model.screenMounted(.permissions, epoch: epoch) }
   }
 }
 
