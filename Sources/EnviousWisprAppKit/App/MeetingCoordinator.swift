@@ -981,11 +981,7 @@ final class MeetingCoordinator {
 
   private func publish() {
     meetings = records.values.sorted { $0.createdAt > $1.createdAt }
-    onMeetingsPublished?()
   }
-
-  /// Told after `meetings` changes, so History drops a selection whose meeting is gone.
-  @ObservationIgnored var onMeetingsPublished: (@MainActor () -> Void)?
 
   #if DEBUG
     /// The deadline each Delete All mark was given, in order (#4102), so a test can see one

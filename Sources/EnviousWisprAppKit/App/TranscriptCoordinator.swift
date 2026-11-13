@@ -1213,27 +1213,6 @@ final class TranscriptCoordinator {
   }
 
 
-  /// EnviousMeet published a change to its meetings (`MeetingCoordinator.onMeetingsPublished`):
-  /// a meeting removed elsewhere (a peer, dev control) leaves no stale selection (Codex C8 r1).
-  ///
-  /// #4001 H4: queued, not run at once. Each publish changes the meetings in the list's key, so a
-  /// burst (Delete All marks every meeting in one loop) rebuilt the whole list once per meeting.
-  /// Notifications that arrive while one reconcile is pending join it; it reads the state current
-  /// when it runs. Until then a removed selection resolves to an empty detail.
-  func meetingsDidChange() {
-    guard meetingReconcileTask == nil else { return }
-    meetingReconcileTask = Task { @MainActor [weak self] in
-      guard let self else { return }
-      self.meetingReconcileTask = nil
-    }
-  }
-
-  @ObservationIgnored private var meetingReconcileTask: Task<Void, Never>?
-
-  #if DEBUG
-    var pendingMeetingReconcileForTesting: Task<Void, Never>? { meetingReconcileTask }
-  #endif
-
   /// Shows the Meetings tab with no search or filters and opens `meetingID` when given (#3972
   /// R45, #3147 PR2): the menu's "Show Live Preview" and "Show in History", and the EnviousMeet
   /// page's "Show recordings". The caller brings History forward.

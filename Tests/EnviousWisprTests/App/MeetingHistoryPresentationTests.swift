@@ -208,7 +208,6 @@ struct MeetingHistoryPresentationTests {
     rig.coordinator.openHistoryItem(.meeting(record.id), in: .meetings)
     #expect(rig.coordinator.openHistoryItemID(in: .meetings) == .meeting(record.id))
     rig.records = []
-    rig.coordinator.meetingsDidChange()
     #expect(rig.coordinator.openHistoryItemID(in: .meetings) == nil)
   }
 

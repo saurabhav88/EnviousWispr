@@ -300,10 +300,6 @@ enum MeetingWiring {
     inputs.transcriptCoordinator.meetingInvited = { [weak coordinator] meetingID in
       coordinator?.documents.invitedSearchTerms(meetingID) ?? []
     }
-    coordinator.onMeetingsPublished = {
-      [weak transcriptCoordinator = inputs.transcriptCoordinator] in
-      transcriptCoordinator?.meetingsDidChange()
-    }
     inputs.transcriptCoordinator.meetingInfo = { [weak coordinator] meetingID in
       historyInfo(coordinator, meetingID: meetingID)
     }
