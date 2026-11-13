@@ -195,6 +195,7 @@ public final class SettingsManager {
     WhatsNewConstants.lastSeenVersionDefaultsKey,
     globeGuidanceClaimKey,
     recordingDisclosureCohortKey, recordingDisclosureAcknowledgedKey,
+    lastHistoryTabKey,
   ]
 
   /// A stored language choice as it may be used: a supported locked code, lowercased, or Auto
@@ -231,6 +232,9 @@ public final class SettingsManager {
   /// stored, so finishing onboarding later never turns a fresh install into an upgrade. Not a
   /// user setting: no `SettingKey`, no settings delta, no snapshot (like the Globe-key claim).
   private nonisolated static let recordingDisclosureCohortKey = "recordingDisclosureCohort"
+  /// #3147 §3.3: the History tab the user last opened. View memory, not a setting: no change
+  /// event, no telemetry, never seeded at load.
+  nonisolated static let lastHistoryTabKey = "lastHistoryTab"
   /// #3147 C9: the user has seen the recording disclosure (dismissed the History banner, or
   /// saw onboarding's recording note). One authority for every surface.
   private nonisolated static let recordingDisclosureAcknowledgedKey =
@@ -1880,6 +1884,14 @@ public final class SettingsManager {
 
   public private(set) var hasUnreadWhatsNew: Bool
 
+  // MARK: - History
+
+  /// The History tab opened last (#3147 §3.3). Absent or unknown reads as Dictations; loading
+  /// never writes it.
+  public var lastHistoryTab: HistoryTab {
+    didSet { defaults.set(lastHistoryTab.rawValue, forKey: Self.lastHistoryTabKey) }
+  }
+
   public func markWhatsNewSeen() {
     guard hasUnreadWhatsNew else { return }
     lastSeenWhatsNewVersion = WhatsNewConstants.currentContentVersion
@@ -2383,6 +2395,10 @@ public final class SettingsManager {
       ?? WhatsNewConstants.currentContentVersion
     lastSeenWhatsNewVersion = storedWhatsNew
     hasUnreadWhatsNew = (storedWhatsNew != WhatsNewConstants.currentContentVersion)
+
+    lastHistoryTab =
+      HistoryTab(rawValue: defaults.string(forKey: Self.lastHistoryTabKey) ?? "")
+      ?? SettingsDefaultValues.lastHistoryTab
 
     // #4353 D1: seed each absent memory from raw stored values, run the summary migration on
     // the still-raw dictation model, seed the summary memory, and only then canonicalize.

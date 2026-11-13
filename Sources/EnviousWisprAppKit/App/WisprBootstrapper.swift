@@ -435,6 +435,11 @@ package final class WisprBootstrapper {
       },
       // #3147: the one dictation recording archive.
       recordingArchive: recordingArchive)
+    // #3147 §3.3: History opens on the tab the user left it on.
+    transcriptCoordinator.restoreHistoryTab(settings.lastHistoryTab)
+    transcriptCoordinator.onHistoryTabSelected = { [weak settings] tab in
+      settings?.lastHistoryTab = tab
+    }
     // #3147: interrupted encodes and orphaned recordings are cleaned once, before any new
     // recording is admitted.
     transcriptCoordinator.recordings?.start()

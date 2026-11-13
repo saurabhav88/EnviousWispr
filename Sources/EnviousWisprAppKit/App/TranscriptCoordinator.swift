@@ -72,6 +72,87 @@ final class TranscriptCoordinator {
     didSet { reconcileSelectionWithDisplayedSet() }
   }
 
+  // MARK: - History tabs (#3147 §3.3)
+
+  /// The History tab on screen. Set through `selectHistoryTab(_:)`, which also remembers it.
+  private(set) var historyTab: HistoryTab = .dictations
+  /// Each tab's own search, filters, open item and paging; a tab never resets another.
+  private var historyTabStates: [HistoryTab: HistoryTabState] = [:]
+  /// Remembers the chosen tab across launches (`SettingsManager.lastHistoryTab`). Nil in tests.
+  @ObservationIgnored var onHistoryTabSelected: (@MainActor (HistoryTab) -> Void)?
+
+  /// Opens History on `tab` at launch without saving it again.
+  func restoreHistoryTab(_ tab: HistoryTab) {
+    historyTab = tab
+  }
+
+  /// Switches History to `tab` and remembers the choice.
+  func selectHistoryTab(_ tab: HistoryTab) {
+    guard historyTab != tab else { return }
+    historyTab = tab
+    onHistoryTabSelected?(tab)
+  }
+
+  /// `tab`'s state. An open item or scroll anchor that is no longer listed reads as nil, so a
+  /// deleted, expired or filtered-out item never stays open.
+  func historyState(for tab: HistoryTab) -> HistoryTabState {
+    var state = historyTabStates[tab] ?? HistoryTabState()
+    guard state.openItemID != nil || state.scrollAnchorID != nil else { return state }
+    let listed = Set(matchingHistoryItems(in: tab, state: state).map(\.id))
+    if let open = state.openItemID, !listed.contains(open) { state.openItemID = nil }
+    if let anchor = state.scrollAnchorID, !listed.contains(anchor) { state.scrollAnchorID = nil }
+    return state
+  }
+
+  /// Replaces `tab`'s state. A changed search or filter starts paging again from the top.
+  func setHistoryState(_ state: HistoryTabState, for tab: HistoryTab) {
+    var next = state
+    let previous = historyTabStates[tab] ?? HistoryTabState()
+    if previous.query != next.query || previous.listFilter != next.listFilter {
+      next.requestedCount = HistoryTabState.pageSize
+      next.scrollAnchorID = nil
+    }
+    historyTabStates[tab] = next
+  }
+
+  /// Every item `tab` lists now under its search and filters, all pages, newest first, with the
+  /// same visibility, expiry and deletion rules as `listedItems`. Paging only limits drawing.
+  func matchingHistoryItems(in tab: HistoryTab) -> [HistoryListItem] {
+    matchingHistoryItems(in: tab, state: historyTabStates[tab] ?? HistoryTabState())
+  }
+
+  private func matchingHistoryItems(in tab: HistoryTab, state: HistoryTabState)
+    -> [HistoryListItem]
+  {
+    let now = clock()
+    let key = listKey(
+      at: now, kind: HistoryListKind(tab), filter: state.listFilter, query: state.query)
+    #if DEBUG
+      if listCacheDisabledForTesting { return buildListedItems(at: now, from: key) }
+    #endif
+    if let kept = tabListCache[tab], kept.key == key { return kept.items }
+    let kept = KeptList(key: key, items: buildListedItems(at: now, from: key))
+    tabListCache[tab] = kept
+    return kept.items
+  }
+
+  /// How many of `tab`'s items fall on each day under its search and other filters (the date
+  /// filter left out), for the calendar's activity dots. Days are `calendar`'s start of day.
+  /// The dates are read here; grouping runs off the main actor.
+  func historyActivity(in tab: HistoryTab, calendar: Calendar) async -> [Date: Int] {
+    var state = historyTabStates[tab] ?? HistoryTabState()
+    state.dateInterval = nil
+    let dates = matchingHistoryItems(in: tab, state: state).map(\.createdAt)
+    return await Task.detached(priority: .userInitiated) {
+      var counts: [Date: Int] = [:]
+      for date in dates { counts[calendar.startOfDay(for: date), default: 0] += 1 }
+      return counts
+    }.value
+  }
+
+  /// Each tab's kept list (#4001's cache, one per tab). Not observed, like `listCache`.
+  @ObservationIgnored private var tabListCache: [HistoryTab: KeptList] = [:]
+
   /// #2807: whether the detail pane may show the live transcript when nothing is selected.
   ///
   /// The live fallback exists for one moment: a dictation just finished and History is open
@@ -248,7 +329,8 @@ final class TranscriptCoordinator {
   private struct ListKey: Equatable {
     let revision: Int
     let pulse: Int
-    let filter: HistoryFilter
+    let kind: HistoryListKind
+    let filter: HistoryListFilter
     let query: String
     let echoShown: Set<UUID>
     let meetings: [MeetingRecord]
@@ -272,6 +354,14 @@ final class TranscriptCoordinator {
   }
 
   private func listKey(at now: Date) -> ListKey {
+    listKey(
+      at: now, kind: HistoryListKind(historyFilter), filter: .none, query: searchQuery)
+  }
+
+  /// The key for one list: its kind, filters and search, plus every input the build reads.
+  private func listKey(
+    at now: Date, kind: HistoryListKind, filter: HistoryListFilter, query searchQuery: String
+  ) -> ListKey {
     _ = expiryPulse
     let index = rowIndex
     let pendingVisible = index.pending.map { Self.isVisible(transcripts[$0], at: now) }
@@ -285,7 +375,8 @@ final class TranscriptCoordinator {
           invited: meetingInvited?($0) ?? [])
       }
     return ListKey(
-      revision: transcriptsRevision, pulse: expiryPulse, filter: historyFilter, query: searchQuery,
+      revision: transcriptsRevision, pulse: expiryPulse, kind: kind, filter: filter,
+      query: searchQuery,
       echoShown: echoShownRowIDs, meetings: meetingRecords?() ?? [], pendingVisible: pendingVisible,
       searchFacts: facts, locale: Locale.current.identifier,
       localizations: Bundle.main.preferredLocalizations)
@@ -368,14 +459,7 @@ final class TranscriptCoordinator {
     }
     let merged = Self.mergeMeetings(meetings, into: items)
     let listed = merged.filter { item in
-      switch (key.filter, item) {
-      case (.all, _): return true
-      case (.dictations, .transcript(let row)): return !row.isImported
-      case (.transcripts, .transcript(let row)): return row.isImported
-      case (.recordings, .meeting): return true
-      case (.dictations, .meeting), (.transcripts, .meeting), (.recordings, .transcript):
-        return false
-      }
+      Self.matchesKind(key.kind, item) && Self.matchesFilter(key.filter, item)
     }
     guard !key.query.isEmpty else { return listed }
     let facts = Dictionary(
@@ -406,6 +490,45 @@ final class TranscriptCoordinator {
           } ?? false)
       }
     }
+  }
+
+  /// Whether `item` is of the kind a list shows.
+  private static func matchesKind(_ kind: HistoryListKind, _ item: HistoryListItem) -> Bool {
+    switch (kind, item) {
+    case (.all, _): return true
+    case (.dictations, .transcript(let row)): return !row.isImported
+    case (.transcripts, .transcript(let row)): return row.isImported
+    case (.meetings, .meeting): return true
+    case (.dictations, .meeting), (.transcripts, .meeting), (.meetings, .transcript):
+      return false
+    }
+  }
+
+  /// Whether `item` passes a History tab's filters (#3147 §3.3). A filter a kind does not carry
+  /// (App on a meeting, Call app on a dictation) never lets that item through once it is set.
+  private static func matchesFilter(_ filter: HistoryListFilter, _ item: HistoryListItem) -> Bool {
+    if let interval = filter.dateInterval, !interval.contains(item.createdAt) { return false }
+    switch filter.app {
+    case .all: break
+    case .unknown:
+      guard case .transcript(let row) = item, !row.isImported,
+        (row.metrics?.targetApp ?? "").isEmpty
+      else { return false }
+    case .named(let app):
+      guard case .transcript(let row) = item, !row.isImported, row.metrics?.targetApp == app
+      else { return false }
+    }
+    if let range = filter.speakerCount {
+      guard case .transcript(let row) = item, row.isImported,
+        let count = row.historySpeakerCount, range.contains(count)
+      else { return false }
+    }
+    if let callApp = filter.callApp {
+      guard case .meeting(let meeting) = item, meeting.record?.callApp == callApp else {
+        return false
+      }
+    }
+    return true
   }
 
   /// The History rows `listedItems` shows: every listed dictation and import, and each listed
@@ -1374,7 +1497,8 @@ final class TranscriptCoordinator {
     // #4075 R5: the row as it is now, never the caller's copy. History Paste reads this after
     // hiding the app, and an import's cleanup or a deletion can land in that wait.
     if let current = transcripts.first(where: { $0.id == transcript.id }) {
-      return Self.isVisible(current, at: Date()) ? current.displayText : nil
+      // #3147 §3.4: History delivers the row's preferred text (original or polished).
+      return Self.isVisible(current, at: Date()) ? current.historyText : nil
     }
     // Not in History. A held recovery that is gone has lapsed, and a row History held and
     // removed was deleted: both are refused. A dictation History never held (the live pane's
@@ -1672,7 +1796,7 @@ final class TranscriptCoordinator {
     of row: Transcript, info: MeetingHistoryInfo?, showEcho: Bool, locale: String,
     localizations: [String]
   ) -> String {
-    guard row.isMeeting else { return row.displayText }
+    guard row.isMeeting else { return row.historyText }
     let text = meetingDocuments.text(
       of: row, info: info, showEcho: showEcho, locale: locale, localizations: localizations,
       bypass: meetingDocumentsBypass)
@@ -2089,6 +2213,28 @@ enum HistoryDetail {
   case liveFallback
   /// Nothing to show, and the live transcript must not stand in.
   case empty
+}
+
+/// Which kind of item a History list shows: the legacy filter's All, or one tab's kind.
+enum HistoryListKind: Equatable, Sendable {
+  case all, dictations, transcripts, meetings
+
+  init(_ filter: HistoryFilter) {
+    switch filter {
+    case .all: self = .all
+    case .dictations: self = .dictations
+    case .transcripts: self = .transcripts
+    case .recordings: self = .meetings
+    }
+  }
+
+  init(_ tab: HistoryTab) {
+    switch tab {
+    case .dictations: self = .dictations
+    case .transcripts: self = .transcripts
+    case .meetings: self = .meetings
+    }
+  }
 }
 
 /// One History list item's identity (#3972 R45): a dictation or an import by its row's id, a
