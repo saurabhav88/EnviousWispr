@@ -1,0 +1,76 @@
+{
+  "about": "#3147 PR4B plan section 16 C6: the frozen parity matrix for compacted meeting audio. MeetingCompactionRealBoundaryTests reads this file; score_c6.py scores its printed C6 raw lines with the eval scorer. Changing any value is a new matrix and needs a new review.",
+  "version": 1,
+  "corpus": "Tests/Fixtures/meeting-voices/manifest.json",
+  "gates": {
+    "codec": "AAC-LC (kAudioFormatMPEG4AAC), 16000 Hz, 1 channel, SpeechAudioEncoder.Purpose.meeting",
+    "meetingBitRate": 48000,
+    "sampleRate": 16000,
+    "durationToleranceMs": 50,
+    "maxMBPerTrackHour": 25.0,
+    "maxAbsWERDeltaPoints": 0.5,
+    "scorer": "scripts/eval/build_parakeet_corpus.py :: wer (imported unchanged by score_c6.py)",
+    "seekMinCorrelation": 0.9,
+    "seekMaxLagSamples": 16,
+    "seekSearchLagSamples": 64,
+    "levelToleranceDb": 1.0,
+    "levelMetric": "level windows (noise, music): Pearson correlation of 10 ms RMS envelopes >= seekMinCorrelation and RMS within levelToleranceDb; speech and boundary windows: waveform correlation",
+    "cleanedLevelRatio": 0.5,
+    "cleanedLevelRatioTolerance": 0.1
+  },
+  "meeting": {
+    "gapMs": 2000,
+    "provenance": { "library": "c6-fixture", "configuration": "aec3-16k-mono" },
+    "cleanedGain": 0.5,
+    "tracks": [
+      {
+        "track": "microphone",
+        "segments": [
+          { "index": 1, "clip": "quiet-beside-loud", "language": "en", "place": "start" },
+          { "index": 2, "clip": "soft-onset-and-ending", "language": "en", "place": "gap" },
+          { "index": 3, "clip": "speech-over-music-and-noise", "language": "en", "place": "contiguous" }
+        ],
+        "cleanedTwin": true
+      },
+      {
+        "track": "callSound",
+        "segments": [
+          { "index": 1, "clip": "yes-no-between-silences", "language": "en", "place": "start" },
+          { "index": 2, "clip": "non-english-ru", "language": "ru", "place": "gap" },
+          { "index": 3, "clip": "music-and-noise-only", "language": "en", "place": "contiguous" }
+        ],
+        "cleanedTwin": false
+      }
+    ]
+  },
+  "seeks": [
+    { "id": "mic-s1-daniel", "track": "microphone", "anchor": "segment", "index": 1, "offsetMs": 1500, "lengthMs": 400, "kind": "speech" },
+    { "id": "mic-s1-quiet-samantha", "track": "microphone", "anchor": "segment", "index": 1, "offsetMs": 6000, "lengthMs": 400, "kind": "speech" },
+    { "id": "mic-gap-1-2", "track": "microphone", "anchor": "afterSegment", "index": 1, "offsetMs": 500, "lengthMs": 400, "kind": "gap" },
+    { "id": "mic-s2-soft-onset", "track": "microphone", "anchor": "segment", "index": 2, "offsetMs": 3000, "lengthMs": 400, "kind": "speech" },
+    { "id": "mic-boundary-2-3", "track": "microphone", "anchor": "segment", "index": 3, "offsetMs": -200, "lengthMs": 400, "kind": "boundary" },
+    { "id": "mic-s3-over-music", "track": "microphone", "anchor": "segment", "index": 3, "offsetMs": 3000, "lengthMs": 400, "kind": "speech" },
+    { "id": "call-s1-yes", "track": "callSound", "anchor": "segment", "index": 1, "offsetMs": 3050, "lengthMs": 400, "kind": "speech" },
+    { "id": "call-s1-no", "track": "callSound", "anchor": "segment", "index": 1, "offsetMs": 7450, "lengthMs": 400, "kind": "speech" },
+    { "id": "call-gap-1-2", "track": "callSound", "anchor": "afterSegment", "index": 1, "offsetMs": 500, "lengthMs": 400, "kind": "gap" },
+    { "id": "call-s2-russian", "track": "callSound", "anchor": "segment", "index": 2, "offsetMs": 1500, "lengthMs": 400, "kind": "speech" },
+    { "id": "call-boundary-2-3", "track": "callSound", "anchor": "segment", "index": 3, "offsetMs": -200, "lengthMs": 400, "kind": "boundary" },
+    { "id": "call-s3-noise-only", "track": "callSound", "anchor": "segment", "index": 3, "offsetMs": 6000, "lengthMs": 400, "kind": "level" }
+  ],
+  "sizeTrack": {
+    "about": "One track-hour of recorder-length segments cut from every corpus clip, tiled, each encoded on its own as compaction does.",
+    "seconds": 3600,
+    "segmentSeconds": 60
+  },
+  "expected": {
+    "clips": 6,
+    "segments": 9,
+    "compactedFiles": 9,
+    "seekWindowsPerArm": 18,
+    "calibrationWindows": 12,
+    "transcribedRowsPerEngine": 9,
+    "sizeSegments": 60,
+    "engines": ["parakeet", "whisper"],
+    "testsInSuite": 5
+  }
+}
