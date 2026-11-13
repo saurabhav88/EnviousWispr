@@ -75,6 +75,9 @@ struct HistoryTranscriptView: View {
   @State private var sourceState: ImportedSourceState?
   @State private var player: MeetingPlaybackController?
   @State private var playerSource: ResolvedImportedSource?
+  /// The speed the user chose, kept while no player exists (the original went away and came
+  /// back, or was located again).
+  @State private var retainedRate: Float = 1
 
   // Actions
   @State private var copiedAt: Date?
@@ -431,7 +434,7 @@ struct HistoryTranscriptView: View {
       }
       .toggleStyle(BrandedToggleStyle())
       .fixedSize()
-      Text(verbatim: P.viewHint(mode: documentView, playable: player != nil))
+      Text(verbatim: P.viewHint(mode: documentView, playable: activePlayer != nil))
         .font(.stHelper)
         .foregroundStyle(.stTextSecondary)
         .lineLimit(1)
@@ -475,8 +478,8 @@ struct HistoryTranscriptView: View {
           language: row.language, isMeeting: row.isMeeting, mode: documentView, timesOn: timesOn,
           documentFinished: documentFinished,
           renameSuggestions: SpeakerRenameSuggestions(row: row, roster: nil),
-          playerIdentity: player.map(ObjectIdentifier.init)),
-        onPlayFrom: { [player] ms in
+          playerIdentity: activePlayer.map(ObjectIdentifier.init)),
+        onPlayFrom: { [player = activePlayer] ms in
           guard let player, player.state != .unavailable else { return }
           player.seek(toMs: ms)
           player.play()
@@ -543,7 +546,7 @@ struct HistoryTranscriptView: View {
 
   @ViewBuilder
   private var dock: some View {
-    if let player {
+    if let player = activePlayer {
       HistoryTranscriptPlayerBar(content: .player(player))
         .id(ObjectIdentifier(player))
     } else if case .unavailable(let reason) = sourceLine {
@@ -553,7 +556,16 @@ struct HistoryTranscriptView: View {
   }
 
   private var sourceLine: P.SourceLine {
-    P.sourceLine(state: sourceState, playable: player != nil)
+    P.sourceLine(state: sourceState, playable: activePlayer != nil)
+  }
+
+  /// The player this row can actually use: built for this row's original and still able to
+  /// play. A player whose read failed, or one left from another row, offers no controls.
+  private var activePlayer: MeetingPlaybackController? {
+    guard let player, playerSource?.rowID == rowID, player.state != .unavailable else {
+      return nil
+    }
+    return player
   }
 
   private var offersLocate: Bool { P.offersLocate(sourceLine) }
@@ -566,6 +578,11 @@ struct HistoryTranscriptView: View {
   /// Reads the original's state, then opens it for playback. Both answers are dropped when a
   /// deletion or Delete All overtook them, so a removed row never gets a player.
   private func refreshSource() async {
+    // Another row's player never serves this one, even while the new lookup runs.
+    if let source = playerSource, source.rowID != rowID {
+      dropPlayer()
+      sourceState = nil
+    }
     let arbiter = meetings.playbackArbiter
     let id = PlaybackSourceID.transcript(rowID)
     let fence = { (arbiter?.deletionCount(for: id), arbiter?.transcriptEpoch) }
@@ -595,7 +612,7 @@ struct HistoryTranscriptView: View {
     guard
       P.needsNewPlayer(current: player, currentSource: playerSource, resolved: opened.source)
     else { return }
-    let rate = player?.playbackRate ?? 1
+    let rate = player?.playbackRate ?? retainedRate
     dropPlayer()
     let next = MeetingPlaybackController(
       media: .transcript(opened.audio), durationMs: opened.durationMs,
@@ -606,6 +623,7 @@ struct HistoryTranscriptView: View {
   }
 
   private func dropPlayer() {
+    if let player { retainedRate = player.playbackRate }
     player?.stop()
     player = nil
     playerSource = nil
