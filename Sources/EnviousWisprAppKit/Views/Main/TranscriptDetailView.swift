@@ -5,9 +5,10 @@ import EnviousWisprServices
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Detail view for a single transcript: an action bar, a titled header with
-/// metadata chips, and the polished/original text each in its own card (mockup
-/// #27 aesthetic). Read-only display of existing data — no new features.
+/// Detail view for a HELD Escape Recovery dictation (#2087): an action bar with its own Paste,
+/// Keep and Delete, a titled header with metadata chips, and the polished/original text each in
+/// its own card. Every other dictation shows `HistoryDictationCard`, and an imported transcript
+/// shows `HistoryTranscriptView` (#3147 PR3), so this view never draws turns.
 struct TranscriptDetailView: View {
   let transcript: Transcript
   /// #4101: why a History Paste did not happen; the History page holds the notice, so replacing
@@ -20,18 +21,7 @@ struct TranscriptDetailView: View {
   @Environment(AppWindowCoordinator.self) private var appWindowCoordinator
   @Environment(HistoryPaste.self) private var historyPaste
   @Environment(PreviousApplicationTracker.self) private var previousApplication
-  @Environment(MeetingCoordinator.self) private var meetings
 
-  /// Screen-local, per-row UI state (#2811, phase 4 of #2807) — History has no persisted view
-  /// mode today, and this phase does not add one (plan §2.2 non-goal). Reset on row change
-  /// via `.onChange(of: transcript.id)`: without it, a stale Marked-up selection from one
-  /// file would leak onto the next file's detail view, since SwiftUI otherwise preserves
-  /// `@State` across a mere value change at the same tree position (§5 E2E audit).
-  @State private var documentView: FileImportCoordinator.DocumentView = .cleaned
-  @State private var timesOn = true
-  /// #4013 r3 F3: a meeting row's saved participant list, for the rename suggestions; never
-  /// read for a dictation or an import.
-  @State private var rosterRead: KeyedRosterRead<RosterKey>?
   /// Surfaced via `.alert` rather than swallowed by `try?` (found by chunk review) — a failed
   /// disk write must not look identical to a successful one.
   @State private var saveError: String?
@@ -61,23 +51,13 @@ struct TranscriptDetailView: View {
       for: transcript, now: Date(), dictationInFlight: isDictationInFlight)
   }
 
-  /// #2807: what this row IS, by name. A Dictation was made with the keybind; a Transcript
-  /// came from Transcribe a File. Read from `isImported`, the row's only kind.
-  ///
-  /// #3972 R45: a meeting never reaches this view; History shows it in
-  /// `MeetingHistoryDetailView`.
+  /// The row's kind by name. Only a dictation reaches this view.
   private var kindWord: String {
-    transcript.isImported
-      ? String(
-        localized: "Transcript",
-        comment:
-          "History detail title for a row made with Transcribe a File. Also the default file name when saving it."
-      )
-      : String(
-        localized: "Dictation",
-        comment:
-          "History detail title for a row made by dictating. Also the default file name when saving it."
-      )
+    String(
+      localized: "Dictation",
+      comment:
+        "History detail title for a row made by dictating. Also the default file name when saving it."
+    )
   }
 
   var body: some View {
@@ -88,47 +68,12 @@ struct TranscriptDetailView: View {
       ScrollView {
         VStack(alignment: .leading, spacing: 20) {
           header
-
-          if let turns = displayTurns, !turns.isEmpty {
-            transcriptSection(kindWord, icon: "doc.text") {
-              // #4001 H10: compared on its inputs, so a detail redraw that leaves the
-              // document unchanged does not render every turn again.
-              TranscriptTurnsDocument(
-                inputs: TranscriptTurnsDocument.Inputs(
-                  rowID: transcript.id, text: transcript.text, turns: turns,
-                  speakerNames: transcript.speakerNames ?? [:], language: transcript.language,
-                  isMeeting: transcript.isMeeting, mode: documentView, timesOn: timesOn,
-                  documentFinished: documentFinished,
-                  renameSuggestions: SpeakerRenameSuggestions(
-                    row: transcript, roster: rosterRead?.roster(for: rosterKey)))
-              )
-              .equatable()
-            }
-            // Reset the whole turn-rendering subtree, including rename-popover state and
-            // the Marked up diffs, per document. Turn IDs are document-local: different
-            // documents can have identical turn IDs, so row keys alone cannot isolate their
-            // state. `HistoryContentView` reuses this view across row selections at a fixed
-            // tree position (found by chunk review).
-            .id(transcript.id)
-          } else {
-            plainTextSections
-          }
+          plainTextSections
         }
         .padding(20)
       }
     }
     .background(Color.stPageBg)
-    .onChange(of: transcript.id) {
-      documentView = .cleaned
-      timesOn = true
-    }
-    .task(id: rosterKey) {
-      // Stored with the request it answers; shown only while that is still the request.
-      guard let key = rosterKey else { return }
-      let read = await meetings.callSpeakerEvidence(meetingID: key.meetingID)
-      guard !Task.isCancelled else { return }
-      rosterRead = KeyedRosterRead(key: key, evidence: read)
-    }
     .alert(
       "Couldn't save the file",
       isPresented: Binding(
@@ -138,23 +83,6 @@ struct TranscriptDetailView: View {
     } message: {
       Text(saveError ?? "")
     }
-  }
-
-  /// What the roster read depends on; `nil` for a row that is not a meeting's.
-  private var rosterKey: RosterKey? {
-    guard let meetingID = transcript.meetingID else { return nil }
-    let record = meetings.record(id: meetingID)
-    return RosterKey(
-      rowID: transcript.id, meetingID: meetingID, audioKept: record?.audioKept,
-      deletionRequested: record?.deletionRequested, state: record?.state)
-  }
-
-  private struct RosterKey: Hashable {
-    let rowID: UUID
-    let meetingID: UUID
-    let audioKept: Bool?
-    let deletionRequested: Bool?
-    let state: MeetingState?
   }
 
   // MARK: - Paste
@@ -271,13 +199,9 @@ struct TranscriptDetailView: View {
       .buttonStyle(.borderless)
       .foregroundStyle(.stTextSecondary)
       .accessibilityLabel(
-        transcript.isImported
-          ? String(
-            localized: "Delete transcript",
-            comment: "VoiceOver label of the History delete button for a transcript.")
-          : String(
-            localized: "Delete dictation",
-            comment: "VoiceOver label of the History delete button for a dictation."))
+        String(
+          localized: "Delete dictation",
+          comment: "VoiceOver label of the History delete button for a dictation."))
     }
     .buttonStyle(.bordered)
     .controlSize(.large)
@@ -328,30 +252,6 @@ struct TranscriptDetailView: View {
           }
         }
 
-        // View mode + Times (#2811 §2.1) — only meaningful once there are turns to show.
-        // `hasRenderableTurns`, never a bare `!= nil` (found by chunk review): `turns == []`
-        // is a real, reachable state (`TurnAssembler.assemble` can return it) that must
-        // collapse to "nothing to show" exactly like `nil`, or these controls appear with
-        // nothing for them to control.
-        if hasRenderableTurns {
-          HStack(spacing: 10) {
-            Picker(
-              "View", selection: $documentView
-            ) {
-              Text("Cleaned").tag(FileImportCoordinator.DocumentView.cleaned)
-              Text("Marked up").tag(FileImportCoordinator.DocumentView.markedUp)
-              Text("Original").tag(FileImportCoordinator.DocumentView.original)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .controlSize(.small)
-            .fixedSize()
-            .accessibilityLabel("Which words to show")
-            Toggle("Times", isOn: $timesOn)
-              .controlSize(.small)
-              .toggleStyle(.switch)
-          }
-        }
       }
       Spacer(minLength: 0)
     }
@@ -405,11 +305,8 @@ struct TranscriptDetailView: View {
     }
   }
 
-  // MARK: - Turn-labeled rendering (#2811, phase 4 of #2807)
+  // MARK: - Text
 
-  /// Today's own rendering, UNCHANGED — `TurnDocumentView`'s fallback, structurally
-  /// unreachable here since the call site already gates on `transcript.turns != nil`, exactly
-  /// mirroring the wizard's own `legacyTranscriptContent` shape.
   @ViewBuilder
   private var plainTextSections: some View {
     // #2772: a THIRD rung. An import whose polish was bypassed or failed everywhere
@@ -456,30 +353,9 @@ struct TranscriptDetailView: View {
     }
   }
 
-  /// `TurnAssembler.assemble` can return `[]` — collapses to the SAME "nothing to render"
-  /// outcome as `nil` everywhere this view branches on turns, never just `!= nil`.
-  private var hasRenderableTurns: Bool {
-    guard let turns = displayTurns else { return false }
-    return !turns.isEmpty
-  }
+  private var kindIcon: String { "mic" }
 
-  private var kindIcon: String {
-    transcript.isImported ? "doc.text" : "mic"
-  }
-
-  private var displayTurns: [Turn]? { transcript.turns }
-
-  /// Finished unless the file import is still cleaning THIS row (#2851 §3 D, cloud review of
-  /// PR #2871): a turn the cleanup has not reached yet is not "unpolished". Read in this
-  /// view's body (#4001 H10), so a finishing import redraws the turn document.
-  private var documentFinished: Bool {
-    !(transcriptCoordinator.isImportInProgress?(transcript.id) ?? false)
-  }
-
-  /// What Copy/Save/Share hand over. Turn-labeled documents route through the presenter
-  /// FIRST, exactly mirroring `FileImportCoordinator.exportText`'s own fallback contract —
-  /// its `nil` for `turns == nil`/empty falls through to `textForDelivery`'s existing,
-  /// expiry-checked selection, UNCHANGED.
+  /// What Copy/Save/Share hand over: `textForDelivery`'s expiry-checked selection.
   ///
   /// Reads the LIVE row, never `self.transcript` (found by second-pass review): this view's
   /// value is a snapshot from when the row was selected, while Save's panel and Share's
@@ -488,16 +364,14 @@ struct TranscriptDetailView: View {
   /// recording the user was told is gone.
   private var exportText: String? {
     HistoryTranscriptExport.text(
-      rowID: transcript.id, coordinator: transcriptCoordinator, mode: documentView,
-      timesOn: timesOn)
+      rowID: transcript.id, coordinator: transcriptCoordinator, mode: .cleaned, timesOn: true)
   }
 
   private var defaultFileName: String { kindWord }
 
-  /// Copy/Save/Share titles — the SAME general export rule as the wizard (plan §2.1), never
-  /// scoped to turn-labeled documents.
+  /// Copy/Save/Share titles, the same general export rule as the wizard (plan §2.1).
   private var exportButtonLabels: (copy: String, save: String, share: String) {
-    TranscriptDocumentPresenter.exportButtonLabels(mode: documentView)
+    TranscriptDocumentPresenter.exportButtonLabels(mode: .cleaned)
   }
 
   /// `exportText` is read AFTER the modal returns, never before it (found by chunk review):
@@ -515,36 +389,6 @@ struct TranscriptDetailView: View {
     } catch {
       // #3908: Foundation's localized sentence, never the NSError debug dump.
       saveError = error.localizedDescription
-    }
-  }
-}
-
-/// Defers reading the export text to whenever the system actually asks for the data, rather
-/// than whenever SwiftUI last evaluated `body` (found by chunk review) — `resolve` closes
-/// over `transcriptCoordinator` (a reference) and re-reads `exportText`'s own live,
-/// expiry-checked selection at that later point, the same delivery-time validation Save gets
-/// from being read after its modal returns.
-// Module-internal so regression tests can cross the real CoreTransferable boundary.
-struct DeliverableText: Transferable, Sendable {
-  // #3566: the system requests data away from the UI executor. The resolver reads
-  // MainActor-owned History state, so its type must preserve that isolation.
-  let resolve: @MainActor @Sendable () -> String?
-
-  /// A `nil` resolve must REFUSE delivery, never substitute empty content (found by chunk
-  /// review): `Data("".utf8)` reads to the receiving app as a successful, if empty, export —
-  /// exactly the silent "expiry reads as success" failure `textForDelivery`'s own contract
-  /// exists to prevent.
-  struct ExpiredError: Error {}
-
-  @MainActor
-  func exportData() throws -> Data {
-    guard let text = resolve() else { throw ExpiredError() }
-    return Data(text.utf8)
-  }
-
-  static var transferRepresentation: some TransferRepresentation {
-    DataRepresentation(exportedContentType: .plainText) { deliverable in
-      try await deliverable.exportData()
     }
   }
 }

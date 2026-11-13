@@ -95,15 +95,23 @@ struct HistoryPasteWiringTests {
     #expect(read.lowerBound < perform.lowerBound, "the page before is read before navigating")
   }
 
-  @Test("the main window gets the one History Paste and the one tracker")
+  @Test("every app window gets the one History Paste and the one tracker")
   func mainWindowInjection() throws {
     let (source, tree) = try Self.snapshot("\(Self.sources)/App/WisprBootstrapper.swift")
-    let finder = StructFinder("MainWindowRoot")
+    // #3147 PR3: the homes are injected once, by `AppHomesEnvironment`, which the main window
+    // and every transcript window apply.
+    let finder = StructFinder("AppHomesEnvironment")
     finder.walk(tree)
-    let root = try #require(finder.found, "MainWindowRoot not found")
-    let body = root.memberBlock.trimmedDescription
+    let homes = try #require(finder.found, "AppHomesEnvironment not found")
+    let body = homes.memberBlock.trimmedDescription
     #expect(body.contains(".environment(b.historyPaste)"))
     #expect(body.contains(".environment(b.previousApplicationTracker)"))
+    let mainFinder = StructFinder("MainWindowRoot")
+    mainFinder.walk(tree)
+    let main = try #require(mainFinder.found, "MainWindowRoot not found")
+    #expect(main.memberBlock.trimmedDescription.contains(".appHomes(b)"))
+    let (window, _) = try Self.snapshot("\(Self.sources)/App/TranscriptWindowRoot.swift")
+    #expect(window.contains(".appHomes(b)"), "a transcript window gets the same homes")
     #expect(source.components(separatedBy: "HistoryPaste.live(").count == 2, "one construction")
     #expect(
       source.components(separatedBy: "PreviousApplicationTracker()").count == 2,
