@@ -163,8 +163,8 @@ struct MeetingLivePanel: View {
       .font(.stHelper)
       .foregroundStyle(.stTextSecondary)
     }
-    .padding(DesignSpacing.xl)
-    .background(Color.stSectionBg, in: RoundedRectangle(cornerRadius: DesignRadius.xl))
+    .padding(14)
+    .background(Color.stSectionBg, in: RoundedRectangle(cornerRadius: 12))
   }
 
   private var meters: some View {
