@@ -95,6 +95,9 @@ private struct HistoryTranscriptPlayerControls: View {
           Text("Position", comment: "History transcript dock: the playback scrubber.")
         )
         .accessibilityValue(Text(verbatim: MeetingsPresentation.clock(ms: Int(shown))))
+        .background {
+          HistoryPlaybackWaveform(player: player, positionMs: Int(shown))
+        }
         Text(verbatim: MeetingsPresentation.clock(ms: player.durationMs))
           .font(.stHelper.monospacedDigit())
           .foregroundStyle(.stTextSecondary)

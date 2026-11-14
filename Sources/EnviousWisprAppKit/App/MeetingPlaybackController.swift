@@ -213,6 +213,42 @@ final class MeetingPlaybackController {
     state = .unavailable
   }
 
+  /// A small preview of the actual recording. Use the same media source as playback, but
+  /// an independent reader so preview seeks never move the player's decode position.
+  func waveform() async -> [Float] {
+    guard state != .unavailable, durationMs > 0 else { return [] }
+    return await Self.readWaveform(media: media, durationMs: durationMs)
+  }
+
+  @concurrent
+  private static func readWaveform(media: PlaybackMedia, durationMs: Int) async -> [Float] {
+    do {
+      let source: any PlaybackWindowAudio
+      if case .transcript(let audio) = media {
+        guard let imported = audio as? ImportedFilePlaybackAudio else { return [] }
+        source = imported.independentReader()
+      } else {
+        source = try open(media)
+      }
+      let count = min(80, durationMs)
+      var levels: [Float] = []
+      levels.reserveCapacity(count)
+      for index in 0..<count {
+        try Task.checkCancellation()
+        let lower = durationMs * index / count
+        let upper = durationMs * (index + 1) / count
+        let window = min(80, upper - lower)
+        let samples = try source.window(startMs: lower + (upper - lower - window) / 2, count: window)
+        let power = samples.reduce(Float(0)) { $0 + $1 * $1 }
+        levels.append((power / Float(max(1, samples.count))).squareRoot())
+      }
+      let peak = levels.max() ?? 0
+      return peak > 0 ? levels.map { $0 / peak } : levels
+    } catch {
+      return []
+    }
+  }
+
   // MARK: - Windows
 
   /// Ends the current generation. A read already running is left to finish (`reading` stays

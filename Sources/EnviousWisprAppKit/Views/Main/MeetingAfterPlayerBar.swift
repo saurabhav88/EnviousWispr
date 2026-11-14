@@ -96,6 +96,9 @@ private struct MeetingAfterPlayerControls: View {
           Text("Position", comment: "History transcript dock: the playback scrubber.")
         )
         .accessibilityValue(Text(verbatim: MeetingsPresentation.clock(ms: Int(shown))))
+        .background {
+          HistoryPlaybackWaveform(player: player, positionMs: Int(shown))
+        }
         .overlay(alignment: .top) {
           MeetingNoteMarkerTrack(
             markers: markers, durationMs: player.durationMs,

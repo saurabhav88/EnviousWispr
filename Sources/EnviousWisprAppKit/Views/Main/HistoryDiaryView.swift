@@ -13,8 +13,8 @@ struct HistoryDiaryView<
 >: View {
   private let coordinator: TranscriptCoordinator
   private let dictationCard: (UUID) -> DictationCard
-  private let transcriptDestination: (UUID) -> TranscriptDestination
-  private let meetingDestination: (UUID) -> MeetingDestination
+  private let transcriptDestination: (UUID, @escaping () -> Void) -> TranscriptDestination
+  private let meetingDestination: (UUID, @escaping () -> Void) -> MeetingDestination
 
   @State private var selection = HistorySelection()
   @State private var isSelecting = false
@@ -22,8 +22,8 @@ struct HistoryDiaryView<
   init(
     coordinator: TranscriptCoordinator,
     @ViewBuilder dictationCard: @escaping (UUID) -> DictationCard,
-    @ViewBuilder transcriptDestination: @escaping (UUID) -> TranscriptDestination,
-    @ViewBuilder meetingDestination: @escaping (UUID) -> MeetingDestination
+    @ViewBuilder transcriptDestination: @escaping (UUID, @escaping () -> Void) -> TranscriptDestination,
+    @ViewBuilder meetingDestination: @escaping (UUID, @escaping () -> Void) -> MeetingDestination
   ) {
     self.coordinator = coordinator
     self.dictationCard = dictationCard
@@ -36,11 +36,12 @@ struct HistoryDiaryView<
     let state = coordinator.historyState(for: tab)
 
     VStack(spacing: 0) {
-      VStack(alignment: .leading, spacing: 12) {
-        SettingsTabStrip(items: HistoryDiaryLayout.tabItems, selection: tabBinding)
-        if state.openItemID != nil, tab != .dictations {
-          HistoryDestinationBar(tab: tab, close: closeOpenItem)
-        } else {
+      if let openID = state.openItemID, tab != .dictations {
+        destination(for: openID)
+          .frame(maxWidth: .infinity, maxHeight: .infinity)
+      } else {
+        VStack(alignment: .leading, spacing: 12) {
+          SettingsTabStrip(items: HistoryDiaryLayout.tabItems, selection: tabBinding)
           HistoryFiltersView(
             coordinator: coordinator, tab: tab, state: state, isSelecting: isSelecting,
             toggleSelecting: toggleSelecting)
@@ -51,15 +52,10 @@ struct HistoryDiaryView<
             HistoryMeetingsBar(coordinator: coordinator)
           }
         }
-      }
-      .padding(.horizontal, SettingsLayout.contentH)
-      .padding(.top, SettingsLayout.contentTop)
-      .padding(.bottom, 12)
+        .padding(.horizontal, SettingsLayout.contentH)
+        .padding(.top, SettingsLayout.contentTop)
+        .padding(.bottom, 12)
 
-      if let openID = state.openItemID, tab != .dictations {
-        destination(for: openID)
-          .frame(maxWidth: .infinity, maxHeight: .infinity)
-      } else {
         HistoryDiaryList(
           coordinator: coordinator, tab: tab, state: state, selection: selection,
           isSelecting: isSelecting, open: open, dictationCard: dictationCard)
@@ -82,8 +78,8 @@ struct HistoryDiaryView<
 
   @ViewBuilder private func destination(for id: HistoryItemID) -> some View {
     switch id {
-    case .transcript(let rowID): transcriptDestination(rowID)
-    case .meeting(let meetingID): meetingDestination(meetingID)
+    case .transcript(let rowID): transcriptDestination(rowID, closeOpenItem)
+    case .meeting(let meetingID): meetingDestination(meetingID, closeOpenItem)
     }
   }
 
@@ -150,7 +146,7 @@ private struct HistoryDiaryList<DictationCard: View>: View {
               tab: tab, day: day, now: now, isSelecting: isSelecting,
               selectDay: { selectDay(day.start, in: items) })
           case .item(let item):
-            row(for: item, items: items)
+              row(for: item, items: items)
               .onAppear {
                 // A best-effort prefetch hint: it can come early, together with other rows,
                 // or twice; `loadMore` accepts one request per window.
@@ -228,6 +224,7 @@ private struct HistoryDiaryList<DictationCard: View>: View {
           isSelected: selection.selectedIDs.contains(item.id),
           toggle: { extending in tick(item.id, extending: extending, items: items) })
       }
+      HistoryDiaryTime(item: item)
       switch item {
       case .transcript(let row) where row.isImported == false:
         dictationCard(row.id)
@@ -264,7 +261,8 @@ private struct HistoryDiaryList<DictationCard: View>: View {
   @ViewBuilder private func meetingCard(
     _ meetingID: UUID, item: HistoryItemID, items: [HistoryListItem]
   ) -> some View {
-    let card = HistoryMeetingCard(meetingID: meetingID, onOpen: { open(item) })
+    let card = HistoryMeetingCard(
+      meetingID: meetingID, onOpen: { open(item) }, allowsPlayback: !isSelecting)
     if isSelecting {
       openableCard(item, items: items) { card.allowsHitTesting(false) }
     } else {
@@ -326,6 +324,55 @@ private struct HistoryDiaryList<DictationCard: View>: View {
   }
 }
 
+/// The approved diary keeps the time and source beside the card while its content can wrap.
+private struct HistoryDiaryTime: View {
+  let item: HistoryListItem
+
+  private var app: String? {
+    switch item {
+    case .transcript(let row): row.isImported ? nil : row.metrics?.targetApp
+    case .meeting(let meeting): meeting.record?.callApp?.displayName
+    }
+  }
+
+  var body: some View {
+    HStack(alignment: .top, spacing: DesignSpacing.md) {
+      VStack(alignment: .trailing, spacing: DesignSpacing.xxs) {
+        Text(item.createdAt, format: .dateTime.hour().minute())
+          .font(.stRowLabel)
+          .foregroundStyle(.stTextPrimary)
+          .monospacedDigit()
+          .fixedSize()
+        if let app, !app.isEmpty {
+          Text(verbatim: app)
+            .font(.stHelper)
+            .foregroundStyle(.stTextSecondary)
+            .multilineTextAlignment(.trailing)
+            .lineLimit(2)
+        }
+      }
+      .frame(width: DesignSpacing.xxxl * 3, alignment: .trailing)
+      .padding(.top, DesignSpacing.lg)
+      Circle()
+        .fill(Color.stPageBg)
+        .overlay { Circle().strokeBorder(Color.stAccent, lineWidth: 1.5) }
+        .frame(width: DesignSpacing.xl, height: DesignSpacing.xl)
+        .padding(.top, DesignSpacing.xxl)
+        .accessibilityHidden(true)
+    }
+    .frame(maxHeight: .infinity, alignment: .top)
+    .background(alignment: .trailing) {
+      Rectangle()
+        .fill(Color.stDivider)
+        .frame(width: 1)
+        .padding(.trailing, DesignSpacing.sm)
+        .padding(.vertical, -DesignSpacing.sm)
+        .accessibilityHidden(true)
+    }
+    .accessibilityElement(children: .combine)
+  }
+}
+
 /// The day heading: the date, Today or Yesterday, how many items the day holds, and Select day
 /// while selecting.
 private struct HistoryDayHeader: View {
@@ -337,28 +384,32 @@ private struct HistoryDayHeader: View {
 
   var body: some View {
     let title = HistoryDiaryLayout.dayTitle(day.start, now: now, calendar: .current)
-    HStack(alignment: .firstTextBaseline, spacing: 8) {
-      Text(title.date)
-        .font(.stRowLabel)
-        .foregroundStyle(.stTextPrimary)
-      if let relative = title.relative {
-        Text(relative)
-          .font(.stSectionHeader)
-          .foregroundStyle(.stAccent)
-      }
-      Text(HistoryDiaryLayout.daySummary(tab: tab, count: day.total))
-        .font(.stHelper)
-        .foregroundStyle(.stTextSecondary)
-      Spacer(minLength: 8)
-      if isSelecting {
-        Button(action: selectDay) {
-          EnviousButtonLabel(
-            LocalizedStringResource(
-              "Select day", comment: "History selection: ticks every item listed on this day."),
-            size: .medium)
+    VStack(alignment: .leading, spacing: DesignSpacing.md) {
+      HStack(alignment: .firstTextBaseline, spacing: DesignSpacing.md) {
+        Text(title.date)
+          .font(.stRowTitle.bold())
+          .foregroundStyle(.stTextPrimary)
+        if let relative = title.relative {
+          Text(relative)
+            .font(.stSectionHeader)
+            .foregroundStyle(.stAccent)
         }
-        .settingsButton(.quiet, size: .medium, isEnabled: true)
+        Spacer(minLength: DesignSpacing.md)
+        Text(HistoryDiaryLayout.daySummary(tab: tab, count: day.total))
+          .font(.stHelper)
+          .foregroundStyle(.stTextSecondary)
+        if isSelecting {
+          Button(action: selectDay) {
+            EnviousButtonLabel(
+              LocalizedStringResource(
+                "Select day", comment: "History selection: ticks every item listed on this day."),
+              size: .medium)
+          }
+          .settingsButton(.quiet, size: .medium, isEnabled: true)
+        }
       }
+      Rectangle().fill(Color.stDivider).frame(height: 1)
+        .accessibilityHidden(true)
     }
     .padding(.top, 8)
     .accessibilityElement(children: .contain)
@@ -395,7 +446,7 @@ private struct HistorySelectionBox: View {
 }
 
 /// Above an open transcript or meeting: the way back to the tab's list.
-private struct HistoryDestinationBar: View {
+struct HistoryDestinationBar: View {
   let tab: HistoryTab
   let close: () -> Void
 

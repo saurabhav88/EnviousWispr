@@ -50,6 +50,7 @@ struct HistoryTranscriptView: View {
   /// Brings that same surface back to the front when Paste needs the user (main History, or the
   /// transcript window Paste was pressed in).
   let restorePasteSurface: @MainActor () -> Void
+  let back: (() -> Void)?
 
   init(
     rowID: UUID,
@@ -58,7 +59,8 @@ struct HistoryTranscriptView: View {
     retranscription: any ImportedTranscriptRetranscribing,
     openInNewWindow: @escaping (UUID) -> Void,
     showPasteNotice: @escaping @MainActor (String) -> Void,
-    restorePasteSurface: @escaping @MainActor () -> Void
+    restorePasteSurface: @escaping @MainActor () -> Void,
+    back: (() -> Void)? = nil
   ) {
     self.rowID = rowID
     self.context = context
@@ -67,6 +69,7 @@ struct HistoryTranscriptView: View {
     self.openInNewWindow = openInNewWindow
     self.showPasteNotice = showPasteNotice
     self.restorePasteSurface = restorePasteSurface
+    self.back = back
   }
 
   @Environment(TranscriptCoordinator.self) private var transcripts
@@ -143,7 +146,7 @@ struct HistoryTranscriptView: View {
     VStack(spacing: 0) {
       header(row)
         .padding(.horizontal, SettingsLayout.contentH)
-        .padding(.top, context == .window ? SettingsLayout.contentTop : DesignSpacing.xs)
+        .padding(.top, SettingsLayout.contentTop)
         .padding(.bottom, DesignSpacing.xl)
       Divider().overlay(Color.stDivider)
       ScrollView {
@@ -210,6 +213,7 @@ struct HistoryTranscriptView: View {
 
   private var removedPlaceholder: some View {
     VStack(spacing: DesignSpacing.md) {
+      if let back { HistoryDestinationBar(tab: .transcripts, close: back) }
       Image(systemName: "doc.text")
         .font(.stRowTitle)
         .foregroundStyle(.stTextSecondary)
@@ -233,13 +237,17 @@ struct HistoryTranscriptView: View {
       // letter per line, #3147 PR3 UAT).
       ViewThatFits(in: .horizontal) {
         HStack(alignment: .center, spacing: DesignSpacing.lg) {
+          if let back { HistoryDestinationBar(tab: .transcripts, close: back) }
           titleBlock(row)
             .frame(minWidth: Self.titleMinWidth, maxWidth: .infinity, alignment: .leading)
           actions(row)
         }
         VStack(alignment: .leading, spacing: DesignSpacing.md) {
-          titleBlock(row)
-            .frame(maxWidth: .infinity, alignment: .leading)
+          HStack(spacing: DesignSpacing.lg) {
+            if let back { HistoryDestinationBar(tab: .transcripts, close: back) }
+            titleBlock(row)
+              .frame(maxWidth: .infinity, alignment: .leading)
+          }
           actions(row)
         }
       }

@@ -67,7 +67,11 @@ struct HistoryTranscriptCard: View {
             .foregroundStyle(.stTextPrimary)
             .lineLimit(1)
             .truncationMode(.middle)
-          subtitle(row)
+          if let length = P.lengthLine(for: row) {
+            Text(verbatim: length)
+              .font(.stHelper)
+              .foregroundStyle(.stTextSecondary)
+          }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         Button(action: onOpen) {
@@ -101,19 +105,6 @@ struct HistoryTranscriptCard: View {
   private var isAvailable: Bool {
     if case .available = sourceState { return true }
     return false
-  }
-
-  private func subtitle(_ row: Transcript) -> some View {
-    HStack(spacing: DesignSpacing.sm) {
-      Text(row.createdAt, format: .dateTime.hour().minute())
-        .monospacedDigit()
-      if let length = P.lengthLine(for: row) {
-        Text(verbatim: "·").accessibilityHidden(true)
-        Text(verbatim: length)
-      }
-    }
-    .font(.stHelper)
-    .foregroundStyle(.stTextSecondary)
   }
 
   @ViewBuilder
