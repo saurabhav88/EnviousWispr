@@ -44,6 +44,11 @@ struct HistoryMeetingCard: View {
 
   private typealias P = MeetingAfterPresentation
 
+  private struct EchoDetailKey: Equatable {
+    let id: UUID?
+    let revision: UInt64?
+  }
+
   var body: some View {
     let record = meetings.record(id: meetingID)
     let row = summary == nil ? meetingRow(record) : nil
@@ -52,9 +57,13 @@ struct HistoryMeetingCard: View {
       card(P.card(inputs(record: record, row: row)), source: source)
         .onChange(of: source) { _, _ in dropPlayer() }
         .onDisappear(perform: dropPlayer)
-        .task(id: echoRowID) {
+        .task(id: EchoDetailKey(id: echoRowID, revision: transcripts.catalogSession?.revision)) {
+          // Reloads when the saved transcript changes, which a stale payload alone never would.
           guard let id = echoRowID else { return }
           _ = await transcripts.loadCatalogDetail(id)
+        }
+        .task(id: echoRowID) {
+          guard let id = echoRowID else { return }
           await transcripts.holdCatalogDetail(id)
         }
     }

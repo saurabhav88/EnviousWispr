@@ -214,8 +214,11 @@ struct HistoryMeetingAfterView: View {
       orphanRowID = foundOrphan
       completedTranscriptRead = key
     }
-    .task(id: transcriptReadKey?.transcriptID) {
-      if let id = transcriptReadKey?.transcriptID { await transcripts.holdCatalogDetail(id) }
+    .task(id: transcriptReadKey?.transcriptID ?? orphanRowID) {
+      // A meeting with a record holds its transcript; one whose folder is gone holds its orphan row.
+      if let id = transcriptReadKey?.transcriptID ?? orphanRowID {
+        await transcripts.holdCatalogDetail(id)
+      }
     }
     .onDisappear {
       presentation += 1
