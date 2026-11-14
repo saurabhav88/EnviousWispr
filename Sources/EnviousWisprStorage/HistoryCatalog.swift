@@ -401,6 +401,16 @@ package actor HistoryCatalog {
     }
   }
 
+  package func itemCount(now: Date, sourceRevision: String) throws -> Int {
+    try connection.transaction {
+      guard try hasCoverage(sourceRevision) else { throw Failure.incompleteCoverage }
+      return try connection.rows(
+        "SELECT count(*) FROM entries WHERE expires_at IS NULL OR expires_at > ?",
+        [.number(now.timeIntervalSinceReferenceDate)]
+      ) { Int(sqlite3_column_int64($0, 0)) }.first ?? 0
+    }
+  }
+
   private func hasCoverage(_ revision: String?) throws -> Bool {
     guard let revision else { return false }
     return try connection.rows("SELECT revision FROM coverage WHERE revision = ?", [.text(revision)]) {

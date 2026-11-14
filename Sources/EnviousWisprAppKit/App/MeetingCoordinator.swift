@@ -540,6 +540,7 @@ final class MeetingCoordinator {
   private var quitting = false
   private var launched = false
   private var launchTask: Task<Void, Never>?
+  private var needsRestoredMeetingScan = false
   private var committing = false
   /// #3973 C2: committed transcripts not yet published to History, by meeting. While one is
   /// here History still holds the previous row, which pairs with the receipt's previous facts
@@ -836,11 +837,28 @@ final class MeetingCoordinator {
   /// actor. Repeatable: a second call changes nothing.
   func launch() {
     guard !launched else { return }
+    readSavedMeetings()
+  }
+
+  /// A disk reconciliation can discover a restored meeting while this app is open.
+  func discoverRestoredMeetings() {
+    if launchTask != nil {
+      needsRestoredMeetingScan = true
+    } else {
+      readSavedMeetings()
+    }
+  }
+
+  private func readSavedMeetings() {
     launched = true
     launchTask = Task { [weak self] in
-      await self?.recoverAtLaunch()
+      guard let self else { return }
+      repeat {
+        needsRestoredMeetingScan = false
+        await recoverAtLaunch()
+      } while needsRestoredMeetingScan && !quitting
       // Cleared on every way recovery ends: `canTranscribeAgain` reads it (#4008).
-      self?.launchTask = nil
+      launchTask = nil
     }
   }
 
@@ -870,7 +888,10 @@ final class MeetingCoordinator {
         live[record.id] = record
         records[record.id] = record
         loaded.append(record.id)
-      case .newerFormat(let header): newerFormatMeetings.append(header)
+      case .newerFormat(let header):
+        if !newerFormatMeetings.contains(where: { $0.id == header.id }) {
+          newerFormatMeetings.append(header)
+        }
       case .unreadable(let id): deps.log("meeting folder unreadable id=\(id.uuidString)")
       }
     }
@@ -882,8 +903,6 @@ final class MeetingCoordinator {
     for receipt in committedReceipts where isStillOwned(receipt.meetingID) {
       _ = await publishCommitted(receipt, atLaunch: true)
     }
-    // Notes are searched with their meeting's transcript (R38): read every meeting's notes
-    // once, behind the listing, on the file queue.
     let toRead = loaded
     // #3973 C2: a meeting whose committed row could not be published keeps its owed summary
     // for the launch that publishes it; resumed now it would find no transcript and drop it.
@@ -893,7 +912,6 @@ final class MeetingCoordinator {
     }
     Task { [weak self] in
       for meetingID in toRead { await self?.documents.load(meetingID) }
-      // A summary a quit interrupted is finished now (R50), after the notes are read.
       await self?.summaries?.resumeOwed(readyMeetingIDs: ready)
     }
     for meetingID in loaded {

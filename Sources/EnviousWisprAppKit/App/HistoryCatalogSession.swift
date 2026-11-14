@@ -158,6 +158,15 @@ final class HistoryCatalogSession {
     return summary
   }
 
+  func itemCount(now: Date) async throws -> (count: Int, source: UInt64)? {
+    guard status == .ready, let source = changes.revision else { return nil }
+    let backend = try await open()
+    guard diskWatch != nil, let coverage = await backend.worker.currentCoverage() else { return nil }
+    let count = try await backend.catalog.itemCount(now: now, sourceRevision: coverage)
+    guard !Task.isCancelled, changes.revision == source else { return nil }
+    return (count, source)
+  }
+
   func appCounts(now: Date) async throws -> [(String?, Int)]? {
     let stamp = revision
     guard let source = changes.revision else { return nil }
@@ -233,6 +242,7 @@ final class HistoryCatalogSession {
               pending.include(.unknown)
             }
           } else {
+            if delta.scopes.contains(.all), status == .ready { didRecoverSources?() }
             retry?.cancel()
             retry = nil
           }
@@ -255,7 +265,6 @@ final class HistoryCatalogSession {
       status = pass.revision == nil ? .updating : .ready
     }
     revision &+= 1
-    if status == .ready { didRecoverSources?() }
     didUpdate?()
   }
 

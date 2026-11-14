@@ -3684,7 +3684,7 @@ package final class WisprBootstrapper {
     // a Mac left lowered by a dead process is put back before any take can start.
     dictationRuntime.otherAudioHold.adoptOrphans()
     transcriptCoordinator.catalogSession?.didRecoverSources = { [weak meetingCoordinator] in
-      meetingCoordinator?.launch()
+      meetingCoordinator?.discoverRestoredMeetings()
     }
     // #3972 R3/R15: meetings recover after the orphaned hold is restored, before any take.
     meetingMemoryPressure.start()

@@ -13,7 +13,7 @@ struct HistorySelectionToolbar: View {
   @State private var pendingKind: HistoryDeleteKind?
   @State private var allMatchingIDs: Set<HistoryItemID>?
   /// The global Delete all history (#2807), kept from the old sidebar: every tab, text and audio.
-  @State private var confirmingDeleteAll = false
+  @State private var deleteAllConfirmation: (message: String, source: UInt64?)?
 
   var body: some View {
     let count = selection.selectedIDs.count
@@ -78,7 +78,7 @@ struct HistorySelectionToolbar: View {
       // #3147 PR2: the old sidebar's global delete lives beside the bulk deletions. "history",
       // because it is GLOBAL while this tab can be filtered or searched (#2807).
       Button(role: .destructive) {
-        confirmingDeleteAll = true
+        Task { deleteAllConfirmation = await coordinator.deleteAllConfirmation() }
       } label: {
         EnviousButtonLabel("Delete all history", size: .medium, systemImage: "trash")
       }
@@ -104,17 +104,19 @@ struct HistorySelectionToolbar: View {
     } message: { kind in
       Text(HistorySelectionCopy.confirmMessage(tab: tab, kind: kind))
     }
-    .alert("Delete all history?", isPresented: $confirmingDeleteAll) {
+    .alert("Delete all history?", isPresented: Binding(
+      get: { deleteAllConfirmation != nil },
+      set: { if !$0 { deleteAllConfirmation = nil } }
+    ), presenting: deleteAllConfirmation) { confirmation in
       Button("Cancel", role: .cancel) {}
       Button("Delete all", role: .destructive) {
-        guard coordinator.catalogSession == nil || coordinator.catalogSession?.status == .ready else { return }
         selection.clear()
         // #4075 S1: admitted behind earlier History commands; a failure shows its alert.
-        Task { await coordinator.deleteAll() }
+        Task { await coordinator.deleteAll(confirmedSource: confirmation.source) }
       }
-    } message: {
+    } message: { confirmation in
       // The coordinator owns this sentence (#2087): the global count, hidden rows included.
-      Text(coordinator.deleteAllConfirmationMessage)
+      Text(confirmation.message)
     }
   }
 

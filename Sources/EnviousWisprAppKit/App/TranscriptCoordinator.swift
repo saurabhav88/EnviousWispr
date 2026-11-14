@@ -863,7 +863,17 @@ final class TranscriptCoordinator {
   /// sentence removes the choice from the call site and puts the decision
   /// somewhere a test can see it.
   var deleteAllConfirmationMessage: String {
-    let count = deletableCount
+    deleteAllConfirmationMessage(count: deletableCount)
+  }
+
+  func deleteAllConfirmation() async -> (message: String, source: UInt64?)? {
+    guard let catalogSession else { return (deleteAllConfirmationMessage, nil) }
+    guard let snapshot = try? await catalogSession.itemCount(now: clock()), snapshot.count > 0
+    else { return nil }
+    return (deleteAllConfirmationMessage(count: snapshot.count), snapshot.source)
+  }
+
+  private func deleteAllConfirmationMessage(count: Int) -> String {
     // "all 1 transcripts" is what centralising the sentence without reading it
     // produced, and a test then pinned it. One row is not a plural, and "all"
     // reads as boilerplate when there is nothing to be exhaustive about.
@@ -2369,19 +2379,22 @@ final class TranscriptCoordinator {
     return (.removed, recordingCleanupFailed)
   }
 
-  func deleteAll() async {
+  func deleteAll(confirmedSource: UInt64? = nil) async {
     guard !Task.isCancelled else { return }
     // #4075 S1: admitted behind earlier commands. Its marking, handoff and publication are one
     // command: History's queue stays held while the meeting marks are awaited (#4102), so later
     // saves, removals and a second Delete All wait behind it, while the main actor keeps running.
-    await transactionExecutor.admit { [self] in await performDeleteAll() }
+    await transactionExecutor.admit { [self] in
+      await performDeleteAll(confirmedSource: confirmedSource)
+    }
   }
 
-  private func performDeleteAll() async {
+  private func performDeleteAll(confirmedSource: UInt64?) async {
     // #3972 R45: every meeting goes too, also one with no History row yet.
     let allRows: [Transcript]
     if let catalogSession {
       guard catalogSession.status == .ready, let source = catalogSession.stableSourceRevision,
+        source == confirmedSource,
         let saved = try? await transactionExecutor.allRowsForGlobalDeletion(),
         source == catalogSession.stableSourceRevision else {
         actionFailure = .deleteAll

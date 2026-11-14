@@ -31,6 +31,8 @@ struct HistoryCatalogSessionTests {
     try store.delete(id: held.id)
     coordinator.startHistoryCatalog()
     await session.waitForIndexingForTesting()
+    let count = try await session.itemCount(now: Date())
+    #expect(count?.count == 40)
 
     let key = coordinator.historyQueryKey(for: .dictations, state: coordinator.requestedHistoryState(for: .dictations))
     let first = try #require(await coordinator.historyResults(for: key))
