@@ -57,6 +57,36 @@ struct HistoryCommandsTests {
     #expect(coordinator.currentRow(id: row.id)?.preferredVersion == .polished)
   }
 
+  @Test("Keep new selects the saved polish, and refuses after a later text choice or deletion")
+  func keepPolishRespectsTheSavedVersion() async throws {
+    let (coordinator, store) = makeCoordinator()
+    let row = dictation()
+    try await coordinator.saveAndShow(row)
+    let old = HistoryPolishCandidate(
+      base: row, text: "New words.", turns: nil, provider: .egOne, model: "eg-1")
+
+    _ = try await coordinator.setHistoryPreferredVersion(.original, for: row.id)
+    #expect(try await coordinator.keepHistoryPolish(old) == false)
+    #expect(coordinator.currentRow(id: row.id)?.historyText == row.text)
+
+    let original = try #require(coordinator.currentRow(id: row.id))
+    let preview = HistoryPolishCandidate(
+      base: original, text: "New words.", turns: nil, provider: .egOne, model: "eg-1")
+    #expect(try await coordinator.keepHistoryPolish(preview))
+    let saved = try #require(try await store.loadAll().first { $0.id == row.id })
+    #expect(saved.text == row.text)
+    #expect(saved.historyText == "New words.")
+    #expect(saved.preferredVersion == .polished)
+    #expect(saved.llmProvider == LLMProvider.egOne.rawValue)
+    #expect(coordinator.currentRow(id: row.id)?.historyText == saved.historyText)
+
+    await coordinator.deleteHistoryItem(id: .transcript(row.id), kind: .textAndRecordings)
+    let late = HistoryPolishCandidate(
+      base: saved, text: "Another version.", turns: nil, provider: .egOne, model: "eg-1")
+    #expect(try await coordinator.keepHistoryPolish(late) == false)
+    #expect(try await store.loadAll().allSatisfy { $0.id != row.id })
+  }
+
   @Test("imports, meetings, held rows and deleted rows take no preference")
   func preferenceRefusedOutsideDictations() async throws {
     let (coordinator, _) = makeCoordinator()

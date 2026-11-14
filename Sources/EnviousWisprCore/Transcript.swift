@@ -386,6 +386,8 @@ public struct Transcript: Codable, Identifiable, Sendable {
   public let createdAt: Date
   public private(set) var llmProvider: String?
   public private(set) var llmModel: String?
+  /// Exact EG-1 size selected in a saved History polish. Older rows use their take's metrics.
+  package private(set) var historyPolishEGOneSize: String?
   public var metrics: ExecutionMetrics?
   /// Links a transcript to its crash-recovery spool (the durable kernel
   /// `SessionID`). On a live transcript it lets the recovery scan dedup — a
@@ -681,6 +683,37 @@ public struct Transcript: Codable, Identifiable, Sendable {
     copy.polishedText = wasPolished ? output : nil
     copy.llmProvider = wasPolished ? llmProvider : nil
     copy.llmModel = wasPolished ? llmModel : nil
+    return copy
+  }
+
+  /// Applies a successful History polish to an existing row. The new derived turns come
+  /// from the same original ranges as the current turns. Speaker names and original words
+  /// remain on this row, so independent changes such as a rename or a relink are preserved.
+  package func keepingHistoryPolish(
+    _ output: String, turns cleanedTurns: [Turn]?, provider: LLMProvider, model: String,
+    egOneSize: EGOneSize?
+  ) -> Transcript? {
+    guard provider != .none, !output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    else { return nil }
+    var copy = self
+    if let turns {
+      guard let cleanedTurns, cleanedTurns.count == turns.count,
+        zip(turns, cleanedTurns).allSatisfy({ original, cleaned in
+          original.id == cleaned.id && original.speakerId == cleaned.speakerId
+            && original.startMs == cleaned.startMs && original.endMs == cleaned.endMs
+            && original.originalTextRange == cleaned.originalTextRange
+            && original.granularity == cleaned.granularity
+        })
+      else { return nil }
+      copy.turns = cleanedTurns
+    } else if cleanedTurns != nil {
+      return nil
+    }
+    copy.polishedText = output
+    copy.llmProvider = provider.rawValue
+    copy.llmModel = model
+    copy.historyPolishEGOneSize = egOneSize?.rawValue
+    if !isImported && !isMeeting { copy.preferredVersion = .polished }
     return copy
   }
 

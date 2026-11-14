@@ -24,6 +24,9 @@ struct MeetingGapPresentationTests {
     #expect(bounded.text == "[Could not transcribe 1:00 to 1:30]")
     #expect(from.text == "[Could not transcribe from 1:02:05]")
     let text = "Hello there. \(bounded.text) and then \(from.text) \(failedPiece.text). Thanks."
+    #expect(MeetingGapPresentation.containsGap(bounded.text))
+    #expect(MeetingGapPresentation.containsGap(from.text))
+    #expect(MeetingGapPresentation.containsGap(text))
     #expect(
       MeetingGapPresentation.localized(text, forms: Self.german)
         == "Hello there. [DE 1:00 bis 1:30] and then [DE ab 1:02:05] [DE 0:00 bis 0:05]. Thanks.")

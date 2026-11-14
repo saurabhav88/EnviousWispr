@@ -2,18 +2,14 @@ import EnviousWisprCore
 import EnviousWisprServices
 import SwiftUI
 
-/// A meeting's Summary tab (#3972 R39, R46, R60). The summary is written by the user's AI Polish
-/// provider when the meeting is ready (`MeetingSummaryOwner`); the user may edit it, and an
-/// edited summary is the user's own text, which Write again replaces only after the user
-/// confirms. A summary written from inputs that differ from the meeting now is always shown as
-/// out of date, never as current. The text lives in `MeetingDocumentsOwner`, never in this
-/// view, and is saved one second after the last change and when the view closes.
+/// The editable summary and its status. Manual generation opens the meeting's comparison,
+/// and the text here stays the saved summary until the person chooses Keep new.
 struct MeetingSummaryView: View {
   let meetingID: UUID
+  let writePreview: (HistoryPolishChoice) -> Void
   @Environment(MeetingCoordinator.self) private var meetings
   @Environment(SettingsManager.self) private var settings
-  /// The SHA-256 of the user's own summary awaiting the replace confirmation.
-  @State private var confirmingReplace: String?
+  @Environment(HistoryRepolishRunner.self) private var historyRepolish
 
   var body: some View {
     if let record = meetings.record(id: meetingID) {
@@ -56,6 +52,7 @@ struct MeetingSummaryView: View {
     // From the current setting, whatever any attempt did (R39): no provider, or one that
     // cannot summarize, is explained with the way to fix it.
     let configurationProblem = summaries?.configurationProblem()
+    let previewChoice = summaries?.defaultPreviewChoice(in: historyRepolish.choices(.summary))
     // #4148: a ready meeting with no summary and no visible transcript text has nothing a
     // model could summarize; say so instead of any attempt's progress or problem. Only once its
     // documents are read: before that (or after a failed read) the summary is unknown, and
@@ -161,7 +158,7 @@ struct MeetingSummaryView: View {
 
       HStack(spacing: 10) {
         Button {
-          write()
+          if let previewChoice { writePreview(previewChoice) }
         } label: {
           Text(
             documents.summary(meetingID) == nil
@@ -170,7 +167,7 @@ struct MeetingSummaryView: View {
               : String(
                 localized: "Write again", comment: "History, a meeting: writes its summary again."))
         }
-        .disabled(writing || requesting || configurationProblem != nil || nothingToSummarize)
+        .disabled(writing || requesting || configurationProblem != nil || nothingToSummarize || previewChoice == nil)
         .accessibilityIdentifier("history.meeting.writeSummary")
         if let text = documents.summary(meetingID), !text.isEmpty {
           Button {
@@ -189,43 +186,6 @@ struct MeetingSummaryView: View {
       let documents = documents
       let meetingID = meetingID
       Task { await documents.flushSummary(meetingID) }
-    }
-    .alert(
-      Text(
-        "Replace your edited summary?",
-        comment: "History, a meeting: confirms writing the summary again over the user's edits."),
-      isPresented: Binding(
-        get: { confirmingReplace != nil }, set: { if !$0 { confirmingReplace = nil } })
-    ) {
-      Button(
-        String(localized: "Replace", comment: "History, a meeting: replaces the edited summary."),
-        role: .destructive
-      ) {
-        // Exactly the text the user confirmed: an edit made after this is kept.
-        if let approved = confirmingReplace {
-          meetings.summaries?.writeAgain(meetingID, replacing: approved)
-        }
-        confirmingReplace = nil
-      }
-      Button(
-        String(localized: "Cancel", comment: "History, a meeting: keeps the edited summary."),
-        role: .cancel
-      ) {}
-    } message: {
-      Text(
-        "You changed this summary. Writing it again replaces your changes.",
-        comment: "History, a meeting: explains what Replace does to the edited summary.")
-    }
-  }
-
-  /// One press: the owner reads and saves the documents first, then starts the attempt or asks
-  /// before replacing the user's own text (`MeetingSummaryOwner.requestWrite`).
-  private func write() {
-    guard let summaries = meetings.summaries else { return }
-    Task {
-      if case .needsConfirmation(let approved) = await summaries.requestWrite(meetingID) {
-        confirmingReplace = approved
-      }
     }
   }
 

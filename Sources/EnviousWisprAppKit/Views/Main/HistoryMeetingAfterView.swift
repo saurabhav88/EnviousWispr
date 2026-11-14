@@ -69,9 +69,13 @@ struct HistoryMeetingAfterView: View {
   @Environment(AppWindowCoordinator.self) private var appWindowCoordinator
   @Environment(HistoryPaste.self) private var historyPaste
   @Environment(PreviousApplicationTracker.self) private var previousApplication
+  @Environment(HistoryRepolishRunner.self) private var historyRepolish
 
   // Panes
   @State private var leftPane: P.LeftPane = .notes
+  @State private var transcriptPolish = HistoryPolishPreview()
+  @State private var summaryPolishNotice = false
+  @State private var keepingSummary = false
   @State private var editingSummary = false
   @State private var follow: P.Follow = .following
   @State private var activeTurnID: String?
@@ -175,6 +179,8 @@ struct HistoryMeetingAfterView: View {
     .background(Color.stPageBg)
     .onDisappear {
       presentation += 1
+      transcriptPolish.cancel()
+      meetings.summaries?.discardPreview(meetingID)
       dropPlayer()
     }
     .onChange(of: meetingID) {
@@ -407,6 +413,8 @@ struct HistoryMeetingAfterView: View {
         }
       }
       statusStrip(record)
+      HistoryPolishPreviewContent(preview: transcriptPolish)
+      summaryPolishPreview
       noticeView
     }
   }
@@ -563,6 +571,9 @@ struct HistoryMeetingAfterView: View {
       record, isActive: isActive(record),
       canTranscribeAgain: meetings.canTranscribeAgain(meetingID) && !actionInFlight)
     let engines = meetings.transcribeAgainEngines
+    let row = committedRow(record)
+    let savedSummary = meetings.documents.manifest(meetingID)?.summary?.inputs
+    let available = row != nil && canDeliver && !isActive(record) && !actionInFlight
     return Menu {
       Button {
         renameRequested = true
@@ -584,6 +595,23 @@ struct HistoryMeetingAfterView: View {
         }
       }
       .disabled(!permissions.accessibilityGranted || !canDeliver)
+      Divider()
+      HistoryPolishMenu(
+        title: "Polish transcript with", surface: .transcript, currentProvider: row?.llmProvider,
+        currentModel: row?.llmModel, currentSize: row?.historyPolishEGOneSize,
+        isEnabled: available && transcriptPolish.canStart
+      ) { choice in
+        guard let row else { return }
+        transcriptPolish.start(rowID: row.id, choice: choice, runner: historyRepolish, history: transcripts)
+      }
+      HistoryPolishMenu(
+        title: "Write summary again with", surface: .summary,
+        currentProvider: savedSummary?.providerID, currentModel: savedSummary?.modelOverride?.model,
+        currentSize: savedSummary?.modelOverride?.egOneSize,
+        isEnabled: available && !keepingSummary && meetings.summaries?.isWriting(meetingID) != true
+      ) { choice in
+        beginSummaryPreview(choice)
+      }
       Divider()
       Menu {
         if engines.isEmpty {
@@ -649,6 +677,43 @@ struct HistoryMeetingAfterView: View {
     .menuIndicator(.hidden)
     .fixedSize()
     .accessibilityLabel(Text("More actions", comment: "History transcript: opens the More menu."))
+  }
+
+  private func beginSummaryPreview(_ choice: HistoryPolishChoice) {
+    summaryPolishNotice = false
+    meetings.summaries?.startPreview(meetingID, with: choice)
+  }
+
+  @ViewBuilder private var summaryPolishPreview: some View {
+    if let summaries = meetings.summaries {
+      if keepingSummary {
+        HistoryPolishProgress(title: "Saving…")
+      } else if let preview = summaries.previews[meetingID] {
+        switch preview {
+        case .generating:
+          HistoryPolishProgress(title: "Writing a new summary…") {
+            summaries.discardPreview(meetingID)
+          }
+        case .comparing(let candidate):
+          HistoryPolishComparison(
+            current: candidate.current ?? String(localized: "No summary yet"),
+            new: candidate.text, model: candidate.choice.title,
+            keep: {
+              keepingSummary = true
+              Task {
+                summaryPolishNotice = !(await summaries.keepPreview(meetingID, candidateID: candidate.id))
+                keepingSummary = false
+              }
+            },
+            discard: { summaries.discardPreview(meetingID) })
+            .id(candidate.id)
+        case .failed:
+          Text("Couldn't write a new summary. Choose a model to try again.").font(.stHelper)
+        }
+      } else if summaryPolishNotice {
+        Text("The saved summary changed. Choose a model to try again.").font(.stHelper)
+      }
+    }
   }
 
   private var confirmingBinding: Binding<Bool> {
@@ -999,7 +1064,7 @@ extension HistoryMeetingAfterView {
         }
         // Editing, Write again, writing, problems, save failure and edited-summary protection;
         // also every state before a summary exists.
-        MeetingSummaryView(meetingID: meetingID)
+        MeetingSummaryView(meetingID: meetingID, writePreview: beginSummaryPreview)
       }
     }
   }

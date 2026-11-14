@@ -394,6 +394,14 @@ enum MeetingWiring {
         artifactRevision: { [egOne = inputs.egOneSummaryEngine] provider in
           provider == .egOne ? egOne?.artifactRevision : nil
         },
+        prepareEGOneOverride: { [egOne = inputs.egOneSummaryEngine] size in
+          egOne?.prepare(
+            timeoutSeconds: MeetingSummaryOwner.Dependencies.defaultLocalCallTimeoutSeconds,
+            modelOverride: .egOne(size)) ?? .failure(.notReady)
+        },
+        overrideArtifactRevision: { [egOne = inputs.egOneSummaryEngine] size in
+          egOne?.artifactRevision(for: .egOne(size))
+        },
         beginTermination: { [egOne = inputs.egOneSummaryEngine] in egOne?.beginTermination() }),
       documents: coordinator.documents, lane: lane)
   }

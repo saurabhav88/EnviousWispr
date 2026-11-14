@@ -46,10 +46,12 @@ struct HistoryDictationCard: View {
   @Environment(HistoryPaste.self) private var historyPaste
   @Environment(PreviousApplicationTracker.self) private var previousApplication
   @Environment(SettingsManager.self) private var settings
+  @Environment(HistoryRepolishRunner.self) private var historyRepolish
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   // Recording
   @State private var status: DictationRecordingStatus?
+  @State private var polishPreview = HistoryPolishPreview()
   @State private var player: MeetingPlaybackController?
   @State private var playerURL: URL?
   @State private var timeline: [HistoryDictationPresentation.TimedSpan] = []
@@ -101,6 +103,7 @@ struct HistoryDictationCard: View {
     }
     return VStack(alignment: .leading, spacing: DesignSpacing.lg) {
       recordingRow
+      HistoryPolishPreviewContent(preview: polishPreview)
       if editsOn, current?.hasChanges == true { viewSwitch }
       HistoryParagraphText(
         blocks: blocks(row: row, texts: texts, prepared: current),
@@ -152,7 +155,10 @@ struct HistoryDictationCard: View {
     .task(id: PolishedSpans.Key(texts: prepared?.texts, timeline: timeline)) {
       await preparePolishedSpans()
     }
-    .onDisappear { dropPlayer() }
+    .onDisappear {
+      polishPreview.cancel()
+      dropPlayer()
+    }
     .confirmationDialog(
       Text(Self.confirmTitle(confirming ?? .textAndRecordings)),
       isPresented: Binding(get: { confirming != nil }, set: { if !$0 { confirming = nil } }),
@@ -481,6 +487,15 @@ struct HistoryDictationCard: View {
 
   private func moreMenu(_ row: Transcript) -> some View {
     Menu {
+      HistoryPolishMenu(
+        title: "Polish again with", surface: .dictation, currentProvider: row.llmProvider,
+        currentModel: row.llmModel,
+        currentSize: row.historyPolishEGOneSize ?? row.metrics?.polishModelSize,
+        isEnabled: polishPreview.canStart
+      ) { choice in
+        polishPreview.start(rowID: rowID, choice: choice, runner: historyRepolish, history: transcripts)
+      }
+      Divider()
       if case .available(_, _, let pinned) = status {
         Toggle(
           isOn: Binding(get: { pinned }, set: { setKeep($0) })

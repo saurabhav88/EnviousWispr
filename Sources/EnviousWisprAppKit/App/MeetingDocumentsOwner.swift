@@ -494,13 +494,16 @@ final class MeetingDocumentsOwner {
   /// when the meeting was deleted or the write failed.
   func publishGeneratedSummary(
     _ meetingID: UUID, text: String, inputs: SummaryInputs, writtenInParts: Bool,
-    approvedUserEdit: String?
+    approvedUserEdit: String?, publication: MeetingStore.SummaryPublication = .automatic
   ) async -> MeetingStore.GeneratedSummarySave? {
     guard !forgotten.contains(meetingID) else { return nil }
     // Typing in the summary not yet saved is saved first: it is the user's text, so the
     // checked write below keeps it.
     // If that save fails, nothing is published: the typing stays the newest text.
     if hasUnsavedSummary(meetingID) {
+      if case .replacing = publication, let manifest = manifest(meetingID) {
+        return .baseChanged(manifest)
+      }
       guard await flushSummary(meetingID) else { return nil }
     }
     // The typing this result may follow; anything typed after this is newer than it.
@@ -509,7 +512,7 @@ final class MeetingDocumentsOwner {
     let result = await perform(meetingID) {
       try $0.saveGeneratedSummary(
         text, inputs: inputs, writtenInParts: writtenInParts,
-        approvedUserEdit: approvedUserEdit, meeting: meetingID)
+        approvedUserEdit: approvedUserEdit, meeting: meetingID, publication: publication)
     }
     await deps.afterGeneratedWrite()
     guard generation(meetingID) == gen else { return nil }
@@ -531,7 +534,7 @@ final class MeetingDocumentsOwner {
             entry.summary = text
           }
           entry.manifest.summaryPending = manifest.summaryPending
-        case .userEditKept(let manifest), .notesChanged(let manifest):
+        case .userEditKept(let manifest), .notesChanged(let manifest), .baseChanged(let manifest):
           entry.manifest.summaryPending = manifest.summaryPending
         }
         entries[meetingID] = entry

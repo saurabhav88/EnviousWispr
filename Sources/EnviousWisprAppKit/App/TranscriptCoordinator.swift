@@ -998,6 +998,32 @@ final class TranscriptCoordinator {
     }.get()
   }
 
+  /// Keep new in History. Compare the displayed version in the same queue that commits it.
+  func keepHistoryPolish(_ candidate: HistoryPolishCandidate) async throws -> Bool {
+    let id = candidate.base.id
+    guard !transactionExecutor.isDurableWriteInFlight(id) else { throw RowWriteInFlight() }
+    try Task.checkCancellation()
+    return try await transactionExecutor.admit { [self] in
+      await transactionExecutor.capture {
+        guard let current = currentRow(id: id), current.escapeRecoveredAt == nil,
+          candidate.matches(current)
+        else { return false }
+        if let meetingID = current.meetingID {
+          // The completed view can temporarily show the prior attempt while its replacement
+          // publishes. Only the generation the meeting has committed can accept Keep new.
+          guard let info = meetingInfo?(meetingID),
+            info.generation == current.meetingTranscriptGeneration
+          else { return false }
+        }
+        guard let updated = current.keepingHistoryPolish(
+          candidate.text, turns: candidate.turns, provider: candidate.provider,
+          model: candidate.model, egOneSize: candidate.egOneSize)
+        else { return false }
+        return try await performWrite(updated, insertIfAbsent: false)
+      }
+    }.get()
+  }
+
   /// The speaker-fields write (#2810 addendum §3 E), and the one future rename write (phase
   /// 4) will share it. Reads the CURRENT row from `transcripts` at call time — never a value
   /// captured earlier — so "merge into the latest existing row, never overwrite newer

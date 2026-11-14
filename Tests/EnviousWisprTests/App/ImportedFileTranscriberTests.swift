@@ -159,6 +159,58 @@ final class ImportedTranscriberRig {
 @Suite("Imported file transcriber (#3147 PR3)", .tags(.productOutcome), .timeLimit(.minutes(1)))
 struct ImportedFileTranscriberTests {
 
+  @Test("manual meeting polish sends only visible speech and releases the shared lease")
+  func manualMeetingPolishUsesOriginalVisibleSpeech() async throws {
+    let rig = ImportedTranscriberRig()
+    let speech = "Visible original words."
+    let gap = "Some words [Could not transcribe 0:01 to 0:02] more words."
+    let echo = "Hidden probable echo."
+    let original = [speech, gap, echo].joined(separator: "\n")
+    let source = original as NSString
+    let turns = [speech, gap, echo].enumerated().map { index, words in
+      let range = source.range(of: words)
+      return Turn(
+        id: String(index), speakerId: "speaker", startMs: index * 1000,
+        endMs: (index + 1) * 1000, originalTextRange: range.location..<(range.location + range.length),
+        processedText: "Prior polish.")
+    }
+    let row = Transcript(text: original, turns: turns, meetingID: UUID())
+    let choice = HistoryPolishChoice(provider: .egOne, model: "eg-1")
+    let freeze: (ASRBackendType) -> ImportedFileTranscriber.FrozenRun = { backend in
+      .init(
+        settings: rig.snapshot(backend),
+        configuration: .init(
+          polishIsCloud: false, localPolishModel: nil, polishProvider: .egOne,
+          ollamaModel: nil, polishModel: "eg-1", backendType: backend))
+    }
+    let runner = HistoryRepolishRunner(
+      choices: { _ in [choice] }, admission: .live(lease: rig.lease, as: .fileImport),
+      freeze: { backend, selected in
+        #expect(selected == choice)
+        return freeze(backend)
+      },
+      cleanup: .init(
+        freeze: { freeze($0) },
+        prepareLocalPolish: { _ in rig.lease.currentHolder == .fileImport },
+        processParts: { pieces, _, report in
+          rig.processedParts.append(pieces)
+          for (index, piece) in pieces.enumerated() {
+            _ = report(index, .init(text: piece, polishedText: "Polished visible words."))
+          }
+        },
+        release: { rig.releases += 1 }),
+      polishDictation: { _, _ in nil }, meetingInfo: { _ in .init(echoTurnIDs: ["2"]) })
+
+    let result = try await runner.candidate(for: row, choice: choice)
+    #expect(rig.processedParts == [[speech]])
+    #expect(result.comparisonCurrentText == "Prior polish.\n\nPrior polish.")
+    #expect(result.comparisonNewText == "Polished visible words.\n\n" + gap)
+    #expect(result.turns?.map(\.processedText) == ["Polished visible words.", nil, nil])
+    #expect(result.turns?.map(\.originalTextRange) == turns.map(\.originalTextRange))
+    #expect(rig.lease.currentHolder == nil)
+    #expect(rig.releases == 1)
+  }
+
   @Test("the chosen engine runs, settings freeze for it, and the words are cleaned")
   func chosenEngineAndCleanup() async throws {
     let rig = ImportedTranscriberRig()

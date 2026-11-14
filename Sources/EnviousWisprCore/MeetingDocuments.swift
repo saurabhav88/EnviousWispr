@@ -66,6 +66,16 @@ public struct MeetingDocumentsManifest: Sendable, Equatable, Codable {
 /// Everything a generated summary depends on (#3972 R46). A result whose inputs no longer match
 /// the meeting is never published, and a summary whose inputs differ is shown as out of date.
 public struct SummaryInputs: Sendable, Equatable, Codable {
+  public struct ModelOverride: Sendable, Equatable, Codable {
+    public let model: String
+    public let egOneSize: String?
+
+    public init(model: String, egOneSize: String?) {
+      self.model = model
+      self.egOneSize = egOneSize
+    }
+  }
+
   public var transcriptSHA256: String
   public var notesRevision: Int
   public var speakerNamesSHA256: String
@@ -85,11 +95,13 @@ public struct SummaryInputs: Sendable, Equatable, Codable {
   /// changed fact makes a generated summary out of date. Nil when no facts were known, and in a
   /// manifest written before this field.
   public var contextSHA256: String?
+  /// Present only for a manual choice on this meeting. Older and automatic summaries use settings.
+  public var modelOverride: ModelOverride?
 
   public init(
     transcriptSHA256: String, notesRevision: Int, speakerNamesSHA256: String, promptVersion: Int,
     providerID: String, configurationSHA256: String, transcriptAttemptID: UUID? = nil,
-    contextSHA256: String? = nil
+    contextSHA256: String? = nil, modelOverride: ModelOverride? = nil
   ) {
     self.transcriptSHA256 = transcriptSHA256
     self.notesRevision = notesRevision
@@ -99,6 +111,7 @@ public struct SummaryInputs: Sendable, Equatable, Codable {
     self.configurationSHA256 = configurationSHA256
     self.transcriptAttemptID = transcriptAttemptID
     self.contextSHA256 = contextSHA256
+    self.modelOverride = modelOverride
   }
 }
 
