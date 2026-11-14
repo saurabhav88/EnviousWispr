@@ -205,6 +205,46 @@ struct HistoryCatalogTests {
     #expect(Set(updated.map(\.id)) == [one.id, two.id, third.id])
   }
 
+  @MainActor
+  @Test("An indexed meeting refreshes when only its transcript is edited")
+  func meetingTranscriptDelta() async throws {
+    let root = TestTemporaryDirectory.url.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let changes = HistorySourceChanges()
+    let store = TranscriptStore(directory: root.appendingPathComponent("transcripts"), historyChanges: changes)
+    // Keep the fixture setup out of the notification sequence for the tested mutation.
+    let meetings = MeetingStore(root: root.appendingPathComponent("Meetings"))
+    var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    record.state = .ready
+    try meetings.create(record)
+    let fixture = TranscriptStore(directory: root.appendingPathComponent("transcripts"))
+    try fixture.save(Transcript(id: record.transcriptID, text: "before", meetingID: record.id))
+    let catalog = try HistoryCatalog(directory: root.appendingPathComponent("catalog"))
+    let worker = HistoryCatalogReconciliation(
+      catalog: catalog, sources: store.historyCatalogSources(meetings: meetings),
+      sourceRevision: { changes.revision }
+    ) { snapshot in
+      guard let record = snapshot.meeting, let transcript = snapshot.transcript else { return nil }
+      return .init(summary: .init(
+        key: .init(tab: .meetings, id: record.id), date: record.createdAt, preview: transcript.text,
+        sources: snapshot.versions), searchableFields: [transcript.text])
+    }
+    let first = try #require(try await worker.reconcile()?.revision)
+    #expect(try await catalog.matchingKeys(.init(tab: .meetings), sourceRevision: first).count == 1)
+    try store.save(Transcript(id: record.transcriptID, text: "after", meetingID: record.id))
+    var iterator = changes.changes.makeAsyncIterator()
+    var delta = HistorySourceChanges.Delta()
+    for _ in 0..<2 {
+      delta.include(try #require(await iterator.next()))
+    }
+    let revision = try #require(try await worker.refresh(delta)?.revision)
+    let results = try await catalog.page(.init(tab: .meetings, search: "after"), sourceRevision: revision) {
+      try $0.sourcesStillMatch()
+    }
+    #expect(results.summaries.map(\.preview) == ["after"])
+    #expect(results.summaries.first?.key.id == record.id)
+  }
+
   #if DEBUG
     @MainActor
     @Test("Canonical writes share a fence without depending on the SQLite catalog")

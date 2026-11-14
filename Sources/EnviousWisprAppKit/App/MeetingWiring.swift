@@ -349,7 +349,7 @@ enum MeetingWiring {
           // #3973 C2: only the committed generation's row: while a committed replacement is
           // not yet in History, the inputs are unknown (out of date, nothing written).
           guard let record = coordinator?.record(id: meetingID),
-            let row = transcriptCoordinator.currentRow(id: record.transcriptID),
+            let row = transcriptCoordinator.verifiedRowForDelivery(id: record.transcriptID, fetchIfNeeded: true),
             isCommittedRow(row, of: record),
             let text = transcriptCoordinator.summaryVisibleText(
               of: row, info: historyInfo(coordinator, meetingID: meetingID))
@@ -362,7 +362,7 @@ enum MeetingWiring {
           [weak coordinator, transcriptCoordinator = inputs.transcriptCoordinator] meetingID in
           // #4148: the same live reads and projection; a missing record or row is not empty.
           guard let record = coordinator?.record(id: meetingID),
-            let row = transcriptCoordinator.currentRow(id: record.transcriptID),
+            let row = transcriptCoordinator.verifiedRowForDelivery(id: record.transcriptID, fetchIfNeeded: true),
             isCommittedRow(row, of: record)
           else { return false }
           return transcriptCoordinator.summaryHasNoWords(
@@ -439,7 +439,7 @@ enum MeetingWiring {
     meetingID: UUID
   ) -> MeetingSummaryReferenceSources? {
     guard let coordinator, let record = coordinator.record(id: meetingID),
-      let row = transcriptCoordinator.currentRow(id: record.transcriptID),
+      let row = transcriptCoordinator.verifiedRowForDelivery(id: record.transcriptID, fetchIfNeeded: true),
       isCommittedRow(row, of: record),
       let info = historyInfo(coordinator, meetingID: meetingID)?.matching(row)
     else { return nil }

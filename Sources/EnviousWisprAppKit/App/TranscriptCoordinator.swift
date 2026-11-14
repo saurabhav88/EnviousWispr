@@ -23,6 +23,7 @@ final class TranscriptCoordinator {
   @ObservationIgnored private var latestCatalogTask: Task<Void, Never>?
   private var catalogDetails: [UUID: Transcript] = [:]
   @ObservationIgnored private var catalogDetailProofs: [UUID: [HistoryCatalog.SourceVersion]] = [:]
+  @ObservationIgnored private let readSavedHistoryRow: @Sendable (UUID, Date) throws -> Transcript?
   @ObservationIgnored private let readCatalogProof: @Sendable (UUID) throws -> [HistoryCatalog.SourceVersion]
   @ObservationIgnored private var catalogDetailOrder: [UUID] = []
   @ObservationIgnored private var catalogDetailVersions: [UUID: UInt64] = [:]
@@ -105,7 +106,8 @@ final class TranscriptCoordinator {
     catalogDetails[id] = payload.row
     catalogDetailProofs[id] = payload.versions
     if catalogDetailOrder.count > 120 {
-      let evicted = catalogDetailOrder.removeFirst()
+      let index = catalogDetailOrder.firstIndex { $0 != catalogSession.latestDictation } ?? 0
+      let evicted = catalogDetailOrder.remove(at: index)
       catalogDetailVersions[evicted] = nil
       catalogDetails[evicted] = nil
       catalogDetailProofs[evicted] = nil
@@ -963,6 +965,7 @@ final class TranscriptCoordinator {
     let transactionExecutor = HistoryTransactionExecutor(store: store)
     self.transactionExecutor = transactionExecutor
     self.readCatalogProof = store.historyRowProofReader()
+    self.readSavedHistoryRow = store.historyRowReader()
     self.recordings = recordingArchive.map { archive in
       let exists: @MainActor (UUID) async throws -> Bool = {
         try await transactionExecutor.readRow(id: $0) != nil
@@ -1446,12 +1449,13 @@ final class TranscriptCoordinator {
 
   /// Synchronous delivery entry points verify only the few source attributes of a single
   /// payload before using it. A miss remains a refusal, never an unsaved-live snapshot.
-  func verifiedRowForDelivery(id: UUID) -> Transcript? {
+  func verifiedRowForDelivery(id: UUID, fetchIfNeeded: Bool = false) -> Transcript? {
     guard catalogSession != nil else { return currentRow(id: id) }
     guard !removedRowIDs.contains(id), let expected = try? readCatalogProof(id),
       expected.contains(where: { !$0.fingerprint.isEmpty }) else { return nil }
     if catalogDetailProofs[id] == expected { return catalogDetails[id] }
-    return nil
+    guard fetchIfNeeded else { return nil }
+    return try? readSavedHistoryRow(id, clock())
   }
 
   /// Renames a speaker id across every turn showing it, for a row History renders directly
@@ -2049,7 +2053,7 @@ final class TranscriptCoordinator {
   func restorableHeldRow(id: UUID) -> (text: String, stampedAt: Date, takeID: String?)? {
     let now = Date()
     guard
-      let row = verifiedRowForDelivery(id: id),
+      let row = verifiedRowForDelivery(id: id, fetchIfNeeded: true),
       let stampedAt = row.escapeRecoveredAt,
       Self.isVisible(row, at: now)
     else { return nil }

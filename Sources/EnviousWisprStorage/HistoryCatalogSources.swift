@@ -112,10 +112,11 @@ package struct HistoryCatalogSources: Sendable {
     }
   }
 
-  func snapshot(of url: URL, at now: Date) throws -> (saved: Saved?, versions: [HistoryCatalog.SourceVersion]) {
+  func snapshot(of url: URL, at now: Date) throws -> (saved: Saved?, versions: [HistoryCatalog.SourceVersion], dependentMeeting: UUID?) {
     if url.lastPathComponent == MeetingStore.recordFileName {
       guard let id = UUID(uuidString: url.deletingLastPathComponent().lastPathComponent) else { throw SourceError.unreadable }
-      return try meeting(id)
+      let result = try meeting(id)
+      return (result.0, result.1, nil)
     }
     guard let id = UUID(uuidString: url.deletingPathExtension().lastPathComponent) else {
       throw SourceError.unreadable
@@ -138,13 +139,15 @@ package struct HistoryCatalogSources: Sendable {
       let record = try HistoryCatalog.SourceVersion.read(meetings.recordURL(for: meetingID))
       proofs.append(record)
       if record.fingerprint.isEmpty == false {
-        return try verified(nil, versions: proofs)
+        let result = try verified(nil, versions: proofs)
+        return (result.0, result.1, meetingID)
       }
     }
     let saved = row.map {
       Saved(transcript: $0, meeting: nil, documents: nil, context: nil, versions: proofs)
     }
-    return try verified(saved, versions: proofs)
+    let result = try verified(saved, versions: proofs)
+    return (result.0, result.1, nil)
   }
 
   private func verified(

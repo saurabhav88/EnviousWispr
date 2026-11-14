@@ -130,8 +130,11 @@ package actor HistoryCatalogReconciliation {
     var updates: [Update] = []
     var disappeared: [String] = []
     var unresolved = false
-    for scope in delta.scopes {
+    var remaining = delta.scopes
+    var examined: Set<HistorySourceChanges.Scope> = []
+    while let scope = remaining.popFirst() {
       try Task.checkCancellation()
+      guard examined.insert(scope).inserted else { continue }
       guard let path = sources.path(for: scope) else {
         unresolved = true
         continue
@@ -141,6 +144,7 @@ package actor HistoryCatalogReconciliation {
           disappeared.append(path.path)
         } else {
           let snapshot = try sources.snapshot(of: path, at: now)
+          if let meetingID = snapshot.dependentMeeting { remaining.insert(.meeting(meetingID)) }
           let projection = snapshot.saved.flatMap(project)
           let entry = HistoryCatalog.SourceProgress(
             path: path.path, versions: snapshot.versions, key: projection?.summary.key)

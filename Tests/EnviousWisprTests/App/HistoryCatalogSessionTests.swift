@@ -20,11 +20,15 @@ struct HistoryCatalogSessionTests {
     for _ in 1...40 {
       try store.save(Transcript(text: "budget notes", processingTime: 0, backendType: .parakeet, createdAt: date))
     }
+    let held = Transcript(text: "held until Undo", escapeRecoveredAt: Date())
+    try store.savePending(held)
     let session = HistoryCatalogSession(
       changes: changes, sources: store.historyCatalogSources(meetings: meetings),
       directory: root.appendingPathComponent("catalog"))
     let coordinator = TranscriptCoordinator(store: store)
     coordinator.catalogSession = session
+    #expect(coordinator.restorableHeldRow(id: held.id)?.text == "held until Undo")
+    try store.delete(id: held.id)
     coordinator.startHistoryCatalog()
     await session.waitForIndexingForTesting()
 
