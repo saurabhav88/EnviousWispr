@@ -21852,28 +21852,6 @@
         }
       }
     },
-    "Replace" : {
-      "comment" : "History, a meeting: replaces the edited summary.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ersetzen"
-          }
-        }
-      }
-    },
-    "Replace your edited summary?" : {
-      "comment" : "History, a meeting: confirms writing the summary again over the user's edits.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bearbeitete Zusammenfassung ersetzen?"
-          }
-        }
-      }
-    },
     "Request Access" : {
       "localizations" : {
         "de" : {
@@ -30684,17 +30662,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Du kannst diese Kopie beenden und die im Ordner „Programme“ verwenden."
-          }
-        }
-      }
-    },
-    "You changed this summary. Writing it again replaces your changes." : {
-      "comment" : "History, a meeting: explains what Replace does to the edited summary.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Du hast diese Zusammenfassung geändert. Wenn du sie erneut erstellst, werden deine Änderungen ersetzt."
           }
         }
       }
