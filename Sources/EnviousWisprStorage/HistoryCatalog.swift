@@ -124,15 +124,21 @@ package actor HistoryCatalog {
     case incompatibleSchema
     case incompleteCoverage
     case invalidProjection
+    /// The catalog was projected for another interface language or locale.
+    case projectionContextChanged
   }
 
   private static let pageSize = 30
-  private static let schemaVersion: Int32 = 2
+  private static let schemaVersion: Int32 = 3
   private let connection: HistoryCatalogConnection
   private let hasTrigram: Bool
 
   /// The directory is dedicated to the catalog, outside all canonical source namespaces.
-  package init(directory: URL) throws {
+  /// `projectionContext` names the interface language and locale the stored previews were
+  /// localized for (gap markers, hidden-echo and unavailable messages). A catalog made for
+  /// another context refuses to open, so the caller rebuilds it rather than reusing old-language
+  /// previews whose source files did not change (Codex whole-diff r5).
+  package init(directory: URL, projectionContext: String) throws {
     let manager = FileManager.default
     try manager.createDirectory(
       at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
@@ -170,6 +176,9 @@ package actor HistoryCatalog {
         try connection.execute("INSERT INTO coverage VALUES (0, NULL)")
         try connection.execute("CREATE TABLE search_rebuild (needed INTEGER NOT NULL)")
         try connection.execute("INSERT INTO search_rebuild VALUES (1)")
+        try connection.execute(
+          "CREATE TABLE projection_context (id INTEGER PRIMARY KEY CHECK(id = 0), value TEXT NOT NULL)")
+        try connection.execute("INSERT INTO projection_context VALUES (0, ?)", [.text(projectionContext)])
         try connection.execute("""
           CREATE TABLE source_progress (
             path TEXT PRIMARY KEY, versions BLOB NOT NULL, tab TEXT, id TEXT
@@ -178,6 +187,10 @@ package actor HistoryCatalog {
         try connection.execute("PRAGMA user_version = \(Self.schemaVersion)")
       }
     }
+    let storedContext = try connection.rows("SELECT value FROM projection_context WHERE id = 0") {
+      HistoryCatalogConnection.text($0, 0)
+    }.first
+    guard storedContext == projectionContext else { throw Failure.projectionContextChanged }
     hasTrigram = try Self.prepareSearch(using: connection)
     self.connection = connection
   }
@@ -473,6 +486,7 @@ package actor HistoryCatalog {
 
   package static func needsRebuild(_ error: any Error) -> Bool {
     if case Failure.incompatibleSchema = error { return true }
+    if case Failure.projectionContextChanged = error { return true }
     guard let failure = error as? HistoryCatalogConnection.Failure else { return false }
     return failure.code == SQLITE_NOTADB || failure.code == SQLITE_CORRUPT
   }

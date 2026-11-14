@@ -73,6 +73,9 @@ struct HistoryTranscriptCard: View {
           guard !Task.isCancelled else { return }
           sourceState = state
         }
+        .task(id: summary == nil ? nil : rowID) {
+          if summary != nil { await transcripts.holdCatalogDetail(rowID) }
+        }
   }
 
   private func card(title: String, length: String?, preview: String, chips statusChips: [P.Chip],

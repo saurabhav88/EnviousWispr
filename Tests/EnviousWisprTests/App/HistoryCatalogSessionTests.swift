@@ -95,4 +95,48 @@ struct HistoryCatalogSessionTests {
     #expect(coordinator.visibleTranscripts.map(\.id) == [imported.id])
     #expect(coordinator.historyReadFinished == false)
   }
+
+  @Test("A payload a view holds survives browsing past the cache limit; released, it goes")
+  func heldPayloadSurvivesEviction() async throws {
+    let root = TestTemporaryDirectory.url.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let changes = HistorySourceChanges()
+    let store = TranscriptStore(directory: root.appendingPathComponent("transcripts"), historyChanges: changes)
+    let meetings = MeetingStore(root: root.appendingPathComponent("Meetings"), historyChanges: changes)
+    let base = Date(timeIntervalSinceReferenceDate: 750_000_000)
+    var ids: [UUID] = []
+    for index in 0..<125 {
+      let row = Transcript(
+        text: "row \(index)", processingTime: 0, backendType: .parakeet,
+        createdAt: base.addingTimeInterval(Double(index)))
+      try store.save(row)
+      ids.append(row.id)
+    }
+    let session = HistoryCatalogSession(
+      changes: changes, sources: store.historyCatalogSources(meetings: meetings),
+      directory: root.appendingPathComponent("catalog"))
+    let coordinator = TranscriptCoordinator(store: store)
+    coordinator.catalogSession = session
+    coordinator.startHistoryCatalog()
+    await session.waitForIndexingForTesting()
+
+    // The oldest row, never the latest dictation the cache always keeps.
+    let open = ids[0]
+    _ = try #require(await coordinator.loadCatalogDetail(open))
+    let hold = Task { await coordinator.holdCatalogDetail(open) }
+    await Task.yield()
+    #expect(coordinator.catalogDetailHoldCountForTesting(open) == 1)
+    var loaded = 0
+    for id in ids.dropFirst() where await coordinator.loadCatalogDetail(id) != nil { loaded += 1 }
+    #expect(loaded == 124)
+    #expect(session.latestDictation != open)
+    #expect(coordinator.currentRow(id: open)?.text == "row 0")
+
+    hold.cancel()
+    await hold.value
+    #expect(coordinator.catalogDetailHoldCountForTesting(open) == 0)
+    // Released, it is the oldest entry: the next new payload pushes it out.
+    _ = try #require(await coordinator.loadCatalogDetail(ids[1]))
+    #expect(coordinator.currentRow(id: open) == nil)
+  }
 }

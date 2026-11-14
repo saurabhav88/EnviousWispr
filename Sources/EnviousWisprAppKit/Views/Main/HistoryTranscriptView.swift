@@ -144,6 +144,7 @@ struct HistoryTranscriptView: View {
     .task(id: CatalogDetailKey(id: rowID, revision: transcripts.catalogSession?.revision)) {
       _ = await transcripts.loadCatalogDetail(rowID)
     }
+    .task(id: rowID) { await transcripts.holdCatalogDetail(rowID) }
     .onChange(of: rowID) {
       documentView = .cleaned
       timesOn = true

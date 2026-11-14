@@ -26,6 +26,8 @@ final class TranscriptCoordinator {
   @ObservationIgnored private let readSavedHistoryRow: @Sendable (UUID, Date) throws -> Transcript?
   @ObservationIgnored private let readCatalogProof: @Sendable (UUID) throws -> [HistoryCatalog.SourceVersion]
   @ObservationIgnored private var catalogDetailOrder: [UUID] = []
+  /// How many on-screen views hold each payload (`holdCatalogDetail`).
+  @ObservationIgnored private var catalogDetailPins: [UUID: Int] = [:]
   @ObservationIgnored private var catalogDetailVersions: [UUID: UInt64] = [:]
   @ObservationIgnored private var liveRowVersions: [UUID: UInt64] = [:]
   @ObservationIgnored private var publishedImportProofs: [UUID: [HistoryCatalog.SourceVersion]] = [:]
@@ -105,15 +107,46 @@ final class TranscriptCoordinator {
     catalogDetailVersions[id] = source
     catalogDetails[id] = payload.row
     catalogDetailProofs[id] = payload.versions
-    if catalogDetailOrder.count > 120 {
-      let index = catalogDetailOrder.firstIndex { $0 != catalogSession.latestDictation } ?? 0
+    trimCatalogDetails()
+    return payload.row
+  }
+
+  /// Keeps `id`'s payload out of eviction until the calling task is cancelled, which SwiftUI
+  /// does when the view leaves the screen or its key changes. A view that shows a payload holds
+  /// it, so browsing many other rows never turns an open transcript into the removed
+  /// placeholder (Codex whole-diff r5): eviction changes no key that would reload it.
+  func holdCatalogDetail(_ id: UUID) async {
+    catalogDetailPins[id, default: 0] += 1
+    defer {
+      if let count = catalogDetailPins[id], count > 1 {
+        catalogDetailPins[id] = count - 1
+      } else {
+        catalogDetailPins[id] = nil
+      }
+      trimCatalogDetails()
+    }
+    while !Task.isCancelled { try? await Task.sleep(for: .seconds(3600)) }
+  }
+
+  /// Drops the oldest payloads no view holds, down to the cache limit. Held payloads and the
+  /// latest dictation stay, so the cache may exceed the limit by what is on screen.
+  private func trimCatalogDetails() {
+    while catalogDetailOrder.count > Self.catalogDetailLimit,
+      let index = catalogDetailOrder.firstIndex(where: {
+        $0 != catalogSession?.latestDictation && catalogDetailPins[$0] == nil
+      })
+    {
       let evicted = catalogDetailOrder.remove(at: index)
       catalogDetailVersions[evicted] = nil
       catalogDetails[evicted] = nil
       catalogDetailProofs[evicted] = nil
     }
-    return payload.row
   }
+
+  private static let catalogDetailLimit = 120
+
+  /// How many views hold `id`'s payload now. Tests only.
+  func catalogDetailHoldCountForTesting(_ id: UUID) -> Int { catalogDetailPins[id] ?? 0 }
 
   private var transcripts: [Transcript] = [] {
     // Every mutation (assignment, insert, subscript, removeAll) passes here, so the list key

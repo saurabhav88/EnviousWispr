@@ -52,7 +52,22 @@ struct HistoryMeetingCard: View {
       card(P.card(inputs(record: record, row: row)), source: source)
         .onChange(of: source) { _, _ in dropPlayer() }
         .onDisappear(perform: dropPlayer)
+        .task(id: echoRowID) {
+          guard let id = echoRowID else { return }
+          _ = await transcripts.loadCatalogDetail(id)
+          await transcripts.holdCatalogDetail(id)
+        }
     }
+  }
+
+  /// The catalog preview was made with probable echo hidden. When this session shows echo for
+  /// the meeting's transcript and no summary leads the card, the card previews the live,
+  /// echo-aware text instead (Codex whole-diff r5), as search already does.
+  private var echoRowID: UUID? {
+    guard let summary, summary.hasMeetingSummary != true, let id = summary.rowID,
+      transcripts.isShowingEcho(rowID: id)
+    else { return nil }
+    return id
   }
 
   /// The History row this card previews: the meeting's committed row when EnviousMeet holds it,
@@ -69,10 +84,17 @@ struct HistoryMeetingCard: View {
     return P.CardInputs(
       record: record, row: row, catalog: summary, processingID: meetings.processing?.meetingID,
       queueWaitsForSpace: meetings.queueWaitsForSpace,
-      previewText: shown ? (summary?.preview ?? row.map(transcripts.meetingPreviewText(of:))) : nil,
+      previewText: shown ? previewText(row: row) : nil,
       summary: shown
         ? (documents.summary(meetingID) ?? (summary?.hasMeetingSummary == true ? summary?.preview : nil)) : nil,
       summaryProviderID: documents.manifest(meetingID)?.summary?.inputs?.providerID ?? summary?.summaryProvider)
+  }
+
+  private func previewText(row: Transcript?) -> String? {
+    if let id = echoRowID, let echoRow = transcripts.currentRow(id: id) {
+      return transcripts.meetingPreviewText(of: echoRow)
+    }
+    return summary?.preview ?? row.map(transcripts.meetingPreviewText(of:))
   }
 
   private func card(_ card: P.Card, source: MeetingPlaybackSource?) -> some View {

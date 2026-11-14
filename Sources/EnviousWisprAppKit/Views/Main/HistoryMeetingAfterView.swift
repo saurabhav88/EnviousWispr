@@ -214,6 +214,9 @@ struct HistoryMeetingAfterView: View {
       orphanRowID = foundOrphan
       completedTranscriptRead = key
     }
+    .task(id: transcriptReadKey?.transcriptID) {
+      if let id = transcriptReadKey?.transcriptID { await transcripts.holdCatalogDetail(id) }
+    }
     .onDisappear {
       presentation += 1
       transcriptPolish.cancel()

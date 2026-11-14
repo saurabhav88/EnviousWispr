@@ -509,6 +509,7 @@ private struct HistoryCatalogDictationRow<Card: View>: View {
     .task(id: coordinator.catalogSession?.revision) {
       _ = await coordinator.loadCatalogDetail(summary.key.id)
     }
+    .task(id: summary.key.id) { await coordinator.holdCatalogDetail(summary.key.id) }
   }
 }
 

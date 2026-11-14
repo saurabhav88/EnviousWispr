@@ -88,16 +88,22 @@ final class HistoryCatalogSession {
     revision &+= 1
   }
 
+  /// The interface language and locale this process localizes previews for. Both are fixed
+  /// at launch (`AppLanguagePreference`), so one value serves the whole session.
+  nonisolated static var projectionContext: String {
+    Bundle.main.preferredLocalizations.joined(separator: ",") + "|" + Locale.current.identifier
+  }
+
   private func open() async throws -> Backend {
     if let backend { return backend }
     if let opening { return try await opening.value }
     let opening = Task.detached(priority: .utility) { [changes, sources, directory] in
       let catalog: HistoryCatalog
       do {
-        catalog = try HistoryCatalog(directory: directory)
+        catalog = try HistoryCatalog(directory: directory, projectionContext: Self.projectionContext)
       } catch where HistoryCatalog.needsRebuild(error) {
         try HistoryCatalog.discardFiles(in: directory)
-        catalog = try HistoryCatalog(directory: directory)
+        catalog = try HistoryCatalog(directory: directory, projectionContext: Self.projectionContext)
       }
       let worker = HistoryCatalogReconciliation(
         catalog: catalog, sources: sources, sourceRevision: { changes.revision },
