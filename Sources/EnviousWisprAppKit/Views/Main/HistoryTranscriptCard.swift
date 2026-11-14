@@ -7,8 +7,8 @@ import SwiftUI
 /// and the status chips the legacy row showed (file name, speakers, Recovered, Interrupted, the
 /// polish model, the speech engine).
 ///
-/// **Open and Locate original are sibling buttons**, never one inside the other, so each keeps
-/// its own keyboard focus and VoiceOver action. The card itself is not a button.
+/// Open and Locate original each keep their keyboard and VoiceOver actions. The card also opens
+/// on a pointer click over the title, preview, metadata or surrounding space.
 ///
 /// **The original file is looked up off the body**: once when the card appears and whenever the
 /// source owner bumps the row's revision. Nothing is drawn until the answer arrives, so the card
@@ -18,15 +18,18 @@ struct HistoryTranscriptCard: View {
   let sources: any ImportedSourceAccessing
   let onOpen: () -> Void
   let onLocate: () -> Void
+  let query: String
 
   init(
     rowID: UUID,
     sources: any ImportedSourceAccessing,
+    query: String = "",
     onOpen: @escaping () -> Void,
     onLocate: @escaping () -> Void
   ) {
     self.rowID = rowID
     self.sources = sources
+    self.query = query
     self.onOpen = onOpen
     self.onLocate = onLocate
   }
@@ -62,7 +65,7 @@ struct HistoryTranscriptCard: View {
     return VStack(alignment: .leading, spacing: DesignSpacing.md) {
       HStack(alignment: .top, spacing: DesignSpacing.lg) {
         VStack(alignment: .leading, spacing: DesignSpacing.xxs) {
-          Text(verbatim: P.title(for: row))
+          HistoryParagraphText.searchText(P.title(for: row), query: query)
             .font(.stRowTitle)
             .foregroundStyle(.stTextPrimary)
             .lineLimit(1)
@@ -87,13 +90,15 @@ struct HistoryTranscriptCard: View {
             comment: "History transcript card: VoiceOver label of Open. %@ is the file name."))
       }
       sourceRow(line)
-      Text(verbatim: row.historyText)
+      HistoryParagraphText.searchText(row.historyText, query: query)
         .font(.stBody)
         .foregroundStyle(.stTextBody)
         .lineLimit(2)
       chips(row)
     }
     .historyRowCard(isSelected: false)
+    .contentShape(Rectangle())
+    .onTapGesture(perform: onOpen)
   }
 
   /// The card never opens a player, so it promises playback only for a proven original; an

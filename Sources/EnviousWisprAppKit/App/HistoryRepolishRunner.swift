@@ -15,6 +15,7 @@ final class HistoryRepolishRunner {
   enum Failure: Error { case busy, unavailable, noResult }
 
   let choices: @MainActor (Surface) -> [HistoryPolishChoice]
+  let refreshAvailability: @MainActor () async -> Void
   private let admission: EngineAdmissionAccess
   private let freeze: @MainActor (ASRBackendType, HistoryPolishChoice) -> ImportedFileTranscriber.FrozenRun
   private let cleanup: ImportedFileTranscriber.Cleanup
@@ -24,6 +25,7 @@ final class HistoryRepolishRunner {
 
   init(
     choices: @escaping @MainActor (Surface) -> [HistoryPolishChoice],
+    refreshAvailability: @escaping @MainActor () async -> Void = {},
     admission: EngineAdmissionAccess,
     freeze: @escaping @MainActor (ASRBackendType, HistoryPolishChoice) -> ImportedFileTranscriber.FrozenRun,
     cleanup: ImportedFileTranscriber.Cleanup,
@@ -31,6 +33,7 @@ final class HistoryRepolishRunner {
     meetingInfo: @escaping @MainActor (Transcript) -> MeetingHistoryInfo?
   ) {
     self.choices = choices
+    self.refreshAvailability = refreshAvailability
     self.admission = admission
     self.freeze = freeze
     self.cleanup = cleanup

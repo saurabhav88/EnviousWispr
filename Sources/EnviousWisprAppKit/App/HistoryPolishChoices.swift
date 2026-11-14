@@ -36,6 +36,14 @@ struct HistoryPolishChoices {
     let size = settings.preferredEGOneSize
     return LLMProvider.allCases.flatMap { provider -> [HistoryPolishChoice] in
       guard provider != .none else { return [] }
+      if provider == .egOne {
+        let model = LLMProvider.egOneModelName
+        return EGOneSize.allCases.compactMap { candidate in
+          guard isReady(provider, model: model, surface: surface, size: candidate)
+          else { return nil }
+          return HistoryPolishChoice(provider: provider, model: model, egOneSize: candidate)
+        }
+      }
       let models: [String]
       if provider == .ollama {
         models = setup.ollamaSetup.downloadedModels.map(\.exactName)
@@ -52,7 +60,7 @@ struct HistoryPolishChoices {
         { return nil }
         guard isReady(provider, model: model, surface: surface, size: size) else { return nil }
         return HistoryPolishChoice(
-          provider: provider, model: model, egOneSize: provider == .egOne ? size : nil,
+          provider: provider, model: model,
           sendsTextOffMac: TranscribeFileView.isCloud(provider, ollamaModelIsRemote: remote))
       }
     }
@@ -80,6 +88,9 @@ struct HistoryPolishChoices {
     }
     // Ollama can offer every installed model; the monitor's readiness only has the default.
     if provider == .ollama { return gate.isReady }
+    if provider == .egOne {
+      return PolishSetupReadiness.evaluate(provider: provider, facts: facts) == .noProblem
+    }
     if surface == .dictation, let monitor = monitor.monitor {
       return monitor.readiness(for: provider) == .noProblem
     }

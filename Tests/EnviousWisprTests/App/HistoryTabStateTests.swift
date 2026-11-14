@@ -142,24 +142,6 @@ struct HistoryTabStateTests {
     #expect(rowIDs(coordinator.matchingHistoryItems(in: .dictations)) == [recent.id])
   }
 
-  @Test("Speakers filter counts from the speaker analysis; an unanalyzed row never matches it")
-  func speakerFilter() async throws {
-    let coordinator = makeCoordinator()
-    let one = imported("solo", speakers: .single, age: 30)
-    let two = imported("pair", speakers: .labeled(count: 2), age: 20)
-    let unknown = imported("unknown", speakers: .unanalyzed, age: 10)
-    for row in [one, two, unknown] { try await coordinator.saveAndShow(row) }
-
-    var state = HistoryTabState()
-    state.speakerCount = 2...10
-    coordinator.setHistoryState(state, for: .transcripts)
-    #expect(rowIDs(coordinator.matchingHistoryItems(in: .transcripts)) == [two.id])
-
-    state.speakerCount = 1...1
-    coordinator.setHistoryState(state, for: .transcripts)
-    #expect(rowIDs(coordinator.matchingHistoryItems(in: .transcripts)) == [one.id])
-  }
-
   @Test("matching items cover every page, not only the 30 drawn")
   func matchingCoversAllPages() async throws {
     let coordinator = makeCoordinator()

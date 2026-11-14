@@ -103,12 +103,12 @@ enum MeetingHistoryPresentation {
   /// format (`TranscriptDocumentPresenter.exportText`) over the visible turns only. Nil when
   /// nothing may be delivered: every line hidden, facts unavailable, or no turns.
   ///
-  /// A meeting has no polish, so it always delivers its words as `.cleaned` (History shows no
-  /// view picker for it). Each turn's own words get their gap markers in the interface language
+  /// The caller chooses which version to deliver. Each turn's words get gap markers in the interface language
   /// (`MeetingGapPresentation`) before the presenter adds names and times, so a speaker name is
   /// never rewritten. The stored row and its ranges are unchanged.
   static func deliveryText(
     _ row: Transcript, projection: Projection, timesOn: Bool,
+    mode: FileImportCoordinator.DocumentView = .cleaned,
     gapForms: MeetingGapPresentation.Forms = .interface
   ) -> String? {
     guard case .visible(let turns, _) = projection else { return nil }
@@ -117,8 +117,8 @@ enum MeetingHistoryPresentation {
         id: turn.id, speakerId: turn.speakerId, startMs: turn.startMs, endMs: turn.endMs,
         originalTextRange: turn.originalTextRange,
         processedText: MeetingGapPresentation.localized(
-          turn.processedText
-            ?? TranscriptDocumentPresenter.slice(row.text, turn.originalTextRange),
+          mode == .original ? TranscriptDocumentPresenter.slice(row.text, turn.originalTextRange)
+            : (turn.processedText ?? TranscriptDocumentPresenter.slice(row.text, turn.originalTextRange)),
           forms: gapForms),
         wasPolished: turn.wasPolished, granularity: turn.granularity)
     }

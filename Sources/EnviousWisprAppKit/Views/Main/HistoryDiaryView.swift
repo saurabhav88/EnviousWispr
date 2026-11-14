@@ -12,7 +12,7 @@ struct HistoryDiaryView<
   DictationCard: View, TranscriptDestination: View, MeetingDestination: View
 >: View {
   private let coordinator: TranscriptCoordinator
-  private let dictationCard: (UUID) -> DictationCard
+  private let dictationCard: (Transcript, String) -> DictationCard
   private let transcriptDestination: (UUID, @escaping () -> Void) -> TranscriptDestination
   private let meetingDestination: (UUID, @escaping () -> Void) -> MeetingDestination
 
@@ -21,7 +21,7 @@ struct HistoryDiaryView<
 
   init(
     coordinator: TranscriptCoordinator,
-    @ViewBuilder dictationCard: @escaping (UUID) -> DictationCard,
+    @ViewBuilder dictationCard: @escaping (Transcript, String) -> DictationCard,
     @ViewBuilder transcriptDestination: @escaping (UUID, @escaping () -> Void) -> TranscriptDestination,
     @ViewBuilder meetingDestination: @escaping (UUID, @escaping () -> Void) -> MeetingDestination
   ) {
@@ -36,9 +36,10 @@ struct HistoryDiaryView<
     let state = coordinator.historyState(for: tab)
 
     VStack(spacing: 0) {
-      if let openID = state.openItemID, tab != .dictations {
-        destination(for: openID)
+      if let openID = state.openItemID {
+        destination(for: openID, tab: tab, query: state.query)
           .frame(maxWidth: .infinity, maxHeight: .infinity)
+          .environment(\.historyHighlightQuery, state.query)
       } else {
         VStack(alignment: .leading, spacing: 12) {
           SettingsTabStrip(items: HistoryDiaryLayout.tabItems, selection: tabBinding)
@@ -76,8 +77,19 @@ struct HistoryDiaryView<
       set: { coordinator.selectHistoryTab($0) })
   }
 
-  @ViewBuilder private func destination(for id: HistoryItemID) -> some View {
+  @ViewBuilder private func destination(for id: HistoryItemID, tab: HistoryTab, query: String)
+    -> some View
+  {
     switch id {
+    case .transcript(let rowID) where tab == .dictations:
+      if let row = coordinator.currentRow(id: rowID) {
+        VStack(alignment: .leading, spacing: DesignSpacing.lg) {
+          HistoryDestinationBar(tab: tab, close: closeOpenItem)
+          ScrollView { dictationCard(row, query) }
+        }
+        .padding(.horizontal, SettingsLayout.contentH)
+        .padding(.vertical, SettingsLayout.contentTop)
+      }
     case .transcript(let rowID): transcriptDestination(rowID, closeOpenItem)
     case .meeting(let meetingID): meetingDestination(meetingID, closeOpenItem)
     }
@@ -110,7 +122,7 @@ private struct HistoryDiaryList<DictationCard: View>: View {
   let selection: HistorySelection
   let isSelecting: Bool
   let open: (HistoryItemID) -> Void
-  let dictationCard: (UUID) -> DictationCard
+  let dictationCard: (Transcript, String) -> DictationCard
 
   /// The entry at the top of the scrolled list.
   @State private var position: HistoryDiaryLayout.EntryID?
@@ -227,7 +239,16 @@ private struct HistoryDiaryList<DictationCard: View>: View {
       HistoryDiaryTime(item: item)
       switch item {
       case .transcript(let row) where row.isImported == false:
-        dictationCard(row.id)
+        dictationCard(row, state.query)
+          .contentShape(Rectangle())
+          .onTapGesture {
+            guard row.escapeRecoveredAt == nil else { return }
+            if isSelecting {
+              tick(item.id, extending: NSEvent.modifierFlags.contains(.shift), items: items)
+            } else {
+              open(item.id)
+            }
+          }
       case .transcript(let row):
         transcriptCard(row.id, item: item.id, items: items)
       case .meeting(let meeting):
@@ -242,7 +263,7 @@ private struct HistoryDiaryList<DictationCard: View>: View {
     _ rowID: UUID, item: HistoryItemID, items: [HistoryListItem]
   ) -> some View {
     let card = HistoryTranscriptCard(
-      rowID: rowID, sources: importedSources, onOpen: { open(item) },
+      rowID: rowID, sources: importedSources, query: state.query, onOpen: { open(item) },
       onLocate: { locatingRowID = rowID })
     if isSelecting {
       openableCard(item, items: items) { card.allowsHitTesting(false) }
@@ -262,7 +283,7 @@ private struct HistoryDiaryList<DictationCard: View>: View {
     _ meetingID: UUID, item: HistoryItemID, items: [HistoryListItem]
   ) -> some View {
     let card = HistoryMeetingCard(
-      meetingID: meetingID, onOpen: { open(item) }, allowsPlayback: !isSelecting)
+      meetingID: meetingID, onOpen: { open(item) }, allowsPlayback: !isSelecting, query: state.query)
     if isSelecting {
       openableCard(item, items: items) { card.allowsHitTesting(false) }
     } else {
@@ -642,7 +663,6 @@ enum HistoryDiaryLayout {
       next.query = ""
       next.app = .all
       next.dateInterval = nil
-      next.speakerCount = nil
       next.callApp = nil
     }
     next.openItemID = id

@@ -54,6 +54,7 @@ struct TranscriptWindowRoot: View {
       b.importedSources.invalidateAll()
       await b.importedModelCatalog.refresh()
     }
+    .task { await b.historyRepolish.refreshAvailability() }
     // A model installed or removed in the main window while this one stayed open: re-read the
     // installed models (and the original file) each time THIS window comes to the front, so the
     // Transcribe again with menu never offers a stale list (cloud review, PR #4559).

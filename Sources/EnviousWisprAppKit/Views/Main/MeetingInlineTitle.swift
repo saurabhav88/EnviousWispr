@@ -20,6 +20,7 @@ struct MeetingInlineTitle: View {
   var font: Font = .stRowTitle
   /// Set to true by the owner (Rename in More) to open the field; reset here.
   var beginRequest: Binding<Bool> = .constant(false)
+  var searchQuery = ""
 
   @Environment(MeetingCoordinator.self) private var meetings
   @State private var edit = MeetingAfterPresentation.TitleEdit()
@@ -62,7 +63,7 @@ struct MeetingInlineTitle: View {
   }
 
   private func titleText(_ title: String) -> some View {
-    Text(verbatim: title)
+    HistoryParagraphText.searchText(title, query: searchQuery)
       .font(font)
       .foregroundStyle(.stTextPrimary)
       .lineLimit(1)

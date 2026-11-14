@@ -19,8 +19,6 @@ struct HistoryTabState: Equatable, Sendable {
   var app: HistoryAppFilter = .all
   /// Every tab: items created inside this interval, start-inclusive, end-exclusive.
   var dateInterval: DateInterval?
-  /// Transcripts tab: speaker count from the row's speaker analysis (One speaker = 1).
-  var speakerCount: ClosedRange<Int>?
   /// Meetings tab.
   var callApp: CallAppFamily?
   var openItemID: HistoryItemID?
@@ -33,7 +31,7 @@ struct HistoryTabState: Equatable, Sendable {
   /// The parts of the state that decide which items match.
   var listFilter: HistoryListFilter {
     HistoryListFilter(
-      app: app, dateInterval: dateInterval, speakerCount: speakerCount, callApp: callApp)
+      app: app, dateInterval: dateInterval, callApp: callApp)
   }
 }
 
@@ -41,19 +39,7 @@ struct HistoryTabState: Equatable, Sendable {
 struct HistoryListFilter: Equatable, Sendable {
   var app: HistoryAppFilter = .all
   var dateInterval: DateInterval?
-  var speakerCount: ClosedRange<Int>?
   var callApp: CallAppFamily?
 
   static let none = HistoryListFilter()
-}
-
-extension Transcript {
-  /// How many speakers History counts for this row, or nil when no speaker analysis says.
-  var historySpeakerCount: Int? {
-    switch speakerAnalysis {
-    case .single: return 1
-    case .labeled(let count): return count
-    case .unanalyzed, .failed, nil: return nil
-    }
-  }
 }

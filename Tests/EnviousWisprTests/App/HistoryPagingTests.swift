@@ -114,13 +114,12 @@ struct HistoryPagingTests {
     var tabState = HistoryTabState()
     tabState.query = "contract"
     tabState.app = .named("Slack")
-    tabState.speakerCount = 2...2
     tabState.requestedCount = 90
     let state = HistoryPaging.state(tabState, tab: .transcripts)
     #expect(state.requested == 90)
     let context = HistoryPaging.Context(
       tab: .transcripts, query: "contract",
-      filter: HistoryListFilter(app: .named("Slack"), speakerCount: 2...2))
+      filter: HistoryListFilter(app: .named("Slack")))
     #expect(state.context == context)
     #expect(HistoryPaging.requested(state, for: context) == 90)
     // The same search and filters on another tab, or one filter changed, start again at 30.

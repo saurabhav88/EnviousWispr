@@ -14,7 +14,7 @@ import SwiftUI
 /// committed transcript keeps its preview while Transcribe again runs, waits or fails.
 ///
 /// **Open and the title's rename controls are sibling buttons**, never one inside the other, so
-/// each keeps its own keyboard focus and VoiceOver action. The card itself is not a button.
+/// each keeps its own keyboard focus and VoiceOver action. Its surface also opens on a click.
 /// While History is selecting, the diary draws this card with hit testing off inside its
 /// tick button (as it does for `HistoryTranscriptCard`).
 ///
@@ -22,11 +22,13 @@ struct HistoryMeetingCard: View {
   let meetingID: UUID
   let onOpen: () -> Void
   let allowsPlayback: Bool
+  let query: String
 
-  init(meetingID: UUID, onOpen: @escaping () -> Void, allowsPlayback: Bool = true) {
+  init(meetingID: UUID, onOpen: @escaping () -> Void, allowsPlayback: Bool = true, query: String = "") {
     self.meetingID = meetingID
     self.onOpen = onOpen
     self.allowsPlayback = allowsPlayback
+    self.query = query
   }
 
   @Environment(TranscriptCoordinator.self) private var transcripts
@@ -73,9 +75,9 @@ struct HistoryMeetingCard: View {
           // The rename controls sit beside Open, never inside it. A row whose meeting folder is
           // gone has no record to rename, so it shows its name only.
           if card.canRename {
-            MeetingInlineTitle(meetingID: meetingID)
+            MeetingInlineTitle(meetingID: meetingID, searchQuery: query)
           } else {
-            Text(verbatim: card.title)
+            HistoryParagraphText.searchText(card.title, query: query)
               .font(.stRowTitle)
               .foregroundStyle(.stTextPrimary)
               .lineLimit(1)
@@ -147,6 +149,8 @@ struct HistoryMeetingCard: View {
       }
     }
     .historyRowCard(isSelected: false)
+    .contentShape(Rectangle())
+    .onTapGesture(perform: onOpen)
   }
 
   private func beginPlayback(_ source: MeetingPlaybackSource) {
@@ -184,7 +188,7 @@ struct HistoryMeetingCard: View {
   @ViewBuilder private func line(_ line: P.Line) -> some View {
     switch line {
     case .summary(let text), .preview(let text):
-      Text(verbatim: text)
+      HistoryParagraphText.searchText(text, query: query)
         .font(.stBody)
         .foregroundStyle(.stTextBody)
         .lineLimit(2)

@@ -30,6 +30,15 @@ enum SavedKeyState: Equatable {
     }
   }
 
+  static func fromRead(_ result: Result<String?, any Error>) -> SavedKeyState {
+    switch result {
+    case .success(let value): return value?.isEmpty == false ? .present : .absent
+    case .failure(KeyStoreError.retrieveFailed(let status)) where status == errSecItemNotFound:
+      return .absent
+    case .failure: return .unknown
+    }
+  }
+
   /// One provider's saved-key fact read straight from the Keychain, for a caller with no
   /// editor on screen (the DEBUG import door). Key-less engines answer `.absent`; empty or
   /// `errSecItemNotFound` is absent; any other failure is unknown. Synchronous like the

@@ -24,11 +24,13 @@ import SwiftUI
 /// (`HistoryDiffCache`); a result is shown only for the texts it was computed from.
 struct HistoryDictationCard: View {
   let rowID: UUID
+  let query: String
   /// #4101: why a History Paste did not happen; the History page holds the notice.
   let showPasteNotice: (String) -> Void
 
-  init(rowID: UUID, showPasteNotice: @escaping (String) -> Void) {
+  init(rowID: UUID, query: String, showPasteNotice: @escaping (String) -> Void) {
     self.rowID = rowID
+    self.query = query
     self.showPasteNotice = showPasteNotice
   }
 
@@ -107,6 +109,7 @@ struct HistoryDictationCard: View {
       if editsOn, current?.hasChanges == true { viewSwitch }
       HistoryParagraphText(
         blocks: blocks(row: row, texts: texts, prepared: current),
+        query: query,
         hasGutter: player != nil && !timeline.isEmpty, revealGutter: revealGutter,
         reduceMotion: reduceMotion,
         focus: $focus,
@@ -246,6 +249,7 @@ struct HistoryDictationCard: View {
           })
       )
       .fixedSize()
+      .accessibilityElement(children: .contain)
       .accessibilityLabel(
         Text(
           "Which words to show",

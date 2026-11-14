@@ -856,17 +856,6 @@
         }
       }
     },
-    "%@ or more speakers" : {
-      "comment" : "History, Transcripts: transcripts with at least this many speakers.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ oder mehr Sprecher"
-          }
-        }
-      }
-    },
     "%@ recordings were saved by a newer version of EnviousWispr. Update the app to open them." : {
       "comment" : "History, Meetings: how many meetings this version cannot open because a newer version saved them. Never 1.",
       "localizations" : {
@@ -1847,7 +1836,7 @@
       }
     },
     "1 speaker" : {
-      "comment" : "EnviousMeet list: the transcript found one person.\nHistory, Transcripts: transcripts with one speaker.",
+      "comment" : "EnviousMeet list: the transcript found one person.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1941,17 +1930,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "2 GB"
-          }
-        }
-      }
-    },
-    "2 speakers" : {
-      "comment" : "History, Transcripts: transcripts with two speakers.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "2 Sprecher"
           }
         }
       }
@@ -4177,17 +4155,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Jedes Modell, das du in Ollama ausführst."
-          }
-        }
-      }
-    },
-    "Any number of speakers" : {
-      "comment" : "History, Transcripts: the Speakers filter shows every transcript.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Beliebig viele Sprecher"
           }
         }
       }
@@ -9076,6 +9043,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Auswahl aufheben"
+          }
+        }
+      }
+    },
+    "Deselect all matching" : {
+      "comment" : "History selection: unticks every item that matches the current search and filters.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auswahl aller Treffer aufheben"
           }
         }
       }
@@ -20067,7 +20045,7 @@
       }
     },
     "Polished" : {
-      "comment" : "History change details: label before the words AI polish wrote.\nHistory detail section title: the AI-polished text.\nHistory dictation card: the view showing the AI-polished words.",
+      "comment" : "History change details: label before the words AI polish wrote.\nHistory detail section title: the AI-polished text.\nHistory dictation card: the view showing the AI-polished words.\nHistory transcript: the polished words view.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -29938,7 +29916,7 @@
       }
     },
     "Which words to show" : {
-      "comment" : "History dictation card: the Polished, Marked up and Original choice.\nHistory transcript: the Cleaned, Marked up and Original choice.",
+      "comment" : "History dictation card: the Polished, Marked up and Original choice.\nHistory transcript: the Polished, Marked up and Original choice.",
       "localizations" : {
         "de" : {
           "stringUnit" : {

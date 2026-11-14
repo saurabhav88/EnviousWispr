@@ -3135,6 +3135,9 @@ package final class WisprBootstrapper {
       savedKeys: savedKeyPresence, ollamaRemoteness: { ollamaRemoteness($0) })
     let historyRepolish = HistoryRepolishRunner(
       choices: historyChoices.available(for:),
+      refreshAvailability: {
+        await savedKeyPresence.readUnknown(using: keychainManager)
+      },
       admission: .live(lease: engineLease, as: .fileImport),
       freeze: { freezeHistoryCleanup($0, $1) },
       cleanup: historyCleanup,

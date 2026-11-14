@@ -80,9 +80,11 @@ struct HistoryTranscriptView: View {
   @Environment(HistoryPaste.self) private var historyPaste
   @Environment(PreviousApplicationTracker.self) private var previousApplication
   @Environment(HistoryRepolishRunner.self) private var historyRepolish
+  @Environment(\.historyHighlightQuery) private var searchQuery
 
   // Document
   @State private var documentView: FileImportCoordinator.DocumentView = .cleaned
+  @State private var flatComparison: HistoryDictationPresentation.Prepared?
   @State private var polishPreview = HistoryPolishPreview()
   @State private var timesOn = true
 
@@ -214,6 +216,10 @@ struct HistoryTranscriptView: View {
     .historyTranscriptLocate(
       rowID: rowID, sources: sources, isPresented: $locateRequested,
       onResult: { text, isError in notice = Notice(text: text, isError: isError) })
+    .onChange(of: row.importAttemptID) { _, _ in
+      documentView = .cleaned
+      flatComparison = nil
+    }
   }
 
   private var removedPlaceholder: some View {
@@ -256,7 +262,9 @@ struct HistoryTranscriptView: View {
           actions(row)
         }
       }
-      if P.hasRenderableTurns(row) { viewControls }
+      if P.hasRenderableTurns(row) || HistoryDictationPresentation.Texts(row).differ {
+        viewControls(row)
+      }
       retranscriptionStatus
       HistoryPolishPreviewContent(preview: polishPreview)
       if let notice {
@@ -462,28 +470,33 @@ struct HistoryTranscriptView: View {
       Text("More actions", comment: "History transcript: opens the More menu."))
   }
 
-  private var viewControls: some View {
-    HStack(spacing: DesignSpacing.lg) {
+  private func viewControls(_ row: Transcript) -> some View {
+    let hasTimes = row.turns?.contains { $0.startMs != nil } == true
+    let polished = row.polishedText != nil
+    return WrappingHStack(spacing: DesignSpacing.lg) {
       BrandedSegmentedPicker(
         options: [
-          (Self.modeLabel(.cleaned), nil, FileImportCoordinator.DocumentView.cleaned),
+          (Self.modeLabel(.cleaned, polished: polished), nil, FileImportCoordinator.DocumentView.cleaned),
           (Self.modeLabel(.markedUp), nil, .markedUp),
           (Self.modeLabel(.original), nil, .original),
         ],
         selection: $documentView
       )
       .fixedSize()
+      .accessibilityElement(children: .contain)
       .accessibilityLabel(
         Text(
           "Which words to show",
-          comment: "History transcript: the Cleaned, Marked up and Original choice."))
-      Toggle(isOn: $timesOn) {
-        Text("Times", comment: "History transcript: shows each turn's start time.")
-          .font(.stRowLabel)
+          comment: "History transcript: the Polished, Marked up and Original choice."))
+      if hasTimes {
+        Toggle(isOn: $timesOn) {
+          Text("Times", comment: "History transcript: shows each turn's start time.")
+            .font(.stRowLabel)
+        }
+        .toggleStyle(BrandedToggleStyle())
+        .fixedSize()
       }
-      .toggleStyle(BrandedToggleStyle())
-      .fixedSize()
-      Text(verbatim: P.viewHint(mode: documentView, playable: activePlayer != nil))
+      Text(verbatim: P.viewHint(mode: documentView, playable: hasTimes && activePlayer != nil))
         .font(.stHelper)
         .foregroundStyle(.stTextSecondary)
         .lineLimit(1)
@@ -540,48 +553,46 @@ struct HistoryTranscriptView: View {
       // Transcribe again with, must start with none of them.
       .id(P.DocumentKey(row))
     } else {
-      plainDocument(P.plainDocument(for: row))
+      flatDocument(HistoryDictationPresentation.Texts(row))
     }
   }
 
   @ViewBuilder
-  private func plainDocument(_ document: P.PlainDocument) -> some View {
-    VStack(alignment: .leading, spacing: DesignSpacing.xxl) {
-      switch document {
-      case .polished(let output, let original):
-        section(
-          String(
-            localized: "Polished", comment: "History detail section title: the AI-polished text."),
-          icon: "sparkles", text: output, primary: true)
-        section(Self.originalTitle, icon: "doc.text", text: original, primary: false)
-      case .processed(let output, let original):
-        section(
-          String(
-            localized: "Processed", comment: "History detail section title: the cleaned-up text."),
-          icon: "doc.text", text: output, primary: true)
-        section(Self.originalTitle, icon: "doc.text", text: original, primary: false)
-      case .raw(let text):
-        section(P.transcriptWord, icon: "doc.text", text: text, primary: true)
+  private func flatDocument(_ texts: HistoryDictationPresentation.Texts) -> some View {
+    Group {
+      if documentView == .markedUp && texts.differ {
+        if let flatComparison, HistoryDictationPresentation.accepts(flatComparison, current: texts) {
+          let visible = HistoryParagraphText.attributed(flatComparison.markedUp, linksChanges: false)
+          let highlighted = searchQuery.isEmpty ? visible : HistoryParagraphText.highlighting(
+            visible, in: flatComparison.markedUp.map(\.text).joined(), query: searchQuery, markedUp: true)
+          Text(highlighted)
+            .textSelection(.enabled)
+            .accessibilityRepresentation {
+              Text(HistoryParagraphText.accessibilityText(flatComparison.markedUp))
+            }
+        } else {
+          ProgressView("Comparing words")
+        }
+      } else {
+        HistoryParagraphText.searchText(
+          documentView == .original ? texts.original : texts.polished, query: searchQuery)
+          .textSelection(.enabled)
       }
     }
-  }
-
-  private func section(_ title: String, icon: String, text: String, primary: Bool) -> some View {
-    VStack(alignment: .leading, spacing: DesignSpacing.md) {
-      Label {
-        Text(verbatim: title.uppercased())
-          .font(.stSectionHeader)
-          .tracking(0.6)
-      } icon: {
-        Image(systemName: icon).accessibilityHidden(true)
+    .font(.stBody)
+    .lineSpacing(3)
+    .foregroundStyle(.stTextPrimary)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .task(id: documentView == .markedUp && texts.differ ? texts : nil) {
+      guard documentView == .markedUp, texts.differ else { return }
+      if let cached = HistoryDiffCache.shared.result(for: texts) {
+        flatComparison = cached
+        return
       }
-      .foregroundStyle(.stAccent)
-      Text(verbatim: text)
-        .font(.stBody)
-        .lineSpacing(3)
-        .foregroundStyle(primary ? Color.stTextPrimary : Color.stTextBody)
-        .textSelection(.enabled)
-        .frame(maxWidth: .infinity, alignment: .leading)
+      let result = await HistoryDictationPresentation.prepareInBackground(texts)
+      guard !Task.isCancelled else { return }
+      HistoryDiffCache.shared.store(result)
+      flatComparison = result
     }
   }
 
@@ -764,12 +775,6 @@ struct HistoryTranscriptView: View {
   private static let newWindowLabel = LocalizedStringResource(
     "Open in new window", comment: "History transcript: opens this transcript in its own window.")
 
-  private static var originalTitle: String {
-    String(
-      localized: "Original",
-      comment: "History detail section title: the words as first transcribed.")
-  }
-
   static func currentChoiceTitle(_ title: String) -> String {
     String(
       localized: "\(title) (current)",
@@ -778,10 +783,12 @@ struct HistoryTranscriptView: View {
     )
   }
 
-  static func modeLabel(_ mode: FileImportCoordinator.DocumentView) -> String {
+  static func modeLabel(_ mode: FileImportCoordinator.DocumentView, polished: Bool = true) -> String {
     switch mode {
     case .cleaned:
-      String(localized: "Cleaned", comment: "History transcript: the cleaned-up words view.")
+      polished
+        ? String(localized: "Polished", comment: "History transcript: the polished words view.")
+        : String(localized: "Cleaned", comment: "History transcript: the cleaned-up words view.")
     case .markedUp:
       String(
         localized: "Marked up",

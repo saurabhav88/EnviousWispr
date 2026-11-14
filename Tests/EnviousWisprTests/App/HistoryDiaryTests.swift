@@ -147,6 +147,9 @@ struct HistoryDiaryTests {
     let picked = HistoryDateFilter.day(day(-3).addingTimeInterval(5000))
       .interval(now: Self.now, calendar: Self.calendar)
     #expect(picked == DateInterval(start: day(-3), end: day(-2)))
+    #expect(
+      HistoryDateFilter.interval(from: day(-2), through: day(-21), calendar: Self.calendar)
+        == DateInterval(start: day(-21), end: day(-1)))
   }
 
   @Test("the date button names Any time, a quick pick, one day or a range")
@@ -201,6 +204,7 @@ struct HistoryDiaryTests {
     #expect(HistoryAppName.label(for: "com.openai.codex", installedName: { _ in "ChatGPT" }) == "Codex")
     #expect(
       HistoryAppName.label(for: "com.apple.iWork.Pages", installedName: { _ in "Pages" }) == "Pages")
+    #expect(HistoryAppName.label(for: "us.zoom.xos", installedName: { _ in "zoom.us" }) == "zoom.us")
     #expect(
       HistoryAppName.label(for: "com.example.visual-studio-code", installedName: { _ in nil })
         == "Visual Studio Code")

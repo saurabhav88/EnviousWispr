@@ -4,7 +4,6 @@ import EnviousWisprLLM
 import EnviousWisprLocalPolish
 import EnviousWisprServices
 import OSLog
-import Security
 import CryptoKit
 import SwiftUI
 
@@ -685,18 +684,10 @@ enum ProviderSetupKeys {
           let readAt = ContinuousClock.now
           let result = await CredentialIO.perform(.read(credential.keyID), using: keychainManager)
           guard presence.revision(for: provider) == revision else { continue }
-          let value: String
-          let flag: Bool?
-          switch result {
-          case .success(let stored): value = stored ?? ""; flag = !value.isEmpty
-          case .failure(let error):
-            value = ""
-            if let failure = error as? KeyStoreError,
-              case .retrieveFailed(let status) = failure, status == errSecItemNotFound {
-              flag = false
-            } else { flag = nil }
-          }
-          presence.recordRead(.from(flag), for: provider, readAt: readAt)
+          let value = (try? result.get()) ?? ""
+          let state = SavedKeyState.fromRead(result)
+          let flag = state.asSavedFlag
+          presence.recordRead(state, for: provider, readAt: readAt)
           guard model.keyReadID == readID else { continue }
           let mayReplaceDraft = preserveDrafts == false
             && inputs[provider]?.pending == false

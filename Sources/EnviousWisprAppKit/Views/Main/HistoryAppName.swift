@@ -18,7 +18,7 @@ enum HistoryAppName {
     if name.lowercased() == "com.openai.codex" { return "Codex" }
     guard let lastComponent = bundleIDComponents(name)?.last else { return name }
     if let installed = installedName(name)?.trimmingCharacters(in: .whitespacesAndNewlines),
-      !installed.isEmpty, bundleIDComponents(installed) == nil
+      !installed.isEmpty, installed.caseInsensitiveCompare(name) != .orderedSame
     {
       return installed
     }
@@ -35,7 +35,7 @@ enum HistoryAppName {
     for key in ["CFBundleDisplayName", "CFBundleName"] {
       if let name = bundle?.object(forInfoDictionaryKey: key) as? String,
         !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-        bundleIDComponents(name) == nil
+        name.caseInsensitiveCompare(identifier) != .orderedSame
       {
         return name
       }
