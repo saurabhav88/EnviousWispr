@@ -133,7 +133,7 @@ struct HistoryQueryResult: Sendable {
   init(key: TranscriptCoordinator.HistoryQueryKey, items: [HistoryListItem]) throws {
     self.key = key
     self.items = items
-    let calendar = Calendar.current
+    let calendar = key.calendar
     self.calendar = calendar
     var positions: [HistoryItemID: Int] = [:]
     var entries: [Entry] = []

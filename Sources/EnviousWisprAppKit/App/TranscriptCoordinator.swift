@@ -64,7 +64,6 @@ final class TranscriptCoordinator {
     historyTabStates[tab] ?? HistoryTabState()
   }
 
-  #if DEBUG
   func historyState(for tab: HistoryTab) -> HistoryTabState {
     var state = historyTabStates[tab] ?? HistoryTabState()
     guard state.openItemID != nil || state.scrollAnchorID != nil else { return state }
@@ -74,7 +73,6 @@ final class TranscriptCoordinator {
     return state
   }
 
-  #endif
 
   /// Replaces `tab`'s state. A changed search or filter starts paging again from the top.
   func setHistoryState(_ state: HistoryTabState, for tab: HistoryTab) {
@@ -87,7 +85,6 @@ final class TranscriptCoordinator {
     historyTabStates[tab] = next
   }
 
-  #if DEBUG
   /// Synchronous reference for the existing query and cache tests.
   func matchingHistoryItems(in tab: HistoryTab) -> [HistoryListItem] {
     matchingHistoryItems(in: tab, state: requestedHistoryState(for: tab))
@@ -96,22 +93,23 @@ final class TranscriptCoordinator {
   private func matchingHistoryItems(in tab: HistoryTab, state: HistoryTabState) -> [HistoryListItem] {
     let now = clock()
     let key = historyQueryKey(for: tab, state: state, referenceTime: now)
-    if !listCacheDisabledForTesting, let kept = tabListCache[tab], kept.key == key {
+    if !meetingDocumentsBypass, let kept = tabListCache[tab], kept.key == key {
       return kept.items
     }
-    listBuildsForTesting += 1
+    #if DEBUG
+      listBuildsForTesting += 1
+    #endif
     let items = (try? Self.buildListedItems(rows: transcripts, at: now, from: key) { [self] row, info in
       searchableText(
         of: row, info: info, showEcho: key.echoShown.contains(row.id),
         locale: key.locale, localizations: key.localizations)
     }) ?? []
-    if !listCacheDisabledForTesting { tabListCache[tab] = KeptList(key: key, items: items) }
+    if !meetingDocumentsBypass { tabListCache[tab] = KeptList(key: key, items: items) }
     pruneMeetingDocuments()
     return items
   }
 
   @ObservationIgnored private var tabListCache: [HistoryTab: KeptList] = [:]
-  #endif
 
   @ObservationIgnored private var prunedRevision = -1
 
@@ -360,13 +358,11 @@ final class TranscriptCoordinator {
   /// across an expiry boundary without sleeping (#4001).
   @ObservationIgnored var clock: () -> Date = Date.init
 
-  #if DEBUG
   private struct KeptList {
     let key: HistoryQueryKey
     let items: [HistoryListItem]
   }
 
-  #endif
 
   /// Everything the query uses from the live owners.
   struct HistoryQueryKey: Equatable, Sendable {
@@ -385,6 +381,7 @@ final class TranscriptCoordinator {
     let searchFacts: [SearchFact]?
     let locale: String
     let localizations: [String]
+    let calendar: Calendar
 
   }
 
@@ -414,7 +411,7 @@ final class TranscriptCoordinator {
         rowIndex.pending.map { Self.isVisible(transcripts[$0], at: now) }
       } ?? [],
       searchFacts: facts, locale: Locale.current.identifier,
-      localizations: Bundle.main.preferredLocalizations)
+      localizations: Bundle.main.preferredLocalizations, calendar: .current)
   }
 
   /// Where the held rows sit in `transcripts` and which meetings have a row, rebuilt only when
@@ -1927,7 +1924,6 @@ final class TranscriptCoordinator {
   }
 
   /// The text search reads: a meeting's visible text only, never hidden echo lines.
-  #if DEBUG
   private func searchableText(
     of row: Transcript, info: MeetingHistoryInfo?, showEcho: Bool, locale: String,
     localizations: [String]
@@ -1938,7 +1934,6 @@ final class TranscriptCoordinator {
       bypass: meetingDocumentsBypass)
     return text.kind == .visible ? text.plain : ""
   }
-  #endif
 
   /// Whether the meeting document cache is bypassed: only the DEBUG reference build of the list
   /// (`listCacheDisabledForTesting`), never Release.

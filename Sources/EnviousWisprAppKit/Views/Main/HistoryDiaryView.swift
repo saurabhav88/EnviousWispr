@@ -19,6 +19,7 @@ struct HistoryDiaryView<
   @State private var selection = HistorySelection()
   @State private var isSelecting = false
   @State private var results: [HistoryTab: HistoryQueryResult] = [:]
+  @State private var groupingRevision = 0
 
   init(
     coordinator: TranscriptCoordinator,
@@ -90,7 +91,13 @@ struct HistoryDiaryView<
         .id(tab)
       }
     }
-    .task(id: key) {
+    .onReceive(NotificationCenter.default.publisher(for: .NSSystemTimeZoneDidChange)) { _ in
+      groupingRevision &+= 1
+    }
+    .onReceive(NotificationCenter.default.publisher(for: NSLocale.currentLocaleDidChangeNotification)) { _ in
+      groupingRevision &+= 1
+    }
+    .task(id: RefreshKey(query: key, grouping: groupingRevision)) {
       guard results[tab]?.key != key else { return }
       if let result = await coordinator.historyResults(for: key) {
         results[tab] = result
@@ -104,6 +111,11 @@ struct HistoryDiaryView<
       isSelecting = false
       selection.clear()
     }
+  }
+
+  private struct RefreshKey: Equatable {
+    let query: TranscriptCoordinator.HistoryQueryKey
+    let grouping: Int
   }
 
   private var tabBinding: Binding<HistoryTab> {
