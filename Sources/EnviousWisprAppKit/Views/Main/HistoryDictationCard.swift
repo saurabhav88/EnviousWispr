@@ -283,7 +283,7 @@ struct HistoryDictationCard: View {
     // Passage times index the original text; the polished text needs the alignment to carry
     // them, and stays untimed until it is prepared.
     let spans: [HistoryDictationPresentation.TimedSpan]
-    if view == .original {
+    if view == .original || !texts.differ {
       spans = timeline
     } else if let prepared, let polishedSpans,
       polishedSpans.key == PolishedSpans.Key(texts: prepared.texts, timeline: timeline)

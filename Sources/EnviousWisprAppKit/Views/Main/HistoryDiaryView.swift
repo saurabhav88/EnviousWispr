@@ -65,6 +65,17 @@ struct HistoryDiaryView<
           if tab == .meetings, isSelecting == false {
             HistoryMeetingsBar(coordinator: coordinator)
           }
+          if coordinator.historyReadAvailability == .unavailable,
+            result?.items.isEmpty == false
+          {
+            HStack {
+              Label("Couldn't load History", systemImage: "exclamationmark.triangle")
+                .foregroundStyle(.stTextSecondary)
+              Spacer()
+              Button("Try again") { coordinator.loadIfNeeded() }
+            }
+            .font(.stHelper)
+          }
         }
         .padding(.horizontal, SettingsLayout.contentH)
         .padding(.top, SettingsLayout.contentTop)
