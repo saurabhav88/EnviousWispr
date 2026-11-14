@@ -1471,6 +1471,23 @@ import EnviousWisprAppKitTestSupport
       file: "Sources/EnviousWisprAppKit/App/WisprBootstrapper.swift", matcher: "unloadForRemoval",
       text: "whisper.removal.unloadForRemoval = {",
       classification: .transitivelyCoveredByCaller),
+    // #4578 C4, Parakeet Remove: `SpeechModelLibrary.removeParakeet()` runs
+    // `runParakeetRemoval()` inside `engineMutationScope.withClaim(site: "parakeetRemove")`, after
+    // the synchronous refusal (any dictation, inference-slot job, recovery, switch, benchmark or
+    // meeting). The library's call, the bootstrapper's closure wiring and that closure's unload of
+    // dictation's backend (`asrManager.unloadModel()`, which re-acquires "asrManagerUnload"
+    // itself; the Ultra activation's order) all inherit that claim.
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/SpeechModelLibrary.swift",
+      matcher: "unloadForRemoval", text: "guard await parakeetRemoval.unloadForRemoval() else {",
+      classification: .transitivelyCoveredByCaller),
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/WisprBootstrapper.swift", matcher: "unloadForRemoval",
+      text: "speechModels.parakeetRemoval.unloadForRemoval = { [weak kernelDriver, asrManager] in",
+      classification: .transitivelyCoveredByCaller),
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/WisprBootstrapper.swift", matcher: "unloadModel",
+      text: "await asrManager.unloadModel()", classification: .transitivelyCoveredByCaller),
     // #3147 PR3, Transcribe again with: the chosen model runs on a copy only this job owns
     // (`ImportedEngineCopies`: its own `MeetingParakeetEngine` backend and its own
     // `LiveMeetingWhisperEngine`), never dictation's backend or recovery's engine

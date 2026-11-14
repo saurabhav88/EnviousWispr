@@ -255,7 +255,28 @@ struct SpeechEngineStatusRow: View {
         note(EngineSummaryCopy.checking)
       }
     case .ready:
-      readyLine
+      // "Model ready", or Whisper's "Getting the model ready" while dictation's engine warms it
+      // (#1635: delivery ready means on disk; the load into memory takes about 30 seconds).
+      // Only Whisper's row reads the warm state, so Parakeet's line never shows it.
+      if ModelPreparingCopy.isPreparing(warmInFlight: whisperWarmInFlight) {
+        HStack(spacing: 6) {
+          ProgressView().controlSize(.small)
+          Text(ModelPreparingCopy.label(warmInFlight: whisperWarmInFlight))
+            .font(.stHelper).foregroundStyle(.stTextSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .onAppear {
+          // #1635: reported where the words entered the visible hierarchy, once per showing.
+          if place == .dictationSummary {
+            TelemetryService.shared.settingsModelPreparingImpression(
+              engine: "whisper", reason: "engine_swap")
+          }
+        }
+      } else {
+        ProviderStatusChip(
+          status: EngineSummaryPresentation.fastModelStatus(admitted: true),
+          isHeadline: place == .dictationSummary)
+      }
     case .notInstalled:
       ProviderStatusChip(
         status: ProviderStatus(label: SpeechEngineStatusCopy.notDownloaded, tone: .needsSetup),
@@ -268,27 +289,9 @@ struct SpeechEngineStatusRow: View {
     }
   }
 
-  /// "Model ready", or Whisper's "Getting the model ready" while dictation's engine warms it
-  /// (#1635: delivery ready means on disk; the load into memory takes about 30 seconds).
-  @ViewBuilder private var readyLine: some View {
-    let warming = engineCoordinator?.status.warmInFlight
-    if engine == .whisper, ModelPreparingCopy.isPreparing(warmInFlight: warming) {
-      HStack(spacing: 6) {
-        ProgressView().controlSize(.small)
-        note(ModelPreparingCopy.label(warmInFlight: warming))
-      }
-      .onAppear {
-        // #1635: reported where the words entered the visible hierarchy, once per showing.
-        if place == .dictationSummary {
-          TelemetryService.shared.settingsModelPreparingImpression(
-            engine: "whisper", reason: "engine_swap")
-        }
-      }
-    } else {
-      ProviderStatusChip(
-        status: EngineSummaryPresentation.fastModelStatus(admitted: true),
-        isHeadline: place == .dictationSummary)
-    }
+  /// The warm in flight as Whisper's row sees it: nil on Parakeet's row.
+  private var whisperWarmInFlight: ASRBackendType? {
+    engine == .whisper ? engineCoordinator?.status.warmInFlight : nil
   }
 
   @ViewBuilder private func operationView(_ operation: SpeechEngineStatus.Operation) -> some View {

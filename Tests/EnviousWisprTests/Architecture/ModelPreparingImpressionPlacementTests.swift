@@ -12,7 +12,8 @@ import Testing
 @Suite("Model preparing impression placement", .tags(.driftGuard, .localParallel))
 struct ModelPreparingImpressionPlacementTests {
 
-  static let path = "Sources/EnviousWisprAppKit/Views/Settings/SpeechEngineSettingsView.swift"
+  /// #4578: the engine's status line moved into the shared row both Settings tabs show.
+  static let path = "Sources/EnviousWisprAppKit/Views/Settings/SpeechEngineStatusRow.swift"
 
   @Test("the production emitter sits on the visible preparing label")
   func productionPlacement() throws {
