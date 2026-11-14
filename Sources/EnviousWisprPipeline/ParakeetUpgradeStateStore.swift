@@ -165,3 +165,77 @@ package struct ParakeetUpgradeStateStore: Sendable {
     }
   }
 }
+
+/// Whether the person wants Parakeet on this Mac (#4578, plan §3.2).
+///
+/// One zero-byte flag, `parakeet-install-removed-by-user`, in the same app-owned
+/// `<data>/ModelDelivery/` directory as the upgrade state, so it describes the same disk the
+/// admission markers do. Absent means wanted (every install before #4578, and a fresh one).
+/// Present means the person pressed Remove: nothing may fetch or adopt Parakeet bytes until an
+/// explicit install clears it. Engine-wide, not target-keyed: a newer Ultra revision does not
+/// bring back an engine the person removed.
+package enum ParakeetInstallIntent: Equatable, Sendable {
+  case wanted
+  case removedByUser
+  /// The flag's lookup failed or it is not a regular file: treated as removed (fail closed),
+  /// because it may hold a removal this read cannot see.
+  case unreadable(reason: String)
+
+  /// Only a readable "wanted" permits fetching or adopting bytes.
+  package var permitsBytes: Bool { self == .wanted }
+}
+
+package struct ParakeetInstallIntentStore: Sendable {
+  private let metadataDirectory: URL
+  private let writeData: @Sendable (Data, URL) throws -> Void
+  private let removeItem: @Sendable (URL) throws -> Void
+
+  package init(
+    metadataDirectory: URL,
+    writeData: @escaping @Sendable (Data, URL) throws -> Void = { data, url in
+      try FileManager.default.createDirectory(
+        at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+      try data.write(to: url, options: .atomic)
+    },
+    removeItem: @escaping @Sendable (URL) throws -> Void = { try LegacyRetirement.clearMarker($0) }
+  ) {
+    self.metadataDirectory = metadataDirectory
+    self.writeData = writeData
+    self.removeItem = removeItem
+  }
+
+  package var url: URL {
+    metadataDirectory.appendingPathComponent(
+      "parakeet-install-removed-by-user", isDirectory: false)
+  }
+
+  package func read() -> ParakeetInstallIntent {
+    let url = url
+    guard LegacyRetirement.isContained(url, within: metadataDirectory) else {
+      return .unreadable(reason: "outside_metadata")
+    }
+    var info = stat()
+    if lstat(url.path, &info) != 0 {
+      let code = errno
+      return code == ENOENT ? .wanted : .unreadable(reason: "lookup_\(code)")
+    }
+    guard (info.st_mode & mode_t(S_IFMT)) == mode_t(S_IFREG) else {
+      return .unreadable(reason: "not_a_file")
+    }
+    return .removedByUser
+  }
+
+  /// Records the person's choice. Throws `ParakeetUpgradeStoreWriteError` (field
+  /// `installIntent`) when it cannot be persisted.
+  package func write(removedByUser: Bool) throws {
+    let url = url
+    guard LegacyRetirement.isContained(url, within: metadataDirectory) else {
+      throw ParakeetUpgradeStoreWriteError(field: "installIntent")
+    }
+    do {
+      if removedByUser { try writeData(Data(), url) } else { try removeItem(url) }
+    } catch {
+      throw ParakeetUpgradeStoreWriteError(field: "installIntent")
+    }
+  }
+}

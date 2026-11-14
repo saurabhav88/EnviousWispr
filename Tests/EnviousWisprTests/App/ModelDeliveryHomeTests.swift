@@ -88,7 +88,7 @@ struct ModelDeliveryHomeTests {
     }
   }
 
-  @Test("construction migrates an existing v3 donor copy into our v3 directory")
+  @Test("launch migrates an existing v3 donor copy into our v3 directory")
   func launchMigratesTheRetiredV3Donor() async throws {
     let fixture = try ParakeetHomeFixture.make()
     let donor = ParakeetInstallLocation.legacySharedDonor(appSupport: fixture.appSupport)
@@ -98,6 +98,9 @@ struct ModelDeliveryHomeTests {
         tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
       manifestBundle: fixture.bundle, appSupportOverride: fixture.root,
       retiredV3Progress: .init(write: { _, _, _ in }, clear: {}))
+    // #4578: the launch migration starts with the coordinator, which reads the install intent.
+    _ = home.installParakeetUpgrade(
+      parakeetSelection: ParakeetSelectionProvider(), isOnboardingComplete: { false })
     _ = try await Self.awaitBounded(home.retiredV3LaunchMigrationForTesting)
     let owned = ParakeetInstallLocation.directory(for: .v3, dataDirectory: fixture.dataDirectory)
     for file in ManifestFixture.smallFiles {

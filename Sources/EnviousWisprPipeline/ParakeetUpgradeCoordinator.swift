@@ -146,6 +146,8 @@ package final class ParakeetUpgradeCoordinator {
   /// nil means the legacy in-service download path (tests, or the flag off).
   private let delivery: ParakeetDeliveryHandle?
   private let target: UpgradeTarget?
+  /// #4578: the person's install choice. nil (tests, or no shipped manifest) means wanted.
+  private let installIntent: ParakeetInstallIntentStore?
   /// The request the last selection point chose, kept until the next one.
   private var frozen: ParakeetModelSelection? {
     didSet { onPresentationChanged?() }
@@ -264,11 +266,13 @@ package final class ParakeetUpgradeCoordinator {
   package init(
     parakeetSelection: ParakeetSelectionProvider, delivery: ParakeetDeliveryHandle?,
     target: UpgradeTarget? = nil,
+    installIntent: ParakeetInstallIntentStore? = nil,
     isOnboardingComplete: @escaping @MainActor () -> Bool = { false }
   ) {
     self.parakeetSelection = parakeetSelection
     self.delivery = delivery
     self.target = target
+    self.installIntent = installIntent
     self.isOnboardingComplete = isOnboardingComplete
     if let target {
       // A persisted decline is shown after relaunch (Settings' Resume row).
@@ -435,7 +439,7 @@ package final class ParakeetUpgradeCoordinator {
     // A repairable request exists only on the delivery path, which has the
     // handle; a nil here would be a logic error, so fail the warm-up rather
     // than crash.
-    guard prepared.selection?.repairable == true, let delivery,
+    guard isInstallWanted, prepared.selection?.repairable == true, let delivery,
       case .admitted = await delivery.repair()
     else { return false }
     return true
@@ -511,6 +515,10 @@ package final class ParakeetUpgradeCoordinator {
 
   private func runDeliveryStage(selectionPoint: Bool) async throws -> PreparedLoad {
     if let deliveryStageGateForTesting { await deliveryStageGateForTesting() }
+    // #4578: the one consent check for every load. A removed (or unreadable) install intent
+    // stops here, before the location seam (donor adoption), any fetch, repair, or a
+    // vendor-enabled (`cacheOnly: false`) selection, and before a frozen reload.
+    try requireInstallWanted()
     if let target {
       return try await runTargetStage(target, selectionPoint: selectionPoint)
     }
@@ -562,6 +570,8 @@ package final class ParakeetUpgradeCoordinator {
       throw ParakeetDeliveryError(
         DeliveryFailure(reason: .cacheRepairFailed, detail: "location_refused"))
     }
+    // #4578: the location await above may have outlived the person's Remove.
+    try requireInstallWanted()
     let selection: ParakeetModelSelection?
     if let delivery, delivery.isEnabled() {
       // `directory` is non-nil here: a handle that returned nil refused above.
@@ -572,7 +582,8 @@ package final class ParakeetUpgradeCoordinator {
       }
       switch await delivery.ensureAvailable() {
       case .admitted:
-        break
+        // #4578: a Remove recorded during the attempt publishes nothing.
+        try requireInstallWanted()
       case .failed(let failure):
         throw ParakeetDeliveryError(failure)
       case .cancelled:
@@ -610,6 +621,12 @@ package final class ParakeetUpgradeCoordinator {
 package struct ParakeetUpgradeUnavailableError: Error, Equatable {
   package let reason: String
   package init(reason: String) { self.reason = reason }
+}
+
+/// #4578: thrown when the person removed Parakeet (or the install intent cannot be read): no
+/// load is prepared, nothing is fetched or adopted, and the failure plan never repairs it.
+package struct ParakeetRemovedByUserError: Error, Equatable {
+  package init() {}
 }
 
 // MARK: - Upgrade policy with a configured target (plan §3.4)
@@ -703,9 +720,12 @@ extension ParakeetUpgradeCoordinator {
     if error is CancellationError || error is ASRLoadCancelledError
       || error is ASRLoadSupersededError || error is ParakeetUpgradeStoreWriteError
       || error is ParakeetUpgradeUnavailableError || error is ParakeetLoadAccountingUnavailableError
+      || error is ParakeetRemovedByUserError
     {
       return .fail
     }
+    // #4578: a removal recorded while this load ran permits no repair, refetch or fallback.
+    guard isInstallWanted else { return .fail }
     guard let target else {
       // No target: the one-shot load-miss repair, unchanged.
       return await repairAfterLoadFailure(prepared) ? .reload : .fail
@@ -836,6 +856,9 @@ extension ParakeetUpgradeCoordinator {
       exhausted = true
     }
     v3Accepted = v3RejectedThisLaunch ? false : await acceptV3()
+    // #4578: acceptance awaited the donor migration; a Remove recorded meanwhile stops here,
+    // before any vendor selection, admission read or fetch below.
+    try requireInstallWanted()
 
     // The legacy route's location refusal (#2697) holds for the target too:
     // nothing reads, fetches into or deletes from a refused Ultra location.
@@ -860,7 +883,9 @@ extension ParakeetUpgradeCoordinator {
       }
       throw rowT()
     }
-    if await target.delivery.isAdmitted() {
+    let ultraAdmitted = await target.delivery.isAdmitted()
+    try requireInstallWanted()
+    if ultraAdmitted {
       // A: admitted, within budget.
       if state.attempts < Self.attemptBudget {
         return selected(
@@ -933,11 +958,14 @@ extension ParakeetUpgradeCoordinator {
       throw ParakeetDeliveryError(
         DeliveryFailure(reason: .cacheRepairFailed, detail: "location_refused"))
     }
+    // #4578: E19 runs after a failed load (awaits behind it); a Remove since then stops here.
+    try requireInstallWanted()
     if !(delivery ?? target.delivery).isEnabled() {
       return freeze(ultraRequest(target, cacheOnly: false, repairable: false))
     }
     let admitted = await target.delivery.isAdmitted()
     guard isCurrentLoad(request), !Task.isCancelled else { return nil }
+    try requireInstallWanted()
     if admitted {
       return freeze(ultraRequest(target, cacheOnly: true, repairable: true))
     }
@@ -962,10 +990,14 @@ extension ParakeetUpgradeCoordinator {
       needsExplicitRetry = true
       throw ParakeetUpgradeUnavailableError(reason: "budget_spent")
     }
+    // #4578: no suspension between this check and the fetch.
+    try requireInstallWanted()
     switch await foreground({ await target.delivery.ensureAvailableInForeground() }) {
     case .admitted:
       try Task.checkCancellation()
       if let request, !isCurrentLoad(request) { throw ASRLoadSupersededError() }
+      // A Remove recorded while the fetch or its cache validation ran publishes nothing.
+      try requireInstallWanted()
       return selected(ultraRequest(target, cacheOnly: true, repairable: true), row: "C")
     case .failed(let failure):
       throw ParakeetDeliveryError(failure)
@@ -984,9 +1016,16 @@ extension ParakeetUpgradeCoordinator {
   /// existing behaviour. The shared donor is never modified.
   private func acceptV3() async -> Bool {
     guard let delivery, delivery.locationIsUsable else { return false }
-    if await delivery.isAdmitted() == false { _ = await delivery.admitIfComplete() }
-    guard await delivery.ensureModelLocationReady() != nil else { return false }
-    if await delivery.isAdmitted() { return true }
+    // #4578: every adoption step (admitting complete bytes, the donor migration) reads the
+    // install intent right before it; nothing suspends between a check and its step.
+    guard isInstallWanted else { return false }
+    if await delivery.isAdmitted() == false {
+      guard isInstallWanted else { return false }
+      _ = await delivery.admitIfComplete()
+    }
+    guard isInstallWanted, await delivery.ensureModelLocationReady() != nil else { return false }
+    if await delivery.isAdmitted() { return isInstallWanted }
+    guard isInstallWanted else { return false }
     return await delivery.admitIfComplete()
   }
 
@@ -1163,6 +1202,61 @@ extension ParakeetUpgradeCoordinator {
   /// and marker, unchanged).
   package var hasUpgradeTarget: Bool { target != nil }
 
+  /// #4578: whether bytes may be fetched or adopted now, read fresh from the install intent.
+  /// No store (tests, or no shipped manifest) is wanted.
+  package var isInstallWanted: Bool { installIntent?.read().permitsBytes ?? true }
+
+  /// #4578: the load path's consent boundary. Placed with no suspension between it and the
+  /// fetch, adoption or vendor selection it guards; a refusal leaves no request behind.
+  private func requireInstallWanted() throws {
+    guard isInstallWanted else {
+      parakeetSelection.clear()
+      throw ParakeetRemovedByUserError()
+    }
+  }
+
+  /// #4578: the launch migration of an existing v3 copy into our own directory (a local copy,
+  /// never a fetch), skipped when the person removed Parakeet. Its result is discarded: it acts
+  /// on nothing (see `ModelDeliveryHome.installParakeetUpgrade`).
+  package func runLaunchMigration() async {
+    guard isInstallWanted, let delivery else { return }
+    _ = await delivery.ensureModelLocationReady()
+  }
+
+  /// #4578: Settings' Resume and Setup's download request, one consent-aware command. Joins the
+  /// launch migration first (the single-flight location door; a refusal is a refusal), then with
+  /// the Ultra target runs the counted foreground fetch, else the v3 attempt. nil = refused.
+  package func resumeDownloadInForeground() async -> ModelDeliveryController.DeliveryOutcome? {
+    guard isInstallWanted else { return nil }
+    // The handle that downloads: Ultra's with the target, else v3's.
+    if let handle = target?.delivery ?? delivery {
+      guard await handle.ensureModelLocationReady() != nil else { return nil }
+    }
+    if target != nil { return await fetchInForeground() }
+    guard isInstallWanted, let delivery else { return nil }
+    return await delivery.ensureAvailable()
+  }
+
+  /// #4578: the explicit install after a removal ("Set up model"). Persists "wanted" first,
+  /// then grants a fresh bounded cycle through the same lifecycle Retry uses (store proven
+  /// writable, attempts/refetch/exhaustion reset, obsolete cleanup cancelled, the explicit-retry
+  /// presentation cleared) and marks a selection point, so the next load re-decides instead of
+  /// reusing a frozen choice. The v3-fallback rule is unchanged: Ultra that worked is never
+  /// replaced by v3. Then runs the same consent-aware foreground download Resume runs.
+  package func installExplicitly() async throws -> ModelDeliveryController.DeliveryOutcome? {
+    try installIntent?.write(removedByUser: false)
+    if let target {
+      try target.store.probeWritable()
+      var state = ParakeetUpgradeState.fresh
+      if case .state(let current) = target.store.read() { state.declined = current.declined }
+      try target.store.write(state)
+    }
+    cancelCleanupTasks()
+    needsExplicitRetry = false
+    markSelectionPoint()
+    return await resumeDownloadInForeground()
+  }
+
   ///
   /// Every fact is re-read AFTER the admission awaits, so a rejection,
   /// exhaustion or spent budget that lands during them is honoured.
@@ -1317,6 +1411,8 @@ extension ParakeetUpgradeCoordinator {
   package func fetchInForeground() async -> ModelDeliveryController.DeliveryOutcome? {
     guard let target, target.delivery.locationIsUsable else { return nil }
     func permitted() -> Bool {
+      // #4578: re-read after every await below; a removal recorded meanwhile fetches nothing.
+      guard isInstallWanted else { return false }
       guard case .state(let state) = target.store.read(),
         !state.exhausted, state.attempts < Self.attemptBudget
       else {
@@ -1371,7 +1467,7 @@ extension ParakeetUpgradeCoordinator {
   /// usable; no Cancel this process. A Whisper-only launch has no frozen
   /// choice, so it starts nothing; work already running survives E14.
   private func backgroundEligible(_ target: UpgradeTarget) -> Bool {
-    guard !backgroundSuppressed, isOnboardingComplete(),
+    guard isInstallWanted, !backgroundSuppressed, isOnboardingComplete(),
       (delivery ?? target.delivery).isEnabled(), target.delivery.locationIsUsable,
       v3Accepted, !v3RejectedThisLaunch, frozen?.model == .v3,
       case .state(let state) = target.store.read(), !state.declined, !state.exhausted,
@@ -1453,6 +1549,8 @@ extension ParakeetUpgradeCoordinator {
     case .admitted:
       setBackgroundUpgrade(.idle)
       emit(.backgroundAdmitted)
+      // #4578: a Remove recorded during the download offers no activation.
+      guard isInstallWanted else { return }
       offerAdmittedActivation(generation: generation, selectionPoint: selectionPoint)
     case .failed(let failure) where failure.reason == .insufficientDisk:
       setBackgroundUpgrade(.deferredDisk)

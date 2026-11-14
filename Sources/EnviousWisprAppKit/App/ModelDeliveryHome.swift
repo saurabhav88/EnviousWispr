@@ -47,10 +47,12 @@ final class ModelDeliveryHome {
   private var parakeetRetiredV3Registration: DeliveryRegistration?
   /// #3546: the Ultra target the upgrade coordinator is built with.
   private var parakeetUpgradeTarget: ParakeetUpgradeCoordinator.UpgradeTarget?
+  /// #4578: the person's Parakeet install choice, beside the upgrade state on the same disk.
+  private var parakeetInstallIntent: ParakeetInstallIntentStore?
   /// #3546 test observations (internal): the launch donor migration's task and
   /// the Parakeet observer setup, so a test can wait for what construction
   /// started without starting either itself. Production never reads them.
-  private(set) var retiredV3LaunchMigrationForTesting: Task<URL?, Never>?
+  private(set) var retiredV3LaunchMigrationForTesting: Task<Void, Never>?
 
   /// #3546: what Settings presents for Parakeet, mirrored from the upgrade
   /// coordinator (it owns every decision; this only re-reads on its signal).
@@ -122,6 +124,7 @@ final class ModelDeliveryHome {
       parakeetSelection: parakeetSelection,
       delivery: parakeetUpgradeTarget == nil ? parakeetHandle : parakeetRetiredV3Handle,
       target: parakeetUpgradeTarget,
+      installIntent: parakeetInstallIntent,
       isOnboardingComplete: isOnboardingComplete)
     coordinator.onUsabilityMayHaveChanged = { [weak self] in self?.notifyParakeetUsable() }
     coordinator.onPresentationChanged = { [weak self] in self?.refreshParakeetPresentation() }
@@ -132,6 +135,13 @@ final class ModelDeliveryHome {
     }
     parakeetUpgrade = coordinator
     refreshParakeetPresentation()
+    // #2697: START THE v3 MIGRATION AT LAUNCH, not at the first dictation (see
+    // `installRetiredV3`). #4578: through the coordinator, which skips it when the person
+    // removed Parakeet, so a donor copy is never adopted back. The coordinator is built at
+    // launch by the bootstrapper, so this is still launch, not the first take.
+    if parakeetRetiredV3Handle != nil {
+      retiredV3LaunchMigrationForTesting = Task { await coordinator.runLaunchMigration() }
+    }
     return coordinator
   }
 
@@ -612,6 +622,7 @@ final class ModelDeliveryHome {
         store: ParakeetUpgradeStateStore(
           metadataDirectory: metadataDirectory, targetCacheKey: identity.cacheKey),
         ownedModelsRoot: storage.dataDirectory.appendingPathComponent("Models", isDirectory: true))
+      parakeetInstallIntent = ParakeetInstallIntentStore(metadataDirectory: metadataDirectory)
       installRetiredV3(
         dataDirectory: storage.dataDirectory, metadataDirectory: metadataDirectory,
         legacyDonorDirectory: storage.systemApplicationSupport.map {
@@ -1124,8 +1135,8 @@ final class ModelDeliveryHome {
       // The seam that guarantees it has run lives in the engine adapter's
       // warm-up, and warm-up is driven by a recording session — so without this
       // the whole migration, including a hash of 483 MB, is paid by the user's
-      // FIRST TAKE after updating. Starting it here moves that cost to launch,
-      // where nobody is waiting on it. Measured on the founder's machine: the
+      // FIRST TAKE after updating. Starting it at launch moves that cost to where
+      // nobody is waiting on it. Measured on the founder's machine: the
       // migration itself is ~1s.
       //
       // Through the HANDLE rather than the controller (review A, P2). The handle
@@ -1138,18 +1149,15 @@ final class ModelDeliveryHome {
       // controller's single-flight coordinator, so a warm-up arriving mid-run
       // joins this task rather than starting a second on the same candidate.
       //
-      // THE RESULT IS DISCARDED HERE, AND ONLY HERE, DELIBERATELY. Every other
+      // THE RESULT IS DISCARDED THERE, AND ONLY THERE, DELIBERATELY. Every other
       // caller of this seam ACTS on the location and must honour a refusal:
-      // `resumeParakeetDownload` below guards on it, and
-      // `ParakeetUpgradeCoordinator`'s no-target delivery stage throws on it
-      // (#3546: moved there from `ParakeetEngineAdapter`). This call acts on
-      // nothing — a refusal means the migration inside simply did not run,
-      // which is the outcome we want. Enumerated rather than assumed:
-      // `/usr/bin/grep -rn "ensureModelLocationReady" Sources/` returns three
-      // call sites, and this is the only one with nothing to refuse.
-      // (#3546: the task is kept only so a test can wait for the migration
-      // construction started; nothing in production reads it or its result.)
-      retiredV3LaunchMigrationForTesting = Task { await handle.ensureModelLocationReady() }
+      // `ParakeetUpgradeCoordinator.resumeDownloadInForeground` and its no-target
+      // delivery stage. The launch run acts on nothing — a refusal means the
+      // migration inside simply did not run, which is the outcome we want.
+      //
+      // #4578: started by `installParakeetUpgrade` through the coordinator's
+      // `runLaunchMigration()`, which first reads the install intent: after a
+      // Remove the donor copy must not be adopted back.
     } catch {
       Task {
         await AppLogger.shared.log(
@@ -2081,15 +2089,16 @@ final class ModelDeliveryHome {
         // failed components — alongside a migration that publishes them.
         // `ensureModelLocationReady()` is the single-flight door, so this waits
         // for that run rather than racing it, and `nil` from it is a refusal
-        // this path must honour like any other.
-        guard await handle.ensureModelLocationReady() != nil else { return .refused }
+        // this path must honour like any other. #4578: the join now runs inside
+        // `ParakeetUpgradeCoordinator.resumeDownloadInForeground()`.
         // #3546: with an upgrade target the coordinator runs the fetch as a
         // counted foreground operation (progress, location, budget, Cancel).
-        if let upgrade = self.parakeetUpgrade, upgrade.hasUpgradeTarget {
-          guard let outcome = await upgrade.fetchInForeground() else { return .refused }
-          return .attempted(outcome)
-        }
-        return .attempted(await handle.ensureAvailable())
+        // #4578: one consent-aware coordinator command for both branches; a removal the
+        // person recorded refuses it (Set up model is the explicit install).
+        guard let upgrade = self.parakeetUpgrade,
+          let outcome = await upgrade.resumeDownloadInForeground()
+        else { return .refused }
+        return .attempted(outcome)
       }
       if case .completed(let answer) = claim { return answer }
       return .refused
