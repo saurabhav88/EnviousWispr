@@ -23,6 +23,7 @@ final class HistoryPolishPreview {
     history: TranscriptCoordinator
   ) {
     guard canStart else { return }
+    let previous = task
     cancel()
     guard let row = history.currentRow(id: rowID) else {
       state = .stale
@@ -32,6 +33,9 @@ final class HistoryPolishPreview {
     let request = requestID
     task = Task { [weak self] in
       do {
+        await previous?.value
+        try Task.checkCancellation()
+        guard self?.requestID == request else { return }
         let candidate = try await runner.candidate(for: row, choice: choice)
         guard !Task.isCancelled, let self, request == requestID else { return }
         state = history.currentRow(id: rowID).map(candidate.matches) == true
@@ -61,7 +65,7 @@ final class HistoryPolishPreview {
 
   func cancel() {
     task?.cancel()
-    task = nil
+    // Retain the draining task so a later choice waits for the lease to be returned.
     requestID = UUID()
     state = .idle
   }
