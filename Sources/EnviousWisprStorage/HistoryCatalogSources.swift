@@ -60,6 +60,10 @@ package struct HistoryCatalogSources: Sendable {
     self.meetings = meetings
   }
 
+  package var watchedDirectories: [URL] {
+    [transcriptDirectory, meetings.root, transcriptDirectory.deletingLastPathComponent()]
+  }
+
   private var pendingDirectory: URL {
     transcriptDirectory.appendingPathComponent(AppConstants.pendingTranscriptsDir, isDirectory: true)
   }

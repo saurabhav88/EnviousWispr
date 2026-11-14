@@ -162,6 +162,9 @@ struct HistoryMeetingAfterView: View {
             guard !Task.isCancelled else { return }
             audioSize = size
           }
+          .task(id: transcripts.catalogSession?.revision) {
+            _ = await transcripts.loadCatalogDetail(record.transcriptID)
+          }
           .task(id: meetings.playbackSource(meetingID: meetingID)) { reconcilePlayer() }
           .task(id: rosterKey(record)) {
             // Stored with the request it answers; shown only while that is still the request.

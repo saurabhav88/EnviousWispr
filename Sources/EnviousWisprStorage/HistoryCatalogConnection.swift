@@ -16,7 +16,7 @@ final class HistoryCatalogConnection {
     case bytes(Data)
   }
 
-  private let database: OpaquePointer
+  private var database: OpaquePointer?
   private static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
   init(path: String) throws {
@@ -55,6 +55,13 @@ final class HistoryCatalogConnection {
   }
 
   deinit { sqlite3_close(database) }
+
+  func close() throws {
+    guard let database else { return }
+    let result = sqlite3_close(database)
+    guard result == SQLITE_OK else { throw Failure(code: result) }
+    self.database = nil
+  }
 
   func execute(_ sql: String, _ parameters: [Value] = []) throws {
     try withStatement(sql, parameters) { statement in
@@ -101,6 +108,7 @@ final class HistoryCatalogConnection {
   private func withStatement<Result>(
     _ sql: String, _ parameters: [Value], _ run: (OpaquePointer) throws -> Result
   ) throws -> Result {
+    guard let database else { throw Failure(code: SQLITE_ABORT) }
     var statement: OpaquePointer?
     let result = sqlite3_prepare_v2(database, sql, -1, &statement, nil)
     defer { sqlite3_finalize(statement) }

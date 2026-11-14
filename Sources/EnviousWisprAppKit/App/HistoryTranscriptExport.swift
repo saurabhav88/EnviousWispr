@@ -14,7 +14,7 @@ enum HistoryTranscriptExport {
     rowID: UUID, coordinator: TranscriptCoordinator, mode: FileImportCoordinator.DocumentView,
     timesOn: Bool
   ) -> String? {
-    guard let live = coordinator.currentRow(id: rowID) else { return nil }
+    guard let live = coordinator.verifiedRowForDelivery(id: rowID) else { return nil }
     guard let base = coordinator.textForDelivery(live) else { return nil }
     if let turns = live.turns,
       let result = TranscriptDocumentPresenter.exportText(
@@ -28,7 +28,7 @@ enum HistoryTranscriptExport {
 
   /// Paste: the plain delivery text (`textForDelivery`), never the mode-sensitive export.
   static func pasteText(rowID: UUID, coordinator: TranscriptCoordinator) -> String? {
-    guard let live = coordinator.currentRow(id: rowID) else { return nil }
+    guard let live = coordinator.verifiedRowForDelivery(id: rowID) else { return nil }
     return coordinator.textForDelivery(live)
   }
 }

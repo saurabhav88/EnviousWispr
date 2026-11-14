@@ -190,7 +190,11 @@ extension MeetingHistoryPresentation {
     }
     return .init(summary: .init(
       key: .init(tab: .meetings, id: meeting.id), date: meeting.createdAt, appKey: meeting.callApp?.rawValue,
-      title: meeting.title, preview: String(preview.prefix(600)), sources: source.versions),
+      title: meeting.title, preview: String(preview.prefix(600)), sources: source.versions,
+      rowID: source.transcript?.id, backendName: source.transcript?.backendType.displayName,
+      meetingAnalysis: source.transcript?.speakerAnalysis,
+      summaryProvider: source.documents?.manifest.summary?.inputs?.providerID,
+      hasMeetingSummary: source.documents?.summary != nil),
       searchableFields: fields)
   }
 }

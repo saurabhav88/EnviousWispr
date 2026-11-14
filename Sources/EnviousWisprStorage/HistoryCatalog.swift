@@ -34,10 +34,25 @@ package actor HistoryCatalog {
     package let preview: String
     package let sources: [SourceVersion]
     package let expiresAt: Date?
+    package let rowID: UUID?
+    package let duration: TimeInterval?
+    package let speakerNames: String?
+    package let backendName: String?
+    package let polishModel: String?
+    package let wasPolished: Bool?
+    package let recovered: Bool?
+    package let interrupted: Bool?
+    package let meetingAnalysis: TranscriptSpeakerAnalysis?
+    package let summaryProvider: String?
+    package let hasMeetingSummary: Bool?
 
     package init(
       key: Key, date: Date, appKey: String? = nil, title: String? = nil, preview: String,
-      sources: [SourceVersion], expiresAt: Date? = nil
+      sources: [SourceVersion], expiresAt: Date? = nil, rowID: UUID? = nil,
+      duration: TimeInterval? = nil, speakerNames: String? = nil, backendName: String? = nil,
+      polishModel: String? = nil, wasPolished: Bool? = nil, recovered: Bool? = nil,
+      interrupted: Bool? = nil, meetingAnalysis: TranscriptSpeakerAnalysis? = nil,
+      summaryProvider: String? = nil, hasMeetingSummary: Bool? = nil
     ) {
       self.key = key
       self.date = date
@@ -46,6 +61,17 @@ package actor HistoryCatalog {
       self.preview = preview
       self.sources = sources
       self.expiresAt = expiresAt
+      self.rowID = rowID
+      self.duration = duration
+      self.speakerNames = speakerNames
+      self.backendName = backendName
+      self.polishModel = polishModel
+      self.wasPolished = wasPolished
+      self.recovered = recovered
+      self.interrupted = interrupted
+      self.meetingAnalysis = meetingAnalysis
+      self.summaryProvider = summaryProvider
+      self.hasMeetingSummary = hasMeetingSummary
     }
   }
 
@@ -60,16 +86,17 @@ package actor HistoryCatalog {
   }
 
   package struct Query: Sendable {
-    let tab: HistoryTab
-    let search: String
-    let dates: DateInterval?
-    let app: String?
+    package let tab: HistoryTab
+    package let search: String
+    package let dates: DateInterval?
+    package let app: String?
     let calendar: Calendar
-    let now: Date
+    package let now: Date
+    let meetingSearchOverrides: [UUID: Bool]
 
     package init(
       tab: HistoryTab, search: String = "", dates: DateInterval? = nil, app: String? = nil,
-      calendar: Calendar = .current, now: Date = Date()
+      calendar: Calendar = .current, now: Date = Date(), meetingSearchOverrides: [UUID: Bool] = [:]
     ) {
       self.tab = tab
       self.search = search
@@ -77,6 +104,7 @@ package actor HistoryCatalog {
       self.app = app
       self.calendar = calendar
       self.now = now
+      self.meetingSearchOverrides = meetingSearchOverrides
     }
   }
 
@@ -88,6 +116,7 @@ package actor HistoryCatalog {
   package struct Page: Sendable {
     package let summaries: [Summary]
     package let continuation: Cursor?
+    package let newerContinuation: Cursor?
     package let dayCounts: [Date: Int]?
   }
 
@@ -98,6 +127,7 @@ package actor HistoryCatalog {
   }
 
   private static let pageSize = 30
+  private static let schemaVersion: Int32 = 2
   private let connection: HistoryCatalogConnection
   private let hasTrigram: Bool
 
@@ -125,7 +155,7 @@ package actor HistoryCatalog {
     try manager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path)
     try connection.execute("PRAGMA secure_delete = ON")
     let schema = try connection.rows("PRAGMA user_version") { sqlite3_column_int($0, 0) }.first
-    guard schema == 0 || schema == 1 else { throw Failure.incompatibleSchema }
+    guard schema == 0 || schema == Self.schemaVersion else { throw Failure.incompatibleSchema }
     if schema == 0 {
       try connection.transaction(write: true) {
         try connection.execute("""
@@ -145,12 +175,14 @@ package actor HistoryCatalog {
             path TEXT PRIMARY KEY, versions BLOB NOT NULL, tab TEXT, id TEXT
           ) WITHOUT ROWID
           """)
-        try connection.execute("PRAGMA user_version = 1")
+        try connection.execute("PRAGMA user_version = \(Self.schemaVersion)")
       }
     }
     hasTrigram = try Self.prepareSearch(using: connection)
     self.connection = connection
   }
+
+  package func close() throws { try connection.close() }
 
   /// Call only after closing the previous catalog instance. Delete only known derived SQLite
   /// files; even a stray original file in this folder is left in place.
@@ -235,7 +267,7 @@ package actor HistoryCatalog {
   }
 
   package func page(
-    _ query: Query, after cursor: Cursor? = nil, sourceRevision: String? = nil,
+    _ query: Query, after cursor: Cursor? = nil, newer: Bool = false, sourceRevision: String? = nil,
     verify: @Sendable (Summary) throws -> Bool
   ) throws -> Page {
     try connection.transaction {
@@ -243,18 +275,22 @@ package actor HistoryCatalog {
       var parameters = predicate.values
       var boundary = ""
       if let cursor {
-        boundary = " AND (e.saved_at, e.id) < (?, ?)"
+        boundary = " AND (e.saved_at, e.id) \(newer ? ">" : "<") (?, ?)"
         parameters += [.number(cursor.date.timeIntervalSinceReferenceDate), .text(cursor.id.uuidString)]
       }
+      let order = newer ? "ASC" : "DESC"
       let rows = try connection.rows("""
         SELECT e.summary FROM entries AS e WHERE \(predicate.sql)\(boundary)
-        ORDER BY e.saved_at DESC, e.id DESC LIMIT \(Self.pageSize + 1)
+        ORDER BY e.saved_at \(order), e.id \(order) LIMIT \(Self.pageSize + 1)
         """, parameters, decodeSummary)
       let candidates = Array(rows.prefix(Self.pageSize))
-      let visible = try candidates.filter(verify)
+      let verified = try candidates.filter(verify)
+      let visible = newer ? Array(verified.reversed()) : verified
       let certified = try visible.count == candidates.count && hasCoverage(sourceRevision)
-      let continuation = rows.count > Self.pageSize
+      let continuation = !newer && rows.count > Self.pageSize
         ? candidates.last.map { Cursor(date: $0.date, id: $0.key.id) } : nil
+      let prior = (newer ? rows.count > Self.pageSize : cursor != nil)
+        ? (newer ? candidates.last : candidates.first).map { Cursor(date: $0.date, id: $0.key.id) } : nil
       let days = Set(visible.map { query.calendar.startOfDay(for: $0.date) })
       var counts: [Date: Int]? = nil
       if certified {
@@ -270,8 +306,27 @@ package actor HistoryCatalog {
           counts?[day] = count
         }
       }
-      return Page(summaries: visible, continuation: continuation, dayCounts: counts)
+      return Page(summaries: visible, continuation: continuation, newerContinuation: prior, dayCounts: counts)
     }
+  }
+
+  /// Restore around a saved anchor without walking all pages before it.
+  package func cursorBefore(_ id: UUID, query: Query) throws -> Cursor? {
+    let predicate = predicate(for: query)
+    let anchor = try connection.rows(
+      "SELECT e.saved_at FROM entries AS e WHERE \(predicate.sql) AND e.id = ?",
+      predicate.values + [.text(id.uuidString)]
+    ) { sqlite3_column_double($0, 0) }.first
+    guard let anchor else { return nil }
+    return try connection.rows("""
+      SELECT e.id, e.saved_at FROM entries AS e WHERE \(predicate.sql) AND (e.saved_at, e.id) > (?, ?)
+      ORDER BY e.saved_at ASC, e.id ASC LIMIT 1
+      """, predicate.values + [.number(anchor), .text(id.uuidString)]) { row in
+        guard let id = UUID(uuidString: HistoryCatalogConnection.text(row, 0)) else {
+          throw Failure.incompatibleSchema
+        }
+        return Cursor(date: Date(timeIntervalSinceReferenceDate: sqlite3_column_double(row, 1)), id: id)
+      }.first
   }
 
   package func matchingKeys(_ query: Query, sourceRevision: String) throws -> [Key] {
@@ -316,6 +371,31 @@ package actor HistoryCatalog {
     return Dictionary(uniqueKeysWithValues: rows)
   }
 
+  package func appCounts(now: Date, sourceRevision: String) throws -> [(String?, Int)] {
+    try connection.transaction {
+      guard try hasCoverage(sourceRevision) else { throw Failure.incompleteCoverage }
+      let query = predicate(for: Query(tab: .dictations, now: now))
+      return try connection.rows(
+        "SELECT e.app, count(*) FROM entries AS e WHERE \(query.sql) GROUP BY e.app", query.values
+      ) { row in
+        let app = sqlite3_column_type(row, 0) == SQLITE_NULL ? nil : HistoryCatalogConnection.text(row, 0)
+        return (app, Int(sqlite3_column_int64(row, 1)))
+      }
+    }
+  }
+
+  package func activity(_ query: Query, sourceRevision: String) throws -> [Date: Int] {
+    try connection.transaction {
+      guard try hasCoverage(sourceRevision) else { throw Failure.incompleteCoverage }
+      let predicate = predicate(for: query)
+      return try connection.rows("SELECT e.saved_at FROM entries AS e WHERE \(predicate.sql)", predicate.values) {
+        Date(timeIntervalSinceReferenceDate: sqlite3_column_double($0, 0))
+      }.reduce(into: [:]) {
+        $0[query.calendar.startOfDay(for: $1), default: 0] += 1
+      }
+    }
+  }
+
   private func hasCoverage(_ revision: String?) throws -> Bool {
     guard let revision else { return false }
     return try connection.rows("SELECT revision FROM coverage WHERE revision = ?", [.text(revision)]) {
@@ -337,16 +417,37 @@ package actor HistoryCatalog {
       values.append(.text(app))
     }
     if query.search.isEmpty == false {
+      var searchConditions: [String] = []
+      var searchValues: [HistoryCatalogConnection.Value] = []
       if hasTrigram, query.search.utf8.count >= 3, query.search.utf8.allSatisfy({ (32...126).contains($0) }) {
         // Only use trigram as a candidate filter for ASCII fields. A locale may match an ASCII
         // query to a non-ASCII field. Foundation remains the final matcher for every result.
-        conditions.append("(e.ascii_only = 0 OR e.row_id IN (SELECT rowid FROM search WHERE search MATCH ?))")
-        values.append(.text("\"\(query.search.replacingOccurrences(of: "\"", with: "\"\""))\""))
+        searchConditions.append("(e.ascii_only = 0 OR e.row_id IN (SELECT rowid FROM search WHERE search MATCH ?))")
+        searchValues.append(.text("\"\(query.search.replacingOccurrences(of: "\"", with: "\"\""))\""))
       }
-      conditions.append("history_contains(e.fields, ?)")
-      values.append(.text(query.search))
+      searchConditions.append("history_contains(e.fields, ?)")
+      searchValues.append(.text(query.search))
+      let included = query.meetingSearchOverrides.filter { $0.value }.map { $0.key.uuidString }.sorted()
+      let excluded = query.meetingSearchOverrides.keys.map(\.uuidString).sorted()
+      if excluded.isEmpty {
+        conditions += searchConditions
+        values += searchValues
+      } else {
+        let ordinary = searchConditions.joined(separator: " AND ")
+        let filtered = "(e.id NOT IN (SELECT value FROM json_each(?)) AND \(ordinary))"
+        conditions.append("(e.id IN (SELECT value FROM json_each(?)) OR \(filtered))")
+        values += [
+          .text(Self.jsonIDs(included)),
+          .text(Self.jsonIDs(excluded)),
+        ] + searchValues
+      }
     }
     return (conditions.joined(separator: " AND "), values)
+  }
+
+  private static func jsonIDs(_ ids: [String]) -> String {
+    // UUIDs are already normalized and contain no JSON escaping characters.
+    "[" + ids.map { "\"\($0)\"" }.joined(separator: ",") + "]"
   }
 
   private func decodeSummary(_ row: OpaquePointer) throws -> Summary {
@@ -355,11 +456,21 @@ package actor HistoryCatalog {
     return try JSONDecoder().decode(Summary.self, from: Data(bytes: bytes, count: count))
   }
 
+  package static func needsRebuild(_ error: any Error) -> Bool {
+    if case Failure.incompatibleSchema = error { return true }
+    guard let failure = error as? HistoryCatalogConnection.Failure else { return false }
+    return failure.code == SQLITE_NOTADB || failure.code == SQLITE_CORRUPT
+  }
+
   private static func prepareSearch(using connection: HistoryCatalogConnection) throws -> Bool {
     // Probe in TEMP so lack of OS support does not alter the persisted index.
     do {
       try connection.execute("CREATE VIRTUAL TABLE temp.trigram_probe USING fts5(body, tokenize='trigram')")
     } catch let error as HistoryCatalogConnection.Failure where error.code == SQLITE_ERROR {
+      let hasExistingIndex = try connection.rows("SELECT 1 FROM sqlite_schema WHERE name = 'search'") {
+        sqlite3_column_int($0, 0)
+      }.isEmpty == false
+      if hasExistingIndex { throw Failure.incompatibleSchema }
       return false
     }
     try connection.execute("DROP TABLE temp.trigram_probe")

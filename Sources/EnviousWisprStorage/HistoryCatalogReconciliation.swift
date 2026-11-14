@@ -7,6 +7,7 @@ package actor HistoryCatalogReconciliation {
     package let revision: String?
     package let completed: Int
     package let total: Int
+    package var unavailable: Int = 0
   }
 
   private let catalog: HistoryCatalog
@@ -63,6 +64,7 @@ package actor HistoryCatalogReconciliation {
 
     var pending: [Update] = []
     var completed = 0
+    var unavailable = 0
     for url in ordered {
       try Task.checkCancellation()
       let before = progress[url.path]
@@ -77,6 +79,7 @@ package actor HistoryCatalogReconciliation {
           path: url.path, versions: snapshot.versions, key: projection?.summary.key)
         pending.append(Update(entry: entry, projection: projection))
       } catch {
+        unavailable += 1
         // Preserve the last known key/proof. It remains ineligible while the source is
         // unverified, and a later pass can still remove it if the file disappears.
       }
@@ -109,7 +112,8 @@ package actor HistoryCatalogReconciliation {
     let currentRevision = beganAt == sourceRevision() ? revision : nil
     if currentRevision == nil, revision != nil { try await catalog.apply([]) }
     lastCertificate = currentRevision.flatMap { value in beganAt.map { (value, $0) } }
-    let result = Pass(revision: currentRevision, completed: min(completed, currentPaths.count), total: currentPaths.count)
+    let result = Pass(revision: currentRevision, completed: min(completed, currentPaths.count),
+      total: currentPaths.count, unavailable: unavailable)
     await onProgress(result)
     return result
   }
@@ -167,7 +171,7 @@ package actor HistoryCatalogReconciliation {
     let current = beganAt == sourceRevision() ? token : nil
     if current == nil, token != nil { try await catalog.apply([]) }
     lastCertificate = current.flatMap { value in beganAt.map { (value, $0) } }
-    return Pass(revision: current, completed: progress.count, total: progress.count)
+    return Pass(revision: current, completed: progress.count, total: progress.count, unavailable: unresolved ? 1 : 0)
   }
 
   private struct Update {

@@ -857,8 +857,12 @@ final class MeetingCoordinator {
       // Never an empty success: the failure is visible.
       deps.log("meeting list unreadable error=\(type(of: error))")
       notice = .storageFailed
+      launched = false
+      // A transient unavailable source must recover in this same app process. The
+      // app's activation and catalog-ready callbacks coalesce through launch().
       return
     }
+    if notice == .storageFailed { notice = nil }
     fileWorkInFlight -= 1
     var loaded: [UUID] = []
     for listing in listings {

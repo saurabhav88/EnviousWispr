@@ -94,14 +94,17 @@ struct HistoryContentView: View {
     .background(Color.stPageBg)
     .task { await historyRepolish.refreshAvailability() }
     .task {
-      transcriptCoordinator.loadIfNeeded()
+      transcriptCoordinator.startHistoryCatalog()
       // #3147 PR3: a file deleted or moved while History was away is seen before Play, and the
       // Transcribe again with menu lists what is installed now.
       importedSources.invalidateAll()
       await modelCatalog.refresh()
     }
     .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-      if transcriptCoordinator.historyReadAvailability != .ready {
+      meetings.launch()
+      if let catalog = transcriptCoordinator.catalogSession {
+        catalog.sourceMayHaveChanged()
+      } else if transcriptCoordinator.historyReadAvailability != .ready {
         transcriptCoordinator.loadIfNeeded()
       }
     }

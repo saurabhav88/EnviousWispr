@@ -160,6 +160,12 @@ final class MeetingDocumentsOwner {
   /// nobody types into an apparently empty box over notes not yet on screen (Codex C8 r1).
   func canEdit(_ meetingID: UUID) -> Bool { entries[meetingID]?.load == .loaded }
 
+  var historyDrafts: [UUID: String] {
+    entries.compactMapValues { entry in
+      entry.unsavedEdits > 0 ? entry.document.markdown : nil
+    }
+  }
+
   /// Notes typed and not yet saved.
   func hasUnsavedNotes(_ meetingID: UUID) -> Bool { (entries[meetingID]?.unsavedEdits ?? 0) > 0 }
 

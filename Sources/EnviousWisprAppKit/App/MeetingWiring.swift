@@ -300,6 +300,9 @@ enum MeetingWiring {
     inputs.transcriptCoordinator.meetingNotes = { [weak coordinator] meetingID in
       coordinator?.documents.notes(meetingID)
     }
+    inputs.transcriptCoordinator.meetingHistoryDrafts = { [weak coordinator] in
+      coordinator?.documents.historyDrafts ?? [:]
+    }
     inputs.transcriptCoordinator.meetingInvited = { [weak coordinator] meetingID in
       coordinator?.documents.invitedSearchTerms(meetingID) ?? []
     }

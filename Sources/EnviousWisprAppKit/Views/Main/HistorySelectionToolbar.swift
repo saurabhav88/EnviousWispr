@@ -11,14 +11,16 @@ struct HistorySelectionToolbar: View {
   let result: HistoryQueryResult?
 
   @State private var pendingKind: HistoryDeleteKind?
+  @State private var allMatchingIDs: Set<HistoryItemID>?
   /// The global Delete all history (#2807), kept from the old sidebar: every tab, text and audio.
   @State private var confirmingDeleteAll = false
 
   var body: some View {
     let count = selection.selectedIDs.count
     let matching = result?.ids ?? []
-    let allSelected = !matching.isEmpty && count >= matching.count
-      && matching.isSubset(of: selection.selectedIDs)
+    let allSelected = allMatchingIDs.map { !$0.isEmpty && $0.isSubset(of: selection.selectedIDs) }
+      ?? (!matching.isEmpty && count >= matching.count && matching.isSubset(of: selection.selectedIDs))
+    let allMatchingAvailable = result != nil && !matching.isEmpty
     WrappingHStack(spacing: 8) {
       VStack(alignment: .leading, spacing: 2) {
         Text(HistorySelectionCopy.selectedCount(tab: tab, count: count))
@@ -31,12 +33,16 @@ struct HistorySelectionToolbar: View {
       }
       .accessibilityElement(children: .combine)
       Button {
-        guard let result, coordinator.isCurrentHistoryResult(result) else { return }
-        let ids = result.ids
-        if !ids.isEmpty && ids.isSubset(of: selection.selectedIDs) {
-          selection.deselect(ids)
-        } else {
-          selection.select(ids)
+        guard let result else { return }
+        Task {
+          guard let matching = await coordinator.matchingIDs(for: result) else { return }
+          let ids = Set(matching)
+          allMatchingIDs = ids
+          if !ids.isEmpty && ids.isSubset(of: selection.selectedIDs) {
+            selection.deselect(ids)
+          } else {
+            selection.select(ids)
+          }
         }
       } label: {
         EnviousButtonLabel(
@@ -49,7 +55,7 @@ struct HistorySelectionToolbar: View {
               comment: "History selection: ticks every item in this tab under its search and filters, on every page."),
           size: .medium)
       }
-      .settingsButton(.outlined, size: .medium, isEnabled: !matching.isEmpty && !selection.isDeleting)
+      .settingsButton(.outlined, size: .medium, isEnabled: allMatchingAvailable && !selection.isDeleting)
       if HistorySelectionCopy.offersRecordingsOnly(tab) {
         Button(role: .destructive) {
           pendingKind = .recordingsOnly
@@ -76,8 +82,10 @@ struct HistorySelectionToolbar: View {
       } label: {
         EnviousButtonLabel("Delete all history", size: .medium, systemImage: "trash")
       }
-      .settingsButton(.outlined, size: .medium, isEnabled: selection.isDeleting == false)
+      .settingsButton(.outlined, size: .medium, isEnabled: selection.isDeleting == false
+      && (coordinator.catalogSession == nil || coordinator.catalogSession?.status == .ready))
     }
+    .onChange(of: result?.key) { _, _ in allMatchingIDs = nil }
     .padding(12)
     .background(Color.stSectionBg, in: RoundedRectangle(cornerRadius: DesignRadius.xl))
     .alert(
@@ -99,6 +107,7 @@ struct HistorySelectionToolbar: View {
     .alert("Delete all history?", isPresented: $confirmingDeleteAll) {
       Button("Cancel", role: .cancel) {}
       Button("Delete all", role: .destructive) {
+        guard coordinator.catalogSession == nil || coordinator.catalogSession?.status == .ready else { return }
         selection.clear()
         // #4075 S1: admitted behind earlier History commands; a failure shows its alert.
         Task { await coordinator.deleteAll() }
@@ -112,8 +121,11 @@ struct HistorySelectionToolbar: View {
   private func delete(_ kind: HistoryDeleteKind) {
     pendingKind = nil
     guard let result, coordinator.isCurrentHistoryResult(result) else { return }
-    selection.retain(result.ids)
-    Task { await selection.deleteSelected(kind: kind, coordinator: coordinator) }
+    Task {
+      guard let matching = await coordinator.matchingIDs(for: result) else { return }
+      selection.retain(Set(matching))
+      await selection.deleteSelected(kind: kind, coordinator: coordinator)
+    }
   }
 }
 

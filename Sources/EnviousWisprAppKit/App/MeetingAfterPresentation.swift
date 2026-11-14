@@ -1,5 +1,6 @@
 import CoreGraphics
 import EnviousWisprCore
+import EnviousWisprStorage
 import Foundation
 
 /// The decisions behind the Meetings tab card and a finished meeting's after view (#3147 PR4A,
@@ -62,6 +63,7 @@ enum MeetingAfterPresentation {
   struct CardInputs {
     var record: MeetingRecord?
     var row: Transcript?
+    var catalog: HistoryCatalog.Summary? = nil
     /// `MeetingCoordinator.processing?.meetingID`.
     var processingID: UUID?
     var queueWaitsForSpace = false
@@ -78,15 +80,15 @@ enum MeetingAfterPresentation {
       // A row whose meeting EnviousMeet no longer holds: its transcript only (legacy orphan).
       let row = inputs.row
       return Card(
-        title: fallbackTitle, isUntitled: true, startedAt: row?.createdAt ?? .distantPast,
+        title: fallbackTitle, isUntitled: true, startedAt: row?.createdAt ?? inputs.catalog?.date ?? .distantPast,
         callApp: nil, length: nil,
-        speakers: MeetingsPresentation.speakers(row?.speakerAnalysis), status: nil,
+        speakers: MeetingsPresentation.speakers(row?.speakerAnalysis ?? inputs.catalog?.meetingAnalysis), status: nil,
         line: .preview(inputs.previewText ?? MeetingHistoryPresentation.unavailableMessage),
-        attentionLine: nil, footer: row.map { [$0.backendType.displayName] } ?? [], audioLine: nil, canRename: false)
+        attentionLine: nil, footer: (row?.backendType.displayName ?? inputs.catalog?.backendName).map { [$0] } ?? [], audioLine: nil, canRename: false)
     }
     let status = MeetingsPresentation.status(record, processingID: inputs.processingID)
     let committed = record.committedTranscriptGeneration != nil
-    let hasRow = committed && inputs.row != nil
+    let hasRow = committed && (inputs.row != nil || inputs.catalog?.rowID != nil)
     return Card(
       title: MeetingsPresentation.title(record),
       isUntitled: (record.title ?? "").isEmpty,
@@ -94,7 +96,7 @@ enum MeetingAfterPresentation {
       callApp: record.callApp?.displayName,
       length: record.recordedDurationMs > 0
         ? MeetingsPresentation.duration(ms: record.recordedDurationMs) : nil,
-      speakers: hasRow ? MeetingsPresentation.speakers(inputs.row?.speakerAnalysis) : nil,
+      speakers: hasRow ? MeetingsPresentation.speakers(inputs.row?.speakerAnalysis ?? inputs.catalog?.meetingAnalysis) : nil,
       status: status == .ready ? nil : cardStatus(status, record: record, inputs: inputs),
       line: cardLine(record, status: status, hasRow: hasRow, inputs: inputs),
       attentionLine: hasRow ? attentionLine(record, status: status, inputs: inputs) : nil,

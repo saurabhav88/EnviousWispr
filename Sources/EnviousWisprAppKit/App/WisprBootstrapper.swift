@@ -3680,9 +3680,13 @@ package final class WisprBootstrapper {
     // dictation hotkey (`AppLifecycleCoordinator.swift` → `startHotkeyServiceIfEnabled`):
     // a Mac left lowered by a dead process is put back before any take can start.
     dictationRuntime.otherAudioHold.adoptOrphans()
+    transcriptCoordinator.catalogSession?.didRecoverSources = { [weak meetingCoordinator] in
+      meetingCoordinator?.launch()
+    }
     // #3972 R3/R15: meetings recover after the orphaned hold is restored, before any take.
     meetingMemoryPressure.start()
     meetingCoordinator.launch()
+    transcriptCoordinator.startHistoryCatalog()
     callDetection.start()
     appLifecycleCoordinator.runDidFinishLaunching()
     // #2480: bring the launch window to the front.

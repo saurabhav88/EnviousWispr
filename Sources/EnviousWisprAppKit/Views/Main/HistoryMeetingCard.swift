@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprStorage
 import SwiftUI
 
 /// One meeting in the Meetings tab (#3147 PR4A, plan §3.6, approved mock Meetings.dc.html): the
@@ -23,12 +24,17 @@ struct HistoryMeetingCard: View {
   let onOpen: () -> Void
   let allowsPlayback: Bool
   let query: String
+  let summary: HistoryCatalog.Summary?
 
-  init(meetingID: UUID, onOpen: @escaping () -> Void, allowsPlayback: Bool = true, query: String = "") {
+  init(
+    meetingID: UUID, onOpen: @escaping () -> Void, allowsPlayback: Bool = true, query: String = "",
+    summary: HistoryCatalog.Summary? = nil
+  ) {
     self.meetingID = meetingID
     self.onOpen = onOpen
     self.allowsPlayback = allowsPlayback
     self.query = query
+    self.summary = summary
   }
 
   @Environment(TranscriptCoordinator.self) private var transcripts
@@ -40,9 +46,9 @@ struct HistoryMeetingCard: View {
 
   var body: some View {
     let record = meetings.record(id: meetingID)
-    let row = meetingRow(record)
+    let row = summary == nil ? meetingRow(record) : nil
     let source = allowsPlayback ? meetings.playbackSource(meetingID: meetingID) : nil
-    if record != nil || row != nil {
+    if record != nil || row != nil || summary != nil {
       card(P.card(inputs(record: record, row: row)), source: source)
         .onChange(of: source) { _, _ in dropPlayer() }
         .onDisappear(perform: dropPlayer)
@@ -61,11 +67,12 @@ struct HistoryMeetingCard: View {
     // A meeting being deleted shows no words of it (Codex C8 r2).
     let shown = record?.deletionRequested != true
     return P.CardInputs(
-      record: record, row: row, processingID: meetings.processing?.meetingID,
+      record: record, row: row, catalog: summary, processingID: meetings.processing?.meetingID,
       queueWaitsForSpace: meetings.queueWaitsForSpace,
-      previewText: shown ? row.map(transcripts.meetingPreviewText(of:)) : nil,
-      summary: shown ? documents.summary(meetingID) : nil,
-      summaryProviderID: documents.manifest(meetingID)?.summary?.inputs?.providerID)
+      previewText: shown ? (summary?.preview ?? row.map(transcripts.meetingPreviewText(of:))) : nil,
+      summary: shown
+        ? (documents.summary(meetingID) ?? (summary?.hasMeetingSummary == true ? summary?.preview : nil)) : nil,
+      summaryProviderID: documents.manifest(meetingID)?.summary?.inputs?.providerID ?? summary?.summaryProvider)
   }
 
   private func card(_ card: P.Card, source: MeetingPlaybackSource?) -> some View {

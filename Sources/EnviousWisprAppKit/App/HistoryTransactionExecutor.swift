@@ -77,6 +77,8 @@ import Foundation
     }
   }
 
+  func allRowsForGlobalDeletion() async throws -> [Transcript] { try await store.loadAll() }
+
   func deleteAll() throws {
     try store.deleteAll()
   }
@@ -98,6 +100,27 @@ import Foundation
   func readRow(id: UUID) async throws -> Transcript? {
     let read = store.rowReader()
     return try await runOnStorageWorker { try read(id) }
+  }
+
+  func readHistoryRow(id: UUID, now: Date, includePending: Bool = true) async throws -> Transcript? {
+    let read = store.historyRowReader(includePending: includePending)
+    return try await runOnStorageWorker { try read(id, now) }
+  }
+
+  struct VerifiedHistoryRow: Sendable {
+    let row: Transcript
+    let versions: [HistoryCatalog.SourceVersion]
+  }
+
+  func readVerifiedHistoryRow(id: UUID, now: Date) async throws -> VerifiedHistoryRow? {
+    let read = store.historyRowReader()
+    let proof = store.historyRowProofReader()
+    return try await runOnStorageWorker {
+      let versions = try proof(id)
+      let row = try read(id, now)
+      guard versions == (try proof(id)) else { throw CocoaError(.fileReadUnknown) }
+      return row.map { VerifiedHistoryRow(row: $0, versions: versions) }
+    }
   }
 
   private func runOnStorageWorker<T: Sendable>(

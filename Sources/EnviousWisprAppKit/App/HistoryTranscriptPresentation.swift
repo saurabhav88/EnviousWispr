@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprStorage
 import Foundation
 
 /// The drawing rules of the Transcripts tab (#3147 PR3 §3.5): what an imported transcript's short
@@ -51,6 +52,17 @@ enum HistoryTranscriptPresentation {
     return chips
   }
 
+  static func chips(for summary: HistoryCatalog.Summary) -> [Chip] {
+    var chips: [Chip] = []
+    if let name = summary.title { chips.append(.file(name)) }
+    if let names = summary.speakerNames { chips.append(.speakers(names)) }
+    if summary.recovered == true { chips.append(.recovered) }
+    if summary.interrupted == true { chips.append(.interrupted) }
+    if summary.wasPolished == true { chips.append(.polish(model: summary.polishModel)) }
+    if let engine = summary.backendName { chips.append(.backend(engine)) }
+    return chips
+  }
+
   /// Speaker names sorted for a stable order (a dictionary's iteration order is not); nil when
   /// the row names nobody.
   static func speakerList(_ row: Transcript) -> String? {
@@ -65,8 +77,12 @@ enum HistoryTranscriptPresentation {
 
   /// "12:04 long": the source file's length (`Transcript.duration`), nil when unknown.
   static func lengthLine(for row: Transcript) -> String? {
-    guard row.duration > 0 else { return nil }
-    let clock = HistoryDictationPresentation.clock(row.duration)
+    lengthLine(seconds: row.duration)
+  }
+
+  static func lengthLine(seconds: TimeInterval) -> String? {
+    guard seconds > 0 else { return nil }
+    let clock = HistoryDictationPresentation.clock(seconds)
     return String(
       localized: "\(clock) long",
       comment: "History transcript card: how long the original file is. %@ is a time like 12:04.")

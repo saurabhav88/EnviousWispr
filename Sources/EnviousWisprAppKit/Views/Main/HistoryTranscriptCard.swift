@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprStorage
 import SwiftUI
 
 /// One imported transcript in the Transcripts tab (#3147 PR3 §3.5, approved mock
@@ -19,17 +20,20 @@ struct HistoryTranscriptCard: View {
   let onOpen: () -> Void
   let onLocate: () -> Void
   let query: String
+  let summary: HistoryCatalog.Summary?
 
   init(
     rowID: UUID,
     sources: any ImportedSourceAccessing,
     query: String = "",
+    summary: HistoryCatalog.Summary? = nil,
     onOpen: @escaping () -> Void,
     onLocate: @escaping () -> Void
   ) {
     self.rowID = rowID
     self.sources = sources
     self.query = query
+    self.summary = summary
     self.onOpen = onOpen
     self.onLocate = onLocate
   }
@@ -43,34 +47,46 @@ struct HistoryTranscriptCard: View {
     let rowID: UUID
     let revision: Int
     let reference: ImportedSourceReference?
+    let sourceRevision: UInt64?
   }
 
   var body: some View {
-    if let row = transcripts.currentRow(id: rowID) {
-      card(row)
-        .task(
+    let row = transcripts.currentRow(id: rowID)
+    Group {
+      if let summary {
+        card(
+          title: summary.title ?? P.transcriptWord,
+          length: P.lengthLine(seconds: summary.duration ?? 0), preview: summary.preview,
+          chips: P.chips(for: summary), row: nil)
+      } else if let row {
+        card(title: P.title(for: row), length: P.lengthLine(for: row), preview: row.historyText,
+          chips: P.chips(for: row), row: row)
+      }
+    }
+    .task(
           id: SourceKey(
             rowID: rowID, revision: sources.revision(for: rowID),
-            reference: ImportedSourceReference(row))
+            reference: row.map(ImportedSourceReference.init), sourceRevision: transcripts.catalogSession?.revision)
         ) {
+          if summary != nil { _ = await transcripts.loadCatalogDetail(rowID) }
           let state = await sources.state(for: rowID)
           guard !Task.isCancelled else { return }
           sourceState = state
         }
-    }
   }
 
-  private func card(_ row: Transcript) -> some View {
+  private func card(title: String, length: String?, preview: String, chips statusChips: [P.Chip],
+    row: Transcript?) -> some View {
     let line = cardSourceLine
     return VStack(alignment: .leading, spacing: DesignSpacing.md) {
       HStack(alignment: .top, spacing: DesignSpacing.lg) {
         VStack(alignment: .leading, spacing: DesignSpacing.xxs) {
-          HistoryParagraphText.searchText(P.title(for: row), query: query)
+          HistoryParagraphText.searchText(title, query: query)
             .font(.stRowTitle)
             .foregroundStyle(.stTextPrimary)
             .lineLimit(1)
             .truncationMode(.middle)
-          if let length = P.lengthLine(for: row) {
+          if let length {
             Text(verbatim: length)
               .font(.stHelper)
               .foregroundStyle(.stTextSecondary)
@@ -86,15 +102,15 @@ struct HistoryTranscriptCard: View {
         .settingsButton(.outlined, size: .medium, isEnabled: true)
         .accessibilityLabel(
           Text(
-            "Open \(P.title(for: row))",
+            "Open \(title)",
             comment: "History transcript card: VoiceOver label of Open. %@ is the file name."))
       }
       sourceRow(line)
-      HistoryParagraphText.searchText(row.historyText, query: query)
+      HistoryParagraphText.searchText(preview, query: query)
         .font(.stBody)
         .foregroundStyle(.stTextBody)
         .lineLimit(2)
-      chips(row)
+      chips(statusChips, row: row)
     }
     .historyRowCard(isSelected: false)
     .contentShape(Rectangle())
@@ -138,11 +154,11 @@ struct HistoryTranscriptCard: View {
     }
   }
 
-  private func chips(_ row: Transcript) -> some View {
+  private func chips(_ chips: [P.Chip], row: Transcript?) -> some View {
     WrappingHStack(spacing: DesignSpacing.sm) {
       // #2087: held countdown or Kept, from the shared Escape Recovery badge view.
-      EscapeRecoveryBadge(transcript: row)
-      ForEach(P.chips(for: row), id: \.self) { chip in
+      if let row { EscapeRecoveryBadge(transcript: row) }
+      ForEach(chips, id: \.self) { chip in
         chipView(chip)
       }
     }

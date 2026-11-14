@@ -15,15 +15,21 @@ final class HistoryCatalogSession {
 
   private(set) var status: Status = .updating
   private(set) var revision: UInt64 = 0
+  private(set) var latestDictation: UUID?
 
   @ObservationIgnored private let changes: HistorySourceChanges
   @ObservationIgnored private let sources: HistoryCatalogSources
   @ObservationIgnored private let directory: URL
   @ObservationIgnored private var backend: Backend?
   @ObservationIgnored private var opening: Task<Backend, any Error>?
+  @ObservationIgnored private var diskWatch: HistoryDiskWatch?
   @ObservationIgnored private var observation: Task<Void, Never>?
+  @ObservationIgnored private var retry: Task<Void, Never>?
   @ObservationIgnored private var indexing: Task<Void, Never>?
+  @ObservationIgnored private var rebuildRequested = false
   @ObservationIgnored private var pending = HistorySourceChanges.Delta()
+  @ObservationIgnored var didUpdate: (@MainActor () -> Void)?
+  @ObservationIgnored var didRecoverSources: (@MainActor () -> Void)?
 
   private struct Backend: Sendable {
     let catalog: HistoryCatalog
@@ -36,12 +42,23 @@ final class HistoryCatalogSession {
     self.directory = directory
   }
 
+  deinit {
+    observation?.cancel()
+    indexing?.cancel()
+    retry?.cancel()
+    opening?.cancel()
+  }
+
   func start() {
     guard observation == nil else { return }
+    startWatchingDisk()
     observation = Task { [weak self, changes] in
       for await event in changes.changes {
         guard let self else { return }
         invalidate()
+        if case .unknown = event {
+          startWatchingDisk()
+        }
         pending.include(event)
         indexIfNeeded()
       }
@@ -50,10 +67,20 @@ final class HistoryCatalogSession {
     indexIfNeeded()
   }
 
+  private func startWatchingDisk() {
+    // Watch the common parent as well so a missing or replaced child can be seen.
+    diskWatch = HistoryDiskWatch(directories: sources.watchedDirectories) { [changes] in
+      changes.externalChange()
+    }
+  }
+
   func sourceMayHaveChanged() {
-    invalidate()
-    pending.include(.unknown)
-    indexIfNeeded()
+    guard diskWatch == nil || status == .unavailable else { return }
+    changes.externalChange()
+  }
+
+  func updateLatestDictation(_ id: UUID?) {
+    latestDictation = id
   }
 
   private func invalidate() {
@@ -68,7 +95,7 @@ final class HistoryCatalogSession {
       let catalog: HistoryCatalog
       do {
         catalog = try HistoryCatalog(directory: directory)
-      } catch HistoryCatalog.Failure.incompatibleSchema {
+      } catch where HistoryCatalog.needsRebuild(error) {
         try HistoryCatalog.discardFiles(in: directory)
         catalog = try HistoryCatalog(directory: directory)
       }
@@ -85,15 +112,27 @@ final class HistoryCatalogSession {
   }
 
   func page(
-    _ query: HistoryCatalog.Query, after cursor: HistoryCatalog.Cursor? = nil
+    _ query: HistoryCatalog.Query, after cursor: HistoryCatalog.Cursor? = nil, restoring anchor: UUID? = nil, newer: Bool = false
   ) async throws -> HistoryCatalog.Page? {
     let id = revision
     let source = changes.revision
     guard source != nil else { return nil }
     let backend = try await open()
-    let coverage = await backend.worker.currentCoverage()
-    let result = try await backend.catalog.page(query, after: cursor, sourceRevision: coverage) {
-      (try? $0.sourcesStillMatch()) == true
+    let coverage = diskWatch == nil ? nil : await backend.worker.currentCoverage()
+    let boundary: HistoryCatalog.Cursor?
+    if let anchor, cursor == nil {
+      boundary = try await backend.catalog.cursorBefore(anchor, query: query)
+    } else {
+      boundary = cursor
+    }
+    let result: HistoryCatalog.Page
+    do {
+      result = try await backend.catalog.page(query, after: boundary, newer: newer, sourceRevision: coverage) {
+        (try? $0.sourcesStillMatch()) == true
+      }
+    } catch {
+      if HistoryCatalog.needsRebuild(error) { requestRebuild() }
+      throw error
     }
     guard !Task.isCancelled, id == revision, source == changes.revision else { return nil }
     return result
@@ -104,10 +143,50 @@ final class HistoryCatalogSession {
     let source = changes.revision
     guard source != nil else { return nil }
     let backend = try await open()
-    guard let coverage = await backend.worker.currentCoverage() else { return nil }
+    guard diskWatch != nil, let coverage = await backend.worker.currentCoverage() else { return nil }
     let result = try await backend.catalog.matchingKeys(query, sourceRevision: coverage)
     guard !Task.isCancelled, id == revision, source == changes.revision else { return nil }
     return result
+  }
+
+  var stableSourceRevision: UInt64? { changes.revision }
+
+  func appCounts(now: Date) async throws -> [(String?, Int)]? {
+    let stamp = revision
+    guard let source = changes.revision else { return nil }
+    let backend = try await open()
+    guard diskWatch != nil, let coverage = await backend.worker.currentCoverage() else { return nil }
+    let counts = try await backend.catalog.appCounts(now: now, sourceRevision: coverage)
+    return stamp == revision && source == changes.revision && !Task.isCancelled ? counts : nil
+  }
+
+  func activity(_ query: HistoryCatalog.Query) async throws -> [Date: Int]? {
+    let stamp = revision
+    guard let source = changes.revision else { return nil }
+    let backend = try await open()
+    guard diskWatch != nil, let coverage = await backend.worker.currentCoverage() else { return nil }
+    let result = try await backend.catalog.activity(query, sourceRevision: coverage)
+    return stamp == revision && source == changes.revision && !Task.isCancelled ? result : nil
+  }
+
+  private func requestRebuild() {
+    guard !rebuildRequested else { return }
+    rebuildRequested = true
+    invalidate()
+    pending.include(.unknown)
+    indexIfNeeded()
+  }
+
+  private func scheduleRetry() {
+    guard retry == nil else { return }
+    retry = Task(priority: .utility) { [weak self] in
+      // Reconciliation owns this retry. View churn and tab switches cannot cancel repair.
+      do { try await Task.sleep(for: .seconds(2)) } catch { return }
+      guard let self else { return }
+      retry = nil
+      pending.include(.unknown)
+      indexIfNeeded()
+    }
   }
 
   private func indexIfNeeded() {
@@ -119,6 +198,14 @@ final class HistoryCatalogSession {
         let delta = pending
         pending = HistorySourceChanges.Delta()
         do {
+          if rebuildRequested {
+            rebuildRequested = false
+            if let backend {
+              try await backend.catalog.close()
+              self.backend = nil
+            }
+            try HistoryCatalog.discardFiles(in: directory)
+          }
           let backend = try await open()
           let pass: HistoryCatalogReconciliation.Pass?
           if delta.scopes.contains(.all) {
@@ -129,22 +216,44 @@ final class HistoryCatalogSession {
             pass = try await backend.worker.refresh(delta)
           }
           if let pass { publishProgress(pass) }
-          if !delta.scopes.contains(.all), pass?.revision == nil {
-            pending.include(.unknown)
+          if pass?.revision == nil {
+            // A failed record is different from a scan raced by a canonical writer.
+            // Wait for the affected source to change or for an explicit recovery trigger.
+            if pass?.unavailable != 0 {
+              continue
+            }
+            if !delta.scopes.contains(.all) {
+              pending.include(.unknown)
+            }
+          } else {
+            retry?.cancel()
+            retry = nil
           }
         } catch is CancellationError {
           return
         } catch {
           status = .unavailable
           revision &+= 1
+          if HistoryCatalog.needsRebuild(error) { rebuildRequested = true }
+          scheduleRetry()
         }
       }
     }
   }
 
   private func publishProgress(_ pass: HistoryCatalogReconciliation.Pass) {
-    status = pass.revision == nil ? .updating : .ready
+    if pass.unavailable > 0 || diskWatch == nil {
+      status = .unavailable
+    } else {
+      status = pass.revision == nil ? .updating : .ready
+    }
     revision &+= 1
+    if status == .ready { didRecoverSources?() }
+    didUpdate?()
+  }
+
+  func waitForIndexingForTesting() async {
+    await indexing?.value
   }
 
   nonisolated private static func project(_ source: HistoryCatalogSources.Saved) -> HistoryCatalog.Projection? {
@@ -157,7 +266,8 @@ final class HistoryCatalogSession {
       // There is no committed context proving which text may be displayed.
       return .init(summary: .init(
         key: .init(tab: .meetings, id: meetingID), date: row.createdAt,
-        preview: "", sources: source.versions), searchableFields: [])
+        preview: "", sources: source.versions, rowID: row.id,
+        backendName: row.backendType.displayName, meetingAnalysis: row.speakerAnalysis), searchableFields: [])
     }
     let title = row.importedFileName
     let availableText = row.historyText
@@ -165,7 +275,10 @@ final class HistoryCatalogSession {
       key: .init(tab: row.isImported ? .transcripts : .dictations, id: row.id),
       date: row.createdAt, appKey: row.isImported ? nil : row.metrics?.targetApp,
       title: title, preview: String(availableText.prefix(600)), sources: source.versions,
-      expiresAt: row.escapeRecoveredAt?.addingTimeInterval(AppConstants.pendingTranscriptRetention))
+      expiresAt: row.escapeRecoveredAt?.addingTimeInterval(AppConstants.pendingTranscriptRetention),
+      rowID: row.id, duration: row.duration, speakerNames: HistoryTranscriptPresentation.speakerList(row),
+      backendName: row.backendType.displayName, polishModel: row.llmModel, wasPolished: row.polishedText != nil,
+      recovered: row.isRecovered, interrupted: row.inputDeviceWasRemoved)
     var fields = [availableText]
     if let title { fields.append(title) }
     if let names = row.speakerNames { fields.append(contentsOf: names.values) }

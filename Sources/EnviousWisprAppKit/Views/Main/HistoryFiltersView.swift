@@ -233,7 +233,7 @@ private struct HistoryAppPicker: View {
       }
     }
     .frame(minWidth: 240)
-    .task(id: coordinator.transcriptsRevision) {
+    .task(id: coordinator.catalogSession?.revision ?? UInt64(coordinator.transcriptsRevision)) {
       let result = await coordinator.historyAppOptions()
       if !Task.isCancelled { options = result }
     }
@@ -261,12 +261,25 @@ enum HistoryFilterLabels {
         unknown += 1
       }
     }
+    return appOptions(counts: counts.map { (Optional($0.key), $0.value) } + [(nil, unknown)])
+  }
+
+  nonisolated static func appOptions(counts grouped: [(String?, Int)]) -> [AppOption] {
+    var counts: [String: Int] = [:]
+    var unknown = 0
+    for (app, count) in grouped {
+      if let app, app.isEmpty == false {
+        counts[app, default: 0] += count
+      } else {
+        unknown += count
+      }
+    }
     let named = counts.sorted { lhs, rhs in
       lhs.value != rhs.value
         ? lhs.value > rhs.value
         : lhs.key.localizedStandardCompare(rhs.key) == .orderedAscending
     }
-    var options = [AppOption(filter: .all, count: apps.count)]
+    var options = [AppOption(filter: .all, count: grouped.reduce(0) { $0 + $1.1 })]
     options += named.map { AppOption(filter: .named($0.key), count: $0.value) }
     if unknown > 0 { options.append(AppOption(filter: .unknown, count: unknown)) }
     return options

@@ -58,6 +58,14 @@ package final class HistorySourceChanges: Sendable {
     state.withLock { $0.active == 0 ? $0.revision : nil }
   }
 
+  /// A change without a reliable writer interval cannot keep the old full-scope certificate.
+  package func externalChange() {
+    state.withLock {
+      $0.revision &+= 1
+      publish(.unknown)
+    }
+  }
+
   func begin() {
     state.withLock {
       $0.active += 1

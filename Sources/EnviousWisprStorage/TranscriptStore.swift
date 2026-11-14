@@ -196,6 +196,48 @@ public final class TranscriptStore {
     #endif
   }
 
+  package func historyRowReader(
+    includePending: Bool = true
+  ) -> @Sendable (UUID, Date) throws -> Transcript? {
+    let permanent = rowReader()
+    let pending = pendingDirectory
+    let proof = historyRowProofReader()
+    return { id, now in
+      let before = try proof(id)
+      let row: Transcript?
+      if let saved = try permanent(id) {
+        guard saved.id == id else { throw CocoaError(.fileReadCorruptFile) }
+        row = saved
+      } else if includePending {
+        let file = pending.appendingPathComponent("\(id.uuidString).json")
+        do {
+          row = try Self.historyPendingRow(at: file, now: now)
+        } catch CocoaError.fileReadNoSuchFile {
+          row = nil
+        }
+      } else {
+        row = nil
+      }
+      guard before == (try proof(id)) else { throw CocoaError(.fileReadUnknown) }
+      return row
+    }
+  }
+
+  package func historyRowProofReader() -> @Sendable (UUID) throws -> [HistoryCatalog.SourceVersion] {
+    let directory = directory
+    let pending = pendingDirectory
+    return { id in
+      var info = stat()
+      guard lstat(directory.path, &info) == 0, info.st_mode & S_IFMT == S_IFDIR else {
+        throw CocoaError(.fileReadUnknown)
+      }
+      let name = "\(id.uuidString).json"
+      return try [directory, pending].map {
+        try HistoryCatalog.SourceVersion.read($0.appendingPathComponent(name))
+      }
+    }
+  }
+
   /// #3973 C2: a reader of one permanent row's file, self-contained like `durableWriter` so the
   /// caller runs it off the main actor. Nil when no file has that id; throws when the file is
   /// there but cannot be read or decoded.

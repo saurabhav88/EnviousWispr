@@ -20,6 +20,98 @@ final class TranscriptCoordinator {
   /// and misses a bare access from an extension. The compiler makes the mistake
   /// unavailable instead. Read `visibleTranscripts` or `matchingHistoryItems(in:)`.
   @ObservationIgnored var catalogSession: HistoryCatalogSession?
+  @ObservationIgnored private var latestCatalogTask: Task<Void, Never>?
+  private var catalogDetails: [UUID: Transcript] = [:]
+  @ObservationIgnored private var catalogDetailProofs: [UUID: [HistoryCatalog.SourceVersion]] = [:]
+  @ObservationIgnored private let readCatalogProof: @Sendable (UUID) throws -> [HistoryCatalog.SourceVersion]
+  @ObservationIgnored private var catalogDetailOrder: [UUID] = []
+  @ObservationIgnored private var catalogDetailVersions: [UUID: UInt64] = [:]
+  @ObservationIgnored private var liveRowVersions: [UUID: UInt64] = [:]
+  private struct CatalogDetailRequest: Hashable {
+    let id: UUID
+    let revision: UInt64
+  }
+  @ObservationIgnored private var catalogDetailReads: [CatalogDetailRequest: Task<HistoryTransactionExecutor.VerifiedHistoryRow?, Never>] = [:]
+
+  func startHistoryCatalog() {
+    guard let catalogSession else {
+      loadIfNeeded()
+      return
+    }
+    catalogSession.didUpdate = { [weak self] in self?.refreshLatestCatalogDictation() }
+    catalogSession.start()
+  }
+
+  private func refreshLatestCatalogDictation() {
+    guard let catalogSession else { return }
+    latestCatalogTask?.cancel()
+    latestCatalogTask = Task { [weak self, weak catalogSession] in
+      guard let self, let catalogSession, catalogSession.status == .ready,
+        let source = catalogSession.stableSourceRevision else { return }
+      var cursor: HistoryCatalog.Cursor?
+      repeat {
+        guard let page = try? await catalogSession.page(.init(tab: .dictations), after: cursor),
+          !Task.isCancelled, source == catalogSession.stableSourceRevision else { return }
+        for card in page.summaries where card.expiresAt == nil {
+          guard let row = await loadCatalogDetail(card.key.id), !Task.isCancelled,
+            source == catalogSession.stableSourceRevision else { return }
+          if Self.isReusableDictation(row, at: clock()) {
+            catalogSession.updateLatestDictation(row.id)
+            return
+          }
+        }
+        cursor = page.continuation
+      } while cursor != nil
+      if !Task.isCancelled, source == catalogSession.stableSourceRevision {
+        catalogSession.updateLatestDictation(nil)
+      }
+    }
+  }
+
+  private func rowForCommand(_ id: UUID) async throws -> Transcript? {
+    guard catalogSession != nil else { return currentRow(id: id) }
+    guard !removedRowIDs.contains(id) else { return nil }
+    let row = try await transactionExecutor.readHistoryRow(id: id, now: clock())
+    try Task.checkCancellation()
+    guard !removedRowIDs.contains(id), let row, Self.isVisible(row, at: clock()) else { return nil }
+    return row
+  }
+
+  /// Hydrate one current payload on demand. The live command array still owns newly
+  /// published writes; a page never joins that array merely because it was browsed.
+  func loadCatalogDetail(_ id: UUID, authoritative: Bool = false) async -> Transcript? {
+    guard let catalogSession, let source = catalogSession.stableSourceRevision else {
+      return currentRow(id: id)
+    }
+    if !authoritative, catalogDetailVersions[id] == source, let row = catalogDetails[id] { return row }
+    let request = CatalogDetailRequest(id: id, revision: source)
+    let reader: Task<HistoryTransactionExecutor.VerifiedHistoryRow?, Never>
+    if let inFlight = catalogDetailReads[request] {
+      reader = inFlight
+    } else {
+      let now = clock()
+      reader = Task { [transactionExecutor] in
+        try? await transactionExecutor.readVerifiedHistoryRow(id: id, now: now)
+      }
+      catalogDetailReads[request] = reader
+    }
+    let payload = await reader.value
+    if catalogDetailReads[request] == reader { catalogDetailReads[request] = nil }
+    guard !Task.isCancelled, source == catalogSession.stableSourceRevision,
+      let payload, Self.isVisible(payload.row, at: clock()), !removedRowIDs.contains(id)
+    else { return authoritative ? nil : currentRow(id: id) }
+    if catalogDetails[id] == nil { catalogDetailOrder.append(id) }
+    catalogDetailVersions[id] = source
+    catalogDetails[id] = payload.row
+    catalogDetailProofs[id] = payload.versions
+    if catalogDetailOrder.count > 120 {
+      let evicted = catalogDetailOrder.removeFirst()
+      catalogDetailVersions[evicted] = nil
+      catalogDetails[evicted] = nil
+      catalogDetailProofs[evicted] = nil
+    }
+    return payload.row
+  }
 
   private var transcripts: [Transcript] = [] {
     // Every mutation (assignment, insert, subscript, removeAll) passes here, so the list key
@@ -36,6 +128,7 @@ final class TranscriptCoordinator {
   @ObservationIgnored var meetingRecord: (@MainActor (UUID) -> MeetingRecord?)?
   /// #3972 R38: a meeting's notes as EnviousMeet holds them (`MeetingDocumentsOwner`,
   /// observable there), searched with its finished transcript. Nil searches no notes.
+  @ObservationIgnored var meetingHistoryDrafts: (@MainActor () -> [UUID: String])?
   @ObservationIgnored var meetingNotes: (@MainActor (UUID) -> String?)?
   /// #4286: a meeting's invited people as search terms (each name, email and email domain), as
   /// EnviousMeet holds them (`MeetingDocumentsOwner`, observable there). Nil searches none.
@@ -122,7 +215,34 @@ final class TranscriptCoordinator {
   }
 
   /// Snapshot the existing copy-on-write array on MainActor; inspect its contents off it.
-  func historyResults(for key: HistoryQueryKey) async -> HistoryQueryResult? {
+  func historyResults(
+    for key: HistoryQueryKey, extending previous: HistoryQueryResult? = nil, newer: Bool = false
+  ) async -> HistoryQueryResult? {
+    if let catalogSession {
+      let query = await catalogQuery(for: key)
+      let anchor = requestedHistoryState(for: key.context.tab).scrollAnchorID
+      let anchorID = anchor.map { id in
+        switch id {
+        case .transcript(let value), .meeting(let value): value
+        }
+      }
+      guard let source = catalogSession.stableSourceRevision,
+        previous == nil || previous?.catalogSourceRevision == source,
+        let page = try? await catalogSession.page(
+          query, after: newer ? previous?.newerContinuation : previous?.continuation,
+          restoring: previous == nil ? anchorID : nil, newer: newer),
+        !Task.isCancelled, source == catalogSession.stableSourceRevision,
+        key == historyQueryKey(for: key.context.tab, state: requestedHistoryState(for: key.context.tab))
+      else { return nil }
+      var items = previous?.items ?? []
+      var ids = Set(items.map(\.id))
+      let added = page.summaries.map(HistoryListItem.catalog).filter { ids.insert($0.id).inserted }
+      if newer { items.insert(contentsOf: added, at: 0) } else { items.append(contentsOf: added) }
+      let counts = page.dayCounts.map { (previous?.catalogDayCounts ?? [:]).merging($0) { _, new in new } }
+      return try? HistoryQueryResult(key: key, items: items, continuation: newer ? previous?.continuation : page.continuation,
+        newerContinuation: newer || previous == nil ? page.newerContinuation : previous?.newerContinuation,
+        catalogSourceRevision: source, catalogDayCounts: counts)
+    }
     guard !Task.isCancelled,
       key == historyQueryKey(for: key.context.tab, state: requestedHistoryState(for: key.context.tab))
     else { return nil }
@@ -138,8 +258,96 @@ final class TranscriptCoordinator {
     return result
   }
 
+  private func catalogQuery(for context: HistoryPaging.Context, calendar: Calendar = .current) -> HistoryCatalog.Query {
+    let app: String?
+    switch context.tab {
+    case .dictations:
+      switch context.filter.app {
+      case .all: app = nil
+      case .unknown: app = ""
+      case .named(let name): app = name
+      }
+    case .transcripts: app = nil
+    case .meetings: app = context.filter.callApp?.rawValue
+    }
+    return .init(tab: context.tab, search: context.query, dates: context.filter.dateInterval,
+      app: app, calendar: calendar, now: clock())
+  }
+
+  /// Only open drafts and opted-in echo rows are examined. They replace the corresponding
+  /// saved value for the search predicate, and never enter the persisted index.
+  private func catalogQuery(
+    for key: HistoryQueryKey, context: HistoryPaging.Context? = nil, calendar: Calendar = .current
+  ) async -> HistoryCatalog.Query {
+    let context = context ?? key.context
+    let base = catalogQuery(for: context, calendar: calendar)
+    guard context.tab == .meetings, !context.query.isEmpty,
+      !key.draftNotes.isEmpty || !key.echoShown.isEmpty else { return base }
+    var records: [UUID: (MeetingRecord, Transcript)] = [:]
+    for id in key.draftNotes.keys {
+      if let record = historyMeetingRecord(id), record.state == .ready,
+        let row = await loadCatalogDetail(record.transcriptID)
+      {
+        records[id] = (record, row)
+      }
+    }
+    for rowID in key.echoShown {
+      if let row = await loadCatalogDetail(rowID), let id = row.meetingID,
+        let record = historyMeetingRecord(id), record.state == .ready
+      {
+        records[id] = (record, row)
+      }
+    }
+    var matches: [UUID: Bool] = [:]
+    for (id, pair) in records {
+      let (record, row) = pair
+      guard !record.deletionRequested else { continue }
+      let info = meetingInfo?(id)
+      let projection = MeetingHistoryPresentation.project(row, info: info, showEcho: key.echoShown.contains(row.id))
+      let text: String
+      if case .visible(_, let visible) = projection { text = visible } else { text = "" }
+      let notes = key.draftNotes[id] ?? meetingNotes?(id)
+      matches[id] = Self.matchesSearch(row, query: context.query, text: text, info: info)
+        || notes?.localizedCaseInsensitiveContains(context.query) == true
+        || (info?.matching(row) != nil
+          && (meetingInvited?(id) ?? []).contains { $0.localizedCaseInsensitiveContains(context.query) })
+    }
+    return .init(tab: base.tab, search: base.search, dates: base.dates, app: base.app,
+      calendar: calendar, now: base.now, meetingSearchOverrides: matches)
+  }
+
+  func matchingIDs(for result: HistoryQueryResult, day: Date? = nil) async -> [HistoryItemID]? {
+    guard isCurrentHistoryResult(result) else { return nil }
+    guard let catalogSession else {
+      return result.items.filter { item in
+        day.map { result.calendar.isDate(item.createdAt, inSameDayAs: $0) } ?? true
+      }.map(\.id)
+    }
+    var context = result.key.context
+    if let day, let range = result.calendar.dateInterval(of: .day, for: day) {
+      var filter = context.filter
+      if let existing = filter.dateInterval {
+        guard let clipped = existing.intersection(with: range) else { return [] }
+        filter.dateInterval = clipped
+      } else {
+        filter.dateInterval = range
+      }
+      context = .init(tab: context.tab, query: context.query, filter: filter)
+    }
+    let query = await catalogQuery(for: result.key, context: context)
+    guard let keys = try? await catalogSession.matchingKeys(query),
+      isCurrentHistoryResult(result) else { return nil }
+    return keys.map { $0.tab == .meetings ? .meeting($0.id) : .transcript($0.id) }
+  }
+
   func isCurrentHistoryResult(_ result: HistoryQueryResult) -> Bool {
-    historyReadAvailability == .ready && result.key.context.tab == historyTab
+    let ready: Bool
+    if let catalogSession {
+      ready = result.catalogDayCounts != nil && result.catalogSourceRevision == catalogSession.stableSourceRevision
+    } else {
+      ready = historyReadAvailability == .ready
+    }
+    return ready && result.key.context.tab == historyTab
       && result.key == historyQueryKey(for: historyTab, state: requestedHistoryState(for: historyTab))
   }
 
@@ -172,6 +380,12 @@ final class TranscriptCoordinator {
         return !record.deletionRequested
       }
       return meeting.record == nil
+    case .catalog(let summary):
+      if let expiry = summary.expiresAt, expiry <= clock() { return false }
+      if summary.key.tab == .meetings, historyMeetingRecord(summary.key.id)?.deletionRequested == true {
+        return false
+      }
+      return true
     }
   }
 
@@ -195,6 +409,15 @@ final class TranscriptCoordinator {
   func historyActivity(in tab: HistoryTab, calendar: Calendar) async -> [Date: Int] {
     var state = requestedHistoryState(for: tab)
     state.dateInterval = nil
+    if let catalogSession {
+      let key = historyQueryKey(for: tab, state: state)
+      let query = await catalogQuery(for: key, calendar: calendar)
+      let counts = try? await catalogSession.activity(query)
+      var current = requestedHistoryState(for: tab)
+      current.dateInterval = nil
+      guard !Task.isCancelled, key == historyQueryKey(for: tab, state: current) else { return [:] }
+      return counts ?? [:]
+    }
     let key = historyQueryKey(for: tab, state: state)
     let rows = transcripts
     let now = clock()
@@ -206,6 +429,10 @@ final class TranscriptCoordinator {
   }
 
   func historyAppOptions() async -> [HistoryFilterLabels.AppOption] {
+    if let catalogSession {
+      let counts = (try? await catalogSession.appCounts(now: clock())) ?? []
+      return HistoryFilterLabels.appOptions(counts: counts)
+    }
     let rows = transcripts
     let now = clock()
     return await Self.collectHistoryApps(rows, now: now)
@@ -387,6 +614,7 @@ final class TranscriptCoordinator {
     let locale: String
     let localizations: [String]
     let calendar: Calendar
+    var draftNotes: [UUID: String] = [:]
 
   }
 
@@ -401,6 +629,15 @@ final class TranscriptCoordinator {
   func historyQueryKey(
     for tab: HistoryTab, state: HistoryTabState, referenceTime: Date? = nil
   ) -> HistoryQueryKey {
+    if let catalogSession, referenceTime == nil {
+      return HistoryQueryKey(
+        revision: Int(truncatingIfNeeded: catalogSession.revision), pulse: expiryPulse,
+        context: HistoryPaging.Context(tab: tab, state: state),
+        echoShown: tab == .meetings ? echoShownRowIDs : [], meetings: [],
+        pendingVisible: [], searchFacts: nil, locale: Locale.current.identifier,
+        localizations: Bundle.main.preferredLocalizations, calendar: .current,
+        draftNotes: tab == .meetings && !state.query.isEmpty ? (meetingHistoryDrafts?() ?? [:]) : [:])
+    }
     let records = tab == .meetings ? (meetingRecords?() ?? []) : []
     let factIDs = referenceTime == nil ? records.map(\.id) : rowIndex.meetingRowIDs
     let facts: [SearchFact]? = tab == .meetings && !state.query.isEmpty
@@ -725,6 +962,7 @@ final class TranscriptCoordinator {
   ) {
     let transactionExecutor = HistoryTransactionExecutor(store: store)
     self.transactionExecutor = transactionExecutor
+    self.readCatalogProof = store.historyRowProofReader()
     self.recordings = recordingArchive.map { archive in
       let exists: @MainActor (UUID) async throws -> Bool = {
         try await transactionExecutor.readRow(id: $0) != nil
@@ -953,7 +1191,7 @@ final class TranscriptCoordinator {
   /// the publication. Update-only when `insertIfAbsent` is false: a row no longer listed is
   /// not written and the answer is false.
   private func performWrite(_ transcript: Transcript, insertIfAbsent: Bool) async throws -> Bool {
-    if !insertIfAbsent, !transcripts.contains(where: { $0.id == transcript.id }) {
+    if !insertIfAbsent, try await rowForCommand(transcript.id) == nil {
       return false
     }
     try await transactionExecutor.write(transcript)
@@ -961,6 +1199,7 @@ final class TranscriptCoordinator {
     // cannot publish the version it read BEFORE this write.
     diskReconciler.noteWritten(transcript.id)
     if let existing = transcripts.firstIndex(where: { $0.id == transcript.id }) {
+      recordPublishedVersion(transcript.id)
       transcripts[existing] = transcript
     } else {
       insertByDate(transcript)
@@ -973,7 +1212,16 @@ final class TranscriptCoordinator {
   /// the same date. A queued write lands after its worker finishes, so a newer dictation can
   /// already be on top by then; putting the row at the top would show it above that dictation
   /// until the next disk read (Codex History regrade 3, S7).
+  private func recordPublishedVersion(_ id: UUID) {
+    liveRowVersions[id] = catalogSession?.stableSourceRevision
+    catalogDetailProofs[id] = nil
+    catalogDetailVersions[id] = nil
+    catalogDetails[id] = nil
+    catalogDetailOrder.removeAll { $0 == id }
+  }
+
   private func insertByDate(_ transcript: Transcript) {
+    recordPublishedVersion(transcript.id)
     let index =
       transcripts.firstIndex { $0.createdAt <= transcript.createdAt } ?? transcripts.endIndex
     transcripts.insert(transcript, at: index)
@@ -1019,7 +1267,9 @@ final class TranscriptCoordinator {
     // loaded (a launch replay of #3973 C2) is read from its file inside this same command; a
     // file that cannot be read fails the write rather than writing over it.
     let existing: Transcript?
-    if let row = currentRow(id: incoming.id) {
+    if catalogSession != nil {
+      existing = try await transactionExecutor.readHistoryRow(id: incoming.id, now: clock(), includePending: false)
+    } else if let row = currentRow(id: incoming.id) {
       existing = row
     } else {
       existing = try await transactionExecutor.readRow(id: incoming.id)
@@ -1032,6 +1282,7 @@ final class TranscriptCoordinator {
     try await transactionExecutor.writeDurably(transcript)
     diskReconciler.noteWritten(transcript.id)
     if let existing = transcripts.firstIndex(where: { $0.id == transcript.id }) {
+      recordPublishedVersion(transcript.id)
       transcripts[existing] = transcript
     } else {
       insertByDate(transcript)
@@ -1066,7 +1317,7 @@ final class TranscriptCoordinator {
       await transactionExecutor.capture {
         // #4075 S1: prepared when it runs. A cleaned update owns its text and provenance; the
         // speaker fields are whatever earlier commands (a rename, a speaker merge) left.
-        guard let current = currentRow(id: transcript.id) else { return false }
+        guard let current = try await rowForCommand(transcript.id) else { return false }
         var candidate = transcript.carryingSpeakerFields(from: current)
         if current.isImported {
           // #3147 PR3: a write from an older transcription of this import (its text replaced
@@ -1088,7 +1339,7 @@ final class TranscriptCoordinator {
     try Task.checkCancellation()
     return try await transactionExecutor.admit { [self] in
       await transactionExecutor.capture {
-        guard let current = currentRow(id: id), current.escapeRecoveredAt == nil,
+        guard let current = try await rowForCommand(id), current.escapeRecoveredAt == nil,
           candidate.matches(current)
         else { return false }
         if let meetingID = current.meetingID {
@@ -1127,13 +1378,13 @@ final class TranscriptCoordinator {
         if let rename {
           // A rename changes the named speaker only, on the row's analysis and turns as they
           // are now; the caller's copies may be older than an earlier queued write.
-          switch preparedRename(id: id, rename) {
+          switch try await preparedRename(id: id, rename) {
           case .removed: return false
           case .notRenamable: throw RenameNotSupported()
           case .row(let renamed): return try await performWrite(renamed, insertIfAbsent: false)
           }
         }
-        guard let existing = transcripts.first(where: { $0.id == id }) else { return false }
+        guard let existing = try await rowForCommand(id) else { return false }
         let merged = existing.mergingSpeakerFields(analysis: analysis, turns: turns)
         return try await performWrite(merged, insertIfAbsent: false)
       }
@@ -1150,8 +1401,8 @@ final class TranscriptCoordinator {
   }
 
   /// The one preparation both renames share, run inside the rename's command.
-  private func preparedRename(id: UUID, _ rename: RenamePair) -> PreparedRename {
-    guard let current = currentRow(id: id) else { return .removed }
+  private func preparedRename(id: UUID, _ rename: RenamePair) async throws -> PreparedRename {
+    guard let current = try await rowForCommand(id) else { return .removed }
     guard current.turns != nil, let analysis = current.speakerAnalysis else { return .notRenamable }
     return .row(
       current.mergingSpeakerFields(
@@ -1170,7 +1421,7 @@ final class TranscriptCoordinator {
   /// at any moment after either of the import's writes, and a remembered success then
   /// describes a file that is gone.
   func hasRow(id: UUID) -> Bool {
-    transcripts.contains { $0.id == id }
+    currentRow(id: id) != nil
   }
 
   /// The CURRENT row, read fresh from `transcripts` at call time — never a snapshot (#2811,
@@ -1179,10 +1430,28 @@ final class TranscriptCoordinator {
   /// whether a rename/retry is eligible, must read this rather than trust a value it captured
   /// earlier.
   func currentRow(id: UUID) -> Transcript? {
+    let live: Transcript?
     if let index = rowIndexCache, index.revision == transcriptsRevision {
-      return index.positions[id].map { transcripts[$0] }
+      live = index.positions[id].map { transcripts[$0] }
+    } else {
+      live = transcripts.first { $0.id == id }
     }
-    return transcripts.first { $0.id == id }
+    guard let catalogSession else { return live }
+    _ = catalogSession.revision
+    guard let source = catalogSession.stableSourceRevision else { return nil }
+    if let live, liveRowVersions[id] == source { return live }
+    guard catalogDetailVersions[id] == source else { return nil }
+    return catalogDetails[id]
+  }
+
+  /// Synchronous delivery entry points verify only the few source attributes of a single
+  /// payload before using it. A miss remains a refusal, never an unsaved-live snapshot.
+  func verifiedRowForDelivery(id: UUID) -> Transcript? {
+    guard catalogSession != nil else { return currentRow(id: id) }
+    guard !removedRowIDs.contains(id), let expected = try? readCatalogProof(id),
+      expected.contains(where: { !$0.fingerprint.isEmpty }) else { return nil }
+    if catalogDetailProofs[id] == expected { return catalogDetails[id] }
+    return nil
   }
 
   /// Renames a speaker id across every turn showing it, for a row History renders directly
@@ -1210,7 +1479,8 @@ final class TranscriptCoordinator {
     // rename changes the named speaker only, on whatever earlier commands left.
     let rename = RenamePair(speakerId: speakerId, name: name)
     let outcome = await transactionExecutor.admit { [self] () async -> RenameOutcome in
-      switch preparedRename(id: transcriptID, rename) {
+      guard let prepared = try? await preparedRename(id: transcriptID, rename) else { return .failed }
+      switch prepared {
       case .removed: return .removed
       case .notRenamable: return .notRenamable
       case .row(let renamed):
@@ -1292,6 +1562,10 @@ final class TranscriptCoordinator {
       } else if let row = meeting.row {
         await removeRowAnnouncing(row.id)
       }
+    case .catalog:
+      if await deleteHistoryItem(id: item.id, kind: .textAndRecordings) == .failed {
+        reportActionFailure(.delete)
+      }
     }
   }
 
@@ -1339,7 +1613,7 @@ final class TranscriptCoordinator {
     try Task.checkCancellation()
     return try await transactionExecutor.admit { [self] in
       await transactionExecutor.capture { () async throws -> HistoryPreferenceChange? in
-        guard let current = currentRow(id: rowID), acceptsHistoryPreference(current) else {
+        guard let current = try await rowForCommand(rowID), acceptsHistoryPreference(current) else {
           return nil
         }
         let change = HistoryPreferenceChange(
@@ -1362,7 +1636,7 @@ final class TranscriptCoordinator {
     try Task.checkCancellation()
     return try await transactionExecutor.admit { [self] in
       await transactionExecutor.capture { () async throws -> Bool in
-        guard let current = currentRow(id: change.rowID), acceptsHistoryPreference(current),
+        guard let current = try await rowForCommand(change.rowID), acceptsHistoryPreference(current),
           current.preferredVersion == change.after
         else { return false }
         guard change.before != change.after else { return true }
@@ -1382,7 +1656,8 @@ final class TranscriptCoordinator {
     case .meeting(let meetingID):
       return await deleteMeetingItem(meetingID, kind: kind)
     case .transcript(let rowID):
-      if let meetingID = currentRow(id: rowID)?.meetingID {
+      let row = await loadCatalogDetail(rowID)
+      if let meetingID = row?.meetingID {
         return await deleteMeetingItem(meetingID, kind: kind)
       }
       switch kind {
@@ -1439,7 +1714,13 @@ final class TranscriptCoordinator {
     guard let recordings else { return .skipped }
     guard !Task.isCancelled else { return .failed }
     return await transactionExecutor.admit { [self] in
-      guard let row = currentRow(id: rowID) else { return .alreadyAbsent }
+      let row: Transcript
+      do {
+        guard let current = try await rowForCommand(rowID) else { return .alreadyAbsent }
+        row = current
+      } catch {
+        return .failed
+      }
       guard !row.isImported, !row.isMeeting else { return .skipped }
       guard await recordings.hasRecordingOrPendingInCommand(rowID: rowID) else {
         return .alreadyAbsent
@@ -1466,7 +1747,7 @@ final class TranscriptCoordinator {
     try Task.checkCancellation()
     return try await transactionExecutor.admit { [self] in
       await transactionExecutor.capture { () async throws -> Bool in
-        guard let existing = currentRow(id: id), existing.isImported,
+        guard let existing = try await rowForCommand(id), existing.isImported,
           existing.importAttemptID == expectedAttemptID
         else { return false }
         let merged = existing.mergingSpeakerFields(analysis: analysis, turns: turns)
@@ -1488,7 +1769,7 @@ final class TranscriptCoordinator {
     try Task.checkCancellation()
     return try await transactionExecutor.admit { [self] in
       await transactionExecutor.capture { () async throws -> Bool in
-        guard let current = currentRow(id: rowID), current.isImported,
+        guard let current = try await rowForCommand(rowID), current.isImported,
           ImportedSourceReference(current) == expected
         else { return false }
         if let stored = current.sourceFingerprint {
@@ -1514,7 +1795,7 @@ final class TranscriptCoordinator {
     try Task.checkCancellation()
     return try await transactionExecutor.admit { [self] in
       await transactionExecutor.capture { () async throws -> ImportedReplacementTicket? in
-        guard let current = currentRow(id: rowID), current.isImported else { return nil }
+        guard let current = try await rowForCommand(rowID), current.isImported else { return nil }
         // Reserved before the digest (Codex PR3 r2): a Cancel while it is computed wins.
         let requestID = UUID()
         replacementTickets[rowID] = requestID
@@ -1542,7 +1823,7 @@ final class TranscriptCoordinator {
     return try await transactionExecutor.admit { [self] in
       await transactionExecutor.capture { () async throws -> Bool in
         guard replacementTickets[ticket.rowID] == ticket.requestID,
-          let current = currentRow(id: ticket.rowID), current.isImported,
+          let current = try await rowForCommand(ticket.rowID), current.isImported,
           ImportedSourceReference(current) == ticket.source
         else { return false }
         let digest = try await rowDigest(current)
@@ -1632,20 +1913,21 @@ final class TranscriptCoordinator {
     if transcript.isMeeting {
       // #3972 R19: read again by id, and only the visible turns; nil when the row is gone,
       // its meeting facts are unknown, or every line is hidden.
-      guard let current = currentRow(id: transcript.id) else { return nil }
+      guard let current = verifiedRowForDelivery(id: transcript.id) else { return nil }
       return MeetingHistoryPresentation.deliveryText(
         current, projection: meetingProjection(of: current), timesOn: false)
     }
     // #4075 R5: the row as it is now, never the caller's copy. History Paste reads this after
     // hiding the app, and an import's cleanup or a deletion can land in that wait.
-    if let current = transcripts.first(where: { $0.id == transcript.id }) {
+    if let current = verifiedRowForDelivery(id: transcript.id) {
       // #3147 §3.4: History delivers the row's preferred text (original or polished).
       return Self.isVisible(current, at: Date()) ? current.historyText : nil
     }
     // Not in History. A held recovery that is gone has lapsed, and a row History held and
     // removed was deleted: both are refused. A dictation History never held (the live pane's
     // copy when its save failed) keeps the text it showed.
-    guard transcript.escapeRecoveredAt == nil, !removedRowIDs.contains(transcript.id) else {
+    guard catalogSession == nil, transcript.escapeRecoveredAt == nil,
+      !removedRowIDs.contains(transcript.id) else {
       return nil
     }
     return transcript.displayText
@@ -1666,7 +1948,13 @@ final class TranscriptCoordinator {
   /// which reads the row again at that moment.
   func lastPasteableDictation() -> (id: UUID, text: String)? {
     let now = Date()
-    guard let row = transcripts.first(where: { Self.isReusableDictation($0, at: now) }) else {
+    let newest = transcripts.first { Self.isReusableDictation($0, at: now) }
+      .flatMap { verifiedRowForDelivery(id: $0.id) }
+    let saved = catalogSession?.status == .ready
+      ? catalogSession?.latestDictation.flatMap { verifiedRowForDelivery(id: $0) } : nil
+    let row = [newest, saved].compactMap { $0 }.filter { Self.isReusableDictation($0, at: now) }
+      .max { $0.createdAt < $1.createdAt }
+    guard let row else {
       return nil
     }
     #if DEBUG
@@ -1685,16 +1973,16 @@ final class TranscriptCoordinator {
   /// must keep offering imported and held rows there. Reuse is narrower: only a dictation the
   /// user actually made and received.
   func lastDictationTextForReuse(id: UUID) -> String? {
-    var rows = transcripts
+    var row = verifiedRowForDelivery(id: id)
     #if DEBUG
       // The sampled row, gone from the rows this ONE read sees: the same read a deletion after
       // the menu rendered would meet.
       if let dropped = Self.droppedReuseRowID, dropped == id {
         Self.droppedReuseRowID = nil
-        rows = rows.filter { $0.id != dropped }
+        row = nil
       }
     #endif
-    guard let row = rows.first(where: { $0.id == id }),
+    guard let row,
       Self.isReusableDictation(row, at: Date())
     else { return nil }
     return row.displayText
@@ -1710,7 +1998,7 @@ final class TranscriptCoordinator {
   ///   one here would paste words the user chose to throw away.
   /// - Whitespace-only text would paste nothing visible. Checked, never trimmed: the text that
   ///   is reused is exactly the text that was delivered.
-  private static func isReusableDictation(_ row: Transcript, at now: Date) -> Bool {
+  static func isReusableDictation(_ row: Transcript, at now: Date) -> Bool {
     isVisible(row, at: now)
       && !isImportedForReuse(row)
       // #3972 R5: a meeting is never the last dictation to paste again.
@@ -1761,7 +2049,7 @@ final class TranscriptCoordinator {
   func restorableHeldRow(id: UUID) -> (text: String, stampedAt: Date, takeID: String?)? {
     let now = Date()
     guard
-      let row = transcripts.first(where: { $0.id == id }),
+      let row = verifiedRowForDelivery(id: id),
       let stampedAt = row.escapeRecoveredAt,
       Self.isVisible(row, at: now)
     else { return nil }
@@ -1788,7 +2076,14 @@ final class TranscriptCoordinator {
 
   private func performKeep(_ transcript: Transcript, pressedAt: Date) async {
     // A Keep of a row an earlier command removed: refused, never written back.
-    guard let current = currentRow(id: transcript.id) else {
+    let current: Transcript?
+    do {
+      current = try await rowForCommand(transcript.id)
+    } catch {
+      actionFailure = .keep
+      return
+    }
+    guard let current else {
       recordEscapeRecoveryKeep("refused-not-offerable", transcript.escapeRecoveryTakeID)
       return
     }
@@ -1831,6 +2126,7 @@ final class TranscriptCoordinator {
       }
       guard let index = transcripts.firstIndex(where: { $0.id == id }) else { return }
       diskReconciler.noteWritten(id)
+      recordPublishedVersion(id)
       transcripts[index] = result.promoted
       refreshDiskStateThenStopIfIdle()
     } catch {
@@ -2001,7 +2297,7 @@ final class TranscriptCoordinator {
   private func performRemovalWithCleanup(_ id: UUID) async throws
     -> (removal: Removal, recordingCleanupFailed: Bool)
   {
-    let known = transcripts.first { $0.id == id }
+    let known = try await rowForCommand(id)
     let listed = known != nil
     // #3147: meetings and imports never have a dictation recording, so their removal never
     // depends on the dictation archive. Decided from the row before its text goes.
@@ -2018,6 +2314,11 @@ final class TranscriptCoordinator {
     let recordingCleanupFailed = mayHaveRecording ? !(await forgetRecording(of: id)) : false
     guard listed || existed else { return (.alreadyAbsent, recordingCleanupFailed) }
     transcripts.removeAll { $0.id == id }
+    liveRowVersions[id] = nil
+    catalogDetailProofs[id] = nil
+    catalogDetailVersions[id] = nil
+    catalogDetails[id] = nil
+    catalogDetailOrder.removeAll { $0 == id }
     removedRowIDs.insert(id)
     echoShownRowIDs.remove(id)
     refreshDiskStateThenStopIfIdle()
@@ -2034,7 +2335,19 @@ final class TranscriptCoordinator {
 
   private func performDeleteAll() async {
     // #3972 R45: every meeting goes too, also one with no History row yet.
-    var meetingIDs = transcripts.compactMap(\.meetingID)
+    let allRows: [Transcript]
+    if let catalogSession {
+      guard catalogSession.status == .ready, let source = catalogSession.stableSourceRevision,
+        let saved = try? await transactionExecutor.allRowsForGlobalDeletion(),
+        source == catalogSession.stableSourceRevision else {
+        actionFailure = .deleteAll
+        return
+      }
+      allRows = saved
+    } else {
+      allRows = transcripts
+    }
+    var meetingIDs = allRows.compactMap(\.meetingID)
     for record in meetingRecords?() ?? [] where !meetingIDs.contains(record.id) {
       meetingIDs.append(record.id)
     }
@@ -2050,7 +2363,7 @@ final class TranscriptCoordinator {
       return
     }
     // #3147 PR3: every import's players stop and pending Transcribe again runs go stale first.
-    for row in transcripts where row.isImported { onImportedContentWillChange?(row.id) }
+    for row in allRows where row.isImported { onImportedContentWillChange?(row.id) }
     replacementTickets.removeAll()
     do {
       try transactionExecutor.deleteAll()
@@ -2066,7 +2379,7 @@ final class TranscriptCoordinator {
             level: .info, category: "TranscriptCoordinator")
         }
       }
-      let removedIDs = transcripts.map(\.id)
+      let removedIDs = allRows.map(\.id)
       transcripts.removeAll()
       removedRowIDs.formUnion(removedIDs)
       echoShownRowIDs.removeAll()
@@ -2311,11 +2624,14 @@ struct HistoryMeetingItem: Sendable {
 enum HistoryListItem: Identifiable, Sendable {
   case transcript(Transcript)
   case meeting(HistoryMeetingItem)
+  case catalog(HistoryCatalog.Summary)
 
   var id: HistoryItemID {
     switch self {
     case .transcript(let row): return .transcript(row.id)
     case .meeting(let meeting): return .meeting(meeting.meetingID)
+    case .catalog(let summary):
+      return summary.key.tab == .meetings ? .meeting(summary.key.id) : .transcript(summary.key.id)
     }
   }
 
@@ -2323,6 +2639,7 @@ enum HistoryListItem: Identifiable, Sendable {
     switch self {
     case .transcript(let row): return row.createdAt
     case .meeting(let meeting): return meeting.createdAt
+    case .catalog(let summary): return summary.date
     }
   }
 
@@ -2331,6 +2648,7 @@ enum HistoryListItem: Identifiable, Sendable {
     switch self {
     case .transcript(let row): return row
     case .meeting(let meeting): return meeting.row
+    case .catalog: return nil
     }
   }
 }
