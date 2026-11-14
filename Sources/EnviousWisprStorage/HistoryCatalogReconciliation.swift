@@ -114,6 +114,62 @@ package actor HistoryCatalogReconciliation {
     return result
   }
 
+  /// Re-certify only the scopes invalidated by installed writers. If there was no established
+  /// inventory, or the source changed while checking, the caller schedules a fresh walk.
+  package func refresh(
+    _ delta: HistorySourceChanges.Delta, now: Date = Date()
+  ) async throws -> Pass? {
+    guard !inFlight else { return nil }
+    inFlight = true
+    defer { inFlight = false }
+    // An incremental refresh is safe only for a scope whose writer notifications are
+    // known to be complete. When any notification could have been missed, use reconcile.
+    let previous = lastCertificate
+    lastCertificate = nil
+    let beganAt = sourceRevision()
+    var progress = try await catalog.sourceProgress()
+    var updates: [Update] = []
+    var disappeared: [String] = []
+    var unresolved = false
+    for scope in delta.scopes {
+      try Task.checkCancellation()
+      guard let path = sources.path(for: scope) else {
+        unresolved = true
+        continue
+      }
+      do {
+        if try sources.isConfirmedAbsent(path) {
+          disappeared.append(path.path)
+        } else {
+          let snapshot = try sources.snapshot(of: path, at: now)
+          let projection = snapshot.saved.flatMap(project)
+          let entry = HistoryCatalog.SourceProgress(
+            path: path.path, versions: snapshot.versions, key: projection?.summary.key)
+          updates.append(Update(entry: entry, projection: projection))
+        }
+      } catch {
+        unresolved = true
+      }
+    }
+    let saved = try await commit(updates, tracking: &progress)
+    let removedKeys = Set(disappeared.compactMap { progress.removeValue(forKey: $0)?.key })
+      .subtracting(progress.values.compactMap(\.key))
+    let certified: Bool
+    if let previous, let beganAt, beganAt == sourceRevision() {
+      certified = delta.spans(after: previous.source, through: beganAt)
+        && !unresolved && saved == updates.count
+    } else {
+      certified = false
+    }
+    let token = certified ? UUID().uuidString : nil
+    try await catalog.apply([], removing: Array(removedKeys), certifiedRevision: token,
+      recording: [], dropping: disappeared)
+    let current = beganAt == sourceRevision() ? token : nil
+    if current == nil, token != nil { try await catalog.apply([]) }
+    lastCertificate = current.flatMap { value in beganAt.map { (value, $0) } }
+    return Pass(revision: current, completed: progress.count, total: progress.count)
+  }
+
   private struct Update {
     let entry: HistoryCatalog.SourceProgress
     let projection: HistoryCatalog.Projection?

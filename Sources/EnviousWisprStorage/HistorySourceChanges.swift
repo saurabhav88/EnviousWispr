@@ -10,8 +10,33 @@ package final class HistorySourceChanges: Sendable {
   }
 
   package enum Change: Sendable {
-    case admitted
-    case settled(Scope)
+    case admitted(UInt64)
+    case settled(UInt64, Scope)
+    case unknown
+  }
+
+  package struct Delta: Sendable {
+    package private(set) var scopes: Set<Scope> = []
+    private var revisions: Set<UInt64> = []
+
+    package init() {}
+
+    package mutating func include(_ change: Change) {
+      switch change {
+      case .admitted(let revision):
+        revisions.insert(revision)
+      case .settled(let revision, let scope):
+        revisions.insert(revision)
+        scopes.insert(scope)
+      case .unknown:
+        scopes.insert(.all)
+      }
+    }
+
+    func spans(after first: UInt64, through last: UInt64) -> Bool {
+      guard !scopes.contains(.all), first <= last else { return false }
+      return UInt64(revisions.count(where: { $0 > first && $0 <= last })) == last - first
+    }
   }
 
   private struct State {
@@ -37,22 +62,22 @@ package final class HistorySourceChanges: Sendable {
     state.withLock {
       $0.active += 1
       $0.revision &+= 1
+      publish(.admitted($0.revision))
     }
-    publish(.admitted)
   }
 
   func finish(_ scope: Scope) {
     state.withLock {
       $0.active -= 1
       $0.revision &+= 1
+      publish(.settled($0.revision, scope))
     }
-    publish(.settled(scope))
   }
 
   private func publish(_ change: Change) {
     if case .dropped = continuation.yield(change) {
       // A dropped notification makes its exact scope unknown.
-      continuation.yield(.settled(.all))
+      continuation.yield(.unknown)
     }
   }
 }

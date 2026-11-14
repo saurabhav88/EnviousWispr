@@ -19,6 +19,8 @@ final class TranscriptCoordinator {
   /// match a name, not a type, so it flags an unrelated `transcripts` elsewhere
   /// and misses a bare access from an extension. The compiler makes the mistake
   /// unavailable instead. Read `visibleTranscripts` or `matchingHistoryItems(in:)`.
+  @ObservationIgnored var catalogSession: HistoryCatalogSession?
+
   private var transcripts: [Transcript] = [] {
     // Every mutation (assignment, insert, subscript, removeAll) passes here, so the list key
     // sees it without each mutation site remembering to (#4001).

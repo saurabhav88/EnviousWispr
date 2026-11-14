@@ -68,6 +68,14 @@ package struct HistoryCatalogSources: Sendable {
     path.hasPrefix(meetings.root.path + "/")
   }
 
+  func path(for scope: HistorySourceChanges.Scope) -> URL? {
+    switch scope {
+    case .transcript(let id): transcriptDirectory.appendingPathComponent("\(id.uuidString).json")
+    case .meeting(let id): meetings.recordURL(for: id)
+    case .all: nil
+    }
+  }
+
   func paths(requireMeetings: Bool) throws -> [URL] {
     try files(in: transcriptDirectory, allowMissing: false).filter(Self.isTranscript)
       + files(in: pendingDirectory, allowMissing: true).filter(Self.isTranscript).map {
@@ -76,6 +84,14 @@ package struct HistoryCatalogSources: Sendable {
       + files(in: meetings.root, allowMissing: !requireMeetings).compactMap { folder in
         UUID(uuidString: folder.lastPathComponent).map { meetings.recordURL(for: $0) }
       }
+  }
+
+  func isConfirmedAbsent(_ url: URL) throws -> Bool {
+    let version = try HistoryCatalog.SourceVersion.read(url)
+    guard version.fingerprint.isEmpty else { return false }
+    if url.lastPathComponent == MeetingStore.recordFileName { return true }
+    let pending = try HistoryCatalog.SourceVersion.read(pendingDirectory.appendingPathComponent(url.lastPathComponent))
+    return pending.fingerprint.isEmpty
   }
 
   private static func isTranscript(_ url: URL) -> Bool {

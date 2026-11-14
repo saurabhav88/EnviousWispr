@@ -154,6 +154,57 @@ struct HistoryCatalogTests {
     #expect(unverified == nil)
   }
 
+  @MainActor
+  @Test("Processing one of two settled saves cannot certify a stale archive")
+  func completeChangeInterval() async throws {
+    let root = TestTemporaryDirectory.url.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let changes = HistorySourceChanges()
+    let stores = TranscriptStore(directory: root.appendingPathComponent("transcripts"), historyChanges: changes)
+    let sources = stores.historyCatalogSources(meetings: MeetingStore(root: root.appendingPathComponent("Meetings")))
+    let catalog = try HistoryCatalog(directory: root.appendingPathComponent("catalog"))
+    let worker = HistoryCatalogReconciliation(catalog: catalog, sources: sources, sourceRevision: { changes.revision }) {
+      guard let row = $0.transcript else { return nil }
+      return .init(summary: .init(
+        key: .init(tab: .dictations, id: row.id), date: row.createdAt, preview: row.text,
+        sources: $0.versions), searchableFields: [row.text])
+    }
+    let first = try await worker.reconcile()
+    let established = try #require(first?.revision)
+    #expect(await worker.currentCoverage() == established)
+    let one = Transcript(text: "first current record", processingTime: 0, backendType: .parakeet)
+    let two = Transcript(text: "second current record", processingTime: 0, backendType: .parakeet)
+    try stores.save(one)
+    try stores.save(two)
+    var notifications = changes.changes.makeAsyncIterator()
+    var partial = HistorySourceChanges.Delta()
+    for _ in 0..<2 {
+      let event = await notifications.next()
+      partial.include(try #require(event))
+    }
+    let incomplete = try await worker.refresh(partial)
+    #expect(incomplete?.revision == nil)
+    #expect(await worker.currentCoverage() == nil)
+    let completed = try await worker.reconcile()
+    let revision = try #require(completed?.revision)
+    let ids = try await catalog.matchingKeys(.init(tab: .dictations), sourceRevision: revision)
+    #expect(Set(ids.map(\.id)) == [one.id, two.id])
+
+    var delta = HistorySourceChanges.Delta()
+    // Discard previously queued notifications. The new batch covers the complete change interval.
+    for _ in 0..<2 { _ = await notifications.next() }
+    let third = Transcript(text: "third current record", processingTime: 0, backendType: .parakeet)
+    try stores.save(third)
+    for _ in 0..<2 {
+      let event = await notifications.next()
+      delta.include(try #require(event))
+    }
+    let incremented = try await worker.refresh(delta)
+    let next = try #require(incremented?.revision)
+    let updated = try await catalog.matchingKeys(.init(tab: .dictations), sourceRevision: next)
+    #expect(Set(updated.map(\.id)) == [one.id, two.id, third.id])
+  }
+
   #if DEBUG
     @MainActor
     @Test("Canonical writes share a fence without depending on the SQLite catalog")
