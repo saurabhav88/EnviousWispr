@@ -76,9 +76,11 @@ struct HistoryTranscriptView: View {
   @Environment(LiveRecordingState.self) private var liveRecordingState
   @Environment(HistoryPaste.self) private var historyPaste
   @Environment(PreviousApplicationTracker.self) private var previousApplication
+  @Environment(HistoryRepolishRunner.self) private var historyRepolish
 
   // Document
   @State private var documentView: FileImportCoordinator.DocumentView = .cleaned
+  @State private var polishPreview = HistoryPolishPreview()
   @State private var timesOn = true
 
   // Original file
@@ -134,7 +136,10 @@ struct HistoryTranscriptView: View {
       timesOn = true
       notice = nil
     }
-    .onDisappear { dropPlayer() }
+    .onDisappear {
+      polishPreview.cancel()
+      dropPlayer()
+    }
   }
 
   // MARK: - Layout
@@ -245,6 +250,7 @@ struct HistoryTranscriptView: View {
       }
       if P.hasRenderableTurns(row) { viewControls }
       retranscriptionStatus
+      HistoryPolishPreviewContent(preview: polishPreview)
       if let notice {
         Text(verbatim: notice.text)
           .font(.stHelper)
@@ -366,6 +372,14 @@ struct HistoryTranscriptView: View {
     let busy = P.isBusy(retranscription.state(for: rowID))
     let choices = retranscription.choices(for: rowID)
     return Menu {
+      HistoryPolishMenu(
+        title: "Polish again with", surface: .transcript, currentProvider: row.llmProvider,
+        currentModel: row.llmModel, currentSize: row.historyPolishEGOneSize,
+        isEnabled: !busy && documentFinished && polishPreview.canStart
+      ) { choice in
+        polishPreview.start(rowID: rowID, choice: choice, runner: historyRepolish, history: transcripts)
+      }
+      Divider()
       Button {
         pasteTapped(row)
       } label: {

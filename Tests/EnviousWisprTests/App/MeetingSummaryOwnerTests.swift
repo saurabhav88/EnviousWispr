@@ -233,6 +233,17 @@ struct MeetingSummaryOwnerTests {
       try? String(contentsOf: store.summaryURL(for: id), encoding: .utf8)
     }
 
+    func preview(_ id: UUID) async throws -> MeetingSummaryOwner.Candidate {
+      await MeetingSummaryOwnerTests.eventually("preview ready") {
+        if case .comparing = self.owner.previews[id] { return true }
+        return false
+      }
+      guard case .comparing(let candidate) = owner.previews[id] else {
+        throw CocoaError(.fileReadUnknown)
+      }
+      return candidate
+    }
+
     func manifest(_ id: UUID) throws -> MeetingDocumentsManifest {
       try store.loadDocuments(meeting: id).manifest
     }
@@ -381,6 +392,47 @@ struct MeetingSummaryOwnerTests {
     await Self.eventually("third") { rig.world.finished.count == 3 }
     #expect(rig.world.finished.last == Self.row(.written, .hosted))
     #expect(rig.summaryOnDisk(id) == "## Overview\nShip Friday.")
+  }
+
+  @Test("the manual summary preview leaves the edited original untouched until Keep new")
+  func manualSummaryPreservesTheOriginalUntilKept() async throws {
+    let rig = try Rig()
+    let id = try rig.readyMeeting()
+    _ = try rig.store.saveSummary("My own summary.", origin: .userEdited, inputs: nil, meeting: id)
+    let choice = HistoryPolishChoice(provider: .claude, model: "claude-test", sendsTextOffMac: true)
+    rig.owner.startPreview(id, with: choice)
+    let preview = try await rig.preview(id)
+    #expect(preview.current == "My own summary.")
+    #expect(rig.summaryOnDisk(id) == preview.current)
+    #expect(try rig.manifest(id).summaryPending == nil)
+    rig.owner.discardPreview(id)
+    #expect(rig.summaryOnDisk(id) == "My own summary.")
+
+    rig.owner.startPreview(id, with: choice)
+    let keep = try await rig.preview(id)
+    rig.world.provider = .openAI
+    rig.world.model = "a-different-default"
+    #expect(await rig.owner.keepPreview(id, candidateID: keep.id))
+    #expect(rig.summaryOnDisk(id) == keep.text)
+    #expect(try rig.manifest(id).summary?.inputs?.modelOverride?.model == choice.model)
+    #expect(rig.owner.isOutOfDate(id) == false)
+    #expect(rig.world.titles.isEmpty)
+  }
+
+  @Test("a newer summary on disk wins against a preview of an empty summary, keeping the owed mark")
+  func manualSummaryRefusesANewerSave() async throws {
+    let rig = try Rig()
+    let id = try rig.readyMeeting()
+    let choice = HistoryPolishChoice(provider: .claude, model: "claude-test", sendsTextOffMac: true)
+    rig.owner.startPreview(id, with: choice)
+    let preview = try await rig.preview(id)
+    #expect(preview.current == nil)
+    _ = try rig.store.saveSummary("A newer summary.", origin: .userEdited, inputs: nil, meeting: id)
+    _ = try rig.store.setSummaryPending(true, meeting: id)
+
+    #expect(await rig.owner.keepPreview(id, candidateID: preview.id) == false)
+    #expect(rig.summaryOnDisk(id) == "A newer summary.")
+    #expect(try rig.manifest(id).summaryPending == true)
   }
 
   @Test("a meeting that changes while its summary is written keeps no stale answer")

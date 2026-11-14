@@ -177,6 +177,31 @@ struct FileImportRunnerTests {
 
   nonisolated static let polishPart =
     "daty płatności są późniejsze niż daty zakupu prawdopodobnie różnica w rejestracji transakcji"
+
+  @Test("polishing a saved dictation leaves its already processed words intact at model input")
+  func savedDictationSkipsSpokenPunctuation() async throws {
+    let capture = NamedPromptCapture()
+    let runner = FileImportRunner(
+      keychainManager: KeychainManager(),
+      localPolishers: .llamaForTests.replacingEGOne { _ in
+        PromptCapturingPolisher(capture: capture)
+      },
+      egOneRuntime: ReadyEGOneRuntime(), additionalLocalRuntimes: [:], s1MiniRuntime: nil,
+      outputClassifierHolder: nil, languageIdentifier: { _ in ("en", 0.99) },
+      promptPlanner: DefaultPromptPlanner(egOneFamily: .egOneEnvelopeNamedLanguage))
+    runner.freeze(
+      settings: RecordingSettingsSnapshot(
+        backendType: .parakeet, backendSupportsLanguageDetection: false,
+        languageMode: .locked("en"), wordCorrectionEnabled: false, fillerRemovalEnabled: false,
+        emojiFormatterEnabled: false, spokenPunctuationEnabled: true,
+        spokenPunctuationStartWords: nil, spokenPunctuationEnglishPeriodWord: true,
+        llmProvider: LLMProvider.egOne.rawValue, llmModel: LLMProvider.egOneModelName,
+        egOneSize: nil, s1Control: nil, englishSpelling: nil, casualModeEnabled: false),
+      vocabulary: nil, cloudModelList: nil)
+    let words = "We talked about the launch schedule for a long period before finalizing the dates"
+    let result = try await runner.polishSavedDictation(words, language: "en")
+    #expect(result?.contains(words) == true)
+  }
   nonisolated static let namedPolishPrompt =
     EGOneEnvelopePromptBuilder.systemPrompt
     + " The transcript is in Polish; write the cleaned text in Polish."

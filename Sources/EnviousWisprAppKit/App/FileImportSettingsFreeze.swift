@@ -44,7 +44,8 @@ enum FileImportSettingsFreeze {
   /// The same freeze for an explicit engine (#3147 PR3, Transcribe again with): the language
   /// lock, language detection and spelling follow `backend`, never the selected engine.
   static func snapshot(
-    settings: SettingsManager, backend: ASRBackendType
+    settings: SettingsManager, backend: ASRBackendType,
+    polishOverride: HistoryPolishChoice? = nil
   ) -> RecordingSettingsSnapshot {
     // #3905: frozen as the engine can honour it (an unhonoured lock runs as Auto).
     let languageMode = LanguageLockOptions.effectiveLanguageMode(
@@ -67,10 +68,11 @@ enum FileImportSettingsFreeze {
       // #4216: the period switch in force, frozen with the start words.
       spokenPunctuationEnglishPeriodWord: settings.spokenPunctuation.englishPeriodWord,
       customWordsVersion: nil,
-      llmProvider: settings.effectiveFileImportLLMProvider.rawValue,
-      llmModel: settings.effectiveFileImportLLMModel,
-      egOneSize: settings.polishModelID(for: settings.effectiveFileImportLLMProvider)
-        .storedEGOneSize,
+      llmProvider: polishOverride?.provider.rawValue ?? settings.effectiveFileImportLLMProvider.rawValue,
+      llmModel: polishOverride?.model ?? settings.effectiveFileImportLLMModel,
+      egOneSize: polishOverride == nil
+        ? settings.polishModelID(for: settings.effectiveFileImportLLMProvider).storedEGOneSize
+        : polishOverride?.egOneSize?.rawValue,
       s1Control: settings.s1Control,
       // #3124: frozen at Start like the language; "Clean it again" re-snapshots.
       englishSpelling: EnglishSpelling.effective(

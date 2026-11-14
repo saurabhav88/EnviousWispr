@@ -286,6 +286,13 @@ extension MeetingStore {
     case userEditKept(MeetingDocumentsManifest)
     /// The notes changed since the summary's inputs were read: not saved.
     case notesChanged(MeetingDocumentsManifest)
+    /// Another save or an external edit changed the summary shown by a manual preview.
+    case baseChanged(MeetingDocumentsManifest)
+  }
+
+  public enum SummaryPublication: Sendable {
+    case automatic
+    case replacing(MeetingDocumentsManifest.Summary?)
   }
 
   /// Saves a generated summary only if it may replace what is there, checked in the same file
@@ -295,21 +302,29 @@ extension MeetingStore {
   /// reconciled first, as a load does, so a summary or notes changed outside the app count.
   public func saveGeneratedSummary(
     _ text: String, inputs: SummaryInputs, writtenInParts: Bool, approvedUserEdit: String?,
-    meeting id: UUID
+    meeting id: UUID, publication: SummaryPublication = .automatic
   ) throws -> GeneratedSummarySave {
     try refuseDocumentWrite(id)
     var manifest = try readDocuments(meeting: id).loaded.manifest
-    manifest.summaryPending = nil
+    if case .replacing(let expected) = publication {
+      guard manifest.summary == expected,
+        try load(id: id).committedTranscriptGeneration
+          == (inputs.transcriptAttemptID ?? MeetingRecord.legacyTranscriptAttemptID)
+      else { return .baseChanged(manifest) }
+    } else {
+      manifest.summaryPending = nil
+    }
     if let current = manifest.summary, current.origin == .userEdited,
       current.sha256 != approvedUserEdit
     {
-      try writeManifest(manifest, meeting: id)
+      if case .automatic = publication { try writeManifest(manifest, meeting: id) }
       return .userEditKept(manifest)
     }
     if (manifest.notes?.revision ?? 0) != inputs.notesRevision {
-      try writeManifest(manifest, meeting: id)
+      if case .automatic = publication { try writeManifest(manifest, meeting: id) }
       return .notesChanged(manifest)
     }
+    manifest.summaryPending = nil
     manifest.summary = MeetingDocumentsManifest.Summary(
       sha256: MeetingDocumentHash.sha256(text), origin: .generated, inputs: inputs,
       writtenInParts: writtenInParts)

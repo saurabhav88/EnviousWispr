@@ -103,6 +103,9 @@ final class MeetingSummaryOwner {
     /// #4319: the weights' revision for a provider whose model name is fixed while its weights
     /// change (EG-1), so a new release makes an older summary out of date; nil for the rest.
     var artifactRevision: @MainActor (LLMProvider) -> String? = { _ in nil }
+    var prepareEGOneOverride:
+      (@MainActor (EGOneSize) -> Result<MeetingSummaryProviders.Prepared, MeetingSummaryProviders.Unavailable>)? = nil
+    var overrideArtifactRevision: @MainActor (EGOneSize) -> String? = { _ in nil }
     /// #4319: the app is quitting; an engine lent to a summary must not be loaded or restored.
     var beginTermination: @MainActor () -> Void = {}
   }
@@ -145,6 +148,7 @@ final class MeetingSummaryOwner {
   }
 
   private(set) var activity: [UUID: Activity] = [:]
+  private(set) var previews: [UUID: Preview] = [:]
 
   private let deps: Dependencies
   private let documents: MeetingDocumentsOwner
@@ -244,6 +248,7 @@ final class MeetingSummaryOwner {
 
   /// Starts the attempt for a meeting whose owed mark is written.
   func startOwed(_ meetingID: UUID) {
+    previews[meetingID] = nil
     start(meetingID, approvedUserEdit: nil, owedAlready: true)
   }
 
@@ -278,6 +283,7 @@ final class MeetingSummaryOwner {
   /// The meeting is being deleted: its attempt ends, and this returns once it has physically
   /// ended, so nothing it does later touches the meeting's files.
   func cancelAndWait(_ meetingID: UUID) async {
+    previews[meetingID] = nil
     activity[meetingID] = nil
     let mine = attempts.values.filter { $0.meetingID == meetingID }
     for running in mine { running.task.cancel() }
@@ -290,6 +296,7 @@ final class MeetingSummaryOwner {
   /// and this returns once each has physically ended and settled (mark cleared, one row sent),
   /// so the new transcript's owed mark is written after them and none of them can clear it.
   func settleBeforeNewTranscript(_ meetingID: UUID) async {
+    previews[meetingID] = nil
     let mine = attempts.values.filter { $0.meetingID == meetingID }
     for running in mine { running.task.cancel() }
     for running in mine { await running.task.value }
@@ -299,22 +306,86 @@ final class MeetingSummaryOwner {
   /// its one row.
   func prepareForTermination() {
     terminating = true
+    previews.removeAll()
     deps.beginTermination()
     for running in attempts.values { running.task.cancel() }
   }
 
-  private func start(_ meetingID: UUID, approvedUserEdit: String?, owedAlready: Bool) {
+  enum Preview {
+    case generating(UUID)
+    case comparing(Candidate)
+    case failed
+  }
+
+  struct Candidate {
+    let id: UUID
+    let current: String?
+    let text: String
+    let choice: HistoryPolishChoice
+    fileprivate let base: MeetingDocumentsManifest.Summary?
+    fileprivate let inputs: Inputs
+    fileprivate let answer: MeetingSummary.Written
+  }
+
+  func startPreview(_ meetingID: UUID, with choice: HistoryPolishChoice) {
+    guard currentAttempt[meetingID] == nil, !requesting.contains(meetingID), !terminating,
+      choice.provider != .none, choice.provider != .s1Mini
+    else { return }
+    start(meetingID, approvedUserEdit: nil, owedAlready: false, preview: choice)
+  }
+
+  func defaultPreviewChoice(in choices: [HistoryPolishChoice]) -> HistoryPolishChoice? {
+    let current = deps.selection()
+    return choices.first { $0.provider == current.provider && $0.model == current.model }
+  }
+
+  func discardPreview(_ meetingID: UUID) {
+    if case .generating(let id) = previews[meetingID] { attempts[id]?.task.cancel() }
+    previews[meetingID] = nil
+  }
+
+  func keepPreview(_ meetingID: UUID, candidateID: UUID) async -> Bool {
+    guard !terminating, currentAttempt[meetingID] == nil, !requesting.contains(meetingID),
+      case .comparing(let candidate) = previews[meetingID], candidate.id == candidateID
+    else { return false }
+    requesting.insert(meetingID)
+    defer { requesting.remove(meetingID) }
+    let selection = (provider: candidate.choice.provider, model: candidate.choice.model)
+    guard !documents.hasUnsavedNotes(meetingID), !documents.hasUnsavedSummary(meetingID),
+      currentInputs(meetingID, selection: selection, override: candidate.choice, withSources: true)
+        == candidate.inputs
+    else {
+      previews[meetingID] = nil
+      return false
+    }
+    let saved = await documents.publishGeneratedSummary(
+      meetingID, text: candidate.text, inputs: candidate.inputs.summaryInputs,
+      writtenInParts: candidate.answer.inParts, approvedUserEdit: candidate.base?.sha256,
+      publication: .replacing(candidate.base))
+    if case .comparing(let current) = previews[meetingID], current.id == candidateID {
+      previews[meetingID] = nil
+    }
+    guard case .saved = saved else { return false }
+    await publishReferences(meetingID, answer: candidate.answer, text: candidate.text)
+    return true
+  }
+
+  private func start(
+    _ meetingID: UUID, approvedUserEdit: String?, owedAlready: Bool,
+    preview: HistoryPolishChoice? = nil
+  ) {
     guard !terminating else { return }
     // A newer attempt replaces one still running (a Retry made a new transcript, or Write
     // again); the old one ends as cancelled and stays tracked until it has ended.
     if let previous = currentAttempt[meetingID] { attempts[previous]?.task.cancel() }
     let attempt = UUID()
     activity[meetingID] = .waiting
+    if preview != nil { previews[meetingID] = .generating(attempt) }
     let task = Task { [weak self] () -> Void in
       guard let self else { return }
       await self.run(
         meetingID, attempt: attempt, approvedUserEdit: approvedUserEdit,
-        owedAlready: owedAlready)
+        owedAlready: owedAlready, preview: preview)
     }
     attempts[attempt] = Running(meetingID: meetingID, task: task)
     currentAttempt[meetingID] = attempt
@@ -322,7 +393,7 @@ final class MeetingSummaryOwner {
 
   // MARK: - One attempt
 
-  private struct Inputs: Equatable {
+  fileprivate struct Inputs: Equatable {
     let transcript: VisibleTranscript
     let notes: String
     /// #4286: the rendered facts block ("" when none), frozen for the attempt: the exact text
@@ -336,6 +407,7 @@ final class MeetingSummaryOwner {
 
   private enum End: Equatable {
     case written
+    case preview
     case stale
     case cancelled
     /// #4148: known inputs had no visible transcript text; no model call was made.
@@ -351,11 +423,12 @@ final class MeetingSummaryOwner {
   }
 
   private func run(
-    _ meetingID: UUID, attempt: UUID, approvedUserEdit: String?, owedAlready: Bool
+    _ meetingID: UUID, attempt: UUID, approvedUserEdit: String?, owedAlready: Bool,
+    preview: HistoryPolishChoice?
   ) async {
     // Where the model runs is known from the selection before anything can fail, so every row
     // pairs `none` with `noProvider` only (R57). No provider ends the attempt at once.
-    let selection = deps.selection()
+    let selection = preview.map { (provider: $0.provider, model: $0.model) } ?? deps.selection()
     attempts[attempt]?.provider = selection.provider
     // #4353 D6: captured with the selection, before the first suspension, and carried to
     // `prepare`; planning and every request of this attempt use it.
@@ -367,11 +440,20 @@ final class MeetingSummaryOwner {
     } else {
       ending = await attemptOnce(
         meetingID, attempt: attempt, selection: selection, cloudModelList: cloudModelList,
-        approvedUserEdit: approvedUserEdit, owedAlready: owedAlready, kind: &kind)
+        approvedUserEdit: approvedUserEdit, owedAlready: owedAlready, preview: preview, kind: &kind)
     }
     defer {
       busy.remove(attempt)
       attempts[attempt] = nil
+    }
+    if preview != nil {
+      guard currentAttempt[meetingID] == attempt else { return }
+      currentAttempt[meetingID] = nil
+      activity[meetingID] = nil
+      if case .generating(let id) = previews[meetingID], id == attempt {
+        previews[meetingID] = Task.isCancelled || terminating ? nil : .failed
+      }
+      return
     }
     // A quit leaves the attempt owed and unsettled: the relaunch finishes it.
     let quit = terminating && ending.end == .cancelled
@@ -396,9 +478,10 @@ final class MeetingSummaryOwner {
   private func attemptOnce(
     _ meetingID: UUID, attempt: UUID, selection: (provider: LLMProvider, model: String),
     cloudModelList: CloudModelList?, approvedUserEdit: String?, owedAlready: Bool,
+    preview: HistoryPolishChoice?,
     kind: inout MeetingSummaryFinishedTelemetry.ProviderKind
   ) async -> Ending {
-    if !owedAlready {
+    if !owedAlready, preview == nil {
       // No mark was written, so there is none to clear: the attempt settles at once.
       guard await documents.setSummaryPending(meetingID, true) else {
         return Ending(
@@ -408,7 +491,15 @@ final class MeetingSummaryOwner {
       }
     }
     let prepared: MeetingSummaryProviders.Prepared
-    let preparation = await deps.prepare(selection.provider, selection.model, cloudModelList)
+    let preparation: Result<MeetingSummaryProviders.Prepared, MeetingSummaryProviders.Unavailable>
+    if let preview, preview.provider == .egOne {
+      guard let size = preview.egOneSize, let prepare = deps.prepareEGOneOverride else {
+        return Ending(end: .problem(.notReady))
+      }
+      preparation = prepare(size)
+    } else {
+      preparation = await deps.prepare(selection.provider, selection.model, cloudModelList)
+    }
     // #4319: a successful preparation is unpacked before anything else, so its `finish` runs
     // exactly once on every path from here, a cancel included.
     switch preparation {
@@ -433,7 +524,7 @@ final class MeetingSummaryOwner {
     guard prepared.execution == .local else {
       let ending = await write(
         meetingID, attempt: attempt, selection: selection, prepared: prepared,
-        approvedUserEdit: approvedUserEdit)
+        approvedUserEdit: approvedUserEdit, preview: preview)
       await prepared.finish()
       return ending
     }
@@ -457,7 +548,7 @@ final class MeetingSummaryOwner {
       }
       let ending = await self.write(
         meetingID, attempt: attempt, selection: selection, prepared: prepared,
-        approvedUserEdit: approvedUserEdit)
+        approvedUserEdit: approvedUserEdit, preview: preview)
       await prepared.finish()
       return ending
     }
@@ -512,7 +603,8 @@ final class MeetingSummaryOwner {
 
   private func write(
     _ meetingID: UUID, attempt: UUID, selection: (provider: LLMProvider, model: String),
-    prepared: MeetingSummaryProviders.Prepared, approvedUserEdit: String?
+    prepared: MeetingSummaryProviders.Prepared, approvedUserEdit: String?,
+    preview: HistoryPolishChoice?
   ) async -> Ending {
     if Task.isCancelled { return Ending(end: .cancelled) }
     // Notes are saved first, so the summary names the revision it read.
@@ -523,13 +615,22 @@ final class MeetingSummaryOwner {
     case .failed, .unknown: return Ending(end: .problem(.notesUnreadable))
     case .none, .saved: break
     }
+    if preview != nil {
+      guard await documents.flushSummary(meetingID) else {
+        return Ending(end: .problem(.storageFailed))
+      }
+      if Task.isCancelled { return Ending(end: .cancelled) }
+    }
+    let baseSummary = preview == nil ? nil : documents.manifest(meetingID)?.summary
+    let currentSummary = preview == nil ? nil : documents.summary(meetingID)
     // Nil inputs are a cancel (gone, not ready) unless the meeting is known and wordless (#4148).
     guard
       let inputs = currentInputs(
         meetingID, selection: selection,
         // The attempt's own captured revision when its preparation carries one (EG-1); a
         // provider whose preparation carries none is read as before.
-        attemptRevision: prepared.artifactRevision.map { Optional($0) }, withSources: true)
+        attemptRevision: prepared.artifactRevision.map { Optional($0) },
+        override: preview, withSources: true)
     else {
       return Ending(end: deps.hasNoWords(meetingID) ? .nothingToSummarize : .cancelled)
     }
@@ -566,7 +667,7 @@ final class MeetingSummaryOwner {
 
     // R11: an AI title only when "Write a summary when a meeting ends" is on, here and again
     // after the save; a Write again with it off writes the summary alone.
-    let titleWanted = deps.isEnabled()
+    let titleWanted = preview == nil && deps.isEnabled()
     // #3147 PR4A (D5): on a qualified route the model reads tagged turns and note blocks; the
     // notes are tagged only when their blocks are known, so no notes are lost.
     let references = inputs.sources.map {
@@ -618,8 +719,21 @@ final class MeetingSummaryOwner {
 
     // The meeting changed while the summary was written (a rename, new notes, a Retry, a model
     // change): the answer describes something else and is not saved.
-    guard currentInputs(meetingID, selection: deps.selection(), withSources: true) == inputs else {
+    let latestSelection = preview == nil ? deps.selection() : selection
+    guard currentInputs(
+      meetingID, selection: latestSelection, override: preview, withSources: true) == inputs
+    else {
       return Ending(end: .stale)
+    }
+    if let preview {
+      guard case .generating(let id) = previews[meetingID], id == attempt,
+        documents.manifest(meetingID)?.summary == baseSummary, !documents.hasUnsavedSummary(meetingID)
+      else { return Ending(end: .stale) }
+      previews[meetingID] = .comparing(
+        Candidate(
+          id: attempt, current: currentSummary, text: text, choice: preview,
+          base: baseSummary, inputs: inputs, answer: answer))
+      return Ending(end: .preview)
     }
     // Every answer of the checked save also ends the owed mark. The save holds a relaunch.
     busy.insert(attempt)
@@ -629,15 +743,7 @@ final class MeetingSummaryOwner {
       approvedUserEdit: approvedUserEdit)
     {
     case .saved:
-      // #3147 PR4A (D5): the references of exactly the text just saved, or none (which also
-      // removes an older file). A failed save costs only the links.
-      let document = answer.document.flatMap {
-        MeetingDocumentHash.sameBytes($0.renderedMarkdownSHA256, MeetingDocumentHash.sha256(text))
-          ? $0 : nil
-      }
-      if !(await deps.saveReferences(meetingID, document)) {
-        deps.log("meeting summary references not saved")
-      }
+      await publishReferences(meetingID, answer: answer, text: text)
       // Checked once more after the save: a change during the write makes the saved summary
       // show as out of date (its recorded inputs differ), and the attempt counts as stale.
       let unchanged =
@@ -646,12 +752,23 @@ final class MeetingSummaryOwner {
         await deps.assignTitle(meetingID, title)
       }
       return Ending(end: unchanged ? .written : .stale, savedMark: true)
-    case .userEditKept, .notesChanged:
+    case .userEditKept, .notesChanged, .baseChanged:
       return Ending(end: .stale, savedMark: true)
     case nil:
       return Ending(
         end: documents.isForgotten(meetingID) || Task.isCancelled
           ? .cancelled : .problem(.storageFailed))
+    }
+  }
+
+  /// Publish links only for the exact accepted text. A failed save costs only the links.
+  private func publishReferences(_ meetingID: UUID, answer: MeetingSummary.Written, text: String) async {
+    let document = answer.document.flatMap {
+      MeetingDocumentHash.sameBytes($0.renderedMarkdownSHA256, MeetingDocumentHash.sha256(text))
+        ? $0 : nil
+    }
+    if !(await deps.saveReferences(meetingID, document)) {
+      deps.log("meeting summary references not saved")
     }
   }
 
@@ -718,7 +835,7 @@ final class MeetingSummaryOwner {
   /// which the recorded summary inputs alone decide.
   private func currentInputs(
     _ meetingID: UUID, selection: (provider: LLMProvider, model: String),
-    attemptRevision: String?? = nil, withSources: Bool = false
+    attemptRevision: String?? = nil, override: HistoryPolishChoice? = nil, withSources: Bool = false
   ) -> Inputs? {
     guard let transcript = deps.visibleTranscript(meetingID) else {
       fingerprints[meetingID] = nil
@@ -739,6 +856,11 @@ final class MeetingSummaryOwner {
       ? deps.referenceSources(meetingID).flatMap {
         MeetingDocumentHash.sameBytes($0.plainTranscript, transcript.text) ? $0 : nil
       } : nil
+    let revision = if let size = override?.egOneSize {
+      deps.overrideArtifactRevision(size)
+    } else {
+      deps.artifactRevision(selection.provider)
+    }
     return Inputs(
       transcript: transcript, notes: notes, factsBlock: factsBlock,
       summaryInputs: SummaryInputs(
@@ -750,8 +872,9 @@ final class MeetingSummaryOwner {
         providerID: selection.provider.rawValue,
         configurationSHA256: MeetingSummary.configurationFingerprint(
           provider: selection.provider, model: selection.model,
-          artifactRevision: attemptRevision ?? deps.artifactRevision(selection.provider)),
-        transcriptAttemptID: transcript.transcriptAttemptID, contextSHA256: factsHash),
+          artifactRevision: attemptRevision ?? revision),
+        transcriptAttemptID: transcript.transcriptAttemptID, contextSHA256: factsHash,
+        modelOverride: override.map { .init(model: $0.model, egOneSize: $0.egOneSize?.rawValue) }),
       sources: sources)
   }
 
@@ -768,7 +891,17 @@ final class MeetingSummaryOwner {
   /// be read counts as changed, never as current.
   func isOutOfDate(_ meetingID: UUID) -> Bool {
     guard let recorded = documents.manifest(meetingID)?.summary?.inputs else { return false }
-    guard let current = currentInputs(meetingID, selection: deps.selection()) else { return true }
+    var selection = deps.selection()
+    var choice: HistoryPolishChoice?
+    if let manual = recorded.modelOverride {
+      guard let provider = LLMProvider(rawValue: recorded.providerID) else { return true }
+      selection = (provider, manual.model)
+      choice = HistoryPolishChoice(
+        provider: provider, model: manual.model, egOneSize: manual.egOneSize.flatMap(EGOneSize.init))
+    }
+    guard let current = currentInputs(meetingID, selection: selection, override: choice) else {
+      return true
+    }
     return recorded != current.summaryInputs || documents.hasUnsavedNotes(meetingID)
   }
 
@@ -898,6 +1031,7 @@ final class MeetingSummaryOwner {
       let outcome: MeetingSummaryFinishedTelemetry.Outcome
       switch end {
       case .written: outcome = .written
+      case .preview: return
       case .stale: outcome = .stale
       case .cancelled: outcome = .cancelled
       case .nothingToSummarize: outcome = .nothingToSummarize
@@ -923,7 +1057,7 @@ final class MeetingSummaryOwner {
     guard current, !terminating else { return }
     switch end {
     case .problem(let problem): activity[meetingID] = .failed(problem)
-    case .written, .stale, .cancelled, .nothingToSummarize: activity[meetingID] = nil
+    case .written, .preview, .stale, .cancelled, .nothingToSummarize: activity[meetingID] = nil
     }
   }
 }

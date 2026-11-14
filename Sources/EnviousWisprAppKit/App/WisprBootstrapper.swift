@@ -68,6 +68,7 @@ package final class WisprBootstrapper {
   /// #2648 — Transcribe a File's state machine, held here so the run survives
   /// the page being closed.
   let fileImportCoordinator: FileImportCoordinator
+  let historyRepolish: HistoryRepolishRunner
   /// #3147 PR3: the original files of imported transcripts (lookup, relink, playback reader).
   let importedSources: ImportedSources
   /// #3147 PR3: the installed models Transcribe again with offers.
@@ -370,6 +371,7 @@ package final class WisprBootstrapper {
     // #3147 PR3: Transcribe again with is a file import too (same lease, same cleanup runner),
     // so every gate that sees a running import sees it.
     weak var transcriptRetranscriptionForGates: TranscriptRetranscription?
+    weak var historyRepolishForGates: HistoryRepolishRunner?
     // #4287: same pattern; the settings sync is built long before the meeting summary owner,
     // and its eviction check must see a summary call that is running on an Ollama model.
     weak var meetingSummariesForEviction: MeetingSummaryOwner?
@@ -1086,6 +1088,7 @@ package final class WisprBootstrapper {
       importPinnedLocalModel: {
         fileImportCoordinatorForGates?.pinnedLocalPolishModel
           ?? transcriptRetranscriptionForGates?.heldRun?.configuration.localPolishModel
+          ?? historyRepolishForGates?.heldRun?.configuration.localPolishModel
       },
       summaryPinnedLocalModel: { [localPolishRuntimes] in
         localPolishRuntimes.summaryHeldModel
@@ -1093,6 +1096,7 @@ package final class WisprBootstrapper {
       importPinnedOllamaModel: {
         fileImportCoordinatorForGates?.pinnedOllamaModel
           ?? transcriptRetranscriptionForGates?.heldRun?.configuration.ollamaModel
+          ?? historyRepolishForGates?.heldRun?.configuration.ollamaModel
       },
       summaryPinnedOllamaModel: { meetingSummariesForEviction?.summaryPinnedOllamaModel },
       outputClassifierHolder: outputClassifierHolder,
@@ -1104,6 +1108,7 @@ package final class WisprBootstrapper {
         guard
           fileImportCoordinatorForGates?.isEngineHeld == true
             || transcriptRetranscriptionForGates?.isEngineHeld == true
+            || historyRepolishForGates?.heldRun != nil
         else { return nil }
         return fileImportRunnerForGates?.frozenLLMProvider
       }
@@ -1713,6 +1718,7 @@ package final class WisprBootstrapper {
         isFileImportRunning: {
           fileImportCoordinatorForGates?.isEngineHeld == true
             || transcriptRetranscriptionForGates?.isEngineHeld == true
+            || historyRepolishForGates?.heldRun != nil
         },
         isEngineHeld: { [engineLease] in engineLease.isBusy },
         isMeetingEngineResident: { [meetingBox] in
@@ -2617,7 +2623,8 @@ package final class WisprBootstrapper {
         ]
         .compactMap { $0?.llmProvider },
         importHoldsEngine: fileImportCoordinator?.isEngineHeld == true
-          || transcriptRetranscriptionForGates?.isEngineHeld == true,
+          || transcriptRetranscriptionForGates?.isEngineHeld == true
+          || historyRepolishForGates?.heldRun != nil,
         importProvider: fileImportRunner?.frozenLLMProvider)
     }
     let setupOwners = OnboardingLiveOwners(
@@ -2963,6 +2970,7 @@ package final class WisprBootstrapper {
     meetingInputs.importPinnedLocalProvider = {
       fileImportCoordinatorForGates?.pinnedLocalPolishProvider
         ?? transcriptRetranscriptionForGates?.heldRun?.configuration.localPolishModel?.provider
+        ?? historyRepolishForGates?.heldRun?.configuration.localPolishModel?.provider
     }
     // #4319: EG-1 summaries borrow the bundled server and give it back to dictation's engine
     // through the same forced reconcile a file import uses.
@@ -3042,6 +3050,56 @@ package final class WisprBootstrapper {
     // #3147 PR3: Transcribe again with. Same `.fileImport` lease and the same cleanup runner and
     // polisher hold as Transcribe a File (the lease keeps the two from overlapping), the chosen
     // model on its own copy, and the wizard's release retries afterwards.
+    let freezeHistoryCleanup: @MainActor (ASRBackendType, HistoryPolishChoice?) -> ImportedFileTranscriber.FrozenRun = {
+      backend, choice in
+      let snapshot = FileImportSettingsFreeze.snapshot(
+        settings: settings, backend: backend, polishOverride: choice)
+      fileImportRunner.freeze(
+        settings: snapshot, vocabulary: customWordsPropagator.corrector,
+        cloudModelList: cloudModelList.snapshot?.list)
+      checkerEligibility.wordCheck?.fileImportStarted(
+        needsWordCheck: !LearnedWordCheckerEngine.hasOwnChecker(
+          LLMProvider(rawValue: snapshot.llmProvider) ?? .none))
+      let configuration = FileImportSettingsFreeze.configuration(
+        for: snapshot,
+        ollamaModelIsRemote: snapshot.llmProvider == LLMProvider.ollama.rawValue
+          ? ollamaRemoteness(snapshot.llmModel) : false)
+      return ImportedFileTranscriber.FrozenRun(settings: snapshot, configuration: configuration)
+    }
+    let historyCleanup = ImportedFileTranscriber.Cleanup(
+      freeze: { freezeHistoryCleanup($0, nil) },
+      prepareLocalPolish: { [localPolishRuntimes] configuration in
+        // The wizard's `prepareLocalPolish`, verbatim in behaviour.
+        guard let localPolish = configuration.localPolishModel else { return true }
+        guard let runtime = localPolishRuntimes.runtime(for: localPolish),
+          let activation = runtime.activateAndProbe()
+        else { return false }
+        await activation.value
+        guard await runtime.activeEndpoint() != nil else { return false }
+        return await localPolishRuntimes.holdForImport(localPolish)
+      },
+      processParts: { [fileImportRunner] parts, language, onOutcome in
+        try await fileImportRunner.process(
+          parts: parts, engineLanguage: language, onOutcome: onOutcome)
+      },
+      release: {
+        [
+          weak engineCoordinator, weak settingsSync, settings, localPolishRuntimes,
+          fileImportRunner
+        ] in
+        // The wizard's `onEngineReleased` retries, for the same deferred work.
+        let releaseHold = localPolishRuntimes.releaseImportHold()
+        fileImportRunner.releaseCheckerSelections()
+        engineCoordinator?.poke(.driverStateChanged)
+        settingsSync?.retryDeferredOllamaEviction(settings: settings)
+        settingsSync?.retryDeferredOutputClassifierRelease(settings: settings)
+        Task { @MainActor in
+          await releaseHold?.value
+          settingsSync?.retryDeferredEGOneDeactivation(
+            settings: settings, forceReconciliation: true)
+        }
+        recoveryCoordinatorForEngineMutationScope?.requestRecoveryRecheck()
+      })
     let importedFileTranscriber = ImportedFileTranscriber(
       admission: .live(lease: engineLease, as: .fileImport),
       engines: ImportedEngineCopies(
@@ -3059,57 +3117,7 @@ package final class WisprBootstrapper {
         whisper: .live(
           engine: importWhisperEngine, admittedModelPath: whisper.admittedModelPath,
           isDeliveryEnabled: whisper.isDeliveryEnabled)),
-      cleanup: .init(
-        freeze: {
-          [settings, customWordsPropagator, cloudModelList, checkerEligibility, fileImportRunner]
-          backend in
-          // The wizard's freeze (`beginRun`) for the CHOSEN engine. No `asrModel` from
-          // dictation's serving model: this run never uses dictation's engine.
-          let snapshot = FileImportSettingsFreeze.snapshot(settings: settings, backend: backend)
-          fileImportRunner.freeze(
-            settings: snapshot, vocabulary: customWordsPropagator.corrector,
-            cloudModelList: cloudModelList.snapshot?.list)
-          checkerEligibility.wordCheck?.fileImportStarted(
-            needsWordCheck: !LearnedWordCheckerEngine.hasOwnChecker(
-              LLMProvider(rawValue: snapshot.llmProvider) ?? .none))
-          let configuration = FileImportSettingsFreeze.configuration(
-            for: snapshot,
-            ollamaModelIsRemote: snapshot.llmProvider == LLMProvider.ollama.rawValue
-              ? ollamaRemoteness(snapshot.llmModel) : false)
-          return ImportedFileTranscriber.FrozenRun(settings: snapshot, configuration: configuration)
-        },
-        prepareLocalPolish: { [localPolishRuntimes] configuration in
-          // The wizard's `prepareLocalPolish`, verbatim in behaviour.
-          guard let localPolish = configuration.localPolishModel else { return true }
-          guard let runtime = localPolishRuntimes.runtime(for: localPolish),
-            let activation = runtime.activateAndProbe()
-          else { return false }
-          await activation.value
-          guard await runtime.activeEndpoint() != nil else { return false }
-          return await localPolishRuntimes.holdForImport(localPolish)
-        },
-        processParts: { [fileImportRunner] parts, language, onOutcome in
-          try await fileImportRunner.process(
-            parts: parts, engineLanguage: language, onOutcome: onOutcome)
-        },
-        release: {
-          [
-            weak engineCoordinator, weak settingsSync, settings, localPolishRuntimes,
-            fileImportRunner
-          ] in
-          // The wizard's `onEngineReleased` retries, for the same deferred work.
-          let releaseHold = localPolishRuntimes.releaseImportHold()
-          fileImportRunner.releaseCheckerSelections()
-          engineCoordinator?.poke(.driverStateChanged)
-          settingsSync?.retryDeferredOllamaEviction(settings: settings)
-          settingsSync?.retryDeferredOutputClassifierRelease(settings: settings)
-          Task { @MainActor in
-            await releaseHold?.value
-            settingsSync?.retryDeferredEGOneDeactivation(
-              settings: settings, forceReconciliation: true)
-          }
-          recoveryCoordinatorForEngineMutationScope?.requestRecoveryRecheck()
-        }),
+      cleanup: historyCleanup,
       captureASRFailure: { error, backend in
         SentryBreadcrumb.captureError(
           SentryCaptureBoundaryError.normalizingTranscriptionFailure(error),
@@ -3121,6 +3129,24 @@ package final class WisprBootstrapper {
       transcriber: importedFileTranscriber,
       installedModels: { [importedModelCatalog] in importedModelCatalog.choices })
     transcriptRetranscriptionForGates = transcriptRetranscription
+    let historyChoices = HistoryPolishChoices(
+      settings: settings, monitor: polishSetupMonitorHolder, runtime: localPolishRuntimes,
+      availability: aiAvailability, setup: setup, discovery: llmDiscovery,
+      savedKeys: savedKeyPresence, ollamaRemoteness: { ollamaRemoteness($0) })
+    let historyRepolish = HistoryRepolishRunner(
+      choices: historyChoices.available(for:),
+      admission: .live(lease: engineLease, as: .fileImport),
+      freeze: { freezeHistoryCleanup($0, $1) },
+      cleanup: historyCleanup,
+      polishDictation: { try await fileImportRunner.polishSavedDictation($0, language: $1) },
+      meetingEchoIDs: { [weak meetingCoordinator] row in
+        guard let id = row.meetingID, let record = meetingCoordinator?.record(id: id),
+          !record.deletionRequested, MeetingWiring.isCommittedRow(row, of: record)
+        else { return nil }
+        return Set(record.echoTurnIDs)
+      })
+    historyRepolishForGates = historyRepolish
+    self.historyRepolish = historyRepolish
     // #3147: usage across both recording owners, and the one retention policy acting through
     // each owner's own removal. Starts after both owners exist; each sweep waits for their
     // launch work on its own task.
@@ -3843,6 +3869,7 @@ private struct AppHomesEnvironment: ViewModifier {
         .environment(\.historyScrollMonitor, b.historyScrollMonitor)
         .environment(b.transcriptCoordinator)
         .environment(b.fileImportCoordinator)
+        .environment(b.historyRepolish)
         .environment(b.meetingCoordinator)
         // #3147: Recordings settings and History's storage warning.
         .environment(b.recordingRetention)

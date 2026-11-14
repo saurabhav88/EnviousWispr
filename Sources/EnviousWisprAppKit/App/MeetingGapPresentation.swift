@@ -37,14 +37,21 @@ enum MeetingGapPresentation {
       })
   }
 
+  // A clock as `MeetingTranscriptionJob.clock` writes it: `m:ss` (minutes one or more
+  // digits) or `h:mm:ss`.
+  private static var markerPattern: Regex<(
+    Substring, boundedStart: Substring?, boundedEnd: Substring?, fromStart: Substring?
+  )> {
+    /\[Could not transcribe (?:(?<boundedStart>\d+:\d{2}(?::\d{2})?) to (?<boundedEnd>\d+:\d{2}(?::\d{2})?)|from (?<fromStart>\d+:\d{2}(?::\d{2})?))\]/
+  }
+
+  static func containsGap(_ text: String) -> Bool {
+    text.contains("[Could not transcribe ") && text.firstMatch(of: markerPattern) != nil
+  }
+
   /// `text` with every exact gap marker in `forms`' language; everything else unchanged.
   static func localized(_ text: String, forms: Forms = .interface) -> String {
     guard text.contains("[Could not transcribe ") else { return text }
-    // A clock as `MeetingTranscriptionJob.clock` writes it: `m:ss` (minutes one or more
-    // digits) or `h:mm:ss`.
-    let markerPattern =
-      /\[Could not transcribe (?:(?<boundedStart>\d+:\d{2}(?::\d{2})?) to (?<boundedEnd>\d+:\d{2}(?::\d{2})?)|from (?<fromStart>\d+:\d{2}(?::\d{2})?))\]/
-
     return text.replacing(markerPattern) { match in
       if let start = match.output.boundedStart, let end = match.output.boundedEnd {
         return forms.bounded(String(start), String(end))
