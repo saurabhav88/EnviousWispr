@@ -16,11 +16,30 @@ import apps from '../../data/home/compatibleApps.json';
       <ul class="compatible-list">
         {
           apps.map((app) => (
-            <li class="compatible-app" data-app={app.name} style={'--app-color:' + app.color}>
+            <li class="compatible-app" data-app={app.name}>
               <>
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d={app.icon} />
-                </svg>
+                {/* The brands' own logos from SVGL (MIT), the same pinned files as the app's
+                    film; written by scripts/design/fetch-app-logos.py. */}
+                <img
+                  class:list={['app-logo', { 'app-logo-light': app.dark }]}
+                  src={`/app-logos/${app.slug}.svg`}
+                  alt=""
+                  width="18"
+                  height="18"
+                  loading="lazy"
+                  decoding="async"
+                />
+                {app.dark && (
+                  <img
+                    class="app-logo app-logo-dark"
+                    src={`/app-logos/${app.slug}-dark.svg`}
+                    alt=""
+                    width="18"
+                    height="18"
+                    loading="lazy"
+                    decoding="async"
+                  />
+                )}
                 <span>{app.name}</span>
               </>
             </li>
