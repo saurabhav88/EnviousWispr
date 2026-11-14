@@ -7,11 +7,15 @@ import Testing
 /// it did not change what the choice DOES. Read from the source with SwiftParser: the input
 /// selection still writes both preferences, the page still asks the one resolver which device
 /// it describes, the socket choice keeps its eligibility and per-device write, and the media
-/// row still pairs its output listener with the page's appearance. A drift guard; the
-/// rebuilt-app UAT proves a microphone switch reaches RAW ASR.
+/// row still pairs its output listener with the page's appearance. #4528 D6a: the selection,
+/// the resolver call and the socket eligibility moved, unchanged, into `MicrophonePickerModel`
+/// (shared with Setup's Practice screen), so those checks read the model and the page is pinned
+/// to build it once from the live settings and device list. A drift guard; the rebuilt-app UAT
+/// proves a microphone switch reaches RAW ASR.
 @Suite("Microphone settings wiring (#3385)", .tags(.driftGuard, .localParallel))
 struct MicrophoneSettingsWiringTests {
   static let audioPath = "Sources/EnviousWisprAppKit/Views/Settings/AudioSettingsView.swift"
+  static let modelPath = "Sources/EnviousWisprAppKit/Views/Settings/MicrophonePickerModel.swift"
   static let mediaPath = "Sources/EnviousWisprAppKit/Views/Settings/OtherAudioSettingsPanel.swift"
 
   static func source(_ path: String) throws -> SourceFileSyntax {
@@ -24,7 +28,7 @@ struct MicrophoneSettingsWiringTests {
   /// proves it writes both preferences, override first. This pins that the page still goes through it.
   @Test("choosing a microphone still writes both preferences, through the shared owner")
   func selectionWritesBothPreferences() throws {
-    let writes = Self.setterAssignments(binding: "inputDeviceSelection", in: try Self.source(Self.audioPath))
+    let writes = Self.setterAssignments(binding: "inputDeviceSelection", in: try Self.source(Self.modelPath))
     // #3486: the setter first refuses a device that is no longer plugged in.
     #expect(
       writes == [
@@ -35,17 +39,32 @@ struct MicrophoneSettingsWiringTests {
 
   @Test("the page describes the device from the one shared resolver")
   func oneResolver() throws {
-    let calls = Self.calls(named: "InputSocket.socketDevice", in: try Self.source(Self.audioPath))
+    let calls = Self.calls(named: "InputSocket.socketDevice", in: try Self.source(Self.modelPath))
     #expect(calls.count == 1, "resolver calls: \(calls)")
     let call = try #require(calls.first)
     #expect(call.labels == ["preferredInputDeviceIDOverride", "devices", "resolvedAutoInputDeviceID"])
-    #expect(call.bindings == ["socketDevice", "body"])
+    #expect(call.bindings == ["socketDevice"])
     #expect(
       call.arguments == [
         "settingsManager.preferredInputDeviceIDOverride",
-        "audioDeviceList.availableInputDevices",
+        "devices",
         "AudioDeviceEnumerator.resolvedAutoInputDeviceID",
       ])
+    // The page itself no longer resolves; it builds the shared model once, from the live list.
+    #expect(Self.calls(named: "InputSocket.socketDevice", in: try Self.source(Self.audioPath)).isEmpty)
+    let models = Self.calls(named: "MicrophonePickerModel", in: try Self.source(Self.audioPath))
+    #expect(models.count == 1, "model builds: \(models)")
+    let model = try #require(models.first)
+    #expect(model.labels == ["settingsManager", "devices"])
+    #expect(model.arguments == ["settingsManager", "audioDeviceList.availableInputDevices"])
+    #expect(model.bindings == ["microphone", "body"])
+    // The picker reads all four of its arguments from that model, so the guarded selection
+    // cannot be swapped for an unguarded one beside an unused model.
+    let pickers = Self.calls(named: "MicrophoneDevicePicker", in: try Self.source(Self.audioPath))
+    #expect(pickers.count == 1, "pickers: \(pickers)")
+    let picker = try #require(pickers.first)
+    #expect(picker.labels == ["model"])
+    #expect(picker.arguments == ["microphone"])
   }
 
   @Test("a different resolver, or the right call in the wrong place, is seen")
@@ -81,10 +100,11 @@ struct MicrophoneSettingsWiringTests {
     let tree = try Self.source(Self.audioPath)
     let text = Self.codeOnly(tree)
     #expect(
-      text.contains(
+      Self.codeOnly(try Self.source(Self.modelPath)).contains(
         "letmultiInputDevice=socketDevice.flatMap{devicein"
           + "InputChannelSettings.offersChoice(uid:device.uid,"
           + "inputChannelCount:device.inputChannelCount)?device:nil}"))
+    #expect(text.contains("ifletdevice=microphone.multiInputDevice{"))
     #expect(text.contains("ifdevice.inputChannelCount<=6"))
     let writes = Self.setterAssignments(binding: "socketSelection", in: tree)
     #expect(

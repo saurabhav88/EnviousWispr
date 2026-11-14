@@ -144,6 +144,74 @@ extension Color {
   /// Onboarding card borders.
   static let obBorder = stDynamic(
     lightRGB: (0.541, 0.169, 0.886, 0.06), darkRGB: (0.722, 0.667, 0.839, 0.14))
+  // First-run Setup
+  /// Setup quiet text (eyebrows, hints). Mockup t3, raised from obTextTertiary to pass 4.5:1 on obSurface and obCardBg in both modes.
+  static let firstRunTextTertiary = stDynamic(
+    lightRGB: (0.4, 0.345, 0.502, 1), darkRGB: (0.627, 0.596, 0.714, 1))
+  /// Setup success text (key valid, checks). Mockup success-text, 4.5:1 on light cards.
+  static let firstRunSuccessText = stDynamic(
+    lightRGB: (0.0, 0.459, 0.29, 1), darkRGB: (0.361, 0.788, 0.604, 1))
+  /// Setup error text (failed key check, download stopped). Mockup error-text, 4.5:1.
+  static let firstRunErrorText = stDynamic(
+    lightRGB: (0.784, 0.118, 0.192, 1), darkRGB: (0.937, 0.486, 0.537, 1))
+  /// Setup primary button fill while hovered.
+  static let firstRunButtonHover = stDynamic(
+    lightRGB: (0.169, 0.133, 0.251, 1), darkRGB: (0.486, 0.38, 0.871, 1))
+  /// Setup primary button fill while it cannot be pressed.
+  static let firstRunButtonDisabled = stDynamic(
+    lightRGB: (0.89, 0.871, 0.925, 1), darkRGB: (0.212, 0.188, 0.278, 1))
+  /// Text on firstRunButtonDisabled (4.26:1 in both modes; disabled controls are exempt from WCAG 1.4.3, kept readable).
+  static let firstRunButtonDisabledText = stDynamic(
+    lightRGB: (0.435, 0.38, 0.537, 1), darkRGB: (0.604, 0.573, 0.69, 1))
+  /// Text or icon on an obAccent fill (selected tab, step dot).
+  static let firstRunOnAccent = stDynamic(
+    lightRGB: (1.0, 1.0, 1.0, 1), darkRGB: (0.082, 0.071, 0.11, 1))
+  /// Setup accent wash (selected card, greeting bubble). Dark alpha 0.12 instead of obAccentSoft 0.16 so text on it keeps 4.5:1.
+  static let firstRunAccentSoft = stDynamic(
+    lightRGB: (0.486, 0.227, 0.929, 0.1), darkRGB: (0.655, 0.545, 0.98, 0.12))
+  /// Setup hairline (mockup --rule): unreached step-strip segments, dividers and keycap edges. obBorder (accent at 6%) is too faint for these.
+  static let firstRunRule = stDynamic(
+    lightRGB: (0.0, 0.0, 0.0, 0.1), darkRGB: (1.0, 1.0, 1.0, 0.12))
+  // First-run film (film scenes only)
+  /// Closing film Mac desktop (#4528 chunk E): wallpaper gradient, top-left stop (mockup --wall, 160deg).
+  static let firstRunFilmWallTop = stDynamic(
+    lightRGB: (0.796, 0.725, 0.965, 1.0), darkRGB: (0.173, 0.137, 0.337, 1.0))
+  /// Film wallpaper gradient, middle stop at 55% (mockup --wall).
+  static let firstRunFilmWallMid = stDynamic(
+    lightRGB: (0.604, 0.722, 0.949, 1.0), darkRGB: (0.114, 0.169, 0.341, 1.0))
+  /// Film wallpaper gradient, bottom-right stop (mockup --wall).
+  static let firstRunFilmWallBottom = stDynamic(
+    lightRGB: (0.953, 0.761, 0.855, 1.0), darkRGB: (0.231, 0.129, 0.251, 1.0))
+  /// Film menu bar fill over the wallpaper (mockup --menubar).
+  static let firstRunFilmMenuBar = stDynamic(
+    lightRGB: (1, 1, 1, 0.55), darkRGB: (0.118, 0.102, 0.157, 0.6))
+  /// Film menu bar text and the held-key label (mockup --menuink).
+  static let firstRunFilmMenuInk = stDynamic(
+    lightRGB: (0.114, 0.106, 0.133, 1.0), darkRGB: (0.933, 0.918, 0.957, 1.0))
+  /// Film Dock shelf fill (mockup --dockbg).
+  static let firstRunFilmDock = stDynamic(
+    lightRGB: (1, 1, 1, 0.45), darkRGB: (0.157, 0.141, 0.204, 0.55))
+  /// Film active window close light (gen_film.py lights nth-child(1) #FF5F57).
+  static let firstRunFilmLightRed = stDynamic(
+    lightRGB: (1.0, 0.373, 0.341, 1.0), darkRGB: (1.0, 0.373, 0.341, 1.0))
+  /// Film active window minimize light (gen_film.py lights nth-child(2) #FEBC2E).
+  static let firstRunFilmLightYellow = stDynamic(
+    lightRGB: (0.996, 0.737, 0.18, 1.0), darkRGB: (0.996, 0.737, 0.18, 1.0))
+  /// Film active window zoom light (gen_film.py lights nth-child(3) #28C840).
+  static let firstRunFilmLightGreen = stDynamic(
+    lightRGB: (0.157, 0.784, 0.251, 1.0), darkRGB: (0.157, 0.784, 0.251, 1.0))
+  /// Film Slack window sidebar (gen_film.py slack mwin #4A154B).
+  static let firstRunFilmSlack = stDynamic(
+    lightRGB: (0.29, 0.082, 0.294, 1.0), darkRGB: (0.29, 0.082, 0.294, 1.0))
+  /// Film wash behind the misheard word (mockup #fc56851c).
+  static let firstRunFilmMistakeWash = stDynamic(
+    lightRGB: (0.988, 0.337, 0.522, 0.11), darkRGB: (0.988, 0.337, 0.522, 0.11))
+  /// Film misheard word text (mockup #b12755).
+  static let firstRunFilmMistakeText = stDynamic(
+    lightRGB: (0.694, 0.153, 0.333, 1.0), darkRGB: (0.694, 0.153, 0.333, 1.0))
+  /// Film line through the misheard word (mockup #d4436b).
+  static let firstRunFilmMistakeStrike = stDynamic(
+    lightRGB: (0.831, 0.263, 0.42, 1.0), darkRGB: (0.831, 0.263, 0.42, 1.0))
 }
 
 // MARK: - Fonts (SF Pro)
@@ -177,6 +245,24 @@ extension Font {
   static let obCaptionSmall = Font.system(size: 11, weight: .regular)
   /// Onboarding label.
   static let obLabel = Font.system(size: 13, weight: .medium)
+  /// Setup big number (the speed card).
+  static let firstRunHero = Font.system(size: 64, weight: .heavy, design: .rounded)
+  /// Setup screen title.
+  static let firstRunDisplay = Font.system(size: 28, weight: .heavy, design: .rounded)
+  /// Setup card title and film caption title.
+  static let firstRunTitle = Font.system(size: 20, weight: .heavy, design: .rounded)
+  /// Setup practice sentence the person reads aloud.
+  static let firstRunSay = Font.system(size: 17, weight: .semibold)
+  /// Setup reading copy under a title.
+  static let firstRunBody = Font.system(size: 15, weight: .regular)
+  /// Setup primary button text (founder 2026-11-13).
+  static let firstRunButton = Font.system(size: 19, weight: .bold, design: .rounded)
+  /// Setup card name and option name.
+  static let firstRunLabel = Font.system(size: 15, weight: .semibold)
+  /// Setup card detail lines, hints and film caption subtitle.
+  static let firstRunCaption = Font.system(size: 13, weight: .regular)
+  /// Setup uppercase eyebrow and badge (RECOMMENDED).
+  static let firstRunEyebrow = Font.system(size: 11, weight: .semibold)
 }
 
 // MARK: - Layout (points)
@@ -260,4 +346,12 @@ enum DesignMotion {
   static let standard = Animation.easeInOut(duration: 0.3)
   /// Larger panels appearing or moving.
   static let gentle = Animation.easeInOut(duration: 0.35)
+  /// Setup screen entering (slide and fade).
+  ///
+  /// The approved mockup's --ease-out, cubic-bezier(.22,1,.36,1): fast start, long settle.
+  static let firstRunScreenIn = Animation.timingCurve(0.22, 1, 0.36, 1, duration: 0.32)
+  /// Setup card, caption or check rising into place.
+  ///
+  /// The approved mockup (the founder's source of truth, 2026-11-12) rises rows and cards with obRise 0.4s on cubic-bezier(.22,1,.36,1).
+  static let firstRunRise = Animation.timingCurve(0.22, 1, 0.36, 1, duration: 0.4)
 }

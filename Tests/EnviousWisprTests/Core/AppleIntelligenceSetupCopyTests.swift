@@ -29,7 +29,6 @@ struct AppleIntelligenceSetupCopyDriftTests {
     let copy = AppleIntelligenceSetupCopy.forOSMajorVersion(26)
     #expect(copy.title == "Apple Intelligence is turned off")
     #expect(copy.availabilityMessage == "Apple Intelligence is not enabled. Turn it on in System Settings > Apple Intelligence & Siri.")
-    #expect(copy.onboardingMessage == "Turn it on to enable free, on-device AI polish. Dictation works fine without it.")
     #expect(copy.leaveMessage == "Turn it on in System Settings, or pick another model.")
   }
 
@@ -38,7 +37,6 @@ struct AppleIntelligenceSetupCopyDriftTests {
     let copy = AppleIntelligenceSetupCopy.forOSMajorVersion(major)
     #expect(copy.title == "Apple Intelligence wasn't enabled")
     #expect(copy.availabilityMessage == "At the last check, macOS reported that Apple Intelligence wasn't enabled on this Mac. You can keep dictating or choose another model in Settings > AI Polish.")
-    #expect(copy.onboardingMessage == "Apple Intelligence wasn't enabled at the last check. You can keep dictating or choose another model in Settings > AI Polish. System Settings may not offer a fix.")
     #expect(copy.leaveMessage == "Apple Intelligence wasn't enabled at the last check. Pick another model, or leave without AI polish. System Settings may not offer a fix.")
   }
 }

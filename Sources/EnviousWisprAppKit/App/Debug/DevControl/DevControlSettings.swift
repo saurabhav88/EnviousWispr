@@ -347,7 +347,10 @@
       case .vadEnergyGate:
         return set(Codec.bool(value)) { settings.vadEnergyGate = $0 }
       case .onboardingState:
-        return set(Codec.raw(value, OnboardingState.self)) { settings.onboardingState = $0 }
+        return set(Codec.raw(value, OnboardingState.self)) {
+          // #4528: a reset goes through the one restart entry, which also deletes the checkpoint.
+          if $0 == .notStarted { settings.restartOnboarding() } else { settings.onboardingState = $0 }
+        }
       case .hasCompletedOnboarding:
         return set(Codec.bool(value)) { settings.hasCompletedOnboarding = $0 }
       case .cancelKeyCode:

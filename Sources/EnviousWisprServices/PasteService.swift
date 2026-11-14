@@ -1752,6 +1752,21 @@ public enum PasteService {
   /// signature match is trusted only once the ancestor chain is POSITIVELY
   /// verified clean of `AXWebArea`.
   ///
+  /// Practice targets are transient identifiers on an editor in this process only.
+  /// Never perform the identifier read in a foreign app or expose its value to telemetry.
+  package static func practiceEditorIdentifier(of element: AXUIElement) -> String? {
+    var pid: pid_t = 0
+    guard AXUIElementGetPid(element, &pid) == .success, pid == ProcessInfo.processInfo.processIdentifier
+    else { return nil }
+    var value: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(element, kAXIdentifierAttribute as CFString, &value) == .success,
+      let identifier = value as? String, identifier.hasPrefix(practiceEditorIdentifierPrefix)
+    else { return nil }
+    return identifier
+  }
+
+  package static let practiceEditorIdentifierPrefix = "EnviousWispr.Setup.Practice."
+
   /// Returns the MATCHED family rather than a bare `Bool` (#2297): the paste
   /// cascade needs to tell Chromium apart from Safari, which is unaffected by
   /// the Enter-navigation defect this exists to route around.

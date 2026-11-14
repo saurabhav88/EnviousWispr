@@ -149,6 +149,10 @@ COMPONENTS=(
   "libphonenumber phone-number metadata (bundled in PhoneNumberKit, copied into the app's cleanup resources)|v9.0.40 (9d77a671)|Apache-2.0|repo:Sources/EnviousWisprPostProcessing/Resources/libphonenumber-LICENSE.txt|https://github.com/google/libphonenumber|"
   "NeMo text-processing (German number word lists, lexical data only)|r1.2.0 (7efa127d)|Apache-2.0|repo:scripts/itn/sources/nemo/LICENSE|https://github.com/NVIDIA/NeMo-text-processing|"
   "Unicode CLDR (German rule-based number format data, lexical data only)|release-48-2 (11299982)|Unicode-3.0 (Unicode License v3)|repo:scripts/itn/sources/cldr/LICENSE|https://github.com/unicode-org/cldr|"
+  # #4528: the Setup closing film's app logos (Resources/app-logo-*.png) are rendered from
+  # SVGL's SVG files by scripts/design/fetch-app-logos.py at this pinned commit. The marks
+  # belong to their owners; SVGL's MIT licence is vendored beside the pictures.
+  "SVGL (brand logo SVGs, rendered as the Setup film's app logos; the marks belong to their owners)|90f6de70|MIT|repo:Sources/EnviousWisprAppKit/Resources/svgl-LICENSE.txt|https://github.com/pheralb/svgl|"
 )
 
 # --- Cross-check the DIRECT-dep coverage against Package.resolved (Codex #2) ---

@@ -105,14 +105,6 @@ struct LocalEngineDescriptorTests {
     #expect(s1.primaryAction != eg1.primaryAction, "one engine's row is naming the other")
   }
 
-  /// The 8 GB warning belonged to EG-1 and giving it to S1-mini would be noise that
-  /// teaches users to ignore the real one. EG-1 left this card (#4473), so only the
-  /// S1-mini side remains here.
-  @Test("S1-mini does not carry EG-1's low-memory warning")
-  func s1MiniHasNoLowMemoryNote() {
-    #expect(!LocalEngineDescriptor.s1Mini.showsLowMemoryNote)
-  }
-
   /// The rail falls back to an "S1" monogram when a mark will not render, and
   /// that fallback is SILENT — a broken asset looks like a design choice. So
   /// the mark is asserted to actually produce an image.

@@ -1119,61 +1119,6 @@ import EnviousWisprAppKitTestSupport
       file: "Sources/EnviousWisprPipeline/RecordingSessionKernel.swift", matcher: "warmUp",
       text: "try await adapter.warmUp(modelReceipt: nil)", classification: .gated),
 
-    // MARK: OnboardingV2View — `startSetup(warmUp:settings:)`'s bare
-    // `await warmUp()` invokes a LOCAL PARAMETER (`warmUp: @MainActor ()
-    // async -> EngineWarmupOutcome`), not `ASRBackend.warmUp() async throws`
-    // directly — the visitor cannot distinguish a bare call to a local
-    // closure parameter from a bare call to a same-type instance method,
-    // both being `DeclReferenceExprSyntax`. Codex round 2 correction: its one
-    // real caller (`OnboardingV2View.swift:546`) supplies
-    // `DictationRuntime.ensureActiveEngineWarmForOnboarding()`, which routes
-    // through `KernelDictationDriver.ensureEngineWarm(reason:)` to the
-    // already-counted, `gated` `adapter.warmUp()` call above — so this DOES
-    // touch the ASR subsystem, via the callee re-acquiring (transitively)
-    // the same claim regardless of how the closure got here.
-    // `structurallySafe` category (c): reached only through a chain whose
-    // real engine touch re-acquires its own claim internally.
-    CallSite(
-      file: "Sources/EnviousWisprAppKit/Views/Onboarding/OnboardingV2View.swift",
-      matcher: "warmUp", text: "let outcome = await warmUp()",
-      classification: .structurallySafe),
-    // The one newly measured reference under the council-approved contract
-    // pivot (Codex plan-review r1 predicted this exact site): one step
-    // EARLIER in the same forwarding chain as the entry directly above —
-    // `kickSetupIfNeeded`'s own `warmUp` parameter (same local-parameter
-    // coincidental-name reasoning) is passed along to `startSetup`, whose
-    // body is the sibling entry immediately above. Same sole real wiring,
-    // same classification.
-    CallSite(
-      file: "Sources/EnviousWisprAppKit/Views/Onboarding/OnboardingV2View.swift",
-      matcher: "warmUp", text: "await self.startSetup(warmUp: warmUp, settings: settings)",
-      classification: .structurallySafe),
-
-    // #2196 — the onboarding engine warm GATE, which is a second caller of the
-    // same seam the checklist above already uses, so these two entries are the
-    // gate's copies of the two directly above and carry the same reasoning.
-    // Verified rather than assumed: the gate's sole production caller supplies
-    // the same closure literal the checklist's does
-    // (`{ await dictationRuntime.ensureActiveEngineWarmForOnboarding() }`, in
-    // `OnboardingV2View`'s `.task`), which routes through
-    // `KernelDictationDriver.ensureEngineWarm(reason:)` to the already-counted
-    // `gated` `adapter.warmUp()`. `structurallySafe` category (c): the real
-    // engine touch re-acquires its own claim internally on every invocation,
-    // whatever chain the closure travelled to get here.
-    //
-    // The first entry duplicates the text of `startSetup`'s bare call, which is
-    // why it is a SECOND array entry rather than an edit — multiplicity is the
-    // signal, so a future removal of either one has to be accounted for here.
-    CallSite(
-      file: "Sources/EnviousWisprAppKit/Views/Onboarding/OnboardingV2View.swift",
-      matcher: "warmUp", text: "let outcome = await warmUp()",
-      classification: .structurallySafe),
-    CallSite(
-      file: "Sources/EnviousWisprAppKit/Views/Onboarding/OnboardingV2View.swift",
-      matcher: "warmUp",
-      text: "await self.runWarmingGate(warmUp: warmUp, displayFloor: displayFloor)",
-      classification: .structurallySafe),
-
     // MARK: WhisperEngineAdapter
     // `recoverFromWedge()`'s deadline-bounded unload — this file's own doc
     // comment marks it "§3.2, structurally-safe row": called only by the
@@ -1463,15 +1408,13 @@ import EnviousWisprAppKitTestSupport
       file: "Sources/EnviousWisprAppKit/App/BenchmarkSuite.swift", matcher: "cancelStreaming",
       text: "await asrManager.cancelStreaming()", classification: .gated),
 
-    // MARK: DictationRuntime / KernelDictationDriver — the onboarding
-    // install Cancel button's seam (#1388 step 3). Race-safe by
-    // construction, not by claim: "the adapter's in-flight gate and the
-    // delivery controller's completion-wins-the-race handling both make it a
-    // no-op" against a just-completed load — `structurallySafe` category (c).
+    // #4528 P2 (plan M70): the new Setup's cancel for the warm-up it requested, bound to the
+    // driver captured when that warm-up was requested (`DictationRuntime.onboardingWarmup()`),
+    // so it can never reach a newer engine's load; a just-completed load makes it a no-op.
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/DictationRuntime/DictationRuntime.swift",
       matcher: "cancelSessionlessWarmup",
-      text: "await starter.activeDriver.cancelSessionlessWarmup()",
+      text: "cancel: { await driver.cancelSessionlessWarmup() })",
       classification: .structurallySafe),
     CallSite(
       file: "Sources/EnviousWisprPipeline/KernelDictationDriver.swift",

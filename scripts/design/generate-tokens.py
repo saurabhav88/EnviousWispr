@@ -60,8 +60,8 @@ FAMILIES = {"reasons", "colors", "fonts", "layout", "motion"}
 COLOR_FIELDS = {"light", "dark", "group", "usage", "note"}
 FONT_FIELDS = {"size", "weight", "design", "usage", "note"}
 LAYOUT_FIELDS = {"value", "usage", "note"}
-MOTION_FIELDS = {"curve", "duration", "usage", "note"}
-CURVES = {"easeIn", "easeOut", "easeInOut", "linear"}
+MOTION_FIELDS = {"curve", "points", "duration", "usage", "note"}
+CURVES = {"easeIn", "easeOut", "easeInOut", "linear", "timingCurve"}
 REASON_SECTIONS = {"colors", "fonts"}
 
 
@@ -243,7 +243,21 @@ def render(data: dict) -> str:
         if not 0 < entry["duration"] <= 5:
             raise BookError(f"{key}: duration {entry['duration']} is outside 0...5 seconds")
         out += doc_lines(entry, "  ")
-        out.append(f"  static let {member} = Animation.{entry['curve']}(duration: {duration})")
+        if entry["curve"] == "timingCurve":
+            # A cubic Bezier like CSS cubic-bezier(x1, y1, x2, y2): the points live in DESIGN.md.
+            points = entry.get("points")
+            if not isinstance(points, list) or len(points) != 4:
+                raise BookError(f"{key}: timingCurve needs points [x1, y1, x2, y2]")
+            values = [number(p, f"{key}.points") for p in points]
+            if not (0 <= points[0] <= 1 and 0 <= points[2] <= 1):
+                raise BookError(f"{key}: timingCurve x1 and x2 must be within 0...1")
+            out.append(
+                f"  static let {member} = Animation.timingCurve("
+                f"{', '.join(values)}, duration: {duration})")
+        else:
+            if "points" in entry:
+                raise BookError(f"{key}: points apply only to timingCurve")
+            out.append(f"  static let {member} = Animation.{entry['curve']}(duration: {duration})")
     out += ["}", ""]
     return "\n".join(out).rstrip("\n") + "\n"
 
@@ -295,7 +309,11 @@ def render_css_section(data: dict) -> str:
     for key, entry in data["motion"].items():
         name = f"--ew-motion-{kebab(key.split('.')[1])}"
         rest.append(f"  {name}-duration: {number(entry['duration'], key)}s;")
-        rest.append(f"  {name}-curve: {CSS_CURVES[entry['curve']]};")
+        if entry["curve"] == "timingCurve":
+            curve = "cubic-bezier(" + ", ".join(number(p, key) for p in entry["points"]) + ")"
+        else:
+            curve = CSS_CURVES[entry["curve"]]
+        rest.append(f"  {name}-curve: {curve};")
     body = [CSS_BEGIN,
             "/* Light values; also the explicit light choice. */",
             ":root, :root[data-theme=\"light\"] {", *light, *rest, "}",

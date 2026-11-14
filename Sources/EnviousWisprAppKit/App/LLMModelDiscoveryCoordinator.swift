@@ -189,7 +189,8 @@ final class LLMModelDiscoveryCoordinator {
   }
 
   func validateSavedCredential(
-    _ value: String, revision: UInt64?, admission: CredentialAdmission, settings: SettingsManager
+    _ value: String, revision: UInt64?, admission: CredentialAdmission, settings: SettingsManager,
+    setupProgress: SetupProgress? = nil
   ) async {
     guard admissionIsCurrent(admission, settings: settings) else { return }
     if savedKeyPresence != nil {
@@ -197,8 +198,16 @@ final class LLMModelDiscoveryCoordinator {
     }
     await validateKeyAndDiscoverModels(
       provider: admission.provider, settings: settings, surface: admission.surface, source: .save,
-      savedCredential: SavedCredential(value: value, revision: revision, admission: admission))
+      savedCredential: SavedCredential(value: value, revision: revision, admission: admission),
+      setupProgress: setupProgress)
   }
+
+  /// Setup observes actual discovery milestones. The callback never carries credential bytes.
+  enum SetupPhase: Equatable { case listingModels, probingModels }
+  typealias SetupProgress = @MainActor @Sendable (SetupPhase, UInt64?) -> Void
+  typealias SetupDiscovery = @MainActor (
+    LLMProvider, String, @escaping @Sendable () async -> Void
+  ) async throws -> [LLMModelInfo]
 
   private let keychainManager: KeychainManager
   private let credentialAccess: CredentialAccessLane
@@ -221,6 +230,7 @@ final class LLMModelDiscoveryCoordinator {
   /// The network call, injectable so a test drives every publication path below with a
   /// scripted answer instead of a provider. Required: production passes a closure that builds
   /// `LLMModelDiscovery` around the cloud model list read once per discovery run (#4353 D6).
+  private let setupDiscovery: SetupDiscovery?
   private let discoverModels: @MainActor (LLMProvider, String) async throws -> [LLMModelInfo]
 
   init(
@@ -228,6 +238,7 @@ final class LLMModelDiscoveryCoordinator {
     savedKeyPresence: SavedKeyPresence? = nil,
     credentialAccess: CredentialAccessLane = .live,
     validationEmitter: ValidationEmitter? = nil,
+    setupDiscovery: SetupDiscovery? = nil,
     discoverModels: @escaping @MainActor (LLMProvider, String) async throws -> [LLMModelInfo]
   ) {
     self.keychainManager = keychainManager
@@ -235,6 +246,7 @@ final class LLMModelDiscoveryCoordinator {
     self.validationEmitter = validationEmitter
     self.cacheDefaults = cacheDefaults
     self.savedKeyPresence = savedKeyPresence
+    self.setupDiscovery = setupDiscovery
     self.discoverModels = discoverModels
   }
 
@@ -284,7 +296,8 @@ final class LLMModelDiscoveryCoordinator {
     provider: LLMProvider, settings: SettingsManager,
     surface: ProviderSetupSurface = .dictation,
     source: ApiKeyValidationSource = .modelDiscovery,
-    savedCredential: SavedCredential? = nil
+    savedCredential: SavedCredential? = nil,
+    setupProgress: SetupProgress? = nil
   ) async {
     // Every earlier request is dismissed here, so none of their `.checking` markers can
     // outlive them (a superseded check never publishes again).
@@ -406,7 +419,21 @@ final class LLMModelDiscoveryCoordinator {
     }
 
     do {
-      let models = try await discoverModels(provider, apiKey)
+      let models: [LLMModelInfo]
+      if let setupProgress, let setupDiscovery {
+        // Bind the progress closure to the request that actually owns the saved key.
+        let revision = revisionAtStart
+        setupProgress(.listingModels, revision)
+        models = try await setupDiscovery(provider, apiKey) { @MainActor [weak self] in
+          guard let self, self.discoveryGeneration == generation,
+            self.credentialStillCurrent(provider, revision),
+            surface.selectionRevision(in: settings) == selectionRevisionAtStart
+          else { return }
+          setupProgress(.probingModels, revision)
+        }
+      } else {
+        models = try await discoverModels(provider, apiKey)
+      }
       guard requestStillCurrent() else { return }
       discoveredModels = models
       if provider != .appleIntelligence {
@@ -427,6 +454,7 @@ final class LLMModelDiscoveryCoordinator {
         modelCount: models.count,
         discoveryOutcome: models.isEmpty ? "zero_models" : "models_found")
 
+      guard setupProgress == nil else { return }
       switch surface {
       case .dictation:
         settings.applyDiscoveredModels(models, for: provider)

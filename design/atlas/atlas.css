@@ -37,6 +37,28 @@
   --ew-ob-error: rgb(90.2% 14.5% 22.7% / 100%);
   --ew-ob-error-soft: rgb(90.2% 14.5% 22.7% / 10%);
   --ew-ob-border: rgb(54.1% 16.9% 88.6% / 6%);
+  --ew-first-run-text-tertiary: rgb(40% 34.5% 50.2% / 100%);
+  --ew-first-run-success-text: rgb(0% 45.9% 29% / 100%);
+  --ew-first-run-error-text: rgb(78.4% 11.8% 19.2% / 100%);
+  --ew-first-run-button-hover: rgb(16.9% 13.3% 25.1% / 100%);
+  --ew-first-run-button-disabled: rgb(89% 87.1% 92.5% / 100%);
+  --ew-first-run-button-disabled-text: rgb(43.5% 38% 53.7% / 100%);
+  --ew-first-run-on-accent: rgb(100% 100% 100% / 100%);
+  --ew-first-run-accent-soft: rgb(48.6% 22.7% 92.9% / 10%);
+  --ew-first-run-rule: rgb(0% 0% 0% / 10%);
+  --ew-first-run-film-wall-top: rgb(79.6% 72.5% 96.5% / 100%);
+  --ew-first-run-film-wall-mid: rgb(60.4% 72.2% 94.9% / 100%);
+  --ew-first-run-film-wall-bottom: rgb(95.3% 76.1% 85.5% / 100%);
+  --ew-first-run-film-menu-bar: rgb(100% 100% 100% / 55%);
+  --ew-first-run-film-menu-ink: rgb(11.4% 10.6% 13.3% / 100%);
+  --ew-first-run-film-dock: rgb(100% 100% 100% / 45%);
+  --ew-first-run-film-light-red: rgb(100% 37.3% 34.1% / 100%);
+  --ew-first-run-film-light-yellow: rgb(99.6% 73.7% 18% / 100%);
+  --ew-first-run-film-light-green: rgb(15.7% 78.4% 25.1% / 100%);
+  --ew-first-run-film-slack: rgb(29% 8.2% 29.4% / 100%);
+  --ew-first-run-film-mistake-wash: rgb(98.8% 33.7% 52.2% / 11%);
+  --ew-first-run-film-mistake-text: rgb(69.4% 15.3% 33.3% / 100%);
+  --ew-first-run-film-mistake-strike: rgb(83.1% 26.3% 42% / 100%);
   --ew-font-st-section-header-size: 14px;
   --ew-font-st-section-header-weight: 600;
   --ew-font-st-section-header-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
@@ -73,6 +95,33 @@
   --ew-font-ob-label-size: 13px;
   --ew-font-ob-label-weight: 500;
   --ew-font-ob-label-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  --ew-font-first-run-hero-size: 64px;
+  --ew-font-first-run-hero-weight: 800;
+  --ew-font-first-run-hero-family: ui-rounded, "SF Pro Rounded", -apple-system, BlinkMacSystemFont, sans-serif;
+  --ew-font-first-run-display-size: 28px;
+  --ew-font-first-run-display-weight: 800;
+  --ew-font-first-run-display-family: ui-rounded, "SF Pro Rounded", -apple-system, BlinkMacSystemFont, sans-serif;
+  --ew-font-first-run-title-size: 20px;
+  --ew-font-first-run-title-weight: 800;
+  --ew-font-first-run-title-family: ui-rounded, "SF Pro Rounded", -apple-system, BlinkMacSystemFont, sans-serif;
+  --ew-font-first-run-say-size: 17px;
+  --ew-font-first-run-say-weight: 600;
+  --ew-font-first-run-say-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  --ew-font-first-run-body-size: 15px;
+  --ew-font-first-run-body-weight: 400;
+  --ew-font-first-run-body-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  --ew-font-first-run-button-size: 19px;
+  --ew-font-first-run-button-weight: 700;
+  --ew-font-first-run-button-family: ui-rounded, "SF Pro Rounded", -apple-system, BlinkMacSystemFont, sans-serif;
+  --ew-font-first-run-label-size: 15px;
+  --ew-font-first-run-label-weight: 600;
+  --ew-font-first-run-label-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  --ew-font-first-run-caption-size: 13px;
+  --ew-font-first-run-caption-weight: 400;
+  --ew-font-first-run-caption-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  --ew-font-first-run-eyebrow-size: 11px;
+  --ew-font-first-run-eyebrow-weight: 600;
+  --ew-font-first-run-eyebrow-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
   --ew-settings-layout-section-radius: 14px;
   --ew-settings-layout-row-padding-h: 14px;
   --ew-settings-layout-row-padding-v: 12px;
@@ -106,6 +155,10 @@
   --ew-motion-standard-curve: ease-in-out;
   --ew-motion-gentle-duration: 0.35s;
   --ew-motion-gentle-curve: ease-in-out;
+  --ew-motion-first-run-screen-in-duration: 0.32s;
+  --ew-motion-first-run-screen-in-curve: cubic-bezier(0.22, 1, 0.36, 1);
+  --ew-motion-first-run-rise-duration: 0.4s;
+  --ew-motion-first-run-rise-curve: cubic-bezier(0.22, 1, 0.36, 1);
 }
 /* Dark values when the system is dark and no light choice is set. */
 @media (prefers-color-scheme: dark) {
@@ -146,6 +199,28 @@
     --ew-ob-error: rgb(93.7% 48.6% 53.7% / 100%);
     --ew-ob-error-soft: rgb(93.7% 48.6% 53.7% / 16%);
     --ew-ob-border: rgb(72.2% 66.7% 83.9% / 14%);
+    --ew-first-run-text-tertiary: rgb(62.7% 59.6% 71.4% / 100%);
+    --ew-first-run-success-text: rgb(36.1% 78.8% 60.4% / 100%);
+    --ew-first-run-error-text: rgb(93.7% 48.6% 53.7% / 100%);
+    --ew-first-run-button-hover: rgb(48.6% 38% 87.1% / 100%);
+    --ew-first-run-button-disabled: rgb(21.2% 18.8% 27.8% / 100%);
+    --ew-first-run-button-disabled-text: rgb(60.4% 57.3% 69% / 100%);
+    --ew-first-run-on-accent: rgb(8.2% 7.1% 11% / 100%);
+    --ew-first-run-accent-soft: rgb(65.5% 54.5% 98% / 12%);
+    --ew-first-run-rule: rgb(100% 100% 100% / 12%);
+    --ew-first-run-film-wall-top: rgb(17.3% 13.7% 33.7% / 100%);
+    --ew-first-run-film-wall-mid: rgb(11.4% 16.9% 34.1% / 100%);
+    --ew-first-run-film-wall-bottom: rgb(23.1% 12.9% 25.1% / 100%);
+    --ew-first-run-film-menu-bar: rgb(11.8% 10.2% 15.7% / 60%);
+    --ew-first-run-film-menu-ink: rgb(93.3% 91.8% 95.7% / 100%);
+    --ew-first-run-film-dock: rgb(15.7% 14.1% 20.4% / 55%);
+    --ew-first-run-film-light-red: rgb(100% 37.3% 34.1% / 100%);
+    --ew-first-run-film-light-yellow: rgb(99.6% 73.7% 18% / 100%);
+    --ew-first-run-film-light-green: rgb(15.7% 78.4% 25.1% / 100%);
+    --ew-first-run-film-slack: rgb(29% 8.2% 29.4% / 100%);
+    --ew-first-run-film-mistake-wash: rgb(98.8% 33.7% 52.2% / 11%);
+    --ew-first-run-film-mistake-text: rgb(69.4% 15.3% 33.3% / 100%);
+    --ew-first-run-film-mistake-strike: rgb(83.1% 26.3% 42% / 100%);
   }
 }
 /* The explicit dark choice. */
@@ -186,6 +261,28 @@
   --ew-ob-error: rgb(93.7% 48.6% 53.7% / 100%);
   --ew-ob-error-soft: rgb(93.7% 48.6% 53.7% / 16%);
   --ew-ob-border: rgb(72.2% 66.7% 83.9% / 14%);
+  --ew-first-run-text-tertiary: rgb(62.7% 59.6% 71.4% / 100%);
+  --ew-first-run-success-text: rgb(36.1% 78.8% 60.4% / 100%);
+  --ew-first-run-error-text: rgb(93.7% 48.6% 53.7% / 100%);
+  --ew-first-run-button-hover: rgb(48.6% 38% 87.1% / 100%);
+  --ew-first-run-button-disabled: rgb(21.2% 18.8% 27.8% / 100%);
+  --ew-first-run-button-disabled-text: rgb(60.4% 57.3% 69% / 100%);
+  --ew-first-run-on-accent: rgb(8.2% 7.1% 11% / 100%);
+  --ew-first-run-accent-soft: rgb(65.5% 54.5% 98% / 12%);
+  --ew-first-run-rule: rgb(100% 100% 100% / 12%);
+  --ew-first-run-film-wall-top: rgb(17.3% 13.7% 33.7% / 100%);
+  --ew-first-run-film-wall-mid: rgb(11.4% 16.9% 34.1% / 100%);
+  --ew-first-run-film-wall-bottom: rgb(23.1% 12.9% 25.1% / 100%);
+  --ew-first-run-film-menu-bar: rgb(11.8% 10.2% 15.7% / 60%);
+  --ew-first-run-film-menu-ink: rgb(93.3% 91.8% 95.7% / 100%);
+  --ew-first-run-film-dock: rgb(15.7% 14.1% 20.4% / 55%);
+  --ew-first-run-film-light-red: rgb(100% 37.3% 34.1% / 100%);
+  --ew-first-run-film-light-yellow: rgb(99.6% 73.7% 18% / 100%);
+  --ew-first-run-film-light-green: rgb(15.7% 78.4% 25.1% / 100%);
+  --ew-first-run-film-slack: rgb(29% 8.2% 29.4% / 100%);
+  --ew-first-run-film-mistake-wash: rgb(98.8% 33.7% 52.2% / 11%);
+  --ew-first-run-film-mistake-text: rgb(69.4% 15.3% 33.3% / 100%);
+  --ew-first-run-film-mistake-strike: rgb(83.1% 26.3% 42% / 100%);
 }
 /* END GENERATED. Hand-written part classes below use only the variables above. */
 

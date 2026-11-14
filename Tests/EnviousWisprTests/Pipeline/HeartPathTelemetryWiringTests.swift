@@ -631,9 +631,6 @@ private final class NoOpASRManager: ASRManagerInterface {
   var onVendorDecodeChunkScheduled: (@MainActor @Sendable () -> Void)?
   var onTranscriptionProgress: (@MainActor @Sendable (Double) -> Void)?
   var isStreaming: Bool = false
-  var downloadProgress: Double = 0
-  var downloadPhase: String = "idle"
-  var downloadDetail: String = ""
   var onServiceInterrupted: (() -> Void)?
   var loadProgressTickReporter: (@MainActor @Sendable (Date?, String) -> Void)?
 

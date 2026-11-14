@@ -2028,8 +2028,14 @@ final class ModelDeliveryHome {
   /// stop it, and cancelling starts no network work. Same shape as
   /// `DeliveredModelHandle.cancelActiveFetch()`
   /// (`DeliveredModelHandle.swift (cancelActiveFetch)`), which is ungated for that stated reason.
-  func resumeParakeetDownload() {
-    guard let handle = parakeetHandle else { return }
+  ///
+  /// #4528 M49: returns the request's own answer for a caller that must tell a refusal from a
+  /// download (Setup). Nil = refused before any work; the task's value is `.refused` for every
+  /// later refusal (kill switch re-read, claim, location, attempt budget) or `.attempted` with
+  /// the attempt's outcome. Settings ignores it, as before.
+  @discardableResult
+  func resumeParakeetDownload() -> Task<ParakeetDownloadAnswer, Never>? {
+    guard let handle = parakeetHandle else { return nil }
     guard handle.isEnabled() else {
       parakeetResumeRefusalsForTests += 1
       // A DEBUG diagnostic, and it is worth being exact about that rather than
@@ -2050,10 +2056,10 @@ final class ModelDeliveryHome {
             + "(modelDelivery.parakeet.enabled = false)",
           level: .info, category: "Delivery")
       }
-      return
+      return nil
     }
-    Task { [weak self] in
-      guard let self else { return }
+    return Task { [weak self] in
+      guard let self else { return .refused }
       // The re-read (see the doc comment above). Still BEFORE the claim, for the
       // same reason the synchronous one is: a refusal must not take the claim.
       guard handle.isEnabled() else {
@@ -2063,11 +2069,12 @@ final class ModelDeliveryHome {
             + "between the button and the download starting "
             + "(modelDelivery.parakeet.enabled = false)",
           level: .info, category: "Delivery")
-        return
+        return .refused
       }
       // #1707 Phase 3 (§3.2, row 17): hold a mutation claim for the FULL
       // download.
-      _ = await self.engineMutationScope.withClaim(site: "parakeetResumeDownload") {
+      let claim = await self.engineMutationScope.withClaim(site: "parakeetResumeDownload") {
+        () async -> ParakeetDownloadAnswer in
         // Cloud review P2: JOIN the launch migration before the attempt. Resume
         // called `ensureAvailable()` straight through, so pressing it while the
         // launch migration was still publishing put an attempt — which deletes
@@ -2075,17 +2082,25 @@ final class ModelDeliveryHome {
         // `ensureModelLocationReady()` is the single-flight door, so this waits
         // for that run rather than racing it, and `nil` from it is a refusal
         // this path must honour like any other.
-        guard await handle.ensureModelLocationReady() != nil else { return }
+        guard await handle.ensureModelLocationReady() != nil else { return .refused }
         // #3546: with an upgrade target the coordinator runs the fetch as a
         // counted foreground operation (progress, location, budget, Cancel).
         if let upgrade = self.parakeetUpgrade, upgrade.hasUpgradeTarget {
-          _ = await upgrade.fetchInForeground()
-        } else {
-          _ = await handle.ensureAvailable()
+          guard let outcome = await upgrade.fetchInForeground() else { return .refused }
+          return .attempted(outcome)
         }
+        return .attempted(await handle.ensureAvailable())
       }
+      if case .completed(let answer) = claim { return answer }
+      return .refused
     }
   }
+}
+
+/// #4528 M49: what an explicit Parakeet download request came to.
+enum ParakeetDownloadAnswer: Sendable {
+  case refused
+  case attempted(ModelDeliveryController.DeliveryOutcome)
 }
 
 /// The ONE authority for user-facing delivery-failure copy (D6 states

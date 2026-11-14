@@ -127,9 +127,6 @@ final class AppLifecycleCoordinator {
     hotkeyService: HotkeyService,
     applicationRelocationCoordinator: ApplicationRelocationCoordinator,
     bluetoothAwarenessPresenter: BluetoothAwarenessPresenter,
-    // #1176: captured in the onboarding-dismiss closure below (NOT stored — keeps
-    // this coordinator's stored properties lean).
-    onboardingProgress: OnboardingProgress,
     transcriptionCheckpointStore: TranscriptionCheckpointStore,
     batchDecodeFaultController: BatchDecodeFaultController? = nil,
     whisperMemoryPressure: (@MainActor () async -> Bool)? = nil,
@@ -163,22 +160,7 @@ final class AppLifecycleCoordinator {
     self.batchDecodeFaultController = batchDecodeFaultController
     self.whisperMemoryPressure = whisperMemoryPressure
     self.transcriptionCheckpointStore = transcriptionCheckpointStore
-    // Icon-refresh seam: the window coordinator's two onboarding-dismiss
-    // callsites route through this closure. Was wired in `AppDelegate.attach`
-    // before PR-B.4.
-    appWindowCoordinator.onOnboardingDismissed = {
-      [weak menuBarController, onboardingProgress, permissions] in
-      menuBarController?.updateIcon()
-      // #1176: the window closed before completion → record the abandon (deduped
-      // by the box's terminal guard, so a clean finish or a prior quit suppresses it).
-      onboardingProgress.emitAbandonIfInFlight(
-        reason: "window_closed",
-        micStatus: permissions.microphoneStatusString,
-        // Live read (not the cached `accessibilityGranted`): a grant made in System
-        // Settings just before this close may not have hit the poll yet (cloud Codex
-        // review r3). Pure no-prompt read, no side effects.
-        accessibilityStatus: permissions.accessibilityGrantedLive ? "granted" : "denied")
-    }
+
   }
 
   func runDidFinishLaunching() {

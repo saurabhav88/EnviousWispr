@@ -121,7 +121,7 @@ struct ClipboardIsolationFreezeTests {
   ///   PasteCascadeExecutor                             WRITE   constructor argument is checked below
   ///   AIAvailabilityCoordinator.copyDiagnosticsToClipboard  WRITE   here
   ///   PasteCascadeExecutor  (changeCount)              READ    harmless; reads clobber nothing
-  ///   DiagnosticsSettingsView, OnboardingV2View        WRITE   inside SwiftUI `body`, which a unit
+  ///   DiagnosticsSettingsView                          WRITE   inside SwiftUI `body`, which a unit
   ///                                                            test cannot practically invoke
   ///   ClipboardCleanup.beginTakeover(from:)            READ    #2465; boarded, and every test in
   ///                                                            `ClipboardCleanupTests` passes one

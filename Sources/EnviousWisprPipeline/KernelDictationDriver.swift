@@ -430,6 +430,13 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   @ObservationIgnored
   public var onDictationEndedForRecovery: (@MainActor () -> Void)?
 
+  /// #4537: fired once whenever an `ensureEngineWarm` call returns, whoever started it (launch
+  /// preload, cold press, Setup's warm-up, explicit retry, the engine coordinator's own warm).
+  /// The composition root binds it to the engine coordinator's status refresh: a warm-up the
+  /// coordinator did not start otherwise settles without republishing its status snapshot.
+  @ObservationIgnored
+  public var onEngineWarmSettled: (@MainActor () -> Void)?
+
   /// #1707 Phase 3 (§3.2) / #1741 Chunk 9 — the shared `EngineMutationScope`
   /// constructed once by the composition root, injected exactly like
   /// `onStateChange` above. Guards this driver's own `ensureEngineWarm(_:)`
@@ -542,7 +549,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
 
   /// Cold-boot warm-up coordinator (#879). The SINGLE shared entry every warm-up
   /// site routes through — launch (`WisprBootstrapper` for Parakeet,
-  /// `SetupCoordinator` for Whisper), onboarding (`OnboardingV2View`), engine
+  /// `SetupCoordinator` for Whisper), Setup, engine
   /// swap (`PipelineSettingsSync`), and the cold press (`RecordingStarter`) — so
   /// the readiness-check + single-flight + telemetry live in one place and can't
   /// drift. Reads the live `adapter.readiness` (the ONLY gate — no persisted
@@ -593,6 +600,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   }
 
   public func ensureEngineWarm(reason: EngineWarmupReason) async -> EngineWarmupOutcome {
+    defer { onEngineWarmSettled?() }
     let engine = adapter.engineIdentity.rawValue
     if adapter.readiness == .ready {
       if reason == .launch {
@@ -1097,6 +1105,26 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// the App layer's `dictation.completed` telemetry. LIVE pass-through from the
   /// kernel; never persisted. Reason strings only, never user content.
   public var lastStopReason: String? { kernel.lastStopReason }
+  /// The kernel's identity is assigned at admission, before its first active phase.
+  package var practiceTakeID: String { kernel.currentSessionID.raw.uuidString }
+
+  /// Read a terminal only when its identity agrees with the active or just-concluded take.
+  package var practiceTakeEvidence: PracticeTakeEvidence? {
+    guard let result = kernel.recordingOutcome, lastTakeID == practiceTakeID else { return nil }
+    switch result {
+    case .completed:
+      guard kernel.deliveredTranscript != nil else { return .failed }
+      let polish = outcome.polishTakeOutcome
+      return .delivered(
+        verifiedEditor: outcome.practiceVerifiedEditor,
+        copied: outcome.practiceCopiedToClipboard,
+        polished: polish?.takeID == lastTakeID && polish?.result == .polished)
+    case .discarded, .noSpeech, .asrEmptyDespiteAudio, .noTransport: return .noSpeech
+    case .cancelled: return .cancelled
+    case .failed, .audioInterrupted, .asrInterrupted: return .failed
+    }
+  }
+
   /// #1846: the id of the take that most recently CONCLUDED, for `dictation.completed`
   /// and its three sibling completion events. LIVE pass-through of a value the kernel
   /// FROZE at the accepted terminal — not a live read of the in-flight take key, which
@@ -1358,6 +1386,8 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
         outcome.polishDurationSeconds = 0
         outcome.pasteDurationSeconds = 0
         outcome.pasteResult = nil
+        outcome.practiceVerifiedEditor = nil
+        outcome.practiceCopiedToClipboard = false
         // #1785: these are written only inside the auto-paste branch, so without
         // clearing them here an auto-copy or no-copy recording would file the
         // PREVIOUS recording's insertion facts as its own.

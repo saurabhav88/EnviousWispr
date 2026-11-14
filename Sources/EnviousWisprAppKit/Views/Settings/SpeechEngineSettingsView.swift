@@ -846,12 +846,13 @@ struct SpeechEngineSettingsView: View {
   /// rather than hidden: a user who read about the feature should find out why
   /// they do not have it instead of concluding it was removed.
   /// When the user flips the Auto toggle off, we need a concrete ISO code
-  /// to lock to. Preserve the prior locked code if we have one (comes from
-  /// the W2 migration of `whisperKitLanguage`), otherwise default to English.
+  /// to lock to. Preserve the prior locked code if we have one; otherwise the Mac's own language
+  /// (#4528 B3, the Setup recommender's language contract), then the W2 migration of
+  /// `whisperKitLanguage`, then English. Each must be supported and honoured by the engine.
   private func currentOrDefaultLockCode() -> String {
     LanguageLockOptions.defaultLockCode(
       current: settings.languageMode,
-      candidate: settings.whisperKitLanguage,
+      candidates: [SetupAdvice.macLanguageCode, settings.whisperKitLanguage].compactMap { $0 },
       lockable: lockableLanguageCodes)
   }
 

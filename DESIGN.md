@@ -181,7 +181,29 @@ Edit values only here, then run `python3 scripts/design/generate-tokens.py`. Col
     "Color.obBorder": {
       "light": [0.541, 0.169, 0.886, 0.06], "dark": [0.722, 0.667, 0.839, 0.14],
       "group": "Onboarding borders", "usage": "Onboarding card borders."
-    }
+    },
+    "Color.firstRunTextTertiary": {"light": [0.4, 0.345, 0.502, 1], "dark": [0.627, 0.596, 0.714, 1], "group": "First-run Setup", "usage": "Setup quiet text (eyebrows, hints). Mockup t3, raised from obTextTertiary to pass 4.5:1 on obSurface and obCardBg in both modes."},
+    "Color.firstRunSuccessText": {"light": [0.0, 0.459, 0.29, 1], "dark": [0.361, 0.788, 0.604, 1], "group": "First-run Setup", "usage": "Setup success text (key valid, checks). Mockup success-text, 4.5:1 on light cards."},
+    "Color.firstRunErrorText": {"light": [0.784, 0.118, 0.192, 1], "dark": [0.937, 0.486, 0.537, 1], "group": "First-run Setup", "usage": "Setup error text (failed key check, download stopped). Mockup error-text, 4.5:1."},
+    "Color.firstRunButtonHover": {"light": [0.169, 0.133, 0.251, 1], "dark": [0.486, 0.38, 0.871, 1], "group": "First-run Setup", "usage": "Setup primary button fill while hovered."},
+    "Color.firstRunButtonDisabled": {"light": [0.89, 0.871, 0.925, 1], "dark": [0.212, 0.188, 0.278, 1], "group": "First-run Setup", "usage": "Setup primary button fill while it cannot be pressed."},
+    "Color.firstRunButtonDisabledText": {"light": [0.435, 0.38, 0.537, 1], "dark": [0.604, 0.573, 0.69, 1], "group": "First-run Setup", "usage": "Text on firstRunButtonDisabled (4.26:1 in both modes; disabled controls are exempt from WCAG 1.4.3, kept readable)."},
+    "Color.firstRunOnAccent": {"light": [1.0, 1.0, 1.0, 1], "dark": [0.082, 0.071, 0.11, 1], "group": "First-run Setup", "usage": "Text or icon on an obAccent fill (selected tab, step dot)."},
+    "Color.firstRunAccentSoft": {"light": [0.486, 0.227, 0.929, 0.1], "dark": [0.655, 0.545, 0.98, 0.12], "group": "First-run Setup", "usage": "Setup accent wash (selected card, greeting bubble). Dark alpha 0.12 instead of obAccentSoft 0.16 so text on it keeps 4.5:1."},
+    "Color.firstRunRule": {"light": [0.0, 0.0, 0.0, 0.1], "dark": [1.0, 1.0, 1.0, 0.12], "group": "First-run Setup", "usage": "Setup hairline (mockup --rule): unreached step-strip segments, dividers and keycap edges. obBorder (accent at 6%) is too faint for these."},
+    "Color.firstRunFilmWallTop": {"light": [0.796, 0.725, 0.965, 1.0], "dark": [0.173, 0.137, 0.337, 1.0], "group": "First-run film (film scenes only)", "usage": "Closing film Mac desktop (#4528 chunk E): wallpaper gradient, top-left stop (mockup --wall, 160deg)."},
+    "Color.firstRunFilmWallMid": {"light": [0.604, 0.722, 0.949, 1.0], "dark": [0.114, 0.169, 0.341, 1.0], "group": "First-run film (film scenes only)", "usage": "Film wallpaper gradient, middle stop at 55% (mockup --wall)."},
+    "Color.firstRunFilmWallBottom": {"light": [0.953, 0.761, 0.855, 1.0], "dark": [0.231, 0.129, 0.251, 1.0], "group": "First-run film (film scenes only)", "usage": "Film wallpaper gradient, bottom-right stop (mockup --wall)."},
+    "Color.firstRunFilmMenuBar": {"light": [1, 1, 1, 0.55], "dark": [0.118, 0.102, 0.157, 0.6], "group": "First-run film (film scenes only)", "usage": "Film menu bar fill over the wallpaper (mockup --menubar)."},
+    "Color.firstRunFilmMenuInk": {"light": [0.114, 0.106, 0.133, 1.0], "dark": [0.933, 0.918, 0.957, 1.0], "group": "First-run film (film scenes only)", "usage": "Film menu bar text and the held-key label (mockup --menuink)."},
+    "Color.firstRunFilmDock": {"light": [1, 1, 1, 0.45], "dark": [0.157, 0.141, 0.204, 0.55], "group": "First-run film (film scenes only)", "usage": "Film Dock shelf fill (mockup --dockbg)."},
+    "Color.firstRunFilmLightRed": {"light": [1.0, 0.373, 0.341, 1.0], "dark": [1.0, 0.373, 0.341, 1.0], "group": "First-run film (film scenes only)", "usage": "Film active window close light (gen_film.py lights nth-child(1) #FF5F57)."},
+    "Color.firstRunFilmLightYellow": {"light": [0.996, 0.737, 0.18, 1.0], "dark": [0.996, 0.737, 0.18, 1.0], "group": "First-run film (film scenes only)", "usage": "Film active window minimize light (gen_film.py lights nth-child(2) #FEBC2E)."},
+    "Color.firstRunFilmLightGreen": {"light": [0.157, 0.784, 0.251, 1.0], "dark": [0.157, 0.784, 0.251, 1.0], "group": "First-run film (film scenes only)", "usage": "Film active window zoom light (gen_film.py lights nth-child(3) #28C840)."},
+    "Color.firstRunFilmSlack": {"light": [0.29, 0.082, 0.294, 1.0], "dark": [0.29, 0.082, 0.294, 1.0], "group": "First-run film (film scenes only)", "usage": "Film Slack window sidebar (gen_film.py slack mwin #4A154B)."},
+    "Color.firstRunFilmMistakeWash": {"light": [0.988, 0.337, 0.522, 0.11], "dark": [0.988, 0.337, 0.522, 0.11], "group": "First-run film (film scenes only)", "usage": "Film wash behind the misheard word (mockup #fc56851c)."},
+    "Color.firstRunFilmMistakeText": {"light": [0.694, 0.153, 0.333, 1.0], "dark": [0.694, 0.153, 0.333, 1.0], "group": "First-run film (film scenes only)", "usage": "Film misheard word text (mockup #b12755)."},
+    "Color.firstRunFilmMistakeStrike": {"light": [0.831, 0.263, 0.42, 1.0], "dark": [0.831, 0.263, 0.42, 1.0], "group": "First-run film (film scenes only)", "usage": "Film line through the misheard word (mockup #d4436b)."}
   },
   "fonts": {
     "Font.stSectionHeader": {
@@ -213,7 +235,16 @@ Edit values only here, then run `python3 scripts/design/generate-tokens.py`. Col
     "Font.obBody": {"size": 14, "weight": "regular", "usage": "Onboarding body copy."},
     "Font.obCaption": {"size": 12, "weight": "regular", "usage": "Onboarding caption."},
     "Font.obCaptionSmall": {"size": 11, "weight": "regular", "usage": "Onboarding small caption."},
-    "Font.obLabel": {"size": 13, "weight": "medium", "usage": "Onboarding label."}
+    "Font.obLabel": {"size": 13, "weight": "medium", "usage": "Onboarding label."},
+    "Font.firstRunHero": {"size": 64, "weight": "heavy", "design": "rounded", "usage": "Setup big number (the speed card)."},
+    "Font.firstRunDisplay": {"size": 28, "weight": "heavy", "design": "rounded", "usage": "Setup screen title."},
+    "Font.firstRunTitle": {"size": 20, "weight": "heavy", "design": "rounded", "usage": "Setup card title and film caption title."},
+    "Font.firstRunSay": {"size": 17, "weight": "semibold", "usage": "Setup practice sentence the person reads aloud."},
+    "Font.firstRunBody": {"size": 15, "weight": "regular", "usage": "Setup reading copy under a title."},
+    "Font.firstRunButton": {"size": 19, "weight": "bold", "design": "rounded", "usage": "Setup primary button text (founder 2026-11-13)."},
+    "Font.firstRunLabel": {"size": 15, "weight": "semibold", "usage": "Setup card name and option name."},
+    "Font.firstRunCaption": {"size": 13, "weight": "regular", "usage": "Setup card detail lines, hints and film caption subtitle."},
+    "Font.firstRunEyebrow": {"size": 11, "weight": "semibold", "usage": "Setup uppercase eyebrow and badge (RECOMMENDED)."}
   },
   "layout": {
     "SettingsLayout.sectionRadius": {"value": 14, "usage": "Corner radius of a settings card."},
@@ -255,7 +286,9 @@ Edit values only here, then run `python3 scripts/design/generate-tokens.py`. Col
     "DesignMotion.quick": {"curve": "easeInOut", "duration": 0.15, "usage": "Small state changes."},
     "DesignMotion.brisk": {"curve": "easeInOut", "duration": 0.25, "usage": "Short transitions."},
     "DesignMotion.standard": {"curve": "easeInOut", "duration": 0.3, "usage": "Default transition (the most-used duration)."},
-    "DesignMotion.gentle": {"curve": "easeInOut", "duration": 0.35, "usage": "Larger panels appearing or moving."}
+    "DesignMotion.gentle": {"curve": "easeInOut", "duration": 0.35, "usage": "Larger panels appearing or moving."},
+    "DesignMotion.firstRunScreenIn": {"curve": "timingCurve", "points": [0.22, 1, 0.36, 1], "duration": 0.32, "usage": "Setup screen entering (slide and fade).", "note": "The approved mockup's --ease-out, cubic-bezier(.22,1,.36,1): fast start, long settle."},
+    "DesignMotion.firstRunRise": {"curve": "timingCurve", "points": [0.22, 1, 0.36, 1], "duration": 0.4, "usage": "Setup card, caption or check rising into place.", "note": "The approved mockup (the founder's source of truth, 2026-11-12) rises rows and cards with obRise 0.4s on cubic-bezier(.22,1,.36,1)."}
   }
 }
 ```
@@ -268,6 +301,8 @@ Edit values only here, then run `python3 scripts/design/generate-tokens.py`. Col
 - **One control fill.** Every field, picker box and segmented track uses `stInputBg` with the `stInputBorder` hairline, so a typable field never looks like a label.
 - **No default blue.** macOS settings use the brand accent purple, never the system blue.
 - Onboarding uses the `ob*` family, which mirrors the Settings values.
+- The first-run Setup window (#4528) uses the `firstRun*` family on top of `ob*` surfaces and accent: its type scale (11, 13, 15, 17, 20, 28, 64) and its contrast-raised quiet, success and error text come from the founder-approved Setup mockup. Meetings setup and other `ob*` screens keep their values.
+- The closing film's picture of a Mac desktop (wallpaper, menu bar, Dock, traffic lights, a Slack sidebar, a misheard word) uses the `firstRunFilm*` group, copied from the approved Setup mockup. Film scenes only: no other screen uses these colors.
 
 The founder reasons recorded with the palette and the type scale live in the values block under `reasons`, so the generator can repeat them in the Swift file.
 
@@ -316,6 +351,7 @@ For any other surface use the `DesignRadius` scale (4, 6, 8, 10, 12, 16) in the 
 ## Icons
 
 - **SF Symbols only.** No custom icon files and no emoji as icons.
+  One exception (founder 2026-11-13, #4528): the Setup closing film's app wall and Dock show real apps with their brands' own logos, fetched from SVGL at a pinned commit by `scripts/design/fetch-app-logos.py` into `Resources/app-logo-*.png` (`FilmAppLogo`). Real brands only, never a stand-in drawing. Nothing else shows a third-party logo.
 - **One symbol per meaning.** Use the symbol the app already uses for that meaning (the most-used meanings today):
 
 | Meaning | Symbol |
@@ -355,7 +391,7 @@ Each drawing has one owner file. Never redraw it elsewhere.
 ## Motion
 
 - **One hover curve:** `SettingsHover.animation` (ease out, 0.12 s). Everything in the window fades at that speed.
-- Other transitions use the `DesignMotion` scale (ease in-out 0.15, 0.25, 0.3, 0.35 s; 0.3 s is the default). Springs are used for physical movement, such as the switch knob.
+- Other transitions use the `DesignMotion` scale (ease in-out 0.15, 0.25, 0.3, 0.35 s; 0.3 s is the default). The Setup window adds two entries on the approved mockup's curve, cubic-bezier(0.22, 1, 0.36, 1) (a `timingCurve` token with its points in the values block): `firstRunScreenIn` (0.32 s) and `firstRunRise` (0.4 s). Springs are used for physical movement, such as the switch knob.
 - **Respect Reduce Motion.** Gate every animation on `accessibilityReduceMotion`; the state still changes, without the movement.
 
 ## Sound
