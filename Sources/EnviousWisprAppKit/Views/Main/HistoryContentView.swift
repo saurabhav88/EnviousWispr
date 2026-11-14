@@ -57,7 +57,7 @@ struct HistoryContentView: View {
             }
           }
         },
-        transcriptDestination: { rowID in
+        transcriptDestination: { rowID, back in
           HistoryTranscriptView(
             rowID: rowID, context: .history, sources: importedSources,
             retranscription: retranscription,
@@ -66,11 +66,12 @@ struct HistoryContentView: View {
             restorePasteSurface: {
               navigation.request(.history)
               appWindow.showWindow()
-            }
+            },
+            back: back
           )
           .id(rowID)
         },
-        meetingDestination: { meetingID in
+        meetingDestination: { meetingID, back in
           // #3147 PR4A: every meeting, live or finished, opens the meeting page; the live
           // recording, its live words and the notes sit on it while it records.
           if meeting(meetingID) != nil {
@@ -81,9 +82,12 @@ struct HistoryContentView: View {
               restorePasteSurface: {
                 navigation.request(.history)
                 appWindow.showWindow()
-              }
+              },
+              back: back
             )
             .id(meetingID)
+          } else {
+            HistoryDestinationBar(tab: .meetings, close: back)
           }
         }
       )

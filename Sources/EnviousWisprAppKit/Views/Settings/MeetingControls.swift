@@ -53,8 +53,7 @@ struct MeetingCallSoundExplainer: View {
   }
 }
 
-/// The recording as it happens: elapsed time, Stop, a level meter per track and the
-/// call-sound line. Shown in History's live meeting.
+/// The recording as it happens: elapsed time, input status, recovery controls and Stop.
 struct MeetingLivePanel: View {
   let meetingID: UUID
   let startedAt: Date
@@ -62,77 +61,37 @@ struct MeetingLivePanel: View {
   let microphoneAvailable: Bool
   @Environment(MeetingCoordinator.self) private var meetings
   @Environment(PermissionsService.self) private var permissions
-  /// #4069: its host (`HistoryMeetingAfterView`) already reads this home.
   @Environment(SettingsManager.self) private var settings
-  /// One shared 10-per-second timeline for both meters, only while recording; reduced motion
-  /// slows it to once a second.
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      HStack(spacing: 10) {
-        Image(systemName: "record.circle.fill")
-          .foregroundStyle(.stError)
-          .accessibilityHidden(true)
-        TimelineView(.periodic(from: startedAt, by: 1)) { context in
-          let elapsed = MeetingsPresentation.elapsed(from: startedAt, to: context.date)
-          Text("Recording · \(elapsed)", comment: "Meeting recording status with elapsed time.")
-            .font(.stRowLabel.monospacedDigit())
-            .accessibilityLabel(
-              Text(
-                "Recording for \(elapsed)",
-                comment: "EnviousMeet, VoiceOver: how long the meeting has been recording."))
+    VStack(alignment: .leading, spacing: DesignSpacing.md) {
+      ViewThatFits(in: .horizontal) {
+        HStack(spacing: DesignSpacing.md) {
+          recordingLabel
+          Spacer(minLength: DesignSpacing.md)
+          HStack(spacing: DesignSpacing.md) { inputStatus }
+            .fixedSize()
+          stopButton
         }
-        Spacer()
-        Button(role: .destructive) {
-          Task {
-            guard case .recording(let id, _) = meetings.phase, id == meetingID else { return }
-            await meetings.stop(reason: .user)
+        VStack(alignment: .leading, spacing: DesignSpacing.md) {
+          HStack {
+            recordingLabel
+            Spacer(minLength: DesignSpacing.md)
+            stopButton
           }
-        } label: {
-          EnviousButtonLabel(
-            LocalizedStringResource(
-              "Stop Recording",
-              comment: "EnviousMeet: the button that stops the meeting recording."),
-            size: .medium,
-            systemImage: "stop.circle")
+          WrappingHStack(spacing: DesignSpacing.md) { inputStatus }
         }
-        .settingsButton(size: .medium, isEnabled: true)
-        .accessibilityIdentifier("meetings.stop")
       }
-      if let callApp {
-        Text(verbatim: callApp.displayName)
-          .font(.stHelper)
-          .foregroundStyle(.stTextSecondary)
-      }
-      meters
-      // #4248: static text in reading order, right under the "You" meter it explains.
-      if let line = MeetingsPresentation.muteLine(meetings.muteState, callApp: meetings.muteCallApp)
-      {
+      if let line = MeetingsPresentation.muteLine(meetings.muteState, callApp: meetings.muteCallApp) {
         Text(line)
           .font(.stHelper)
           .foregroundStyle(.stTextSecondary)
           .fixedSize(horizontal: false, vertical: true)
           .accessibilityIdentifier("meetings.muteLine")
       }
-      if !microphoneAvailable {
-        Label("Microphone unavailable", systemImage: "mic.slash")
-          .font(.stHelper)
-          .foregroundStyle(.stError)
-      } else if meetings.muteState != .muted {
-        Label("Microphone on", systemImage: "mic")
-          .font(.stHelper)
-          .foregroundStyle(.stTextSecondary)
-      }
-      if meetings.callSoundStatus == .captured {
-        Label("Call audio on", systemImage: "speaker.wave.2")
-          .font(.stHelper)
-          .foregroundStyle(.stTextSecondary)
-      }
       if let line = MeetingsPresentation.callSoundLine(meetings.callSoundStatus) {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
+        HStack(alignment: .firstTextBaseline, spacing: DesignSpacing.md) {
           Text(line)
-            .font(.stHelper)
             .foregroundStyle(.stTextSecondary)
             .fixedSize(horizontal: false, vertical: true)
           if MeetingsPresentation.offersCallSoundFix(meetings.callSoundStatus) {
@@ -148,62 +107,87 @@ struct MeetingLivePanel: View {
             .accessibilityIdentifier("meetings.callSoundFix")
           }
         }
+        .font(.stHelper)
       }
-      Group {
-        // #4069: true to the switch, which is read at each dictation press.
-        if settings.meetingTurnsOffDictation {
-          Text(DictationNarrator.copy(for: .dictationOffDuringMeeting))
-        } else {
-          Text(
-            "You can keep dictating while EnviousMeet records.",
-            comment: "EnviousMeet: while a meeting records."
-          )
-        }
-      }
-      .font(.stHelper)
-      .foregroundStyle(.stTextSecondary)
-    }
-    .padding(14)
-    .background(Color.stSectionBg, in: RoundedRectangle(cornerRadius: 12))
-  }
-
-  private var meters: some View {
-    TimelineView(.periodic(from: .now, by: reduceMotion ? 1 : 0.1)) { _ in
-      VStack(alignment: .leading, spacing: 8) {
-        meterRow(
-          label: String(
-            localized: "You", comment: "EnviousMeet: the microphone level meter's label."),
-          fraction: MeetingsPresentation.meterFraction(meetings.microphoneLevel))
-        if meetings.callSoundStatus == .captured {
-          meterRow(
-            label: String(
-              localized: "Call sound",
-              comment: "EnviousMeet: the level meter for the sound the Mac plays."),
-            fraction: MeetingsPresentation.meterFraction(meetings.callSoundLevel))
-        }
-      }
-    }
-  }
-
-  private func meterRow(label: String, fraction: Double) -> some View {
-    HStack(spacing: 8) {
-      Text(label)
+      if settings.meetingTurnsOffDictation {
+        Text(DictationNarrator.copy(for: .dictationOffDuringMeeting))
+          .font(.stHelper)
+          .foregroundStyle(.stTextSecondary)
+      } else {
+        Text(
+          "You can keep dictating while EnviousMeet records.",
+          comment: "EnviousMeet: while a meeting records."
+        )
         .font(.stHelper)
         .foregroundStyle(.stTextSecondary)
-        .frame(width: 80, alignment: .leading)
-      GeometryReader { geometry in
-        ZStack(alignment: .leading) {
-          Capsule().fill(Color.stDivider)
-          Capsule().fill(Color.stAccent)
-            .frame(width: max(4, geometry.size.width * fraction))
+      }
+    }
+    .padding(SettingsLayout.rowPaddingH)
+    .background(Color.stSectionBg, in: RoundedRectangle(cornerRadius: DesignRadius.xl))
+    .overlay {
+      RoundedRectangle(cornerRadius: DesignRadius.xl)
+        .strokeBorder(Color.stError.opacity(0.45))
+        .allowsHitTesting(false)
+    }
+  }
+
+  private var recordingLabel: some View {
+    HStack(spacing: DesignSpacing.md) {
+      Image(systemName: "record.circle.fill")
+        .foregroundStyle(.stError)
+        .accessibilityHidden(true)
+      VStack(alignment: .leading, spacing: DesignSpacing.xxs) {
+        TimelineView(.periodic(from: startedAt, by: 1)) { context in
+          let elapsed = MeetingsPresentation.elapsed(from: startedAt, to: context.date)
+          Text("Recording · \(elapsed)", comment: "Meeting recording status with elapsed time.")
+            .font(.stRowLabel.monospacedDigit())
+            .accessibilityLabel(
+              Text(
+                "Recording for \(elapsed)",
+                comment: "EnviousMeet, VoiceOver: how long the meeting has been recording."))
+        }
+        if let callApp {
+          Text(verbatim: callApp.displayName)
+            .font(.stHelper)
+            .foregroundStyle(.stTextSecondary)
         }
       }
-      .frame(height: 6)
-      .accessibilityHidden(true)
     }
-    .accessibilityElement(children: .ignore)
-    .accessibilityLabel(Text(label))
-    .accessibilityValue(Text(fraction, format: .percent.precision(.fractionLength(0))))
+  }
+
+  private var stopButton: some View {
+    Button(role: .destructive) {
+      Task {
+        guard case .recording(let id, _) = meetings.phase, id == meetingID else { return }
+        await meetings.stop(reason: .user)
+      }
+    } label: {
+      EnviousButtonLabel(
+        LocalizedStringResource(
+          "Stop Recording",
+          comment: "EnviousMeet: the button that stops the meeting recording."),
+        size: .medium, systemImage: "stop.circle")
+    }
+    .settingsButton(size: .medium, isEnabled: true)
+    .accessibilityIdentifier("meetings.stop")
+  }
+
+  @ViewBuilder private var inputStatus: some View {
+    if !microphoneAvailable {
+      Label("Microphone unavailable", systemImage: "mic.slash")
+        .font(.stHelper)
+        .foregroundStyle(.stError)
+    } else if meetings.muteState != .muted {
+      Label("Microphone on", systemImage: "mic")
+        .font(.stHelper)
+        .foregroundStyle(.stTextSecondary)
+    }
+    if meetings.callSoundStatus == .captured {
+      Label("Call audio on", systemImage: "speaker.wave.2")
+        .font(.stHelper)
+        .foregroundStyle(.stTextSecondary)
+        .help(Text("Call sound", comment: "EnviousMeet: the level meter for the sound the Mac plays."))
+    }
   }
 }
 

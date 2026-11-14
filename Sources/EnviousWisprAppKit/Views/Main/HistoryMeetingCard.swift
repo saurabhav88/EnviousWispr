@@ -18,26 +18,32 @@ import SwiftUI
 /// While History is selecting, the diary draws this card with hit testing off inside its
 /// tick button (as it does for `HistoryTranscriptCard`).
 ///
-/// The card never opens a player; playback lives in the after view.
 struct HistoryMeetingCard: View {
   let meetingID: UUID
   let onOpen: () -> Void
+  let allowsPlayback: Bool
 
-  init(meetingID: UUID, onOpen: @escaping () -> Void) {
+  init(meetingID: UUID, onOpen: @escaping () -> Void, allowsPlayback: Bool = true) {
     self.meetingID = meetingID
     self.onOpen = onOpen
+    self.allowsPlayback = allowsPlayback
   }
 
   @Environment(TranscriptCoordinator.self) private var transcripts
   @Environment(MeetingCoordinator.self) private var meetings
+  @State private var player: MeetingPlaybackController?
+  @State private var playerSource: MeetingPlaybackSource?
 
   private typealias P = MeetingAfterPresentation
 
   var body: some View {
     let record = meetings.record(id: meetingID)
     let row = meetingRow(record)
+    let source = allowsPlayback ? meetings.playbackSource(meetingID: meetingID) : nil
     if record != nil || row != nil {
-      card(P.card(inputs(record: record, row: row)))
+      card(P.card(inputs(record: record, row: row)), source: source)
+        .onChange(of: source) { _, _ in dropPlayer() }
+        .onDisappear(perform: dropPlayer)
     }
   }
 
@@ -60,11 +66,10 @@ struct HistoryMeetingCard: View {
       summaryProviderID: documents.manifest(meetingID)?.summary?.inputs?.providerID)
   }
 
-  private func card(_ card: P.Card) -> some View {
+  private func card(_ card: P.Card, source: MeetingPlaybackSource?) -> some View {
     VStack(alignment: .leading, spacing: DesignSpacing.md) {
       HStack(alignment: .top, spacing: DesignSpacing.lg) {
         VStack(alignment: .leading, spacing: DesignSpacing.xxs) {
-          subtitle(card)
           // The rename controls sit beside Open, never inside it. A row whose meeting folder is
           // gone has no record to rename, so it shows its name only.
           if card.canRename {
@@ -84,6 +89,11 @@ struct HistoryMeetingCard: View {
             .font(.stHelper)
             .foregroundStyle(.stTextSecondary)
           }
+          if let length = card.length {
+            Text(verbatim: length)
+              .font(.stHelper)
+              .foregroundStyle(.stTextSecondary)
+          }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         if let status = card.status {
@@ -100,6 +110,21 @@ struct HistoryMeetingCard: View {
           Text(
             "Open \(card.title)",
             comment: "History meeting card: VoiceOver label of Open. %@ is the meeting's name."))
+      }
+      if let source, source.durationMs > 0 {
+        if let player, playerSource == source {
+          MeetingPlaybackControls(player: player, showsWaveform: false)
+            .id(ObjectIdentifier(player))
+        } else {
+          Button {
+            beginPlayback(source)
+          } label: {
+            EnviousButtonLabel(
+              verbatim: HistoryTranscriptPresentation.playLabel(.play),
+              size: .medium, systemImage: HistoryTranscriptPresentation.playSymbol(.play))
+          }
+          .settingsButton(.filled, size: .medium, isEnabled: true)
+        }
       }
       line(card.line)
       if let attention = card.attentionLine {
@@ -124,21 +149,20 @@ struct HistoryMeetingCard: View {
     .historyRowCard(isSelected: false)
   }
 
-  private func subtitle(_ card: P.Card) -> some View {
-    HStack(spacing: DesignSpacing.sm) {
-      Text(card.startedAt, format: .dateTime.hour().minute())
-        .monospacedDigit()
-      if let app = card.callApp {
-        Text(verbatim: "·").accessibilityHidden(true)
-        Text(verbatim: app)
-      }
-      if let length = card.length {
-        Text(verbatim: "·").accessibilityHidden(true)
-        Text(verbatim: length)
-      }
-    }
-    .font(.stHelper)
-    .foregroundStyle(.stTextSecondary)
+  private func beginPlayback(_ source: MeetingPlaybackSource) {
+    guard meetings.playbackSource(meetingID: meetingID) == source else { return }
+    let next = MeetingPlaybackController(
+      source: source, output: MeetingPlaybackEngineOutput(), meetingID: meetingID,
+      arbiter: meetings.playbackArbiter)
+    playerSource = source
+    player = next
+    next.play()
+  }
+
+  private func dropPlayer() {
+    player?.stop()
+    player = nil
+    playerSource = nil
   }
 
   private func statusChip(_ status: P.Status) -> some View {

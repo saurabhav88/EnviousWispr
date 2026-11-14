@@ -17,31 +17,43 @@ struct HistoryFiltersView: View {
   private enum Picker: Hashable { case app, speakers, callApp, date }
 
   var body: some View {
-    WrappingHStack(spacing: 8) {
-      searchField
-      switch tab {
-      case .dictations: appButton
-      case .transcripts: speakersButton
-      case .meetings: callAppButton
+    ViewThatFits(in: .horizontal) {
+      HStack(spacing: DesignSpacing.md) {
+        searchField
+        HStack(spacing: DesignSpacing.md) { controls }
+          .fixedSize()
       }
-      dateButton
-      Button(action: toggleSelecting) {
-        EnviousButtonLabel(
-          isSelecting
-            ? LocalizedStringResource(
-              "Done selecting", comment: "History: leaves selection mode.")
-            : LocalizedStringResource(
-              "Select", comment: "History: enters selection mode to delete several items."),
-          size: .medium, systemImage: "checkmark.circle")
+      VStack(alignment: .leading, spacing: DesignSpacing.md) {
+        searchField
+        WrappingHStack(spacing: DesignSpacing.md) { controls }
       }
-      .settingsButton(isSelecting ? .filled : .outlined, size: .medium, isEnabled: true)
-      SettingsInfoButton(
-        rowTitle: String(localized: "History", comment: "History: the page name."),
-        tooltip: String(
-          localized: "How History works", comment: "History: hover text of the help button.")
-      ) {
-        HistoryHelpPopover(tab: tab)
-      }
+    }
+  }
+
+  @ViewBuilder private var controls: some View {
+    if tab == .dictations { appButton }
+    dateButton
+    switch tab {
+    case .dictations: EmptyView()
+    case .transcripts: speakersButton
+    case .meetings: callAppButton
+    }
+    Button(action: toggleSelecting) {
+      EnviousButtonLabel(
+        isSelecting
+          ? LocalizedStringResource(
+            "Done selecting", comment: "History: leaves selection mode.")
+          : LocalizedStringResource(
+            "Select", comment: "History: enters selection mode to delete several items."),
+        size: .medium, systemImage: "checkmark.circle")
+    }
+    .settingsButton(isSelecting ? .filled : .outlined, size: .medium, isEnabled: true)
+    SettingsInfoButton(
+      rowTitle: String(localized: "History", comment: "History: the page name."),
+      tooltip: String(
+        localized: "How History works", comment: "History: hover text of the help button.")
+    ) {
+      HistoryHelpPopover(tab: tab)
     }
   }
 
@@ -60,7 +72,7 @@ struct HistoryFiltersView: View {
       .focused($searchFocused)
     }
     .settingsFieldChrome(focused: $searchFocused)
-    .frame(minWidth: 180, maxWidth: 280)
+    .frame(minWidth: 180, maxWidth: .infinity)
   }
 
   // MARK: - Tab filters

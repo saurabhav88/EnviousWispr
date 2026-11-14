@@ -16,7 +16,7 @@ struct MeetingSessionPanes<Notes: View, Transcript: View>: View {
   var body: some View {
     let narrow = MeetingAfterPresentation.stacksPanes(width: width)
     let layout = narrow ? AnyLayout(ZStackLayout(alignment: .topLeading))
-      : AnyLayout(HStackLayout(spacing: 0))
+      : AnyLayout(HStackLayout(spacing: DesignSpacing.xl))
     VStack(alignment: .leading, spacing: DesignSpacing.md) {
       if narrow {
         BrandedSegmentedPicker(
@@ -36,18 +36,19 @@ struct MeetingSessionPanes<Notes: View, Transcript: View>: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(DesignSpacing.xl)
         }
-        .frame(width: narrow ? nil : max(320, width * 0.42))
+        .frame(width: narrow ? nil : MeetingAfterPresentation.notesPaneWidth(width: width))
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Color.stSectionBg, in: RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius))
         .opacity(!narrow || selection == .notes ? 1 : 0)
         .allowsHitTesting(!narrow || selection == .notes)
         .disabled(narrow && selection != .notes)
         .accessibilityHidden(narrow && selection != .notes)
 
-        if !narrow { Divider().overlay(Color.stDivider) }
-
         transcript()
           .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
           .padding(DesignSpacing.xl)
+          .background(
+            Color.stSectionBg, in: RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius))
           .opacity(!narrow || selection == .transcript ? 1 : 0)
           .allowsHitTesting(!narrow || selection == .transcript)
           .disabled(narrow && selection != .transcript)

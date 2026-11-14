@@ -44,17 +44,20 @@
   padding: 9px 16px;
   white-space: nowrap;
 }
-.compatible-app svg {
-  color: var(--app-color);
-  fill: currentColor;
+.compatible-app .app-logo {
+  display: block;
   flex: none;
   height: 18px;
+  object-fit: contain;
   width: 18px;
 }
-html[data-theme='dark']
-  .compatible-app:is([data-app='Notion'], [data-app='Craft'], [data-app='TextEdit'])
-  svg {
-  color: var(--ink);
+/* Logos with a separate dark-background version (ChatGPT, Cursor): one shows per theme. */
+.compatible-app .app-logo-dark,
+html[data-theme='dark'] .compatible-app .app-logo-light {
+  display: none;
+}
+html[data-theme='dark'] .compatible-app .app-logo-dark {
+  display: block;
 }
 @media (max-width: 999px), (pointer: coarse) {
   .compatible-list {
@@ -80,9 +83,10 @@ html[data-theme='dark']
   }
 }
 @media (prefers-color-scheme: dark) {
-  html:not([data-theme])
-    .compatible-app:is([data-app='Notion'], [data-app='Craft'], [data-app='TextEdit'])
-    svg {
-    color: var(--ink);
+  html:not([data-theme]) .compatible-app .app-logo-light {
+    display: none;
+  }
+  html:not([data-theme]) .compatible-app .app-logo-dark {
+    display: block;
   }
 }
