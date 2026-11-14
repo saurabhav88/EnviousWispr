@@ -528,7 +528,16 @@ import EnviousWisprAppKitTestSupport
       classification: .unrelatedDomain),
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/MeetingSummaryOwner.swift", matcher: "prepare",
-      text: "let preparation = await deps.prepare(selection.provider, selection.model, cloudModelList)",
+      text: "preparation = await deps.prepare(selection.provider, selection.model, cloudModelList)",
+      classification: .unrelatedDomain),
+    // #3147 PR6: request-scoped EG-1 summary preparation uses the same cold attempt.
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/MeetingSummaryOwner.swift", matcher: "prepare",
+      text: "preparation = prepare(size)",
+      classification: .unrelatedDomain),
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/MeetingWiring.swift", matcher: "prepare",
+      text: "egOne?.prepare(",
       classification: .unrelatedDomain),
     // #3147 PR2: the History dictation card's text comparison (word alignment and marked-up runs)
     // prepared off the main actor. Pure text work; no engine, adapter or audio. Matched only by
