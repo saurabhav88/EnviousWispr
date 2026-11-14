@@ -107,7 +107,7 @@ extension PolishSetupLeaveAction {
   var promptAction: PolishSetupPromptEvent.Action {
     switch self {
     case .finishSetup: return .finishSetup
-    case .goBack: return .goBack
+    case .goBack, .goBackToEngine: return .goBack
     case .leaveAnyway: return .leaveAnyway
     case .ok: return .ok
     case .openSystemSettings: return .openSystemSettings

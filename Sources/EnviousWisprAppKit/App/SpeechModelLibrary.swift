@@ -47,6 +47,11 @@ final class SpeechModelLibrary {
   /// #4578: Parakeet bytes are on disk without an install (an interrupted removal), read after
   /// each command and at launch. Settings offers to remove them.
   private(set) var parakeetHasLeftovers = false
+  /// #4578: Whisper's leftover bytes, the same fact for the dictation Whisper model.
+  private(set) var whisperHasLeftovers = false
+  /// #4578: Parakeet is wanted (no removal recorded). After a removal only Set up model brings
+  /// it back: Resume and Retry refuse.
+  var parakeetInstallWanted: Bool { modelDelivery.parakeetUpgrade?.isInstallWanted ?? true }
 
   /// Parakeet's physical installation (owned Ultra or owned v3 admitted), nil until the first
   /// read settles. Runtime eligibility (rejection, spent budgets) is NOT part of it: retained
@@ -316,9 +321,11 @@ final class SpeechModelLibrary {
     return removed
   }
 
-  /// #4578: reads whether Parakeet bytes remain without an install (launch, Settings appear).
-  func refreshParakeetLeftovers() async {
+  /// #4578: reads whether either engine's bytes remain without an install (launch, and each
+  /// time a Settings engine row's install line changes).
+  func refreshLeftovers() async {
     parakeetHasLeftovers = await modelDelivery.parakeetHasLeftovers()
+    whisperHasLeftovers = await modelDelivery.whisperHasLeftovers()
   }
 
   /// The Whisper setup service's Remove action over `library`, held weakly. nil is success, so a
@@ -343,6 +350,7 @@ final class SpeechModelLibrary {
     await whisper.removal.unloadForRemoval()
     let removed = await handle.remove()
     await whisper.removal.finishRemoval()
+    whisperHasLeftovers = await modelDelivery.whisperHasLeftovers()
     return removed ? nil : .failed
   }
 }

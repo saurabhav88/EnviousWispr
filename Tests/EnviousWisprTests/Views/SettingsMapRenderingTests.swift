@@ -893,8 +893,7 @@ struct SettingsMapRenderingTests {
     let engineRow = MeetingTranscriptEngineRowModel(
       environment: .init(
         settings: home.settings,
-        whisperSetup: WhisperSetupService(engineMutationScope: .alwaysAllowedForTesting),
-        isMeetingActive: { false }))
+        whisperSetup: WhisperSetupService(engineMutationScope: .alwaysAllowedForTesting)))
     return (
       home,
       { view in

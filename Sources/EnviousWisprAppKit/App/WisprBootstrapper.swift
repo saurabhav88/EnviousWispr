@@ -521,7 +521,7 @@ package final class WisprBootstrapper {
     // The first Parakeet installation read (joins the launch migration started just above).
     speechModels.refreshParakeet()
     // #4578: whether an interrupted removal left Parakeet bytes behind.
-    Task { await speechModels.refreshParakeetLeftovers() }
+    Task { await speechModels.refreshLeftovers() }
     let whisperBackend = whisper.backend
     // #3973 C3: EnviousMeet's own Whisper Large v3 Turbo (used only while dictation runs
     // Parakeet). One instance for the process; loaded for one engine operation at a time.
@@ -3292,10 +3292,7 @@ package final class WisprBootstrapper {
       onActive: { [weak meetingSpeakerLabels] in meetingSpeakerLabels?.meetingBecameActive() })
     self.meetingTranscriptEngineRow = MeetingTranscriptEngineRowModel(
       environment: .init(
-        settings: settings, whisperSetup: whisper.setupService,
-        isMeetingActive: { [weak meetingCoordinator] in
-          meetingCoordinator?.isMeetingActive ?? false
-        }))
+        settings: settings, whisperSetup: whisper.setupService))
     let meetingStartFlow = MeetingStartFlow(
       dependencies: .init(
         isSetUp: { [settings] in settings.meetingOnboardingComplete },
@@ -3992,6 +3989,8 @@ private struct AppHomesEnvironment: ViewModifier {
         .environment(b.backendMetadata)
         .environment(b.engineCoordinator)
         .environment(b.modelDelivery)
+        // #4578: the speech-model owner the Settings engine rows read and command.
+        .environment(b.speechModels)
         .environment(b.checkerEligibility)
         .environment(b.dictationRuntime)
         .environment(b.appWindowCoordinator)

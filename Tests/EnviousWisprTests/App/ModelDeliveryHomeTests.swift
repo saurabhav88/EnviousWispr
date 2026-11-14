@@ -736,29 +736,6 @@ struct ModelDeliveryHomeTests {
     return (home, fixture.directory)
   }
 
-  @Test("Settings admission re-check sees file removal and acquires no mutation claim")
-  func freshSettingsAdmission() async throws {
-    final class Box { var claims = 0 }
-    let box = Box()
-    let home = ModelDeliveryHome(
-      engineMutationScope: .live(
-        tryBegin: {
-          box.claims += 1
-          return false
-        }, end: { false }, wake: {}, onRefused: { _ in }),
-      manifestBundle: try Self.manifestBundle(), appSupportOverride: try Self.tempAppSupport())
-    #expect(await home.currentParakeetAdmission() == false)
-    let (manifest, directory, admission, marker) = try Self.writeFastAdmissionFixture(home: home)
-    #expect(await home.currentParakeetAdmission())
-    try FileManager.default.removeItem(
-      at: directory.appendingPathComponent(try #require(manifest.files.first).resolvedInstallPath))
-    #expect(await home.currentParakeetAdmission() == false)
-    #expect(try Data(contentsOf: admission.markerURL) == marker, "a read changed the marker")
-    #expect(box.claims == 0, "a read attempted an engine mutation")
-    #expect(
-      await home.controller.state(of: manifest.identity) == .notReady, "a read started delivery")
-  }
-
   // MARK: - #2123: removal frees the disk, which means releasing first
 
   /// **The drain must COMPLETE before the delete, not merely be requested.**

@@ -94,6 +94,9 @@ enum PolishSetupLeaveAction: Equatable {
   /// Stay in the guarded place (also Escape). Not an answer: nothing is acknowledged.
   case finishSetup
   case goBack(LLMProvider)
+  /// #4578: the speech-engine question's "Go back to" (`SpeechSetupLeaveGuard`); never offered
+  /// by the AI Polish or summary question.
+  case goBackToEngine(ASRBackendType)
   case leaveAnyway
   /// The only button of an informational notice.
   case ok
@@ -653,14 +656,14 @@ enum PolishSetupLeaveGuard {
     // Repaired while the question was open: nothing left to answer.
     guard let live else {
       switch action {
-      case .finishSetup, .openSystemSettings: return .stay
+      case .finishSetup, .openSystemSettings, .goBackToEngine: return .stay
       case .goBack, .leaveAnyway, .ok: return .navigate(request.intent)
       }
     }
     // A different problem now: this answer was about the old one, so it does nothing.
     guard live.episode == request.episode, live.problem == request.problem else { return .stay }
     switch action {
-    case .finishSetup:
+    case .finishSetup, .goBackToEngine:
       return .stay
     case .openSystemSettings:
       guard case .appleUnavailable(.appleIntelligenceDisabled) = live.problem else { return .stay }

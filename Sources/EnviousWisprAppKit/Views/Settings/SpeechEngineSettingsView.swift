@@ -27,14 +27,8 @@ struct SpeechEngineSettingsView: View {
   init(choicesExpanded: Bool = false) {
     _showEngineChoices = State(initialValue: choicesExpanded)
   }
-  /// #4320: the read-only Fast model readiness check (request guards, invalidation),
-  /// shared with the EnviousMeet Models tab; this view owns its own instance.
-  @State private var fastReader = ParakeetAdmissionReader()
-  /// A fresh read-only admission result, nil while re-checking.
-  private var fastAdmission: Bool? { fastReader.admitted }
-  #if DEBUG
-  @Environment(\.fastAdmissionTestHooks) private var fastAdmissionTestHooks
-  #endif
+  /// #4578: the installation owner the engine status lines read.
+  @Environment(SpeechModelLibrary.self) private var library: SpeechModelLibrary?
 
   /// #1171 — shown ONLY when the user's selected engine differs from the active
   /// one because a switch is deferred while a dictation/recovery is in flight.
@@ -84,12 +78,20 @@ struct SpeechEngineSettingsView: View {
               values: choice.times.values,
               captions: EngineChoicePresentation.timeCaptions.map { String(localized: $0) },
               help: choice.times.help),
-            isSelected: settings.selectedBackend == choice.backend
-          ) {
-            settings.selectedBackend = choice.backend
-            // #3385: picking, including the engine already chosen, closes the choices.
-            showEngineChoices = false
-          }
+            isSelected: settings.selectedBackend == choice.backend,
+            onSelect: {
+              settings.selectedBackend = choice.backend
+              // #3385: picking, including the engine already chosen, closes the choices.
+              showEngineChoices = false
+            },
+            fillsHeight: true,
+            footer: {
+              // #4578: each engine's status line: Remove on every downloaded engine, picked
+              // or not; Set up model on one that is not.
+              SpeechEngineStatusRow(engine: choice.backend, place: .dictationCard)
+                .padding([.horizontal, .bottom], 16)
+            }
+          )
           .frame(maxWidth: .infinity, alignment: .top)
         }
       }
@@ -125,8 +127,7 @@ struct SpeechEngineSettingsView: View {
       } choices: {
         engineCards
       }
-      .statusAlongsideChange(isParakeet && engineSwitchDeferredNotice == nil
-        && modelDelivery.map { parakeetRow($0) == nil } == true)
+      .statusAlongsideChange(statusIsCompact)
       // An engine change made elsewhere (onboarding, a fallback) leaves the
       // summary describing the new engine; close choices it made obsolete.
       .onChange(of: settings.selectedBackend) { _, _ in
@@ -485,47 +486,9 @@ struct SpeechEngineSettingsView: View {
       short: String(localized: currentEngine.summary))
   }
 
-  /// #3546: "Model ready" re-reads when the delivery state or the upgrade
-  /// policy changed (budget spent, v3 rejected, identity switched, Retry),
-  /// even if the mirrored delivery state stayed the same.
-  private struct FastAdmissionReadKey: Equatable {
-    let state: DeliveryState
-    let revision: UInt64
-  }
-
-  private func requestFastRecheck() {
-    Task { await recheckFastAdmission() }
-  }
-
-  private func recheckFastAdmission() async {
-    #if DEBUG
-    // Completion belongs to the SUBJECT, including every dropped reply. The
-    // debug hook replaces only the disk read, never eligibility or request guards.
-    let hooks = fastAdmissionTestHooks
-    let onFinished: ((Bool?) -> Void)? = hooks.map { hooks in { hooks.onFinished($0) } }
-    #else
-    let onFinished: ((Bool?) -> Void)? = nil
-    #endif
-    let modelDelivery = modelDelivery
-    await fastReader.recheck(
-      snapshot: {
-        modelDelivery.map {
-          FastAdmissionReadKey(state: $0.parakeetState, revision: $0.parakeetPresentationRevision)
-        }
-      },
-      read: {
-        guard let modelDelivery else { return false }
-        #if DEBUG
-        if let hooks { return await hooks.read() }
-        #endif
-        return await modelDelivery.currentParakeetAdmission()
-      },
-      eligible: { isParakeet },
-      onFinished: onFinished)
-  }
-
-  /// Everything that can need the user's attention about the model, kept on
-  /// screen whether or not the engine choices are open.
+  /// Everything that can need the user's attention about the model, kept on screen while the
+  /// engine choices are closed. #4578: the selected engine's status line, the same one each
+  /// engine card shows when the choices are open (so it is never drawn twice).
   @ViewBuilder
   private var engineStatus: some View {
     if let notice = engineSwitchDeferredNotice {
@@ -534,104 +497,23 @@ struct SpeechEngineSettingsView: View {
         .foregroundStyle(.stWarning)
         .padding(.leading, 4)
     }
-
-    // ── Section 2: Whisper Model Setup (conditional) ───────────────
-    if settings.selectedBackend == .whisper {
-          VStack(alignment: .leading, spacing: 6) {
-            whisperSetupContent
-            // Inline, in the section the user is looking at — never an
-            // overlay. Rendered OUTSIDE the state switch: a failed removal
-            // can flip the state to error/not-downloaded, and the notice
-            // must survive that flip (Codex 2c-r1 P2).
-            if let notice = setup.whisperSetup.removeNotice {
-              Text(Self.removeNoticeText(notice))
-              .font(.stHelper)
-              .foregroundStyle(.stWarning)
-              .fixedSize(horizontal: false, vertical: true)
-            }
-          }
-    }
-
-    if isParakeet, let modelDelivery {
-      HStack(spacing: 8) {
-        ProviderStatusChip(status: EngineSummaryPresentation.fastModelStatus(admitted: fastAdmission), isHeadline: true)
-        Button(action: requestFastRecheck) {
-          Image(systemName: "arrow.clockwise").settingsHoverQuiet()
-        }
-        .buttonStyle(.borderless)
-        .disabled(fastAdmission == nil)
-        .help(String(localized: EngineSummaryCopy.recheckFast))
-        .accessibilityLabel(Text(EngineSummaryCopy.recheckFast))
-        .settingsArrivalFocusControl()
-        .settingsMapRegistration(.transcriptionEngineRecheckFast)
-      }
-      .fixedSize(horizontal: true, vertical: false)
-      .task(
-        id: FastAdmissionReadKey(
-          state: modelDelivery.parakeetState,
-          revision: modelDelivery.parakeetPresentationRevision)
-      ) { await recheckFastAdmission() }
-      .onAppear {
-        #if DEBUG
-        fastAdmissionTestHooks?.captureRecheck(requestFastRecheck)
-        #endif
-      }
-      .onDisappear { fastReader.invalidate() }
-    }
-
-    // ── Delivery row (#1348 Phase 2, D6 states 2/3/4/5/7/8/10/11): shows
-    // ONLY while the Parakeet model download/repair is in a user-relevant
-    // state. #3385 founder supersedes D6's silent admitted presentation with
-    // a fresh read-only Model ready cue above; these action states stay intact.
-    // Same state stream onboarding renders; second renderer.
-    // #3546: the row is the serving model's (foreground), the background
-    // Ultra upgrade's while v3 serves, or the explicit Retry after the policy
-    // stopped loading Ultra (row T); `parakeetRow` picks one, never two.
-    if settings.selectedBackend == .parakeet, let modelDelivery,
-      let row = parakeetRow(modelDelivery)
-    {
-          HStack(alignment: .top, spacing: 11) {
-            SettingsRowIcon(systemName: "arrow.down.circle")
-            VStack(alignment: .leading, spacing: 4) {
-              Text(row.title).settingsRowLabel()
-              if let detail = row.detail {
-                Text(detail).settingsReadingCopy()
-              }
-            }
-            Spacer()
-            // #2447: both were system styles on a settings PAGE, where
-            // `.borderedProminent` renders plain grey and `.bordered` renders
-            // grey one shade darker — so Cancel and Resume were the same
-            // colour as each other and as this app's disabled treatment, with
-            // no hover to contradict it.
-            if row.showsCancel {
-              Button {
-                switch row.owner {
-                case .foreground, .retry: modelDelivery.cancelParakeetDownload()
-                case .backgroundUpgrade: modelDelivery.cancelParakeetUpgradeDownload()
-                }
-              } label: {
-                EnviousButtonLabel(SettingsItemCopy.Engine.fastCancel, size: .medium)
-              }
-              .settingsButton(.quiet, shape: .roundedRect, size: .medium, isEnabled: true)
-              .settingsMapRegistration(.fastModelCancelDownload)
-            }
-            if let action = row.action {
-              Button {
-                switch row.owner {
-                case .foreground: modelDelivery.resumeParakeetDownload()
-                case .backgroundUpgrade: modelDelivery.resumeParakeetUpgradeDownload()
-                case .retry: modelDelivery.retryParakeetUpgradeAndWarm()
-                }
-              } label: {
-                EnviousButtonLabel(verbatim: SettingsMapRef.id(action).title, size: .medium)
-              }
-              .settingsButton(.filled, shape: .roundedRect, size: .medium, isEnabled: true)
-              .settingsMapRegistration(action)
-            }
-          }
+    if !showEngineChoices {
+      SpeechEngineStatusRow(engine: settings.selectedBackend, place: .dictationSummary)
     }
   }
+
+  /// The summary's status sits beside Change only when it is the plain Parakeet "Model ready"
+  /// line with nothing else to say (#3385 layout).
+  private var statusIsCompact: Bool {
+    guard isParakeet, engineSwitchDeferredNotice == nil, let library else { return false }
+    let status = SpeechEngineStatus.parakeet(
+      installed: library.installedSnapshot(.parakeet), removing: library.isRemovingParakeet,
+      leftovers: library.parakeetHasLeftovers,
+      row: modelDelivery.flatMap { Self.parakeetRow(of: $0) })
+    return status.install == .ready && status.operation == nil
+      && library.parakeetRemoveNotice == nil
+  }
+
 
   // MARK: - Language section (#1678)
 
@@ -723,7 +605,10 @@ struct SpeechEngineSettingsView: View {
   /// Ultra download (downloading or declined; idle, deferred and failed stay
   /// silent because dictation works); otherwise the serving model's own
   /// delivery states, unchanged.
-  func parakeetRow(_ delivery: ModelDeliveryHome) -> ParakeetRow? {
+  func parakeetRow(_ delivery: ModelDeliveryHome) -> ParakeetRow? { Self.parakeetRow(of: delivery) }
+
+  /// #4578: the same row, read by the shared engine status line on both Settings tabs.
+  static func parakeetRow(of delivery: ModelDeliveryHome) -> ParakeetRow? {
     Self.parakeetRow(
       needsExplicitRetry: delivery.parakeetNeedsExplicitRetry,
       rowIsBackgroundUpgrade: delivery.parakeetRowIsBackgroundUpgrade,
@@ -854,220 +739,6 @@ struct SpeechEngineSettingsView: View {
       current: settings.languageMode,
       candidates: [SetupAdvice.macLanguageCode, settings.whisperKitLanguage].compactMap { $0 },
       lockable: lockableLanguageCodes)
-  }
-
-  // MARK: - Whisper Setup UI
-
-  @ViewBuilder
-  private var whisperSetupContent: some View {
-    switch setup.whisperSetup.setupState {
-    case .checking:
-      HStack {
-        ProgressView()
-          .controlSize(.small)
-        Text("Checking model status...")
-          .font(.stHelper)
-          .foregroundStyle(.stTextSecondary)
-      }
-
-    case .notDownloaded:
-      // #3385: the download explanation moved behind "?"; the action and the
-      // re-check stay beside the row.
-      SettingsRow(
-        notInSettingsMap: .statusLine,
-        icon: "arrow.down.circle",
-        title: Copy.modelNotSetUp,
-        short: Copy.modelSetupShort,
-        help: Copy.modelSetupHelp
-      ) {
-        HStack {
-          Button {
-            setup.whisperSetup.downloadModel()
-          } label: {
-            EnviousButtonLabel(Copy.setUpModel, size: .medium)
-          }
-          .settingsButton(.filled, shape: .roundedRect, size: .medium, isEnabled: true)
-          .settingsMapRegistration(.whisperModelSetUp)
-
-          whisperRefreshButton
-        }
-      }
-
-    case .downloading(let progress, let status):
-      VStack(alignment: .leading, spacing: 8) {
-        whisperStepIndicator(
-          LocalizedStringResource(
-            "Downloading...",
-            comment: "Speech engine settings, Whisper model: the current setup step."))
-
-        ProgressView(value: progress)
-          .progressViewStyle(.linear)
-
-        HStack {
-          Text(status)
-            .font(.stHelper)
-            .foregroundStyle(.stTextSecondary)
-            .lineLimit(1)
-          Spacer()
-          if progress > 0 {
-            Text("\(Int(progress * 100))%")
-              .font(.stHelper)
-              .monospacedDigit()
-              .foregroundStyle(.stTextSecondary)
-          }
-          Button {
-            setup.whisperSetup.cancelDownload()
-          } label: {
-            Text(SettingsItemCopy.Engine.whisperCancel).font(.stHelper).settingsHoverQuiet(tint: .stError)
-          }
-          .controlSize(.small)
-          .buttonStyle(.borderless)
-          .foregroundStyle(.stError)
-          .settingsArrivalFocusControl()
-          .settingsMapRegistration(.whisperModelCancelDownload)
-        }
-      }
-
-    case .paused:
-      VStack(alignment: .leading, spacing: 8) {
-        whisperStepIndicator(
-          LocalizedStringResource(
-            "Download Paused",
-            comment: "Speech engine settings, Whisper model: the current setup step."))
-        Text("Download paused. Resume anytime.")
-          .settingsReadingCopy()
-        HStack {
-          Button {
-            setup.whisperSetup.downloadModel()
-          } label: {
-            EnviousButtonLabel(SettingsItemCopy.Engine.whisperResume, size: .medium)
-          }
-          .settingsButton(.filled, shape: .roundedRect, size: .medium, isEnabled: true)
-          .settingsMapRegistration(.whisperModelResume)
-          whisperRefreshButton
-        }
-      }
-
-    case .ready:
-      VStack(alignment: .leading, spacing: 6) {
-        HStack {
-          // #1635: delivery `.ready` means the model is on DISK. The engine then loads into
-          // memory for a measured p50 of 27.4s on this path, and a press during that window
-          // is correctly refused — so a green tick here contradicted the app for roughly
-          // half a minute. `warmInFlight` is coordinator intent, published synchronously at
-          // warm-start; do NOT swap it for adapter readiness, which is still `.notReady` at
-          // that moment and is why the previous attempt's label could never appear.
-          if ModelPreparingCopy.isPreparing(warmInFlight: engineCoordinator?.status.warmInFlight) {
-            HStack(spacing: 6) {
-              ProgressView()
-                .controlSize(.small)
-              Text(
-                ModelPreparingCopy.label(
-                  warmInFlight: engineCoordinator?.status.warmInFlight)
-              )
-              .font(.stHelper)
-              .foregroundStyle(.stTextSecondary)
-            }
-            // #1635: on the SUBVIEW that renders the copy, so the event can only fire when
-            // the words genuinely entered the visible hierarchy. `reason` is the constant
-            // "engine_swap" because `warmInFlight` is set solely by the coordinator-owned
-            // post-switch warm; the view has no wider reason to report and must not invent
-            // one. Reappearance is another honest impression, so there is no dedup here.
-            .onAppear {
-              TelemetryService.shared.settingsModelPreparingImpression(
-                engine: "whisper", reason: "engine_swap")
-            }
-          } else {
-            Label(
-              ModelPreparingCopy.label(
-                warmInFlight: engineCoordinator?.status.warmInFlight),
-              systemImage: "checkmark.circle.fill"
-            )
-            .font(.stHelper)
-            .foregroundStyle(.stSuccess)
-          }
-          Spacer()
-          // 2c: the way out. An app that installs 1.5 GB must offer deletion.
-          // Removal does NOT switch the selected engine (founder ruling 2.5.5
-          // "no engine swap at all"; L7 freezes engine writes; plan arm 9:
-          // selectedBackend unchanged, next press gives L6's honest state).
-          // Reviewers keep proposing the EG-1-style auto-switch — that is the
-          // design the founder killed; do not restore it without a new ruling.
-          // While the removal drain runs, the button is REPLACED by progress
-          // (founder ruling 2026-07-17: visible, unspammable).
-          if setup.whisperSetup.isRemoving {
-            HStack(spacing: 6) {
-              ProgressView()
-                .controlSize(.small)
-              Text("Removing model...")
-                .font(.stHelper)
-                .foregroundStyle(.stTextSecondary)
-            }
-          } else {
-            Button {
-              setup.whisperSetup.removeModel()
-            } label: {
-              Text(SettingsItemCopy.Engine.whisperRemove).font(.stHelper).settingsHoverQuiet(tint: .stError)
-            }
-            .controlSize(.small)
-            .buttonStyle(.borderless)
-            .foregroundStyle(.stError)
-            .settingsArrivalFocusControl()
-            .settingsMapRegistration(.whisperModelRemove)
-            // #4325: Remove waits for an active meeting, the same on EnviousMeet's card; the
-            // service refuses too.
-            .disabled(setup.whisperSetup.isMeetingActive?() == true)
-            whisperRefreshButton
-            if setup.whisperSetup.isMeetingActive?() == true {
-              Text(MeetingDownloadAdmission.refusal)
-                .font(.stHelper).foregroundStyle(.stTextSecondary)
-            }
-          }
-        }
-      }
-
-    case .error(let message):
-      VStack(alignment: .leading, spacing: 8) {
-        Label("Something went wrong", systemImage: "exclamationmark.triangle.fill")
-          .font(.stHelper)
-          .foregroundStyle(.stWarning)
-
-        Text(message)
-          .font(.stHelper)
-          .foregroundStyle(.stTextSecondary)
-          .fixedSize(horizontal: false, vertical: true)
-
-        Button {
-          Task { await setup.whisperSetup.detectState() }
-        } label: {
-          EnviousButtonLabel(SettingsItemCopy.Engine.whisperTryAgain)
-        }
-        .settingsButton(isEnabled: true)
-        .settingsMapRegistration(.whisperModelTryAgain)
-      }
-    }
-  }
-
-  @ViewBuilder
-  private func whisperStepIndicator(_ title: LocalizedStringResource) -> some View {
-    Label(String(localized: title), systemImage: "1.circle.fill")
-      .foregroundStyle(Color.stAccent)
-      .font(.stRowLabel)
-  }
-
-  @ViewBuilder
-  private var whisperRefreshButton: some View {
-    Button {
-      Task { await setup.whisperSetup.forceDetectState() }
-    } label: {
-      Image(systemName: "arrow.clockwise")
-        .settingsHoverQuiet()
-    }
-    .buttonStyle(.borderless)
-    .help(Text(SettingsItemCopy.Engine.whisperRecheck))
-    .accessibilityLabel(Text(SettingsItemCopy.Engine.whisperRecheck))
-    .settingsArrivalFocusControl()
-    .settingsMapRegistration(.whisperModelRecheck)
   }
 
   // MARK: - Faster Transcription help (#1337)

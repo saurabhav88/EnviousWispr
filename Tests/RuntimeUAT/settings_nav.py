@@ -1108,7 +1108,7 @@ PARAKEET_ACTIONS = ("Cancel", "Resume", "Try Again")
 PREVIEW_LANGUAGE = "Change dictation language: %@, %@"
 ENGINE_DISCLOSURE = (CHANGE_ENGINE, ENGINE_LABELS, "Keep current engine")
 PREVIEW_DISCLOSURE = ("Change preview engine", ("Apple", "Universal"), "Keep current preview engine")
-WHISPER_ACTIONS = ("Set up model", "Cancel", "Resume", "Remove Model", "Try Again")
+WHISPER_ACTIONS = ("Set up model", "Cancel", "Resume", "Remove", "Try Again")
 INSTALL_ROW_TITLES = ("Install new languages", "Checking which languages are on this Mac",
                       "Could not read the language list from macOS. Reopen this page to try again.")
 DICTIONARY_SECTIONS = ("Your Words", "Vocabulary Packs", "Learn from...", "Quick Add")

@@ -2816,27 +2816,6 @@ struct ParakeetUpgradePolicyTests {
     #expect(rig.coordinator.needsExplicitRetry)
   }
 
-  @Test("the Model ready read follows the presented identity and its permission")
-  func currentAdmissionFollowsPresented() async throws {
-    let v3Serving = try await Self.rig(v3: true, ultra: false)
-    _ = try await v3Serving.coordinator.prepareLoad()
-    #expect(await v3Serving.coordinator.currentAdmission(), "v3 is admitted and accepted")
-
-    let rejected = try await Self.rig(v3: true, ultra: false, enabled: false)
-    let v3Load = try await rejected.coordinator.prepareLoad()
-    #expect(
-      await rejected.coordinator.handleLoadFailure(v3Load, error: VendorLoadFailed()) == .reload)
-    #expect(await rejected.coordinator.currentAdmission() == false, "rejected v3 is not ready")
-
-    let exhausted = try await Self.rig(
-      v3: false, ultra: true,
-      state: .init(attempts: 0, refetchSpent: true, exhausted: true, declined: false))
-    #expect(await exhausted.coordinator.currentAdmission() == false, "retained, not permitted")
-
-    let fresh = try await Self.rig(v3: false, ultra: true)
-    #expect(await fresh.coordinator.currentAdmission())
-  }
-
   @Test("Settings' foreground fetch is counted, so its Cancel reaches it")
   func settingsForegroundFetchCancels() async throws {
     let rig = try await Self.rig(v3: false, ultra: false)
@@ -2869,26 +2848,6 @@ struct ParakeetUpgradePolicyTests {
   }
 
   // MARK: 8b round 2: stale reads and a Resume parked behind a Cancel's drain
-
-  @Test("a Model ready read whose request changed answers false, not the old answer")
-  func currentAdmissionDropsAStaleIdentity() async throws {
-    for changeRequest in [false, true] {
-      let rig = try await Self.rig(v3: true, ultra: false)
-      _ = try await rig.coordinator.prepareLoad()
-      #expect(Self.physicalLoad(rig) == .loaded)
-      #expect(rig.coordinator.presentedModel == .v3)
-      let gate = StageGate()
-      rig.coordinator.usabilityReadGateForTesting = { await gate.pass() }
-      let read = Task { await rig.coordinator.currentAdmission() }
-      await gate.waitForEntry(1)
-      rig.coordinator.usabilityReadGateForTesting = nil
-      if changeRequest { rig.selection.clear() }
-      gate.open()
-      #expect(
-        await read.value == !changeRequest,
-        changeRequest ? "v3's answer must not reach the new request" : "control: v3 is ready")
-    }
-  }
 
   /// Which newer fact lands while a foreground Resume waits for a held Cancel
   /// drain.

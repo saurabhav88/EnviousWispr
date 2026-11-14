@@ -317,20 +317,6 @@ final class ModelDeliveryHome {
     for observer in parakeetUsableObservers { observer() }
   }
 
-  /// #3385: Settings re-checks the current marker and file stamps. Never trust
-  /// the admitted mirror: files may have been removed since it was published.
-  /// This read neither ensures availability nor takes an engine mutation claim.
-  /// #3546: with an upgrade target, the identity that serves or will serve
-  /// answers, with rejection and load permission applied, so Ultra's raw
-  /// marker never makes a working v3 look unavailable (or the reverse).
-  func currentParakeetAdmission() async -> Bool {
-    if let parakeetUpgrade, parakeetUpgrade.hasUpgradeTarget {
-      return await parakeetUpgrade.currentAdmission()
-    }
-    guard let registration = parakeetRegistration else { return false }
-    return await controller.isAdmitted(registration)
-  }
-
   /// #3546 E12/E13: Settings' Cancel and Resume for the BACKGROUND upgrade.
   func cancelParakeetUpgradeDownload() {
     Task { [weak self] in try? await self?.parakeetUpgrade?.cancelBackgroundUpgrade() }
@@ -2158,6 +2144,13 @@ extension ModelDeliveryHome {
       return true
     }
     return false
+  }
+
+  /// #4578: the dictation Whisper model's bytes remain on disk without an admitted install (an
+  /// interrupted removal), so Settings offers to remove the leftover files.
+  func whisperHasLeftovers() async -> Bool {
+    guard let registration = whisperRegistration else { return false }
+    return await controller.hasLeftoverBytes(registration)
   }
 }
 

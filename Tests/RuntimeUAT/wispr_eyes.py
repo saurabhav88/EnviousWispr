@@ -1515,13 +1515,22 @@ def _scan_probes():
         backend = stored_or_none("selectedBackend")
         return None if backend is None else backend == "parakeet"
 
+    def summary_only():
+        # #4578: with "Change speech engine" open, every engine card shows its own status row
+        # (an installed Parakeet card says Remove, a removing one says "Removing model..."), so
+        # those words no longer belong to the selected engine's summary. True only while the
+        # panel is closed; None when that cannot be read.
+        open_panel = button(_sn.ENGINE_DISCLOSURE[2])
+        return None if open_panel is None else not open_panel
+
     def language_section_visible():
         backend = stored_or_none("selectedBackend")
         if backend is None: return None
         if backend == "parakeet": return True
+        if summary_only() is not True: return None
         # Whisper shows the language rows only once its model is ready, the state that
-        # also shows Remove Model (`languageSectionIsAvailable`).
-        if button("Remove Model") or text("Removing model..."): return True
+        # also shows Remove (`languageSectionIsAvailable`).
+        if button("Remove") or text("Removing model..."): return True
         if any(button(b) for b in ("Set up model", "Resume", "Try Again")): return False
         if text("Checking model status..."): return False
         return None
@@ -1530,6 +1539,7 @@ def _scan_probes():
         backend = stored_or_none("selectedBackend")
         if backend is None: return None
         if backend == "parakeet": return False
+        if summary_only() is not True: return None
         # Every Whisper model state offers one action except checking and removing.
         checking, removing = text("Checking model status..."), text("Removing model...")
         if checking is None or removing is None: return None
@@ -1539,9 +1549,10 @@ def _scan_probes():
         backend = stored_or_none("selectedBackend")
         if backend is None: return None
         if backend == "parakeet": return False
+        if summary_only() is not True: return None
         # Re-check shows while the model is not downloaded, paused or ready (not removing).
         if text("Removing model..."): return False
-        if any(button(b) for b in ("Set up model", "Resume", "Remove Model")): return True
+        if any(button(b) for b in ("Set up model", "Resume", "Remove")): return True
         if any(button(b) for b in ("Cancel", "Try Again")) or text("Checking model status..."):
             return False
         return None
@@ -4412,9 +4423,14 @@ def _self_test():
         ("parakeet_selected", (), WK, None, None, False),
         ("parakeet_selected", (), None, None, None, None),
         ("language_section_visible", (), PK, None, None, True),
-        ("language_section_visible", (btn("Remove Model"),), WK, None, None, True),
+        ("language_section_visible", (btn("Remove"),), WK, None, None, True),
         ("language_section_visible", (btn("Set up model"),), WK, None, None, False),
         ("language_section_visible", (), None, None, None, None),
+        # #4578: Whisper selected but missing, Change open: the Remove is the Parakeet card's.
+        ("language_section_visible", (btn("Keep current engine"), btn("Remove")), WK, None, None, None),
+        ("whisper_actions_shown", (btn("Keep current engine"), txt("Removing model...")), WK, None, None, None),
+        ("whisper_recheck_shown", (btn("Keep current engine"), btn("Remove")), WK, None, None, None),
+        ("whisper_recheck_shown", (btn("Remove"),), WK, None, None, True),
         ("whisper_actions_shown", (), PK, None, None, False),
         ("whisper_actions_shown", (btn("Set up model"),), WK, None, None, True),
         ("whisper_actions_shown", (txt("Checking model status..."),), WK, None, None, False),

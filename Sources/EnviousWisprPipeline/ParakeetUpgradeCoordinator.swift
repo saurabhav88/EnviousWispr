@@ -255,8 +255,8 @@ package final class ParakeetUpgradeCoordinator {
   /// Told when a queued cleanup task ends, whether it deleted, refused or was
   /// cancelled, so tests can wait for it without timing guesses.
   var onCleanupEndedForTesting: (@MainActor (ParakeetModel) -> Void)?
-  /// Awaited after each admission read in `isParakeetUsable()` and
-  /// `currentAdmission()`, so a test can change the facts inside that await.
+  /// Awaited after each admission read in `isParakeetUsable()`, so a test can change the facts
+  /// inside that await.
   var usabilityReadGateForTesting: (@MainActor () async -> Void)?
   /// Told when Resume starts waiting for a Cancel's drain.
   var onResumeWaitingForTesting: (@MainActor () -> Void)?
@@ -1373,50 +1373,6 @@ extension ParakeetUpgradeCoordinator {
           generation: 0))
     }
     return selections
-  }
-
-  /// Settings' "Model ready" read (#3385) with a target: whether the identity
-  /// that serves, or will serve, is admitted and still permitted, from fresh
-  /// marker and file-stamp reads. Never fetches. Rejection and load permission
-  /// are applied after the awaited reads, so retained exhausted Ultra or a
-  /// rejected v3 is not "ready" merely because its marker exists.
-  package func currentAdmission() async -> Bool {
-    guard let target else { return false }
-    func v3Ready() async -> Bool {
-      guard let delivery, delivery.locationIsUsable, !v3RejectedThisLaunch else { return false }
-      let admitted = await delivery.isAdmitted()
-      if let usabilityReadGateForTesting { await usabilityReadGateForTesting() }
-      return admitted && !v3RejectedThisLaunch && delivery.locationIsUsable
-    }
-    func ultraReady() async -> Bool {
-      guard target.delivery.locationIsUsable else { return false }
-      let admitted = await target.delivery.isAdmitted()
-      if let usabilityReadGateForTesting { await usabilityReadGateForTesting() }
-      guard admitted, target.delivery.locationIsUsable,
-        case .state(let state) = target.store.read(),
-        !state.exhausted, state.attempts < Self.attemptBudget
-      else { return false }
-      return true
-    }
-    // The answer belongs to the identity it was read for: a request or
-    // presented model that changed during the reads answers false, never the
-    // previous identity's readiness.
-    let request = parakeetSelection.current
-    let model = presentedModel
-    let admitted: Bool
-    switch model {
-    case .v3?: admitted = await v3Ready()
-    case .ultra?: admitted = await ultraReady()
-    case nil:
-      if await v3Ready() {
-        admitted = true
-      } else {
-        admitted = await ultraReady()
-      }
-    }
-    guard !Task.isCancelled, request == parakeetSelection.current, model == presentedModel
-    else { return false }
-    return admitted
   }
 
   /// Settings' Resume / Try again for the shipped download while nothing else
