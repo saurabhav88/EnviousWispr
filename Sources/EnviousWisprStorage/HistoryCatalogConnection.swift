@@ -56,7 +56,7 @@ final class HistoryCatalogConnection {
 
   deinit { sqlite3_close(database) }
 
-  func close() throws {
+  func closeDatabase() throws {
     guard let database else { return }
     let result = sqlite3_close(database)
     guard result == SQLITE_OK else { throw Failure(code: result) }

@@ -5,8 +5,6 @@ import Foundation
 package actor HistoryCatalogReconciliation {
   package struct Pass: Sendable {
     package let revision: String?
-    package let completed: Int
-    package let total: Int
     package var unavailable: Int = 0
   }
 
@@ -63,13 +61,11 @@ package actor HistoryCatalogReconciliation {
     }.map(\.0)
 
     var pending: [Update] = []
-    var completed = 0
     var unavailable = 0
     for url in ordered {
       try Task.checkCancellation()
       let before = progress[url.path]
       if let before, (try? before.versions.allSatisfy { try $0.stillMatches() }) == true {
-        completed += 1
         continue
       }
       do {
@@ -84,12 +80,12 @@ package actor HistoryCatalogReconciliation {
         // unverified, and a later pass can still remove it if the file disappears.
       }
       if pending.count == Self.batchSize {
-        completed += try await commit(pending, tracking: &progress)
+        _ = try await commit(pending, tracking: &progress)
         pending.removeAll(keepingCapacity: true)
-        await onProgress(Pass(revision: nil, completed: completed, total: paths.count))
+        await onProgress(Pass(revision: nil))
       }
     }
-    completed += try await commit(pending, tracking: &progress)
+    _ = try await commit(pending, tracking: &progress)
 
     try Task.checkCancellation()
     let currentPaths = Set(try sources.paths(requireMeetings: requireMeetings).map(\.path))
@@ -112,8 +108,7 @@ package actor HistoryCatalogReconciliation {
     let currentRevision = beganAt == sourceRevision() ? revision : nil
     if currentRevision == nil, revision != nil { try await catalog.apply([]) }
     lastCertificate = currentRevision.flatMap { value in beganAt.map { (value, $0) } }
-    let result = Pass(revision: currentRevision, completed: min(completed, currentPaths.count),
-      total: currentPaths.count, unavailable: unavailable)
+    let result = Pass(revision: currentRevision, unavailable: unavailable)
     await onProgress(result)
     return result
   }
@@ -171,7 +166,7 @@ package actor HistoryCatalogReconciliation {
     let current = beganAt == sourceRevision() ? token : nil
     if current == nil, token != nil { try await catalog.apply([]) }
     lastCertificate = current.flatMap { value in beganAt.map { (value, $0) } }
-    return Pass(revision: current, completed: progress.count, total: progress.count, unavailable: unresolved ? 1 : 0)
+    return Pass(revision: current, unavailable: unresolved ? 1 : 0)
   }
 
   private struct Update {

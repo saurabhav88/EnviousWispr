@@ -201,7 +201,7 @@ final class HistoryCatalogSession {
           if rebuildRequested {
             rebuildRequested = false
             if let backend {
-              try await backend.catalog.close()
+              try await backend.catalog.closeDatabase()
               self.backend = nil
             }
             try HistoryCatalog.discardFiles(in: directory)
@@ -252,6 +252,7 @@ final class HistoryCatalogSession {
     didUpdate?()
   }
 
+  // periphery:ignore - The session integration test waits for the real indexing task.
   func waitForIndexingForTesting() async {
     await indexing?.value
   }

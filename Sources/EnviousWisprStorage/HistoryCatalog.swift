@@ -182,7 +182,7 @@ package actor HistoryCatalog {
     self.connection = connection
   }
 
-  package func close() throws { try connection.close() }
+  package func closeDatabase() throws { try connection.closeDatabase() }
 
   /// Call only after closing the previous catalog instance. Delete only known derived SQLite
   /// files; even a stray original file in this folder is left in place.
