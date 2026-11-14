@@ -193,6 +193,50 @@ struct EngineCoordinatorTests {
       "an ordinary already-converged poke must never wake recovery — no switch ever deferred")
   }
 
+  /// #4578 (C2 r1 P1): when this fails, picking an engine in the first instants after launch
+  /// (or during a delivery change) warms a Parakeet that is not on the Mac, which downloads it.
+  @Test("a selection whose installation fact is unknown neither switches nor warms until it settles")
+  func unknownInstallationWaits() async {
+    let fake = FakeEngineDeps(selected: .parakeet, active: .parakeet)
+    fake.unknownInstall = [.whisper]
+    let c = fake.makeStartedCoordinator()
+    let warmsBefore = fake.warmCount
+    fake.selected = .whisper
+    c.poke(.settingsChanged)
+    let moved = await enginePoll(.milliseconds(150)) { fake.switchCount > 0 }
+    #expect(moved == false, "no switch to an engine whose installation is unknown")
+    #expect(fake.warmCount == warmsBefore, "and no warm")
+    #expect(c.status.blockedReason == .loading)
+    fake.unknownInstall = []
+    c.poke(.setupStateChanged)
+    let applied = await enginePoll { fake.active == .whisper }
+    #expect(applied, "the switch applies once the fact settles as installed")
+  }
+
+  /// #4578 (C2 r2 P1): production reads an unknown fact as "not installed" plus "not known".
+  /// When this fails, a press (or Transcribe a File) in the first instants after launch is
+  /// refused as "not downloaded" for an engine that is on the Mac.
+  @Test("a press waits through an unknown installation fact instead of reporting it missing")
+  func pressWaitsThroughUnknown() async {
+    let fake = FakeEngineDeps(selected: .whisper, active: .parakeet)
+    fake.unknownInstall = [.whisper]
+    fake.whisperInstalled = false  // what production reports while unknown
+    let c = fake.makeStartedCoordinator()
+    final class Done { var value = false }
+    let done = Done()
+    let press = Task { @MainActor in
+      let readiness = await c.ensureSelectedReadyForPress()
+      done.value = true
+      return readiness
+    }
+    let answeredEarly = await enginePoll(.milliseconds(150)) { done.value }
+    #expect(answeredEarly == false, "no answer while the fact is unknown")
+    fake.unknownInstall = []
+    fake.whisperInstalled = true
+    c.poke(.setupStateChanged)
+    #expect(await press.value != .notInstalled, "the settled fact, not the unknown one, decided")
+  }
+
   @Test("not-installed selection never loads, applies once the model downloads")
   func notInstalledDefersUntilDownloaded() async {
     let fake = FakeEngineDeps(selected: .parakeet, active: .parakeet)

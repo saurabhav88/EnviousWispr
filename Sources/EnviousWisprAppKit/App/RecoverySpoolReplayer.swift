@@ -116,6 +116,8 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
   /// any path, so the word check stops counting it as work. Nil in tests that do not care.
   private let onReplayWillTranscribe: (@MainActor (LLMProvider) -> Void)?
   private let onReplayFinished: (@MainActor (LLMProvider) -> Void)?
+  /// #4578: the active engine when its model is not on this Mac (the job decision), else nil.
+  private let activeEngineMissing: (@MainActor () async -> ASRBackendType?)?
   /// Current custom-words vocabulary, best-effort (the snapshot carries only the
   /// version, not the terms — recovery promises normal-quality, not byte-exact).
   private let currentVocabulary:
@@ -160,6 +162,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     checkerSelectionProvider: (@MainActor (LocalPolishModelID, String?) async -> LearnedWordCheckerSelection)? = nil,
     onReplayWillTranscribe: (@MainActor (LLMProvider) -> Void)? = nil,
     onReplayFinished: (@MainActor (LLMProvider) -> Void)? = nil,
+    activeEngineMissing: (@MainActor () async -> ASRBackendType?)? = nil,
     now: @escaping @Sendable () -> Date = { Date() },
     currentCloudModelList: @escaping @MainActor () -> CloudModelList?,
     currentVocabulary: @escaping @MainActor () -> (
@@ -182,6 +185,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     self.checkerSelectionProvider = checkerSelectionProvider
     self.onReplayWillTranscribe = onReplayWillTranscribe
     self.onReplayFinished = onReplayFinished
+    self.activeEngineMissing = activeEngineMissing
     self.currentVocabulary = currentVocabulary
     self.currentSnippets = currentSnippets
     self.currentCloudModelList = currentCloudModelList
@@ -363,6 +367,11 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
       // a limb, and a migration gate here is the crash-recovery coupling that
       // ruling exists to forbid. Reviewers keep re-deriving this — do not
       // "fix" it without a new founder decision.
+      // #4578: a missing engine is refused before the load (which would download a missing
+      // Parakeet). It ends through the same terminal refusal as any load failure below.
+      if let missing = await activeEngineMissing?() {
+        throw SpeechEngineNotDownloadedError(engine: missing)
+      }
       try await activeEngine.load()
     } catch {
       // Discard hard-resets the engine, which can throw here — that's an abort,

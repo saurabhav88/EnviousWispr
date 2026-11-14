@@ -562,3 +562,29 @@ struct ReadinessRetryTelemetryContractTests {
   }
 
 #endif
+
+/// #4578: the speed test asks the job decision before it loads.
+@Suite(.tags(.productOutcome))
+struct BenchmarkMissingEngineTests {
+  /// #4578: when this fails, a speed test on a Mac without the active engine's model loads
+  /// it, and a missing Parakeet downloads in the background of a Diagnostics click.
+  @Test("both benchmark entry points refuse a missing engine before loading anything")
+  @MainActor
+  func bothBenchmarkEntryPointsRefuseAMissingEngine() async {
+    let manager = RecoverySpoolReplayerTests.FakeBatchASR()
+    let engine = ActiveEngineOperation.live(
+      asrManager: manager, parakeetUpgrade: .legacyForTesting(),
+      whisperBackend: LiveTranscribeCppWhisperBackend(
+          driver: LiveWhisperExecutorDriver(), modelVariant: "q8_0", admittedModelPath: { nil }))
+    let suite = BenchmarkSuite(
+      engineMutationScope: .alwaysAllowedForTesting, isEngineSwitching: { false },
+      missingEngineLabel: { "Parakeet" })
+    let notDownloaded = "Parakeet isn't downloaded yet. Open Settings to download it."
+
+    await suite.run(activeEngine: engine)
+    #expect(suite.lastFailure == notDownloaded)
+    await suite.runPipelineBenchmark(using: manager, activeEngine: engine)
+    #expect(suite.lastFailure == notDownloaded)
+    #expect(manager.isModelLoaded == false, "nothing was loaded")
+  }
+}

@@ -65,7 +65,7 @@ extension OnboardingCoordinator.Dependencies {
       downloads: OnboardingDownloads(owners: OnboardingLiveMapping.downloadOwners(owners, facts: facts)),
       readinessSources: OnboardingLiveMapping.withFaults(.live(
         speechModels: owners.speechModels, engineCoordinator: owners.engineCoordinator,
-        localPolish: owners.localPolish, parakeetAdmission: facts.parakeetAdmission,
+        localPolish: owners.localPolish,
         appleIntelligence: appleIntelligence,
         cloudEvidence: { provider in
           OnboardingLiveMapping.cloudEvidence(
@@ -192,7 +192,7 @@ enum OnboardingLiveMapping {
     let live = OnboardingDownloadOwners.live(
       settings: owners.settings, modelDelivery: owners.modelDelivery,
       whisperSetup: owners.whisperSetup, speechModels: owners.speechModels,
-      localPolish: owners.localPolish, parakeetAdmission: facts.parakeetAdmission)
+      localPolish: owners.localPolish)
     #if DEBUG
       return OnboardingDebugFaults.apply(to: live)
     #else

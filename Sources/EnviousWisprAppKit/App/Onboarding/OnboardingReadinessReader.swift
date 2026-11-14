@@ -92,16 +92,14 @@ extension OnboardingReadinessSources {
   /// explicit inputs come from their owners in the coordinator.
   static func live(
     speechModels: SpeechModelLibrary, engineCoordinator: EngineCoordinator,
-    localPolish: LocalPolishRuntimeSet, parakeetAdmission: OnboardingParakeetAdmission,
+    localPolish: LocalPolishRuntimeSet,
     appleIntelligence: @escaping () -> AppleIntelligenceSetupState,
     cloudEvidence: @escaping (LLMProvider) -> OnboardingCloudEvidence?,
     permissions: @escaping () -> (microphone: Bool, accessibility: Bool)
   ) -> OnboardingReadinessSources {
     OnboardingReadinessSources(
-      // The same owner read, recorded for Setup's synchronous phase (P1).
-      speechAdmitted: { engine in
-        await speechModels.isInstalledForSetup(engine, parakeetAdmission: parakeetAdmission)
-      },
+      // #4578: the same installation fact Setup's synchronous phase reads (P1).
+      speechAdmitted: { engine in await speechModels.freshInstalled(engine) },
       engine: {
         let status = engineCoordinator.status
         return (status.selected, status.selectedReadiness)

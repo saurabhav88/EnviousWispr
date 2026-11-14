@@ -164,7 +164,8 @@ struct RecoverySpoolReplayerTests {
     now: @escaping @Sendable () -> Date = { Date() },
     onReplayWillTranscribe: (@MainActor (LLMProvider) -> Void)? = nil,
     onReplayFinished: (@MainActor (LLMProvider) -> Void)? = nil,
-    currentCloudModelList: @escaping @MainActor () -> CloudModelList? = { nil }
+    currentCloudModelList: @escaping @MainActor () -> CloudModelList? = { nil },
+    activeEngineMissing: (@MainActor () async -> ASRBackendType?)? = nil
   ) -> Harness {
     let spoolDir = tempDir()
     let keyStore = RecoveryKeyStore(backend: .file, fileDirectory: tempDir())
@@ -187,6 +188,7 @@ struct RecoverySpoolReplayerTests {
       outputClassifierHolder: OutputClassifierHolder(),
       onReplayWillTranscribe: onReplayWillTranscribe,
       onReplayFinished: onReplayFinished,
+      activeEngineMissing: activeEngineMissing,
       now: now,
       currentCloudModelList: currentCloudModelList,
       currentVocabulary: { (.empty, .empty) },
@@ -249,6 +251,21 @@ struct RecoverySpoolReplayerTests {
   /// transcription. When this fails, a recovered dictation misses its learned-word fixes.
   /// #4353 D6: the replay reads the cloud model list once, before it decrypts or transcribes,
   /// so a refresh during the replay cannot change the polish it ends with.
+  /// #4578: when this fails, a crash replay on a Mac whose active engine was removed loads it
+  /// (a missing Parakeet downloads) instead of ending through the terminal refusal.
+  @Test("a missing active engine ends the replay unrecoverable before any load")
+  func missingEngineEndsBeforeLoad() async throws {
+    var loads = 0
+    let h = Self.makeHarness(activeEngineMissing: { .parakeet })
+    h.asr.onLoadModel = { loads += 1 }
+    let id = "missing-\(UUID().uuidString)"
+    try await Self.seedSpool(h, id: id, samples: [0.1, 0.2, 0.3])
+    let outcome = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
+    #expect(outcome == .failed(.unrecoverable))
+    #expect(loads == 0, "nothing was loaded")
+    #expect(h.asr.transcribeCallCount == 0)
+  }
+
   @Test("a replay reads the cloud model list once, before it transcribes")
   func replayCapturesCloudModelListAtStart() async throws {
     var reads: [Int] = []

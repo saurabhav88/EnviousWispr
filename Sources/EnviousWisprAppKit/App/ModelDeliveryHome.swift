@@ -52,7 +52,13 @@ final class ModelDeliveryHome {
   /// #3546 test observations (internal): the launch donor migration's task and
   /// the Parakeet observer setup, so a test can wait for what construction
   /// started without starting either itself. Production never reads them.
-  private(set) var retiredV3LaunchMigrationForTesting: Task<Void, Never>?
+  private(set) var retiredV3LaunchMigration: Task<Void, Never>?
+
+  /// #4578: waits for the launch migration of a donor v3 copy (if one started), so an
+  /// installation read sees the adopted copy rather than its absence.
+  func awaitLaunchMigration() async {
+    await retiredV3LaunchMigration?.value
+  }
 
   /// #3546: what Settings presents for Parakeet, mirrored from the upgrade
   /// coordinator (it owns every decision; this only re-reads on its signal).
@@ -140,7 +146,7 @@ final class ModelDeliveryHome {
     // removed Parakeet, so a donor copy is never adopted back. The coordinator is built at
     // launch by the bootstrapper, so this is still launch, not the first take.
     if parakeetRetiredV3Handle != nil {
-      retiredV3LaunchMigrationForTesting = Task { await coordinator.runLaunchMigration() }
+      retiredV3LaunchMigration = Task { await coordinator.runLaunchMigration() }
     }
     return coordinator
   }

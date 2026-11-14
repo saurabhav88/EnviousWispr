@@ -518,6 +518,8 @@ package final class WisprBootstrapper {
       removeModel: SpeechModelLibrary.whisperRemoveAction(speechModels))
     speechModels.attachWhisper(
       .init(setupService: whisper.setupService, migration: whisper.migration, removal: whisper.removal))
+    // The first Parakeet installation read (joins the launch migration started just above).
+    speechModels.refreshParakeet()
     let whisperBackend = whisper.backend
     // #3973 C3: EnviousMeet's own Whisper Large v3 Turbo (used only while dictation runs
     // Parakeet). One instance for the process; loaded for one engine operation at a time.
@@ -1490,7 +1492,9 @@ package final class WisprBootstrapper {
         // completion warms instead. Setup usually left the engine warm already (this joins or
         // no-ops); after a completion restored on relaunch, or Skip practice while Practice
         // was still preparing, it is what keeps the first dictation from starting cold.
-        Task { [weak kernelDriver] in
+        Task { [weak kernelDriver, weak speechModels] in
+          // #4578: a missing engine is not warmed (a warm of a missing Parakeet downloads it).
+          guard await speechModels?.freshInstalled(.parakeet) == true else { return }
           guard settings.selectedBackend == .parakeet,
             asrManager.activeBackendType == .parakeet
           else { return }
@@ -1535,7 +1539,9 @@ package final class WisprBootstrapper {
     {
       // #3546: launch is a model-selection point.
       parakeetUpgrade.markSelectionPoint()
-      Task { [weak kernelDriver] in
+      Task { [weak kernelDriver, weak speechModels] in
+        // #4578: the initial installation read settles first; a missing engine is not warmed.
+        guard await speechModels?.freshInstalled(.parakeet) == true else { return }
         // Discard the outcome so the Task's Success type stays Void
         // (`EngineWarmupOutcome` does not declare Sendable conformance).
         _ = await kernelDriver?.ensureEngineWarm(reason: .launch)
@@ -1569,7 +1575,15 @@ package final class WisprBootstrapper {
     let diagnosticsCoordinator = DiagnosticsCoordinator(
       benchmark: BenchmarkSuite(
         engineMutationScope: engineMutationScope, engineLease: engineLease,
-        isEngineSwitching: { engineCoordinatorForRecoveryGate?.isSwitching ?? false }))
+        isEngineSwitching: { engineCoordinatorForRecoveryGate?.isSwitching ?? false },
+        // #4578: both speed-test entry points load through `ensureModelLoaded`; the job
+        // decision runs there first. The active engine is the one the test loads.
+        missingEngineLabel: { [weak speechModels, asrManager, kernelDriver, whisperKernelDriver] in
+          guard let speechModels else { return nil }
+          let engine = asrManager.activeBackendType
+          guard await !speechModels.admits(.benchmark, requested: engine) else { return nil }
+          return (engine == .whisper ? whisperKernelDriver : kernelDriver).engineDisplayName
+        }))
 
     // **Two arguments, and no self-reference problem to solve** (#2292 C3).
     // This used to hand over three closures, one of which resolved the chip's
@@ -1642,6 +1656,12 @@ package final class WisprBootstrapper {
         checkerEligibility?.wordCheck?.recoveryFinished(
           needsWordCheck: !LearnedWordCheckerEngine.hasOwnChecker(provider))
         settingsSync?.outputClassifierRecoveryFinished(provider: provider, settings: settings)
+      },
+      // #4578: replay never downloads a missing engine; it ends through the terminal refusal.
+      activeEngineMissing: { [weak speechModels, asrManager] in
+        guard let speechModels else { return nil }
+        let engine = asrManager.activeBackendType
+        return await speechModels.admits(.recoveryReplay, requested: engine) ? nil : engine
       },
       // Best-effort: the snapshot carries only the custom-words version, so recovery
       // applies the user's CURRENT words (pack terms omitted) — normal-quality, not
@@ -1735,8 +1755,13 @@ package final class WisprBootstrapper {
         isMeetingOwnModelResident: { [meetingBox] backend in
           meetingBox.coordinator?.isFinalPassOwnModelResident(backend) ?? false
         },
-        isInstalled: { [setup] backend in
-          backend == .parakeet ? true : setup.whisperSetup.setupState == .ready
+        // #4578: the library's settled fact; unknown is not installed here, and
+        // `isInstallationKnown` keeps the switch and warm waiting until it settles.
+        isInstalled: { [weak speechModels] backend in
+          speechModels?.installedSnapshot(backend) ?? false
+        },
+        isInstallationKnown: { [weak speechModels] backend in
+          speechModels?.installedSnapshot(backend) != nil
         },
         stateLabel: { [kernelDriver, whisperKernelDriver] backend in
           (backend == .whisper ? whisperKernelDriver : kernelDriver).state.telemetryLabel
@@ -1994,14 +2019,11 @@ package final class WisprBootstrapper {
       // removed (founder: no new dictations during a removal drain; the drain's
       // first instants can still read installed+ready). Defaults OPEN on a
       // missing authority.
-      isSelectedModelInstalled: { [weak engineCoordinator, weak setup] in
-        guard let engineCoordinator else { return true }
-        if engineCoordinator.status.selected == .whisper,
-          setup?.whisperSetup.isRemoving == true
-        {
-          return false
-        }
-        return engineCoordinator.status.selectedInstalled
+      isSelectedModelInstalled: { [weak engineCoordinator, weak speechModels] in
+        guard let engineCoordinator, let speechModels else { return true }
+        // #4578: one decision over fresh facts. A model mid-removal reads not installed
+        // (`installedSnapshot`), as before.
+        return await speechModels.admits(.dictation, requested: engineCoordinator.status.selected)
       },
       endMinting: { [weak engineCoordinator] in engineCoordinator?.endMinting() },
       // #3546 A3: a press during the in-session Ultra activation gets the upgrade pills.
@@ -2457,7 +2479,14 @@ package final class WisprBootstrapper {
       engineSelectionSettled: { [settings, asrManager] in
         settings.selectedBackend == asrManager.activeBackendType
       },
-      ensureEngineReady: ensureSelectedEngineReady,
+      // #4578: Transcribe a File asks the one decision first (fresh facts), then the shared
+      // readiness drive; a missing engine is refused before any load, so nothing downloads.
+      ensureEngineReady: { [weak engineCoordinator, weak speechModels] in
+        guard let engineCoordinator, let speechModels else { return .notReady }
+        guard await speechModels.admits(.fileImport, requested: engineCoordinator.status.selected)
+        else { return .notInstalled }
+        return await ensureSelectedEngineReady()
+      },
       // The same three retries a finished dictation fires
       // (`DictationLifecycleCoordinator` on its terminal), because an import
       // blocks the same three things: an engine switch deferred by gate 6b, an
@@ -3132,6 +3161,9 @@ package final class WisprBootstrapper {
           SentryCaptureBoundaryError.normalizingTranscriptionFailure(error),
           category: .asrFailed, stage: "file_import",
           extra: ["backend": backend.rawValue, "trigger": "transcribe_again"])
+      },
+      installedEngines: { [weak speechModels] in
+        await speechModels?.freshInstalledEngines() ?? []
       })
     let transcriptRetranscription = TranscriptRetranscription(
       history: transcriptCoordinator, sources: importedSources,
@@ -3561,6 +3593,11 @@ package final class WisprBootstrapper {
         || (engineLease?.isBusy ?? true)
     }
     engineCoordinator.start()
+    // #4578: an installation fact changed (a read settled, a removal or install finished):
+    // the coordinator re-reads its status and switch gate.
+    speechModels.onInstallationChanged = { [weak engineCoordinator] in
+      engineCoordinator?.poke(.setupStateChanged)
+    }
 
     // Initialize observability (PostHog + Sentry) unconditionally at launch.
     // #919: same timing as before — the shell's `App.init()` constructs this

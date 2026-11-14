@@ -68,18 +68,31 @@ final class BenchmarkSuite {
   /// cannot silently skip it.
   private let isEngineSwitching: @MainActor () -> Bool
 
+  /// #4578: the engine label when the active engine's model is not on this Mac (the job
+  /// decision over fresh facts), nil when it is. Checked before any load, so a speed test never
+  /// downloads a missing engine. Defaults to installed so existing constructions are unchanged.
+  private let missingEngineLabel: @MainActor () async -> String?
+
   init(
     engineMutationScope: EngineMutationScope, engineLease: EngineLease = EngineLease(),
-    isEngineSwitching: @escaping @MainActor () -> Bool
+    isEngineSwitching: @escaping @MainActor () -> Bool,
+    missingEngineLabel: @escaping @MainActor () async -> String? = { nil }
   ) {
     self.engineLease = engineLease
     self.engineMutationScope = engineMutationScope
     self.isEngineSwitching = isEngineSwitching
+    self.missingEngineLabel = missingEngineLabel
   }
 
   /// Ensure model is loaded, returning false (and updating progress) if loading fails.
   private func ensureModelLoaded(using activeEngine: ActiveEngineOperation) async -> Bool {
     guard !(await activeEngine.isLoaded()) else { return true }
+    if let label = await missingEngineLabel() {
+      let message = DictationNarrator.copy(for: .modelNotDownloaded(engineLabel: label))
+      progress = message
+      lastFailure = message
+      return false
+    }
     progress = String(
       localized: "benchmark.progress.loadingModel", defaultValue: "Loading model...",
       comment: "Settings > Diagnostics, speed test: loading the speech engine before the test.")

@@ -79,7 +79,7 @@ final class DictationRuntime {
       },
     isEngineSwitching: @escaping @MainActor () -> Bool = { false },
     beginMinting: @escaping @MainActor () -> Void = {},
-    isSelectedModelInstalled: @escaping @MainActor () -> Bool = { true },
+    isSelectedModelInstalled: @escaping @MainActor () async -> Bool = { true },
     endMinting: @escaping @MainActor () -> Void = {},
     // #3546 A3: a press during the in-session Ultra activation; nil for legacy/tests.
     isActivatingParakeetUpgrade: (@MainActor () -> Bool)? = nil,

@@ -1309,6 +1309,36 @@ import Testing
     fx.engineLease.release(meeting)
   }
 
+  /// #4578 (C2 r1 P1): the installation gate may await a fresh read. When this fails, a key
+  /// released (or a toggle stopped) during that wait still starts a recording afterwards.
+  @Test("a release during the installation read starts nothing; without one the press records")
+  func releaseDuringTheInstallationReadStartsNothing() async {
+    for released in [true, false] {
+      var arms: [ASRBackendType] = []
+      let fx = Self.makeFixture(onRecoveryArm: { arms.append($0) })
+      fx.asr.activeBackendType = .parakeet
+      fx.asr.isModelLoaded = true
+      fx.starter.isSelectedModelInstalled = { [finalizer = fx.finalizer] in
+        if released { await finalizer.userStop() }
+        return true
+      }
+      _ = await fx.starter.start()
+      #expect(arms.isEmpty == released, released ? "PTT: the release won" : "control: PTT records")
+
+      var toggleArms: [ASRBackendType] = []
+      let tfx = Self.makeFixture(onRecoveryArm: { toggleArms.append($0) })
+      tfx.asr.activeBackendType = .parakeet
+      tfx.asr.isModelLoaded = true
+      tfx.starter.isSelectedModelInstalled = { [finalizer = tfx.finalizer] in
+        if released { await finalizer.userStop() }
+        return true
+      }
+      await tfx.starter.toggle(source: .toggleHotkey)
+      #expect(
+        toggleArms.isEmpty == released, released ? "toggle: the stop won" : "control: toggle records")
+    }
+  }
+
   /// Engine facts are read after the wait, not before it: a gate that now fails refuses, and a
   /// backend switched during the wait is the one the press starts on.
   @Test func theResumedPressReadsFreshEngineFacts() async {

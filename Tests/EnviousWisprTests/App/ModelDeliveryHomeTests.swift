@@ -101,7 +101,7 @@ struct ModelDeliveryHomeTests {
     // #4578: the launch migration starts with the coordinator, which reads the install intent.
     _ = home.installParakeetUpgrade(
       parakeetSelection: ParakeetSelectionProvider(), isOnboardingComplete: { false })
-    _ = try await Self.awaitBounded(home.retiredV3LaunchMigrationForTesting)
+    _ = try await Self.awaitBounded(home.retiredV3LaunchMigration)
     let owned = ParakeetInstallLocation.directory(for: .v3, dataDirectory: fixture.dataDirectory)
     for file in ManifestFixture.smallFiles {
       #expect(try Data(contentsOf: owned.appendingPathComponent(file.path)) == file.content)
