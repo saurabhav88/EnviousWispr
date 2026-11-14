@@ -83,9 +83,23 @@ import Foundation
   func allRowsForGlobalDeletion() async throws -> [Transcript] { try await store.loadAll() }
 
   func savedRowIDs(ofMeeting id: UUID, now: Date) async throws -> [UUID] {
+    let read = try await readCompleteHistory(now: now)
+    return read.permanent.filter { $0.meetingID == id }.map(\.id)
+  }
+
+  #if DEBUG
+    func readSavedHistory(now: Date) async throws -> [Transcript] {
+      let read = try await readCompleteHistory(now: now)
+      let permanent = Set(read.permanent.map(\.id))
+      let pending = read.pending.filter { !permanent.contains($0.id) }
+      return (read.permanent + pending).sorted { $0.createdAt > $1.createdAt }
+    }
+  #endif
+
+  private func readCompleteHistory(now: Date) async throws -> TranscriptHistoryRead {
     let read = try await store.readHistory(now: now)
     guard read.isComplete, read.freshness != nil else { throw CocoaError(.fileReadUnknown) }
-    return read.permanent.filter { $0.meetingID == id }.map(\.id)
+    return read
   }
 
   func deleteAll() throws {

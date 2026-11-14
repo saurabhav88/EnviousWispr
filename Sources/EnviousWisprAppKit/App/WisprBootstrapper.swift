@@ -2745,7 +2745,10 @@ package final class WisprBootstrapper {
             savedKeyState: { [savedKeyPresence] in savedKeyPresence.state(for: $0) }),
           history: DevControlDispatcher.HistorySource(
             visibleTranscripts: { [transcriptCoordinator] in
-              transcriptCoordinator.visibleTranscripts
+              try await transcriptCoordinator.savedHistoryForDiagnostics()
+            },
+            savedRow: { [transcriptCoordinator] id in
+              try await transcriptCoordinator.savedRowForDiagnostics(id: id)
             }),
           models: DevControlDispatcher.ModelActions(
             parakeetDownload: { [modelDelivery] in modelDelivery.resumeParakeetDownload() },

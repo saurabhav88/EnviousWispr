@@ -817,9 +817,11 @@ struct HistoryMeetingAfterView: View {
   /// (nothing while it is being deleted), else the row of a meeting whose folder is gone.
   private func deliveryRow() -> Transcript? {
     if let record = meetings.record(id: meetingID) {
-      return record.deletionRequested ? nil : committedRow(record)
+      guard !record.deletionRequested, record.committedTranscriptGeneration != nil else { return nil }
+      return transcripts.verifiedRowForDelivery(id: record.transcriptID)
     }
-    return orphanRow
+    guard let orphanRow else { return nil }
+    return transcripts.verifiedRowForDelivery(id: orphanRow.id)
   }
 
   private func perform(_ kind: Confirmation) {

@@ -82,11 +82,10 @@ final class TranscriptCoordinator {
   /// Hydrate one current payload on demand. The live command array still owns newly
   /// published writes; a page never joins that array merely because it was browsed.
   func loadCatalogDetail(_ id: UUID, authoritative: Bool = false) async -> Transcript? {
-    guard let catalogSession, let source = catalogSession.stableSourceRevision else {
-      return currentRow(id: id)
-    }
-    if !authoritative, let row = currentRow(id: id) { return row }
-    let request = CatalogDetailRequest(id: id, revision: source)
+    guard let catalogSession else { return currentRow(id: id) }
+    if !authoritative, let row = verifiedRowForDelivery(id: id) { return row }
+    let source = catalogSession.stableSourceRevision
+    let request = CatalogDetailRequest(id: id, revision: catalogSession.revision)
     let reader: Task<HistoryTransactionExecutor.VerifiedHistoryRow?, Never>
     if let inFlight = catalogDetailReads[request] {
       reader = inFlight
@@ -99,9 +98,9 @@ final class TranscriptCoordinator {
     }
     let payload = await reader.value
     if catalogDetailReads[request] == reader { catalogDetailReads[request] = nil }
-    guard !Task.isCancelled, source == catalogSession.stableSourceRevision,
-      let payload, Self.isVisible(payload.row, at: clock()), !removedRowIDs.contains(id)
-    else { return authoritative ? nil : currentRow(id: id) }
+    guard !Task.isCancelled, let payload, Self.isVisible(payload.row, at: clock()),
+      !removedRowIDs.contains(id), stillCurrent(id, proof: payload.versions)
+    else { return nil }
     if catalogDetails[id] == nil { catalogDetailOrder.append(id) }
     catalogDetailVersions[id] = source
     catalogDetails[id] = payload.row
@@ -1445,12 +1444,13 @@ final class TranscriptCoordinator {
     guard let catalogSession else { return live }
     _ = catalogSession.revision
     _ = expiryPulse
-    guard let source = catalogSession.stableSourceRevision, !removedRowIDs.contains(id) else { return nil }
+    guard !removedRowIDs.contains(id) else { return nil }
+    let source = catalogSession.stableSourceRevision
     if let live, Self.isVisible(live, at: clock()),
-      liveRowVersions[id] == source || stillCurrent(id, proof: publishedImportProofs[id])
+      (source != nil && liveRowVersions[id] == source) || stillCurrent(id, proof: publishedImportProofs[id])
     { return live }
     guard let detail = catalogDetails[id], Self.isVisible(detail, at: clock()),
-      catalogDetailVersions[id] == source || stillCurrent(id, proof: catalogDetailProofs[id])
+      (source != nil && catalogDetailVersions[id] == source) || stillCurrent(id, proof: catalogDetailProofs[id])
     else { return nil }
     return detail
   }
@@ -1466,7 +1466,8 @@ final class TranscriptCoordinator {
     guard catalogSession != nil else { return currentRow(id: id) }
     guard !removedRowIDs.contains(id), let expected = try? readCatalogProof(id),
       expected.contains(where: { !$0.fingerprint.isEmpty }) else { return nil }
-    if catalogDetailProofs[id] == expected { return catalogDetails[id] }
+    if catalogDetailProofs[id] == expected, let row = catalogDetails[id],
+      Self.isVisible(row, at: clock()) { return row }
     guard fetchIfNeeded else { return nil }
     return try? readSavedHistoryRow(id, clock())
   }
@@ -1570,6 +1571,17 @@ final class TranscriptCoordinator {
     guard catalogSession != nil else { return rowIDs(ofMeeting: meetingID) }
     return try await transactionExecutor.savedRowIDs(ofMeeting: meetingID, now: clock())
   }
+
+  #if DEBUG
+    func savedHistoryForDiagnostics() async throws -> [Transcript] {
+      guard catalogSession != nil else { return visibleTranscripts }
+      return try await transactionExecutor.readSavedHistory(now: clock())
+    }
+
+    func savedRowForDiagnostics(id: UUID) async throws -> Transcript? {
+      try await rowForCommand(id)
+    }
+  #endif
 
   func loadCatalogOrphan(_ meetingID: UUID) async -> UUID? {
     guard let catalogSession,
