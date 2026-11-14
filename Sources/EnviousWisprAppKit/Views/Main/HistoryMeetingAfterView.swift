@@ -527,8 +527,10 @@ struct HistoryMeetingAfterView: View {
   /// Copy, Share and Save as…, each reading the CURRENT row when it acts.
   @ViewBuilder
   private func deliveryButtons(title: String, canDeliver: Bool) -> some View {
+    let labels = TranscriptDocumentPresenter.exportButtonLabels(mode: transcriptMode)
     let copy = TranscribeFileExport.copyButtonPresentation(
-      label: String(localized: "Copy", comment: "EnviousMeet: copies the visible transcript."),
+      label: transcriptMode == .markedUp
+        ? labels.copy : String(localized: "Copy", comment: "EnviousMeet: copies the visible transcript."),
       copiedAt: copiedAt, now: Date(), holdSeconds: TranscribeFileExport.copiedHoldSeconds)
       Button {
         // Read at the press from the live row, never this view's snapshot.
@@ -552,7 +554,8 @@ struct HistoryMeetingAfterView: View {
         preview: SharePreview(title)
       ) {
         EnviousButtonLabel(
-          LocalizedStringResource("Share", comment: "EnviousMeet: shares the visible transcript."),
+        verbatim: transcriptMode == .markedUp
+          ? labels.share : String(localized: "Share", comment: "EnviousMeet: shares the visible transcript."),
           size: .medium, systemImage: "square.and.arrow.up")
       }
       .settingsButton(.quiet, size: .medium, isEnabled: canDeliver)
@@ -561,8 +564,9 @@ struct HistoryMeetingAfterView: View {
         save(defaultName: title)
       } label: {
         EnviousButtonLabel(
-          LocalizedStringResource(
-            "Save as…", comment: "History meeting: saves the transcript and notes as a text file."),
+        verbatim: transcriptMode == .markedUp
+          ? labels.save
+          : String(localized: "Save as…", comment: "History meeting: saves the transcript and notes as a text file."),
           size: .medium, systemImage: "square.and.arrow.down")
       }
       .settingsButton(.quiet, size: .medium, isEnabled: canDeliver)
