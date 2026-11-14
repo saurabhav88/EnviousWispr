@@ -7,7 +7,7 @@ enum HistoryAppFilter: Hashable, Sendable {
   case all
   /// Dictations with no recorded app.
   case unknown
-  /// The exact recorded `targetApp` value, never a guessed bundle ID.
+  /// The exact recorded `targetApp` value. `HistoryAppName` handles its display label.
   case named(String)
 }
 

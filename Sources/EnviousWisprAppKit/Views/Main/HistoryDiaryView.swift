@@ -330,7 +330,8 @@ private struct HistoryDiaryTime: View {
 
   private var app: String? {
     switch item {
-    case .transcript(let row): row.isImported ? nil : row.metrics?.targetApp
+    case .transcript(let row):
+      row.isImported ? nil : row.metrics?.targetApp.map(HistoryAppName.label(for:))
     case .meeting(let meeting): meeting.record?.callApp?.displayName
     }
   }

@@ -194,6 +194,21 @@ struct HistoryDiaryTests {
     #expect(HistoryFilterLabels.appOptions(["Slack"]).contains { $0.filter == .unknown } == false)
   }
 
+  @MainActor
+  @Test("app labels use Codex's name, macOS app names, and readable fallbacks")
+  func appLabels() {
+    #expect(HistoryFilterLabels.app(.named("com.openai.codex")) == "Codex")
+    #expect(HistoryAppName.label(for: "com.openai.codex", installedName: { _ in "ChatGPT" }) == "Codex")
+    #expect(
+      HistoryAppName.label(for: "com.apple.iWork.Pages", installedName: { _ in "Pages" }) == "Pages")
+    #expect(
+      HistoryAppName.label(for: "com.example.visual-studio-code", installedName: { _ in nil })
+        == "Visual Studio Code")
+    #expect(HistoryAppName.label(for: "Google Chrome", installedName: { _ in nil }) == "Google Chrome")
+    let options = HistoryFilterLabels.appOptions(["com.openai.codex", "Codex"])
+    #expect(Set(options.map(\.filter)) == [.all, .named("com.openai.codex"), .named("Codex")])
+  }
+
   @Test("help leaves out Polish again and states the real recording retention")
   func helpPerTab() throws {
     let dictations = HistoryHelpContent.items(for: .dictations, retention: .forever)

@@ -296,7 +296,7 @@ enum HistoryFilterLabels {
     return options
   }
 
-  static func app(_ filter: HistoryAppFilter) -> String {
+  @MainActor static func app(_ filter: HistoryAppFilter) -> String {
     switch filter {
     case .all:
       String(localized: "All apps", comment: "History, Dictations: the App filter shows every app.")
@@ -304,8 +304,8 @@ enum HistoryFilterLabels {
       String(
         localized: "Unknown app",
         comment: "History, Dictations: dictations with no recorded app they went to.")
-    case .named(let name):
-      name
+    case .named(let identifier):
+      HistoryAppName.label(for: identifier)
     }
   }
 
