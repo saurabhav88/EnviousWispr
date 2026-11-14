@@ -36,8 +36,8 @@ struct HistoryDiaryView<
     let state = coordinator.historyState(for: tab)
 
     VStack(spacing: 0) {
-      if let openID = state.openItemID {
-        destination(for: openID, tab: tab, query: state.query)
+      if let openID = state.openItemID, tab != .dictations {
+        destination(for: openID)
           .frame(maxWidth: .infinity, maxHeight: .infinity)
           .environment(\.historyHighlightQuery, state.query)
       } else {
@@ -77,19 +77,8 @@ struct HistoryDiaryView<
       set: { coordinator.selectHistoryTab($0) })
   }
 
-  @ViewBuilder private func destination(for id: HistoryItemID, tab: HistoryTab, query: String)
-    -> some View
-  {
+  @ViewBuilder private func destination(for id: HistoryItemID) -> some View {
     switch id {
-    case .transcript(let rowID) where tab == .dictations:
-      if let row = coordinator.currentRow(id: rowID) {
-        VStack(alignment: .leading, spacing: DesignSpacing.lg) {
-          HistoryDestinationBar(tab: tab, close: closeOpenItem)
-          ScrollView { dictationCard(row, query) }
-        }
-        .padding(.horizontal, SettingsLayout.contentH)
-        .padding(.vertical, SettingsLayout.contentTop)
-      }
     case .transcript(let rowID): transcriptDestination(rowID, closeOpenItem)
     case .meeting(let meetingID): meetingDestination(meetingID, closeOpenItem)
     }
@@ -241,14 +230,11 @@ private struct HistoryDiaryList<DictationCard: View>: View {
       case .transcript(let row) where row.isImported == false:
         dictationCard(row, state.query)
           .contentShape(Rectangle())
-          .onTapGesture {
-            guard row.escapeRecoveredAt == nil else { return }
-            if isSelecting {
+          .gesture(
+            TapGesture().onEnded {
               tick(item.id, extending: NSEvent.modifierFlags.contains(.shift), items: items)
-            } else {
-              open(item.id)
-            }
-          }
+            },
+            including: isSelecting && row.escapeRecoveredAt == nil ? .all : .subviews)
       case .transcript(let row):
         transcriptCard(row.id, item: item.id, items: items)
       case .meeting(let meeting):
