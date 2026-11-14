@@ -198,7 +198,7 @@
     /// found through the meeting's transcript id. Stored turns (every turn, echo flagged) and
     /// the default visible projection are reported separately; `includeText` adds the stored
     /// text when it is at most `maxTextBytes`.
-    func get(_ args: [String: Any]) -> Result {
+    func get(_ args: [String: Any]) async -> Result {
       let meetingID: UUID
       switch Self.meetingID(
         args, allowed: ["meetingID", "turnOffset", "turnLimit", "includeText"])
@@ -234,7 +234,12 @@
         return .failure(.notFound, "no meeting has that id")
       }
       var reply: [String: Any] = ["meeting": summary(record, coordinator: coordinator)]
-      guard let row = transcripts.currentRow(id: record.transcriptID) else {
+      let saved: Transcript?
+      do { saved = try await transcripts.savedRowForDiagnostics(id: record.transcriptID) }
+      catch { return .failure(.catalogUnavailable, "could not read the meeting's saved transcript") }
+      guard coordinator.record(id: meetingID)?.committedTranscriptGeneration == record.committedTranscriptGeneration
+      else { return .failure(.catalogUnavailable, "the meeting transcript changed during the read") }
+      guard let row = saved else {
         reply["transcript"] = NSNull()
         return .ok(reply)
       }

@@ -12847,6 +12847,17 @@
         }
       }
     },
+    "History is up to date." : {
+      "comment" : "VoiceOver: the History index finished updating.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Verlauf ist auf dem neuesten Stand."
+          }
+        }
+      }
+    },
     "Hold %@" : {
       "comment" : "Main window: the push-to-talk keybind. %@ is the key or chord, such as Right ⌥.",
       "localizations" : {
@@ -29027,6 +29038,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Update-Status nicht verfügbar"
+          }
+        }
+      }
+    },
+    "Updating History…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verlauf wird aktualisiert …"
           }
         }
       }

@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprStorage
 import Foundation
 
 /// The meeting facts History needs beside a meeting's row (#3972 R5, R19), read from
@@ -163,5 +164,37 @@ enum MeetingHistoryPresentation {
     String(
       localized: "This meeting isn't available right now.",
       comment: "History: a meeting row whose meeting details have not loaded or were removed.")
+  }
+}
+
+extension MeetingHistoryPresentation {
+  /// Builds the saved-only projection; live drafts and the optional echo view stay in the
+  /// session owner. Use the same admitted/visible text rule as the detail and export viewers.
+  nonisolated static func catalogProjection(
+    _ source: HistoryCatalogSources.Saved, meeting: MeetingRecord
+  ) -> HistoryCatalog.Projection {
+    let info = MeetingHistoryInfo.paired(with: meeting)
+    let text = source.transcript.map { project($0, info: info, showEcho: false) }
+    let preview = source.documents?.summary ?? text.map(previewText) ?? ""
+    var fields: [String] = []
+    if let row = source.transcript, meeting.state == .ready {
+      if case .visible(_, let visible) = text { fields.append(visible) }
+      if let title = info?.title { fields.append(title) }
+      if let names = row.speakerNames { fields.append(contentsOf: names.values) }
+      if let notes = source.documents?.notes { fields.append(notes) }
+      if let context = source.context, info?.matching(row) != nil {
+        for person in MeetingParticipants.resolve(attendees: context.attendees) {
+          fields.append(contentsOf: [person.name, person.email, person.emailDomain].compactMap { $0 })
+        }
+      }
+    }
+    return .init(summary: .init(
+      key: .init(tab: .meetings, id: meeting.id), date: meeting.createdAt, appKey: meeting.callApp?.rawValue,
+      title: meeting.title, preview: String(preview.prefix(600)), sources: source.versions,
+      rowID: source.transcript?.id, backendName: source.transcript?.backendType.displayName,
+      meetingAnalysis: source.transcript?.speakerAnalysis,
+      summaryProvider: source.documents?.manifest.summary?.inputs?.providerID,
+      hasMeetingSummary: source.documents?.summary != nil),
+      searchableFields: fields)
   }
 }

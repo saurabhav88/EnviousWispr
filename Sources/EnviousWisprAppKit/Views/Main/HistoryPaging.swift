@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprStorage
 import Foundation
 
 /// How much of a History tab's list the diary draws (#4001 step 3a, #3147 §3.3). On a 27,000-row
@@ -118,7 +119,7 @@ struct HistoryQueryResult: Sendable {
   struct Entry: Identifiable, Sendable {
     let id: HistoryDiaryLayout.EntryID
     let position: Int
-    let dayCount: Int
+    let dayCount: Int?
   }
 
   let key: TranscriptCoordinator.HistoryQueryKey
@@ -126,13 +127,26 @@ struct HistoryQueryResult: Sendable {
   let positions: [HistoryItemID: Int]
   let ids: Set<HistoryItemID>
   let calendar: Calendar
+  let continuation: HistoryCatalog.Cursor?
+  let newerContinuation: HistoryCatalog.Cursor?
+  let catalogSourceRevision: UInt64?
+  let catalogDayCounts: [Date: Int]?
   private let entries: [Entry]
   private let rowOffsets: [Int]
   private let dayPositions: [Date: Int]
 
-  init(key: TranscriptCoordinator.HistoryQueryKey, items: [HistoryListItem]) throws {
+  init(
+    key: TranscriptCoordinator.HistoryQueryKey, items: [HistoryListItem],
+    continuation: HistoryCatalog.Cursor? = nil, newerContinuation: HistoryCatalog.Cursor? = nil,
+    catalogSourceRevision: UInt64? = nil,
+    catalogDayCounts: [Date: Int]? = nil
+  ) throws {
     self.key = key
     self.items = items
+    self.continuation = continuation
+    self.newerContinuation = newerContinuation
+    self.catalogSourceRevision = catalogSourceRevision
+    self.catalogDayCounts = catalogDayCounts
     let calendar = key.calendar
     self.calendar = calendar
     var positions: [HistoryItemID: Int] = [:]
@@ -145,7 +159,8 @@ struct HistoryQueryResult: Sendable {
       let day = calendar.startOfDay(for: items[index].createdAt)
       let end = HistoryDiaryLayout.firstIndex(before: day, in: items, from: index)
       days[day] = index
-      entries.append(Entry(id: .day(day), position: index, dayCount: end - index))
+      let count = catalogSourceRevision != nil ? catalogDayCounts?[day] : end - index
+      entries.append(Entry(id: .day(day), position: index, dayCount: count))
       while index < end {
         try Task.checkCancellation()
         let id = items[index].id
@@ -165,7 +180,12 @@ struct HistoryQueryResult: Sendable {
   func entries(through boundary: Int) -> ArraySlice<Entry> {
     let end = boundary < rowOffsets.count ? rowOffsets[boundary] : entries.count
     // The next heading belongs to an undrawn day when the boundary ends the previous day.
-    let includesNextHeading = end > 0 && entries[end - 1].dayCount > 0
+    let includesNextHeading: Bool
+    if end > 0, case .day = entries[end - 1].id {
+      includesNextHeading = true
+    } else {
+      includesNextHeading = false
+    }
     return entries.prefix(end - (includesNextHeading ? 1 : 0))
   }
 
