@@ -126,10 +126,12 @@ final class TranscriptCoordinator {
     else { return nil }
     let rows = transcripts
     let now = clock()
-    let result = await Self.runHistoryQuery(rows: rows, at: now, key: key)
+    let needsIndex = rowIndexCache?.revision != key.revision
+    let (result, index) = await Self.runHistoryQuery(rows: rows, at: now, key: key, needsIndex: needsIndex)
     guard !Task.isCancelled,
       key == historyQueryKey(for: key.context.tab, state: requestedHistoryState(for: key.context.tab))
     else { return nil }
+    if let index { rowIndexCache = index }
     pruneMeetingDocuments()
     return result
   }
@@ -177,13 +179,14 @@ final class TranscriptCoordinator {
   }
 
   @concurrent private static func runHistoryQuery(
-    rows: [Transcript], at now: Date, key: HistoryQueryKey
-  ) async -> HistoryQueryResult? {
+    rows: [Transcript], at now: Date, key: HistoryQueryKey, needsIndex: Bool
+  ) async -> (HistoryQueryResult?, RowIndex?) {
     guard let items = try? buildListedItems(
       rows: rows, at: now, from: key,
       meetingText: { visibleMeetingSearchText($0, facts: $1, key: key) })
-    else { return nil }
-    return try? HistoryQueryResult(key: key, items: items)
+    else { return (nil, nil) }
+    let index = needsIndex ? Self.makeRowIndex(rows, revision: key.revision) : nil
+    return (try? HistoryQueryResult(key: key, items: items), index)
   }
 
   /// The calendar uses the same query, with its date range omitted.
@@ -397,8 +400,9 @@ final class TranscriptCoordinator {
     for tab: HistoryTab, state: HistoryTabState, referenceTime: Date? = nil
   ) -> HistoryQueryKey {
     let records = tab == .meetings ? (meetingRecords?() ?? []) : []
+    let factIDs = referenceTime == nil ? records.map(\.id) : rowIndex.meetingRowIDs
     let facts: [SearchFact]? = tab == .meetings && !state.query.isEmpty
-      ? rowIndex.meetingRowIDs.map { id in
+      ? factIDs.map { id in
         SearchFact(
           meetingID: id, info: meetingInfo?(id), notes: meetingNotes?(id),
           invited: meetingInvited?(id) ?? [])
@@ -424,22 +428,26 @@ final class TranscriptCoordinator {
       let reuse = true
     #endif
     if reuse, let kept = rowIndexCache, kept.revision == revision { return kept }
-    var pending: [Int] = []
-    var positions: [UUID: Int] = [:]
-    var meetingRowIDs: [UUID] = []
-    for (i, row) in transcripts.enumerated() {
-      if positions[row.id] == nil { positions[row.id] = i }
-      if row.escapeRecoveredAt != nil { pending.append(i) }
-      if let meetingID = row.meetingID { meetingRowIDs.append(meetingID) }
-    }
-    let index = RowIndex(
-      revision: revision, pending: pending, positions: positions, meetingRowIDs: meetingRowIDs,
-      meetingRowCounts: meetingRowIDs.reduce(into: [:]) { $0[$1, default: 0] += 1 })
+    let index = Self.makeRowIndex(transcripts, revision: revision)
     rowIndexCache = index
     return index
   }
 
-  private struct RowIndex {
+  private nonisolated static func makeRowIndex(_ rows: [Transcript], revision: Int) -> RowIndex {
+    var pending: [Int] = []
+    var positions: [UUID: Int] = [:]
+    var meetingRowIDs: [UUID] = []
+    for (i, row) in rows.enumerated() {
+      if positions[row.id] == nil { positions[row.id] = i }
+      if row.escapeRecoveredAt != nil { pending.append(i) }
+      if let meetingID = row.meetingID { meetingRowIDs.append(meetingID) }
+    }
+    return RowIndex(
+      revision: revision, pending: pending, positions: positions, meetingRowIDs: meetingRowIDs,
+      meetingRowCounts: meetingRowIDs.reduce(into: [:]) { $0[$1, default: 0] += 1 })
+  }
+
+  private struct RowIndex: Sendable {
     let revision: Int
     let pending: [Int]
     let positions: [UUID: Int]
