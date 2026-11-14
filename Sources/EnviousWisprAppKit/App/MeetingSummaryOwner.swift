@@ -154,6 +154,7 @@ final class MeetingSummaryOwner {
   private struct Running {
     let meetingID: UUID
     let task: Task<Void, Never>
+    var provider: LLMProvider?
   }
   private var attempts: [UUID: Running] = [:]
   /// The meeting's current attempt; a replaced one is no longer current.
@@ -189,6 +190,13 @@ final class MeetingSummaryOwner {
 
   /// A summary is being written for the meeting (waiting, calling or saving).
   func isWriting(_ meetingID: UUID) -> Bool { currentAttempt[meetingID] != nil }
+
+  func writingProvider(for meetingID: UUID) -> LLMProvider? {
+    guard activity[meetingID] == .writing, let attempt = currentAttempt[meetingID] else {
+      return nil
+    }
+    return attempts[attempt]?.provider
+  }
 
   /// A local summary waits for its turn or calls (previews give way to it).
   var localSummaryActive: Bool { lane.summaryActive }
@@ -348,6 +356,7 @@ final class MeetingSummaryOwner {
     // Where the model runs is known from the selection before anything can fail, so every row
     // pairs `none` with `noProvider` only (R57). No provider ends the attempt at once.
     let selection = deps.selection()
+    attempts[attempt]?.provider = selection.provider
     // #4353 D6: captured with the selection, before the first suspension, and carried to
     // `prepare`; planning and every request of this attempt use it.
     let cloudModelList = deps.cloudModelList()

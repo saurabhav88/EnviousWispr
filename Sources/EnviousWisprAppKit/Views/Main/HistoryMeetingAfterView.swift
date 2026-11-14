@@ -78,6 +78,9 @@ struct HistoryMeetingAfterView: View {
   /// again scrolls back to it.
   @State private var noteRequest: NoteRequest?
   @State private var renameRequested = false
+  @State private var openedDuringRecording: UUID?
+  @State private var narrowPane: MeetingSessionPane = .notes
+  @State private var notesActions = MeetingNotesEditorActions()
 
   // Player
   @State private var player: MeetingPlaybackController?
@@ -139,6 +142,9 @@ struct HistoryMeetingAfterView: View {
           // shows only once its notes are read. `flush` reads notes not yet read and saves
           // nothing that was not typed.
           .task(id: meetingID) { _ = await notes.flush(meetingID) }
+          .onChange(of: isRecordingThisMeeting, initial: true) { _, recording in
+            if recording { openedDuringRecording = meetingID }
+          }
           .task(
             id: AudioSizeKey(meetingID: meetingID, audioKept: record.audioKept, state: record.state)
           ) {
@@ -174,6 +180,7 @@ struct HistoryMeetingAfterView: View {
       actionInFlight = false
       dropPlayer()
       leftPane = .notes
+      narrowPane = .notes
       editingSummary = false
       follow = .following
       activeTurnID = nil
@@ -306,12 +313,19 @@ struct HistoryMeetingAfterView: View {
           }
         }
       }
-      dock(record, snapshot: snapshot, row: row, visibleTurns: visibleTurns)
-        .id(player.map(ObjectIdentifier.init))
+      if !isRecordingThisMeeting {
+        dock(record, snapshot: snapshot, row: row, visibleTurns: visibleTurns)
+          .id(player.map(ObjectIdentifier.init))
+      }
     }
     .onAppear {
       if record.state == .notesOnly { leftPane = .notes }
     }
+  }
+
+  private var isRecordingThisMeeting: Bool {
+    if case .recording(let id, _) = meetings.phase { return id == meetingID }
+    return false
   }
 
   @ViewBuilder
@@ -322,7 +336,15 @@ struct HistoryMeetingAfterView: View {
     let left = leftColumn(
       record, snapshot: snapshot, visibleTurnIDs: Set(visibleTurns.map(\.id)), proxy: proxy)
     let right = transcriptColumn(record, row: row, projection: projection)
-    if P.stacksPanes(width: width) {
+    if isRecordingThisMeeting || openedDuringRecording == meetingID {
+      MeetingSessionPanes(
+        width: width, recording: isRecordingThisMeeting, selection: $narrowPane
+      ) {
+        left
+      } transcript: {
+        sessionTranscript(record, row: row, projection: projection)
+      }
+    } else if P.stacksPanes(width: width) {
       ScrollView {
         VStack(alignment: .leading, spacing: DesignSpacing.xxl) {
           left
@@ -422,14 +444,28 @@ struct HistoryMeetingAfterView: View {
 
   /// What is still being made: the transcript pass (with its progress), the queue, the summary.
   @ViewBuilder private func statusStrip(_ record: MeetingRecord) -> some View {
-    if let processing = meetings.processing, processing.meetingID == meetingID {
+    if case .recording(let id, let startedAt) = meetings.phase, id == meetingID {
+      MeetingLivePanel(
+        meetingID: meetingID, startedAt: startedAt, callApp: record.callApp,
+        microphoneAvailable: record.trackStatus[.microphone] == .captured)
+    } else if case .stopping(let id) = meetings.phase, id == meetingID {
+      if let line = P.stripLine(.finishingTranscript) { busyLine(line) }
+    } else if let processing = meetings.processing, processing.meetingID == meetingID {
       MeetingProcessingPanel(processing: processing)
     } else {
       let state = P.strip(
         record: record, processing: false, queueWaitsForSpace: meetings.queueWaitsForSpace,
         writingSummary: meetings.summaries?.isWriting(meetingID) ?? false,
         hasSummary: meetings.documents.summary(meetingID) != nil)
-      if let line = P.stripLine(state) {
+      let writingProvider = meetings.summaries?.writingProvider(for: meetingID)
+      let statusLine: String? = if state == .writingSummary, let writingProvider {
+        String(
+          localized: "Writing the summary with \(writingProvider.displayName)…",
+          comment: "History meeting: summary progress with the selected engine name.")
+      } else {
+        P.stripLine(state)
+      }
+      if let line = statusLine {
         HStack(spacing: DesignSpacing.sm) {
           switch state {
           case .writingSummary, .waiting:
@@ -814,6 +850,7 @@ struct HistoryMeetingAfterView: View {
 
   private func showNote(_ id: UUID) {
     leftPane = .notes
+    narrowPane = .notes
     highlightedNoteID = id
     noteRequest = NoteRequest(id: id)
   }
@@ -832,6 +869,7 @@ extension HistoryMeetingAfterView {
     proxy: ScrollViewProxy
   ) -> some View {
     VStack(alignment: .leading, spacing: DesignSpacing.lg) {
+      if !isRecordingThisMeeting {
       BrandedSegmentedPicker(
         options: [
           (
@@ -850,6 +888,7 @@ extension HistoryMeetingAfterView {
         Text(
           "Notes or summary",
           comment: "History meeting: chooses between the user's notes and the AI summary."))
+      }
       switch leftPane {
       case .notes:
         MeetingAfterNotesPane(
@@ -857,12 +896,42 @@ extension HistoryMeetingAfterView {
           highlightedNoteID: highlightedNoteID,
           requestNonce: noteRequest?.nonce,
           onSeek: { ms in player?.seek(toMs: ms) },
-          playbackMs: { notesClockMs() })
+          playbackMs: { notesClockMs() },
+          startsEditing: isRecordingThisMeeting || openedDuringRecording == meetingID,
+          recording: isRecordingThisMeeting,
+          markMoment: markMoment,
+          toggleActionItem: toggleLiveActionItem,
+          editorActions: notesActions)
       case .summary:
         summaryPane(
           record, snapshot: snapshot, visibleTurnIDs: visibleTurnIDs, proxy: proxy)
       }
     }
+  }
+
+  private func markMoment() {
+    guard let time = meetings.recordingPositionMs(meetingID: meetingID) else { return }
+    notesActions.append(
+      MeetingNoteBlock(kind: .mark, text: String(localized: "Moment marked")),
+      for: meetingID, atMs: time)
+  }
+
+  private func toggleLiveActionItem() {
+    guard isRecordingThisMeeting else { return }
+    notesActions.toggleTask(for: meetingID)
+  }
+
+  private func addQuote(_ run: MeetingsPresentation.LiveBlock.Run) {
+    guard run.kind == .confirmed, let time = meetings.recordingPositionMs(meetingID: meetingID),
+      let live = meetings.liveTranscript, live.meetingID == meetingID,
+      MeetingsPresentation.liveBlocks(live.lines, labels: live.speakerLabels)
+        .lazy.flatMap(\.runs).contains(run)
+    else { return }
+    let speaker = MeetingsPresentation.liveSpeakerHeader(run.speaker, names: live.speakerLabels.names)
+    let text = run.text.split(whereSeparator: \.isNewline).joined(separator: " ")
+    notesActions.append(
+      MeetingNoteBlock(kind: .quote, text: text, sourceSpeaker: speaker, sourceMs: run.startMs),
+      for: meetingID, atMs: time)
   }
 
   /// #3147 PR4A: where a new note block starts on the meeting timeline (plan §3.6). While this
@@ -1050,6 +1119,21 @@ extension HistoryMeetingAfterView {
 
 extension HistoryMeetingAfterView {
   @ViewBuilder
+  fileprivate func sessionTranscript(
+    _ record: MeetingRecord, row: Transcript?, projection: MeetingHistoryPresentation.Projection?
+  ) -> some View {
+    if isRecordingThisMeeting, let live = meetings.liveTranscript, live.meetingID == meetingID {
+      MeetingLiveWordsView(transcript: live, addQuote: addQuote)
+    } else {
+      ScrollView {
+        transcriptColumn(record, row: row, projection: projection)
+          .frame(maxWidth: .infinity, alignment: .leading)
+      }
+      .meetingUserScroll { suspendFollow() }
+    }
+  }
+
+  @ViewBuilder
   fileprivate func transcriptColumn(
     _ record: MeetingRecord, row: Transcript?, projection: MeetingHistoryPresentation.Projection?
   ) -> some View {
@@ -1089,19 +1173,9 @@ extension HistoryMeetingAfterView {
   @ViewBuilder
   fileprivate func transcriptState(_ record: MeetingRecord, row: Transcript?) -> some View {
     switch meetings.phase {
-    case .recording(let id, let startedAt) where id == meetingID:
-      MeetingLivePanel(startedAt: startedAt)
-      if let live = meetings.liveTranscript, live.meetingID == meetingID {
-        MeetingLiveWordsView(transcript: live)
-      }
-      Text(
-        "The transcript, with who said what, is written when you stop the recording.",
-        comment: "History, a recording meeting: what the Transcript tab will show."
-      )
-      .font(.stHelper)
-      .foregroundStyle(.stTextSecondary)
+    case .recording(let id, _) where id == meetingID:
+      busyLine(String(localized: "Live transcript"))
     case .stopping(let id) where id == meetingID:
-      busyLine(P.savingLine)
       supersededLiveWords()
     default:
       let committed = record.committedTranscriptGeneration != nil
@@ -1424,13 +1498,18 @@ private struct MeetingAfterNotesPane: View {
   let onSeek: (Int) -> Void
   /// #3147 PR4A: the playback position, so a block typed after Stop starts there (plan §3.6).
   let playbackMs: @MainActor () -> Int?
+  let startsEditing: Bool
+  let recording: Bool
+  let markMoment: () -> Void
+  let toggleActionItem: () -> Void
+  let editorActions: MeetingNotesEditorActions
   /// Read mode keeps note times as seek buttons and the marker highlight; Edit notes swaps in
   /// the block editor, as Edit summary does for the summary.
-  @State private var editing = false
+  @State private var editing: Bool?
 
   var body: some View {
     Group {
-      if editing {
+      if editing ?? startsEditing {
         editor
       } else {
         reader
@@ -1445,20 +1524,43 @@ private struct MeetingAfterNotesPane: View {
 
   private var editor: some View {
     VStack(alignment: .leading, spacing: DesignSpacing.md) {
-      HStack {
-        Spacer(minLength: 0)
-        Button {
-          editing = false
-        } label: {
-          EnviousButtonLabel(
-            LocalizedStringResource(
-              "Done editing", comment: "History meeting: ends editing the summary or the notes."),
-            size: .medium, systemImage: "checkmark")
+      if recording {
+        ViewThatFits(in: .horizontal) {
+          HStack { liveNoteControls }
+          VStack(alignment: .leading) { liveNoteControls }
         }
-        .settingsButton(.quiet, size: .medium, isEnabled: true)
+      } else {
+        HStack {
+          Spacer(minLength: 0)
+          Button {
+            editing = false
+          } label: {
+            EnviousButtonLabel(
+              LocalizedStringResource(
+                "Done editing", comment: "History meeting: ends editing the summary or the notes."),
+              size: .medium, systemImage: "checkmark")
+          }
+          .settingsButton(.quiet, size: .medium, isEnabled: true)
+        }
       }
-      MeetingNotesBlockEditor(meetingID: meetingID, notes: notes, currentMs: playbackMs)
+      MeetingNotesBlockEditor(
+        meetingID: meetingID, notes: notes, currentMs: playbackMs, actions: editorActions)
     }
+  }
+
+  @ViewBuilder
+  private var liveNoteControls: some View {
+    Button(action: markMoment) {
+      EnviousButtonLabel("Mark moment", size: .medium, systemImage: "flag")
+    }
+    .settingsButton(.quiet, size: .medium, isEnabled: snapshot.canEdit)
+    .disabled(!snapshot.canEdit)
+    .keyboardShortcut("m", modifiers: [.command, .shift])
+    Button(action: toggleActionItem) {
+      EnviousButtonLabel("Action item", size: .medium, systemImage: "checklist")
+    }
+    .settingsButton(.quiet, size: .medium, isEnabled: snapshot.canEdit)
+    .disabled(!snapshot.canEdit)
   }
 
   private var reader: some View {
@@ -1585,9 +1687,20 @@ private struct MeetingAfterNotesPane: View {
           .textSelection(.enabled)
           .fixedSize(horizontal: false, vertical: true)
         if block.kind == .quote, let speaker = block.sourceSpeaker {
-          Text(verbatim: "— \(speaker)")
-            .font(.stHelper)
-            .foregroundStyle(.stTextSecondary)
+          HStack(spacing: DesignSpacing.xs) {
+            Text(verbatim: speaker)
+            if let sourceMs = block.sourceMs, sourceMs != block.startedAtMs {
+              Button {
+                onSeek(sourceMs)
+              } label: {
+                Text(verbatim: MeetingsPresentation.clock(ms: sourceMs))
+              }
+              .buttonStyle(.link)
+              .accessibilityLabel(Text("Move the recording to this note"))
+            }
+          }
+          .font(.stHelper)
+          .foregroundStyle(.stTextSecondary)
         }
       }
     }
@@ -1702,7 +1815,7 @@ extension View {
   /// Programmatic scrolls do not count. Before macOS 15 the scroll phase is not observable, so
   /// Follow playback is turned off with its toggle instead.
   @ViewBuilder
-  fileprivate func meetingUserScroll(_ action: @escaping () -> Void) -> some View {
+  func meetingUserScroll(_ action: @escaping () -> Void) -> some View {
     if #available(macOS 15.0, *) {
       onScrollPhaseChange { _, phase in
         if phase == .interacting { action() }

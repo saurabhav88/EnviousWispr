@@ -47,6 +47,8 @@ enum MeetingsPresentation {
       let lineID: String
       let text: String
       let kind: LiveWordsAssembler.Line.Kind
+      let speaker: LiveWordsAssembler.LiveSpeakerKey
+      let startMs: Int
     }
     let id: String
     let speaker: LiveWordsAssembler.LiveSpeakerKey
@@ -70,7 +72,8 @@ enum MeetingsPresentation {
         current = nil
         guard !text.isEmpty else { return }
         let item = LiveBlock.Run(
-          id: "\(line.id)#\(runStart)", lineID: line.id, text: text, kind: line.kind)
+          id: "\(line.id)#\(runStart)", lineID: line.id, text: text, kind: line.kind,
+          speaker: run.key, startMs: run.startMs)
         if let last = blocks.indices.last, blocks[last].speaker == run.key {
           blocks[last].runs.append(item)
         } else {
@@ -105,7 +108,10 @@ enum MeetingsPresentation {
     struct Segment: Equatable {
       /// Nil when the segment continues the block above.
       let header: Header?
-      let text: String
+      let run: LiveBlock.Run
+      var text: String { run.text }
+
+      var quote: LiveBlock.Run? { run.kind == .confirmed ? run : nil }
     }
     let id: String
     let kind: LiveWordsAssembler.Line.Kind
@@ -131,9 +137,9 @@ enum MeetingsPresentation {
           lineID = run.lineID
           kind = run.kind
           header = opens
-          segments = [LiveRow.Segment(header: nil, text: run.text)]
+          segments = [LiveRow.Segment(header: nil, run: run)]
         } else {
-          segments.append(LiveRow.Segment(header: opens, text: run.text))
+          segments.append(LiveRow.Segment(header: opens, run: run))
         }
       }
     }

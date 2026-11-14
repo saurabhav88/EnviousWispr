@@ -99,6 +99,7 @@ final class MeetingLiveWords {
     /// #4325: Universal was chosen but not downloaded, so Apple shows this meeting's live words
     /// (the meeting page says so). The saved choice stays Universal.
     var appleStandingIn = false
+    var usesUniversal = false
     /// #4355 PR C: which call pieces belong to which "Speaker N" (`MeetingLiveSpeakers`).
     var speakerLabels = MeetingLiveSpeakerLabels()
   }
@@ -545,6 +546,7 @@ final class MeetingLiveWords {
       let heart = deps.isHeartStreaming
       let engine = makeEngine { if await heart() { throw HeartStreaming() } }
       current.engine = .universal
+      transcript?.usesUniversal = true
       current.universal = engine
       // A load refused because dictation's engine holds the executor is tried again while this
       // recording lasts; the tracks stay starting meanwhile. Any other failure is final.
