@@ -154,6 +154,54 @@ struct HistoryCatalogTests {
     #expect(unverified == nil)
   }
 
+  #if DEBUG
+    @MainActor
+    @Test("Canonical writes share a fence without depending on the SQLite catalog")
+    func canonicalWriters() async throws {
+      let root = TestTemporaryDirectory.url.appendingPathComponent(UUID().uuidString, isDirectory: true)
+      defer { try? FileManager.default.removeItem(at: root) }
+      let changes = HistorySourceChanges()
+      let transcriptStore = TranscriptStore(
+        directory: root.appendingPathComponent("transcripts"), historyChanges: changes)
+      let meetingStore = MeetingStore(root: root.appendingPathComponent("Meetings"), historyChanges: changes)
+      let meeting = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+      try meetingStore.create(meeting)
+      let originalRevision = try #require(changes.revision)
+      let direct = Transcript(text: "direct write", processingTime: 0, backendType: .parakeet)
+      let durable = Transcript(text: "held open", processingTime: 0, backendType: .parakeet)
+      let opened = DispatchSemaphore(value: 0)
+      let close = DispatchSemaphore(value: 0)
+      transcriptStore.durableWriteDidOpenForTesting = {
+        opened.signal()
+        close.wait()
+      }
+      let write = transcriptStore.durableWriter()
+      let task = Task.detached { try write(durable) }
+      do {
+        defer { close.signal() }
+        let didOpen = await withCheckedContinuation { continuation in
+          DispatchQueue.global(qos: .utility).async {
+            continuation.resume(returning: opened.wait(timeout: .now() + 5) == .success)
+          }
+        }
+        try #require(didOpen)
+        #expect(changes.revision == nil)
+        try transcriptStore.save(direct)
+        try meetingStore.saveNotes("changed note", revision: 1, meeting: meeting.id)
+        #expect(changes.revision == nil)
+      }
+      try await task.value
+      #expect(changes.revision != originalRevision)
+      #expect(try transcriptStore.rowReader()(direct.id)?.text == "direct write")
+      try transcriptStore.delete(id: direct.id)
+      let afterDelete = try #require(changes.revision)
+      #expect(try transcriptStore.rowReader()(direct.id) == nil)
+      try #require(throws: (any Error).self) { try meetingStore.create(meeting) }
+      #expect(changes.revision != afterDelete)
+      #expect(try meetingStore.historyDocuments(meeting: meeting.id).notes.contains("changed note"))
+    }
+  #endif
+
   private func projection(_ index: Int, date: Date, text: String) -> HistoryCatalog.Projection {
     let id = UUID(uuid: (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, UInt8(index)))
     return HistoryCatalog.Projection(

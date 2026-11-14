@@ -78,6 +78,8 @@ extension MeetingStore {
   public func loadDocuments(meeting id: UUID) throws -> LoadedDocuments {
     var read = try readDocuments(meeting: id)
     if read.loaded.repaired {
+      historyChanges?.begin()
+      defer { historyChanges?.finish(.meeting(id)) }
       do {
         try writeRepairs(read, meeting: id)
       } catch let error as DocumentError where error != .newerFormat {
@@ -169,6 +171,8 @@ extension MeetingStore {
   public func saveNotes(_ document: MeetingNotesDocument, revision: Int, meeting id: UUID) throws
     -> MeetingDocumentsManifest
   {
+    historyChanges?.begin()
+    defer { historyChanges?.finish(.meeting(id)) }
     try refuseDocumentWrite(id)
     let (base, old) = try currentManifestAndAge(id)
     try refuseUnreadableNotes(id)
@@ -226,6 +230,8 @@ extension MeetingStore {
   public func saveDraftNotes(_ document: MeetingNotesDocument, edits: Int, meeting id: UUID) throws
     -> LoadedDocuments
   {
+    historyChanges?.begin()
+    defer { historyChanges?.finish(.meeting(id)) }
     try refuseDocumentWrite(id)
     let read = try readDocuments(meeting: id)
     // Notes already on disk (a retry after a save that committed `notes.json` and failed later)
@@ -250,6 +256,8 @@ extension MeetingStore {
     _ text: String, origin: MeetingDocumentsManifest.Origin, inputs: SummaryInputs?,
     writtenInParts: Bool? = nil, meeting id: UUID
   ) throws -> MeetingDocumentsManifest {
+    historyChanges?.begin()
+    defer { historyChanges?.finish(.meeting(id)) }
     try refuseDocumentWrite(id)
     var next = try currentManifest(id)
     next.summary = MeetingDocumentsManifest.Summary(
@@ -309,6 +317,8 @@ extension MeetingStore {
     _ text: String, inputs: SummaryInputs, writtenInParts: Bool, approvedUserEdit: String?,
     meeting id: UUID, publication: SummaryPublication = .automatic
   ) throws -> GeneratedSummarySave {
+    historyChanges?.begin()
+    defer { historyChanges?.finish(.meeting(id)) }
     try refuseDocumentWrite(id)
     var manifest = try readDocuments(meeting: id).loaded.manifest
     if case .replacing(let expected) = publication {
@@ -343,6 +353,8 @@ extension MeetingStore {
   public func setSummaryPending(_ pending: Bool, meeting id: UUID) throws
     -> MeetingDocumentsManifest
   {
+    historyChanges?.begin()
+    defer { historyChanges?.finish(.meeting(id)) }
     try refuseDocumentWrite(id)
     var next = try currentManifest(id)
     next.summaryPending = pending ? true : nil

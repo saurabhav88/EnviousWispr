@@ -152,10 +152,13 @@ package struct HistoryCatalogSources: Sendable {
     }
     let rowURL = transcriptDirectory.appendingPathComponent("\(record.transcriptID.uuidString).json")
     let inputs = [
-      rowURL, meetings.documentsURL(for: id), meetings.notesURL(for: id),
+      rowURL, meetings.transcriptReplacementURL(for: id), meetings.documentsURL(for: id), meetings.notesURL(for: id),
       meetings.notesDocumentURL(for: id), meetings.summaryURL(for: id), meetings.contextURL(for: id),
     ]
     let proofs = [recordVersion] + (try inputs.map(HistoryCatalog.SourceVersion.read))
+    // The receipt can still settle or roll back while the meeting reads ready. Wait
+    // for the owner to resolve it before pairing a persisted card with this generation.
+    guard proofs[2].fingerprint.isEmpty else { throw SourceError.changedDuringRead }
     let candidate = record.committedTranscriptGeneration == nil ? nil : try readTranscript(record.transcriptID)
     let row = candidate.flatMap { transcript in
       transcript.id == record.transcriptID && transcript.meetingID == id
