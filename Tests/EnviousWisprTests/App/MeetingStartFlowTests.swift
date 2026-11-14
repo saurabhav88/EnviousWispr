@@ -34,6 +34,10 @@ struct MeetingStartFlowTests {
     var accepted: [CallDetectionPolicy.AcceptedStart] = []
     var settlements: [(CallDetectionPolicy.AcceptedStart, UUID?)] = []
     var onStart: @MainActor () async -> MeetingCoordinator.StartOutcome? = { nil }
+    /// #4578: whether any speech engine is downloaded, and every no-engine card shown.
+    var engineDownloaded = true
+    var onEngineCheck: @MainActor () async -> Void = {}
+    var noEngineCards = 0
     lazy var flow = MeetingStartFlow(
       dependencies: .init(
         isSetUp: { [unowned self] in setUp },
@@ -60,7 +64,70 @@ struct MeetingStartFlowTests {
         showMeetingPage: { [unowned self] in pageShown += 1 },
         acceptedStartNow: { [unowned self] in clock },
         acceptedStart: { [unowned self] in accepted.append($0) },
-        settledStart: { [unowned self] in settlements.append(($0, $1)) }))
+        settledStart: { [unowned self] in settlements.append(($0, $1)) },
+        hasTranscriptionEngine: { [unowned self] in
+          await onEngineCheck()
+          return engineDownloaded
+        },
+        showNoTranscriptionEngine: { [unowned self] in noEngineCards += 1 }))
+  }
+
+  /// #4578: no speech engine, no meeting. When this fails, a meeting records audio nothing can
+  /// transcribe, or a hand-started meeting does nothing and says nothing.
+  @Test(
+    "with no speech engine nothing records; a hand start shows the card, the call panel shows its own",
+    arguments: [MeetingEntryPoint.menu, .history, .detected])
+  func noEngineRecordsNothing(entryPoint: MeetingEntryPoint) async {
+    let rig = Rig()
+    rig.callSound = false
+    rig.engineDownloaded = false
+    #expect(await rig.flow.requestStart(from: entryPoint) == .noTranscriptionEngine)
+    #expect(rig.starts.isEmpty && rig.accepted.isEmpty && rig.microphoneRequests == 0)
+    #expect(rig.noEngineCards == (entryPoint == .detected ? 0 : 1))
+    let fromPanel = Rig()
+    fromPanel.callSound = false
+    fromPanel.engineDownloaded = false
+    #expect(
+      await fromPanel.flow.requestStart(from: .menu, fromCallPanel: true) == .noTranscriptionEngine)
+    #expect(fromPanel.noEngineCards == 0, "the call panel draws the card from the outcome")
+  }
+
+  /// #4578: an engine removed while the explainer waited stops the Continue before it records.
+  @Test("an engine removed while the explainer waits stops Continue before anything records")
+  func engineRemovedBeforeContinue() async {
+    let rig = Rig()
+    rig.callSound = true
+    #expect(await rig.flow.requestStart(from: .menu) == .waitingForExplainer)
+    rig.engineDownloaded = false
+    #expect(await rig.flow.continueAfterExplainer() == .noTranscriptionEngine)
+    #expect(rig.starts.isEmpty && rig.accepted.isEmpty)
+    #expect(rig.noEngineCards == 1)
+  }
+
+  /// #4578: a Start cancelled during an engine check ends there. When this fails, a Start the
+  /// user called off still opens the macOS prompt, shows the explainer, shows the no-engine
+  /// card or records.
+  @Test(
+    "a Start cancelled during either engine check records, asks and shows nothing",
+    arguments: [true, false])
+  func cancelledDuringEngineCheck(engineDownloaded: Bool) async {
+    // The first check, in `requestStart`: no prompt or explainer follows.
+    let first = Rig()
+    first.callSound = true
+    first.microphoneUnasked = true
+    first.engineDownloaded = engineDownloaded
+    first.onEngineCheck = { first.flow.cancelExplainer() }
+    #expect(await first.flow.requestStart(from: .menu) == .cancelled)
+    #expect(first.microphoneRequests == 0 && first.flow.pendingExplainer == nil)
+    #expect(first.starts.isEmpty && first.accepted.isEmpty && first.noEngineCards == 0)
+    // The common boundary, after the explainer's Continue.
+    let rig = Rig()
+    rig.callSound = true
+    #expect(await rig.flow.requestStart(from: .menu) == .waitingForExplainer)
+    rig.engineDownloaded = engineDownloaded
+    rig.onEngineCheck = { rig.flow.cancelExplainer() }
+    #expect(await rig.flow.continueAfterExplainer() == .cancelled)
+    #expect(rig.starts.isEmpty && rig.accepted.isEmpty && rig.noEngineCards == 0)
   }
 
   @Test("Both direct and explainer Continue freeze acceptance after gates and before the recording dependency",

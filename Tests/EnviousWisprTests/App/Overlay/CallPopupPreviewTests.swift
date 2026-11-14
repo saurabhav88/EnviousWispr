@@ -68,6 +68,7 @@
       case .manualStart: "manualStart"
       case .needsAttention: "needsAttention"
       case .couldNotStart: "couldNotStart"
+      case .noTranscriptionEngine: "noTranscriptionEngine"
       case .firstTip: "firstTip"
       case .lastTip: "lastTip"
       case .stillInMeeting: "stillInMeeting"
@@ -81,7 +82,7 @@
         Set(names) == [
           "ask", "switchMeeting", "countdown", "endConfirmation", "switchNotConfirmed",
           "notesWriting", "notesReady", "manualStart", "needsAttention", "couldNotStart",
-          "firstTip", "lastTip", "stillInMeeting",
+          "noTranscriptionEngine", "firstTip", "lastTip", "stillInMeeting",
         ])
       let ids = CallPopupPreviewCatalog.all.map(\.id)
       #expect(Set(ids).count == ids.count)
@@ -162,6 +163,7 @@
         ("lastTip", CallDetectionPolicy.noteTimeout),
         ("needsAttention", CallDetectionPolicy.noteTimeout),
         ("couldNotStart", CallDetectionPolicy.noteTimeout),
+        ("noTranscriptionEngine", CallDetectionPolicy.noteTimeout),
       ])
     func cardsCloseAfterTheirLifetime(id: String, lifetime: TimeInterval) {
       let rig = Rig()

@@ -220,6 +220,8 @@ public struct CallDetectionPolicy: Sendable {
     case lastTip(rule: CallAppCatalog.Rule, family: CallAppFamily)
     case needsAttention
     case couldNotStart
+    /// #4578: no speech engine is downloaded; nothing records.
+    case noTranscriptionEngine
   }
 
   /// What the panel shows.
@@ -255,6 +257,8 @@ public struct CallDetectionPolicy: Sendable {
     case needsAttention
     /// Refused (low disk, microphone off) or the recorder failed.
     case couldNotStart
+    /// #4578: no speech engine is downloaded, so nothing was recorded.
+    case noTranscriptionEngine
     /// Taken over while it started (a Stop, or this policy no longer wanted it).
     case superseded
     /// Nothing started and nothing to say (a meeting was already starting).
@@ -280,6 +284,8 @@ public struct CallDetectionPolicy: Sendable {
     case countNo(switchID: String)
     case markFirstTipShown
     case openMeetingPage
+    /// #4578: the no-engine card's Open Settings goes to EnviousMeet > Models.
+    case openMeetingModels
     /// #4232: the call flow stopped `meetingID` (countdown, End recording, Stop recording); the
     /// panel follows its notes. The coordinator holds the attempt it froze for that stop. Nil
     /// family: the silence backstop stopped a recording with no call (#4249).
@@ -1914,6 +1920,9 @@ public struct CallDetectionPolicy: Sendable {
       let id = newID()
       operations[id] = .userStart
       out.append(.startByUser(operation: id, family: family))
+    case (.note(.noTranscriptionEngine, _), .openSettings):
+      set(.none)
+      out.append(.openMeetingModels)
     case (.note, .openSettings):
       set(.none)
       out.append(.openMeetingPage)
@@ -2022,6 +2031,7 @@ public struct CallDetectionPolicy: Sendable {
       switch result {
       case .needsAttention: showNote(.needsAttention, c)
       case .couldNotStart: showNote(.couldNotStart, c)
+      case .noTranscriptionEngine: showNote(.noTranscriptionEngine, c)
       case .recording, .superseded, .notStarted: break
       }
     case .start(let e, let family, _), .switchTo(let e, let family, _):
@@ -2040,6 +2050,9 @@ public struct CallDetectionPolicy: Sendable {
       case .couldNotStart:
         setPhase(e, .offered)
         showNote(.couldNotStart, c)
+      case .noTranscriptionEngine:
+        setPhase(e, .offered)
+        showNote(.noTranscriptionEngine, c)
       case .superseded:
         // Taken over during the start: the call is asked about again once it is known live
         // (review r17 F1). Idle Ask additionally needs a fresh G1 opportunity; automatic
@@ -2154,6 +2167,13 @@ public struct CallDetectionPolicy: Sendable {
   private mutating func setKeepingToken(_ new: Interaction) {
     interaction = new
     claimedToken = nil
+  }
+
+  /// #4578: a hand-started meeting (menu bar, History, the page) refused because no speech
+  /// engine is downloaded. Its callers may ignore the returned outcome, so the card is shown
+  /// here, the same note a detected start shows.
+  public mutating func noteNoTranscriptionEngine(_ c: Context) {
+    showNote(.noTranscriptionEngine, c)
   }
 
   /// A tip or a "could not start" never covers a question or a countdown (review r8 F2).

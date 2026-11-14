@@ -41,6 +41,9 @@ enum MeetingWiring {
     let offlineModeAdmission: ASRManager
     /// The installed, admitted model a meeting may load (`ParakeetUpgradeCoordinator`).
     let meetingSelection: @MainActor () async -> ParakeetModelSelection?
+    /// #4578: whether Parakeet is on this Mac (`SpeechModelLibrary`): a pass asks fresh, the
+    /// Transcribe again menu reads the settled answer.
+    var parakeet: ParakeetInstallation
     /// The delivery controller's gate; never a second one.
     let modelUseGate: MeetingModelUseGate
     /// The live Parakeet delivery switch (R32).
@@ -145,29 +148,53 @@ enum MeetingWiring {
     let isReadyForMenu: @MainActor () -> Bool
   }
 
-  /// #3973 C3: the engine a pass of an attempt that asked for `engine` runs on, from current
-  /// availability (decision 19): Whisper when its model is admitted and delivery is on, else
-  /// the whole attempt on Parakeet with the closed reason. Never downloads; never reads
-  /// Settings.
+  /// #4578: Parakeet's installation, as `SpeechModelLibrary` reports it.
+  struct ParakeetInstallation {
+    /// Read fresh (never a guess from an unknown answer).
+    let installed: @MainActor () async -> Bool
+    /// The settled answer now; unknown counts as not offered.
+    let installedNow: @MainActor () -> Bool
+  }
+
+  /// #3973 C3, #4578: the engine a pass of an attempt that asked for `engine` runs on, from
+  /// current availability (`SpeechJobAdmission` `.meetingTranscript`): the requested engine
+  /// when it can run, else the other downloaded one with the closed reason, in both
+  /// directions; nil when neither is downloaded. Never downloads; never reads Settings.
   static func resolve(
     _ attempt: MeetingAttemptConfiguration, whisper: WhisperEngine?,
+    parakeetInstalled: @MainActor () async -> Bool,
     supports: (MeetingEngineChoice, String) -> Bool = engineSupports
-  ) async -> MeetingEngineResolution {
-    func fallback(_ reason: MeetingTranscriptFallbackReason) -> MeetingEngineResolution {
-      MeetingEngineResolution(
-        engine: .parakeet, fallbackReason: reason,
-        effectiveLanguage: attempt.effectiveLanguage(on: .parakeet, supports: supports))
+  ) async -> MeetingEngineResolution? {
+    // Whisper can run only when this build offers it, delivery is on and its model is admitted.
+    var whisperReason: MeetingTranscriptFallbackReason?
+    if let whisper {
+      if !whisper.isDeliveryEnabled() {
+        whisperReason = .deliveryDisabled
+      } else if await whisper.modelPath() == nil {
+        whisperReason = .notDownloaded
+      }
+    } else {
+      whisperReason = .modelUnavailable
     }
-    switch attempt.requestedEngine {
-    case .parakeet:
-      break
-    case .whisper:
-      guard let whisper else { return fallback(.modelUnavailable) }
-      guard whisper.isDeliveryEnabled() else { return fallback(.deliveryDisabled) }
-      guard await whisper.modelPath() != nil else { return fallback(.notDownloaded) }
+    var installed: Set<ASRBackendType> = []
+    if whisperReason == nil { installed.insert(.whisper) }
+    if await parakeetInstalled() { installed.insert(.parakeet) }
+    let requested = attempt.requestedEngine
+    switch SpeechJobAdmission.decide(
+      .meetingTranscript, requested: requested.backendType, installed: installed)
+    {
+    case .use:
+      return MeetingEngineResolution(
+        engine: requested, effectiveLanguage: attempt.requestedEffectiveLanguage)
+    case .useOther(let other, _):
+      let engine: MeetingEngineChoice = other == .whisper ? .whisper : .parakeet
+      return MeetingEngineResolution(
+        engine: engine,
+        fallbackReason: requested == .whisper ? (whisperReason ?? .notDownloaded) : .notDownloaded,
+        effectiveLanguage: attempt.effectiveLanguage(on: engine, supports: supports))
+    case .stop:
+      return nil
     }
-    return MeetingEngineResolution(
-      engine: attempt.requestedEngine, effectiveLanguage: attempt.requestedEffectiveLanguage)
   }
 
   /// #3973 C3: whether `engine` can decode `code`: the engine's lockable languages
@@ -214,15 +241,20 @@ enum MeetingWiring {
             onCallSoundReport: MeetingWiring.callSoundReportForwarder(emit))
         },
         makeJob: { makeJob(inputs, lane: lane, resolution: $0) },
-        resolveEngine: { [whisper = inputs.whisper] in await resolve($0, whisper: whisper) },
+        resolveEngine: { [whisper = inputs.whisper, parakeet = inputs.parakeet] in
+          await resolve($0, whisper: whisper, parakeetInstalled: parakeet.installed)
+        },
         engineSupportsLanguage: { engineSupports($0, $1) },
         liveWords: inputs.liveWords,
         meetingLanguage: { [settings = inputs.settings] in settings.meetingLanguageMode },
         meetingTranscriptEngine: { [settings = inputs.settings] in
           settings.meetingTranscriptEngine
         },
-        isEngineReady: { [whisper = inputs.whisper] engine in
-          engine == .parakeet || (whisper?.isReadyForMenu() ?? false)
+        isEngineReady: { [whisper = inputs.whisper, parakeet = inputs.parakeet] engine in
+          switch engine {
+          case .parakeet: parakeet.installedNow()
+          case .whisper: whisper?.isReadyForMenu() ?? false
+          }
         },
         liveVocabulary: inputs.liveVocabulary,
         microphoneSelection: { [settings = inputs.settings] in

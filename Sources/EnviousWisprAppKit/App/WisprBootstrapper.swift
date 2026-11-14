@@ -2958,6 +2958,9 @@ package final class WisprBootstrapper {
       memoryPressure: meetingMemoryPressure,
       offlineModeAdmission: concreteASRManager,
       meetingSelection: { [parakeetUpgrade] in await parakeetUpgrade.meetingSelection() },
+      parakeet: MeetingWiring.ParakeetInstallation(
+        installed: { [weak speechModels] in await speechModels?.freshInstalled(.parakeet) ?? false },
+        installedNow: { [weak speechModels] in speechModels?.installedSnapshot(.parakeet) == true }),
       modelUseGate: modelDelivery.controller.meetingModelUseGate,
       isDeliveryEnabled: { [modelDelivery] in modelDelivery.parakeetHandle?.isEnabled() ?? false },
       workChanged: { [weak engineCoordinator] in engineCoordinator?.poke(.parakeetUpgradeOwed) },
@@ -3318,6 +3321,21 @@ package final class WisprBootstrapper {
         },
         settledStart: { [weak meetingBox] request, recordingID in
           meetingBox?.callDetection?.settledStart(request, recordingID: recordingID)
+        },
+        // #4578: the meeting-start rule over fresh facts: any downloaded engine can write the
+        // transcript (the meeting uses the other one when its own is missing).
+        hasTranscriptionEngine: { [weak speechModels, settings] in
+          guard let speechModels else { return false }
+          let installed = await speechModels.freshInstalledEngines()
+          return SpeechJobAdmission.decide(
+            .meetingStart, requested: settings.meetingTranscriptEngine.backendType,
+            installed: installed
+          ).engine != nil
+        },
+        showNoTranscriptionEngine: { [weak meetingBox, navigationCoordinator, appWindowCoordinator] in
+          if meetingBox?.callDetection?.showNoTranscriptionEngine() == true { return }
+          navigationCoordinator.request(.meetings(.models))
+          appWindowCoordinator.showWindow()
         }))
     meetingBox.startFlow = meetingStartFlow
     self.meetingStartFlow = meetingStartFlow
@@ -3371,6 +3389,10 @@ package final class WisprBootstrapper {
         // #4058: the prompt's Open settings and its turn-off-an-app tips point at Call Apps.
         showMeetingPage: { [navigationCoordinator, appWindowCoordinator] in
           navigationCoordinator.request(.meetings(.callApps))
+          appWindowCoordinator.showWindow()
+        },
+        showMeetingModels: { [navigationCoordinator, appWindowCoordinator] in
+          navigationCoordinator.request(.meetings(.models))
           appWindowCoordinator.showWindow()
         },
         anchor: { [menuBarControllerHolder] in menuBarControllerHolder.controller?.statusItemFrame

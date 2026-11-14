@@ -536,9 +536,19 @@ enum MeetingsCopy {
   static let warningParakeetMeeting = LocalizedStringResource(
     "EnviousMeet uses Parakeet and dictation uses Whisper. Dictating during a meeting can load both engines and slow down your Mac.",
     comment: "EnviousMeet page, Transcript engine row: warning when meetings and dictation use different speech engines.")
-  static let usedParakeetFallback = LocalizedStringResource(
-    "Used Parakeet because Whisper was unavailable.",
-    comment: "EnviousMeet meeting page: the transcript was written by Parakeet because the chosen Whisper model was missing or turned off.")
+  /// #4578: the transcript was written by the other downloaded engine, in either direction.
+  static func usedFallback(_ engine: MeetingEngineChoice) -> LocalizedStringResource {
+    switch engine {
+    case .parakeet:
+      LocalizedStringResource(
+        "Used Parakeet because Whisper was unavailable.",
+        comment: "EnviousMeet meeting page: the transcript was written by Parakeet because the chosen Whisper model was missing or turned off.")
+    case .whisper:
+      LocalizedStringResource(
+        "Used Whisper because Parakeet was unavailable.",
+        comment: "EnviousMeet meeting page: the transcript was written by Whisper because the chosen Parakeet model was removed.")
+    }
+  }
   /// The transcript menu's Auto: no language is set (Parakeet's Auto sets no language hint; it
   /// does not detect the language), so the label never promises detection.
   static let transcriptLanguageAuto = LocalizedStringResource(

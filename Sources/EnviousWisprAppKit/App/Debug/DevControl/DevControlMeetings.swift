@@ -771,6 +771,7 @@
       case .notIdle: return ["outcome": "notIdle"]
       case .setupRequired: return ["outcome": "setupRequired"]
       case .needsAttention: return ["outcome": "needsAttention"]
+      case .noTranscriptionEngine: return ["outcome": "noTranscriptionEngine"]
       case .started(let start):
         switch start {
         case .recording(let id): return ["outcome": "recording", "meetingID": id.uuidString]

@@ -58,6 +58,9 @@
       .init(id: "needsAttention", title: "Needs your attention", content: .needsAttention),
       .init(id: "couldNotStart", title: "Could not start recording", content: .couldNotStart),
       .init(
+        id: "noTranscriptionEngine", title: "No speech engine downloaded",
+        content: .noTranscriptionEngine),
+      .init(
         id: "stillInMeeting", title: "Still in a meeting? (10 quiet minutes)",
         content: .stillInMeeting(secondsLeft: 30)),
     ]
@@ -80,7 +83,8 @@
       case .notesWriting: CallDetectionCoordinator.notesWritingCap
       case .notesReady: CallDetectionCoordinator.notesReadyLength
       case .manualStart: CallDetectionCoordinator.manualStartLength
-      case .firstTip, .lastTip, .needsAttention, .couldNotStart: CallDetectionPolicy.noteTimeout
+      case .firstTip, .lastTip, .needsAttention, .couldNotStart, .noTranscriptionEngine:
+        CallDetectionPolicy.noteTimeout
       case .endConfirmation: nil
       }
     }

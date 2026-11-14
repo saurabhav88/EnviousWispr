@@ -447,8 +447,8 @@ struct HistoryMeetingAfterView: View {
           .foregroundStyle(.stTextBody)
           .textSelection(.enabled)
       }
-      if record.transcriptEngineFallbackReason != nil {
-        Text(MeetingsCopy.usedParakeetFallback)
+      if record.transcriptEngineFallbackReason != nil, let used = record.transcriptEngineUsed {
+        Text(MeetingsCopy.usedFallback(used))
           .font(.stHelper)
           .foregroundStyle(.stTextSecondary)
           .fixedSize(horizontal: false, vertical: true)

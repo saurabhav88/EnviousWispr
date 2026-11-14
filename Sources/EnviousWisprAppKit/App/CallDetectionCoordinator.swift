@@ -28,6 +28,8 @@ final class CallDetectionCoordinator {
     var detectedStartIsBlocked: @MainActor () -> Bool
     var dictationActive: @MainActor () -> Bool
     var showMeetingPage: @MainActor () -> Void
+    /// #4578: EnviousMeet > Models, where a speech engine is downloaded.
+    var showMeetingModels: @MainActor () -> Void
     var anchor: @MainActor () -> NSRect?
     var emit: @MainActor (MeetingCallPromptTelemetry) -> Void
     /// The evidence for one holder, read off the main actor with its own bound.
@@ -267,6 +269,16 @@ final class CallDetectionCoordinator {
     consumeLaterLinks()
     draw()
     run(commands)
+  }
+
+  /// #4578: a hand-started meeting found no speech engine: the "No speech engine downloaded"
+  /// card. False after quit, when no card can show.
+  @discardableResult
+  func showNoTranscriptionEngine() -> Bool {
+    guard !readStopped else { return false }
+    policy.noteNoTranscriptionEngine(context())
+    draw()
+    return true
   }
 
   func settledStart(_ request: CallDetectionPolicy.AcceptedStart, recordingID: UUID?) {
@@ -511,6 +523,8 @@ final class CallDetectionCoordinator {
         deps.settings.meetingCallFirstTipShown = true
       case .openMeetingPage:
         deps.showMeetingPage()
+      case .openMeetingModels:
+        deps.showMeetingModels()
       case .followNotes(let meetingID, _):
         // No frozen attempt: nothing is known to follow, so no card (plan §3.5).
         guard let attempt = frozenAttempts.removeValue(forKey: meetingID) else { continue }
@@ -527,6 +541,7 @@ final class CallDetectionCoordinator {
     case .started(.refused), .started(.failed): .couldNotStart
     case .started(.superseded): .superseded
     case .needsAttention: .needsAttention
+    case .noTranscriptionEngine: .noTranscriptionEngine
     case .started(.notIdle), .waitingForExplainer, .joinedMicrophonePrompt, .cancelled, .notIdle,
       .setupRequired:
       .notStarted
@@ -680,6 +695,7 @@ final class CallDetectionCoordinator {
       }
     case .note(.needsAttention, _): .needsAttention
     case .note(.couldNotStart, _): .couldNotStart
+    case .note(.noTranscriptionEngine, _): .noTranscriptionEngine
     case .stillInMeeting(_, let deadline):
       .stillInMeeting(secondsLeft: max(1, Int(ceil(deadline.timeIntervalSince(deps.now())))))
     }
