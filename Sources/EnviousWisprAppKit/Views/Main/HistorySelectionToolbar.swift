@@ -18,8 +18,12 @@ struct HistorySelectionToolbar: View {
   var body: some View {
     let count = selection.selectedIDs.count
     let matching = result?.ids ?? []
+    // The loaded page stands for every match only when no catalog page lies before or after it;
+    // otherwise only the full matching set (fetched by the button) can say all are ticked.
+    let pageIsWholeSet = result?.continuation == nil && result?.newerContinuation == nil
     let allSelected = allMatchingIDs.map { !$0.isEmpty && $0.isSubset(of: selection.selectedIDs) }
-      ?? (!matching.isEmpty && count >= matching.count && matching.isSubset(of: selection.selectedIDs))
+      ?? (pageIsWholeSet && !matching.isEmpty && count >= matching.count
+        && matching.isSubset(of: selection.selectedIDs))
     let allMatchingAvailable = result != nil && !matching.isEmpty
     WrappingHStack(spacing: 8) {
       VStack(alignment: .leading, spacing: 2) {
