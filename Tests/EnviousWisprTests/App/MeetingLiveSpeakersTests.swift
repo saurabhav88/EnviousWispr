@@ -189,7 +189,7 @@ struct MeetingLiveSpeakersTests {
     #expect(rows[1].segments.map { $0.quote?.speaker } == [.remote("1"), .remote("2")])
     #expect(rows[1].segments.map { $0.quote?.startMs } == [0, 6])
     #expect(rows[2].segments.first?.quote?.speaker == .remote("2"))
-    #expect(rows[2].segments.first?.quote?.startMs == 12)
+    #expect(rows[2].segments.first?.quote?.startMs == 13)  // 200 samples at 16 kHz is 12.5 ms.
   }
 
   @Test("untimed text, a reset and stale results never produce a label")
