@@ -587,6 +587,13 @@ run_lane() {  # $1=scheme $2=lane label (Debug|Release) $3=Xcode configuration $
   fi
   if [ "$TEST_EXECUTION" = "grouped" ]; then
     local build_start=$SECONDS supervisor rc
+    # The grouped runner needs exactly one `<scheme>_*.xctestrun` (xcode-test-run.sh
+    # fails closed on two). Xcode names the file after the SDK, so after an Xcode
+    # update the old file stays beside the new one (macosx27.0 next to macosx27.2,
+    # 2026-11-13) and every later run refused. The file is a build output that
+    # build-for-testing rewrites, so drop this scheme's copies first: the build
+    # leaves only the current one, and a failed build leaves none to run stale.
+    rm -f -- "$derived/Build/Products/${scheme}"_*.xctestrun
     ew_watch "$config build" xcodebuild build-for-testing \
       -project "$PROJECT" -scheme "$scheme" -configuration "$xcode_config" \
       -derivedDataPath "$derived" -destination "$DEST" \
