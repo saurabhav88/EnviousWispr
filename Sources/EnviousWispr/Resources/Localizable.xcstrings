@@ -1106,6 +1106,17 @@
         }
       }
     },
+    "%@ · and more" : {
+      "comment" : "Closing film, last scene: dictation app names (never translated), then 'and more'.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · und weitere"
+          }
+        }
+      }
+    },
     "%@ · used %@ times" : {
       "comment" : "Your Words: under a word. the first %@ is its category, the second how many times it was used (never 1).",
       "localizations" : {
@@ -5533,6 +5544,17 @@
         }
       }
     },
+    "Bring your words with you." : {
+      "comment" : "Closing film, last scene: title of the words import lesson.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nimm deine Wörter mit."
+          }
+        }
+      }
+    },
     "British spelling: colour, organise, centre" : {
       "comment" : "Dictation language picker: under English (UK). Keep the three example words in British spelling; they show the result.",
       "localizations" : {
@@ -6254,6 +6276,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Schlüssel prüfen"
+          }
+        }
+      }
+    },
+    "Check out **Dictionary** → **Import**" : {
+      "comment" : "Closing film, last scene: where to import words. The bold words are the Settings page name and its Import button, exactly as Settings shows them.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schau unter **Wörterbuch** → **Importieren**"
           }
         }
       }
@@ -10596,17 +10629,6 @@
         }
       }
     },
-    "EnviousWispr lives here" : {
-      "comment" : "Closing film: label pointing at the menu bar icon.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hier findest du EnviousWispr"
-          }
-        }
-      }
-    },
     "EnviousWispr needs Accessibility permission to read your selection. Turn it on in System Settings, then try again." : {
       "comment" : "Quick Add panel: why the selected text could not be read.",
       "localizations" : {
@@ -11229,6 +11251,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Füllwörter werden entfernt, Grammatik und Formatierung korrigiert."
+          }
+        }
+      }
+    },
+    "Find EnviousWispr\nin your menu bar." : {
+      "comment" : "Closing film, last scene: where the app's icon is, under a picture of a menu bar. Keep the line break: two short lines under the icon.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du findest EnviousWispr\nin deiner Menüleiste."
           }
         }
       }
@@ -12720,17 +12753,6 @@
         }
       }
     },
-    "Hold %@ in any app and talk." : {
-      "comment" : "Closing film, last scene. %@ is the dictation key, for example 'Right ⌥'.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Halte %@ in einer beliebigen App gedrückt und sprich."
-          }
-        }
-      }
-    },
     "Hold only the keybind and press Space to go hands-free." : {
       "comment" : "Keybinds, Recording mode help in Push to Talk: while holding a single modifier dictation key, pressing Space locks hands-free recording on. Space is the Space bar.",
       "localizations" : {
@@ -13038,6 +13060,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wörter importieren"
+          }
+        }
+      }
+    },
+    "Import your custom words from another dictation app." : {
+      "comment" : "Closing film, last scene: line under 'Bring your words with you.'",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Importiere deine eigenen Wörter aus einer anderen Diktier-App."
           }
         }
       }
@@ -14308,16 +14341,6 @@
         }
       }
     },
-    "Launch EnviousWispr" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "EnviousWispr starten"
-          }
-        }
-      }
-    },
     "Learn as you go" : {
       "comment" : "Your Words: a tab in the side rail: the line under Learn from. Keep it short, about 16 characters.",
       "localizations" : {
@@ -15213,17 +15236,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Langes Meeting: Diese Zusammenfassung wurde in Teilen erstellt. Manche Cloud-Modelle fassen auch längere Meetings in einem Durchgang zusammen."
-          }
-        }
-      }
-    },
-    "Look for EnviousWispr in your menu bar." : {
-      "comment" : "Closing film, last scene: where the app's icon is.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Du findest EnviousWispr in deiner Menüleiste."
           }
         }
       }
@@ -18032,28 +18044,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Das Erkennen von Anrufen erfordert macOS 14.2 oder neuer. Aufnahmen kannst du weiterhin über die Menüleiste starten."
-          }
-        }
-      }
-    },
-    "Now it is your turn." : {
-      "comment" : "Closing film, last scene title: the person can start dictating.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Jetzt bist du dran."
-          }
-        }
-      }
-    },
-    "Now it is your turn. Hold %@ in any text box and talk. Look for EnviousWispr in your menu bar." : {
-      "comment" : "VoiceOver for the closing film's last scene. %@ is the dictation key.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Jetzt bist du dran. Halte %@ in einem beliebigen Textfeld gedrückt und sprich. Du findest EnviousWispr in deiner Menüleiste."
           }
         }
       }
@@ -24247,6 +24237,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Transkription starten"
+          }
+        }
+      }
+    },
+    "Start using EnviousWispr" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr jetzt nutzen"
           }
         }
       }
@@ -30499,12 +30499,23 @@
       }
     },
     "You're all set." : {
-      "comment" : "EnviousMeet setup: the last screen's title.",
+      "comment" : "Closing film, last scene title: Setup is finished.\nEnviousMeet setup: the last screen's title.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Alles bereit."
+          }
+        }
+      }
+    },
+    "You're all set. Find EnviousWispr in your menu bar. Bring your words with you: to import your custom words from another dictation app, open Settings, then Dictionary, then Import." : {
+      "comment" : "VoiceOver for the closing film's last scene.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alles bereit. Du findest EnviousWispr in deiner Menüleiste. Nimm deine Wörter mit: Um deine eigenen Wörter aus einer anderen Diktier-App zu importieren, öffne die Einstellungen, dann Wörterbuch, dann Importieren."
           }
         }
       }

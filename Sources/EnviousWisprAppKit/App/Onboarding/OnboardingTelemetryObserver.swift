@@ -153,7 +153,7 @@ final class OnboardingTelemetryObserver {
 
   // MARK: Film (E integration)
 
-  /// The film ended (Launch EnviousWispr): one `film_finished` row per visit, and the result the
+  /// The film ended (Start using EnviousWispr): one `film_finished` row per visit, and the result the
   /// completion summary carries. Sent from the button action, never from rendering.
   func filmEnded(_ result: OnboardingTelemetry.FilmResult, lastScene: FilmScene) {
     guard ownedVisit(), filmResult == nil else { return }

@@ -255,7 +255,9 @@ extension Font {
   static let firstRunSay = Font.system(size: 17, weight: .semibold)
   /// Setup reading copy under a title.
   static let firstRunBody = Font.system(size: 15, weight: .regular)
-  /// Setup card name, option name and button text.
+  /// Setup primary button text (founder 2026-11-13).
+  static let firstRunButton = Font.system(size: 19, weight: .bold, design: .rounded)
+  /// Setup card name and option name.
   static let firstRunLabel = Font.system(size: 15, weight: .semibold)
   /// Setup card detail lines, hints and film caption subtitle.
   static let firstRunCaption = Font.system(size: 13, weight: .regular)

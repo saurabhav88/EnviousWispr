@@ -311,6 +311,7 @@ struct DesignTokensSyncTests {
     "Font.obCaptionSmall": .obCaptionSmall, "Font.obLabel": .obLabel,
     "Font.firstRunHero": .firstRunHero, "Font.firstRunDisplay": .firstRunDisplay,
     "Font.firstRunTitle": .firstRunTitle, "Font.firstRunSay": .firstRunSay, "Font.firstRunBody": .firstRunBody,
+    "Font.firstRunButton": .firstRunButton,
     "Font.firstRunLabel": .firstRunLabel, "Font.firstRunCaption": .firstRunCaption,
     "Font.firstRunEyebrow": .firstRunEyebrow,
   ]

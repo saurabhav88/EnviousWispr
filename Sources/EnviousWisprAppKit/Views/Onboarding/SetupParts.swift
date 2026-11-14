@@ -4,7 +4,7 @@ import SwiftUI
 /// consumer. Measurements follow the source-of-truth mockup's design system block.
 
 /// Setup's primary button (mockup `[data-ui="btn"]`): 44 high, at most 360 wide, 12 corners,
-/// label weight, hover and disabled colors, a slight press. Native `Button` semantics: keyboard
+/// the larger rounded button text (founder 2026-11-13), hover and disabled colors, a slight press. Native `Button` semantics: keyboard
 /// activation, focus and the accessibility name come from the button itself.
 struct SetupPrimaryButtonStyle: ButtonStyle {
   @Environment(\.isEnabled) private var isEnabled
@@ -15,7 +15,10 @@ struct SetupPrimaryButtonStyle: ButtonStyle {
 
   func makeBody(configuration: Configuration) -> some View {
     configuration.label
-      .font(.firstRunLabel)
+      .font(.firstRunButton)
+      .lineLimit(1)
+      .minimumScaleFactor(0.8)  // a long German label shrinks a little rather than truncating
+      .padding(.horizontal, DesignSpacing.lg)
       .foregroundStyle(isEnabled ? Color.white : Color.firstRunButtonDisabledText)
       .frame(maxWidth: SetupMetrics.buttonMaxWidth)
       .frame(height: SetupMetrics.buttonHeight)
@@ -95,9 +98,9 @@ struct SetupFooter<Links: View>: View {
           Text(title)
         }
       }
-        .buttonStyle(SetupPrimaryButtonStyle())
-        .disabled(!isEnabled)
-        .keyboardShortcut(.defaultAction)
+      .buttonStyle(SetupPrimaryButtonStyle())
+      .disabled(!isEnabled)
+      .keyboardShortcut(.defaultAction)
       HStack(spacing: DesignSpacing.xs) { links }
         .frame(height: SetupMetrics.linksHeight)
     }
@@ -198,7 +201,8 @@ struct SetupLinkButton: View {
         .frame(height: SetupMetrics.linksHeight)
         .background(
           RoundedRectangle(cornerRadius: DesignRadius.md, style: .continuous)
-            .fill(hovering ? (quiet ? Color.obSurface : Color.firstRunAccentSoft) : .clear))
+            .fill(hovering ? (quiet ? Color.obSurface : Color.firstRunAccentSoft) : .clear)
+        )
         .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
@@ -352,8 +356,15 @@ struct SetupProgressBar: View {
     .accessibilityLabel(Text(verbatim: label))
     .accessibilityValue(
       Text(
-        fraction.map { String(localized: "\(Int(($0 * 100).rounded(.down))) percent", comment: "Setup progress bar value.") }
-          ?? String(localized: "In progress", comment: "Setup progress bar value with no measured percent.")))
+        fraction.map {
+          String(
+            localized: "\(Int(($0 * 100).rounded(.down))) percent",
+            comment: "Setup progress bar value.")
+        }
+          ?? String(
+            localized: "In progress", comment: "Setup progress bar value with no measured percent.")
+      )
+    )
     .accessibilityAddTraits(.updatesFrequently)
   }
 

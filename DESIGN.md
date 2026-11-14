@@ -241,7 +241,8 @@ Edit values only here, then run `python3 scripts/design/generate-tokens.py`. Col
     "Font.firstRunTitle": {"size": 20, "weight": "heavy", "design": "rounded", "usage": "Setup card title and film caption title."},
     "Font.firstRunSay": {"size": 17, "weight": "semibold", "usage": "Setup practice sentence the person reads aloud."},
     "Font.firstRunBody": {"size": 15, "weight": "regular", "usage": "Setup reading copy under a title."},
-    "Font.firstRunLabel": {"size": 15, "weight": "semibold", "usage": "Setup card name, option name and button text."},
+    "Font.firstRunButton": {"size": 19, "weight": "bold", "design": "rounded", "usage": "Setup primary button text (founder 2026-11-13)."},
+    "Font.firstRunLabel": {"size": 15, "weight": "semibold", "usage": "Setup card name and option name."},
     "Font.firstRunCaption": {"size": 13, "weight": "regular", "usage": "Setup card detail lines, hints and film caption subtitle."},
     "Font.firstRunEyebrow": {"size": 11, "weight": "semibold", "usage": "Setup uppercase eyebrow and badge (RECOMMENDED)."}
   },

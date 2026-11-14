@@ -4,7 +4,7 @@ import SwiftUI
 /// Setup's closing film (#4528 chunk E, plan §3.6 and M79; mockup `isTour`): seven short
 /// scenes that play by themselves, with the big lips acting each one out, a caption per beat,
 /// progress bars that fill and can be clicked, Pause / Play, Watch again, and the always
-/// visible "Launch EnviousWispr" (founder D9).
+/// visible "Start using EnviousWispr" (founder D9).
 ///
 /// Self-contained: it takes plain inputs and reads no flow. The router's `.film` step hosts it
 /// and maps `onFinished` (pressed on the last scene) and `onSkip` (pressed earlier) to the flow.
@@ -19,7 +19,7 @@ struct SetupFilmScreen: View {
   /// Launch on the final scene. The film holds its last picture until then, so Watch again
   /// stays reachable (founder 2026-11-13; the mockup never closed by itself).
   let onFinished: () -> Void
-  /// The person pressed "Launch EnviousWispr" before the last scene.
+  /// The person pressed "Start using EnviousWispr" before the last scene.
   let onSkip: () -> Void
   /// Tests and render fixtures: show this film second, paused, instead of playing from 0.
   var frozenAt: Double? = nil
@@ -104,7 +104,7 @@ struct SetupFilmScreen: View {
       // Outside the timeline, so the footer is not rebuilt on every frame; the scene is read
       // from the clock at the moment of the press.
       SetupFooter(
-        title: "Launch EnviousWispr",
+        title: "Start using EnviousWispr",
         action: {
           let index = FilmScript.locate(clock.time(at: Date())).index
           let exit = Self.exit(at: index)
@@ -174,7 +174,7 @@ struct SetupFilmScreen: View {
     ).post()
   }
 
-  /// What "Launch EnviousWispr" means on scene `index`: finishing on the last scene, skipping
+  /// What "Start using EnviousWispr" means on scene `index`: finishing on the last scene, skipping
   /// before it (the flow's `filmFinished` and `skipFilm`).
   enum Exit: Equatable { case finished, skipped }
 

@@ -70,7 +70,7 @@ struct FilmStage: View {
 
 // MARK: - Captions
 
-/// One caption: a title and a quieter line under it.
+/// One caption: a title and a quieter line under it (an empty line draws nothing).
 struct FilmCaptionLine {
   let title: String
   let subtitle: String
@@ -197,11 +197,9 @@ enum FilmCaptions {
       return [
         FilmCaptionLine(
           title: String(
-            localized: "Now it is your turn.",
-            comment: "Closing film, last scene title: the person can start dictating."),
-          subtitle: String(
-            localized: "Hold \(summary.keyLabel) in any app and talk.",
-            comment: "Closing film, last scene. %@ is the dictation key, for example 'Right ⌥'."),
+            localized: "You're all set.",
+            comment: "Closing film, last scene title: Setup is finished."),
+          subtitle: "",
           track: FilmScript.Captions.single)
       ]
     }
@@ -225,8 +223,8 @@ enum FilmCaptions {
     case .yours:
       return String(
         localized:
-          "Now it is your turn. Hold \(summary.keyLabel) in any text box and talk. Look for EnviousWispr in your menu bar.",
-        comment: "VoiceOver for the closing film's last scene. %@ is the dictation key.")
+          "You're all set. Find EnviousWispr in your menu bar. Bring your words with you: to import your custom words from another dictation app, open Settings, then Dictionary, then Import.",
+        comment: "VoiceOver for the closing film's last scene.")
     case .apps:
       return String(
         localized: "Works in any app with a text box.",
@@ -269,9 +267,11 @@ struct FilmCaption: View {
           Text(verbatim: lines[i].title)
             .font(.firstRunTitle)
             .foregroundStyle(Color.obTextPrimary)
-          Text(verbatim: lines[i].subtitle)
-            .font(.firstRunCaption)
-            .foregroundStyle(Color.obTextSecondary)
+          if !lines[i].subtitle.isEmpty {
+            Text(verbatim: lines[i].subtitle)
+              .font(.firstRunCaption)
+              .foregroundStyle(Color.obTextSecondary)
+          }
         }
         .multilineTextAlignment(.center)
         .lineLimit(2)
@@ -923,82 +923,169 @@ struct FilmMoreScene: View {
   }
 }
 
-/// YOURS: the key, breathing, and where EnviousWispr lives in the menu bar.
+/// YOURS (founder 2026-11-13): two lessons. Where EnviousWispr lives in the menu bar (the real
+/// idle icon, drawn the way macOS draws its template image), then where to import words from
+/// another dictation app. Text only: nothing in the film is clickable.
 struct FilmYoursScene: View {
   let frame: FilmFrame
   typealias T = FilmScript.Yours
 
+  /// "Check out Dictionary → Import", one sentence for translators; the two names (the Settings
+  /// page and its button, as the app shows them) are bold in the source and drawn in the accent.
+  static var importPath: AttributedString {
+    var text = AttributedString(
+      localized: "Check out **Dictionary** → **Import**",
+      comment:
+        "Closing film, last scene: where to import words. The bold words are the Settings page name and its Import button, exactly as Settings shows them."
+    )
+    for run in text.runs where run.inlinePresentationIntent?.contains(.stronglyEmphasized) == true {
+      text[run.range].foregroundColor = Color.obAccent
+    }
+    return text
+  }
+
+  /// The first import apps by name, in the import list's own order (`SmartImportRegistry.v1`).
+  static let importApps = ["Wispr Flow", "FluidVoice", "Superwhisper"]
+
   var body: some View {
-    let key = frame.value(T.key)
-    let keyBreath = frame.still ? 1 : T.breath(at: frame.loop, period: 2.4, delay: 0.6)
-    let iconBreath = frame.still ? 1 : T.breath(at: frame.loop, period: 1.6, delay: 0)
-    ZStack(alignment: .top) {
+    let iconBreath = frame.still ? 1 : T.breath(at: frame.loop, period: 1.6, delay: 0.6)
+    VStack(spacing: 0) {
+      menuBarLesson(iconBreath: iconBreath)
+        .opacity(frame.kept(T.menuBar))
+        .offset(y: 10 * (1 - frame.kept(T.menuBar)))
+      Rectangle().fill(Color.firstRunRule).frame(height: 1)
+        .padding(.horizontal, DesignSpacing.xxl)
+        .padding(.top, DesignSpacing.xxl)
+        .opacity(frame.kept(T.words))
+      wordsLesson
+        .padding(.top, DesignSpacing.xxl)
+        .opacity(frame.kept(T.words))
+        .offset(y: 10 * (1 - frame.kept(T.words)))
+      Spacer(minLength: 0)
+    }
+    .padding(DesignSpacing.xl)
+  }
+
+  /// A Mac menu bar with the EnviousWispr icon ringed, a pointer and the line under it.
+  private func menuBarLesson(iconBreath: Double) -> some View {
+    VStack(spacing: 0) {
       HStack(spacing: 14) {
         Spacer(minLength: 0)
+        FilmMenuBarIcon(breath: iconBreath)
+          // The pointer and its line hang from the icon, so they sit under it in any language.
+          .overlay(alignment: .top) {
+            pointer
+              .fixedSize()
+              .offset(y: 26)
+              .opacity(frame.kept(T.pointer))
+          }
         Text("Wi-Fi", comment: "Menu bar item in the closing film's picture of a Mac.")
-        RainbowLipsIcon(size: DesignSpacing.xxl, audioLevel: 0)
-          .frame(width: 26, height: 20)
-          .background(
-            RoundedRectangle(cornerRadius: DesignRadius.sm, style: .continuous)
-              .fill(Color.firstRunAccentSoft)
-          )
-          .overlay(
-            RoundedRectangle(cornerRadius: DesignRadius.sm, style: .continuous)
-              .strokeBorder(Color.obAccent, lineWidth: 2)
-          )
-          .scaleEffect(iconBreath)
         Text("Thu 9:41", comment: "Clock in the closing film's picture of a Mac menu bar.")
       }
       .font(.obCaption.weight(.semibold))
-      .foregroundStyle(Color.obTextSecondary)
+      .foregroundStyle(Color.obTextPrimary)
       .padding(.horizontal, 14)
-      .frame(height: 26)
-      .background(Color.obCardBg.opacity(0.8))
+      .frame(height: 30)
+      .background(Color.white.opacity(0.06))
       .overlay(alignment: .bottom) { Rectangle().fill(Color.firstRunRule).frame(height: 1) }
-
-      Text("EnviousWispr lives here", comment: "Closing film: label pointing at the menu bar icon.")
-        .font(.obCaptionSmall.weight(.semibold))
-        .foregroundStyle(Color.obAccent)
-        .opacity(frame.value(T.label))
-        .offset(y: 32 + 10 * (1 - frame.value(T.label)))
-        .frame(maxWidth: .infinity, alignment: .trailing)
-        .padding(.trailing, 22)
-
-      VStack(spacing: 18) {
-        Text(verbatim: frame.summary.keyCap)
-          .font(.firstRunDisplay)
-          .foregroundStyle(Color.obAccent)
-          .frame(minWidth: 120, minHeight: 72)
-          .padding(.horizontal, DesignSpacing.xl)
-          .background(
-            RoundedRectangle(cornerRadius: DesignRadius.md, style: .continuous)
-              .fill(
-                LinearGradient(
-                  colors: [.obKeycapTop, .obSurface], startPoint: .top, endPoint: .bottom))
-          )
-          .overlay(
-            RoundedRectangle(cornerRadius: DesignRadius.md, style: .continuous)
-              .strokeBorder(Color.obAccent, lineWidth: 2)
-          )
-          .background(
-            RoundedRectangle(cornerRadius: DesignRadius.xl + DesignSpacing.xs, style: .continuous)
-              .fill(Color.firstRunAccentSoft)
-              .padding(-DesignSpacing.md)
-          )
-          .scaleEffect((0.65 + 0.35 * key) * keyBreath)
-          .opacity(key)
-        Text(
-          "Look for EnviousWispr in your menu bar.",
-          comment: "Closing film, last scene: where the app's icon is."
-        )
-        .font(.firstRunCaption)
-        .foregroundStyle(Color.obTextSecondary)
-        .opacity(frame.value(T.hint))
-        .offset(y: 10 * (1 - frame.value(T.hint)))
-      }
-      .frame(maxWidth: .infinity, maxHeight: .infinity)
-      .padding(.top, 26)
+      .zIndex(1)  // the pointer overlay draws over the picture below the bar
+      Spacer(minLength: 0)
     }
+    .frame(height: 128)
+    .background {
+      // The card, with the mockup's soft purple glow rising from the lower left like a Mac
+      // wallpaper (the glow sits over the card color, under the menu bar and text).
+      ZStack(alignment: .bottomLeading) {
+        Color.obCardBg
+        Ellipse()
+          .fill(Color.obAccent.opacity(0.35))
+          .frame(width: 320, height: 160)
+          .blur(radius: 40)
+          .offset(x: -80, y: 70)
+      }
+    }
+    .clipShape(RoundedRectangle(cornerRadius: DesignRadius.xl, style: .continuous))
+    .overlay(
+      RoundedRectangle(cornerRadius: DesignRadius.xl, style: .continuous)
+        .strokeBorder(Color.firstRunRule, lineWidth: 1)
+    )
+  }
+
+  /// A dot, a short line and "Find EnviousWispr in your menu bar." under it.
+  private var pointer: some View {
+    VStack(spacing: DesignSpacing.sm) {
+      Rectangle().fill(Color.obAccent).frame(width: 2, height: 22)
+        .overlay(alignment: .top) {
+          Circle().fill(Color.obAccent).frame(width: 7, height: 7).offset(y: -3)
+        }
+      Text(
+        "Find EnviousWispr\nin your menu bar.",
+        comment:
+          "Closing film, last scene: where the app's icon is, under a picture of a menu bar. Keep the line break: two short lines under the icon."
+      )
+      .font(.firstRunLabel)
+      .foregroundStyle(Color.obTextPrimary)
+      .multilineTextAlignment(.center)
+    }
+  }
+
+  /// Bring your words: the lesson, the apps by name and where the import is in Settings.
+  private var wordsLesson: some View {
+    VStack(spacing: DesignSpacing.sm) {
+      Text("Bring your words with you.", comment: "Closing film, last scene: title of the words import lesson.")
+        .font(.firstRunTitle)
+        .foregroundStyle(Color.obTextPrimary)
+      Text(
+        "Import your custom words from another dictation app.",
+        comment: "Closing film, last scene: line under 'Bring your words with you.'"
+      )
+      .font(.firstRunCaption)
+      .foregroundStyle(Color.obAccent)
+      Text(
+        "\(Self.importApps.joined(separator: " · ")) · and more",
+        comment: "Closing film, last scene: dictation app names (never translated), then 'and more'."
+      )
+      .font(.obCaptionSmall)
+      .foregroundStyle(Color.obTextSecondary)
+      Text(Self.importPath)
+        .font(.firstRunBody)
+        .foregroundStyle(Color.obTextPrimary)
+        .padding(.horizontal, DesignSpacing.xxl)
+        .padding(.vertical, DesignSpacing.md)
+        .background(
+          RoundedRectangle(cornerRadius: DesignRadius.md, style: .continuous)
+            .fill(Color.firstRunAccentSoft)
+        )
+        .padding(.top, DesignSpacing.xs)
+        .opacity(frame.kept(T.path))
+    }
+    .multilineTextAlignment(.center)
+    .lineLimit(2)
+    .minimumScaleFactor(0.85)
+  }
+}
+
+/// The EnviousWispr menu bar icon as macOS draws it (the idle template image: light in a dark
+/// menu bar, dark in a light one), ringed so the eye finds it.
+struct FilmMenuBarIcon: View {
+  var breath: Double = 1
+  /// Drawn once: the film redraws its scene on every frame.
+  private static let lips = MenuBarIconAnimator.renderIdleLips()
+
+  var body: some View {
+    Image(nsImage: Self.lips)
+      .renderingMode(.template)
+      .foregroundStyle(Color.obTextPrimary)
+      .frame(width: 32, height: 22)
+      .background(
+        RoundedRectangle(cornerRadius: DesignRadius.sm, style: .continuous)
+          .fill(Color.white.opacity(0.08))
+      )
+      .overlay(
+        RoundedRectangle(cornerRadius: DesignRadius.sm, style: .continuous)
+          .strokeBorder(Color.obAccent, lineWidth: 2)
+      )
+      .scaleEffect(breath)
   }
 }
 

@@ -85,7 +85,9 @@
       _ = door.stop()
     }
 
-    @Test("a cold Parakeet admission with no pick is answered by one read-only owner query, never a choice")
+    @Test(
+      "a cold Parakeet admission with no pick is answered by one read-only owner query, never a choice"
+    )
     func catalogResolvesColdAdmission() async {
       let box = Box()
       box.ownerAnswer = .installed  // upgrade-served Parakeet the base mirror does not show
@@ -129,7 +131,8 @@
       #expect(box.built == 0 && world.log.isEmpty)
     }
 
-    @Test("present needs the running backend session, refocuses one window, and stop closes it (D0)")
+    @Test(
+      "present needs the running backend session, refocuses one window, and stop closes it (D0)")
     func presentLifecycle() {
       let (door, _) = Self.make()
       #expect(Self.code(door.present()) == "rejected", "presented with no session")
@@ -179,7 +182,9 @@
       _ = door.stop()
     }
 
-    @Test("hide, navigate and mount while off screen, then show: one row, for the shown screen (D1, M67)")
+    @Test(
+      "hide, navigate and mount while off screen, then show: one row, for the shown screen (D1, M67)"
+    )
     func offScreenMountsReportOnlyWhenShown() throws {
       let recorder = OnboardingTelemetryObserverTests.Recorder()
       let observer = recorder.observer()
@@ -206,6 +211,26 @@
       #expect(recorder.rows.map(\.0) == ["welcome", "language"])
       presenter.dismiss()
       #expect(presenter.screenModel == nil && coordinator.onChange == nil)
+    }
+
+    @Test("the Setup window opens at its full size, centered left to right on its screen")
+    func windowOpensCentered() throws {
+      let world = OnboardingCoordinatorTests.World()
+      let coordinator = world.coordinator()
+      coordinator.begin()
+      let presenter = SetupWindowPresenter()
+      presenter.isOnScreen = { $0.isVisible }
+      presenter.show(coordinator: coordinator, telemetry: nil)
+      defer { presenter.dismiss() }
+      let window = try #require(NSApp.windows.first { $0.title == "Setup" && $0.isVisible })
+      let screen = try #require(window.screen ?? NSScreen.main)
+      let content = window.contentRect(forFrameRect: window.frame)
+      #expect(
+        content.width == SetupLayout.windowWidth && content.height == SetupLayout.contentHeight)
+      // A window centered before it had its size sits with its left edge at the middle.
+      #expect(
+        abs(window.frame.midX - screen.visibleFrame.midX) <= 1,
+        "window midX \(window.frame.midX), screen midX \(screen.visibleFrame.midX)")
     }
 
     @Test("a completed install opens no session and keeps Setup unowned")
@@ -270,8 +295,9 @@
           continue
         }
       }
-      guard case .success(.chooseLanguage(.locked("de"))) = DevControlOnboarding.event(
-        from: ["event": "chooseLanguage", "value": "de"])
+      guard
+        case .success(.chooseLanguage(.locked("de"))) = DevControlOnboarding.event(
+          from: ["event": "chooseLanguage", "value": "de"])
       else {
         Issue.record("de refused")
         return
@@ -295,7 +321,8 @@
       #expect(world.log.contains("restart"))
     }
 
-    @Test("a session visit begins once, abandons at most once, and a completed visit never abandons")
+    @Test(
+      "a session visit begins once, abandons at most once, and a completed visit never abandons")
     func visitTerminals() {
       let progress = OnboardingProgress()
       let world = OnboardingCoordinatorTests.World()
@@ -362,9 +389,10 @@
       setupSession.present()
       #expect(progress.isInFlight)
       let model = try #require(setupSession.presenter.screenModel)
-      let window = try #require(NSApp.windows.first {
-        $0.identifier?.rawValue == "onboarding" && $0.isVisible
-      })
+      let window = try #require(
+        NSApp.windows.first {
+          $0.identifier?.rawValue == "onboarding" && $0.isVisible
+        })
       setupSession.present()
       #expect(setupSession.presenter.screenModel === model)
       window.close()

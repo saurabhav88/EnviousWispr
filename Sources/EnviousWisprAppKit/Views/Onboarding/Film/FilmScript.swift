@@ -194,11 +194,13 @@ enum FilmScript {
     static let drift = FilmTrack(.linear, (0, 0), (4.5, 1))
   }
 
-  /// YOURS: the key pops in and breathes; the menu-bar icon breathes beside its label.
+  /// YOURS (founder 2026-11-13): the menu bar picture, then its pointer and line, then the
+  /// words import lesson; the menu-bar icon breathes.
   enum Yours {
-    static let key = FilmTrack.entrance(at: 0, lasting: 0.45)  // fPop
-    static let hint = FilmTrack.entrance(at: 0.4, lasting: 0.45)
-    static let label = FilmTrack.entrance(at: 0.6, lasting: 0.45)
+    static let menuBar = FilmTrack.entrance(at: 0, lasting: 0.45)
+    static let pointer = FilmTrack.entrance(at: 0.35, lasting: 0.45)
+    static let words = FilmTrack.entrance(at: 0.8, lasting: 0.45)
+    static let path = FilmTrack.entrance(at: 1.2, lasting: 0.45)
     /// `fBreath`: scale 1 → 1.06 → 1 over `period`, starting at `delay`.
     static func breath(at t: Double, period: Double, delay: Double) -> Double {
       guard t > delay else { return 1 }

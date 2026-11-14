@@ -110,6 +110,9 @@
   --ew-font-first-run-body-size: 15px;
   --ew-font-first-run-body-weight: 400;
   --ew-font-first-run-body-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  --ew-font-first-run-button-size: 19px;
+  --ew-font-first-run-button-weight: 700;
+  --ew-font-first-run-button-family: ui-rounded, "SF Pro Rounded", -apple-system, BlinkMacSystemFont, sans-serif;
   --ew-font-first-run-label-size: 15px;
   --ew-font-first-run-label-weight: 600;
   --ew-font-first-run-label-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;

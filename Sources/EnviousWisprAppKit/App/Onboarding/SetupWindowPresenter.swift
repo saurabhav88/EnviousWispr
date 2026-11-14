@@ -69,6 +69,11 @@ final class SetupWindowPresenter: NSObject, NSWindowDelegate {
     window.isReleasedWhenClosed = false
     window.contentViewController = NSHostingController(rootView: SetupWindowRoot(model: model))
     window.delegate = self
+    // Assigning the hosting controller shrinks the window to the hosting view's not-yet-laid-out
+    // size (zero), and `center()` reads the frame as it is: a zero-size window centers on the
+    // screen's midpoint, then grows right and up to 460 by 734 (seen on a fresh launch, its left
+    // edge at the screen's middle). Set the real size first, as QuickAddPanelHost does.
+    window.setContentSize(NSSize(width: SetupLayout.windowWidth, height: SetupLayout.contentHeight))
     window.center()
     self.model = model
     self.window = window

@@ -1,5 +1,6 @@
 import AppKit
 import EnviousWisprCore
+import EnviousWisprPostProcessing
 import EnviousWisprServices
 import Foundation
 import SwiftUI
@@ -170,7 +171,7 @@ struct SetupFilmScreenTests {
     #expect(mean < 100, "a film frame took \(mean) ms on average")
   }
 
-  @Test("Launch EnviousWispr finishes on the last scene and skips before it")
+  @Test("Start using EnviousWispr finishes on the last scene and skips before it")
   func exitDependsOnTheScene() {
     for index in FilmScript.scenes.indices {
       let expected: SetupFilmScreen.Exit =
@@ -257,5 +258,17 @@ struct SetupFilmScreenTests {
     let rep = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
     host.cacheDisplay(in: host.bounds, to: rep)
     return try #require(rep.representation(using: .png, properties: [:]))
+  }
+
+  /// When this fails, the last film scene sends people to a Settings page or button that no
+  /// longer has that name, or names import apps the import list does not offer.
+  @Test("the last scene's import directions match Settings and the import list")
+  func importDirectionsMatchSettings() {
+    let page = String(localized: SettingsPage.dictionary.labelResource!)
+    let button = String(localized: SettingsItemCopy.Dictionary.importWords)
+    let path = String(FilmYoursScene.importPath.characters)
+    #expect(path == "Check out \(page) → \(button)")
+    let registry = SmartImportRegistry.v1.displayNames
+    #expect(Array(registry.prefix(FilmYoursScene.importApps.count)) == FilmYoursScene.importApps)
   }
 }

@@ -1697,8 +1697,8 @@ def s_screens_d3b(run, speech):
 
 def s_screens_e(run, speech):
     """E: the closing film reached the real way (Practice's success event), in light and dark.
-    Light: Watch again, then Launch EnviousWispr before the last scene skips the film; dark: the
-    film plays to its last scene and Launch EnviousWispr finishes it. Both complete Setup
+    Light: Watch again, then Start using EnviousWispr before the last scene skips the film; dark: the
+    film plays to its last scene and Start using EnviousWispr finishes it. Both complete Setup
     durably. Permissions are simulated through the door and cleared at the end."""
     s = Scenario("screens_e")
     pid = run.app.client.pid
@@ -1741,9 +1741,9 @@ def s_screens_e(run, speech):
         activate_app(pid)
         time.sleep(1.0)  # test-fixture-timer: the window comes forward and playback resumes
         film_started = time.monotonic() - 1.0  # playback (re)starts when the window shows
-        s.expect(setup_button(pid, "Launch EnviousWispr") is not None
+        s.expect(setup_button(pid, "Start using EnviousWispr") is not None
                  and setup_button(pid, "Watch again") is not None,
-                 "the film shows Launch EnviousWispr and Watch again")
+                 "the film shows Start using EnviousWispr and Watch again")
         shot(f"{appearance}-scene1")
         time.sleep(9.0)  # test-fixture-timer: into the third scene (words land)
         shot(f"{appearance}-scene3")
@@ -1751,7 +1751,7 @@ def s_screens_e(run, speech):
             press("Watch again")
             time.sleep(1.0)  # test-fixture-timer: back on the first scene
             shot("light-replayed")
-            press("Launch EnviousWispr")  # before the last scene: skips the film
+            press("Start using EnviousWispr")  # before the last scene: skips the film
         else:
             # Past the film's full length: it holds its last picture and never closes Setup by
             # itself (founder 2026-11-13), so Watch again stays reachable.
@@ -1762,10 +1762,10 @@ def s_screens_e(run, speech):
             s.expect(setup_button(pid, "Watch again") is not None,
                      f"{appearance}: Watch again is still there after the film ends")
             shot("dark-last-scene")
-            press("Launch EnviousWispr")  # after the last scene: finishes the film
+            press("Start using EnviousWispr")  # after the last scene: finishes the film
         st = run.until(lambda x: x.get("active") is False, 6, "completed")
         s.expect(st.get("active") is False and st.get("legacyState") == "completed",
-                 f"{appearance}: Launch EnviousWispr completes Setup durably",
+                 f"{appearance}: Start using EnviousWispr completes Setup durably",
                  (st.get("active"), st.get("legacyState")))
         time.sleep(1.5)  # test-fixture-timer: the main window opens
         titles = app_window_titles(pid)
@@ -2019,7 +2019,7 @@ def s_first_run(run, speech):
     """A real first launch on a fresh Mac (fresh_mac.py prepare): the new Setup opens at Welcome
     by itself, takes every recommendation, meets a full disk and a failed download on the way
     (both through the Setup screen's own Try again), downloads the recommended models for real,
-    reaches Practice, and finishes through the film's Launch EnviousWispr into the main window
+    reaches Practice, and finishes through the film's Start using EnviousWispr into the main window
     (founder D9). The only scenario that downloads; run it by name on a fresh Mac."""
     s = Scenario("first_run")
     pid = run.app.client.pid
