@@ -14,6 +14,7 @@ import Foundation
 @MainActor
 public final class TranscriptStore {
   private let directory: URL
+  private let historyChanges: HistorySourceChanges?
 
   /// Which spools are still on disk, or `nil` when that cannot be determined
   /// (#2186). Injected so the sweep's spool guard is testable and so a test
@@ -22,7 +23,12 @@ public final class TranscriptStore {
   /// which every test would otherwise share.
   private let liveSpoolIDs: @Sendable () -> Set<String>?
 
-  public init() {
+  public convenience init() {
+    self.init(historyChanges: nil)
+  }
+
+  package init(historyChanges: HistorySourceChanges?) {
+    self.historyChanges = historyChanges
     directory = AppConstants.appSupportURL
       .appendingPathComponent(AppConstants.transcriptsDir, isDirectory: true)
     liveSpoolIDs = Self.spoolIDsFromDisk
@@ -41,9 +47,10 @@ public final class TranscriptStore {
   internal init(
     directory: URL,
     liveSpoolIDs: @escaping @Sendable () -> Set<String>? = { [] },
-    cleansLeftovers: Bool = false
+    cleansLeftovers: Bool = false, historyChanges: HistorySourceChanges? = nil
   ) {
     self.directory = directory
+    self.historyChanges = historyChanges
     // Defaults to EMPTY, not to the disk reader: a test store must never touch
     // the user's real spool directory, and "no spools" is the state every
     // existing pending test already assumes.
@@ -78,9 +85,12 @@ public final class TranscriptStore {
   package struct Operations: Sendable {
     let directory: URL
     let pendingDirectory: URL
+    let historyChanges: HistorySourceChanges?
 
     /// See `TranscriptStore.save`.
     package func save(_ transcript: Transcript) throws {
+      historyChanges?.begin()
+      defer { historyChanges?.finish(.transcript(transcript.id)) }
       try TranscriptStore.write(transcript, into: directory)
     }
 
@@ -105,6 +115,8 @@ public final class TranscriptStore {
         // its own state alone rather than assuming a promotion happened.
         return nil
       }
+      historyChanges?.begin()
+      defer { historyChanges?.finish(.transcript(id)) }
       let promoted = transcript.promotedFromPending()
       try save(promoted)
       try? FileManager.default.removeItem(at: pendingURL)
@@ -120,6 +132,8 @@ public final class TranscriptStore {
     /// False only when both paths were confirmed absent beforehand; a path whose state cannot
     /// be read counts as present, so "nothing to delete" is never a guess.
     package func remove(id: UUID) throws -> Bool {
+      historyChanges?.begin()
+      defer { historyChanges?.finish(.transcript(id)) }
       let url = directory.appendingPathComponent("\(id.uuidString).json")
       let pendingURL = pendingDirectory.appendingPathComponent("\(id.uuidString).json")
       let existed = [url, pendingURL].contains { target in
@@ -155,7 +169,7 @@ public final class TranscriptStore {
 
   /// The operations for this store's folders, for History's storage worker.
   package func operations() -> Operations {
-    Operations(directory: directory, pendingDirectory: pendingDirectory)
+    Operations(directory: directory, pendingDirectory: pendingDirectory, historyChanges: historyChanges)
   }
 
   /// A writer that saves like `save`, then flushes to stable storage: the file with
@@ -168,17 +182,69 @@ public final class TranscriptStore {
     let directory = directory
     #if DEBUG
       let didOpen = durableWriteDidOpenForTesting
-      return { transcript in
+      return { [historyChanges] transcript in
+        historyChanges?.begin()
+        defer { historyChanges?.finish(.transcript(transcript.id)) }
         try Self.write(transcript, into: directory, durable: true, didOpen: didOpen)
       }
     #else
-      return { transcript in try Self.write(transcript, into: directory, durable: true) }
+      return { [historyChanges] transcript in
+        historyChanges?.begin()
+        defer { historyChanges?.finish(.transcript(transcript.id)) }
+        try Self.write(transcript, into: directory, durable: true)
+      }
     #endif
+  }
+
+  package func historyRowReader(
+    includePending: Bool = true
+  ) -> @Sendable (UUID, Date) throws -> Transcript? {
+    let permanent = rowReader()
+    let pending = pendingDirectory
+    let proof = historyRowProofReader()
+    return { id, now in
+      let before = try proof(id)
+      let row: Transcript?
+      if let saved = try permanent(id) {
+        guard saved.id == id else { throw CocoaError(.fileReadCorruptFile) }
+        row = saved
+      } else if includePending {
+        let file = pending.appendingPathComponent("\(id.uuidString).json")
+        do {
+          row = try Self.historyPendingRow(at: file, now: now)
+        } catch CocoaError.fileReadNoSuchFile {
+          row = nil
+        }
+      } else {
+        row = nil
+      }
+      guard before == (try proof(id)) else { throw CocoaError(.fileReadUnknown) }
+      return row
+    }
+  }
+
+  package func historyRowProofReader() -> @Sendable (UUID) throws -> [HistoryCatalog.SourceVersion] {
+    let directory = directory
+    let pending = pendingDirectory
+    return { id in
+      var info = stat()
+      guard lstat(directory.path, &info) == 0, info.st_mode & S_IFMT == S_IFDIR else {
+        throw CocoaError(.fileReadUnknown)
+      }
+      let name = "\(id.uuidString).json"
+      return try [directory, pending].map {
+        try HistoryCatalog.SourceVersion.read($0.appendingPathComponent(name))
+      }
+    }
   }
 
   /// #3973 C2: a reader of one permanent row's file, self-contained like `durableWriter` so the
   /// caller runs it off the main actor. Nil when no file has that id; throws when the file is
   /// there but cannot be read or decoded.
+  package func historyCatalogSources(meetings: MeetingStore) -> HistoryCatalogSources {
+    HistoryCatalogSources(transcriptDirectory: directory, readTranscript: rowReader(), meetings: meetings)
+  }
+
   public func rowReader() -> @Sendable (UUID) throws -> Transcript? {
     let directory = directory
     return { id in
@@ -210,6 +276,8 @@ public final class TranscriptStore {
   /// Save a not-yet-permanent Escape Recovery row. Same 0600 temp-then-rename
   /// write as `save`, into the 0700 pending child.
   public func savePending(_ transcript: Transcript) throws {
+    historyChanges?.begin()
+    defer { historyChanges?.finish(.transcript(transcript.id)) }
     Self.prepareDirectory(at: pendingDirectory, dropSpotlightMarker: false)
     try Self.write(transcript, into: pendingDirectory)
   }
@@ -371,13 +439,15 @@ public final class TranscriptStore {
     #if DEBUG
       let gate = Self.sweepGateForTesting
     #endif
-    let walk = Task.detached(priority: .utility) {
+    let walk = Task.detached(priority: .utility) { [historyChanges] in
       #if DEBUG
         // Held open by a test so the coalescing contract is observable: without
         // it, awaiting both callers cannot distinguish "the latecomer waited"
         // from "the winner finished first anyway".
         await gate?()
       #endif
+      historyChanges?.begin()
+      defer { historyChanges?.finish(.all) }
       return Self.sweepExpired(
         in: dir, permanentDir: root, now: now, retention: retention,
         spoolIDs: readSpoolIDs())
@@ -778,6 +848,13 @@ public final class TranscriptStore {
       ids.insert(recoveryID)
     }
     return ids
+  }
+
+  /// A read-only ID lookup using the same admission and identity policy as the pending list.
+  nonisolated static func historyPendingRow(at url: URL, now: Date) throws -> Transcript? {
+    let data = try Data(contentsOf: url)
+    return decodeCandidate(data: data, at: url, now: now, retention: AppConstants.pendingTranscriptRetention)
+      .liveTranscript
   }
 
   private nonisolated static func decodeCandidate(
@@ -1191,6 +1268,8 @@ public final class TranscriptStore {
   /// removal the user confirmed (#4075 G1).
   /// Returning certifies the empty folder, not that the old files are already gone.
   public func deleteAll() throws {
+    historyChanges?.begin()
+    defer { historyChanges?.finish(.all) }
     guard FileManager.default.fileExists(atPath: directory.path) else { return }
     let parent = directory.deletingLastPathComponent()
     let id = UUID().uuidString

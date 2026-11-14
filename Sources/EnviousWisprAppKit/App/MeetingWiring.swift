@@ -248,9 +248,6 @@ enum MeetingWiring {
           [transcriptCoordinator = inputs.transcriptCoordinator] transcript, naming in
           try await transcriptCoordinator.saveAndShowDurably(transcript, naming: naming)
         },
-        historyRow: { [transcriptCoordinator = inputs.transcriptCoordinator] id in
-          transcriptCoordinator.currentRow(id: id)
-        },
         durableHistoryRow: { [transcriptCoordinator = inputs.transcriptCoordinator] id in
           try await transcriptCoordinator.durableRow(id: id)
         },
@@ -258,7 +255,7 @@ enum MeetingWiring {
           try await transcriptCoordinator.removeRow(id: id)
         },
         meetingRowIDs: { [transcriptCoordinator = inputs.transcriptCoordinator] meetingID in
-          transcriptCoordinator.rowIDs(ofMeeting: meetingID)
+          try await transcriptCoordinator.savedRowIDs(ofMeeting: meetingID)
         },
         emitEnded: { [log = inputs.log, emit = inputs.emitMeetingEnded] event in
           log("meeting ended outcome=\(event.outcome.rawValue)")
@@ -299,6 +296,9 @@ enum MeetingWiring {
     }
     inputs.transcriptCoordinator.meetingNotes = { [weak coordinator] meetingID in
       coordinator?.documents.notes(meetingID)
+    }
+    inputs.transcriptCoordinator.meetingHistoryDrafts = { [weak coordinator] in
+      coordinator?.documents.historyDrafts ?? [:]
     }
     inputs.transcriptCoordinator.meetingInvited = { [weak coordinator] meetingID in
       coordinator?.documents.invitedSearchTerms(meetingID) ?? []
@@ -346,7 +346,7 @@ enum MeetingWiring {
           // #3973 C2: only the committed generation's row: while a committed replacement is
           // not yet in History, the inputs are unknown (out of date, nothing written).
           guard let record = coordinator?.record(id: meetingID),
-            let row = transcriptCoordinator.currentRow(id: record.transcriptID),
+            let row = transcriptCoordinator.verifiedRowForDelivery(id: record.transcriptID, fetchIfNeeded: true),
             isCommittedRow(row, of: record),
             let text = transcriptCoordinator.summaryVisibleText(
               of: row, info: historyInfo(coordinator, meetingID: meetingID))
@@ -359,7 +359,7 @@ enum MeetingWiring {
           [weak coordinator, transcriptCoordinator = inputs.transcriptCoordinator] meetingID in
           // #4148: the same live reads and projection; a missing record or row is not empty.
           guard let record = coordinator?.record(id: meetingID),
-            let row = transcriptCoordinator.currentRow(id: record.transcriptID),
+            let row = transcriptCoordinator.verifiedRowForDelivery(id: record.transcriptID, fetchIfNeeded: true),
             isCommittedRow(row, of: record)
           else { return false }
           return transcriptCoordinator.summaryHasNoWords(
@@ -436,7 +436,7 @@ enum MeetingWiring {
     meetingID: UUID
   ) -> MeetingSummaryReferenceSources? {
     guard let coordinator, let record = coordinator.record(id: meetingID),
-      let row = transcriptCoordinator.currentRow(id: record.transcriptID),
+      let row = transcriptCoordinator.verifiedRowForDelivery(id: record.transcriptID, fetchIfNeeded: true),
       isCommittedRow(row, of: record),
       let info = historyInfo(coordinator, meetingID: meetingID)?.matching(row)
     else { return nil }

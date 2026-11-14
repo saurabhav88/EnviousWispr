@@ -16,17 +16,27 @@ public struct MeetingStore: Sendable {
   public static let workDirectoryName = "work"
 
   public let root: URL
+  let historyChanges: HistorySourceChanges?
 
   public init() {
+    self.init(historyChanges: nil)
+  }
+
+  package init(historyChanges: HistorySourceChanges?) {
     self.init(
       root: AppConstants.appSupportURL.appendingPathComponent(
-        AppConstants.meetingsDir, isDirectory: true))
+        AppConstants.meetingsDir, isDirectory: true), historyChanges: historyChanges)
   }
 
   /// Tests point the store at a temporary directory. Creating nothing here: the root is
   /// prepared (and its failures reported) by the first operation that writes.
   public init(root: URL) {
+    self.init(root: root, historyChanges: nil)
+  }
+
+  package init(root: URL, historyChanges: HistorySourceChanges?) {
     self.root = root
+    self.historyChanges = historyChanges
   }
 
   /// Creates the root at 0700 with its Spotlight exclusion marker, or throws. Called by every
@@ -87,6 +97,8 @@ public struct MeetingStore: Sendable {
   /// folder: creation of the leaf directory is the atomic claim, so two creators cannot both
   /// succeed.
   public func create(_ record: MeetingRecord) throws {
+    historyChanges?.begin()
+    defer { historyChanges?.finish(.meeting(record.id)) }
     try prepareRoot()
     let dir = folder(for: record.id)
     do {
@@ -109,6 +121,8 @@ public struct MeetingStore: Sendable {
   /// replace leaves the previous file intact. Refuses a record from a newer format, and refuses
   /// to overwrite a file on disk that a newer build wrote.
   public func save(_ record: MeetingRecord) throws {
+    historyChanges?.begin()
+    defer { historyChanges?.finish(.meeting(record.id)) }
     guard record.isWritableByThisBuild else { throw StoreError.newerFormat }
     try prepareRoot()
     if let header = try? header(id: record.id),
@@ -246,6 +260,8 @@ public struct MeetingStore: Sendable {
   /// work folder and its call-speaker evidence (#4013); keeps `meeting.json` and the notes and
   /// summary. Refuses a meeting a newer build wrote.
   public func deleteAudio(meeting id: UUID) throws {
+    historyChanges?.begin()
+    defer { historyChanges?.finish(.meeting(id)) }
     try refuseNewerFormat(id)
     for file in try segmentFiles(meeting: id) {
       try FileManager.default.removeItem(at: file.url)
@@ -266,6 +282,8 @@ public struct MeetingStore: Sendable {
   /// Removes the meeting's whole folder. Refuses any path that is not a UUID-named child of the
   /// root, and a meeting a newer build wrote.
   public func deleteFolder(meeting id: UUID) throws {
+    historyChanges?.begin()
+    defer { historyChanges?.finish(.meeting(id)) }
     let dir = folder(for: id).standardizedFileURL
     guard dir.deletingLastPathComponent().standardizedFileURL == root.standardizedFileURL,
       UUID(uuidString: dir.lastPathComponent) == id

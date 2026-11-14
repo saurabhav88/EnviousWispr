@@ -112,6 +112,11 @@ struct HistoryTranscriptView: View {
     let isError: Bool
   }
 
+  private struct CatalogDetailKey: Equatable {
+    let id: UUID
+    let revision: UInt64?
+  }
+
   private struct SourceKey: Equatable {
     let rowID: UUID
     let revision: Int
@@ -136,6 +141,10 @@ struct HistoryTranscriptView: View {
       }
     }
     .background(Color.stPageBg)
+    .task(id: CatalogDetailKey(id: rowID, revision: transcripts.catalogSession?.revision)) {
+      _ = await transcripts.loadCatalogDetail(rowID)
+    }
+    .task(id: rowID) { await transcripts.holdCatalogDetail(rowID) }
     .onChange(of: rowID) {
       documentView = .cleaned
       timesOn = true

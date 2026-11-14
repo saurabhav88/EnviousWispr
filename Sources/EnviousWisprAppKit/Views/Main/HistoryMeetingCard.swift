@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprStorage
 import SwiftUI
 
 /// One meeting in the Meetings tab (#3147 PR4A, plan §3.6, approved mock Meetings.dc.html): the
@@ -23,12 +24,17 @@ struct HistoryMeetingCard: View {
   let onOpen: () -> Void
   let allowsPlayback: Bool
   let query: String
+  let summary: HistoryCatalog.Summary?
 
-  init(meetingID: UUID, onOpen: @escaping () -> Void, allowsPlayback: Bool = true, query: String = "") {
+  init(
+    meetingID: UUID, onOpen: @escaping () -> Void, allowsPlayback: Bool = true, query: String = "",
+    summary: HistoryCatalog.Summary? = nil
+  ) {
     self.meetingID = meetingID
     self.onOpen = onOpen
     self.allowsPlayback = allowsPlayback
     self.query = query
+    self.summary = summary
   }
 
   @Environment(TranscriptCoordinator.self) private var transcripts
@@ -38,15 +44,39 @@ struct HistoryMeetingCard: View {
 
   private typealias P = MeetingAfterPresentation
 
+  private struct EchoDetailKey: Equatable {
+    let id: UUID?
+    let revision: UInt64?
+  }
+
   var body: some View {
     let record = meetings.record(id: meetingID)
-    let row = meetingRow(record)
+    let row = summary == nil ? meetingRow(record) : nil
     let source = allowsPlayback ? meetings.playbackSource(meetingID: meetingID) : nil
-    if record != nil || row != nil {
+    if record != nil || row != nil || summary != nil {
       card(P.card(inputs(record: record, row: row)), source: source)
         .onChange(of: source) { _, _ in dropPlayer() }
         .onDisappear(perform: dropPlayer)
+        .task(id: EchoDetailKey(id: echoRowID, revision: transcripts.catalogSession?.revision)) {
+          // Reloads when the saved transcript changes, which a stale payload alone never would.
+          guard let id = echoRowID else { return }
+          _ = await transcripts.loadCatalogDetail(id)
+        }
+        .task(id: echoRowID) {
+          guard let id = echoRowID else { return }
+          await transcripts.holdCatalogDetail(id)
+        }
     }
+  }
+
+  /// The catalog preview was made with probable echo hidden. When this session shows echo for
+  /// the meeting's transcript and no summary leads the card, the card previews the live,
+  /// echo-aware text instead (Codex whole-diff r5), as search already does.
+  private var echoRowID: UUID? {
+    guard let summary, summary.hasMeetingSummary != true, let id = summary.rowID,
+      transcripts.isShowingEcho(rowID: id)
+    else { return nil }
+    return id
   }
 
   /// The History row this card previews: the meeting's committed row when EnviousMeet holds it,
@@ -61,11 +91,19 @@ struct HistoryMeetingCard: View {
     // A meeting being deleted shows no words of it (Codex C8 r2).
     let shown = record?.deletionRequested != true
     return P.CardInputs(
-      record: record, row: row, processingID: meetings.processing?.meetingID,
+      record: record, row: row, catalog: summary, processingID: meetings.processing?.meetingID,
       queueWaitsForSpace: meetings.queueWaitsForSpace,
-      previewText: shown ? row.map(transcripts.meetingPreviewText(of:)) : nil,
-      summary: shown ? documents.summary(meetingID) : nil,
-      summaryProviderID: documents.manifest(meetingID)?.summary?.inputs?.providerID)
+      previewText: shown ? previewText(row: row) : nil,
+      summary: shown
+        ? (documents.summary(meetingID) ?? (summary?.hasMeetingSummary == true ? summary?.preview : nil)) : nil,
+      summaryProviderID: documents.manifest(meetingID)?.summary?.inputs?.providerID ?? summary?.summaryProvider)
+  }
+
+  private func previewText(row: Transcript?) -> String? {
+    if let id = echoRowID, let echoRow = transcripts.currentRow(id: id) {
+      return transcripts.meetingPreviewText(of: echoRow)
+    }
+    return summary?.preview ?? row.map(transcripts.meetingPreviewText(of:))
   }
 
   private func card(_ card: P.Card, source: MeetingPlaybackSource?) -> some View {

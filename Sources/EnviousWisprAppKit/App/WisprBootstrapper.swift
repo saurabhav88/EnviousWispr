@@ -447,7 +447,9 @@ package final class WisprBootstrapper {
           .discoverModels(provider: provider, apiKey: apiKey)
       })
 
-    let transcriptStore = TranscriptStore()
+    let historySourceChanges = HistorySourceChanges()
+    let transcriptStore = TranscriptStore(historyChanges: historySourceChanges)
+    let meetingStore = MeetingStore(historyChanges: historySourceChanges)
     let recordingArchive = RecordingArchive()
     // The History half of #2811's turn-label telemetry; the wizard half is wired on
     // `FileImportCoordinator` below, and both emit the same shape-only events.
@@ -461,6 +463,9 @@ package final class WisprBootstrapper {
       },
       // #3147: the one dictation recording archive.
       recordingArchive: recordingArchive)
+    transcriptCoordinator.catalogSession = HistoryCatalogSession(
+      changes: historySourceChanges, sources: transcriptStore.historyCatalogSources(meetings: meetingStore),
+      directory: AppConstants.appSupportURL.appendingPathComponent("HistoryCatalog", isDirectory: true))
     // #3147 §3.3: History opens on the tab the user left it on.
     transcriptCoordinator.restoreHistoryTab(settings.lastHistoryTab)
     transcriptCoordinator.onHistoryTabSelected = { [weak settings] tab in
@@ -2740,7 +2745,10 @@ package final class WisprBootstrapper {
             savedKeyState: { [savedKeyPresence] in savedKeyPresence.state(for: $0) }),
           history: DevControlDispatcher.HistorySource(
             visibleTranscripts: { [transcriptCoordinator] in
-              transcriptCoordinator.visibleTranscripts
+              try await transcriptCoordinator.savedHistoryForDiagnostics()
+            },
+            savedRow: { [transcriptCoordinator] id in
+              try await transcriptCoordinator.savedRowForDiagnostics(id: id)
             }),
           models: DevControlDispatcher.ModelActions(
             parakeetDownload: { [modelDelivery] in modelDelivery.resumeParakeetDownload() },
@@ -2866,7 +2874,7 @@ package final class WisprBootstrapper {
     PreviewModelRemoval.install(
       on: modelDelivery, dictation: livePreview, meeting: meetingLiveWords)
     var meetingInputs = MeetingWiring.Inputs(
-      store: MeetingStore(),
+      store: meetingStore,
       settings: settings, permissions: permissions, otherAudioHold: otherAudioHold,
       transcriptCoordinator: transcriptCoordinator,
       isDictationIdle: { [liveRecordingState, engineCoordinator] in
@@ -3153,7 +3161,7 @@ package final class WisprBootstrapper {
     // #3147: usage across both recording owners, and the one retention policy acting through
     // each owner's own removal. Starts after both owners exist; each sweep waits for their
     // launch work on its own task.
-    let recordingUsage = RecordingUsage(archive: recordingArchive, meetingStore: MeetingStore())
+    let recordingUsage = RecordingUsage(archive: recordingArchive, meetingStore: meetingStore)
     let recordingRetention = transcriptCoordinator.recordings.map { recordings in
       RecordingRetention(
         RecordingRetention.Dependencies(
@@ -3675,9 +3683,13 @@ package final class WisprBootstrapper {
     // dictation hotkey (`AppLifecycleCoordinator.swift` → `startHotkeyServiceIfEnabled`):
     // a Mac left lowered by a dead process is put back before any take can start.
     dictationRuntime.otherAudioHold.adoptOrphans()
+    transcriptCoordinator.catalogSession?.didRecoverSources = { [weak meetingCoordinator] in
+      meetingCoordinator?.discoverRestoredMeetings()
+    }
     // #3972 R3/R15: meetings recover after the orphaned hold is restored, before any take.
     meetingMemoryPressure.start()
     meetingCoordinator.launch()
+    transcriptCoordinator.startHistoryCatalog()
     callDetection.start()
     appLifecycleCoordinator.runDidFinishLaunching()
     // #2480: bring the launch window to the front.

@@ -598,7 +598,7 @@ struct HistoryDictationCard: View {
   /// The live row's History text, read when asked; nil for a row that no longer exists, so
   /// nothing is delivered for an entry the user was told is gone.
   private var exportText: String? {
-    guard let live = transcripts.currentRow(id: rowID) else { return nil }
+    guard let live = transcripts.verifiedRowForDelivery(id: rowID) else { return nil }
     return transcripts.textForDelivery(live)
   }
 
@@ -614,7 +614,7 @@ struct HistoryDictationCard: View {
     historyPaste.paste(
       destination: previousApplication.lastOtherApplication,
       allowed: { [transcripts, liveRecordingState] in
-        guard let live = transcripts.currentRow(id: rowID) else { return false }
+        guard let live = transcripts.verifiedRowForDelivery(id: rowID) else { return false }
         return EscapeRecoveryRowPresentation.allowsPaste(
           for: live, now: Date(), dictationInFlight: liveRecordingState.pipelineState.isActive)
       },
@@ -625,7 +625,7 @@ struct HistoryDictationCard: View {
       },
       showNotice: { showPasteNotice($0) },
       dispatched: { [transcripts] in
-        if let live = transcripts.currentRow(id: rowID) {
+        if let live = transcripts.verifiedRowForDelivery(id: rowID) {
           transcripts.reportRestoredFromHistory(live)
         }
       })

@@ -155,7 +155,16 @@
     /// .visibleTranscripts`): expired pending rows already left out, newest first, and no
     /// kind filter or search applied.
     struct HistorySource {
-      let visibleTranscripts: @MainActor () -> [Transcript]
+      let visibleTranscripts: @MainActor () async throws -> [Transcript]
+      let savedRow: (@MainActor (UUID) async throws -> Transcript?)?
+
+      init(
+        visibleTranscripts: @escaping @MainActor () async throws -> [Transcript],
+        savedRow: (@MainActor (UUID) async throws -> Transcript?)? = nil
+      ) {
+        self.visibleTranscripts = visibleTranscripts
+        self.savedRow = savedRow
+      }
     }
 
     /// The Settings rows' model buttons, one closure each: Parakeet's foreground Resume and
@@ -258,9 +267,9 @@
       case .status:
         return .ok(status())
       case .historyList:
-        return historyList(args)
+        return await historyList(args)
       case .historyGet:
-        return historyGet(args)
+        return await historyGet(args)
       case .wordsList:
         return wordsList(args)
       case .wordsAdd:
@@ -332,7 +341,7 @@
       case .meetingList:
         return meetings.list(args)
       case .meetingGet:
-        return meetings.get(args)
+        return await meetings.get(args)
       case .meetingRetry:
         return await meetings.retry(args)
       case .meetingDeleteAudio:
@@ -782,7 +791,7 @@
     /// `meetings` keeps that tab's kind of row (no search or filters); omitted lists every
     /// visible row as before. Rows keep the owner's order (newest first). A summary carries no
     /// text and no file name, only fixed-size fields, so the reply's size is bounded by the limit.
-    private func historyList(_ args: [String: Any]) -> Result {
+    private func historyList(_ args: [String: Any]) async -> Result {
       var tab: HistoryTab?
       if let raw = args["tab"] {
         guard let name = raw as? String, let value = HistoryTab(rawValue: name) else {
@@ -799,7 +808,10 @@
         }
         limit = value
       }
-      let visible = history.visibleTranscripts().filter { row in
+      let rows: [Transcript]
+      do { rows = try await history.visibleTranscripts() }
+      catch { return .failure(.catalogUnavailable, "could not read saved History") }
+      let visible = rows.filter { row in
         switch tab {
         case nil: return true
         case .dictations: return !row.isImported && !row.isMeeting
@@ -816,11 +828,21 @@
 
     /// `{id}`: a UUID string of one row History offers now. A row that expired or was
     /// deleted since the client last looked is `notFound`, never a neighbour.
-    private func historyGet(_ args: [String: Any]) -> Result {
+    private func historyGet(_ args: [String: Any]) async -> Result {
       guard let raw = args["id"] as? String, let id = UUID(uuidString: raw) else {
         return .failure(.badArgs, "id must be a UUID string")
       }
-      guard let row = history.visibleTranscripts().first(where: { $0.id == id }) else {
+      let saved: Transcript?
+      do {
+        if let read = history.savedRow {
+          saved = try await read(id)
+        } else {
+          saved = try await history.visibleTranscripts().first { $0.id == id }
+        }
+      } catch {
+        return .failure(.catalogUnavailable, "could not read the saved History row")
+      }
+      guard let row = saved else {
         return .failure(.notFound, "no visible History row has that id")
       }
       return .ok(["row": Self.detail(row)])

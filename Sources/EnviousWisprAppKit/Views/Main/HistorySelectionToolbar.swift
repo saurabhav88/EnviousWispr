@@ -11,14 +11,20 @@ struct HistorySelectionToolbar: View {
   let result: HistoryQueryResult?
 
   @State private var pendingKind: HistoryDeleteKind?
+  @State private var allMatchingIDs: Set<HistoryItemID>?
   /// The global Delete all history (#2807), kept from the old sidebar: every tab, text and audio.
-  @State private var confirmingDeleteAll = false
+  @State private var deleteAllConfirmation: (message: String, source: UInt64?)?
 
   var body: some View {
     let count = selection.selectedIDs.count
     let matching = result?.ids ?? []
-    let allSelected = !matching.isEmpty && count >= matching.count
-      && matching.isSubset(of: selection.selectedIDs)
+    // The loaded page stands for every match only when no catalog page lies before or after it;
+    // otherwise only the full matching set (fetched by the button) can say all are ticked.
+    let pageIsWholeSet = result?.continuation == nil && result?.newerContinuation == nil
+    let allSelected = allMatchingIDs.map { !$0.isEmpty && $0.isSubset(of: selection.selectedIDs) }
+      ?? (pageIsWholeSet && !matching.isEmpty && count >= matching.count
+        && matching.isSubset(of: selection.selectedIDs))
+    let allMatchingAvailable = result != nil && !matching.isEmpty
     WrappingHStack(spacing: 8) {
       VStack(alignment: .leading, spacing: 2) {
         Text(HistorySelectionCopy.selectedCount(tab: tab, count: count))
@@ -31,12 +37,16 @@ struct HistorySelectionToolbar: View {
       }
       .accessibilityElement(children: .combine)
       Button {
-        guard let result, coordinator.isCurrentHistoryResult(result) else { return }
-        let ids = result.ids
-        if !ids.isEmpty && ids.isSubset(of: selection.selectedIDs) {
-          selection.deselect(ids)
-        } else {
-          selection.select(ids)
+        guard let result else { return }
+        Task {
+          guard let matching = await coordinator.matchingIDs(for: result) else { return }
+          let ids = Set(matching)
+          allMatchingIDs = ids
+          if !ids.isEmpty && ids.isSubset(of: selection.selectedIDs) {
+            selection.deselect(ids)
+          } else {
+            selection.select(ids)
+          }
         }
       } label: {
         EnviousButtonLabel(
@@ -49,7 +59,7 @@ struct HistorySelectionToolbar: View {
               comment: "History selection: ticks every item in this tab under its search and filters, on every page."),
           size: .medium)
       }
-      .settingsButton(.outlined, size: .medium, isEnabled: !matching.isEmpty && !selection.isDeleting)
+      .settingsButton(.outlined, size: .medium, isEnabled: allMatchingAvailable && !selection.isDeleting)
       if HistorySelectionCopy.offersRecordingsOnly(tab) {
         Button(role: .destructive) {
           pendingKind = .recordingsOnly
@@ -72,12 +82,14 @@ struct HistorySelectionToolbar: View {
       // #3147 PR2: the old sidebar's global delete lives beside the bulk deletions. "history",
       // because it is GLOBAL while this tab can be filtered or searched (#2807).
       Button(role: .destructive) {
-        confirmingDeleteAll = true
+        Task { deleteAllConfirmation = await coordinator.deleteAllConfirmation() }
       } label: {
         EnviousButtonLabel("Delete all history", size: .medium, systemImage: "trash")
       }
-      .settingsButton(.outlined, size: .medium, isEnabled: selection.isDeleting == false)
+      .settingsButton(.outlined, size: .medium, isEnabled: selection.isDeleting == false
+      && (coordinator.catalogSession == nil || coordinator.catalogSession?.status == .ready))
     }
+    .onChange(of: result?.key) { _, _ in allMatchingIDs = nil }
     .padding(12)
     .background(Color.stSectionBg, in: RoundedRectangle(cornerRadius: DesignRadius.xl))
     .alert(
@@ -96,24 +108,30 @@ struct HistorySelectionToolbar: View {
     } message: { kind in
       Text(HistorySelectionCopy.confirmMessage(tab: tab, kind: kind))
     }
-    .alert("Delete all history?", isPresented: $confirmingDeleteAll) {
+    .alert("Delete all history?", isPresented: Binding(
+      get: { deleteAllConfirmation != nil },
+      set: { if !$0 { deleteAllConfirmation = nil } }
+    ), presenting: deleteAllConfirmation) { confirmation in
       Button("Cancel", role: .cancel) {}
       Button("Delete all", role: .destructive) {
         selection.clear()
         // #4075 S1: admitted behind earlier History commands; a failure shows its alert.
-        Task { await coordinator.deleteAll() }
+        Task { await coordinator.deleteAll(confirmedSource: confirmation.source) }
       }
-    } message: {
+    } message: { confirmation in
       // The coordinator owns this sentence (#2087): the global count, hidden rows included.
-      Text(coordinator.deleteAllConfirmationMessage)
+      Text(confirmation.message)
     }
   }
 
   private func delete(_ kind: HistoryDeleteKind) {
     pendingKind = nil
     guard let result, coordinator.isCurrentHistoryResult(result) else { return }
-    selection.retain(result.ids)
-    Task { await selection.deleteSelected(kind: kind, coordinator: coordinator) }
+    Task {
+      guard let matching = await coordinator.matchingIDs(for: result) else { return }
+      selection.retain(Set(matching))
+      await selection.deleteSelected(kind: kind, coordinator: coordinator)
+    }
   }
 }
 

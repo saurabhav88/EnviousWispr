@@ -89,7 +89,7 @@
       #expect(Self.code(await unwired.stop(["meetingID": id])) == "notWired")
       #expect(Self.code(unwired.status([:])) == "notWired")
       #expect(Self.code(unwired.list([:])) == "notWired")
-      #expect(Self.code(unwired.get(["meetingID": id])) == "notWired")
+      #expect(Self.code(await unwired.get(["meetingID": id])) == "notWired")
       #expect(Self.code(await unwired.retry(["meetingID": id])) == "notWired")
       #expect(Self.code(await unwired.deleteAudio(["meetingID": id])) == "notWired")
       #expect(Self.code(await unwired.delete(["meetingID": id])) == "notWired")
