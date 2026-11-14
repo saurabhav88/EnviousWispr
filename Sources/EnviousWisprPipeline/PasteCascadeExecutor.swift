@@ -176,6 +176,7 @@ internal struct PasteDeliveryResult {
   /// a later notice compares against to know the board still holds this text. Nil when Tier 3 did
   /// not write. Never read from the board after the fact.
   var fallbackClipboardChangeCount: Int? = nil
+  var verifiedPracticeEditor: String? = nil
 
   var pasteTierLabel: String {
     if case .clipboardOnlyAccessibilityDenied = outcome {
@@ -973,6 +974,7 @@ internal final class PasteCascadeExecutor {
       #endif
     }()
 
+    var verifiedPracticeEditor: String?
     // Any pre-write decline skips Tier 1; the DEBUG web gate is separate.
     if classification == .textField, axDeclineReason == nil, !skipTier1ForWebContent,
       let element = request.targetElement
@@ -982,12 +984,15 @@ internal final class PasteCascadeExecutor {
       // the same breath as the write itself (plan §6). Nothing is chosen here.
       let tier1Start = CFAbsoluteTimeGetCurrent()
       logPasteTimingStart(step: "ax_direct_write", startedAt: tier1Start, bundleId: bundleId)
+      let practiceEditor =
+        request.origin == .dictation && !request.targetElementIsRetried
+        ? PasteService.practiceEditorIdentifier(of: element) : nil
       let insert = PasteService.insertViaAccessibility(
         legacy: request.legacyText,
         repaired: request.repairedText,
         context: request.caretContext,
         element: element,
-        requireFocusedElementMatch: request.targetElementIsRetried,
+        requireFocusedElementMatch: request.targetElementIsRetried || practiceEditor != nil,
         boundMessagingTimeout: policy.boundTier1MessagingTimeout)
       // Case name only, never `\(insert.writeCall)` — both cases carry the
       // dictated text as an associated value, and this log is meant to be
@@ -1019,6 +1024,7 @@ internal final class PasteCascadeExecutor {
       switch disposition {
       case .delivered:
         tier = .axDirect
+        verifiedPracticeEditor = practiceEditor
         // #3106 PR A: Tier 1 wrote the field itself, so there is nothing to observe landing; #996
         // still asks the same owner for its edit-watch capture, with the text this route
         // actually submitted. Only a DELIVERED write gets one. The destination is the written
@@ -1669,6 +1675,7 @@ internal final class PasteCascadeExecutor {
         fallbackRan: tiersAttempted.contains { $0 != .axDirect })
       result.copiesSetterReached = copiesSetterReached
     }
+    result.verifiedPracticeEditor = verifiedPracticeEditor
     result.arrivalCapture = committedArrivalCapture
     result.fallbackClipboardChangeCount = fallbackClipboardChangeCount
     return result

@@ -56,6 +56,8 @@ package final class LiveApplication {
         scrollWheelMonitor: LiveScrollWheelMonitor(),
         // #3545: the one place the real Settings key monitor is chosen.
         settingsKeyMonitor: LiveSettingsKeyMonitor(),
+        // #4528 D5: the one place the real Setup shortcut rehearsal listener is chosen.
+        setupShortcutMonitor: LiveSetupShortcutMonitor(),
         historyScrollMonitor: LiveHistoryScrollMonitor(),
         relocationRelauncher: LiveRelocationRelauncher(),
         // #2455 C4: the pill. `makePanel` is a factory rather than an instance
@@ -73,11 +75,8 @@ package final class LiveApplication {
 
   // MARK: - Scene surface
 
-  // The titles and the onboarding id are constants the scenes need before any bootstrapper
-  // exists (#3252); the bootstrapper's own properties return the same values.
+  // The main title is available before the bootstrapper exists (#3252).
   package var mainWindowTitle: String { LaunchWindowIdentity.mainTitle }
-  package var onboardingWindowTitle: String { LaunchWindowIdentity.onboardingTitle }
-  package var onboardingWindowID: String { LaunchWindowIdentity.onboardingID }
 
   /// The gate draws nothing, and hides its window, until the bootstrapper exists; the real
   /// root then replaces it. On a healthy launch the target exists already, so the real root
@@ -88,9 +87,6 @@ package final class LiveApplication {
   /// The main window's menu commands: Edit › Find Settings (#3482). Built here, not on the
   /// bootstrapper, whose public surface stays the lifecycle forwards and view factories.
   package func mainWindowCommands() -> some Commands { FindSettingsCommand() }
-  package func onboardingWindowContent() -> some View {
-    LaunchGate(sequencer) { $0.onboardingWindowContent() }
-  }
   /// #3147 PR3: one transcript opened in its own window.
   package var transcriptWindowID: String { TranscriptWindowIdentity.sceneID }
   package var transcriptWindowTitle: String { TranscriptWindowIdentity.title }

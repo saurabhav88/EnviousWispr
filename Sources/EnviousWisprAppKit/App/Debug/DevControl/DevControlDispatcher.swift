@@ -41,6 +41,23 @@
       case modelsEGOneDownload = "models.egone.download"
       case modelsEGOneCancel = "models.egone.cancel"
       case modelsEGOneRemove = "models.egone.remove"
+      /// #4528 C2c.2a (plan M22): S1-mini's Download/Resume and Cancel on its own runtime.
+      case modelsS1MiniDownload = "models.s1mini.download"
+      case modelsS1MiniCancel = "models.s1mini.cancel"
+      /// #4528 C2c.2a (plan §3.9): the new Setup's DEBUG backend session. `status` reads only.
+      case onboardingStatus = "onboarding.status"
+      case onboardingBegin = "onboarding.begin"
+      case onboardingReset = "onboarding.reset"
+      case onboardingGoto = "onboarding.goto"
+      case onboardingSend = "onboarding.send"
+      case onboardingStop = "onboarding.stop"
+      /// #4528 C2c.2b: DEBUG simulation (advice profile, M5 permissions, approved faults).
+      case onboardingProfile = "onboarding.profile"
+      case onboardingPermissions = "onboarding.permissions"
+      case onboardingFault = "onboarding.fault"
+      case onboardingPresent = "onboarding.present"
+      case onboardingRetryWarmup = "onboarding.retry-warmup"
+      case onboardingRetryPolish = "onboarding.retry-polish"
       case dictationStart = "dictation.start"
       case dictationStop = "dictation.stop"
       case dictationCancel = "dictation.cancel"
@@ -161,6 +178,11 @@
       /// The size card's Remove, with its preference rule (plan #4473 §3.1.1 S9).
       let egOneRemove: @MainActor (EGOneSize) -> Void
       let egOneState: @MainActor (EGOneSize) -> EGOneInstallState?
+      /// #4528 C2c.2a: S1-mini's runtime (nil when the build has none). Download returns
+      /// whether the runtime accepted the start (`acceptsDownloadStart`), so a refusal is reported.
+      var s1MiniDownload: (@MainActor () -> Bool)? = nil
+      var s1MiniCancel: (@MainActor () -> Void)? = nil
+      var s1MiniState: (@MainActor () -> EGOneInstallState?)? = nil
     }
 
     /// Rows `history.list` returns when the request names no limit.
@@ -184,14 +206,17 @@
     private let meetings: DevControlMeetings
     /// Call detection's simulation (#4012).
     private let calls: DevControlCalls
+    /// The new Setup's DEBUG backend session (#4528 C2c.2a); nil when not wired.
+    private let onboarding: DevControlOnboarding?
 
     init(
       settings: SettingsManager, writeContext: DevControlSettings.WriteContext,
       status: StatusSources, history: HistorySource, models: ModelActions,
       dictation: DevControlDictation, credentials: CredentialWriter,
       words: CustomWordsCoordinator, meetings: DevControlMeetings,
-      calls: DevControlCalls = .unwired()
+      calls: DevControlCalls = .unwired(), onboarding: DevControlOnboarding? = nil
     ) {
+      self.onboarding = onboarding
       self.meetings = meetings
       self.calls = calls
       self.dictation = dictation
@@ -258,6 +283,38 @@
         return egOneModel("cancel", args, models.egOneCancel)
       case .modelsEGOneRemove:
         return egOneModel("remove", args, models.egOneRemove)
+      case .modelsS1MiniDownload:
+        return s1MiniModel("download", args)
+      case .modelsS1MiniCancel:
+        return s1MiniModel("cancel", args)
+      case .onboardingStatus:
+        return onboardingCommand(args, allowed: []) { $0.status() }
+      case .onboardingBegin:
+        return onboardingCommand(args, allowed: []) { $0.begin() }
+      case .onboardingReset:
+        return onboardingCommand(args, allowed: []) { $0.reset() }
+      case .onboardingStop:
+        return onboardingCommand(args, allowed: []) { $0.stop() }
+      case .onboardingProfile:
+        return onboardingCommand(args, allowed: ["ram", "os", "afm", "lang", "clear"]) {
+          $0.profile(args)
+        }
+      case .onboardingPermissions:
+        return onboardingCommand(args, allowed: ["mic", "ax", "clear"]) { $0.permissionsCommand(args) }
+      case .onboardingFault:
+        return onboardingCommand(args, allowed: ["name", "off", "clear"]) { $0.fault(args) }
+      case .onboardingPresent:
+        return onboardingCommand(args, allowed: []) { $0.present() }
+      case .onboardingRetryWarmup:
+        return onboardingCommand(args, allowed: []) { $0.retryWarmup() }
+      case .onboardingRetryPolish:
+        return onboardingCommand(args, allowed: []) { $0.retryPolish() }
+      case .onboardingGoto:
+        return onboardingCommand(args, allowed: ["step"]) { $0.goto(args) }
+      case .onboardingSend:
+        return onboardingCommand(args, allowed: ["event", "value", "provider", "model"]) {
+          $0.send(args)
+        }
       case .dictationStart:
         return await dictation.start(args)
       case .dictationStop:
@@ -670,6 +727,34 @@
         "model": "egone", "size": size.rawValue, "action": action,
         "state": Self.project(models.egOneState(size)),
       ])
+    }
+
+    /// S1-mini's Download/Resume (refused when its runtime does not accept a start) and Cancel.
+    /// The reply is the instant after the press, never a completion receipt.
+    private func s1MiniModel(_ action: String, _ args: [String: Any]) -> Result {
+      guard args.isEmpty else { return .failure(.badArgs, "S1-mini model commands take no arguments") }
+      guard let download = models.s1MiniDownload, let cancel = models.s1MiniCancel,
+        let state = models.s1MiniState
+      else { return .failure(.notWired, "S1-mini is not wired") }
+      if action == "download" {
+        guard download() else {
+          return .failure(.rejected, "S1-mini did not accept a download start (\(Self.project(state())))")
+        }
+      } else {
+        cancel()
+      }
+      return .ok(["model": "s1mini", "action": action, "state": Self.project(state())])
+    }
+
+    private func onboardingCommand(
+      _ args: [String: Any], allowed: Set<String>,
+      _ run: @MainActor (DevControlOnboarding) -> Result
+    ) -> Result {
+      guard let onboarding else { return .failure(.notWired, "onboarding is not wired") }
+      guard !unexpectedKeys(args, allowed: allowed) else {
+        return .failure(.badArgs, "unexpected arguments for this onboarding command")
+      }
+      return run(onboarding)
     }
 
     private static func project(_ state: EGOneInstallState?) -> [String: Any] {

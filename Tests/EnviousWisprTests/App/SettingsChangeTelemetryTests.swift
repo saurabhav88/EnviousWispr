@@ -680,8 +680,12 @@ import Testing
     func egOneSizeResolutionAtLaunchIsSilent() {
       let suite = TestDefaults.suite("SCT-egsize-\(UUID().uuidString)")!
       let settings = SettingsManager(defaults: suite)
-      settings.onboardingState = .completed
+      // Launch order: the size resolves at launch, before onboarding completes. Completing
+      // onboarding copies the dictation engine into meeting summaries; since #4528 D1 a fresh
+      // install's engine is EG-1, so completing first would make this user look like an existing
+      // EG-1 user and resolve the full size.
       settings.resolveEGOneSizeIfNeeded(hasEGOneInstallRecord: false, recommendation: .micro)
+      settings.onboardingState = .completed
       #expect(settings.egOneSize == .micro)
       let telemetry = SettingsChangeTelemetry(
         settings: settings, cloudModelList: { CloudModelListSeed.current }, emitBaseline: {})

@@ -171,6 +171,7 @@ public final class SettingsManager {
     "s1MiniStyling", "s1MiniStructure", "s1MiniContext",
     "autoCopyToClipboard", "meetingCaptureCallSound", "meetingCallSoundExplained", "meetingWriteSummary", "meetingTurnsOffDictation", "meetingFollowsCallMute", "meetingOnboardingComplete", "meetingUseCalendarForNames", "meetingCallDetection", "meetingCallAppsOff", "meetingCallNoCounts", "meetingCallFirstTipShown", "meetingLanguageMode", "meetingTranscriptEngine", "meetingLiveWordsEngine", "meetingLiveWordsLanguage", "hotkeyEnabled", "vadAutoStop", "vadSilenceTimeout",
     "vadSensitivity", "vadEnergyGate", "onboardingState", "hasCompletedOnboarding",
+    SettingsManager.onboardingCheckpointKey,
     "cancelKeyCode", "cancelModifiersRaw", "toggleKeyCode", "toggleModifiersRaw",
     "quickAddKeyCode", "quickAddModifiersRaw",
     "pasteLastKeyCode", "pasteLastModifiersRaw", "copyLastKeyCode", "copyLastModifiersRaw",
@@ -235,8 +236,8 @@ public final class SettingsManager {
   /// #3147 §3.3: the History tab the user last opened. View memory, not a setting: no change
   /// event, no telemetry, never seeded at load.
   nonisolated static let lastHistoryTabKey = "lastHistoryTab"
-  /// #3147 C9: the user has seen the recording disclosure (dismissed the History banner, or
-  /// saw onboarding's recording note). One authority for every surface.
+  /// #3147 C9: the user dismissed the History banner's recording disclosure. One authority for
+  /// every surface.
   private nonisolated static let recordingDisclosureAcknowledgedKey =
     "recordingDisclosureAcknowledged"
 
@@ -256,14 +257,6 @@ public final class SettingsManager {
     guard !recordingDisclosureAcknowledged else { return }
     recordingDisclosureAcknowledged = true
     defaults.set(true, forKey: Self.recordingDisclosureAcknowledgedKey)
-  }
-
-  /// Records that setup showed its recording note. It counts only for a fresh install: an
-  /// upgrading install that re-runs setup (Diagnostics > Restart Onboarding) keeps its History
-  /// banner, because the setup note is worded for new users and is not the upgrade notice.
-  public func recordOnboardingRecordingNoteShown() {
-    guard !isRecordingDisclosureUpgrade else { return }
-    acknowledgeRecordingDisclosure()
   }
 
   /// Decides the cohort once and loads both values. Runs in `init`, after the durable
@@ -1103,6 +1096,9 @@ public final class SettingsManager {
       // `source` as first_run vs diagnostics_restart in the SHARED settings store.
       if onboardingState == .completed {
         defaults.set(true, forKey: Self.onboardingEverCompletedKey)
+        // #4528: a finished Setup never resumes; deleting the checkpoint here means a leftover
+        // `done` checkpoint can only mean interrupted completion (OnboardingRestore).
+        defaults.removeObject(forKey: Self.onboardingCheckpointKey)
         // #4287: a fresh install maps its summary engine from the polish engine it just
         // picked; a no-op once a choice is stored.
         migrateMeetingSummaryEngineIfNeeded()
@@ -1112,6 +1108,48 @@ public final class SettingsManager {
   }
 
   static let onboardingEverCompletedKey = "ew.onboarding.everCompleted"
+
+  /// #4528: where the new Setup resumes. Opaque bytes owned by AppKit's `OnboardingCheckpoint`;
+  /// same store as `onboardingState`, so the two can never come from different builds' stores.
+  public nonisolated static let onboardingCheckpointKey = "ew.onboarding.checkpoint.v1"
+
+  /// #4528: the one way to send Setup back to Welcome (Diagnostics "Restart Onboarding…", the
+  /// DEBUG door). Deletes the checkpoint first so restore can never mistake a restart for an
+  /// interrupted completion, and a mid-flow checkpoint cannot resume after a restart.
+  public func restartOnboarding() {
+    onboardingCheckpointData = nil
+    onboardingState = .notStarted
+  }
+
+  /// The saved Setup checkpoint, or nil. Setting nil removes the key.
+  public var onboardingCheckpointData: Data? {
+    get { defaults.data(forKey: Self.onboardingCheckpointKey) }
+    set {
+      if let newValue {
+        defaults.set(newValue, forKey: Self.onboardingCheckpointKey)
+      } else {
+        defaults.removeObject(forKey: Self.onboardingCheckpointKey)
+      }
+    }
+  }
+
+  /// The polish provider when none is stored (#4528 D1).
+  ///
+  /// A FRESH install (no provider key, onboarding never completed) starts on the provider Setup
+  /// recommends (`SetupAdvice.recommendedPolishProvider`, EG-1 under the approved rules), so a Mac
+  /// that cannot run Apple Intelligence is not left without AI polish (#1454: 109 users). Every
+  /// other case keeps the canonical default: an install that completed onboarding before this
+  /// release with no stored key, and an unreadable stored value (the key exists). Nothing is
+  /// written, so the value still reads as a default rather than a choice.
+  static func defaultPolishProvider(
+    providerKeyAbsent: Bool, everCompletedOnboarding: Bool, onboardingStateRaw: String?
+  ) -> LLMProvider {
+    let isFreshInstall =
+      providerKeyAbsent && !everCompletedOnboarding
+      && onboardingStateRaw != OnboardingState.completed.rawValue
+    return isFreshInstall
+      ? SetupAdvice.recommendedPolishProvider() : SettingsDefaultValues.llmProvider
+  }
 
   /// #1176: true once the user has EVER finished onboarding (durable; survives a
   /// Diagnostics restart). Read by the onboarding-abandon `source` label. Backfilled
@@ -1123,7 +1161,9 @@ public final class SettingsManager {
   /// Backward-compat computed property — true when onboarding is fully complete.
   public var hasCompletedOnboarding: Bool {
     get { onboardingState == .completed }
-    set { onboardingState = newValue ? .completed : .notStarted }
+    set {
+      if newValue { onboardingState = .completed } else { restartOnboarding() }
+    }
   }
 
   public var cancelKeyCode: UInt16 {
@@ -1797,11 +1837,6 @@ public final class SettingsManager {
     egOneSize = size
   }
 
-  /// EG-1 is the polish engine chosen for dictation, file import or meeting summaries.
-  public var selectsEGOneOnAnySurface: Bool {
-    llmProvider == .egOne || fileImportLLMProvider == .egOne || meetingSummaryLLMProvider == .egOne
-  }
-
   /// Sets the size preference the first time, by `EGOneSizeResolution`. Does nothing when a
   /// known size is already stored. `hasEGOneInstallRecord` is model delivery's answer about its
   /// own install records; this type does not read them.
@@ -1810,8 +1845,19 @@ public final class SettingsManager {
     let stored: EGOneSizeResolution.Stored =
       defaults.object(forKey: Self.egOneSizeKey) == nil ? .absent : .unknown
     egOneSize = EGOneSizeResolution.resolve(
-      stored: stored, hasPriorEGOneUse: selectsEGOneOnAnySurface || hasEGOneInstallRecord,
+      stored: stored, hasPriorEGOneUse: storedChoiceSelectsEGOne || hasEGOneInstallRecord,
       recommendation: recommendation)
+  }
+
+  /// EG-1 was CHOSEN and stored on a surface (dictation, file import or meeting summaries). Prior
+  /// EG-1 use is a stored choice, never a default: since #4528 D1 a fresh install's dictation
+  /// default is EG-1, and reading the in-memory value would treat every new user as an existing
+  /// EG-1 user and seed the full size even on an 8 GB Mac.
+  var storedChoiceSelectsEGOne: Bool {
+    let egOne = LLMProvider.egOne.rawValue
+    return defaults.string(forKey: "llmProvider") == egOne
+      || defaults.string(forKey: "fileImportLLMProvider") == egOne
+      || defaults.string(forKey: Self.meetingSummaryProviderKey) == egOne
   }
 
   public var selectedInputDeviceUID: String {
@@ -1993,7 +2039,10 @@ public final class SettingsManager {
       ?? SettingsDefaultValues.recordingMode
     let resolvedProvider =
       LLMProvider(rawValue: defaults.string(forKey: "llmProvider") ?? "")
-      ?? SettingsDefaultValues.llmProvider
+      ?? Self.defaultPolishProvider(
+        providerKeyAbsent: defaults.object(forKey: "llmProvider") == nil,
+        everCompletedOnboarding: defaults.bool(forKey: Self.onboardingEverCompletedKey),
+        onboardingStateRaw: defaults.string(forKey: "onboardingState"))
     llmProvider = resolvedProvider
     // Seed the remembered engine. If the key is already stored, honor it.
     // Otherwise seed from the resolved provider (existing users keep their

@@ -31,7 +31,7 @@ struct DesignTokensSyncTests {
     var colors: [String: (light: [Double], dark: [Double])] = [:]
     var fonts: [String: (size: Double, weight: String?, design: String?)] = [:]
     var layout: [String: Double] = [:]
-    var motion: [String: (curve: String, duration: Double)] = [:]
+    var motion: [String: (curve: String, points: [Double]?, duration: Double)] = [:]
   }
 
   static let bookURL = RepoRoot.url.appending(path: "DESIGN.md")
@@ -74,7 +74,8 @@ struct DesignTokensSyncTests {
     for (key, entry) in motion {
       let curve = try #require(entry["curve"] as? String, "\(key) has no curve")
       let duration = try #require(entry["duration"] as? NSNumber, "\(key) has no duration")
-      book.motion[key] = (curve, duration.doubleValue)
+      let points = (entry["points"] as? [NSNumber])?.map(\.doubleValue)
+      book.motion[key] = (curve, points, duration.doubleValue)
     }
     #expect(
       !book.colors.isEmpty && !book.fonts.isEmpty && !book.layout.isEmpty && !book.motion.isEmpty)
@@ -87,7 +88,7 @@ struct DesignTokensSyncTests {
     case color(light: [Double], dark: [Double])
     case font(size: Double, weight: String?, design: String?)
     case layout(Double)
-    case motion(curve: String, duration: Double)
+    case motion(curve: String, points: [Double]?, duration: Double)
   }
 
   static func literal(_ expression: ExprSyntax) -> Double? {
@@ -203,10 +204,21 @@ struct DesignTokensSyncTests {
           let callee = try #require(
             call.calledExpression.as(MemberAccessExprSyntax.self), "\(key) must be Animation.curve")
           #expect(callee.base?.trimmedDescription == "Animation", "\(key) must use Animation")
-          #expect(call.arguments.map { $0.label?.text } == ["duration"], "\(key) labels")
+          let curve = callee.declName.baseName.text
+          let labels = call.arguments.map { $0.label?.text }
+          let points: [Double]?
+          if curve == "timingCurve" {
+            #expect(labels == [nil, nil, nil, nil, "duration"], "\(key) labels")
+            points = try call.arguments.dropLast().map {
+              try #require(literal($0.expression), "\(key) has a non-literal point")
+            }
+          } else {
+            #expect(labels == ["duration"], "\(key) labels")
+            points = nil
+          }
           let duration = try #require(
-            call.arguments.first.flatMap { literal($0.expression) }, "\(key) duration")
-          declared[key] = .motion(curve: callee.declName.baseName.text, duration: duration)
+            call.arguments.last.flatMap { literal($0.expression) }, "\(key) duration")
+          declared[key] = .motion(curve: curve, points: points, duration: duration)
         case (_, false):
           #expect(
             binding.typeAnnotation?.type.trimmedDescription == "CGFloat", "\(key) must be CGFloat")
@@ -231,7 +243,7 @@ struct DesignTokensSyncTests {
     }
     for (key, value) in book.layout { expected[key] = .layout(value) }
     for (key, value) in book.motion {
-      expected[key] = .motion(curve: value.curve, duration: value.duration)
+      expected[key] = .motion(curve: value.curve, points: value.points, duration: value.duration)
     }
 
     #expect(
@@ -271,6 +283,24 @@ struct DesignTokensSyncTests {
     "Color.obSuccessSoft": .obSuccessSoft, "Color.obSuccessText": .obSuccessText,
     "Color.obWarning": .obWarning, "Color.obError": .obError,
     "Color.obErrorSoft": .obErrorSoft, "Color.obBorder": .obBorder,
+    "Color.firstRunTextTertiary": .firstRunTextTertiary, "Color.firstRunSuccessText": .firstRunSuccessText,
+    "Color.firstRunErrorText": .firstRunErrorText, "Color.firstRunButtonHover": .firstRunButtonHover,
+    "Color.firstRunButtonDisabled": .firstRunButtonDisabled,
+    "Color.firstRunButtonDisabledText": .firstRunButtonDisabledText,
+    "Color.firstRunOnAccent": .firstRunOnAccent, "Color.firstRunAccentSoft": .firstRunAccentSoft, "Color.firstRunRule": .firstRunRule,
+    "Color.firstRunFilmWallTop": .firstRunFilmWallTop,
+    "Color.firstRunFilmWallMid": .firstRunFilmWallMid,
+    "Color.firstRunFilmWallBottom": .firstRunFilmWallBottom,
+    "Color.firstRunFilmMenuBar": .firstRunFilmMenuBar,
+    "Color.firstRunFilmMenuInk": .firstRunFilmMenuInk,
+    "Color.firstRunFilmDock": .firstRunFilmDock,
+    "Color.firstRunFilmLightRed": .firstRunFilmLightRed,
+    "Color.firstRunFilmLightYellow": .firstRunFilmLightYellow,
+    "Color.firstRunFilmLightGreen": .firstRunFilmLightGreen,
+    "Color.firstRunFilmSlack": .firstRunFilmSlack,
+    "Color.firstRunFilmMistakeWash": .firstRunFilmMistakeWash,
+    "Color.firstRunFilmMistakeText": .firstRunFilmMistakeText,
+    "Color.firstRunFilmMistakeStrike": .firstRunFilmMistakeStrike,
   ]
 
   static let compiledFonts: [String: Font] = [
@@ -279,6 +309,11 @@ struct DesignTokensSyncTests {
     "Font.stRowHelper": .stRowHelper, "Font.obDisplay": .obDisplay,
     "Font.obSubheading": .obSubheading, "Font.obBody": .obBody, "Font.obCaption": .obCaption,
     "Font.obCaptionSmall": .obCaptionSmall, "Font.obLabel": .obLabel,
+    "Font.firstRunHero": .firstRunHero, "Font.firstRunDisplay": .firstRunDisplay,
+    "Font.firstRunTitle": .firstRunTitle, "Font.firstRunSay": .firstRunSay, "Font.firstRunBody": .firstRunBody,
+    "Font.firstRunButton": .firstRunButton,
+    "Font.firstRunLabel": .firstRunLabel, "Font.firstRunCaption": .firstRunCaption,
+    "Font.firstRunEyebrow": .firstRunEyebrow,
   ]
 
   static let compiledLayout: [String: CGFloat] = [
@@ -305,6 +340,8 @@ struct DesignTokensSyncTests {
   static let compiledMotion: [String: Animation] = [
     "DesignMotion.quick": DesignMotion.quick, "DesignMotion.brisk": DesignMotion.brisk,
     "DesignMotion.standard": DesignMotion.standard, "DesignMotion.gentle": DesignMotion.gentle,
+    "DesignMotion.firstRunScreenIn": DesignMotion.firstRunScreenIn,
+    "DesignMotion.firstRunRise": DesignMotion.firstRunRise,
   ]
 
   @Test("the compiled-token tables name exactly the DESIGN.md tokens")
@@ -419,6 +456,12 @@ struct DesignTokensSyncTests {
         case "easeOut": .easeOut(duration: expected.duration)
         case "easeInOut": .easeInOut(duration: expected.duration)
         case "linear": .linear(duration: expected.duration)
+        case "timingCurve":
+          try {
+            let p = try #require(expected.points, "\(key) has no points")
+            try #require(p.count == 4, "\(key) needs four points")
+            return .timingCurve(p[0], p[1], p[2], p[3], duration: expected.duration)
+          }()
         default: throw DesignBookError.unknown("\(key): curve \(expected.curve)")
         }
       #expect(compiled == described, "\(key) differs from DESIGN.md")

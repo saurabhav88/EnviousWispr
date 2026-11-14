@@ -373,6 +373,35 @@ import Testing
   // action-closure refusals above — these deny at the shared gate itself,
   // proving the gate-refusal outcome each of the three call sites maps to).
 
+  /// #4528 M49: Setup tells a refusal from a download by the returned task. When this fails,
+  /// Setup shows "Downloading" for a Whisper download that never started (a stuck card), or
+  /// shows a refusal for one that is running.
+  @Test("the download task answers whether the request was accepted")
+  func theDownloadTaskAnswersWhetherTheRequestWasAccepted() async throws {
+    func service(
+      gateOpen: Bool = true, starts: Bool = true, cancels: Bool = false
+    ) -> WhisperSetupService {
+      WhisperSetupService(
+        engineMutationScope: gateOpen
+          ? .alwaysAllowedForTesting
+          : .live(tryBegin: { false }, end: { false }, wake: {}, onRefused: { _ in }),
+        readAvailability: { .notDownloaded },
+        startDownload: { starts },
+        cancelActiveDownload: { cancels })
+    }
+    // Each service is held: the task captures it weakly, as Setup's own owner holds it.
+    let accepted = service()
+    #expect(await accepted.downloadModel().value == true, "accepted")
+    let startRefused = service(starts: false)
+    #expect(await startRefused.downloadModel().value == false, "start refused")
+    let gateRefused = service(gateOpen: false)
+    #expect(await gateRefused.downloadModel().value == false, "gate refused")
+    let outrun = service(cancels: true)
+    let task = outrun.downloadModel()
+    outrun.cancelDownload()  // same tick, before the task body runs
+    #expect(await task.value == false, "a cancel outran the request")
+  }
+
   @Test func aGateRefusedDownloadNeverStartsAndReDetects() async throws {
     final class Box: @unchecked Sendable { var started = 0 }
     let box = Box()

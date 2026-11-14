@@ -57,7 +57,6 @@ private final class MinimalASRManager: ASRManagerInterface {
   var onVendorDecodeChunkScheduled: (@MainActor @Sendable () -> Void)?
   var onTranscriptionProgress: (@MainActor @Sendable (Double) -> Void)?
   var isStreaming = false
-  var downloadProgress: Double = 0
   var downloadPhase = ""
   var downloadDetail = ""
   var loadProgressTickReporter: (@MainActor @Sendable (Date?, String) -> Void)?

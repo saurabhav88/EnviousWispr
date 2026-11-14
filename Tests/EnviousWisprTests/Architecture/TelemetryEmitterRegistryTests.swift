@@ -263,8 +263,20 @@ struct TelemetryEmitterRegistryTests {
   /// parameters, which changes the enclosing-function identity of their existing sites. No new
   /// site or event: optional content-free properties on existing rows (a closed size name, an
   /// engine name and counts).
+  /// #4528 F1: four new single sites (`onboardingScreenViewed`, `onboardingChoiceMade`,
+  /// `onboardingDownloadFinished`, `onboardingFilmFinished`), each a graded registry row with its
+  /// checklist answered (per_user_action, keep, about 10-12k rows/month total at 427 installs per
+  /// 30 days); `onboardingCompleted` gained the optional `summary:` parameter, which changes its
+  /// existing site's identity (same event, same once-per-visit cadence, optional content-free
+  /// fields: closed typed values and one Bool). F1 repair (M65): `onboardingChoiceMade` and
+  /// `onboardingDownloadFinished` take typed values (`OnboardingTelemetry.Choice`,
+  /// `DownloadModel`), which changes those two sites' identities only; same events and rows.
+  /// F2b (M68): `onboardingChoiceMade` takes `followedRecommendation: Bool?` (unknown agreement
+  /// is omitted, never sent as false); that one site's identity only, same event and row.
+  /// D6b (M84): step_completed gains optional polish_ran on the existing Practice result;
+  /// one content-free boolean, same event and once-per-visit cadence.
   static let sitesFingerprint =
-    "1fc27947a9d91679cd2833cd019f1b50c9b98f967d3bf352dba16bee1dbf19e6"
+    "56ca91d4352d7adfb19b6356a94511d5eb0435108ea0150251fcc09e5217a521"
   static let ungradedFingerprint =
     "676fe038e6e688fa79c33aae8cec75e5996979f10c3f79775755ec23c5dba168"
 

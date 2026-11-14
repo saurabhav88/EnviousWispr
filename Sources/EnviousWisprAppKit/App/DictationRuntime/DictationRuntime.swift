@@ -236,21 +236,13 @@ final class DictationRuntime {
     func devControlUserStop() async { await finalizer.userStop() }
   #endif
 
-  /// #879 Phase D — route onboarding's first-run model warm-up through the
-  /// shared `ensureEngineWarm(reason: .onboarding)` on the active engine's
-  /// driver, so the onboarding gate uses the same live-readiness check +
-  /// single-flight + telemetry as every other warm-up site. Returns the outcome
-  /// so the onboarding screen can drive its "download failed → Retry" UX.
-  func ensureActiveEngineWarmForOnboarding() async -> EngineWarmupOutcome {
-    await starter.activeDriver.ensureEngineWarm(reason: .onboarding)
-  }
-
-  /// #1388 step 3 — the onboarding install Cancel button's seam. Cancels the
-  /// in-flight warm-up load; the awaiting `ensureEngineWarm` resolves as
-  /// `.cancelled` (never a failure), and onboarding renders the calm
-  /// "Try setup again" state. Safe against a just-completed load — the
-  /// adapter's in-flight gate makes it a no-op then.
-  func cancelActiveEngineWarmupForOnboarding() async {
-    await starter.activeDriver.cancelSessionlessWarmup()
+  /// #4528 P2 (plan M70): the new Setup's warm-up for the engine active NOW, with its cancel
+  /// bound to that same driver. The driver is captured once, so a later cancel never reaches
+  /// a newer engine's load after the person switched engines.
+  func onboardingWarmup() -> OnboardingWarmup {
+    let driver = starter.activeDriver
+    return OnboardingWarmup(
+      run: { await driver.ensureEngineWarm(reason: .onboarding) },
+      cancel: { await driver.cancelSessionlessWarmup() })
   }
 }
