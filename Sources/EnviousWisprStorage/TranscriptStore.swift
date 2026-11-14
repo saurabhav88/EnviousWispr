@@ -891,10 +891,16 @@ public final class TranscriptStore {
   private static func scheduleMigration(in directory: URL) {
     Task.detached(priority: .utility) {
       let fm = FileManager.default
-      guard let entries = try? fm.contentsOfDirectory(atPath: directory.path) else { return }
-      for entry in entries where entry.hasSuffix(".json") {
-        let path = directory.appendingPathComponent(entry).path
-        try? fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path)
+      guard let entries = try? fm.contentsOfDirectory(
+        at: directory, includingPropertiesForKeys: nil) else { return }
+      for entry in entries where entry.pathExtension == "json" {
+        var info = stat()
+        // Most launches have nothing to migrate. Avoid rewriting the metadata of
+        // every saved dictation while History is also trying to read those files.
+        guard lstat(entry.path, &info) == 0, (info.st_mode & S_IFMT) == S_IFREG,
+          (info.st_mode & 0o7777) != 0o600
+        else { continue }
+        try? fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: entry.path)
       }
     }
   }
@@ -909,6 +915,39 @@ public final class TranscriptStore {
     }.value
   }
 
+  /// A complete inventory can be reused file-by-file on the next read. The file identity
+  /// and metadata come from disk; a local write never certifies other entries.
+  public struct HistoryInventory: Sendable {
+    fileprivate var files: [String: File] = [:]
+
+    fileprivate struct File: Sendable {
+      let version: Version
+      let row: Transcript?
+    }
+
+    fileprivate struct Version: Equatable, Sendable {
+      let device: dev_t
+      let inode: ino_t
+      let size: off_t
+      let modified: TimeInterval
+      let modifiedNanoseconds: Int
+      let changed: TimeInterval
+      let changedNanoseconds: Int
+
+      init?(_ url: URL) {
+        var state = stat()
+        guard lstat(url.path, &state) == 0, (state.st_mode & S_IFMT) == S_IFREG else { return nil }
+        device = state.st_dev
+        inode = state.st_ino
+        size = state.st_size
+        modified = TimeInterval(state.st_mtimespec.tv_sec)
+        modifiedNanoseconds = state.st_mtimespec.tv_nsec
+        changed = TimeInterval(state.st_ctimespec.tv_sec)
+        changedNanoseconds = state.st_ctimespec.tv_nsec
+      }
+    }
+  }
+
   /// History's read (#4001 H9): both namespaces, whether every row file could be read, and the
   /// folder tokens that certify the result. One detached unit, so the tokens are taken around
   /// exactly this read: `freshness` is non-nil only when both samples are known and equal and
@@ -917,7 +956,9 @@ public final class TranscriptStore {
   ///
   /// #4075 G8: cancelling the caller cancels the read. History cancels a read a newer one
   /// replaces, and without forwarding the detached read went on decoding every row file.
-  public func readHistory(now: Date = Date()) async throws -> TranscriptHistoryRead {
+  public func readHistory(
+    now: Date = Date(), reusing inventory: HistoryInventory? = nil
+  ) async throws -> TranscriptHistoryRead {
     try Task.checkCancellation()
     let dir = directory
     let pendingDir = pendingDirectory
@@ -931,13 +972,16 @@ public final class TranscriptStore {
     let read = Task.detached(priority: .userInitiated) {
       try Task.checkCancellation()
       let before = Self.freshness(directory: dir, pendingDirectory: pendingDir)
-      let permanent: (rows: [Transcript], complete: Bool) =
-        FileManager.default.fileExists(atPath: dir.path)
-        ? try await Self.readPermanent(in: dir, willRead: willRead) : ([], false)
+      let permanentAbsent = Self.folderToken(dir) == .absent
+      let permanent: (rows: [Transcript], complete: Bool, inventory: HistoryInventory?) =
+        permanentAbsent
+        ? ([], true, nil)
+        : try await Self.readPermanent(
+          in: dir, willRead: willRead, capturingInventory: true, reusing: inventory)
       try Task.checkCancellation()
       // Same admission as `loadPending`. An unreadable folder reads as empty there; here it also
       // withholds certification, and a confirmed-absent one is a real empty namespace.
-      let pendingAbsent = before?.pending == .absent
+      let pendingAbsent = Self.folderToken(pendingDir) == .absent
       let listing =
         pendingAbsent
         ? ([], false)
@@ -947,12 +991,14 @@ public final class TranscriptStore {
       let pending = (listing?.candidates ?? []).compactMap(\.liveTranscript).sorted {
         $0.createdAt > $1.createdAt
       }
-      let pendingComplete = listing.map { !$0.readFailed } ?? false
+      let pendingComplete = pendingAbsent || (listing.map { !$0.readFailed } ?? false)
       let after = Self.freshness(directory: dir, pendingDirectory: pendingDir)
       try Task.checkCancellation()
       let certified = permanent.complete && pendingComplete && before != nil && before == after
       return TranscriptHistoryRead(
-        permanent: permanent.rows, pending: pending, freshness: certified ? before : nil)
+        permanent: permanent.rows, pending: pending, freshness: certified ? before : nil,
+        isComplete: permanent.complete && pendingComplete && before == after,
+        inventory: certified ? permanent.inventory : nil)
     }
     return try await withTaskCancellationHandler {
       let result = try await read.value
@@ -1020,15 +1066,24 @@ public final class TranscriptStore {
   /// reused as the whole History. A file that reads but does not decode is excluded for good, as
   /// before, and does not make the read incomplete.
   private nonisolated static func readPermanent(
-    in dir: URL, willRead: (@Sendable () -> Void)? = nil
-  ) async throws -> (rows: [Transcript], complete: Bool) {
+    in dir: URL, willRead: (@Sendable () -> Void)? = nil, capturingInventory: Bool = false,
+    reusing previous: HistoryInventory? = nil
+  ) async throws -> (rows: [Transcript], complete: Bool, inventory: HistoryInventory?) {
     let files = try FileManager.default.contentsOfDirectory(
       at: dir, includingPropertiesForKeys: nil)
     let decoder = JSONDecoder()
     var result: [Transcript] = []
     var complete = true
+    var inventory = capturingInventory ? HistoryInventory() : nil
     for url in files where url.pathExtension == "json" {
       try Task.checkCancellation()
+      let name = url.lastPathComponent
+      let version = capturingInventory ? HistoryInventory.Version(url) : nil
+      if let version, let kept = previous?.files[name], version == kept.version {
+        inventory?.files[name] = kept
+        if let row = kept.row { result.append(row) }
+        continue
+      }
       willRead?()
       let data: Data
       do {
@@ -1041,18 +1096,25 @@ public final class TranscriptStore {
         )
         continue
       }
+      let row: Transcript?
       do {
-        result.append(try decoder.decode(Transcript.self, from: data))
+        let decoded = try decoder.decode(Transcript.self, from: data)
+        row = decoded
+        result.append(decoded)
       } catch {
+        row = nil
         // Log errors but don't block — corrupt files are skipped
         await AppLogger.shared.log(
           "Skipping corrupt transcript \(url.lastPathComponent): \(error)",
           level: .info, category: "TranscriptStore"
         )
       }
+      if let version, version == HistoryInventory.Version(url) {
+        inventory?.files[name] = .init(version: version, row: row)
+      }
     }
     try Task.checkCancellation()
-    return (result.sorted { $0.createdAt > $1.createdAt }, complete)
+    return (result.sorted { $0.createdAt > $1.createdAt }, complete, inventory)
   }
 
   /// Both folders' tokens, or nil when either is unknown or the permanent folder is missing (a
@@ -1060,11 +1122,11 @@ public final class TranscriptStore {
   private nonisolated static func freshness(
     directory: URL, pendingDirectory: URL
   ) -> TranscriptStoreFreshness? {
-    guard case .some(.present(let identity, let generation)) = folderToken(directory),
+    guard let permanent = folderToken(directory),
       let pending = folderToken(pendingDirectory)
     else { return nil }
     return TranscriptStoreFreshness(
-      permanent: .present(identity: identity, generation: generation), pending: pending)
+      permanent: permanent, pending: pending)
   }
 
   /// One folder's identity and generation identifier, `.absent` only on a confirmed ENOENT, and
@@ -1454,6 +1516,8 @@ public struct TranscriptHistoryRead: Sendable {
   public let permanent: [Transcript]
   public let pending: [Transcript]
   public let freshness: TranscriptStoreFreshness?
+  public let isComplete: Bool
+  public let inventory: TranscriptStore.HistoryInventory?
 }
 
 /// The permanent and pending folders' change tokens (#4001 H9). Equal tokens mean no entry was
@@ -1461,7 +1525,7 @@ public struct TranscriptHistoryRead: Sendable {
 public struct TranscriptStoreFreshness: Sendable, Equatable {
   public enum Folder: Sendable, Equatable {
     case present(identity: Data, generation: Data)
-    /// Confirmed missing. Valid for `pending/`, which is created by the first held row.
+    /// Confirmed missing, distinct from inaccessible or an unsupported identifier.
     case absent
   }
   let permanent: Folder

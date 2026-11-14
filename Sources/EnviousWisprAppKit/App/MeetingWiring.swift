@@ -294,6 +294,9 @@ enum MeetingWiring {
     inputs.transcriptCoordinator.meetingRecords = { [weak coordinator] in
       coordinator?.meetings ?? []
     }
+    inputs.transcriptCoordinator.meetingRecord = { [weak coordinator] id in
+      coordinator?.record(id: id)
+    }
     inputs.transcriptCoordinator.meetingNotes = { [weak coordinator] meetingID in
       coordinator?.documents.notes(meetingID)
     }

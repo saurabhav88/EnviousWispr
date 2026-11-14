@@ -106,7 +106,7 @@ struct HistoryDictationCard: View {
     return VStack(alignment: .leading, spacing: DesignSpacing.lg) {
       recordingRow
       HistoryPolishPreviewContent(preview: polishPreview)
-      if editsOn, current?.hasChanges == true { viewSwitch }
+      if editsOn, texts.differ { viewSwitch }
       HistoryParagraphText(
         blocks: blocks(row: row, texts: texts, prepared: current),
         query: query,
@@ -124,7 +124,7 @@ struct HistoryDictationCard: View {
           onDone: { openChange = nil })
       }
       provenance(row)
-      actions(row: row, hasChanges: current?.hasChanges == true)
+      actions(row: row, hasChanges: texts.differ)
       if let change = preferenceNotice {
         preferenceNoticeRow(change)
       }
@@ -154,7 +154,10 @@ struct HistoryDictationCard: View {
     ) {
       await refreshTiming(original: row.text)
     }
-    .task(id: texts) { await prepareComparison(texts) }
+    .task(id: editsOn || !timeline.isEmpty ? texts : nil) {
+      guard texts.differ, editsOn || !timeline.isEmpty else { return }
+      await prepareComparison(texts)
+    }
     .task(id: PolishedSpans.Key(texts: prepared?.texts, timeline: timeline)) {
       await preparePolishedSpans()
     }
@@ -265,7 +268,7 @@ struct HistoryDictationCard: View {
     prepared: HistoryDictationPresentation.Prepared?
   ) -> [HistoryParagraphText.Block] {
     let view: HistoryDictationPresentation.TextView =
-      editsOn && prepared?.hasChanges == true
+      editsOn && texts.differ
       ? comparisonView
       : HistoryDictationPresentation.defaultView(for: row.effectivePreferredVersion)
     if view == .markedUp, let prepared {
@@ -280,7 +283,7 @@ struct HistoryDictationCard: View {
     // Passage times index the original text; the polished text needs the alignment to carry
     // them, and stays untimed until it is prepared.
     let spans: [HistoryDictationPresentation.TimedSpan]
-    if view == .original {
+    if view == .original || !texts.differ {
       spans = timeline
     } else if let prepared, let polishedSpans,
       polishedSpans.key == PolishedSpans.Key(texts: prepared.texts, timeline: timeline)

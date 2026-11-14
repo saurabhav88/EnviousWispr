@@ -26,10 +26,12 @@ struct HistoryReadFinishedTests {
       Transcript(text: "one", processingTime: 0.1, backendType: .parakeet, createdAt: Date()))
     let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
     #expect(!coordinator.historyReadFinished)
+    #expect(coordinator.historyReadAvailability == .loading)
     coordinator.loadIfNeeded()
     #expect(!coordinator.historyReadFinished, "not while the read is still running")
     await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
     #expect(coordinator.historyReadFinished)
+    #expect(coordinator.historyReadAvailability == .ready)
   }
 
   #if DEBUG
@@ -52,6 +54,14 @@ struct HistoryReadFinishedTests {
       #expect(coordinator.diskReconcilerForTesting.historyFullReadsForTesting == 0)
       #expect(coordinator.visibleTranscripts.isEmpty)
       #expect(coordinator.historyReadFinished)
+      #expect(coordinator.historyReadAvailability == .unavailable)
+
+      // Recover in the same process, using the same retry action as the History view.
+      try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir.path)
+      coordinator.loadIfNeeded()
+      await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
+      #expect(coordinator.historyReadAvailability == .ready)
+      #expect(coordinator.visibleTranscripts.map(\.text) == ["one"])
     }
   #endif
 

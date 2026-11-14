@@ -178,11 +178,16 @@ struct HistoryTabStateTests {
     var state = HistoryTabState()
     state.query = "raw"
     coordinator.setHistoryState(state, for: .dictations)
-    #expect(rowIDs(coordinator.matchingHistoryItems(in: .dictations)) == [row.id])
+    let rawKey = coordinator.historyQueryKey(for: .dictations, state: state)
+    let rawResult = await coordinator.historyResults(for: rawKey)
+    #expect(rawResult?.ids == [.transcript(row.id)])
 
     state.query = "Clean"
     coordinator.setHistoryState(state, for: .dictations)
     #expect(coordinator.matchingHistoryItems(in: .dictations).isEmpty)
+    #expect(await coordinator.historyResults(for: rawKey) == nil)
+    let cleanKey = coordinator.historyQueryKey(for: .dictations, state: state)
+    #expect(await coordinator.historyResults(for: cleanKey)?.ids.isEmpty == true)
   }
 
   @Test("activity counts one entry per day under the tab's other filters")

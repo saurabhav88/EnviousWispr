@@ -138,13 +138,13 @@ struct HistoryFiltersView: View {
   private func binding<Value>(_ keyPath: WritableKeyPath<HistoryTabState, Value>) -> Binding<Value>
   {
     Binding(
-      get: { coordinator.historyState(for: tab)[keyPath: keyPath] },
+      get: { coordinator.requestedHistoryState(for: tab)[keyPath: keyPath] },
       set: { value in update { $0[keyPath: keyPath] = value } })
   }
 
   /// Applies `change` to the tab's live state; a picker choice also closes its popover.
   private func update(_ change: (inout HistoryTabState) -> Void) {
-    var live = coordinator.historyState(for: tab)
+    var live = coordinator.requestedHistoryState(for: tab)
     change(&live)
     coordinator.setHistoryState(live, for: tab)
     openPicker = nil
@@ -233,13 +233,9 @@ private struct HistoryAppPicker: View {
       }
     }
     .frame(minWidth: 240)
-    .task {
-      // The apps are read here; counting and sorting run off the main actor.
-      let apps = coordinator.visibleTranscripts.filter { $0.isImported == false }
-        .map { $0.metrics?.targetApp }
-      options = await Task.detached(priority: .userInitiated) {
-        HistoryFilterLabels.appOptions(apps)
-      }.value
+    .task(id: coordinator.transcriptsRevision) {
+      let result = await coordinator.historyAppOptions()
+      if !Task.isCancelled { options = result }
     }
   }
 }
@@ -443,11 +439,17 @@ private struct HistoryDatePicker: View {
       }
     }
     .frame(width: 280)
-    // The tab's counts do not depend on the month shown, so they are read once.
-    .task {
-      activity = await coordinator.historyActivity(in: tab, calendar: calendar)
+    .task(id: activityKey) {
+      let result = await coordinator.historyActivity(in: tab, calendar: calendar)
+      if !Task.isCancelled { activity = result }
     }
     .onAppear { if let current { month = current.start } }
+  }
+
+  private var activityKey: TranscriptCoordinator.HistoryQueryKey {
+    var state = coordinator.requestedHistoryState(for: tab)
+    state.dateInterval = nil
+    return coordinator.historyQueryKey(for: tab, state: state)
   }
 
   private var monthHeader: some View {
