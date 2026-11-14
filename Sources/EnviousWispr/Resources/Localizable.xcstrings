@@ -6286,7 +6286,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Schau unter **Wörterbuch** → **Importieren**"
+            "value" : "Schau dir **Wörterbuch** → **Importieren** an."
           }
         }
       }
@@ -30515,7 +30515,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Alles bereit. Du findest EnviousWispr in deiner Menüleiste. Nimm deine Wörter mit: Um deine eigenen Wörter aus einer anderen Diktier-App zu importieren, öffne die Einstellungen, dann Wörterbuch, dann Importieren."
+            "value" : "Alles bereit. Du findest EnviousWispr in deiner Menüleiste. Nimm deine Wörter mit: Um deine eigenen Wörter aus einer anderen Diktier-App zu importieren, öffne die Einstellungen, wähle Wörterbuch und dann Importieren."
           }
         }
       }
