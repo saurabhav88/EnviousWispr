@@ -3139,11 +3139,11 @@ package final class WisprBootstrapper {
       freeze: { freezeHistoryCleanup($0, $1) },
       cleanup: historyCleanup,
       polishDictation: { try await fileImportRunner.polishSavedDictation($0, language: $1) },
-      meetingEchoIDs: { [weak meetingCoordinator] row in
+      meetingInfo: { [weak meetingCoordinator] row in
         guard let id = row.meetingID, let record = meetingCoordinator?.record(id: id),
           !record.deletionRequested, MeetingWiring.isCommittedRow(row, of: record)
         else { return nil }
-        return Set(record.echoTurnIDs)
+        return MeetingHistoryInfo.paired(with: record)
       })
     historyRepolishForGates = historyRepolish
     self.historyRepolish = historyRepolish

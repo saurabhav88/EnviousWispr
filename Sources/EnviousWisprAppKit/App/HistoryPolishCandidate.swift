@@ -9,6 +9,8 @@ struct HistoryPolishCandidate: Sendable {
   let provider: LLMProvider
   let model: String
   var egOneSize: EGOneSize? = nil
+  var comparisonCurrentText: String? = nil
+  var comparisonNewText: String? = nil
 
   func matches(_ current: Transcript) -> Bool {
     current.id == base.id && current.meetingID == base.meetingID

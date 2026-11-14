@@ -19,7 +19,7 @@ final class HistoryRepolishRunner {
   private let freeze: @MainActor (ASRBackendType, HistoryPolishChoice) -> ImportedFileTranscriber.FrozenRun
   private let cleanup: ImportedFileTranscriber.Cleanup
   private let polishDictation: @MainActor (String, String?) async throws -> String?
-  private let meetingEchoIDs: @MainActor (Transcript) -> Set<String>?
+  private let meetingInfo: @MainActor (Transcript) -> MeetingHistoryInfo?
   private(set) var heldRun: ImportedFileTranscriber.FrozenRun?
 
   init(
@@ -28,14 +28,14 @@ final class HistoryRepolishRunner {
     freeze: @escaping @MainActor (ASRBackendType, HistoryPolishChoice) -> ImportedFileTranscriber.FrozenRun,
     cleanup: ImportedFileTranscriber.Cleanup,
     polishDictation: @escaping @MainActor (String, String?) async throws -> String?,
-    meetingEchoIDs: @escaping @MainActor (Transcript) -> Set<String>?
+    meetingInfo: @escaping @MainActor (Transcript) -> MeetingHistoryInfo?
   ) {
     self.choices = choices
     self.admission = admission
     self.freeze = freeze
     self.cleanup = cleanup
     self.polishDictation = polishDictation
-    self.meetingEchoIDs = meetingEchoIDs
+    self.meetingInfo = meetingInfo
   }
 
   func candidate(for row: Transcript, choice: HistoryPolishChoice) async throws -> HistoryPolishCandidate {
@@ -43,8 +43,8 @@ final class HistoryRepolishRunner {
     let document = row.isImported || row.isMeeting
     guard row.escapeRecoveredAt == nil, choices(document ? .transcript : .dictation).contains(choice)
     else { throw Failure.unavailable }
-    let echoIDs = row.isMeeting ? meetingEchoIDs(row) : []
-    guard let echoIDs else { throw Failure.unavailable }
+    let info = row.isMeeting ? meetingInfo(row) : nil
+    guard !row.isMeeting || info != nil else { throw Failure.unavailable }
     guard case .granted(let token) = admission.claim() else { throw Failure.busy }
     let run = freeze(row.backendType, choice)
     heldRun = run
@@ -56,7 +56,7 @@ final class HistoryRepolishRunner {
     guard await cleanup.prepareLocalPolish(run.configuration) else { throw Failure.unavailable }
     try Task.checkCancellation()
     if document {
-      return try await documentCandidate(for: row, echoIDs: echoIDs, run: run, choice: choice)
+      return try await documentCandidate(for: row, meeting: info, run: run, choice: choice)
     }
     guard let output = try await polishDictation(row.text, row.language) else { throw Failure.noResult }
     return HistoryPolishCandidate(
@@ -65,10 +65,11 @@ final class HistoryRepolishRunner {
   }
 
   private func documentCandidate(
-    for row: Transcript, echoIDs: Set<String>, run: ImportedFileTranscriber.FrozenRun,
+    for row: Transcript, meeting: MeetingHistoryInfo?, run: ImportedFileTranscriber.FrozenRun,
     choice: HistoryPolishChoice
   ) async throws -> HistoryPolishCandidate {
     let turns = row.turns
+    let echoIDs = meeting?.echoTurnIDs ?? []
     let sourceTurns = turns?.filter { turn in
       !echoIDs.contains(turn.id)
         && (!row.isMeeting || !MeetingGapPresentation.containsGap(
@@ -95,12 +96,19 @@ final class HistoryRepolishRunner {
     else { throw Failure.noResult }
     let updated = turns.map { FileImportDocumentMath.finalTurns($0, parts: parts, cleanupCompleted: true) }
     let text = updated.map {
-      $0.filter { !echoIDs.contains($0.id) }.map { turn in
+      $0.map { turn in
         turn.processedText ?? TranscriptDocumentPresenter.slice(row.text, turn.originalTextRange)
       }.joined(separator: "\n\n")
     } ?? FileImportDocumentMath.joinedDocument(parts)
+    func previewText(_ source: [Turn]?, meeting info: MeetingHistoryInfo) -> String {
+      MeetingTranscriptProjection.plainText(
+        text: row.text, turns: source ?? [], speakerNames: row.speakerNames ?? [:],
+        echoTurnIDs: info.echoTurnIDs, showEcho: false, line: { MeetingGapPresentation.localized($0) })
+    }
     return HistoryPolishCandidate(
       base: row, text: text, turns: updated, provider: choice.provider, model: choice.model,
-      egOneSize: choice.egOneSize)
+      egOneSize: choice.egOneSize,
+      comparisonCurrentText: meeting.map { previewText(turns, meeting: $0) },
+      comparisonNewText: meeting.map { previewText(updated, meeting: $0) })
   }
 }

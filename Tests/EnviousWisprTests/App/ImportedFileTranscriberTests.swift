@@ -199,11 +199,12 @@ struct ImportedFileTranscriberTests {
           }
         },
         release: { rig.releases += 1 }),
-      polishDictation: { _, _ in nil }, meetingEchoIDs: { _ in ["2"] })
+      polishDictation: { _, _ in nil }, meetingInfo: { _ in .init(echoTurnIDs: ["2"]) })
 
     let result = try await runner.candidate(for: row, choice: choice)
     #expect(rig.processedParts == [[speech]])
-    #expect(result.text == "Polished visible words.\n\n" + gap)
+    #expect(result.comparisonCurrentText == "Prior polish.\n\nPrior polish.")
+    #expect(result.comparisonNewText == "Polished visible words.\n\n" + gap)
     #expect(result.turns?.map(\.processedText) == ["Polished visible words.", nil, nil])
     #expect(result.turns?.map(\.originalTextRange) == turns.map(\.originalTextRange))
     #expect(rig.lease.currentHolder == nil)

@@ -228,7 +228,8 @@ struct HistoryPolishPreviewContent: View {
         title: "Polishing again with \(choice.title)…", cancel: preview.cancel)
     case .comparing(let candidate):
       HistoryPolishComparison(
-        current: candidate.base.historyText, new: candidate.text,
+        current: candidate.comparisonCurrentText ?? candidate.base.historyText,
+        new: candidate.comparisonNewText ?? candidate.text,
         model: HistoryPolishChoice(
           provider: candidate.provider, model: candidate.model, egOneSize: candidate.egOneSize).title,
         keep: { preview.keep(candidate, history: history) }, discard: preview.cancel)
