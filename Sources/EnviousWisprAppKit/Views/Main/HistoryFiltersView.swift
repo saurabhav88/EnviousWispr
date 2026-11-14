@@ -514,9 +514,9 @@ private struct HistoryDatePicker: View {
       .frame(maxWidth: .infinity, minHeight: 30)
       .background {
         if isEndpoint {
-          RoundedRectangle(cornerRadius: 8).fill(Color.stAccentSolid)
+          RoundedRectangle(cornerRadius: DesignRadius.md).fill(Color.stAccentSolid)
         } else if inRange || hoveredDay == day {
-          RoundedRectangle(cornerRadius: 8).fill(Color.stAccent.opacity(0.22))
+          RoundedRectangle(cornerRadius: DesignRadius.md).fill(Color.stAccent.opacity(0.22))
         }
       }
       .contentShape(Rectangle())
