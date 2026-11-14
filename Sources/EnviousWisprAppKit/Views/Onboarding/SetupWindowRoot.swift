@@ -28,14 +28,21 @@ struct SetupWindowRoot: View {
           SetupDownloadPill(model: model)
         }
         .frame(height: SetupLayout.stripHeight)
-      // One screen at a time (mockup: the old screen leaves at once, the new one slides in), so
-      // the two never share the layout during the change.
+      // One screen at a time (mockup: the old screen leaves at once, the new one slides in). The
+      // swap itself runs with no animation: SwiftUI keeps a removed view on screen until every
+      // animation of its transaction ends, even with an identity removal, so an animated swap
+      // showed the old screen over the new one for a moment (founder 2026-11-13, most visible
+      // on Back from the key screen). The new screen plays its own entrance instead.
       ZStack {
         SetupScreenRouter(model: model)
+          .modifier(
+            SetupScreenEntrance(animation: Self.screenAnimation(reduceMotion: reduceMotion))
+          )
           .id(model.screenIdentity)
-          .transition(reduceMotion ? .identity : .setupScreenIn)
+          .transition(.identity)
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity)
+      .transaction(value: model.screenIdentity) { $0.animation = nil }
     }
     .padding(.horizontal, SetupLayout.contentPadding)
     .padding(.top, SetupLayout.stripTop)
@@ -43,7 +50,6 @@ struct SetupWindowRoot: View {
     .frame(width: SetupLayout.windowWidth, height: SetupLayout.contentHeight)
     .background(Color.obCardBg)
     .foregroundStyle(Color.obTextPrimary)
-    .animation(Self.screenAnimation(reduceMotion: reduceMotion), value: model.screenIdentity)
   }
 }
 
@@ -60,14 +66,29 @@ enum SetupLayout {
   static let segmentGap: CGFloat = 4
 }
 
-/// The mockup's screen entrance (`obIn`): a 16-point slide from the right with a fade; the old
-/// screen is removed at once (each mockup screen is its own branch).
-extension AnyTransition {
-  static var setupScreenIn: AnyTransition {
-    .asymmetric(
-      insertion: .opacity.combined(with: .offset(x: 16)),
-      removal: .identity)
+/// The mockup's screen entrance (`obIn`): a 16-point slide from the right with a fade, played by
+/// the new screen itself when it appears (a fresh `id` gives it fresh state). nil (Reduce Motion)
+/// shows it in place at once.
+struct SetupScreenEntrance: ViewModifier {
+  let animation: Animation?
+  @State private var shown = false
+
+  func body(content: Content) -> some View {
+    let visible = shown || animation == nil
+    content
+      .opacity(visible ? 1 : 0)
+      .offset(x: visible ? 0 : SetupScreenEntrance.slide)
+      .onAppear {
+        // Shown for good either way, so turning Reduce Motion off later never hides the screen.
+        guard let animation else {
+          shown = true
+          return
+        }
+        withAnimation(animation) { shown = true }
+      }
   }
+
+  static let slide: CGFloat = 16
 }
 
 // MARK: - Model
@@ -92,7 +113,9 @@ final class SetupScreenModel {
 
   /// Steps the mockup draws as one screen.
   static func sameScreen(_ a: OnboardingStep, _ b: OnboardingStep) -> Bool {
-    let pairs: [Set<OnboardingStep>] = [[.speechPick, .speechCompare], [.polishPick, .polishSeeAll]]
+    let pairs: [Set<OnboardingStep>] = [
+      [.speechPick, .speechCompare], [.polishPick, .polishSeeAll],
+    ]
     return pairs.contains { $0.contains(a) && $0.contains(b) }
   }
   private weak var coordinator: OnboardingCoordinator?
@@ -363,7 +386,8 @@ struct SetupScreenRouter: View {
       SetupGateScreen(model: model, epoch: model.routeEpoch, screen: .gettingReady)
     case .practice:
       if let sources = model.sources.practice, let progress = model.sources.practiceProgress {
-        SetupPracticeRoute(model: model, epoch: model.routeEpoch, sources: sources, progress: progress)
+        SetupPracticeRoute(
+          model: model, epoch: model.routeEpoch, sources: sources, progress: progress)
       } else {
         SetupPracticeUnavailable(model: model)
       }
