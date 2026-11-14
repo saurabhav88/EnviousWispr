@@ -316,7 +316,7 @@ struct HistoryCostBenchmarkTests {
       host = NSHostingView(
         rootView: AnyView(
           HistoryDiaryView(
-            coordinator: coordinator, dictationCard: { _ in EmptyView() },
+            coordinator: coordinator, dictationCard: { _, _ in EmptyView() },
             transcriptDestination: { _, _ in EmptyView() }, meetingDestination: { _, _ in EmptyView() }
           )
             .environment(coordinator).environment(homes.recording).environment(homes.metadata)

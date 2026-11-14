@@ -334,9 +334,14 @@ final class MeetingSummaryOwner {
     start(meetingID, approvedUserEdit: nil, owedAlready: false, preview: choice)
   }
 
-  func defaultPreviewChoice(in choices: [HistoryPolishChoice]) -> HistoryPolishChoice? {
+  func defaultPreviewChoice(
+    in choices: [HistoryPolishChoice], egOneSize: EGOneSize
+  ) -> HistoryPolishChoice? {
     let current = deps.selection()
-    return choices.first { $0.provider == current.provider && $0.model == current.model }
+    return choices.first {
+      $0.provider == current.provider && $0.model == current.model
+        && (current.provider != .egOne || $0.egOneSize == egOneSize)
+    }
   }
 
   func discardPreview(_ meetingID: UUID) {

@@ -2,7 +2,7 @@ import EnviousWisprCore
 import SwiftUI
 
 /// The row under History's tabs (#3147 §3.3): search, the tab's own filter (App on Dictations,
-/// Speakers on Transcripts, Call app on Meetings), the date filter, Select and help. Every
+/// Call app on Meetings), the date filter, Select and help. Every
 /// change goes through the coordinator's per-tab state, so each tab keeps its own.
 struct HistoryFiltersView: View {
   let coordinator: TranscriptCoordinator
@@ -14,7 +14,7 @@ struct HistoryFiltersView: View {
   @FocusState private var searchFocused: Bool
   @State private var openPicker: Picker?
 
-  private enum Picker: Hashable { case app, speakers, callApp, date }
+  private enum Picker: Hashable { case app, callApp, date }
 
   var body: some View {
     ViewThatFits(in: .horizontal) {
@@ -33,11 +33,7 @@ struct HistoryFiltersView: View {
   @ViewBuilder private var controls: some View {
     if tab == .dictations { appButton }
     dateButton
-    switch tab {
-    case .dictations: EmptyView()
-    case .transcripts: speakersButton
-    case .meetings: callAppButton
-    }
+    if tab == .meetings { callAppButton }
     Button(action: toggleSelecting) {
       EnviousButtonLabel(
         isSelecting
@@ -83,22 +79,6 @@ struct HistoryFiltersView: View {
     ) {
       HistoryAppPicker(coordinator: coordinator, current: state.app) { choice in
         update { $0.app = choice }
-      }
-    }
-  }
-
-  private var speakersButton: some View {
-    filterButton(
-      title: HistoryFilterLabels.speakers(state.speakerCount),
-      isActive: state.speakerCount != nil, picker: .speakers
-    ) {
-      HistoryChoiceList(
-        choices: HistoryFilterLabels.speakerChoices.map {
-          .init(value: $0, title: HistoryFilterLabels.speakers($0))
-        },
-        current: state.speakerCount
-      ) { choice in
-        update { $0.speakerCount = choice }
       }
     }
   }
@@ -296,7 +276,7 @@ enum HistoryFilterLabels {
     return options
   }
 
-  static func app(_ filter: HistoryAppFilter) -> String {
+  @MainActor static func app(_ filter: HistoryAppFilter) -> String {
     switch filter {
     case .all:
       String(localized: "All apps", comment: "History, Dictations: the App filter shows every app.")
@@ -304,29 +284,8 @@ enum HistoryFilterLabels {
       String(
         localized: "Unknown app",
         comment: "History, Dictations: dictations with no recorded app they went to.")
-    case .named(let name):
-      name
-    }
-  }
-
-  /// Any, one speaker, two speakers, three or more.
-  static let speakerChoices: [ClosedRange<Int>?] = [nil, 1...1, 2...2, 3...Int.max]
-
-  static func speakers(_ range: ClosedRange<Int>?) -> String {
-    switch range {
-    case nil:
-      String(
-        localized: "Any number of speakers",
-        comment: "History, Transcripts: the Speakers filter shows every transcript.")
-    case 1...1:
-      String(localized: "1 speaker", comment: "History, Transcripts: transcripts with one speaker.")
-    case 2...2:
-      String(
-        localized: "2 speakers", comment: "History, Transcripts: transcripts with two speakers.")
-    case let range?:
-      String(
-        localized: "\(String(range.lowerBound)) or more speakers",
-        comment: "History, Transcripts: transcripts with at least this many speakers.")
+    case .named(let identifier):
+      HistoryAppName.label(for: identifier)
     }
   }
 
@@ -368,6 +327,12 @@ enum HistoryDateFilter: Equatable, Sendable {
     case .last30Days: return Self.days(from: Self.day(today, plus: -29, calendar), count: 30, calendar: calendar)
     case .day(let date): return Self.days(from: calendar.startOfDay(for: date), count: 1, calendar: calendar)
     }
+  }
+
+  static func interval(from first: Date, through last: Date, calendar: Calendar) -> DateInterval {
+    let start = calendar.startOfDay(for: min(first, last))
+    let lastDay = calendar.startOfDay(for: max(first, last))
+    return DateInterval(start: start, end: day(lastDay, plus: 1, calendar))
   }
 
   /// The name of a quick pick.
@@ -435,6 +400,9 @@ private struct HistoryDatePicker: View {
 
   @State private var month = Date()
   @State private var activity: [Date: Int] = [:]
+  @State private var firstDay: Date?
+  @State private var hoveredDay: Date?
+  @State private var lastDay: Date?
   private let calendar = Calendar.current
 
   var body: some View {
@@ -455,12 +423,31 @@ private struct HistoryDatePicker: View {
       Divider()
       monthHeader
       calendarGrid(now: now)
+      HStack {
+        if let firstDay {
+          Text(HistoryDateFilter.label(
+            for: HistoryDateFilter.interval(from: firstDay, through: lastDay ?? firstDay, calendar: calendar),
+            now: now, calendar: calendar))
+            .font(.stHelper)
+            .foregroundStyle(.stTextSecondary)
+        }
+        Spacer()
+        Button {
+          guard let firstDay else { return }
+          choose(HistoryDateFilter.interval(
+            from: firstDay, through: lastDay ?? firstDay, calendar: calendar))
+        } label: {
+          EnviousButtonLabel("Apply", size: .regular)
+        }
+        .settingsButton(.filled, isEnabled: firstDay != nil)
+      }
     }
     .frame(width: 280)
     // The tab's counts do not depend on the month shown, so they are read once.
     .task {
       activity = await coordinator.historyActivity(in: tab, calendar: calendar)
     }
+    .onAppear { if let current { month = current.start } }
   }
 
   private var monthHeader: some View {
@@ -496,40 +483,60 @@ private struct HistoryDatePicker: View {
   }
 
   private func dayCell(_ day: Date, now: Date) -> some View {
-    let interval = HistoryDateFilter.day(day).interval(now: now, calendar: calendar)
     let count = activity[day] ?? 0
-    let isChosen = current == interval
+    let draft = firstDay.map {
+      HistoryDateFilter.interval(from: $0, through: lastDay ?? hoveredDay ?? $0, calendar: calendar)
+    }
+    let range = draft ?? current
+    let inRange = range.map { day >= $0.start && day < $0.end } ?? false
+    let isEndpoint = range.map {
+      day == $0.start || calendar.isDate(day, inSameDayAs: $0.end.addingTimeInterval(-1))
+    } ?? false
     let isFuture = day > now
     return Button {
-      choose(interval)
+      if firstDay == nil || lastDay != nil {
+        firstDay = day
+        lastDay = nil
+      } else {
+        lastDay = day
+      }
     } label: {
       VStack(spacing: 2) {
         Text(day.formatted(.dateTime.day()))
           .font(.stBody.monospacedDigit())
-          .foregroundStyle(isChosen ? Color.white : (isFuture ? .stTextTertiary : .stTextPrimary))
+          .foregroundStyle(isEndpoint ? Color.white : (isFuture ? .stTextTertiary : .stTextPrimary))
         Circle()
-          .fill(isChosen ? Color.white : Color.stAccent)
+          .fill(isEndpoint ? Color.white : Color.stAccent)
           .frame(width: 4, height: 4)
           .opacity(count > 0 ? 1 : 0)
           .accessibilityHidden(true)
       }
       .frame(maxWidth: .infinity, minHeight: 30)
       .background {
-        if isChosen { Circle().fill(Color.stAccentSolid) }
+        if isEndpoint {
+          RoundedRectangle(cornerRadius: DesignRadius.md).fill(Color.stAccentSolid)
+        } else if inRange || hoveredDay == day {
+          RoundedRectangle(cornerRadius: DesignRadius.md).fill(Color.stAccent.opacity(0.22))
+        }
       }
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
     .disabled(isFuture)
+    .onHover { hovering in
+      if hovering && !isFuture { hoveredDay = day }
+      else if hoveredDay == day { hoveredDay = nil }
+    }
     .accessibilityLabel(HistoryDateFilter.day(day).title)
     .accessibilityValue(
       count > 0
         ? String(localized: "Has items", comment: "History date picker: this day has items.")
         : String(localized: "No items", comment: "History date picker: this day has no items."))
-    .accessibilityAddTraits(isChosen ? .isSelected : [])
+    .accessibilityAddTraits(inRange ? .isSelected : [])
   }
 
   private func shiftMonth(_ months: Int) {
+    hoveredDay = nil
     month = calendar.date(byAdding: .month, value: months, to: month) ?? month
   }
 }

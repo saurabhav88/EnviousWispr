@@ -147,6 +147,9 @@ struct HistoryDiaryTests {
     let picked = HistoryDateFilter.day(day(-3).addingTimeInterval(5000))
       .interval(now: Self.now, calendar: Self.calendar)
     #expect(picked == DateInterval(start: day(-3), end: day(-2)))
+    #expect(
+      HistoryDateFilter.interval(from: day(-2), through: day(-21), calendar: Self.calendar)
+        == DateInterval(start: day(-21), end: day(-1)))
   }
 
   @Test("the date button names Any time, a quick pick, one day or a range")
@@ -192,6 +195,22 @@ struct HistoryDiaryTests {
         .init(filter: .unknown, count: 2),
       ])
     #expect(HistoryFilterLabels.appOptions(["Slack"]).contains { $0.filter == .unknown } == false)
+  }
+
+  @MainActor
+  @Test("app labels use Codex's name, macOS app names, and readable fallbacks")
+  func appLabels() {
+    #expect(HistoryFilterLabels.app(.named("com.openai.codex")) == "Codex")
+    #expect(HistoryAppName.label(for: "com.openai.codex", installedName: { _ in "ChatGPT" }) == "Codex")
+    #expect(
+      HistoryAppName.label(for: "com.apple.iWork.Pages", installedName: { _ in "Pages" }) == "Pages")
+    #expect(HistoryAppName.label(for: "us.zoom.xos", installedName: { _ in "zoom.us" }) == "zoom.us")
+    #expect(
+      HistoryAppName.label(for: "com.example.visual-studio-code", installedName: { _ in nil })
+        == "Visual Studio Code")
+    #expect(HistoryAppName.label(for: "Google Chrome", installedName: { _ in nil }) == "Google Chrome")
+    let options = HistoryFilterLabels.appOptions(["com.openai.codex", "Codex"])
+    #expect(Set(options.map(\.filter)) == [.all, .named("com.openai.codex"), .named("Codex")])
   }
 
   @Test("help leaves out Polish again and states the real recording retention")

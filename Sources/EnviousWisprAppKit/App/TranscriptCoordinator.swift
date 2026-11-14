@@ -311,13 +311,15 @@ final class TranscriptCoordinator {
     #endif
     if reuse, let kept = rowIndexCache, kept.revision == revision { return kept }
     var pending: [Int] = []
+    var positions: [UUID: Int] = [:]
     var meetingRowIDs: [UUID] = []
     for (i, row) in transcripts.enumerated() {
+      if positions[row.id] == nil { positions[row.id] = i }
       if row.escapeRecoveredAt != nil { pending.append(i) }
       if let meetingID = row.meetingID { meetingRowIDs.append(meetingID) }
     }
     let index = RowIndex(
-      revision: revision, pending: pending, meetingRowIDs: meetingRowIDs,
+      revision: revision, pending: pending, positions: positions, meetingRowIDs: meetingRowIDs,
       meetingRowCounts: meetingRowIDs.reduce(into: [:]) { $0[$1, default: 0] += 1 })
     rowIndexCache = index
     return index
@@ -326,6 +328,7 @@ final class TranscriptCoordinator {
   private struct RowIndex {
     let revision: Int
     let pending: [Int]
+    let positions: [UUID: Int]
     let meetingRowIDs: [UUID]
     /// How many rows each meeting has, held rows included.
     let meetingRowCounts: [UUID: Int]
@@ -433,11 +436,6 @@ final class TranscriptCoordinator {
       else { return false }
     case .named(let app):
       guard case .transcript(let row) = item, !row.isImported, row.metrics?.targetApp == app
-      else { return false }
-    }
-    if let range = filter.speakerCount {
-      guard case .transcript(let row) = item, row.isImported,
-        let count = row.historySpeakerCount, range.contains(count)
       else { return false }
     }
     if let callApp = filter.callApp {
@@ -1096,7 +1094,10 @@ final class TranscriptCoordinator {
   /// whether a rename/retry is eligible, must read this rather than trust a value it captured
   /// earlier.
   func currentRow(id: UUID) -> Transcript? {
-    transcripts.first { $0.id == id }
+    if let index = rowIndexCache, index.revision == transcriptsRevision {
+      return index.positions[id].map { transcripts[$0] }
+    }
+    return transcripts.first { $0.id == id }
   }
 
   /// Renames a speaker id across every turn showing it, for a row History renders directly

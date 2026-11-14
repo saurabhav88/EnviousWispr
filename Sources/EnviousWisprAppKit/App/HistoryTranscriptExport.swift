@@ -9,7 +9,7 @@ import UniformTypeIdentifiers
 @MainActor
 enum HistoryTranscriptExport {
   /// Copy, Share and Save: a turn-labelled document through the presenter (its labels, Times
-  /// and view mode), else `textForDelivery`'s expiry-checked selection, unchanged.
+  /// and view mode), or the selected text version for a transcript without turns.
   static func text(
     rowID: UUID, coordinator: TranscriptCoordinator, mode: FileImportCoordinator.DocumentView,
     timesOn: Bool
@@ -23,7 +23,7 @@ enum HistoryTranscriptExport {
     {
       return result.text
     }
-    return base
+    return live.isImported && mode == .original ? live.text : base
   }
 
   /// Paste: the plain delivery text (`textForDelivery`), never the mode-sensitive export.

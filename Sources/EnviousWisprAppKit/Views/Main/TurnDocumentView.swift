@@ -124,6 +124,7 @@ private struct TurnRowView: View {
   let onPlayFrom: ((Int) -> Void)?
   let renameSuggestions: SpeakerRenameSuggestions
   let timeFont: Font
+  @Environment(\.historyHighlightQuery) private var searchQuery
   @State private var isRenaming = false
   @State private var draftName = ""
   @State private var renameFailure: RenameFailure?
@@ -245,7 +246,7 @@ private struct TurnRowView: View {
   @ViewBuilder private var content: some View {
     switch turn.content {
     case .plain(let text):
-      Text(text)
+      HistoryParagraphText.searchText(text, query: searchQuery)
         .textSelection(.enabled)
     case .markedUp(let diff):
       MarkedUpPassageText(segments: diff.segments)
@@ -275,9 +276,13 @@ private struct TurnRowView: View {
 /// announcements and copy behaviour.
 struct MarkedUpPassageText: View {
   let segments: [WordDiff.Segment]
+  @Environment(\.historyHighlightQuery) private var searchQuery
 
   var body: some View {
-    Text(TranscribeFileExport.markedUpText(segments))
+    let styled = TranscribeFileExport.markedUpText(segments)
+    let visible = searchQuery.isEmpty ? styled : HistoryParagraphText.highlighting(
+      styled, in: String(styled.characters), query: searchQuery, markedUp: true)
+    Text(visible)
       .textSelection(.enabled)
       .accessibilityRepresentation {
         Text(TranscribeFileExport.markedUpAccessibilityText(segments))

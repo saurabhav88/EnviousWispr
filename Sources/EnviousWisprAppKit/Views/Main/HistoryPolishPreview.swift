@@ -85,8 +85,8 @@ struct HistoryPolishMenu: View {
   @Environment(AppWindowCoordinator.self) private var appWindow
 
   var body: some View {
+    let choices = runner.choices(surface)
     Menu {
-      let choices = runner.choices(surface)
       if choices.isEmpty {
         Text("No models are ready", comment: "History polish menu: no configured AI model can run.")
       }

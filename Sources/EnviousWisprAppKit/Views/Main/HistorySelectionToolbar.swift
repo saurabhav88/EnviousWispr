@@ -15,6 +15,9 @@ struct HistorySelectionToolbar: View {
 
   var body: some View {
     let count = selection.selectedIDs.count
+    let matching = coordinator.matchingHistoryItems(in: tab)
+    let allSelected = !matching.isEmpty && count >= matching.count
+      && matching.allSatisfy { selection.selectedIDs.contains($0.id) }
     WrappingHStack(spacing: 8) {
       VStack(alignment: .leading, spacing: 2) {
         Text(HistorySelectionCopy.selectedCount(tab: tab, count: count))
@@ -26,15 +29,25 @@ struct HistorySelectionToolbar: View {
           .fixedSize(horizontal: false, vertical: true)
       }
       .accessibilityElement(children: .combine)
-      Button(action: selectAllMatching) {
+      Button {
+        let ids = Set(coordinator.matchingHistoryItems(in: tab).map(\.id))
+        if !ids.isEmpty && ids.isSubset(of: selection.selectedIDs) {
+          selection.deselect(ids)
+        } else {
+          selection.select(ids)
+        }
+      } label: {
         EnviousButtonLabel(
-          LocalizedStringResource(
-            "Select all matching",
-            comment:
-              "History selection: ticks every item in this tab under its search and filters, on every page."
-          ), size: .medium)
+          allSelected
+            ? LocalizedStringResource(
+              "Deselect all matching",
+              comment: "History selection: unticks every item that matches the current search and filters.")
+            : LocalizedStringResource(
+              "Select all matching",
+              comment: "History selection: ticks every item in this tab under its search and filters, on every page."),
+          size: .medium)
       }
-      .settingsButton(.outlined, size: .medium, isEnabled: selection.isDeleting == false)
+      .settingsButton(.outlined, size: .medium, isEnabled: !matching.isEmpty && !selection.isDeleting)
       if HistorySelectionCopy.offersRecordingsOnly(tab) {
         Button(role: .destructive) {
           pendingKind = .recordingsOnly
@@ -92,11 +105,6 @@ struct HistorySelectionToolbar: View {
       // The coordinator owns this sentence (#2087): the global count, hidden rows included.
       Text(coordinator.deleteAllConfirmationMessage)
     }
-  }
-
-  /// Ticks every item the tab matches, from the coordinator's full list, not the drawn page.
-  private func selectAllMatching() {
-    selection.select(Set(coordinator.matchingHistoryItems(in: tab).map(\.id)))
   }
 
   private func delete(_ kind: HistoryDeleteKind) {

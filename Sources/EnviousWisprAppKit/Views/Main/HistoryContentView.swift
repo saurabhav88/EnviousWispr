@@ -12,6 +12,7 @@ struct HistoryContentView: View {
   @Environment(ImportedSources.self) private var importedSources
   @Environment(TranscriptRetranscription.self) private var retranscription
   @Environment(ImportedModelCatalog.self) private var modelCatalog
+  @Environment(HistoryRepolishRunner.self) private var historyRepolish
   @Environment(\.openWindow) private var openWindow
   @Environment(NavigationCoordinator.self) private var navigation
   @Environment(AppWindowCoordinator.self) private var appWindow
@@ -40,21 +41,20 @@ struct HistoryContentView: View {
 
       HistoryDiaryView(
         coordinator: transcriptCoordinator,
-        dictationCard: { rowID in
-          if let row = row(rowID, in: .dictations) {
-            if row.escapeRecoveredAt != nil {
-              // A held Escape Recovery dictation keeps its own Paste, Keep and Delete (#2087):
-              // it has no recording and no polish history for the dictation card to show.
-              VStack(alignment: .leading, spacing: 6) {
-                // The countdown says this text expires unless kept (#2087).
-                EscapeRecoveryBadge(transcript: row)
-                TranscriptDetailView(transcript: row, showPasteNotice: pasteNotice.show)
-              }
-              .id(rowID)
-            } else {
-              HistoryDictationCard(rowID: rowID, showPasteNotice: pasteNotice.show)
-                .id(rowID)
+        dictationCard: { row, query in
+          if row.escapeRecoveredAt != nil {
+            // A held Escape Recovery dictation keeps its own Paste, Keep and Delete (#2087):
+            // it has no recording and no polish history for the dictation card to show.
+            VStack(alignment: .leading, spacing: 6) {
+              // The countdown says this text expires unless kept (#2087).
+              EscapeRecoveryBadge(transcript: row)
+              TranscriptDetailView(transcript: row, showPasteNotice: pasteNotice.show)
             }
+            .id(row.id)
+          } else {
+            HistoryDictationCard(
+              rowID: row.id, query: query, showPasteNotice: pasteNotice.show)
+              .id(row.id)
           }
         },
         transcriptDestination: { rowID, back in
@@ -95,6 +95,7 @@ struct HistoryContentView: View {
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(Color.stPageBg)
+    .task { await historyRepolish.refreshAvailability() }
     .task {
       transcriptCoordinator.loadIfNeeded()
       // #3147 PR3: a file deleted or moved while History was away is seen before Play, and the
@@ -121,11 +122,6 @@ struct HistoryContentView: View {
         pasteNotice.dismiss()
       }
     }
-  }
-
-  /// The listed row `rowID` in `tab`, as the coordinator holds it now.
-  private func row(_ rowID: UUID, in tab: HistoryTab) -> Transcript? {
-    transcriptCoordinator.matchingHistoryItems(in: tab).first { $0.id == .transcript(rowID) }?.row
   }
 
   /// The listed meeting `meetingID`, as the coordinator holds it now.

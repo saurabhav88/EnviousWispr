@@ -10,12 +10,8 @@ import Foundation
 /// Three states, never two: only an empty stored value or `errSecItemNotFound` confirms
 /// absence, every other read failure is unknown, and unknown never becomes "no key".
 ///
-/// **No read of its own.** Every value here is a result some existing path already produced:
-/// the editor's own Keychain reads, saves and clears (`ProviderSetupKeys.load`, `saveKey`,
-/// `clearKey`). A background read here would race those writes through the Keychain's legacy
-/// migration (read the old file, write it to the Keychain, delete the file), and could restore
-/// a key the person had just replaced. So until a path reports, a provider stays unknown,
-/// and unknown shows no warning.
+/// The editor and off-page readers share the credential access lane. A Keychain read can migrate
+/// a legacy key, so reads and writes stay ordered even when the caller only uses presence.
 ///
 /// **Revision.** Moves only when a save or a clear succeeds, or one fails part-way, so a
 /// verdict earned on a key that was then replaced or cleared stops counting
@@ -58,6 +54,25 @@ final class SavedKeyPresence {
   /// The flag shape `PolishSetupFacts` stores: true present, false absent, nil unknown.
   func savedFlag(for provider: LLMProvider) -> Bool? {
     state(for: provider).asSavedFlag
+  }
+
+  /// Populate History's provider choices without opening the credential editor.
+  func readUnknown(using keychain: KeychainManager, access: CredentialAccessLane = .live) async {
+    guard Self.cloudProviders.contains(where: { state(for: $0) == .unknown }) else { return }
+    await access.run {
+      for credential in CredentialProvider.allCases {
+        let provider = credential.llmProvider
+        guard !Task.isCancelled, state(for: provider) == .unknown,
+          !hasPendingMutation(for: provider)
+        else { continue }
+        let revision = revision(for: provider)
+        let readAt = ContinuousClock.now
+        let result = await CredentialIO.perform(.read(credential.keyID), using: keychain)
+        guard self.revision(for: provider) == revision, !hasPendingMutation(for: provider)
+        else { continue }
+        recordRead(.fromRead(result), for: provider, readAt: readAt)
+      }
+    }
   }
 
   func revision(for provider: LLMProvider) -> UInt64? {

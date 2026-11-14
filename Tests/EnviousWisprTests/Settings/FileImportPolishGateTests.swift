@@ -96,6 +96,27 @@ struct FileImportPolishGateTests {
       selectedCloudModel: nil, cloudModelEvidence: [:])
   }
 
+  @Test("History offers every installed EG-1 size regardless of the default size")
+  @MainActor
+  func historyChoicesIncludeInstalledSizes() throws {
+    let world = try Self.sizedWorld()
+    let settings = world.home.settings
+    settings.selectEGOneSize(.mini)
+    world.runtimes.runtime(for: .egOne(.micro))?.applyInstallStateForTesting(.installed(version: "1.0"))
+    let presence = SavedKeyPresence()
+    let choices = HistoryPolishChoices(
+      settings: settings, monitor: PolishSetupMonitorHolder(), runtime: world.runtimes,
+      availability: AIAvailabilityCoordinator(defaults: world.home.defaults), setup: world.home.setup,
+      discovery: LLMModelDiscoveryCoordinator(
+        keychainManager: world.home.keys,
+        cacheDefaults: world.home.defaults, savedKeyPresence: presence,
+        discoverModels: { _, _ in [] }),
+      savedKeys: presence, ollamaRemoteness: { _ in nil })
+    for surface in [HistoryRepolishRunner.Surface.dictation, .transcript, .summary] {
+      #expect(Set(choices.available(for: surface).compactMap(\.egOneSize)) == [.full, .micro])
+    }
+  }
+
   // A user who chose Mini would be told EG-1 is ready from the full size's files, then get no polish.
   @Test("setup facts read the chosen EG-1 size's own install state")
   @MainActor

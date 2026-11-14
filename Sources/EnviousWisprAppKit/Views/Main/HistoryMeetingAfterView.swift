@@ -1,5 +1,6 @@
 import AppKit
 import EnviousWisprCore
+import EnviousWisprPipeline
 import EnviousWisprServices
 import SwiftUI
 import UniformTypeIdentifiers
@@ -73,6 +74,7 @@ struct HistoryMeetingAfterView: View {
 
   // Panes
   @State private var leftPane: P.LeftPane = .notes
+  @State private var transcriptMode: FileImportCoordinator.DocumentView = .cleaned
   @State private var transcriptPolish = HistoryPolishPreview()
   @State private var summaryPolishNotice = false
   @State private var keepingSummary = false
@@ -525,8 +527,10 @@ struct HistoryMeetingAfterView: View {
   /// Copy, Share and Save as…, each reading the CURRENT row when it acts.
   @ViewBuilder
   private func deliveryButtons(title: String, canDeliver: Bool) -> some View {
+    let labels = TranscriptDocumentPresenter.exportButtonLabels(mode: transcriptMode)
     let copy = TranscribeFileExport.copyButtonPresentation(
-      label: String(localized: "Copy", comment: "EnviousMeet: copies the visible transcript."),
+      label: transcriptMode == .markedUp
+        ? labels.copy : String(localized: "Copy", comment: "EnviousMeet: copies the visible transcript."),
       copiedAt: copiedAt, now: Date(), holdSeconds: TranscribeFileExport.copiedHoldSeconds)
       Button {
         // Read at the press from the live row, never this view's snapshot.
@@ -550,7 +554,8 @@ struct HistoryMeetingAfterView: View {
         preview: SharePreview(title)
       ) {
         EnviousButtonLabel(
-          LocalizedStringResource("Share", comment: "EnviousMeet: shares the visible transcript."),
+        verbatim: transcriptMode == .markedUp
+          ? labels.share : String(localized: "Share", comment: "EnviousMeet: shares the visible transcript."),
           size: .medium, systemImage: "square.and.arrow.up")
       }
       .settingsButton(.quiet, size: .medium, isEnabled: canDeliver)
@@ -559,8 +564,9 @@ struct HistoryMeetingAfterView: View {
         save(defaultName: title)
       } label: {
         EnviousButtonLabel(
-          LocalizedStringResource(
-            "Save as…", comment: "History meeting: saves the transcript and notes as a text file."),
+        verbatim: transcriptMode == .markedUp
+          ? labels.save
+          : String(localized: "Save as…", comment: "History meeting: saves the transcript and notes as a text file."),
           size: .medium, systemImage: "square.and.arrow.down")
       }
       .settingsButton(.quiet, size: .medium, isEnabled: canDeliver)
@@ -758,8 +764,11 @@ struct HistoryMeetingAfterView: View {
   // MARK: - Commands
 
   /// The visible words of the CURRENT row, read at delivery (Copy press, Share request, Paste).
-  private func deliveryText() -> String? {
-    deliveryRow().flatMap(transcripts.textForDelivery)
+  private func deliveryText(mode: FileImportCoordinator.DocumentView? = nil) -> String? {
+    guard let row = deliveryRow() else { return nil }
+    return MeetingHistoryPresentation.deliveryText(
+      row, projection: transcripts.meetingProjection(of: row), timesOn: false,
+      mode: mode ?? transcriptMode)
   }
 
   /// The row whose words are delivered now: the committed row of a meeting EnviousMeet holds
@@ -830,7 +839,7 @@ struct HistoryMeetingAfterView: View {
     historyPaste.paste(
       destination: previousApplication.lastOtherApplication,
       allowed: { true },
-      text: { deliveryText() },
+      text: { deliveryText(mode: .cleaned) },
       showHistory: { restorePasteSurface() },
       showNotice: { showPasteNotice($0) })
   }
@@ -846,7 +855,7 @@ struct HistoryMeetingAfterView: View {
     Task {
       switch await MeetingExport.document(
         meetingID: meetingID, rowID: rowID, documents: meetings.documents,
-        transcripts: transcripts)
+        transcripts: transcripts, mode: transcriptMode)
       {
       case .document(let document):
         do {
@@ -1227,7 +1236,8 @@ extension HistoryMeetingAfterView {
             renameSuggestions: SpeakerRenameSuggestions(
               row: row, roster: rosterRead?.roster(for: rosterKey(record))),
             highlightedTurnID: highlightedTurnID,
-            activeTurnID: follow == .off ? nil : activeTurnID
+            activeTurnID: follow == .off ? nil : activeTurnID,
+            language: row.language, mode: transcriptMode
           )
           .equatable()
         case .everythingHidden:
@@ -1315,6 +1325,7 @@ extension HistoryMeetingAfterView {
 
   fileprivate func transcriptToolbar(_ row: Transcript) -> some View {
     WrappingHStack(spacing: DesignSpacing.lg) {
+      transcriptVersionPicker(row)
       // #3973 C2: the shown row's own generation decides.
       if transcripts.meetingHasProbableEcho(row) {
         Toggle(
@@ -1360,6 +1371,19 @@ extension HistoryMeetingAfterView {
           .settingsButton(.quiet, size: .medium, isEnabled: true)
         }
       }
+    }
+  }
+
+  @ViewBuilder private func transcriptVersionPicker(_ row: Transcript) -> some View {
+    if row.turns?.contains(where: { $0.processedText != nil }) == true {
+      BrandedSegmentedPicker(
+        options: [
+          (HistoryTranscriptView.modeLabel(.cleaned, polished: row.polishedText != nil), nil,
+            FileImportCoordinator.DocumentView.cleaned),
+          (HistoryTranscriptView.modeLabel(.markedUp), nil, .markedUp),
+          (HistoryTranscriptView.modeLabel(.original), nil, .original),
+        ], selection: $transcriptMode)
+        .fixedSize()
     }
   }
 
@@ -1445,11 +1469,13 @@ extension HistoryMeetingAfterView {
         Group {
           switch projection {
           case .visible(let turns, _):
+            transcriptVersionPicker(row)
             MeetingAfterTurnList(
               rowID: row.id, turns: turns, rawText: row.text,
               speakerNames: row.speakerNames ?? [:], player: nil,
               renameSuggestions: SpeakerRenameSuggestions(row: row, roster: nil),
-              highlightedTurnID: nil, activeTurnID: nil
+              highlightedTurnID: nil, activeTurnID: nil,
+              language: row.language, mode: transcriptMode
             )
             .equatable()
           case .everythingHidden:
@@ -1486,10 +1512,14 @@ struct MeetingAfterTurnList: View, Equatable {
   let renameSuggestions: SpeakerRenameSuggestions
   let highlightedTurnID: String?
   let activeTurnID: String?
+  var language: String? = nil
+  var mode: FileImportCoordinator.DocumentView = .cleaned
   @Environment(TranscriptCoordinator.self) private var transcripts
+  @State private var diffCache: (FileImportCoordinator.TurnDiffInput, [String: WordDiff.Result])?
 
   nonisolated static func == (a: MeetingAfterTurnList, b: MeetingAfterTurnList) -> Bool {
     a.rowID == b.rowID && a.player === b.player && a.renameSuggestions == b.renameSuggestions
+      && a.mode == b.mode && a.language == b.language
       && a.highlightedTurnID == b.highlightedTurnID && a.activeTurnID == b.activeTurnID
       && MeetingDocumentHash.sameBytes(a.rawText, b.rawText)
       && MeetingDocumentHash.sameBytes(a.speakerNames, b.speakerNames)
@@ -1497,10 +1527,17 @@ struct MeetingAfterTurnList: View, Equatable {
   }
 
   var body: some View {
+    let input = mode == .markedUp
+      ? TranscriptTurnsDocument.diffInput(turns: turns, text: rawText, language: language) : nil
+    let diffs = input.flatMap { input in
+      diffCache.flatMap { cached in
+        TranscriptTurnsDocument.DiffKey.sameInput(input, cached.0) ? cached.1 : nil
+      }
+    }
     let rendered = MeetingGapPresentation.localized(
       TranscriptDocumentPresenter.render(
         turns: turns, rawText: rawText, speakerNames: speakerNames,
-        mode: .cleaned, timesOn: true, documentFinished: true, diffLookup: { _ in nil })) ?? []
+        mode: mode, timesOn: true, documentFinished: true, diffLookup: { diffs?[$0.id] })) ?? []
     LazyVStack(alignment: .leading, spacing: DesignSpacing.md) {
       ForEach(TurnRowKey.keyed(rendered), id: \.key) { key, turn in
         TurnDocumentView(
@@ -1525,6 +1562,12 @@ struct MeetingAfterTurnList: View, Equatable {
         )
         .id(key)
       }
+    }
+    .task(id: TranscriptTurnsDocument.DiffKey(input: input, markedUp: mode == .markedUp)) {
+      guard let input, diffs == nil else { return }
+      let computed = await TranscriptTurnsDocument.computeDiffs(input)
+      guard !Task.isCancelled else { return }
+      diffCache = (input, computed)
     }
   }
 

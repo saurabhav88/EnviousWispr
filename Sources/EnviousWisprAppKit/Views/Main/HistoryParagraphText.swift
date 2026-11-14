@@ -1,6 +1,10 @@
 import EnviousWisprCore
 import SwiftUI
 
+extension EnvironmentValues {
+  @Entry var historyHighlightQuery = ""
+}
+
 /// A dictation card's text as blocks with a reserved time gutter (#3147 §3.4). Each block is one
 /// line of the shown text. When the recording and its passage times exist, a block whose passage
 /// was heard shows a small "▶ 0:07" button in the gutter; the gutter's width is always reserved,
@@ -25,6 +29,7 @@ struct HistoryParagraphText: View {
   }
 
   let blocks: [Block]
+  var query = ""
   /// The recording and its passage times exist: reserve the gutter.
   let hasGutter: Bool
   /// Hover or focus in the card: show the gutter's buttons.
@@ -95,12 +100,14 @@ struct HistoryParagraphText: View {
   private func text(for block: Block) -> some View {
     switch block.content {
     case .plain(let text):
-      Text(verbatim: text)
+      Self.searchText(text, query: query)
         .font(.stBody)
         .foregroundStyle(.stTextPrimary)
         .textSelection(.enabled)
     case .markedUp(let runs):
-      Text(Self.attributed(runs))
+      let styled = Self.attributed(runs)
+      Text(query.isEmpty ? styled : Self.highlighting(
+        styled, in: runs.map(\.text).joined(), query: query, markedUp: true))
         .font(.stBody)
         .textSelection(.enabled)
         .accessibilityRepresentation {
@@ -116,6 +123,36 @@ struct HistoryParagraphText: View {
 
   // MARK: - Pure helpers (read by tests)
 
+  static func searchText(_ source: String, query: String) -> Text {
+    query.isEmpty
+      ? Text(verbatim: source)
+      : Text(highlighting(AttributedString(source), in: source, query: query))
+  }
+
+  static func highlighting(
+    _ styled: AttributedString, in source: String, query: String, markedUp: Bool = false
+  ) -> AttributedString {
+    guard !query.isEmpty else { return styled }
+    var result = styled
+    var start = source.startIndex
+    while start < source.endIndex,
+      let match = source.range(of: query, options: .caseInsensitive,
+        range: start..<source.endIndex, locale: .current), !match.isEmpty
+    {
+      let composed = (source as NSString).rangeOfComposedCharacterSequences(for: NSRange(match, in: source))
+      if let characters = Range(composed, in: source), let range = Range(characters, in: result) {
+        if markedUp {
+          // Keep the edit colors and links legible while marking the search hit.
+          result[range].underlineStyle = Text.LineStyle(pattern: .solid, color: .stAccent)
+        } else {
+          result[range].backgroundColor = Color.stAccent.opacity(0.32)
+        }
+      }
+      start = match.upperBound
+    }
+    return result
+  }
+
   static func changeURL(_ index: Int) -> URL? {
     URL(string: "\(changeScheme):\(index)")
   }
@@ -125,7 +162,9 @@ struct HistoryParagraphText: View {
     return Int(url.absoluteString.dropFirst(changeScheme.count + 1))
   }
 
-  static func attributed(_ runs: [HistoryDictationPresentation.MarkRun]) -> AttributedString {
+  static func attributed(
+    _ runs: [HistoryDictationPresentation.MarkRun], linksChanges: Bool = true
+  ) -> AttributedString {
     var out = AttributedString()
     for run in runs {
       var piece = AttributedString(run.text)
@@ -140,7 +179,7 @@ struct HistoryParagraphText: View {
         piece.backgroundColor = MarkUpPalette.changedBackground
         piece.inlinePresentationIntent = MarkUpPalette.changedIntent
       }
-      if let change = run.change, let url = changeURL(change) {
+      if linksChanges, let change = run.change, let url = changeURL(change) {
         piece.link = url
       }
       out.append(piece)

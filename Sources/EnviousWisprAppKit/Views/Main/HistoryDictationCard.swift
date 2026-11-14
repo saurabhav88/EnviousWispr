@@ -24,11 +24,13 @@ import SwiftUI
 /// (`HistoryDiffCache`); a result is shown only for the texts it was computed from.
 struct HistoryDictationCard: View {
   let rowID: UUID
+  let query: String
   /// #4101: why a History Paste did not happen; the History page holds the notice.
   let showPasteNotice: (String) -> Void
 
-  init(rowID: UUID, showPasteNotice: @escaping (String) -> Void) {
+  init(rowID: UUID, query: String, showPasteNotice: @escaping (String) -> Void) {
     self.rowID = rowID
+    self.query = query
     self.showPasteNotice = showPasteNotice
   }
 
@@ -107,6 +109,7 @@ struct HistoryDictationCard: View {
       if editsOn, current?.hasChanges == true { viewSwitch }
       HistoryParagraphText(
         blocks: blocks(row: row, texts: texts, prepared: current),
+        query: query,
         hasGutter: player != nil && !timeline.isEmpty, revealGutter: revealGutter,
         reduceMotion: reduceMotion,
         focus: $focus,
@@ -246,6 +249,7 @@ struct HistoryDictationCard: View {
           })
       )
       .fixedSize()
+      .accessibilityElement(children: .contain)
       .accessibilityLabel(
         Text(
           "Which words to show",
@@ -398,37 +402,53 @@ struct HistoryDictationCard: View {
   }
 
   private func actions(row: Transcript, hasChanges: Bool) -> some View {
-    HStack(spacing: DesignSpacing.md) {
+    ViewThatFits(in: .horizontal) {
       HStack(spacing: DesignSpacing.md) {
-        pasteButton(row)
-        ShareLink(
-          item: DeliverableText(resolve: { exportText }),
-          preview: SharePreview(Self.dictationWord)
-        ) {
-          EnviousButtonLabel(
-            LocalizedStringResource("Share", comment: "History dictation card: shares the text."),
-            size: .medium, systemImage: "square.and.arrow.up")
-        }
-        .settingsButton(.quiet, size: .medium, isEnabled: true)
-        .focused($focus, equals: .control("share"))
-        Button {
-          saveDocument()
-        } label: {
-          EnviousButtonLabel(
-            LocalizedStringResource(
-              "Save as…", comment: "Export button: save the transcript to a file."),
-            size: .medium, systemImage: "square.and.arrow.down")
-        }
-        .settingsButton(.quiet, size: .medium, isEnabled: true)
-        .focused($focus, equals: .control("save"))
+        deliveryButtons(row)
+        Spacer(minLength: 0)
+        primaryButtons(row, hasChanges: hasChanges)
       }
-      // Shown on hover and on keyboard focus anywhere in the card, as the mock places them.
-      // The state changes without the fade under Reduce Motion.
-      .opacity(revealGutter ? 1 : 0)
-      .animation(reduceMotion ? nil : SettingsHover.animation, value: revealGutter)
+      WrappingHStack(spacing: DesignSpacing.md) {
+        deliveryButtons(row)
+        primaryButtons(row, hasChanges: hasChanges)
+      }
+    }
+  }
 
-      Spacer(minLength: 0)
+  private func deliveryButtons(_ row: Transcript) -> some View {
+    Group {
+      pasteButton(row)
+      ShareLink(
+        item: DeliverableText(resolve: { exportText }),
+        preview: SharePreview(Self.dictationWord)
+      ) {
+        EnviousButtonLabel(
+          LocalizedStringResource("Share", comment: "History dictation card: shares the text."),
+          size: .medium, systemImage: "square.and.arrow.up")
+      }
+      .settingsButton(.quiet, size: .medium, isEnabled: true)
+      .focused($focus, equals: .control("share"))
+      Button {
+        saveDocument()
+      } label: {
+        EnviousButtonLabel(
+          LocalizedStringResource(
+            "Save as…", comment: "Export button: save the transcript to a file."),
+          size: .medium, systemImage: "square.and.arrow.down")
+      }
+      .settingsButton(.quiet, size: .medium, isEnabled: true)
+      .focused($focus, equals: .control("save"))
+    }
+    // Keep each capsule at its natural size so the footer wraps whole buttons.
+    .fixedSize()
+    // Shown on hover and on keyboard focus anywhere in the card, as the mock places them.
+    // The state changes without the fade under Reduce Motion.
+    .opacity(revealGutter ? 1 : 0)
+    .animation(reduceMotion ? nil : SettingsHover.animation, value: revealGutter)
+  }
 
+  private func primaryButtons(_ row: Transcript, hasChanges: Bool) -> some View {
+    Group {
       if hasChanges {
         Button {
           editsOn.toggle()
@@ -463,6 +483,7 @@ struct HistoryDictationCard: View {
 
       moreMenu(row)
     }
+    .fixedSize()
   }
 
   private func pasteButton(_ row: Transcript) -> some View {

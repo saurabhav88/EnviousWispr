@@ -52,7 +52,8 @@ struct MeetingSummaryView: View {
     // From the current setting, whatever any attempt did (R39): no provider, or one that
     // cannot summarize, is explained with the way to fix it.
     let configurationProblem = summaries?.configurationProblem()
-    let previewChoice = summaries?.defaultPreviewChoice(in: historyRepolish.choices(.summary))
+    let previewChoice = summaries?.defaultPreviewChoice(
+      in: historyRepolish.choices(.summary), egOneSize: settings.preferredEGOneSize)
     // #4148: a ready meeting with no summary and no visible transcript text has nothing a
     // model could summarize; say so instead of any attempt's progress or problem. Only once its
     // documents are read: before that (or after a failed read) the summary is unknown, and

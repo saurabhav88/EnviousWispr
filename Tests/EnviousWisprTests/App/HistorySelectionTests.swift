@@ -301,5 +301,9 @@ struct HistorySelectionTests {
     let all = HistorySelection()
     all.select(Set(matching.map(\.id)))
     #expect(all.selectedIDs.count == 75)
+    let other = HistoryItemID.transcript(UUID())
+    all.select([other])
+    all.deselect(Set(matching.map(\.id)))
+    #expect(all.selectedIDs == [other])
   }
 }

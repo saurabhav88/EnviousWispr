@@ -75,6 +75,14 @@ final class HistorySelection {
     lastDeletion = nil
   }
 
+  /// Unticks matching items while preserving any other items still selected for retry.
+  func deselect(_ ids: Set<HistoryItemID>) {
+    selectedIDs.subtract(ids)
+    for id in ids { retryKinds[id] = nil }
+    if let anchorID, ids.contains(anchorID) { self.anchorID = nil }
+    lastDeletion = nil
+  }
+
   /// Unticks everything.
   func clear() {
     selectedIDs = []

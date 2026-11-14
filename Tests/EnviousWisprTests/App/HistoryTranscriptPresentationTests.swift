@@ -306,6 +306,18 @@ struct HistoryTranscriptPresentationTests {
 
   // MARK: - Card lookup
 
+  @Test("a transcript without saved turns exports its selected version")
+  func flatVersionExport() async throws {
+    try await withCoordinator { coordinator in
+      let row = Transcript(text: "raw words", polishedText: "Polished words.", importedFileName: "file.m4a")
+      try await coordinator.saveAndShow(row)
+      #expect(HistoryTranscriptExport.text(
+        rowID: row.id, coordinator: coordinator, mode: .original, timesOn: true) == row.text)
+      #expect(HistoryTranscriptExport.text(
+        rowID: row.id, coordinator: coordinator, mode: .markedUp, timesOn: true) == row.displayText)
+    }
+  }
+
   @Test("the card looks up the original when it appears and again when the owner bumps the row")
   func cardLookup() async throws {
     try await withCoordinator { coordinator in

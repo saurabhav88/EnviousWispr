@@ -145,13 +145,18 @@ struct TranscriptTurnsDocument: View, Equatable {
   /// second) — the wizard and History prepare the same per-turn diff shape from different
   /// live/persisted sources.
   private var turnDiffInput: FileImportCoordinator.TurnDiffInput {
-    let text = inputs.text
-    let pairs = inputs.turns.map { turn -> FileImportCoordinator.TurnDiffPair in
+    Self.diffInput(turns: inputs.turns, text: inputs.text, language: inputs.language)
+  }
+
+  static func diffInput(
+    turns: [Turn], text: String, language: String?
+  ) -> FileImportCoordinator.TurnDiffInput {
+    let pairs = turns.map { turn -> FileImportCoordinator.TurnDiffPair in
       let original = TranscriptDocumentPresenter.slice(text, turn.originalTextRange)
       return FileImportCoordinator.TurnDiffPair(
         id: turn.id, original: original, cleaned: turn.processedText ?? original)
     }
-    return FileImportCoordinator.TurnDiffInput(pairs: pairs, language: inputs.language)
+    return FileImportCoordinator.TurnDiffInput(pairs: pairs, language: language)
   }
 
   /// `nil` while `prepareTurnDiffs` is still running or the input has moved — same
@@ -182,6 +187,14 @@ struct TranscriptTurnsDocument: View, Equatable {
   private func prepareTurnDiffs() async {
     let input = turnDiffInput
     guard turnDiffs == nil, !input.pairs.isEmpty else { return }
+    let computed = await Self.computeDiffs(input)
+    guard !Task.isCancelled, DiffKey.sameInput(turnDiffInput, input) else { return }
+    turnDiffCache = (input, computed)
+  }
+
+  static func computeDiffs(_ input: FileImportCoordinator.TurnDiffInput) async
+    -> [String: WordDiff.Result]
+  {
     let worker = Task.detached(priority: .userInitiated) {
       var results: [String: WordDiff.Result] = [:]
       for pair in input.pairs {
@@ -195,11 +208,9 @@ struct TranscriptTurnsDocument: View, Equatable {
       }
       return results
     }
-    let computed = await withTaskCancellationHandler(
+    return await withTaskCancellationHandler(
       operation: { await worker.value },
       onCancel: { worker.cancel() }
     )
-    guard !Task.isCancelled, DiffKey.sameInput(turnDiffInput, input) else { return }
-    turnDiffCache = (input, computed)
   }
 }
