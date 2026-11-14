@@ -42,6 +42,13 @@ extension Tag {
   /// reported SKIPPED on the hosted runner, which has no audio input device. **A skipped receipt is not a
   /// passed receipt** — the release gate reads the dev-machine run.
   @Tag static var realBoundary: Self
+
+  /// Applied IN ADDITION to `.realBoundary` on a suite that needs no live audio device: it reads
+  /// committed files and runs models and the GPU, and never opens a microphone, speaker or other audio
+  /// device. Such a suite may run on a backup Mac whose audio is not real. Keep the tag and the suite's
+  /// entry in `scripts/real-boundary-audio-free.json` together; `TestInventoryFreezeTests` fails when
+  /// they differ. If an edit makes the suite open an audio device, remove both.
+  @Tag static var audioDeviceFree: Self
 }
 
 extension Trait where Self == ConditionTrait {
