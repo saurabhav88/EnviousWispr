@@ -303,43 +303,26 @@ extension OnboardingDownloadOwners {
   /// are.
   static func live(
     settings: SettingsManager, modelDelivery: ModelDeliveryHome, whisperSetup: WhisperSetupService,
-    localPolish: LocalPolishRuntimeSet, parakeetAdmission: OnboardingParakeetAdmission
+    speechModels: SpeechModelLibrary, localPolish: LocalPolishRuntimeSet,
+    parakeetAdmission: OnboardingParakeetAdmission
   ) -> OnboardingDownloadOwners {
     OnboardingDownloadOwners(
-      speechDeliveryEnabled: { engine in
-        switch engine {
-        case .parakeet: modelDelivery.parakeetHandle?.isEnabled() ?? false
-        case .whisper: modelDelivery.whisperHandle?.isEnabled() ?? false
-        }
-      },
+      speechDeliveryEnabled: { engine in speechModels.isDeliveryEnabled(engine) },
       speechInstalled: { engine in
-        switch engine {
-        case .parakeet: return await parakeetAdmission.read(modelDelivery)
-        case .whisper: return await modelDelivery.whisperHandle?.isAdmitted() ?? false
-        }
+        await speechModels.isInstalledForSetup(engine, parakeetAdmission: parakeetAdmission)
       },
       writeSelectedBackend: { engine in
         if settings.selectedBackend != engine { settings.selectedBackend = engine }
       },
       selectedBackend: { settings.selectedBackend },
       requestSpeech: { engine in
-        switch engine {
-        case .parakeet:
-          guard let attempt = modelDelivery.resumeParakeetDownload() else { return .refused }
-          switch await attempt.value {
-          case .refused: return .refused
-          case .attempted(let outcome): return .ended(OnboardingDownloads.result(of: outcome))
-          }
-        case .whisper:
-          return await whisperSetup.downloadModel().value ? .accepted : .refused
+        switch await speechModels.requestDownload(engine) {
+        case .refused: return .refused
+        case .accepted: return .accepted
+        case .ended(let outcome): return .ended(OnboardingDownloads.result(of: outcome))
         }
       },
-      cancelSpeech: { engine in
-        switch engine {
-        case .parakeet: modelDelivery.cancelParakeetDownload()
-        case .whisper: whisperSetup.cancelDownload()
-        }
-      },
+      cancelSpeech: { engine in speechModels.cancelDownload(engine) },
       clearSpeechBlock: { engine in
         engine == .parakeet ? modelDelivery.retryParakeetUpgradeIfBlocked() : true
       },

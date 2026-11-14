@@ -1137,7 +1137,7 @@ import EnviousWisprAppKitTestSupport
       text: "await captured.unload()", classification: .structurallySafe),
     // `unloadModel()`'s unload — reached ONLY via the user-facing Remove
     // command (`WhisperSetupService.removeModel()` -> `removeModelAction`
-    // -> #3735 `WhisperDeliveryWiring`'s Remove action -> `WhisperRemovalHook.unloadForRemoval`
+    // -> #4578 `SpeechModelLibrary.removeWhisperModel()` -> `WhisperRemovalHook.unloadForRemoval`
     // closure -> `KernelDictationDriver.unloadEngine()` -> here; #3849 renamed both functions),
     // which is entirely inside `removeModel()`'s own "whisperKitRemove"
     // claim closure (verified end-to-end; this is NOT the same as the two
@@ -1434,7 +1434,7 @@ import EnviousWisprAppKitTestSupport
     // the remaining links in the ALREADY-verified "whisperKitRemove" claim chain
     // this file's existing `WhisperEngineAdapter.swift` `unloadModel` entry
     // documents end-to-end (`WhisperSetupService.removeModel()` -> #3735
-    // `WhisperDeliveryWiring`'s Remove action -> `WhisperRemovalHook.unloadForRemoval`
+    // `SpeechModelLibrary.removeWhisperModel()` (#4578) -> `WhisperRemovalHook.unloadForRemoval`
     // closure -> `KernelDictationDriver.unloadEngine()` -> the
     // already-counted adapter entry). Each is one more layer of that same
     // verified chain, not a new one. (#3735 deleted the retired WhisperKit legacy
@@ -1460,9 +1460,12 @@ import EnviousWisprAppKitTestSupport
       classification: .transitivelyCoveredByCaller),
     // The closure WIRING itself — a property assignment, not a call; safety
     // inherited from wherever it is actually invoked (the same chain above).
+    // #4578: the Remove action moved from `WhisperDeliveryWiring` to
+    // `SpeechModelLibrary.removeWhisperModel()`, still the `removeModelAction` the
+    // "whisperKitRemove" claim closure awaits.
     CallSite(
-      file: "Sources/EnviousWisprAppKit/App/WhisperDeliveryWiring.swift",
-      matcher: "unloadForRemoval", text: "await removal.unloadForRemoval()",
+      file: "Sources/EnviousWisprAppKit/App/SpeechModelLibrary.swift",
+      matcher: "unloadForRemoval", text: "await whisper.removal.unloadForRemoval()",
       classification: .transitivelyCoveredByCaller),
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/WisprBootstrapper.swift", matcher: "unloadForRemoval",

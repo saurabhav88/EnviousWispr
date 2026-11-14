@@ -93,6 +93,8 @@ package final class WisprBootstrapper {
   let backendMetadata: BackendMetadata
   /// #1171 — the sole owner of ASR-engine selection, status, and switching.
   let engineCoordinator: EngineCoordinator
+  /// #4578: the one owner of the speech engine models on this Mac (report, install, remove).
+  let speechModels: SpeechModelLibrary
   let dictationRuntime: DictationRuntime
   let hotkeyService: HotkeyService
   let appWindowCoordinator: AppWindowCoordinator
@@ -508,8 +510,14 @@ package final class WisprBootstrapper {
     // can be constructed with BOTH backend references before the Parakeet
     // driver below. No circular dependency: `WhisperDeliveryWiring.make`'s
     // inputs are already in scope. #3735: the backend is transcribe.cpp.
+    // #4578: the one speech-model owner. Built before the Whisper wiring, whose Remove is this
+    // library's command; the Whisper parts it drives are attached right after they exist.
+    let speechModels = SpeechModelLibrary(modelDelivery: modelDelivery)
     let whisper = WhisperDeliveryWiring.make(
-      modelDelivery: modelDelivery, settings: settings, engineMutationScope: engineMutationScope)
+      modelDelivery: modelDelivery, settings: settings, engineMutationScope: engineMutationScope,
+      removeModel: SpeechModelLibrary.whisperRemoveAction(speechModels))
+    speechModels.attachWhisper(
+      .init(setupService: whisper.setupService, migration: whisper.migration, removal: whisper.removal))
     let whisperBackend = whisper.backend
     // #3973 C3: EnviousMeet's own Whisper Large v3 Turbo (used only while dictation runs
     // Parakeet). One instance for the process; loaded for one engine operation at a time.
@@ -2629,6 +2637,7 @@ package final class WisprBootstrapper {
     }
     let setupOwners = OnboardingLiveOwners(
       settings: settings, modelDelivery: modelDelivery, whisperSetup: setup.whisperSetup,
+      speechModels: speechModels,
       localPolish: localPolishRuntimes, engineCoordinator: engineCoordinator,
       aiAvailability: aiAvailability, llmDiscovery: llmDiscovery,
       savedKeyPresence: savedKeyPresence, permissions: permissions,
@@ -3386,6 +3395,7 @@ package final class WisprBootstrapper {
     self.lastRecordingResult = lastRecordingResult
     self.backendMetadata = backendMetadata
     self.engineCoordinator = engineCoordinator
+    self.speechModels = speechModels
     self.dictationRuntime = dictationRuntime
     self.hotkeyService = hotkeyService
     self.appWindowCoordinator = appWindowCoordinator

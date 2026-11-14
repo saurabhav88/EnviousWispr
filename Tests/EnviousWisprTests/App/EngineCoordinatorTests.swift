@@ -410,7 +410,8 @@ struct EngineCoordinatorTests {
       defaults: try #require(TestDefaults.suite("ew-3849-settings-\(UUID().uuidString)")))
     settings.selectedBackend = selected
     let wired = WhisperDeliveryWiring.make(
-      modelDelivery: home, settings: settings, engineMutationScope: .alwaysAllowedForTesting)
+      modelDelivery: home, settings: settings, engineMutationScope: .alwaysAllowedForTesting,
+      removeModel: { .failed })
     #expect(await wired.backend.isParkedForTesting == (selected != .whisper))
   }
 

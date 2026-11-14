@@ -88,7 +88,8 @@ struct WhisperProductionWiringRealBoundaryTests {
       defaults: try #require(TestDefaults.suite("ew-3735-wiring-\(UUID().uuidString)")))
     settings.selectedBackend = .whisper
     let wired = WhisperDeliveryWiring.make(
-      modelDelivery: home, settings: settings, engineMutationScope: .alwaysAllowedForTesting)
+      modelDelivery: home, settings: settings, engineMutationScope: .alwaysAllowedForTesting,
+      removeModel: { .failed })
     // The controller's own admission: size and sha256 against the shipped manifest.
     #expect(await home.whisperHandle?.adoptIfPresent() == true)
 
@@ -171,7 +172,8 @@ struct WhisperProductionWiringRealBoundaryTests {
     // The wiring parks Whisper unless it is the stored selection (#3849).
     settings.selectedBackend = .whisper
     let wired = WhisperDeliveryWiring.make(
-      modelDelivery: home, settings: settings, engineMutationScope: .alwaysAllowedForTesting)
+      modelDelivery: home, settings: settings, engineMutationScope: .alwaysAllowedForTesting,
+      removeModel: { .failed })
     #expect(await home.whisperHandle?.adoptIfPresent() == true)
     let adapter = try #require(
       KernelAdapterFactory.makeWhisperAdapter(

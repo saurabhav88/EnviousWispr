@@ -91,19 +91,16 @@ extension OnboardingReadinessSources {
   /// The production sources over the engine, delivery and local polish owners. The three
   /// explicit inputs come from their owners in the coordinator.
   static func live(
-    modelDelivery: ModelDeliveryHome, engineCoordinator: EngineCoordinator,
+    speechModels: SpeechModelLibrary, engineCoordinator: EngineCoordinator,
     localPolish: LocalPolishRuntimeSet, parakeetAdmission: OnboardingParakeetAdmission,
     appleIntelligence: @escaping () -> AppleIntelligenceSetupState,
     cloudEvidence: @escaping (LLMProvider) -> OnboardingCloudEvidence?,
     permissions: @escaping () -> (microphone: Bool, accessibility: Bool)
   ) -> OnboardingReadinessSources {
     OnboardingReadinessSources(
+      // The same owner read, recorded for Setup's synchronous phase (P1).
       speechAdmitted: { engine in
-        switch engine {
-        // The same owner read, recorded for Setup's synchronous phase (P1).
-        case .parakeet: return await parakeetAdmission.read(modelDelivery)
-        case .whisper: return await modelDelivery.whisperHandle?.isAdmitted() ?? false
-        }
+        await speechModels.isInstalledForSetup(engine, parakeetAdmission: parakeetAdmission)
       },
       engine: {
         let status = engineCoordinator.status

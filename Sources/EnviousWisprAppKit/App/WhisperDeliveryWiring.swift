@@ -32,7 +32,8 @@ enum WhisperDeliveryWiring {
   static func make(
     modelDelivery: ModelDeliveryHome,
     settings: SettingsManager,
-    engineMutationScope: EngineMutationScope
+    engineMutationScope: EngineMutationScope,
+    removeModel: @escaping @MainActor () async -> WhisperRemoveNotice?
   ) -> Wired {
     let handle = modelDelivery.whisperHandle
     let registration = modelDelivery.whisperRegistration
@@ -164,17 +165,9 @@ enum WhisperDeliveryWiring {
         await handle.cancelActiveFetch()
         return true
       },
-      // Remove: record the decline, stop any fetch, unload the engine, then delete. The
-      // dictation-in-flight refusal already happened in the presentation layer.
-      removeModelAction: { [weak handle, weak migration, removal] in
-        guard let handle, let migration else { return .failed }
-        guard migration.decline(.dictation) == .done else { return .failed }
-        await handle.cancelActiveFetch()
-        await removal.unloadForRemoval()
-        let removed = await handle.remove()
-        await removal.finishRemoval()
-        return removed ? nil : .failed
-      })
+      // #4578: Remove is `SpeechModelLibrary.removeWhisperModel()` (record the decline, stop
+      // any fetch, unload the engine, then delete).
+      removeModelAction: removeModel)
 
     // One delivery-state stream projected onto the setup states the Settings row already
     // renders (D6: one stream, two renderers).
