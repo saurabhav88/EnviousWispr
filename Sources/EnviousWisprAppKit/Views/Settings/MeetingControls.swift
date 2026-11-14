@@ -56,7 +56,10 @@ struct MeetingCallSoundExplainer: View {
 /// The recording as it happens: elapsed time, Stop, a level meter per track and the
 /// call-sound line. Shown in History's live meeting.
 struct MeetingLivePanel: View {
+  let meetingID: UUID
   let startedAt: Date
+  let callApp: CallAppFamily?
+  let microphoneAvailable: Bool
   @Environment(MeetingCoordinator.self) private var meetings
   @Environment(PermissionsService.self) private var permissions
   /// #4069: its host (`HistoryMeetingAfterView`) already reads this home.
@@ -73,9 +76,8 @@ struct MeetingLivePanel: View {
           .accessibilityHidden(true)
         TimelineView(.periodic(from: startedAt, by: 1)) { context in
           let elapsed = MeetingsPresentation.elapsed(from: startedAt, to: context.date)
-          Text(elapsed)
-            .font(.system(.title2, design: .rounded).monospacedDigit())
-            .foregroundStyle(.stTextPrimary)
+          Text("Recording · \(elapsed)", comment: "Meeting recording status with elapsed time.")
+            .font(.stRowLabel.monospacedDigit())
             .accessibilityLabel(
               Text(
                 "Recording for \(elapsed)",
@@ -83,7 +85,10 @@ struct MeetingLivePanel: View {
         }
         Spacer()
         Button(role: .destructive) {
-          Task { await meetings.stop(reason: .user) }
+          Task {
+            guard case .recording(let id, _) = meetings.phase, id == meetingID else { return }
+            await meetings.stop(reason: .user)
+          }
         } label: {
           EnviousButtonLabel(
             LocalizedStringResource(
@@ -95,6 +100,11 @@ struct MeetingLivePanel: View {
         .settingsButton(size: .medium, isEnabled: true)
         .accessibilityIdentifier("meetings.stop")
       }
+      if let callApp {
+        Text(verbatim: callApp.displayName)
+          .font(.stHelper)
+          .foregroundStyle(.stTextSecondary)
+      }
       meters
       // #4248: static text in reading order, right under the "You" meter it explains.
       if let line = MeetingsPresentation.muteLine(meetings.muteState, callApp: meetings.muteCallApp)
@@ -104,6 +114,20 @@ struct MeetingLivePanel: View {
           .foregroundStyle(.stTextSecondary)
           .fixedSize(horizontal: false, vertical: true)
           .accessibilityIdentifier("meetings.muteLine")
+      }
+      if !microphoneAvailable {
+        Label("Microphone unavailable", systemImage: "mic.slash")
+          .font(.stHelper)
+          .foregroundStyle(.stError)
+      } else if meetings.muteState != .muted {
+        Label("Microphone on", systemImage: "mic")
+          .font(.stHelper)
+          .foregroundStyle(.stTextSecondary)
+      }
+      if meetings.callSoundStatus == .captured {
+        Label("Call audio on", systemImage: "speaker.wave.2")
+          .font(.stHelper)
+          .foregroundStyle(.stTextSecondary)
       }
       if let line = MeetingsPresentation.callSoundLine(meetings.callSoundStatus) {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -139,8 +163,8 @@ struct MeetingLivePanel: View {
       .font(.stHelper)
       .foregroundStyle(.stTextSecondary)
     }
-    .padding(14)
-    .background(Color.stSectionBg, in: RoundedRectangle(cornerRadius: 12))
+    .padding(DesignSpacing.xl)
+    .background(Color.stSectionBg, in: RoundedRectangle(cornerRadius: DesignRadius.xl))
   }
 
   private var meters: some View {
@@ -418,6 +442,18 @@ struct MeetingLiveWordsView: View {
   /// After Stop, until the transcript replaces them: greyed, and the copy says the recording
   /// ended.
   var superseded = false
+  var addQuote: ((MeetingsPresentation.LiveBlock.Run) -> Void)?
+  @State private var followsLive = true
+  @State private var liveEnd = UUID()
+  @Environment(SettingsManager.self) private var settings
+  @Environment(LiveRecordingState.self) private var dictation
+
+  private var catchingUp: Bool {
+    addQuote != nil && transcript.usesUniversal
+      && transcript.tracks.values.contains { $0.status == .running }
+      && WhisperPreviewDeliveryWiring.meetingDecodeMustWait(
+        settings: settings, dictationActive: dictation.isDictationActive)
+  }
 
   private func liveHeader(_ header: MeetingsPresentation.LiveRow.Header) -> String {
     "\(MeetingsPresentation.liveSpeakerHeader(header.speaker, names: transcript.speakerLabels.names)) · \(MeetingsPresentation.clock(ms: header.startMs))"
@@ -430,13 +466,36 @@ struct MeetingLiveWordsView: View {
       guard index > 0 else { return text + Text(segment.text) }
       guard let header = segment.header else { return text + Text(" " + segment.text) }
       return text + Text(verbatim: "\n\n")
-        + Text(verbatim: liveHeader(header)).font(.caption.weight(.semibold))
+          + Text(verbatim: liveHeader(header)).font(.stRowLabel)
           .foregroundColor(.stTextSecondary) + Text(verbatim: "\n") + Text(segment.text)
     }
   }
 
   var body: some View {
+    let rows = MeetingsPresentation.liveRows(
+      MeetingsPresentation.liveBlocks(transcript.lines, labels: transcript.speakerLabels))
     VStack(alignment: .leading, spacing: 8) {
+      if addQuote != nil {
+        HStack {
+          Text("Live transcript")
+            .font(.stRowTitle)
+            .accessibilityAddTraits(.isHeader)
+          Spacer()
+          if !followsLive {
+            Button {
+              followsLive = true
+            } label: {
+              EnviousButtonLabel("Jump to live", size: .medium, systemImage: "arrow.down")
+            }
+            .settingsButton(.quiet, size: .medium, isEnabled: true)
+          }
+        }
+      }
+      if catchingUp {
+        Text("Live transcript catching up")
+          .font(.stHelper)
+          .foregroundStyle(.stTextSecondary)
+      }
       ForEach(
         MeetingsPresentation.liveStatusLines(
           transcript, recordingEnded: superseded),
@@ -455,43 +514,62 @@ struct MeetingLiveWordsView: View {
             .foregroundStyle(.stTextSecondary)
         }
       } else {
-        ScrollView {
-          LazyVStack(alignment: .leading, spacing: 2) {
+        ScrollViewReader { proxy in
+          ScrollView {
+          LazyVStack(alignment: .leading, spacing: DesignSpacing.xxs) {
             // #4355 PR C: speaker blocks, after each piece was assigned, drawn as one row per
             // live line keyed by the line's identity. Regrouping changes headers only: a line's
             // text is never removed or reparented, so selection and focus stay with it. A
             // speaker change inside a line is a header inside that line's text.
-            ForEach(
-              MeetingsPresentation.liveRows(
-                MeetingsPresentation.liveBlocks(
-                  transcript.lines, labels: transcript.speakerLabels))
-            ) {
+            ForEach(rows) {
               row in
               VStack(alignment: .leading, spacing: 2) {
                 if let header = row.header {
                   Text(verbatim: liveHeader(header))
-                    .font(.caption.weight(.semibold))
+                    .font(.stRowLabel)
                     .foregroundStyle(.stTextSecondary)
                     .accessibilityAddTraits(.isHeader)
                 }
-                liveText(row)
-                  .font(.stBody)
-                  .italic(row.kind == .uncertain)
-                  .foregroundStyle(
-                    superseded || row.kind != .confirmed
-                      ? Color.stTextSecondary : Color.stTextPrimary
-                  )
-                  .textSelection(.enabled)
+                if let addQuote {
+                  ForEach(row.segments, id: \.run.id) { segment in
+                    if let header = segment.header {
+                      Text(verbatim: liveHeader(header))
+                        .font(.stRowLabel)
+                        .foregroundStyle(.stTextSecondary)
+                        .accessibilityAddTraits(.isHeader)
+                    }
+                    styledLiveText(Text(verbatim: segment.text), kind: row.kind)
+                    if let quote = segment.quote {
+                      Button {
+                        addQuote(quote)
+                      } label: {
+                        EnviousButtonLabel("Add quote", size: .medium, systemImage: "quote.bubble")
+                      }
+                      .settingsButton(.quiet, size: .medium, isEnabled: true)
+                    }
+                  }
+                } else {
+                  styledLiveText(liveText(row), kind: row.kind)
+                }
               }
               // The gap between blocks the nested layout had (10 points around a 2-point run gap).
               .padding(.top, row.header != nil ? 8 : 0)
             }
+            Color.clear.frame(height: 1).id(liveEnd).accessibilityHidden(true)
           }
           .frame(maxWidth: .infinity, alignment: .leading)
+          }
+          .meetingUserScroll {
+            if addQuote != nil { followsLive = false }
+          }
+          .onChange(of: transcript.lines.last, initial: true) {
+            if followsLive { proxy.scrollTo(liveEnd, anchor: .bottom) }
+          }
+          .onChange(of: followsLive) {
+            if followsLive { proxy.scrollTo(liveEnd, anchor: .bottom) }
+          }
         }
-        // Follows the newest line as it arrives (R42).
-        .defaultScrollAnchor(.bottom)
-        .frame(minHeight: 160, maxHeight: 420)
+        .frame(minHeight: 160, maxHeight: addQuote == nil ? 420 : .infinity)
       }
     }
     .padding(14)
@@ -502,6 +580,18 @@ struct MeetingLiveWordsView: View {
       guard new > old, !superseded else { return }
       AccessibilityNotification.Announcement(MeetingsPresentation.liveSpeakersUpdated).post()
     }
+  }
+
+  private func styledLiveText(
+    _ text: Text, kind: LiveWordsAssembler.Line.Kind
+  ) -> some View {
+    text
+      .font(.stBody)
+      .italic(kind == .uncertain)
+      .foregroundStyle(
+        superseded || kind != .confirmed ? Color.stTextSecondary : Color.stTextPrimary
+      )
+      .textSelection(.enabled)
   }
 }
 

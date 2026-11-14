@@ -2933,6 +2933,16 @@
         }
       }
     },
+    "Action item" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufgabe"
+          }
+        }
+      }
+    },
     "Action item done" : {
       "comment" : "History meeting: VoiceOver label of a ticked action item's checkbox.",
       "localizations" : {
@@ -3113,6 +3123,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nichts hinzufügen"
+          }
+        }
+      }
+    },
+    "Add quote" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zitat hinzufügen"
           }
         }
       }
@@ -5497,6 +5517,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Anruf-Apps"
+          }
+        }
+      }
+    },
+    "Call audio on" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ton vom Mac an"
           }
         }
       }
@@ -12570,6 +12600,16 @@
         }
       }
     },
+    "Jump to live" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zur Live-Position"
+          }
+        }
+      }
+    },
     "Kannada" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -13902,6 +13942,16 @@
         }
       }
     },
+    "Live transcript catching up" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live-Transkript holt auf"
+          }
+        }
+      }
+    },
     "Load more history" : {
       "comment" : "History list: the button at the end of the shown rows that shows older ones.",
       "localizations" : {
@@ -14339,6 +14389,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Marathi"
+          }
+        }
+      }
+    },
+    "Mark moment" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moment markieren"
           }
         }
       }
@@ -14812,6 +14872,16 @@
         }
       }
     },
+    "Microphone on" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofon an"
+          }
+        }
+      }
+    },
     "Microphone readiness" : {
       "comment" : "Microphone settings: row title.",
       "localizations" : {
@@ -14841,6 +14911,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Mikrofon bereit"
+          }
+        }
+      }
+    },
+    "Microphone unavailable" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofon nicht verfügbar"
           }
         }
       }
@@ -14988,6 +15068,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Modelle"
+          }
+        }
+      }
+    },
+    "Moment marked" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moment markiert"
           }
         }
       }
@@ -19717,6 +19807,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nur dein Mikrofon wird aufgenommen"
+          }
+        }
+      }
+    },
+    "Recording · %@" : {
+      "comment" : "Meeting recording status with elapsed time.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahme läuft · %@"
           }
         }
       }
@@ -24857,17 +24958,6 @@
         }
       }
     },
-    "The transcript, with who said what, is written when you stop the recording." : {
-      "comment" : "History, a recording meeting: what the Transcript tab will show.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Das Transkript zeigt, wer was gesagt hat, und wird erstellt, sobald du die Aufnahme stoppst."
-          }
-        }
-      }
-    },
     "The transcription engine didn't start. Try again." : {
       "comment" : "Transcribe a File: why the file was refused.",
       "localizations" : {
@@ -28276,6 +28366,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Schreibt auf, was gesagt wurde."
+          }
+        }
+      }
+    },
+    "Writing the summary with %@…" : {
+      "comment" : "History meeting: summary progress with the selected engine name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zusammenfassung wird mit %@ erstellt…"
           }
         }
       }

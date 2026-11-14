@@ -2,6 +2,22 @@ import AppKit
 import EnviousWisprCore
 import SwiftUI
 
+/// Lets the live meeting controls use the mounted editor's revision and undo handling.
+@MainActor
+final class MeetingNotesEditorActions {
+  weak var editor: MeetingNotesTextView.Coordinator?
+
+  func toggleTask(for meetingID: UUID) {
+    guard let editor, editor.meetingID == meetingID else { return }
+    editor.toggleTask()
+  }
+
+  func append(_ block: MeetingNoteBlock, for meetingID: UUID, atMs: Int) {
+    guard let editor, editor.meetingID == meetingID else { return }
+    editor.applyOutsideText(.append(block), atMs: atMs)
+  }
+}
+
 /// #3147 PR4: a meeting's notes as blocks, edited in one native text view. Each block is one
 /// paragraph, so typing, selection, input methods (marked text is never touched) and paste are
 /// the system's own; every change the text view makes is turned into block edits and applied to
@@ -11,17 +27,19 @@ import SwiftUI
 /// block. A gutter shows when each block was first typed (none for notes
 /// written before blocks) and a task's tick. ⌘⇧7 makes the caret's block an action item or back
 /// to text; ⌘↩ ticks or unticks it. A new block starts at `currentMs`: the playback position
-/// after Stop, nil when nothing is known.
+/// while recording or the playback position after Stop, nil when nothing is known.
 struct MeetingNotesBlockEditor: View {
   let meetingID: UUID
   let notes: any MeetingNotesAccessing
   var currentMs: @MainActor () -> Int? = { nil }
+  var actions: MeetingNotesEditorActions?
 
   var body: some View {
     let snapshot = notes.snapshot(for: meetingID)
     VStack(alignment: .leading, spacing: 8) {
       MeetingNotesTextView(
-        meetingID: meetingID, notes: notes, snapshot: snapshot, currentMs: currentMs
+        meetingID: meetingID, notes: notes, snapshot: snapshot, currentMs: currentMs,
+        actions: actions
       )
       .frame(minHeight: 240)
       .background(
@@ -209,6 +227,7 @@ struct MeetingNotesTextView: NSViewRepresentable {
   let notes: any MeetingNotesAccessing
   let snapshot: MeetingNotesSnapshot
   let currentMs: @MainActor () -> Int?
+  var actions: MeetingNotesEditorActions?
 
   func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -251,6 +270,8 @@ struct MeetingNotesTextView: NSViewRepresentable {
     coordinator.meetingID = meetingID
     coordinator.notes = notes
     coordinator.currentMs = currentMs
+    coordinator.viewEnabled = context.environment.isEnabled
+    actions?.editor = coordinator
     coordinator.sync(snapshot)
   }
 
@@ -260,6 +281,7 @@ struct MeetingNotesTextView: NSViewRepresentable {
     var meetingID: UUID?
     var notes: (any MeetingNotesAccessing)?
     var currentMs: @MainActor () -> Int? = { nil }
+    var viewEnabled = true
     /// The editor's own undo history (the text view registers none): each step restores the
     /// whole draft as it was, block ids, kinds and times included (`MeetingNotesEdit.restore`).
     /// A resync from a change made elsewhere clears it without touching the window's other
@@ -294,7 +316,12 @@ struct MeetingNotesTextView: NSViewRepresentable {
     /// cleared when the draft differs from the one last drawn and the change is not this
     /// editor's own (`keepUndo`).
     func sync(_ snapshot: MeetingNotesSnapshot, keepUndo: Bool = false) {
-      guard let textView, !textView.hasMarkedText() else { return }
+      guard let textView else { return }
+      if !viewEnabled, let window = textView.window, window.firstResponder === textView {
+        window.makeFirstResponder(nil)
+      }
+      textView.isEditable = snapshot.canEdit && viewEnabled
+      guard !textView.hasMarkedText() else { return }
       if !keepUndo,
         syncedMeeting != meetingID || !Self.same(syncedDocument, snapshot.document)
       {
@@ -304,7 +331,6 @@ struct MeetingNotesTextView: NSViewRepresentable {
       syncedMeeting = meetingID
       syncedDocument = snapshot.document
       textView.blocks = snapshot.document.blocks
-      textView.isEditable = snapshot.canEdit
       let text = MeetingNotesTextMapping.text(snapshot.document)
       if !MeetingDocumentHash.sameBytes(textView.string, text) {
         let selection = textView.selectedRange()
@@ -312,8 +338,9 @@ struct MeetingNotesTextView: NSViewRepresentable {
         textView.string = text
         syncing = false
         let length = (text as NSString).length
+        let location = min(selection.location, length)
         textView.setSelectedRange(
-          NSRange(location: min(selection.location, length), length: 0))
+          NSRange(location: location, length: min(selection.length, length - location)))
       }
       textView.restyle()
     }
@@ -445,18 +472,20 @@ struct MeetingNotesTextView: NSViewRepresentable {
     /// Applies one block edit made outside the text (a kind or a tick).
     func applyOutsideText(_ make: (MeetingNoteBlock) -> MeetingNotesEdit?, block: MeetingNoteBlock?)
     {
-      // Not while an input method is composing: the draft does not hold that text yet, and a
-      // toggle now would make the composed text look stale when it lands.
-      guard textView?.hasMarkedText() != true else { return }
-      guard let notes, let meetingID, let block = block ?? caretBlock(), let edit = make(block)
-      else { return }
+      guard let block = block ?? caretBlock(), let edit = make(block) else { return }
+      applyOutsideText(edit, atMs: currentMs())
+    }
+
+    func applyOutsideText(_ edit: MeetingNotesEdit, atMs: Int?) {
+      // The draft does not yet hold marked text. Preserve it until the input method commits.
+      guard let textView, !textView.hasMarkedText(), let notes, let meetingID else { return }
       let snapshot = notes.snapshot(for: meetingID)
       guard isDrawn(snapshot) else {
         sync(snapshot)
         return
       }
       guard snapshot.canEdit,
-        notes.apply(edit, to: meetingID, expectedRevision: snapshot.revision, atMs: currentMs())
+        notes.apply(edit, to: meetingID, expectedRevision: snapshot.revision, atMs: atMs)
       else { return }
       typingBlock = nil
       registerUndo(restoring: snapshot.document)

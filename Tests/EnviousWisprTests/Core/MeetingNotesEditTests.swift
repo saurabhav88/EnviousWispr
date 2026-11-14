@@ -43,6 +43,21 @@ struct MeetingNotesEditTests {
     #expect(edited.blocks[0].startedAtMs == nil)
   }
 
+  @Test("adding a live quote keeps the draft and records when it was added and spoken")
+  func appendingQuoteKeepsBothTimes() throws {
+    let existing = MeetingNoteBlock(startedAtMs: 1_000, text: "Agenda")
+    let document = MeetingNotesDocument(blocks: [existing])
+    let quote = MeetingNoteBlock(
+      kind: .quote, text: "We agreed.", sourceSpeaker: "Mina", sourceMs: 5_000)
+    let updated = try #require(document.applying(.append(quote), atMs: 8_000))
+    #expect(updated.blocks.first == existing)
+    #expect(updated.blocks.last?.startedAtMs == 8_000)
+    #expect(updated.blocks.last?.sourceMs == 5_000)
+    #expect(updated.blocks.last?.sourceSpeaker == "Mina")
+    #expect(updated.markdown == "Agenda\n> We agreed.")
+    #expect(updated.applying(.append(quote), atMs: 9_000) == nil)
+  }
+
   @Test("Return splits: moved text keeps its time, the empty new block gets one when typed")
   func splitKeepsTimes() throws {
     let a = MeetingNoteBlock(startedAtMs: 1_000, text: "oneTwo")

@@ -186,6 +186,10 @@ struct MeetingLiveSpeakersTests {
     #expect(rows[1].segments.map(\.text) == ["Yes,", "and no."])
     #expect(rows[1].segments.map { $0.header?.speaker } == [nil, .remote("2")])
     #expect(rows[2].segments.map(\.text) == ["Right."], "continues Speaker 2's block, no header")
+    #expect(rows[1].segments.map { $0.quote?.speaker } == [.remote("1"), .remote("2")])
+    #expect(rows[1].segments.map { $0.quote?.startMs } == [0, 6])
+    #expect(rows[2].segments.first?.quote?.speaker == .remote("2"))
+    #expect(rows[2].segments.first?.quote?.startMs == 12)
   }
 
   @Test("untimed text, a reset and stale results never produce a label")
