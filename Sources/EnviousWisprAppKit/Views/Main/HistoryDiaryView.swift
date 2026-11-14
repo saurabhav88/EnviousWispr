@@ -22,6 +22,8 @@ struct HistoryDiaryView<
   @State private var results: [HistoryTab: HistoryQueryResult] = [:]
   @State private var groupingRevision = 0
   @State private var pendingPage: HistoryCatalog.Cursor?
+  /// Where the reader is in the list, as of its last scroll step (`HistoryDiaryList` writes it).
+  @State private var liveAnchor = HistoryLiveAnchor()
 
   init(
     coordinator: TranscriptCoordinator,
@@ -100,7 +102,7 @@ struct HistoryDiaryView<
           coordinator: coordinator, tab: tab, state: state, selection: selection,
           isSelecting: isSelecting, result: result, isCurrent: current,
           canSelect: canSelect,
-          open: open, loadNext: loadNext, dictationCard: dictationCard)
+          liveAnchor: liveAnchor, open: open, loadNext: loadNext, dictationCard: dictationCard)
         // Its own identity per tab, so each tab's list restores and saves its own place.
         .id(tab)
       }
@@ -113,6 +115,16 @@ struct HistoryDiaryView<
     }
     .task(id: RefreshKey(query: key, grouping: groupingRevision)) {
       guard results[tab]?.key != key else { return }
+      // A refresh with the same tab, search and filters (a catalog update, an expiry, a time
+      // zone or locale change) restores around the saved anchor: save where the reader is now
+      // first, so it never jumps back to the place they last left (cloud review on #4582).
+      var live = coordinator.requestedHistoryState(for: tab)
+      if live.openItemID == nil, let context = liveAnchor.context, context == key.context,
+        context == HistoryPaging.Context(tab: tab, state: live), live.scrollAnchorID != liveAnchor.id
+      {
+        live.scrollAnchorID = liveAnchor.id
+        coordinator.setHistoryState(live, for: tab)
+      }
       if let result = await coordinator.historyResults(for: key) {
         results[tab] = result
         if isSelecting, coordinator.historyTab == tab {
@@ -208,20 +220,14 @@ private struct HistoryDiaryList<DictationCard: View>: View {
   let result: HistoryQueryResult?
   let isCurrent: Bool
   let canSelect: Bool
+  /// The item under the reader as of the last scroll step, shared with the refresh above.
+  let liveAnchor: HistoryLiveAnchor
   let open: (HistoryItemID) -> Void
   let loadNext: (HistoryQueryResult, Bool) -> Void
   let dictationCard: (Transcript, String) -> DictationCard
 
   /// The entry at the top of the scrolled list.
   @State private var position: HistoryDiaryLayout.EntryID?
-  /// The item under the reader as of the last scroll step, kept outside observation so
-  /// scrolling does not re-render the page.
-  @State private var liveAnchor = LiveAnchor()
-
-  private final class LiveAnchor {
-    var id: HistoryItemID?
-    var context: HistoryPaging.Context?
-  }
   /// #3147 PR3: the import whose Locate original flow is running, and its one-line result.
   @State private var locatingRowID: UUID?
   @State private var locateNote: LocateNote?
@@ -322,15 +328,15 @@ private struct HistoryDiaryList<DictationCard: View>: View {
       guard next == HistoryPaging.Context(tab: tab, state: state) else { return }
       position = state.scrollAnchorID.map { .item($0) }
     }
-    .onDisappear(perform: savePosition)
+    .onDisappear {
+      saveLiveAnchor()
+      liveAnchor.context = nil
+    }
     .onChange(of: position) { _, next in
       guard let result else { return }
       liveAnchor.id = result.anchor(for: next)
       liveAnchor.context = result.key.context
     }
-    // Every background change to the query key (a catalog update or a held-row expiry).
-    .onChange(of: coordinator.catalogSession?.revision) { _, _ in saveLiveAnchor() }
-    .onChange(of: coordinator.expiryPulse) { _, _ in saveLiveAnchor() }
     .scrollContentBackground(.hidden)
     .background(Color.stPageBg)
     // #4001 step 2a: the recording state is read inside the modifier, not by this body.
@@ -459,15 +465,7 @@ private struct HistoryDiaryList<DictationCard: View>: View {
 
   /// Stores what is at the top as the tab's scroll anchor: the item there, the first item under
   /// a heading there, or nothing at the very top.
-  private func savePosition() {
-    guard let result else { return }
-    saveAnchor(result.anchor(for: position), context: result.key.context)
-  }
-
-  /// Before a background refresh (same tab, search and filters) restores around the saved
-  /// anchor, saves where the reader is now, so a save elsewhere never jumps them back to the
-  /// place they last left (cloud review on #4582). The refreshed page may already be empty
-  /// here, so this reads the anchor kept from the last scroll step.
+  /// Saves the anchor kept from the last scroll step as the tab's place, when the list leaves.
   private func saveLiveAnchor() {
     guard let context = liveAnchor.context else { return }
     saveAnchor(liveAnchor.id, context: context)
@@ -1107,4 +1105,11 @@ struct EscapeRecoveryBadge: View {
       EmptyView()
     }
   }
+}
+
+/// The item at the top of the History list as of its last scroll step, and the query it belongs
+/// to. A plain class kept outside observation, so scrolling does not re-render the page.
+private final class HistoryLiveAnchor {
+  var id: HistoryItemID?
+  var context: HistoryPaging.Context?
 }
