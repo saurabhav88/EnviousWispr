@@ -1106,6 +1106,23 @@
         }
       }
     },
+    "%@ · Text goes to %@" : {
+      "comment" : "History model menu: %@ is the model name, second %@ is the company receiving text.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ · Text goes to %2$@"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · Text geht an %@"
+          }
+        }
+      }
+    },
     "%@ · and more" : {
       "comment" : "Closing film, last scene: dictation app names (never translated), then 'and more'.",
       "localizations" : {
@@ -5902,7 +5919,7 @@
       }
     },
     "Cancel" : {
-      "comment" : "App Settings, Recordings: keeps the current keep period.\nEnviousMeet: closes the call-sound explanation without recording.\nEnviousMeet: keeps the meeting as it is.\nHistory selection: keeps the selected items.\nHistory transcript: stops Transcribe again with.\nHistory, a meeting: keeps the edited summary.\nLive Preview settings, Universal engine card: button. It stops the download.\nSettings > AI Polish, local model row: button that stops the download.\nYour Words, Learn from: the Forget learning memory confirmation: keeps the memory.\nYour Words, Learn from: the self-learning dictionary row: button that stops the download.",
+      "comment" : "App Settings, Recordings: keeps the current keep period.\nEnviousMeet: closes the call-sound explanation without recording.\nEnviousMeet: keeps the meeting as it is.\nHistory selection: keeps the selected items.\nHistory transcript: stops Transcribe again with.\nLive Preview settings, Universal engine card: button. It stops the download.\nSettings > AI Polish, local model row: button that stops the download.\nYour Words, Learn from: the Forget learning memory confirmation: keeps the memory.\nYour Words, Learn from: the self-learning dictionary row: button that stops the download.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -7835,6 +7852,7 @@
       }
     },
     "Copy last dictation" : {
+      "comment" : "Feature name in the closing film.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -7842,8 +7860,7 @@
             "value" : "Letztes Diktat kopieren"
           }
         }
-      },
-      "comment" : "Feature name in the closing film."
+      }
     },
     "Copy last dictation (%@) isn't working. macOS says this key combination is already taken. Choose another." : {
       "comment" : "Keybinds settings: an external conflict warning. Copy last dictation is the name of a keybind. %@ is a key combination, such as Right ⌘.",
@@ -8056,6 +8073,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Auf diesem Mac wurden keine Wörter von %@ gefunden."
+          }
+        }
+      }
+    },
+    "Couldn't finish polishing. Choose a model to try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Textoptimierung konnte nicht abgeschlossen werden. Wähle ein Modell, um es erneut zu versuchen."
           }
         }
       }
@@ -8281,6 +8308,16 @@
         }
       }
     },
+    "Couldn't write a new summary. Choose a model to try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Es konnte keine neue Zusammenfassung erstellt werden. Wähle ein Modell, um es erneut zu versuchen."
+          }
+        }
+      }
+    },
     "Couldn’t forget. Try again." : {
       "comment" : "Your Words, Learn from: the self-learning dictionary row: shown when the learning memory could not be deleted.",
       "localizations" : {
@@ -8376,6 +8413,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aktueller Schritt"
+          }
+        }
+      }
+    },
+    "Current version" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktuelle Version"
           }
         }
       }
@@ -13692,6 +13739,16 @@
         }
       }
     },
+    "Keep current" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktuelle behalten"
+          }
+        }
+      }
+    },
     "Keep current Live Preview engine" : {
       "comment" : "EnviousMeet Models tab: closes the Live Preview engine choices without changing the engine.",
       "localizations" : {
@@ -13846,6 +13903,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Meeting-Audio behalten"
+          }
+        }
+      }
+    },
+    "Keep new" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neue behalten"
           }
         }
       }
@@ -16645,6 +16712,16 @@
         }
       }
     },
+    "New version" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neue Version"
+          }
+        }
+      }
+    },
     "New word" : {
       "comment" : "Quick Add panel: heading above the field for typing a new word, with no selected text.",
       "localizations" : {
@@ -17051,6 +17128,17 @@
         }
       }
     },
+    "No models are ready" : {
+      "comment" : "History polish menu: no configured AI model can run.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Modelle verfügbar"
+          }
+        }
+      }
+    },
     "No models found" : {
       "comment" : "AI Polish model picker: Ollama has no models downloaded.",
       "localizations" : {
@@ -17228,6 +17316,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Keine Zusammenfassungs-Engine ausgewählt"
+          }
+        }
+      }
+    },
+    "No summary yet" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch keine Zusammenfassung"
           }
         }
       }
@@ -19916,6 +20014,16 @@
         }
       }
     },
+    "Polish again with" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erneut optimieren mit"
+          }
+        }
+      }
+    },
     "Polish time" : {
       "comment" : "AI Polish, EG-1 size card: how long the polish of a short dictation takes.",
       "localizations" : {
@@ -19944,6 +20052,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Nachbearbeitungszeit gilt für ein kurzes Diktat, gemessen auf einem %@."
+          }
+        }
+      }
+    },
+    "Polish transcript with" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkript optimieren mit"
           }
         }
       }
@@ -19998,6 +20116,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wird nachbearbeitet"
+          }
+        }
+      }
+    },
+    "Polishing again with %@…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Text wird erneut mit %@ optimiert …"
           }
         }
       }
@@ -23159,6 +23287,16 @@
         }
       }
     },
+    "Set up file-cleanup models in Transcribe a File" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modelle zur Textoptimierung unter „Datei transkribieren“ einrichten"
+          }
+        }
+      }
+    },
     "Set up model" : {
       "comment" : "Speech engine settings: button that downloads the multilingual engine's model.",
       "localizations" : {
@@ -23166,6 +23304,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Modell einrichten"
+          }
+        }
+      }
+    },
+    "Set up more models in AI Polish" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weitere Modelle in „KI-Nachbearbeitung“ einrichten"
+          }
+        }
+      }
+    },
+    "Set up summary models in EnviousMeet" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modelle für Zusammenfassungen in EnviousMeet einrichten"
           }
         }
       }
@@ -26601,6 +26759,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Aufnahme wurde vorzeitig beendet. Der aufgezeichnete Teil bleibt erhalten und wird transkribiert."
+          }
+        }
+      }
+    },
+    "The saved summary changed. Choose a model to try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die gespeicherte Zusammenfassung hat sich geändert. Wähle ein Modell, um es erneut zu versuchen."
+          }
+        }
+      }
+    },
+    "The saved text changed. Choose a model to try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der gespeicherte Text hat sich geändert. Wähle ein Modell, um es erneut zu versuchen."
           }
         }
       }
@@ -30217,6 +30395,16 @@
         }
       }
     },
+    "Write summary again with" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zusammenfassung erneut erstellen mit"
+          }
+        }
+      }
+    },
     "Writes down what was said." : {
       "comment" : "Transcribe a File, Review step: the transcription engine's card in the processing path.",
       "localizations" : {
@@ -30224,6 +30412,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Schreibt auf, was gesagt wurde."
+          }
+        }
+      }
+    },
+    "Writing a new summary…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neue Zusammenfassung wird erstellt …"
           }
         }
       }
