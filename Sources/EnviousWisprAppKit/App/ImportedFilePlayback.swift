@@ -129,6 +129,11 @@ final class ImportedFilePlaybackAudio: PlaybackWindowAudio, @unchecked Sendable 
     }
   }
 
+  /// Uses the same verified track and disk stamp with its own reader and decode position.
+  func independentReader() -> ImportedFilePlaybackAudio {
+    ImportedFilePlaybackAudio(asset: asset, track: track, stamp: stamp, durationMs: durationMs)
+  }
+
   func window(startMs: Int, count: Int) throws -> [Float] {
     let perMs = Self.sampleRate / 1_000
     let start = max(0, startMs) * perMs

@@ -461,6 +461,11 @@ enum MeetingAfterPresentation {
 
   static func stacksPanes(width: CGFloat) -> Bool { width < sideBySideMinimumWidth }
 
+  /// The approved wide arrangement gives the notes and summary pane the larger share.
+  static func notesPaneWidth(width: CGFloat) -> CGFloat {
+    (width - DesignSpacing.xl) * 0.57
+  }
+
   /// The left pane. Your notes is selected first; switching never discards a draft.
   enum LeftPane: Hashable {
     case notes

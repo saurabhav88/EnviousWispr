@@ -317,7 +317,7 @@ struct HistoryCostBenchmarkTests {
         rootView: AnyView(
           HistoryDiaryView(
             coordinator: coordinator, dictationCard: { _ in EmptyView() },
-            transcriptDestination: { _ in EmptyView() }, meetingDestination: { _ in EmptyView() }
+            transcriptDestination: { _, _ in EmptyView() }, meetingDestination: { _, _ in EmptyView() }
           )
             .environment(coordinator).environment(homes.recording).environment(homes.metadata)
             .environment(homes.meetings.coordinator).environment(homes.flow)))

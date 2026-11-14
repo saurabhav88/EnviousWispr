@@ -44,19 +44,22 @@ struct HistoryMeetingAfterView: View {
   let showPasteNotice: @MainActor (String) -> Void
   /// Brings that surface back to the front when Paste needs the user.
   let restorePasteSurface: @MainActor () -> Void
+  let back: () -> Void
 
   init(
     meetingID: UUID,
     notes: any MeetingNotesAccessing,
     references: any MeetingSummaryReferencing,
     showPasteNotice: @escaping @MainActor (String) -> Void,
-    restorePasteSurface: @escaping @MainActor () -> Void
+    restorePasteSurface: @escaping @MainActor () -> Void,
+    back: @escaping () -> Void
   ) {
     self.meetingID = meetingID
     self.notes = notes
     self.references = references
     self.showPasteNotice = showPasteNotice
     self.restorePasteSurface = restorePasteSurface
+    self.back = back
   }
 
   @Environment(MeetingCoordinator.self) private var meetings
@@ -229,6 +232,7 @@ struct HistoryMeetingAfterView: View {
 
   private var removedPlaceholder: some View {
     VStack(spacing: DesignSpacing.md) {
+      HistoryDestinationBar(tab: .meetings, close: back)
       Image(systemName: "person.2.wave.2")
         .font(.stRowTitle)
         .foregroundStyle(.stTextSecondary)
@@ -277,9 +281,8 @@ struct HistoryMeetingAfterView: View {
     return VStack(spacing: 0) {
       header(record, row: row, projection: projection)
         .padding(.horizontal, SettingsLayout.contentH)
-        .padding(.top, DesignSpacing.xs)
+        .padding(.top, SettingsLayout.contentTop)
         .padding(.bottom, DesignSpacing.lg)
-      Divider().overlay(Color.stDivider)
       GeometryReader { geometry in
         ScrollViewReader { proxy in
           panes(
@@ -313,6 +316,8 @@ struct HistoryMeetingAfterView: View {
           }
         }
       }
+      .padding(.horizontal, SettingsLayout.contentH)
+      .padding(.bottom, DesignSpacing.xl)
       if !isRecordingThisMeeting {
         dock(record, snapshot: snapshot, row: row, visibleTurns: visibleTurns)
           .id(player.map(ObjectIdentifier.init))
@@ -348,24 +353,24 @@ struct HistoryMeetingAfterView: View {
       ScrollView {
         VStack(alignment: .leading, spacing: DesignSpacing.xxl) {
           left
-          Divider().overlay(Color.stDivider)
           right
         }
-        .padding(.horizontal, SettingsLayout.contentH)
+        .padding(.horizontal, DesignSpacing.xl)
         .padding(.vertical, DesignSpacing.xl)
         .frame(maxWidth: .infinity, alignment: .leading)
       }
+      .background(Color.stSectionBg, in: RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius))
       .meetingUserScroll { suspendFollow() }
     } else {
-      HStack(spacing: 0) {
+      HStack(spacing: DesignSpacing.xl) {
         ScrollView {
           left
             .padding(.horizontal, DesignSpacing.xl)
             .padding(.vertical, DesignSpacing.xl)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(width: max(320, width * 0.42))
-        Divider().overlay(Color.stDivider)
+        .frame(width: P.notesPaneWidth(width: width))
+        .background(Color.stSectionBg, in: RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius))
         ScrollView {
           right
             .frame(maxWidth: 780, alignment: .leading)
@@ -373,6 +378,7 @@ struct HistoryMeetingAfterView: View {
             .padding(.vertical, DesignSpacing.xl)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .background(Color.stSectionBg, in: RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius))
         .meetingUserScroll { suspendFollow() }
       }
     }
@@ -386,13 +392,17 @@ struct HistoryMeetingAfterView: View {
     VStack(alignment: .leading, spacing: DesignSpacing.md) {
       ViewThatFits(in: .horizontal) {
         HStack(alignment: .top, spacing: DesignSpacing.lg) {
+          HistoryDestinationBar(tab: .meetings, close: back)
           titleBlock(record)
             .frame(minWidth: Self.titleMinWidth, maxWidth: .infinity, alignment: .leading)
           actions(record, row: row, projection: projection)
         }
         VStack(alignment: .leading, spacing: DesignSpacing.md) {
-          titleBlock(record)
-            .frame(maxWidth: .infinity, alignment: .leading)
+          HStack(alignment: .top, spacing: DesignSpacing.lg) {
+            HistoryDestinationBar(tab: .meetings, close: back)
+            titleBlock(record)
+              .frame(maxWidth: .infinity, alignment: .leading)
+          }
           actions(record, row: row, projection: projection)
         }
       }
@@ -1313,6 +1323,7 @@ extension HistoryMeetingAfterView {
     let projection = transcripts.meetingProjection(of: row)
     return VStack(spacing: 0) {
       VStack(alignment: .leading, spacing: DesignSpacing.md) {
+        HistoryDestinationBar(tab: .meetings, close: back)
         HStack(alignment: .center, spacing: DesignSpacing.lg) {
           Text(verbatim: P.fallbackTitle)
             .font(.stRowTitle)
