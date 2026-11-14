@@ -3,6 +3,10 @@
   "about": "Real-boundary suites that need no live audio device (models, committed files and the GPU only), so a backup Mac whose audio is \"blackhole\" may run them (scripts/lib/mac_hosts.py needs_real_audio). Each suite carries the .audioDeviceFree tag in its own source; TestInventoryFreezeTests fails when this list and the tags differ. Add a suite only after checking that nothing it runs opens a microphone, speaker or other audio device.",
   "suites": [
     {
+      "suite": "EnviousWisprASRTests/MeetingCompactionRealBoundaryTests",
+      "file": "Tests/EnviousWisprASRTests/MeetingCompactionRealBoundaryTests.swift"
+    },
+    {
       "suite": "EnviousWisprASRTests/SpeechAudioCodecRealBoundaryTests",
       "file": "Tests/EnviousWisprASRTests/SpeechAudioCodecRealBoundaryTests.swift"
     }

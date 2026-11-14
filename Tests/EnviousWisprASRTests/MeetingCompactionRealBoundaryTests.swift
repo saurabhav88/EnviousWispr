@@ -524,7 +524,8 @@ enum C6Route {
   }
 }
 
-@Suite("#3147 C6 compacted meeting audio parity", .serialized, .tags(.productOutcome))
+@Suite(
+  "#3147 C6 compacted meeting audio parity", .serialized, .tags(.productOutcome, .audioDeviceFree))
 struct MeetingCompactionRealBoundaryTests {
   typealias F = C6Fixture
 
