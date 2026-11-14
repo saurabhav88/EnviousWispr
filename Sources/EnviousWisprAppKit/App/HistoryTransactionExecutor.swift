@@ -29,22 +29,25 @@ import Foundation
     durableWritesInFlight.remove(id)
   }
 
-  func write(_ transcript: Transcript) async throws {
+  func write(_ transcript: Transcript) async throws -> [HistoryCatalog.SourceVersion]? {
     let operations = store.operations()
+    let proof = store.historyRowProofReader()
     #if DEBUG
       let willWrite = ordinaryWriteWillStartForTesting
     #endif
     #if DEBUG
       let didWrite = ordinaryWriteDidFinishForTesting
     #endif
-    try await runOnStorageWorker {
+    return try await runOnStorageWorker {
       #if DEBUG
         willWrite?()
       #endif
       try operations.save(transcript)
+      let versions = transcript.isImported ? try? proof(transcript.id) : nil
       #if DEBUG
         didWrite?()
       #endif
+      return versions
     }
   }
 
@@ -78,6 +81,12 @@ import Foundation
   }
 
   func allRowsForGlobalDeletion() async throws -> [Transcript] { try await store.loadAll() }
+
+  func savedRowIDs(ofMeeting id: UUID, now: Date) async throws -> [UUID] {
+    let read = try await store.readHistory(now: now)
+    guard read.isComplete, read.freshness != nil else { throw CocoaError(.fileReadUnknown) }
+    return read.permanent.filter { $0.meetingID == id }.map(\.id)
+  }
 
   func deleteAll() throws {
     try store.deleteAll()

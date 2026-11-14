@@ -248,9 +248,6 @@ enum MeetingWiring {
           [transcriptCoordinator = inputs.transcriptCoordinator] transcript, naming in
           try await transcriptCoordinator.saveAndShowDurably(transcript, naming: naming)
         },
-        historyRow: { [transcriptCoordinator = inputs.transcriptCoordinator] id in
-          transcriptCoordinator.currentRow(id: id)
-        },
         durableHistoryRow: { [transcriptCoordinator = inputs.transcriptCoordinator] id in
           try await transcriptCoordinator.durableRow(id: id)
         },
@@ -258,7 +255,7 @@ enum MeetingWiring {
           try await transcriptCoordinator.removeRow(id: id)
         },
         meetingRowIDs: { [transcriptCoordinator = inputs.transcriptCoordinator] meetingID in
-          transcriptCoordinator.rowIDs(ofMeeting: meetingID)
+          try await transcriptCoordinator.savedRowIDs(ofMeeting: meetingID)
         },
         emitEnded: { [log = inputs.log, emit = inputs.emitMeetingEnded] event in
           log("meeting ended outcome=\(event.outcome.rawValue)")

@@ -28,6 +28,7 @@ final class TranscriptCoordinator {
   @ObservationIgnored private var catalogDetailOrder: [UUID] = []
   @ObservationIgnored private var catalogDetailVersions: [UUID: UInt64] = [:]
   @ObservationIgnored private var liveRowVersions: [UUID: UInt64] = [:]
+  @ObservationIgnored private var publishedImportProofs: [UUID: [HistoryCatalog.SourceVersion]] = [:]
   private struct CatalogDetailRequest: Hashable {
     let id: UUID
     let revision: UInt64
@@ -84,7 +85,7 @@ final class TranscriptCoordinator {
     guard let catalogSession, let source = catalogSession.stableSourceRevision else {
       return currentRow(id: id)
     }
-    if !authoritative, catalogDetailVersions[id] == source, let row = catalogDetails[id] { return row }
+    if !authoritative, let row = currentRow(id: id) { return row }
     let request = CatalogDetailRequest(id: id, revision: source)
     let reader: Task<HistoryTransactionExecutor.VerifiedHistoryRow?, Never>
     if let inFlight = catalogDetailReads[request] {
@@ -1197,7 +1198,7 @@ final class TranscriptCoordinator {
     if !insertIfAbsent, try await rowForCommand(transcript.id) == nil {
       return false
     }
-    try await transactionExecutor.write(transcript)
+    let proof = try await transactionExecutor.write(transcript)
     // Stamped with the publication, with no read applied in between, so an in-flight `load()`
     // cannot publish the version it read BEFORE this write.
     diskReconciler.noteWritten(transcript.id)
@@ -1207,6 +1208,7 @@ final class TranscriptCoordinator {
     } else {
       insertByDate(transcript)
     }
+    publishedImportProofs[transcript.id] = proof
     startPulseIfNeeded()
     return true
   }
@@ -1217,6 +1219,7 @@ final class TranscriptCoordinator {
   /// until the next disk read (Codex History regrade 3, S7).
   private func recordPublishedVersion(_ id: UUID) {
     liveRowVersions[id] = catalogSession?.stableSourceRevision
+    publishedImportProofs[id] = nil
     catalogDetailProofs[id] = nil
     catalogDetailVersions[id] = nil
     catalogDetails[id] = nil
@@ -1441,10 +1444,20 @@ final class TranscriptCoordinator {
     }
     guard let catalogSession else { return live }
     _ = catalogSession.revision
-    guard let source = catalogSession.stableSourceRevision else { return nil }
-    if let live, liveRowVersions[id] == source { return live }
-    guard catalogDetailVersions[id] == source else { return nil }
-    return catalogDetails[id]
+    _ = expiryPulse
+    guard let source = catalogSession.stableSourceRevision, !removedRowIDs.contains(id) else { return nil }
+    if let live, Self.isVisible(live, at: clock()),
+      liveRowVersions[id] == source || stillCurrent(id, proof: publishedImportProofs[id])
+    { return live }
+    guard let detail = catalogDetails[id], Self.isVisible(detail, at: clock()),
+      catalogDetailVersions[id] == source || stillCurrent(id, proof: catalogDetailProofs[id])
+    else { return nil }
+    return detail
+  }
+
+  private func stillCurrent(_ id: UUID, proof: [HistoryCatalog.SourceVersion]?) -> Bool {
+    guard let proof, proof.contains(where: { !$0.fingerprint.isEmpty }) else { return false }
+    return (try? readCatalogProof(id)) == proof
   }
 
   /// Synchronous delivery entry points verify only the few source attributes of a single
@@ -1551,6 +1564,20 @@ final class TranscriptCoordinator {
   /// The rows that name this meeting (normally one; an orphan's when its record is gone).
   func rowIDs(ofMeeting meetingID: UUID) -> [UUID] {
     transcripts.filter { $0.meetingID == meetingID }.map(\.id)
+  }
+
+  func savedRowIDs(ofMeeting meetingID: UUID) async throws -> [UUID] {
+    guard catalogSession != nil else { return rowIDs(ofMeeting: meetingID) }
+    return try await transactionExecutor.savedRowIDs(ofMeeting: meetingID, now: clock())
+  }
+
+  func loadCatalogOrphan(_ meetingID: UUID) async -> UUID? {
+    guard let catalogSession,
+      let summary = try? await catalogSession.summary(for: .init(tab: .meetings, id: meetingID)),
+      let rowID = summary.rowID, let row = await loadCatalogDetail(rowID),
+      row.meetingID == meetingID, historyMeetingRecord(meetingID) == nil
+    else { return nil }
+    return rowID
   }
 
   /// History's delete of one listed item. A meeting goes to EnviousMeet, the deletion
@@ -2319,6 +2346,7 @@ final class TranscriptCoordinator {
     guard listed || existed else { return (.alreadyAbsent, recordingCleanupFailed) }
     transcripts.removeAll { $0.id == id }
     liveRowVersions[id] = nil
+    publishedImportProofs[id] = nil
     catalogDetailProofs[id] = nil
     catalogDetailVersions[id] = nil
     catalogDetails[id] = nil
@@ -2385,6 +2413,12 @@ final class TranscriptCoordinator {
       }
       let removedIDs = allRows.map(\.id)
       transcripts.removeAll()
+      liveRowVersions.removeAll()
+      publishedImportProofs.removeAll()
+      catalogDetails.removeAll()
+      catalogDetailProofs.removeAll()
+      catalogDetailVersions.removeAll()
+      catalogDetailOrder.removeAll()
       removedRowIDs.formUnion(removedIDs)
       echoShownRowIDs.removeAll()
       // The same announcement `delete(_:)` makes, per row, after the list is already empty

@@ -105,6 +105,8 @@ struct HistoryMeetingAfterView: View {
   @State private var copiedAt: Date?
   @State private var notice: Notice?
   @State private var rosterRead: KeyedRosterRead<RosterKey>?
+  @State private var completedTranscriptRead: TranscriptReadKey?
+  @State private var orphanRowID: UUID?
   /// Bumped when the view shows another meeting or goes away, so an action that finishes later
   /// never writes its result (a notice, a player, a refusal) into another meeting's screen.
   @State private var presentation = 0
@@ -142,6 +144,26 @@ struct HistoryMeetingAfterView: View {
     let state: MeetingState
   }
 
+  private struct TranscriptReadKey: Equatable {
+    let meetingID: UUID
+    let transcriptID: UUID?
+    let generation: UUID?
+    let catalogRevision: UInt64
+  }
+
+  private var transcriptReadKey: TranscriptReadKey? {
+    guard let revision = transcripts.catalogSession?.revision else { return nil }
+    let record = meetings.record(id: meetingID)
+    return TranscriptReadKey(
+      meetingID: meetingID, transcriptID: record?.transcriptID,
+      generation: record?.committedTranscriptGeneration, catalogRevision: revision)
+  }
+
+  private var didReadTranscript: Bool {
+    if let key = transcriptReadKey { return completedTranscriptRead == key }
+    return transcripts.historyReadFinished
+  }
+
   var body: some View {
     Group {
       if let record = meetings.record(id: meetingID), !record.deletionRequested {
@@ -162,9 +184,6 @@ struct HistoryMeetingAfterView: View {
             guard !Task.isCancelled else { return }
             audioSize = size
           }
-          .task(id: transcripts.catalogSession?.revision) {
-            _ = await transcripts.loadCatalogDetail(record.transcriptID)
-          }
           .task(id: meetings.playbackSource(meetingID: meetingID)) { reconcilePlayer() }
           .task(id: rosterKey(record)) {
             // Stored with the request it answers; shown only while that is still the request.
@@ -182,6 +201,19 @@ struct HistoryMeetingAfterView: View {
       }
     }
     .background(Color.stPageBg)
+    .task(id: transcriptReadKey) {
+      guard let key = transcriptReadKey else { return }
+      let foundOrphan: UUID?
+      if let id = key.transcriptID {
+        if key.generation != nil { _ = await transcripts.loadCatalogDetail(id) }
+        foundOrphan = nil
+      } else {
+        foundOrphan = await transcripts.loadCatalogOrphan(key.meetingID)
+      }
+      guard !Task.isCancelled, transcriptReadKey == key else { return }
+      orphanRowID = foundOrphan
+      completedTranscriptRead = key
+    }
     .onDisappear {
       presentation += 1
       transcriptPolish.cancel()
@@ -206,6 +238,8 @@ struct HistoryMeetingAfterView: View {
       copiedAt = nil
       notice = nil
       rosterRead = nil
+      orphanRowID = nil
+      completedTranscriptRead = nil
       audioSize = .measuring
     }
     .confirmationDialog(
@@ -231,7 +265,12 @@ struct HistoryMeetingAfterView: View {
 
   /// The row that still names this meeting when EnviousMeet no longer holds it.
   private var orphanRow: Transcript? {
-    transcripts.rowIDs(ofMeeting: meetingID).compactMap(transcripts.currentRow(id:)).last
+    if transcripts.catalogSession != nil {
+      guard let orphanRowID, let row = transcripts.currentRow(id: orphanRowID),
+        row.meetingID == meetingID else { return nil }
+      return row
+    }
+    return transcripts.rowIDs(ofMeeting: meetingID).compactMap(transcripts.currentRow(id:)).last
   }
 
   /// The committed transcript's row. A ready meeting's row stays shown while Transcribe again
@@ -1269,7 +1308,7 @@ extension HistoryMeetingAfterView {
       let committed = record.committedTranscriptGeneration != nil
       if committed, row != nil {
         EmptyView()
-      } else if committed, !transcripts.historyReadFinished {
+      } else if committed, !didReadTranscript {
         busyLine(
           String(
             localized: "Loading the transcript",

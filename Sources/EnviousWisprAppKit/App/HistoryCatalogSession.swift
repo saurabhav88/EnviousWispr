@@ -151,6 +151,13 @@ final class HistoryCatalogSession {
 
   var stableSourceRevision: UInt64? { changes.revision }
 
+  func summary(for key: HistoryCatalog.Key) async throws -> HistoryCatalog.Summary? {
+    let backend = try await open()
+    guard let summary = try await backend.catalog.summary(for: key),
+      try summary.sourcesStillMatch(), !Task.isCancelled else { return nil }
+    return summary
+  }
+
   func appCounts(now: Date) async throws -> [(String?, Int)]? {
     let stamp = revision
     guard let source = changes.revision else { return nil }

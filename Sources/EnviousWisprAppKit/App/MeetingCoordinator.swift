@@ -350,15 +350,12 @@ final class MeetingCoordinator {
     /// names, returns what naming achieved in the row written (nil when not known).
     var saveTranscript:
       @MainActor (Transcript, SpeakerNamingPass?) async throws -> SpeakerNamingSummary?
-    /// #3973 C2: the History row as History holds it now, kept in the commit receipt as the
-    /// previous generation's row. Nil when History has none.
-    var historyRow: @MainActor (UUID) -> Transcript? = { _ in nil }
     /// #3973 C2: the History row as its file holds it, read in History's command order. Nil
     /// when there is no file; throws when it cannot be read.
     var durableHistoryRow: @MainActor (UUID) async throws -> Transcript? = { _ in nil }
     var removeTranscriptRow: @MainActor (UUID) async throws -> Void
     /// The History rows that name this meeting, for a row whose meeting record is gone.
-    var meetingRowIDs: @MainActor (UUID) -> [UUID] = { _ in [] }
+    var meetingRowIDs: @MainActor (UUID) async throws -> [UUID] = { _ in [] }
     var emitEnded: @MainActor (MeetingEndedTelemetry) -> Void
     var log: @MainActor (String) -> Void
     /// Called whenever recording or processing work starts or ends, so admission elsewhere
@@ -1832,6 +1829,9 @@ final class MeetingCoordinator {
         "meeting speaker names proposed=\(naming.proposals.count) pairs=\(naming.pairProposals)")
     }
     let previousGeneration = finished.committedTranscriptGeneration
+    let previousRow = previousGeneration == nil
+      ? nil : try? await deps.durableHistoryRow(finished.transcriptID)
+    guard isStillOwned(meetingID) else { return }
     let receipt = MeetingTranscriptReplacement(
       meetingID: meetingID,
       previous: previousGeneration.map {
@@ -1839,7 +1839,7 @@ final class MeetingCoordinator {
           generation: $0, echoTurnIDs: finished.echoTurnIDs,
           speakerOutcomes: finished.speakerOutcomes)
       },
-      previousRow: previousGeneration == nil ? nil : deps.historyRow(finished.transcriptID),
+      previousRow: previousRow,
       candidate: .init(
         generation: result.resolved.attemptID, echoTurnIDs: result.composition.echoTurnIDs,
         speakerOutcomes: result.speakerOutcomes),
@@ -2511,8 +2511,10 @@ final class MeetingCoordinator {
     // later.
     guard live[meetingID] == nil, !newerFormatMeetings.contains(where: { $0.id == meetingID })
     else { return false }
-    let targets = deps.meetingRowIDs(meetingID)
     do {
+      let targets = try await deps.meetingRowIDs(meetingID)
+      guard live[meetingID] == nil, !newerFormatMeetings.contains(where: { $0.id == meetingID })
+      else { return false }
       for rowID in targets { try await deps.removeTranscriptRow(rowID) }
     } catch {
       deps.log("meeting orphan delete failed error=\(type(of: error))")

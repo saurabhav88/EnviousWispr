@@ -310,6 +310,11 @@ package actor HistoryCatalog {
     }
   }
 
+  package func summary(for key: Key) throws -> Summary? {
+    try connection.rows("SELECT summary FROM entries WHERE tab = ? AND id = ?",
+                        key.parameters, decodeSummary).first
+  }
+
   /// Restore around a saved anchor without walking all pages before it.
   package func cursorBefore(_ id: UUID, query: Query) throws -> Cursor? {
     let predicate = predicate(for: query)

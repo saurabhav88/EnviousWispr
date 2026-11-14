@@ -63,19 +63,29 @@ struct HistoryCatalogSessionTests {
 
     // A mutation to an unrelated row cannot cause a queued update to mistake this one for missing.
     let unrelated = Transcript(text: "new words", processingTime: 0, backendType: .parakeet)
+    let imported = Transcript(text: "current import", importedFileName: "interview.m4a")
+    try await coordinator.saveAndShow(imported)
     try store.save(unrelated)
+    #expect(coordinator.currentRow(id: imported.id)?.text == "current import")
     let current = try #require(await coordinator.loadCatalogDetail(rowID, authoritative: true))
     #expect(current.id == loaded.id)
     // Simulates an older writer replacing a previously loaded file without a newer app notice.
     try TranscriptStore(directory: root.appendingPathComponent("transcripts")).delete(id: loaded.id)
     #expect(coordinator.textForDelivery(loaded) == nil)
+    let orphanID = UUID()
+    let orphan = Transcript(text: "meeting transcript", meetingID: orphanID)
+    try store.save(orphan)
+    #expect(coordinator.rowIDs(ofMeeting: orphanID).isEmpty)
+    #expect(try await coordinator.savedRowIDs(ofMeeting: orphanID) == [orphan.id])
+    try await coordinator.removeRow(id: orphan.id)
+    #expect(try await coordinator.savedRowIDs(ofMeeting: orphanID).isEmpty)
     let relocated = root.appendingPathComponent("transcripts-backup")
     try FileManager.default.moveItem(at: root.appendingPathComponent("transcripts"), to: relocated)
     do {
       _ = try store.historyRowReader()(loaded.id, Date())
       Issue.record("The per-ID reader reported absence while its namespace was unavailable")
     } catch is CocoaError {}
-    #expect(coordinator.visibleTranscripts.isEmpty)
+    #expect(coordinator.visibleTranscripts.map(\.id) == [imported.id])
     #expect(coordinator.historyReadFinished == false)
   }
 }

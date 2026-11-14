@@ -47,6 +47,7 @@ struct HistoryDiaryView<
     let catalogStatus = coordinator.catalogSession?.status
     let openID = state.openItemID
     let canOpen = openID.map { id in
+      if coordinator.catalogSession != nil { return true }
       if current, result?.ids.contains(id) == true { return true }
       return coordinator.isHistoryDestinationAvailable(id)
     } ?? false
