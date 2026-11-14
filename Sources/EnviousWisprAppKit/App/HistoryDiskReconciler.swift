@@ -18,6 +18,7 @@ import Foundation
     case reusable(TranscriptStoreFreshness)
   }
   private var historyCache: HistoryCache = .unread
+  private var fileInventory: TranscriptStore.HistoryInventory?
 
   /// How many files the LAST sweep meant to remove and could not — disk truth,
   /// straight from `PendingSweepResult.unremovable`.
@@ -162,6 +163,8 @@ import Foundation
     let applyRows: @MainActor ([Transcript], Set<UUID>) -> Void
     let didApplyRead: @MainActor () -> Void
     let sweepBeforeRead: @MainActor () async -> Void
+    let didStartRead: @MainActor () -> Void
+    let didReadAvailability: @MainActor (Bool) -> Void
     let didFinishCurrentRead: @MainActor () -> Void
   }
 
@@ -172,6 +175,7 @@ import Foundation
 
   func invalidateReadCache() {
     historyCache = .unread
+    fileInventory = nil
   }
 
   func sweep(now: Date) async throws -> PendingSweepResult {
@@ -247,6 +251,7 @@ import Foundation
     loadRequestID &+= 1
     let request = loadRequestID
     loadInFlight = true
+    effects.didStartRead()
     loadTask = Task {
       defer { finishLoad(request, effects: effects) }
       let current = await store.freshness()
@@ -262,6 +267,8 @@ import Foundation
       // Cleanup still runs on every open. A sweep that deletes a file changes the pending token,
       // so the open after it reads the store again.
       await effects.sweepBeforeRead()
+      guard request == loadRequestID, !Task.isCancelled else { return }
+      effects.didReadAvailability(true)
     }
   }
 
@@ -273,6 +280,7 @@ import Foundation
     let request = loadRequestID
     loadInFlight = true
     historyCache = .unread
+    effects.didStartRead()
     loadTask = Task {
       defer { finishLoad(request, effects: effects) }
       await readStore(request, effects: effects)
@@ -314,7 +322,7 @@ import Foundation
       // `updateExistingRow` exists to respect. Every removal bumps this synchronously
       // (`invalidateDiskState`), so a mismatch means re-read rather than trust.
       let generationAtRead = diskStateGeneration
-      let read = try await store.readHistory()
+      let read = try await store.readHistory(reusing: fileInventory)
       #if DEBUG
         try historyReadDidFinishForTesting?(read)
       #endif
@@ -322,7 +330,7 @@ import Foundation
       // #4075 S1: applied as a queued command, so a write's disk success and its publication
       // are never split by it. The application rechecks this request itself.
       await transactionExecutor.admit { [self] in
-        applyRead(
+        await applyRead(
           read, request: request, revisionAtRead: revisionAtRead,
           generationAtRead: generationAtRead, effects: effects
         )
@@ -330,6 +338,8 @@ import Foundation
     } catch is CancellationError {
       // A newer read replaced this one (#4075 G8); that read publishes.
     } catch {
+      guard request == loadRequestID, !Task.isCancelled else { return }
+      effects.didReadAvailability(false)
       await AppLogger.shared.log(
         "Failed to load transcripts: \(error)",
         level: .info, category: "TranscriptCoordinator"
@@ -340,8 +350,7 @@ import Foundation
   private func applyRead(
     _ read: TranscriptHistoryRead, request: UInt64, revisionAtRead: Int,
     generationAtRead: Int, effects: ReadEffects
-  ) {
-    var diskRows = read.permanent
+  ) async {
     // Phase C union-by-ID merge. Preserve any in-memory rows whose IDs
     // are not yet on disk (append-during-load race window) in their
     // existing order, then append disk rows. Protects the newest-first
@@ -352,7 +361,6 @@ import Foundation
     // between those two steps leaves the same id in both namespaces — root
     // wins, and the user sees the row they kept exactly once rather than a
     // permanent row shadowed by a copy still counting down.
-    let pendingRows = read.pending
     // The source load's own identity, not the drain's cancellation: `load()` replaces a
     // request by moving `loadRequestID`.
     guard request == loadRequestID else { return }
@@ -361,7 +369,40 @@ import Foundation
       load(effects: effects)
       return
     }
-    let transcripts = effects.rows()
+    var merged: ReadMerge
+    while true {
+      let capturedRevision = historyWriteRevision
+      merged = await Self.mergeRead(
+        read, current: effects.rows(), writtenAt: writtenAtRevision, revisionAtRead: revisionAtRead)
+      guard request == loadRequestID else { return }
+      guard generationAtRead == diskStateGeneration else {
+        load(effects: effects)
+        return
+      }
+      // Ordinary dictations publish outside the command queue. If one did so while
+      // the merge ran, merge that newer in-memory row before replacing the array.
+      if capturedRevision == historyWriteRevision { break }
+    }
+    effects.applyRows(merged.rows, merged.removedIDs)
+    // #4001 H9: a skipped file or an overlapping write prevents reuse on the next open.
+    historyCache = read.freshness.map(HistoryCache.reusable) ?? .unread
+    fileInventory = read.inventory
+    effects.didReadAvailability(read.isComplete)
+    #if DEBUG
+      historyFullReadsForTesting += 1
+    #endif
+    effects.didApplyRead()
+  }
+
+  private struct ReadMerge: Sendable {
+    let rows: [Transcript]
+    let removedIDs: Set<UUID>
+  }
+
+  @concurrent private static func mergeRead(
+    _ read: TranscriptHistoryRead, current: [Transcript], writtenAt: [UUID: Int],
+    revisionAtRead: Int
+  ) async -> ReadMerge {
     // #2772: a row written SINCE this read began is newer than the disk copy that came
     // back, and the merge below prefers the disk one whenever the id already exists. An
     // import writes twice under one id, so without this the raw version read at the
@@ -369,21 +410,21 @@ import Foundation
     // shows unpolished words until something else refreshes it. Found by Codex.
     let newerRows = Dictionary(
       uniqueKeysWithValues:
-        transcripts
-        .filter { (writtenAtRevision[$0.id] ?? 0) > revisionAtRead }
+        current
+        .filter { (writtenAt[$0.id] ?? 0) > revisionAtRead }
         .map { ($0.id, $0) })
-    diskRows = diskRows.map { newerRows[$0.id] ?? $0 }
+    let diskRows = read.permanent.map { newerRows[$0.id] ?? $0 }
     let rootIDs = Set(diskRows.map(\.id))
-    let heldRows = pendingRows.filter { !rootIDs.contains($0.id) }
+    let heldRows = read.pending.filter { !rootIDs.contains($0.id) }
     let knownIDs = rootIDs.union(heldRows.map(\.id))
     // #4075 G9: a row missing from the disk is kept only when it was written after this read
     // began (its file can land after the scan passed it) or when the read skipped a file. A
     // row written earlier was on disk before the read, so a complete read that lacks it means
     // its file was deleted outside this coordinator, and keeping it left the deleted text in
     // History and offered by Paste Last.
-    let inFlightRows = transcripts.filter {
+    let inFlightRows = current.filter {
       !knownIDs.contains($0.id)
-        && (read.freshness == nil || (writtenAtRevision[$0.id] ?? 0) > revisionAtRead)
+        && (read.freshness == nil || (writtenAt[$0.id] ?? 0) > revisionAtRead)
     }
     // Merged rather than re-sorted: all three inputs are already newest-first,
     // and re-sorting the combined list could reorder permanent rows that
@@ -396,15 +437,8 @@ import Foundation
     let merged = Self.mergeNewestFirst(
       Self.mergeNewestFirst(heldRows, diskRows), inFlightRows)
     let mergedIDs = Set(merged.map(\.id))
-    effects.applyRows(
-      merged, Set(transcripts.lazy.map(\.id).filter { !mergedIDs.contains($0) }))
-    // #4001 H9: reusable only when the read itself was certified. A read that skipped a file
-    // it could not open, or that a write overlapped, leaves the next open to read again.
-    historyCache = read.freshness.map(HistoryCache.reusable) ?? .unread
-    #if DEBUG
-      historyFullReadsForTesting += 1
-    #endif
-    effects.didApplyRead()
+    return ReadMerge(
+      rows: merged, removedIDs: Set(current.lazy.map(\.id).filter { !mergedIDs.contains($0) }))
   }
 
   // periphery:ignore - test seam
@@ -436,7 +470,7 @@ import Foundation
   /// Honest limit: because the current sort IS stable in practice, the two
   /// implementations differ observably only in which row wins a tie — which is
   /// exactly what `heldRowLosesATieWithAPermanentRow` pins.
-  private static func mergeNewestFirst(
+  private nonisolated static func mergeNewestFirst(
     _ held: [Transcript], _ permanent: [Transcript]
   ) -> [Transcript] {
     guard !held.isEmpty else { return permanent }

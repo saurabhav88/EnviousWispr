@@ -8,6 +8,7 @@ struct HistorySelectionToolbar: View {
   let coordinator: TranscriptCoordinator
   let tab: HistoryTab
   let selection: HistorySelection
+  let result: HistoryQueryResult?
 
   @State private var pendingKind: HistoryDeleteKind?
   /// The global Delete all history (#2807), kept from the old sidebar: every tab, text and audio.
@@ -15,9 +16,9 @@ struct HistorySelectionToolbar: View {
 
   var body: some View {
     let count = selection.selectedIDs.count
-    let matching = coordinator.matchingHistoryItems(in: tab)
+    let matching = result?.ids ?? []
     let allSelected = !matching.isEmpty && count >= matching.count
-      && matching.allSatisfy { selection.selectedIDs.contains($0.id) }
+      && matching.isSubset(of: selection.selectedIDs)
     WrappingHStack(spacing: 8) {
       VStack(alignment: .leading, spacing: 2) {
         Text(HistorySelectionCopy.selectedCount(tab: tab, count: count))
@@ -30,7 +31,8 @@ struct HistorySelectionToolbar: View {
       }
       .accessibilityElement(children: .combine)
       Button {
-        let ids = Set(coordinator.matchingHistoryItems(in: tab).map(\.id))
+        guard let result, coordinator.isCurrentHistoryResult(result) else { return }
+        let ids = result.ids
         if !ids.isEmpty && ids.isSubset(of: selection.selectedIDs) {
           selection.deselect(ids)
         } else {
@@ -55,7 +57,7 @@ struct HistorySelectionToolbar: View {
           EnviousButtonLabel(
             verbatim: HistorySelectionCopy.deleteButton(tab: tab, kind: .recordingsOnly), size: .medium)
         }
-        .settingsButton(.outlined, size: .medium, isEnabled: count > 0 && selection.isDeleting == false)
+        .settingsButton(.outlined, size: .medium, isEnabled: result != nil && count > 0 && !selection.isDeleting)
       }
       Button(role: .destructive) {
         pendingKind = .textAndRecordings
@@ -63,7 +65,7 @@ struct HistorySelectionToolbar: View {
         EnviousButtonLabel(
           verbatim: HistorySelectionCopy.deleteButton(tab: tab, kind: .textAndRecordings), size: .medium)
       }
-      .settingsButton(.destructive, size: .medium, isEnabled: count > 0 && selection.isDeleting == false)
+      .settingsButton(.destructive, size: .medium, isEnabled: result != nil && count > 0 && !selection.isDeleting)
       if selection.isDeleting {
         ProgressView().controlSize(.small)
       }
@@ -109,6 +111,8 @@ struct HistorySelectionToolbar: View {
 
   private func delete(_ kind: HistoryDeleteKind) {
     pendingKind = nil
+    guard let result, coordinator.isCurrentHistoryResult(result) else { return }
+    selection.retain(result.ids)
     Task { await selection.deleteSelected(kind: kind, coordinator: coordinator) }
   }
 }

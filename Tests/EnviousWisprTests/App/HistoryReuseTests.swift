@@ -193,6 +193,26 @@ struct HistoryReuseTests {
       #expect(coordinator.diskReconcilerForTesting.historyCacheHitsForTesting == 0)
     }
 
+    @Test("reopening reuses unchanged row files while honoring replacements and removals")
+    func changedFilesOnly() async throws {
+      let dir = Self.makeTempDir()
+      defer { try? FileManager.default.removeItem(at: dir) }
+      let store = TranscriptStore(directory: dir)
+      let changed = Self.row("old")
+      let removed = Self.row("removed", age: 20)
+      let kept = Self.row("kept", age: 10)
+      for row in [changed, removed, kept] { try store.save(row) }
+      let coordinator = TranscriptCoordinator(store: store)
+      await open(coordinator)
+      let reads = ReadCount()
+      store.permanentFileWillReadForTesting = { _ = reads.next() }
+      try store.save(Self.row("replacement", id: changed.id))
+      try store.delete(id: removed.id)
+      await open(coordinator)
+      #expect(texts(coordinator) == ["replacement", "kept"])
+      #expect(reads.value == 1)
+    }
+
     @Test("this app's own write makes the next open read the store")
     func localWriteForcesRead() async throws {
       let dir = Self.makeTempDir()

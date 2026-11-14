@@ -18,6 +18,8 @@ struct HistoryDiaryView<
 
   @State private var selection = HistorySelection()
   @State private var isSelecting = false
+  @State private var results: [HistoryTab: HistoryQueryResult] = [:]
+  @State private var groupingRevision = 0
 
   init(
     coordinator: TranscriptCoordinator,
@@ -33,11 +35,21 @@ struct HistoryDiaryView<
 
   var body: some View {
     let tab = coordinator.historyTab
-    let state = coordinator.historyState(for: tab)
+    let state = coordinator.requestedHistoryState(for: tab)
+    let key = coordinator.historyQueryKey(for: tab, state: state)
+    let result = results[tab]
+    let current = result?.key == key
+    let canSelect = current && coordinator.historyReadAvailability == .ready
+    let openID = state.openItemID
+    let canOpen = openID.map { id in
+      if current { return result?.ids.contains(id) == true }
+      return coordinator.isHistoryDestinationAvailable(id)
+    } ?? false
 
     VStack(spacing: 0) {
-      if let openID = state.openItemID {
-        destination(for: openID, tab: tab, query: state.query)
+      if let openID, tab != .dictations, canOpen
+      {
+        destination(for: openID)
           .frame(maxWidth: .infinity, maxHeight: .infinity)
           .environment(\.historyHighlightQuery, state.query)
       } else {
@@ -47,10 +59,23 @@ struct HistoryDiaryView<
             coordinator: coordinator, tab: tab, state: state, isSelecting: isSelecting,
             toggleSelecting: toggleSelecting)
           if isSelecting {
-            HistorySelectionToolbar(coordinator: coordinator, tab: tab, selection: selection)
+            HistorySelectionToolbar(
+              coordinator: coordinator, tab: tab, selection: selection,
+              result: canSelect ? result : nil)
           }
           if tab == .meetings, isSelecting == false {
             HistoryMeetingsBar(coordinator: coordinator)
+          }
+          if coordinator.historyReadAvailability == .unavailable,
+            result?.items.isEmpty == false
+          {
+            HStack {
+              Label("Couldn't load History", systemImage: "exclamationmark.triangle")
+                .foregroundStyle(.stTextSecondary)
+              Spacer()
+              Button("Try again") { coordinator.loadIfNeeded() }
+            }
+            .font(.stHelper)
           }
         }
         .padding(.horizontal, SettingsLayout.contentH)
@@ -59,9 +84,26 @@ struct HistoryDiaryView<
 
         HistoryDiaryList(
           coordinator: coordinator, tab: tab, state: state, selection: selection,
-          isSelecting: isSelecting, open: open, dictationCard: dictationCard)
+          isSelecting: isSelecting, result: result, isCurrent: current,
+          canSelect: canSelect,
+          open: open, dictationCard: dictationCard)
         // Its own identity per tab, so each tab's list restores and saves its own place.
         .id(tab)
+      }
+    }
+    .onReceive(NotificationCenter.default.publisher(for: .NSSystemTimeZoneDidChange)) { _ in
+      groupingRevision &+= 1
+    }
+    .onReceive(NotificationCenter.default.publisher(for: NSLocale.currentLocaleDidChangeNotification)) { _ in
+      groupingRevision &+= 1
+    }
+    .task(id: RefreshKey(query: key, grouping: groupingRevision)) {
+      guard results[tab]?.key != key else { return }
+      if let result = await coordinator.historyResults(for: key) {
+        results[tab] = result
+        if isSelecting, coordinator.historyTab == tab {
+          selection.retain(result.ids)
+        }
       }
     }
     .onChange(of: tab) { _, _ in
@@ -71,38 +113,36 @@ struct HistoryDiaryView<
     }
   }
 
+  private struct RefreshKey: Equatable {
+    let query: TranscriptCoordinator.HistoryQueryKey
+    let grouping: Int
+  }
+
   private var tabBinding: Binding<HistoryTab> {
     Binding(
       get: { coordinator.historyTab },
       set: { coordinator.selectHistoryTab($0) })
   }
 
-  @ViewBuilder private func destination(for id: HistoryItemID, tab: HistoryTab, query: String)
-    -> some View
-  {
+  @ViewBuilder private func destination(for id: HistoryItemID) -> some View {
     switch id {
-    case .transcript(let rowID) where tab == .dictations:
-      if let row = coordinator.currentRow(id: rowID) {
-        VStack(alignment: .leading, spacing: DesignSpacing.lg) {
-          HistoryDestinationBar(tab: tab, close: closeOpenItem)
-          ScrollView { dictationCard(row, query) }
-        }
-        .padding(.horizontal, SettingsLayout.contentH)
-        .padding(.vertical, SettingsLayout.contentTop)
-      }
     case .transcript(let rowID): transcriptDestination(rowID, closeOpenItem)
     case .meeting(let meetingID): meetingDestination(meetingID, closeOpenItem)
     }
   }
 
   private func open(_ id: HistoryItemID) {
-    var state = coordinator.historyState(for: coordinator.historyTab)
+    let tab = coordinator.historyTab
+    var state = coordinator.requestedHistoryState(for: tab)
+    guard results[tab]?.key == coordinator.historyQueryKey(for: tab, state: state),
+      results[tab]?.ids.contains(id) == true
+    else { return }
     state.openItemID = id
     coordinator.setHistoryState(state, for: coordinator.historyTab)
   }
 
   private func closeOpenItem() {
-    var state = coordinator.historyState(for: coordinator.historyTab)
+    var state = coordinator.requestedHistoryState(for: coordinator.historyTab)
     state.scrollAnchorID = state.openItemID
     state.openItemID = nil
     coordinator.setHistoryState(state, for: coordinator.historyTab)
@@ -121,6 +161,9 @@ private struct HistoryDiaryList<DictationCard: View>: View {
   let state: HistoryTabState
   let selection: HistorySelection
   let isSelecting: Bool
+  let result: HistoryQueryResult?
+  let isCurrent: Bool
+  let canSelect: Bool
   let open: (HistoryItemID) -> Void
   let dictationCard: (Transcript, String) -> DictationCard
 
@@ -137,33 +180,40 @@ private struct HistoryDiaryList<DictationCard: View>: View {
   }
 
   var body: some View {
-    let items = coordinator.matchingHistoryItems(in: tab)
-    let context = HistoryPaging.Context(tab: tab, state: state)
+    let items = result?.items ?? []
+    let context = result?.key.context ?? HistoryPaging.Context(tab: tab, state: state)
     let window = HistoryPaging.window(
       items: items, context: context, state: HistoryPaging.state(state, tab: tab),
-      selected: state.scrollAnchorID)
-    let request = HistoryPaging.request(for: window)
-    let days = HistoryDiaryLayout.days(
-      items: items, boundary: window.boundary, calendar: .current)
+      selected: state.scrollAnchorID, positions: result?.positions)
+    let request = isCurrent ? HistoryPaging.request(for: window) : nil
     let now = Date()
 
     ScrollView {
       // One flat list of day headings and items, so every row is a direct scroll target and
       // the scroll position can name the item at the top.
       LazyVStack(alignment: .leading, spacing: 12) {
-        ForEach(HistoryDiaryLayout.entries(days)) { entry in
-          switch entry {
-          case .day(let day):
+        ForEach(result?.entries(through: window.boundary) ?? []) { entry in
+          switch entry.id {
+          case .day(let start):
             HistoryDayHeader(
-              tab: tab, day: day, now: now, isSelecting: isSelecting,
-              selectDay: { selectDay(day.start, in: items) })
-          case .item(let item):
-              row(for: item, items: items)
+              tab: tab, day: .init(start: start, items: [], total: entry.dayCount),
+              now: now, isSelecting: isSelecting && canSelect,
+              selectDay: {
+                guard let result, coordinator.isCurrentHistoryResult(result) else { return }
+                selection.select(Set(items[entry.position..<(entry.position + entry.dayCount)].map(\.id)))
+              })
+          case .item:
+            let item = items[entry.position]
+            // The result preserves positions, but cards read live detail. An expired recovery
+            // or a meeting being deleted must never come back in a pending result.
+            if coordinator.canRenderHistoryItem(item) {
+              row(for: item, items: items, query: context.query)
               .onAppear {
                 // A best-effort prefetch hint: it can come early, together with other rows,
                 // or twice; `loadMore` accepts one request per window.
                 if item.id == window.tail, let request { loadMore(request) }
               }
+            }
           }
         }
         if let request {
@@ -194,23 +244,29 @@ private struct HistoryDiaryList<DictationCard: View>: View {
     .onAppear {
       if let anchor = state.scrollAnchorID { position = .item(anchor) }
     }
+    .onChange(of: result?.key.context) { _, next in
+      guard next == HistoryPaging.Context(tab: tab, state: state) else { return }
+      position = state.scrollAnchorID.map { .item($0) }
+    }
     .onDisappear(perform: savePosition)
     .scrollContentBackground(.hidden)
     .background(Color.stPageBg)
     // #4001 step 2a: the recording state is read inside the modifier, not by this body.
     .recordingDimmed()
     .overlay {
-      if let empty = HistoryDiaryLayout.emptyState(
+      if items.isEmpty && coordinator.historyReadAvailability == .unavailable {
+        ContentUnavailableView {
+          Label("Couldn't load History", systemImage: "exclamationmark.triangle")
+        } actions: {
+          Button("Try again") { coordinator.loadIfNeeded() }
+        }
+      } else if items.isEmpty && (!isCurrent || coordinator.historyReadAvailability == .loading) {
+        ProgressView()
+      } else if let empty = HistoryDiaryLayout.emptyState(
         tab: tab, state: state, matchingCount: items.count)
       {
         HistoryEmptyView(state: empty)
       }
-    }
-    // A changed search or filter, or an item that appeared or left, drops ticks the tab no
-    // longer lists. Keyed on the context and count, not the whole ID list, so a 27,000-item tab
-    // does not compare every ID on each render.
-    .onChange(of: RetainKey(context: context, count: items.count)) { _, _ in
-      selection.retain(Set(coordinator.matchingHistoryItems(in: tab).map(\.id)))
     }
     .alert(
       Text("Locate original", comment: "History: title of the Locate original result message."),
@@ -223,15 +279,11 @@ private struct HistoryDiaryList<DictationCard: View>: View {
     }
   }
 
-  /// When the selection is re-checked against the tab's list.
-  private struct RetainKey: Equatable {
-    let context: HistoryPaging.Context
-    let count: Int
-  }
-
-  @ViewBuilder private func row(for item: HistoryListItem, items: [HistoryListItem]) -> some View {
+  @ViewBuilder private func row(
+    for item: HistoryListItem, items: [HistoryListItem], query: String
+  ) -> some View {
     HStack(alignment: .top, spacing: 10) {
-      if isSelecting {
+      if isSelecting && canSelect {
         HistorySelectionBox(
           isSelected: selection.selectedIDs.contains(item.id),
           toggle: { extending in tick(item.id, extending: extending, items: items) })
@@ -239,20 +291,17 @@ private struct HistoryDiaryList<DictationCard: View>: View {
       HistoryDiaryTime(item: item)
       switch item {
       case .transcript(let row) where row.isImported == false:
-        dictationCard(row, state.query)
+        dictationCard(row, query)
           .contentShape(Rectangle())
-          .onTapGesture {
-            guard row.escapeRecoveredAt == nil else { return }
-            if isSelecting {
+          .gesture(
+            TapGesture().onEnded {
               tick(item.id, extending: NSEvent.modifierFlags.contains(.shift), items: items)
-            } else {
-              open(item.id)
-            }
-          }
+            },
+            including: isSelecting && canSelect && row.escapeRecoveredAt == nil ? .all : .subviews)
       case .transcript(let row):
-        transcriptCard(row.id, item: item.id, items: items)
+        transcriptCard(row.id, item: item.id, items: items, query: query)
       case .meeting(let meeting):
-        meetingCard(meeting.meetingID, item: item.id, items: items)
+        meetingCard(meeting.meetingID, item: item.id, items: items, query: query)
       }
     }
   }
@@ -260,12 +309,12 @@ private struct HistoryDiaryList<DictationCard: View>: View {
   /// #3147 PR3: an import's card. Its Open and Locate original are its own buttons; while
   /// selecting, the whole card ticks instead and its buttons take no clicks.
   @ViewBuilder private func transcriptCard(
-    _ rowID: UUID, item: HistoryItemID, items: [HistoryListItem]
+    _ rowID: UUID, item: HistoryItemID, items: [HistoryListItem], query: String
   ) -> some View {
     let card = HistoryTranscriptCard(
-      rowID: rowID, sources: importedSources, query: state.query, onOpen: { open(item) },
+      rowID: rowID, sources: importedSources, query: query, onOpen: { open(item) },
       onLocate: { locatingRowID = rowID })
-    if isSelecting {
+    if isSelecting && canSelect {
       openableCard(item, items: items) { card.allowsHitTesting(false) }
     } else {
       card.historyTranscriptLocate(
@@ -280,11 +329,11 @@ private struct HistoryDiaryList<DictationCard: View>: View {
   /// #3147 PR4A: a meeting's card. Its Open and title rename are its own buttons; while
   /// selecting, the whole card ticks instead and its buttons take no clicks.
   @ViewBuilder private func meetingCard(
-    _ meetingID: UUID, item: HistoryItemID, items: [HistoryListItem]
+    _ meetingID: UUID, item: HistoryItemID, items: [HistoryListItem], query: String
   ) -> some View {
     let card = HistoryMeetingCard(
-      meetingID: meetingID, onOpen: { open(item) }, allowsPlayback: !isSelecting, query: state.query)
-    if isSelecting {
+      meetingID: meetingID, onOpen: { open(item) }, allowsPlayback: !isSelecting, query: query)
+    if isSelecting && canSelect {
       openableCard(item, items: items) { card.allowsHitTesting(false) }
     } else {
       card
@@ -296,7 +345,7 @@ private struct HistoryDiaryList<DictationCard: View>: View {
     _ id: HistoryItemID, items: [HistoryListItem], @ViewBuilder content: () -> Content
   ) -> some View {
     Button {
-      guard isSelecting else { return open(id) }
+      guard isSelecting && canSelect else { return }
       tick(id, extending: NSEvent.modifierFlags.contains(.shift), items: items)
     } label: {
       content()
@@ -307,9 +356,10 @@ private struct HistoryDiaryList<DictationCard: View>: View {
   /// Stores what is at the top as the tab's scroll anchor: the item there, the first item under
   /// a heading there, or nothing at the very top.
   private func savePosition() {
-    let anchor = HistoryDiaryLayout.anchorID(
-      for: position, in: coordinator.matchingHistoryItems(in: tab), calendar: .current)
-    var live = coordinator.historyState(for: tab)
+    guard let result else { return }
+    let anchor = result.anchor(for: position)
+    var live = coordinator.requestedHistoryState(for: tab)
+    guard result.key.context == HistoryPaging.Context(tab: tab, state: live) else { return }
     guard live.scrollAnchorID != anchor else { return }
     live.scrollAnchorID = anchor
     coordinator.setHistoryState(live, for: tab)
@@ -317,6 +367,7 @@ private struct HistoryDiaryList<DictationCard: View>: View {
 
   /// One tick from a tick box or a card: Shift extends the range from the last ticked item.
   private func tick(_ id: HistoryItemID, extending: Bool, items: [HistoryListItem]) {
+    guard let result, coordinator.isCurrentHistoryResult(result) else { return }
     if extending {
       selection.extend(to: id, in: items.map(\.id))
     } else {
@@ -324,19 +375,17 @@ private struct HistoryDiaryList<DictationCard: View>: View {
     }
   }
 
-  private func selectDay(_ day: Date, in items: [HistoryListItem]) {
-    selection.select(HistoryDiaryLayout.ids(onDayOf: day, in: items, calendar: .current))
-  }
-
   /// The one load action for the last row and Load more history. Synchronous on the main actor:
   /// it rebuilds the window from live state, accepts at most one page for it and stores the
   /// result before returning, so a second request for the same window is refused.
   private func loadMore(_ request: HistoryPaging.LoadRequest) {
-    var live = coordinator.historyState(for: tab)
+    var live = coordinator.requestedHistoryState(for: tab)
+    guard let result, result.key == coordinator.historyQueryKey(for: tab, state: live) else { return }
     let current = HistoryPaging.window(
-      items: coordinator.matchingHistoryItems(in: tab),
+      items: result.items,
       context: HistoryPaging.Context(tab: tab, state: live),
-      state: HistoryPaging.state(live, tab: tab), selected: live.scrollAnchorID)
+      state: HistoryPaging.state(live, tab: tab), selected: live.scrollAnchorID,
+      positions: result.positions)
     let next = HistoryPaging.load(
       request, state: HistoryPaging.state(live, tab: tab), current: current)
     guard next.requested != live.requestedCount else { return }
@@ -546,9 +595,9 @@ private struct HistoryMeetingsBar: View {
 
   private func openMeeting(_ meetingID: UUID) {
     let id = HistoryItemID.meeting(meetingID)
-    let isListed = coordinator.matchingHistoryItems(in: .meetings).contains { $0.id == id }
+    let current = coordinator.requestedHistoryState(for: .meetings)
     let state = HistoryDiaryLayout.opening(
-      id, in: coordinator.historyState(for: .meetings), isListed: isListed)
+      id, in: current, isListed: coordinator.isListedMeeting(meetingID, under: current))
     coordinator.setHistoryState(state, for: .meetings)
   }
 }
@@ -580,7 +629,7 @@ enum HistoryDiaryLayout {
   }
 
   /// The identity of an entry: the scroll position names one of these.
-  enum EntryID: Hashable {
+  enum EntryID: Hashable, Sendable {
     case day(Date)
     case item(HistoryItemID)
   }
@@ -671,7 +720,7 @@ enum HistoryDiaryLayout {
 
   /// The first index at or after `from` whose item was created before `start`, by binary search
   /// over the newest-first list, so a day with thousands of items costs a few comparisons.
-  private static func firstIndex(before start: Date, in items: [HistoryListItem], from: Int) -> Int {
+  static func firstIndex(before start: Date, in items: [HistoryListItem], from: Int) -> Int {
     var low = from
     var high = items.count
     while low < high {

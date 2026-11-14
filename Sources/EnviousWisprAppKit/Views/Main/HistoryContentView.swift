@@ -1,3 +1,4 @@
+import AppKit
 import EnviousWisprCore
 import EnviousWisprServices
 import SwiftUI
@@ -74,21 +75,17 @@ struct HistoryContentView: View {
         meetingDestination: { meetingID, back in
           // #3147 PR4A: every meeting, live or finished, opens the meeting page; the live
           // recording, its live words and the notes sit on it while it records.
-          if meeting(meetingID) != nil {
-            HistoryMeetingAfterView(
-              meetingID: meetingID, notes: meetings.documents,
-              references: meetings.summaryReferences ?? NoMeetingSummaryReferences(),
-              showPasteNotice: pasteNotice.show,
-              restorePasteSurface: {
-                navigation.request(.history)
-                appWindow.showWindow()
-              },
-              back: back
-            )
-            .id(meetingID)
-          } else {
-            HistoryDestinationBar(tab: .meetings, close: back)
-          }
+          HistoryMeetingAfterView(
+            meetingID: meetingID, notes: meetings.documents,
+            references: meetings.summaryReferences ?? NoMeetingSummaryReferences(),
+            showPasteNotice: pasteNotice.show,
+            restorePasteSurface: {
+              navigation.request(.history)
+              appWindow.showWindow()
+            },
+            back: back
+          )
+          .id(meetingID)
         }
       )
       .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -102,6 +99,11 @@ struct HistoryContentView: View {
       // Transcribe again with menu lists what is installed now.
       importedSources.invalidateAll()
       await modelCatalog.refresh()
+    }
+    .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+      if transcriptCoordinator.historyReadAvailability != .ready {
+        transcriptCoordinator.loadIfNeeded()
+      }
     }
     .alert(
       actionFailureTitle,
@@ -122,14 +124,6 @@ struct HistoryContentView: View {
         pasteNotice.dismiss()
       }
     }
-  }
-
-  /// The listed meeting `meetingID`, as the coordinator holds it now.
-  private func meeting(_ meetingID: UUID) -> HistoryMeetingItem? {
-    for item in transcriptCoordinator.matchingHistoryItems(in: .meetings) {
-      if case .meeting(let meeting) = item, meeting.meetingID == meetingID { return meeting }
-    }
-    return nil
   }
 
   /// #4075 G10: the sentence for the failed action. Empty when none is showing.

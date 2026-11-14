@@ -15,7 +15,7 @@ enum HistoryPaging {
   static let pageSize = HistoryTabState.pageSize
 
   /// The tab, search and filters a requested limit was set for: a new one starts again at 30.
-  struct Context: Equatable {
+  struct Context: Equatable, Sendable {
     let tab: HistoryTab
     let query: String
     let filter: HistoryListFilter
@@ -76,9 +76,13 @@ enum HistoryPaging {
   /// The window `items` give under `context`, `state` and `selected`, computed before the diary
   /// is built, so an open item is inside it without any callback having run.
   static func window(
-    items: [HistoryListItem], context: Context, state: State, selected: HistoryItemID?
+    items: [HistoryListItem], context: Context, state: State, selected: HistoryItemID?,
+    positions: [HistoryItemID: Int]? = nil
   ) -> Window {
-    let selectedIndex = selected.flatMap { id in items.firstIndex { $0.id == id } }
+    let selectedIndex = selected.flatMap { id in
+      if let positions { return positions[id] }
+      return items.firstIndex { $0.id == id }
+    }
     let boundary = effectiveCount(
       requested: requested(state, for: context), selectedIndex: selectedIndex, total: items.count)
     return Window(
@@ -106,5 +110,70 @@ enum HistoryPaging {
   static func load(_ request: LoadRequest, state: State, current: Window) -> State {
     guard let limit = accept(request, current: current) else { return state }
     return State(requested: limit, context: current.context)
+  }
+}
+
+/// An accepted query result. Selection uses the complete result while the diary draws a page.
+struct HistoryQueryResult: Sendable {
+  struct Entry: Identifiable, Sendable {
+    let id: HistoryDiaryLayout.EntryID
+    let position: Int
+    let dayCount: Int
+  }
+
+  let key: TranscriptCoordinator.HistoryQueryKey
+  let items: [HistoryListItem]
+  let positions: [HistoryItemID: Int]
+  let ids: Set<HistoryItemID>
+  let calendar: Calendar
+  private let entries: [Entry]
+  private let rowOffsets: [Int]
+  private let dayPositions: [Date: Int]
+
+  init(key: TranscriptCoordinator.HistoryQueryKey, items: [HistoryListItem]) throws {
+    self.key = key
+    self.items = items
+    let calendar = key.calendar
+    self.calendar = calendar
+    var positions: [HistoryItemID: Int] = [:]
+    var entries: [Entry] = []
+    var offsets: [Int] = []
+    var days: [Date: Int] = [:]
+    var index = 0
+    while index < items.count {
+      try Task.checkCancellation()
+      let day = calendar.startOfDay(for: items[index].createdAt)
+      let end = HistoryDiaryLayout.firstIndex(before: day, in: items, from: index)
+      days[day] = index
+      entries.append(Entry(id: .day(day), position: index, dayCount: end - index))
+      while index < end {
+        try Task.checkCancellation()
+        let id = items[index].id
+        if positions[id] == nil { positions[id] = index }
+        offsets.append(entries.count)
+        entries.append(Entry(id: .item(id), position: index, dayCount: 0))
+        index += 1
+      }
+    }
+    self.positions = positions
+    self.ids = Set(positions.keys)
+    self.entries = entries
+    self.rowOffsets = offsets
+    self.dayPositions = days
+  }
+
+  func entries(through boundary: Int) -> ArraySlice<Entry> {
+    let end = boundary < rowOffsets.count ? rowOffsets[boundary] : entries.count
+    // The next heading belongs to an undrawn day when the boundary ends the previous day.
+    let includesNextHeading = end > 0 && entries[end - 1].dayCount > 0
+    return entries.prefix(end - (includesNextHeading ? 1 : 0))
+  }
+
+  func anchor(for entry: HistoryDiaryLayout.EntryID?) -> HistoryItemID? {
+    switch entry {
+    case .item(let id): positions[id] == nil ? nil : id
+    case .day(let date): dayPositions[date].map { items[$0].id }
+    case nil: nil
+    }
   }
 }

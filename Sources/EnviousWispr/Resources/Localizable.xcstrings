@@ -8109,6 +8109,16 @@
         }
       }
     },
+    "Couldn't load History" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verlauf konnte nicht geladen werden"
+          }
+        }
+      }
+    },
     "Couldn't paste. Your text is still in History." : {
       "comment" : "History: Paste could not use the clipboard, so nothing was pasted.",
       "localizations" : {
