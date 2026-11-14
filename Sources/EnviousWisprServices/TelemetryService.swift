@@ -745,22 +745,38 @@ public final class TelemetryService {
   public func appLaunched(
     version: String, build: String, osVersion: String, hardware: String,
     deviceModel: String, isFreshInstall: Bool,
-    aiCapable: Bool, aiEnabled: Bool
+    aiCapable: Bool, aiEnabled: Bool, speechModelsInstalled: String? = nil
   ) {
     PostHogSDK.shared.capture(
       "app.launched",
-      properties: [
-        "version": version,
-        "build": build,
-        "os_version": osVersion,
-        "hardware": hardware,
-        // #1572: the SPECIFIC machine, alongside the architecture. `hardware` keeps
-        // its meaning so its own history stays readable.
-        "device_model": deviceModel,
-        "is_fresh_install": isFreshInstall,
-        "ai_capable": aiCapable,
-        "ai_enabled": aiEnabled,
-      ])
+      properties: Self.appLaunchedProperties(
+        version: version, build: build, osVersion: osVersion, hardware: hardware,
+        deviceModel: deviceModel, isFreshInstall: isFreshInstall, aiCapable: aiCapable,
+        aiEnabled: aiEnabled, speechModelsInstalled: speechModelsInstalled))
+  }
+
+  /// The `app.launched` row. #4578: `speech_models_installed` (`parakeet`, `whisper`, `both`,
+  /// `none`) is absent when the installation reads did not settle; it does not tell a removed
+  /// model from one never installed.
+  nonisolated static func appLaunchedProperties(
+    version: String, build: String, osVersion: String, hardware: String,
+    deviceModel: String, isFreshInstall: Bool, aiCapable: Bool, aiEnabled: Bool,
+    speechModelsInstalled: String?
+  ) -> [String: Any] {
+    var properties: [String: Any] = [
+      "version": version,
+      "build": build,
+      "os_version": osVersion,
+      "hardware": hardware,
+      // #1572: the SPECIFIC machine, alongside the architecture. `hardware` keeps
+      // its meaning so its own history stays readable.
+      "device_model": deviceModel,
+      "is_fresh_install": isFreshInstall,
+      "ai_capable": aiCapable,
+      "ai_enabled": aiEnabled,
+    ]
+    if let speechModelsInstalled { properties["speech_models_installed"] = speechModelsInstalled }
+    return properties
   }
 
   /// #3289: one sample per launch after 12 idle minutes: does an idle app give its memory back?

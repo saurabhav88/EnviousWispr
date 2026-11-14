@@ -162,6 +162,25 @@ final class SpeechModelLibrary {
     }
   }
 
+  /// #4578 §3.9: the `app.launched` value `speech_models_installed`: which speech models are
+  /// installed when both settled answers are already known at emit time, or nil (the property is
+  /// omitted, never guessed). Read at once, so the launch row keeps its timing.
+  func launchInstalledLabel() -> String? {
+    guard let parakeet = installedSnapshot(.parakeet), let whisper = installedSnapshot(.whisper)
+    else { return nil }
+    return Self.launchLabel(parakeet: parakeet, whisper: whisper)
+  }
+
+  /// The closed `speech_models_installed` vocabulary.
+  nonisolated static func launchLabel(parakeet: Bool, whisper: Bool) -> String {
+    switch (parakeet, whisper) {
+    case (true, true): "both"
+    case (true, false): "parakeet"
+    case (false, true): "whisper"
+    case (false, false): "none"
+    }
+  }
+
   /// The set of engines installed now, each read fresh when unknown.
   func freshInstalledEngines() async -> Set<ASRBackendType> {
     var installed: Set<ASRBackendType> = []

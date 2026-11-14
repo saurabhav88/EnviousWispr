@@ -1,6 +1,6 @@
 import EnviousWisprCore
 import EnviousWisprPipeline
-import EnviousWisprServices
+@testable import EnviousWisprServices
 import Foundation
 import Observation
 import Testing
@@ -107,6 +107,18 @@ struct SpeechModelLibraryTests {
     #expect(await f.library.freshInstalled(.parakeet) == false)
     #expect(f.library.installedSnapshot(.parakeet) == false)
     #expect(await f.library.freshInstalledEngines().isEmpty)
+  }
+
+  /// #4578 §3.9: the launch value is read from settled answers only. When this fails, the
+  /// launch row reports a guessed set of speech models (an unknown read counted as "none").
+  @Test("the launch value is omitted while a read is unknown and is the settled set once read")
+  func launchInstalledLabel() async throws {
+    let f = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: f.root) }
+    #expect(f.library.installedSnapshot(.parakeet) == nil, "no Parakeet read has settled yet")
+    #expect(f.library.launchInstalledLabel() == nil, "unknown is omitted, never none")
+    _ = await f.library.freshInstalledEngines()
+    #expect(f.library.launchInstalledLabel() == "none", "both reads settled: nothing installed")
   }
 
   /// Held Parakeet reads, answered by the test in order.
@@ -290,5 +302,35 @@ struct SpeechModelLibraryTests {
     #expect(notice == .failed)
     #expect(steps.isEmpty)
     #expect(f.wired.migration.state(of: .dictation) != .declined)
+  }
+}
+
+/// #4578 §3.9: the `app.launched` `speech_models_installed` schema. When this fails, the PostHog
+/// insight "installs by speech models present" groups by a value outside its closed vocabulary,
+/// or the launch row loses or renames one of its existing properties.
+@Suite(.tags(.observabilityContract))
+struct SpeechModelsLaunchPropertyTests {
+  @Test("the closed vocabulary: both, parakeet, whisper, none")
+  func vocabulary() {
+    #expect(SpeechModelLibrary.launchLabel(parakeet: true, whisper: true) == "both")
+    #expect(SpeechModelLibrary.launchLabel(parakeet: true, whisper: false) == "parakeet")
+    #expect(SpeechModelLibrary.launchLabel(parakeet: false, whisper: true) == "whisper")
+    #expect(SpeechModelLibrary.launchLabel(parakeet: false, whisper: false) == "none")
+  }
+
+  @Test("app.launched carries speech_models_installed only when it is known")
+  func appLaunchedProperty() {
+    func properties(_ value: String?) -> [String: Any] {
+      TelemetryService.appLaunchedProperties(
+        version: "1", build: "1", osVersion: "26.0.0", hardware: "arm64", deviceModel: "Mac16,8",
+        isFreshInstall: false, aiCapable: true, aiEnabled: true, speechModelsInstalled: value)
+    }
+    #expect(properties(nil)["speech_models_installed"] == nil)
+    #expect(properties("both")["speech_models_installed"] as? String == "both")
+    #expect(
+      Set(properties(nil).keys)
+        == ["version", "build", "os_version", "hardware", "device_model", "is_fresh_install",
+          "ai_capable", "ai_enabled"],
+      "the eight existing properties are unchanged")
   }
 }

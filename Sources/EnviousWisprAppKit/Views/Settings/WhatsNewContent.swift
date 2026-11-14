@@ -77,6 +77,19 @@ enum WhatsNewContent {
       ],
       version: "2.6.1"
     ),
+    // Draft entry (#4578), not founder copy yet: the release checklist puts it before the founder.
+    // Claims checked against code: Remove on every downloaded engine's status row, picked or not
+    // (SpeechEngineStatus.offersRemove); a removed engine never downloads on its own and Set up
+    // model is the explicit install (ParakeetInstallIntentStore, Whisper's recorded decline);
+    // meetings use the other downloaded engine (SpeechJobAdmission, #4578 C3).
+    Entry(
+      id: "remove-either-speech-engine",
+      icon: "internaldrive",
+      title: "Remove either speech engine",
+      description:
+        "You can now remove Parakeet or Whisper from your Mac to free up space, in Dictation Settings > Engine or EnviousMeet > Models. A removed engine never downloads again on its own. Choose Set up model when you want it back, and meetings use your other downloaded engine meanwhile.",
+      version: "2.6.1"
+    ),
 
     // MARK: - v2.6.0
 

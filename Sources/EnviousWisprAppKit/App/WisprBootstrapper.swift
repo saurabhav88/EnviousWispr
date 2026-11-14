@@ -2220,6 +2220,7 @@ package final class WisprBootstrapper {
       permissions: permissions,
       keychainManager: keychainManager,
       cloudModelList: { [cloudModelList] in cloudModelList.snapshot?.list },
+      speechModelsInstalled: { [weak speechModels] in speechModels?.launchInstalledLabel() },
       standingSnapshotBuilder: standingSnapshotBuilder,
       contactsImportCoordinator: contactsImportCoordinator,
       aiAvailability: aiAvailability,

@@ -34456,6 +34456,42 @@
         }
       }
     },
+    "whatsNew.remove-either-speech-engine.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry remove-either-speech-engine).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove either speech engine"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entferne eine der beiden Transkriptions-Engines"
+          }
+        }
+      }
+    },
+    "whatsNew.remove-either-speech-engine.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry remove-either-speech-engine).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You can now remove Parakeet or Whisper from your Mac to free up space, in Dictation Settings > Engine or EnviousMeet > Models. A removed engine never downloads again on its own. Choose Set up model when you want it back, and meetings use your other downloaded engine meanwhile."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du kannst jetzt unter Diktateinstellungen > Engine oder EnviousMeet > Modelle Parakeet oder Whisper von deinem Mac entfernen, um Speicherplatz freizugeben. Eine entfernte Transkriptions-Engine wird nie wieder von selbst heruntergeladen. Wähle „Modell einrichten“, wenn du sie zurückhaben möchtest. Für Meetings wird bis dahin deine andere heruntergeladene Transkriptions-Engine verwendet."
+          }
+        }
+      }
+    },
     "whatsNew.introducing-enviousmeet.title" : {
       "comment" : "Settings > What's New: the title of one feature announcement (entry introducing-enviousmeet).",
       "extractionState" : "manual",
