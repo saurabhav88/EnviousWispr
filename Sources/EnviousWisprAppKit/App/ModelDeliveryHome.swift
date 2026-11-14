@@ -2049,6 +2049,18 @@ final class ModelDeliveryHome {
   /// the attempt's outcome. Settings ignores it, as before.
   @discardableResult
   func resumeParakeetDownload() -> Task<ParakeetDownloadAnswer, Never>? {
+    parakeetDownload(explicitInstall: false)
+  }
+
+  /// #4578: "Set up model": the person's explicit install, which also records that Parakeet is
+  /// wanted again and grants a fresh bounded cycle (`installExplicitly`). Same kill-switch,
+  /// claim and answer contract as Resume.
+  @discardableResult
+  func installParakeetExplicitly() -> Task<ParakeetDownloadAnswer, Never>? {
+    parakeetDownload(explicitInstall: true)
+  }
+
+  private func parakeetDownload(explicitInstall: Bool) -> Task<ParakeetDownloadAnswer, Never>? {
     guard let handle = parakeetHandle else { return nil }
     guard handle.isEnabled() else {
       parakeetResumeRefusalsForTests += 1
@@ -2101,14 +2113,51 @@ final class ModelDeliveryHome {
         // counted foreground operation (progress, location, budget, Cancel).
         // #4578: one consent-aware coordinator command for both branches; a removal the
         // person recorded refuses it (Set up model is the explicit install).
-        guard let upgrade = self.parakeetUpgrade,
-          let outcome = await upgrade.resumeDownloadInForeground()
-        else { return .refused }
+        guard let upgrade = self.parakeetUpgrade else { return .refused }
+        let outcome: ModelDeliveryController.DeliveryOutcome?
+        if explicitInstall {
+          // A store that cannot record "wanted" starts nothing.
+          outcome = (try? await upgrade.installExplicitly()) ?? nil
+        } else {
+          outcome = await upgrade.resumeDownloadInForeground()
+        }
+        guard let outcome else { return .refused }
         return .attempted(outcome)
       }
       if case .completed(let answer) = claim { return answer }
       return .refused
     }
+  }
+}
+
+extension ModelDeliveryHome {
+  /// #4578: deletes both owned Parakeet copies (Ultra and the retired v3). The caller
+  /// (`SpeechModelLibrary.removeParakeet`) has already recorded the removal and unloaded every
+  /// holder. The v3 registration records its donor decline before deleting (the controller),
+  /// so the legacy FluidAudio folder is never adopted again; that folder itself is not ours
+  /// and is never touched. Each deletion waits for a meeting's model claim to end.
+  func removeParakeetCopies() async -> Bool {
+    var removed = true
+    for registration in [parakeetRegistration, parakeetRetiredV3Registration].compactMap({ $0 }) {
+      if case .failed = await controller.remove(registration) {
+        removed = false
+        continue
+      }
+      // The owned folder itself goes too, but only when it is empty: `rmdir` never deletes a
+      // file, so anything this app did not put there stays.
+      _ = rmdir(registration.installDirectory.path)
+    }
+    return removed
+  }
+
+  /// #4578: Parakeet bytes remain on disk without an admitted install (an interrupted
+  /// removal or download), so Settings offers to remove the leftover files.
+  func parakeetHasLeftovers() async -> Bool {
+    for registration in [parakeetRegistration, parakeetRetiredV3Registration].compactMap({ $0 })
+    where await controller.hasLeftoverBytes(registration) {
+      return true
+    }
+    return false
   }
 }
 

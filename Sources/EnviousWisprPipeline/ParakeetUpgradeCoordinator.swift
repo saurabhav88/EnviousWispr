@@ -1237,6 +1237,24 @@ extension ParakeetUpgradeCoordinator {
     return await delivery.ensureAvailable()
   }
 
+  /// #4578: Remove's first step. Persists "removed by the user" FIRST (a failure refuses the
+  /// removal and changes nothing), then ends every way bytes could come back in this process:
+  /// the background upgrade (without recording a decline: Set up model restores it), the
+  /// obsolete-install cleanup, the frozen load choice, and any foreground or background
+  /// transfer on either handle (drained before this returns).
+  package func recordRemovalByUser() async throws {
+    try installIntent?.write(removedByUser: true)
+    backgroundCommandGeneration &+= 1
+    foregroundCancelGeneration &+= 1
+    backgroundFetch?.task.cancel()
+    invalidateBackgroundFetch()
+    setBackgroundUpgrade(.idle)
+    cancelCleanupTasks()
+    parakeetSelection.clear()
+    if let target { await enqueueCancelDrain(target.delivery).value }
+    if let delivery { await enqueueCancelDrain(delivery).value }
+  }
+
   /// #4578: the explicit install after a removal ("Set up model"). Persists "wanted" first,
   /// then grants a fresh bounded cycle through the same lifecycle Retry uses (store proven
   /// writable, attempts/refetch/exhaustion reset, obsolete cleanup cancelled, the explicit-retry

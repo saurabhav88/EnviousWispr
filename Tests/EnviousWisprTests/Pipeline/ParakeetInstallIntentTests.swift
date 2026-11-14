@@ -206,6 +206,45 @@ struct ParakeetInstallIntentTests {
 
   // MARK: Explicit install
 
+  /// #4578 (r2 N2): Remove and Set up model in one session, no relaunch. When this fails, the
+  /// person cannot get Parakeet back until they restart the app.
+  @Test("Remove then Set up model in the same session: Resume stays refused, install fetches")
+  func removeThenReinstallSameSession() async throws {
+    let (rig, intent) = try await rig(
+      v3: false, ultra: false,
+      state: .init(attempts: 2, refetchSpent: true, exhausted: true, declined: false),
+      removed: false)
+    defer { try? FileManager.default.removeItem(at: rig.root) }
+    try await rig.coordinator.recordRemovalByUser()
+    #expect(intent.read() == .removedByUser)
+    #expect(await rig.coordinator.resumeDownloadInForeground() == nil, "Resume is no install")
+    Policy.enqueueUltra(rig)
+    let outcome = try await rig.coordinator.installExplicitly()
+    #expect(outcome != nil)
+    #expect(intent.read() == .wanted)
+    #expect(
+      Policy.state(rig)
+        == .init(attempts: 0, refetchSpent: false, exhausted: false, declined: false))
+    #expect(Policy.ultraRequests(rig) > 0)
+  }
+
+  /// #4578: what Settings' "Remove leftover files" reads. When this fails, an interrupted
+  /// removal leaves hundreds of megabytes with no way to remove them, or an installed model is
+  /// offered as leftovers.
+  @Test("leftover bytes: unadmitted files are leftovers; nothing, or an install, is not")
+  func leftoverBytes() async throws {
+    let (bare, _) = try await rig(v3: false, ultra: false, removed: false)
+    defer { try? FileManager.default.removeItem(at: bare.root) }
+    #expect(await bare.controller.hasLeftoverBytes(bare.v3Registration) == false)
+    try Policy.install(Policy.v3Files, into: bare.v3Registration.installDirectory)
+    #expect(await bare.controller.hasLeftoverBytes(bare.v3Registration))
+    #expect(await bare.controller.remove(bare.v3Registration) == .removed)
+    #expect(await bare.controller.hasLeftoverBytes(bare.v3Registration) == false)
+    let (installed, _) = try await rig(v3: true, ultra: false, removed: false)
+    defer { try? FileManager.default.removeItem(at: installed.root) }
+    #expect(await installed.controller.hasLeftoverBytes(installed.v3Registration) == false)
+  }
+
   @Test(
     "install after a removal with a spent cycle: clears the removal, grants a fresh cycle, fetches")
   func explicitInstallResetsTheCycle() async throws {

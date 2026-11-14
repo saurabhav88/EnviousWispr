@@ -2531,6 +2531,22 @@ struct ParakeetUpgradePolicyTests {
     return (rig, gate)
   }
 
+  /// #4578: Remove during a background upgrade. When this fails, a removed Parakeet keeps
+  /// downloading (and is installed again), or Remove records a decline that Set up model would
+  /// then have to undo.
+  @Test("Remove stops a background upgrade without a decline; nothing is admitted")
+  func removalStopsBackgroundUpgrade() async throws {
+    let (rig, gate) = try await Self.heldBackgroundFetch(installIntent: true)
+    let removal = Task { try await rig.coordinator.recordRemovalByUser() }
+    gate.open()
+    try await removal.value
+    await rig.controller.setBeforeExistingCacheValidationForTesting(nil)
+    #expect(rig.coordinator.isInstallWanted == false)
+    #expect(rig.coordinator.backgroundUpgrade == .idle)
+    #expect(Self.state(rig)?.declined != true, "no decline recorded")
+    #expect(await rig.controller.isAdmitted(rig.ultraRegistration) == false)
+  }
+
   @Test("E13: Resume waits for Cancel's drain before clearing the decline")
   func resumeWaitsForCancelDrain() async throws {
     let (rig, gate) = try await Self.heldBackgroundFetch()

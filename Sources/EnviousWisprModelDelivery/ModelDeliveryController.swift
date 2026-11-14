@@ -263,6 +263,19 @@ public actor ModelDeliveryController {
     admission(for: registration).isAdmitted()
   }
 
+  /// #4578: bytes of this identity remain on disk although it is not admitted: a component
+  /// root of the manifest in the install directory, or a staged partial. An interrupted
+  /// removal leaves these; Remove runs again to sweep them.
+  public func hasLeftoverBytes(_ registration: DeliveryRegistration) -> Bool {
+    guard !admission(for: registration).isAdmitted() else { return false }
+    let fm = FileManager.default
+    for root in CacheAdmission.componentRoots(of: registration.manifest)
+    where fm.fileExists(atPath: registration.installDirectory.appendingPathComponent(root).path) {
+      return true
+    }
+    return Self.hasStagedPartialsOnDisk(registration)
+  }
+
   /// Whether the install directory is somewhere we may safely create, replace and
   /// delete (#2697).
   ///

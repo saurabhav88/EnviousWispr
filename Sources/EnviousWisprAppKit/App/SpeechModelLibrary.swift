@@ -33,6 +33,21 @@ final class SpeechModelLibrary {
   @ObservationIgnored private let modelDelivery: ModelDeliveryHome
   @ObservationIgnored private var whisper: WhisperParts?
 
+  /// #4578: Parakeet's removal seams, assigned by the bootstrapper once the engines exist.
+  /// `refusal` answers synchronously before any work (dictation, file import, benchmark,
+  /// recovery, a meeting); `unloadForRemoval` frees every in-memory copy before the bytes go;
+  /// `finishRemoval` lets them load again (a load then finds no install and refuses).
+  @ObservationIgnored let parakeetRemoval = ParakeetRemovalHook()
+  /// #4578: a Parakeet Remove is running (no second one, no Set up model meanwhile).
+  private(set) var isRemovingParakeet = false
+  /// #4578: a Parakeet Set up model is running (no second one, no Remove meanwhile).
+  private(set) var isInstallingParakeet = false
+  /// #4578: the outcome of the last Parakeet Remove pressed, nil after a success.
+  private(set) var parakeetRemoveNotice: WhisperRemoveNotice?
+  /// #4578: Parakeet bytes are on disk without an install (an interrupted removal), read after
+  /// each command and at launch. Settings offers to remove them.
+  private(set) var parakeetHasLeftovers = false
+
   /// Parakeet's physical installation (owned Ultra or owned v3 admitted), nil until the first
   /// read settles. Runtime eligibility (rejection, spent budgets) is NOT part of it: retained
   /// admitted bytes stay installed and removable; the upgrade owner decides whether they load.
@@ -101,6 +116,8 @@ final class SpeechModelLibrary {
   func installedSnapshot(_ engine: ASRBackendType) -> Bool? {
     switch engine {
     case .parakeet:
+      // Like Whisper: no new job starts on a model being removed.
+      if isRemovingParakeet { return false }
       // An answer read against older delivery facts is unknown now, in this same turn.
       guard let installed = parakeetInstalled, parakeetReadKey == currentParakeetKey else {
         return nil
@@ -211,7 +228,8 @@ final class SpeechModelLibrary {
   func requestDownload(_ engine: ASRBackendType) async -> DownloadRequest {
     switch engine {
     case .parakeet:
-      guard let attempt = modelDelivery.resumeParakeetDownload() else { return .refused }
+      // #4578: Setup's choice is the person's explicit install (it also undoes a removal).
+      guard let attempt = installParakeet() else { return .refused }
       switch await attempt.value {
       case .refused: return .refused
       case .attempted(let outcome): return .ended(outcome)
@@ -227,6 +245,80 @@ final class SpeechModelLibrary {
     case .parakeet: modelDelivery.cancelParakeetDownload()
     case .whisper: whisper?.setupService.cancelDownload()
     }
+  }
+
+  // MARK: - Parakeet commands
+
+  /// #4578: Set up model for Parakeet: records that it is wanted again and downloads it.
+  /// Refused while a Remove runs.
+  @discardableResult
+  func installParakeet() -> Task<ParakeetDownloadAnswer, Never>? {
+    guard !isRemovingParakeet, !isInstallingParakeet else { return nil }
+    guard let attempt = modelDelivery.installParakeetExplicitly() else { return nil }
+    parakeetRemoveNotice = nil
+    isInstallingParakeet = true
+    return Task { [weak self] in
+      let answer = await attempt.value
+      self?.isInstallingParakeet = false
+      self?.invalidateParakeet()
+      return answer
+    }
+  }
+
+  /// #4578: Remove for Parakeet. Refusals are synchronous and change nothing. Then, under one
+  /// engine-mutation claim: record the removal (persisted before anything else; a failure
+  /// refuses), stop every transfer, free every in-memory copy, delete both owned copies, then
+  /// let holders load again. Neither engine pick changes. The FluidAudio donor is never touched.
+  @discardableResult
+  func removeParakeet() -> Task<Void, Never>? {
+    parakeetRemoveNotice = nil
+    if let refusal = parakeetRemoval.refusal() {
+      parakeetRemoveNotice = refusal
+      return nil
+    }
+    guard !isRemovingParakeet, !isInstallingParakeet else { return nil }
+    isRemovingParakeet = true
+    // Every job reads "not installed" from this turn on (installedSnapshot), and the engine
+    // coordinator re-reads its status now, not when the bytes are gone.
+    onInstallationChanged?()
+    return Task { [weak self] in
+      guard let self else { return }
+      let scope = self.modelDelivery.engineMutationScope
+      let outcome = await scope.withClaim(site: "parakeetRemove") { () async -> Bool in
+        await self.runParakeetRemoval()
+      }
+      var removed = false
+      if case .completed(let done) = outcome { removed = done }
+      self.parakeetHasLeftovers = await self.modelDelivery.parakeetHasLeftovers()
+      self.isRemovingParakeet = false
+      self.parakeetRemoveNotice = removed ? nil : .failed
+      self.onInstallationChanged?()
+      // The delivery facts may not move for a v3-only removal: read again now.
+      self.invalidateParakeet()
+    }
+  }
+
+  private func runParakeetRemoval() async -> Bool {
+    guard let upgrade = modelDelivery.parakeetUpgrade else { return false }
+    do {
+      try await upgrade.recordRemovalByUser()
+    } catch {
+      return false
+    }
+    guard await parakeetRemoval.unloadForRemoval() else {
+      // Nothing was deleted. The removal stays recorded (only Set up model records "wanted"):
+      // the bytes stay unused until Remove is pressed again or Set up model.
+      await parakeetRemoval.finishRemoval()
+      return false
+    }
+    let removed = await modelDelivery.removeParakeetCopies()
+    await parakeetRemoval.finishRemoval()
+    return removed
+  }
+
+  /// #4578: reads whether Parakeet bytes remain without an install (launch, Settings appear).
+  func refreshParakeetLeftovers() async {
+    parakeetHasLeftovers = await modelDelivery.parakeetHasLeftovers()
   }
 
   /// The Whisper setup service's Remove action over `library`, held weakly. nil is success, so a
@@ -253,4 +345,15 @@ final class SpeechModelLibrary {
     await whisper.removal.finishRemoval()
     return removed ? nil : .failed
   }
+}
+
+/// #4578: Parakeet Remove's seams into the engines, assigned by the bootstrapper.
+@MainActor final class ParakeetRemovalHook {
+  /// Why Remove must not run now, or nil. Synchronous, before any work.
+  var refusal: @MainActor () -> WhisperRemoveNotice? = { .failed }
+  /// Frees every in-memory Parakeet copy; true when none stays loaded. Awaited BEFORE the
+  /// deletion; false stops the removal before any byte is deleted.
+  var unloadForRemoval: @MainActor () async -> Bool = { true }
+  /// Awaited AFTER the deletion, whatever its result.
+  var finishRemoval: @MainActor () async -> Void = {}
 }

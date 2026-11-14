@@ -520,6 +520,8 @@ package final class WisprBootstrapper {
       .init(setupService: whisper.setupService, migration: whisper.migration, removal: whisper.removal))
     // The first Parakeet installation read (joins the launch migration started just above).
     speechModels.refreshParakeet()
+    // #4578: whether an interrupted removal left Parakeet bytes behind.
+    Task { await speechModels.refreshParakeetLeftovers() }
     let whisperBackend = whisper.backend
     // #3973 C3: EnviousMeet's own Whisper Large v3 Turbo (used only while dictation runs
     // Parakeet). One instance for the process; loaded for one engine operation at a time.
@@ -3618,6 +3620,40 @@ package final class WisprBootstrapper {
     // #4578: an installation fact changed (a read settled, a removal or install finished):
     // the coordinator re-reads its status and switch gate.
     speechModels.onInstallationChanged = { [weak engineCoordinator] in
+      engineCoordinator?.poke(.setupStateChanged)
+    }
+    // #4578: Parakeet Remove refuses, before any work, whatever may be using Parakeet now: a
+    // dictation on either engine (Parakeet's own config, a session being made, the live
+    // recording), any workload holding the one inference slot (file import, Transcribe again,
+    // benchmark, recovery, a meeting's shared pass, an abandoned decode), recovery, an engine
+    // switch, and an active meeting (its final pass may still need Parakeet, own copy or
+    // shared). With those refused, the dictation engine is the only resident copy left.
+    speechModels.parakeetRemoval.refusal = {
+      [weak kernelDriver, weak whisperKernelDriver, weak engineCoordinator, weak engineLease,
+       liveRecordingState, weak recoveryCoordinator, weak diagnosticsCoordinator,
+       meetingIsActive] in
+      let busy =
+        kernelDriver?.currentSessionConfig != nil
+        || whisperKernelDriver?.currentSessionConfig != nil
+        || (engineCoordinator?.isMintingAnySession ?? true)
+        || (engineCoordinator?.isSwitching ?? true)
+        || liveRecordingState.isDictationActive
+        || (engineLease?.isBusy ?? true)
+        || (recoveryCoordinator?.isRecovering ?? true)
+        || (diagnosticsCoordinator?.benchmark.isRunning ?? true)
+      if busy { return .refusedDictationInFlight }
+      if meetingIsActive() { return .refusedMeetingActive }
+      return nil
+    }
+    speechModels.parakeetRemoval.unloadForRemoval = { [weak kernelDriver, asrManager] in
+      // The idle-unload timer must not race the unload; the same order as the Ultra
+      // activation's unload.
+      kernelDriver?.cancelPendingEngineUnload()
+      await asrManager.unloadModel()
+      // Freed only when no Parakeet model stays loaded (an unload refused mid-stream).
+      return !(asrManager.activeBackendType == .parakeet && asrManager.isModelLoaded)
+    }
+    speechModels.parakeetRemoval.finishRemoval = { [weak engineCoordinator] in
       engineCoordinator?.poke(.setupStateChanged)
     }
 

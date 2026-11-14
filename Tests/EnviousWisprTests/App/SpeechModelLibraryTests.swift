@@ -215,6 +215,68 @@ struct SpeechModelLibraryTests {
     }
   }
 
+  // MARK: - #4578 Parakeet Remove
+
+  private func parakeetLibrary() throws -> (SpeechModelLibrary, ParakeetUpgradeCoordinator, URL) {
+    let root = TestTemporaryDirectory.url
+      .appendingPathComponent("ew-4578-premove-\(UUID().uuidString)", isDirectory: true)
+    let home = ModelDeliveryHome(
+      engineMutationScope: .alwaysAllowedForTesting,
+      manifestBundle: try #require(
+        Bundle(url: RepoRoot.url.appendingPathComponent("Sources/EnviousWispr/Resources"))),
+      appSupportOverride: root,
+      deliveryFlagDefaults: try #require(TestDefaults.suite("ew-4578-pr-\(UUID().uuidString)")))
+    let upgrade = home.installParakeetUpgrade(
+      parakeetSelection: ParakeetSelectionProvider(), isOnboardingComplete: { true })
+    return (SpeechModelLibrary(modelDelivery: home), upgrade, root)
+  }
+
+  /// When this fails, Remove deletes Parakeet during a dictation or meeting, or a refused
+  /// Remove still records the removal.
+  @Test(
+    "a refused Parakeet Remove says why and changes nothing",
+    arguments: [WhisperRemoveNotice.refusedDictationInFlight, .refusedMeetingActive])
+  func parakeetRemoveRefusal(refusal: WhisperRemoveNotice) async throws {
+    let (library, upgrade, root) = try parakeetLibrary()
+    defer { try? FileManager.default.removeItem(at: root) }
+    var steps: [String] = []
+    library.parakeetRemoval.refusal = { refusal }
+    library.parakeetRemoval.unloadForRemoval = { steps.append("unload"); return true }
+    #expect(library.removeParakeet() == nil)
+    #expect(library.parakeetRemoveNotice == refusal)
+    #expect(steps.isEmpty && !library.isRemovingParakeet)
+    #expect(upgrade.isInstallWanted)
+  }
+
+  /// When this fails, Remove deletes a model still loaded in memory, leaves it to download
+  /// again, or changes the engine the person picked.
+  @Test("Parakeet Remove records first, unloads before deleting, reopens after; a refused unload deletes nothing and keeps the record")
+  func parakeetRemoveOrder() async throws {
+    for freed in [true, false] {
+      let (library, upgrade, root) = try parakeetLibrary()
+      defer { try? FileManager.default.removeItem(at: root) }
+      var steps: [String] = []
+      library.parakeetRemoval.refusal = { nil }
+      library.parakeetRemoval.unloadForRemoval = {
+        steps.append("unload:wanted=\(upgrade.isInstallWanted)")
+        // No job may start on Parakeet while it is being removed.
+        steps.append("snapshot:\(library.installedSnapshot(.parakeet).map { "\($0)" } ?? "nil")")
+        return freed
+      }
+      library.parakeetRemoval.finishRemoval = { steps.append("finish") }
+      let task = try #require(library.removeParakeet())
+      #expect(library.isRemovingParakeet)
+      #expect(library.removeParakeet() == nil, "one Remove at a time")
+      #expect(library.installParakeet() == nil, "no Set up model during a Remove")
+      await task.value
+      #expect(steps == ["unload:wanted=false", "snapshot:false", "finish"])
+      #expect(!library.isRemovingParakeet)
+      #expect(library.parakeetRemoveNotice == (freed ? nil : .failed))
+      #expect(upgrade.isInstallWanted == false, "only Set up model records wanted again")
+      #expect(library.parakeetHasLeftovers == false)
+    }
+  }
+
   @Test("Remove before the Whisper parts exist fails and touches nothing")
   func removeWithoutPartsFails() async throws {
     let f = try makeFixture(attach: false)
