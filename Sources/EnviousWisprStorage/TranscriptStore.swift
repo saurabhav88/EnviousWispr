@@ -179,6 +179,10 @@ public final class TranscriptStore {
   /// #3973 C2: a reader of one permanent row's file, self-contained like `durableWriter` so the
   /// caller runs it off the main actor. Nil when no file has that id; throws when the file is
   /// there but cannot be read or decoded.
+  package func historyCatalogSources(meetings: MeetingStore) -> HistoryCatalogSources {
+    HistoryCatalogSources(transcriptDirectory: directory, readTranscript: rowReader(), meetings: meetings)
+  }
+
   public func rowReader() -> @Sendable (UUID) throws -> Transcript? {
     let directory = directory
     return { id in
@@ -778,6 +782,13 @@ public final class TranscriptStore {
       ids.insert(recoveryID)
     }
     return ids
+  }
+
+  /// A read-only ID lookup using the same admission and identity policy as the pending list.
+  nonisolated static func historyPendingRow(at url: URL, now: Date) throws -> Transcript? {
+    let data = try Data(contentsOf: url)
+    return decodeCandidate(data: data, at: url, now: now, retention: AppConstants.pendingTranscriptRetention)
+      .liveTranscript
   }
 
   private nonisolated static func decodeCandidate(

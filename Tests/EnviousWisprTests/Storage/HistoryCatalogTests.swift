@@ -1,7 +1,8 @@
 import EnviousWisprAppKitTestSupport
 import EnviousWisprCore
-import EnviousWisprStorage
+@testable import EnviousWisprStorage
 import Foundation
+import os
 import Testing
 
 @Suite("History catalog pages and reopens saved projections", .tags(.productOutcome))
@@ -64,6 +65,93 @@ struct HistoryCatalogTests {
     ) { _ in true }
     #expect(new.summaries.map(\.preview) == ["café update"])
     #expect(new.dayCounts?.values.first == 1)
+  }
+
+  @MainActor
+  @Test("Interrupted upgrade reopens with safe progress and picks up nested edits and deletes")
+  func resumesRealSources() async throws {
+    let root = TestTemporaryDirectory.url.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let transcriptStore = TranscriptStore(directory: root.appendingPathComponent("transcripts"))
+    let meetingStore = MeetingStore(root: root.appendingPathComponent("Meetings"))
+    let meeting = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    try meetingStore.create(meeting)
+    try Data("first meeting note".utf8).write(to: meetingStore.notesURL(for: meeting.id), options: .atomic)
+    let catalogFolder = root.appendingPathComponent("catalog")
+    let rows = (1...36).map { index in
+      Transcript(text: "budget " + String(index), processingTime: 0, backendType: .parakeet)
+    }
+    for row in rows { try transcriptStore.save(row) }
+    let sources = transcriptStore.historyCatalogSources(meetings: meetingStore)
+    let sourceRevision = OSAllocatedUnfairLock(initialState: UInt64(0))
+    let project: @Sendable (HistoryCatalogSources.Saved) -> HistoryCatalog.Projection? = { source in
+      if let record = source.meeting {
+        let note = source.documents?.notes ?? ""
+        return .init(summary: .init(
+          key: .init(tab: .meetings, id: record.id), date: record.createdAt, preview: note,
+          sources: source.versions), searchableFields: [note])
+      }
+      guard let row = source.transcript else { return nil }
+      return .init(summary: .init(
+        key: .init(tab: .dictations, id: row.id), date: row.createdAt, preview: row.text,
+        sources: source.versions), searchableFields: [row.text])
+    }
+    let removed = try #require(rows.last)
+    do {
+      let initialCatalog = try HistoryCatalog(directory: catalogFolder)
+      let worker = HistoryCatalogReconciliation(
+        catalog: initialCatalog, sources: sources, sourceRevision: { sourceRevision.withLock { $0 } },
+        project: project)
+      let interrupted = Task {
+        try await worker.reconcile { pass in
+          if pass.revision == nil {
+            withUnsafeCurrentTask { $0?.cancel() }
+          }
+        }
+      }
+      do {
+        _ = try await interrupted.value
+        Issue.record("The backfill completed after the first committed batch was interrupted")
+      } catch is CancellationError {}
+      let verified = try await initialCatalog.page(.init(tab: .dictations)) {
+        try $0.sourcesStillMatch()
+      }
+      #expect(verified.summaries.isEmpty == false)
+      #expect(verified.dayCounts == nil)
+      #expect(FileManager.default.fileExists(atPath: meetingStore.notesDocumentURL(for: meeting.id).path) == false)
+    }
+    try transcriptStore.delete(id: removed.id)
+    try Data("current budget note".utf8).write(to: meetingStore.notesURL(for: meeting.id), options: .atomic)
+    let reopened = try HistoryCatalog(directory: catalogFolder)
+    let worker = HistoryCatalogReconciliation(
+      catalog: reopened, sources: sources, sourceRevision: { sourceRevision.withLock { $0 } },
+      project: project)
+    let complete = try await worker.reconcile()
+    let revision = try #require(complete?.revision)
+    let keys = try await reopened.matchingKeys(.init(tab: .dictations), sourceRevision: revision)
+    #expect(Set(keys.map(\.id)) == Set(rows.map(\.id)).subtracting([removed.id]))
+    let old = try await reopened.page(.init(tab: .meetings, search: "first"), sourceRevision: revision) {
+      try $0.sourcesStillMatch()
+    }
+    #expect(old.summaries.isEmpty)
+    let current = try await reopened.page(.init(tab: .meetings, search: "budg"), sourceRevision: revision) {
+      try $0.sourcesStillMatch()
+    }
+    #expect(current.summaries.map(\.preview) == ["current budget note"])
+    let currentCoverage = await worker.currentCoverage()
+    #expect(currentCoverage == revision)
+    sourceRevision.withLock { $0 += 1 }
+    let invalidated = await worker.currentCoverage()
+    #expect(invalidated == nil)
+
+    let moved = root.appendingPathComponent("saved-transcripts")
+    try FileManager.default.moveItem(at: root.appendingPathComponent("transcripts"), to: moved)
+    do {
+      _ = try await worker.reconcile()
+      Issue.record("A missing source was treated as a complete empty library")
+    } catch is CocoaError {}
+    let unverified = await worker.currentCoverage()
+    #expect(unverified == nil)
   }
 
   private func projection(_ index: Int, date: Date, text: String) -> HistoryCatalog.Projection {

@@ -87,6 +87,11 @@ extension MeetingStore {
     return read.loaded
   }
 
+  /// The same visible document projection as loadDocuments without touching any saved file.
+  func historyDocuments(meeting id: UUID) throws -> LoadedDocuments {
+    try readDocuments(meeting: id).loaded
+  }
+
   /// A settled read, and which notes files it found out of step.
   private struct DocumentsRead {
     var loaded: LoadedDocuments

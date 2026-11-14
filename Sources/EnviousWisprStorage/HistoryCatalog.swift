@@ -33,10 +33,11 @@ package actor HistoryCatalog {
     package let title: String?
     package let preview: String
     package let sources: [SourceVersion]
+    package let expiresAt: Date?
 
     package init(
       key: Key, date: Date, appKey: String? = nil, title: String? = nil, preview: String,
-      sources: [SourceVersion]
+      sources: [SourceVersion], expiresAt: Date? = nil
     ) {
       self.key = key
       self.date = date
@@ -44,6 +45,7 @@ package actor HistoryCatalog {
       self.title = title
       self.preview = preview
       self.sources = sources
+      self.expiresAt = expiresAt
     }
   }
 
@@ -63,16 +65,18 @@ package actor HistoryCatalog {
     let dates: DateInterval?
     let app: String?
     let calendar: Calendar
+    let now: Date
 
     package init(
       tab: HistoryTab, search: String = "", dates: DateInterval? = nil, app: String? = nil,
-      calendar: Calendar = .current
+      calendar: Calendar = .current, now: Date = Date()
     ) {
       self.tab = tab
       self.search = search
       self.dates = dates
       self.app = app
       self.calendar = calendar
+      self.now = now
     }
   }
 
@@ -127,7 +131,7 @@ package actor HistoryCatalog {
         try connection.execute("""
           CREATE TABLE entries (
             row_id INTEGER PRIMARY KEY, tab TEXT NOT NULL, id TEXT NOT NULL, saved_at REAL NOT NULL,
-            app TEXT, summary BLOB NOT NULL, fields TEXT NOT NULL, ascii_only INTEGER NOT NULL,
+            app TEXT, expires_at REAL, summary BLOB NOT NULL, fields TEXT NOT NULL, ascii_only INTEGER NOT NULL,
             UNIQUE (tab, id)
           )
           """)
@@ -136,6 +140,11 @@ package actor HistoryCatalog {
         try connection.execute("INSERT INTO coverage VALUES (0, NULL)")
         try connection.execute("CREATE TABLE search_rebuild (needed INTEGER NOT NULL)")
         try connection.execute("INSERT INTO search_rebuild VALUES (1)")
+        try connection.execute("""
+          CREATE TABLE source_progress (
+            path TEXT PRIMARY KEY, versions BLOB NOT NULL, tab TEXT, id TEXT
+          ) WITHOUT ROWID
+          """)
         try connection.execute("PRAGMA user_version = 1")
       }
     }
@@ -143,11 +152,31 @@ package actor HistoryCatalog {
     self.connection = connection
   }
 
+  /// Call only after closing the previous catalog instance. Delete only known derived SQLite
+  /// files; even a stray original file in this folder is left in place.
+  package static func discardFiles(in directory: URL) throws {
+    for name in ["history.sqlite-shm", "history.sqlite-wal", "history.sqlite-journal", "history.sqlite"] {
+      do {
+        try FileManager.default.removeItem(at: directory.appendingPathComponent(name))
+      } catch CocoaError.fileNoSuchFile {
+        continue
+      }
+    }
+  }
+
   /// Certifying a revision means an external source inventory has accounted for every record.
   /// A partial batch can be shown once its individual sources pass verification.
   package func apply(
     _ projections: [Projection], removing keys: [Key] = [], certifiedRevision: String? = nil
   ) throws {
+    try apply(projections, removing: keys, certifiedRevision: certifiedRevision, recording: [])
+  }
+
+  func apply(
+    _ projections: [Projection], removing keys: [Key], certifiedRevision: String? = nil,
+    recording progress: [SourceProgress], dropping paths: [String] = []
+  ) throws {
+    try Task.checkCancellation()
     try connection.transaction(write: true) {
       if hasTrigram == false, keys.isEmpty == false || projections.isEmpty == false {
         try connection.execute("UPDATE search_rebuild SET needed = 1")
@@ -173,13 +202,15 @@ package actor HistoryCatalog {
         let parameters = row.key.parameters + [
           .number(row.date.timeIntervalSinceReferenceDate),
           row.appKey.map(HistoryCatalogConnection.Value.text) ?? .null,
+          row.expiresAt.map { .number($0.timeIntervalSinceReferenceDate) } ?? .null,
           .bytes(try encoder.encode(row)), .text(fields), .number(asciiOnly ? 1 : 0),
         ]
         let rowID = try connection.rows("""
-          INSERT INTO entries(tab, id, saved_at, app, summary, fields, ascii_only)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO entries(tab, id, saved_at, app, expires_at, summary, fields, ascii_only)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(tab, id) DO UPDATE SET
-            saved_at=excluded.saved_at, app=excluded.app, summary=excluded.summary,
+            saved_at=excluded.saved_at, app=excluded.app, expires_at=excluded.expires_at,
+            summary=excluded.summary,
             fields=excluded.fields, ascii_only=excluded.ascii_only
           RETURNING row_id
           """, parameters) { sqlite3_column_int64($0, 0) }.first
@@ -188,6 +219,15 @@ package actor HistoryCatalog {
           try connection.execute(
             "INSERT INTO search(rowid, body) VALUES (?, ?)", [.integer(rowID), .text(text)])
         }
+      }
+      for path in paths {
+        try connection.execute("DELETE FROM source_progress WHERE path = ?", [.text(path)])
+      }
+      for step in progress {
+        let key = step.key?.parameters ?? [.null, .null]
+        try connection.execute("""
+          INSERT OR REPLACE INTO source_progress(path, versions, tab, id) VALUES (?, ?, ?, ?)
+          """, [.text(step.path), .bytes(try encoder.encode(step.versions))] + key)
       }
       try connection.execute(
         "UPDATE coverage SET revision = ? WHERE id = 0", [certifiedRevision.map { .text($0) } ?? .null])
@@ -250,6 +290,32 @@ package actor HistoryCatalog {
     }
   }
 
+  struct SourceProgress: Sendable {
+    let path: String
+    let versions: [SourceVersion]
+    let key: Key?
+  }
+
+  func sourceProgress() throws -> [String: SourceProgress] {
+    let decoder = JSONDecoder()
+    let rows = try connection.rows("SELECT path, versions, tab, id FROM source_progress") { row in
+      let path = HistoryCatalogConnection.text(row, 0)
+      guard let bytes = sqlite3_column_blob(row, 1) else { throw Failure.incompatibleSchema }
+      let data = Data(bytes: bytes, count: Int(sqlite3_column_bytes(row, 1)))
+      let versions = try decoder.decode([SourceVersion].self, from: data)
+      let key: Key?
+      if let tab = HistoryTab(rawValue: HistoryCatalogConnection.text(row, 2)),
+        let id = UUID(uuidString: HistoryCatalogConnection.text(row, 3))
+      {
+        key = Key(tab: tab, id: id)
+      } else {
+        key = nil
+      }
+      return (path, SourceProgress(path: path, versions: versions, key: key))
+    }
+    return Dictionary(uniqueKeysWithValues: rows)
+  }
+
   private func hasCoverage(_ revision: String?) throws -> Bool {
     guard let revision else { return false }
     return try connection.rows("SELECT revision FROM coverage WHERE revision = ?", [.text(revision)]) {
@@ -258,8 +324,10 @@ package actor HistoryCatalog {
   }
 
   private func predicate(for query: Query) -> (sql: String, values: [HistoryCatalogConnection.Value]) {
-    var conditions = ["e.tab = ?"]
-    var values: [HistoryCatalogConnection.Value] = [.text(query.tab.rawValue)]
+    var conditions = ["e.tab = ?", "(e.expires_at IS NULL OR e.expires_at > ?)"]
+    var values: [HistoryCatalogConnection.Value] = [
+      .text(query.tab.rawValue), .number(query.now.timeIntervalSinceReferenceDate),
+    ]
     if let dates = query.dates {
       conditions.append("e.saved_at >= ? AND e.saved_at < ?")
       values += [.number(dates.start.timeIntervalSinceReferenceDate), .number(dates.end.timeIntervalSinceReferenceDate)]
