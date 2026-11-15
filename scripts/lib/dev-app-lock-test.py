@@ -705,6 +705,17 @@ def main():
               str(mod.job_waited(fake, now)))
         mod.end_wait(fake, now - 5)
         check("a clear ends the job clock", mod.job_waited(fake, now) is None)
+        # Cloud review of #4589: an older checkout reads only set/clear, so a
+        # NEED YOU followed by WAITING ON must leave a clear for it to read.
+        fake2 = {"nonce": "jobcompat1"}
+        mod.start_wait(fake2, now - 60)
+        mod.start_job_wait(fake2, now - 30)
+        names = sorted(n for n in os.listdir(lk) if n.startswith("wait-jobcompat1."))
+        legacy = [n for n in names if n.endswith((".set", ".clear"))]
+        check("WAITING ON after NEED YOU leaves a clear that older readers see last",
+              legacy and legacy[-1].endswith(".clear") and mod.waited(fake2, now) is None
+              and mod.job_waited(fake2, now) is not None and 29 < mod.job_waited(fake2, now) < 31,
+              str(names))
         rel_j = Session(tmp, j_tool, ["claim --label rj"] + mark_steps("working") + ["release"])
         rel_j.wait_done()
         check("release removes the job wait file",

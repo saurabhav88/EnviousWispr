@@ -256,12 +256,12 @@ def wait_file(card):
     return os.path.join(LOCK_DIR, f"wait-{nonce}")
 
 
-def _wait_event(card, action, when):
+def _wait_event(card, action, when, after_ns=0):
     path = wait_file(card)
     if path is None:
         return
     try:
-        fd = os.open(f"{path}.{int(when * 1_000_000_000)}.{action}",
+        fd = os.open(f"{path}.{int(when * 1_000_000_000) + after_ns}.{action}",
                      os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
     except FileExistsError:
         return
@@ -273,7 +273,17 @@ def start_wait(card, when):
 
 
 def start_job_wait(card, when):
-    _wait_event(card, "own", when)
+    """Older checkouts' copies of this file read only set/clear events on the
+    same card version (cloud review of #4589): a NEED YOU turned WAITING ON
+    would still read there as an unanswered founder wait and expire at 10
+    minutes. So when a founder wait is open, write a `clear` first and the
+    `own` one nanosecond later. With no founder wait open, write only `own`,
+    so a repeated WAITING ON keeps the oldest job start."""
+    if waited(card, when) is not None:
+        _wait_event(card, "clear", when)
+        _wait_event(card, "own", when, after_ns=1)
+    else:
+        _wait_event(card, "own", when)
 
 
 def job_reported(card, when):
