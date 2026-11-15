@@ -73,26 +73,29 @@ struct EscapeRecoveryRowConnectorTests {
   func deliveryActionsRouteThroughTheCoordinator() throws {
     let source = try source(Self.detailPath)
 
-    let guarded = source.components(separatedBy: "transcriptCoordinator.textForDelivery(").count - 1
-    // Two sites in the view: Paste, and Save and Share's enabled state (#4001 H10, which only
-    // decides whether the buttons are enabled). Copy/Save/Share's `exportText` reads the live
-    // row through the shared export owner (#3147 PR3), checked below.
+    // #4609: the held card draws from catalog display data, so it asks by id through the
+    // verified on-demand read. Two sites: Paste's text, and `exportText` (Copy, Save, Share).
+    // The toolbar's enabled state only decides availability from the drawn text.
+    let guarded =
+      source.components(separatedBy: "transcriptCoordinator.dictationTextForDelivery(id: display.id)").count - 1
     #expect(
       guarded == 2,
       """
-      Copy and Paste must BOTH ask for the text by id, and the toolbar's enabled state too; \
-      found \(guarded). A button reading `transcript.displayText` directly would paste a row \
-      that lapsed between render and click.
+      Paste and Copy/Save/Share must BOTH ask for the text by id; found \(guarded). A button \
+      reading the drawn snapshot would paste a row that lapsed between render and click.
       """)
-    #expect(
-      source.contains("HistoryTranscriptExport.text("),
-      "Copy, Save and Share go through the shared export owner")
-    let export = try String(
-      contentsOf: RepoRoot.sourceURL("Sources/EnviousWisprAppKit/App/HistoryTranscriptExport.swift"),
+    let coordinator = try String(
+      contentsOf: RepoRoot.sourceURL("Sources/EnviousWisprAppKit/App/TranscriptCoordinator.swift"),
       encoding: .utf8)
+    let entry = try #require(
+      coordinator.components(separatedBy: "func dictationTextForDelivery(id: UUID)").last?
+        .components(separatedBy: "func textForDelivery(").first)
     #expect(
-      export.contains("coordinator.textForDelivery(live)"),
-      "Copy, Save and Share deliver the LIVE row's text, never the displayed snapshot")
+      entry.contains("liveHistoryRow(id: id)") && entry.contains("current.historyText"),
+      "the delivered text is the LIVE, verified row's, never the displayed snapshot")
+    #expect(
+      source.contains("PasteService.copyToClipboard(display.displayText)") == false,
+      "the drawn snapshot must never be delivered")
     #expect(
       source.contains("PasteService.copyToClipboard(transcript.displayText)") == false,
       "the unguarded snapshot read must not come back")
