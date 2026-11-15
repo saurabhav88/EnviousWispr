@@ -31,6 +31,7 @@ final class HistoryCatalogSession {
   @ObservationIgnored private(set) var watcherRegistrations = 0
   /// What the screen last saw (#4598): publish only when rows, availability or the certified
   /// source revision change, and at most every `publishInterval` while a pass is mid-way.
+  /// The certified source revision the screen last saw, cleared when a pass starts.
   @ObservationIgnored private var publishedCertifiedSource: UInt64?
   @ObservationIgnored private var publishedAt: ContinuousClock.Instant?
   @ObservationIgnored private var everCertified = false
@@ -277,6 +278,10 @@ final class HistoryCatalogSession {
       while !pending.scopes.isEmpty {
         let delta = pending
         pending = HistorySourceChanges.Delta()
+        // Every pass withdraws the worker's certificate while it runs, so a page read meanwhile
+        // has no exact totals or selection. A pass that ends certified must therefore publish
+        // even for an unchanged source revision, or that page is never re-read (#4605 review).
+        publishedCertifiedSource = nil
         do {
           if rebuildRequested {
             rebuildRequested = false
