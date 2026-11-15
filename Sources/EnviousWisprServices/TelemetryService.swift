@@ -779,6 +779,34 @@ public final class TelemetryService {
     return properties
   }
 
+  /// #4021: a Core Audio device read on the off-main lane got no answer in time
+  /// (`timed_out`), or such a read finally returned (`recovered`). Shape only: which read, which
+  /// phase, the bound that read was given and, on recovery, how long it took. No device names,
+  /// UIDs or other content. `rare_failure`: zero rows on a healthy Mac; at most one `timed_out`
+  /// and one `recovered` per abandoned read, because the lane refuses new reads while one is stuck.
+  package func coreAudioReadStuck(
+    read: CoreAudioReadTelemetry.Read, phase: CoreAudioReadTelemetry.Phase, boundMs: Int,
+    returnedAfterMs: Int? = nil
+  ) {
+    var props: [String: Any] = [
+      "read": read.rawValue,
+      "phase": phase.rawValue,
+      "bound_ms": boundMs,
+    ]
+    // Only a recovery carries how long the read took.
+    if phase == .recovered, let returnedAfterMs { props["returned_after_ms"] = returnedAfterMs }
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "audio.core_audio_read_stuck",
+          stringProps: ["read": read.rawValue, "phase": phase.rawValue],
+          intProps: props.compactMapValues { $0 as? Int }))
+      testRawPropertiesHook?("audio.core_audio_read_stuck", props)
+    #endif
+    SentryBreadcrumb.add(stage: "core_audio_lane", message: "read_stuck", data: props)
+    PostHogSDK.shared.capture("audio.core_audio_read_stuck", properties: props)
+  }
+
   /// #3289: one sample per launch after 12 idle minutes: does an idle app give its memory back?
   /// Numbers and booleans only. `footprint_mb` is this process's `phys_footprint` in MiB and does
   /// not include the EG-1/S1-mini `llama-server` child process. Launch-scoped: no join key.
@@ -6020,5 +6048,19 @@ public enum OnboardingTelemetry {
     case ..<1000: return "500mb_1gb"
     default: return "gte_1gb"
     }
+  }
+}
+
+/// The closed vocabularies of `audio.core_audio_read_stuck` (#4021).
+package enum CoreAudioReadTelemetry {
+  /// Which lane read: the device snapshot, or the click-time microphone-choice check.
+  package enum Read: String, Sendable, CaseIterable {
+    case deviceSnapshot = "device_snapshot"
+    case choiceValidation = "choice_validation"
+  }
+
+  package enum Phase: String, Sendable, CaseIterable {
+    case timedOut = "timed_out"
+    case recovered
   }
 }

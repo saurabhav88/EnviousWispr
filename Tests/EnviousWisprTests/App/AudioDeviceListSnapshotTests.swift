@@ -180,7 +180,7 @@ struct AudioDeviceListSnapshotTests {
       let deadlines = deadlines
       lane = CoreAudioQueryLane(
         label: "test.device-list", scheduleDeadline: { deadlines.schedule($0, $1) },
-        now: { ContinuousClock.now }, onAbandonedReadReturned: { _, _ in })
+        now: { ContinuousClock.now })
       reader = FakeReader(script, events: events)
       let reader = reader
       list = AudioDeviceList(

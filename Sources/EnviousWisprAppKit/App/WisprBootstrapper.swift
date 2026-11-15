@@ -296,7 +296,7 @@ package final class WisprBootstrapper {
     let overlayHost = OverlayWindowHost(effects: overlayEffects)
     // #4021: one Core Audio lane for every idle-time device read, owned for the app's lifetime
     // through `audioDeviceList.lane`, so only one read can ever be stuck in a driver.
-    let coreAudioLane = CoreAudioQueryLane()
+    let coreAudioLane = CoreAudioQueryLane(hooks: CoreAudioLaneReporting.hooks())
     // #4021: the one microphone-choice owner, shared by Settings, Setup and the menu bar, so
     // only the latest choice can be saved after its off-main check.
     let microphoneChoices = MicrophoneChoiceOwner(lane: coreAudioLane)
@@ -2269,6 +2269,7 @@ package final class WisprBootstrapper {
       batchDecodeFaultController: batchDecodeFaultController,
       whisperMemoryPressure: whisperMemoryPressure,
       requestDeviceRefresh: { [weak audioDeviceList] in audioDeviceList?.requestRefresh() },
+      coreAudioStall: debugCoreAudioStall(lane: audioDeviceList.lane),
       // #996: each real transition into `.recording` cancels a live edit watch.
       // #3242: and pre-loads the word check so the take's check finds it ready.
       // #3988: and restarts the take's local polish engine if something outside

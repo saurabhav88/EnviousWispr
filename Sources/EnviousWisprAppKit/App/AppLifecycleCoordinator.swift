@@ -109,6 +109,9 @@ final class AppLifecycleCoordinator {
   /// event requests one; the Bluetooth card is re-judged after that snapshot is applied, never
   /// on facts that may be stale.
   private let requestDeviceRefresh: @MainActor () -> Void
+  /// #4021: DEBUG `force_core_audio_stall` target, forwarded into `DebugFaultEndpoint`; nil in
+  /// Release.
+  private let coreAudioStall: ((Duration) -> Void)?
 
   init(
     wheelScrollSmoother: WheelScrollSmoother,
@@ -138,12 +141,14 @@ final class AppLifecycleCoordinator {
     batchDecodeFaultController: BatchDecodeFaultController? = nil,
     whisperMemoryPressure: (@MainActor () async -> Bool)? = nil,
     requestDeviceRefresh: @escaping @MainActor () -> Void,
+    coreAudioStall: ((Duration) -> Void)? = nil,
     // Required and non-defaulted (review r1): a composition that forgets it
     // must fail to compile, not silently drop the watcher's cancellation.
     onRecordingStarted: @escaping @MainActor () -> Void
   ) {
     self.onRecordingStarted = onRecordingStarted
     self.requestDeviceRefresh = requestDeviceRefresh
+    self.coreAudioStall = coreAudioStall
     self.wheelScrollSmoother = wheelScrollSmoother
     self.previousApplicationTracker = previousApplicationTracker
     self.settings = settings
@@ -358,7 +363,8 @@ final class AppLifecycleCoordinator {
           },
           batchDecodeFaultController: batchDecodeFaultController,
           whisperMemoryPressure: whisperMemoryPressure,
-          qualificationChildTrap: qualificationChildTrap
+          qualificationChildTrap: qualificationChildTrap,
+          coreAudioStall: coreAudioStall
         )
         endpoint.start()
         debugFaultEndpoint = endpoint

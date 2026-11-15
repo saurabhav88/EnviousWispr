@@ -276,6 +276,15 @@ def force_cancel() -> str:
     return send("force_cancel")
 
 
+def force_core_audio_stall(seconds: float) -> str:
+    """#4021 Live UAT: the next Core Audio lane read (device snapshot or microphone check)
+    blocks for `seconds` (1-30) on the lane's own queue, the shape a stuck driver gives the
+    app. Replies OK, or ERR bad_arg / ERR no_dependency. Logged in app.log (CoreAudioLane)."""
+    if not (1 <= seconds <= 30):
+        raise ValueError("seconds must be between 1 and 30")
+    return send(f"force_core_audio_stall({seconds:g})")
+
+
 def whisper_memory_pressure() -> str:
     """#3735: one memory-pressure event on the Whisper backend's real handler.
     Reply `OK whisper_ready=<true|false>`; false means the idle model was unloaded."""

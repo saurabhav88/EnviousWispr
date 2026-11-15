@@ -4,6 +4,7 @@ import EnviousWisprLLM
 import EnviousWisprLocalPolish
 import EnviousWisprServices
 import Foundation
+import os
 import Testing
 
 @testable import EnviousWisprASR
@@ -17,7 +18,8 @@ import Testing
   struct CrashQualificationEndpointTests {
     private func makeEndpoint(
       action: @escaping (DebugFaultEndpoint.QualificationAction) -> Void = { _ in },
-      child: (@MainActor () async -> LocalPolishProcessManager.QualificationChildSignal?)? = nil
+      child: (@MainActor () async -> LocalPolishProcessManager.QualificationChildSignal?)? = nil,
+      coreAudioStall: ((Duration) -> Void)? = nil
     ) -> DebugFaultEndpoint {
       let clock = FakeClock()
       let engine = FakeEngine(behavior: .batchSuccess(text: "x"), clock: clock)
@@ -58,7 +60,8 @@ import Testing
         audioCapture: nil,
         kernelDriver: makeDriver(),
         whisperKernelDriver: makeDriver(),
-        activeBackend: { .parakeet }, qualificationAction: action, qualificationChildTrap: child)
+        activeBackend: { .parakeet }, qualificationAction: action, qualificationChildTrap: child,
+        coreAudioStall: coreAudioStall)
     }
 
     @Test(arguments: ["qualification_trap", "qualification_abort"])
@@ -255,5 +258,25 @@ import Testing
       }
     }
 
+
+    // #4021 Live UAT seam (lives here because this suite already builds a full endpoint): the
+    // `force_core_audio_stall(N)` command arms the shared Core Audio lane for 1...30 seconds and
+    // refuses anything else without arming.
+    @Test("force_core_audio_stall arms the lane for N seconds; bad arguments and a missing lane refuse")
+    func coreAudioStallCommand() async {
+      let armed = OSAllocatedUnfairLock(initialState: [Duration]())
+      let endpoint = makeEndpoint(coreAudioStall: { stall in armed.withLock { $0.append(stall) } })
+      #expect(await endpoint.handleForTesting(command: "force_core_audio_stall(5)") == "OK")
+      #expect(armed.withLock { $0 } == [.seconds(5)])
+      for bad in ["force_core_audio_stall(0)", "force_core_audio_stall(31)", "force_core_audio_stall(x)",
+        "force_core_audio_stall(nan)", "force_core_audio_stall()"]
+      {
+        #expect(await endpoint.handleForTesting(command: bad) == "ERR bad_arg", "\(bad)")
+      }
+      #expect(armed.withLock { $0 } == [.seconds(5)], "a refused command arms nothing")
+      #expect(
+        await makeEndpoint().handleForTesting(command: "force_core_audio_stall(5)")
+          == "ERR no_dependency")
+    }
   }
 #endif

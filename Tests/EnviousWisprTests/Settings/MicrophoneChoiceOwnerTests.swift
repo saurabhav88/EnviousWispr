@@ -84,7 +84,7 @@ struct MicrophoneChoiceOwnerTests {
     guard let deadlines else { return CoreAudioQueryLane(label: "test.choice") }
     return CoreAudioQueryLane(
       label: "test.choice", scheduleDeadline: { deadlines.schedule($0, $1) },
-      now: { ContinuousClock.now }, onAbandonedReadReturned: { _, _ in })
+      now: { ContinuousClock.now })
   }
 
   @Test("A connected microphone is saved; an unplugged one is not")

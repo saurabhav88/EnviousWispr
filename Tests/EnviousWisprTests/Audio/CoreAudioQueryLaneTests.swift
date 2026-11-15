@@ -18,12 +18,14 @@ struct CoreAudioQueryLaneTests {
       pending.withLock { $0.append(fire) }
       registered.fire()
     }
-    func fireAll() {
-      let fires = pending.withLock { pending -> [@Sendable () -> Void] in
+    func takeAll() -> [@Sendable () -> Void] {
+      pending.withLock { pending -> [@Sendable () -> Void] in
         defer { pending = [] }
         return pending
       }
-      for fire in fires { fire() }
+    }
+    func fireAll() {
+      for fire in takeAll() { fire() }
     }
   }
 
@@ -82,7 +84,7 @@ struct CoreAudioQueryLaneTests {
       label: "test.coreaudio.query",
       scheduleDeadline: { bound, fire in deadlines.schedule(bound, fire) },
       now: { ContinuousClock.now },
-      onAbandonedReadReturned: onReturn)
+      hooks: .init(abandonedReadReturned: { name, after, _ in onReturn(name, after) }))
   }
 
   @Test("A healthy read returns its value and leaves the lane free")
@@ -223,4 +225,145 @@ struct CoreAudioQueryLaneTests {
     #expect(lateReturns.withLock { $0 } == 0, "a read that answered in time is not a late return")
     deadlines.fireAll()  // a deadline after completion must not resume the caller again
   }
+
+  /// Every hook call, in order, for the reporting tests.
+  final class HookLog: Sendable {
+    private let calls = OSAllocatedUnfairLock(initialState: [String]())
+    private let completedSignals = OSAllocatedUnfairLock(initialState: [String: Signal]())
+    let returned = Signal()
+    func record(_ call: String) { calls.withLock { $0.append(call) } }
+    /// Fires once the first read named `name` has reported completion (hooks run after the
+    /// caller is resumed, so a test must wait for this rather than read the log at once).
+    func completed(_ name: String) -> Signal {
+      completedSignals.withLock { signals in
+        if let signal = signals[name] { return signal }
+        let signal = Signal()
+        signals[name] = signal
+        return signal
+      }
+    }
+    var all: [String] { calls.withLock { $0 } }
+    var hooks: CoreAudioQueryLane.Hooks {
+      .init(
+        timedOut: { name, bound in self.record("timedOut \(name) \(bound)") },
+        abandonedReadReturned: { name, after, bound in
+          self.record("recovered \(name) after \(after) bound \(bound)")
+          self.returned.fire()
+        },
+        completed: { name, duration in
+          self.record("completed \(name) \(duration)")
+          self.completed(name).fire()
+        },
+        debugStallFired: { name, stall in self.record("stall \(name) \(stall)") })
+    }
+  }
+
+  /// A clock the test advances, so reported durations are exact.
+  final class StepClock: Sendable {
+    private let base = ContinuousClock.now
+    private let offset = OSAllocatedUnfairLock(initialState: Duration.zero)
+    func advance(_ by: Duration) { offset.withLock { $0 += by } }
+    var now: ContinuousClock.Instant { base + offset.withLock { $0 } }
+  }
+
+  @Test("Reporting: one timeout however often the timer fires, nothing for busy or healthy reads, one recovery with the original bound")
+  func reportingHooks() async {
+    let deadlines = ManualDeadlines()
+    let clock = StepClock()
+    let log = HookLog()
+    let lane = CoreAudioQueryLane(
+      label: "test.coreaudio.hooks", scheduleDeadline: { deadlines.schedule($0, $1) },
+      now: { clock.now }, hooks: log.hooks)
+
+    // The healthy read runs on its own lane (same log), so this test's deadline signal belongs
+    // only to the stuck read below.
+    let healthyLane = CoreAudioQueryLane(
+      label: "test.coreaudio.hooks.healthy", scheduleDeadline: { _, _ in }, now: { clock.now },
+      hooks: log.hooks)
+    _ = await healthyLane.bounded("device_snapshot", bound: .seconds(2)) { 1 }
+    #expect(await log.completed("device_snapshot").wait())
+    #expect(log.all == ["completed device_snapshot 0.0 seconds"], "a healthy read reports only its duration")
+
+    let gate = Gate()
+    defer { gate.open() }
+    let entered = Signal()
+    let done = Signal()
+    let stuck = Task {
+      let outcome = await lane.bounded("choice_validation", bound: .seconds(3)) { () -> Int in
+        entered.fire()
+        gate.block()
+        return 2
+      }
+      done.fire()
+      return outcome
+    }
+    #expect(await entered.wait())
+    #expect(await deadlines.registered.wait())
+    // Fire the stored deadline twice: the single-resume claim lets only the first count.
+    let fires = deadlines.takeAll()
+    for fire in fires { fire() }
+    for fire in fires { fire() }
+    guard let first = await boundedValue(stuck, done: done), case .timedOut = first else {
+      Issue.record("expected .timedOut")
+      return
+    }
+    _ = await lane.bounded("device_snapshot") { 3 }  // busy: refused, reports nothing
+
+    clock.advance(.milliseconds(4500))
+    gate.open()
+    #expect(await log.returned.wait())
+    #expect(await log.completed("choice_validation").wait())
+    #expect(gate.didExpire == false)
+    #expect(
+      log.all == [
+        "completed device_snapshot 0.0 seconds",
+        "timedOut choice_validation 3.0 seconds",
+        "recovered choice_validation after 4.5 seconds bound 3.0 seconds",
+        "completed choice_validation 4.5 seconds",
+      ])
+  }
+
+  #if DEBUG
+    @Test("DEBUG stall: the next admitted read stalls once (and times out), the read after it does not")
+    func debugStallIsOneShot() async {
+      let deadlines = ManualDeadlines()
+      let log = HookLog()
+      let stallGate = Gate()
+      defer { stallGate.open() }
+      let stallStarted = Signal()
+      let lane = CoreAudioQueryLane(
+        label: "test.coreaudio.stall", scheduleDeadline: { deadlines.schedule($0, $1) },
+        now: { ContinuousClock.now }, hooks: log.hooks,
+        stallExecutor: { _ in
+          stallStarted.fire()
+          stallGate.block()
+        })
+      lane.armStallForNextRead(.seconds(10))
+
+      let done = Signal()
+      let stalled = Task {
+        let outcome = await lane.bounded("device_snapshot") { 1 }
+        done.fire()
+        return outcome
+      }
+      #expect(await stallStarted.wait(), "the armed stall ran on the admitted read")
+      #expect(await deadlines.registered.wait())
+      deadlines.fireAll()
+      guard let first = await boundedValue(stalled, done: done), case .timedOut = first else {
+        Issue.record("expected the stalled read to time out")
+        return
+      }
+      stallGate.open()
+      #expect(await log.returned.wait())
+
+      let next = await lane.bounded("device_snapshot") { 2 }
+      guard case .value(let value) = next else {
+        Issue.record("expected the next read to run normally, got \(next)")
+        return
+      }
+      #expect(value == 2)
+      #expect(log.all.filter { $0.hasPrefix("stall ") } == ["stall device_snapshot 10.0 seconds"])
+      #expect(stallGate.didExpire == false)
+    }
+  #endif
 }

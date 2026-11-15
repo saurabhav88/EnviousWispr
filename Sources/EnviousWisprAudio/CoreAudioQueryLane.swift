@@ -19,8 +19,8 @@ import os
 ///   runs on the cooperative pool, is not used here).
 ///
 /// Added for #4021: an availability notification (`whenAvailable`), so a refresh refused while
-/// the lane was busy can run once the worker returns, and a report when an abandoned read
-/// finally returns, so a recovered driver is visible.
+/// the lane was busy can run once the worker returns, and `Hooks` that report timeouts, late
+/// returns and read durations, so a stuck or recovered driver is visible.
 ///
 /// Callers must not hold an app lock while a read runs; the lane takes and releases its own
 /// lock before and after the read, never across it.
@@ -32,6 +32,35 @@ package final class CoreAudioQueryLane: Sendable {
     case busy
   }
 
+  /// What the lane reports, injected by the composition root (this module cannot reach the
+  /// telemetry or logging services). Every hook runs outside the lane's lock and must not block.
+  package struct Hooks: Sendable {
+    /// A read's caller gave up: the deadline won. Once per admitted read; never for `.busy`.
+    package var timedOut: @Sendable (_ name: String, _ bound: Duration) -> Void
+    /// A read whose caller already timed out finally returned: how long it took, and the bound
+    /// that read was given.
+    package var abandonedReadReturned:
+      @Sendable (_ name: String, _ after: Duration, _ bound: Duration) -> Void
+    /// Every read that returns, healthy or abandoned, with how long it ran (for DEBUG logging).
+    package var completed: @Sendable (_ name: String, _ duration: Duration) -> Void
+    /// DEBUG only: an armed stall is about to block this read (`armStallForNextRead`).
+    package var debugStallFired: @Sendable (_ name: String, _ stall: Duration) -> Void
+
+    package init(
+      timedOut: @escaping @Sendable (String, Duration) -> Void = { _, _ in },
+      abandonedReadReturned: @escaping @Sendable (String, Duration, Duration) -> Void = {
+        _, _, _ in
+      },
+      completed: @escaping @Sendable (String, Duration) -> Void = { _, _ in },
+      debugStallFired: @escaping @Sendable (String, Duration) -> Void = { _, _ in }
+    ) {
+      self.timedOut = timedOut
+      self.abandonedReadReturned = abandonedReadReturned
+      self.completed = completed
+      self.debugStallFired = debugStallFired
+    }
+  }
+
   private struct State {
     var busy = false
     var availabilityWaiters: [@Sendable () -> Void] = []
@@ -41,16 +70,14 @@ package final class CoreAudioQueryLane: Sendable {
   private let state = OSAllocatedUnfairLock(initialState: State())
   private let scheduleDeadline: @Sendable (Duration, @escaping @Sendable () -> Void) -> Void
   private let now: @Sendable () -> ContinuousClock.Instant
-  private let onAbandonedReadReturned: @Sendable (_ name: String, _ after: Duration) -> Void
+  private let hooks: Hooks
+  #if DEBUG
+    /// A one-shot stall for the next admitted read (UAT seam, `force_core_audio_stall`).
+    private let stallArm = OSAllocatedUnfairLock<Duration?>(initialState: nil)
+    private let stallExecutor: @Sendable (Duration) -> Void
+  #endif
 
-  /// - Parameter onAbandonedReadReturned: called on the lane's queue when a read whose caller
-  ///   already timed out finally returns, with the time since the read started.
-  package convenience init(
-    label: String = "com.enviouswispr.coreaudio.query",
-    onAbandonedReadReturned: @escaping @Sendable (_ name: String, _ after: Duration) -> Void = {
-      _, _ in
-    }
-  ) {
+  package convenience init(label: String = "com.enviouswispr.coreaudio.query", hooks: Hooks = Hooks()) {
     self.init(
       label: label,
       scheduleDeadline: { bound, fire in
@@ -59,22 +86,47 @@ package final class CoreAudioQueryLane: Sendable {
           deadline: .now() + Self.seconds(bound), execute: fire)
       },
       now: { ContinuousClock.now },
-      onAbandonedReadReturned: onAbandonedReadReturned)
+      hooks: hooks)
   }
 
   /// Test seam: the deadline scheduler and clock are injectable so tests fire the deadline
-  /// themselves instead of waiting for time to pass.
+  /// themselves instead of waiting for time to pass; `stallExecutor` (DEBUG) lets a test gate
+  /// an armed stall instead of sleeping.
   package init(
     label: String,
     scheduleDeadline: @escaping @Sendable (Duration, @escaping @Sendable () -> Void) -> Void,
     now: @escaping @Sendable () -> ContinuousClock.Instant,
-    onAbandonedReadReturned: @escaping @Sendable (_ name: String, _ after: Duration) -> Void
+    hooks: Hooks = Hooks(),
+    stallExecutor: @escaping @Sendable (Duration) -> Void = { stall in
+      Thread.sleep(
+        forTimeInterval: Double(stall.components.seconds) + Double(stall.components.attoseconds) / 1e18)
+    }
   ) {
     self.queue = DispatchQueue(label: label, qos: .userInitiated)
     self.scheduleDeadline = scheduleDeadline
     self.now = now
-    self.onAbandonedReadReturned = onAbandonedReadReturned
+    self.hooks = hooks
+    #if DEBUG
+      self.stallExecutor = stallExecutor
+    #endif
   }
+
+  #if DEBUG
+    /// UAT seam (DEBUG only, logged through `Hooks.debugStallFired`): the next admitted read
+    /// blocks for `stall` on the lane's own queue before running, which is exactly what a caller
+    /// sees when a driver stops answering. A busy refusal does not consume it.
+    package func armStallForNextRead(_ stall: Duration) {
+      stallArm.withLock { $0 = stall }
+    }
+
+    /// Takes and clears the arm in one step, so a re-arm made while an older stall runs is kept.
+    private func takeStallArm() -> Duration? {
+      stallArm.withLock { arm -> Duration? in
+        defer { arm = nil }
+        return arm
+      }
+    }
+  #endif
 
   /// Runs `read` on the lane and waits at most `bound` for it.
   ///
@@ -91,6 +143,7 @@ package final class CoreAudioQueryLane: Sendable {
     }
     guard claimed else { return .busy }
     let started = now()
+    let hooks = hooks
     return await withCheckedContinuation {
       (continuation: CheckedContinuation<Outcome<Value>, Never>) in
       let resumed = OSAllocatedUnfairLock(initialState: false)
@@ -102,7 +155,14 @@ package final class CoreAudioQueryLane: Sendable {
         }
       }
       queue.async { [self] in
+        #if DEBUG
+          if let stall = takeStallArm() {
+            hooks.debugStallFired(name, stall)
+            stallExecutor(stall)
+          }
+        #endif
         let value = read()
+        let elapsed = now() - started
         // Busy clears on actual worker completion, and waiters are taken in the same lock
         // scope, so a waiter added after this point sees `busy == false` and runs at once.
         let waiters = state.withLock { state -> [@Sendable () -> Void] in
@@ -114,12 +174,16 @@ package final class CoreAudioQueryLane: Sendable {
         if claimResume() {
           continuation.resume(returning: .value(value))
         } else {
-          onAbandonedReadReturned(name, now() - started)
+          hooks.abandonedReadReturned(name, elapsed, bound)
         }
+        hooks.completed(name, elapsed)
         for waiter in waiters { waiter() }
       }
       scheduleDeadline(bound) {
-        if claimResume() { continuation.resume(returning: .timedOut) }
+        if claimResume() {
+          continuation.resume(returning: .timedOut)
+          hooks.timedOut(name, bound)
+        }
       }
     }
   }
