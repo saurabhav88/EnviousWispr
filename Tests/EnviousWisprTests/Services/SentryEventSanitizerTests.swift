@@ -241,12 +241,18 @@ struct SentryEventSanitizerTests {
     let event = Event(level: .error)
     event.exceptions = [exception]
     event.threads = [mainThread]
+    exception.stacktrace?.snapshot = true
+    let meta = DebugMeta()
+    meta.codeFile = mainFrame.package
+    event.debugMeta = [meta]
 
     let sanitized = ObservabilityBootstrap.sanitizeSentryEvent(event)
 
     #expect(sanitized.exceptions?.first?.value == "App hanging for at least 2000 ms.")
     #expect(sanitized.exceptions?.first?.type == "App Hanging")
     #expect(sanitized.exceptions?.first?.mechanism?.type == "AppHang")
+    #expect(sanitized.exceptions?.first?.stacktrace?.snapshot == true)
+    #expect(meta.codeFile?.contains(Self.userMarker) == false)
     #expect(mainFrame.package?.hasPrefix("/Users/[REDACTED]/Developer/") == true)
     #expect(payloadContainsUserMarker(sanitized) == false)
   }
