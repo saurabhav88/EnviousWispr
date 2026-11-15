@@ -229,8 +229,9 @@ private struct HistoryDiaryList<DictationCard: View>: View {
   let loadNext: (HistoryQueryResult, Bool) -> Void
   let dictationCard: (HistoryDictationDisplay, String) -> DictationCard
 
-  /// The entry at the top of the scrolled list.
-  @State private var position: HistoryDiaryLayout.EntryID?
+  /// #4611: the place to put at the top once its rows are installed (on appear, and when the
+  /// search or filters change).
+  @State private var restore: HistoryDiaryTable.Restore?
   /// #3147 PR3: the import whose Locate original flow is running, and its one-line result.
   @State private var locatingRowID: UUID?
   @State private var locateNote: LocateNote?
@@ -251,96 +252,45 @@ private struct HistoryDiaryList<DictationCard: View>: View {
     let request = isCurrent && !catalog ? HistoryPaging.request(for: window) : nil
     let hasNext = catalog && isCurrent && result?.continuation != nil
     let boundary = catalog ? items.count : window.boundary
-    let now = Date()
-
-    ScrollView {
-      // One flat list of day headings and items, so every row is a direct scroll target and
-      // the scroll position can name the item at the top.
-      LazyVStack(alignment: .leading, spacing: 12) {
-        if isCurrent, let result, result.newerContinuation != nil {
-          Button {
-            loadNext(result, true)
-          } label: {
-            Text("Load more history",
-              comment: "History list: the button at the end of the shown rows that shows older ones.")
-              .font(.stHelper)
-              .foregroundStyle(.stTextSecondary)
-              .padding(.vertical, DesignSpacing.md)
-          }
-          .buttonStyle(.plain)
-        }
-        ForEach(result?.entries(through: boundary) ?? []) { entry in
-          switch entry.id {
-          case .day(let start):
-            HistoryDayHeader(
-              tab: tab, day: .init(start: start, items: [], total: entry.dayCount ?? 0),
-              hasExactTotal: entry.dayCount != nil, now: now, isSelecting: isSelecting && canSelect,
-              selectDay: {
-                guard let result else { return }
-                Task {
-                  if let matching = await coordinator.matchingIDs(for: result, day: start) {
-                    selection.select(Set(matching))
-                  }
-                }
-              })
-          case .item:
-            let item = items[entry.position]
-            // The result preserves positions, but cards read live detail. An expired recovery
-            // or a meeting being deleted must never come back in a pending result.
-            if coordinator.canRenderHistoryItem(item) {
-              row(for: item, items: items, query: context.query)
-              .onAppear {
-                // A best-effort prefetch hint: it can come early, together with other rows,
-                // or twice; `loadMore` accepts one request per window.
-                if item.id == window.tail, let request { loadMore(request) }
-                if item.id == items.last?.id, hasNext, let result { loadNext(result, false) }
-              }
-            }
-          }
-        }
-        if request != nil || hasNext {
-          Button {
-            if let request { loadMore(request) }
-            else if let result { loadNext(result, false) }
-          } label: {
-            Text(
-              "Load more history",
-              comment:
-                "History list: the button at the end of the shown rows that shows older ones."
-            )
-            .font(.stHelper)
-            .foregroundStyle(.stTextSecondary)
-            .frame(maxWidth: .infinity)
-            .contentShape(Rectangle())
-          }
-          .buttonStyle(.plain)
-        }
-      }
-      .scrollTargetLayout()
-      .padding(.horizontal, SettingsLayout.contentH)
-      .padding(.bottom, SettingsLayout.contentBottom)
+    let entries = result?.entries(through: boundary) ?? []
+    var lookup: [HistoryDiaryLayout.EntryID: HistoryQueryResult.Entry] = [:]
+    // One flat list of day headings and items. The result preserves positions, but cards read
+    // live detail: an expired recovery or a meeting being deleted is left out of the rows.
+    var rows: [HistoryDiaryTable.RowID] = []
+    if isCurrent, let result, result.newerContinuation != nil { rows.append(.newer) }
+    for entry in entries {
+      if case .item = entry.id, !coordinator.canRenderHistoryItem(items[entry.position]) { continue }
+      lookup[entry.id] = entry
+      rows.append(.entry(entry.id))
     }
-    .scrollPosition(id: $position, anchor: .top)
+    if request != nil || hasNext { rows.append(.older) }
+    let paging = Paging(window: window, request: request, hasNext: hasNext, now: Date())
+
+    return HistoryDiaryTable(
+      rows: rows, restore: restore, rowsAreFinal: isCurrent && result != nil,
+      content: { row in
+        AnyView(HistoryDiaryRowBody { self.row(row, lookup: lookup, items: items, query: context.query, paging: paging) })
+      },
+      onScroll: { entry in
+        // Kept unobserved, so scrolling does not re-render the page.
+        guard let result else { return }
+        liveAnchor.id = result.anchor(for: entry)
+        liveAnchor.context = result.key.context
+      }
+    )
     // Each tab keeps its place (#3147 §3.3): restored when its list appears, saved when it
-    // leaves for another tab or an open item. Saved once, not on every scroll step, so scrolling
-    // does not re-render the page.
+    // leaves for another tab or an open item.
     .onAppear {
-      if let anchor = state.scrollAnchorID { position = .item(anchor) }
+      restore = .init(token: 1, target: state.scrollAnchorID.map { .item($0) })
     }
     .onChange(of: result?.key.context) { _, next in
       guard next == HistoryPaging.Context(tab: tab, state: state) else { return }
-      position = state.scrollAnchorID.map { .item($0) }
+      restore = .init(token: (restore?.token ?? 0) + 1, target: state.scrollAnchorID.map { .item($0) })
     }
     .onDisappear {
       saveLiveAnchor()
       liveAnchor.context = nil
     }
-    .onChange(of: position) { _, next in
-      guard let result else { return }
-      liveAnchor.id = result.anchor(for: next)
-      liveAnchor.context = result.key.context
-    }
-    .scrollContentBackground(.hidden)
     .background(Color.stPageBg)
     // #4001 step 2a: the recording state is read inside the modifier, not by this body.
     .recordingDimmed()
@@ -373,6 +323,79 @@ private struct HistoryDiaryList<DictationCard: View>: View {
       Button(String(localized: "OK", comment: "History: dismisses the Locate original result.")) {}
     } message: {
       Text(verbatim: locateNote?.text ?? "")
+    }
+  }
+
+  /// What the rows need to ask for the next page.
+  private struct Paging {
+    let window: HistoryPaging.Window
+    let request: HistoryPaging.LoadRequest?
+    let hasNext: Bool
+    let now: Date
+  }
+
+  /// One row of the table. Built inside the hosted row's own body, so what it reads (selection,
+  /// live rows, players) re-renders that row alone.
+  @ViewBuilder private func row(
+    _ row: HistoryDiaryTable.RowID, lookup: [HistoryDiaryLayout.EntryID: HistoryQueryResult.Entry],
+    items: [HistoryListItem], query: String, paging: Paging
+  ) -> some View {
+    switch row {
+    case .newer:
+      if let result {
+        Button {
+          loadNext(result, true)
+        } label: {
+          Text("Load more history",
+            comment: "History list: the button at the end of the shown rows that shows older ones.")
+            .font(.stHelper)
+            .foregroundStyle(.stTextSecondary)
+            .padding(.vertical, DesignSpacing.md)
+        }
+        .buttonStyle(.plain)
+      }
+    case .older:
+      Button {
+        if let request = paging.request { loadMore(request) }
+        else if let result { loadNext(result, false) }
+      } label: {
+        Text(
+          "Load more history",
+          comment:
+            "History list: the button at the end of the shown rows that shows older ones."
+        )
+        .font(.stHelper)
+        .foregroundStyle(.stTextSecondary)
+        .frame(maxWidth: .infinity)
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+    case .entry(.day(let start)):
+      let entry = lookup[.day(start)]
+      HistoryDayHeader(
+        tab: tab, day: .init(start: start, items: [], total: entry?.dayCount ?? 0),
+        hasExactTotal: entry?.dayCount != nil, now: paging.now, isSelecting: isSelecting && canSelect,
+        selectDay: {
+          guard let result else { return }
+          Task {
+            if let matching = await coordinator.matchingIDs(for: result, day: start) {
+              selection.select(Set(matching))
+            }
+          }
+        })
+    case .entry(.item(let id)):
+      if let entry = lookup[.item(id)], items.indices.contains(entry.position),
+        coordinator.canRenderHistoryItem(items[entry.position])
+      {
+        let item = items[entry.position]
+        self.row(for: item, items: items, query: query)
+          .onAppear {
+            // A best-effort prefetch hint: it can come early, together with other rows,
+            // or twice; `loadMore` accepts one request per window.
+            if item.id == paging.window.tail, let request = paging.request { loadMore(request) }
+            if item.id == items.last?.id, paging.hasNext, let result { loadNext(result, false) }
+          }
+      }
     }
   }
 
@@ -513,6 +536,12 @@ private struct HistoryDiaryList<DictationCard: View>: View {
     live.requestedCount = next.requested
     coordinator.setHistoryState(live, for: tab)
   }
+}
+
+/// #4611: builds a table row inside its own body, so the row tracks what it reads.
+private struct HistoryDiaryRowBody<Content: View>: View {
+  let build: () -> Content
+  var body: some View { build() }
 }
 
 private struct HistoryCatalogDictationRow<Card: View>: View {
