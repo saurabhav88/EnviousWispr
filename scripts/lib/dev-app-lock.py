@@ -25,18 +25,23 @@ CODEX_SESSION_ID is a legacy fallback, and can differ in nested CLI sessions.
 The holder stays the holder after the
 command that claimed exits, for as long as that session process lives.
 
-WHEN A HOLD ENDS. Three ways: the holder runs `release`, the holder session
-process exits, or the holder has been WAITING ON THE FOUNDER for WAIT_SECONDS
+WHEN A HOLD ENDS. Four ways: the holder runs `release`, the holder session
+process exits, the holder has been WAITING ON THE FOUNDER for WAIT_SECONDS
 with no reply from him (founder 2026-10-20, #3952: "it's been 10 minutes and no
 reply from me ... that session should self release it so other sessions can
-continue"). There is still no plain idle timer (founder 2026-10-03): a holder
-that is working, or waiting on its own background job, keeps the app however
-long it takes, because a timer would let a peer quit an app that is mid-test.
-`wait-mark` (a hook) records the wait as event files named for the hold's
+continue"), or the holder ended its turn WAITING ON ITS OWN JOB and that job
+never reported back within JOB_WAIT_SECONDS (#4588). There is still no plain
+idle timer (founder 2026-10-03): a holder that is working keeps the app
+however long it takes. The job clock runs only while the session sleeps on a
+`WAITING ON <x>` ending; the job's completion notice or his reply stops it,
+and a peer's message does not (a hung `xctrace` recording held the app for 490
+minutes while peers kept pinging the sleeping holder, #4588).
+`wait-mark` (a hook) records both waits as event files named for the hold's
 nonce, `wait-<nonce>.*`, when the holder's turn ends asking him something (a `NEED YOU`/`DONE` status line, the desktop
-app's blocking question box, `AskUserQuestion`) and clears it when he replies.
+app's blocking question box, `AskUserQuestion`) or waiting on its own job (a
+`WAITING ON` status line), and clears them when he replies or the job reports.
 A sleeping session cannot release itself, so the release happens at the next
-peer `claim`: past WAIT_SECONDS the card counts as released. `remind` nudges
+peer `claim`: past either limit the card counts as released. `remind` nudges
 the holder session every REMIND_SECONDS so a forgotten hold is noticed by its
 own session. A process check that fails is "cannot tell", never "gone":
 treating it as gone is how a live holder loses the app.
@@ -76,6 +81,12 @@ REMIND_SECONDS = 30 * 60
 # #3952: a hold whose session has waited this long on the founder, with no
 # reply, counts as released.
 WAIT_SECONDS = 10 * 60
+# #4588: a hold whose session sleeps on a `WAITING ON <its own job>` ending
+# this long, with no job notice and no reply, counts as released. Measured
+# 2026-11-15 over 29 EnviousWispr session transcripts: 118 background jobs
+# started while holding the lock ran p50 0.9 min, p99 9.0 min, max 10.1 min;
+# 64 holds ran p90 18.5 min. Twice the longest real job.
+JOB_WAIT_SECONDS = 20 * 60
 PS = "/bin/ps"
 
 EXIT_OK = 0
@@ -229,7 +240,12 @@ def holder_alive(card):
 # stamped when its hook STARTED, and the newest event wins. The nonce ties the
 # events to one hold, so a takeover can never inherit an old hold's wait.
 _NONCE = re.compile(r"[A-Za-z0-9_-]{1,64}")
-_WAIT_EVENT = re.compile(r"([0-9]{1,20})\.(set|clear)")
+# set: waiting on the founder. own: waiting on its own job (#4588). active:
+# the job reported back (ends `own` only). clear: he replied or the session
+# moved on (ends both).
+_WAIT_EVENT = re.compile(r"([0-9]{1,20})\.(set|own|active|clear)")
+# At equal stamps an ending event sorts after a starting one, so the reply wins.
+_EVENT_RANK = {"set": 0, "own": 0, "active": 1, "clear": 2}
 
 
 def wait_file(card):
@@ -256,20 +272,31 @@ def start_wait(card, when):
     _wait_event(card, "set", when)
 
 
+def start_job_wait(card, when):
+    _wait_event(card, "own", when)
+
+
+def job_reported(card, when):
+    _wait_event(card, "active", when)
+
+
 def end_wait(card, when=None):
     _wait_event(card, "clear", time.time() if when is None else when)
 
 
-def waited(card, now):
-    """Seconds the holder has waited on the founder, or None if it is not waiting.
+def _replay(card):
+    """(founder_since, job_since) for this hold, each None when not waiting.
 
-    Replays this hold's events in stamp order: a clear ends a wait, and the
-    first set after it starts one (the oldest unanswered ask counts). Anything
-    unreadable counts as not waiting: the safe direction keeps the holder's app.
+    Replays this hold's events in stamp order. `set` starts a wait on the
+    founder and `own` a wait on the holder's own job; each keeps its oldest
+    start (the oldest unanswered ask counts), and each ends the other, since
+    one turn ending says one thing. `active` ends the job wait; `clear` ends
+    both. Anything unreadable counts as not waiting: the safe direction keeps
+    the holder's app.
     """
     path = wait_file(card)
     if path is None:
-        return None
+        return None, None
     prefix = os.path.basename(path) + "."
     events = []
     try:
@@ -277,16 +304,32 @@ def waited(card, now):
             if name.startswith(prefix):
                 m = _WAIT_EVENT.fullmatch(name[len(prefix):])
                 if m:
-                    events.append((int(m.group(1)), m.group(2) == "clear"))
+                    events.append((int(m.group(1)), _EVENT_RANK[m.group(2)], m.group(2)))
     except OSError:
-        return None
-    since = None
-    # At equal stamps the clear sorts last, so the reply wins.
-    for stamp, is_clear in sorted(events):
-        if is_clear:
-            since = None
-        elif since is None:
-            since = stamp / 1_000_000_000
+        return None, None
+    founder = job = None
+    for stamp, _rank, kind in sorted(events):
+        when = stamp / 1_000_000_000
+        if kind == "set":
+            founder, job = founder if founder is not None else when, None
+        elif kind == "own":
+            founder, job = None, job if job is not None else when
+        elif kind == "active":
+            job = None
+        else:
+            founder = job = None
+    return founder, job
+
+
+def waited(card, now):
+    """Seconds the holder has waited on the founder, or None if it is not waiting."""
+    since = _replay(card)[0]
+    return None if since is None else max(0.0, now - since)
+
+
+def job_waited(card, now):
+    """Seconds the holder has slept on its own job, or None (#4588)."""
+    since = _replay(card)[1]
     return None if since is None else max(0.0, now - since)
 
 
@@ -306,17 +349,27 @@ def clear_all_waits():
 
 
 def wait_expired(card, now):
+    """Why this hold counts as released, or None while it still holds."""
     w = waited(card, now)
-    return w is not None and w >= WAIT_SECONDS
+    if w is not None and w >= WAIT_SECONDS:
+        return "holder waited on the founder with no reply"
+    j = job_waited(card, now)
+    if j is not None and j >= JOB_WAIT_SECONDS:
+        return "holder's own job never reported back"
+    return None
 
 
 def describe(card, now):
     held = int(now - card["claimed_at"])
     chat = f", chat {card['session_id']}" if card.get("session_id") else ""
-    w = waited(card, now)
-    wait = "" if w is None else (
-        f", waiting on the founder {int(w) // 60}m{int(w) % 60:02d}s "
-        f"(released at {WAIT_SECONDS // 60}m with no reply)")
+    w, j = waited(card, now), job_waited(card, now)
+    wait = ""
+    if w is not None:
+        wait = (f", waiting on the founder {int(w) // 60}m{int(w) % 60:02d}s "
+                f"(released at {WAIT_SECONDS // 60}m with no reply)")
+    elif j is not None:
+        wait = (f", waiting on its own job {int(j) // 60}m{int(j) % 60:02d}s "
+                f"(released at {JOB_WAIT_SECONDS // 60}m if the job never reports)")
     return (f"{card['kind']} session pid {card['pid']}{chat}, "
             f"label \"{card.get('label') or '-'}\", "
             f"worktree {card.get('worktree') or '-'}, "
@@ -413,9 +466,9 @@ def cmd_status(_args):
             print("dev-app-lock: free")
             return EXIT_OK
         alive = holder_alive(card)
-    if alive and wait_expired(card, now):
-        print(f"dev-app-lock: free (holder waited on the founder with no reply; "
-              f"was {describe(card, now)})")
+    expired = wait_expired(card, now) if alive else None
+    if expired:
+        print(f"dev-app-lock: free ({expired}; was {describe(card, now)})")
     elif alive:
         print(f"dev-app-lock: held by {describe(card, now)}")
     else:
@@ -453,8 +506,7 @@ def cmd_claim(args):
             if not holder_alive(card):
                 note = f"took over (holder session exited; was {describe(card, now)})"
             elif wait_expired(card, now):
-                note = ("took over (holder waited on the founder with no reply; "
-                        f"was {describe(card, now)})")
+                note = f"took over ({wait_expired(card, now)}; was {describe(card, now)})"
             else:
                 print(f"dev-app-lock: BUSY. Held by {describe(card, now)}. "
                       "Wait and re-run `status`, or ask that session.")
@@ -548,16 +600,21 @@ def cmd_remind(args):
 # The GR-STATUS-FIRST line `<label> — <STATUS>`, matched the way the Stop gate
 # ~/.claude/scripts/envious-notify-gate.py (`_STATUS_LINE`, `_NOT_A_LABEL`)
 # matches it. DONE / NEED YOU wait on the founder; WORKING / WAITING ON <x>
-# mean the session moved on. A turn ending with NO status line (the bare
+# mean the session moved on; WAITING ON also starts the job clock (#4588).
+# A turn ending with NO status line (the bare
 # line answering a peer notice, the gate's `Pushed.`) says nothing about the
 # founder and leaves the wait alone (#3952 follow-up: such a line cleared a
 # real NEED YOU wait, so a 34-minute hold never released).
 _WAITING_STATUS_LINE = re.compile(r"^(?P<label>.+?)\s[—–-]\s(?:DONE|NEED YOU)(?::.*)?$")
-_MOVED_ON_STATUS_LINE = re.compile(r"^(?P<label>.+?)\s[—–-]\s(?:WORKING|WAITING ON)(?:[:\s].*)?$")
+_WORKING_STATUS_LINE = re.compile(r"^(?P<label>.+?)\s[—–-]\sWORKING(?:[:\s].*)?$")
+_JOB_WAIT_STATUS_LINE = re.compile(r"^(?P<label>.+?)\s[—–-]\sWAITING ON(?:[:\s].*)?$")
 _NOT_A_LABEL = ("#", ">", "`", '"', "'", "- ", "* ", "+ ")
 # Prompts that reach a session without the founder replying: a background
 # task finishing, a peer session's message, and the harness's cross-session
-# idle and delivery notices. Anything else is his reply.
+# idle and delivery notices. Anything else is his reply. A task finishing is
+# the holder's job reporting back, which stops the job clock (#4588); a peer's
+# message does not, since peers ping a stuck holder.
+_JOB_REPORTED = re.compile(r"\s*<task-notification>")
 _NOT_HIS_REPLY = re.compile(
     r"\s*(?:<task-notification>|Another Claude session sent a message:|\[Cross-session [a-z]+ notice\])")
 # The desktop app's blocking question box. It ends the turn without running
@@ -576,12 +633,16 @@ def waits_on_founder(message):
     return _status_matches(_WAITING_STATUS_LINE, message)
 
 
+def waits_on_own_job(message):
+    return _status_matches(_JOB_WAIT_STATUS_LINE, message)
+
+
 def moved_on(message):
-    return _status_matches(_MOVED_ON_STATUS_LINE, message)
+    return _status_matches(_WORKING_STATUS_LINE, message) or waits_on_own_job(message)
 
 
 def wait_decision(payload):
-    """"set", "clear" or None (leave the card alone) for one hook event."""
+    """"set", "own", "active", "clear" or None (no change) for one hook event."""
     name = payload.get("hook_event_name")
     if name == "Stop":
         message = payload.get("last_assistant_message")
@@ -592,11 +653,15 @@ def wait_decision(payload):
         # carries no status line, so it changes nothing.
         if waits_on_founder(message):
             return "set"
+        if waits_on_own_job(message):
+            return "own"
         if moved_on(message):
             return "clear"
         return None
     if name == "UserPromptSubmit":
         prompt = payload.get("prompt")
+        if isinstance(prompt, str) and _JOB_REPORTED.match(prompt):
+            return "active"
         if isinstance(prompt, str) and _NOT_HIS_REPLY.match(prompt):
             return None
         return "clear"
@@ -645,6 +710,10 @@ def cmd_wait_mark(args):
             return EXIT_OK
         if decision == "set":
             start_wait(card, event_time)
+        elif decision == "own":
+            start_job_wait(card, event_time)
+        elif decision == "active":
+            job_reported(card, event_time)
         else:
             end_wait(card, event_time)
     except Exception:

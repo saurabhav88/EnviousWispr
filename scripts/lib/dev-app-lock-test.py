@@ -617,6 +617,101 @@ def main():
             got = "set" if w is not None else None
             check(f"wait-mark: {name}", got == want, str(w))
 
+        print("#4588: a hold sleeping on its own job is released when the job never reports")
+
+        def job_waiting(lock_dir):
+            """When the current hold started sleeping on its own job, or None."""
+            c = card(lock_dir)
+            if c is None:
+                return None
+            now = time.time()
+            j = reader(lock_dir).job_waited(c, now)
+            return None if j is None else now - j
+
+        def run_job_marks(name, *keys):
+            lk = os.path.join(tmp, f"lockj-{name}")
+            tl = make_copy(tmp, f"j-{name}.py", base_rewrites(lk))
+            sess = Session(tmp, tl, ["claim --label j"] + mark_steps(*keys), step_sleep=0.05)
+            sess.wait_done()
+            j, w = job_waiting(lk), waiting(lk)
+            sess.kill()
+            return j, w
+
+        for name, keys, want in [
+            ("WAITING ON starts the job clock", ("working",), "job"),
+            ("a peer message keeps the job clock", ("working", "peer"), "job"),
+            ("a bare peer-note ending keeps the job clock", ("working", "peer", "bare-line"), "job"),
+            ("a cross-session notice keeps the job clock", ("working", "idle-notice"), "job"),
+            ("the job's completion notice stops the job clock", ("working", "notice"), None),
+            ("his reply stops the job clock", ("working", "reply"), None),
+            ("WORKING stops the job clock", ("working", "working-colon"), None),
+            ("NEED YOU turns the job clock into a founder wait", ("working", "need"), "founder"),
+            ("WAITING ON turns a founder wait into the job clock", ("need", "working"), "job"),
+            ("a job notice leaves a founder wait alone", ("need", "notice"), "founder"),
+        ]:
+            j, w = run_job_marks(abs(hash(name)), *keys)
+            got = "job" if j is not None else ("founder" if w is not None else None)
+            check(f"wait-mark: {name}", got == want and not (j is not None and w is not None),
+                  f"job={j} founder={w}")
+
+        # The 2026-11-14 incident (#4588): claim, end the turn WAITING ON a
+        # recording, answer peer pings with bare lines, never hear back.
+        lockj = os.path.join(tmp, "lockj-incident")
+        j_tool = make_copy(tmp, "j-incident.py", base_rewrites(lockj))
+        hj = Session(tmp, j_tool, ["claim --label j"] + mark_steps("working", "peer", "bare-line"))
+        hj.wait_done()
+        check("the holder sleeping on its own job is marked",
+              hj.rc(1) == 0 and job_waiting(lockj) is not None, str(card(lockj)))
+        pj = Session(tmp, j_tool, ["claim --label pj"])
+        pj.wait_done()
+        check("a peer is still refused before the job limit",
+              pj.rc() == 3 and "waiting on its own job" in pj.out(), pj.out())
+        j_nonce = card(lockj)["nonce"]
+        for name in os.listdir(lockj):
+            if name.startswith(f"wait-{j_nonce}."):
+                os.unlink(os.path.join(lockj, name))
+        open(os.path.join(lockj, f"wait-{j_nonce}.{int((time.time() - 19 * 60) * 1e9)}.own"),
+             "w").close()
+        rc, out = run_tool(j_tool, "status")
+        check("19 minutes on its own job still holds",
+              "held by" in out and "waiting on its own job 19m" in out, out)
+        open(os.path.join(lockj, f"wait-{j_nonce}.{int((time.time() - 21 * 60) * 1e9)}.own"),
+             "w").close()
+        rc, out = run_tool(j_tool, "status")
+        check("status reads free once the job never reported for 20 minutes",
+              rc == 0 and out.startswith("dev-app-lock: free (holder's own job never reported back"), out)
+        pj2 = Session(tmp, j_tool, ["claim --label pj2"])
+        pj2.wait_done()
+        check("a peer takes over after the job limit",
+              pj2.rc() == 0 and "took over (holder's own job never reported back" in pj2.out()
+              and card(lockj)["pid"] == pj2.proc.pid and job_waiting(lockj) is None,
+              pj2.out())
+        hj.kill()
+        pj.kill()
+        pj2.kill()
+
+        lk = os.path.join(tmp, "lock-job-order")
+        os.makedirs(lk)
+        mod = reader(lk)
+        fake = {"nonce": "joborder1"}
+        now = time.time()
+        mod.start_job_wait(fake, now - 30)
+        mod.start_job_wait(fake, now - 10)
+        jw = mod.job_waited(fake, now)
+        check("a later WAITING ON keeps the oldest job start", jw is not None and 29 < jw < 31, str(jw))
+        mod.job_reported(fake, now - 30)
+        check("a job notice stamped with the WAITING ON wins",
+              mod.job_waited(fake, now) is not None and 9 < mod.job_waited(fake, now) < 11,
+              str(mod.job_waited(fake, now)))
+        mod.end_wait(fake, now - 5)
+        check("a clear ends the job clock", mod.job_waited(fake, now) is None)
+        rel_j = Session(tmp, j_tool, ["claim --label rj"] + mark_steps("working") + ["release"])
+        rel_j.wait_done()
+        check("release removes the job wait file",
+              rel_j.rc(2) == 0 and not [n for n in os.listdir(lockj) if n.startswith("wait-")],
+              str(os.listdir(lockj)))
+        rel_j.kill()
+
         lk = os.path.join(tmp, "lock-oldest")
         tl = make_copy(tmp, "oldest.py", base_rewrites(lk))
         s3 = Session(tmp, tl, ["claim --label o"] + mark_steps("need") +
