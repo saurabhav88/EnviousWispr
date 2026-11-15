@@ -11,8 +11,9 @@ final class HistoryPolishPreview {
   }
 
   private(set) var state: State = .idle
-  private var task: Task<Void, Never>?
-  private var requestID = UUID()
+  // #4609: bookkeeping no view reads; observing it re-rendered a card on every write.
+  @ObservationIgnored private var task: Task<Void, Never>?
+  @ObservationIgnored private var requestID = UUID()
 
   var canStart: Bool {
     if case .keeping = state { return false }
@@ -69,6 +70,9 @@ final class HistoryPolishPreview {
     task?.cancel()
     // Retain the draining task so a later choice waits for the lease to be returned.
     requestID = UUID()
+    // #4609: every card calls this when it scrolls off screen; writing `.idle` over `.idle`
+    // still notified observers and redrew the card mid-scroll.
+    if case .idle = state { return }
     state = .idle
   }
 }
