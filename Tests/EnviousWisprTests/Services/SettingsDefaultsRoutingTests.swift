@@ -898,4 +898,25 @@ struct SettingsDefaultsRoutingTests {
         for: ModifierKeyCodes.globe))
     #expect(suite.bool(forKey: "hasClaimedGlobeKeyGuidance"))
   }
+
+  // MARK: - Domain routing by bundle (#4596)
+
+  // Pure decision, no preference writes: only the dev build opens the shared production domain
+  // by name; Release uses its own (identical) standard domain; every other bundle stays on its
+  // own standard domain, so a test runner or a renamed measurement copy never touches the
+  // production preferences.
+  @Test("only the dev bundle opens the shared domain by name", arguments: [
+    ("com.enviouswispr.app.dev", "com.enviouswispr.app"),
+    ("com.enviouswispr.app", nil),
+    ("com.enviouswispr.app.historyspeed", nil),
+    ("com.apple.dt.xctest.tool", nil),
+  ] as [(String, String?)])
+  func domainRouting(bundle: String, expected: String?) {
+    #expect(SettingsDefaults.domainName(forBundle: bundle) == expected)
+  }
+
+  @Test("a process without a bundle identifier stays on its standard domain")
+  func domainRoutingWithoutBundle() {
+    #expect(SettingsDefaults.domainName(forBundle: nil) == nil)
+  }
 }

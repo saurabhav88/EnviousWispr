@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import EnviousWisprModelDelivery
 import Foundation
 
@@ -35,7 +36,7 @@ public final class EGOneDeliveryAdapter {
     self.controller = controller
     self.registration = registration
     self.version = version
-    self.defaults = defaults ?? UserDefaults(suiteName: DeliveryFlags.suiteName) ?? .standard
+    self.defaults = defaults ?? SettingsDefaults.store
   }
 
   // MARK: - Legacy-upgrade hooks (#1386 PR-1)

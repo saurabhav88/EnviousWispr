@@ -721,7 +721,7 @@ def choose_engine(ax, root_of, label, timeout=5.0):
 # ── The app's stored settings ──────────────────────────────────────────────
 
 # Both builds read and write ONE preference domain, `com.enviouswispr.app`: the dev build
-# redirects there (`SettingsDefaults.store`, Sources/EnviousWisprServices/SettingsDefaults.swift).
+# redirects there (`SettingsDefaults.store`, Sources/EnviousWisprCore/SettingsDefaults.swift).
 # The connected bundle's own domain (`com.enviouswispr.app.dev`) holds only pre-#923 leftovers,
 # so reading it reads a value the app ignores. `ptt_binding.read_domain()` owns exporting the
 # domain; this owns reading the keys the Settings harness needs the way `SettingsManager`

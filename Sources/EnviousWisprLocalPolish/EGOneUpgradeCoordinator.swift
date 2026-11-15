@@ -1,4 +1,5 @@
 import CryptoKit
+import EnviousWisprCore
 import EnviousWisprModelDelivery
 import Foundation
 
@@ -213,8 +214,7 @@ public final class EGOneUpgradeCoordinator {
       identity: identity,
       installDirectory: installDirectory,
       defaults: defaults
-        ?? UserDefaults(suiteName: DeliveryFlags.suiteName)
-        ?? .standard,
+        ?? SettingsDefaults.store,
       trustedArtifact: trustedArtifact,
       isOnboardingComplete: isOnboardingComplete,
       ensureCurrentModel: { [weak adapter] onWillRequestFetch, onFetchDecision in
