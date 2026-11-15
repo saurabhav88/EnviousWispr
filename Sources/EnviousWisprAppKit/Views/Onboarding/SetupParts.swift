@@ -101,8 +101,13 @@ struct SetupFooter<Links: View>: View {
       .buttonStyle(SetupPrimaryButtonStyle())
       .disabled(!isEnabled)
       .keyboardShortcut(.defaultAction)
-      HStack(spacing: DesignSpacing.xs) { links }
-        .frame(height: SetupMetrics.linksHeight)
+      // #4590 follow-up: when the links do not fit (German polish pick: "Zurück", "Alle ansehen",
+      // "Ohne KI-Nachbearbeitung"), the same row with tighter link padding, never a truncated label.
+      ViewThatFits(in: .horizontal) {
+        HStack(spacing: DesignSpacing.xs) { links }
+        HStack(spacing: 0) { links }.environment(\.setupLinksCompact, true)
+      }
+      .frame(height: SetupMetrics.linksHeight)
     }
     .padding(.top, DesignSpacing.xl)
   }
@@ -188,6 +193,7 @@ struct SetupLinkButton: View {
   var quiet = false
   let action: () -> Void
   @State private var hovering = false
+  @Environment(\.setupLinksCompact) private var compact
   @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
   @Environment(\.overlayReduceMotionOverride) private var reduceMotionOverride
 
@@ -197,7 +203,8 @@ struct SetupLinkButton: View {
         .font(.firstRunLabel)
         .underline()
         .foregroundStyle(quiet ? Color.obTextSecondary : Color.obAccent)
-        .padding(.horizontal, DesignSpacing.xl)
+        .lineLimit(1)
+        .padding(.horizontal, compact ? DesignSpacing.sm : DesignSpacing.xl)
         .frame(height: SetupMetrics.linksHeight)
         .background(
           RoundedRectangle(cornerRadius: DesignRadius.md, style: .continuous)
@@ -400,4 +407,9 @@ struct SetupSpinner: View {
     }
     .accessibilityHidden(true)
   }
+}
+
+extension EnvironmentValues {
+  /// Set by `SetupFooter` when its links only fit with tighter padding.
+  @Entry var setupLinksCompact = false
 }
