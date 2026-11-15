@@ -401,7 +401,8 @@ final class HistoryCatalogSession {
       expiresAt: row.escapeRecoveredAt?.addingTimeInterval(AppConstants.pendingTranscriptRetention),
       rowID: row.id, duration: row.duration, speakerNames: HistoryTranscriptPresentation.speakerList(row),
       backendName: row.backendType.displayName, polishModel: row.llmModel, wasPolished: row.polishedText != nil,
-      recovered: row.isRecovered, interrupted: row.inputDeviceWasRemoved)
+      recovered: row.isRecovered, interrupted: row.inputDeviceWasRemoved,
+      dictation: row.isImported ? nil : HistoryDictationDisplay.catalogData(of: row))
     var fields = [availableText]
     if let title { fields.append(title) }
     if let names = row.speakerNames { fields.append(contentsOf: names.values) }

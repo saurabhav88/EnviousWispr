@@ -26,6 +26,41 @@ package actor HistoryCatalog {
     }
   }
 
+  /// Everything a dictation card draws (#4609), so the card is complete on first display and
+  /// never resizes when a file read finishes. Delivery and every action still read the live row.
+  package struct DictationDisplay: Codable, Equatable, Sendable {
+    package let text: String
+    package let polishedText: String?
+    package let processedText: String?
+    package let preferredVersion: String?
+    package let language: String?
+    package let llmProvider: String?
+    package let llmModel: String?
+    /// `historyPolishEGOneSize ?? metrics?.polishModelSize`.
+    package let egOneSize: String?
+    package let targetApp: String?
+    package let escapeRecoveredAt: Date?
+    package let escapeRecoveryTakeID: String?
+
+    package init(
+      text: String, polishedText: String?, processedText: String?, preferredVersion: String?,
+      language: String?, llmProvider: String?, llmModel: String?, egOneSize: String?,
+      targetApp: String?, escapeRecoveredAt: Date?, escapeRecoveryTakeID: String?
+    ) {
+      self.text = text
+      self.polishedText = polishedText
+      self.processedText = processedText
+      self.preferredVersion = preferredVersion
+      self.language = language
+      self.llmProvider = llmProvider
+      self.llmModel = llmModel
+      self.egOneSize = egOneSize
+      self.targetApp = targetApp
+      self.escapeRecoveredAt = escapeRecoveredAt
+      self.escapeRecoveryTakeID = escapeRecoveryTakeID
+    }
+  }
+
   package struct Summary: Codable, Equatable, Sendable {
     package let key: Key
     package let date: Date
@@ -45,6 +80,8 @@ package actor HistoryCatalog {
     package let meetingAnalysis: TranscriptSpeakerAnalysis?
     package let summaryProvider: String?
     package let hasMeetingSummary: Bool?
+    /// Dictations only (#4609).
+    package let dictation: DictationDisplay?
 
     package init(
       key: Key, date: Date, appKey: String? = nil, title: String? = nil, preview: String,
@@ -52,7 +89,8 @@ package actor HistoryCatalog {
       duration: TimeInterval? = nil, speakerNames: String? = nil, backendName: String? = nil,
       polishModel: String? = nil, wasPolished: Bool? = nil, recovered: Bool? = nil,
       interrupted: Bool? = nil, meetingAnalysis: TranscriptSpeakerAnalysis? = nil,
-      summaryProvider: String? = nil, hasMeetingSummary: Bool? = nil
+      summaryProvider: String? = nil, hasMeetingSummary: Bool? = nil,
+      dictation: DictationDisplay? = nil
     ) {
       self.key = key
       self.date = date
@@ -72,6 +110,7 @@ package actor HistoryCatalog {
       self.meetingAnalysis = meetingAnalysis
       self.summaryProvider = summaryProvider
       self.hasMeetingSummary = hasMeetingSummary
+      self.dictation = dictation
     }
   }
 
@@ -129,7 +168,8 @@ package actor HistoryCatalog {
   }
 
   private static let pageSize = 30
-  private static let schemaVersion: Int32 = 3
+  /// 4 (#4609): dictation summaries carry `DictationDisplay`; older catalogs rebuild once.
+  private static let schemaVersion: Int32 = 4
   private let connection: HistoryCatalogConnection
   private let hasTrigram: Bool
 

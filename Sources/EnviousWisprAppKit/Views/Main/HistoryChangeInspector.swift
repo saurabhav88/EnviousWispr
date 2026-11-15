@@ -39,18 +39,20 @@ struct HistoryChangeInspector: View {
         }
       }
       HStack(spacing: DesignSpacing.md) {
-        if let seconds = detail.seconds {
-          Button {
-            onHear(seconds)
-          } label: {
-            EnviousButtonLabel(
-              LocalizedStringResource(
-                "Hear it",
-                comment: "History change details: plays the recording where this change was said."),
-              size: .medium, systemImage: "play.fill")
-          }
-          .settingsButton(.outlined, size: .medium, isEnabled: true)
+        // #4609: the button's place is kept before passage times arrive, so the row never
+        // reflows when they do; hidden and out of the accessibility tree until then.
+        Button {
+          if let seconds = detail.seconds { onHear(seconds) }
+        } label: {
+          EnviousButtonLabel(
+            LocalizedStringResource(
+              "Hear it",
+              comment: "History change details: plays the recording where this change was said."),
+            size: .medium, systemImage: "play.fill")
         }
+        .settingsButton(.outlined, size: .medium, isEnabled: detail.seconds != nil)
+        .opacity(detail.seconds == nil ? 0 : 1)
+        .accessibilityHidden(detail.seconds == nil)
         if !detail.original.isEmpty {
           Button {
             onCopyOriginal(detail.original)

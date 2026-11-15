@@ -25,7 +25,9 @@ final class HistoryPolishPreview {
     guard canStart else { return }
     let previous = task
     cancel()
-    guard let row = history.currentRow(id: rowID) else {
+    // #4609: a card drawn from catalog display data has no hydrated payload; read the verified
+    // live row, at the start and again for the finished candidate.
+    guard let row = history.liveHistoryRow(id: rowID) else {
       state = .stale
       return
     }
@@ -38,7 +40,7 @@ final class HistoryPolishPreview {
         guard self?.requestID == request else { return }
         let candidate = try await runner.candidate(for: row, choice: choice)
         guard !Task.isCancelled, let self, request == requestID else { return }
-        state = history.currentRow(id: rowID).map(candidate.matches) == true
+        state = history.liveHistoryRow(id: rowID).map(candidate.matches) == true
           ? .comparing(candidate) : .stale
       } catch {
         guard !Task.isCancelled, let self, request == requestID else { return }
