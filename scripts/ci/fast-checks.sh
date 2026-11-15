@@ -681,8 +681,12 @@ PYFIXTURE
   MEMBERS=("p|bash|build-check")
   out="$( selected_members() { command printf 'p|bash|build-check\n'; return 1; }; run_all 0 "$tmp" 2>/dev/null )"; rc=$?
   check "a selection that cannot be written is a FAIL" "$rc|$out" "1|==> fast-checks: FAIL (runner fault: cannot select members)"
-  out="$( selected_members() { command printf 'p|bash|build-check\n'; chmod 000 "$RUNNER_LOGS/selected"; }; run_all 0 "$tmp" 2>/dev/null )"; rc=$?
-  check "an unreadable selection is a FAIL" "$rc|$(printf '%s' "$out" | grep -c 'cannot open the member selection')" "1|1"
+  if [ "$(id -u)" -eq 0 ]; then
+    check "an unreadable selection is a FAIL (skipped as root)" "skip" "skip"
+  else
+    out="$( selected_members() { command printf 'p|bash|build-check\n'; chmod 000 "$RUNNER_LOGS/selected"; }; run_all 0 "$tmp" 2>/dev/null )"; rc=$?
+    check "an unreadable selection is a FAIL" "$rc|$(printf '%s' "$out" | grep -c 'cannot open the member selection')" "1|1"
+  fi
   out="$( selected_members() { command printf '\n'; }; run_all 0 "$tmp" 2>/dev/null )"; rc=$?
   check "a blank selection line is a FAIL" "$rc|$out" "1|==> fast-checks: FAIL (runner fault: blank line in the member selection)"
   out="$( cat() { case "$1" in (*.name) return 1 ;; (*) command cat "$@" ;; esac; }; run_all 0 "$tmp" 2>/dev/null )"; rc=$?
