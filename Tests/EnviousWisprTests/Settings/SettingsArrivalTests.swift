@@ -390,7 +390,7 @@ struct SettingsArrivalTests {
       }
       .environment(\.settingsArrivalStillCurrent) { _ in box.current }
       .environment(\.settingsArrivalDecided) { box.record($0) }
-      .environment(\.settingsArrivalRingDrawn) { id, rect, clip in box.rings.append((id, rect, clip)) }
+      .environment(\.settingsArrivalRingDrawn) { id, rect, clip in box.recordRing(id, rect: rect, clip: clip) }
       .environment(\.settingsArrivalReduceMotion, reduceMotion)
       .environment(\.settingsKeyMonitor, box.keyMonitor)
       .frame(width: 700, height: 500)
@@ -465,13 +465,14 @@ struct SettingsArrivalTests {
       return found
     }
 
-    /// The first decision at or after index `since` that `accept` takes, waiting on the owner's
-    /// decision events (layout pumped meanwhile), or nil when none came before the hang guard.
-    func decision(
-      after since: Int, _ accept: @escaping (SettingsArrivalDecision) -> Bool
-    ) async -> SettingsArrivalDecision? {
+    private func waitWithPump<Event, Result>(
+      on stream: AsyncStream<Event>,
+      find: () -> Result?,
+      onTimeout: @escaping () -> Void
+    ) async -> Result? {
+      if let hit = find() { return hit }
       // test-fixture-timer: an offscreen host only lays out when asked; this pumps layout while
-      // the test waits on the owner's decision events.
+      // the test waits on the owner's events.
       let pump = Task { @MainActor [host, window] in
         while !Task.isCancelled {
           // Display as well as layout: a state change made in a preference callback is applied in
@@ -483,27 +484,49 @@ struct SettingsArrivalTests {
       }
       box.hangGuardFired = false
       let guardTask = Task { @MainActor [box] in
-        // deadline-fallback: a hang guard around the decision events; the wait is the event.
+        // deadline-fallback: a hang guard around the events; the wait is the event.
         try? await Task.sleep(for: .seconds(5))
         // A cancelled sleep returns at once; only a guard that ran its full time fires.
         guard !Task.isCancelled else { return }
         box.hangGuardFired = true
-        box.decisionSink.yield(
-          SettingsArrivalDecision(reveal: nil, action: nil, places: [:], lazyTop: nil))
+        onTimeout()
       }
       defer {
         pump.cancel()
         guardTask.cancel()
       }
-      func found() -> SettingsArrivalDecision? {
-        box.decisions.dropFirst(since).first(where: accept)
-      }
-      if let decision = found() { return decision }
-      for await _ in box.decisionEvents {
-        if let decision = found() { return decision }
+      for await _ in stream {
+        if let hit = find() { return hit }
         if box.hangGuardFired { return nil }
       }
       return nil
+    }
+
+    /// The first decision at or after index `since` that `accept` takes, waiting on the owner's
+    /// decision events (layout pumped meanwhile), or nil when none came before the hang guard.
+    func decision(
+      after since: Int, _ accept: @escaping (SettingsArrivalDecision) -> Bool
+    ) async -> SettingsArrivalDecision? {
+      await waitWithPump(
+        on: box.decisionEvents,
+        find: { box.decisions.dropFirst(since).first(where: accept) },
+        onTimeout: { [box] in
+          box.decisionSink.yield(
+            SettingsArrivalDecision(reveal: nil, action: nil, places: [:], lazyTop: nil))
+        })
+    }
+
+    /// The first drawn ring at or after index `since` that `accept` takes, waiting on the ring
+    /// events (layout pumped meanwhile), or nil when none came before the hang guard.
+    func ring(
+      after since: Int, _ accept: @escaping (RevealBox.Ring) -> Bool
+    ) async -> RevealBox.Ring? {
+      await waitWithPump(
+        on: box.ringEvents,
+        find: { box.rings.dropFirst(since).first(where: accept) },
+        onTimeout: { [box] in
+          box.ringSink.yield((id: .autoCopyToClipboard, rect: .zero, clip: .zero))
+        })
     }
 
     func close() { window.contentView = nil }
@@ -766,13 +789,15 @@ struct SettingsArrivalTests {
     #expect(first?.action == .arrive(section, kind: .section))
     // As the window does, the page no longer carries the reveal once it was acknowledged.
     let since = box.decisions.count
+    let ringsSince = box.rings.count
     stepper.host.rootView = TaggedPage(box: box, reveal: nil, tab: tab, rows: [section, .pauseDuration])
     let up = await stepper.decision(after: since) {
       if case .arrive = $0.action { true } else { false }
     }
     #expect(up?.action == .arrive(.pauseDuration, kind: .target))
     #expect(up?.reveal == reveal, "the upgrade lost the reveal it belongs to")
-    #expect(box.rings.last?.id == .pauseDuration, "the ring did not move to the target")
+    let ring = await stepper.ring(after: ringsSince) { $0.id == .pauseDuration }
+    #expect(ring?.id == .pauseDuration, "the ring did not move to the target")
     #expect(box.acknowledged == 12)
   }
 
@@ -786,7 +811,8 @@ struct SettingsArrivalTests {
     defer { stepper.close() }
     let first = await stepper.show(TaggedPage(box: box, reveal: reveal, tab: tab, rows: [section]))
     #expect(first?.action == .arrive(section, kind: .section))
-    try #require(box.rings.last?.id == section, "no ring to end")
+    let ring = await stepper.ring(after: 0) { $0.id == section }
+    try #require(ring?.id == section, "no ring to end")
     // The person clicks an empty part of the page.
     stepper.click(at: CGPoint(x: 650, y: 450))
     let after = await stepper.show(TaggedPage(box: box, reveal: reveal, tab: tab, rows: [section, .pauseDuration]))
@@ -872,9 +898,11 @@ struct SettingsArrivalTests {
         _ = await stepper.decision(after: 0) { _ in true }
         let before = try stepper.paint()
         let control = try stepper.paint()
+        let ringsSince = box.rings.count
         let decision = await stepper.show(page(reveal))
         #expect(decision?.action == .arrive(rung.id, kind: rung.kind), "\(rung) motion=\(reduceMotion)")
-        let drawn = try #require(box.rings.last { $0.id == rung.id }, "no ring drawn on \(rung)")
+        let drawn = try #require(
+          await stepper.ring(after: ringsSince) { $0.id == rung.id }, "no ring drawn on \(rung)")
         #expect(
           SettingsArrivalVisibility.partly(drawn.rect, in: drawn.clip),
           "\(rung) is not visible in its clip: \(drawn.rect) in \(drawn.clip)")
@@ -1004,8 +1032,16 @@ struct SettingsArrivalTests {
     }
     let focusEvents: AsyncStream<SettingsArrivalFocusRequest>
     let focusSink: AsyncStream<SettingsArrivalFocusRequest>.Continuation
+    typealias Ring = (id: SettingsMapID, rect: CGRect, clip: CGRect)
+    let ringEvents: AsyncStream<Ring>
+    let ringSink: AsyncStream<Ring>.Continuation
     /// Where the owner said it drew the ring: place, frame and clip, latest last.
-    var rings: [(id: SettingsMapID, rect: CGRect, clip: CGRect)] = []
+    var rings: [Ring] = []
+    func recordRing(_ id: SettingsMapID, rect: CGRect, clip: CGRect) {
+      let ring = (id: id, rect: rect, clip: clip)
+      rings.append(ring)
+      ringSink.yield(ring)
+    }
     /// Every focus request the owner published, in order.
     var focusRequests: [SettingsArrivalFocusRequest] = []
     /// Set by a stepper's hang guard when no matching decision came.
@@ -1018,6 +1054,7 @@ struct SettingsArrivalTests {
       (acknowledgements, acknowledgementSink) = AsyncStream<Int>.makeStream()
       (decisionEvents, decisionSink) = AsyncStream<SettingsArrivalDecision>.makeStream()
       (focusEvents, focusSink) = AsyncStream<SettingsArrivalFocusRequest>.makeStream()
+      (ringEvents, ringSink) = AsyncStream<Ring>.makeStream()
     }
   }
 
