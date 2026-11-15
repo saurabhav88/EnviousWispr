@@ -289,6 +289,36 @@ struct SpeechModelLibraryTests {
     }
   }
 
+  /// #4578 (cloud review, local adjudication): with no Parakeet delivery handle (the bundled
+  /// manifest failed to load, or storage is unavailable) no owned copy can be named. When this
+  /// fails, Remove unloads dictation's model and reports success after deleting nothing.
+  @Test("Parakeet Remove without delivery handles fails before recording or unloading anything")
+  func parakeetRemoveWithoutHandles() async throws {
+    let root = TestTemporaryDirectory.url
+      .appendingPathComponent("ew-4578-nohandle-\(UUID().uuidString)", isDirectory: true)
+    let emptyBundle = root.appendingPathComponent("EmptyBundle", isDirectory: true)
+    try FileManager.default.createDirectory(at: emptyBundle, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let home = ModelDeliveryHome(
+      engineMutationScope: .alwaysAllowedForTesting,
+      manifestBundle: try #require(Bundle(url: emptyBundle)),
+      appSupportOverride: root.appendingPathComponent("Support", isDirectory: true),
+      deliveryFlagDefaults: try #require(TestDefaults.suite("ew-4578-nh-\(UUID().uuidString)")))
+    #expect(home.parakeetHandle == nil && home.parakeetRetiredV3Handle == nil, "precondition: no manifest")
+    let upgrade = home.installParakeetUpgrade(
+      parakeetSelection: ParakeetSelectionProvider(), isOnboardingComplete: { true })
+    let library = SpeechModelLibrary(modelDelivery: home)
+    var steps: [String] = []
+    library.parakeetRemoval.refusal = { nil }
+    library.parakeetRemoval.unloadForRemoval = { steps.append("unload"); return true }
+    library.parakeetRemoval.finishRemoval = { steps.append("finish") }
+    let task = try #require(library.removeParakeet())
+    await task.value
+    #expect(steps.isEmpty, "nothing unloaded or finished")
+    #expect(library.parakeetRemoveNotice == .failed)
+    #expect(upgrade.isInstallWanted, "no removal recorded")
+  }
+
   @Test("Remove before the Whisper parts exist fails and touches nothing")
   func removeWithoutPartsFails() async throws {
     let f = try makeFixture(attach: false)

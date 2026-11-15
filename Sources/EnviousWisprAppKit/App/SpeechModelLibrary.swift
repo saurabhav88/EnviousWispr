@@ -323,7 +323,11 @@ final class SpeechModelLibrary {
   }
 
   private func runParakeetRemoval() async -> Bool {
-    guard let upgrade = modelDelivery.parakeetUpgrade else { return false }
+    // No delivery handle (the bundled manifest failed to load, or storage is unavailable): no
+    // owned copy can be named, so nothing is recorded, unloaded or reported as removed.
+    guard modelDelivery.parakeetHandle != nil || modelDelivery.parakeetRetiredV3Handle != nil,
+      let upgrade = modelDelivery.parakeetUpgrade
+    else { return false }
     do {
       try await upgrade.recordRemovalByUser()
     } catch {
