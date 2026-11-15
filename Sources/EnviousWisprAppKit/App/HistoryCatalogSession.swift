@@ -23,6 +23,18 @@ final class HistoryCatalogSession {
   @ObservationIgnored private var backend: Backend?
   @ObservationIgnored private var opening: Task<Backend, any Error>?
   @ObservationIgnored private var diskWatch: HistoryDiskWatch?
+  /// The one in-flight watcher registration (#4598). Registration blocks on `fseventsd`, so it
+  /// runs off the main actor; a second request while one runs is folded into `rewatchRequested`.
+  @ObservationIgnored private var registration: Task<Void, Never>?
+  @ObservationIgnored private var rewatchRequested = false
+  /// Registrations started this session; one per start plus one per real root change (#4598).
+  @ObservationIgnored private(set) var watcherRegistrations = 0
+  /// What the screen last saw (#4598): publish only when rows, availability or the certified
+  /// source revision change, and at most every `publishInterval` while a pass is mid-way.
+  @ObservationIgnored private var publishedCertifiedSource: UInt64?
+  @ObservationIgnored private var publishedAt: ContinuousClock.Instant?
+  @ObservationIgnored private var everCertified = false
+  private static let publishInterval = Duration.milliseconds(250)
   @ObservationIgnored private var observation: Task<Void, Never>?
   @ObservationIgnored private var retry: Task<Void, Never>?
   @ObservationIgnored private var indexing: Task<Void, Never>?
@@ -43,6 +55,7 @@ final class HistoryCatalogSession {
   }
 
   deinit {
+    registration?.cancel()
     observation?.cancel()
     indexing?.cancel()
     retry?.cancel()
@@ -51,30 +64,75 @@ final class HistoryCatalogSession {
 
   func start() {
     guard observation == nil else { return }
-    startWatchingDisk()
     observation = Task { [weak self, changes] in
       for await event in changes.changes {
         guard let self else { return }
-        invalidate()
-        if case .unknown = event {
-          startWatchingDisk()
-        }
+        // #4598: a notice only adds work. It never withdraws what the screen shows or
+        // re-creates the watcher; a pass publishes when it actually changes something.
         pending.include(event)
         indexIfNeeded()
       }
     }
+    registerWatcher()
     pending.include(.unknown)
     indexIfNeeded()
   }
 
-  private func startWatchingDisk() {
-    // Watch the common parent as well so a missing or replaced child can be seen.
-    diskWatch = HistoryDiskWatch(directories: sources.watchedDirectories) { [changes] in
-      changes.externalChange()
+  /// Build the one folder watcher off the main actor. Registration is a coverage boundary:
+  /// a change between an earlier scan and the stream's start would be in neither, so on success
+  /// the source revision advances before the watcher becomes available, then one full pass is
+  /// enqueued; only a pass that began after registration can restore coverage.
+  private func registerWatcher() {
+    guard registration == nil else {
+      rewatchRequested = true
+      return
+    }
+    watcherRegistrations += 1
+    let directories = sources.watchedDirectories
+    let scope: @Sendable (String) -> HistorySourceChanges.Scope? = { [sources] path in sources.scope(forPath: path) }
+    let deliver: @Sendable (Set<HistoryDiskWatch.Event>) -> Void = { [weak self, changes] events in
+      for event in events {
+        switch event {
+        case .scope(let scope): changes.externalChange(scope)
+        case .rescan: changes.externalChange()
+        case .rootChanged:
+          changes.externalChange()
+          Task { @MainActor [weak self] in self?.rootChanged() }
+        }
+      }
+    }
+    registration = Task { [weak self] in
+      let watch = await Task.detached(priority: .utility) {
+        HistoryDiskWatch(directories: directories, scope: scope, changed: deliver)
+      }.value
+      guard let self, !Task.isCancelled else { return }
+      registration = nil
+      if let watch {
+        changes.advanceWithoutNotice()
+        diskWatch = watch
+        pending.include(.unknown)
+        indexIfNeeded()
+      } else if status != .unavailable {
+        // No watcher: coverage-dependent reads stay off; activation retries (sourceMayHaveChanged).
+        status = .unavailable
+        revision &+= 1
+        didUpdate?()
+      }
+      if rewatchRequested {
+        rewatchRequested = false
+        rootChanged()
+      }
     }
   }
 
+  /// A watched root was created, moved, deleted or replaced: drop the stream and register again.
+  private func rootChanged() {
+    diskWatch = nil
+    registerWatcher()
+  }
+
   func sourceMayHaveChanged() {
+    if diskWatch == nil, registration == nil { registerWatcher() }
     guard diskWatch == nil || status == .unavailable else { return }
     changes.externalChange()
   }
@@ -237,7 +295,7 @@ final class HistoryCatalogSession {
           } else {
             pass = try await backend.worker.refresh(delta)
           }
-          if let pass { publishProgress(pass) }
+          if let pass { publishProgress(pass, final: true) }
           if pass?.revision == nil {
             // A failed record is different from a scan raced by a canonical writer.
             // Wait for the affected source to change or for an explicit recovery trigger.
@@ -264,20 +322,57 @@ final class HistoryCatalogSession {
     }
   }
 
-  private func publishProgress(_ pass: HistoryCatalogReconciliation.Pass) {
-    if pass.unavailable > 0 || diskWatch == nil {
-      status = .unavailable
+  /// #4598: publish only what the screen needs. Rows or source proofs changed, availability
+  /// changed, or a pass certified a different source revision; a new certificate for the same
+  /// revision is not a change. While a pass is mid-way, at most every `publishInterval`.
+  private func publishProgress(_ pass: HistoryCatalogReconciliation.Pass, final: Bool = false) {
+    let watcherFailed = diskWatch == nil && registration == nil
+    let next: Status
+    if pass.unavailable > 0 || watcherFailed {
+      next = .unavailable
+    } else if pass.revision != nil {
+      next = .ready
+      everCertified = true
+    } else if everCertified, status == .ready {
+      // A background re-check over a list that was certified: keep it as it is.
+      next = .ready
     } else {
-      status = pass.revision == nil ? .updating : .ready
+      next = .updating
     }
+    let certified = pass.revision == nil ? nil : pass.certifiedSource
+    let finished = final || pass.revision != nil || pass.unavailable > 0
+    let newCertificate = certified != nil && certified != publishedCertifiedSource
+    guard pass.changed || next != status || newCertificate else { return }
+    let now = ContinuousClock.now
+    if !finished, next == status, let publishedAt, now - publishedAt < Self.publishInterval { return }
+    status = next
+    if let certified { publishedCertifiedSource = certified }
+    publishedAt = now
     revision &+= 1
     didUpdate?()
   }
 
   // periphery:ignore - The session integration test waits for the real indexing task.
+  /// Waits until the watcher registration and every queued pass have finished, including
+  /// feed events still in flight to the observation task.
   func waitForIndexingForTesting() async {
-    await indexing?.value
+    var idleChecks = 0
+    while idleChecks < 3 {
+      if let registration {
+        await registration.value
+        idleChecks = 0
+      } else if let indexing {
+        await indexing.value
+        idleChecks = 0
+      } else {
+        await Task.yield()
+        idleChecks += 1
+      }
+    }
   }
+
+  // periphery:ignore - Tests check the one watcher is installed (#4598).
+  var watcherIsInstalledForTesting: Bool { diskWatch != nil }
 
   nonisolated private static func project(_ source: HistoryCatalogSources.Saved) -> HistoryCatalog.Projection? {
     if let meeting = source.meeting {

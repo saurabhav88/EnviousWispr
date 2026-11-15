@@ -43,7 +43,10 @@ struct HistoryDiaryView<
     let key = coordinator.historyQueryKey(for: tab, state: state)
     let saved = results[tab]
     let source = coordinator.catalogSession?.stableSourceRevision
-    let result = coordinator.catalogSession == nil || saved?.catalogSourceRevision == source ? saved : nil
+    // #4598: a page for the same tab, search and filters stays on screen while a newer one is
+    // read; its rows are re-verified against their files and it cannot page, select or count.
+    let result = coordinator.catalogSession == nil || saved?.catalogSourceRevision == source
+      ? saved : saved.flatMap { $0.key.context == key.context ? coordinator.retainedHistoryResult($0) : nil }
     let current = result?.key == key
     let canSelect = result.map(coordinator.isCurrentHistoryResult) == true
     let catalogStatus = coordinator.catalogSession?.status

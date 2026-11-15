@@ -12,12 +12,16 @@ package final class HistorySourceChanges: Sendable {
   package enum Change: Sendable {
     case admitted(UInt64)
     case settled(UInt64, Scope)
+    /// Another process changed this source (#4598). It names what to re-check first, but it
+    /// has no writer interval, so it can never certify coverage on its own.
+    case external(Scope)
     case unknown
   }
 
   package struct Delta: Sendable {
     package private(set) var scopes: Set<Scope> = []
     private var revisions: Set<UInt64> = []
+    private var external = false
 
     package init() {}
 
@@ -28,13 +32,16 @@ package final class HistorySourceChanges: Sendable {
       case .settled(let revision, let scope):
         revisions.insert(revision)
         scopes.insert(scope)
+      case .external(let scope):
+        external = true
+        scopes.insert(scope)
       case .unknown:
         scopes.insert(.all)
       }
     }
 
     func spans(after first: UInt64, through last: UInt64) -> Bool {
-      guard !scopes.contains(.all), first <= last else { return false }
+      guard !external, !scopes.contains(.all), first <= last else { return false }
       return UInt64(revisions.count(where: { $0 > first && $0 <= last })) == last - first
     }
   }
@@ -59,11 +66,18 @@ package final class HistorySourceChanges: Sendable {
   }
 
   /// A change without a reliable writer interval cannot keep the old full-scope certificate.
-  package func externalChange() {
+  /// A named scope is re-checked first; `.all` (the default) means precision was lost.
+  package func externalChange(_ scope: Scope = .all) {
     state.withLock {
       $0.revision &+= 1
-      publish(.unknown)
+      publish(scope == .all ? .unknown : .external(scope))
     }
+  }
+
+  /// Advance the source revision without a notification (#4598): the caller enqueues the full
+  /// re-check itself, so no certificate taken before this point can be presented as current.
+  package func advanceWithoutNotice() {
+    state.withLock { $0.revision &+= 1 }
   }
 
   func begin() {

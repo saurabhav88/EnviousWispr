@@ -60,8 +60,37 @@ package struct HistoryCatalogSources: Sendable {
     self.meetings = meetings
   }
 
+  /// The two source roots (#4598). Their shared parent also holds the catalog database, models
+  /// and recordings, so watching it turned unrelated app writes into History re-checks. A
+  /// replaced or late-created root is reported by the watcher itself (`RootChanged`).
   package var watchedDirectories: [URL] {
-    [transcriptDirectory, meetings.root, transcriptDirectory.deletingLastPathComponent()]
+    [transcriptDirectory, meetings.root]
+  }
+
+  /// The narrowest re-check a file-system notice for `path` proves. Nil for a path no History
+  /// source can depend on (a hidden temporary file whose rename reports the final path too);
+  /// `.all` when the path is under a root but names no single source.
+  package func scope(forPath path: String) -> HistorySourceChanges.Scope? {
+    let url = URL(fileURLWithPath: path)
+    if url.lastPathComponent.hasPrefix(".") { return nil }
+    let transcripts = transcriptDirectory.standardizedFileURL.path
+    let meetingRoot = meetings.root.standardizedFileURL.path
+    let standard = url.standardizedFileURL.path
+    if standard.hasPrefix(meetingRoot + "/") {
+      let first = standard.dropFirst(meetingRoot.count + 1).split(separator: "/").first.map(String.init)
+      return first.flatMap(UUID.init(uuidString:)).map { .meeting($0) } ?? .all
+    }
+    if standard.hasPrefix(transcripts + "/") {
+      let parent = url.deletingLastPathComponent().standardizedFileURL.path
+      let pending = pendingDirectory.standardizedFileURL.path
+      if (parent == transcripts || parent == pending), Self.isTranscript(url),
+        let id = UUID(uuidString: url.deletingPathExtension().lastPathComponent)
+      {
+        return .transcript(id)
+      }
+      return .all
+    }
+    return .all
   }
 
   private var pendingDirectory: URL {
