@@ -205,6 +205,17 @@ check_fast_checks() {
   fi
   # The runner needs only the tree; history checks (PR 2) use --repo. Same interpreter as
   # this hook, so a hook running under one bash never judges with another.
+  if grep -q -- '--self-test)' "$runner"; then
+    "$BASH" "$runner" --self-test >&2 &
+    CHILD=$!
+    if wait "$CHILD"; then rc=0; else rc=$?; fi
+    CHILD=""
+    case "$rc" in
+      0) ;;
+      1) return 1 ;;
+      *) echo "==> fast-checks --self-test: exited $rc, which is not a verdict" >&2; return 4 ;;
+    esac
+  fi
   "$BASH" "$runner" --tree "$CHECK_TREE" >&2 &
   CHILD=$!
   if wait "$CHILD"; then rc=0; else rc=$?; fi
@@ -1561,7 +1572,27 @@ lines.md"
     check "control: deciding the receipt after deduplication lets P8's second ref through" "$rc" "0"
   fi
   cp "$hook" "$tmp/hooks/pre-push"
+  git -C "$repo" checkout --quiet main
   make_receipt
+
+  # #4490: fast-checks.sh --self-test runs when the runner declares --self-test), and blocks on failure.
+  git -C "$repo" checkout --quiet -b fc-selftest
+  cat > "$repo/scripts/ci/fast-checks.sh" << 'STUB'
+#!/usr/bin/env bash
+case "${1:-}" in
+  --self-test) echo "stub selftest"; [ ! -e "$(dirname "$0")/../../SELFTEST_FAIL" ]; exit $? ;;
+esac
+tree="$2"
+echo "stub checked $(git -C "$tree" rev-parse HEAD)"
+[ ! -e "$tree/BROKEN" ]
+STUB
+  touch "$repo/SELFTEST_FAIL"
+  git -C "$repo" add -A; git -C "$repo" commit --quiet -m "selftest fail"
+  push origin fc-selftest:fc-selftest; rc=$?
+  check "a failing fast-checks.sh --self-test blocks the push" "$rc|$(grep -c 'stub selftest' "$tmp/push.out")" "1|1"
+  git -C "$repo" rm --quiet SELFTEST_FAIL; git -C "$repo" commit --quiet -m "selftest pass"
+  push origin fc-selftest:fc-selftest; rc=$?
+  check "a passing fast-checks.sh --self-test allows the push" "$rc|$(grep -c 'stub selftest' "$tmp/push.out")" "0|1"
   git -C "$repo" checkout --quiet main
 
   # 12. every run removed its own snapshots and temp directories

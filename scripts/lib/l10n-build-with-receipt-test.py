@@ -194,7 +194,8 @@ def main():
                               f'. "{repo}/scripts/lib/l10n-build-with-receipt.sh"; '
                               f'ew_l10n_build_with_receipt "{repo}" "{dd}" xcodebuild build -derivedDataPath "{dd}"')]
         proc = subprocess.Popen(cmd, cwd=repo, env=env_for(repo, STUB_SLEEP=20), stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE, text=True, start_new_session=True)
+                                stderr=subprocess.PIPE, text=True, start_new_session=True,
+                                preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_DFL))
         pidfile = pathlib.Path(str(repo / "trace") + ".pid")
         for _ in range(100):
             if pidfile.exists():
