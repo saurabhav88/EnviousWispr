@@ -75,7 +75,9 @@ struct ObservabilityBootstrapTests {
     #expect(options.enableSwizzling == false)
     #expect(options.enableFileIOTracing == false)
     #expect(options.enableCoreDataTracing == false)
-    #expect(options.enableAppHangTracking == false)
+    // #4599: freeze reports for crash-reports-ON users, 2 s threshold (founder 2026-11-15).
+    #expect(options.enableAppHangTracking == true)
+    #expect(options.appHangTimeoutInterval == 2.0)
     #expect(options.tracesSampleRate?.doubleValue == 0)
 
     #expect(options.sendClientReports == false)

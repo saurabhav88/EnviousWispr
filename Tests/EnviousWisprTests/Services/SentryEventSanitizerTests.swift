@@ -222,6 +222,35 @@ struct SentryEventSanitizerTests {
     #expect(payloadContainsUserMarker(sanitized) == false)
   }
 
+  /// #4599: a freeze report keeps its readable message after `beforeSend`, so a hang issue is
+  /// not titled `[REDACTED]`, while the main-thread stack still loses the username. Shape copied
+  /// from the pinned SDK's `SentryHangTrackingIntegration.anrDetected` (macOS branch): error
+  /// level, one `AppHang` exception carrying the main thread's stack, the full thread list.
+  @Test("app-hang event: message kept, usernames scrubbed from the main-thread stack")
+  func appHangEventKeepsMessageAndScrubsPaths() {
+    let mainFrame = Frame()
+    mainFrame.package =
+      "/Users/\(Self.userMarker)/Developer/EnviousWispr/build/EnviousWispr Local.app/Contents/MacOS/EnviousWispr.debug.dylib"
+    let mainThread = SentryThread(threadId: NSNumber(value: 0))
+    mainThread.stacktrace = SentryStacktrace(frames: [mainFrame], registers: [:])
+    mainThread.current = NSNumber(value: true)
+
+    let exception = Exception(value: "App hanging for at least 2000 ms.", type: "App Hanging")
+    exception.mechanism = Mechanism(type: "AppHang")
+    exception.stacktrace = mainThread.stacktrace
+    let event = Event(level: .error)
+    event.exceptions = [exception]
+    event.threads = [mainThread]
+
+    let sanitized = ObservabilityBootstrap.sanitizeSentryEvent(event)
+
+    #expect(sanitized.exceptions?.first?.value == "App hanging for at least 2000 ms.")
+    #expect(sanitized.exceptions?.first?.type == "App Hanging")
+    #expect(sanitized.exceptions?.first?.mechanism?.type == "AppHang")
+    #expect(mainFrame.package?.hasPrefix("/Users/[REDACTED]/Developer/") == true)
+    #expect(payloadContainsUserMarker(sanitized) == false)
+  }
+
   @Test("redactUserPath replaces only the username segment, is a no-op otherwise, idempotent")
   func redactUserPathContract() {
     #expect(
