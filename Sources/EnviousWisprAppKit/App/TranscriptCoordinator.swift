@@ -2008,6 +2008,24 @@ final class TranscriptCoordinator {
   ///
   /// Re-reads by id rather than trusting the caller's copy, so a row deleted in
   /// another pane is also refused. Inert, not merely harmless.
+  /// The live, verified History row for an action on a card drawn from catalog display data
+  /// (#4609): read from disk when no payload is cached, so an older card never needs a hydrated
+  /// detail. Nil when the row is gone, changed out from under History, or not visible.
+  func liveHistoryRow(id: UUID) -> Transcript? {
+    guard let row = verifiedRowForDelivery(id: id, fetchIfNeeded: true), Self.isVisible(row, at: clock())
+    else { return nil }
+    return row
+  }
+
+  /// The text a dictation card delivers (#4609, Codex grounded r1 finding 1): one verified
+  /// on-demand read with the same visibility and preferred-text rules as `textForDelivery`, and
+  /// no second cache-only lookup. Without a catalog session it is `textForDelivery` of the row.
+  func dictationTextForDelivery(id: UUID) -> String? {
+    guard catalogSession != nil else { return currentRow(id: id).flatMap { textForDelivery($0) } }
+    guard !removedRowIDs.contains(id), let current = liveHistoryRow(id: id) else { return nil }
+    return current.historyText
+  }
+
   func textForDelivery(_ transcript: Transcript) -> String? {
     if transcript.isMeeting {
       // #3972 R19: read again by id, and only the visible turns; nil when the row is gone,

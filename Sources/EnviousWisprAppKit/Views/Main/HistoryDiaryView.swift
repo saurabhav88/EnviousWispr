@@ -13,7 +13,7 @@ struct HistoryDiaryView<
   DictationCard: View, TranscriptDestination: View, MeetingDestination: View
 >: View {
   private let coordinator: TranscriptCoordinator
-  private let dictationCard: (Transcript, String) -> DictationCard
+  private let dictationCard: (HistoryDictationDisplay, String) -> DictationCard
   private let transcriptDestination: (UUID, @escaping () -> Void) -> TranscriptDestination
   private let meetingDestination: (UUID, @escaping () -> Void) -> MeetingDestination
 
@@ -27,7 +27,7 @@ struct HistoryDiaryView<
 
   init(
     coordinator: TranscriptCoordinator,
-    @ViewBuilder dictationCard: @escaping (Transcript, String) -> DictationCard,
+    @ViewBuilder dictationCard: @escaping (HistoryDictationDisplay, String) -> DictationCard,
     @ViewBuilder transcriptDestination: @escaping (UUID, @escaping () -> Void) -> TranscriptDestination,
     @ViewBuilder meetingDestination: @escaping (UUID, @escaping () -> Void) -> MeetingDestination
   ) {
@@ -227,7 +227,7 @@ private struct HistoryDiaryList<DictationCard: View>: View {
   let liveAnchor: HistoryLiveAnchor
   let open: (HistoryItemID) -> Void
   let loadNext: (HistoryQueryResult, Bool) -> Void
-  let dictationCard: (Transcript, String) -> DictationCard
+  let dictationCard: (HistoryDictationDisplay, String) -> DictationCard
 
   /// The entry at the top of the scrolled list.
   @State private var position: HistoryDiaryLayout.EntryID?
@@ -388,7 +388,7 @@ private struct HistoryDiaryList<DictationCard: View>: View {
       HistoryDiaryTime(item: item)
       switch item {
       case .transcript(let row) where row.isImported == false:
-        dictationCard(row, query)
+        dictationCard(HistoryDictationDisplay(row), query)
           .contentShape(Rectangle())
           .gesture(
             TapGesture().onEnded {
@@ -519,12 +519,20 @@ private struct HistoryCatalogDictationRow<Card: View>: View {
   let summary: HistoryCatalog.Summary
   let coordinator: TranscriptCoordinator
   let query: String
-  let card: (Transcript, String) -> Card
+  let card: (HistoryDictationDisplay, String) -> Card
+
+  /// #4609: the card draws complete from the catalog's display data on first display, so no
+  /// file read can resize it while the list scrolls. A row this process holds live (just saved
+  /// or edited here) draws from that row: for unchanged content both give the same card.
+  private var display: HistoryDictationDisplay? {
+    coordinator.currentRow(id: summary.key.id).map(HistoryDictationDisplay.init)
+      ?? HistoryDictationDisplay(summary)
+  }
 
   var body: some View {
     Group {
-      if let row = coordinator.currentRow(id: summary.key.id) {
-        card(row, query)
+      if let display {
+        card(display, query)
       } else {
         HistoryParagraphText.searchText(summary.preview, query: query)
           .font(.stBody)
@@ -535,10 +543,6 @@ private struct HistoryCatalogDictationRow<Card: View>: View {
           .historyRowCard(isSelected: false)
       }
     }
-    .task(id: coordinator.catalogSession?.revision) {
-      _ = await coordinator.loadCatalogDetail(summary.key.id)
-    }
-    .task(id: summary.key.id) { await coordinator.holdCatalogDetail(summary.key.id) }
   }
 }
 
@@ -1065,7 +1069,18 @@ extension View {
 /// after the user kept it. Shared by the transcript row, the held dictation's detail and the
 /// dictation card (#3147 PR2, Codex r8), so the rule and wording stay in one place.
 struct EscapeRecoveryBadge: View {
-  let transcript: Transcript
+  let escapeRecoveredAt: Date?
+  let escapeRecoveryTakeID: String?
+
+  init(transcript: Transcript) {
+    escapeRecoveredAt = transcript.escapeRecoveredAt
+    escapeRecoveryTakeID = transcript.escapeRecoveryTakeID
+  }
+
+  init(display: HistoryDictationDisplay) {
+    escapeRecoveredAt = display.escapeRecoveredAt
+    escapeRecoveryTakeID = display.escapeRecoveryTakeID
+  }
   @Environment(TranscriptCoordinator.self) private var transcriptCoordinator
 
   /// Reading `expiryPulse` is what re-renders the countdown (#2087). Observation
@@ -1084,7 +1099,7 @@ struct EscapeRecoveryBadge: View {
     // from `EscapeRecoveryRowPresentation`, because a rule written inline
     // here would not be unit-drivable.
     switch EscapeRecoveryRowPresentation.badge(
-      for: transcript, now: escapeRecoveryClock)
+      escapeRecoveredAt: escapeRecoveredAt, takeID: escapeRecoveryTakeID, now: escapeRecoveryClock)
     {
     case .held(let countdown):
       HStack(spacing: 2) {
@@ -1095,7 +1110,7 @@ struct EscapeRecoveryBadge: View {
       .accessibilityLabel(
         EscapeRecoveryRowPresentation.accessibilityLabel(
           remaining: EscapeRecoveryRowPresentation.remaining(
-            from: transcript.escapeRecoveredAt ?? escapeRecoveryClock,
+            from: escapeRecoveredAt ?? escapeRecoveryClock,
             now: escapeRecoveryClock)))
     case .kept:
       HStack(spacing: 2) {

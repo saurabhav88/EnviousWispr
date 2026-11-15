@@ -10,7 +10,9 @@ import UniformTypeIdentifiers
 /// its own card. Every other dictation shows `HistoryDictationCard`, and an imported transcript
 /// shows `HistoryTranscriptView` (#3147 PR3), so this view never draws turns.
 struct TranscriptDetailView: View {
-  let transcript: Transcript
+  /// What the held recovery draws (#4609): the catalog's display data, so it never waits on a
+  /// file read. Paste, Copy, Save, Share, Keep and Delete read the live row at the press.
+  let display: HistoryDictationDisplay
   /// #4101: why a History Paste did not happen; the History page holds the notice, so replacing
   /// this detail (a deletion, another selection) does not lose it.
   let showPasteNotice: @MainActor (String) -> Void
@@ -43,12 +45,13 @@ struct TranscriptDetailView: View {
 
   private var pasteAllowed: Bool {
     EscapeRecoveryRowPresentation.allowsPaste(
-      for: transcript, now: Date(), dictationInFlight: isDictationInFlight)
+      escapeRecoveredAt: display.escapeRecoveredAt, now: Date(), dictationInFlight: isDictationInFlight)
   }
 
   private var keepAllowed: Bool {
     EscapeRecoveryRowPresentation.allowsKeep(
-      for: transcript, now: Date(), dictationInFlight: isDictationInFlight)
+      escapeRecoveredAt: display.escapeRecoveredAt, takeID: display.escapeRecoveryTakeID, now: Date(),
+      dictationInFlight: isDictationInFlight)
   }
 
   /// The row's kind by name. Only a dictation reaches this view.
@@ -97,13 +100,17 @@ struct TranscriptDetailView: View {
     historyPaste.paste(
       destination: previousApplication.lastOtherApplication,
       allowed: { pasteAllowed },
-      text: { transcriptCoordinator.textForDelivery(transcript) },
+      text: { transcriptCoordinator.dictationTextForDelivery(id: display.id) },
       showHistory: { showHistory() },
       showNotice: { showPasteNotice($0) },
       // #2087: the OTHER door back to a held recovery. The pill reports its restores; without
       // this one the funnel counted only the users who caught a three-second offer. No-op for
       // an ordinary row. Reported only once Cmd+V was posted: an attempt, never an arrival.
-      dispatched: { transcriptCoordinator.reportRestoredFromHistory(transcript) })
+      dispatched: {
+        if let live = transcriptCoordinator.liveHistoryRow(id: display.id) {
+          transcriptCoordinator.reportRestoredFromHistory(live)
+        }
+      })
   }
 
   private func showHistory() {
@@ -116,8 +123,10 @@ struct TranscriptDetailView: View {
   private var actionBar: some View {
     // #4001 H10: Save and Share are enabled from the displayed row without building the
     // export; pressing them still reads `exportText` from the live row.
+    // A held dictation has no turns; the drawn text decides availability, the press reads live.
     let availability = TranscriptDocumentPresenter.exportAvailability(
-      turns: transcript.turns, fallback: transcriptCoordinator.textForDelivery(transcript))
+      turns: nil,
+      fallback: display.effectivePreferredVersion == .original ? display.text : display.displayText)
     return HStack(spacing: 8) {
       Button {
         // #2087: `exportText` reads `textForDelivery` fresh by id rather than taking the
@@ -174,10 +183,15 @@ struct TranscriptDetailView: View {
       // store, so a press arriving after the row lapsed writes nothing — but
       // showing the button for a row that can no longer be kept would promise
       // an action that silently does nothing.
-      if case .held = EscapeRecoveryRowPresentation.badge(for: transcript, now: Date()) {
+      if case .held = EscapeRecoveryRowPresentation.badge(
+        escapeRecoveredAt: display.escapeRecoveredAt, takeID: display.escapeRecoveryTakeID, now: Date())
+      {
         Button {
           guard keepAllowed else { return }
-          Task { await transcriptCoordinator.keep(transcript) }
+          Task {
+            guard let live = transcriptCoordinator.liveHistoryRow(id: display.id) else { return }
+            await transcriptCoordinator.keep(live)
+          }
         } label: {
           Label(EscapeRecoveryRowPresentation.keepLabel, systemImage: "tray.and.arrow.down")
         }
@@ -188,7 +202,10 @@ struct TranscriptDetailView: View {
       Spacer()
 
       Button(role: .destructive) {
-        Task { await transcriptCoordinator.delete(transcript) }
+        Task {
+          guard let live = transcriptCoordinator.liveHistoryRow(id: display.id) else { return }
+          await transcriptCoordinator.delete(live)
+        }
       } label: {
         Image(systemName: "trash")
           // The only irreversible control in the bar and the quietest thing in
@@ -233,17 +250,17 @@ struct TranscriptDetailView: View {
         // Metadata: created time, then chips built only from real fields.
         HStack(spacing: 8) {
           Text(
-            transcript.createdAt,
+            display.createdAt,
             format: .dateTime.month().day().year().hour().minute()
           )
           .font(.stHelper)
           .foregroundStyle(.stTextSecondary)
 
-          if transcript.polishedText != nil, let model = transcript.llmModel {
+          if display.polishedText != nil, let model = display.llmModel {
             metaChip(model, icon: "sparkles", accent: true)
           }
-          metaChip(transcript.backendType.displayName, icon: nil, accent: false)
-          if transcript.polishedText != nil {
+          metaChip(display.backendName, icon: nil, accent: false)
+          if display.polishedText != nil {
             metaChip(
               String(
                 localized: "AI Polished",
@@ -315,14 +332,14 @@ struct TranscriptDetailView: View {
     // words instead would silently discard that work.
     // #2807: the section names say what the TEXT is (polished, processed, original);
     // the title above says what the row is (a dictation or a transcript).
-    if let output = transcript.polishedText ?? transcript.processedText {
+    if let output = display.polishedText ?? display.processedText {
       transcriptSection(
-        transcript.polishedText == nil
+        display.polishedText == nil
           ? String(
             localized: "Processed", comment: "History detail section title: the cleaned-up text.")
           : String(
             localized: "Polished", comment: "History detail section title: the AI-polished text."),
-        icon: transcript.polishedText == nil ? "doc.text" : "sparkles"
+        icon: display.polishedText == nil ? "doc.text" : "sparkles"
       ) {
         Text(output)
           .font(.system(size: 16))
@@ -336,7 +353,7 @@ struct TranscriptDetailView: View {
           comment: "History detail section title: the words as first transcribed."),
         icon: "doc.text"
       ) {
-        Text(transcript.text)
+        Text(display.text)
           .font(.system(size: 15))
           .lineSpacing(3)
           .foregroundStyle(.stTextBody)
@@ -344,7 +361,7 @@ struct TranscriptDetailView: View {
       }
     } else {
       transcriptSection(kindWord, icon: "doc.text") {
-        Text(transcript.text)
+        Text(display.text)
           .font(.system(size: 16))
           .lineSpacing(3)
           .foregroundStyle(.stTextPrimary)
@@ -363,8 +380,8 @@ struct TranscriptDetailView: View {
   /// being deleted. `nil` for a row that no longer exists, so nothing is delivered for a
   /// recording the user was told is gone.
   private var exportText: String? {
-    HistoryTranscriptExport.text(
-      rowID: transcript.id, coordinator: transcriptCoordinator, mode: .cleaned, timesOn: true)
+    // #4609 (Codex code review r1): one verified on-demand read; a held row has no payload loaded.
+    transcriptCoordinator.dictationTextForDelivery(id: display.id)
   }
 
   private var defaultFileName: String { kindWord }

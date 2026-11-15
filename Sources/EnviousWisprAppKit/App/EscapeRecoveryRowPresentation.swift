@@ -45,13 +45,19 @@ enum EscapeRecoveryRowPresentation {
   /// crash-recovered ESCAPE row reports `false` and cannot pick it up; that is a
   /// cross-chunk invariant, so it is pinned by a test rather than trusted.
   static func badge(for transcript: Transcript, now: Date) -> Badge? {
-    if let stamped = transcript.escapeRecoveredAt {
+    badge(escapeRecoveredAt: transcript.escapeRecoveredAt, takeID: transcript.escapeRecoveryTakeID, now: now)
+  }
+
+  /// The same decision from the two fields it reads (#4609: cards draw from the catalog's
+  /// display data, not a loaded row).
+  static func badge(escapeRecoveredAt: Date?, takeID: String?, now: Date) -> Badge? {
+    if let stamped = escapeRecoveredAt {
       // Fail closed through the shared authority: an expired or clock-skewed
       // row gets no badge, because it should not be on screen at all.
       guard PendingAdmission.verdict(stampedAt: stamped, now: now) == .live else { return nil }
       return .held(countdown: countdown(remaining: remaining(from: stamped, now: now)))
     }
-    return transcript.escapeRecoveryTakeID == nil ? nil : .kept
+    return takeID == nil ? nil : .kept
   }
 
   /// Whether Paste may run right now.
@@ -68,9 +74,14 @@ enum EscapeRecoveryRowPresentation {
   /// `textForDelivery` refused the press, so the button looked available and
   /// did nothing — availability and press-time policy have to agree.
   static func allowsPaste(for transcript: Transcript, now: Date, dictationInFlight: Bool) -> Bool {
+    allowsPaste(escapeRecoveredAt: transcript.escapeRecoveredAt, now: now, dictationInFlight: dictationInFlight)
+  }
+
+  /// The same decision from the stamp alone (#4609).
+  static func allowsPaste(escapeRecoveredAt: Date?, now: Date, dictationInFlight: Bool) -> Bool {
     // No stamp: an ordinary dictation, or a row Keep already made permanent.
     // Shipped behaviour, untouched.
-    guard let stamped = transcript.escapeRecoveredAt else { return true }
+    guard let stamped = escapeRecoveredAt else { return true }
     // Stamped, so this feature owns it. Expired or clock-skewed means the offer
     // is over and nothing may be delivered from it.
     guard PendingAdmission.verdict(stampedAt: stamped, now: now) == .live else { return false }
@@ -82,7 +93,14 @@ enum EscapeRecoveryRowPresentation {
   /// Unconditionally in-flight-guarded, because Keep exists only for a held row:
   /// there is no ordinary-row behaviour to preserve.
   static func allowsKeep(for transcript: Transcript, now: Date, dictationInFlight: Bool) -> Bool {
-    guard case .held = badge(for: transcript, now: now) else { return false }
+    allowsKeep(
+      escapeRecoveredAt: transcript.escapeRecoveredAt, takeID: transcript.escapeRecoveryTakeID, now: now,
+      dictationInFlight: dictationInFlight)
+  }
+
+  /// The same decision from the two fields it reads (#4609).
+  static func allowsKeep(escapeRecoveredAt: Date?, takeID: String?, now: Date, dictationInFlight: Bool) -> Bool {
+    guard case .held = badge(escapeRecoveredAt: escapeRecoveredAt, takeID: takeID, now: now) else { return false }
     return !dictationInFlight
   }
 

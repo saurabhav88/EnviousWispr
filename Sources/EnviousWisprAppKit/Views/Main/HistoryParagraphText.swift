@@ -30,8 +30,11 @@ struct HistoryParagraphText: View {
 
   let blocks: [Block]
   var query = ""
-  /// The recording and its passage times exist: reserve the gutter.
+  /// The recording and its passage times exist: the gutter's play buttons may show.
   let hasGutter: Bool
+  /// Reserve the gutter column even before passage times arrive, so the text never re-wraps
+  /// when they do (#4609: dictation cards keep their height from first display).
+  var reservesGutter = false
   /// Hover or focus in the card: show the gutter's buttons.
   let revealGutter: Bool
   /// Reduce Motion: the gutter appears without its fade.
@@ -47,7 +50,7 @@ struct HistoryParagraphText: View {
     VStack(alignment: .leading, spacing: DesignSpacing.md) {
       ForEach(blocks) { block in
         HStack(alignment: .firstTextBaseline, spacing: DesignSpacing.sm) {
-          if hasGutter { gutter(for: block) }
+          if hasGutter || reservesGutter { gutter(for: block) }
           text(for: block)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -68,7 +71,7 @@ struct HistoryParagraphText: View {
     ZStack(alignment: .leading) {
       // Reserves the widest label this card can need, so the text never moves.
       Text(verbatim: "▶ 00:00").font(.stHelper).hidden().accessibilityHidden(true)
-      if let seconds = block.seconds {
+      if hasGutter, let seconds = block.seconds {
         Button {
           onPlay(seconds)
         } label: {

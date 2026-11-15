@@ -42,6 +42,10 @@ enum HistoryDictationPresentation {
       self.init(original: row.text, polished: row.displayText, language: row.language)
     }
 
+    init(_ row: HistoryDictationDisplay) {
+      self.init(original: row.text, polished: row.displayText, language: row.language)
+    }
+
     /// Whether AI polish (or processing) produced different text. Compared by UTF-16 units,
     /// so two Unicode spellings of the same word still count as a difference to show.
     var differ: Bool { !original.utf16.elementsEqual(polished.utf16) }
@@ -475,6 +479,15 @@ enum HistoryDictationPresentation {
     case usePolished
   }
 
+  /// A dictation card's row is never an import or a meeting (#4609 display data).
+  static func preferenceAction(for row: HistoryDictationDisplay) -> PreferenceAction? {
+    guard row.escapeRecoveredAt == nil else { return nil }
+    switch row.effectivePreferredVersion {
+    case .original: return .usePolished
+    case .polished: return Texts(row).differ ? .restoreOriginal : nil
+    }
+  }
+
   static func preferenceAction(for row: Transcript) -> PreferenceAction? {
     guard !row.isImported, !row.isMeeting, row.escapeRecoveredAt == nil else { return nil }
     switch row.effectivePreferredVersion {
@@ -496,6 +509,13 @@ enum HistoryDictationPresentation {
   enum StatusFlag: Hashable, Sendable {
     case interrupted
     case recovered
+  }
+
+  static func statusFlags(for row: HistoryDictationDisplay) -> [StatusFlag] {
+    var flags: [StatusFlag] = []
+    if row.inputDeviceWasRemoved == true { flags.append(.interrupted) }
+    if row.isRecovered == true { flags.append(.recovered) }
+    return flags
   }
 
   static func statusFlags(for row: Transcript) -> [StatusFlag] {

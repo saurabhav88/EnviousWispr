@@ -48,13 +48,13 @@ struct HistoryContentView: View {
             // it has no recording and no polish history for the dictation card to show.
             VStack(alignment: .leading, spacing: 6) {
               // The countdown says this text expires unless kept (#2087).
-              EscapeRecoveryBadge(transcript: row)
-              TranscriptDetailView(transcript: row, showPasteNotice: pasteNotice.show)
+              EscapeRecoveryBadge(display: row)
+              TranscriptDetailView(display: row, showPasteNotice: pasteNotice.show)
             }
             .id(row.id)
           } else {
             HistoryDictationCard(
-              rowID: row.id, query: query, showPasteNotice: pasteNotice.show)
+              display: row, query: query, showPasteNotice: pasteNotice.show)
               .id(row.id)
           }
         },

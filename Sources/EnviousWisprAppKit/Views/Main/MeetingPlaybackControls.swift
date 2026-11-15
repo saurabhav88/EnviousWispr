@@ -25,7 +25,7 @@ struct MeetingPlaybackControls: View {
           Image(systemName: HistoryTranscriptPresentation.playSymbol(action))
             .font(.stHelper)
             .foregroundStyle(.white)
-            .frame(width: 32, height: 32)
+            .frame(width: Self.buttonSize, height: Self.buttonSize)
             .background(Color.stAccentSolid, in: Circle())
         }
         .buttonStyle(.plain)
@@ -53,15 +53,20 @@ struct MeetingPlaybackControls: View {
         clock(player.durationMs)
       }
       if player.state == .unavailable {
-        Text(
-          "The recording can't be played. Its audio may have been deleted or damaged.",
-          comment: "EnviousMeet detail: playback could not read the meeting's audio."
-        )
-        .font(.stHelper)
-        .foregroundStyle(.stError)
+        Text(Self.unavailableMessage)
+          .font(.stHelper)
+          .foregroundStyle(.stError)
       }
     }
   }
+
+  /// Also laid out, hidden, by the History dictation card to size its recording slot (#4609).
+  static let unavailableMessage = LocalizedStringResource(
+    "The recording can't be played. Its audio may have been deleted or damaged.",
+    comment: "EnviousMeet detail: playback could not read the meeting's audio.")
+
+  /// The play button's diameter; the dictation card's slot reserves it (#4609).
+  static let buttonSize: CGFloat = 32
 
   private func clock(_ ms: Int) -> some View {
     Text(verbatim: MeetingsPresentation.clock(ms: ms))

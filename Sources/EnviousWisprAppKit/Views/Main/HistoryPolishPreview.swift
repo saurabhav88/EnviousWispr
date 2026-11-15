@@ -11,8 +11,9 @@ final class HistoryPolishPreview {
   }
 
   private(set) var state: State = .idle
-  private var task: Task<Void, Never>?
-  private var requestID = UUID()
+  // #4609: bookkeeping no view reads; observing it re-rendered a card on every write.
+  @ObservationIgnored private var task: Task<Void, Never>?
+  @ObservationIgnored private var requestID = UUID()
 
   var canStart: Bool {
     if case .keeping = state { return false }
@@ -25,7 +26,9 @@ final class HistoryPolishPreview {
     guard canStart else { return }
     let previous = task
     cancel()
-    guard let row = history.currentRow(id: rowID) else {
+    // #4609: a card drawn from catalog display data has no hydrated payload; read the verified
+    // live row, at the start and again for the finished candidate.
+    guard let row = history.liveHistoryRow(id: rowID) else {
       state = .stale
       return
     }
@@ -38,7 +41,7 @@ final class HistoryPolishPreview {
         guard self?.requestID == request else { return }
         let candidate = try await runner.candidate(for: row, choice: choice)
         guard !Task.isCancelled, let self, request == requestID else { return }
-        state = history.currentRow(id: rowID).map(candidate.matches) == true
+        state = history.liveHistoryRow(id: rowID).map(candidate.matches) == true
           ? .comparing(candidate) : .stale
       } catch {
         guard !Task.isCancelled, let self, request == requestID else { return }
@@ -67,6 +70,9 @@ final class HistoryPolishPreview {
     task?.cancel()
     // Retain the draining task so a later choice waits for the lease to be returned.
     requestID = UUID()
+    // #4609: every card calls this when it scrolls off screen; writing `.idle` over `.idle`
+    // still notified observers and redrew the card mid-scroll.
+    if case .idle = state { return }
     state = .idle
   }
 }

@@ -125,8 +125,8 @@ struct HistoryPasteWiringTests {
     #expect(history.contains("pasteNotice.text ?? \"\""), "the alert shows the page's notice")
     #expect(history.contains("get: { pasteNotice.text != nil }"))
     #expect(history.contains("pasteNotice.dismiss()"), "OK clears it")
-    #expect(history.contains("TranscriptDetailView(transcript: row, showPasteNotice: pasteNotice.show)"))
-    #expect(history.contains("rowID: row.id, query: query, showPasteNotice: pasteNotice.show"))
+    #expect(history.contains("TranscriptDetailView(display: row, showPasteNotice: pasteNotice.show)"))
+    #expect(history.contains("display: row, query: query, showPasteNotice: pasteNotice.show"))
     // #3147 PR4A: the meeting page reports to the page's notice.
     #expect(history.contains("HistoryMeetingAfterView("))
     let meetingCall = try #require(history.components(separatedBy: "HistoryMeetingAfterView(").last)

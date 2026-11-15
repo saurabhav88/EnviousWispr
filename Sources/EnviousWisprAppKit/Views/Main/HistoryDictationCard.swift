@@ -23,16 +23,20 @@ import SwiftUI
 /// **The comparison is prepared off the main actor** and cached by content
 /// (`HistoryDiffCache`); a result is shown only for the texts it was computed from.
 struct HistoryDictationCard: View {
-  let rowID: UUID
+  /// What the card draws (#4609): complete on first display, so the card never resizes when a
+  /// file read finishes. Actions read the live row at the press.
+  let display: HistoryDictationDisplay
   let query: String
   /// #4101: why a History Paste did not happen; the History page holds the notice.
   let showPasteNotice: (String) -> Void
 
-  init(rowID: UUID, query: String, showPasteNotice: @escaping (String) -> Void) {
-    self.rowID = rowID
+  init(display: HistoryDictationDisplay, query: String, showPasteNotice: @escaping (String) -> Void) {
+    self.display = display
     self.query = query
     self.showPasteNotice = showPasteNotice
   }
+
+  private var rowID: UUID { display.id }
 
   /// What can hold keyboard focus in the card; any focus reveals the time gutter.
   enum Focus: Hashable {
@@ -65,6 +69,9 @@ struct HistoryDictationCard: View {
   // Text
   @State private var prepared: HistoryDictationPresentation.Prepared?
   @State private var editsOn = false
+  /// Show edits was pressed and the comparison is still being prepared (#4609): Marked up opens
+  /// only once it is ready, so the text never shows plain and then grows.
+  @State private var editsRequested = false
   @State private var comparisonView: HistoryDictationPresentation.TextView =
     HistoryDictationPresentation.editsView
   @State private var openChange: Int?
@@ -91,14 +98,12 @@ struct HistoryDictationCard: View {
   }
 
   var body: some View {
-    if let row = transcripts.currentRow(id: rowID) {
-      card(row)
-    }
+    card(display)
   }
 
   // MARK: - Card
 
-  private func card(_ row: Transcript) -> some View {
+  private func card(_ row: HistoryDictationDisplay) -> some View {
     let texts = HistoryDictationPresentation.Texts(row)
     let current = prepared.flatMap {
       HistoryDictationPresentation.accepts($0, current: texts) ? $0 : nil
@@ -110,7 +115,7 @@ struct HistoryDictationCard: View {
       HistoryParagraphText(
         blocks: blocks(row: row, texts: texts, prepared: current),
         query: query,
-        hasGutter: player != nil && !timeline.isEmpty, revealGutter: revealGutter,
+        hasGutter: player != nil && !timeline.isEmpty, reservesGutter: true, revealGutter: revealGutter,
         reduceMotion: reduceMotion,
         focus: $focus,
         onPlay: { play(from: $0) },
@@ -147,6 +152,13 @@ struct HistoryDictationCard: View {
         .allowsHitTesting(false)
     )
     .onHover { hovering = $0 }
+    // #4609 (Codex code review r1): new texts (a kept polish, a restore) close the comparison
+    // rather than showing plain text and then growing into the new markup.
+    .onChange(of: texts) { _, _ in
+      editsRequested = false
+      editsOn = false
+      openChange = nil
+    }
     .task(id: RecordingKey(rowID: rowID, revision: recordingRevision)) { await refreshRecording() }
     .task(
       id: TimingKey(
@@ -154,9 +166,13 @@ struct HistoryDictationCard: View {
     ) {
       await refreshTiming(original: row.text)
     }
-    .task(id: editsOn || !timeline.isEmpty ? texts : nil) {
-      guard texts.differ, editsOn || !timeline.isEmpty else { return }
+    .task(id: editsRequested || editsOn || !timeline.isEmpty ? texts : nil) {
+      guard texts.differ, editsRequested || editsOn || !timeline.isEmpty else { return }
       await prepareComparison(texts)
+      guard !Task.isCancelled, editsRequested, prepared.map({ HistoryDictationPresentation.accepts($0, current: texts) }) == true
+      else { return }
+      editsRequested = false
+      editsOn = true
     }
     .task(id: PolishedSpans.Key(texts: prepared?.texts, timeline: timeline)) {
       await preparePolishedSpans()
@@ -208,30 +224,7 @@ struct HistoryDictationCard: View {
 
   @ViewBuilder
   private var recordingRow: some View {
-    switch status {
-    case .available:
-      if let player {
-        MeetingPlaybackControls(player: player, identifier: "history.card.recording.play")
-          .id(ObjectIdentifier(player))
-      }
-    case .absent(let reason):
-      Label {
-        Text(Self.absenceLine(reason))
-      } icon: {
-        Image(systemName: "waveform.slash").accessibilityHidden(true)
-      }
-      .font(.stHelper)
-      .foregroundStyle(.stTextSecondary)
-    case .unreadable:
-      Text(
-        "The recording can't be read right now.",
-        comment: "History: the recording's file or details could not be read just now."
-      )
-      .font(.stHelper)
-      .foregroundStyle(.stTextSecondary)
-    case nil:
-      EmptyView()
-    }
+    HistoryDictationRecordingSlot(status: status, player: player)
   }
 
   // MARK: - Text
@@ -264,7 +257,7 @@ struct HistoryDictationCard: View {
   }
 
   private func blocks(
-    row: Transcript, texts: HistoryDictationPresentation.Texts,
+    row: HistoryDictationDisplay, texts: HistoryDictationPresentation.Texts,
     prepared: HistoryDictationPresentation.Prepared?
   ) -> [HistoryParagraphText.Block] {
     let view: HistoryDictationPresentation.TextView =
@@ -332,24 +325,25 @@ struct HistoryDictationCard: View {
     let result = await HistoryDictationPresentation.prepareInBackground(texts)
     guard !Task.isCancelled else { return }
     HistoryDiffCache.shared.store(result)
-    // The row may have changed while this ran (a restore): show only an answer for its texts.
-    guard let live = transcripts.currentRow(id: rowID),
+    // The row may have changed while this ran (a restore): show only an answer for the texts the
+    // card draws now (#4609: the display data, never a hydrated payload).
+    guard
       HistoryDictationPresentation.accepts(
-        result, current: HistoryDictationPresentation.Texts(live))
+        result, current: HistoryDictationPresentation.Texts(display))
     else { return }
     prepared = result
   }
 
   // MARK: - Footer
 
-  private func provenance(_ row: Transcript) -> some View {
+  private func provenance(_ row: HistoryDictationDisplay) -> some View {
     HStack(spacing: DesignSpacing.sm) {
       // #1408 / #1063 PR2: kept from the old History row (cloud review of PR #4555). A dictation
       // whose microphone was removed mid-recording may be cut short; one rebuilt from a recovered
       // recording says so. Icon and text, never colour alone.
       // #2087: Kept, for a held Escape Recovery dictation the user kept (held rows use the
       // detail view, which shows their countdown).
-      EscapeRecoveryBadge(transcript: row)
+      EscapeRecoveryBadge(display: row)
       ForEach(HistoryDictationPresentation.statusFlags(for: row), id: \.self) { flag in
         switch flag {
         case .interrupted:
@@ -369,7 +363,7 @@ struct HistoryDictationCard: View {
         }
       }
       Image(systemName: "waveform").accessibilityHidden(true)
-      Text(verbatim: row.backendType.displayName)
+      Text(verbatim: row.backendName)
       if row.polishedText != nil, let model = row.llmModel {
         Text(verbatim: "·").accessibilityHidden(true)
         Image(systemName: "sparkles").accessibilityHidden(true)
@@ -385,7 +379,7 @@ struct HistoryDictationCard: View {
     .lineLimit(1)
   }
 
-  private func expiryLine(_ row: Transcript) -> LocalizedStringResource? {
+  private func expiryLine(_ row: HistoryDictationDisplay) -> LocalizedStringResource? {
     guard case .available(_, _, let pinned) = status else { return nil }
     if pinned {
       return LocalizedStringResource(
@@ -404,7 +398,7 @@ struct HistoryDictationCard: View {
     )
   }
 
-  private func actions(row: Transcript, hasChanges: Bool) -> some View {
+  private func actions(row: HistoryDictationDisplay, hasChanges: Bool) -> some View {
     ViewThatFits(in: .horizontal) {
       HStack(spacing: DesignSpacing.md) {
         deliveryButtons(row)
@@ -418,7 +412,7 @@ struct HistoryDictationCard: View {
     }
   }
 
-  private func deliveryButtons(_ row: Transcript) -> some View {
+  private func deliveryButtons(_ row: HistoryDictationDisplay) -> some View {
     Group {
       pasteButton(row)
       ShareLink(
@@ -450,13 +444,22 @@ struct HistoryDictationCard: View {
     .animation(reduceMotion ? nil : SettingsHover.animation, value: revealGutter)
   }
 
-  private func primaryButtons(_ row: Transcript, hasChanges: Bool) -> some View {
+  private func primaryButtons(_ row: HistoryDictationDisplay, hasChanges: Bool) -> some View {
     Group {
       if hasChanges {
         Button {
-          editsOn.toggle()
           openChange = nil
           comparisonView = HistoryDictationPresentation.editsView
+          if editsOn || editsRequested {
+            editsOn = false
+            editsRequested = false
+          } else if let ready = prepared,
+            HistoryDictationPresentation.accepts(ready, current: HistoryDictationPresentation.Texts(display))
+          {
+            editsOn = true
+          } else {
+            editsRequested = true
+          }
         } label: {
           EnviousButtonLabel(
             verbatim: editsOn ? Self.hideEditsLabel : Self.showEditsLabel, size: .medium,
@@ -489,7 +492,7 @@ struct HistoryDictationCard: View {
     .fixedSize()
   }
 
-  private func pasteButton(_ row: Transcript) -> some View {
+  private func pasteButton(_ row: HistoryDictationDisplay) -> some View {
     Button {
       if permissions.accessibilityGranted {
         paste(row)
@@ -509,12 +512,12 @@ struct HistoryDictationCard: View {
         comment: "History dictation card: tooltip of Paste."))
   }
 
-  private func moreMenu(_ row: Transcript) -> some View {
+  private func moreMenu(_ row: HistoryDictationDisplay) -> some View {
     Menu {
       HistoryPolishMenu(
         title: "Polish again with", surface: .dictation, currentProvider: row.llmProvider,
         currentModel: row.llmModel,
-        currentSize: row.historyPolishEGOneSize ?? row.metrics?.polishModelSize,
+        currentSize: row.egOneSize,
         isEnabled: polishPreview.canStart
       ) { choice in
         polishPreview.start(rowID: rowID, choice: choice, runner: historyRepolish, history: transcripts)
@@ -598,23 +601,23 @@ struct HistoryDictationCard: View {
   /// The live row's History text, read when asked; nil for a row that no longer exists, so
   /// nothing is delivered for an entry the user was told is gone.
   private var exportText: String? {
-    guard let live = transcripts.verifiedRowForDelivery(id: rowID) else { return nil }
-    return transcripts.textForDelivery(live)
+    transcripts.dictationTextForDelivery(id: rowID)
   }
 
-  private func pasteAllowed(_ row: Transcript) -> Bool {
+  private func pasteAllowed(_ row: HistoryDictationDisplay) -> Bool {
     permissions.accessibilityGranted
       && EscapeRecoveryRowPresentation.allowsPaste(
-        for: row, now: Date(), dictationInFlight: liveRecordingState.pipelineState.isActive)
+        escapeRecoveredAt: row.escapeRecoveredAt, now: Date(),
+        dictationInFlight: liveRecordingState.pipelineState.isActive)
   }
 
   /// History's Paste: the same clipboard transaction as Paste Last Dictation, into the app the
   /// user came from, reading the row's text at the press (#3875, #4101).
-  private func paste(_ row: Transcript) {
+  private func paste(_ row: HistoryDictationDisplay) {
     historyPaste.paste(
       destination: previousApplication.lastOtherApplication,
       allowed: { [transcripts, liveRecordingState] in
-        guard let live = transcripts.verifiedRowForDelivery(id: rowID) else { return false }
+        guard let live = transcripts.liveHistoryRow(id: rowID) else { return false }
         return EscapeRecoveryRowPresentation.allowsPaste(
           for: live, now: Date(), dictationInFlight: liveRecordingState.pipelineState.isActive)
       },
@@ -625,7 +628,7 @@ struct HistoryDictationCard: View {
       },
       showNotice: { showPasteNotice($0) },
       dispatched: { [transcripts] in
-        if let live = transcripts.verifiedRowForDelivery(id: rowID) {
+        if let live = transcripts.liveHistoryRow(id: rowID) {
           transcripts.reportRestoredFromHistory(live)
         }
       })
@@ -684,7 +687,7 @@ struct HistoryDictationCard: View {
     let spans = await HistoryDictationPresentation.timelineInBackground(timing, original: original)
     // Published only for the row, recording and text it was computed for.
     // A new recording or row change restarts this task (`.task(id:)`), which cancels it.
-    guard !Task.isCancelled, isAvailable, transcripts.currentRow(id: rowID)?.text == original
+    guard !Task.isCancelled, isAvailable, display.text == original
     else { return }
     timeline = spans
   }
@@ -782,6 +785,7 @@ struct HistoryDictationCard: View {
           return
         }
         editsOn = false
+        editsRequested = false
         openChange = nil
         preferenceNotice = change
       } catch {
