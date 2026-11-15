@@ -72,7 +72,7 @@ struct InputDevicePreferenceReconcilerTests {
     let settings = SettingsManager(defaults: Self.freshSuite())
     settings.preferredInputDeviceIDOverride = "usb"
     settings.selectedInputDeviceUID = ""
-    let audioDeviceList = AudioDeviceList()
+    let audioDeviceList = AudioDeviceList(startReading: false)
     audioDeviceList.availableInputDevices = [Self.device("usb")]
 
     let reconciler = InputDevicePreferenceReconciler(settings: settings)

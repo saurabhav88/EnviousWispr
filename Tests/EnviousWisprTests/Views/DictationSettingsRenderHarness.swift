@@ -107,9 +107,9 @@ struct DictationSettingsRenderHarness {
     func replay(recoverySessionID: String, isAborted: @MainActor () -> Bool) async -> RecoveryReplayOutcome { .aborted }
   }
 
-  /// All page environments are present. AudioDeviceList reads hardware and
-  /// registers a listener, as its only initializer requires; the published
-  /// list is replaced with an empty fixture. No capture is started. Delivery
+  /// All page environments are present. AudioDeviceList is a fixture that reads
+  /// no hardware and registers no listener; the published list is the scenario's
+  /// fixture. No capture is started. Delivery
   /// home is absent on full pages; no model fetch can start. Only staged fake
   /// install/removal/warm callbacks are supplied for the explicit state fixtures.
   /// Fresh Fast admission snapshots use their own sparse temporary files.
@@ -172,7 +172,7 @@ struct DictationSettingsRenderHarness {
       setupStateReader: { .notDownloaded }, preloadAction: { Issue.record("render tried preloading") },
       ollamaStatusProbe: { _ in })
     let presenter = LanguageSuggestionPresenter(overlay: NoOverlay(), onLanguageAccepted: { _ in }, defaults: defaults)
-    let devices = AudioDeviceList()
+    let devices = AudioDeviceList(startReading: false)
     devices.availableInputDevices = scenario.devices
     settings.preferredInputDeviceIDOverride = scenario.preferredInputUID
     let audio = RouterTestAudioCapture()

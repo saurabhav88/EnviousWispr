@@ -294,13 +294,17 @@ package final class WisprBootstrapper {
     // ASR pipelines, so hoisting the installer would mean hoisting those — the
     // move that does work is this one.
     let overlayHost = OverlayWindowHost(effects: overlayEffects)
-    let audioDeviceList = AudioDeviceList()
+    // #4021: one Core Audio lane for every idle-time device read, owned for the app's lifetime
+    // through `audioDeviceList.lane`, so only one read can ever be stuck in a driver.
+    let audioDeviceList = AudioDeviceList(lane: CoreAudioQueryLane())
     let inputDevicePreferenceReconciler = InputDevicePreferenceReconciler(settings: settings)
+    // Reconciles only from an inventory that proves absence. There is deliberately no
+    // synchronous launch reconcile any more: the list is empty until the first snapshot arrives
+    // off the main actor, and reconciling that empty list would un-pin a microphone. The first
+    // complete snapshot reconciles through this callback.
     audioDeviceList.onDevicesChanged = { [weak inputDevicePreferenceReconciler] devices in
       inputDevicePreferenceReconciler?.reconcile(availableDevices: devices)
     }
-    inputDevicePreferenceReconciler.reconcile(
-      availableDevices: audioDeviceList.availableInputDevices)
     let captureTelemetry = CaptureTelemetryState()
     let customWordsCoordinator = CustomWordsCoordinator()
     let snippetsCoordinator = SnippetsCoordinator()
