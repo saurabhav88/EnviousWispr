@@ -375,6 +375,19 @@ final class TranscriptCoordinator {
     return keys.map { $0.tab == .meetings ? .meeting($0.id) : .transcript($0.id) }
   }
 
+  /// #4598: an older page kept on screen while the current one is read. Each catalog row must
+  /// still match its source files on every call (a changed or deleted recording is hidden on its
+  /// own row; no cache, since the source revision is nil while a writer is active), and the page
+  /// carries no day totals or continuations, so it cannot page or authorize selection
+  /// (`isCurrentHistoryResult` also requires the current source revision).
+  func retainedHistoryResult(_ saved: HistoryQueryResult) -> HistoryQueryResult? {
+    let items = saved.items.filter { item in
+      guard case .catalog(let summary) = item else { return true }
+      return (try? summary.sourcesStillMatch()) == true
+    }
+    return try? HistoryQueryResult(key: saved.key, items: items, catalogSourceRevision: saved.catalogSourceRevision)
+  }
+
   func isCurrentHistoryResult(_ result: HistoryQueryResult) -> Bool {
     let ready: Bool
     if let catalogSession {

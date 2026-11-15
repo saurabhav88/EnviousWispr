@@ -6,6 +6,12 @@ package actor HistoryCatalogReconciliation {
   package struct Pass: Sendable {
     package let revision: String?
     package var unavailable: Int = 0
+    /// Rows or source proofs changed in the catalog during this pass (#4598): the session
+    /// publishes only real changes, so an unchanged re-check does not reload every view.
+    package var changed = false
+    /// The source revision this pass certified, captured with the worker's certificate. A new
+    /// certificate for the same source revision is not a change worth publishing.
+    package var certifiedSource: UInt64?
   }
 
   private let catalog: HistoryCatalog
@@ -62,6 +68,7 @@ package actor HistoryCatalogReconciliation {
 
     var pending: [Update] = []
     var unavailable = 0
+    var changed = false
     for url in ordered {
       try Task.checkCancellation()
       let before = progress[url.path]
@@ -80,12 +87,15 @@ package actor HistoryCatalogReconciliation {
         // unverified, and a later pass can still remove it if the file disappears.
       }
       if pending.count == Self.batchSize {
-        _ = try await commit(pending, tracking: &progress)
+        let saved = try await commit(pending, tracking: &progress)
         pending.removeAll(keepingCapacity: true)
-        await onProgress(Pass(revision: nil))
+        if saved > 0 {
+          changed = true
+          await onProgress(Pass(revision: nil, changed: true))
+        }
       }
     }
-    _ = try await commit(pending, tracking: &progress)
+    if try await commit(pending, tracking: &progress) > 0 { changed = true }
 
     try Task.checkCancellation()
     let currentPaths = Set(try sources.paths(requireMeetings: requireMeetings).map(\.path))
@@ -93,6 +103,7 @@ package actor HistoryCatalogReconciliation {
     let retainedKeys = Set(progress.values.filter { currentPaths.contains($0.path) }.compactMap(\.key))
     let removed = Set(dropped.compactMap { progress[$0]?.key }).subtracting(retainedKeys)
     for path in dropped { progress.removeValue(forKey: path) }
+    if !dropped.isEmpty || !removed.isEmpty { changed = true }
     let revision: String?
     if let beganAt, currentPaths == paths, currentPaths == Set(progress.keys),
       (try? progress.values.allSatisfy { entry in
@@ -108,8 +119,10 @@ package actor HistoryCatalogReconciliation {
     let currentRevision = beganAt == sourceRevision() ? revision : nil
     if currentRevision == nil, revision != nil { try await catalog.apply([]) }
     lastCertificate = currentRevision.flatMap { value in beganAt.map { (value, $0) } }
-    let result = Pass(revision: currentRevision, unavailable: unavailable)
-    await onProgress(result)
+    let result = Pass(
+      revision: currentRevision, unavailable: unavailable, changed: changed,
+      certifiedSource: lastCertificate?.source)
+    // The caller publishes the returned final pass; `onProgress` carries only mid-pass batches.
     return result
   }
 
@@ -170,7 +183,10 @@ package actor HistoryCatalogReconciliation {
     let current = beganAt == sourceRevision() ? token : nil
     if current == nil, token != nil { try await catalog.apply([]) }
     lastCertificate = current.flatMap { value in beganAt.map { (value, $0) } }
-    return Pass(revision: current, unavailable: unresolved ? 1 : 0)
+    return Pass(
+      revision: current, unavailable: unresolved ? 1 : 0,
+      changed: saved > 0 || !removedKeys.isEmpty || !disappeared.isEmpty,
+      certifiedSource: lastCertificate?.source)
   }
 
   private struct Update {
