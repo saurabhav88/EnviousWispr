@@ -85,6 +85,7 @@ struct HistoryLoadLoopTests {
     // During an in-process write the source revision is unknown; a second shown row changed
     // in that interval is still hidden on the next render (Codex code review r1).
     f.changes.begin()
+    _ = try #require(f.coordinator.retainedHistoryResult(shown))
     guard case .catalog(let second) = shown.items[1] else {
       Issue.record("The catalog page did not return catalog rows")
       return
