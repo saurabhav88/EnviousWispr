@@ -49,6 +49,9 @@ final class AudioDeviceList {
   /// The shared Core Audio lane. Other idle-time reads (microphone-choice validation) use the
   /// same one so only one read can ever be stuck.
   let lane: CoreAudioQueryLane
+  /// The shared microphone-choice owner, built and kept by `WisprBootstrapper` on this same lane
+  /// and only exposed here so the pickers reach it without another environment object.
+  let choices: MicrophoneChoiceOwner
 
   @ObservationIgnored private let read: @Sendable () -> AudioDeviceSnapshot
   @ObservationIgnored private var deviceMonitor: AudioDeviceMonitor?
@@ -63,10 +66,12 @@ final class AudioDeviceList {
   ///   for device changes (tests assign `availableInputDevices` directly).
   init(
     lane: CoreAudioQueryLane = CoreAudioQueryLane(),
+    choices: MicrophoneChoiceOwner,
     read: @escaping @Sendable () -> AudioDeviceSnapshot = { AudioDeviceSnapshotReader.read() },
     startReading: Bool = true
   ) {
     self.lane = lane
+    self.choices = choices
     self.read = read
     guard startReading else { return }
     deviceMonitor = AudioDeviceMonitor { [weak self] in

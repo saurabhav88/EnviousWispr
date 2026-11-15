@@ -183,7 +183,9 @@ struct AudioDeviceListSnapshotTests {
         now: { ContinuousClock.now }, onAbandonedReadReturned: { _, _ in })
       reader = FakeReader(script, events: events)
       let reader = reader
-      list = AudioDeviceList(lane: lane, read: { reader.read() }, startReading: false)
+      list = AudioDeviceList(
+        lane: lane, choices: MicrophoneChoiceOwner(lane: lane), read: { reader.read() },
+        startReading: false)
       let events = events
       let reconciled = reconciled
       list.onSnapshotApplied = { events.send("applied") }

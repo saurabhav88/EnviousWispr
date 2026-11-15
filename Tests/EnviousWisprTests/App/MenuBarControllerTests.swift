@@ -262,13 +262,14 @@ struct MenuBarControllerTests {
 
   @Test(
     "Microphone submenu: picking a row saves it through the shared owner, Auto included (#3454)")
-  func microphoneSubmenuSavesTheChoice() {
+  func microphoneSubmenuSavesTheChoice() async {
     let name = "ew.menuMicrophoneTest." + UUID().uuidString
     let defaults = TestDefaults.suite(name)!
     defaults.removePersistentDomain(forName: name)
     let settings = SettingsManager(defaults: defaults)
     let usb = MicrophoneMenuChoice(uid: "usb-uid", title: "USB Mic · USB")
-    let controller = makeController(settings: settings, connectedMicrophones: ["usb-uid"])
+    let choices = MicrophoneChoiceRig(connected: ["usb-uid"])
+    let controller = makeController(settings: settings, microphoneChoices: choices)
     let menu = NSMenu()
     controller.renderMenu(
       into: menu, state: fixture(pipelineState: .idle, microphoneChoices: [usb]))
@@ -276,23 +277,27 @@ struct MenuBarControllerTests {
     #expect(rows.count == 2)
 
     perform(rows.last)
+    let usbSettled = await choices.nextSettled()
+    #expect(usbSettled?.0 == "usb-uid" && usbSettled?.1 == true)
     #expect(settings.preferredInputDeviceIDOverride == "usb-uid")
     #expect(settings.selectedInputDeviceUID == "usb-uid")
 
     perform(rows.first)
+    // Auto saves at once, without asking the lane.
     #expect(settings.preferredInputDeviceIDOverride == "")
     #expect(settings.selectedInputDeviceUID == "")
   }
 
   @Test("Microphone submenu: a row for a mic unplugged after the menu opened saves nothing (#3479)")
-  func microphoneSubmenuIgnoresAnUnpluggedMic() {
+  func microphoneSubmenuIgnoresAnUnpluggedMic() async {
     let name = "ew.menuMicrophoneGoneTest." + UUID().uuidString
     let defaults = TestDefaults.suite(name)!
     defaults.removePersistentDomain(forName: name)
     let settings = SettingsManager(defaults: defaults)
     let usb = MicrophoneMenuChoice(uid: "usb-uid", title: "USB Mic · USB")
     // The menu is drawn with the USB mic; by click time the system no longer lists it, even if the cached list still does.
-    let controller = makeController(settings: settings, connectedMicrophones: [])
+    let choices = MicrophoneChoiceRig(connected: [])
+    let controller = makeController(settings: settings, microphoneChoices: choices)
     let menu = NSMenu()
     controller.renderMenu(
       into: menu, state: fixture(pipelineState: .idle, microphoneChoices: [usb]))
@@ -300,6 +305,8 @@ struct MenuBarControllerTests {
     #expect(rows.count == 2)
 
     perform(rows.last)
+    let settled = await choices.nextSettled()
+    #expect(settled?.0 == "usb-uid" && settled?.1 == false, "the owner dropped the unplugged mic")
     #expect(settings.preferredInputDeviceIDOverride == "")
     #expect(settings.selectedInputDeviceUID == "")
   }
@@ -1304,9 +1311,35 @@ struct MenuBarControllerTests {
     return state
   }
 
+  /// #4021: microphone choices go through a real `MicrophoneChoiceOwner` on an isolated lane whose
+  /// click-time read returns `connected`; `settled` reports each choice the owner settles.
+  @MainActor
+  final class MicrophoneChoiceRig {
+    let owner: MicrophoneChoiceOwner
+    private let stream = AsyncStream<(String, Bool)>.makeStream()
+
+    init(connected: Set<String>) {
+      owner = MicrophoneChoiceOwner(
+        lane: CoreAudioQueryLane(label: "test.menu.choice"), connectedUIDs: { Array(connected) })
+      let continuation = stream.continuation
+      owner.onSettled = { uid, saved in continuation.yield((uid, saved)) }
+    }
+
+    /// The next settled choice, or nil when the owner never settles one (fails instead of hanging).
+    func nextSettled() async -> (String, Bool)? {
+      let continuation = stream.continuation
+      // deadline-fallback: a choice the owner never settles fails the test instead of hanging it.
+      DispatchQueue.global().asyncAfter(deadline: .now() + 10) { continuation.yield(("<expired>", false)) }
+      for await value in stream.stream {
+        return value.0 == "<expired>" ? nil : value
+      }
+      return nil
+    }
+  }
+
   private func makeController(
     spy: ActionSpy = ActionSpy(), settings: SettingsManager = SettingsManager(),
-    connectedMicrophones: Set<String> = []
+    microphoneChoices: MicrophoneChoiceRig = MicrophoneChoiceRig(connected: [])
   ) -> MenuBarController {
     let asrManager = ASRManager(
       engineMutationScope: .alwaysAllowedForTesting, parakeetSelection: ParakeetSelectionProvider())
@@ -1360,7 +1393,9 @@ struct MenuBarControllerTests {
         openMainWindow: { spy.fired.append("openMainWindow") },
         openHelpCenter: { spy.fired.append("openHelpCenter") },
         microphoneChoices: { [] },
-        isMicrophoneConnected: { connectedMicrophones.contains($0) },
+        chooseMicrophone: { uid in
+          microphoneChoices.owner.choose(uid: uid) { settings.chooseInputDevice(uid: $0) }
+        },
         openTranscribeFile: { spy.fired.append("openTranscribeFile") },
         openPermissions: { spy.fired.append("openPermissions") },
         polishSetupWarning: { spy.polishSetupWarning },

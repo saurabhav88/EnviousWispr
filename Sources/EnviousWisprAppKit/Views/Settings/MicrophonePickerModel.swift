@@ -28,7 +28,7 @@ struct MicrophonePickerModel {
   /// The picker's choice: "" is Auto, otherwise a device UID.
   let selection: Binding<String>
 
-  init(settingsManager: SettingsManager, facts: MicrophoneFacts) {
+  init(settingsManager: SettingsManager, facts: MicrophoneFacts, choices: MicrophoneChoiceOwner) {
     let devices = facts.devices
     // #2664: the device this page describes, computed ONCE per body. #4021: the
     // Auto branch reads the resolver ladder's answer frozen in the snapshot
@@ -45,10 +45,10 @@ struct MicrophonePickerModel {
       resolvedAutoInputDeviceID: { facts.resolvedAutoDeviceID })
     let inputDeviceSelection = Binding<String>(
       get: { settingsManager.preferredInputDeviceIDOverride },
-      // #3486: a mic unplugged while the dropdown was open must not be saved.
+      // #3486: a mic unplugged while the dropdown was open must not be saved. #4021: the shared
+      // owner checks off the main actor and saves only the latest choice.
       set: { uid in
-        guard MicrophoneChoiceValidation.isSelectable(uid: uid) else { return }
-        settingsManager.chooseInputDevice(uid: uid)
+        choices.choose(uid: uid) { settingsManager.chooseInputDevice(uid: $0) }
       }
     )
     // #2664: the socket control sits on the SAME line as the device picker,

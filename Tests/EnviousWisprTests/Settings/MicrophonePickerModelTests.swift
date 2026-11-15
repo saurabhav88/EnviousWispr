@@ -26,6 +26,11 @@ struct MicrophonePickerModelTests {
     MicrophoneFacts(devices: devices, resolvedAutoDeviceID: auto, transportTokens: tokens)
   }
 
+  /// The shared choice owner on an isolated lane whose click-time read returns `connected`.
+  static func choices(connected: [String] = []) -> MicrophoneChoiceOwner {
+    MicrophoneChoiceOwner(lane: CoreAudioQueryLane(label: "test.picker.choice"), connectedUIDs: { connected })
+  }
+
   static func settings(preferred: String) -> SettingsManager {
     let name = "ew.tests.4528.d6a.\(UUID().uuidString)"
     let defaults = TestDefaults.suite(name)!
@@ -39,7 +44,8 @@ struct MicrophonePickerModelTests {
   func chosenMicrophoneIsDescribed() {
     let devices = [Self.builtIn, Self.interface]
     let model = MicrophonePickerModel(
-      settingsManager: Self.settings(preferred: Self.interface.uid), facts: Self.facts(devices))
+      settingsManager: Self.settings(preferred: Self.interface.uid), facts: Self.facts(devices),
+      choices: Self.choices())
     #expect(model.devices == devices)
     #expect(model.socketDevice == Self.interface)
     #expect(model.multiInputDevice == Self.interface)
@@ -53,7 +59,7 @@ struct MicrophonePickerModelTests {
   func oneInputMicrophoneOffersNoSocket() {
     let model = MicrophonePickerModel(
       settingsManager: Self.settings(preferred: Self.builtIn.uid),
-      facts: Self.facts([Self.builtIn, Self.interface]))
+      facts: Self.facts([Self.builtIn, Self.interface]), choices: Self.choices())
     #expect(model.socketDevice == Self.builtIn)
     #expect(model.multiInputDevice == nil)
   }
@@ -61,7 +67,8 @@ struct MicrophonePickerModelTests {
   @Test("a saved microphone that is not connected is not named after another device")
   func missingMicrophoneBorrowsNoName() {
     let model = MicrophonePickerModel(
-      settingsManager: Self.settings(preferred: "fixture-d6a-unplugged"), facts: Self.facts([Self.builtIn]))
+      settingsManager: Self.settings(preferred: "fixture-d6a-unplugged"), facts: Self.facts([Self.builtIn]),
+      choices: Self.choices())
     #expect(model.socketDevice == nil)
     #expect(model.multiInputDevice == nil)
     #expect(model.presentation.deviceName == nil)
@@ -69,13 +76,25 @@ struct MicrophonePickerModelTests {
   }
 
   @Test("choosing Auto saves both preferences; a microphone unplugged since the menu opened saves nothing")
-  func selectionWritesThroughTheGuard() {
+  func selectionWritesThroughTheGuard() async {
     let settings = Self.settings(preferred: Self.interface.uid)
+    let settled = AsyncStream<(String, Bool)>.makeStream()
+    // The click-time read lists nothing: the fixture interface is never connected (#3486).
+    let choices = Self.choices(connected: [])
+    choices.onSettled = { uid, saved in settled.continuation.yield((uid, saved)) }
     let model = MicrophonePickerModel(
-      settingsManager: settings, facts: Self.facts([Self.builtIn, Self.interface]))
+      settingsManager: settings, facts: Self.facts([Self.builtIn, Self.interface]), choices: choices)
 
-    // A UID the system does not list right now (#3486): the fixture interface is never connected.
-    model.selection.wrappedValue = "fixture-d6a-unplugged-\(UUID().uuidString)"
+    let fallback = settled.continuation
+    // deadline-fallback: a choice the owner never settles fails the test instead of hanging it.
+    DispatchQueue.global().asyncAfter(deadline: .now() + 10) { fallback.yield(("<expired>", false)) }
+    model.selection.wrappedValue = Self.interface.uid
+    var outcome: (String, Bool)?
+    for await value in settled.stream {
+      outcome = value
+      break
+    }
+    #expect(outcome?.0 == Self.interface.uid && outcome?.1 == false, "the owner dropped the unplugged mic")
     #expect(settings.preferredInputDeviceIDOverride == Self.interface.uid)
     #expect(settings.selectedInputDeviceUID == Self.interface.uid)
 
@@ -90,7 +109,8 @@ struct MicrophonePickerModelTests {
       settingsManager: Self.settings(preferred: ""),
       facts: Self.facts(
         [Self.builtIn, Self.interface], auto: Self.interface.id,
-        tokens: [Self.builtIn.id: "built_in", Self.interface.id: "usb"]))
+        tokens: [Self.builtIn.id: "built_in", Self.interface.id: "usb"]),
+      choices: Self.choices())
     #expect(model.socketDevice == Self.interface)
     #expect(model.presentation.isAutomatic)
     #expect(model.presentation.deviceName == "Scarlett 2i2")
@@ -101,7 +121,7 @@ struct MicrophonePickerModelTests {
   @Test("Before the first device snapshot a saved microphone stays saved and unresolved")
   func beforeFirstSnapshotKeepsTheSavedPin() {
     let settings = Self.settings(preferred: Self.interface.uid)
-    let model = MicrophonePickerModel(settingsManager: settings, facts: .empty)
+    let model = MicrophonePickerModel(settingsManager: settings, facts: .empty, choices: Self.choices())
     #expect(model.devices.isEmpty)
     #expect(model.socketDevice == nil)
     #expect(model.presentation.isAutomatic == false)

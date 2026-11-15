@@ -296,7 +296,11 @@ package final class WisprBootstrapper {
     let overlayHost = OverlayWindowHost(effects: overlayEffects)
     // #4021: one Core Audio lane for every idle-time device read, owned for the app's lifetime
     // through `audioDeviceList.lane`, so only one read can ever be stuck in a driver.
-    let audioDeviceList = AudioDeviceList(lane: CoreAudioQueryLane())
+    let coreAudioLane = CoreAudioQueryLane()
+    // #4021: the one microphone-choice owner, shared by Settings, Setup and the menu bar, so
+    // only the latest choice can be saved after its off-main check.
+    let microphoneChoices = MicrophoneChoiceOwner(lane: coreAudioLane)
+    let audioDeviceList = AudioDeviceList(lane: coreAudioLane, choices: microphoneChoices)
     let inputDevicePreferenceReconciler = InputDevicePreferenceReconciler(settings: settings)
     // Reconciles only from an inventory that proves absence. There is deliberately no
     // synchronous launch reconcile any more: the list is empty until the first snapshot arrives
@@ -2115,7 +2119,11 @@ package final class WisprBootstrapper {
                 for: device, transportToken: facts.transportTokens[device.id]))
           }
         },
-        isMicrophoneConnected: { MicrophoneChoiceValidation.isSelectable(uid: $0) },
+        // #3479 / #4021: one shared owner checks the device off the main actor at click time
+        // and saves only the latest choice.
+        chooseMicrophone: { uid in
+          microphoneChoices.choose(uid: uid) { settings.chooseInputDevice(uid: $0) }
+        },
         openTranscribeFile: {
           navigationCoordinator.request(.transcribeFile)
           appWindowCoordinator.showWindow()

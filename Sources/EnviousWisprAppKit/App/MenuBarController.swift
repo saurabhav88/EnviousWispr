@@ -675,7 +675,8 @@ final class MenuBarController: NSObject {
 
     // #3454: Microphone submenu: Auto, then each input in the Settings dropdown's order, checkmark
     // on the saved choice. The same choice as Settings > Dictation > Microphone, saved through the
-    // same `SettingsManager.chooseInputDevice(uid:)`, so the two can never disagree.
+    // same shared `MicrophoneChoiceOwner` and `SettingsManager.chooseInputDevice(uid:)` (#4021),
+    // so the two can never disagree and only the latest choice is saved.
     let microphoneItem = NSMenuItem(
       title: String(
         localized: "Microphone",
@@ -916,10 +917,10 @@ final class MenuBarController: NSObject {
   /// owner Settings uses.
   @objc private func setMicrophoneAction(_ sender: NSMenuItem) {
     guard let uid = sender.representedObject as? String else { return }
-    // #3479: a mic unplugged while the menu was open leaves a clickable row. Auto ("") is always
-    // valid; any other UID must still be plugged in, or nothing would ever correct the write.
-    guard uid.isEmpty || actions.isMicrophoneConnected(uid) else { return }
-    settings.chooseInputDevice(uid: uid)
+    // #3479: a mic unplugged while the menu was open leaves a clickable row. The shared choice
+    // owner saves Auto ("") at once and any other UID only if it is still plugged in (checked
+    // off the main actor, #4021) and still the latest choice.
+    actions.chooseMicrophone(uid)
   }
 
   @objc private func openTranscribeFileAction() {
@@ -1153,10 +1154,11 @@ struct MenuBarActions: Sendable {
   /// The inputs for the Microphone submenu, in the Settings dropdown's order, read when the menu
   /// is built (#3454). Plain values: this file may not import the Audio module.
   let microphoneChoices: @MainActor () -> [MicrophoneMenuChoice]
-  /// Whether this input is plugged in RIGHT NOW (#3479), asked of the system at click time. The
-  /// cached list behind `microphoneChoices` is refreshed on a separately scheduled task, so it can
-  /// still hold a mic unplugged while the menu was open.
-  let isMicrophoneConnected: @MainActor (String) -> Bool
+  /// Choose this input ("" is Auto) through the shared microphone-choice owner (#3479, #4021).
+  /// The owner checks at click time that a device is still plugged in, because the cached list
+  /// behind `microphoneChoices` can still hold a mic unplugged while the menu was open, and saves
+  /// only the latest choice.
+  let chooseMicrophone: @MainActor (String) -> Void
   /// Open the unified window on the Transcribe a File page (#2772).
   let openTranscribeFile: @MainActor () -> Void
   let openPermissions: @MainActor () -> Void

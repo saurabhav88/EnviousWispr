@@ -172,7 +172,9 @@ struct DictationSettingsRenderHarness {
       setupStateReader: { .notDownloaded }, preloadAction: { Issue.record("render tried preloading") },
       ollamaStatusProbe: { _ in })
     let presenter = LanguageSuggestionPresenter(overlay: NoOverlay(), onLanguageAccepted: { _ in }, defaults: defaults)
-    let devices = AudioDeviceList(startReading: false)
+    let devices = AudioDeviceList(
+      choices: MicrophoneChoiceOwner(lane: CoreAudioQueryLane(label: "test.render")),
+      startReading: false)
     devices.availableInputDevices = scenario.devices
     settings.preferredInputDeviceIDOverride = scenario.preferredInputUID
     let audio = RouterTestAudioCapture()
