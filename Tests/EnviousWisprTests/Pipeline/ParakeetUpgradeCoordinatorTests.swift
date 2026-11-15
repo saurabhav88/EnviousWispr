@@ -813,7 +813,7 @@ struct ParakeetUpgradePolicyTests {
   static func rig(
     v3: Bool, ultra: Bool, enabled: Bool = true, state: ParakeetUpgradeState? = nil,
     v3Donor: Bool = false, ultraLocationRefused: Bool = false, onboarding: Bool = false,
-    diskBytes: Int64 = .max
+    diskBytes: Int64 = .max, installIntent: Bool = false
   ) async throws -> Rig {
     let tag = UUID().uuidString
     DeliveryStubProtocol.beginScope(pathPrefix: "/\(tag)/")
@@ -881,6 +881,8 @@ struct ParakeetUpgradePolicyTests {
       coordinator: ParakeetUpgradeCoordinator(
         parakeetSelection: selection, delivery: v3Handle,
         target: .init(delivery: ultraHandle, store: store, ownedModelsRoot: models),
+        // #4578: the install-intent reader over this rig's metadata, when a test needs it.
+        installIntent: installIntent ? ParakeetInstallIntentStore(metadataDirectory: metadata) : nil,
         isOnboardingComplete: { onboardingFlag.value }))
     rig.coordinator.markSelectionPoint()
     return rig
@@ -2517,14 +2519,32 @@ struct ParakeetUpgradePolicyTests {
   /// A background fetch held inside existing-cache validation (complete
   /// unmarked Ultra bytes), so a Cancel's transport drain stays held until
   /// the gate opens.
-  fileprivate static func heldBackgroundFetch() async throws -> (Rig, StageGate) {
-    let rig = try await Self.rig(v3: true, ultra: false, onboarding: true)
+  fileprivate static func heldBackgroundFetch(installIntent: Bool = false) async throws
+    -> (Rig, StageGate)
+  {
+    let rig = try await Self.rig(v3: true, ultra: false, onboarding: true, installIntent: installIntent)
     try Self.install(Self.ultraFiles, into: rig.ultraRegistration.installDirectory)
     let gate = StageGate()
     await rig.controller.setBeforeExistingCacheValidationForTesting { await gate.pass() }
     _ = try await rig.coordinator.prepareLoad()
     await gate.waitForEntry(1)
     return (rig, gate)
+  }
+
+  /// #4578: Remove during a background upgrade. When this fails, a removed Parakeet keeps
+  /// downloading (and is installed again), or Remove records a decline that Set up model would
+  /// then have to undo.
+  @Test("Remove stops a background upgrade without a decline; nothing is admitted")
+  func removalStopsBackgroundUpgrade() async throws {
+    let (rig, gate) = try await Self.heldBackgroundFetch(installIntent: true)
+    let removal = Task { try await rig.coordinator.recordRemovalByUser() }
+    gate.open()
+    try await removal.value
+    await rig.controller.setBeforeExistingCacheValidationForTesting(nil)
+    #expect(rig.coordinator.isInstallWanted == false)
+    #expect(rig.coordinator.backgroundUpgrade == .idle)
+    #expect(Self.state(rig)?.declined != true, "no decline recorded")
+    #expect(await rig.controller.isAdmitted(rig.ultraRegistration) == false)
   }
 
   @Test("E13: Resume waits for Cancel's drain before clearing the decline")
@@ -2796,27 +2816,6 @@ struct ParakeetUpgradePolicyTests {
     #expect(rig.coordinator.needsExplicitRetry)
   }
 
-  @Test("the Model ready read follows the presented identity and its permission")
-  func currentAdmissionFollowsPresented() async throws {
-    let v3Serving = try await Self.rig(v3: true, ultra: false)
-    _ = try await v3Serving.coordinator.prepareLoad()
-    #expect(await v3Serving.coordinator.currentAdmission(), "v3 is admitted and accepted")
-
-    let rejected = try await Self.rig(v3: true, ultra: false, enabled: false)
-    let v3Load = try await rejected.coordinator.prepareLoad()
-    #expect(
-      await rejected.coordinator.handleLoadFailure(v3Load, error: VendorLoadFailed()) == .reload)
-    #expect(await rejected.coordinator.currentAdmission() == false, "rejected v3 is not ready")
-
-    let exhausted = try await Self.rig(
-      v3: false, ultra: true,
-      state: .init(attempts: 0, refetchSpent: true, exhausted: true, declined: false))
-    #expect(await exhausted.coordinator.currentAdmission() == false, "retained, not permitted")
-
-    let fresh = try await Self.rig(v3: false, ultra: true)
-    #expect(await fresh.coordinator.currentAdmission())
-  }
-
   @Test("Settings' foreground fetch is counted, so its Cancel reaches it")
   func settingsForegroundFetchCancels() async throws {
     let rig = try await Self.rig(v3: false, ultra: false)
@@ -2850,37 +2849,19 @@ struct ParakeetUpgradePolicyTests {
 
   // MARK: 8b round 2: stale reads and a Resume parked behind a Cancel's drain
 
-  @Test("a Model ready read whose request changed answers false, not the old answer")
-  func currentAdmissionDropsAStaleIdentity() async throws {
-    for changeRequest in [false, true] {
-      let rig = try await Self.rig(v3: true, ultra: false)
-      _ = try await rig.coordinator.prepareLoad()
-      #expect(Self.physicalLoad(rig) == .loaded)
-      #expect(rig.coordinator.presentedModel == .v3)
-      let gate = StageGate()
-      rig.coordinator.usabilityReadGateForTesting = { await gate.pass() }
-      let read = Task { await rig.coordinator.currentAdmission() }
-      await gate.waitForEntry(1)
-      rig.coordinator.usabilityReadGateForTesting = nil
-      if changeRequest { rig.selection.clear() }
-      gate.open()
-      #expect(
-        await read.value == !changeRequest,
-        changeRequest ? "v3's answer must not reach the new request" : "control: v3 is ready")
-    }
-  }
-
   /// Which newer fact lands while a foreground Resume waits for a held Cancel
   /// drain.
   enum ParkedResumeChange: CaseIterable {
     case none, foregroundCancel, backgroundCancel, exhaustion
+    /// #4578: the person removed Parakeet while Resume waited.
+    case removal
   }
 
   @Test(
     "a foreground Resume parked behind a drain re-checks before it fetches",
     arguments: ParkedResumeChange.allCases)
   func parkedForegroundResume(_ change: ParkedResumeChange) async throws {
-    let (rig, gate) = try await Self.heldBackgroundFetch()
+    let (rig, gate) = try await Self.heldBackgroundFetch(installIntent: change == .removal)
     let declined = OutcomeSignal(.declined)
     rig.coordinator.onOutcome = { declined.observe($0) }
     let cancel = Task { try await rig.coordinator.cancelBackgroundUpgrade() }
@@ -2912,6 +2893,8 @@ struct ParakeetUpgradePolicyTests {
       await started.wait()
     case .exhaustion:
       try rig.store.write(.init(attempts: 0, refetchSpent: true, exhausted: true, declined: true))
+    case .removal:
+      try ParakeetInstallIntentStore(metadataDirectory: rig.metadata).write(removedByUser: true)
     }
     gate.open()
     try await cancel.value
@@ -2924,6 +2907,38 @@ struct ParakeetUpgradePolicyTests {
       #expect(outcome == nil, "the newer \(change) wins over the waiting Resume")
     }
     #expect(rig.coordinator.needsExplicitRetry == (change == .exhaustion))
+  }
+
+  /// #4578: a Remove recorded while the load stage is suspended inside a cache validation (the
+  /// first barrier entry, after the stage's opening consent check) publishes no Ultra load. The
+  /// four target-stage checks after that point back each other up, so the test binds the class:
+  /// with all four removed it fails (measured 2026-11-14), with any one left it passes. When this
+  /// fails, a removed engine loads from bytes admitted after the person removed it.
+  @Test(
+    "a Remove landing while the load stage waits on a validation publishes nothing",
+    arguments: [true, false])
+  func removalDuringForegroundValidation(removed: Bool) async throws {
+    let rig = try await Self.rig(v3: false, ultra: false, installIntent: true)
+    defer { try? FileManager.default.removeItem(at: rig.root) }
+    // Complete Ultra bytes, not admitted: row C validates them instead of downloading.
+    try Self.install(Self.ultraFiles, into: rig.ultraRegistration.installDirectory)
+    let gate = StageGate()
+    await rig.controller.setBeforeExistingCacheValidationForTesting { await gate.pass() }
+    let load = Task { try await rig.coordinator.prepareLoad() }
+    await gate.waitForEntry(1)
+    if removed {
+      try ParakeetInstallIntentStore(metadataDirectory: rig.metadata).write(removedByUser: true)
+    }
+    gate.open()
+    let result = await load.result
+    await rig.controller.setBeforeExistingCacheValidationForTesting(nil)
+    if removed {
+      #expect(throws: ParakeetRemovedByUserError.self) { try result.get() }
+      #expect(rig.selection.current == nil)
+    } else {
+      #expect(try result.get().selection?.model == .ultra, "control: unchanged consent loads")
+    }
+    #expect(Self.ultraRequests(rig) == 0, "validation, never a download")
   }
 }
 

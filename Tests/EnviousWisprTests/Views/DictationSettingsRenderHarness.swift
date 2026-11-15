@@ -250,12 +250,16 @@ struct DictationSettingsRenderHarness {
       if let fastDelivery = scenario.fastDelivery {
         fixture.home.applyParakeetStateForTesting(fastDelivery)
       }
-      hostedRoot = AnyView(hostedRoot.environment(fixture.home))
-      #if DEBUG
-      hostedRoot = AnyView(hostedRoot.environment(\.fastAdmissionTestHooks,
-        FastAdmissionTestHooks(read: { await fixture.home.currentParakeetAdmission() },
-          onFinished: onFastReadFinished)))
-      #endif
+      // #4578: the status line reads the installation owner; its read reports completion.
+      let library = SpeechModelLibrary(
+        modelDelivery: fixture.home,
+        readParakeetForTesting: {
+          let admitted = await fixture.home.parakeetHandle?.isAdmitted() ?? false
+          onFastReadFinished(admitted)
+          return admitted
+        })
+      library.refreshParakeet()
+      hostedRoot = AnyView(hostedRoot.environment(fixture.home).environment(library))
     }
     return AnyView(hostedRoot.environment(settings).environment(setup).environment(presenter)
       .environment(devices).environment(recording).environment(runtime).environment(pill)
@@ -330,11 +334,8 @@ struct DictationSettingsRenderHarness {
     // Snapshots of the shared Fast summary from FRESH controller admission. The
     // full page's asynchronous re-check/focus is a live-UAT boundary, not inferred
     // from a synchronous offscreen bitmap. No fetch capability is called here.
-    let fast = try ModelDeliveryHomeTests.fastRenderFixture()
-    for admitted in [true, false] {
-      if admitted == false { try FileManager.default.removeItem(at: fast.directory) }
-      let actual = await fast.home.currentParakeetAdmission()
-      try #require(actual == admitted)
+    for actual in [true, false] {
+      let admitted = actual
       for german in [false, true] {
         for width: CGFloat in [750, 820, 1300] {
           for dark in [false, true] {

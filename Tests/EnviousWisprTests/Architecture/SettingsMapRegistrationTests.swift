@@ -111,7 +111,7 @@ struct SettingsMapRegistrationTests {
     ".aiPolishProvider", ".aiPolishProviderSection", ".apiKeyClear", ".apiKeyGetKeyLink",
     ".apiKeyReveal", ".apiKeySave", ".appLanguageRelaunch", ".appleIntelligenceRecheck",
     ".autoDetectLanguageResetSuggestions", ".bluetoothGuideLearnMore", ".contactsSyncOnLaunch",
-    ".enableAIPolish", ".enableDictionary", ".fastModelCancelDownload", ".importContacts",
+    ".enableAIPolish", ".enableDictionary", ".importContacts",
     ".learnFrom", ".licenseGplView", ".licenseNoticesView", ".livePreviewBrowseDownloads",
     ".livePreviewLanguage", ".localModelCancel", ".localModelDownload", ".localModelResume",
     ".localModelTestLive", ".localModelTryAgain", ".lockedLanguageChange",
@@ -128,9 +128,7 @@ struct SettingsMapRegistrationTests {
     ".snippetKeyword", ".snippets", ".snippetsAdd", ".snippetsAddFirst",
     ".snippetsClearSearch", ".snippetsExport", ".snippetsImport", ".snippetsSearch",
     ".transcribeFileSteps",
-    ".transcriptionEngineRecheckFast", ".whatWeCollectSeeDetails", ".whisperModelCancelDownload",
-    ".whisperModelRecheck", ".whisperModelRemove", ".whisperModelResume", ".whisperModelSetUp",
-    ".whisperModelTryAgain", ".windowSearch", ".yourWordsAdd", ".yourWordsCategoryFilter",
+    ".whatWeCollectSeeDetails", ".windowSearch", ".yourWordsAdd", ".yourWordsCategoryFilter",
     ".yourWordsClearSearch", ".yourWordsExport", ".yourWordsImport", ".yourWordsMassEdit",
     ".yourWordsSearch",
   ]
@@ -195,7 +193,15 @@ struct SettingsMapRegistrationTests {
     ([.transcriptionEngineChange, .transcriptionEngineKeepCurrent], "SpeechEngineSettingsView.swift", "keepCurrent: .transcriptionEngineKeepCurrent"),
     ([.previewEngineChange, .previewEngineKeepCurrent], "LivePreviewSettingsView.swift", "keepCurrent: .previewEngineKeepCurrent"),
     ([.localModelResumeUpgrade, .localModelFinishUpgrade], "LocalEngineStatusCard.swift", ".settingsMapRegistration(action.id)"),
-    ([.fastModelResume, .fastModelTryAgain], "SpeechEngineSettingsView.swift", ".settingsMapRegistration(action)"),
+    // #4578: the shared engine status row registers its controls only on the Dictation summary,
+    // through one computed place per button (`SpeechEngineStatusRow.mapID`, `removeButton`, ...).
+    (
+      [
+        .fastModelResume, .fastModelTryAgain, .fastModelCancelDownload,
+        .transcriptionEngineRecheckFast, .whisperModelCancelDownload, .whisperModelRecheck,
+        .whisperModelRemove, .whisperModelResume, .whisperModelSetUp, .whisperModelTryAgain,
+      ], "SpeechEngineStatusRow.swift", ".settingsMapRegistration(id)"
+    ),
     (
       [
         .aiPolishWhyUseEgOne, .aiPolishWhyUseS1Mini, .aiPolishWhyUseAppleIntelligence,

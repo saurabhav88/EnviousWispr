@@ -52,13 +52,24 @@ struct SettingsNavigationProducerTests {
     Route(
       "10 menu Start Meeting Recording before the explainer",
       file: app + "WisprBootstrapper.swift", callee: "request", owner: "binding:meetingStartFlow",
-      argument: ".meetings(.general)"),
+      within: "label:showMeetingPage", argument: ".meetings(.general)"),
+    // #4578: a menu Start with no speech engine downloaded opens EnviousMeet's Models tab, where
+    // an engine is set up (when no call card can show the refusal itself).
+    Route(
+      "10b menu Start Meeting Recording with no speech engine",
+      file: app + "WisprBootstrapper.swift", callee: "request", owner: "binding:meetingStartFlow",
+      within: "label:showNoTranscriptionEngine", argument: ".meetings(.models)"),
     // #4012 D6: the call panel's Open settings (tips, needs attention) opens EnviousMeet's Call
     // Apps tab (#4058), where its turn-off-an-app tips point.
     Route(
       "11 call panel Open settings",
       file: app + "WisprBootstrapper.swift", callee: "request", owner: "binding:callDetection",
       within: "label:showMeetingPage", argument: ".meetings(.callApps)"),
+    // #4578: the "No speech engine downloaded" call card's Open Settings opens Models.
+    Route(
+      "11b call card Open Settings with no speech engine",
+      file: app + "WisprBootstrapper.swift", callee: "request", owner: "binding:callDetection",
+      within: "label:showMeetingModels", argument: ".meetings(.models)"),
     // #4232: Your notes are ready's Open shows that meeting in History, like the menu's Show in
     // History.
     Route(

@@ -574,6 +574,13 @@ enum MeetingsPresentation {
       return String(
         localized: "No audio could be read from this recording.",
         comment: "EnviousMeet detail: why a meeting has no transcript.")
+    case "no_engine_downloaded"?:
+      // #4578: neither speech engine was on the Mac when the transcript was due.
+      return String(
+        localized:
+          "No speech engine was downloaded. Download one in Settings, then use Transcribe again.",
+        comment:
+          "EnviousMeet detail: why a meeting has no transcript: neither Parakeet nor Whisper is on this Mac.")
     case "audio_deleted"?:
       return String(
         localized: "The audio was deleted before it was transcribed.",

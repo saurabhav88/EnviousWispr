@@ -27,6 +27,14 @@ struct UnifiedWindowView: View {
   @Environment(SettingsManager.self) private var settings
   /// The question on screen and its identity; a dismissal clears only the one it belongs to.
   @State private var pendingLeave: PolishSetupLeaveRequest?
+  /// #4578: the speech-engine leave question, when that one is open (never both at once).
+  @State private var pendingSpeechLeave: SpeechSetupLeaveRequest?
+  /// #4578: the engines picked when this window's visit to each speech tab began ("Go back to").
+  @State private var dictationEngineWhenVisitBegan: ASRBackendType?
+  @State private var meetingEngineWhenVisitBegan: ASRBackendType?
+  @Environment(SpeechModelLibrary.self) private var speechModels: SpeechModelLibrary?
+  @Environment(SetupCoordinator.self) private var setupCoordinator: SetupCoordinator?
+  @Environment(ModelDeliveryHome.self) private var modelDelivery: ModelDeliveryHome?
   @State private var pendingLeaveID: UInt64 = 0
   @State private var providerWhenVisitBegan: LLMProvider?
   /// #4321: the summary engine chosen when this visit to Meetings > Summaries began.
@@ -119,23 +127,35 @@ struct UnifiedWindowView: View {
     // the same card a dictation without polish raises, not a macOS alert.
     // The unanswered question blocks the window under it for the keyboard too (Tab, Space), and
     // the toolbar with it, as the alert did. The card stays enabled: it is added after this.
-    .disabled(pendingLeave != nil)
+    .disabled(pendingLeave != nil || pendingSpeechLeave != nil)
     .overlay {
       if let question = leaveQuestion {
         PolishSetupLeaveCard(
           content: question.content,
           onAnswer: { button, press in
-            respond(
-              button.action,
-              reportedAs: press == .escape ? .closed : button.action.promptAction,
-              to: question.id)
+            if pendingSpeechLeave != nil {
+              if let action = SpeechSetupLeaveGuard.answer(button, press: press) {
+                respondToSpeechLeave(action, to: question.id)
+              } else if pendingLeaveID == question.id {
+                // Escape: stay on the tab, nothing downloads.
+                pendingSpeechLeave = nil
+              }
+            } else {
+              respond(
+                button.action,
+                reportedAs: press == .escape ? .closed : button.action.promptAction,
+                to: question.id)
+            }
           },
-          onClose: { if pendingLeaveID == question.id { pendingLeave = nil } })
+          onClose: {
+            guard pendingLeaveID == question.id else { return }
+            pendingLeave = nil
+            pendingSpeechLeave = nil
+          })
       }
     }
     .onChange(of: pendingLeaveID) { _, _ in
-      guard let request = pendingLeave else { return }
-      let content = PolishSetupLeaveDialogContent.make(for: request)
+      guard let content = leaveQuestion?.content else { return }
       AccessibilityNotification.Announcement("\(content.title). \(content.message)").post()
     }
   }
@@ -148,7 +168,10 @@ struct UnifiedWindowView: View {
   }
 
   private var leaveQuestion: LeaveQuestion? {
-    pendingLeave.map { LeaveQuestion(id: pendingLeaveID, content: .make(for: $0)) }
+    if let speech = pendingSpeechLeave {
+      return LeaveQuestion(id: pendingLeaveID, content: SpeechSetupLeaveGuard.content(for: speech))
+    }
+    return pendingLeave.map { LeaveQuestion(id: pendingLeaveID, content: .make(for: $0)) }
   }
 
   /// Every way of changing page comes through here: a sidebar row, an in-page link, and a
@@ -169,6 +192,10 @@ struct UnifiedWindowView: View {
       pendingLeave = PolishSetupLeaveGuard.replacingPendingDestination(of: pending, with: intent)
       return true
     }
+    if pendingSpeechLeave != nil {
+      pendingSpeechLeave?.intent = intent
+      return true
+    }
     for scope in [PolishSetupScope.dictation, .meetingSummary] {
       if let request = leaveRequest(for: intent, scope: scope, from: navigationState) {
         pendingLeaveID &+= 1
@@ -177,7 +204,88 @@ struct UnifiedWindowView: View {
         return true
       }
     }
+    // #4578: the picked speech engine is not downloaded (the AI Polish question's twin).
+    for scope in SpeechSetupScope.allCases {
+      if let request = SpeechSetupLeaveGuard.request(
+        for: intent, from: navigationState, scope: scope, facts: speechFacts,
+        previous: speechEngineWhenVisitBegan(scope))
+      {
+        pendingLeaveID &+= 1
+        pendingSpeechLeave = request
+        return true
+      }
+    }
     return false
+  }
+
+  /// #4578: the facts a speech-engine leave question reads, live, from the installation owner
+  /// and the existing download states.
+  private var speechFacts: SpeechSetupFacts {
+    let settings = settings
+    let library = speechModels
+    let setup = setupCoordinator
+    let delivery = modelDelivery
+    return SpeechSetupFacts(
+      picked: { scope in
+        switch scope {
+        case .dictation: settings.selectedBackend
+        case .meetings: settings.meetingTranscriptEngine.backendType
+        }
+      },
+      installed: { engine in library?.installedSnapshot(engine) },
+      downloading: { engine in
+        let status: SpeechEngineStatus? =
+          switch engine {
+          case .parakeet:
+            library.map {
+              SpeechEngineStatus.parakeet(
+                installed: $0.installedSnapshot(.parakeet), removing: $0.isRemovingParakeet,
+                leftovers: $0.parakeetHasLeftovers,
+                row: delivery.flatMap { SpeechEngineSettingsView.parakeetRow(of: $0) })
+            }
+          case .whisper:
+            setup.map {
+              SpeechEngineStatus.whisper(
+                $0.whisperSetup.setupState, removing: $0.whisperSetup.isRemoving)
+            }
+          }
+        if case .working? = status?.operation { return true }
+        return library?.isInstallingParakeet == true && engine == .parakeet
+      })
+  }
+
+  private func speechEngineWhenVisitBegan(_ scope: SpeechSetupScope) -> ASRBackendType? {
+    switch scope {
+    case .dictation: dictationEngineWhenVisitBegan
+    case .meetings: meetingEngineWhenVisitBegan
+    }
+  }
+
+  /// #4578: an answer to the speech-engine question, judged against the facts now.
+  private func respondToSpeechLeave(_ action: PolishSetupLeaveAction, to id: UInt64) {
+    guard id == pendingLeaveID, let request = pendingSpeechLeave else { return }
+    pendingSpeechLeave = nil
+    switch SpeechSetupLeaveGuard.resolve(
+      action, request: request, facts: speechFacts,
+      previous: speechEngineWhenVisitBegan(request.scope))
+    {
+    case .stay:
+      break
+    case .setUp(let engine):
+      switch engine {
+      case .parakeet: speechModels?.installParakeet()
+      case .whisper: setupCoordinator?.whisperSetup.downloadModel()
+      }
+    case .navigate(let intent):
+      leave(to: intent)
+    case .restore(let engine, let intent):
+      // The tab's own picker setter, as choosing it there.
+      switch request.scope {
+      case .dictation: settings.selectedBackend = engine
+      case .meetings: settings.meetingTranscriptEngine = engine == .whisper ? .whisper : .parakeet
+      }
+      leave(to: intent)
+    }
   }
 
   private func leaveRequest(
@@ -235,6 +343,12 @@ struct UnifiedWindowView: View {
     if PolishSetupScope.meetingSummary.entered(from: before, to: navigationState) {
       summaryProviderWhenVisitBegan = settings.effectiveMeetingSummaryLLMProvider
     }
+    if SpeechSetupScope.dictation.entered(from: before, to: navigationState) {
+      dictationEngineWhenVisitBegan = settings.selectedBackend
+    }
+    if SpeechSetupScope.meetings.entered(from: before, to: navigationState) {
+      meetingEngineWhenVisitBegan = settings.meetingTranscriptEngine.backendType
+    }
   }
 
   /// The Meetings page's tab strip (#4321). A tab change that leaves Summaries with an
@@ -250,6 +364,21 @@ struct UnifiedWindowView: View {
         else { return }
         let before = navigationState
         navigationState.meetingsTab = tab
+        noteVisitStarts(from: before)
+      })
+  }
+
+  /// #4578: Dictation's tab strip. A tab change that leaves Engine with the picked speech engine
+  /// not downloaded asks first, like the Meetings strip.
+  private var guardedDictationTab: Binding<DictationTab> {
+    Binding(
+      get: { navigationState.dictationTab },
+      set: { tab in
+        guard tab != navigationState.dictationTab,
+          !askedBeforeLeaving(for: .destination(.dictation(tab)))
+        else { return }
+        let before = navigationState
+        navigationState.dictationTab = tab
         noteVisitStarts(from: before)
       })
   }
@@ -446,7 +575,7 @@ struct UnifiedWindowView: View {
       page(.meetings) { MeetingsView(selection: guardedMeetingsTab) }
     case .dictation:
       page(.dictation) {
-        DictationSettingsView(selection: $navigationState.dictationTab, packs: livePreviewPacks)
+        DictationSettingsView(selection: guardedDictationTab, packs: livePreviewPacks)
       }
     case .transcribeFile:
       page(.transcribeFile) { TranscribeFileView() }

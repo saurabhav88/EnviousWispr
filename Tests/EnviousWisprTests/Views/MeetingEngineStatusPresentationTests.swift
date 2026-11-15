@@ -34,29 +34,4 @@ struct MeetingEngineStatusPresentationTests {
       #expect(chip.tone == tone, "\(state)")
     }
   }
-
-  @Test("every Whisper transcript state maps to its chip")
-  func whisperStates() {
-    let cases: [(WhisperSetupState, String, ProviderStatusTone)] = [
-      (.ready, "Model ready", .ready),
-      (.checking, "Checking model status...", .unavailable),
-      (.notDownloaded, "Needs a download", .needsSetup),
-      (.paused, "Needs a download", .needsSetup),
-      (.downloading(progress: 0.4, status: ""), "Getting ready", .needsSetup),
-      (.error("x"), "Download did not finish", .error),
-    ]
-    for (state, label, tone) in cases {
-      let chip = MeetingEngineStatusPresentation.whisper(state)
-      #expect(chip.label == label, "\(state)")
-      #expect(chip.tone == tone, "\(state)")
-    }
-  }
-
-  @Test("Parakeet reads ready, not set up, or checking while its admission is unknown")
-  func parakeetStates() {
-    #expect(MeetingEngineStatusPresentation.parakeet(admitted: true).label == "Model ready")
-    #expect(MeetingEngineStatusPresentation.parakeet(admitted: true).tone == .ready)
-    #expect(MeetingEngineStatusPresentation.parakeet(admitted: false).tone == .needsSetup)
-    #expect(MeetingEngineStatusPresentation.parakeet(admitted: nil).tone == .unavailable)
-  }
 }

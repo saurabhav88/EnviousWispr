@@ -23,7 +23,7 @@ struct MeetingTranscriptEngineRowModelTests {
     let model: MeetingTranscriptEngineRowModel
 
     @MainActor
-    init(whisper: WhisperSetupState, meetingActive: Bool = false) {
+    init(whisper: WhisperSetupState) {
       let settings = MeetingLiveWordsChoiceInitializerTests.freshSettings()
       let downloads = Downloads()
       self.settings = settings
@@ -35,37 +35,21 @@ struct MeetingTranscriptEngineRowModelTests {
           return true
         })
       model = MeetingTranscriptEngineRowModel(
-        environment: .init(
-          settings: settings, whisperSetup: setup, isMeetingActive: { meetingActive }))
+        environment: .init(settings: settings, whisperSetup: setup))
     }
   }
 
-  @Test("Whisper is chosen only while its model is ready; Parakeet always")
-  func selectionNeedsAReadyModel() async {
-    let missing = Rig(whisper: .notDownloaded)
-    await missing.model.select(.whisper)
-    #expect(missing.settings.meetingTranscriptEngine == .parakeet)
-
-    let ready = Rig(whisper: .ready)
-    await ready.model.select(.whisper)
-    #expect(ready.settings.meetingTranscriptEngine == .whisper)
-    await ready.model.select(.parakeet)
-    #expect(ready.settings.meetingTranscriptEngine == .parakeet)
-  }
-
-  @Test("Download starts the shared Whisper download, and never while a meeting is active")
-  func downloadIsRefusedDuringAMeeting() async {
-    let active = Rig(whisper: .notDownloaded, meetingActive: true)
-    #expect(active.model.downloadRefusal == MeetingDownloadAdmission.refusal)
-    active.model.download()
-    for _ in 0..<20 { await Task.yield() }
-    #expect(active.downloads.starts == 0)
-
-    let idle = Rig(whisper: .notDownloaded)
-    #expect(idle.model.downloadRefusal == nil)
-    idle.model.download()
-    for _ in 0..<200 where idle.downloads.starts == 0 { await Task.yield() }
-    #expect(idle.downloads.starts == 1)
+  /// #4578: the uniform rule. When this fails, picking an engine that is not downloaded does
+  /// nothing, unlike dictation's Engine tab.
+  @Test("either engine is saved, downloaded or not")
+  func anyEngineIsSaved() {
+    for whisper in [WhisperSetupState.notDownloaded, .ready] {
+      let rig = Rig(whisper: whisper)
+      rig.model.select(.whisper)
+      #expect(rig.settings.meetingTranscriptEngine == .whisper)
+      rig.model.select(.parakeet)
+      #expect(rig.settings.meetingTranscriptEngine == .parakeet)
+    }
   }
 
   @Test("the two-engines warning shows exactly when meetings and dictation use different engines")
@@ -74,23 +58,14 @@ struct MeetingTranscriptEngineRowModelTests {
     rig.settings.meetingTurnsOffDictation = false
     rig.settings.selectedBackend = .parakeet
     #expect(rig.model.engineMismatch == nil, "Parakeet and Parakeet")
-    await rig.model.select(.whisper)
+    rig.model.select(.whisper)
     #expect(rig.model.engineMismatch == .whisper)
     rig.settings.selectedBackend = .whisper
     #expect(rig.model.engineMismatch == nil, "Whisper and Whisper")
-    await rig.model.select(.parakeet)
+    rig.model.select(.parakeet)
     #expect(rig.model.engineMismatch == .parakeet)
     rig.settings.meetingTurnsOffDictation = true
     #expect(rig.model.engineMismatch == nil, "no dictation during meetings, no warning")
-  }
-
-  @Test("a chosen Whisper whose model is gone says so")
-  func chosenWhisperGone() async {
-    let rig = Rig(whisper: .ready)
-    await rig.model.select(.whisper)
-    #expect(rig.model.isChosenWhisperGone == false)
-    rig.setup.applyDeliveryState(.notDownloaded)
-    #expect(rig.model.isChosenWhisperGone)
   }
 
   @Test("the language list follows the engine; a language the engine cannot transcribe is named")
@@ -102,34 +77,14 @@ struct MeetingTranscriptEngineRowModelTests {
     }
     #expect(parakeet == expected, "Parakeet's languages, one row each")
     #expect(!parakeet.contains(LanguageCatalog.englishUK), "British spelling is dictation's choice")
-    await rig.model.select(.whisper)
+    rig.model.select(.whisper)
     let whisper = rig.model.transcriptLanguageOptions
     #expect(whisper.count > parakeet.count)
     #expect(whisper.contains { $0.code == "haw" })
 
     rig.settings.meetingLanguageMode = .locked("haw")
     #expect(rig.model.unsupportedTranscriptLanguage == nil)
-    await rig.model.select(.parakeet)
+    rig.model.select(.parakeet)
     #expect(rig.model.unsupportedTranscriptLanguage == "haw")
-  }
-
-  /// #4325: when this fails, EnviousMeet's Whisper card removes the shared model during a meeting,
-  /// or offers no Remove at all where dictation's Engine tab does.
-  @Test("the Whisper card's Remove is the shared one and waits for an active meeting")
-  func whisperRemove() {
-    let busy = Rig(whisper: .ready, meetingActive: true)
-    busy.setup.isDictationInFlight = { false }
-    busy.setup.isMeetingActive = { true }
-    #expect(busy.model.removeWaitsForMeeting == true)
-    busy.model.removeWhisper()
-    #expect(busy.model.whisperRemoveNotice == .refusedMeetingActive)
-    #expect(busy.model.isRemovingWhisper == false)
-
-    let idle = Rig(whisper: .ready)
-    idle.setup.isDictationInFlight = { false }
-    idle.setup.isMeetingActive = { false }
-    #expect(idle.model.removeWaitsForMeeting == false)
-    idle.model.removeWhisper()
-    #expect(idle.model.isRemovingWhisper == true, "control: it proceeds outside a meeting")
   }
 }

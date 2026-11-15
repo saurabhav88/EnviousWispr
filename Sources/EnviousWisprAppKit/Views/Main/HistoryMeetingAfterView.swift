@@ -495,8 +495,8 @@ struct HistoryMeetingAfterView: View {
           .foregroundStyle(.stTextBody)
           .textSelection(.enabled)
       }
-      if record.transcriptEngineFallbackReason != nil {
-        Text(MeetingsCopy.usedParakeetFallback)
+      if record.transcriptEngineFallbackReason != nil, let used = record.transcriptEngineUsed {
+        Text(MeetingsCopy.usedFallback(used))
           .font(.stHelper)
           .foregroundStyle(.stTextSecondary)
           .fixedSize(horizontal: false, vertical: true)
@@ -697,6 +697,13 @@ struct HistoryMeetingAfterView: View {
         }
       }
       .disabled(!offered.transcribeAgain || engines.isEmpty)
+      // #4578 (plan §3.10 item 8): with no speech engine downloaded, say how to get one back.
+      .help(
+        engines.isEmpty
+          ? String(
+            localized: "Download a speech engine in Settings to transcribe again.",
+            comment: "History, Transcribe again with menu: tooltip while no speech engine is downloaded.")
+          : "")
       Divider()
       Button(role: .destructive) {
         confirming = .deleteAudio

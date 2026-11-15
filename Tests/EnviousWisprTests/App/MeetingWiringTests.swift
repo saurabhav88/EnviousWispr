@@ -270,7 +270,8 @@ struct MeetingWiringTests {
         offlineModeAdmission: ASRManager(
           engineMutationScope: .alwaysAllowedForTesting,
           parakeetSelection: ParakeetSelectionProvider()),
-        meetingSelection: { box.selection }, modelUseGate: gate, isDeliveryEnabled: { true },
+        meetingSelection: { box.selection },
+        parakeet: .init(installed: { true }, installedNow: { true }), modelUseGate: gate, isDeliveryEnabled: { true },
         workChanged: { changes.count += 1 }, log: { logBox.append($0) },
         // An isolated key folder: never the real Keychain or key files.
         keychain: KeychainManager(
@@ -1200,21 +1201,49 @@ struct MeetingWiringTests {
   func engineResolution() async {
     let whisper = MeetingAttemptConfiguration(requestedEngine: .whisper, language: .locked("de"))
     let ready = Self.whisperEngine(path: "/models/turbo.gguf")
+    let yes: @MainActor () async -> Bool = { true }
     #expect(
-      await MeetingWiring.resolve(whisper, whisper: ready)
+      await MeetingWiring.resolve(whisper, whisper: ready, parakeetInstalled: yes)
         == .init(engine: .whisper, effectiveLanguage: "de"))
     #expect(
-      await MeetingWiring.resolve(whisper, whisper: Self.whisperEngine(path: nil))
+      await MeetingWiring.resolve(
+        whisper, whisper: Self.whisperEngine(path: nil), parakeetInstalled: yes)
         == .init(engine: .parakeet, fallbackReason: .notDownloaded, effectiveLanguage: "de"))
     #expect(
       await MeetingWiring.resolve(
-        whisper, whisper: Self.whisperEngine(path: "/models/turbo.gguf", deliveryOn: false))
+        whisper, whisper: Self.whisperEngine(path: "/models/turbo.gguf", deliveryOn: false),
+        parakeetInstalled: yes)
         == .init(engine: .parakeet, fallbackReason: .deliveryDisabled, effectiveLanguage: "de"))
     #expect(
-      await MeetingWiring.resolve(whisper, whisper: nil)
+      await MeetingWiring.resolve(whisper, whisper: nil, parakeetInstalled: yes)
         == .init(engine: .parakeet, fallbackReason: .modelUnavailable, effectiveLanguage: "de"))
     let parakeet = MeetingAttemptConfiguration(requestedEngine: .parakeet, language: .auto)
-    #expect(await MeetingWiring.resolve(parakeet, whisper: nil) == .init(engine: .parakeet))
+    #expect(
+      await MeetingWiring.resolve(parakeet, whisper: nil, parakeetInstalled: yes)
+        == .init(engine: .parakeet))
+  }
+
+  /// #4578: a meeting whose engine was removed is written by the other downloaded engine, in
+  /// both directions; with neither downloaded nothing runs. When this fails, a meeting loses its
+  /// transcript although Whisper is on the Mac, or a pass loads (and downloads) a removed engine.
+  @Test("#4578: a removed Parakeet falls back to Whisper; with no engine there is no pass")
+  func removedParakeetFallsBackToWhisper() async {
+    let parakeet = MeetingAttemptConfiguration(requestedEngine: .parakeet, language: .auto)
+    let no: @MainActor () async -> Bool = { false }
+    #expect(
+      await MeetingWiring.resolve(
+        parakeet, whisper: Self.whisperEngine(path: "/models/turbo.gguf"), parakeetInstalled: no)
+        == .init(engine: .whisper, fallbackReason: .notDownloaded))
+    #expect(
+      await MeetingWiring.resolve(
+        parakeet, whisper: Self.whisperEngine(path: nil), parakeetInstalled: no) == nil)
+    let whisper = MeetingAttemptConfiguration(requestedEngine: .whisper, language: .auto)
+    #expect(
+      await MeetingWiring.resolve(whisper, whisper: nil, parakeetInstalled: no) == nil)
+    #expect(
+      await MeetingWiring.resolve(
+        whisper, whisper: Self.whisperEngine(path: "/models/turbo.gguf", deliveryOn: false),
+        parakeetInstalled: no) == nil)
   }
 
   @Test("#3973 C3: a language only Whisper decodes is Auto on Parakeet, at Start and after a fallback")
@@ -1230,7 +1259,8 @@ struct MeetingWiringTests {
       requestedEngine: .whisper, language: .locked("haw"), supports: MeetingWiring.engineSupports)
     #expect(onWhisper.requestedEffectiveLanguage == "haw")
     #expect(
-      await MeetingWiring.resolve(onWhisper, whisper: Self.whisperEngine(path: nil))
+      await MeetingWiring.resolve(
+        onWhisper, whisper: Self.whisperEngine(path: nil), parakeetInstalled: { true })
         == .init(engine: .parakeet, fallbackReason: .notDownloaded, effectiveLanguage: nil))
   }
 

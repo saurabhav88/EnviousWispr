@@ -444,6 +444,13 @@ struct HistoryTranscriptView: View {
         }
       }
       .disabled(busy || !canRetranscribe || choices.isEmpty)
+      // #4578 (plan §3.10 item 8): with no speech engine downloaded, say how to get one back.
+      .help(
+        choices.isEmpty
+          ? String(
+            localized: "Download a speech engine in Settings to transcribe again.",
+            comment: "History, Transcribe again with menu: tooltip while no speech engine is downloaded.")
+          : "")
       if offersLocate {
         Button {
           locateRequested = true

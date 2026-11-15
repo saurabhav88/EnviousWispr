@@ -157,7 +157,7 @@ struct OnboardingWarmupTests {
   func unknownOwnedTransferIsCancelledSafely() async {
     for reset in [false, true] {
       let world = World()
-      world.upgradeServed = OnboardingParakeetAdmission()
+      world.upgradeServed = true
       world.upgradeUsable = false  // the upgrade is still downloading
       world.free = 10_000_000
       let c = world.coordinator()
@@ -167,7 +167,7 @@ struct OnboardingWarmupTests {
       c.send(.chooseSpeech(.parakeet))
       await c.settle()
       #expect(world.log.contains("request(parakeet)"))
-      world.upgradeKey = .init(state: .notReady, revision: 2)  // the answer is stale: unknown
+      world.upgradeSnapshot = nil  // the delivery facts changed: unknown
       if reset { c.reset() } else { c.cancelDownloads() }
       await c.settle()
       #expect(world.log.contains("cancel(parakeet)"), "reset: \(reset)")
@@ -175,7 +175,7 @@ struct OnboardingWarmupTests {
 
     // A newer start of the same engine takes ownership while the Cancel decision waits.
     let world = World()
-    world.upgradeServed = OnboardingParakeetAdmission()
+    world.upgradeServed = true
     world.upgradeUsable = false
     world.free = 10_000_000
     let c = world.coordinator()
@@ -186,7 +186,7 @@ struct OnboardingWarmupTests {
     c.send(.next)
     c.send(.skipPolish)
     await c.settle()
-    world.upgradeKey = .init(state: .notReady, revision: 2)
+    world.upgradeSnapshot = nil
     let cancelRead = Gate()
     let retryRead = Gate()
     world.admissionGateQueue = [cancelRead, retryRead]
@@ -273,7 +273,7 @@ struct OnboardingWarmupTests {
   )
   func upgradeServedFirstPick() async {
     let world = World()
-    world.upgradeServed = OnboardingParakeetAdmission()  // empty: the owner has not answered
+    world.upgradeServed = true  // nothing settled yet: the owner has not answered
     world.free = 10
     world.bytes = [.speech(.parakeet): 1_000]
     let c = world.coordinator()
@@ -288,8 +288,8 @@ struct OnboardingWarmupTests {
     c.send(.skipPolish)
     let downloads = OnboardingDownloads(owners: world.downloadOwners())
     #expect(OnboardingLiveMapping.downloadsFinished(c.state.choices, downloads: downloads))
-    // The delivery facts change (a new key): unknown again, and Cancel still sends nothing.
-    world.upgradeKey = .init(state: .notReady, revision: 2)
+    // The delivery facts change: unknown again, and Cancel still sends nothing.
+    world.upgradeSnapshot = nil
     #expect(downloads.speechPhase(.parakeet) == .unknown)
     c.cancelDownloads()
     #expect(!world.log.contains("cancel(parakeet)"))

@@ -93,6 +93,8 @@ package final class WisprBootstrapper {
   let backendMetadata: BackendMetadata
   /// #1171 — the sole owner of ASR-engine selection, status, and switching.
   let engineCoordinator: EngineCoordinator
+  /// #4578: the one owner of the speech engine models on this Mac (report, install, remove).
+  let speechModels: SpeechModelLibrary
   let dictationRuntime: DictationRuntime
   let hotkeyService: HotkeyService
   let appWindowCoordinator: AppWindowCoordinator
@@ -513,8 +515,18 @@ package final class WisprBootstrapper {
     // can be constructed with BOTH backend references before the Parakeet
     // driver below. No circular dependency: `WhisperDeliveryWiring.make`'s
     // inputs are already in scope. #3735: the backend is transcribe.cpp.
+    // #4578: the one speech-model owner. Built before the Whisper wiring, whose Remove is this
+    // library's command; the Whisper parts it drives are attached right after they exist.
+    let speechModels = SpeechModelLibrary(modelDelivery: modelDelivery)
     let whisper = WhisperDeliveryWiring.make(
-      modelDelivery: modelDelivery, settings: settings, engineMutationScope: engineMutationScope)
+      modelDelivery: modelDelivery, settings: settings, engineMutationScope: engineMutationScope,
+      removeModel: SpeechModelLibrary.whisperRemoveAction(speechModels))
+    speechModels.attachWhisper(
+      .init(setupService: whisper.setupService, migration: whisper.migration, removal: whisper.removal))
+    // The first Parakeet installation read (joins the launch migration started just above).
+    speechModels.refreshParakeet()
+    // #4578: whether an interrupted removal left Parakeet bytes behind.
+    Task { await speechModels.refreshLeftovers() }
     let whisperBackend = whisper.backend
     // #3973 C3: EnviousMeet's own Whisper Large v3 Turbo (used only while dictation runs
     // Parakeet). One instance for the process; loaded for one engine operation at a time.
@@ -1487,7 +1499,9 @@ package final class WisprBootstrapper {
         // completion warms instead. Setup usually left the engine warm already (this joins or
         // no-ops); after a completion restored on relaunch, or Skip practice while Practice
         // was still preparing, it is what keeps the first dictation from starting cold.
-        Task { [weak kernelDriver] in
+        Task { [weak kernelDriver, weak speechModels] in
+          // #4578: a missing engine is not warmed (a warm of a missing Parakeet downloads it).
+          guard await speechModels?.freshInstalled(.parakeet) == true else { return }
           guard settings.selectedBackend == .parakeet,
             asrManager.activeBackendType == .parakeet
           else { return }
@@ -1532,7 +1546,9 @@ package final class WisprBootstrapper {
     {
       // #3546: launch is a model-selection point.
       parakeetUpgrade.markSelectionPoint()
-      Task { [weak kernelDriver] in
+      Task { [weak kernelDriver, weak speechModels] in
+        // #4578: the initial installation read settles first; a missing engine is not warmed.
+        guard await speechModels?.freshInstalled(.parakeet) == true else { return }
         // Discard the outcome so the Task's Success type stays Void
         // (`EngineWarmupOutcome` does not declare Sendable conformance).
         _ = await kernelDriver?.ensureEngineWarm(reason: .launch)
@@ -1566,7 +1582,15 @@ package final class WisprBootstrapper {
     let diagnosticsCoordinator = DiagnosticsCoordinator(
       benchmark: BenchmarkSuite(
         engineMutationScope: engineMutationScope, engineLease: engineLease,
-        isEngineSwitching: { engineCoordinatorForRecoveryGate?.isSwitching ?? false }))
+        isEngineSwitching: { engineCoordinatorForRecoveryGate?.isSwitching ?? false },
+        // #4578: both speed-test entry points load through `ensureModelLoaded`; the job
+        // decision runs there first. The active engine is the one the test loads.
+        missingEngineLabel: { [weak speechModels, asrManager, kernelDriver, whisperKernelDriver] in
+          guard let speechModels else { return nil }
+          let engine = asrManager.activeBackendType
+          guard await !speechModels.admits(.benchmark, requested: engine) else { return nil }
+          return (engine == .whisper ? whisperKernelDriver : kernelDriver).engineDisplayName
+        }))
 
     // **Two arguments, and no self-reference problem to solve** (#2292 C3).
     // This used to hand over three closures, one of which resolved the chip's
@@ -1639,6 +1663,12 @@ package final class WisprBootstrapper {
         checkerEligibility?.wordCheck?.recoveryFinished(
           needsWordCheck: !LearnedWordCheckerEngine.hasOwnChecker(provider))
         settingsSync?.outputClassifierRecoveryFinished(provider: provider, settings: settings)
+      },
+      // #4578: replay never downloads a missing engine; it ends through the terminal refusal.
+      activeEngineMissing: { [weak speechModels, asrManager] in
+        guard let speechModels else { return nil }
+        let engine = asrManager.activeBackendType
+        return await speechModels.admits(.recoveryReplay, requested: engine) ? nil : engine
       },
       // Best-effort: the snapshot carries only the custom-words version, so recovery
       // applies the user's CURRENT words (pack terms omitted) — normal-quality, not
@@ -1732,8 +1762,13 @@ package final class WisprBootstrapper {
         isMeetingOwnModelResident: { [meetingBox] backend in
           meetingBox.coordinator?.isFinalPassOwnModelResident(backend) ?? false
         },
-        isInstalled: { [setup] backend in
-          backend == .parakeet ? true : setup.whisperSetup.setupState == .ready
+        // #4578: the library's settled fact; unknown is not installed here, and
+        // `isInstallationKnown` keeps the switch and warm waiting until it settles.
+        isInstalled: { [weak speechModels] backend in
+          speechModels?.installedSnapshot(backend) ?? false
+        },
+        isInstallationKnown: { [weak speechModels] backend in
+          speechModels?.installedSnapshot(backend) != nil
         },
         stateLabel: { [kernelDriver, whisperKernelDriver] backend in
           (backend == .whisper ? whisperKernelDriver : kernelDriver).state.telemetryLabel
@@ -1991,14 +2026,11 @@ package final class WisprBootstrapper {
       // removed (founder: no new dictations during a removal drain; the drain's
       // first instants can still read installed+ready). Defaults OPEN on a
       // missing authority.
-      isSelectedModelInstalled: { [weak engineCoordinator, weak setup] in
-        guard let engineCoordinator else { return true }
-        if engineCoordinator.status.selected == .whisper,
-          setup?.whisperSetup.isRemoving == true
-        {
-          return false
-        }
-        return engineCoordinator.status.selectedInstalled
+      isSelectedModelInstalled: { [weak engineCoordinator, weak speechModels] in
+        guard let engineCoordinator, let speechModels else { return true }
+        // #4578: one decision over fresh facts. A model mid-removal reads not installed
+        // (`installedSnapshot`), as before.
+        return await speechModels.admits(.dictation, requested: engineCoordinator.status.selected)
       },
       endMinting: { [weak engineCoordinator] in engineCoordinator?.endMinting() },
       // #3546 A3: a press during the in-session Ultra activation gets the upgrade pills.
@@ -2193,6 +2225,7 @@ package final class WisprBootstrapper {
       permissions: permissions,
       keychainManager: keychainManager,
       cloudModelList: { [cloudModelList] in cloudModelList.snapshot?.list },
+      speechModelsInstalled: { [weak speechModels] in speechModels?.launchInstalledLabel() },
       standingSnapshotBuilder: standingSnapshotBuilder,
       contactsImportCoordinator: contactsImportCoordinator,
       aiAvailability: aiAvailability,
@@ -2454,7 +2487,14 @@ package final class WisprBootstrapper {
       engineSelectionSettled: { [settings, asrManager] in
         settings.selectedBackend == asrManager.activeBackendType
       },
-      ensureEngineReady: ensureSelectedEngineReady,
+      // #4578: Transcribe a File asks the one decision first (fresh facts), then the shared
+      // readiness drive; a missing engine is refused before any load, so nothing downloads.
+      ensureEngineReady: { [weak engineCoordinator, weak speechModels] in
+        guard let engineCoordinator, let speechModels else { return .notReady }
+        guard await speechModels.admits(.fileImport, requested: engineCoordinator.status.selected)
+        else { return .notInstalled }
+        return await ensureSelectedEngineReady()
+      },
       // The same three retries a finished dictation fires
       // (`DictationLifecycleCoordinator` on its terminal), because an import
       // blocks the same three things: an engine switch deferred by gate 6b, an
@@ -2634,6 +2674,7 @@ package final class WisprBootstrapper {
     }
     let setupOwners = OnboardingLiveOwners(
       settings: settings, modelDelivery: modelDelivery, whisperSetup: setup.whisperSetup,
+      speechModels: speechModels,
       localPolish: localPolishRuntimes, engineCoordinator: engineCoordinator,
       aiAvailability: aiAvailability, llmDiscovery: llmDiscovery,
       savedKeyPresence: savedKeyPresence, permissions: permissions,
@@ -2928,6 +2969,9 @@ package final class WisprBootstrapper {
       memoryPressure: meetingMemoryPressure,
       offlineModeAdmission: concreteASRManager,
       meetingSelection: { [parakeetUpgrade] in await parakeetUpgrade.meetingSelection() },
+      parakeet: MeetingWiring.ParakeetInstallation(
+        installed: { [weak speechModels] in await speechModels?.freshInstalled(.parakeet) ?? false },
+        installedNow: { [weak speechModels] in speechModels?.installedSnapshot(.parakeet) == true }),
       modelUseGate: modelDelivery.controller.meetingModelUseGate,
       isDeliveryEnabled: { [modelDelivery] in modelDelivery.parakeetHandle?.isEnabled() ?? false },
       workChanged: { [weak engineCoordinator] in engineCoordinator?.poke(.parakeetUpgradeOwed) },
@@ -3131,6 +3175,9 @@ package final class WisprBootstrapper {
           SentryCaptureBoundaryError.normalizingTranscriptionFailure(error),
           category: .asrFailed, stage: "file_import",
           extra: ["backend": backend.rawValue, "trigger": "transcribe_again"])
+      },
+      installedEngines: { [weak speechModels] in
+        await speechModels?.freshInstalledEngines() ?? []
       })
     let transcriptRetranscription = TranscriptRetranscription(
       history: transcriptCoordinator, sources: importedSources,
@@ -3254,10 +3301,7 @@ package final class WisprBootstrapper {
       onActive: { [weak meetingSpeakerLabels] in meetingSpeakerLabels?.meetingBecameActive() })
     self.meetingTranscriptEngineRow = MeetingTranscriptEngineRowModel(
       environment: .init(
-        settings: settings, whisperSetup: whisper.setupService,
-        isMeetingActive: { [weak meetingCoordinator] in
-          meetingCoordinator?.isMeetingActive ?? false
-        }))
+        settings: settings, whisperSetup: whisper.setupService))
     let meetingStartFlow = MeetingStartFlow(
       dependencies: .init(
         isSetUp: { [settings] in settings.meetingOnboardingComplete },
@@ -3285,6 +3329,21 @@ package final class WisprBootstrapper {
         },
         settledStart: { [weak meetingBox] request, recordingID in
           meetingBox?.callDetection?.settledStart(request, recordingID: recordingID)
+        },
+        // #4578: the meeting-start rule over fresh facts: any downloaded engine can write the
+        // transcript (the meeting uses the other one when its own is missing).
+        hasTranscriptionEngine: { [weak speechModels, settings] in
+          guard let speechModels else { return false }
+          let installed = await speechModels.freshInstalledEngines()
+          return SpeechJobAdmission.decide(
+            .meetingStart, requested: settings.meetingTranscriptEngine.backendType,
+            installed: installed
+          ).engine != nil
+        },
+        showNoTranscriptionEngine: { [weak meetingBox, navigationCoordinator, appWindowCoordinator] in
+          if meetingBox?.callDetection?.showNoTranscriptionEngine() == true { return }
+          navigationCoordinator.request(.meetings(.models))
+          appWindowCoordinator.showWindow()
         }))
     meetingBox.startFlow = meetingStartFlow
     self.meetingStartFlow = meetingStartFlow
@@ -3338,6 +3397,10 @@ package final class WisprBootstrapper {
         // #4058: the prompt's Open settings and its turn-off-an-app tips point at Call Apps.
         showMeetingPage: { [navigationCoordinator, appWindowCoordinator] in
           navigationCoordinator.request(.meetings(.callApps))
+          appWindowCoordinator.showWindow()
+        },
+        showMeetingModels: { [navigationCoordinator, appWindowCoordinator] in
+          navigationCoordinator.request(.meetings(.models))
           appWindowCoordinator.showWindow()
         },
         anchor: { [menuBarControllerHolder] in menuBarControllerHolder.controller?.statusItemFrame
@@ -3394,6 +3457,7 @@ package final class WisprBootstrapper {
     self.lastRecordingResult = lastRecordingResult
     self.backendMetadata = backendMetadata
     self.engineCoordinator = engineCoordinator
+    self.speechModels = speechModels
     self.dictationRuntime = dictationRuntime
     self.hotkeyService = hotkeyService
     self.appWindowCoordinator = appWindowCoordinator
@@ -3559,6 +3623,45 @@ package final class WisprBootstrapper {
         || (engineLease?.isBusy ?? true)
     }
     engineCoordinator.start()
+    // #4578: an installation fact changed (a read settled, a removal or install finished):
+    // the coordinator re-reads its status and switch gate.
+    speechModels.onInstallationChanged = { [weak engineCoordinator] in
+      engineCoordinator?.poke(.setupStateChanged)
+    }
+    // #4578: Parakeet Remove refuses, before any work, whatever may be using Parakeet now: a
+    // dictation on either engine (Parakeet's own config, a session being made, the live
+    // recording), any workload holding the one inference slot (file import, Transcribe again,
+    // benchmark, recovery, a meeting's shared pass, an abandoned decode), recovery, an engine
+    // switch, and an active meeting (its final pass may still need Parakeet, own copy or
+    // shared). With those refused, the dictation engine is the only resident copy left.
+    speechModels.parakeetRemoval.refusal = {
+      [weak kernelDriver, weak whisperKernelDriver, weak engineCoordinator, weak engineLease,
+       liveRecordingState, weak recoveryCoordinator, weak diagnosticsCoordinator,
+       meetingIsActive] in
+      let busy =
+        kernelDriver?.currentSessionConfig != nil
+        || whisperKernelDriver?.currentSessionConfig != nil
+        || (engineCoordinator?.isMintingAnySession ?? true)
+        || (engineCoordinator?.isSwitching ?? true)
+        || liveRecordingState.isDictationActive
+        || (engineLease?.isBusy ?? true)
+        || (recoveryCoordinator?.isRecovering ?? true)
+        || (diagnosticsCoordinator?.benchmark.isRunning ?? true)
+      if busy { return .refusedDictationInFlight }
+      if meetingIsActive() { return .refusedMeetingActive }
+      return nil
+    }
+    speechModels.parakeetRemoval.unloadForRemoval = { [weak kernelDriver, asrManager] in
+      // The idle-unload timer must not race the unload; the same order as the Ultra
+      // activation's unload.
+      kernelDriver?.cancelPendingEngineUnload()
+      await asrManager.unloadModel()
+      // Freed only when no Parakeet model stays loaded (an unload refused mid-stream).
+      return !(asrManager.activeBackendType == .parakeet && asrManager.isModelLoaded)
+    }
+    speechModels.parakeetRemoval.finishRemoval = { [weak engineCoordinator] in
+      engineCoordinator?.poke(.setupStateChanged)
+    }
 
     // Initialize observability (PostHog + Sentry) unconditionally at launch.
     // #919: same timing as before — the shell's `App.init()` constructs this
@@ -3899,6 +4002,8 @@ private struct AppHomesEnvironment: ViewModifier {
         .environment(b.backendMetadata)
         .environment(b.engineCoordinator)
         .environment(b.modelDelivery)
+        // #4578: the speech-model owner the Settings engine rows read and command.
+        .environment(b.speechModels)
         .environment(b.checkerEligibility)
         .environment(b.dictationRuntime)
         .environment(b.appWindowCoordinator)

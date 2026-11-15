@@ -47,6 +47,7 @@
       var stopReasons: [MeetingEndedTelemetry.StopReason] = []
       var reportedFacts: [(UUID, CallDetectionPolicy.CallFacts)] = []
       var pageShown = 0
+      var modelsPageShown = 0
       var events: [MeetingCallPromptTelemetry] = []
       var clock = Date(timeIntervalSince1970: 3_000_000)
       var nextOutcome: MeetingStartFlow.Outcome?
@@ -148,6 +149,7 @@
             detectedStartIsBlocked: { [weak self] in self?.blocked ?? true },
             dictationActive: { [weak self] in self?.dictation ?? false },
             showMeetingPage: { [weak self] in self?.pageShown += 1 },
+            showMeetingModels: { [weak self] in self?.modelsPageShown += 1 },
             anchor: { nil },
             emit: { [weak self] in self?.events.append($0) },
             snapshot: { [evidenceAnswer, evidenceReads, snapshotAnswer] rule, pid, retained in
@@ -2414,6 +2416,27 @@
       #expect(rig.pageShown == 1)
     }
 
+    /// #4578: a detected call with no speech engine. When this fails, the user says Yes and
+    /// nothing happens, or Open Settings lands somewhere with no way to download an engine.
+    @Test("no speech engine: the card says so and Open Settings opens EnviousMeet > Models")
+    func noEngineCardOpensModels() async throws {
+      let rig = try Rig()
+      rig.nextOutcome = .noTranscriptionEngine
+      rig.zoomReady()
+      #expect(rig.press("yes"))
+      #expect(await settleUntilObserved { rig.panel.content == .noTranscriptionEngine })
+      #expect(rig.press("openSettings"))
+      #expect(rig.modelsPageShown == 1 && rig.pageShown == 0)
+    }
+
+    /// #4578: a hand-started meeting refused for no engine shows the same card.
+    @Test("a hand-started meeting with no engine shows the no-engine card")
+    func handStartNoEngineCard() async throws {
+      let rig = try Rig()
+      #expect(rig.coordinator.showNoTranscriptionEngine())
+      #expect(await settleUntilObserved { rig.panel.content == .noTranscriptionEngine })
+    }
+
     @Test("a late stop never detaches a newer recording")
     func lateStopKeepsNewerRecording() async throws {
       let rig = try Rig()
@@ -2854,6 +2877,7 @@
       case .manualStart(let identity): "manualStart:\(identity.displayName)"
       case .needsAttention: "needsAttention"
       case .couldNotStart: "couldNotStart"
+      case .noTranscriptionEngine: "noTranscriptionEngine"
       case .firstTip: "firstTip"
       case .lastTip(let app): "lastTip:\(app)"
       case .stillInMeeting(let seconds): "stillInMeeting:\(seconds)"

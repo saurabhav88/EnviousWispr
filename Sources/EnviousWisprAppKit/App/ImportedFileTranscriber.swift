@@ -60,6 +60,8 @@ final class ImportedFileTranscriber {
     let release: @MainActor () -> Void
   }
 
+  /// #4578: the engines installed now (`SpeechModelLibrary`), read fresh when unknown.
+  private let installedEngines: @MainActor () async -> Set<ASRBackendType>
   private let admission: EngineAdmissionAccess
   private let engines: any ImportedASREngines
   private let decode: @Sendable (URL) async throws -> AudioFileDecoder.Decoded
@@ -84,8 +86,10 @@ final class ImportedFileTranscriber {
     readIdentity: @escaping @Sendable (URL) async throws -> ImportedSourceIdentity = {
       try await ImportedSourceFingerprint.read(url: $0)
     },
-    captureASRFailure: @escaping @MainActor (any Error, ASRBackendType) -> Void = { _, _ in }
+    captureASRFailure: @escaping @MainActor (any Error, ASRBackendType) -> Void = { _, _ in },
+    installedEngines: @escaping @MainActor () async -> Set<ASRBackendType> = { [.parakeet, .whisper] }
   ) {
+    self.installedEngines = installedEngines
     self.admission = admission
     self.engines = engines
     self.cleanup = cleanup
@@ -127,6 +131,15 @@ final class ImportedFileTranscriber {
     froze: inout Bool
   ) async -> Result<Transcript, Failure> {
     let backend = selection.backendType
+    // #4578: the job decision first (the person picked this model by name: never a substitute).
+    // The admission and model-identity checks under the install hold below still protect the
+    // exact bytes.
+    let installed = await installedEngines()
+    guard
+      SpeechJobAdmission.decide(.importedFileRetranscribe, requested: backend, installed: installed)
+        == .use(backend)
+    else { return .failure(.modelUnavailable) }
+    if Task.isCancelled { return .failure(.cancelled) }
     let frozen = cleanup.freeze(backend)
     froze = true
     heldRun = frozen

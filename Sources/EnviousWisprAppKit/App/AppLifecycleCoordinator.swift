@@ -59,6 +59,8 @@ final class AppLifecycleCoordinator {
   private let keychainManager: KeychainManager
   /// #4353 D6: the cloud model list in use now; each warm-up reads it once.
   private let cloudModelList: @MainActor () -> CloudModelList?
+  /// #4578 §3.9: `app.launched` `speech_models_installed`, nil when unknown (omitted).
+  private let speechModelsInstalled: @MainActor () -> String?
   /// #2997: the launch `settings.snapshot` emitter, built by the bootstrapper, which holds
   /// every coordinator the snapshot reads. Replaces the `customWordsCoordinator` this type
   /// stored only to build the same emitter here.
@@ -111,6 +113,7 @@ final class AppLifecycleCoordinator {
     permissions: PermissionsService,
     keychainManager: KeychainManager,
     cloudModelList: @escaping @MainActor () -> CloudModelList?,
+    speechModelsInstalled: @escaping @MainActor () -> String?,
     standingSnapshotBuilder: StandingSnapshotBuilder,
     contactsImportCoordinator: ContactsImportCoordinator,
     aiAvailability: AIAvailabilityCoordinator,
@@ -141,6 +144,7 @@ final class AppLifecycleCoordinator {
     self.permissions = permissions
     self.keychainManager = keychainManager
     self.cloudModelList = cloudModelList
+    self.speechModelsInstalled = speechModelsInstalled
     self.standingSnapshotBuilder = standingSnapshotBuilder
     self.contactsImportCoordinator = contactsImportCoordinator
     self.aiAvailability = aiAvailability
@@ -279,13 +283,18 @@ final class AppLifecycleCoordinator {
     let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
     let osVer = ProcessInfo.processInfo.operatingSystemVersion
     let osVersion = "\(osVer.majorVersion).\(osVer.minorVersion).\(osVer.patchVersion)"
+    // #4578 §3.9: the row also says which speech models are installed when the speech
+    // library's first reads have already settled; omitted, never guessed, when they have not.
+    let speechModelsInstalled = speechModelsInstalled
     Task.detached(priority: .utility) {
       let snap = AppleIntelligenceDiagnosticsService.launchSnapshot()
+      let installed = await MainActor.run { speechModelsInstalled() }
       await TelemetryService.shared.appLaunched(
         version: version, build: build, osVersion: osVersion,
         hardware: snap.hardwareClass, deviceModel: snap.deviceModel,
         isFreshInstall: isFreshInstall,
-        aiCapable: snap.isCapable, aiEnabled: snap.isEnabled)
+        aiCapable: snap.isCapable, aiEnabled: snap.isEnabled,
+        speechModelsInstalled: installed)
     }
 
     // Check Accessibility permission on launch (query only — never auto-prompt).

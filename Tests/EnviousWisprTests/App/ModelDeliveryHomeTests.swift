@@ -88,7 +88,7 @@ struct ModelDeliveryHomeTests {
     }
   }
 
-  @Test("construction migrates an existing v3 donor copy into our v3 directory")
+  @Test("launch migrates an existing v3 donor copy into our v3 directory")
   func launchMigratesTheRetiredV3Donor() async throws {
     let fixture = try ParakeetHomeFixture.make()
     let donor = ParakeetInstallLocation.legacySharedDonor(appSupport: fixture.appSupport)
@@ -98,7 +98,10 @@ struct ModelDeliveryHomeTests {
         tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
       manifestBundle: fixture.bundle, appSupportOverride: fixture.root,
       retiredV3Progress: .init(write: { _, _, _ in }, clear: {}))
-    _ = try await Self.awaitBounded(home.retiredV3LaunchMigrationForTesting)
+    // #4578: the launch migration starts with the coordinator, which reads the install intent.
+    _ = home.installParakeetUpgrade(
+      parakeetSelection: ParakeetSelectionProvider(), isOnboardingComplete: { false })
+    _ = try await Self.awaitBounded(home.retiredV3LaunchMigration)
     let owned = ParakeetInstallLocation.directory(for: .v3, dataDirectory: fixture.dataDirectory)
     for file in ManifestFixture.smallFiles {
       #expect(try Data(contentsOf: owned.appendingPathComponent(file.path)) == file.content)
@@ -141,6 +144,113 @@ struct ModelDeliveryHomeTests {
       parakeetSelection: ParakeetSelectionProvider(), isOnboardingComplete: { onboarding })
     try await Self.awaitBounded(home.parakeetObserverSetupForTesting)
     return (home, coordinator)
+  }
+
+  /// #4578: the whole Remove over real files. When this fails, Remove leaves a copy of
+  /// Parakeet (or its partial download) on disk, deletes another app's FluidAudio copy, brings
+  /// Parakeet back at the next launch, or hides files a failed deletion left behind.
+  @Test("Remove deletes both owned copies and staging, keeps the donor and survives a relaunch")
+  func parakeetRemoveDeletesEverythingOurs() async throws {
+    let fixture = try ParakeetHomeFixture.make()
+    defer { try? FileManager.default.removeItem(at: fixture.root) }
+    let donor = ParakeetInstallLocation.legacySharedDonor(appSupport: fixture.appSupport)
+    try ParakeetHomeFixture.writeBytes(into: donor)
+    try await ParakeetHomeFixture.seedAdmitted(.ultra, fixture)
+    try await ParakeetHomeFixture.seedAdmitted(.v3, fixture)
+    let (home, upgrade) = try await Self.upgradeHome(fixture)
+    _ = await home.retiredV3LaunchMigration?.value
+    let ultraDir = ParakeetInstallLocation.directory(for: .ultra, dataDirectory: fixture.dataDirectory)
+    let v3Dir = ParakeetInstallLocation.directory(for: .v3, dataDirectory: fixture.dataDirectory)
+    let ultraRegistration = DeliveryRegistration(
+      manifest: fixture.ultra, installDirectory: ultraDir,
+      metadataDirectory: fixture.dataDirectory.appendingPathComponent("ModelDelivery"))
+    let staging = ModelDeliveryController.stagingDirectoryURL(for: ultraRegistration)
+    try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
+    try Data(repeating: 1, count: 64).write(to: staging.appendingPathComponent("part.bin"))
+    let library = SpeechModelLibrary(modelDelivery: home)
+    #expect(await library.freshInstalled(.parakeet))
+    library.parakeetRemoval.refusal = { nil }
+    library.parakeetRemoval.unloadForRemoval = { true }
+
+    await library.removeParakeet()?.value
+
+    #expect(library.parakeetRemoveNotice == nil)
+    #expect(!FileManager.default.fileExists(atPath: ultraDir.path))
+    #expect(!FileManager.default.fileExists(atPath: v3Dir.path))
+    #expect(!ModelDeliveryController.hasStagedPartialsOnDisk(ultraRegistration))
+    for file in ManifestFixture.smallFiles {
+      #expect(
+        try Data(contentsOf: donor.appendingPathComponent(file.path)) == file.content,
+        "another app's FluidAudio copy is never touched")
+    }
+    #expect(library.parakeetHasLeftovers == false)
+    #expect(await library.freshInstalled(.parakeet) == false)
+    #expect(upgrade.isInstallWanted == false)
+
+    // The next launch over the same disk: nothing comes back from the donor.
+    let (relaunched, _) = try await Self.upgradeHome(fixture)
+    _ = await relaunched.retiredV3LaunchMigration?.value
+    #expect(!FileManager.default.fileExists(atPath: v3Dir.path), "the donor was not copied back")
+    #expect(await SpeechModelLibrary(modelDelivery: relaunched).freshInstalled(.parakeet) == false)
+  }
+
+  /// #4578: a deletion that fails part-way. When this fails, the person sees "not installed"
+  /// with hundreds of megabytes left behind and no way to remove them.
+  @Test("a Remove whose deletion fails says so and reports the leftover files")
+  func parakeetRemoveFailureLeavesLeftovers() async throws {
+    let fixture = try ParakeetHomeFixture.make()
+    let ultraDir = ParakeetInstallLocation.directory(for: .ultra, dataDirectory: fixture.dataDirectory)
+    defer {
+      try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: ultraDir.path)
+      try? FileManager.default.removeItem(at: fixture.root)
+    }
+    try await ParakeetHomeFixture.seedAdmitted(.ultra, fixture)
+    let (home, _) = try await Self.upgradeHome(fixture)
+    // The component files cannot be deleted; the marker (in the metadata folder) can.
+    try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: ultraDir.path)
+    let library = SpeechModelLibrary(modelDelivery: home)
+    library.parakeetRemoval.refusal = { nil }
+    library.parakeetRemoval.unloadForRemoval = { true }
+
+    await library.removeParakeet()?.value
+
+    #expect(library.parakeetRemoveNotice == .failed)
+    #expect(library.parakeetHasLeftovers)
+    #expect(await library.freshInstalled(.parakeet) == false)
+  }
+
+  /// #4578 §3.4: one Parakeet command at a time. When this fails, Remove deletes a model while
+  /// Set up model is installing it, or a second Set up model resets the download cycle again.
+  @Test("while Set up model runs, Remove and a second Set up model are refused and change nothing")
+  func parakeetInstallExcludesRemove() async throws {
+    let fixture = try ParakeetHomeFixture.make()
+    defer { try? FileManager.default.removeItem(at: fixture.root) }
+    // Complete, unmarked Ultra bytes: the install validates them, and the test holds it there.
+    try ParakeetHomeFixture.writeBytes(
+      into: ParakeetInstallLocation.directory(for: .ultra, dataDirectory: fixture.dataDirectory))
+    let (home, upgrade) = try await Self.upgradeHome(fixture)
+    let entered = BoundedWait.Signal()
+    let release = BoundedWait.Signal()
+    await home.controller.setBeforeExistingCacheValidationForTesting {
+      entered.fire()
+      try? await BoundedWait.until(release)
+    }
+    let library = SpeechModelLibrary(modelDelivery: home)
+    var unloads = 0
+    library.parakeetRemoval.refusal = { nil }
+    library.parakeetRemoval.unloadForRemoval = { unloads += 1; return true }
+
+    let install = try #require(library.installParakeet())
+    try await BoundedWait.until(entered)
+    #expect(library.isInstallingParakeet)
+    #expect(library.removeParakeet() == nil)
+    #expect(library.installParakeet() == nil)
+    #expect(upgrade.isInstallWanted && unloads == 0 && !library.isRemovingParakeet)
+    release.fire()
+    _ = await install.value
+    await home.controller.setBeforeExistingCacheValidationForTesting(nil)
+    #expect(!library.isInstallingParakeet)
+    #expect(await library.freshInstalled(.parakeet), "the held install finished")
   }
 
   @Test("Settings' Try again warms once after a granted cycle, never after a refused one",
@@ -624,29 +734,6 @@ struct ModelDeliveryHomeTests {
       manifestBundle: try manifestBundle(), appSupportOverride: try tempAppSupport())
     let fixture = try writeFastAdmissionFixture(home: home)
     return (home, fixture.directory)
-  }
-
-  @Test("Settings admission re-check sees file removal and acquires no mutation claim")
-  func freshSettingsAdmission() async throws {
-    final class Box { var claims = 0 }
-    let box = Box()
-    let home = ModelDeliveryHome(
-      engineMutationScope: .live(
-        tryBegin: {
-          box.claims += 1
-          return false
-        }, end: { false }, wake: {}, onRefused: { _ in }),
-      manifestBundle: try Self.manifestBundle(), appSupportOverride: try Self.tempAppSupport())
-    #expect(await home.currentParakeetAdmission() == false)
-    let (manifest, directory, admission, marker) = try Self.writeFastAdmissionFixture(home: home)
-    #expect(await home.currentParakeetAdmission())
-    try FileManager.default.removeItem(
-      at: directory.appendingPathComponent(try #require(manifest.files.first).resolvedInstallPath))
-    #expect(await home.currentParakeetAdmission() == false)
-    #expect(try Data(contentsOf: admission.markerURL) == marker, "a read changed the marker")
-    #expect(box.claims == 0, "a read attempted an engine mutation")
-    #expect(
-      await home.controller.state(of: manifest.identity) == .notReady, "a read started delivery")
   }
 
   // MARK: - #2123: removal frees the disk, which means releasing first
@@ -1297,6 +1384,20 @@ private enum ParakeetHomeFixture {
       manifest: fixture.retired,
       installDirectory: ParakeetInstallLocation.directory(
         for: .v3, dataDirectory: fixture.dataDirectory),
+      metadataDirectory: fixture.dataDirectory.appendingPathComponent("ModelDelivery"))
+    try writeBytes(into: registration.installDirectory)
+    #expect(await seedController.admitIfComplete(registration))
+  }
+
+  /// #4578: an admitted owned install of `model`, written before Home is constructed.
+  static func seedAdmitted(_ model: ParakeetModel, _ fixture: Made) async throws {
+    let seedController = ModelDeliveryController(
+      defaults: TestDefaults.suite("test.home-seed.\(UUID().uuidString)")!,
+      availableDiskBytes: { _ in .max })
+    let registration = DeliveryRegistration(
+      manifest: model == .ultra ? fixture.ultra : fixture.retired,
+      installDirectory: ParakeetInstallLocation.directory(
+        for: model, dataDirectory: fixture.dataDirectory),
       metadataDirectory: fixture.dataDirectory.appendingPathComponent("ModelDelivery"))
     try writeBytes(into: registration.installDirectory)
     #expect(await seedController.admitIfComplete(registration))

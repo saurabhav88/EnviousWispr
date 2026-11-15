@@ -270,15 +270,4 @@ struct OnboardingDownloadsTests {
       OnboardingDownloads.phase(parakeet: .notReady, needsExplicitRetry: true, usable: true)
         == .unavailable)
   }
-
-  @Test("the remembered answer counts only for the delivery key it was read under")
-  func parakeetAdmissionKey() {
-    let admission = OnboardingParakeetAdmission()
-    let key = OnboardingParakeetAdmission.Key(state: .notReady, revision: 3)
-    #expect(admission.usable(at: key) == nil)
-    admission.record(true, at: key)
-    #expect(admission.usable(at: key) == true)
-    #expect(admission.usable(at: .init(state: .notReady, revision: 4)) == nil)
-    #expect(admission.usable(at: .init(state: .verifying, revision: 3)) == nil)
-  }
 }

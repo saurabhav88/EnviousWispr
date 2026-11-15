@@ -2462,6 +2462,7 @@ struct CallDetectionPolicyTests {
     for (result, expected) in [
       (Policy.StartResult.couldNotStart, Policy.Note.couldNotStart),
       (.needsAttention, .needsAttention),
+      (.noTranscriptionEngine, .noTranscriptionEngine),
     ] {
       var s = Story()
       s.ready([Self.zoom(.active)])

@@ -69,42 +69,6 @@ enum OnboardingDownloadPhase: Equatable, Sendable {
   case unavailable
 }
 
-/// Setup's last upgrade-aware answer to "is Parakeet usable" (#4528 P1, plan M70). The owner's
-/// answer is async (`ModelDeliveryHome.isParakeetUsable()`) and `parakeetState` mirrors only the
-/// BASE registration, which stays `.notReady` on a Mac the Parakeet upgrade serves. Setup's
-/// existing reads (readiness and the start path) record each answer with the delivery key read
-/// BEFORE the await; a synchronous phase uses it only while that key is still current.
-@MainActor
-final class OnboardingParakeetAdmission {
-  struct Key: Equatable {
-    let state: DeliveryState
-    let revision: UInt64
-  }
-
-  private var answer: (key: Key, usable: Bool)?
-
-  func record(_ usable: Bool, at key: Key) { answer = (key, usable) }
-
-  /// The recorded answer for `key`, or nil when the delivery facts changed since.
-  func usable(at key: Key) -> Bool? {
-    guard let answer, answer.key == key else { return nil }
-    return answer.usable
-  }
-
-  /// The current key of `modelDelivery`'s Parakeet facts.
-  static func key(_ modelDelivery: ModelDeliveryHome) -> Key {
-    Key(state: modelDelivery.parakeetState, revision: modelDelivery.parakeetPresentationRevision)
-  }
-
-  /// Reads the owner's answer through the existing call and records it under the pre-await key.
-  func read(_ modelDelivery: ModelDeliveryHome) async -> Bool {
-    let key = Self.key(modelDelivery)
-    let usable = await modelDelivery.isParakeetUsable()
-    record(usable, at: key)
-    return usable
-  }
-}
-
 /// The existing owners Setup's downloads go through, as narrow closures (plan §3.4, M6, M22).
 /// Production builds them with `live(...)` over ModelDeliveryHome, WhisperSetupService,
 /// LocalPolishRuntimeSet and SettingsManager; tests inject the boundary. Setup owns no model
@@ -303,43 +267,24 @@ extension OnboardingDownloadOwners {
   /// are.
   static func live(
     settings: SettingsManager, modelDelivery: ModelDeliveryHome, whisperSetup: WhisperSetupService,
-    localPolish: LocalPolishRuntimeSet, parakeetAdmission: OnboardingParakeetAdmission
+    speechModels: SpeechModelLibrary, localPolish: LocalPolishRuntimeSet
   ) -> OnboardingDownloadOwners {
     OnboardingDownloadOwners(
-      speechDeliveryEnabled: { engine in
-        switch engine {
-        case .parakeet: modelDelivery.parakeetHandle?.isEnabled() ?? false
-        case .whisper: modelDelivery.whisperHandle?.isEnabled() ?? false
-        }
-      },
-      speechInstalled: { engine in
-        switch engine {
-        case .parakeet: return await parakeetAdmission.read(modelDelivery)
-        case .whisper: return await modelDelivery.whisperHandle?.isAdmitted() ?? false
-        }
-      },
+      speechDeliveryEnabled: { engine in speechModels.isDeliveryEnabled(engine) },
+      // #4578: the one installation fact (`SpeechModelLibrary`), read fresh when unknown.
+      speechInstalled: { engine in await speechModels.freshInstalled(engine) },
       writeSelectedBackend: { engine in
         if settings.selectedBackend != engine { settings.selectedBackend = engine }
       },
       selectedBackend: { settings.selectedBackend },
       requestSpeech: { engine in
-        switch engine {
-        case .parakeet:
-          guard let attempt = modelDelivery.resumeParakeetDownload() else { return .refused }
-          switch await attempt.value {
-          case .refused: return .refused
-          case .attempted(let outcome): return .ended(OnboardingDownloads.result(of: outcome))
-          }
-        case .whisper:
-          return await whisperSetup.downloadModel().value ? .accepted : .refused
+        switch await speechModels.requestDownload(engine) {
+        case .refused: return .refused
+        case .accepted: return .accepted
+        case .ended(let outcome): return .ended(OnboardingDownloads.result(of: outcome))
         }
       },
-      cancelSpeech: { engine in
-        switch engine {
-        case .parakeet: modelDelivery.cancelParakeetDownload()
-        case .whisper: whisperSetup.cancelDownload()
-        }
-      },
+      cancelSpeech: { engine in speechModels.cancelDownload(engine) },
       clearSpeechBlock: { engine in
         engine == .parakeet ? modelDelivery.retryParakeetUpgradeIfBlocked() : true
       },
@@ -349,7 +294,7 @@ extension OnboardingDownloadOwners {
           OnboardingDownloads.phase(
             parakeet: modelDelivery.parakeetState,
             needsExplicitRetry: modelDelivery.parakeetNeedsExplicitRetry,
-            usable: parakeetAdmission.usable(at: OnboardingParakeetAdmission.key(modelDelivery)))
+            usable: speechModels.installedSnapshot(.parakeet))
         case .whisper: OnboardingDownloads.phase(whisper: whisperSetup.setupState)
         }
       },

@@ -84,10 +84,12 @@ struct OnboardingCoordinatorTests {
     var local: [LocalPolishModelID: OnboardingLocalPolishState] = [:]
     var permissions = (microphone: true, accessibility: true)
     var selected: ASRBackendType = .parakeet
-    /// An upgrade-served Parakeet (P1): the base mirror stays at `upgradeKey`, and only the owner's
-    /// installed read records the upgrade-aware answer into this cache (as live does).
-    var upgradeServed: OnboardingParakeetAdmission?
-    var upgradeKey = OnboardingParakeetAdmission.Key(state: .notReady, revision: 1)
+    /// An upgrade-served Parakeet (P1): the base mirror stays `.notReady`, and only the owner's
+    /// installed read settles the installation fact Setup's phase reads (as `SpeechModelLibrary`
+    /// does live, #4578).
+    var upgradeServed = false
+    /// That settled fact; nil while unknown. A delivery change makes it unknown again.
+    var upgradeSnapshot: Bool?
     /// What the upgrade-served owner answers for "is Parakeet usable" (false: still downloading).
     var upgradeUsable = true
     /// One gate per installed read, in order (used before `admissionGate`).
@@ -114,8 +116,8 @@ struct OnboardingCoordinatorTests {
           } else {
             await self.admissionGate?.pass()
           }
-          if engine == .parakeet, let admission = self.upgradeServed {
-            admission.record(self.upgradeUsable, at: self.upgradeKey)
+          if engine == .parakeet, self.upgradeServed {
+            self.upgradeSnapshot = self.upgradeUsable
             return self.upgradeUsable
           }
           return self.speechPhase[engine] == .installed
@@ -140,10 +142,9 @@ struct OnboardingCoordinatorTests {
         cancelSpeech: { self.log.append("cancel(\($0))") },
         clearSpeechBlock: { _ in true },
         speechPhase: { engine in
-          if engine == .parakeet, let admission = self.upgradeServed {
+          if engine == .parakeet, self.upgradeServed {
             return OnboardingDownloads.phase(
-              parakeet: self.upgradeKey.state, needsExplicitRetry: false,
-              usable: admission.usable(at: self.upgradeKey))
+              parakeet: .notReady, needsExplicitRetry: false, usable: self.upgradeSnapshot)
           }
           return self.speechPhase[engine] ?? .notStarted
         },
@@ -162,8 +163,8 @@ struct OnboardingCoordinatorTests {
     func makeCoordinator(owners: OnboardingDownloadOwners) -> OnboardingCoordinator {
       let sources = OnboardingReadinessSources(
         speechAdmitted: { engine in
-          if engine == .parakeet, let admission = self.upgradeServed {
-            admission.record(self.upgradeUsable, at: self.upgradeKey)
+          if engine == .parakeet, self.upgradeServed {
+            self.upgradeSnapshot = self.upgradeUsable
             return self.upgradeUsable
           }
           return self.speechPhase[engine] == .installed

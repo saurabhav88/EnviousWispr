@@ -463,9 +463,7 @@
   ]
  },
  "dictation.engine.allLanguagesAuto": {
-  "exempt": {
-   "statusLine": 1
-  },
+  "exempt": {},
   "mapped": [
    "casualMode",
    "currentEngineSection",
@@ -558,6 +556,7 @@
    "transcriptionEngine",
    "transcriptionEngine.change",
    "unloadModel",
+   "whisperModel.cancelDownload",
    "whisperModel.recheck",
    "whisperModel.resume"
   ]
@@ -617,7 +616,6 @@
    "transcriptionEngine.allLanguages",
    "transcriptionEngine.fast",
    "transcriptionEngine.keepCurrent",
-   "transcriptionEngine.recheckFast",
    "unloadModel"
   ]
  },

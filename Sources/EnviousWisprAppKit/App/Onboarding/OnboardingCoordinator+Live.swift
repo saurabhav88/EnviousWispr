@@ -13,6 +13,8 @@ struct OnboardingLiveOwners {
   let settings: SettingsManager
   let modelDelivery: ModelDeliveryHome
   let whisperSetup: WhisperSetupService
+  /// #4578: speech-model questions and commands (installed, download, cancel).
+  let speechModels: SpeechModelLibrary
   let localPolish: LocalPolishRuntimeSet
   let engineCoordinator: EngineCoordinator
   let aiAvailability: AIAvailabilityCoordinator
@@ -62,8 +64,8 @@ extension OnboardingCoordinator.Dependencies {
     return Self(
       downloads: OnboardingDownloads(owners: OnboardingLiveMapping.downloadOwners(owners, facts: facts)),
       readinessSources: OnboardingLiveMapping.withFaults(.live(
-        modelDelivery: owners.modelDelivery, engineCoordinator: owners.engineCoordinator,
-        localPolish: owners.localPolish, parakeetAdmission: facts.parakeetAdmission,
+        speechModels: owners.speechModels, engineCoordinator: owners.engineCoordinator,
+        localPolish: owners.localPolish,
         appleIntelligence: appleIntelligence,
         cloudEvidence: { provider in
           OnboardingLiveMapping.cloudEvidence(
@@ -189,8 +191,8 @@ enum OnboardingLiveMapping {
   {
     let live = OnboardingDownloadOwners.live(
       settings: owners.settings, modelDelivery: owners.modelDelivery,
-      whisperSetup: owners.whisperSetup, localPolish: owners.localPolish,
-      parakeetAdmission: facts.parakeetAdmission)
+      whisperSetup: owners.whisperSetup, speechModels: owners.speechModels,
+      localPolish: owners.localPolish)
     #if DEBUG
       return OnboardingDebugFaults.apply(to: live)
     #else

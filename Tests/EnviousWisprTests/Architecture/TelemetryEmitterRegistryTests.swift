@@ -275,8 +275,11 @@ struct TelemetryEmitterRegistryTests {
   /// is omitted, never sent as false); that one site's identity only, same event and row.
   /// D6b (M84): step_completed gains optional polish_ran on the existing Practice result;
   /// one content-free boolean, same event and once-per-visit cadence.
+  /// #4578 C6: `appLaunched` gains the optional `speechModelsInstalled:` parameter (closed
+  /// `parakeet`/`whisper`/`both`/`none`, omitted while unknown), which changes its existing
+  /// site's identity only; same event, same per_launch cadence, no new row.
   static let sitesFingerprint =
-    "56ca91d4352d7adfb19b6356a94511d5eb0435108ea0150251fcc09e5217a521"
+    "5c564ea560209c4a25e79c98fb48a563846bf9a6b2f7c05ff769287920061ee9"
   static let ungradedFingerprint =
     "676fe038e6e688fa79c33aae8cec75e5996979f10c3f79775755ec23c5dba168"
 

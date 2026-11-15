@@ -47,6 +47,8 @@ final class FakeEngineDeps {
 
   /// Warm bookkeeping.
   private(set) var warmCount = 0
+  /// #4578: engines whose installation fact has not settled yet.
+  var unknownInstall: Set<ASRBackendType> = []
   private(set) var warmHistory: [ASRBackendType] = []
   /// Per-engine warm outcome; default `.ready`.
   var warmOutcome: [ASRBackendType: EngineWarmupOutcome] = [:]
@@ -130,6 +132,7 @@ final class FakeEngineDeps {
       isMeetingEngineResident: { self.meetingEngineResident },
       isMeetingOwnModelResident: { $0 == .parakeet && self.meetingOwnParakeetResident() },
       isInstalled: { self.installed($0) },
+      isInstallationKnown: { !self.unknownInstall.contains($0) },
       stateLabel: { _ in "idle" },
       performSwitch: { backend in
         if let hook = self.onSwitchAwait { await hook() }

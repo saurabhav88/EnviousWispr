@@ -152,11 +152,12 @@ final class RecordingStarter {
   /// `EngineCoordinator.beginMinting`/`.endMinting`; default no-ops keep legacy/test
   /// construction unchanged.
   let beginMinting: @MainActor () -> Void
-  /// #1386 PR-2c: the selected engine's model-on-disk truth (EngineCoordinator's
-  /// `status.selectedInstalled`), read at press time so a removed model presses
-  /// into the honest not-installed pill. Defaults open (true) — a missing
+  /// #1386 PR-2c: the selected engine's model-on-disk truth, read at press time so a removed
+  /// model presses into the honest not-installed pill. #4578: decided by
+  /// `SpeechJobAdmission` over `SpeechModelLibrary`'s facts, awaiting a fresh read when the
+  /// fact is still unknown (never guessing "missing"). Defaults open (true) — a missing
   /// authority must not block dictation.
-  var isSelectedModelInstalled: @MainActor () -> Bool = { true }
+  var isSelectedModelInstalled: @MainActor () async -> Bool = { true }
   /// #4069: "Turn off dictation during meetings" is on and a meeting is capturing
   /// (`MeetingCoordinator.isCapturing`). Read once per START press, before any await. Defaults
   /// open (false): a missing authority must not block dictation.
@@ -468,7 +469,10 @@ final class RecordingStarter {
     // mid-removal mints nothing and shows the honest not-installed pill. One
     // gate, before any readiness/warm logic — a removal's first instants can
     // still read "ready", so the readiness path alone cannot cover this.
-    guard isSelectedModelInstalled() else {
+    // #4578: the gate below may await a fresh installation read. A release, Stop, cancel or
+    // quit during that wait predates `pttStart`, so it is checked against this instant.
+    let installationGateEntered = ContinuousClock.now
+    guard await isSelectedModelInstalled() else {
       recordingOverlay.present(
         .warning(reason: .modelNotDownloaded(engineLabel: active.engineDisplayName)))
       TelemetryService.shared.coldStartPressBlocked(
@@ -476,6 +480,13 @@ final class RecordingStarter {
         model: active.requestedModelAttribution)
       return .noRecording
     }
+    if pendingRequests.isClosed || endedDuringStartUp(preAdmitted)
+      || (lastUserStopAccess.read().map { $0 > installationGateEntered } ?? false)
+    {
+      return .noRecording
+    }
+    // A selection change landed during the wait is honoured the same way as before it.
+    if reconcileSelectedBackendIfNeeded() { return .noRecording }
     lastRecordingResult?.polishError = nil
     // #879 — cold-boot press safety. A press on a not-ready engine must NOT mint
     // a recording session (no audio captured → none discarded). Hand off to the
@@ -785,7 +796,9 @@ final class RecordingStarter {
       // minting a session (the toggle-hotkey is a user press too). A toggle that
       // STOPS an active session is unaffected (guarded by `isStartingFromIdle`).
       // #1386 PR-2c (founder): same removal/not-installed gate as the PTT path.
-      guard isSelectedModelInstalled() else {
+      // #4578: same ownership re-check after the gate's possible await as the PTT path.
+      let installationGateEntered = ContinuousClock.now
+      guard await isSelectedModelInstalled() else {
         recordingOverlay.present(
           .warning(reason: .modelNotDownloaded(engineLabel: active.engineDisplayName)))
         TelemetryService.shared.coldStartPressBlocked(
@@ -793,6 +806,12 @@ final class RecordingStarter {
           model: active.requestedModelAttribution)
         return
       }
+      if pendingRequests.isClosed || endedDuringStartUp(preAdmitted)
+        || (lastUserStopAccess.read().map { $0 > installationGateEntered } ?? false)
+      {
+        return
+      }
+      if reconcileSelectedBackendIfNeeded() { return }
       if active.engineReadiness != .ready {
         // #879 — same cold-boot press safety as the PTT path.
         ColdPressGuard.handle(

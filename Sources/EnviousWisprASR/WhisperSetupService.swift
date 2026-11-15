@@ -16,7 +16,7 @@ public enum WhisperSetupState: Equatable {
 /// 2c: the Remove press's inline outcome, rendered in the Settings row that
 /// owns the button (never an overlay — gotchas-audio RULE:
 /// in-panel-notice-not-new-overlay-intent).
-public enum WhisperRemoveNotice: Equatable {
+public enum WhisperRemoveNotice: Equatable, Sendable {
   /// Founder ruling 2.5.4: Remove REFUSES during a dictation — no defer, no
   /// queue; the user presses again after the dictation ends.
   case refusedDictationInFlight

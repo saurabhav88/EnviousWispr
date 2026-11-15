@@ -156,6 +156,7 @@
         }
       case .needsAttention: reply["panel"] = "needsAttention"
       case .couldNotStart: reply["panel"] = "couldNotStart"
+      case .noTranscriptionEngine: reply["panel"] = "noTranscriptionEngine"
       case .firstTip: reply["panel"] = "firstTip"
       case .lastTip(let app):
         reply["panel"] = "lastTip"

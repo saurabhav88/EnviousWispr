@@ -174,6 +174,9 @@ struct MeetingCoordinatorTests {
       [:]
     /// #4013 chunk 12A: the saved speaker evidence each run was given, in order.
     private(set) var receivedCallSpeakers: [MeetingCallSpeakerEvidence] = []
+    /// #4578: the resolution the coordinator built this job with; when set, the result is
+    /// stamped from it as the real job does.
+    var resolution: MeetingEngineResolution?
     var isEngineResident = false
     var isUnitInFlight = false
     var isOwnModelResident = false
@@ -203,8 +206,10 @@ struct MeetingCoordinatorTests {
       receivedAttempts.append(attempt)
       receivedMissingAudio = missingAudio
       onStage(.composing)
-      // The real job resolves the attempt it was given (C2: always to its requested engine).
-      return try await behavior(access).resolving(attempt)
+      // The real job resolves the attempt it was given, stamped from its resolution.
+      let result = try await behavior(access)
+      if let resolution { return result.resolving(attempt, resolution: resolution, language: language) }
+      return result.resolving(attempt)
     }
 
     func cancel() { cancelled = true }
@@ -404,6 +409,10 @@ struct MeetingCoordinatorTests {
     var logs: [String] = []
     var workChanges = 0
     var settleCalls = 0
+    /// #4578: the Transcript engine setting a Start reads.
+    var transcriptEngine: MeetingEngineChoice = .parakeet
+    /// #4578: what the engine resolution answers; nil keeps the requested engine.
+    var resolveEngine: (@MainActor (MeetingAttemptConfiguration) async -> MeetingEngineResolution?)?
     @ObservationIgnored lazy var coordinator = MeetingCoordinator(dependencies: dependencies())
 
     init() throws {
@@ -432,6 +441,13 @@ struct MeetingCoordinatorTests {
     func dependencies() -> MeetingCoordinator.Dependencies {
       var dependencies = makeDependencies()
       dependencies.meetingLanguage = { [self] in language }
+      // Read live, so a test can change the downloaded engines between passes.
+      let requestedOnly = dependencies.resolveEngine
+      dependencies.resolveEngine = { [self] attempt in
+        if let resolveEngine { return await resolveEngine(attempt) }
+        return await requestedOnly(attempt)
+      }
+      dependencies.meetingTranscriptEngine = { [self] in transcriptEngine }
       // #4356: a test never presses a real Zoom button.
       dependencies.selfProbe = { _, _, _, _ in .refused(.notFound, elapsedMs: 0) }
       return dependencies
@@ -447,8 +463,9 @@ struct MeetingCoordinatorTests {
           recorders.append(recorder)
           return recorder
         },
-        makeJob: { [self] _ in
+        makeJob: { [self] resolution in
           let job = FakeJob(behavior: jobBehavior)
+          if self.resolveEngine != nil { job.resolution = resolution }
           jobs.append(job)
           return job
         },
@@ -691,6 +708,99 @@ struct MeetingCoordinatorTests {
     #expect(coordinator.recordingPositionMs(meetingID: meetingID) == 0, "a clock before the anchor")
     await coordinator.stop(reason: .user)
     #expect(coordinator.recordingPositionMs(meetingID: meetingID) == nil, "not after Stop")
+  }
+
+  /// #4578: a meeting whose transcript is due when no speech engine is on the Mac. When this
+  /// fails, a pass loads (and downloads) a removed engine, or the meeting sits Transcribing
+  /// forever instead of saying why and keeping its audio for Transcribe again.
+  @Test("with no speech engine the meeting fails with the reason, runs no pass and keeps its audio")
+  func noEngineFailsWithTheReason() async throws {
+    let harness = try Harness()
+    harness.resolveEngine = { _ in nil }
+    let coordinator = harness.coordinator
+    await coordinator.start(from: .history)
+    let meetingID = try onlyMeeting(harness).id
+    await coordinator.stop(reason: .user)
+    await Self.eventually("failed") {
+      coordinator.record(id: meetingID)?.state == .failed && coordinator.processing == nil
+    }
+    let saved = try harness.store.load(id: meetingID)
+    #expect(saved.failureCode == "no_engine_downloaded")
+    #expect(harness.jobs.isEmpty, "no pass was built")
+    #expect(harness.ended.count == 1)
+    #expect(
+      MeetingsPresentation.failureLine(saved)
+        == "No speech engine was downloaded. Download one in Settings, then use Transcribe again.")
+    #expect(FileManager.default.fileExists(atPath: harness.store.folder(for: meetingID).path))
+  }
+
+  /// #4578: a meeting whose engine was removed is written by the other downloaded engine, and
+  /// History says which one, in both directions. When this fails, the meeting loses its
+  /// transcript although an engine is downloaded, or History names the wrong engine.
+  @Test(
+    "a removed engine's meeting is written by the other one, stamped and published",
+    arguments: [MeetingEngineChoice.parakeet, .whisper])
+  func removedEngineFallsBackThroughPublication(requested: MeetingEngineChoice) async throws {
+    let harness = try Harness()
+    harness.transcriptEngine = requested
+    // The real resolver with only the other engine downloaded.
+    harness.resolveEngine = { attempt in
+      await MeetingWiring.resolve(
+        attempt, whisper: MeetingWiringTests.whisperEngine(path: requested == .parakeet ? "/m.gguf" : nil),
+        parakeetInstalled: { requested == .whisper })
+    }
+    let coordinator = harness.coordinator
+    await coordinator.start(from: .history)
+    let meetingID = try onlyMeeting(harness).id
+    await coordinator.stop(reason: .user)
+    await Self.livePassFinished(coordinator, meetingID)
+    let other: MeetingEngineChoice = requested == .parakeet ? .whisper : .parakeet
+    let saved = try harness.store.load(id: meetingID)
+    #expect(saved.requestedTranscriptEngine == requested)
+    #expect(saved.transcriptEngineUsed == other)
+    #expect(saved.transcriptEngineFallbackReason == .notDownloaded)
+    #expect(harness.saved.count == 1, "the transcript reached History")
+    #expect(harness.jobs.first?.receivedAttempts.first?.requestedEngine == requested)
+  }
+
+  /// #4578: Transcribe again with no engine keeps the transcript it would have replaced, and a
+  /// later Transcribe again (once an engine is back) runs on it. When this fails, a retry with
+  /// nothing downloaded erases the meeting's transcript.
+  @Test("Transcribe again with no engine keeps the old transcript; with one back it runs")
+  func noEngineRetryKeepsTheTranscript() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    await coordinator.start(from: .history)
+    let meetingID = try onlyMeeting(harness).id
+    await coordinator.stop(reason: .user)
+    await Self.livePassFinished(coordinator, meetingID)
+    let committed = try #require(coordinator.record(id: meetingID)?.committedTranscriptGeneration)
+    let transcriptID = try harness.store.load(id: meetingID).transcriptID
+
+    harness.resolveEngine = { _ in nil }
+    await Self.transcribeAgainOnceOffered(coordinator, meetingID: meetingID)
+    await Self.eventually("failed") {
+      coordinator.record(id: meetingID)?.state == .failed && coordinator.processing == nil
+    }
+    let failed = try harness.store.load(id: meetingID)
+    #expect(failed.failureCode == "no_engine_downloaded")
+    #expect(failed.committedTranscriptGeneration == committed, "the old transcript stays")
+    #expect(failed.transcriptID == transcriptID)
+    #expect(harness.removedRows.isEmpty && harness.saved.count == 1)
+    #expect(harness.jobs.count == 1, "no pass was built for the refused retry")
+
+    // Whisper is downloaded now; Parakeet is still gone.
+    harness.resolveEngine = { attempt in
+      await MeetingWiring.resolve(
+        attempt, whisper: MeetingWiringTests.whisperEngine(path: "/m.gguf"),
+        parakeetInstalled: { false })
+    }
+    await Self.transcribeAgainOnceOffered(coordinator, meetingID: meetingID)
+    await Self.livePassFinished(coordinator, meetingID, replacing: committed)
+    let rewritten = try harness.store.load(id: meetingID)
+    #expect(rewritten.transcriptEngineUsed == .whisper)
+    #expect(rewritten.transcriptEngineFallbackReason == .notDownloaded)
+    #expect(rewritten.failureCode == nil)
   }
 
   @Test("the bounded wait fails when its signal never comes")

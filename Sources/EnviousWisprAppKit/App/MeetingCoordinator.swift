@@ -301,11 +301,12 @@ final class MeetingCoordinator {
       ) -> MeetingRecording
     /// #3973 C3: builds a pass that decodes with the resolved engine.
     var makeJob: @MainActor (MeetingEngineResolution) -> MeetingProcessing
-    /// #3973 C3: the engine a pass of an attempt that asked for `engine` runs on, decided from
-    /// current availability without downloading: Whisper when it is ready, else Parakeet with
-    /// the reason. Never reads Settings.
+    /// #3973 C3, #4578: the engine a pass of an attempt that asked for `engine` runs on,
+    /// decided from current availability without downloading: the requested one when it is
+    /// ready, else the other downloaded one with the reason; nil when no speech engine is
+    /// downloaded. Never reads Settings.
     var resolveEngine:
-      @MainActor (_ attempt: MeetingAttemptConfiguration) async -> MeetingEngineResolution = {
+      @MainActor (_ attempt: MeetingAttemptConfiguration) async -> MeetingEngineResolution? = {
         MeetingEngineResolution(
           engine: $0.requestedEngine, effectiveLanguage: $0.requestedEffectiveLanguage)
       }
@@ -1780,9 +1781,22 @@ final class MeetingCoordinator {
     let callSpeakers = await callSpeakerEvidenceForPass(meetingID)
     guard isStillOwned(meetingID) else { return }
 
-    let resolution = await deps.resolveEngine(attempt)
+    let resolved = await deps.resolveEngine(attempt)
     // Read again after the await: a deletion mark or a quit meanwhile wins.
     guard isStillOwned(meetingID) else { return }
+    guard let resolution = resolved else {
+      // #4578: no speech engine is downloaded. The audio stays; the meeting fails with the
+      // reason, and Transcribe again works once an engine is downloaded.
+      deps.log("meeting engine unavailable requested=\(attempt.requestedEngine.rawValue)")
+      guard var failed = live[meetingID] else { return }
+      failed.state = .failed
+      failed.failureCode = "no_engine_downloaded"
+      if await persist(failed) {
+        endAttempt(
+          failed, outcome: .failed, gapCount: MeetingDamagedAudio.markerCount(missingAudio))
+      }
+      return
+    }
     if let reason = resolution.fallbackReason {
       deps.log(
         "meeting engine fallback requested=\(attempt.requestedEngine.rawValue) resolved=\(resolution.engine.rawValue) reason=\(reason.rawValue)"
