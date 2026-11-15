@@ -82,6 +82,23 @@ struct HistoryLoadLoopTests {
     #expect(kept.continuation == nil && kept.catalogDayCounts == nil)
     #expect(!f.coordinator.isCurrentHistoryResult(kept))
 
+    // During an in-process write the source revision is unknown; a second shown row changed
+    // in that interval is still hidden on the next render (Codex code review r1).
+    f.changes.begin()
+    guard case .catalog(let second) = shown.items[1] else {
+      Issue.record("The catalog page did not return catalog rows")
+      return
+    }
+    let secondFile = f.transcripts.appendingPathComponent("\(second.key.id.uuidString).json")
+    let secondHandle = try FileHandle(forWritingTo: secondFile)
+    try secondHandle.seekToEnd()
+    try secondHandle.write(contentsOf: Data("\n".utf8))
+    try secondHandle.close()
+    let keptAgain = try #require(f.coordinator.retainedHistoryResult(shown))
+    #expect(keptAgain.items.count == 28)
+    #expect(!keptAgain.ids.contains(.transcript(second.key.id)))
+    f.changes.finish(.transcript(second.key.id))
+
     await f.session.waitForIndexingForTesting()
     #expect(f.session.watcherRegistrations == 1)
     #expect(f.session.status == .ready)
