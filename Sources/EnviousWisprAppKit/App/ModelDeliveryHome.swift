@@ -201,7 +201,7 @@ final class ModelDeliveryHome {
   func checkerDeliveryEnabled(_ engine: LearnedWordCheckerEngine) -> Bool {
     let defaults =
       checkerDeliveryDefaults
-      ?? UserDefaults(suiteName: DeliveryFlags.suiteName) ?? .standard
+      ?? SettingsDefaults.store
     return DeliveryFlags.snapshot(family: engine.checkerFamily, defaults: defaults).familyEnabled
   }
 

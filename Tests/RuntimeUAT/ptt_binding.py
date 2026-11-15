@@ -66,7 +66,7 @@ from enum import Enum
 from pathlib import Path
 
 # The one domain both builds read. The dev build redirects here via
-# SettingsDefaults.store (Sources/EnviousWisprServices/SettingsDefaults.swift),
+# SettingsDefaults.store (Sources/EnviousWisprCore/SettingsDefaults.swift),
 # so `com.enviouswispr.app.dev` holds only pre-#923 residue. Do not add a
 # fallback to it: reading a stale domain is what caused #1997.
 SHARED_DOMAIN = "com.enviouswispr.app"

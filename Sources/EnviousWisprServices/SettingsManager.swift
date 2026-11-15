@@ -1986,9 +1986,9 @@ public final class SettingsManager {
   }
 
   /// - Parameter defaults: the store backing all preferences. Pass `nil` (the
-  ///   default) for production (resolves to `SettingsDefaults.store`, the
-  ///   build-shared suite); tests inject a private suite. `nil` (not a direct
-  ///   `SettingsDefaults.store` default arg) keeps the accessor Services-internal.
+  ///   default) to resolve `SettingsDefaults.store`; tests inject a private suite.
+  ///   Resolving `nil` internally keeps Core's package-only accessor out of the
+  ///   public initializer's default argument.
   /// #2664: decode the per-device socket map, or `[:]` when the key is absent
   /// or undecodable. Fails OPEN to the default on purpose: a corrupt blob must
   /// cost the user one re-pick, never a launch that cannot read its settings.

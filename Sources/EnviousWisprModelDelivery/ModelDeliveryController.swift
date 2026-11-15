@@ -29,8 +29,6 @@ public struct DeliveryRegistration: Sendable {
 /// mid-attempt never re-read — actor-reentrancy discipline). Operational
 /// support keys in the SHARED suite, not user settings.
 public struct DeliveryFlags: Sendable {
-  public static let suiteName = "com.enviouswispr.app"
-
   public let familyEnabled: Bool
   public let sourceOrder: String?
   public let mirrorDisabled: Bool
@@ -184,7 +182,7 @@ public actor ModelDeliveryController {
     availableDiskBytes: @escaping @Sendable (URL) -> Int64? = ModelDeliveryController
       .volumeAvailableBytes
   ) {
-    self.defaults = defaults ?? UserDefaults(suiteName: DeliveryFlags.suiteName) ?? .standard
+    self.defaults = defaults ?? SettingsDefaults.store
     self.availableDiskBytes = availableDiskBytes
   }
 

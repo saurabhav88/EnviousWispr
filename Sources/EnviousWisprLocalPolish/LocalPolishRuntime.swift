@@ -364,7 +364,7 @@ public final class LocalPolishRuntime: EGOneLeaseProviding {
     self.serverBinaryURL = serverBinaryURL
     self.learnedWordAdapterProvider = learnedWordAdapterProvider
     self.delivery = delivery
-    self.defaults = defaults ?? UserDefaults(suiteName: DeliveryFlags.suiteName) ?? .standard
+    self.defaults = defaults ?? SettingsDefaults.store
     // Restore the paused projection from the last launch (#2109, whole-diff
     // review). Without this the tracker is in-memory only, so a user who
     // leaves an upgrade paused and quits emits a fresh ENTRY on every launch
