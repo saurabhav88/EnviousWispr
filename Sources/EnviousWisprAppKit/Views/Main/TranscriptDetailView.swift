@@ -380,8 +380,8 @@ struct TranscriptDetailView: View {
   /// being deleted. `nil` for a row that no longer exists, so nothing is delivered for a
   /// recording the user was told is gone.
   private var exportText: String? {
-    HistoryTranscriptExport.text(
-      rowID: display.id, coordinator: transcriptCoordinator, mode: .cleaned, timesOn: true)
+    // #4609 (Codex code review r1): one verified on-demand read; a held row has no payload loaded.
+    transcriptCoordinator.dictationTextForDelivery(id: display.id)
   }
 
   private var defaultFileName: String { kindWord }

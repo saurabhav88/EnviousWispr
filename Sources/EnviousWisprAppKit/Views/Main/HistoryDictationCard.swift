@@ -152,6 +152,13 @@ struct HistoryDictationCard: View {
         .allowsHitTesting(false)
     )
     .onHover { hovering = $0 }
+    // #4609 (Codex code review r1): new texts (a kept polish, a restore) close the comparison
+    // rather than showing plain text and then growing into the new markup.
+    .onChange(of: texts) { _, _ in
+      editsRequested = false
+      editsOn = false
+      openChange = nil
+    }
     .task(id: RecordingKey(rowID: rowID, revision: recordingRevision)) { await refreshRecording() }
     .task(
       id: TimingKey(

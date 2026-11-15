@@ -74,11 +74,17 @@ struct HistoryCardStabilityTests {
       directory: root.appendingPathComponent("catalog"))
     let coordinator = TranscriptCoordinator(store: store)
     coordinator.catalogSession = session
-    coordinator.startHistoryCatalog()
+    // The session alone, without the latest-dictation hydration startHistoryCatalog installs.
+    session.start()
     await session.waitForIndexingForTesting()
+    try #require(coordinator.currentRow(id: row.id) == nil)
 
     // Nothing hydrated this row: the card drew from catalog display data.
     #expect(coordinator.dictationTextForDelivery(id: row.id) == "an older dictation")
+    // Edited on disk after the card drew: the press delivers the edited text.
+    let edited = Transcript(id: row.id, text: "edited after display", processingTime: 0, backendType: .parakeet)
+    try store.save(edited)
+    #expect(coordinator.dictationTextForDelivery(id: row.id) == edited.historyText)
     // Another process deletes it: the press delivers nothing.
     try TranscriptStore(directory: directory).delete(id: row.id)
     #expect(coordinator.dictationTextForDelivery(id: row.id) == nil)
