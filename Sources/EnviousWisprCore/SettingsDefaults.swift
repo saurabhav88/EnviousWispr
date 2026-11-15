@@ -21,7 +21,7 @@ import Foundation
 /// the dev build falls back to `.standard` as before. Mirrors the bundle allowlist
 /// `KeychainManager` uses for secrets (a separate concern, left there).
 package enum SettingsDefaults {
-  package static let sharedSuite = "com.enviouswispr.app"
+  private static let sharedSuite = "com.enviouswispr.app"
   package static let devBundleID = "com.enviouswispr.app.dev"
 
   /// The named suite a bundle must open, or nil when its own `.standard` domain is correct.
