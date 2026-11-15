@@ -278,8 +278,16 @@ struct TelemetryEmitterRegistryTests {
   /// #4578 C6: `appLaunched` gains the optional `speechModelsInstalled:` parameter (closed
   /// `parakeet`/`whisper`/`both`/`none`, omitted while unknown), which changes its existing
   /// site's identity only; same event, same per_launch cadence, no new row.
+  /// #4021: one NEW site, `coreAudioReadStuck` for the new `audio.core_audio_read_stuck` row.
+  /// Checklist: rare_failure (zero rows on a healthy Mac; at most one `timed_out` and one
+  /// `recovered` per abandoned Core Audio lane read, because the lane refuses new reads while one
+  /// is stuck; no daily cap is claimed). No existing row carries it: it fires between takes, with
+  /// no take. Reader: the #4021 post-release check (timed_out per install per day, recovered
+  /// separately, beside the #4599 app-hang outcome metric). Closed `read`/`phase` String tokens
+  /// and Int milliseconds only, no device names or UIDs; launch-scoped (no `take_id`); registry
+  /// row `keep`.
   static let sitesFingerprint =
-    "5c564ea560209c4a25e79c98fb48a563846bf9a6b2f7c05ff769287920061ee9"
+    "965ddc393c27c843e0208f84aebcd3743ccee397e5203cea59a5dceeb1bd718a"
   static let ungradedFingerprint =
     "676fe038e6e688fa79c33aae8cec75e5996979f10c3f79775755ec23c5dba168"
 

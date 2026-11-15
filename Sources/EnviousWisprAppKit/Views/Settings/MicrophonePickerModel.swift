@@ -8,9 +8,10 @@ import SwiftUI
 /// two screens describe the same device, name the same transports and save a
 /// choice through the same guarded write.
 ///
-/// A value built once per body from the live settings and device list, never
-/// stored or observed itself: the caller's view re-renders when those owners
-/// change and builds a fresh one, so it never holds a stale device.
+/// A value built once per body from the live settings and the device list's frozen
+/// `MicrophoneFacts`, never stored or observed itself: the caller's view re-renders
+/// when those owners change and builds a fresh one. It reads no hardware (#4021):
+/// the Auto device and transport tokens come from the last accepted snapshot.
 @MainActor
 struct MicrophonePickerModel {
   /// The device the screen describes: the saved choice, or under Auto the device
@@ -27,10 +28,11 @@ struct MicrophonePickerModel {
   /// The picker's choice: "" is Auto, otherwise a device UID.
   let selection: Binding<String>
 
-  init(settingsManager: SettingsManager, devices: [AudioInputDevice]) {
-    // #2664: the device this page describes, computed ONCE per body (the Auto
-    // branch runs the resolver ladder, so two computed properties would pay for
-    // it twice). Since #2022 Auto names the device the ladder would actually
+  init(settingsManager: SettingsManager, facts: MicrophoneFacts, choices: MicrophoneChoiceOwner) {
+    let devices = facts.devices
+    // #2664: the device this page describes, computed ONCE per body. #4021: the
+    // Auto branch reads the resolver ladder's answer frozen in the snapshot
+    // (`facts.resolvedAutoDeviceID`), never a live Core Audio read. Since #2022 Auto names the device the ladder would actually
     // OPEN, not the raw system default: printing "Using Krisp" while recording
     // from the built-in microphone is the one thing the pill must not do. The
     // "Using X" pill and the socket row both read this local, and the advisory
@@ -40,13 +42,13 @@ struct MicrophonePickerModel {
     let socketDevice = InputSocket.socketDevice(
       preferredInputDeviceIDOverride: settingsManager.preferredInputDeviceIDOverride,
       devices: devices,
-      resolvedAutoInputDeviceID: AudioDeviceEnumerator.resolvedAutoInputDeviceID)
+      resolvedAutoInputDeviceID: { facts.resolvedAutoDeviceID })
     let inputDeviceSelection = Binding<String>(
       get: { settingsManager.preferredInputDeviceIDOverride },
-      // #3486: a mic unplugged while the dropdown was open must not be saved.
+      // #3486: a mic unplugged while the dropdown was open must not be saved. #4021: the shared
+      // owner checks off the main actor and saves only the latest choice.
       set: { uid in
-        guard MicrophoneChoiceValidation.isSelectable(uid: uid) else { return }
-        settingsManager.chooseInputDevice(uid: uid)
+        choices.choose(uid: uid) { settingsManager.chooseInputDevice(uid: $0) }
       }
     )
     // #2664: the socket control sits on the SAME line as the device picker,
@@ -61,14 +63,10 @@ struct MicrophonePickerModel {
       InputChannelSettings.offersChoice(uid: device.uid, inputChannelCount: device.inputChannelCount)
         ? device : nil
     }
-    // #3385: each device's transport, read once per body through the one
-    // vocabulary (`AudioDeviceEnumerator.transportLabel`) and reused by the
-    // menu rows and the card, so the two can never disagree.
-    let transportTokens = Dictionary(
-      devices.compactMap { device in
-        AudioDeviceEnumerator.transportLabel(for: device.id).map { (device.id, $0) }
-      },
-      uniquingKeysWith: { first, _ in first })
+    // #3385: each device's transport through the one vocabulary
+    // (`AudioDeviceEnumerator.transportLabel`), reused by the menu rows and the
+    // card, so the two can never disagree. #4021: read in the snapshot pass, not here.
+    let transportTokens = facts.transportTokens
     let devicePresentation = MicrophoneDevicePresentation.make(
       preferredUID: settingsManager.preferredInputDeviceIDOverride,
       resolvedDevice: socketDevice,

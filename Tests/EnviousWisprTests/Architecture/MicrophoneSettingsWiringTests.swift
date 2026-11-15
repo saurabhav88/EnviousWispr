@@ -10,8 +10,11 @@ import Testing
 /// row still pairs its output listener with the page's appearance. #4528 D6a: the selection,
 /// the resolver call and the socket eligibility moved, unchanged, into `MicrophonePickerModel`
 /// (shared with Setup's Practice screen), so those checks read the model and the page is pinned
-/// to build it once from the live settings and device list. A drift guard; the rebuilt-app UAT
-/// proves a microphone switch reaches RAW ASR.
+/// to build it once from the live settings and device list. #4021: the Auto answer now comes
+/// from the device list's frozen snapshot facts (never a main-thread Core Audio read), and the
+/// setter saves through the one shared `MicrophoneChoiceOwner` (click-time check off the main
+/// actor, latest choice wins). A drift guard; the rebuilt-app UAT proves a microphone switch
+/// reaches RAW ASR.
 @Suite("Microphone settings wiring (#3385)", .tags(.driftGuard, .localParallel))
 struct MicrophoneSettingsWiringTests {
   static let audioPath = "Sources/EnviousWisprAppKit/Views/Settings/AudioSettingsView.swift"
@@ -29,12 +32,12 @@ struct MicrophoneSettingsWiringTests {
   @Test("choosing a microphone still writes both preferences, through the shared owner")
   func selectionWritesBothPreferences() throws {
     let writes = Self.setterAssignments(binding: "inputDeviceSelection", in: try Self.source(Self.modelPath))
-    // #3486: the setter first refuses a device that is no longer plugged in.
+    // #3486 / #4021: the setter hands every choice to the shared owner, which refuses a device
+    // that is no longer plugged in and saves through `chooseInputDevice`, so both preferences
+    // are written by the one owner the menu bar also uses.
     #expect(
-      writes == [
-        "guard MicrophoneChoiceValidation.isSelectable(uid: uid) else { return }",
-        "settingsManager.chooseInputDevice(uid: uid)",
-      ], "setter writes: \(writes)")
+      writes == ["choices.choose(uid: uid) { settingsManager.chooseInputDevice(uid: $0) }"],
+      "setter writes: \(writes)")
   }
 
   @Test("the page describes the device from the one shared resolver")
@@ -48,15 +51,18 @@ struct MicrophoneSettingsWiringTests {
       call.arguments == [
         "settingsManager.preferredInputDeviceIDOverride",
         "devices",
-        "AudioDeviceEnumerator.resolvedAutoInputDeviceID",
+        "{ facts.resolvedAutoDeviceID }",
       ])
     // The page itself no longer resolves; it builds the shared model once, from the live list.
     #expect(Self.calls(named: "InputSocket.socketDevice", in: try Self.source(Self.audioPath)).isEmpty)
     let models = Self.calls(named: "MicrophonePickerModel", in: try Self.source(Self.audioPath))
     #expect(models.count == 1, "model builds: \(models)")
     let model = try #require(models.first)
-    #expect(model.labels == ["settingsManager", "devices"])
-    #expect(model.arguments == ["settingsManager", "audioDeviceList.availableInputDevices"])
+    #expect(model.labels == ["settingsManager", "facts", "choices"])
+    #expect(
+      model.arguments == [
+        "settingsManager", "audioDeviceList.microphoneFacts", "audioDeviceList.choices",
+      ])
     #expect(model.bindings == ["microphone", "body"])
     // The picker reads all four of its arguments from that model, so the guarded selection
     // cannot be swapped for an unguarded one beside an unused model.

@@ -93,6 +93,8 @@
     private let qualificationChildTrap:
       (@MainActor () async -> LocalPolishProcessManager.QualificationChildSignal?)?
 
+    /// #4021: arms a one-shot stall on the shared Core Audio lane (`force_core_audio_stall`).
+    private let coreAudioStall: ((Duration) -> Void)?
     private var listener: NWListener?
     private let port: UInt16
     private let token: String
@@ -113,8 +115,10 @@
       whisperMemoryPressure: (@MainActor () async -> Bool)? = nil,
       qualificationAction: ((QualificationAction) -> Void)? = nil,
       qualificationChildTrap:
-        (@MainActor () async -> LocalPolishProcessManager.QualificationChildSignal?)? = nil
+        (@MainActor () async -> LocalPolishProcessManager.QualificationChildSignal?)? = nil,
+      coreAudioStall: ((Duration) -> Void)? = nil
     ) {
+      self.coreAudioStall = coreAudioStall
       self.qualificationChildTrap = qualificationChildTrap
       self.qualificationAction = qualificationAction
       self.audioCapture = audioCapture
@@ -415,6 +419,19 @@
         // Kept as well, so a non-English dictation prepared later stalls too
         // rather than quietly answering from a real dictionary.
         SeamCasingOracleRuntime.setPreparationOverrideForTesting { _ in slow }
+        return "OK"
+
+      // #4021 Live UAT: the next admitted Core Audio lane read (device snapshot or microphone
+      // check) blocks for N seconds on the lane's own queue, the shape a stuck driver gives the
+      // app. Logged when armed here and when it fires (`CoreAudioLane` category).
+      case let cmd where cmd.hasPrefix("force_core_audio_stall("):
+        guard let coreAudioStall else { return "ERR no_dependency" }
+        guard let arg = parseStringArgCommand(cmd, prefix: "force_core_audio_stall("),
+          let seconds = Double(arg), seconds.isFinite, seconds >= 1, seconds <= 30
+        else { return "ERR bad_arg" }
+        coreAudioStall(.milliseconds(Int(seconds * 1000)))
+        await AppLogger.shared.log(
+          "fault armed: next lane read stalls \(arg) s", level: .info, category: "CoreAudioLane")
         return "OK"
 
       case "clear_oracle_delay":

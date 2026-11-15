@@ -294,13 +294,21 @@ package final class WisprBootstrapper {
     // ASR pipelines, so hoisting the installer would mean hoisting those — the
     // move that does work is this one.
     let overlayHost = OverlayWindowHost(effects: overlayEffects)
-    let audioDeviceList = AudioDeviceList()
+    // #4021: one Core Audio lane for every idle-time device read, owned for the app's lifetime
+    // through `audioDeviceList.lane`, so only one read can ever be stuck in a driver.
+    let coreAudioLane = CoreAudioQueryLane(hooks: CoreAudioLaneReporting.hooks())
+    // #4021: the one microphone-choice owner, shared by Settings, Setup and the menu bar, so
+    // only the latest choice can be saved after its off-main check.
+    let microphoneChoices = MicrophoneChoiceOwner(lane: coreAudioLane)
+    let audioDeviceList = AudioDeviceList(lane: coreAudioLane, choices: microphoneChoices)
     let inputDevicePreferenceReconciler = InputDevicePreferenceReconciler(settings: settings)
+    // Reconciles only from an inventory that proves absence. There is deliberately no
+    // synchronous launch reconcile any more: the list is empty until the first snapshot arrives
+    // off the main actor, and reconciling that empty list would un-pin a microphone. The first
+    // complete snapshot reconciles through this callback.
     audioDeviceList.onDevicesChanged = { [weak inputDevicePreferenceReconciler] devices in
       inputDevicePreferenceReconciler?.reconcile(availableDevices: devices)
     }
-    inputDevicePreferenceReconciler.reconcile(
-      availableDevices: audioDeviceList.availableInputDevices)
     let captureTelemetry = CaptureTelemetryState()
     let customWordsCoordinator = CustomWordsCoordinator()
     let snippetsCoordinator = SnippetsCoordinator()
@@ -1205,7 +1213,8 @@ package final class WisprBootstrapper {
           socketDevice: InputSocket.socketDevice(
             preferredInputDeviceIDOverride: settings.preferredInputDeviceIDOverride,
             devices: audioDeviceList.availableInputDevices,
-            resolvedAutoInputDeviceID: AudioDeviceEnumerator.resolvedAutoInputDeviceID))
+            // #4021: the Auto device from the same accepted snapshot as the list.
+            resolvedAutoInputDeviceID: { audioDeviceList.snapshot?.resolvedAutoDeviceID }))
       },
       // **THE SEAM PHASE 3 LEFT, NOW SPENT** (#2376 Phase 4, C6). It is a closure
       // so that it can be: the director lives for the app's lifetime, so a stored
@@ -2100,15 +2109,21 @@ package final class WisprBootstrapper {
           if let url = URL(string: HelpCenter.rootURL) { NSWorkspace.shared.open(url) }
         },
         // #3454: the Settings dropdown's own titles ("<name> · <connection>"), read as the menu opens.
+        // #4021: from the frozen snapshot facts, never a Core Audio read as the menu opens.
         microphoneChoices: {
-          audioDeviceList.availableInputDevices.map { device in
+          let facts = audioDeviceList.microphoneFacts
+          return facts.devices.map { device in
             MicrophoneMenuChoice(
               uid: device.uid,
               title: MicrophoneDevicePicker.optionTitle(
-                for: device, transportToken: AudioDeviceEnumerator.transportLabel(for: device.id)))
+                for: device, transportToken: facts.transportTokens[device.id]))
           }
         },
-        isMicrophoneConnected: { MicrophoneChoiceValidation.isSelectable(uid: $0) },
+        // #3479 / #4021: one shared owner checks the device off the main actor at click time
+        // and saves only the latest choice.
+        chooseMicrophone: { uid in
+          microphoneChoices.choose(uid: uid) { settings.chooseInputDevice(uid: $0) }
+        },
         openTranscribeFile: {
           navigationCoordinator.request(.transcribeFile)
           appWindowCoordinator.showWindow()
@@ -2167,9 +2182,17 @@ package final class WisprBootstrapper {
       settings: settings,
       liveRecordingState: liveRecordingState,
       navigationCoordinator: navigationCoordinator,
-      appWindowCoordinator: appWindowCoordinator
+      appWindowCoordinator: appWindowCoordinator,
+      audioDeviceList: audioDeviceList
     )
     bluetoothAwarenessPresenterHolder.presenter = bluetoothAwarenessPresenter
+    // #4021: the card is judged on fresh device facts, after each accepted snapshot
+    // (including the first after launch, so that first evaluation's breadcrumb trigger
+    // may read `device_changed` rather than `launch`; the trigger labels breadcrumbs and
+    // selects no behaviour).
+    audioDeviceList.onSnapshotApplied = { [weak bluetoothAwarenessPresenter] in
+      bluetoothAwarenessPresenter?.reconcile(trigger: .deviceChanged)
+    }
 
     // #3289 §8b: is the app working, for the idle-memory sample. A dictation is in flight from
     // arming to its terminal (the drivers' session config, which outlives an `.error` the pipeline
@@ -2245,6 +2268,8 @@ package final class WisprBootstrapper {
       transcriptionCheckpointStore: transcriptionCheckpointStore,
       batchDecodeFaultController: batchDecodeFaultController,
       whisperMemoryPressure: whisperMemoryPressure,
+      requestDeviceRefresh: { [weak audioDeviceList] in audioDeviceList?.requestRefresh() },
+      coreAudioStall: debugCoreAudioStall(lane: audioDeviceList.lane),
       // #996: each real transition into `.recording` cancels a live edit watch.
       // #3242: and pre-loads the word check so the take's check finds it ready.
       // #3988: and restarts the take's local polish engine if something outside

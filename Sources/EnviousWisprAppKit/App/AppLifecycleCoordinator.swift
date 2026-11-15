@@ -105,6 +105,13 @@ final class AppLifecycleCoordinator {
   /// `applicationDidFinishLaunching`, after `init` has returned; one narrow
   /// callback rather than a second pipeline observer.
   private let onRecordingStarted: @MainActor () -> Void
+  /// #4021: asks the device list for a fresh snapshot (read off the main actor). An OS audio
+  /// event requests one; the Bluetooth card is re-judged after that snapshot is applied, never
+  /// on facts that may be stale.
+  private let requestDeviceRefresh: @MainActor () -> Void
+  /// #4021: DEBUG `force_core_audio_stall` target, forwarded into `DebugFaultEndpoint`; nil in
+  /// Release.
+  private let coreAudioStall: ((Duration) -> Void)?
 
   init(
     wheelScrollSmoother: WheelScrollSmoother,
@@ -133,11 +140,15 @@ final class AppLifecycleCoordinator {
     transcriptionCheckpointStore: TranscriptionCheckpointStore,
     batchDecodeFaultController: BatchDecodeFaultController? = nil,
     whisperMemoryPressure: (@MainActor () async -> Bool)? = nil,
+    requestDeviceRefresh: @escaping @MainActor () -> Void,
+    coreAudioStall: ((Duration) -> Void)? = nil,
     // Required and non-defaulted (review r1): a composition that forgets it
     // must fail to compile, not silently drop the watcher's cancellation.
     onRecordingStarted: @escaping @MainActor () -> Void
   ) {
     self.onRecordingStarted = onRecordingStarted
+    self.requestDeviceRefresh = requestDeviceRefresh
+    self.coreAudioStall = coreAudioStall
     self.wheelScrollSmoother = wheelScrollSmoother
     self.previousApplicationTracker = previousApplicationTracker
     self.settings = settings
@@ -352,7 +363,8 @@ final class AppLifecycleCoordinator {
           },
           batchDecodeFaultController: batchDecodeFaultController,
           whisperMemoryPressure: whisperMemoryPressure,
-          qualificationChildTrap: qualificationChildTrap
+          qualificationChildTrap: qualificationChildTrap,
+          coreAudioStall: coreAudioStall
         )
         endpoint.start()
         debugFaultEndpoint = endpoint
@@ -382,7 +394,11 @@ final class AppLifecycleCoordinator {
         self?.audioEnvironmentSnapshotter?.audioDeviceEventOccurred()
         // #1480: a device connect/disconnect/default-change re-evaluates the
         // Bluetooth card (covers connect-later, and route-off dismissal).
-        self?.bluetoothAwarenessPresenter.reconcile(trigger: .deviceChanged)
+        // #4021: by refreshing the device snapshot first; the card is reconciled
+        // when that snapshot is applied (wired by the bootstrapper), so it never
+        // judges stale facts. Covers default-OUTPUT changes too, which the device
+        // list's own listener does not hear.
+        self?.requestDeviceRefresh()
       }
     )
 
