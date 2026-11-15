@@ -42,7 +42,7 @@ DEFAULT_TREE="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # name | required tools (space-separated) | CI home (build-check or other-job)
 # Tools are declared transitively (what the member's scripts call), except the
 # POSIX baseline every supported machine has: grep, sed, awk, find, cut, tr.
-# Order is CI's step order, then the two members whose CI home is another job.
+# Order is CI's step order, then the members whose CI home is another job.
 MEMBERS=(
   "ci-self-tests|bash python3 git jq curl iconv ps|build-check"
   "dependency-direction|bash grep|build-check"
@@ -61,6 +61,7 @@ MEMBERS=(
   "release-notes-self-test|python3|build-check"
   "appcast-shellcheck|shellcheck|build-check"
   "appcast-self-test|bash git jq sha256sum|build-check"
+  "l10n-build-with-receipt-self-test|bash python3 git xcodebuild|other-job"
   "third-party-notices|bash python3 perl|other-job"
   "worker-tests|node|other-job"
 )
@@ -239,6 +240,12 @@ member_judge_contracts() {
 # macOS build-and-test job instead.
 member_l10n_receipt_self_test() {
   python3 scripts/lib/l10n-build-receipt.py --self-test
+}
+
+# #3524 PR 3 / #4490: the Dev-build catalog receipt wrapper self-test. Its CI home is the
+# macOS build-and-test job (needs xcodebuild -version); pre-push runs it locally via other-job.
+member_l10n_build_with_receipt_self_test() {
+  python3 scripts/lib/l10n-build-with-receipt-test.py
 }
 
 # CI step: Eval harness self-tests (#2013)
@@ -422,7 +429,7 @@ have_tool() { command -v "$1" > /dev/null 2>&1; }
 run_member() {
   local name="$1" tools="$2" fn="$3" tree="$4" tool rc started elapsed
   for tool in $tools; do
-    if ! command -v "$tool" > /dev/null 2>&1; then
+    if ! command -v "$tool" > /dev/null 2>&1 || { [ "$tool" = "xcodebuild" ] && ! xcodebuild -version > /dev/null 2>&1; }; then
       echo "==> $name: SKIP (missing tool: $tool)"
       return 0
     fi
@@ -538,7 +545,7 @@ run_all() {
 
 # The member list, frozen independently of MEMBERS. Adding or removing a member
 # is a deliberate edit to both.
-EXPECTED_MEMBERS="ci-self-tests dependency-direction lane-verdict-self-test dev-app-lock-self-test seed-cleanup-contracts download-link-lint runtime-uat-self-tests judge-contracts eval-harness-self-tests language-data-generator l10n-receipt-self-test ci-action-pins ci-script-refs ci-yaml release-notes-self-test appcast-shellcheck appcast-self-test third-party-notices worker-tests"
+EXPECTED_MEMBERS="ci-self-tests dependency-direction lane-verdict-self-test dev-app-lock-self-test seed-cleanup-contracts download-link-lint runtime-uat-self-tests judge-contracts eval-harness-self-tests language-data-generator l10n-receipt-self-test ci-action-pins ci-script-refs ci-yaml release-notes-self-test appcast-shellcheck appcast-self-test l10n-build-with-receipt-self-test third-party-notices worker-tests"
 
 member_names() { local r; for r in "$@"; do printf '%s ' "${r%%|*}"; done; }
 
@@ -583,8 +590,8 @@ self_test() {
   for name in $EXPECTED_MEMBERS; do
     check "member function exists for $name" "$(declare -F "member_${name//-/_}" > /dev/null && echo yes || echo no)" "yes"
   done
-  check "default selection has exactly nineteen members" "$(selected_members 0 | wc -l | tr -d ' ')" "19"
-  check "--ci leaves out exactly the other-job members" "$(selected_members 1 | cut -d'|' -f1 | grep -c -e third-party-notices -e worker-tests)|$(selected_members 1 | wc -l | tr -d ' ')" "0|17"
+  check "default selection has exactly twenty members" "$(selected_members 0 | wc -l | tr -d ' ')" "20"
+  check "--ci leaves out exactly the other-job members" "$(selected_members 1 | cut -d'|' -f1 | grep -c -e l10n-build-with-receipt-self-test -e third-party-notices -e worker-tests)|$(selected_members 1 | wc -l | tr -d ' ')" "0|17"
 
   # Exercise the real entrypoint and member body against a distinct tree. A
   # checkout-absolute fixture or helper path could still pass its own suite;
@@ -674,8 +681,12 @@ PYFIXTURE
   MEMBERS=("p|bash|build-check")
   out="$( selected_members() { command printf 'p|bash|build-check\n'; return 1; }; run_all 0 "$tmp" 2>/dev/null )"; rc=$?
   check "a selection that cannot be written is a FAIL" "$rc|$out" "1|==> fast-checks: FAIL (runner fault: cannot select members)"
-  out="$( selected_members() { command printf 'p|bash|build-check\n'; chmod 000 "$RUNNER_LOGS/selected"; }; run_all 0 "$tmp" 2>/dev/null )"; rc=$?
-  check "an unreadable selection is a FAIL" "$rc|$(printf '%s' "$out" | grep -c 'cannot open the member selection')" "1|1"
+  if [ "$(id -u)" -eq 0 ]; then
+    check "an unreadable selection is a FAIL (skipped as root)" "skip" "skip"
+  else
+    out="$( selected_members() { command printf 'p|bash|build-check\n'; chmod 000 "$RUNNER_LOGS/selected"; }; run_all 0 "$tmp" 2>/dev/null )"; rc=$?
+    check "an unreadable selection is a FAIL" "$rc|$(printf '%s' "$out" | grep -c 'cannot open the member selection')" "1|1"
+  fi
   out="$( selected_members() { command printf '\n'; }; run_all 0 "$tmp" 2>/dev/null )"; rc=$?
   check "a blank selection line is a FAIL" "$rc|$out" "1|==> fast-checks: FAIL (runner fault: blank line in the member selection)"
   out="$( cat() { case "$1" in (*.name) return 1 ;; (*) command cat "$@" ;; esac; }; run_all 0 "$tmp" 2>/dev/null )"; rc=$?
