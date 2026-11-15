@@ -148,6 +148,13 @@ struct SetupSpeechScreen: View {
             Text("after you stop talking").font(.firstRunLabel)
             Text("For 30 seconds of speech.")
               .font(.firstRunCaption).foregroundStyle(Color.obTextSecondary)
+            // #4590: the speed promise carries its measurement on the main card too, not only
+            // behind Compare.
+            Text(times.source)
+              .font(.firstRunCaption)
+              .foregroundStyle(Color.obTextSecondary)
+              .multilineTextAlignment(.center)
+              .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: DesignSpacing.md) {
               fact(
                 value: EngineChoicePresentation.seconds(times.long),
@@ -227,7 +234,7 @@ struct SetupSpeechScreen: View {
         .fixedSize(horizontal: false, vertical: true)
         .padding(.top, DesignSpacing.xl)
       Text(SetupSpeech.presentation(shown, parakeetModel: parakeetModel).times.source)
-        .font(.firstRunEyebrow)
+        .font(.firstRunCaption)
         .foregroundStyle(Color.obTextSecondary)
         .multilineTextAlignment(.center)
         .fixedSize(horizontal: false, vertical: true)

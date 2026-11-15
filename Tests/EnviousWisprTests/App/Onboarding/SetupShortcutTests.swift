@@ -11,6 +11,20 @@ struct SetupShortcutTests {
   private let record = ShortcutBinding.keyboard(
     keyCode: ModifierKeyCodes.rightOption, modifiers: [])
 
+  /// #4590. When this fails, the key screen shows only "Right ⌥" with no name in words, or puts
+  /// a name under a chord or the fn key that does not match it.
+  @Test("A named key held alone gets its name in words under the keycap; chords and fn do not")
+  func keyNameUnderTheKeycap() {
+    #expect(SetupShortcutScreen.keyName(record) == "Right Option")
+    #expect(
+      SetupShortcutScreen.keyName(.keyboard(keyCode: ModifierKeyCodes.leftCommand, modifiers: []))
+        == "Left Command")
+    #expect(
+      SetupShortcutScreen.keyName(.keyboard(keyCode: ModifierKeyCodes.globe, modifiers: [])) == nil)
+    #expect(
+      SetupShortcutScreen.keyName(.keyboard(keyCode: 13, modifiers: [.control, .shift])) == nil)
+  }
+
   @Test("Holding and double-pressing the selected physical key earn their own checks")
   func rehearsal() throws {
     var rehearsal = SetupShortcutRehearsal()

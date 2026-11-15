@@ -1313,13 +1313,13 @@ def s_screens_d4b(run, speech):
         run.reset(s, "fresh flow")
         run.app.call("onboarding", "present")
         to_permissions("notDetermined", "denied")
-        s.expect(says("Two quick permissions") and setup_button(pid, "Allow microphone") is not None,
-                 "not asked: two permissions, the microphone row offers Allow")
+        s.expect(says("Two quick permissions") and setup_button(pid, "Continue to microphone access") is not None,
+                 "not asked: two permissions, the microphone row offers Continue (#4590)")
         shot(f"{appearance}-not-asked")
         if appearance == "light":
-            press("Allow microphone")
+            press("Continue to microphone access")
             s.expect(run.status().get("step") == "permissions",
-                     "Allow under simulation shows no prompt and stays", run.status().get("step"))
+                     "Continue under simulation shows no prompt and stays", run.status().get("step"))
         simulate("granted", "denied")
         s.expect(says("Two quick permissions") and setup_button(pid, "Open System Settings") is not None,
                  "microphone allowed: the screen redraws live and Accessibility offers System Settings")

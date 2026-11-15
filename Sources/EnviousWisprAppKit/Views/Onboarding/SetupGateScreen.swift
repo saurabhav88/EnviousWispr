@@ -278,7 +278,7 @@ struct SetupSmallButtonStyle: ButtonStyle {
       .frame(height: SetupMetrics.linksHeight)
       .background(
         RoundedRectangle(cornerRadius: DesignRadius.lg, style: .continuous)
-          .fill(hovering || configuration.isPressed ? Color.firstRunButtonHover : Color.obAccent)
+          .fill(hovering || configuration.isPressed ? Color.firstRunSmallButtonHover : Color.obAccent)
       )
       .opacity(isEnabled ? 1 : 0.55)
       .contentShape(RoundedRectangle(cornerRadius: DesignRadius.lg, style: .continuous))

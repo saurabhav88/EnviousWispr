@@ -2415,6 +2415,16 @@
         }
       }
     },
+    "AI polish didn’t run on this one.\nHold %@ and say the line again to see it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die KI-Nachbearbeitung lief diesmal nicht.\nHalte %@ gedrückt und sprich den Satz noch einmal, um das Ergebnis zu sehen."
+          }
+        }
+      }
+    },
     "AI polish failed: %@" : {
       "comment" : "Dictation notice: Apple Intelligence polish failed. %@ is the reason, one sentence, already translated or from the system.",
       "localizations" : {
@@ -3764,16 +3774,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Erlaube den Zugriff auf den Ton vom Mac, um fortzufahren."
-          }
-        }
-      }
-    },
-    "Allow microphone" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mikrofon erlauben"
           }
         }
       }
@@ -7691,6 +7691,16 @@
         }
       }
     },
+    "Continue to microphone access" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fortfahren zum Mikrofonzugriff"
+          }
+        }
+      }
+    },
     "Continue with %@" : {
       "localizations" : {
         "de" : {
@@ -9398,6 +9408,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Diktieren funktioniert erst wieder, wenn du erneut eine Transkriptions-Engine herunterlädst."
+          }
+        }
+      }
+    },
+    "Dictation worked" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Diktat hat geklappt"
           }
         }
       }
@@ -18944,6 +18964,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ein Transkript öffnen"
+          }
+        }
+      }
+    },
+    "Open again" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erneut öffnen"
           }
         }
       }
@@ -29655,16 +29685,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wartet auf die Transkription"
-          }
-        }
-      }
-    },
-    "Waiting…" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Warten…"
           }
         }
       }

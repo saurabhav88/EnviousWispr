@@ -48,6 +48,17 @@ struct SetupShortcutScreen: View {
     KeySymbols.format(keyCode: keyCode(binding), modifiers: binding.requiredModifiers)
   }
 
+  /// The key's name in words ("Right Option") when the binding is one of the named keys on the
+  /// key row, held alone; nil for any other shortcut, whose keycap already spells it out.
+  static func keyName(_ binding: ShortcutBinding) -> LocalizedStringKey? {
+    guard binding.isBareModifier else { return nil }
+    let code = keyCode(binding)
+    // "fn" is already its own name on the keycap.
+    guard let key = SetupShortcutKey.allCases.first(where: { $0.code == code }), key != .function
+    else { return nil }
+    return key.name
+  }
+
   /// The shortcut as it appears on a keycap ("⌥", "fn"); the film's keycap reads it too.
   static func cap(_ binding: ShortcutBinding) -> String {
     let code = keyCode(binding)
@@ -145,8 +156,8 @@ struct SetupShortcutScreen: View {
   private var mainKey: some View {
     Button(action: toggleCapture) {
       SetupShortcutKeycap(
-        display: display, isCapturing: isCapturing, isDown: rehearsal.isDown,
-        reduceMotion: reduceMotion)
+        display: display, name: Self.keyName(binding), isCapturing: isCapturing,
+        isDown: rehearsal.isDown, reduceMotion: reduceMotion)
     }
     .buttonStyle(.plain)
     .padding(.top, DesignSpacing.xs)

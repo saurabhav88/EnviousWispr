@@ -349,7 +349,7 @@ private struct SetupPermissionButton: View {
       .frame(height: SetupMetrics.tileSize)
       .background(
         RoundedRectangle(cornerRadius: DesignRadius.md, style: .continuous)
-          .fill(hovering ? Color.firstRunButtonHover : Color.obAccent)
+          .fill(hovering ? Color.firstRunSmallButtonHover : Color.obAccent)
       )
       .contentShape(RoundedRectangle(cornerRadius: DesignRadius.md, style: .continuous))
     }

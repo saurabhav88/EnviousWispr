@@ -3,6 +3,8 @@ import SwiftUI
 
 struct SetupShortcutKeycap: View {
   let display: String
+  /// #4590: the key's name in words ("Right Option") under the symbols, when it has one.
+  var name: LocalizedStringKey? = nil
   let isCapturing: Bool
   let isDown: Bool
   var reduceMotion = false
@@ -67,10 +69,20 @@ struct SetupShortcutKeycap: View {
         }
       }
     } else {
-      Text(verbatim: display)
-        .font(.firstRunDisplay)
-        .lineLimit(1)
-        .minimumScaleFactor(0.5)
+      VStack(spacing: 0) {
+        Text(verbatim: display)
+          .font(.firstRunDisplay)
+          .lineLimit(1)
+          .minimumScaleFactor(0.5)
+        if let name {
+          Text(name)
+            .font(.firstRunCaption.weight(.semibold))
+            .foregroundStyle(Color.obTextSecondary)
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+            .accessibilityHidden(true)  // the key button already speaks its name
+        }
+      }
     }
   }
 

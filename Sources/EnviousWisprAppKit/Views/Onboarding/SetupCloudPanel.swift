@@ -35,10 +35,14 @@ struct SetupCloudPanel: View {
       }
       // Mockup: only the model list's entrance animates (0.25 s rise).
       .animation(reduceMotion ? nil : SetupMotion.rise(0.25), value: model.phase == .picker)
-      statusText
-        .font(.firstRunCaption)
-        .foregroundStyle(statusColor)
-        .frame(maxWidth: .infinity, alignment: .leading)
+      // Before the first check the disclosure below says everything; no status line then.
+      if model.phase != .idle || model.waitingForOtherProviderMessage != nil {
+        statusText
+          .font(.firstRunCaption)
+          .foregroundStyle(statusColor)
+          .frame(maxWidth: .infinity, alignment: .leading)
+      }
+      disclosure
       Spacer(minLength: 0)
       // Mockup: the button stays enabled while checking; `accept` ignores repeat presses.
       SetupFooter(title: actionTitle, busy: model.isChecking, action: accept) {
@@ -229,9 +233,26 @@ struct SetupCloudPanel: View {
     return Text(status)
   }
 
+  /// #4590: what this provider receives stays on screen in every phase (checking, choosing a
+  /// model), not only before the first check, so the person sees it at the moment they commit.
+  private var disclosure: some View {
+    HStack(alignment: .firstTextBaseline, spacing: DesignSpacing.sm) {
+      Image(systemName: "lock.fill")
+        .font(.firstRunCaption)
+        .foregroundStyle(Color.firstRunSuccessText)
+        .accessibilityHidden(true)
+      Text("Sends text and dictation context to \(name). Never audio.")
+        .font(.firstRunCaption)
+        .foregroundStyle(Color.obTextSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .accessibilityElement(children: .combine)
+  }
+
   private var status: LocalizedStringKey {
     switch model.phase {
-    case .idle: "Sends text and dictation context to \(name). Never audio."
+    case .idle: "Sends text and dictation context to \(name). Never audio."  // not shown (see body)
     case .empty: "Paste your \(name) key in the box first."
     case .checking: "Checking with \(name)…"
     case .loading: "Loading models…"

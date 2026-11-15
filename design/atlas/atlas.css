@@ -41,6 +41,7 @@
   --ew-first-run-success-text: rgb(0% 45.9% 29% / 100%);
   --ew-first-run-error-text: rgb(78.4% 11.8% 19.2% / 100%);
   --ew-first-run-button-hover: rgb(16.9% 13.3% 25.1% / 100%);
+  --ew-first-run-small-button-hover: rgb(16.9% 13.3% 25.1% / 100%);
   --ew-first-run-button-disabled: rgb(89% 87.1% 92.5% / 100%);
   --ew-first-run-button-disabled-text: rgb(43.5% 38% 53.7% / 100%);
   --ew-first-run-on-accent: rgb(100% 100% 100% / 100%);
@@ -203,6 +204,7 @@
     --ew-first-run-success-text: rgb(36.1% 78.8% 60.4% / 100%);
     --ew-first-run-error-text: rgb(93.7% 48.6% 53.7% / 100%);
     --ew-first-run-button-hover: rgb(48.6% 38% 87.1% / 100%);
+    --ew-first-run-small-button-hover: rgb(74.5% 65.9% 100% / 100%);
     --ew-first-run-button-disabled: rgb(21.2% 18.8% 27.8% / 100%);
     --ew-first-run-button-disabled-text: rgb(60.4% 57.3% 69% / 100%);
     --ew-first-run-on-accent: rgb(8.2% 7.1% 11% / 100%);
@@ -265,6 +267,7 @@
   --ew-first-run-success-text: rgb(36.1% 78.8% 60.4% / 100%);
   --ew-first-run-error-text: rgb(93.7% 48.6% 53.7% / 100%);
   --ew-first-run-button-hover: rgb(48.6% 38% 87.1% / 100%);
+  --ew-first-run-small-button-hover: rgb(74.5% 65.9% 100% / 100%);
   --ew-first-run-button-disabled: rgb(21.2% 18.8% 27.8% / 100%);
   --ew-first-run-button-disabled-text: rgb(60.4% 57.3% 69% / 100%);
   --ew-first-run-on-accent: rgb(8.2% 7.1% 11% / 100%);

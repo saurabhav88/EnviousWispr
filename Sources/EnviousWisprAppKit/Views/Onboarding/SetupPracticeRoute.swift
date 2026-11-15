@@ -105,8 +105,7 @@ struct SetupPracticeRoute: View {
     SetupPracticeScreen(
       state: state, text: $progress.text,
       hasSucceeded: attempt.success != nil, key: key,
-      polish: (model.state.choices.polish ?? OnboardingChoices.polishOff)
-        == OnboardingChoices.polishOff ? .off : .live,
+      polish: polishIsOn ? .live : .off,
       settings: sources.settings, devices: sources.devices.availableInputDevices,
       onSucceeded: { finish(.practiceSucceeded) },
       onSkip: { finish(.skipPractice) },
@@ -114,7 +113,8 @@ struct SetupPracticeRoute: View {
       onOpenPermissions: openPermissions,
       onFocusChange: { editorFocused = $0 },
       editorIdentifier: editorID,
-      mayFocusEditor: { isCurrent && !sources.live.isDictationActive }
+      mayFocusEditor: { isCurrent && !sources.live.isDictationActive },
+      voiceLevel: { [live = sources.live] in Double(live.audioLevel) }
     )
     .background(EGOneHostWindowReader(host: window).allowsHitTesting(false))
     .onAppear {
@@ -130,6 +130,22 @@ struct SetupPracticeRoute: View {
   }
 
   private var isCurrent: Bool { model.routeEpoch == epoch && model.state.step == .practice }
+
+  private var polishIsOn: Bool {
+    (model.state.choices.polish ?? OnboardingChoices.polishOff) != OnboardingChoices.polishOff
+  }
+
+  /// #4590: a take that landed while polish is on but did not get polished reads
+  /// `workedWithoutPolish`; `latest` is the most recent take's result (a later polished take
+  /// returns `worked`). With polish off, an unpolished take is the expected `worked`.
+  static func shown(_ attempt: SetupPracticeState, latest: SetupPracticeResult, polishOn: Bool)
+    -> SetupPracticeState
+  {
+    if attempt == .worked, polishOn, latest == .completed(polished: false) {
+      return .workedWithoutPolish
+    }
+    return attempt
+  }
 
   private var key: String {
     switch sources.settings.shortcutBindings.record {
@@ -148,7 +164,8 @@ struct SetupPracticeRoute: View {
       if permissions.microphone() != .authorized { return .microphoneOff }
       if !permissions.accessibilityAllowed() { return .accessibilityOff }
     }
-    return model.isPracticeUsable ? attempt.state : .preparing
+    guard model.isPracticeUsable else { return .preparing }
+    return Self.shown(attempt.state, latest: attempt.result, polishOn: polishIsOn)
   }
 
   private func finish(_ event: OnboardingEvent) {
