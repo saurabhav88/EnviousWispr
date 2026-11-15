@@ -1209,7 +1209,8 @@ package final class WisprBootstrapper {
           socketDevice: InputSocket.socketDevice(
             preferredInputDeviceIDOverride: settings.preferredInputDeviceIDOverride,
             devices: audioDeviceList.availableInputDevices,
-            resolvedAutoInputDeviceID: AudioDeviceEnumerator.resolvedAutoInputDeviceID))
+            // #4021: the Auto device from the same accepted snapshot as the list.
+            resolvedAutoInputDeviceID: { audioDeviceList.snapshot?.resolvedAutoDeviceID }))
       },
       // **THE SEAM PHASE 3 LEFT, NOW SPENT** (#2376 Phase 4, C6). It is a closure
       // so that it can be: the director lives for the app's lifetime, so a stored
@@ -2104,12 +2105,14 @@ package final class WisprBootstrapper {
           if let url = URL(string: HelpCenter.rootURL) { NSWorkspace.shared.open(url) }
         },
         // #3454: the Settings dropdown's own titles ("<name> · <connection>"), read as the menu opens.
+        // #4021: from the frozen snapshot facts, never a Core Audio read as the menu opens.
         microphoneChoices: {
-          audioDeviceList.availableInputDevices.map { device in
+          let facts = audioDeviceList.microphoneFacts
+          return facts.devices.map { device in
             MicrophoneMenuChoice(
               uid: device.uid,
               title: MicrophoneDevicePicker.optionTitle(
-                for: device, transportToken: AudioDeviceEnumerator.transportLabel(for: device.id)))
+                for: device, transportToken: facts.transportTokens[device.id]))
           }
         },
         isMicrophoneConnected: { MicrophoneChoiceValidation.isSelectable(uid: $0) },
@@ -2171,9 +2174,17 @@ package final class WisprBootstrapper {
       settings: settings,
       liveRecordingState: liveRecordingState,
       navigationCoordinator: navigationCoordinator,
-      appWindowCoordinator: appWindowCoordinator
+      appWindowCoordinator: appWindowCoordinator,
+      audioDeviceList: audioDeviceList
     )
     bluetoothAwarenessPresenterHolder.presenter = bluetoothAwarenessPresenter
+    // #4021: the card is judged on fresh device facts, after each accepted snapshot
+    // (including the first after launch, so that first evaluation's breadcrumb trigger
+    // may read `device_changed` rather than `launch`; the trigger labels breadcrumbs and
+    // selects no behaviour).
+    audioDeviceList.onSnapshotApplied = { [weak bluetoothAwarenessPresenter] in
+      bluetoothAwarenessPresenter?.reconcile(trigger: .deviceChanged)
+    }
 
     // #3289 §8b: is the app working, for the idle-memory sample. A dictation is in flight from
     // arming to its terminal (the drivers' session config, which outlives an `.error` the pipeline
@@ -2249,6 +2260,7 @@ package final class WisprBootstrapper {
       transcriptionCheckpointStore: transcriptionCheckpointStore,
       batchDecodeFaultController: batchDecodeFaultController,
       whisperMemoryPressure: whisperMemoryPressure,
+      requestDeviceRefresh: { [weak audioDeviceList] in audioDeviceList?.requestRefresh() },
       // #996: each real transition into `.recording` cancels a live edit watch.
       // #3242: and pre-loads the word check so the take's check finds it ready.
       // #3988: and restarts the take's local polish engine if something outside

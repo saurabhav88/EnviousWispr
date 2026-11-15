@@ -330,4 +330,20 @@ struct AudioDeviceListSnapshotTests {
     #expect(
       rig.reconciled.withLock { $0 } == [["usb-1"], []], "a complete empty read is real absence")
   }
+
+  @Test("Microphone facts: empty before the first snapshot, then the list, Auto device and labels from it")
+  func microphoneFactsProjection() async {
+    let rig = Rig([
+      .init(
+        snapshot: Self.snapshot([Self.device(1, "usb-1"), Self.device(2, "usb-2")]), gated: false)
+    ])
+    defer { rig.finish() }
+    #expect(rig.list.microphoneFacts == .empty)
+    rig.list.requestRefresh()
+    #expect(await rig.events.next("finished-applied"))
+    let facts = rig.list.microphoneFacts
+    #expect(facts.devices.map(\.uid) == ["usb-1", "usb-2"])
+    #expect(facts.resolvedAutoDeviceID == 1)
+    #expect(facts.transportTokens == [1: "usb", 2: "usb"])
+  }
 }

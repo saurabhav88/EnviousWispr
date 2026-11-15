@@ -44,7 +44,7 @@ struct AudioSettingsView: View {
     // lives in `MicrophonePickerModel`, shared with Setup's Practice screen, so
     // both screens describe and save a microphone the same way. Built once per body.
     let microphone = MicrophonePickerModel(
-      settingsManager: settingsManager, devices: audioDeviceList.availableInputDevices)
+      settingsManager: settingsManager, facts: audioDeviceList.microphoneFacts)
 
     SettingsContentView {
       // The frozen-per-recording rule covers every control on this page, so it

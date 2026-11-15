@@ -72,7 +72,7 @@ struct SetupPracticeScreenTests {
     func screen(_ state: SetupPracticeState, succeeded: Bool = false) -> SetupPracticeScreen {
       SetupPracticeScreen(
         state: state, text: Binding(get: { text }, set: { text = $0 }),
-        hasSucceeded: succeeded, key: "Right ⌥", polish: .off, settings: settings, devices: [],
+        hasSucceeded: succeeded, key: "Right ⌥", polish: .off, settings: settings, microphone: .empty,
         onSucceeded: { continued += 1 }, onSkip: {}, onBack: { backed += 1 },
         onOpenPermissions: { openedPermissions += 1 })
     }
@@ -118,7 +118,7 @@ struct SetupPracticeScreenTests {
     func screen(_ state: SetupPracticeState) -> SetupPracticeScreen {
       SetupPracticeScreen(
         state: state, text: .constant(""), hasSucceeded: false, key: "Right ⌥", polish: .off,
-        settings: settings, devices: [], onSucceeded: {}, onSkip: {}, onBack: {},
+        settings: settings, microphone: .empty, onSucceeded: {}, onSkip: {}, onBack: {},
         onOpenPermissions: {}, mayFocusEditor: { !taking })
     }
     let rect = NSRect(x: 0, y: 0, width: 460, height: 734)
@@ -215,7 +215,7 @@ struct SetupPracticeScreenTests {
             state: state,
             text: .constant(state.isWorked ? "I think we should meet tomorrow morning." : ""),
             hasSucceeded: state.isWorked, key: "Right ⌥", polish: polish,
-            settings: settings, devices: [], onSucceeded: {}, onSkip: {}, onBack: {},
+            settings: settings, microphone: .empty, onSucceeded: {}, onSkip: {}, onBack: {},
             onOpenPermissions: {}
           )
           .overlay(alignment: .bottom) {

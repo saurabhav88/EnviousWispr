@@ -122,7 +122,7 @@ struct SetupPracticeScreen: View {
   let key: String
   let polish: SetupPracticePolish
   let settings: SettingsManager
-  let devices: [AudioInputDevice]
+  let microphone: MicrophoneFacts
   let onSucceeded: () -> Void
   let onSkip: () -> Void
   let onBack: () -> Void
@@ -197,7 +197,7 @@ struct SetupPracticeScreen: View {
             .multilineTextAlignment(.center)
         } else if !state.isWorked && !state.inFlight {
           MicrophoneDevicePicker(
-            model: MicrophonePickerModel(settingsManager: settings, devices: devices))
+            model: MicrophonePickerModel(settingsManager: settings, facts: microphone))
         }
       }
       Spacer(minLength: 0)

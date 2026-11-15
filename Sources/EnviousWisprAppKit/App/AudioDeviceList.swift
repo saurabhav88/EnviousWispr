@@ -1,3 +1,4 @@
+import CoreAudio
 import EnviousWisprAudio
 import Observation
 
@@ -14,6 +15,19 @@ final class AudioDeviceList {
   /// The last accepted snapshot: a successful list read, possibly partial. Nil until the first.
   private(set) var snapshot: AudioDeviceSnapshot?
   var hasSnapshot: Bool { snapshot != nil }
+
+  /// The list plus the snapshot's Auto device and transport tokens, for the picker and menu.
+  /// The device list itself comes from `availableInputDevices` (fixtures assign it directly);
+  /// facts the snapshot does not hold stay unavailable rather than triggering a live read.
+  var microphoneFacts: MicrophoneFacts {
+    var tokens: [AudioDeviceID: String] = [:]
+    for device in snapshot?.devices ?? [] {
+      if let label = device.transportLabel { tokens[device.id] = label }
+    }
+    return MicrophoneFacts(
+      devices: availableInputDevices, resolvedAutoDeviceID: snapshot?.resolvedAutoDeviceID,
+      transportTokens: tokens)
+  }
 
   /// Called with the list ONLY when the accepted inventory proves absence
   /// (`AudioDeviceSnapshot.provesAbsence`), so a partial or failed read can never make a

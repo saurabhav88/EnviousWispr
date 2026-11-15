@@ -106,7 +106,7 @@ struct SetupPracticeRoute: View {
       state: state, text: $progress.text,
       hasSucceeded: attempt.success != nil, key: key,
       polish: polishIsOn ? .live : .off,
-      settings: sources.settings, devices: sources.devices.availableInputDevices,
+      settings: sources.settings, microphone: sources.devices.microphoneFacts,
       onSucceeded: { finish(.practiceSucceeded) },
       onSkip: { finish(.skipPractice) },
       onBack: { if isCurrent && !sources.live.isDictationActive { model.send(.back) } },
