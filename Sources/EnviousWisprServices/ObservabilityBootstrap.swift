@@ -306,15 +306,28 @@ public enum ObservabilityBootstrap {
     options.enableAutoSessionTracking = true
 
     // Manual-only instrumentation: we add our own breadcrumbs via SentryBreadcrumb.
-    // Disable all auto-collection to avoid surprise data, noise, and hidden swizzling.
+    // Disable the auto-collection below to avoid surprise data, noise, and hidden swizzling.
+    // Crash, session and app-hang (#4599) reporting stay on.
     options.enableAutoBreadcrumbTracking = false
     options.enableNetworkBreadcrumbs = false
     options.enableCaptureFailedRequests = false
     options.enableSwizzling = false
     options.enableFileIOTracing = false
     options.enableCoreDataTracing = false
-    options.enableAppHangTracking = false
     options.tracesSampleRate = NSNumber(value: 0)
+
+    // Freeze reports (#4599, founder 2026-11-15): a user who opted in to crash reports also
+    // sends one event when the main thread stops answering for 2 s. Opted-out users never
+    // start Sentry (#3269), so no hang tracker runs for them. On macOS the SDK captures the
+    // event at once from its watchdog thread while the app is still stuck (delivery before a
+    // force quit is not guaranteed); the event (main-thread stack plus thread list) goes through
+    // `beforeSend` like every error. It needs no swizzling or auto breadcrumbs, which stay off.
+    // The SDK skips hang tracking while a debugger is attached.
+    // DEPRECATED in the SDK: `enableAppHangTracking` is removed in sentry-cocoa v10
+    // (pinned fork revision beaa5941c0057dccf8a17837103aea0ca1376afc, `Sources/Swift/Options.swift`
+    // lines 647-653). A v10 bump must replace it; Sentry points to its MetricKit integration.
+    options.enableAppHangTracking = true
+    options.appHangTimeoutInterval = 2.0
 
     // PII redaction: strip transcript content, API keys, emails, and
     // username-bearing crash paths. Extracted into `sanitizeSentryEvent`
