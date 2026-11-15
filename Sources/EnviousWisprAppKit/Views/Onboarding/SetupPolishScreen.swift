@@ -300,7 +300,7 @@ struct SetupPolishScreen: View {
         .accessibilityLabel(Text("EG-1 size"))
         if !measuredOn.isEmpty, tiles.contains(where: { $0.polishMilliseconds != nil }) {
           Text("Polish time for a short dictation, measured on an \(measuredOn).")
-            .font(.firstRunEyebrow)
+            .font(.firstRunCaption)
             .foregroundStyle(Color.obTextSecondary)
             .multilineTextAlignment(.center)
             .fixedSize(horizontal: false, vertical: true)  // German wraps, never truncates

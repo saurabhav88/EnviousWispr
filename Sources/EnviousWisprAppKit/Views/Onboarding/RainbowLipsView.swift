@@ -436,6 +436,9 @@ struct RainbowLipsView: View {
   var size: CGFloat = 70.0
   /// Live voice level 0...1 while a real take records; the equalizer follows it.
   var level: Double? = nil
+  /// #4590: the live voice level read once per drawn frame, so a caller passes the microphone
+  /// without re-rendering itself at audio rate. Wins over `level` when set.
+  var levelSource: (@MainActor () -> Double)? = nil
   /// Change this value to play a short happy bounce (a new Setup screen appearing).
   var burst: Int = 0
   /// Test hook: reports the glow peak each time the glow decision changes (0 = no glow).
@@ -544,9 +547,11 @@ struct RainbowLipsView: View {
       glide.lastTime = nil
       return bars.map { LipsMotion.restingScale(animationState, index: $0.index, isUpper: $0.isUpper) }
     }
+    // One sample per frame, shared by every bar.
+    let sample = levelSource.map { $0() } ?? level
     let targets = bars.map {
       LipsMotion.targetScale(
-        mood, index: $0.index, isUpper: $0.isUpper, t: t, elapsed: elapsed, level: level)
+        mood, index: $0.index, isUpper: $0.isUpper, t: t, elapsed: elapsed, level: sample)
     }
     let dt = glide.lastTime.map { t - $0 } ?? 0
     let drawn: [CGFloat]

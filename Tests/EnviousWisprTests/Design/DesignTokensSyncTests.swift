@@ -285,6 +285,7 @@ struct DesignTokensSyncTests {
     "Color.obErrorSoft": .obErrorSoft, "Color.obBorder": .obBorder,
     "Color.firstRunTextTertiary": .firstRunTextTertiary, "Color.firstRunSuccessText": .firstRunSuccessText,
     "Color.firstRunErrorText": .firstRunErrorText, "Color.firstRunButtonHover": .firstRunButtonHover,
+    "Color.firstRunSmallButtonHover": .firstRunSmallButtonHover,
     "Color.firstRunButtonDisabled": .firstRunButtonDisabled,
     "Color.firstRunButtonDisabledText": .firstRunButtonDisabledText,
     "Color.firstRunOnAccent": .firstRunOnAccent, "Color.firstRunAccentSoft": .firstRunAccentSoft, "Color.firstRunRule": .firstRunRule,

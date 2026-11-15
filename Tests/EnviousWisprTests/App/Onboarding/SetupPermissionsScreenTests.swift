@@ -11,8 +11,9 @@ import Testing
 ///
 /// **Product Outcome.** When this fails, a person on the Permissions screen sees the wrong card
 /// for their microphone or Accessibility state, presses a button that asks macOS again when it
-/// can no longer answer (so nothing happens), or waits on "Waiting…" with no way to reopen
-/// System Settings.
+/// can no longer answer (so nothing happens), sees an app button labelled "Allow" that
+/// competes with the macOS alert's own Allow (#4590), or cannot tell that a waiting row's button
+/// reopens System Settings.
 @MainActor
 @Suite(.tags(.productOutcome))
 struct SetupPermissionsScreenTests {
@@ -58,17 +59,50 @@ struct SetupPermissionsScreenTests {
     #expect(P.mood(.allowed, accessibilityAllowed: true) == .triumph)
   }
 
-  @Test("Allow only asks a never-asked microphone; every other press opens Settings and waits")
+  /// #4590: the small accent buttons (permission rows, recovery cards) keep readable text when
+  /// hovered. `firstRunButtonHover` measured 4.07:1 under `firstRunOnAccent` in dark mode.
+  @Test("small button text clears 4.5:1 at rest and hovered, in both appearances")
+  func smallButtonContrast() throws {
+    for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+      let text = try #require(PreviewPillPalette.resolved(.firstRunOnAccent, in: appearance))
+      for (name, fill) in [("rest", Color.obAccent), ("hover", Color.firstRunSmallButtonHover)] {
+        let background = try #require(PreviewPillPalette.resolved(fill, in: appearance))
+        let ratio = Self.contrast(text, background)
+        #expect(
+          ratio >= 4.5,
+          "\(name) in \(appearance.rawValue): \(String(format: "%.2f", ratio)):1 is below 4.5:1")
+      }
+    }
+    // Control: the measure catches the defect this token replaced (dark primary hover, 4.07:1).
+    let darkText = try #require(PreviewPillPalette.resolved(.firstRunOnAccent, in: .darkAqua))
+    let oldHover = try #require(PreviewPillPalette.resolved(.firstRunButtonHover, in: .darkAqua))
+    #expect(Self.contrast(darkText, oldHover) < 4.5)
+  }
+
+  private static func contrast(_ a: NSColor, _ b: NSColor) -> CGFloat {
+    func luminance(_ c: NSColor) -> CGFloat {
+      func channel(_ v: CGFloat) -> CGFloat {
+        v <= 0.03928 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4)
+      }
+      return 0.2126 * channel(c.redComponent) + 0.7152 * channel(c.greenComponent)
+        + 0.0722 * channel(c.blueComponent)
+    }
+    let (l1, l2) = (luminance(a), luminance(b))
+    return (max(l1, l2) + 0.05) / (min(l1, l2) + 0.05)
+  }
+
+  @Test("Continue only asks a never-asked microphone; every other press opens Settings and waits")
   func buttonsAndWaiting() {
-    #expect(P.buttonTitle(row: .microphone, microphone: .notAsked, waiting: false) == "Allow")
+    #expect(P.buttonTitle(row: .microphone, microphone: .notAsked, waiting: false) == "Continue")
     #expect(
       P.buttonAccessibilityName(row: .microphone, microphone: .notAsked, waiting: false)
-        == "Allow microphone")
+        == "Continue to microphone access")
     #expect(
       P.buttonTitle(row: .microphone, microphone: .turnedOff, waiting: false) == "Open Settings")
     #expect(
       P.buttonTitle(row: .accessibility, microphone: .allowed, waiting: false) == "Open Settings")
-    #expect(P.buttonTitle(row: .accessibility, microphone: .allowed, waiting: true) == "Waiting…")
+    #expect(
+      P.buttonTitle(row: .accessibility, microphone: .allowed, waiting: true) == "Open again")
     #expect(
       P.buttonAccessibilityName(row: .accessibility, microphone: .allowed, waiting: true)
         == "Open System Settings again")

@@ -157,6 +157,9 @@ extension Color {
   /// Setup primary button fill while hovered.
   static let firstRunButtonHover = stDynamic(
     lightRGB: (0.169, 0.133, 0.251, 1), darkRGB: (0.486, 0.38, 0.871, 1))
+  /// Setup small accent button fill while hovered (permission and recovery buttons). Dark is lighter than obAccent so firstRunOnAccent text keeps 9.0:1; firstRunButtonHover gave 4.07:1 there (#4590).
+  static let firstRunSmallButtonHover = stDynamic(
+    lightRGB: (0.169, 0.133, 0.251, 1), darkRGB: (0.745, 0.659, 1.0, 1))
   /// Setup primary button fill while it cannot be pressed.
   static let firstRunButtonDisabled = stDynamic(
     lightRGB: (0.89, 0.871, 0.925, 1), darkRGB: (0.212, 0.188, 0.278, 1))

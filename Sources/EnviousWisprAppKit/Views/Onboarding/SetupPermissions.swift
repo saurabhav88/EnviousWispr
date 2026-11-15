@@ -74,13 +74,14 @@ enum SetupPermissions {
     return microphone == .allowed ? .smile : .idle
   }
 
-  /// The in-card button: "Allow" only for a never-asked microphone, else "Open Settings";
-  /// "Waiting…" after Open Settings until that permission is on.
+  /// The in-card button: "Continue" for a never-asked microphone (#4590: Apple's HIG keeps "Allow"
+  /// for the system alert that follows), else "Open Settings"; "Open again" after Open Settings
+  /// until that permission is on, because a press then reopens System Settings.
   static func buttonTitle(row: Permission, microphone: Microphone, waiting: Bool)
     -> LocalizedStringKey
   {
-    if waiting { return "Waiting…" }
-    return row == .microphone && microphone == .notAsked ? "Allow" : "Open Settings"
+    if waiting { return "Open again" }
+    return row == .microphone && microphone == .notAsked ? "Continue" : "Open Settings"
   }
 
   static func buttonAccessibilityName(row: Permission, microphone: Microphone, waiting: Bool)
@@ -88,7 +89,7 @@ enum SetupPermissions {
   {
     if waiting { return "Open System Settings again" }
     return row == .microphone && microphone == .notAsked
-      ? "Allow microphone" : "Open System Settings"
+      ? "Continue to microphone access" : "Open System Settings"
   }
 
   /// Whether a press leaves the row waiting for System Settings. A never-asked microphone shows

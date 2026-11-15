@@ -1,4 +1,6 @@
 import AppKit
+import EnviousWisprCore
+import EnviousWisprPipeline
 import EnviousWisprServices
 import SwiftUI
 import Testing
@@ -20,6 +22,42 @@ struct SetupPracticeScreenTests {
     }
     #expect(SetupPracticeState.preparing.canContinue(hasSucceeded: true) == false)
     #expect(SetupPracticeState.microphoneOff.canContinue(hasSucceeded: true) == false)
+    // #4590: a take that landed without polish is still a success.
+    #expect(SetupPracticeState.workedWithoutPolish.canContinue(hasSucceeded: true))
+    #expect(SetupPracticeState.workedWithoutPolish.canSkip(hasSucceeded: true) == false)
+  }
+
+  /// #4590. When this fails, a person whose practice take was not polished is told
+  /// "That is it. You are set." as if AI polish had run, or a polished retry keeps the
+  /// unpolished message.
+  @Test("An unpolished take with polish on reads Dictation worked; a polished retry reads worked")
+  func unpolishedTakeIsHonest() {
+    let shown = SetupPracticeRoute.shown
+    #expect(shown(.worked, .completed(polished: false), true) == .workedWithoutPolish)
+    #expect(shown(.worked, .completed(polished: true), true) == .worked)
+    #expect(shown(.worked, .completed(polished: false), false) == .worked, "polish off by choice")
+    #expect(shown(.missedBox(copiedToClipboard: false), .missedBox, true) == .missedBox(copiedToClipboard: false))
+    #expect(SetupPracticeState.workedWithoutPolish.headline == "Dictation worked")
+    #expect(SetupPracticeState.workedWithoutPolish.lips == .smile)
+
+    // Second takes in both directions, through the real attempt.
+    var attempt = SetupPracticeAttempt()
+    func take(_ id: String, polished: Bool) {
+      attempt.observe(
+        SetupPracticeTake(id: id, phase: .recording, locked: false, terminal: nil),
+        focusedEditor: "box")
+      attempt.observe(
+        SetupPracticeTake(
+          id: id, phase: .complete, locked: false,
+          terminal: .delivered(verifiedEditor: "box", copied: false, polished: polished)),
+        focusedEditor: "box")
+    }
+    take("a", polished: false)
+    #expect(shown(attempt.state, attempt.result, true) == .workedWithoutPolish)
+    take("b", polished: true)
+    #expect(shown(attempt.state, attempt.result, true) == .worked)
+    take("c", polished: false)
+    #expect(shown(attempt.state, attempt.result, true) == .workedWithoutPolish)
   }
 
   @Test("The mounted editor writes to the caller and native shortcuts invoke the supplied actions")
@@ -159,6 +197,7 @@ struct SetupPracticeScreenTests {
       ("transcribing", .transcribing, .live), ("polishing", .polishing, .live),
       ("worked", .worked, .live), ("worked-off", .worked, .off),
       ("worked-cloud-later", .worked, .cloudLater(providerName: "Claude")),
+      ("worked-without-polish", .workedWithoutPolish, .live),
       ("no-speech", .noSpeech, .live),
       ("missed-box", .missedBox(copiedToClipboard: false), .live),
       ("copied", .missedBox(copiedToClipboard: true), .live),
@@ -174,8 +213,8 @@ struct SetupPracticeScreenTests {
         let host = NSHostingView(
           rootView: SetupPracticeScreen(
             state: state,
-            text: .constant(state == .worked ? "I think we should meet tomorrow morning." : ""),
-            hasSucceeded: state == .worked, key: "Right ⌥", polish: polish,
+            text: .constant(state.isWorked ? "I think we should meet tomorrow morning." : ""),
+            hasSucceeded: state.isWorked, key: "Right ⌥", polish: polish,
             settings: settings, devices: [], onSucceeded: {}, onSkip: {}, onBack: {},
             onOpenPermissions: {}
           )

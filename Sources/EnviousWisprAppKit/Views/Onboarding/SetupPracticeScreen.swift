@@ -8,6 +8,9 @@ enum SetupPracticeState: Equatable {
   case listening(handsFree: Bool)
   case transcribing, polishing
   case worked, noSpeech
+  /// #4590: the take reached the box but AI polish did not run on it (failed, skipped, or the
+  /// dictation was too short), while polish is on. Counts as success; the copy stays honest.
+  case workedWithoutPolish
   case missedBox(copiedToClipboard: Bool)
   case pipelineFailed
   case microphoneOff, accessibilityOff
@@ -18,6 +21,9 @@ enum SetupPracticeState: Equatable {
     default: false
     }
   }
+
+  /// Either success state: the take landed in the box.
+  var isWorked: Bool { self == .worked || self == .workedWithoutPolish }
 
   var needsPermission: Bool { self == .microphoneOff || self == .accessibilityOff }
   var acceptsFocus: Bool { self != .preparing && !needsPermission }
@@ -38,6 +44,7 @@ enum SetupPracticeState: Equatable {
     case .transcribing: "Transcribing…"
     case .polishing: "Polishing…"
     case .worked: "That is it. You are set."
+    case .workedWithoutPolish: "Dictation worked"
     case .noSpeech: "Let’s try that again"
     case .missedBox: "Click the box, then talk"
     case .pipelineFailed: "One more time"
@@ -58,6 +65,8 @@ enum SetupPracticeState: Equatable {
     case .polishing: "Cleaning up your words.\nAlmost there."
     case .worked:
       "Those are your words, typed for you.\nIn any other app, click into a text box first."
+    case .workedWithoutPolish:
+      "AI polish didn’t run on this one.\nHold \(key) and say the line again to see it."
     case .noSpeech:
       "EnviousWispr didn’t hear any speech.\nPick another microphone, or hold \(key) and speak."
     case .missedBox(copiedToClipboard: true):
@@ -78,6 +87,7 @@ enum SetupPracticeState: Equatable {
     case .listening: .equalizer
     case .transcribing, .polishing: .shimmer
     case .worked: .triumph
+    case .workedWithoutPolish: .smile
     default: .idle
     }
   }
@@ -120,11 +130,19 @@ struct SetupPracticeScreen: View {
   var onFocusChange: (Bool) -> Void = { _ in }
   var editorIdentifier: String = "Your first dictation"
   var mayFocusEditor: @MainActor () -> Bool = { true }
+  /// #4590: the live microphone level; the lips follow it while listening.
+  var voiceLevel: (@MainActor () -> Double)? = nil
   @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
   @Environment(\.overlayReduceMotionOverride) private var reduceMotionOverride
   private var reduceMotion: Bool { reduceMotionOverride ?? systemReduceMotion }
 
   @FocusState private var editorFocused: Bool
+
+  /// The voice level reaches the lips only while listening.
+  private var lipsLevel: (@MainActor () -> Double)? {
+    if case .listening = state { return voiceLevel }
+    return nil
+  }
   @State private var burst = 0
   @State private var glow = false
 
@@ -143,7 +161,10 @@ struct SetupPracticeScreen: View {
 
   private var practiceContent: some View {
     VStack(spacing: DesignSpacing.xl) {
-      RainbowLipsView(animationState: state.lips, size: SetupMetrics.screenLips, burst: burst)
+      RainbowLipsView(
+        animationState: state.lips, size: SetupMetrics.screenLips,
+        levelSource: lipsLevel,
+        burst: burst)
         .accessibilityHidden(true)
         .onAppear { if !reduceMotion { burst += 1 } }  // mockup: a happy bounce on arrival
       VStack(spacing: DesignSpacing.md) {
@@ -169,12 +190,12 @@ struct SetupPracticeScreen: View {
         editor
       }
       if state.acceptsFocus {
-        if state == .worked, let note = polish.note {
+        if state.isWorked, let note = polish.note {
           Text(note)
             .font(.firstRunCaption)
             .foregroundStyle(Color.obTextSecondary)
             .multilineTextAlignment(.center)
-        } else if state != .worked && !state.inFlight {
+        } else if !state.isWorked && !state.inFlight {
           MicrophoneDevicePicker(
             model: MicrophonePickerModel(settingsManager: settings, devices: devices))
         }
@@ -242,19 +263,19 @@ struct SetupPracticeScreen: View {
       }
       .overlay {
         shape.strokeBorder(
-          state == .worked
+          state.isWorked
             ? Color.firstRunSuccessText : editorFocused ? Color.obAccent : Color.firstRunRule,
           lineWidth: 1
         ).allowsHitTesting(false)
           // Mockup: the border turns green over 0.2 s on success.
-          .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: state == .worked)
+          .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: state.isWorked)
       }
       // Mockup obGlow 0.7 s: on success a green ring grows to 8 points and fades back.
       .background {
         shape.stroke(Color.obSuccessSoft, lineWidth: glow && !reduceMotion ? 16 : 0)
           .allowsHitTesting(false)
       }
-      .onChange(of: state == .worked) { _, worked in
+      .onChange(of: state.isWorked) { _, worked in
         guard worked, !reduceMotion else { return }
         // Out to 8 points, then back: the second step starts when the first one finishes.
         withAnimation(SetupMotion.rise(0.28), completionCriteria: .logicallyComplete) {
