@@ -106,6 +106,8 @@ struct HistoryTranscriptView: View {
   @State private var pendingRetranscription: ImportedASRChoice?
   @State private var locateRequested = false
   @State private var moreAnchor = HistoryMenuAnchorHolder()
+  /// Rename in More opens the title's field (#4611).
+  @State private var renameRequested = false
 
   private typealias P = HistoryTranscriptPresentation
 
@@ -292,11 +294,8 @@ struct HistoryTranscriptView: View {
 
   private func titleBlock(_ row: Transcript) -> some View {
     VStack(alignment: .leading, spacing: DesignSpacing.xxs) {
-      Text(verbatim: P.title(for: row))
-        .font(.stRowTitle)
-        .foregroundStyle(.stTextPrimary)
-        .lineLimit(1)
-        .truncationMode(.middle)
+      TranscriptInlineTitle(
+        rowID: rowID, fallbackTitle: P.title(for: row), beginRequest: $renameRequested)
       provenance(row)
     }
   }
@@ -401,6 +400,9 @@ struct HistoryTranscriptView: View {
     let busy = P.isBusy(retranscription.state(for: rowID))
     let speechChoices = retranscription.choices(for: rowID)
     var items: [HistoryMenuItem] = [
+      .init(
+        id: "rename", title: Self.renameLabel, systemImage: "pencil",
+        isEnabled: row.isImported, kind: .action { renameRequested = true }),
       .init(
         id: "share", title: labels.share, systemImage: "square.and.arrow.up",
         isEnabled: availability == .content,
@@ -818,6 +820,10 @@ struct HistoryTranscriptView: View {
 
   static let newWindowLabel = LocalizedStringResource(
     "Open in new window", comment: "History transcript: opens this transcript in its own window.")
+
+  static var renameLabel: String {
+    String(localized: "Rename", comment: "History transcript: opens the title's rename field.")
+  }
 
   static var locateLabel: String {
     String(

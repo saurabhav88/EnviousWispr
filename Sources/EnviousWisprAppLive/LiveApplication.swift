@@ -56,6 +56,8 @@ package final class LiveApplication {
         scrollWheelMonitor: LiveScrollWheelMonitor(),
         // #3545: the one place the real Settings key monitor is chosen.
         settingsKeyMonitor: LiveSettingsKeyMonitor(),
+        // #4611: the one place the real History click watcher is chosen.
+        historyClickMonitor: LiveHistoryClickMonitor(),
         // #4528 D5: the one place the real Setup shortcut rehearsal listener is chosen.
         setupShortcutMonitor: LiveSetupShortcutMonitor(),
         historyScrollMonitor: LiveHistoryScrollMonitor(),

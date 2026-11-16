@@ -44,6 +44,12 @@ struct HistoryTranscriptCard: View {
   @State private var sourceState: ImportedSourceState?
   @State private var copiedAt: Date?
   @State private var moreAnchor = HistoryMenuAnchorHolder()
+  /// Rename in More opens the title's field (#4611).
+  @State private var renameRequested = false
+  /// The title's rename field is open: a click on the card saves the name instead of opening.
+  @State private var titleEditing = false
+  /// The click that saved the title by clicking away; that click must not also open the card.
+  @State private var clickAwayStamp: TimeInterval?
 
   private typealias P = HistoryTranscriptPresentation
 
@@ -58,8 +64,10 @@ struct HistoryTranscriptCard: View {
     let row = transcripts.currentRow(id: rowID)
     Group {
       if let summary {
+        // The loaded row's title first, so Open says the name the title shows after a rename.
         card(
-          title: summary.title ?? P.transcriptWord, seconds: summary.duration ?? 0,
+          title: row.map(P.title(for:)) ?? summary.title ?? P.transcriptWord,
+          seconds: summary.duration ?? 0,
           preview: summary.preview, chips: P.chips(for: summary), row: nil)
       } else if let row {
         card(
@@ -86,11 +94,10 @@ struct HistoryTranscriptCard: View {
     title: String, seconds: TimeInterval, preview: String, chips: [P.Chip], row: Transcript?
   ) -> some View {
     VStack(alignment: .leading, spacing: DesignSpacing.lg) {
-      HistoryParagraphText.searchText(title, query: query)
-        .font(.stRowTitle)
-        .foregroundStyle(.stTextPrimary)
-        .lineLimit(1)
-        .truncationMode(.middle)
+      // Its own buttons, so a click on the title renames instead of opening the card (#4611).
+      TranscriptInlineTitle(
+        rowID: rowID, fallbackTitle: title, beginRequest: $renameRequested, searchQuery: query,
+        isEditing: $titleEditing, clickAwayStamp: $clickAwayStamp)
       HistoryParagraphText.searchText(preview, query: query)
         .font(.stCardText)
         .foregroundStyle(.stTextBody)
@@ -100,7 +107,7 @@ struct HistoryTranscriptCard: View {
     }
     .historyDiaryCard()
     .contentShape(Rectangle())
-    .onTapGesture(perform: onOpen)
+    .onTapGesture(perform: openOrFinishRename)
   }
 
   // MARK: - Footer
@@ -189,13 +196,20 @@ struct HistoryTranscriptCard: View {
 
   // MARK: - Buttons
 
+  /// Clicking away from the rename field saves it and keeps the card on the list (#4611).
+  private func openOrFinishRename() {
+    guard HistoryInlineTitle.cardMayOpen(titleEditing: titleEditing, clickAwayStamp: clickAwayStamp)
+    else { return }
+    onOpen()
+  }
+
   /// Open, Copy and More, in the Dictations card's place and order (#4611).
   private func buttonRow(title: String) -> some View {
     let copy = TranscribeFileExport.copyButtonPresentation(
       label: TranscriptDocumentPresenter.exportButtonLabels(mode: .cleaned).copy, copiedAt: copiedAt,
       now: Date(), holdSeconds: TranscribeFileExport.copiedHoldSeconds)
     return HStack(spacing: DesignSpacing.md) {
-      Button(action: onOpen) {
+      Button(action: openOrFinishRename) {
         EnviousButtonLabel(
           LocalizedStringResource(
             "Open", comment: "History transcript card: opens the full transcript."),
@@ -245,6 +259,10 @@ struct HistoryTranscriptCard: View {
   /// the original can't play.
   private func moreItems() -> [HistoryMenuItem] {
     var items: [HistoryMenuItem] = [
+      .init(
+        id: "rename", title: HistoryTranscriptView.renameLabel, systemImage: "pencil",
+        isEnabled: transcripts.currentRow(id: rowID)?.isImported == true,
+        kind: .action { renameRequested = true }),
       .init(
         id: "new-window", title: String(localized: HistoryTranscriptView.newWindowLabel),
         systemImage: "macwindow.badge.plus",

@@ -13,8 +13,9 @@ import Observation
 /// asked before it.
 ///
 /// **The row changes only through History's replacement ticket.** The ticket is taken first, so
-/// any change the row sees during the run (a rename, a relink, a deletion, a newer ticket, a
-/// Cancel) makes the commit refuse and the old row stays. A failed transcription, an
+/// any change the row sees during the run (a speaker rename, a relink, a deletion, a newer
+/// ticket, a Cancel) makes the commit refuse and the old row stays. A title rename is the one
+/// exception (#4611): it is independent of the content, and the commit keeps the new title. A failed transcription, an
 /// unavailable original or a failed write leaves the old row as it was; no new row is ever
 /// written.
 @MainActor

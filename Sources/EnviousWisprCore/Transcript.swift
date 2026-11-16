@@ -436,7 +436,7 @@ public struct Transcript: Codable, Identifiable, Sendable {
   /// The file this transcript was IMPORTED from, or nil for a dictation (#2772).
   ///
   /// **One field doing three jobs, deliberately.** It is the flag (non-nil means imported),
-  /// the badge's evidence, and the row's title. A separate `isImported` Boolean beside a name
+  /// the badge's evidence, and the row's DEFAULT title (a rename lives in `customTitle`). A separate `isImported` Boolean beside a name
   /// could disagree with it, and the disagreement would be "is this row an import", which is
   /// the question the badge answers.
   ///
@@ -444,6 +444,25 @@ public struct Transcript: Codable, Identifiable, Sendable {
   /// no custom decode), matching `isRecovered` (#1063), `inputDeviceWasRemoved` (#1408) and
   /// `escapeRecoveredAt` (#2087).
   public let importedFileName: String?
+
+  /// The name the user gave this import in History (#4611), or nil for the file name.
+  /// Optional so older rows decode to nil (synthesized `Codable`, no custom decode). Written
+  /// only through `renamed(to:)`. An older build that rewrites the row drops it.
+  public private(set) var customTitle: String?
+
+  /// The title History shows: the user's name for the import, else its file name.
+  public var displayTitle: String? { customTitle ?? importedFileName }
+
+  /// This import with its title set to `title`, trimmed and capped at 120 characters, the way
+  /// a meeting rename is (`MeetingCoordinator.rename`). An empty title goes back to the file
+  /// name. A row that is not an import is returned unchanged.
+  public func renamed(to title: String) -> Transcript {
+    guard isImported else { return self }
+    var copy = self
+    let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+    copy.customTitle = trimmed.isEmpty ? nil : String(trimmed.prefix(120))
+    return copy
+  }
 
   /// Derived output retained even when no AI polish succeeded (#2772).
   ///
@@ -564,7 +583,7 @@ public struct Transcript: Codable, Identifiable, Sendable {
 
   /// This import with its content replaced by `result`, a fresh transcription of the same
   /// file (#3147 PR3, Transcribe again with). Keeps this row's identity: id, creation date,
-  /// file name, source link and History preference. Replaces every field the transcription
+  /// file name, title, source link and History preference. Replaces every field the transcription
   /// and processing produce, together, and takes `result`'s speaker fields as they are, so
   /// old turn ranges never index the new text.
   public func replacingImportedContent(from result: Transcript, attemptID: UUID) -> Transcript {
@@ -573,6 +592,7 @@ public struct Transcript: Codable, Identifiable, Sendable {
       duration: duration, processingTime: result.processingTime, backendType: result.backendType,
       createdAt: createdAt, llmProvider: result.llmProvider, llmModel: result.llmModel,
       metrics: result.metrics, importedFileName: importedFileName,
+      customTitle: customTitle,
       processedText: result.processedText, speakerAnalysis: result.speakerAnalysis,
       speakerNames: result.speakerNames, turns: result.turns,
       speakerNameSources: result.speakerNameSources,
@@ -600,6 +620,7 @@ public struct Transcript: Codable, Identifiable, Sendable {
     escapeRecoveredAt: Date? = nil,
     escapeRecoveryTakeID: String? = nil,
     importedFileName: String? = nil,
+    customTitle: String? = nil,
     processedText: String? = nil,
     speakerAnalysis: TranscriptSpeakerAnalysis? = nil,
     speakerNames: [String: String]? = nil,
@@ -633,6 +654,7 @@ public struct Transcript: Codable, Identifiable, Sendable {
     self.escapeRecoveredAt = escapeRecoveredAt
     self.escapeRecoveryTakeID = escapeRecoveryTakeID
     self.importedFileName = importedFileName
+    self.customTitle = customTitle
     self.processedText = processedText
     self.speakerAnalysis = speakerAnalysis
     self.speakerNames = speakerNames

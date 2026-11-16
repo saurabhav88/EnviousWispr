@@ -44,6 +44,10 @@ struct HistoryMeetingCard: View {
   @State private var playerSource: MeetingPlaybackSource?
   @State private var moreAnchor = HistoryMenuAnchorHolder()
   @State private var renameRequested = false
+  /// The title's rename field is open: a click on the card saves the name instead of opening.
+  @State private var titleEditing = false
+  /// The click that saved the title by clicking away; that click must not also open the card.
+  @State private var clickAwayStamp: TimeInterval?
   @State private var copiedAt: Date?
   @State private var confirmingDeletion: Deletion?
   @State private var deleting = false
@@ -113,6 +117,13 @@ struct HistoryMeetingCard: View {
         ?? summary?.summaryProvider)
   }
 
+  /// Clicking away from the rename field saves it and keeps the card on the list (#4611).
+  private func openOrFinishRename() {
+    guard HistoryInlineTitle.cardMayOpen(titleEditing: titleEditing, clickAwayStamp: clickAwayStamp)
+    else { return }
+    onOpen()
+  }
+
   private func previewText(row: Transcript?) -> String? {
     if let id = echoRowID, let echoRow = transcripts.currentRow(id: id) {
       return transcripts.meetingPreviewText(of: echoRow)
@@ -127,7 +138,9 @@ struct HistoryMeetingCard: View {
       // The rename controls are siblings of Open and "···", never inside them. A row whose
       // meeting folder is gone has no record to rename, so it shows its name only.
       if card.canRename {
-        MeetingInlineTitle(meetingID: meetingID, beginRequest: $renameRequested, searchQuery: query)
+        MeetingInlineTitle(
+          meetingID: meetingID, beginRequest: $renameRequested, searchQuery: query,
+          isEditing: $titleEditing, clickAwayStamp: $clickAwayStamp)
       } else {
         HistoryParagraphText.searchText(card.title, query: query)
           .font(.stRowTitle)
@@ -152,7 +165,7 @@ struct HistoryMeetingCard: View {
     }
     .historyDiaryCard()
     .contentShape(Rectangle())
-    .onTapGesture(perform: onOpen)
+    .onTapGesture(perform: openOrFinishRename)
     .confirmationDialog(
       Text(verbatim: Self.confirmationTitle(confirmingDeletion ?? .meeting)),
       isPresented: Binding(
@@ -279,7 +292,7 @@ struct HistoryMeetingCard: View {
       label: String(localized: "Copy", comment: "EnviousMeet: copies the visible transcript."),
       copiedAt: copiedAt, now: Date(), holdSeconds: TranscribeFileExport.copiedHoldSeconds)
     return HStack(spacing: DesignSpacing.md) {
-      Button(action: onOpen) {
+      Button(action: openOrFinishRename) {
         EnviousButtonLabel(
           LocalizedStringResource("Open", comment: "History meeting card: opens the meeting."),
           size: .medium, trailingSystemImage: "chevron.right")

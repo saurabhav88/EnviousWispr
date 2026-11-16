@@ -845,6 +845,7 @@ final class TranscriptCoordinator {
     // Held recovery rows remain browseable without appearing in search.
     row.escapeRecoveredAt == nil
       && (text().localizedCaseInsensitiveContains(query)
+        || (row.customTitle?.localizedCaseInsensitiveContains(query) ?? false)
         || (row.importedFileName?.localizedCaseInsensitiveContains(query) ?? false)
         || (info?.title?.localizedCaseInsensitiveContains(query) ?? false)
         || (row.speakerNames?.values.contains { $0.localizedCaseInsensitiveContains(query) } ?? false))
@@ -1383,10 +1384,12 @@ final class TranscriptCoordinator {
         if current.isImported {
           // #3147 PR3: a write from an older transcription of this import (its text replaced
           // since by Transcribe again with) is refused, even when the text matches; and the
-          // row's current source link stands, whatever link the caller's copy carried.
+          // row's current source link stands, whatever link the caller's copy carried. So does
+          // its title: a rename while the cleanup ran is newer than the caller's copy (#4611).
           guard candidate.importAttemptID == current.importAttemptID else { return false }
-          candidate = candidate.withSource(
-            bookmark: current.sourceBookmark, fingerprint: current.sourceFingerprint)
+          candidate = candidate
+            .renamed(to: current.customTitle ?? "")
+            .withSource(bookmark: current.sourceBookmark, fingerprint: current.sourceFingerprint)
         }
         return try await performWrite(candidate, insertIfAbsent: false)
       }
@@ -1948,12 +1951,30 @@ final class TranscriptCoordinator {
   /// removed, so its players stop first (wired to the playback arbiter). Nil in tests.
   @ObservationIgnored var onImportedContentWillChange: (@MainActor (UUID) -> Void)?
 
-  /// A canonical digest of a stored row, the base a replacement ticket compares against.
+  /// A canonical digest of a stored row, the base a replacement ticket compares against. The
+  /// title is left out (#4611): a rename during Transcribe again with is independent of the
+  /// content, and the commit keeps the current title. Every other change still refuses it.
   private func rowDigest(_ row: Transcript) async throws -> String {
     #if DEBUG
       await rowDigestWillRunForTesting?()
     #endif
-    return try await Self.canonicalDigest(row)
+    return try await Self.canonicalDigest(row.renamed(to: ""))
+  }
+
+  /// Renames import `id` (#4611): trimmed, capped at 120 characters, and an empty title goes
+  /// back to the file name. False when a meeting's durable write holds the row, the row is
+  /// gone or is not an import, or the save fails. No telemetry: titles stay on the Mac.
+  @discardableResult
+  func renameTitle(id: UUID, title: String) async -> Bool {
+    guard !transactionExecutor.isDurableWriteInFlight(id), !Task.isCancelled else { return false }
+    return await transactionExecutor.admit { [self] () async -> Bool in
+      do {
+        guard let current = try await rowForCommand(id), current.isImported else { return false }
+        return try await performWrite(current.renamed(to: title), insertIfAbsent: false)
+      } catch {
+        return false
+      }
+    }
   }
 
   #if DEBUG
