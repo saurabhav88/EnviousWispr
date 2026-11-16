@@ -20159,6 +20159,7 @@
       }
     },
     "Polish transcript with" : {
+      "comment" : "History meeting, More menu: opens the list of AI models to polish the transcript again.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -21246,6 +21247,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Aufnahme konnte nicht gespeichert werden."
+          }
+        }
+      }
+    },
+    "Recording deleted" : {
+      "comment" : "History meeting card footer: this meeting's recording was deleted. Hover gives the full sentence.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahme gelöscht"
           }
         }
       }
@@ -25665,7 +25677,7 @@
       }
     },
     "That didn't work. Try again." : {
-      "comment" : "History: a recording action (keep or delete) failed.",
+      "comment" : "History meeting card: deleting a meeting or its recording failed.\nHistory: a recording action (keep or delete) failed.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -26075,6 +26087,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die KI, die deine Meeting-Zusammenfassungen erstellt. Getrennt von der KI-Nachbearbeitung für Diktate."
+          }
+        }
+      }
+    },
+    "The AI-written summary of this meeting" : {
+      "comment" : "History meeting: hover hint on the AI summary tab.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die von der KI geschriebene Zusammenfassung dieses Meetings"
           }
         }
       }
@@ -30149,6 +30172,17 @@
         }
       }
     },
+    "Who spoke, and for how long" : {
+      "comment" : "Meeting player: hover hint on the Participants button.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wer gesprochen hat und wie lange"
+          }
+        }
+      }
+    },
     "Why this happens" : {
       "comment" : "Speech engine settings, Faster Transcription: help panel heading.",
       "localizations" : {
@@ -30521,6 +30555,7 @@
       }
     },
     "Write summary again with" : {
+      "comment" : "History meeting, More menu: opens the list of AI models to write the summary again.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -31471,6 +31506,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dein eigener OpenAI-Schlüssel. Nur der Text wird gesendet, niemals das Audio."
+          }
+        }
+      }
+    },
+    "Your own notes for this meeting" : {
+      "comment" : "History meeting: hover hint on the Your notes tab.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine eigenen Notizen zu diesem Meeting"
           }
         }
       }
