@@ -52,7 +52,7 @@ EnviousWispr keeps what it recorded up to that point and transcribes it, rather 
 
 If you see "EnviousWispr can't reach your microphone" when you start dictating, macOS did not answer when EnviousWispr asked to start the microphone. A meeting can show the same notice when it starts. The notice has a **How to fix** button that opens this section.
 
-A common cause is another app's audio driver that has stopped responding. Apps that add their own microphones or speakers, such as Zoom, Microsoft Teams or Krisp, install these drivers. EnviousWispr cannot tell which app is involved, so treat this as a likely cause, not a certainty.
+One possible cause is another app's audio driver that has stopped responding. Apps that add their own microphones or speakers, such as Zoom, Microsoft Teams or Krisp, install these drivers. EnviousWispr cannot tell what is blocking the microphone, so this is only one possibility.
 
 Work through these steps in order, and try dictating again after each one:
 
