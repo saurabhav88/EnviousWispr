@@ -66,7 +66,7 @@ enum CoreAudioLaneReporting {
 enum AudioUnitLaneReporting {
   /// Every operation name the lane runs, mapped onto the event's closed vocabulary. Explicit
   /// rather than pattern-matched, so a new lane job with no row here is dropped (never sent as
-  /// free text) and `AudioUnitLaneReportingTests` names it.
+  /// free text) and `CoreAudioReadTelemetryTests.everyLaneJobNameIsMapped` names it.
   static let readForOperation: [String: CoreAudioReadTelemetry.Read] = [
     "microphone_start": .microphoneStart,
     "microphone_release": .microphoneRelease,
