@@ -57,6 +57,7 @@ if os.environ.get('HOLD_GROUP') == name:
     child = subprocess.Popen([sys.executable, '-c', child_code, str(root / 'grandchild.pid')])
     while True: time.sleep(0.05)
 if os.environ.get('FAIL_GROUP') == name: sys.exit(65)
+if os.environ.get('DELAY_GROUP') == name: time.sleep(1.5)
 target = 'EnviousWisprTests'
 suites = [a.split(':', 1)[1].split('/')[1] for a in args if a.startswith('-only-testing:')]
 if os.environ.get('MISSING_SUITE') and suites: suites.pop()
@@ -67,7 +68,7 @@ for bundle, suite_names in groups:
     cases = []
     for suite in suite_names:
         identity = bundle + '/' + suite + '/caseOne()'
-        result = 'Failed' if os.environ.get('FAIL_VERDICT') == name else 'Passed'
+        result = 'Failed' if name in os.environ.get('FAIL_VERDICT', '').split(',') else 'Passed'
         cases.append({'nodeType': 'Test Case', 'name': 'a real case', 'nodeIdentifier': suite + '/caseOne()', 'nodeIdentifierURL': 'test://com.apple.xcode/Fixture/' + identity, 'result': result, 'children': [{'nodeType': 'Arguments', 'name': 'input: 1', 'result': result}]})
     bundles.append({'nodeType': 'Unit test bundle', 'name': bundle, 'children': cases})
 if os.environ.get('DUPLICATE_IDENTITY') and name == 'source': bundles[0]['children'].append(dict(bundles[0]['children'][0]))
@@ -103,7 +104,7 @@ if os.environ.get('DROP_PARAMETER'): roots[0]['children'][0]['children'][0]['chi
         self.env = dict(os.environ, PATH=str(self.bin) + os.pathsep + os.environ["PATH"],
                         FIXTURE_ROOT=str(self.root), CI="")
         for key in ("HOLD_GROUP", "FAIL_GROUP", "FAIL_VERDICT", "MISSING_SUITE", "LEAK_SOURCE",
-                    "FAIL_MERGE", "DROP_MERGED_CASE", "DROP_PARAMETER", "DUPLICATE_IDENTITY", "IGNORE_CHILD_TERM",
+                    "FAIL_MERGE", "DROP_MERGED_CASE", "DROP_PARAMETER", "DUPLICATE_IDENTITY", "IGNORE_CHILD_TERM", "DELAY_GROUP", "EW_NO_OUTPUT_LIMIT_SECS", "EW_HUNG_MARKER",
                     "EXPECTED_GROUPS", "TEST_RUNNER_EW_WRITE_TEST_INVENTORY_BASELINE",
                     "TEST_RUNNER_EW_REAL_BOUNDARY", "EW_LOCAL_TEST_WORKERS"):
             self.env.pop(key, None)
@@ -201,6 +202,44 @@ if os.environ.get('DROP_PARAMETER'): roots[0]['children'][0]['children'][0]['chi
             with self.subTest(group=name):
                 self.run_groups(rc=1, FAIL_GROUP=name)
                 self.assertFalse((self.logs / "combined.log").exists())
+
+    def test_a_failed_group_never_stops_the_other_groups(self):
+        # #4612: the source group fails at once; the serial group fails later.
+        # Both run to their own end and both failing tests are listed together.
+        result = self.run_groups(rc=1, FAIL_GROUP="source", DELAY_GROUP="serial", FAIL_VERDICT="serial")
+        self.assertTrue((self.root / "serial.finished").exists(), result.stdout + result.stderr)
+        self.assertIn("Debug source group FAILED (exit 1); other groups keep running", result.stdout)
+        self.assertIn("Debug serial group FAILED (exit 1)", result.stdout)
+        summary = result.stdout[result.stdout.index("==> Failing tests from all groups:"):]
+        self.assertIn("ERROR: Debug source group failed (xcodebuild rc=65, verdict rc=1)", summary)
+        self.assertIn("ERROR: Debug serial group result is 'Failed': StatefulTests/caseOne()", summary)
+        self.assertIn("failed group(s): serial, source", result.stderr)
+        self.assertFalse((self.logs / "combined.log").exists())
+
+    def test_failing_tests_from_two_groups_are_listed_together(self):
+        result = self.run_groups(rc=1, FAIL_VERDICT="source,serial")
+        summary = result.stdout[result.stdout.index("==> Failing tests from all groups:"):]
+        for line in ("ERROR: Debug source group result is 'Failed': DesktopEffectIsolationFreezeTests/caseOne()",
+                     "ERROR: Debug serial group result is 'Failed': StatefulTests/caseOne()",
+                     "ERROR: Debug serial group result is 'Failed': ASRTests/caseOne()"):
+            self.assertIn(line, summary)
+        self.assertIn("==>   source: FAILED (exit 1)", result.stdout)
+        self.assertIn("==>   serial: FAILED (exit 1)", result.stdout)
+
+    def test_a_hung_group_is_stopped_while_the_others_still_report(self):
+        marker = self.root / "hung-marker"
+        marker.write_text("")
+        result = self.run_groups(rc=5, HOLD_GROUP="serial", FAIL_VERDICT="source",
+                                 EW_NO_OUTPUT_LIMIT_SECS="2", EW_HUNG_MARKER=str(marker))
+        self.assertIn("==> HUNG: no output for 2 s in Debug serial group", result.stdout)
+        self.assertIn("==>   serial: HUNG (", result.stdout)
+        self.assertIn("ERROR: Debug source group result is 'Failed'", result.stdout)
+        self.assertIn("ERROR: Debug serial group printed no verdict", result.stdout)
+        self.assertIn("in Debug serial group", marker.read_text())
+        grandchild = int((self.root / "grandchild.pid").read_text())
+        state = subprocess.run(["ps", "-o", "stat=", "-p", str(grandchild)],
+                               capture_output=True, text=True).stdout.strip()
+        self.assertTrue(not state or state.startswith("Z"), f"hung group's process survived: {state}")
 
     def test_structured_failure_is_not_hidden_by_successful_worker_exit(self):
         self.run_groups(rc=1, FAIL_VERDICT="source")
@@ -302,6 +341,46 @@ if os.environ.get('DROP_PARAMETER'): roots[0]['children'][0]['children'][0]['chi
                 proc.terminate()
                 proc.communicate(timeout=15)
 
+
+
+class GroupSignalCensus(unittest.TestCase):
+    """#4612: Darwin killpg says EPERM when it finds no member it can signal."""
+
+    def setUp(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("local_test_groups", HERE / "local-test-groups.py")
+        self.module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.module)
+        self.module.EPERM_SETTLE_SECONDS = 0.2
+        self.proc = type("Proc", (), {"pid": 4242})()
+        self.calls = []
+
+        def killpg(pid, sig):
+            self.calls.append((pid, sig))
+            raise PermissionError(1, "Operation not permitted")
+        original = self.module.os.killpg
+        self.module.os.killpg = killpg
+        self.addCleanup(setattr, self.module.os, "killpg", original)
+
+    def census(self, members):
+        self.module.group_census = lambda pgid: members
+
+    def test_a_member_still_exiting_is_accepted(self):
+        self.census([(4242, "Z", "bash"), (4250, "?E", "xctest")])
+        self.module.signal_owned_group(self.proc, signal.SIGTERM)
+
+    def test_a_live_member_is_still_refused_and_named(self):
+        self.census([(4242, "Z", "bash"), (4250, "S", "xctest")])
+        with self.assertRaises(PermissionError) as caught:
+            self.module.signal_owned_group(self.proc, signal.SIGTERM)
+        self.assertIn("4250 S xctest", str(caught.exception))
+        self.assertGreater(len(self.calls), 1, "a live member must be retried before refusing")
+
+    def test_a_missing_leader_is_refused(self):
+        self.census([(4250, "Z", "xctest")])
+        with self.assertRaises(PermissionError) as caught:
+            self.module.signal_owned_group(self.proc, signal.SIGKILL)
+        self.assertIn("leader listed: False", str(caught.exception))
 
 if __name__ == "__main__":
     unittest.main()

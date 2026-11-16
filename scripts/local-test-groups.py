@@ -4,9 +4,12 @@
 Execution and verdicts stay in lib/xcode-test-run.sh. This owner coordinates
 processes, derives complementary selections, and preserves a complete result.
 Unreviewed suites stay together; each worker remains internally serial.
+A failed or hung group never stops its siblings (#4612): every group runs to
+its own end, then a failing run lists every group's failing tests together.
 """
 
 import argparse
+import errno
 import json
 import os
 from pathlib import Path
@@ -33,6 +36,8 @@ TARGET = "EnviousWisprTests"
 REQUIRED = f"{TARGET} EnviousWisprDesktopEffectsTests EnviousWisprASRTests"
 # Existing owned-process termination precedent: scripts/mutation-battery.py.
 TERMINATION_GRACE_SECONDS = 10
+# How long an EPERM group may take to show every member as exited (#4612).
+EPERM_SETTLE_SECONDS = 3
 SIGNALS = (signal.SIGHUP, signal.SIGINT, signal.SIGTERM, signal.SIGQUIT)
 # #4461/#4507: a progress line at most this often while workers run, so a caller
 # watching this process's own output (a remote dispatcher) sees it alive.
@@ -206,26 +211,51 @@ def observed_exit(proc):
     raise RuntimeError(f"unexpected child exit state: {status}")
 
 
+def group_census(pgid):
+    """Every process in group `pgid` as (pid, state, command)."""
+    output = subprocess.check_output(["ps", "-axo", "pid=,pgid=,stat=,comm="], text=True)
+    members = []
+    for line in output.splitlines():
+        parts = line.split(None, 3)
+        if len(parts) >= 3 and int(parts[1]) == pgid:
+            members.append((int(parts[0]), parts[2], parts[3] if len(parts) > 3 else ""))
+    return members
+
+
+def finished_state(state):
+    """A zombie (Z) or a process already on its way out (E) runs no more code."""
+    return state.startswith("Z") or "E" in state
+
+
 def signal_owned_group(proc, sig):
-    try:
-        os.killpg(proc.pid, sig)
-    except ProcessLookupError:
-        pass
-    except PermissionError:
-        # Darwin reports EPERM for a group containing only zombies. Accept
-        # that state only after a complete census positively establishes it;
-        # a terminated leader alone says nothing about its descendants.
-        if observed_exit(proc) is None:
-            raise
-        output = subprocess.check_output(["ps", "-axo", "pid=,pgid=,stat="], text=True)
-        members = []
-        for line in output.splitlines():
-            pid, pgid, state = line.split()
-            if int(pgid) == proc.pid:
-                members.append((int(pid), state))
-        if (not any(pid == proc.pid for pid, _ in members)
-                or any(not state.startswith("Z") for _, state in members)):
-            raise
+    deadline = time.monotonic() + EPERM_SETTLE_SECONDS
+    while True:
+        try:
+            os.killpg(proc.pid, sig)
+            return
+        except ProcessLookupError:
+            return
+        except PermissionError:
+            # Darwin's POSIX killpg reports EPERM when it found NO member it could
+            # signal: a group of only zombies, or members still exiting. #4612:
+            # the old zombie-only census raised once on a just-failed worker's
+            # group; a member still exiting (ps state E) is the inferred cause,
+            # not reproduced. Refusals now name the live members. Accept the
+            # group only after a complete census
+            # positively establishes it; a terminated leader alone says nothing
+            # about its descendants, and the unreaped leader must still be listed.
+            members = group_census(proc.pid)
+            if (any(pid == proc.pid for pid, _, _ in members)
+                    and all(finished_state(state) for _, state, _ in members)):
+                return
+            if time.monotonic() >= deadline:
+                live = [f"{pid} {state} {command}" for pid, state, command in members
+                        if not finished_state(state)]
+                raise PermissionError(
+                    errno.EPERM, f"cannot signal process group {proc.pid} "
+                    f"(leader listed: {any(pid == proc.pid for pid, _, _ in members)}; "
+                    f"live members: {live or 'none'})")
+            time.sleep(0.05)  # a member may be mid-exit; re-check the census
 
 
 def stop_children(children):
@@ -257,6 +287,37 @@ def stop_children(children):
             proc.wait()
     if failures:
         raise RuntimeError(f"owned group cleanup failed: {failures}")
+
+
+def report_failed_groups(groups, outcomes, group_dir):
+    """Print one end-of-run summary: every group's outcome, then every failing
+    test from every group. Failing tests are the `ERROR: <label> ...` lines the
+    verdict owner (lib/lane-verdict.py, via xcode-test-run.sh) already printed
+    into each group's driver log; this only gathers them in one place."""
+    print("==> Debug groups summary:", flush=True)
+    for name, _, _ in groups:
+        kind, detail = outcomes.get(name, ("passed", None))
+        text = {"passed": "passed", "failed": f"FAILED (exit {detail})",
+                "hung": f"HUNG ({detail})"}[kind]
+        print(f"==>   {name}: {text}", flush=True)
+    print("==> Failing tests from all groups:", flush=True)
+    for name, _, _ in groups:
+        if name not in outcomes:
+            continue
+        driver = group_dir / (name + "-driver.log")
+        try:
+            lines = driver.read_text(errors="replace").splitlines()
+        except OSError as error:
+            print(f"ERROR: Debug {name} group: driver log unreadable: {error}", flush=True)
+            continue
+        found = [line for line in lines if line.startswith(f"ERROR: Debug {name} group")]
+        if not found:
+            # No verdict lines (a hang, a crash before the verdict, a setup error):
+            # the driver log's tail is the only evidence there is.
+            found = [f"ERROR: Debug {name} group printed no verdict; last driver log lines:"]
+            found += ["    " + line for line in lines[-25:]]
+        for line in found:
+            print(line, flush=True)
 
 
 def run_groups(opts):
@@ -327,24 +388,38 @@ def run_groups(opts):
             pumps.append(thread)
         pending = set(range(len(children)))
         next_progress = time.monotonic() + PROGRESS_SECONDS
+        # #4612: one run answers for every group. A failed or hung group is
+        # recorded and the others run to their own end; the lane fails afterwards
+        # with every group's failures listed together.
+        outcomes = {}
         while pending:
             if cancelled:
                 raise InterruptedError(f"interrupted by signal {cancelled[0]}")
             for index in tuple(pending):
+                name = groups[index][0]
                 rc = observed_exit(children[index])
                 if rc is None:
                     if clocks[index].silent_for() >= limit:
                         text = clocks[index].diagnostic(limit)
                         watch.record_hung(text)
                         print(f"==> HUNG: {text}", flush=True)
-                        raise Hung(text)
+                        outcomes[name] = ("hung", text)
+                        pending.remove(index)
+                        # TERM now; the owned-group cleanup in the finally block
+                        # KILLs whatever is left once the other groups finish.
+                        try:
+                            signal_owned_group(children[index], signal.SIGTERM)
+                        except Exception as error:
+                            print(f"==> Debug {name} group: stop request failed: {error}", flush=True)
+                        if pending:
+                            print(f"==> Debug {name} group stopped; other groups keep running", flush=True)
                     continue
                 pending.remove(index)
-                name = groups[index][0]
-                driver = group_dir / (name + "-driver.log")
                 if rc:
-                    detail = "\n".join(driver.read_text(errors="replace").splitlines()[-25:])
-                    raise RuntimeError(f"Debug {name} group failed (exit {rc}):\n{detail}")
+                    outcomes[name] = ("failed", rc)
+                    print(f"==> Debug {name} group FAILED (exit {rc})"
+                          + ("; other groups keep running" if pending else ""), flush=True)
+                    continue
                 print(f"==> Debug {name} group completed", flush=True)
             if pending:
                 if not forward and time.monotonic() >= next_progress:
@@ -362,6 +437,13 @@ def run_groups(opts):
         # finally block below ends such descendants.
         for thread in pumps:
             thread.join(timeout=1)
+        if outcomes:
+            report_failed_groups(groups, outcomes, group_dir)
+            hung = [detail for kind, detail in outcomes.values() if kind == "hung"]
+            names = ", ".join(sorted(outcomes))
+            if hung:
+                raise Hung(f"{names} did not all finish; first hang: {hung[0]}")
+            raise RuntimeError(f"failed group(s): {names}")
         inventories = {name: read_inventory(group_dir / (name + ".xcresult"))
                        for name, _, _ in groups}
         check_group_partition(inventories, groups)
