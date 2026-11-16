@@ -44,8 +44,21 @@ final class RouterTestAudioCapture: AudioCaptureInterface {
   /// #1063 PR1: counts `abortPreWarm()` so the release-during-recovery-arm guard
   /// (Codex code-diff r2 P2) can assert the prewarmed engine is torn down.
   private(set) var abortPreWarmCallCount = 0
+  /// #4601: counts `abandonPendingStart()` (a release or cancel during a sessionless pre-warm).
+  private(set) var abandonPendingStartCallCount = 0
+  /// #4601: the microphone-start deadlines each start call received, in order.
+  private(set) var preWarmDeadlines: [ContinuousClock.Instant] = []
+  private(set) var startEnginePhaseDeadlines: [ContinuousClock.Instant] = []
+  /// #4601: when set, `preWarm` waits here (so a test can release during it) and resumes with
+  /// `CancellationError` once `abandonPendingStart()` runs, like the real manager.
+  var holdPreWarmUntilAbandoned = false
+  private var preWarmHold: CheckedContinuation<Void, Error>?
+  /// Fired when `preWarm` starts waiting under `holdPreWarmUntilAbandoned`.
+  var onPreWarmHeld: (() -> Void)?
 
-  func startEnginePhase() async throws {}
+  func startEnginePhase(startDeadline: ContinuousClock.Instant) async throws {
+    startEnginePhaseDeadlines.append(startDeadline)
+  }
   func beginCapturePhase(recoveryPayload: Data?) async throws -> AsyncStream<AVAudioPCMBuffer> {
     // #1548 D2: the forward path reaches `.live` sequentially once this returns —
     // no first-buffer delivery needed to leave Arming.
@@ -57,10 +70,23 @@ final class RouterTestAudioCapture: AudioCaptureInterface {
   func stopCapture(sessionID: UInt64) async -> CaptureResult { CaptureResult(samples: []) }
   func rebuildEngine() {}
   func retireCapturingSource(sessionID: UInt64) -> ZeroSignalRetireResult { .sourceNotRunning }
-  func preWarm() async throws {
+  func preWarm(startDeadline: ContinuousClock.Instant) async throws {
+    preWarmDeadlines.append(startDeadline)
     if let preWarmError { throw preWarmError }
+    if holdPreWarmUntilAbandoned {
+      try await withCheckedThrowingContinuation { continuation in
+        preWarmHold = continuation
+        onPreWarmHeld?()
+      }
+    }
   }
   func abortPreWarm() { abortPreWarmCallCount += 1 }
+  func abandonPendingStart() {
+    abandonPendingStartCallCount += 1
+    let hold = preWarmHold
+    preWarmHold = nil
+    hold?.resume(throwing: CancellationError())
+  }
   func releaseUnstartedCapture() {}
   func waitForFormatStabilization(maxWait: TimeInterval, pollInterval: TimeInterval) async -> Bool {
     true

@@ -389,7 +389,7 @@ struct AudioCaptureManagerDeadAirLatchTests {
       #expect(manager.zeroSignalRefusalReason != nil, "precondition: refused")
       #expect(manager.zeroSignalRunWasClassifiedReactively, "precondition: classified")
 
-      try await manager.startEnginePhase()
+      try await manager.startEnginePhase(startDeadline: MicrophoneStartBudget.deadline(from: .now))
       _ = try await manager.beginCapturePhase()
 
       // A new session must inherit none of it. Recovery keeps the backlog; a new
@@ -412,7 +412,7 @@ struct AudioCaptureManagerDeadAirLatchTests {
       var stalls: [CaptureStallContext] = []
       manager.onCaptureStalled = { stalls.append($0) }
 
-      try await manager.startEnginePhase()
+      try await manager.startEnginePhase(startDeadline: MicrophoneStartBudget.deadline(from: .now))
       _ = try await manager.beginCapturePhase()
 
       // The bound stub device cannot pass the identity re-check, so this refuses.
@@ -451,7 +451,7 @@ struct AudioCaptureManagerDeadAirLatchTests {
         deviceID: 99, deviceUID: "stub-uid-99", transportLabel: transport,
         resolutionSource: "system_default", inputChannel: 0)
       let manager = Self.makeManager(stub)
-      try await manager.startEnginePhase()
+      try await manager.startEnginePhase(startDeadline: MicrophoneStartBudget.deadline(from: .now))
       _ = try await manager.beginCapturePhase()
       try #require(manager.zeroSignalDiscriminatorDevice?.transportLabel == transport)
       return (manager, stub)

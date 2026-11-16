@@ -322,10 +322,10 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   private var routeResolver = CaptureRouteResolver()
   /// #4601: where every audio-unit call of this manager's sources runs (shared with meetings).
   var lane: AudioUnitLane = .shared
-  /// #4601 §3a: the absolute deadline of the start being prepared, set by the press owner.
-  /// Nil uses an INTERIM budget of the open limit from the resolve (until the press-origin chain
-  /// lands; not G2 evidence).
-  var startDeadline: ContinuousClock.Instant?
+  /// #4601 §5: the token of the lane read the current resolution is waiting on, so
+  /// `abandonPendingStart()` resumes that read at once instead of waiting for it to answer.
+  /// A fresh token per read; cleared when the read returns.
+  private var pendingReadAttempt: AudioUnitLane.Attempt?
   /// #4601 §5: the ONE manager request owner. Each `resolveSource()` mints the next value; work
   /// that resumes from an await with an older value is superseded and changes nothing.
   private var resolveRequestID: UInt64 = 0
@@ -572,7 +572,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
 
   // MARK: - AudioCaptureInterface
 
-  public func startEnginePhase() async throws {
+  public func startEnginePhase(startDeadline: ContinuousClock.Instant) async throws {
     // #1844: invalidate FIRST, so a throwing `prepare()` cannot leave a prior
     // session's device observable. Safe against the #1317 round-6 invariant
     // because a new `startEnginePhase()` requires the kernel to be `.idle`,
@@ -580,7 +580,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     effectiveDiscriminatorDevice = nil
     // Re-evaluate route on every recording start — BT state may have changed.
     onLifecycleSignal?("manager_resolve_source_entered")
-    let (source, _, request) = try await resolveSource()
+    let (source, _, request) = try await resolveSource(deadline: startDeadline)
     source.onLifecycleSignal = onLifecycleSignal
     onLifecycleSignal?("manager_prepare_entered")
     // The awaited call PRODUCES the value adopted below: the ordering #1844
@@ -845,7 +845,8 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     guard !isCapturing else {
       return AsyncStream { $0.finish() }
     }
-    try await startEnginePhase()
+    // #4601 §3a: a single-phase caller has no earlier press, so its start begins here.
+    try await startEnginePhase(startDeadline: MicrophoneStartBudget.deadline(from: .now))
     return try await beginCapturePhase()
   }
 
@@ -1133,8 +1134,10 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     /// identity (`===` the installed warm source means reused; anything else
     /// means rebuilt) without going on to `prepare()` real hardware. Install the
     /// warm source with `installCapturedSourceForTesting` first.
-    func resolveSourceForTesting() async throws -> any AudioInputSource {
-      try await resolveSource().source
+    func resolveSourceForTesting(
+      deadline: ContinuousClock.Instant = MicrophoneStartBudget.deadline(from: .now)
+    ) async throws -> any AudioInputSource {
+      try await resolveSource(deadline: deadline).source
     }
 
     /// Test seam (heartpath 5b): drop the live active source while KEEPING the
@@ -1188,9 +1191,9 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     var debugRecoverySpoolWriter: RecoverySpoolWriter? { recoverySpoolWriter }
   #endif
 
-  public func preWarm() async throws {
+  public func preWarm(startDeadline: ContinuousClock.Instant) async throws {
     let preWarmStart = ContinuousClock.now
-    let (source, reusedWarm, request) = try await resolveSource()
+    let (source, reusedWarm, request) = try await resolveSource(deadline: startDeadline)
     let resolveMs = Self.ms(ContinuousClock.now - preWarmStart)
     guard !reusedWarm else {
       Self.btRouteLog(
@@ -1234,10 +1237,19 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   }
 
   public func abortPreWarm() {
-    // #4601 §5: give up the in-flight resolution first, so a start still waiting on a route or
-    // warm read installs and prepares nothing when that read returns.
-    resolveRequestID &+= 1
+    abandonPendingStart()
     activeSource?.abortPrepare()
+  }
+
+  /// #4601 §5: the in-flight resolution is given up (nothing it resumes to installs, adopts or
+  /// prepares), the lane read it waits on resumes now with `.abandoned`, and the source's cold
+  /// attempt is abandoned on the lane. A committed idle unit stays (no teardown here).
+  public func abandonPendingStart() {
+    resolveRequestID &+= 1
+    let read = pendingReadAttempt
+    pendingReadAttempt = nil
+    read?.cancel()
+    activeSource?.abandonPendingStart()
   }
 
   /// #3878: `resolveSource()` cancelled the idle timer when this take began preparing; a take
@@ -1383,8 +1395,10 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     preferred: String, deadline: ContinuousClock.Instant, request: UInt64
   ) async throws -> CaptureRouteDecision {
     let resolver = routeResolver
-    let outcome = await lane.run("route_resolve", deadline: deadline) {
-      resolver.resolve(preferredInputDeviceUID: preferred)
+    let outcome = await withReadAttempt { attempt in
+      await lane.run("route_resolve", deadline: deadline, attempt: attempt) {
+        resolver.resolve(preferredInputDeviceUID: preferred)
+      }
     }
     try requireCurrent(request)
     switch outcome {
@@ -1397,13 +1411,23 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     }
   }
 
+  /// Runs one lane read under a fresh abandonable token owned by this manager (§5).
+  private func withReadAttempt<T>(_ read: (AudioUnitLane.Attempt) async -> T) async -> T {
+    let attempt = AudioUnitLane.Attempt.make()
+    pendingReadAttempt = attempt
+    let result = await read(attempt)
+    if pendingReadAttempt === attempt { pendingReadAttempt = nil }
+    return result
+  }
+
   /// Resolve and create the appropriate capture source based on BT state and user preference.
   /// Re-evaluates on every call — BT state may change between recordings.
   /// #4601: every hardware read here (route, running check, warm compatibility) runs on the
   /// audio-unit lane within the start's deadline; after each await the request is revalidated,
   /// so a superseded resolution installs, adopts and retires nothing. Returns the source and
   /// whether it was the reused warm one.
-  private func resolveSource() async throws -> (
+  /// `deadline` is the owning start's microphone-start deadline (§3a), never renewed here.
+  private func resolveSource(deadline: ContinuousClock.Instant) async throws -> (
     source: any AudioInputSource, reusedWarm: Bool, request: UInt64
   ) {
     // Cancel idle teardown — we're about to record
@@ -1414,8 +1438,6 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     #if DEBUG
       onResolveRequestMintedForTesting?(request)
     #endif
-    // INTERIM until the press-origin deadline lands (C5E).
-    let deadline = startDeadline ?? (ContinuousClock.now + AudioUnitLane.openLimit)
     // Per-attempt snapshot of the inputs; later settings changes apply to the next attempt.
     let preferred = preferredInputDeviceIDOverride
     let channelMap = inputChannelByDeviceUID
@@ -1426,7 +1448,9 @@ public final class AudioCaptureManager: AudioCaptureInterface {
 
     // If a source is already running (warm engine), check route compatibility
     if let existing = activeSource {
-      let running = await existing.isRunningOnLane(deadline: deadline)
+      let running = await withReadAttempt { attempt in
+        await existing.isRunningOnLane(deadline: deadline, attempt: attempt)
+      }
       try requireCurrent(request)
       if running, activeSource === existing {
         // Non-switch consumer of `CaptureSourceType` (#1377 §6 audit point) — a
@@ -1450,7 +1474,9 @@ public final class AudioCaptureManager: AudioCaptureInterface {
             && halSource.boundInputChannelMatches(preference: channelMap)
           if configMatch {
             // #4601: the bind-vs-resolved-target check reads hardware, so it runs on the lane.
-            configMatch = await halSource.warmBindCompatibleOnLane(deadline: deadline)
+            configMatch = await withReadAttempt { attempt in
+              await halSource.warmBindCompatibleOnLane(deadline: deadline, attempt: attempt)
+            }
             try requireCurrent(request)
             configMatch = configMatch && activeSource === existing
           }

@@ -213,6 +213,9 @@ final class KernelRecordingSession: RecordingSessionDriving {
   /// pre-#2087 simulator behaviour, so every existing scenario is unchanged.
   var sessionConfigForTesting: DictationSessionConfig = .testDefault()
   var cancelOriginForTesting: RecordingCancelOrigin = .systemOrFault
+  /// #4601: the press's microphone-start deadline handed to `start`; nil = none (the kernel
+  /// then gives the start one budget from its own start).
+  var microphoneStartDeadlineForTesting: MicrophoneStartBudget.Deadline?
 
   /// The kernel's per-session telemetry side-channel, held so a test can read
   /// what the kernel stamped (#1408: `interruptionCause`). Production shares ONE
@@ -453,7 +456,9 @@ final class KernelRecordingSession: RecordingSessionDriving {
       // `vad.setCurrentSessionID(sid)` in `runForwardPath` (was a simulator-only
       // manual stamp before; that hid the production gap where the kernel never
       // wired the call).
-      kernel.start(config: sessionConfigForTesting)
+      kernel.start(
+        config: sessionConfigForTesting,
+        microphoneStartDeadline: microphoneStartDeadlineForTesting)
     case .stop:
       kernel.requestStop()
     case .cancel:

@@ -126,7 +126,8 @@ final class DictationRuntime {
       heartControlRecovery: heartControlRecovery,
       recordingLockedAccess: recordingLockedAccess,
       languageSuggestionPresenter: languageSuggestionPresenter,
-      pendingRequests: pendingRequests
+      pendingRequests: pendingRequests,
+      abandonPendingStart: { [weak audioCapture] in audioCapture?.abandonPendingStart() }
     )
     self.finalizer = finalizer
     let starter = RecordingStarter(

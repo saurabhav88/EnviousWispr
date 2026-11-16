@@ -114,7 +114,7 @@
       calls.isRunning = { _ in true }
       source.nativeCalls = calls
 
-      #expect(await source.isRunningOnLane(deadline: nil))
+      #expect(await source.isRunningOnLane(deadline: nil, attempt: nil))
       source.rebuild()
       await lane.drainForTesting()
     }
@@ -133,7 +133,7 @@
       let gate = await wedge(lane, timers)
       defer { gate.open() }
 
-      #expect(await source.isRunningOnLane(deadline: nil) == false)
+      #expect(await source.isRunningOnLane(deadline: nil, attempt: nil) == false)
       #expect(asked.withLock { $0 } == false)
       gate.open()
       source.rebuild()
@@ -155,7 +155,7 @@
       }
       source.nativeCalls = calls
 
-      let probe = Task { await source.isRunningOnLane(deadline: nil) }
+      let probe = Task { await source.isRunningOnLane(deadline: nil, attempt: nil) }
       #expect(await entered.wait())
       source.rebuild()
       gate.open()
@@ -177,7 +177,7 @@
       // The release is queued AFTER the probe took its snapshot and BEFORE it asks the lane.
       source.probeSnapshotTakenForTesting = { [weak source] in source?.rebuild() }
 
-      #expect(await source.isRunningOnLane(deadline: nil) == false)
+      #expect(await source.isRunningOnLane(deadline: nil, attempt: nil) == false)
       #expect(asked.withLock { $0 } == false, "a disposed unit is never queried")
       await lane.drainForTesting()
     }

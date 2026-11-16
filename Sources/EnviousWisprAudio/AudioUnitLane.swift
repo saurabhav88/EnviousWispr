@@ -55,6 +55,17 @@ package final class AudioUnitLane: Sendable {
 
     package init(id: UInt64) { self.id = id }
 
+    private static let counter = OSAllocatedUnfairLock(initialState: UInt64(0))
+
+    /// A token with a process-unique id, for any owner (a source's open, a manager's reads), so
+    /// the one-outstanding-open-per-attempt rule never confuses two owners.
+    package static func make() -> Attempt {
+      Attempt(id: counter.withLock { value -> UInt64 in
+        value &+= 1
+        return value
+      })
+    }
+
     package func cancel() {
       let action = state.withLock { state -> (@Sendable () -> Void)? in
         if state.cancelled { return nil }
@@ -211,12 +222,15 @@ package final class AudioUnitLane: Sendable {
   // MARK: - Caller operations
 
   /// A pure read on the lane. A late value is dropped.
+  /// `attempt` (optional) lets its owner abandon the read from outside, like an open: cancelled
+  /// before admission it runs nothing; queued it is withdrawn; running, the caller resumes at once
+  /// with `.abandoned` and the late value is dropped. Use a fresh token per read.
   package func run<Value: Sendable>(
-    _ name: String, deadline: ContinuousClock.Instant? = nil,
+    _ name: String, deadline: ContinuousClock.Instant? = nil, attempt: Attempt? = nil,
     _ read: @escaping @Sendable () -> Value
   ) async -> Outcome<Value> {
     await submitAwaiting(
-      name, operation: .read(name), attempt: nil, deadline: deadline, limit: Self.readLimit,
+      name, operation: .read(name), attempt: attempt, deadline: deadline, limit: Self.readLimit,
       onTerminal: {}, work: read, disposeLate: { _ in })
   }
 

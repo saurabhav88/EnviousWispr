@@ -1176,7 +1176,10 @@ final class RecordingSessionKernel {
   /// ignored while a session is active (PR-1 §B.1.2 — "don't interrupt
   /// processing"). `config` freezes per-recording settings (VAD, decode
   /// language, model-unload policy) for this session (PR-4 plan §3.3a).
-  func start(config: DictationSessionConfig) {
+  /// `microphoneStartDeadline`: the press's microphone-start deadline (#4601 §3a). Nil only for
+  /// a start with no press (test drivers); it then gets one budget from now.
+  func start(config: DictationSessionConfig, microphoneStartDeadline: ContinuousClock.Instant? = nil)
+  {
     // Legal from `.idle` — which is also where a concluded session rests
     // (`recordingOutcome != nil`); `resetSessionState()` below clears the
     // outcome barrier for the new session (#1548 D1).
@@ -1213,8 +1216,12 @@ final class RecordingSessionKernel {
       self?.refreshCheckpointAfterInferenceEntry(entrySession)
     }
     transition(to: .arming)
+    // Per-session data, handed to this session's forward path only: a later session's
+    // deadline can never reach this one.
+    let microphoneDeadline =
+      microphoneStartDeadline ?? MicrophoneStartBudget.deadline(from: .now)
     spawn(sid) { [weak self] in
-      await self?.runForwardPath(sid)
+      await self?.runForwardPath(sid, microphoneStartDeadline: microphoneDeadline)
     }
   }
 
@@ -1558,7 +1565,12 @@ final class RecordingSessionKernel {
   /// logged + swallowed (the session is not stranded; the start path will
   /// retry capture as needed); an adapter-warm failure leaves `.readiness`
   /// non-ready and the session's own warm-up path handles it.
-  func preWarm() async throws {
+  /// `microphoneStartDeadline`: the press's microphone-start deadline (#4601 §3a), shared with
+  /// the take's own start. Nil only for a call with no press (tests); it then gets one budget
+  /// from this call.
+  func preWarm(microphoneStartDeadline: ContinuousClock.Instant? = nil) async throws {
+    let microphoneDeadline =
+      microphoneStartDeadline ?? MicrophoneStartBudget.deadline(from: .now)
     guard state == .idle else {
       log("preWarm ignored — session active at \(state)")
       return
@@ -1626,7 +1638,7 @@ final class RecordingSessionKernel {
     // downstream in a less informative way.
     let preWarmStart = ContinuousClock.now
     do {
-      try await audioCapture.preWarm()
+      try await audioCapture.preWarm(startDeadline: microphoneDeadline)
       log("preWarm audioCapture.preWarm succeeded sid=\(sid.raw)")
       // GAP 3 app.log parity: emit the OLD TP cold-start preWarm timing
       // (TP:317-321) so debug-mode log scans grep this exact prefix.
@@ -1645,7 +1657,9 @@ final class RecordingSessionKernel {
 
   // MARK: Forward path
 
-  private func runForwardPath(_ sid: SessionID) async {
+  private func runForwardPath(_ sid: SessionID, microphoneStartDeadline: ContinuousClock.Instant)
+    async
+  {
     guard let config = sessionConfig else {
       // `start(config:)` always sets `sessionConfig` before spawning this —
       // this guard is defensive only and cannot fire in practice.
@@ -1753,7 +1767,7 @@ final class RecordingSessionKernel {
 
     // Capture start.
     do {
-      try await audioCapture.startEnginePhase()
+      try await audioCapture.startEnginePhase(startDeadline: microphoneStartDeadline)
     } catch {
       guard isCurrent(sid) else { return }
       // #1714: this attempt was the last one, so freeze its attribution BEFORE
@@ -1814,7 +1828,8 @@ final class RecordingSessionKernel {
         return
       }
       do {
-        try await audioCapture.startEnginePhase()
+        // #4601 §3a: the one rebuild spends what is left of the SAME budget.
+        try await audioCapture.startEnginePhase(startDeadline: microphoneStartDeadline)
       } catch {
         guard isCurrent(sid) else { return }
         // #1714: the rebuild was the final attempt — freeze ITS source, not the

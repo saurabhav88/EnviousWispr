@@ -531,7 +531,7 @@ struct HeartPathTelemetryWiringTests {
     var inputChannelByDeviceUID: [String: Int] = [:]
     var warmEnginePolicy: WarmEnginePolicy = .off
 
-    func startEnginePhase() async throws {}
+    func startEnginePhase(startDeadline: ContinuousClock.Instant) async throws {}
     func beginCapturePhase(recoveryPayload: Data?) async throws -> AsyncStream<AVAudioPCMBuffer> {
       // Same shape as `FixtureAudioCapture`: flip the capture flags and bump the
       // session id so the forward path can reach `.recording`. Without this the
@@ -556,7 +556,8 @@ struct HeartPathTelemetryWiringTests {
     }
     func rebuildEngine() {}
     func retireCapturingSource(sessionID: UInt64) -> ZeroSignalRetireResult { .sourceNotRunning }
-    func preWarm() async throws {}
+    func preWarm(startDeadline: ContinuousClock.Instant) async throws {}
+    func abandonPendingStart() {}
     func abortPreWarm() {}
     func releaseUnstartedCapture() {}
     func waitForFormatStabilization(maxWait: TimeInterval, pollInterval: TimeInterval) async
@@ -595,7 +596,7 @@ private final class NoOpAudioCapture: AudioCaptureInterface {
   var inputChannelByDeviceUID: [String: Int] = [:]
   var warmEnginePolicy: WarmEnginePolicy = .off
 
-  func startEnginePhase() async throws {}
+  func startEnginePhase(startDeadline: ContinuousClock.Instant) async throws {}
   func beginCapturePhase(recoveryPayload: Data?) async throws -> AsyncStream<AVAudioPCMBuffer> {
     // #1548 D2: the forward path reaches `.live` sequentially once this returns —
     // no first-buffer delivery needed to leave Arming.
@@ -607,7 +608,8 @@ private final class NoOpAudioCapture: AudioCaptureInterface {
   func stopCapture(sessionID: UInt64) async -> CaptureResult { CaptureResult(samples: []) }
   func rebuildEngine() {}
   func retireCapturingSource(sessionID: UInt64) -> ZeroSignalRetireResult { .sourceNotRunning }
-  func preWarm() async throws {}
+  func preWarm(startDeadline: ContinuousClock.Instant) async throws {}
+  func abandonPendingStart() {}
   func abortPreWarm() {}
   func releaseUnstartedCapture() {}
   func waitForFormatStabilization(maxWait: TimeInterval, pollInterval: TimeInterval) async -> Bool {

@@ -521,8 +521,11 @@ final class RecordingStarter {
           recordingElapsedProvider: { [weak active] in active?.recordingElapsedSeconds },
           isLocked: false)))
     let pttStart = ContinuousClock.now
+    // #4601 §3a: the press's ONE microphone-start budget, minted before the first route or probe
+    // read; the pre-warm and the take's own start below both spend it.
+    let microphoneStartDeadline = MicrophoneStartBudget.deadline(from: pttStart)
     do {
-      try await active.handle(event: .preWarm)
+      try await active.handle(event: .preWarm(microphoneStartDeadline: microphoneStartDeadline))
     } catch is CancellationError {
       audioCapture.abortPreWarm()
       recordingOverlay.dismissCurrent(.announced)
@@ -616,7 +619,8 @@ final class RecordingStarter {
       // #1171 — no engine-changed re-check here: the `beginMinting()` state-gate
       // (held since before preWarm) guarantees the coordinator did NOT switch the
       // active engine across these awaits, so `active` is still the user's choice.
-      try await active.handle(event: .toggleRecording(config))
+      try await active.handle(
+        event: .toggleRecording(config, microphoneStartDeadline: microphoneStartDeadline))
       dispatchedStart = true
       // The session is minted, so the claim now belongs to the session rather
       // than to this call. Both start methods RETURN while the recording is
@@ -828,6 +832,8 @@ final class RecordingStarter {
     defer { if isStartingFromIdle { endMinting() } }
     accessibilityRefresh()
     let toggleStart = ContinuousClock.now
+    // #4601 §3a: a toggle start's microphone budget begins at this press.
+    let microphoneStartDeadline = MicrophoneStartBudget.deadline(from: toggleStart)
     do {
       // #1063 PR1: arm recovery ONLY when this toggle STARTS a recording. A stop
       // toggle reaches here too, but the kernel ignores the config — arming there
@@ -867,7 +873,8 @@ final class RecordingStarter {
         // (held since before the recovery-arm await) guarantees the coordinator did
         // NOT switch the active engine, so `active` is still the user's choice.
       }
-      try await active.handle(event: .toggleRecording(config))
+      try await active.handle(
+        event: .toggleRecording(config, microphoneStartDeadline: microphoneStartDeadline))
       dispatchedStart = true
       // Minted, so the claim belongs to the session now — same hand-off as the
       // PTT path, for the same reason: this method returns while the recording

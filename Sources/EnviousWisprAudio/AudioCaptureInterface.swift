@@ -2,6 +2,22 @@
 import CoreAudio
 import EnviousWisprCore
 
+/// #4601 §3a: the microphone-start budget. One absolute deadline is minted from the record press
+/// (dictation) or the meeting start, before the first route or probe read, and every later step of
+/// that start (pre-warm, the take's own prepare, stabilization and the one rebuild) spends what is
+/// left of it. Nothing renews it.
+public enum MicrophoneStartBudget {
+  /// An absolute microphone-start deadline.
+  public typealias Deadline = ContinuousClock.Instant
+
+  public static let duration: Duration = .seconds(5)
+
+  /// The deadline of a start whose origin (the press, or the meeting start) is `origin`.
+  public static func deadline(from origin: ContinuousClock.Instant) -> ContinuousClock.Instant {
+    origin + duration
+  }
+}
+
 /// Abstraction over audio capture — enables swapping between in-process and XPC implementations.
 @MainActor
 public protocol AudioCaptureInterface: AnyObject {
@@ -157,7 +173,9 @@ public protocol AudioCaptureInterface: AnyObject {
   var warmEnginePolicy: WarmEnginePolicy { get set }
 
   // Core lifecycle
-  func startEnginePhase() async throws
+  /// `startDeadline` is the take's microphone-start deadline (`MicrophoneStartBudget`); the
+  /// rebuild retry passes the same instant.
+  func startEnginePhase(startDeadline: ContinuousClock.Instant) async throws
   /// `recoveryPayload` is an opaque encoded `RecoverySpoolDirective` the recording
   /// kernel forwards to arm the crash-recovery limb (#1063 PR1); nil ⇒ no spool.
   /// Every caller except the kernel uses the no-arg `beginCapturePhase()`
@@ -223,8 +241,14 @@ public protocol AudioCaptureInterface: AnyObject {
   /// newer take's source).
   @discardableResult
   func retireCapturingSource(sessionID: UInt64) -> ZeroSignalRetireResult
-  func preWarm() async throws
+  /// `startDeadline`: the press's microphone-start deadline, shared with the take's own prepare.
+  func preWarm(startDeadline: ContinuousClock.Instant) async throws
   func abortPreWarm()
+  /// #4601 §5: give up the start that is still being prepared, at once: a waiting route, probe or
+  /// open resumes now with cancellation and nothing it was preparing is kept. Unlike
+  /// `abortPreWarm()` it never tears down a microphone that is already open and idle (the
+  /// Keep engine warm policy still owns that). Synchronous; a no-op with nothing pending.
+  func abandonPendingStart()
   /// #3878: this session's take ended before capture started (a refused or failed start), so
   /// apply the Keep engine warm policy to any prepared or warm source now, as if a recording had
   /// just stopped. A no-op while capturing or with no source. Never throws or suspends.

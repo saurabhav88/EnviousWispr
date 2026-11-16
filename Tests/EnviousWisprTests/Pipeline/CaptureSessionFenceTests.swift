@@ -1,4 +1,5 @@
 import Testing
+import EnviousWisprAudio
 
 @testable import EnviousWisprPipeline
 
@@ -26,10 +27,10 @@ struct CaptureSessionFenceTests {
     let capture = FakeAudioCapture()
 
     // Session 1 arms, then a successor arms. The counter is now 2.
-    try await capture.startEnginePhase()
+    try await capture.startEnginePhase(startDeadline: MicrophoneStartBudget.deadline(from: .now))
     _ = try await capture.beginCapturePhase(recoveryPayload: nil)
     let firstSessionID = capture.currentCaptureSessionID
-    try await capture.startEnginePhase()
+    try await capture.startEnginePhase(startDeadline: MicrophoneStartBudget.deadline(from: .now))
     _ = try await capture.beginCapturePhase(recoveryPayload: nil)
 
     #expect(capture.currentCaptureSessionID != firstSessionID)
@@ -50,14 +51,14 @@ struct CaptureSessionFenceTests {
     let capture = FakeAudioCapture()
 
     // Predecessor arms. Counter is 1.
-    try await capture.startEnginePhase()
+    try await capture.startEnginePhase(startDeadline: MicrophoneStartBudget.deadline(from: .now))
     _ = try await capture.beginCapturePhase(recoveryPayload: nil)
     let ownedSessionID = capture.currentCaptureSessionID
 
     // The successor prepares the engine but has NOT armed yet — exactly the
     // interval cloud review reached independently on PR #1855. `startEnginePhase`
     // does not bump the counter, so it still reads the PREDECESSOR's id.
-    try await capture.startEnginePhase()
+    try await capture.startEnginePhase(startDeadline: MicrophoneStartBudget.deadline(from: .now))
     #expect(
       capture.currentCaptureSessionID == ownedSessionID,
       "preparing a successor must not bump the counter — that is the premise")
@@ -84,7 +85,7 @@ struct CaptureSessionFenceTests {
     let capture = FakeAudioCapture()
 
     // Prepared, never armed: the counter is still 0.
-    try await capture.startEnginePhase()
+    try await capture.startEnginePhase(startDeadline: MicrophoneStartBudget.deadline(from: .now))
     #expect(capture.currentCaptureSessionID == 0)
 
     // Its cleanup MUST be permitted or the engine leaks — not by a special case
@@ -103,7 +104,7 @@ struct CaptureSessionFenceTests {
     let capture = FakeAudioCapture()
 
     // A session arms, so the counter is no longer 0.
-    try await capture.startEnginePhase()
+    try await capture.startEnginePhase(startDeadline: MicrophoneStartBudget.deadline(from: .now))
     _ = try await capture.beginCapturePhase(recoveryPayload: nil)
     #expect(capture.currentCaptureSessionID != 0)
 

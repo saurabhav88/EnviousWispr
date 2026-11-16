@@ -180,7 +180,7 @@ private final class SettableAudioCapture: AudioCaptureInterface {
   var inputChannelByDeviceUID: [String: Int] = [:]
   var warmEnginePolicy: WarmEnginePolicy = .off
 
-  func startEnginePhase() async throws {}
+  func startEnginePhase(startDeadline: ContinuousClock.Instant) async throws {}
   func beginCapturePhase(recoveryPayload: Data?) async throws -> AsyncStream<AVAudioPCMBuffer> {
     AsyncStream { $0.finish() }
   }
@@ -190,7 +190,8 @@ private final class SettableAudioCapture: AudioCaptureInterface {
   func stopCapture(sessionID: UInt64) async -> CaptureResult { CaptureResult(samples: []) }
   func rebuildEngine() {}
   func retireCapturingSource(sessionID: UInt64) -> ZeroSignalRetireResult { .sourceNotRunning }
-  func preWarm() async throws {}
+  func preWarm(startDeadline: ContinuousClock.Instant) async throws {}
+  func abandonPendingStart() {}
   func abortPreWarm() {}
   func releaseUnstartedCapture() {}
   func waitForFormatStabilization(maxWait: TimeInterval, pollInterval: TimeInterval) async -> Bool {
@@ -230,7 +231,7 @@ private final class ObservableAudioCapture: AudioCaptureInterface {
   var inputChannelByDeviceUID: [String: Int] = [:]
   var warmEnginePolicy: WarmEnginePolicy = .off
 
-  func startEnginePhase() async throws {}
+  func startEnginePhase(startDeadline: ContinuousClock.Instant) async throws {}
   func beginCapturePhase(recoveryPayload: Data?) async throws -> AsyncStream<AVAudioPCMBuffer> {
     AsyncStream { $0.finish() }
   }
@@ -240,7 +241,8 @@ private final class ObservableAudioCapture: AudioCaptureInterface {
   func stopCapture(sessionID: UInt64) async -> CaptureResult { CaptureResult(samples: []) }
   func rebuildEngine() {}
   func retireCapturingSource(sessionID: UInt64) -> ZeroSignalRetireResult { .sourceNotRunning }
-  func preWarm() async throws {}
+  func preWarm(startDeadline: ContinuousClock.Instant) async throws {}
+  func abandonPendingStart() {}
   func abortPreWarm() {}
   func releaseUnstartedCapture() {}
   func waitForFormatStabilization(maxWait: TimeInterval, pollInterval: TimeInterval) async -> Bool {

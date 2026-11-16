@@ -100,9 +100,8 @@ import os
       let lane = AudioUnitLane(label: "test.manager.resolve.cold")
       let manager = Self.makeManager(lane: lane, resolver: Self.immediateResolver())
       let deadline = ContinuousClock.now + .seconds(5)
-      manager.startDeadline = deadline
 
-      let resolved = try await manager.resolveSourceForTesting()
+      let resolved = try await manager.resolveSourceForTesting(deadline: deadline)
 
       let hal = try #require(resolved as? HALDeviceInputSource)
       #expect(hal.lane === lane)
@@ -145,11 +144,11 @@ import os
         now: { AudioUnitLaneTests.base })
       let reads = FirstReadGate()
       let manager = Self.makeManager(lane: lane, resolver: reads.resolver())
-      manager.startDeadline = AudioUnitLaneTests.base + .milliseconds(500)
+      let deadline = AudioUnitLaneTests.base + .milliseconds(500)
 
       let start = Task { () -> String? in
         do {
-          _ = try await manager.resolveSourceForTesting()
+          _ = try await manager.resolveSourceForTesting(deadline: deadline)
           return "resolved"
         } catch AudioError.microphoneNotResponding(let source) {
           return source
@@ -246,7 +245,7 @@ import os
 
       let start = Task { () -> String in
         do {
-          try await manager.preWarm()
+          try await manager.preWarm(startDeadline: MicrophoneStartBudget.deadline(from: .now))
           return "prepared"
         } catch is CancellationError {
           return "cancelled"
@@ -283,6 +282,96 @@ import os
 
       #expect(try await start.value == ["first-microphone", "\(["first-microphone": 1])"])
       #expect(reads.gate.didExpire == false)
+    }
+
+    // MARK: - Giving up and spent budgets (C5E)
+
+    @Test("giving up during the route read resumes the start at once, before the read answers")
+    func abandonDuringRouteReadResumesAtOnce() async throws {
+      let lane = AudioUnitLane(label: "test.manager.resolve.abandon-route")
+      let reads = FirstReadGate()
+      let manager = Self.makeManager(lane: lane, resolver: reads.resolver())
+
+      let start = Task { () -> String in
+        do {
+          try await manager.preWarm(startDeadline: MicrophoneStartBudget.deadline(from: .now))
+          return "prepared"
+        } catch is CancellationError {
+          return "cancelled"
+        } catch {
+          return "other: \(error)"
+        }
+      }
+      #expect(await reads.entered.wait())
+      manager.abandonPendingStart()
+
+      // The route read is still blocked here: the start must not need it to answer.
+      #expect(await start.value == "cancelled")
+      #expect(manager.hasActiveSourceForTesting == false)
+      reads.gate.open()
+      await lane.drainForTesting()
+      #expect(reads.gate.didExpire == false)
+    }
+
+    @Test("giving up during the microphone open resumes the start at once and keeps no unit")
+    func abandonDuringOpenResumesAtOnce() async throws {
+      let lane = AudioUnitLane(label: "test.manager.resolve.abandon-open")
+      let manager = Self.makeManager(lane: lane, resolver: Self.immediateResolver())
+      let gate = Gate()
+      let entered = Signal()
+      let natives = HALPrepareLifecycleTests.Natives()
+      var built: HALDeviceInputSource?
+      manager.installSourceFactoryForTesting { _ in
+        let source = HALDeviceInputSource()
+        source.openWorkForTesting = { _ in
+          entered.fire()
+          gate.block()
+          return HALPrepareLifecycleTests.opened(natives)
+        }
+        built = source
+        return source
+      }
+
+      let start = Task { () -> String in
+        do {
+          try await manager.preWarm(startDeadline: MicrophoneStartBudget.deadline(from: .now))
+          return "prepared"
+        } catch is CancellationError {
+          return "cancelled"
+        } catch {
+          return "other: \(error)"
+        }
+      }
+      #expect(await entered.wait())
+      manager.abandonPendingStart()
+
+      #expect(await start.value == "cancelled", "the open is still blocked; the start is not")
+      gate.open()
+      await lane.drainForTesting()
+      #expect(built?.hasCommittedUnit == false, "the late unit is retired, never kept")
+      #expect(natives.disposals == 1)
+      #expect(gate.didExpire == false)
+    }
+
+    @Test("a start whose budget is already spent opens nothing and gets no fresh budget")
+    func spentBudgetOpensNothing() async throws {
+      let lane = AudioUnitLane(label: "test.manager.resolve.spent")
+      let manager = Self.makeManager(lane: lane, resolver: Self.immediateResolver())
+      var built = 0
+      manager.installSourceFactoryForTesting { _ in
+        built += 1
+        return GatedSource(step: "never")
+      }
+
+      var failure: String?
+      do {
+        try await manager.preWarm(startDeadline: ContinuousClock.now - .seconds(1))
+      } catch AudioError.microphoneNotResponding(let source) {
+        failure = source
+      }
+
+      #expect(failure == "AudioCaptureManager.route.timed_out")
+      #expect(built == 0, "no microphone source may be built or opened")
     }
 
     // MARK: - Attribution of a replaced start
@@ -356,7 +445,7 @@ import os
 
       let olderStart = Task { () -> String in
         do {
-          try await manager.preWarm()
+          try await manager.preWarm(startDeadline: MicrophoneStartBudget.deadline(from: .now))
           return "prepared"
         } catch is CancellationError {
           return "cancelled"
@@ -365,7 +454,7 @@ import os
         }
       }
       #expect(await older.entered.wait())
-      let newerStart = Task { try await manager.preWarm() }
+      let newerStart = Task { try await manager.preWarm(startDeadline: MicrophoneStartBudget.deadline(from: .now)) }
       #expect(await newer.entered.wait())
       #expect(older.rebuildCallCount == 1, "the newer start released the older microphone")
 

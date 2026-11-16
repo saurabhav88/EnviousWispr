@@ -215,8 +215,14 @@ final class FakeAudioCapture: AudioCaptureInterface {
 
   // MARK: AudioCaptureInterface — core lifecycle
 
-  func startEnginePhase() async throws {
+  /// #4601: the microphone-start deadline each start call received, in order.
+  private(set) var startEnginePhaseDeadlines: [MicrophoneStartBudget.Deadline] = []
+  private(set) var preWarmDeadlines: [MicrophoneStartBudget.Deadline] = []
+  private(set) var abandonPendingStartCallCount = 0
+
+  func startEnginePhase(startDeadline: MicrophoneStartBudget.Deadline) async throws {
     startEnginePhaseCallCount += 1
+    startEnginePhaseDeadlines.append(startDeadline)
     // #1714: publish this attempt's attribution BEFORE any throw, the way the
     // real manager stores it synchronously inside `prepare()`.
     if !inputResolutionSourcePerAttempt.isEmpty {
@@ -252,7 +258,7 @@ final class FakeAudioCapture: AudioCaptureInterface {
   }
 
   func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> {
-    try await startEnginePhase()
+    try await startEnginePhase(startDeadline: MicrophoneStartBudget.deadline(from: .now))
     return try await beginCapturePhase()
   }
 
@@ -319,13 +325,18 @@ final class FakeAudioCapture: AudioCaptureInterface {
     return retireCapturingSourceResult
   }
 
-  func preWarm() async throws {
+  func preWarm(startDeadline: MicrophoneStartBudget.Deadline) async throws {
     preWarmCallCount += 1
+    preWarmDeadlines.append(startDeadline)
     if let preWarmError { throw preWarmError }
   }
 
   func abortPreWarm() {
     abortPreWarmCallCount += 1
+  }
+
+  func abandonPendingStart() {
+    abandonPendingStartCallCount += 1
   }
 
   /// #3878: counted so a kernel test can see a pre-capture terminal release the prepared source.

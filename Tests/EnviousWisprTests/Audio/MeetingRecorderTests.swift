@@ -73,8 +73,15 @@ struct MeetingRecorderTests {
     var stopCount = 0
     var boundUID = "BuiltInMicrophoneDevice"
 
-    func open(targetUID: String?, inputChannelByDeviceUID: [String: Int]) async throws -> String? {
+    /// #4601: the microphone-start deadline each open received, in order.
+    var openDeadlines: [ContinuousClock.Instant] = []
+
+    func open(
+      targetUID: String?, inputChannelByDeviceUID: [String: Int],
+      startDeadline: ContinuousClock.Instant
+    ) async throws -> String? {
       openTargets.append(targetUID)
+      openDeadlines.append(startDeadline)
       if let openGate { await openGate.pass() }
       if let openError { throw openError }
       return boundUID
@@ -579,6 +586,32 @@ struct MeetingRecorderTests {
     #expect(r.segments.of(.microphone).count == 2)
     #expect(r.recorder.microphoneHealth?.gaps == 1)
     #expect(r.microphones[1].stopCount == 1)
+  }
+
+  /// #4601 §3a: the meeting start gives its microphone open one five-second budget, and a
+  /// reopen after a lost microphone is a start of its own with a fresh budget (never the old,
+  /// possibly spent one). When this fails, a stuck driver can hold a meeting start too long, or
+  /// a reopen fails at once on a deadline that ran out long ago.
+  @Test("a meeting start and its reopen each give the microphone their own start budget")
+  func startAndReopenEachGetABudget() async throws {
+    let r = try rig(microphones: 2, callSound: false)
+    let before = ContinuousClock.now
+    _ = try await r.recorder.start()
+    let startDeadline = try #require(r.microphones[0].openDeadlines.first)
+    #expect(startDeadline >= MicrophoneStartBudget.deadline(from: before))
+    #expect(startDeadline <= MicrophoneStartBudget.deadline(from: .now))
+
+    r.microphones[0].onInterrupted?(.deviceRemoved)
+    defer { r.reopenGate.open() }
+    #expect(await r.reopenGate.waitUntilParked(), "the reopen never paused")
+    let beforeReopen = ContinuousClock.now
+    r.reopenGate.open()
+    await r.recorder.reopenTaskForTesting?.value
+
+    let reopenDeadline = try #require(r.microphones[1].openDeadlines.first)
+    #expect(reopenDeadline >= MicrophoneStartBudget.deadline(from: beforeReopen))
+    #expect(reopenDeadline > startDeadline)
+    await r.recorder.stop()
   }
 
   @Test("a microphone back within 1.5 s keeps its gap: the reopened audio starts where it arrived")

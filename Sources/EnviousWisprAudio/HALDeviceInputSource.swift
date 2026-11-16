@@ -423,7 +423,9 @@ final class HALDeviceInputSource: AudioInputSource {
   /// limit). A completed "not running", a timeout or a wedged lane all answer false: a unit that
   /// cannot be asked is not trusted for a take. Ordinary contention waits. A result for a unit
   /// replaced meanwhile answers false.
-  func isRunningOnLane(deadline: ContinuousClock.Instant?) async -> Bool {
+  func isRunningOnLane(
+    deadline: ContinuousClock.Instant?, attempt: AudioUnitLane.Attempt?
+  ) async -> Bool {
     #if DEBUG
       if let isRunningOverrideForTesting { return isRunningOverrideForTesting }
     #endif
@@ -436,7 +438,7 @@ final class HALDeviceInputSource: AudioInputSource {
     // The owner crosses (single-owner hand-off type); the read only looks at its unit.
     // Checked ON the lane, just before the read: a retirement queued ahead of this probe has
     // already disposed the unit, so it must not be queried (§3.2).
-    let outcome = await lane.run("running_probe", deadline: deadline) {
+    let outcome = await lane.run("running_probe", deadline: deadline, attempt: attempt) {
       resources.isRetired ? false : probe(resources.unit)
     }
     guard liveResources?.generation == generation, case .value(let running) = outcome else {
@@ -515,7 +517,6 @@ final class HALDeviceInputSource: AudioInputSource {
   private var pendingHandoff: HALUnitNative.Handoff?
   /// Process-unique attempt keys: every source shares one lane, so per-source counters could
   /// collide.
-  private static var nextAttemptID: UInt64 = 1
   #if DEBUG
     /// Test seam: replaces the native cold open (`HALUnitNative.open`) with injected work that
     /// still runs on the lane. Production never sets it.
@@ -677,12 +678,14 @@ final class HALDeviceInputSource: AudioInputSource {
   /// #4601 §3.5: the same predicate, answered on the audio-unit lane within `deadline` because
   /// it reads the live device list. A timeout, a wedged lane or a unit replaced meanwhile all
   /// answer false: a warm unit that cannot be checked is not reused.
-  func warmBindCompatibleOnLane(deadline: ContinuousClock.Instant?) async -> Bool {
+  func warmBindCompatibleOnLane(
+    deadline: ContinuousClock.Instant?, attempt: AudioUnitLane.Attempt?
+  ) async -> Bool {
     guard let bound = currentBoundInputDevice else { return false }
     let generation = liveResources?.generation
     let resolver = inputDeviceResolver
     let target = targetDeviceUID
-    let outcome = await lane.run("warm_bind_check", deadline: deadline) {
+    let outcome = await lane.run("warm_bind_check", deadline: deadline, attempt: attempt) {
       resolver.isWarmBindCompatible(bound, preferredUID: target)
     }
     guard liveResources?.generation == generation, case .value(let compatible) = outcome else {
@@ -1111,6 +1114,11 @@ final class HALDeviceInputSource: AudioInputSource {
     return Int(seconds) * 1000 + Int(attoseconds / 1_000_000_000_000_000)
   }
 
+  /// #4601 §5: give up a cold attempt still on the lane, keeping a committed idle unit.
+  func abandonPendingStart() {
+    abandonPendingAttempt()
+  }
+
   func abortPrepare() {
     // #4601 §5: a cold attempt still on the lane is abandoned there: its caller resumes at once
     // and a late success is retired by the lane, never committed.
@@ -1272,8 +1280,7 @@ extension HALDeviceInputSource {
     abandonPendingAttempt()
     // Owned before the first suspension, so an abort that lands before lane admission still
     // cancels it (the lane then runs no native work).
-    let attempt = AudioUnitLane.Attempt(id: Self.nextAttemptID)
-    Self.nextAttemptID += 1
+    let attempt = AudioUnitLane.Attempt.make()
     pendingAttempt = attempt
     let progress = HALUnitNative.Progress()
     let handoff = HALUnitNative.Handoff()
@@ -1293,7 +1300,10 @@ extension HALDeviceInputSource {
       let openWork = HALUnitNative.open
     #endif
     let snapshot = request
-    let deadline = startDeadline ?? (ContinuousClock.now + AudioUnitLane.openLimit)
+    // Production owners always set `startDeadline` first (the capture manager on every
+    // resolution, the meeting microphone on every open). Only a standalone prepare with no owning
+    // start (unit tests) falls back to one budget from now.
+    let deadline = startDeadline ?? MicrophoneStartBudget.deadline(from: .now)
     #if DEBUG
       beforeOpenForTesting?()
     #endif

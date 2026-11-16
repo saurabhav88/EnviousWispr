@@ -314,7 +314,7 @@ private final class HeartPathHarness {
   }
 
   func run() async throws -> HeartPathHarnessResult {
-    try await audioCapture.startEnginePhase()
+    try await audioCapture.startEnginePhase(startDeadline: MicrophoneStartBudget.deadline(from: .now))
     _ = try await audioCapture.beginCapturePhase()
     let captureResult = await audioCapture.stopCapture(
       sessionID: audioCapture.currentCaptureSessionID)
@@ -561,7 +561,7 @@ internal final class FixtureAudioCapture: AudioCaptureInterface {
     return buffer
   }
 
-  func startEnginePhase() async throws {
+  func startEnginePhase(startDeadline: ContinuousClock.Instant) async throws {
     startEnginePhaseCallCount += 1
   }
 
@@ -583,7 +583,7 @@ internal final class FixtureAudioCapture: AudioCaptureInterface {
   }
 
   func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> {
-    try await startEnginePhase()
+    try await startEnginePhase(startDeadline: MicrophoneStartBudget.deadline(from: .now))
     return try await beginCapturePhase()
   }
 
@@ -600,7 +600,9 @@ internal final class FixtureAudioCapture: AudioCaptureInterface {
   func rebuildEngine() {}
   func retireCapturingSource(sessionID: UInt64) -> ZeroSignalRetireResult { .sourceNotRunning }
 
-  func preWarm() async throws {}
+  func preWarm(startDeadline: ContinuousClock.Instant) async throws {}
+
+  func abandonPendingStart() {}
 
   func abortPreWarm() {
     isCapturing = false

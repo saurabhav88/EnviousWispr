@@ -197,7 +197,8 @@ import Testing
       heartControlRecovery: hcr,
       recordingLockedAccess: lockAccess,
       languageSuggestionPresenter: nil,
-      pendingRequests: pendingRequests
+      pendingRequests: pendingRequests,
+      abandonPendingStart: { [audio] in audio.abandonPendingStart() }
     )
     let lastRecordingResult = LastRecordingResult()
     let discards = DiscardProbe()
@@ -1701,3 +1702,91 @@ final class TurnClock {
   private(set) var now = ContinuousClock.now
   func advance(milliseconds: Int) { now = now.advanced(by: .milliseconds(milliseconds)) }
 }
+
+#if DEBUG
+  /// #4601 §3a and §5: one press, one microphone-start budget; and a release or cancel during a
+  /// sessionless pre-warm gives the waiting microphone start up at once. When these fail, a stuck
+  /// audio driver holds the start past its budget, or a key-up leaves the user waiting for a
+  /// microphone they already let go of (and can later see a failure notice for it).
+  extension RecordingStarterStartPathTests {
+
+    /// Lets the spawned forward path reach the capture's start (no wall-clock wait).
+    private static func yieldUntil(_ condition: () -> Bool) async {
+      for _ in 0..<500 where !condition() { await Task.yield() }
+    }
+
+    @Test("a press's pre-warm and its take's own start share one microphone deadline")
+    func pressSharesOneDeadline() async {
+      let fx = Self.makeFixture()
+      fx.asr.activeBackendType = .parakeet
+      fx.asr.isModelLoaded = true
+      let before = ContinuousClock.now
+
+      _ = await fx.starter.start()
+      await Self.yieldUntil { !fx.audio.startEnginePhaseDeadlines.isEmpty }
+
+      let preWarm = fx.audio.preWarmDeadlines
+      #expect(preWarm.count == 1)
+      #expect(fx.audio.startEnginePhaseDeadlines == preWarm, "the take must not renew the budget")
+      if let deadline = preWarm.first {
+        #expect(deadline >= MicrophoneStartBudget.deadline(from: before))
+        #expect(deadline <= MicrophoneStartBudget.deadline(from: .now))
+      }
+    }
+
+    @Test("a later press gets its own fresh deadline")
+    func laterPressGetsAFreshDeadline() async {
+      let fx = Self.makeFixture()
+      fx.asr.activeBackendType = .parakeet
+      fx.asr.isModelLoaded = true
+      fx.audio.preWarmError = AudioError.noBuiltInMicrophoneFound
+
+      _ = await fx.starter.start()
+      _ = await fx.starter.start()
+
+      let deadlines = fx.audio.preWarmDeadlines
+      #expect(deadlines.count == 2)
+      if deadlines.count == 2 { #expect(deadlines[1] > deadlines[0]) }
+    }
+
+    @Test(
+      "a release or cancel during a sessionless pre-warm gives the start up at once, quietly",
+      arguments: ["release", "cancel"])
+    func releaseDuringPreWarmAbandonsAtOnce(_ how: String) async {
+      let fx = Self.makeFixture()
+      fx.asr.activeBackendType = .parakeet
+      fx.asr.isModelLoaded = true
+      fx.audio.holdPreWarmUntilAbandoned = true
+      let held = AudioUnitLaneTests.Signal()
+      fx.audio.onPreWarmHeld = { held.fire() }
+
+      let start = Task { await fx.starter.start() }
+      #expect(await held.wait(), "the press is waiting in its pre-warm")
+      #expect(fx.kernelDriver.state == .idle, "no session exists yet")
+      if how == "release" {
+        await fx.finalizer.userStop()
+      } else {
+        await fx.finalizer.cancel(trigger: .shortcut)
+      }
+      _ = await start.value
+
+      #expect(fx.audio.abandonPendingStartCallCount == 1)
+      #expect(fx.kernelDriver.state == .idle, "no session and no failure notice")
+      #expect(Self.showsRecording(fx.overlay) == false, "the recording pill is gone")
+      #expect(fx.audio.startEnginePhaseDeadlines.isEmpty, "the take never started")
+    }
+
+    @Test("a stop during a running session does not give up a microphone start")
+    func stopDuringSessionDoesNotAbandon() async {
+      let fx = Self.makeFixture()
+      fx.asr.activeBackendType = .parakeet
+      fx.asr.isModelLoaded = true
+
+      _ = await fx.starter.start()
+      #expect(fx.kernelDriver.state.isActive, "precondition: a session is running")
+      await fx.finalizer.userStop()
+
+      #expect(fx.audio.abandonPendingStartCallCount == 0)
+    }
+  }
+#endif

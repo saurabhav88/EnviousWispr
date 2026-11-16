@@ -121,7 +121,7 @@ import Testing
         resolutionSource: "system_default", inputChannel: 0)
       let manager = Self.makeManager(stub)
 
-      try await manager.startEnginePhase()
+      try await manager.startEnginePhase(startDeadline: MicrophoneStartBudget.deadline(from: .now))
 
       // WHOLE value: the UID is what the identity re-check depends on, so an
       // id-only assertion would pass a stale-UID adoption.
@@ -139,11 +139,11 @@ import Testing
       let manager = Self.makeManager(stub)
 
       // Establish a real prior bind first, so nil cannot be trivially true.
-      try await manager.startEnginePhase()
+      try await manager.startEnginePhase(startDeadline: MicrophoneStartBudget.deadline(from: .now))
       #expect(manager.zeroSignalDiscriminatorDevice != nil)
 
       stub.prepareError = AudioError.noBuiltInMicrophoneFound
-      await #expect(throws: (any Error).self) { try await manager.startEnginePhase() }
+      await #expect(throws: (any Error).self) { try await manager.startEnginePhase(startDeadline: MicrophoneStartBudget.deadline(from: .now)) }
 
       #expect(
         manager.zeroSignalDiscriminatorDevice == nil,
@@ -160,7 +160,7 @@ import Testing
         resolutionSource: "system_default", inputChannel: 0)
       let manager = Self.makeManager(stub)
 
-      try await manager.startEnginePhase()
+      try await manager.startEnginePhase(startDeadline: MicrophoneStartBudget.deadline(from: .now))
       #expect(manager.zeroSignalDiscriminatorDevice?.deviceID == 99)
 
       // The real manager rebuild path, then a second real attempt binding elsewhere.
@@ -168,7 +168,7 @@ import Testing
       stub.boundToReturn = BoundInputDevice(
         deviceID: 42, deviceUID: "final-attempt-uid", transportLabel: "built_in",
         resolutionSource: "system_default", inputChannel: 0)
-      try await manager.startEnginePhase()
+      try await manager.startEnginePhase(startDeadline: MicrophoneStartBudget.deadline(from: .now))
 
       #expect(manager.zeroSignalDiscriminatorDevice == stub.boundToReturn)
       #expect(manager.zeroSignalDiscriminatorDevice?.deviceID == 42)
@@ -182,7 +182,7 @@ import Testing
       let stub = StubSource()
       let manager = Self.makeManager(stub)
 
-      try await manager.preWarm()
+      try await manager.preWarm(startDeadline: MicrophoneStartBudget.deadline(from: .now))
 
       #expect(stub.prepareCallCount == 1, "preWarm must really have prepared the source")
       #expect(
@@ -225,7 +225,7 @@ import Testing
         resolutionSource: "list_fallback", inputChannel: 0)
       let manager = Self.makeManager(stub)
 
-      try await manager.startEnginePhase()
+      try await manager.startEnginePhase(startDeadline: MicrophoneStartBudget.deadline(from: .now))
 
       #expect(manager.currentInputResolutionSource == "list_fallback")
     }
@@ -242,7 +242,7 @@ import Testing
         resolutionSource: "list_fallback", inputChannel: 0)
       let manager = Self.makeManager(stub)
 
-      try await manager.startEnginePhase()
+      try await manager.startEnginePhase(startDeadline: MicrophoneStartBudget.deadline(from: .now))
 
       #expect(manager.currentInputResolutionSource == "list_fallback")
     }
@@ -255,7 +255,7 @@ import Testing
         deviceID: 42, deviceUID: "default-uid", transportLabel: "built_in",
         resolutionSource: "system_default", inputChannel: 0)
       let manager = Self.makeManager(stub)
-      try await manager.startEnginePhase()
+      try await manager.startEnginePhase(startDeadline: MicrophoneStartBudget.deadline(from: .now))
       #expect(manager.currentInputResolutionSource == "system_default")
 
       // Second attempt resolves to the FALLBACK, then throws after the bind.
@@ -264,7 +264,7 @@ import Testing
       stub.finalizedAttemptToFire = Self.finalizedAttempt(.listFallback)
       stub.prepareError = AudioError.formatCreationFailed(source: "test.after_bind")
 
-      await #expect(throws: AudioError.self) { try await manager.startEnginePhase() }
+      await #expect(throws: AudioError.self) { try await manager.startEnginePhase(startDeadline: MicrophoneStartBudget.deadline(from: .now)) }
 
       #expect(manager.currentInputResolutionSource == "list_fallback")
     }
@@ -278,13 +278,13 @@ import Testing
         deviceID: 42, deviceUID: "default-uid", transportLabel: "built_in",
         resolutionSource: "system_default", inputChannel: 0)
       let manager = Self.makeManager(stub)
-      try await manager.startEnginePhase()
+      try await manager.startEnginePhase(startDeadline: MicrophoneStartBudget.deadline(from: .now))
       #expect(manager.currentInputResolutionSource == "system_default")
 
       stub.finalizedAttemptToFire = nil
       stub.prepareError = AudioError.noBuiltInMicrophoneFound
 
-      await #expect(throws: AudioError.self) { try await manager.startEnginePhase() }
+      await #expect(throws: AudioError.self) { try await manager.startEnginePhase(startDeadline: MicrophoneStartBudget.deadline(from: .now)) }
 
       #expect(manager.currentInputResolutionSource == nil)
     }
@@ -300,7 +300,7 @@ import Testing
         resolutionSource: "list_fallback", inputChannel: 0)
       let manager = Self.makeManager(stub)
 
-      try await manager.preWarm()
+      try await manager.preWarm(startDeadline: MicrophoneStartBudget.deadline(from: .now))
 
       #expect(manager.currentInputResolutionSource == "list_fallback")
       #expect(
@@ -315,7 +315,7 @@ import Testing
       stub.prepareError = AudioError.formatCreationFailed(source: "test.prewarm")
       let manager = Self.makeManager(stub)
 
-      await #expect(throws: AudioError.self) { try await manager.preWarm() }
+      await #expect(throws: AudioError.self) { try await manager.preWarm(startDeadline: MicrophoneStartBudget.deadline(from: .now)) }
 
       #expect(manager.currentInputResolutionSource == "list_fallback")
       #expect(manager.zeroSignalDiscriminatorDevice == nil)
@@ -335,7 +335,7 @@ import Testing
       var forwarded: [InputResolutionAttemptTelemetry] = []
       manager.onFinalizedInputResolutionAttempt = { forwarded.append($0) }
 
-      try await manager.startEnginePhase()
+      try await manager.startEnginePhase(startDeadline: MicrophoneStartBudget.deadline(from: .now))
 
       #expect(forwarded.count == 1, "exactly one projection per cold attempt")
       #expect(forwarded.first?.inputResolutionSource == "list_fallback")
@@ -356,7 +356,7 @@ import Testing
       var forwarded: [InputResolutionAttemptTelemetry] = []
       manager.onFinalizedInputResolutionAttempt = { forwarded.append($0) }
 
-      try await manager.startEnginePhase()
+      try await manager.startEnginePhase(startDeadline: MicrophoneStartBudget.deadline(from: .now))
 
       #expect(forwarded.isEmpty)
       // Attribution still updates from the returned bind.
@@ -373,7 +373,7 @@ import Testing
       var forwarded: [InputResolutionAttemptTelemetry] = []
       manager.onFinalizedInputResolutionAttempt = { forwarded.append($0) }
 
-      await #expect(throws: AudioError.self) { try await manager.startEnginePhase() }
+      await #expect(throws: AudioError.self) { try await manager.startEnginePhase(startDeadline: MicrophoneStartBudget.deadline(from: .now)) }
 
       // The failing population is the one #1714 exists to measure, so it must
       // still be reported.
@@ -394,7 +394,7 @@ import Testing
       var forwarded: [InputResolutionAttemptTelemetry] = []
       manager.onFinalizedInputResolutionAttempt = { forwarded.append($0) }
 
-      try await manager.startEnginePhase()
+      try await manager.startEnginePhase(startDeadline: MicrophoneStartBudget.deadline(from: .now))
 
       #expect(forwarded.first?.inputDeviceCount == nil)
       #expect(forwarded.first?.eligibleDeviceCount == nil)

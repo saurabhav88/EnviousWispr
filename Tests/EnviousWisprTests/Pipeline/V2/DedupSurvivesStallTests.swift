@@ -159,7 +159,7 @@ private final class NeverFinishingAudioCapture: AudioCaptureInterface {
   /// The pipeline's read loop stays parked, leaving state at `.recording`.
   private var continuation: AsyncStream<AVAudioPCMBuffer>.Continuation?
 
-  func startEnginePhase() async throws {}
+  func startEnginePhase(startDeadline: ContinuousClock.Instant) async throws {}
   func beginCapturePhase(recoveryPayload: Data?) async throws -> AsyncStream<AVAudioPCMBuffer> {
     isCapturing = true
     isActivelyCapturing = true
@@ -193,7 +193,7 @@ private final class NeverFinishingAudioCapture: AudioCaptureInterface {
     return buffer
   }
   func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> {
-    try await startEnginePhase()
+    try await startEnginePhase(startDeadline: MicrophoneStartBudget.deadline(from: .now))
     return try await beginCapturePhase()
   }
   func stopCapture(sessionID: UInt64) async -> CaptureResult {
@@ -205,7 +205,8 @@ private final class NeverFinishingAudioCapture: AudioCaptureInterface {
   }
   func rebuildEngine() {}
   func retireCapturingSource(sessionID: UInt64) -> ZeroSignalRetireResult { .sourceNotRunning }
-  func preWarm() async throws {}
+  func preWarm(startDeadline: ContinuousClock.Instant) async throws {}
+  func abandonPendingStart() {}
   func abortPreWarm() {
     continuation?.finish()
     continuation = nil

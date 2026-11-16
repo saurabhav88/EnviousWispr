@@ -15,8 +15,12 @@ protocol MeetingMicrophoneSource: AnyObject {
   /// The device was opened but delivers no buffers (HAL's capture-stall signal).
   var onStalled: (() -> Void)? { get set }
   /// Opens the device (`targetUID` nil = the system default input). Returns the UID actually
-  /// bound, or nil when it could not be read.
-  func open(targetUID: String?, inputChannelByDeviceUID: [String: Int]) async throws -> String?
+  /// bound, or nil when it could not be read. `startDeadline` is this open's microphone-start
+  /// deadline (#4601 §3a): it fails as not responding rather than wait past it.
+  func open(
+    targetUID: String?, inputChannelByDeviceUID: [String: Int],
+    startDeadline: ContinuousClock.Instant
+  ) async throws -> String?
   /// Starts delivering samples. Audio captured before this call may be handed over inside it.
   func beginDelivery() async throws
   /// Stops and releases the device at once. Repeatable.
@@ -395,6 +399,8 @@ public final class MeetingRecorder {
   public func start() async throws -> StartResult {
     guard lifecycle == .idle else { throw RecorderError.alreadyStarted }
     lifecycle = .starting
+    // #4601 §3a: the meeting start's ONE microphone budget, minted before any microphone work.
+    let microphoneStartDeadline = MicrophoneStartBudget.deadline(from: .now)
     let startGeneration = generation
     // #4355 PR B: echo cleanup is eligible whenever the call sound is asked for; it is turned off
     // below if the call sound does not start. The worker is made now so microphone audio from
@@ -409,7 +415,8 @@ public final class MeetingRecorder {
     }
     do {
       try await openMicrophone(
-        targetUID: config.microphoneUID, writer: micWriter, generation: startGeneration)
+        targetUID: config.microphoneUID, writer: micWriter, generation: startGeneration,
+        startDeadline: microphoneStartDeadline)
     } catch {
       closeLiveSamples()
       self.micWriter = nil
@@ -522,7 +529,7 @@ public final class MeetingRecorder {
   /// joined the two stretches and pulled the microphone timeline earlier than the call track.
   private func openMicrophone(
     targetUID: String?, writer: MeetingTrackWriter, generation openGeneration: Int,
-    startsNewRun: Bool = false
+    startDeadline: ContinuousClock.Instant, startsNewRun: Bool = false
   ) async throws {
     lostDuringStart = nil
     let source = sources.makeMicrophone()
@@ -576,7 +583,8 @@ public final class MeetingRecorder {
     defer { if openingMicrophone === source { openingMicrophone = nil } }
     do {
       bound = try await source.open(
-        targetUID: targetUID, inputChannelByDeviceUID: config.inputChannelByDeviceUID)
+        targetUID: targetUID, inputChannelByDeviceUID: config.inputChannelByDeviceUID,
+        startDeadline: startDeadline)
       guard self.generation == openGeneration, lifecycle == .starting || lifecycle == .running
       else { throw RecorderError.stoppedDuringStart }
       try await source.beginDelivery()
@@ -632,8 +640,11 @@ public final class MeetingRecorder {
         self.generation == reopenGeneration
       else { return }
       do {
+        // #4601 §3a: each reopen is its own start with its own budget, minted when it begins;
+        // the meeting start's earlier deadline is never reused.
         try await self.openMicrophone(
-          targetUID: nil, writer: writer, generation: reopenGeneration, startsNewRun: true)
+          targetUID: nil, writer: writer, generation: reopenGeneration,
+          startDeadline: MicrophoneStartBudget.deadline(from: .now), startsNewRun: true)
         self.micHealthBox.withLock { $0.reopens += 1 }
       } catch RecorderError.stoppedDuringStart {
         return
@@ -818,7 +829,11 @@ final class HALMeetingMicrophone: MeetingMicrophoneSource {
     }
   }
 
-  func open(targetUID: String?, inputChannelByDeviceUID: [String: Int]) async throws -> String? {
+  func open(
+    targetUID: String?, inputChannelByDeviceUID: [String: Int],
+    startDeadline: ContinuousClock.Instant
+  ) async throws -> String? {
+    source.startDeadline = startDeadline
     source.targetDeviceUID = targetUID
     source.inputChannelByDeviceUID = inputChannelByDeviceUID
     source.captureStreamBufferingPolicy = .bufferingNewest(0)

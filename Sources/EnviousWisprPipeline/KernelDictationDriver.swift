@@ -873,6 +873,11 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// consumer is `HotkeyController` in this package.
   package var continuingSessionID: String? { kernel.continuingSessionID }
 
+  /// #4601 §5: whether a recording session exists at all (the kernel left `.idle` the moment it
+  /// accepted the start, synchronously). False during a sessionless pre-warm, which is the start
+  /// a release or cancel must abandon directly because no session will hear its stop.
+  package var hasSession: Bool { kernel.state != .idle }
+
   /// #1393: the pipeline's own single source of truth for monotonic elapsed
   /// recording time. `nil` outside an active/just-finished session.
   public var recordingElapsedSeconds: TimeInterval? { kernel.recordingElapsedSeconds }
@@ -1341,7 +1346,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
 
   public func handle(event: PipelineEvent) async throws {
     switch event {
-    case .preWarm:
+    case .preWarm(let microphoneStartDeadline):
       // PR-4.5 #1 + Codex r4: capture pre-warm is awaited end-to-end so the
       // PTT-flow caller (`RecordingStarter.start()` awaits `handle(.preWarm)`
       // and then immediately sends `.toggleRecording`) does not see the
@@ -1349,8 +1354,8 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       //
       // PR-4b.4 of #827: rethrow on `audioCapture.preWarm()` failure so the
       // starter's catch{} branch fires the "Microphone unavailable" overlay.
-      try await kernel.preWarm()
-    case .toggleRecording(let config):
+      try await kernel.preWarm(microphoneStartDeadline: microphoneStartDeadline)
+    case .toggleRecording(let config, let microphoneStartDeadline):
       switch kernel.state {
       case .idle:
         // Start: clear the prior session's surfaces, capture finalization
@@ -1443,7 +1448,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
         // launch + foreground; this is the per-session refresh that
         // covers long-idle paths between recordings.
         steps.llmPolish.preWarm()
-        kernel.start(config: config)
+        kernel.start(config: config, microphoneStartDeadline: microphoneStartDeadline)
       case .live:
         kernel.requestStop()
       case .arming:

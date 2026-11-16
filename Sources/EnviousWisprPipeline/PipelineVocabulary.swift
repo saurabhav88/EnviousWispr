@@ -113,11 +113,17 @@ public enum RecordingWarningReason: Equatable, Sendable {
 
 /// Events the recording driver handles.
 public enum PipelineEvent: Sendable {
-  case preWarm
+  /// #4601 §3a: carries the press's microphone-start deadline (`MicrophoneStartBudget`), which the
+  /// take's own `.toggleRecording` start then carries too, so both share one budget.
+  case preWarm(microphoneStartDeadline: ContinuousClock.Instant)
   /// Toggle recording. Carries the per-recording configuration snapshot; pipelines
   /// consume the config on start transitions and ignore it on stop transitions.
   /// Settings mutated mid-recording apply to the next recording's snapshot.
-  case toggleRecording(DictationSessionConfig)
+  /// #4601 §3a: `microphoneStartDeadline` is the press's microphone-start deadline; the
+  /// production producer (`RecordingStarter`) always supplies it. Nil (an event built with no
+  /// press, test drivers only) gives the start one budget from the kernel's start.
+  case toggleRecording(
+    DictationSessionConfig, microphoneStartDeadline: ContinuousClock.Instant? = nil)
   case requestStop
   case cancelRecording
   case reset
