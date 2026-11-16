@@ -503,8 +503,16 @@ struct HistoryDictationCard: View {
         id: "share", title: String(localized: "Share…", comment: "History dictation card: shares the text."),
         systemImage: "square.and.arrow.up",
         kind: .action {
-          guard let text = exportText, let anchor = moreAnchor.view else { return }
-          NSSharingServicePicker(items: [text]).show(
+          guard let anchor = moreAnchor.view else { return }
+          // Delivery reads the live row when the receiving app asks (`DeliverableText`), so a
+          // deletion or a changed preference while the picker is open never sends old text
+          // (cloud review on #4616).
+          let provider = NSItemProvider()
+          let history = transcripts
+          let id = rowID
+          provider.register(
+            DeliverableText(resolve: { history.dictationTextForDelivery(id: id) }))
+          NSSharingServicePicker(items: [provider]).show(
             relativeTo: anchor.bounds, of: anchor, preferredEdge: .minY)
         }),
       .init(
