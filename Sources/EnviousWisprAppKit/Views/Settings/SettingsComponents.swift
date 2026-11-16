@@ -169,8 +169,12 @@ struct SettingsRow<Control: View, HelpContent: View>: View {
     SettingsRowControlLayout(supplementaryBelowWidth: supplementaryControlBelowWidth) {
       SettingsRowIcon(systemName: icon)
       label
+      // The status sits under the title and grey line, outside the label, so the
+      // icon and an inline control line up with the title, not the whole block.
+      // It stays third so VoiceOver still reads it right after the grey line.
+      VStack(alignment: .leading, spacing: 0) { statusContent }
       // A builder may supply zero or several roots. One container keeps the
-      // Layout's three slots stable instead of indexing SwiftUI's flattened roots.
+      // Layout's slots stable instead of indexing SwiftUI's flattened roots.
       VStack(alignment: .leading, spacing: 0) { control }
       VStack(alignment: .leading, spacing: 0) { supplementaryControl }
     }
@@ -191,7 +195,6 @@ struct SettingsRow<Control: View, HelpContent: View>: View {
         .font(.stRowHelper)
         .foregroundStyle(.stTextSecondary)
         .fixedSize(horizontal: false, vertical: true)
-      statusContent
     }
   }
 }
@@ -215,8 +218,9 @@ struct SettingsRowControlLayout: Layout {
 
   private func dimensions(width: CGFloat?, subviews: Subviews) -> (size: CGSize, frames: [CGRect]) {
     let icon = subviews[0].sizeThatFits(.unspecified)
-    let idealControl = subviews[2].sizeThatFits(.unspecified)
-    let secondary = subviews[3].sizeThatFits(.unspecified)
+    // Slots, in `SettingsRow.standardRow` order: icon, label, status, control, secondary.
+    let idealControl = subviews[3].sizeThatFits(.unspecified)
+    let secondary = subviews[4].sizeThatFits(.unspecified)
     let idealLabel = subviews[1].sizeThatFits(.unspecified)
     let width = width ?? icon.width + 11 + idealLabel.width + 12 + idealControl.width + secondary.width
     // 37 = `SettingsRowIcon`'s fixed width (26) + this row's own leading
@@ -228,7 +232,7 @@ struct SettingsRowControlLayout: Layout {
     // localization. Pass the available width back down so adaptive controls
     // can reflow, including their new height, instead of placing an ideal-size bar.
     let control = idealControl.width > available
-      ? subviews[2].sizeThatFits(ProposedViewSize(width: available, height: nil))
+      ? subviews[3].sizeThatFits(ProposedViewSize(width: available, height: nil))
       : idealControl
     let hasSecondary = secondary.height > 0
     let secondaryBelow = hasSecondary && width <= supplementaryBelowWidth
@@ -238,8 +242,14 @@ struct SettingsRowControlLayout: Layout {
     let label = subviews[1].sizeThatFits(ProposedViewSize(width: labelWidth, height: nil))
     let trailingHeight = max(control.height, secondaryBelow ? 0 : secondary.height)
     let headerHeight = inline ? max(icon.height, label.height, trailingHeight) : max(icon.height, label.height)
-    let controlY = inline ? (headerHeight - control.height) / 2 : headerHeight + 10
-    let contentHeight = inline ? headerHeight : controlY + trailingHeight
+    // The status (`rowStatus`) runs below the header across the whole text column,
+    // so the icon and an inline control stay centred on the title and grey line.
+    // The 2pt gap continues the label's own line spacing.
+    let status = subviews[2].sizeThatFits(ProposedViewSize(width: available, height: nil))
+    let statusY = headerHeight + (status.height > 0 ? 2 : 0)
+    let belowHeader = status.height > 0 ? statusY + status.height : headerHeight
+    let controlY = inline ? (headerHeight - control.height) / 2 : belowHeader + 10
+    let contentHeight = inline ? belowHeader : controlY + trailingHeight
     let secondaryY = secondaryBelow ? contentHeight + 10 : (inline ? (headerHeight - secondary.height) / 2 : controlY)
     let secondaryX = secondaryBelow ? labelStart : (inline ? width - trailingWidth : labelStart)
     let primaryX = inline ? width - control.width : labelStart + (hasSecondary && !secondaryBelow ? secondary.width + 12 : 0)
@@ -247,6 +257,7 @@ struct SettingsRowControlLayout: Layout {
     return (CGSize(width: width, height: height), [
       CGRect(x: 0, y: inline ? (headerHeight - icon.height) / 2 : 0, width: icon.width, height: icon.height),
       CGRect(x: labelStart, y: inline ? (headerHeight - label.height) / 2 : 0, width: labelWidth, height: label.height),
+      CGRect(x: labelStart, y: statusY, width: available, height: status.height),
       CGRect(x: primaryX, y: controlY, width: control.width, height: control.height),
       CGRect(x: secondaryX, y: secondaryY, width: secondary.width, height: secondary.height),
     ])
