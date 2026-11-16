@@ -60,7 +60,7 @@
         ])
       #expect(report.storageReleased)
       #expect(report.stop == noErr && report.uninitialize == noErr && report.dispose == noErr)
-      #expect(!resources.holdsCallbackStorage)
+      #expect(resources.holdsCallbackStorage == false)
       #expect(resources.stoppedFlagIsSetForTesting)
     }
 
@@ -104,13 +104,13 @@
       // settle: hang guard around the subject-fired stop signal, never a sleep.
       #expect(stopEntered.wait(timeout: .now() + 5) == .success, "stop was never called")
       // The retiring thread is parked inside stop: nothing after it has run.
-      #expect(!recorder.log.contains("storageReleased"))
-      #expect(!recorder.log.contains("dispose"))
+      #expect(recorder.log.contains("storageReleased") == false)
+      #expect(recorder.log.contains("dispose") == false)
       gate.signal()
       // settle: hang guard around the subject-fired completion signal.
       #expect(finished.wait(timeout: .now() + 5) == .success, "retirement never finished")
       #expect(recorder.log.last == "storageReleased")
-      #expect(!resources.holdsCallbackStorage)
+      #expect(resources.holdsCallbackStorage == false)
     }
 
     @Test(
@@ -123,9 +123,9 @@
 
       let report = resources.retire()
 
-      #expect(!report.storageReleased)
+      #expect(report.storageReleased == false)
       #expect(resources.holdsCallbackStorage)
-      #expect(!recorder.log.contains("storageReleased"))
+      #expect(recorder.log.contains("storageReleased") == false)
       #expect(recorder.log.contains("dispose"), "dispose still runs after a failed stop")
     }
 
