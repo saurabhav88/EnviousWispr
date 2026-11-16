@@ -39,6 +39,22 @@ struct AudioUnitLaneCallSiteTests {
     return selection.contains(callee) || callee.hasSuffix("isWarmBindCompatible")
   }
 
+  /// Calls INTO the native half from outside it. The native half's own driver calls are allowed
+  /// only because lane jobs alone reach it, so each way in is held to the same placement: a
+  /// `HALUnitNative` function (a capitalized member is a value type's initializer, not a call
+  /// in), the injected open and running-probe aliases, a unit owner's `retire()`, and the
+  /// failed-open cleanup helper that retires one.
+  static func isNativeEntry(_ callee: String) -> Bool {
+    if callee == "openWork" || callee == "probe" { return true }
+    if callee.hasSuffix("failedOpenError") { return true }
+    if callee.hasSuffix(".retire") { return callee != "lane.retire" && callee != "self.lane.retire" }
+    let native = "HALUnitNative."
+    guard callee.hasPrefix(native), let first = callee.dropFirst(native.count).first else {
+      return false
+    }
+    return first.isLowercase
+  }
+
   /// Where a call may run. `lane`: inside a closure handed to the audio-unit lane. `native`:
   /// inside the native half only lane jobs call. `render`: the real-time render callback.
   enum Context: Equatable, CustomStringConvertible {
@@ -56,6 +72,10 @@ struct AudioUnitLaneCallSiteTests {
 
   static let nativeTypes: Set<String> = ["HALUnitNative", "HALUnitResources", "HALNativeCalls"]
   static let laneEntryPoints: Set<String> = ["run", "open", "retire", "retireAndWait"]
+  /// The closure arguments the lane runs on its worker: the unlabelled job and `disposeLate`.
+  /// `onTerminal` is excluded: it can run synchronously in the caller when an attempt is
+  /// cancelled, off the worker.
+  static let laneWorkerLabels: Set<String> = ["", "disposeLate"]
 
   struct Site: CustomStringConvertible {
     let callee: String
@@ -75,7 +95,9 @@ struct AudioUnitLaneCallSiteTests {
 
     override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
       let callee = node.calledExpression.trimmedDescription
-      if AudioUnitLaneCallSiteTests.isHardwareCall(callee) {
+      if AudioUnitLaneCallSiteTests.isHardwareCall(callee)
+        || AudioUnitLaneCallSiteTests.isNativeEntry(callee)
+      {
         let line = converter.location(for: node.positionAfterSkippingLeadingTrivia).line
         sites.append(
           Site(callee: callee, line: line, context: AudioUnitLaneCallSiteTests.context(of: node)))
@@ -112,12 +134,20 @@ struct AudioUnitLaneCallSiteTests {
     return .other(enclosingFunction)
   }
 
-  /// Whether `closure` is an argument (labelled or trailing) of `lane.<entry>(...)`.
+  /// Whether `closure` is a worker argument (the unlabelled job or `disposeLate`, written inline
+  /// or trailing) of `lane.<entry>(...)`.
   static func isLaneArgument(_ closure: ClosureExprSyntax) -> Bool {
     var node = Syntax(closure)
+    var label = ""
     for _ in 0..<3 {
       guard let parent = node.parent else { return false }
+      if let argument = parent.as(LabeledExprSyntax.self) {
+        label = argument.label?.text ?? ""
+      } else if let trailing = parent.as(MultipleTrailingClosureElementSyntax.self) {
+        label = trailing.label.text
+      }
       if let call = parent.as(FunctionCallExprSyntax.self) {
+        guard laneWorkerLabels.contains(label) else { return false }
         guard let member = call.calledExpression.as(MemberAccessExprSyntax.self),
           laneEntryPoints.contains(member.declName.baseName.text),
           let base = member.base?.trimmedDescription
@@ -158,13 +188,12 @@ struct AudioUnitLaneCallSiteTests {
     // inside a lane job (`readerCallsRunOnTheLane` below checks every call).
     "CoreAudioDeviceLiveness.classify in livenessReader":
       "default of livenessReader, called on the lane",
-    // No production caller (manager reads `isRunningOnLane`, #4601 C5D); kept as the protocol's
-    // synchronous property for test fakes. Reported for removal in the C8B review.
-    "AudioUnitGetProperty in isRunning": "HALDeviceInputSource.isRunning: no production caller",
-    // No production caller (manager uses `warmBindCompatibleOnLane`, #4601 C5D); kept for the
-    // conformance tests. Reported for removal in the C8B review.
-    "inputDeviceResolver.isWarmBindCompatible in boundDeviceMatchesResolvedTargetForReuse":
-      "sync warm-bind predicate: no production caller",
+    // The same for the native-rate reader's default.
+    "HALUnitNative.queryNativeStreamFormat in nativeRateReader":
+      "default of nativeRateReader, called on the lane",
+    // The failed-open cleanup lives in a HALDeviceInputSource extension but is a nonisolated
+    // helper of the native open; its callers are held to the native half as native entries.
+    "resources.retire in failedOpenError": "failed-open cleanup, called only by the native open",
   ]
 
   static let guardedFiles = [
@@ -252,6 +281,7 @@ struct AudioUnitLaneCallSiteTests {
         func pureHelpers() {
           _ = AudioObjectPropertyAddress(mSelector: 0, mScope: 0, mElement: 0)
           _ = AudioDeviceEnumerator.transportLabel(forTransportType: nil)
+          _ = HALUnitNative.Progress()
         }
       }
       """
@@ -262,5 +292,35 @@ struct AudioUnitLaneCallSiteTests {
         "AudioDeviceEnumerator.defaultInputDeviceUID",
       ])
     #expect(sites.map(\.context) == [.other("badProbe"), .lane, .other("badDefault")])
+  }
+
+  @Test("the open moved out of its lane job, or a driver call in onTerminal, is flagged")
+  func guardRejectsNativeEntryAndTerminalPlacements() {
+    let fixture = """
+      @MainActor final class Source {
+        var lane: AudioUnitLane
+        func movedOpen(_ snapshot: OpenRequest, _ unit: AudioUnit) async {
+          let openWork = HALUnitNative.open
+          let early = openWork(snapshot)
+          _ = await lane.open(
+            "microphone_start", attempt: nil, deadline: nil,
+            onTerminal: { _ = AudioOutputUnitStop(unit) },
+            { openWork(snapshot) },
+            disposeLate: { _ in handoff.take()?.retire() })
+          lane.retire { resources.retire() }
+          resources.retire()
+        }
+      }
+      """
+    let sites = Self.sites(source: fixture).map { "\($0.callee) \($0.context)" }
+    #expect(
+      sites == [
+        "openWork main: movedOpen",
+        "AudioOutputUnitStop main: movedOpen",
+        "openWork lane",
+        "handoff.take()?.retire lane",
+        "resources.retire lane",
+        "resources.retire main: movedOpen",
+      ])
   }
 }

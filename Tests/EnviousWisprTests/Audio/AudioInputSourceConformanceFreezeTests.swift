@@ -107,7 +107,7 @@ struct HALDeviceInputSourceDeviceTargetTests {
   }
 
   @Test("warm automatic source is reusable while bound to current system default")
-  func automaticReuseMatchesCurrentDefault() {
+  func automaticReuseMatchesCurrentDefault() async {
     let source = HALDeviceInputSource()
     source.inputDeviceResolver = InputDeviceResolver(
       defaultInputDeviceID: { 42 },
@@ -118,11 +118,11 @@ struct HALDeviceInputSourceDeviceTargetTests {
     )
     source.setBoundInputDeviceForTesting(committedBind(42))
 
-    #expect(source.boundDeviceMatchesResolvedTargetForReuse())
+    #expect(await source.warmBindCompatibleOnLane(deadline: nil, attempt: nil))
   }
 
   @Test("warm automatic source rejects stale system default")
-  func automaticReuseRejectsStaleDefault() {
+  func automaticReuseRejectsStaleDefault() async {
     let source = HALDeviceInputSource()
     nonisolated(unsafe) var currentDefault: AudioDeviceID = 42
     source.inputDeviceResolver = InputDeviceResolver(
@@ -134,22 +134,22 @@ struct HALDeviceInputSourceDeviceTargetTests {
     )
     source.setBoundInputDeviceForTesting(committedBind(42))
 
-    #expect(source.boundDeviceMatchesResolvedTargetForReuse())
+    #expect(await source.warmBindCompatibleOnLane(deadline: nil, attempt: nil))
 
     currentDefault = 43
 
-    #expect(!source.boundDeviceMatchesResolvedTargetForReuse())
+    #expect(!(await source.warmBindCompatibleOnLane(deadline: nil, attempt: nil)))
   }
 
   @Test("a source with no committed bind is never warm-compatible")
-  func noBindIsNeverCompatible() {
+  func noBindIsNeverCompatible() async {
     // Guards the delegation: the predicate now reads the whole bind, so an
     // absent one must refuse rather than pass a partial value to the resolver.
     let source = HALDeviceInputSource()
     source.inputDeviceResolver = InputDeviceResolver(
       defaultInputDeviceID: { 42 }, inputDeviceSnapshot: { .complete([]) })
 
-    #expect(!source.boundDeviceMatchesResolvedTargetForReuse())
+    #expect(!(await source.warmBindCompatibleOnLane(deadline: nil, attempt: nil)))
   }
 
   // MARK: - #1844: the warm-reuse decision
@@ -223,7 +223,7 @@ struct HALDeviceInputSourceDeviceTargetTests {
   }
 
   @Test("warm explicit source follows fallback default when target is missing")
-  func explicitMissingTargetReuseTracksFallbackDefault() {
+  func explicitMissingTargetReuseTracksFallbackDefault() async {
     let source = HALDeviceInputSource()
     source.targetDeviceUID = "missing"
     nonisolated(unsafe) var currentDefault: AudioDeviceID = 42
@@ -239,15 +239,15 @@ struct HALDeviceInputSourceDeviceTargetTests {
     )
     source.setBoundInputDeviceForTesting(committedBind(42))
 
-    #expect(source.boundDeviceMatchesResolvedTargetForReuse())
+    #expect(await source.warmBindCompatibleOnLane(deadline: nil, attempt: nil))
 
     currentDefault = 43
 
-    #expect(!source.boundDeviceMatchesResolvedTargetForReuse())
+    #expect(!(await source.warmBindCompatibleOnLane(deadline: nil, attempt: nil)))
   }
 
   @Test("a reconnected pinned device rejects the warm fallback bind (founder decision)")
-  func reconnectedPinnedDeviceRejectsFallbackBind() {
+  func reconnectedPinnedDeviceRejectsFallbackBind() async {
     // The founder's rule running forwards: AirPods come back, so the take they
     // lost is theirs again. Refusing compatibility here is what makes the
     // manager tear the warm source down so the next open is cold and pinned.
@@ -265,7 +265,7 @@ struct HALDeviceInputSourceDeviceTargetTests {
     // Bound to the built-in mic the fallback picked while they were gone.
     source.setBoundInputDeviceForTesting(committedBind(30, source: "list_fallback"))
 
-    #expect(!source.boundDeviceMatchesResolvedTargetForReuse())
+    #expect(!(await source.warmBindCompatibleOnLane(deadline: nil, attempt: nil)))
   }
 }
 

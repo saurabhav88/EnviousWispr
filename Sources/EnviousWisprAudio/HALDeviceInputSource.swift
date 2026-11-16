@@ -411,12 +411,9 @@ final class HALDeviceInputSource: AudioInputSource {
     #if DEBUG
       if let isRunningOverrideForTesting { return isRunningOverrideForTesting }
     #endif
-    guard let audioUnit else { return false }
-    var running: UInt32 = 0
-    var size = UInt32(MemoryLayout<UInt32>.size)
-    let status = AudioUnitGetProperty(
-      audioUnit, kAudioOutputUnitProperty_IsRunning, kAudioUnitScope_Global, 0, &running, &size)
-    return status == noErr && running != 0
+    // #4601 §3a: committed state only, never a driver read on the caller's actor (a stuck
+    // driver would freeze the main actor). The live hardware answer is `isRunningOnLane`.
+    return liveResources?.stage == .started
   }
 
   /// #4601 §3.5: the running check, asked on the audio-unit lane within `deadline` (and the read
@@ -666,17 +663,11 @@ final class HALDeviceInputSource: AudioInputSource {
     warmReuseBind(hasLiveUnit: hasLiveUnit)
   }
 
-  /// #1714: the POLICY moved to `InputDeviceResolver`; this stays as the narrow
-  /// predicate `AudioCaptureManager` already calls, and only supplies the
-  /// committed bind. HAL must not own selection rules — that was the defect
-  /// that let a private selector drift from the cold ladder.
-  func boundDeviceMatchesResolvedTargetForReuse() -> Bool {
-    guard let bound = currentBoundInputDevice else { return false }
-    return inputDeviceResolver.isWarmBindCompatible(bound, preferredUID: targetDeviceUID)
-  }
-
-  /// #4601 §3.5: the same predicate, answered on the audio-unit lane within `deadline` because
-  /// it reads the live device list. A timeout, a wedged lane or a unit replaced meanwhile all
+  /// #1714: the POLICY lives in `InputDeviceResolver`; this only supplies the committed bind.
+  /// HAL must not own selection rules — that was the defect that let a private selector drift
+  /// from the cold ladder.
+  /// #4601 §3.5: answered on the audio-unit lane within `deadline` because it reads the live
+  /// device list. A timeout, a wedged lane or a unit replaced meanwhile all
   /// answer false: a warm unit that cannot be checked is not reused.
   func warmBindCompatibleOnLane(
     deadline: ContinuousClock.Instant?, attempt: AudioUnitLane.Attempt?
