@@ -400,6 +400,15 @@ Each drawing has one owner file. Never redraw it elsewhere.
 - Recording chimes come in start and stop pairs, one pair per sound style (for example `softHush_start.wav` and `softHush_stop.wav`). A new sound style adds both files.
 - Sound is optional feedback; nothing important is conveyed by sound alone.
 
+## Menus and drop-downs
+
+Founder, 2026-11-16: every drop-down opens a menu that looks like the History More menu, and every drop-down button is square like the Snippets Import button, never the system capsule.
+
+- **The open menu looks like the Mac's own menu.** One row per choice: an optional SF Symbol, then the name in regular weight and the reading colour. Hairline dividers separate groups. A delete-type action is red (`Button(role: .destructive)`) and comes last. A choice list marks the current choice with a check only, never a tinted row or an accent name.
+- **A short choice list uses `SettingsMenuPicker`.** Its button is the outlined rounded-rectangle face at medium size (the Import button) with the current choice and an up-down chevron. It opens the real Mac menu. Never use a bare `Picker` in menu style: it draws the system capsule.
+- **An action menu is a SwiftUI `Menu`** with `Label` rows, `Divider()` groups and a destructive role for delete, as in `HistoryDictationCard`'s More menu.
+- **A choice that needs a grey line or a badge under its name** (microphone, AI Polish provider and model, spoken punctuation language) keeps its line and uses `settingsDropdown` with `SettingsDropdownRow`, drawn to read like the Mac menu above (founder decision 2026-11-16).
+
 ## Approved parts
 
 Use these. All live in `Sources/EnviousWisprAppKit/Views/Settings/SettingsComponents.swift` unless another file is named.
@@ -417,6 +426,8 @@ Use these. All live in `Sources/EnviousWisprAppKit/Views/Settings/SettingsCompon
 | `SettingsHelpText`, `SettingsHelpArticleLink` | Help copy and a link to a help article | Custom links |
 | `SettingsTabStrip` | Tabs across the top of a page | `TabView`, `Picker(.segmented)` |
 | `BrandedSegmentedPicker` | A choice between 2-4 options | `Picker(.segmented)` |
+| `SettingsMenuPicker` (`SettingsMenuPicker.swift`) | A choice from a short list: square outlined button, Mac menu | A bare `Picker` (system capsule) |
+| `settingsDropdown`, `SettingsDropdownRow` (`SettingsDropdown.swift`) | A choice list whose rows need a grey line or a badge, drawn like the Mac menu | Your own popover list |
 | `BrandedToggleStyle` | Every on/off switch | `.toggleStyle(.switch)` |
 | `BrandedSlider` | A slider with value badge and Low/High labels | A bare `Slider` |
 | `.settingsButton(...)` with `EnviousButtonLabel` (`Views/Design/EnviousButtonStyle.swift`) | Every Settings button: `Button { action } label: { EnviousButtonLabel(...) }.settingsButton(emphasis, isEnabled:, shortcut:)`, filled, outlined or quiet; Delete-type actions use `Button(role: .destructive)`, which paints the destructive look | `.bordered`, `.borderedProminent`, `.plain` buttons, a red `foregroundStyle` |
@@ -438,6 +449,6 @@ A control must answer on the whole area it paints (`code-conventions.md` FACT: v
 - **Do** reuse the parts above and the tokens in the values block.
 - **Do** check every screen in light and dark, at the 750pt minimum window width.
 - **Don't** hand-type a color, corner size or font size.
-- **Don't** use Apple's default control looks (grey bordered buttons, blue segmented pickers, rounded-border fields). The founder reviewed them side by side on 2026-11-11 and kept ours.
+- **Don't** use Apple's default control looks (grey bordered buttons, blue segmented pickers, rounded-border fields, capsule pop-up buttons). The founder reviewed them side by side on 2026-11-11 and kept ours.
 - **Don't** add the generic "AI look": gradient text, purple-to-blue hero washes, emoji as icons, identical cards with one shadow everywhere.
 - **Don't** change how an approved part looks while building a feature. Ask first.

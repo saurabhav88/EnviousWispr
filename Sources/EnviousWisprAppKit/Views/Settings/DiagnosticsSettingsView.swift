@@ -75,10 +75,20 @@ struct DiagnosticsSettingsView: View {
         #endif
         if settings.isDebugModeEnabled {
           BrandedRow {
-            Picker("Log Level", selection: $settings.debugLogLevel) {
-              ForEach(DebugLogLevel.allCases, id: \.self) { level in
-                Text(level.displayName).tag(level)
+            HStack {
+              Text(verbatim: "Log Level")
+                .font(.stRowLabel)
+                .foregroundStyle(.stTextPrimary)
+              Spacer(minLength: DesignSpacing.md)
+              SettingsMenuPicker(
+                title: "Log Level", selection: $settings.debugLogLevel,
+                valueLabel: settings.debugLogLevel.displayName
+              ) {
+                ForEach(DebugLogLevel.allCases, id: \.self) { level in
+                  Text(level.displayName).tag(level)
+                }
               }
+              .accessibilityLabel(Text(verbatim: "Log Level"))
             }
           }
           BrandedRow(showDivider: false) {

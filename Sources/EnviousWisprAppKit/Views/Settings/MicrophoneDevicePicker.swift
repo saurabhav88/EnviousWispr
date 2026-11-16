@@ -105,7 +105,7 @@ struct MicrophoneDevicePicker: View {
       leading: {
         Image(systemName: icon)
           .font(.system(size: 14, weight: .medium))
-          .foregroundStyle(isChosen ? Color.stAccent : Color.stTextSecondary)
+          .foregroundStyle(Color.stTextPrimary)
           .frame(width: 18)
       },
       title: title,

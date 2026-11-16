@@ -47,22 +47,19 @@ struct RecordingsSettingsView: View {
               map: .id(.dictationRecordingRetention), icon: "clock.arrow.circlepath",
               resolvedHelp: RecordingsSettingsCopy.keepHelp
             ) {
-              Picker(
-                RecordingsSettingsCopy.keepDictationsTitle,
+              SettingsMenuPicker(
+                title: String(localized: RecordingsSettingsCopy.keepDictationsTitle),
                 selection: Binding(
                   get: { settings.dictationRecordingRetention },
-                  set: { choose(.dictations($0)) })
+                  set: { choose(.dictations($0)) }),
+                valueLabel: RecordingsSettingsCopy.label(settings.dictationRecordingRetention)
               ) {
                 ForEach(DictationRecordingRetention.allCases, id: \.self) { value in
                   Text(RecordingsSettingsCopy.label(value)).tag(value)
                 }
               }
-              .labelsHidden()
               .settingsArrivalFocusControl()
               .accessibilityLabel(Text(RecordingsSettingsCopy.keepDictationsTitle))
-              .tint(.stAccent)
-              .controlSize(.large)
-              .fixedSize()
             }
             .rowStatus { stagedStatus(for: .dictations) }
           }
@@ -71,22 +68,19 @@ struct RecordingsSettingsView: View {
               map: .id(.meetingRecordingRetention), icon: "person.2.wave.2",
               resolvedHelp: RecordingsSettingsCopy.keepMeetingsHelp
             ) {
-              Picker(
-                RecordingsSettingsCopy.keepMeetingsTitle,
+              SettingsMenuPicker(
+                title: String(localized: RecordingsSettingsCopy.keepMeetingsTitle),
                 selection: Binding(
                   get: { settings.meetingRecordingRetention },
-                  set: { choose(.meetings($0)) })
+                  set: { choose(.meetings($0)) }),
+                valueLabel: RecordingsSettingsCopy.label(settings.meetingRecordingRetention)
               ) {
                 ForEach(MeetingRecordingRetention.allCases, id: \.self) { value in
                   Text(RecordingsSettingsCopy.label(value)).tag(value)
                 }
               }
-              .labelsHidden()
               .settingsArrivalFocusControl()
               .accessibilityLabel(Text(RecordingsSettingsCopy.keepMeetingsTitle))
-              .tint(.stAccent)
-              .controlSize(.large)
-              .fixedSize()
             }
             .rowStatus { stagedStatus(for: .meetings) }
           }
@@ -127,20 +121,17 @@ struct RecordingsSettingsView: View {
               map: .id(.recordingStorageWarningThreshold), icon: "gauge.with.dots.needle.50percent",
               resolvedHelp: RecordingsSettingsCopy.thresholdHelp
             ) {
-              Picker(
-                RecordingsSettingsCopy.thresholdTitle,
-                selection: $settings.recordingStorageWarningThreshold
+              SettingsMenuPicker(
+                title: String(localized: RecordingsSettingsCopy.thresholdTitle),
+                selection: $settings.recordingStorageWarningThreshold,
+                valueLabel: RecordingsSettingsCopy.label(settings.recordingStorageWarningThreshold)
               ) {
                 ForEach(RecordingStorageWarningThreshold.allCases, id: \.self) { value in
                   Text(RecordingsSettingsCopy.label(value)).tag(value)
                 }
               }
-              .labelsHidden()
               .settingsArrivalFocusControl()
               .accessibilityLabel(Text(RecordingsSettingsCopy.thresholdTitle))
-              .tint(.stAccent)
-              .controlSize(.large)
-              .fixedSize()
             }
           }
           BrandedRow {
@@ -148,21 +139,18 @@ struct RecordingsSettingsView: View {
               map: .id(.recordingThresholdBehavior), icon: "arrow.uturn.down.circle",
               resolvedHelp: RecordingsSettingsCopy.behaviorHelp
             ) {
-              Picker(
-                RecordingsSettingsCopy.behaviorTitle,
-                selection: $settings.recordingThresholdBehavior
+              SettingsMenuPicker(
+                title: String(localized: RecordingsSettingsCopy.behaviorTitle),
+                selection: $settings.recordingThresholdBehavior,
+                valueLabel: RecordingsSettingsCopy.label(settings.recordingThresholdBehavior),
+                isEnabled: settings.recordingStorageWarningThreshold != .none
               ) {
                 ForEach(RecordingThresholdBehavior.allCases, id: \.self) { value in
                   Text(RecordingsSettingsCopy.label(value)).tag(value)
                 }
               }
-              .labelsHidden()
               .settingsArrivalFocusControl()
               .accessibilityLabel(Text(RecordingsSettingsCopy.behaviorTitle))
-              .tint(.stAccent)
-              .controlSize(.large)
-              .fixedSize()
-              .disabled(settings.recordingStorageWarningThreshold == .none)
             }
           }
           BrandedRow(showDivider: false) {

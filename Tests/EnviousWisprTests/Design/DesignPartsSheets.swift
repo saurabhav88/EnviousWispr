@@ -46,6 +46,9 @@ enum DesignPartsSheets {
     ".settingsHoverRow(...)": "structure",
     "SettingsTabStrip": "controls",
     "BrandedSegmentedPicker": "controls",
+    "SettingsMenuPicker": "controls",
+    "settingsDropdown": "controls",
+    "SettingsDropdownRow": "controls",
     "BrandedToggleStyle": "controls",
     "BrandedSlider": "controls",
     ".settingsButton(...)": "controls",
@@ -168,6 +171,34 @@ enum DesignPartsSheets {
               BrandedSegmentedPicker(
                 options: [("Always", nil, 0), ("Continue", nil, 1)], selection: .constant(0),
                 comfortable: true)
+            }
+          }, footer: { EmptyView() })
+        BrandedSection(
+          verbatimHeader: "Drop-downs",
+          content: {
+            BrandedRow {
+              SettingsMenuPicker(
+                title: "Keep for", selection: .constant(1), valueLabel: "Until I delete them"
+              ) {
+                Text(verbatim: "7 days").tag(0)
+                Text(verbatim: "Until I delete them").tag(1)
+              }
+            }
+            // The rows `settingsDropdown` opens, drawn in place: a popover does not render
+            // off screen.
+            BrandedRow(showDivider: false) {
+              VStack(alignment: .leading, spacing: 2) {
+                SettingsDropdownRow(
+                  isChosen: true, spokenTitle: "Auto", action: {},
+                  leading: { Image(systemName: "arrow.triangle.2.circlepath") },
+                  title: "Auto",
+                  subtitle: { DesignPartsSheets.label("Follows macOS") })
+                SettingsDropdownRow(
+                  isChosen: false, spokenTitle: "MacBook Pro Microphone", action: {},
+                  leading: { Image(systemName: "mic") },
+                  title: "MacBook Pro Microphone",
+                  subtitle: { DesignPartsSheets.label("Built-in") })
+              }
             }
           }, footer: { EmptyView() })
         BrandedSection(

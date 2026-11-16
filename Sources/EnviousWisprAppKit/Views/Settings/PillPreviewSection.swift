@@ -27,14 +27,24 @@ import SwiftUI
         }
         if controller.isReviewEnabled {
           BrandedRow {
-            Picker("Pill", selection: $controller.selectedID) {
-              ForEach(PillPreviewCatalog.orderedGroups, id: \.group) { section in
-                Section(section.group) {
-                  ForEach(section.entries) { entry in
-                    Text(entry.title).tag(entry.id)
+            HStack {
+              Text(verbatim: "Pill")
+                .font(.stRowLabel)
+                .foregroundStyle(.stTextPrimary)
+              Spacer(minLength: DesignSpacing.md)
+              SettingsMenuPicker(
+                title: "Pill", selection: $controller.selectedID,
+                valueLabel: PillPreviewCatalog.all.first { $0.id == controller.selectedID }?.title ?? ""
+              ) {
+                ForEach(PillPreviewCatalog.orderedGroups, id: \.group) { section in
+                  Section(section.group) {
+                    ForEach(section.entries) { entry in
+                      Text(entry.title).tag(entry.id)
+                    }
                   }
                 }
               }
+              .accessibilityLabel(Text(verbatim: "Pill"))
             }
           }
           BrandedRow {
@@ -71,10 +81,20 @@ import SwiftUI
             }
           }
           BrandedRow {
-            Picker("Call pop-up", selection: $callPopups.selectedID) {
-              ForEach(callPopups.entries) { entry in
-                Text(entry.title).tag(entry.id)
+            HStack {
+              Text(verbatim: "Call pop-up")
+                .font(.stRowLabel)
+                .foregroundStyle(.stTextPrimary)
+              Spacer(minLength: DesignSpacing.md)
+              SettingsMenuPicker(
+                title: "Call pop-up", selection: $callPopups.selectedID,
+                valueLabel: callPopups.entries.first { $0.id == callPopups.selectedID }?.title ?? ""
+              ) {
+                ForEach(callPopups.entries) { entry in
+                  Text(entry.title).tag(entry.id)
+                }
               }
+              .accessibilityLabel(Text(verbatim: "Call pop-up"))
             }
           }
           BrandedRow {

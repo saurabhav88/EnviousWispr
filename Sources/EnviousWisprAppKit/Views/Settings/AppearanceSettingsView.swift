@@ -70,7 +70,13 @@ struct AppearanceSettingsView: View {
               icon: "globe",
               help: "This changes only EnviousWispr. The new language applies after relaunch. System default follows your Mac."
             ) {
-              Picker(SettingsItemCopy.AppSettings.language, selection: $language) {
+              SettingsMenuPicker(
+                title: String(localized: SettingsItemCopy.AppSettings.language),
+                selection: $language,
+                valueLabel: language.isEmpty
+                  ? String(localized: SettingsItemCopy.AppSettings.systemDefault)
+                  : SettingsMapRef.dynamic(.appLanguageShipped, .appLanguage(code: language)).title
+              ) {
                 Text(SettingsItemCopy.AppSettings.systemDefault).tag("")
                 ForEach(languagePreference.languages, id: \.self) { code in
                   Text(
@@ -79,12 +85,8 @@ struct AppearanceSettingsView: View {
                   ).tag(code)
                 }
               }
-              .labelsHidden()
               .settingsArrivalFocusControl()
               .accessibilityLabel(Text(SettingsItemCopy.AppSettings.language))
-              .tint(.stAccent)
-              .controlSize(.large)
-              .fixedSize()
               .onChange(of: language) { _, code in
                 languagePreference.choose(code.isEmpty ? nil : code)
               }
