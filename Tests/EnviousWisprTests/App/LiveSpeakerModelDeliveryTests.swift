@@ -320,6 +320,31 @@ struct LiveSpeakerModelDeliveryTests {
     #expect(rig.gate.starts == 2)
   }
 
+  /// #4540: a delayed `.notReady` replay from `speakerFinalHandle` (after `sweepSupersededStaging`)
+  /// arriving after line 307's stale-transfer cancel finishes and before `finishDownload()` clears
+  /// `speakerLiveFetchEpoch` must not fire a third cancel just because `speakerLiveState` is still
+  /// `.preparing`.
+  @Test("a non-transfer observer update does not re-cancel an already cancelled stale attempt")
+  func nonTransferObserverStateDoesNotRecancelStaleAttempt() async throws {
+    let rig = try Rig()
+    rig.home.speakerLiveCancelOverrideForTests = {}
+    rig.gate.holdNext()
+    rig.home.requestLiveSpeakerModel(meetingActive: false)
+    try await BoundedWait.until(rig.gate.started)
+    rig.home.cancelLiveSpeakerModelDownload()
+    let initialCancel = try #require(rig.home.speakerLivePendingCancelForTests)
+    _ = try await BoundedWait.result(of: initialCancel)
+    rig.home.applySpeakerLiveStateForTests(.preparing(validatingExistingCache: true))
+    #expect(rig.home.speakerLiveCancelRequestsForTests == 2)
+    let staleCancel = try #require(rig.home.speakerLivePendingCancelForTests)
+    _ = try await BoundedWait.result(of: staleCancel)
+    // Simulate delayed initial replay from `speakerFinalHandle` arriving before the held fetch exits.
+    rig.home.applySpeakerFinalStateForTests(.notReady)
+    #expect(rig.home.speakerLiveCancelRequestsForTests == 2)
+    rig.gate.release()
+    try await rig.finishDownload()
+  }
+
   @Test("during a removal no check gets the model folder, even one asked for after the drain")
   func removalBlocksNewChecks() async throws {
     let rig = try Rig()
