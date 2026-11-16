@@ -657,6 +657,518 @@ final class HALDeviceInputSource: AudioInputSource {
 
   // MARK: - Lifecycle
 
+  func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> {
+    guard !isCapturing else { throw AudioError.alreadyCapturing }
+    // #1810: cleared once this call is committed to being a NEW session — after
+    // the already-capturing guard, which must leave the live session's count
+    // intact, and before every remaining throw, so a failed attempt cannot leave
+    // the previous session's drain count visible to the next one's ceiling.
+    drainedPreRollSampleCount = 0
+    guard let fwd = forwarder else {
+      throw AudioError.formatCreationFailed(
+        source: "HALDeviceInputSource.startCapture.missing_forwarder")
+    }
+
+    // Carry the idle pre-roll's gaps forward and clear the session counters in
+    // ONE atomic step, BEFORE `fwd.activate(...)` drains the pre-roll (#1788
+    // cloud review r4 + r5). Three things have to be true at once here:
+    //   - clearing is right for #1434, whose counters must mean "this session";
+    //   - the wake measurement begins inside retained pre-roll, so a gap in
+    //     there is inside its window and must survive the clear;
+    //   - read-then-clear as two calls leaves a window where the RT and consumer
+    //     threads (still running) increment a counter that lands in neither, so
+    //     the gap is erased from both and a wake reads `exact` over a lossy
+    //     stream. Hence `snapshotAndReset`, and hence doing it before activate:
+    //     every increment after this line belongs to the live session.
+    preRollGapCount =
+      renderContext.map {
+        let s = $0.counters.snapshotAndReset()
+        // Mirrors `CaptureStopMetadata.inputTimelineGapCount`: one addend per death
+        // point, and `converterErrors` is excluded because it is a subset of
+        // `lostChunks` (r8). If that sum changes, change this with it.
+        return s.ringDrops + s.renderFailures + s.oversizedSlices + s.lostChunks
+      } ?? 0
+
+    let stream = makeCaptureStream()
+
+    // #1810: `activate` returns the count it just pushed through `onSamples`, and
+    // that batch reaches `DeadAirStreamingDetector` exactly like live audio. The
+    // return value used to be discarded, which is what made the shipped all-zero
+    // bar 1.0s MINUS the drained pre-roll instead of the 1.0s of live capture
+    // `AudioConstants.minimumTranscriptionSamples` documents. Clamped at the
+    // source as well as at the consumer: an unexpected negative must never widen
+    // into an EARLIER abort.
+    drainedPreRollSampleCount = max(
+      0,
+      fwd.activate(
+        onSamples: self.onSamples,
+        onBuffer: self.onBufferCaptured,
+        continuation: self.streamContinuation,
+        logPrefix: "HALDeviceInputSource"
+      )
+    )
+
+    captureGeneration &+= 1
+    captureLiveness.reset()
+    // #1434: per-session capture-health state. The warm unit outlives sessions
+    // (deactivateCapture keeps it pre-rolling), so an idle-time format change or
+    // pre-roll ring drop must not bleed into the next recording's telemetry. The
+    // counter half of that clear moved ABOVE `fwd.activate` as an atomic
+    // snapshot-and-reset (#1788 r5); only the format flag is cleared here.
+    formatDivergenceObserved = false
+    // #1523: a fresh session must never serve the previous session's cached
+    // stop-metadata; the live path repopulates it via teardownUnit().
+    cachedStopMetadata = nil
+    armCaptureStallWatchdog()
+
+    isCapturing = true
+    #if DEBUG
+      logBenchCaptureEvidence()
+    #endif
+    return stream
+  }
+
+  private var streamContinuation: AsyncStream<AVAudioPCMBuffer>.Continuation?
+
+  /// The stream `startCapture()` returns, built with `captureStreamBufferingPolicy`; its
+  /// continuation is the one the forwarder yields captured buffers into.
+  func makeCaptureStream() -> AsyncStream<AVAudioPCMBuffer> {
+    AsyncStream<AVAudioPCMBuffer>(bufferingPolicy: captureStreamBufferingPolicy) {
+      continuation in
+      self.streamContinuation = continuation
+    }
+  }
+
+  #if DEBUG
+    /// Yields `buffer` into the capture stream exactly as the forwarder does (#3972 C2b).
+    @discardableResult
+    func yieldToCaptureStreamForTesting(_ buffer: AVAudioPCMBuffer)
+      -> AsyncStream<AVAudioPCMBuffer>.Continuation.YieldResult?
+    {
+      streamContinuation?.yield(buffer)
+    }
+
+    func finishCaptureStreamForTesting() { streamContinuation?.finish() }
+  #endif
+
+  #if DEBUG
+    /// Capture-side actual-bound-device evidence (#1377 §3.5), same shape as
+    /// the other two conformers so `capture_bakeoff.py` parses it unchanged.
+    private func logBenchCaptureEvidence() {
+      let evidenceBoundTransport = boundTransport ?? "unknown"
+      AudioCaptureManager.btRouteLog(
+        "CAPTURE_EVIDENCE backend=hal_device_input boundUID=\(boundUID ?? "unknown") boundDeviceID=\(boundDeviceID.map(String.init) ?? "nil") boundTransport=\(evidenceBoundTransport) bindOK=\(lastBindOK) requestedUID=\(targetDeviceUID ?? "system_default")"
+      )
+    }
+  #endif
+
+  private func armCaptureStallWatchdog() {
+    stallWorkItem?.cancel()
+    let armedSession = captureGeneration
+    let armedAtNs = DispatchTime.now().uptimeNanoseconds
+    let item = Self.makeStallWorkItem(
+      armedSession: armedSession, armedAtNs: armedAtNs, source: self)
+    stallWorkItem = item
+    Self.stallQueue.asyncAfter(
+      deadline: .now() + .milliseconds(TimingConstants.audioCaptureStallWindowMs), execute: item)
+  }
+
+  nonisolated private static func makeStallWorkItem(
+    armedSession: UInt64, armedAtNs: UInt64, source: HALDeviceInputSource
+  ) -> DispatchWorkItem {
+    return DispatchWorkItem { [weak source] in
+      Task { @MainActor [weak source] in
+        source?.captureStallWatchdogFired(armedSession: armedSession, armedAtNs: armedAtNs)
+      }
+    }
+  }
+
+  private func captureStallWatchdogFired(armedSession: UInt64, armedAtNs: UInt64) {
+    guard captureGeneration == armedSession else { return }
+    guard isCapturing else { return }
+    guard !captureLiveness.wasReceived() else { return }
+
+    let ctx = CaptureStallContext(
+      sessionID: armedSession,
+      armedAtUptimeNs: armedAtNs,
+      firedAtUptimeNs: DispatchTime.now().uptimeNanoseconds,
+      route: "hal_device_input",
+      sourceType: "hal_device_input",
+      engineStartedSuccessfully: isRunning,
+      tapInstalled: true,
+      formatMismatchObserved: false,
+      inputDeviceUIDPreferred: targetDeviceUID,
+      inputDeviceUIDSystemDefault: AudioDeviceEnumerator.defaultInputDeviceUID(),
+      failureMode: .noBuffers,
+      // #1434: the stall fires BEFORE stopCapture(), so the source stamps its
+      // own live rate/divergence here — the stop-time metadata object does
+      // not exist yet. (The XPC proxy's host-side watchdog leaves these nil.)
+      nativeRateHz: renderContext?.nativeFormat.sampleRate,
+      rateDivergenceDetected: formatDivergenceObserved,
+      nativeChannelCount: boundNativeChannelCount,
+      inputChannel: boundInputChannel
+    )
+    onCaptureStalled?(ctx)
+  }
+
+  func deactivateCapture() {
+    stallWorkItem?.cancel()
+    stallWorkItem = nil
+    forwarder?.returnToPreRoll()
+    isCapturing = false
+    streamContinuation = nil
+    // #1434 session stats — dev-visible mirror of the CaptureStopMetadata the
+    // manager reads via `captureStopMetadata` before this call.
+    if let context = renderContext {
+      let snap = context.counters.snapshot()
+      AudioCaptureManager.btRouteLog(
+        "HAL session stats: native=\(Int(context.nativeFormat.sampleRate)) "
+          + "target=\(Int(context.targetFormat.sampleRate)) "
+          + "ringDrops=\(snap.ringDrops) convErrors=\(snap.converterErrors) "
+          + "zeroConvOut=\(snap.zeroOutputs) renderFails=\(snap.renderFailures) "
+          + "oversizedSlices=\(snap.oversizedSlices) "
+          + "lostChunks=\(snap.lostChunks) preRollGaps=\(preRollGapCount) "
+          + "rateDivergence=\(formatDivergenceObserved)"
+      )
+    }
+    AudioCaptureManager.btRouteLog(
+      "HALDeviceInputSource deactivated — unit stays warm, pre-roll capturing")
+  }
+
+  func stop() async -> [Float] {
+    stopSynchronously()
+    // Source does not own samples — manager accumulates via onSamples callback.
+    return []
+  }
+
+  /// `stop()`'s whole body, which never suspends. #3972: EnviousMeet's quit path must stop its
+  /// own HAL client synchronously inside `applicationWillTerminate`; this is the same teardown
+  /// authority, not a second copy of it.
+  func stopSynchronously() {
+    forwarder?.stop()
+    forwarder = nil
+    streamContinuation = nil
+    // teardownUnit() cancels stallWorkItem and drops isCapturing.
+    teardownUnit()
+  }
+
+  /// Real settling check (#1434 — replaces a stub whose comment asserted the
+  /// exact claim Apple QA1777 refutes: AUHAL does NOT resample input, so a
+  /// device whose rate is still renegotiating DOES need waiting out).
+  ///
+  /// Two jobs, one contract:
+  /// 1. SETTLED — poll the device's native rate until two consecutive reads
+  ///    agree AND the agreed rate is usable (`> 0`; #1445, `isUsableRate`). Two-reads-agree shape; Apple forum 770232 documents
+  ///    AirPods reporting a transient wrong rate corrected by a later
+  ///    notification.
+  /// 2. MATCHES — the settled rate must equal the rate this unit's converter
+  ///    was built at in `prepare()`. A settled-but-DIVERGENT rate returns
+  ///    false, which routes into the kernel's existing one-rebuild retry seam
+  ///    (`RecordingSessionKernel` stabilization site) — `prepare()` then
+  ///    re-reads the fresh rate and rebuilds the converter. The kernel makes
+  ///    exactly one rebuild attempt; since #1445 it re-verifies stabilization
+  ///    once after that rebuild (diagnostic only — a false result does not
+  ///    trigger a second rebuild), and residual failure is owned by the stall
+  ///    watchdog / ASR-empty paths.
+  ///
+  /// No bound device / no live unit → true (nothing to stabilize; matches the
+  /// manager's no-active-source short-circuit).
+  func waitForFormatStabilization(maxWait: TimeInterval, pollInterval: TimeInterval) async -> Bool {
+    guard let deviceID = boundDeviceID, let context = renderContext else { return true }
+    let preparedRate = context.nativeFormat.sampleRate
+    let stabStart = ContinuousClock.now
+    let outcome = await Self.settleNativeRate(
+      preparedRate: preparedRate,
+      maxWait: maxWait,
+      pollInterval: pollInterval,
+      readRate: { [nativeRateReader] in nativeRateReader(deviceID) },
+      sleep: { try? await Task.sleep(for: $0) }
+    )
+    let elapsed = Self.stabMs(ContinuousClock.now - stabStart)
+    let settledLabel = outcome.settledRate.map { String(Int($0)) } ?? "unstable"
+    AudioCaptureManager.btRouteLog(
+      "HAL formatStab: settled=\(settledLabel) prepared=\(Int(preparedRate)) "
+        + "matches=\(outcome.matchesPrepared) polls=\(outcome.polls) ms=\(elapsed)"
+    )
+    return outcome.matchesPrepared
+  }
+
+  /// Pure settle loop (#1434) — separated from the instance so tests can
+  /// drive it with an injected reader + no-op sleep (`test-timing`: assert on
+  /// the returned value, never the wall clock).
+  ///
+  /// SETTLED = two consecutive reads agree AND the agreed rate is usable
+  /// (`> 0`). During a device transition `nativeRateReader` can report a
+  /// non-nil `0.0`; two agreeing invalid reads must not read as stable
+  /// (`isUsableRate`, #1473). The result is
+  /// `matchesPrepared` — a settled-but-DIVERGENT rate is deliberately false
+  /// (routes into the kernel's one-rebuild retry seam).
+  struct RateSettleOutcome: Equatable {
+    let settledRate: Double?
+    let matchesPrepared: Bool
+    let polls: Int
+  }
+
+  /// A read only counts toward "settled" when it is non-nil and `> 0`.
+  /// Rejects zero, negatives, and NaN
+  /// (`Double.nan > 0` is false).
+  nonisolated static func isUsableRate(_ rate: Double?) -> Bool {
+    guard let rate else { return false }
+    return rate > 0
+  }
+
+  static func settleNativeRate(
+    preparedRate: Double,
+    maxWait: TimeInterval,
+    pollInterval: TimeInterval,
+    readRate: () -> Double?,
+    sleep: (Duration) async -> Void
+  ) async -> RateSettleOutcome {
+    func outcome(_ settled: Double?, polls: Int) -> RateSettleOutcome {
+      RateSettleOutcome(
+        settledRate: settled,
+        matchesPrepared: settled == preparedRate,
+        polls: polls)
+    }
+    // Fast path: two reads 10ms apart agree (the common already-settled case
+    // returns in ~10ms, keeping the warm PTT path cheap).
+    var lastRate = readRate()
+    await sleep(.milliseconds(10))
+    var currentRate = readRate()
+    if isUsableRate(currentRate), currentRate == lastRate {
+      return outcome(currentRate, polls: 0)
+    }
+    // Bounded poll loop — polls is the budget (not wall-clock, so an injected
+    // no-op sleep terminates deterministically).
+    let maxPolls = max(1, Int(maxWait / max(pollInterval, 0.001)))
+    var polls = 0
+    while polls < maxPolls {
+      lastRate = currentRate
+      await sleep(.seconds(pollInterval))
+      polls += 1
+      currentRate = readRate()
+      if isUsableRate(currentRate), currentRate == lastRate {
+        return outcome(currentRate, polls: polls)
+      }
+    }
+    // Never settled within the budget — unstable (false → rebuild seam).
+    return outcome(nil, polls: polls)
+  }
+
+  /// Duration → ms for the stabilization log (file-local; the manager's
+  /// equivalent helper is private to it).
+  nonisolated private static func stabMs(_ d: Duration) -> Int {
+    let (seconds, attoseconds) = d.components
+    return Int(seconds) * 1000 + Int(attoseconds / 1_000_000_000_000_000)
+  }
+
+  func abortPrepare() {
+    guard audioUnit != nil, !isCapturing else { return }
+    teardownUnit()
+  }
+
+  func rebuild() {
+    teardownUnit()
+  }
+
+  // MARK: - Private: teardown
+
+  /// Read the device's OWN native stream format directly from the HAL device
+  /// object (`kAudioDevicePropertyStreamFormat`, input scope) — the ground
+  /// truth for what rate the hardware actually runs at, queried BEFORE we
+  /// overwrite the AudioUnit's client-side format with our own request.
+  private static func queryNativeStreamFormat(deviceID: AudioDeviceID)
+    -> AudioStreamBasicDescription?
+  {
+    readNativeStreamFormat(deviceID: deviceID).format
+  }
+
+  /// The same read, keeping the `OSStatus` the HAL returned (#1851), so a failed
+  /// read can say why. `format` is nil exactly when `status` is not `noErr`.
+  private static func readNativeStreamFormat(deviceID: AudioDeviceID)
+    -> (format: AudioStreamBasicDescription?, status: OSStatus)
+  {
+    var format = AudioStreamBasicDescription()
+    var size = UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
+    var addr = AudioObjectPropertyAddress(
+      mSelector: kAudioDevicePropertyStreamFormat,
+      mScope: kAudioDevicePropertyScopeInput,
+      mElement: kAudioObjectPropertyElementMain
+    )
+    let status = AudioObjectGetPropertyData(deviceID, &addr, 0, nil, &size, &format)
+    return (status == noErr ? format : nil, status)
+  }
+
+  // MARK: - Private: disconnect handling
+
+  /// Runs the shared `CoreAudioDeviceLiveness` check — device-vanished is
+  /// backend-independent per #1377 bake-off findings. Fires `onInterrupted()`;
+  /// the manager keeps holding the accumulated
+  /// `capturedSamples`, and #1408 made `RecordingSessionKernel` transcribe them at
+  /// the recording exit. The kernel saves the partial dictation, not the manager.
+  private func registerDeviceIsAliveListener(deviceID: AudioDeviceID) {
+    var addr = AudioObjectPropertyAddress(
+      mSelector: kAudioDevicePropertyDeviceIsAlive,
+      mScope: kAudioObjectPropertyScopeGlobal,
+      mElement: kAudioObjectPropertyElementMain
+    )
+    let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+      Task { @MainActor [weak self] in
+        self?.handleDeviceMayHaveVanished(deviceID: deviceID)
+      }
+    }
+    let status = AudioObjectAddPropertyListenerBlock(deviceID, &addr, Self.listenerQueue, block)
+    if status == noErr {
+      deviceIsAliveListenerDeviceID = deviceID
+      deviceIsAliveListenerBlock = block
+    }
+  }
+
+  private func removeDeviceIsAliveListener() {
+    guard let deviceID = deviceIsAliveListenerDeviceID, let block = deviceIsAliveListenerBlock
+    else { return }
+    var addr = AudioObjectPropertyAddress(
+      mSelector: kAudioDevicePropertyDeviceIsAlive,
+      mScope: kAudioObjectPropertyScopeGlobal,
+      mElement: kAudioObjectPropertyElementMain
+    )
+    AudioObjectRemovePropertyListenerBlock(deviceID, &addr, Self.listenerQueue, block)
+    deviceIsAliveListenerDeviceID = nil
+    deviceIsAliveListenerBlock = nil
+  }
+
+  // MARK: - Private: format-change listeners (#1434)
+
+  /// Mid-recording format/rate-change observation — Apple's documented AirPods
+  /// behavior (forum 770232) is a transient wrong rate corrected via exactly
+  /// these notifications. Structural sibling of `registerDeviceIsAliveListener`:
+  /// one stored token PER selector, the shared `listenerQueue`, and a MainActor
+  /// hop before touching source state. v1 is LOG + FLAG only — a forced
+  /// interruption would discard the dictation (#1408's known gap), converting
+  /// degraded audio into guaranteed total loss.
+  private func registerFormatChangeListeners(deviceID: AudioDeviceID) {
+    var formatAddr = AudioObjectPropertyAddress(
+      mSelector: kAudioDevicePropertyStreamFormat,
+      mScope: kAudioDevicePropertyScopeInput,
+      mElement: kAudioObjectPropertyElementMain
+    )
+    var rateAddr = AudioObjectPropertyAddress(
+      mSelector: kAudioDevicePropertyNominalSampleRate,
+      mScope: kAudioObjectPropertyScopeGlobal,
+      mElement: kAudioObjectPropertyElementMain
+    )
+    let formatBlock: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+      Task { @MainActor [weak self] in
+        self?.handleDeviceFormatMayHaveChanged(deviceID: deviceID, selector: "streamFormat")
+      }
+    }
+    let rateBlock: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+      Task { @MainActor [weak self] in
+        self?.handleDeviceFormatMayHaveChanged(deviceID: deviceID, selector: "nominalRate")
+      }
+    }
+    if AudioObjectAddPropertyListenerBlock(deviceID, &formatAddr, Self.listenerQueue, formatBlock)
+      == noErr
+    {
+      streamFormatListenerBlock = formatBlock
+      formatListenerDeviceID = deviceID
+    }
+    if AudioObjectAddPropertyListenerBlock(deviceID, &rateAddr, Self.listenerQueue, rateBlock)
+      == noErr
+    {
+      nominalRateListenerBlock = rateBlock
+      formatListenerDeviceID = deviceID
+    }
+  }
+
+  private func removeFormatChangeListeners() {
+    guard let deviceID = formatListenerDeviceID else { return }
+    if let block = streamFormatListenerBlock {
+      var addr = AudioObjectPropertyAddress(
+        mSelector: kAudioDevicePropertyStreamFormat,
+        mScope: kAudioDevicePropertyScopeInput,
+        mElement: kAudioObjectPropertyElementMain
+      )
+      AudioObjectRemovePropertyListenerBlock(deviceID, &addr, Self.listenerQueue, block)
+      streamFormatListenerBlock = nil
+    }
+    if let block = nominalRateListenerBlock {
+      var addr = AudioObjectPropertyAddress(
+        mSelector: kAudioDevicePropertyNominalSampleRate,
+        mScope: kAudioObjectPropertyScopeGlobal,
+        mElement: kAudioObjectPropertyElementMain
+      )
+      AudioObjectRemovePropertyListenerBlock(deviceID, &addr, Self.listenerQueue, block)
+      nominalRateListenerBlock = nil
+    }
+    formatListenerDeviceID = nil
+  }
+
+  /// MainActor handler for either format-change selector. Guarded on
+  /// `isCapturing` (idle/warm changes are the next prepare()'s problem — the
+  /// per-session reset in `startCapture()` keeps them out of telemetry).
+  private func handleDeviceFormatMayHaveChanged(deviceID: AudioDeviceID, selector: String) {
+    guard isCapturing, let context = renderContext else { return }
+    let preparedRate = context.nativeFormat.sampleRate
+    let currentRate = nativeRateReader(deviceID)
+    let diverged = currentRate != nil && currentRate != preparedRate
+    AudioCaptureManager.btRouteLog(
+      "HAL format change (\(selector)) mid-capture: prepared=\(Int(preparedRate)) "
+        + "now=\(currentRate.map { String(Int($0)) } ?? "unknown") diverged=\(diverged)"
+    )
+    if diverged {
+      formatDivergenceObserved = true
+    }
+  }
+
+  private func handleDeviceMayHaveVanished(deviceID: AudioDeviceID) {
+    guard isCapturing, !isRecovering else { return }
+    let liveness = CoreAudioDeviceLiveness.classify(deviceID: deviceID)
+    guard liveness != .alive else { return }
+
+    // #1408: `.removed` is Core Audio confirming the device is gone, and earns
+    // the "Microphone disconnected" notice. `.unverified` means the read itself
+    // failed for a reason that says nothing about the device — the capture is
+    // still broken, so tear down and salvage exactly the same way, but report
+    // the honest cause so we never badge a mic that never left.
+    let cause: EngineInterruptionCause = liveness == .removed ? .deviceRemoved : .engineLost
+    AudioCaptureManager.btRouteLog(
+      "HALDeviceInputSource: device \(deviceID) \(liveness == .removed ? "went away" : "liveness unverified") — interrupting (\(cause.rawValue))"
+    )
+    // Tear down BEFORE firing onInterrupted (teardown-then-onInterrupted
+    // order). Without this, `isRunning`
+    // still reports true (we never called AudioOutputUnitStop), so the
+    // manager's warm-reuse check would try to resume capture on a HAL unit
+    // bound to a device that no longer exists on the NEXT recording instead
+    // of rebuilding fresh (cloud review P2).
+    teardownUnit()
+    onInterrupted?(cause)
+  }
+
+  /// A dedicated thread that blocks on `context.semaphore` and drains the
+  /// ring off the HAL IO thread. Signaling a semaphore (not
+  /// `DispatchQueue.async`) from the render callback is the RT-safe wake
+  /// primitive (Codex review r1 P2) — `async` enqueue can allocate/lock on
+  /// the calling (IO) thread. Exits on its own once `teardownUnit()` signals
+  /// after `stoppedFlag` is set — never joined, never needs to be.
+  nonisolated private static func makeConsumerThread(context: HALRenderContext) -> Thread {
+    let thread = Thread {
+      while true {
+        context.semaphore.wait()
+        context.drainAndForward()
+        if context.stopped.isSet() { break }
+      }
+    }
+    thread.name = "com.enviouswispr.audio.hal-consumer"
+    thread.qualityOfService = .userInteractive
+    thread.start()
+    return thread
+  }
+}
+
+// MARK: - Lifecycle port (#4601 C1)
+
+extension HALDeviceInputSource {
   func prepare() async throws -> BoundInputDevice {
     if let warm = warmReuseBind(hasLiveUnit: audioUnit != nil) {
       onLifecycleSignal?("hal_prepare_already_running")
@@ -983,322 +1495,6 @@ final class HALDeviceInputSource: AudioInputSource {
       resolutionSource: selectedSource.rawValue, inputChannel: appliedChannel)
   }
 
-  func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> {
-    guard !isCapturing else { throw AudioError.alreadyCapturing }
-    // #1810: cleared once this call is committed to being a NEW session — after
-    // the already-capturing guard, which must leave the live session's count
-    // intact, and before every remaining throw, so a failed attempt cannot leave
-    // the previous session's drain count visible to the next one's ceiling.
-    drainedPreRollSampleCount = 0
-    guard let fwd = forwarder else {
-      throw AudioError.formatCreationFailed(
-        source: "HALDeviceInputSource.startCapture.missing_forwarder")
-    }
-
-    // Carry the idle pre-roll's gaps forward and clear the session counters in
-    // ONE atomic step, BEFORE `fwd.activate(...)` drains the pre-roll (#1788
-    // cloud review r4 + r5). Three things have to be true at once here:
-    //   - clearing is right for #1434, whose counters must mean "this session";
-    //   - the wake measurement begins inside retained pre-roll, so a gap in
-    //     there is inside its window and must survive the clear;
-    //   - read-then-clear as two calls leaves a window where the RT and consumer
-    //     threads (still running) increment a counter that lands in neither, so
-    //     the gap is erased from both and a wake reads `exact` over a lossy
-    //     stream. Hence `snapshotAndReset`, and hence doing it before activate:
-    //     every increment after this line belongs to the live session.
-    preRollGapCount =
-      renderContext.map {
-        let s = $0.counters.snapshotAndReset()
-        // Mirrors `CaptureStopMetadata.inputTimelineGapCount`: one addend per death
-        // point, and `converterErrors` is excluded because it is a subset of
-        // `lostChunks` (r8). If that sum changes, change this with it.
-        return s.ringDrops + s.renderFailures + s.oversizedSlices + s.lostChunks
-      } ?? 0
-
-    let stream = makeCaptureStream()
-
-    // #1810: `activate` returns the count it just pushed through `onSamples`, and
-    // that batch reaches `DeadAirStreamingDetector` exactly like live audio. The
-    // return value used to be discarded, which is what made the shipped all-zero
-    // bar 1.0s MINUS the drained pre-roll instead of the 1.0s of live capture
-    // `AudioConstants.minimumTranscriptionSamples` documents. Clamped at the
-    // source as well as at the consumer: an unexpected negative must never widen
-    // into an EARLIER abort.
-    drainedPreRollSampleCount = max(
-      0,
-      fwd.activate(
-        onSamples: self.onSamples,
-        onBuffer: self.onBufferCaptured,
-        continuation: self.streamContinuation,
-        logPrefix: "HALDeviceInputSource"
-      )
-    )
-
-    captureGeneration &+= 1
-    captureLiveness.reset()
-    // #1434: per-session capture-health state. The warm unit outlives sessions
-    // (deactivateCapture keeps it pre-rolling), so an idle-time format change or
-    // pre-roll ring drop must not bleed into the next recording's telemetry. The
-    // counter half of that clear moved ABOVE `fwd.activate` as an atomic
-    // snapshot-and-reset (#1788 r5); only the format flag is cleared here.
-    formatDivergenceObserved = false
-    // #1523: a fresh session must never serve the previous session's cached
-    // stop-metadata; the live path repopulates it via teardownUnit().
-    cachedStopMetadata = nil
-    armCaptureStallWatchdog()
-
-    isCapturing = true
-    #if DEBUG
-      logBenchCaptureEvidence()
-    #endif
-    return stream
-  }
-
-  private var streamContinuation: AsyncStream<AVAudioPCMBuffer>.Continuation?
-
-  /// The stream `startCapture()` returns, built with `captureStreamBufferingPolicy`; its
-  /// continuation is the one the forwarder yields captured buffers into.
-  func makeCaptureStream() -> AsyncStream<AVAudioPCMBuffer> {
-    AsyncStream<AVAudioPCMBuffer>(bufferingPolicy: captureStreamBufferingPolicy) {
-      continuation in
-      self.streamContinuation = continuation
-    }
-  }
-
-  #if DEBUG
-    /// Yields `buffer` into the capture stream exactly as the forwarder does (#3972 C2b).
-    @discardableResult
-    func yieldToCaptureStreamForTesting(_ buffer: AVAudioPCMBuffer)
-      -> AsyncStream<AVAudioPCMBuffer>.Continuation.YieldResult?
-    {
-      streamContinuation?.yield(buffer)
-    }
-
-    func finishCaptureStreamForTesting() { streamContinuation?.finish() }
-  #endif
-
-  #if DEBUG
-    /// Capture-side actual-bound-device evidence (#1377 §3.5), same shape as
-    /// the other two conformers so `capture_bakeoff.py` parses it unchanged.
-    private func logBenchCaptureEvidence() {
-      let evidenceBoundTransport = boundTransport ?? "unknown"
-      AudioCaptureManager.btRouteLog(
-        "CAPTURE_EVIDENCE backend=hal_device_input boundUID=\(boundUID ?? "unknown") boundDeviceID=\(boundDeviceID.map(String.init) ?? "nil") boundTransport=\(evidenceBoundTransport) bindOK=\(lastBindOK) requestedUID=\(targetDeviceUID ?? "system_default")"
-      )
-    }
-  #endif
-
-  private func armCaptureStallWatchdog() {
-    stallWorkItem?.cancel()
-    let armedSession = captureGeneration
-    let armedAtNs = DispatchTime.now().uptimeNanoseconds
-    let item = Self.makeStallWorkItem(
-      armedSession: armedSession, armedAtNs: armedAtNs, source: self)
-    stallWorkItem = item
-    Self.stallQueue.asyncAfter(
-      deadline: .now() + .milliseconds(TimingConstants.audioCaptureStallWindowMs), execute: item)
-  }
-
-  nonisolated private static func makeStallWorkItem(
-    armedSession: UInt64, armedAtNs: UInt64, source: HALDeviceInputSource
-  ) -> DispatchWorkItem {
-    return DispatchWorkItem { [weak source] in
-      Task { @MainActor [weak source] in
-        source?.captureStallWatchdogFired(armedSession: armedSession, armedAtNs: armedAtNs)
-      }
-    }
-  }
-
-  private func captureStallWatchdogFired(armedSession: UInt64, armedAtNs: UInt64) {
-    guard captureGeneration == armedSession else { return }
-    guard isCapturing else { return }
-    guard !captureLiveness.wasReceived() else { return }
-
-    let ctx = CaptureStallContext(
-      sessionID: armedSession,
-      armedAtUptimeNs: armedAtNs,
-      firedAtUptimeNs: DispatchTime.now().uptimeNanoseconds,
-      route: "hal_device_input",
-      sourceType: "hal_device_input",
-      engineStartedSuccessfully: isRunning,
-      tapInstalled: true,
-      formatMismatchObserved: false,
-      inputDeviceUIDPreferred: targetDeviceUID,
-      inputDeviceUIDSystemDefault: AudioDeviceEnumerator.defaultInputDeviceUID(),
-      failureMode: .noBuffers,
-      // #1434: the stall fires BEFORE stopCapture(), so the source stamps its
-      // own live rate/divergence here — the stop-time metadata object does
-      // not exist yet. (The XPC proxy's host-side watchdog leaves these nil.)
-      nativeRateHz: renderContext?.nativeFormat.sampleRate,
-      rateDivergenceDetected: formatDivergenceObserved,
-      nativeChannelCount: boundNativeChannelCount,
-      inputChannel: boundInputChannel
-    )
-    onCaptureStalled?(ctx)
-  }
-
-  func deactivateCapture() {
-    stallWorkItem?.cancel()
-    stallWorkItem = nil
-    forwarder?.returnToPreRoll()
-    isCapturing = false
-    streamContinuation = nil
-    // #1434 session stats — dev-visible mirror of the CaptureStopMetadata the
-    // manager reads via `captureStopMetadata` before this call.
-    if let context = renderContext {
-      let snap = context.counters.snapshot()
-      AudioCaptureManager.btRouteLog(
-        "HAL session stats: native=\(Int(context.nativeFormat.sampleRate)) "
-          + "target=\(Int(context.targetFormat.sampleRate)) "
-          + "ringDrops=\(snap.ringDrops) convErrors=\(snap.converterErrors) "
-          + "zeroConvOut=\(snap.zeroOutputs) renderFails=\(snap.renderFailures) "
-          + "oversizedSlices=\(snap.oversizedSlices) "
-          + "lostChunks=\(snap.lostChunks) preRollGaps=\(preRollGapCount) "
-          + "rateDivergence=\(formatDivergenceObserved)"
-      )
-    }
-    AudioCaptureManager.btRouteLog(
-      "HALDeviceInputSource deactivated — unit stays warm, pre-roll capturing")
-  }
-
-  func stop() async -> [Float] {
-    stopSynchronously()
-    // Source does not own samples — manager accumulates via onSamples callback.
-    return []
-  }
-
-  /// `stop()`'s whole body, which never suspends. #3972: EnviousMeet's quit path must stop its
-  /// own HAL client synchronously inside `applicationWillTerminate`; this is the same teardown
-  /// authority, not a second copy of it.
-  func stopSynchronously() {
-    forwarder?.stop()
-    forwarder = nil
-    streamContinuation = nil
-    // teardownUnit() cancels stallWorkItem and drops isCapturing.
-    teardownUnit()
-  }
-
-  /// Real settling check (#1434 — replaces a stub whose comment asserted the
-  /// exact claim Apple QA1777 refutes: AUHAL does NOT resample input, so a
-  /// device whose rate is still renegotiating DOES need waiting out).
-  ///
-  /// Two jobs, one contract:
-  /// 1. SETTLED — poll the device's native rate until two consecutive reads
-  ///    agree AND the agreed rate is usable (`> 0`; #1445, `isUsableRate`). Two-reads-agree shape; Apple forum 770232 documents
-  ///    AirPods reporting a transient wrong rate corrected by a later
-  ///    notification.
-  /// 2. MATCHES — the settled rate must equal the rate this unit's converter
-  ///    was built at in `prepare()`. A settled-but-DIVERGENT rate returns
-  ///    false, which routes into the kernel's existing one-rebuild retry seam
-  ///    (`RecordingSessionKernel` stabilization site) — `prepare()` then
-  ///    re-reads the fresh rate and rebuilds the converter. The kernel makes
-  ///    exactly one rebuild attempt; since #1445 it re-verifies stabilization
-  ///    once after that rebuild (diagnostic only — a false result does not
-  ///    trigger a second rebuild), and residual failure is owned by the stall
-  ///    watchdog / ASR-empty paths.
-  ///
-  /// No bound device / no live unit → true (nothing to stabilize; matches the
-  /// manager's no-active-source short-circuit).
-  func waitForFormatStabilization(maxWait: TimeInterval, pollInterval: TimeInterval) async -> Bool {
-    guard let deviceID = boundDeviceID, let context = renderContext else { return true }
-    let preparedRate = context.nativeFormat.sampleRate
-    let stabStart = ContinuousClock.now
-    let outcome = await Self.settleNativeRate(
-      preparedRate: preparedRate,
-      maxWait: maxWait,
-      pollInterval: pollInterval,
-      readRate: { [nativeRateReader] in nativeRateReader(deviceID) },
-      sleep: { try? await Task.sleep(for: $0) }
-    )
-    let elapsed = Self.stabMs(ContinuousClock.now - stabStart)
-    let settledLabel = outcome.settledRate.map { String(Int($0)) } ?? "unstable"
-    AudioCaptureManager.btRouteLog(
-      "HAL formatStab: settled=\(settledLabel) prepared=\(Int(preparedRate)) "
-        + "matches=\(outcome.matchesPrepared) polls=\(outcome.polls) ms=\(elapsed)"
-    )
-    return outcome.matchesPrepared
-  }
-
-  /// Pure settle loop (#1434) — separated from the instance so tests can
-  /// drive it with an injected reader + no-op sleep (`test-timing`: assert on
-  /// the returned value, never the wall clock).
-  ///
-  /// SETTLED = two consecutive reads agree AND the agreed rate is usable
-  /// (`> 0`). During a device transition `nativeRateReader` can report a
-  /// non-nil `0.0`; two agreeing invalid reads must not read as stable
-  /// (`isUsableRate`, #1473). The result is
-  /// `matchesPrepared` — a settled-but-DIVERGENT rate is deliberately false
-  /// (routes into the kernel's one-rebuild retry seam).
-  struct RateSettleOutcome: Equatable {
-    let settledRate: Double?
-    let matchesPrepared: Bool
-    let polls: Int
-  }
-
-  /// A read only counts toward "settled" when it is non-nil and `> 0`.
-  /// Rejects zero, negatives, and NaN
-  /// (`Double.nan > 0` is false).
-  nonisolated static func isUsableRate(_ rate: Double?) -> Bool {
-    guard let rate else { return false }
-    return rate > 0
-  }
-
-  static func settleNativeRate(
-    preparedRate: Double,
-    maxWait: TimeInterval,
-    pollInterval: TimeInterval,
-    readRate: () -> Double?,
-    sleep: (Duration) async -> Void
-  ) async -> RateSettleOutcome {
-    func outcome(_ settled: Double?, polls: Int) -> RateSettleOutcome {
-      RateSettleOutcome(
-        settledRate: settled,
-        matchesPrepared: settled == preparedRate,
-        polls: polls)
-    }
-    // Fast path: two reads 10ms apart agree (the common already-settled case
-    // returns in ~10ms, keeping the warm PTT path cheap).
-    var lastRate = readRate()
-    await sleep(.milliseconds(10))
-    var currentRate = readRate()
-    if isUsableRate(currentRate), currentRate == lastRate {
-      return outcome(currentRate, polls: 0)
-    }
-    // Bounded poll loop — polls is the budget (not wall-clock, so an injected
-    // no-op sleep terminates deterministically).
-    let maxPolls = max(1, Int(maxWait / max(pollInterval, 0.001)))
-    var polls = 0
-    while polls < maxPolls {
-      lastRate = currentRate
-      await sleep(.seconds(pollInterval))
-      polls += 1
-      currentRate = readRate()
-      if isUsableRate(currentRate), currentRate == lastRate {
-        return outcome(currentRate, polls: polls)
-      }
-    }
-    // Never settled within the budget — unstable (false → rebuild seam).
-    return outcome(nil, polls: polls)
-  }
-
-  /// Duration → ms for the stabilization log (file-local; the manager's
-  /// equivalent helper is private to it).
-  nonisolated private static func stabMs(_ d: Duration) -> Int {
-    let (seconds, attoseconds) = d.components
-    return Int(seconds) * 1000 + Int(attoseconds / 1_000_000_000_000_000)
-  }
-
-  func abortPrepare() {
-    guard audioUnit != nil, !isCapturing else { return }
-    teardownUnit()
-  }
-
-  func rebuild() {
-    teardownUnit()
-  }
-
-  // MARK: - Private: teardown
-
   private func teardownUnit() {
     // #1523: snapshot the live stop-metadata BEFORE any state is cleared, so the
     // device-vanish salvage (which tears the unit down before the manager reads
@@ -1381,198 +1577,6 @@ final class HALDeviceInputSource: AudioInputSource {
     boundResolutionSource = nil
     boundNativeChannelCount = nil
     boundInputChannel = nil
-  }
-
-  /// Read the device's OWN native stream format directly from the HAL device
-  /// object (`kAudioDevicePropertyStreamFormat`, input scope) — the ground
-  /// truth for what rate the hardware actually runs at, queried BEFORE we
-  /// overwrite the AudioUnit's client-side format with our own request.
-  private static func queryNativeStreamFormat(deviceID: AudioDeviceID)
-    -> AudioStreamBasicDescription?
-  {
-    readNativeStreamFormat(deviceID: deviceID).format
-  }
-
-  /// The same read, keeping the `OSStatus` the HAL returned (#1851), so a failed
-  /// read can say why. `format` is nil exactly when `status` is not `noErr`.
-  private static func readNativeStreamFormat(deviceID: AudioDeviceID)
-    -> (format: AudioStreamBasicDescription?, status: OSStatus)
-  {
-    var format = AudioStreamBasicDescription()
-    var size = UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
-    var addr = AudioObjectPropertyAddress(
-      mSelector: kAudioDevicePropertyStreamFormat,
-      mScope: kAudioDevicePropertyScopeInput,
-      mElement: kAudioObjectPropertyElementMain
-    )
-    let status = AudioObjectGetPropertyData(deviceID, &addr, 0, nil, &size, &format)
-    return (status == noErr ? format : nil, status)
-  }
-
-  // MARK: - Private: disconnect handling
-
-  /// Runs the shared `CoreAudioDeviceLiveness` check — device-vanished is
-  /// backend-independent per #1377 bake-off findings. Fires `onInterrupted()`;
-  /// the manager keeps holding the accumulated
-  /// `capturedSamples`, and #1408 made `RecordingSessionKernel` transcribe them at
-  /// the recording exit. The kernel saves the partial dictation, not the manager.
-  private func registerDeviceIsAliveListener(deviceID: AudioDeviceID) {
-    var addr = AudioObjectPropertyAddress(
-      mSelector: kAudioDevicePropertyDeviceIsAlive,
-      mScope: kAudioObjectPropertyScopeGlobal,
-      mElement: kAudioObjectPropertyElementMain
-    )
-    let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
-      Task { @MainActor [weak self] in
-        self?.handleDeviceMayHaveVanished(deviceID: deviceID)
-      }
-    }
-    let status = AudioObjectAddPropertyListenerBlock(deviceID, &addr, Self.listenerQueue, block)
-    if status == noErr {
-      deviceIsAliveListenerDeviceID = deviceID
-      deviceIsAliveListenerBlock = block
-    }
-  }
-
-  private func removeDeviceIsAliveListener() {
-    guard let deviceID = deviceIsAliveListenerDeviceID, let block = deviceIsAliveListenerBlock
-    else { return }
-    var addr = AudioObjectPropertyAddress(
-      mSelector: kAudioDevicePropertyDeviceIsAlive,
-      mScope: kAudioObjectPropertyScopeGlobal,
-      mElement: kAudioObjectPropertyElementMain
-    )
-    AudioObjectRemovePropertyListenerBlock(deviceID, &addr, Self.listenerQueue, block)
-    deviceIsAliveListenerDeviceID = nil
-    deviceIsAliveListenerBlock = nil
-  }
-
-  // MARK: - Private: format-change listeners (#1434)
-
-  /// Mid-recording format/rate-change observation — Apple's documented AirPods
-  /// behavior (forum 770232) is a transient wrong rate corrected via exactly
-  /// these notifications. Structural sibling of `registerDeviceIsAliveListener`:
-  /// one stored token PER selector, the shared `listenerQueue`, and a MainActor
-  /// hop before touching source state. v1 is LOG + FLAG only — a forced
-  /// interruption would discard the dictation (#1408's known gap), converting
-  /// degraded audio into guaranteed total loss.
-  private func registerFormatChangeListeners(deviceID: AudioDeviceID) {
-    var formatAddr = AudioObjectPropertyAddress(
-      mSelector: kAudioDevicePropertyStreamFormat,
-      mScope: kAudioDevicePropertyScopeInput,
-      mElement: kAudioObjectPropertyElementMain
-    )
-    var rateAddr = AudioObjectPropertyAddress(
-      mSelector: kAudioDevicePropertyNominalSampleRate,
-      mScope: kAudioObjectPropertyScopeGlobal,
-      mElement: kAudioObjectPropertyElementMain
-    )
-    let formatBlock: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
-      Task { @MainActor [weak self] in
-        self?.handleDeviceFormatMayHaveChanged(deviceID: deviceID, selector: "streamFormat")
-      }
-    }
-    let rateBlock: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
-      Task { @MainActor [weak self] in
-        self?.handleDeviceFormatMayHaveChanged(deviceID: deviceID, selector: "nominalRate")
-      }
-    }
-    if AudioObjectAddPropertyListenerBlock(deviceID, &formatAddr, Self.listenerQueue, formatBlock)
-      == noErr
-    {
-      streamFormatListenerBlock = formatBlock
-      formatListenerDeviceID = deviceID
-    }
-    if AudioObjectAddPropertyListenerBlock(deviceID, &rateAddr, Self.listenerQueue, rateBlock)
-      == noErr
-    {
-      nominalRateListenerBlock = rateBlock
-      formatListenerDeviceID = deviceID
-    }
-  }
-
-  private func removeFormatChangeListeners() {
-    guard let deviceID = formatListenerDeviceID else { return }
-    if let block = streamFormatListenerBlock {
-      var addr = AudioObjectPropertyAddress(
-        mSelector: kAudioDevicePropertyStreamFormat,
-        mScope: kAudioDevicePropertyScopeInput,
-        mElement: kAudioObjectPropertyElementMain
-      )
-      AudioObjectRemovePropertyListenerBlock(deviceID, &addr, Self.listenerQueue, block)
-      streamFormatListenerBlock = nil
-    }
-    if let block = nominalRateListenerBlock {
-      var addr = AudioObjectPropertyAddress(
-        mSelector: kAudioDevicePropertyNominalSampleRate,
-        mScope: kAudioObjectPropertyScopeGlobal,
-        mElement: kAudioObjectPropertyElementMain
-      )
-      AudioObjectRemovePropertyListenerBlock(deviceID, &addr, Self.listenerQueue, block)
-      nominalRateListenerBlock = nil
-    }
-    formatListenerDeviceID = nil
-  }
-
-  /// MainActor handler for either format-change selector. Guarded on
-  /// `isCapturing` (idle/warm changes are the next prepare()'s problem — the
-  /// per-session reset in `startCapture()` keeps them out of telemetry).
-  private func handleDeviceFormatMayHaveChanged(deviceID: AudioDeviceID, selector: String) {
-    guard isCapturing, let context = renderContext else { return }
-    let preparedRate = context.nativeFormat.sampleRate
-    let currentRate = nativeRateReader(deviceID)
-    let diverged = currentRate != nil && currentRate != preparedRate
-    AudioCaptureManager.btRouteLog(
-      "HAL format change (\(selector)) mid-capture: prepared=\(Int(preparedRate)) "
-        + "now=\(currentRate.map { String(Int($0)) } ?? "unknown") diverged=\(diverged)"
-    )
-    if diverged {
-      formatDivergenceObserved = true
-    }
-  }
-
-  private func handleDeviceMayHaveVanished(deviceID: AudioDeviceID) {
-    guard isCapturing, !isRecovering else { return }
-    let liveness = CoreAudioDeviceLiveness.classify(deviceID: deviceID)
-    guard liveness != .alive else { return }
-
-    // #1408: `.removed` is Core Audio confirming the device is gone, and earns
-    // the "Microphone disconnected" notice. `.unverified` means the read itself
-    // failed for a reason that says nothing about the device — the capture is
-    // still broken, so tear down and salvage exactly the same way, but report
-    // the honest cause so we never badge a mic that never left.
-    let cause: EngineInterruptionCause = liveness == .removed ? .deviceRemoved : .engineLost
-    AudioCaptureManager.btRouteLog(
-      "HALDeviceInputSource: device \(deviceID) \(liveness == .removed ? "went away" : "liveness unverified") — interrupting (\(cause.rawValue))"
-    )
-    // Tear down BEFORE firing onInterrupted (teardown-then-onInterrupted
-    // order). Without this, `isRunning`
-    // still reports true (we never called AudioOutputUnitStop), so the
-    // manager's warm-reuse check would try to resume capture on a HAL unit
-    // bound to a device that no longer exists on the NEXT recording instead
-    // of rebuilding fresh (cloud review P2).
-    teardownUnit()
-    onInterrupted?(cause)
-  }
-
-  /// A dedicated thread that blocks on `context.semaphore` and drains the
-  /// ring off the HAL IO thread. Signaling a semaphore (not
-  /// `DispatchQueue.async`) from the render callback is the RT-safe wake
-  /// primitive (Codex review r1 P2) — `async` enqueue can allocate/lock on
-  /// the calling (IO) thread. Exits on its own once `teardownUnit()` signals
-  /// after `stoppedFlag` is set — never joined, never needs to be.
-  nonisolated private static func makeConsumerThread(context: HALRenderContext) -> Thread {
-    let thread = Thread {
-      while true {
-        context.semaphore.wait()
-        context.drainAndForward()
-        if context.stopped.isSet() { break }
-      }
-    }
-    thread.name = "com.enviouswispr.audio.hal-consumer"
-    thread.qualityOfService = .userInteractive
-    thread.start()
-    return thread
   }
 }
 
