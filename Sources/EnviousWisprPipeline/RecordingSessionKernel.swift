@@ -1782,6 +1782,7 @@ final class RecordingSessionKernel {
       try await audioCapture.startEnginePhase(startDeadline: microphoneStartDeadline)
     } catch {
       guard isCurrent(sid) else { return }
+      if finishForUserCommandAfterStartFailure(sid) { return }
       // #1714: this attempt was the last one, so freeze its attribution BEFORE
       // the terminal is published. Without this, every engine-start failure —
       // the exact population this issue exists to measure — would be reported
@@ -1844,6 +1845,7 @@ final class RecordingSessionKernel {
         try await audioCapture.startEnginePhase(startDeadline: microphoneStartDeadline)
       } catch {
         guard isCurrent(sid) else { return }
+        if finishForUserCommandAfterStartFailure(sid) { return }
         // #1714: the rebuild was the final attempt — freeze ITS source, not the
         // first attempt's. A retry that lands on a different device would
         // otherwise file the failure against the wrong microphone.
@@ -5151,6 +5153,22 @@ final class RecordingSessionKernel {
 
   // Pure classification (no instance state) — `nonisolated static` so it is
   // directly unit-testable via `@testable`.
+  /// #4601 whole-diff review r2: a Stop or Cancel the user gave while a microphone start was
+  /// still waiting (the session exists, so it only latched) wins over that start's later failure,
+  /// the same priority the pre-start checks give it: no not-responding notice for a take the user
+  /// already ended. Returns true when it published the terminal.
+  private func finishForUserCommandAfterStartFailure(_ sid: SessionID) -> Bool {
+    if stopLatched {
+      finishTerminal(.discarded(.releasedBeforeRecording), sid: sid)
+      return true
+    }
+    if cancelRequested {
+      finishTerminal(.cancelled, sid: sid)
+      return true
+    }
+    return false
+  }
+
   nonisolated static func classifyCaptureStartError(_ error: Error) -> RecordingFailureReason {
     // #1558 (cloud review P2 #1563): a missing input device on the toggle/menu
     // start path throws `AudioError.noBuiltInMicrophoneFound`. Classify it

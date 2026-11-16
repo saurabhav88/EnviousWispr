@@ -94,6 +94,27 @@ struct KernelMicrophoneStartBudgetTests {
     #expect(RecordingFailureReason.micNotResponding.terminalNoticeReason == .micNotResponding)
   }
 
+  /// #4601 whole-diff review r2: when this fails, a user who stopped or cancelled while a stuck
+  /// microphone start was waiting is told to restart their Mac for a take they already ended.
+  @Test(
+    "a stop or cancel given while the start waits wins over that start's failure",
+    arguments: [false, true])
+  func userCommandDuringStartWins(cancel: Bool) async {
+    let (capture, wrapper) = await makeWrapper()
+    capture.startEnginePhaseError = AudioError.microphoneNotResponding(
+      source: "HALDeviceInputSource.prepare.timed_out")
+    let kernel = wrapper.testKernel
+    capture.duringStartEnginePhase = {
+      if cancel { kernel.cancel(origin: .systemOrFault) } else { kernel.requestStop() }
+    }
+
+    await wrapper.apply(.start)
+    await wrapper.drainReadyWork()
+
+    #expect(
+      kernel.recordingOutcome == (cancel ? .cancelled : .discarded(.releasedBeforeRecording)))
+  }
+
   @Test("pre-warm spends the press's deadline")
   func preWarmUsesThePressDeadline() async throws {
     let (capture, wrapper) = await makeWrapper()

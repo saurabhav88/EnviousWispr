@@ -225,10 +225,13 @@ final class FakeAudioCapture: AudioCaptureInterface {
   var startAbandoned = false
 
   func isStartAbandoned(startDeadline: MicrophoneStartBudget.Deadline) -> Bool { startAbandoned }
+  /// #4601: runs inside each start call, before it answers (a user command arriving mid-start).
+  var duringStartEnginePhase: (() -> Void)?
 
   func startEnginePhase(startDeadline: MicrophoneStartBudget.Deadline) async throws {
     startEnginePhaseCallCount += 1
     startEnginePhaseDeadlines.append(startDeadline)
+    duringStartEnginePhase?()
     // #1714: publish this attempt's attribution BEFORE any throw, the way the
     // real manager stores it synchronously inside `prepare()`.
     if !inputResolutionSourcePerAttempt.isEmpty {
