@@ -33,6 +33,7 @@ if [ "${1:-}" = "--self-test" ]; then
   python3 "$PROJECT_ROOT/scripts/local-test-plan-test.py"
   python3 "$PROJECT_ROOT/scripts/lib/prepare-toolchain-syntax.py" --self-test
   python3 "$PROJECT_ROOT/scripts/lib/build-folder-lock-test.py"
+  python3 "$PROJECT_ROOT/scripts/lib/settings-map-fingerprint.py" --self-test
   exec python3 "$PROJECT_ROOT/scripts/local-ci-queue-test.py"
 fi
 # #3524: keep the tracked pre-push hook switched on (scripts/githooks/install.sh owns the
@@ -51,6 +52,10 @@ fi
 . "$PROJECT_ROOT/scripts/lib/log-dir.sh"
 # shellcheck source=scripts/lib/lane-verdict.sh
 . "$PROJECT_ROOT/scripts/lib/lane-verdict.sh"
+# #4618: the String Catalog receipt wrapper, so the Debug lane's own Dev build leaves the
+# receipt the catalog check (here and in scripts/githooks/pre-push) reads.
+# shellcheck source=scripts/lib/l10n-build-with-receipt.sh
+. "$PROJECT_ROOT/scripts/lib/l10n-build-with-receipt.sh"
 # #3729 PR-C: a full, unfiltered Debug run (no --filter, Debug or both) is the
 # push proof. Every run holds one per-checkout lock; a full run compiles the three eval packages
 # after the suite, and publishes .derivedData/Test/ew-validation-receipt.json
@@ -301,6 +306,42 @@ if [ "${#TEST_ARGS[@]}" -eq 0 ] && [ "$CONFIGURATION" != "Release" ]; then
       fi
     fi
   fi
+fi
+# #4618: a run that would issue push proof first runs the cheap checks a push would
+# fail on, so a 15-minute lane is never spent on a tree the pre-push hook or CI
+# build-check refuses. fast-checks.sh is the one list both of them run; the
+# settings-map fingerprint is SettingsMapExportSyncTests' catalog comparison. The
+# catalog check needs the Debug build, so it runs after that build (run_lane). A
+# backup Mac's child run skips this: the dispatching run already did it here, on the
+# same tree. Before the queue, so a failing tree never holds a slot. The Recipe
+# trailer check is left to the hook: its fix changes no build input.
+ew_push_preflight_fail() {  # $1 = what failed
+  if [ "${EW_ALLOW_NO_RECEIPT:-}" = "1" ]; then
+    echo "==> push preflight: $1 failed; EW_ALLOW_NO_RECEIPT=1, so the tests run without push proof"
+    NO_RECEIPT_REASON="the push preflight failed ($1)"
+    return 0
+  fi
+  echo "ERROR: push preflight: $1 failed (output above), so a push of this tree would be refused." >&2
+  echo "       Fix it and run again; nothing long has run yet. EW_ALLOW_NO_RECEIPT=1 runs the tests without push proof." >&2
+  exit 1
+}
+if [ "$FULL_VALIDATION" = 1 ] && [ -z "$NO_RECEIPT_REASON" ] && [ -z "${EW_REMOTE_CHILD:-}" ]; then
+  PREFLIGHT_START=$SECONDS
+  echo "==> push preflight: scripts/ci/fast-checks.sh (the pre-push and build-check list)"
+  # The hook's order (check_fast_checks): the runner's own self-test, then every member.
+  for preflight_args in --self-test ""; do
+    bash "$PROJECT_ROOT/scripts/ci/fast-checks.sh" $preflight_args &
+    PREFLIGHT_PID=$!
+    if wait "$PREFLIGHT_PID"; then PREFLIGHT_RC=0; else PREFLIGHT_RC=$?; fi
+    [ "$PREFLIGHT_RC" -eq 0 ] || ew_push_preflight_fail "scripts/ci/fast-checks.sh ${preflight_args:+$preflight_args }(exit $PREFLIGHT_RC)"
+  done
+  if python3 "$PROJECT_ROOT/scripts/lib/settings-map-fingerprint.py" check --root "$PROJECT_ROOT"; then PREFLIGHT_RC=0; else PREFLIGHT_RC=$?; fi
+  case "$PREFLIGHT_RC" in
+    0) ;;
+    1) ew_push_preflight_fail "the settings-map catalog fingerprint" ;;
+    *) echo "==> push preflight: settings-map fingerprint could not be checked; the full run's SettingsMapExportSyncTests still will" ;;
+  esac
+  echo "==> phase push preflight: $((SECONDS - PREFLIGHT_START))s"
 fi
 # #4056: every worktree shares one local CI slot. A short Python child acquires
 # flock on Bash's inherited descriptor; this shell keeps it open through setup,
@@ -558,6 +599,33 @@ PY
   echo "==> $label ran all ${#TEST_ARGS[@]} selection(s)"
 }
 
+# #4618: the pre-push hook's String Catalog check (check_catalog), against this run's
+# own Dev build, between the build and the first test. Drift stops the run with the fix
+# command; anything the check cannot prove leaves it to the hook and CI, as the hook does.
+ew_catalog_preflight() {  # $1 = the Dev derived-data folder this run just built
+  local derived="$1" digest rc
+  digest="$(python3 "$PROJECT_ROOT/scripts/lib/l10n-build-receipt.py" input-digest --repo "$PROJECT_ROOT" \
+    --configuration Dev | python3 -c 'import json, sys; print(json.load(sys.stdin)["input_digest"])')" || digest=""
+  case "$digest" in
+    *[!0-9a-f]* | "")
+      echo "==> push preflight: String Catalog check COULD NOT RUN (no input digest); the pre-push hook and CI still check"
+      return 0
+      ;;
+  esac
+  echo "==> push preflight: String Catalog check against this run's Dev build"
+  if bash "$PROJECT_ROOT/scripts/lib/l10n-catalog-sync.sh" --check --configuration Dev \
+      --derived-data "$derived" --expect-inputs "$digest"; then rc=0; else rc=$?; fi
+  case "$rc" in
+    0) ;;
+    1)
+      echo "       Fix: bash scripts/lib/l10n-catalog-sync.sh --update --configuration Dev --derived-data \"$derived\" --expect-inputs $digest" >&2
+      echo "       then scripts/settings-map/export.sh (the Settings Map records the catalog's SHA-256), and commit both." >&2
+      ew_push_preflight_fail "the String Catalog check"
+      ;;
+    *) echo "==> push preflight: String Catalog check COULD NOT RUN (exit $rc, reason above); the pre-push hook and CI still check" ;;
+  esac
+}
+
 run_lane() {  # $1=scheme $2=lane label (Debug|Release) $3=Xcode configuration $4=derived data $5=logfile $6=bundle $7...=extra build settings
   local scheme="$1" config="$2" xcode_config="$3" derived="$4" log="$5" bundle="$6"; shift 6
   # xcodebuild refuses to overwrite an existing bundle. Scoped to a path that
@@ -594,13 +662,23 @@ run_lane() {  # $1=scheme $2=lane label (Debug|Release) $3=Xcode configuration $
     # build-for-testing rewrites, so drop this scheme's copies first: the build
     # leaves only the current one, and a failed build leaves none to run stale.
     rm -f -- "$derived/Build/Products/${scheme}"_*.xctestrun
-    ew_watch "$config build" xcodebuild build-for-testing \
+    # #4618: a run that would issue push proof, building in this checkout's own
+    # .derivedData/Dev, builds inside the catalog-receipt wrapper and then checks the
+    # String Catalog against that build before any test runs.
+    local build_wrapper=() catalog_preflight=0
+    if [ "$config" = Debug ] && [ "$FULL_VALIDATION" = 1 ] && [ -z "$NO_RECEIPT_REASON" ] &&
+       [ "$derived" = "$PROJECT_ROOT/.derivedData/Dev" ]; then
+      build_wrapper=(ew_l10n_build_with_receipt "$PROJECT_ROOT" "$derived")
+      catalog_preflight=1
+    fi
+    ${build_wrapper[@]+"${build_wrapper[@]}"} ew_watch "$config build" xcodebuild build-for-testing \
       -project "$PROJECT" -scheme "$scheme" -configuration "$xcode_config" \
       -derivedDataPath "$derived" -destination "$DEST" \
       -onlyUsePackageVersionsFromResolvedFile \
       ARCHS=arm64 VALID_ARCHS=arm64 ONLY_ACTIVE_ARCH=YES "$@" \
       2>&1 | tee "$LOG_DIR/xcode-build-debug.log"
     echo "==> phase debug build: $((SECONDS - build_start))s"
+    [ "$catalog_preflight" = 0 ] || ew_catalog_preflight "$derived"
     # Background only inside this supervised runner so the shell can handle a
     # signal to its OWN PID while waiting, forward it, and wait for cleanup.
     python3 "$PROJECT_ROOT/scripts/local-test-groups.py" \
