@@ -430,8 +430,15 @@ final class HALDeviceInputSource: AudioInputSource {
     guard let resources = liveResources else { return false }
     let generation = resources.generation
     let probe = nativeCalls.isRunning
+    #if DEBUG
+      probeSnapshotTakenForTesting?()
+    #endif
     // The owner crosses (single-owner hand-off type); the read only looks at its unit.
-    let outcome = await lane.run("running_probe", deadline: deadline) { probe(resources.unit) }
+    // Checked ON the lane, just before the read: a retirement queued ahead of this probe has
+    // already disposed the unit, so it must not be queried (§3.2).
+    let outcome = await lane.run("running_probe", deadline: deadline) {
+      resources.isRetired ? false : probe(resources.unit)
+    }
     guard liveResources?.generation == generation, case .value(let running) = outcome else {
       return false
     }
@@ -493,6 +500,10 @@ final class HALDeviceInputSource: AudioInputSource {
   /// terminal path. Abort, a newer attempt and shutdown cancel it, which works before lane
   /// admission too (§5).
   private var pendingAttempt: AudioUnitLane.Attempt?
+  /// The opened unit of the pending attempt, from the moment the native open produced it until
+  /// exactly one party takes it: the main-actor commit, the lane's late disposal, or a quit.
+  /// Cleanup never depends on the main actor resuming (§3.6).
+  private var pendingHandoff: HALUnitNative.Handoff?
   /// Process-unique attempt keys: every source shares one lane, so per-source counters could
   /// collide.
   private static var nextAttemptID: UInt64 = 1
@@ -506,6 +517,8 @@ final class HALDeviceInputSource: AudioInputSource {
     /// Test seam: runs on the main actor after the attempt is owned and before the lane is asked,
     /// so a test can cancel an attempt before lane admission.
     var beforeOpenForTesting: (@MainActor () -> Void)?
+    /// Test seam: runs after the running probe snapshots its unit and before it asks the lane.
+    var probeSnapshotTakenForTesting: (@MainActor () -> Void)?
     /// Test oracle: called on the main actor for every device-vanished delivery, with whether
     /// its generation matched the committed unit.
     var listenerDeliveryObserverForTesting: (@MainActor (Bool) -> Void)?
@@ -926,11 +939,19 @@ final class HALDeviceInputSource: AudioInputSource {
   /// native retirement finished in time (true when there was nothing to retire).
   @discardableResult
   func stopSynchronously(deadline: ContinuousClock.Instant) -> Bool {
+    let pendingOpen = pendingAttempt != nil ? pendingHandoff : nil
     abandonPendingAttempt()
     forwarder?.stop()
     forwarder = nil
     streamContinuation = nil
-    return teardownUnit(waitUntil: deadline)
+    let committedReleased = teardownUnit(waitUntil: deadline)
+    guard let pendingOpen else { return committedReleased }
+    // A cancelled open may still be running on the lane, or may already have handed its unit
+    // to a main-actor continuation that cannot run while quit holds the main actor. This lane
+    // job runs after the open finishes and retires whatever unit nobody took, so its release is
+    // waited for within the same deadline without depending on the main actor.
+    let openSettled = lane.retireAndWait(deadline: deadline) { pendingOpen.take()?.retire() }
+    return committedReleased && openSettled
   }
 
   /// Real settling check (#1434 — replaces a stub whose comment asserted the
@@ -978,7 +999,8 @@ final class HALDeviceInputSource: AudioInputSource {
         }
         return rate
       },
-      sleep: { try? await Task.sleep(for: $0) }
+      sleep: { try? await Task.sleep(for: $0) },
+      deadlinePassed: { ContinuousClock.now >= readDeadline }
     )
     let elapsed = Self.stabMs(ContinuousClock.now - stabStart)
     let settledLabel = outcome.settledRate.map { String(Int($0)) } ?? "unstable"
@@ -1018,7 +1040,8 @@ final class HALDeviceInputSource: AudioInputSource {
     maxWait: TimeInterval,
     pollInterval: TimeInterval,
     readRate: () async -> Double?,
-    sleep: (Duration) async -> Void
+    sleep: (Duration) async -> Void,
+    deadlinePassed: () -> Bool = { false }
   ) async -> RateSettleOutcome {
     func outcome(_ settled: Double?, polls: Int) -> RateSettleOutcome {
       RateSettleOutcome(
@@ -1038,7 +1061,9 @@ final class HALDeviceInputSource: AudioInputSource {
     // no-op sleep terminates deterministically).
     let maxPolls = max(1, Int(maxWait / max(pollInterval, 0.001)))
     var polls = 0
-    while polls < maxPolls {
+    // #4601 §3a: the poll budget also stops at the absolute deadline (reads and sleeps share it)
+    // and on cancellation, so a slow read cannot stretch stabilization past its start's budget.
+    while polls < maxPolls, !deadlinePassed(), !Task.isCancelled {
       lastRate = currentRate
       await sleep(.seconds(pollInterval))
       polls += 1
@@ -1069,6 +1094,7 @@ final class HALDeviceInputSource: AudioInputSource {
   private func abandonPendingAttempt() {
     guard let attempt = pendingAttempt else { return }
     pendingAttempt = nil
+    pendingHandoff = nil
     attempt.cancel()
   }
 
@@ -1215,6 +1241,8 @@ extension HALDeviceInputSource {
     Self.nextAttemptID += 1
     pendingAttempt = attempt
     let progress = HALUnitNative.Progress()
+    let handoff = HALUnitNative.Handoff()
+    pendingHandoff = handoff
     // #3.8: the observer is captured at admission, so the attempt reports exactly once to the
     // owner that started it.
     let finalize = onInputResolutionAttemptFinalized
@@ -1237,10 +1265,15 @@ extension HALDeviceInputSource {
     let outcome = await lane.open(
       "microphone_start", attempt: attempt, deadline: deadline,
       // §3.8: the facts known at the FIRST terminal decision are frozen there.
-      onTerminal: { progress.freeze() }, { openWork(snapshot) },
-      disposeLate: { result in
-        // The caller left first: the lane owns this unit and retires it in the same turn.
-        if case .opened(let opened) = result { opened.resources.retire() }
+      onTerminal: { progress.freeze() },
+      {
+        let result = openWork(snapshot)
+        if case .opened(let opened) = result { handoff.put(opened.resources) }
+        return result
+      },
+      disposeLate: { _ in
+        // The caller left first: whoever has not taken the unit yet, the lane retires it now.
+        handoff.take()?.retire()
       })
     #if DEBUG
       afterOpenReturnedForTesting?()
@@ -1249,9 +1282,12 @@ extension HALDeviceInputSource {
     // attempt, shutdown, task cancellation) ends as abandoned, with no notice, whatever the lane
     // answered; a unit it was handed is retired here exactly once.
     let invalidated = pendingAttempt !== attempt || attempt.isCancelled || Task.isCancelled
-    if pendingAttempt === attempt { pendingAttempt = nil }
+    if pendingAttempt === attempt {
+      pendingAttempt = nil
+      pendingHandoff = nil
+    }
     if invalidated {
-      if case .value(.opened(let opened)) = outcome { lane.retire { opened.resources.retire() } }
+      if let unit = handoff.take() { lane.retire { unit.retire() } }
       finalize?(progress.terminal(failedStep: "HALDeviceInputSource.prepare.abandoned"))
       throw CancellationError()
     }
@@ -1278,6 +1314,11 @@ extension HALDeviceInputSource {
       finalize?(failure.attempt.finalized(resolution: failure.resolution))
       throw failure.error
     case .opened(let opened):
+      // Taken from the hand-off: a quit that already took it owns its retirement.
+      guard handoff.take() != nil else {
+        finalize?(progress.terminal(failedStep: "HALDeviceInputSource.prepare.abandoned"))
+        throw CancellationError()
+      }
       lastBindOK = true
       let facts = opened.facts
       // Committed — every fallible step succeeded, so this is the one place
@@ -1494,6 +1535,18 @@ enum HALUnitNative {
   /// #4601 §3.8: the open's resolution and bind facts as soon as they exist, so a start that
   /// ends early (timed out, abandoned) freezes only what was really observed. Written on the
   /// lane, read on the main actor at the terminal decision; no hardware read fills a gap.
+  /// One opened unit in transit; `take()` returns it to exactly one caller.
+  final class Handoff: Sendable {
+    private let held = OSAllocatedUnfairLock<HALUnitResources?>(initialState: nil)
+    func put(_ resources: HALUnitResources) { held.withLock { $0 = resources } }
+    func take() -> HALUnitResources? {
+      held.withLock { held -> HALUnitResources? in
+        defer { held = nil }
+        return held
+      }
+    }
+  }
+
   final class Progress: Sendable {
     private struct Facts {
       var resolution: InputDeviceResolution?
@@ -2099,6 +2152,9 @@ final class HALUnitResources: @unchecked Sendable {
   /// flag, so no new samples reach the consumer while a retirement waits on the lane. Thread-safe
   /// (the flag has its own lock); `retire()` sets it again, harmlessly.
   func markStopping() { context?.stopped.set() }
+
+  /// Whether `retire()` has run. Read on the audio-unit lane, where retirement runs too.
+  var isRetired: Bool { report != nil }
 
   /// Whether the render callback's storage (scratch + unmanaged retain) is still
   /// held. True from attach until a SAFE retirement; stays true after an unsafe one.

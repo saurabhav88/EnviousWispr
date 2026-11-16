@@ -163,6 +163,114 @@
       await lane.drainForTesting()
     }
 
+    @Test("a probe that reaches the lane after the unit's release does not query it")
+    func runningProbeAfterRetirementSkipsTheUnit() async throws {
+      let timers = Timers()
+      let (source, lane) = try await committedSource(timers)
+      let asked = OSAllocatedUnfairLock(initialState: false)
+      var calls = HALNativeCalls.live
+      calls.isRunning = { _ in
+        asked.withLock { $0 = true }
+        return true
+      }
+      source.nativeCalls = calls
+      // The release is queued AFTER the probe took its snapshot and BEFORE it asks the lane.
+      source.probeSnapshotTakenForTesting = { [weak source] in source?.rebuild() }
+
+      #expect(await source.isRunningOnLane(deadline: nil) == false)
+      #expect(asked.withLock { $0 } == false, "a disposed unit is never queried")
+      await lane.drainForTesting()
+    }
+
+    @Test("quit during an open that already handed over its unit retires it within the deadline")
+    func quitAfterHandoverBeforeCommit() async throws {
+      let timers = Timers()
+      let lane = AudioUnitLane(
+        label: "test.hal.quit.handoff", schedule: { delay, fire in timers.schedule(delay, fire) },
+        now: { AudioUnitLaneTests.base })
+      let source = HALDeviceInputSource()
+      source.lane = lane
+      source.startDeadline = AudioUnitLaneTests.base + .seconds(5)
+      let natives = Natives()
+      source.openWorkForTesting = { _ in HALPrepareLifecycleTests.opened(natives) }
+      let quitFinished = Box<Bool?>(nil)
+      source.afterOpenReturnedForTesting = { [weak source] in
+        // The unit was handed to this (main-actor) continuation and is not committed yet.
+        quitFinished.value = source?.stopSynchronously(
+          deadline: AudioUnitLaneTests.base + .seconds(5))
+      }
+
+      let result = await Task { try await source.prepare() }.result
+      guard case .failure(let error) = result, error is CancellationError else {
+        Issue.record("expected CancellationError, got \(result)")
+        return
+      }
+      #expect(quitFinished.value == true, "quit saw the release finish")
+      #expect(natives.disposals == 1, "retired exactly once, before quit returned")
+      #expect(source.liveGenerationForTesting == nil)
+      await lane.drainForTesting()
+    }
+
+    @Test("quit during a stuck open returns at its deadline; the open's unit is retired once later")
+    func quitDuringStuckOpen() async throws {
+      let timers = Timers()
+      let lane = AudioUnitLane(
+        label: "test.hal.quit.stuck", schedule: { delay, fire in timers.schedule(delay, fire) },
+        now: { AudioUnitLaneTests.base })
+      let source = HALDeviceInputSource()
+      source.lane = lane
+      source.startDeadline = AudioUnitLaneTests.base + .seconds(5)
+      let natives = Natives()
+      let gate = Gate()
+      defer { gate.open() }
+      let entered = Signal()
+      source.openWorkForTesting = { _ in
+        entered.fire()
+        gate.block()
+        return HALPrepareLifecycleTests.opened(natives)
+      }
+      let start = Task { try await source.prepare() }
+      #expect(await entered.wait())
+
+      let finished = source.stopSynchronously(deadline: AudioUnitLaneTests.base + .milliseconds(20))
+
+      #expect(finished == false, "the open had not finished")
+      let result = await start.result
+      guard case .failure(let error) = result, error is CancellationError else {
+        Issue.record("expected CancellationError, got \(result)")
+        return
+      }
+      gate.open()
+      await lane.drainForTesting()
+      #expect(natives.disposals == 1)
+      #expect(source.liveGenerationForTesting == nil)
+    }
+
+    @Test("stabilization stops at its absolute deadline without another poll sleep")
+    func stabilizationHonorsItsDeadline() async {
+      let passed = OSAllocatedUnfairLock(initialState: false)
+      let sleeps = OSAllocatedUnfairLock(initialState: 0)
+      let reads = OSAllocatedUnfairLock(initialState: 0)
+
+      let outcome = await HALDeviceInputSource.settleNativeRate(
+        preparedRate: 48_000, maxWait: 1.5, pollInterval: 0.2,
+        readRate: {
+          // The first read uses up the remaining budget; reads disagree, so the fast path fails.
+          let count = reads.withLock { count -> Int in
+            count += 1
+            return count
+          }
+          passed.withLock { $0 = true }
+          return count == 1 ? 44_100 : 48_000
+        },
+        sleep: { _ in sleeps.withLock { $0 += 1 } },
+        deadlinePassed: { passed.withLock { $0 } })
+
+      #expect(outcome.settledRate == nil)
+      #expect(outcome.polls == 0)
+      #expect(sleeps.withLock { $0 } == 1, "only the fast path's own short sleep ran")
+    }
+
     @Test("stabilization on a wedged lane ends unstable without reading the device")
     func stabilizationWedged() async throws {
       let timers = Timers()
