@@ -39,8 +39,20 @@ struct HistoryMeetingCard: View {
 
   @Environment(TranscriptCoordinator.self) private var transcripts
   @Environment(MeetingCoordinator.self) private var meetings
+  @Environment(HistoryMenuPresenter.self) private var historyMenu
   @State private var player: MeetingPlaybackController?
   @State private var playerSource: MeetingPlaybackSource?
+  @State private var moreAnchor = HistoryMenuAnchorHolder()
+  @State private var renameRequested = false
+  @State private var copiedAt: Date?
+  @State private var confirmingDeletion: Deletion?
+  @State private var deleting = false
+  @State private var deleteFailed = false
+
+  private enum Deletion: Equatable {
+    case recording
+    case meeting
+  }
 
   private typealias P = MeetingAfterPresentation
 
@@ -54,7 +66,7 @@ struct HistoryMeetingCard: View {
     let row = summary == nil ? meetingRow(record) : nil
     let source = allowsPlayback ? meetings.playbackSource(meetingID: meetingID) : nil
     if record != nil || row != nil || summary != nil {
-      card(P.card(inputs(record: record, row: row)), source: source)
+      card(P.card(inputs(record: record, row: row)), source: source, record: record)
         .onChange(of: source) { _, _ in dropPlayer() }
         .onDisappear(perform: dropPlayer)
         .task(id: EchoDetailKey(id: echoRowID, revision: transcripts.catalogSession?.revision)) {
@@ -95,8 +107,10 @@ struct HistoryMeetingCard: View {
       queueWaitsForSpace: meetings.queueWaitsForSpace,
       previewText: shown ? previewText(row: row) : nil,
       summary: shown
-        ? (documents.summary(meetingID) ?? (summary?.hasMeetingSummary == true ? summary?.preview : nil)) : nil,
-      summaryProviderID: documents.manifest(meetingID)?.summary?.inputs?.providerID ?? summary?.summaryProvider)
+        ? (documents.summary(meetingID)
+          ?? (summary?.hasMeetingSummary == true ? summary?.preview : nil)) : nil,
+      summaryProviderID: documents.manifest(meetingID)?.summary?.inputs?.providerID
+        ?? summary?.summaryProvider)
   }
 
   private func previewText(row: Transcript?) -> String? {
@@ -106,91 +120,311 @@ struct HistoryMeetingCard: View {
     return summary?.preview ?? row.map(transcripts.meetingPreviewText(of:))
   }
 
-  private func card(_ card: P.Card, source: MeetingPlaybackSource?) -> some View {
-    VStack(alignment: .leading, spacing: DesignSpacing.md) {
-      HStack(alignment: .top, spacing: DesignSpacing.lg) {
-        VStack(alignment: .leading, spacing: DesignSpacing.xxs) {
-          // The rename controls sit beside Open, never inside it. A row whose meeting folder is
-          // gone has no record to rename, so it shows its name only.
-          if card.canRename {
-            MeetingInlineTitle(meetingID: meetingID, searchQuery: query)
-          } else {
-            HistoryParagraphText.searchText(card.title, query: query)
-              .font(.stRowTitle)
-              .foregroundStyle(.stTextPrimary)
-              .lineLimit(1)
-          }
-          if let people = card.speakers {
-            Label {
-              Text(verbatim: people)
-            } icon: {
-              Image(systemName: "person.2").accessibilityHidden(true)
-            }
-            .font(.stHelper)
-            .foregroundStyle(.stTextSecondary)
-          }
-          if let length = card.length {
-            Text(verbatim: length)
-              .font(.stHelper)
-              .foregroundStyle(.stTextSecondary)
-          }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        if let status = card.status {
-          statusChip(status)
-        }
-        Button(action: onOpen) {
-          EnviousButtonLabel(
-            LocalizedStringResource(
-              "Open", comment: "History meeting card: opens the meeting."),
-            size: .medium, trailingSystemImage: "chevron.right")
-        }
-        .settingsButton(.outlined, size: .medium, isEnabled: true)
-        .accessibilityLabel(
-          Text(
-            "Open \(card.title)",
-            comment: "History meeting card: VoiceOver label of Open. %@ is the meeting's name."))
-      }
-      if let source, source.durationMs > 0 {
-        if let player, playerSource == source {
-          MeetingPlaybackControls(player: player, showsWaveform: false)
-            .id(ObjectIdentifier(player))
-        } else {
-          Button {
-            beginPlayback(source)
-          } label: {
-            EnviousButtonLabel(
-              verbatim: HistoryTranscriptPresentation.playLabel(.play),
-              size: .medium, systemImage: HistoryTranscriptPresentation.playSymbol(.play))
-          }
-          .settingsButton(.filled, size: .medium, isEnabled: true)
-        }
+  private func card(_ card: P.Card, source: MeetingPlaybackSource?, record: MeetingRecord?)
+    -> some View
+  {
+    VStack(alignment: .leading, spacing: DesignSpacing.lg) {
+      // The rename controls are siblings of Open and "···", never inside them. A row whose
+      // meeting folder is gone has no record to rename, so it shows its name only.
+      if card.canRename {
+        MeetingInlineTitle(meetingID: meetingID, beginRequest: $renameRequested, searchQuery: query)
+      } else {
+        HistoryParagraphText.searchText(card.title, query: query)
+          .font(.stRowTitle)
+          .foregroundStyle(.stTextPrimary)
+          .lineLimit(1)
+          .truncationMode(.middle)
       }
       line(card.line)
       if let attention = card.attentionLine {
         line(.status(attention, .error))
       }
-      if let audio = card.audioLine {
-        Label {
-          Text(verbatim: audio)
-        } icon: {
-          Image(systemName: "waveform.slash").accessibilityHidden(true)
-        }
+      footerOrPlayback(card, source: source, record: record)
+      if deleteFailed {
+        Text(
+          "That didn't work. Try again.",
+          comment: "History meeting card: deleting a meeting or its recording failed."
+        )
         .font(.stHelper)
-        .foregroundStyle(.stTextSecondary)
+        .foregroundStyle(.stError)
       }
-      if !card.footer.isEmpty {
-        Text(verbatim: card.footer.joined(separator: " · "))
-          .font(.stHelper)
-          .foregroundStyle(.stTextSecondary)
-          .lineLimit(1)
-      }
+      buttonRow(card, record: record)
     }
-    .historyRowCard(isSelected: false)
+    .historyDiaryCard()
     .contentShape(Rectangle())
     .onTapGesture(perform: onOpen)
+    .confirmationDialog(
+      Text(verbatim: confirmingDeletion.map(Self.confirmationMessage) ?? ""),
+      isPresented: Binding(
+        get: { confirmingDeletion != nil }, set: { if !$0 { confirmingDeletion = nil } }),
+      presenting: confirmingDeletion
+    ) { kind in
+      Button(role: .destructive) {
+        delete(kind)
+      } label: {
+        Text("Delete", comment: "EnviousMeet: confirms a deletion.")
+      }
+    } message: { kind in
+      Text(verbatim: Self.confirmationMessage(kind))
+    }
   }
 
+  // MARK: - Footer and playback
+
+  /// One quiet line in the Dictations footer's style (#4611). With a recording to play, the line
+  /// starts with the small play button and the facts follow it; while it plays the same line
+  /// shows the clock and waveform, so the card keeps its height.
+  @ViewBuilder
+  private func footerOrPlayback(
+    _ card: P.Card, source: MeetingPlaybackSource?, record: MeetingRecord?
+  )
+    -> some View
+  {
+    if let source, source.durationMs > 0 {
+      HistoryInlinePlayback(
+        player: playerSource == source ? player : nil,
+        toggle: { toggle(source) }
+      ) {
+        footer(card, record: record)
+      }
+    } else {
+      footer(card, record: record)
+    }
+  }
+
+  private enum Fact: Hashable {
+    case status(String, tone: P.Tone)
+    case clock(String)
+    case engine(String)
+    case text(String)
+    case speakers(String)
+    case recordingDeleted(String)
+  }
+
+  private func facts(_ card: P.Card, record: MeetingRecord?) -> [Fact] {
+    var facts: [Fact] = []
+    if let status = card.status { facts.append(.status(status.label, tone: status.tone)) }
+    if let record, record.recordedDurationMs > 0,
+      let clock = HistoryTranscriptPresentation.footerClock(
+        seconds: TimeInterval(record.recordedDurationMs) / 1000)
+    {
+      facts.append(.clock(clock))
+    } else if record == nil, let length = card.length {
+      facts.append(.text(length))
+    }
+    let engine = record?.transcriptEngineUsed?.backendType.displayName ?? summary?.backendName
+    for (index, fact) in card.footer.enumerated() {
+      facts.append(index == 0 && fact == engine ? .engine(fact) : .text(fact))
+    }
+    if let people = card.speakers { facts.append(.speakers(people)) }
+    if let audio = card.audioLine { facts.append(.recordingDeleted(audio)) }
+    return facts
+  }
+
+  /// Plain facts are joined by a dot; the status chip needs none.
+  private static func isInline(_ fact: Fact) -> Bool {
+    if case .status = fact { return false }
+    return true
+  }
+
+  private func footer(_ card: P.Card, record: MeetingRecord?) -> some View {
+    let shown = facts(card, record: record)
+    return HStack(spacing: DesignSpacing.sm) {
+      ForEach(Array(shown.enumerated()), id: \.element) { index, fact in
+        if index > 0, Self.isInline(fact), Self.isInline(shown[index - 1]) { HistoryFooterDot() }
+        factView(fact)
+      }
+    }
+    .font(.stHelper)
+    .foregroundStyle(.stTextSecondary)
+    .lineLimit(1)
+  }
+
+  @ViewBuilder
+  private func factView(_ fact: Fact) -> some View {
+    switch fact {
+    case .status(let label, let tone):
+      statusChip(P.Status(label: label, tone: tone))
+    case .clock(let clock):
+      Text(verbatim: clock).monospacedDigit()
+    case .engine(let name):
+      HStack(spacing: DesignSpacing.xxs) {
+        Image(systemName: "waveform").accessibilityHidden(true)
+        Text(verbatim: name)
+      }
+    case .text(let text):
+      Text(verbatim: text)
+    case .speakers(let names):
+      HStack(spacing: DesignSpacing.xxs) {
+        Image(systemName: "person.2").accessibilityHidden(true)
+        Text(verbatim: names)
+      }
+      .truncationMode(.middle)
+    case .recordingDeleted(let reason):
+      HistoryUnplayableMark(
+        label: LocalizedStringResource(
+          "Recording deleted",
+          comment:
+            "History meeting card footer: this meeting's recording was deleted. Hover gives the full sentence."
+        ),
+        reason: reason)
+    }
+  }
+
+  // MARK: - Buttons
+
+  /// Open, Copy and More, in the Dictations card's place and order (#4611).
+  private func buttonRow(_ card: P.Card, record: MeetingRecord?) -> some View {
+    let copy = TranscribeFileExport.copyButtonPresentation(
+      label: String(localized: "Copy", comment: "EnviousMeet: copies the visible transcript."),
+      copiedAt: copiedAt, now: Date(), holdSeconds: TranscribeFileExport.copiedHoldSeconds)
+    return HStack(spacing: DesignSpacing.md) {
+      Button(action: onOpen) {
+        EnviousButtonLabel(
+          LocalizedStringResource("Open", comment: "History meeting card: opens the meeting."),
+          size: .medium, trailingSystemImage: "chevron.right")
+      }
+      .settingsButton(.outlined, size: .medium, isEnabled: true)
+      .accessibilityLabel(
+        Text(
+          "Open \(card.title)",
+          comment: "History meeting card: VoiceOver label of Open. %@ is the meeting's name."))
+
+      Button {
+        // Read at the press from the live row, never this card's snapshot.
+        guard let text = deliveryText() else { return }
+        TranscribeFileExport.copy(text)
+        let pressed = Date()
+        copiedAt = pressed
+        Task {
+          try? await Task.sleep(for: .seconds(TranscribeFileExport.copiedHoldSeconds))
+          if copiedAt == pressed { copiedAt = nil }
+        }
+      } label: {
+        Image(systemName: copy.systemImage)
+          .frame(width: 16, height: 16)
+      }
+      .settingsButton(.quiet, size: .medium, isEnabled: canDeliver(record))
+      .help(Text(verbatim: copy.title))
+      .accessibilityLabel(Text(verbatim: copy.title))
+
+      Button {
+        guard let anchor = moreAnchor.view else { return }
+        historyMenu.toggle(items: moreItems(card, record: record), from: anchor)
+      } label: {
+        Image(systemName: "ellipsis")
+          .fontWeight(.bold)
+          .frame(width: 16, height: 16)
+      }
+      .settingsButton(.quiet, size: .medium, isEnabled: true)
+      .background(HistoryMenuAnchor(holder: moreAnchor))
+      .help(Text("More actions", comment: "History transcript: opens the More menu."))
+      .accessibilityLabel(Text("More actions", comment: "History transcript: opens the More menu."))
+    }
+    .fixedSize()
+  }
+
+  /// The card's More menu, built when it opens: Rename and the two deletions, each enabled by
+  /// the same rules as the meeting page's More menu.
+  private func moreItems(_ card: P.Card, record: MeetingRecord?) -> [HistoryMenuItem] {
+    let offered = record.map {
+      MeetingsPresentation.actions($0, isActive: isActive($0), canTranscribeAgain: false)
+    }
+    return [
+      .init(
+        id: "rename",
+        title: String(localized: "Rename", comment: "EnviousMeet: saves the meeting's new name."),
+        systemImage: "pencil", isEnabled: card.canRename, kind: .action { renameRequested = true }),
+      .divider("d1"),
+      .init(
+        id: "delete-recording",
+        title: String(
+          localized: "Delete recording, keep text",
+          comment:
+            "History meeting, More menu: deletes the meeting's audio; notes, transcript and summary stay."
+        ),
+        systemImage: "waveform.slash", isEnabled: offered?.deleteAudio == true && !deleting,
+        isDestructive: true, kind: .action { confirmingDeletion = .recording }),
+      .init(
+        id: "delete-meeting",
+        title: String(
+          localized: "Delete meeting",
+          comment: "EnviousMeet: removes the meeting, its audio and its transcript."),
+        systemImage: "trash", isEnabled: offered?.delete == true && !deleting,
+        isDestructive: true, kind: .action { confirmingDeletion = .meeting }),
+    ]
+  }
+
+  private func isActive(_ record: MeetingRecord) -> Bool {
+    if meetings.processing?.meetingID == record.id { return true }
+    switch meetings.phase {
+    case .recording(let id, _), .stopping(let id): return id == record.id
+    case .starting, .idle: return false
+    }
+  }
+
+  // MARK: - Copy and delete
+
+  private func canDeliver(_ record: MeetingRecord?) -> Bool {
+    // A row whose meeting folder is gone has no record; the press reads the live row (and does nothing without one).
+    guard let record else { return true }
+    return !record.deletionRequested && record.committedTranscriptGeneration != nil
+  }
+
+  /// The visible words of the CURRENT row, read at the press (as the meeting page does).
+  private func deliveryText() -> String? {
+    guard let row = deliveryRow() else { return nil }
+    return MeetingHistoryPresentation.deliveryText(
+      row, projection: transcripts.meetingProjection(of: row), timesOn: false, mode: .cleaned)
+  }
+
+  private func deliveryRow() -> Transcript? {
+    if let record = meetings.record(id: meetingID) {
+      guard !record.deletionRequested, record.committedTranscriptGeneration != nil else {
+        return nil
+      }
+      return transcripts.verifiedRowForDelivery(id: record.transcriptID)
+    }
+    guard let id = transcripts.rowIDs(ofMeeting: meetingID).last else { return nil }
+    return transcripts.verifiedRowForDelivery(id: id)
+  }
+
+  private static func confirmationMessage(_ kind: Deletion) -> String {
+    switch kind {
+    case .recording:
+      String(
+        localized:
+          "Delete this meeting's audio? The transcript stays, but you cannot transcribe it again.",
+        comment: "EnviousMeet: confirmation before Delete audio.")
+    case .meeting:
+      String(
+        localized: "Delete this meeting, its audio and its transcript? This cannot be undone.",
+        comment: "EnviousMeet: confirmation before Delete meeting.")
+    }
+  }
+
+  private func delete(_ kind: Deletion) {
+    confirmingDeletion = nil
+    guard !deleting, meetings.record(id: meetingID) != nil else { return }
+    // Playback stops before any file of this meeting is touched.
+    dropPlayer()
+    deleting = true
+    deleteFailed = false
+    let scope: HistoryDeleteKind = kind == .recording ? .recordingsOnly : .textAndRecordings
+    Task {
+      let outcome = await transcripts.deleteHistoryItem(id: .meeting(meetingID), kind: scope)
+      deleting = false
+      deleteFailed = HistoryDictationPresentation.deletionFailed(outcome)
+    }
+  }
+
+  private func toggle(_ source: MeetingPlaybackSource) {
+    if let player, playerSource == source {
+      if player.state == .playing { player.pause() } else { player.play() }
+    } else {
+      beginPlayback(source)
+    }
+  }
   private func beginPlayback(_ source: MeetingPlaybackSource) {
     guard meetings.playbackSource(meetingID: meetingID) == source else { return }
     let next = MeetingPlaybackController(
@@ -226,13 +460,16 @@ struct HistoryMeetingCard: View {
   @ViewBuilder private func line(_ line: P.Line) -> some View {
     switch line {
     case .summary(let text), .preview(let text):
-      HistoryParagraphText.searchText(text, query: query)
-        .font(.stBody)
-        .foregroundStyle(.stTextBody)
-        .lineLimit(2)
+      // A meeting with no words (a few seconds of silence) draws no empty line (#4611).
+      if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        HistoryParagraphText.searchText(text, query: query)
+          .font(.stCardText)
+          .foregroundStyle(.stTextBody)
+          .lineLimit(2)
+      }
     case .status(let text, let tone):
       Text(verbatim: text)
-        .font(.stBody)
+        .font(.stCardText)
         .foregroundStyle(tone == .error ? Color.stError : Color.stTextSecondary)
         .lineLimit(2)
     }

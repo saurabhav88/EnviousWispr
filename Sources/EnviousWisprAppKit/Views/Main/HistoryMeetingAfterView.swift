@@ -71,6 +71,8 @@ struct HistoryMeetingAfterView: View {
   @Environment(HistoryPaste.self) private var historyPaste
   @Environment(PreviousApplicationTracker.self) private var previousApplication
   @Environment(HistoryRepolishRunner.self) private var historyRepolish
+  @Environment(HistoryMenuPresenter.self) private var historyMenu
+  @State private var moreAnchor = HistoryMenuAnchorHolder()
 
   // Panes
   @State private var leftPane: P.LeftPane = .notes
@@ -273,7 +275,8 @@ struct HistoryMeetingAfterView: View {
   private var orphanRow: Transcript? {
     if transcripts.catalogSession != nil {
       guard let orphanRowID, let row = transcripts.currentRow(id: orphanRowID),
-        row.meetingID == meetingID else { return nil }
+        row.meetingID == meetingID
+      else { return nil }
       return row
     }
     return transcripts.rowIDs(ofMeeting: meetingID).compactMap(transcripts.currentRow(id:)).last
@@ -415,7 +418,9 @@ struct HistoryMeetingAfterView: View {
         .padding(.vertical, DesignSpacing.xl)
         .frame(maxWidth: .infinity, alignment: .leading)
       }
-      .background(Color.stSectionBg, in: RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius))
+      .background(
+        Color.stSectionBg, in: RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius)
+      )
       .meetingUserScroll { suspendFollow() }
     } else {
       HStack(spacing: DesignSpacing.xl) {
@@ -426,7 +431,8 @@ struct HistoryMeetingAfterView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(width: P.notesPaneWidth(width: width))
-        .background(Color.stSectionBg, in: RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius))
+        .background(
+          Color.stSectionBg, in: RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius))
         ScrollView {
           right
             .frame(maxWidth: 780, alignment: .leading)
@@ -434,7 +440,9 @@ struct HistoryMeetingAfterView: View {
             .padding(.vertical, DesignSpacing.xl)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .background(Color.stSectionBg, in: RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius))
+        .background(
+          Color.stSectionBg, in: RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius)
+        )
         .meetingUserScroll { suspendFollow() }
       }
     }
@@ -447,7 +455,7 @@ struct HistoryMeetingAfterView: View {
   ) -> some View {
     VStack(alignment: .leading, spacing: DesignSpacing.md) {
       ViewThatFits(in: .horizontal) {
-        HStack(alignment: .top, spacing: DesignSpacing.lg) {
+        HStack(alignment: .center, spacing: DesignSpacing.lg) {
           HistoryDestinationBar(tab: .meetings, close: back)
           titleBlock(record)
             .frame(minWidth: Self.titleMinWidth, maxWidth: .infinity, alignment: .leading)
@@ -474,20 +482,7 @@ struct HistoryMeetingAfterView: View {
   private func titleBlock(_ record: MeetingRecord) -> some View {
     VStack(alignment: .leading, spacing: DesignSpacing.xxs) {
       MeetingInlineTitle(meetingID: meetingID, beginRequest: $renameRequested)
-      let status = MeetingsPresentation.status(record, processingID: meetings.processing?.meetingID)
-      Text(
-        verbatim: [
-          record.createdAt.formatted(date: .abbreviated, time: .shortened),
-          status == .ready ? nil : MeetingsPresentation.statusLabel(status),
-          // #3973 C3: the engine that wrote the transcript shown (the committed one).
-          record.transcriptEngineUsed?.backendType.displayName,
-          record.recordedDurationMs > 0
-            ? MeetingsPresentation.duration(ms: record.recordedDurationMs) : nil,
-          record.state == .notesOnly ? nil : MeetingsPresentation.audioSizeLine(audioSize),
-        ].compactMap { $0 }.joined(separator: " · ")
-      )
-      .font(.stHelper)
-      .foregroundStyle(.stTextSecondary)
+      factsLine(record)
       // #4286: who the calendar event invited.
       if let invited = MeetingsPresentation.invitedLine(meetings.documents.context(meetingID)) {
         Text(verbatim: invited)
@@ -510,6 +505,50 @@ struct HistoryMeetingAfterView: View {
     }
   }
 
+  /// One quiet line in the Dictations footer's style (#4611): the date, what is still happening
+  /// (when not ready), the speech engine, the length, the audio size, and Recording deleted with
+  /// its sentence on hover.
+  private func factsLine(_ record: MeetingRecord) -> some View {
+    let status = MeetingsPresentation.status(record, processingID: meetings.processing?.meetingID)
+    let audio = record.state == .notesOnly ? nil : MeetingsPresentation.audioSizeLine(audioSize)
+    return WrappingHStack(spacing: DesignSpacing.sm) {
+      Text(record.createdAt, format: .dateTime.month().day().year().hour().minute())
+      if status != .ready {
+        HistoryFooterDot()
+        Text(verbatim: MeetingsPresentation.statusLabel(status))
+      }
+      // #3973 C3: the engine that wrote the transcript shown (the committed one).
+      if let engine = record.transcriptEngineUsed?.backendType.displayName {
+        HistoryFooterDot()
+        HStack(spacing: DesignSpacing.xxs) {
+          Image(systemName: "waveform").accessibilityHidden(true)
+          Text(verbatim: engine)
+        }
+      }
+      if record.recordedDurationMs > 0 {
+        HistoryFooterDot()
+        Text(verbatim: MeetingsPresentation.duration(ms: record.recordedDurationMs))
+          .monospacedDigit()
+      }
+      if let audio {
+        HistoryFooterDot()
+        Text(verbatim: audio)
+      }
+      if P.dockAbsence(record) == .recordingDeleted {
+        HistoryFooterDot()
+        HistoryUnplayableMark(
+          label: LocalizedStringResource(
+            "Recording deleted",
+            comment:
+              "History meeting card footer: this meeting's recording was deleted. Hover gives the full sentence."
+          ),
+          reason: P.recordingDeletedLine)
+      }
+    }
+    .font(.stHelper)
+    .foregroundStyle(.stTextSecondary)
+  }
+
   /// What is still being made: the transcript pass (with its progress), the queue, the summary.
   @ViewBuilder private func statusStrip(_ record: MeetingRecord) -> some View {
     if case .recording(let id, let startedAt) = meetings.phase, id == meetingID {
@@ -526,14 +565,16 @@ struct HistoryMeetingAfterView: View {
         writingSummary: meetings.summaries?.isWriting(meetingID) ?? false,
         hasSummary: meetings.documents.summary(meetingID) != nil)
       let writingProvider = meetings.summaries?.writingProvider(for: meetingID)
-      let statusLine: String? = if state == .writingSummary, let writingProvider {
-        String(
-          localized: "Writing the summary with \(writingProvider.displayName)…",
-          comment: "History meeting: summary progress with the selected engine name.")
-      } else {
-        P.stripLine(state)
-      }
-      if let line = statusLine {
+      let statusLine: String? =
+        if state == .writingSummary, let writingProvider {
+          String(
+            localized: "Writing the summary with \(writingProvider.displayName)…",
+            comment: "History meeting: summary progress with the selected engine name.")
+        } else {
+          P.stripLine(state)
+        }
+      // #4611: a finished summary needs no line; the strip is only for work still going on.
+      if let line = statusLine, state != .summaryReady {
         HStack(spacing: DesignSpacing.sm) {
           switch state {
           case .writingSummary, .waiting:
@@ -566,15 +607,15 @@ struct HistoryMeetingAfterView: View {
       return false
     }()
     return HStack(spacing: DesignSpacing.md) {
-      deliveryButtons(title: MeetingsPresentation.title(record), canDeliver: canDeliver)
-      moreMenu(record, canDeliver: canDeliver)
+      copyButton(canDeliver: canDeliver)
+      moreButton(record, canDeliver: canDeliver)
     }
     .fixedSize()
   }
 
-  /// Copy, Share and Save as…, each reading the CURRENT row when it acts.
+  /// The orphan view's Copy, Share and Save as…, each reading the CURRENT row when it acts.
   @ViewBuilder
-  private func deliveryButtons(title: String, canDeliver: Bool) -> some View {
+  fileprivate func orphanDeliveryButtons(title: String, canDeliver: Bool) -> some View {
     let labels = TranscriptDocumentPresenter.exportButtonLabels(mode: transcriptMode)
     let copy = TranscribeFileExport.copyButtonPresentation(
       label: transcriptMode == .markedUp
@@ -620,7 +661,52 @@ struct HistoryMeetingAfterView: View {
       .settingsButton(.quiet, size: .medium, isEnabled: canDeliver)
   }
 
-  private func moreMenu(_ record: MeetingRecord, canDeliver: Bool) -> some View {
+  /// Copy, the Dictations and Transcripts pattern (#4611): an icon, reading the CURRENT row when
+  /// pressed. Share and Save as… live in More.
+  private func copyButton(canDeliver: Bool) -> some View {
+    let labels = TranscriptDocumentPresenter.exportButtonLabels(mode: transcriptMode)
+    let copy = TranscribeFileExport.copyButtonPresentation(
+      label: transcriptMode == .markedUp
+        ? labels.copy
+        : String(localized: "Copy", comment: "EnviousMeet: copies the visible transcript."),
+      copiedAt: copiedAt, now: Date(), holdSeconds: TranscribeFileExport.copiedHoldSeconds)
+    return Button {
+      // Read at the press from the live row, never this view's snapshot.
+      guard let text = deliveryText() else { return }
+      TranscribeFileExport.copy(text)
+      let pressed = Date()
+      copiedAt = pressed
+      Task {
+        try? await Task.sleep(for: .seconds(TranscribeFileExport.copiedHoldSeconds))
+        if copiedAt == pressed { copiedAt = nil }
+      }
+    } label: {
+      Image(systemName: copy.systemImage)
+        .frame(width: 16, height: 16)
+    }
+    .settingsButton(.quiet, size: .medium, isEnabled: canDeliver)
+    .help(Text(verbatim: copy.title))
+    .accessibilityLabel(Text(verbatim: copy.title))
+  }
+
+  /// The app's own More menu (#4611), under a round button like Copy.
+  private func moreButton(_ record: MeetingRecord, canDeliver: Bool) -> some View {
+    Button {
+      guard let anchor = moreAnchor.view else { return }
+      historyMenu.toggle(items: moreItems(record, canDeliver: canDeliver), from: anchor)
+    } label: {
+      Image(systemName: "ellipsis")
+        .fontWeight(.bold)
+        .frame(width: 16, height: 16)
+    }
+    .settingsButton(.quiet, size: .medium, isEnabled: true)
+    .background(HistoryMenuAnchor(holder: moreAnchor))
+    .help(Text("More actions", comment: "History transcript: opens the More menu."))
+    .accessibilityLabel(Text("More actions", comment: "History transcript: opens the More menu."))
+  }
+
+  /// The More menu's items, built when it opens, from the view's live state.
+  private func moreItems(_ record: MeetingRecord, canDeliver: Bool) -> [HistoryMenuItem] {
     let offered = MeetingsPresentation.actions(
       record, isActive: isActive(record),
       canTranscribeAgain: meetings.canTranscribeAgain(meetingID) && !actionInFlight)
@@ -628,118 +714,152 @@ struct HistoryMeetingAfterView: View {
     let row = committedRow(record)
     let savedSummary = meetings.documents.manifest(meetingID)?.summary?.inputs
     let available = row != nil && canDeliver && !isActive(record) && !actionInFlight
-    return Menu {
-      Button {
-        renameRequested = true
-      } label: {
-        Label {
-          Text("Rename", comment: "EnviousMeet: saves the meeting's new name.")
-        } icon: {
-          Image(systemName: "pencil")
-        }
-      }
-      .disabled(!(record.isWritableByThisBuild && !record.deletionRequested))
-      Button {
-        pasteTapped()
-      } label: {
-        Label {
-          Text(verbatim: EscapeRecoveryRowPresentation.pasteLabel)
-        } icon: {
-          Image(systemName: "arrow.right.doc.on.clipboard")
-        }
-      }
-      .disabled(!permissions.accessibilityGranted || !canDeliver)
-      Divider()
-      HistoryPolishMenu(
-        title: "Polish transcript with", surface: .transcript, currentProvider: row?.llmProvider,
-        currentModel: row?.llmModel, currentSize: row?.historyPolishEGOneSize,
-        isEnabled: available && transcriptPolish.canStart
-      ) { choice in
-        guard let row else { return }
-        transcriptPolish.start(rowID: row.id, choice: choice, runner: historyRepolish, history: transcripts)
-      }
-      HistoryPolishMenu(
-        title: "Write summary again with", surface: .summary,
-        currentProvider: savedSummary?.providerID, currentModel: savedSummary?.modelOverride?.model,
-        currentSize: savedSummary?.modelOverride?.egOneSize,
-        isEnabled: available && !keepingSummary && meetings.summaries?.isWriting(meetingID) != true
-      ) { choice in
-        beginSummaryPreview(choice)
-      }
-      Divider()
-      Menu {
-        if engines.isEmpty {
-          Text(
-            "No speech models are ready",
+    let labels = TranscriptDocumentPresenter.exportButtonLabels(mode: transcriptMode)
+    let title = MeetingsPresentation.title(record)
+    var items: [HistoryMenuItem] = [
+      .init(
+        id: "rename",
+        title: String(localized: "Rename", comment: "EnviousMeet: saves the meeting's new name."),
+        systemImage: "pencil", isEnabled: record.isWritableByThisBuild && !record.deletionRequested,
+        kind: .action { renameRequested = true }),
+      .init(
+        id: "paste", title: EscapeRecoveryRowPresentation.pasteLabel,
+        systemImage: "arrow.right.doc.on.clipboard",
+        isEnabled: !permissions.accessibilityGranted || canDeliver, kind: .action { pasteTapped() }),
+      .init(
+        id: "share",
+        title: transcriptMode == .markedUp
+          ? labels.share
+          : String(localized: "Share", comment: "EnviousMeet: shares the visible transcript."),
+        systemImage: "square.and.arrow.up", isEnabled: canDeliver,
+        kind: .action {
+          guard let anchor = moreAnchor.view else { return }
+          // The text is read when the receiving app asks for it, so a sheet left open never
+          // hands over lines that were deleted or hidden meanwhile.
+          let provider = NSItemProvider()
+          provider.register(DeliverableText(resolve: { deliveryText() }))
+          NSSharingServicePicker(items: [provider]).show(
+            relativeTo: anchor.bounds, of: anchor, preferredEdge: .minY)
+        }),
+      .init(
+        id: "save",
+        title: transcriptMode == .markedUp
+          ? labels.save
+          : String(
+            localized: "Save as…",
+            comment: "History meeting: saves the transcript and notes as a text file."),
+        systemImage: "square.and.arrow.down", isEnabled: canDeliver,
+        kind: .action { save(defaultName: title) }),
+      .divider("d1"),
+    ]
+    items.append(
+      .init(
+        id: "polish",
+        title: String(
+          localized: "Polish transcript with",
+          comment:
+            "History meeting, More menu: opens the list of AI models to polish the transcript again."
+        ),
+        systemImage: "sparkles",
+        kind: .submenu(
+          HistoryPolishMenu.menuItems(
+            surface: .transcript, choices: historyRepolish.choices(.transcript),
+            currentProvider: row?.llmProvider, currentModel: row?.llmModel,
+            currentSize: row?.historyPolishEGOneSize,
+            isEnabled: available && transcriptPolish.canStart,
+            select: { choice in
+              guard let row else { return }
+              transcriptPolish.start(
+                rowID: row.id, choice: choice, runner: historyRepolish, history: transcripts)
+            },
+            setUp: {
+              navigation.request(.transcribeFile)
+              appWindowCoordinator.showWindow()
+            }))))
+    items.append(
+      .init(
+        id: "summary",
+        title: String(
+          localized: "Write summary again with",
+          comment:
+            "History meeting, More menu: opens the list of AI models to write the summary again."),
+        systemImage: "sparkles",
+        kind: .submenu(
+          HistoryPolishMenu.menuItems(
+            surface: .summary, choices: historyRepolish.choices(.summary),
+            currentProvider: savedSummary?.providerID,
+            currentModel: savedSummary?.modelOverride?.model,
+            currentSize: savedSummary?.modelOverride?.egOneSize,
+            isEnabled: available && !keepingSummary
+              && meetings.summaries?.isWriting(meetingID) != true,
+            select: { choice in beginSummaryPreview(choice) },
+            setUp: {
+              navigation.request(.meetings(.summaries))
+              appWindowCoordinator.showWindow()
+            }))))
+    var speech: [HistoryMenuItem] = engines.map { engine in
+      let title = MeetingTranscriptEngineRowTitles.title(of: engine)
+      return .init(
+        id: "asr-\(title)",
+        title: engine == record.transcriptEngineUsed
+          ? HistoryTranscriptView.currentChoiceTitle(title) : title,
+        isEnabled: offered.transcribeAgain, kind: .action { transcribeAgain(engine) })
+    }
+    if engines.isEmpty {
+      // #4578 (plan §3.10 item 8): with no speech engine downloaded, say how to get one back.
+      speech.append(
+        .init(
+          id: "asr-none",
+          title: String(
+            localized: "No speech models are ready",
             comment:
               "History transcript, Transcribe again with menu: no installed speech model can be used."
-          )
-        }
-        ForEach(engines, id: \.self) { engine in
-          Button {
-            transcribeAgain(engine)
-          } label: {
-            let title = MeetingTranscriptEngineRowTitles.title(of: engine)
-            Text(
-              verbatim: engine == record.transcriptEngineUsed
-                ? HistoryTranscriptView.currentChoiceTitle(title) : title)
-          }
-        }
-      } label: {
-        Label {
-          Text(
-            "Transcribe again with",
-            comment:
-              "History transcript, More menu: transcribes the original file again with a chosen speech model."
-          )
-        } icon: {
-          Image(systemName: "arrow.clockwise")
-        }
-      }
-      .disabled(!offered.transcribeAgain || engines.isEmpty)
-      // #4578 (plan §3.10 item 8): with no speech engine downloaded, say how to get one back.
-      .help(
-        engines.isEmpty
-          ? String(
+          ),
+          isEnabled: false, kind: .action {}))
+      speech.append(
+        .init(
+          id: "asr-setup",
+          title: String(
             localized: "Download a speech engine in Settings to transcribe again.",
-            comment: "History, Transcribe again with menu: tooltip while no speech engine is downloaded.")
-          : "")
-      Divider()
-      Button(role: .destructive) {
-        confirming = .deleteAudio
-      } label: {
-        Label {
-          Text(
-            "Delete recording, keep text",
             comment:
-              "History meeting, More menu: deletes the meeting's audio; notes, transcript and summary stay."
-          )
-        } icon: {
-          Image(systemName: "waveform.slash")
-        }
-      }
-      .disabled(!offered.deleteAudio || actionInFlight)
-      Button(role: .destructive) {
-        confirming = .deleteMeeting
-      } label: {
-        Label {
-          Text(
-            "Delete meeting",
-            comment: "EnviousMeet: removes the meeting, its audio and its transcript.")
-        } icon: {
-          Image(systemName: "trash")
-        }
-      }
-      .disabled(!offered.delete || actionInFlight)
-    } label: {
-      Image(systemName: "ellipsis")
+              "History, Transcribe again with menu: tooltip while no speech engine is downloaded."),
+          kind: .action {
+            navigation.request(.transcribeFile)
+            appWindowCoordinator.showWindow()
+          }))
     }
-    .menuStyle(.borderlessButton)
-    .menuIndicator(.hidden)
-    .fixedSize()
-    .accessibilityLabel(Text("More actions", comment: "History transcript: opens the More menu."))
+    items.append(.divider("d2"))
+    items.append(
+      .init(
+        id: "transcribe-again",
+        title: String(
+          localized: "Transcribe again with",
+          comment:
+            "History transcript, More menu: transcribes the original file again with a chosen speech model."
+        ),
+        systemImage: "arrow.clockwise", isEnabled: offered.transcribeAgain || engines.isEmpty,
+        kind: .submenu(speech)))
+    items.append(.divider("d3"))
+    items.append(
+      .init(
+        id: "delete-recording",
+        title: String(
+          localized: "Delete recording, keep text",
+          comment:
+            "History meeting, More menu: deletes the meeting's audio; notes, transcript and summary stay."
+        ),
+        systemImage: "waveform.slash", isEnabled: offered.deleteAudio && !actionInFlight,
+        isDestructive: true, kind: .action { confirming = .deleteAudio }))
+    items.append(
+      .init(
+        id: "delete-meeting",
+        title: String(
+          localized: "Delete meeting",
+          comment: "EnviousMeet: removes the meeting, its audio and its transcript."),
+        systemImage: "trash", isEnabled: offered.delete && !actionInFlight,
+        isDestructive: true, kind: .action { confirming = .deleteMeeting }))
+    return items
   }
-
   private func beginSummaryPreview(_ choice: HistoryPolishChoice) {
     summaryPolishNotice = false
     meetings.summaries?.startPreview(meetingID, with: choice)
@@ -762,12 +882,14 @@ struct HistoryMeetingAfterView: View {
             keep: {
               keepingSummary = true
               Task {
-                summaryPolishNotice = !(await summaries.keepPreview(meetingID, candidateID: candidate.id))
+                summaryPolishNotice =
+                  !(await summaries.keepPreview(meetingID, candidateID: candidate.id))
                 keepingSummary = false
               }
             },
-            discard: { summaries.discardPreview(meetingID) })
-            .id(candidate.id)
+            discard: { summaries.discardPreview(meetingID) }
+          )
+          .id(candidate.id)
         case .failed:
           Text("Couldn't write a new summary. Choose a model to try again.").font(.stHelper)
         }
@@ -830,7 +952,9 @@ struct HistoryMeetingAfterView: View {
   /// (nothing while it is being deleted), else the row of a meeting whose folder is gone.
   private func deliveryRow() -> Transcript? {
     if let record = meetings.record(id: meetingID) {
-      guard !record.deletionRequested, record.committedTranscriptGeneration != nil else { return nil }
+      guard !record.deletionRequested, record.committedTranscriptGeneration != nil else {
+        return nil
+      }
       return transcripts.verifiedRowForDelivery(id: record.transcriptID)
     }
     guard let orphanRow else { return nil }
@@ -973,18 +1097,22 @@ struct HistoryMeetingAfterView: View {
 
   // MARK: - Dock
 
+  @ViewBuilder
   private func dock(
     _ record: MeetingRecord, snapshot: MeetingNotesSnapshot, row: Transcript?, visibleTurns: [Turn]
   ) -> some View {
     let participants = P.participants(
       turns: visibleTurns, speakerNames: row?.speakerNames ?? [:])
-    let content: MeetingAfterPlayerBar.Content =
-      player.map { .player($0) } ?? .unavailable(P.dockAbsence(record))
-    return MeetingAfterPlayerBar(
-      content: content,
-      markers: P.noteMarkers(snapshot.document, durationMs: player?.durationMs ?? 0),
-      participants: participants,
-      onSelectNote: { marker in showNote(marker.id) })
+    let absence = P.dockAbsence(record)
+    // #4611: with no recording to play, there is no bar; the facts line says why. Only a recording
+    // still being made ready keeps its bar.
+    if player != nil || absence == .notReadyYet {
+      MeetingAfterPlayerBar(
+        content: player.map { .player($0) } ?? .unavailable(absence),
+        markers: P.noteMarkers(snapshot.document, durationMs: player?.durationMs ?? 0),
+        participants: participants,
+        onSelectNote: { marker in showNote(marker.id) })
+    }
   }
 
   // MARK: - Follow playback
@@ -1011,24 +1139,38 @@ extension HistoryMeetingAfterView {
   ) -> some View {
     VStack(alignment: .leading, spacing: DesignSpacing.lg) {
       if !isRecordingThisMeeting {
-      BrandedSegmentedPicker(
-        options: [
-          (
-            String(localized: "Your notes", comment: "History meeting: the user's own notes pane."),
-            nil, P.LeftPane.notes
-          ),
-          (
-            String(localized: "AI summary", comment: "History meeting: the meeting summary pane."),
-            nil, P.LeftPane.summary
-          ),
-        ],
-        selection: $leftPane
-      )
-      .fixedSize()
-      .accessibilityLabel(
-        Text(
-          "Notes or summary",
-          comment: "History meeting: chooses between the user's notes and the AI summary."))
+        BrandedSegmentedPicker(
+          options: [
+            (
+              String(
+                localized: "Your notes", comment: "History meeting: the user's own notes pane."),
+              nil, P.LeftPane.notes
+            ),
+            (
+              String(
+                localized: "AI summary", comment: "History meeting: the meeting summary pane."),
+              nil, P.LeftPane.summary
+            ),
+          ],
+          selection: $leftPane,
+          hint: { pane in
+            switch pane {
+            case .notes:
+              String(
+                localized: "Your own notes for this meeting",
+                comment: "History meeting: hover hint on the Your notes tab.")
+            case .summary:
+              String(
+                localized: "The AI-written summary of this meeting",
+                comment: "History meeting: hover hint on the AI summary tab.")
+            }
+          }
+        )
+        .fixedSize()
+        .accessibilityLabel(
+          Text(
+            "Notes or summary",
+            comment: "History meeting: chooses between the user's notes and the AI summary."))
       }
       switch leftPane {
       case .notes:
@@ -1068,7 +1210,8 @@ extension HistoryMeetingAfterView {
       MeetingsPresentation.liveBlocks(live.lines, labels: live.speakerLabels)
         .lazy.flatMap(\.runs).contains(run)
     else { return }
-    let speaker = MeetingsPresentation.liveSpeakerHeader(run.speaker, names: live.speakerLabels.names)
+    let speaker = MeetingsPresentation.liveSpeakerHeader(
+      run.speaker, names: live.speakerLabels.names)
     let text = run.text.split(whereSeparator: \.isNewline).joined(separator: " ")
     notesActions.append(
       MeetingNoteBlock(kind: .quote, text: text, sourceSpeaker: speaker, sourceMs: run.startMs),
@@ -1122,7 +1265,8 @@ extension HistoryMeetingAfterView {
             } label: {
               EnviousButtonLabel(
                 LocalizedStringResource(
-                  "Done editing", comment: "History meeting: ends editing the summary or the notes."),
+                  "Done editing", comment: "History meeting: ends editing the summary or the notes."
+                ),
                 size: .medium, systemImage: "checkmark")
             }
             .settingsButton(.quiet, size: .medium, isEnabled: true)
@@ -1241,7 +1385,9 @@ extension HistoryMeetingAfterView {
   }
 
   /// View source: scroll to and highlight the source. Never starts playback.
-  fileprivate func viewSource(_ target: MeetingAfterPresentation.SourceTarget, proxy: ScrollViewProxy) {
+  fileprivate func viewSource(
+    _ target: MeetingAfterPresentation.SourceTarget, proxy: ScrollViewProxy
+  ) {
     switch target {
     case .turn(let id):
       if follow == .following { follow = .suspended }
@@ -1297,6 +1443,7 @@ extension HistoryMeetingAfterView {
             language: row.language, mode: transcriptMode
           )
           .equatable()
+          .font(.stCardText)
         case .everythingHidden:
           Text(MeetingHistoryPresentation.everythingHiddenMessage)
             .font(.stBody)
@@ -1435,12 +1582,16 @@ extension HistoryMeetingAfterView {
     if row.turns?.contains(where: { $0.processedText != nil }) == true {
       BrandedSegmentedPicker(
         options: [
-          (HistoryTranscriptView.modeLabel(.cleaned, polished: row.polishedText != nil), nil,
-            FileImportCoordinator.DocumentView.cleaned),
+          (
+            HistoryTranscriptView.modeLabel(.cleaned, polished: row.polishedText != nil), nil,
+            FileImportCoordinator.DocumentView.cleaned
+          ),
           (HistoryTranscriptView.modeLabel(.markedUp), nil, .markedUp),
           (HistoryTranscriptView.modeLabel(.original), nil, .original),
-        ], selection: $transcriptMode)
-        .fixedSize()
+        ], selection: $transcriptMode,
+        hint: { HistoryTranscriptPresentation.viewHint(mode: $0, playable: player != nil) }
+      )
+      .fixedSize()
     }
   }
 
@@ -1479,7 +1630,7 @@ extension HistoryMeetingAfterView {
             if case .visible = projection { return true }
             return false
           }()
-          deliveryButtons(title: P.fallbackTitle, canDeliver: canDeliver)
+          orphanDeliveryButtons(title: P.fallbackTitle, canDeliver: canDeliver)
           Button {
             pasteTapped()
           } label: {
@@ -1535,6 +1686,7 @@ extension HistoryMeetingAfterView {
               language: row.language, mode: transcriptMode
             )
             .equatable()
+            .font(.stCardText)
           case .everythingHidden:
             Text(MeetingHistoryPresentation.everythingHiddenMessage)
           case .unavailable:
@@ -1584,17 +1736,19 @@ struct MeetingAfterTurnList: View, Equatable {
   }
 
   var body: some View {
-    let input = mode == .markedUp
+    let input =
+      mode == .markedUp
       ? TranscriptTurnsDocument.diffInput(turns: turns, text: rawText, language: language) : nil
     let diffs = input.flatMap { input in
       diffCache.flatMap { cached in
         TranscriptTurnsDocument.DiffKey.sameInput(input, cached.0) ? cached.1 : nil
       }
     }
-    let rendered = MeetingGapPresentation.localized(
-      TranscriptDocumentPresenter.render(
-        turns: turns, rawText: rawText, speakerNames: speakerNames,
-        mode: mode, timesOn: true, documentFinished: true, diffLookup: { diffs?[$0.id] })) ?? []
+    let rendered =
+      MeetingGapPresentation.localized(
+        TranscriptDocumentPresenter.render(
+          turns: turns, rawText: rawText, speakerNames: speakerNames,
+          mode: mode, timesOn: true, documentFinished: true, diffLookup: { diffs?[$0.id] })) ?? []
     LazyVStack(alignment: .leading, spacing: DesignSpacing.md) {
       ForEach(TurnRowKey.keyed(rendered), id: \.key) { key, turn in
         TurnDocumentView(
@@ -1764,7 +1918,7 @@ private struct MeetingAfterNotesPane: View {
           "No notes for this meeting.",
           comment: "History meeting: the notes pane of a meeting without notes."
         )
-        .font(.stBody)
+        .font(.stCardText)
         .foregroundStyle(.stTextSecondary)
       }
       ForEach(blocks) { block in
@@ -1838,7 +1992,7 @@ private struct MeetingAfterNotesPane: View {
             expectedRevision: snapshot.revision, atMs: nil)
         } label: {
           Image(systemName: block.done ? "checkmark.square.fill" : "square")
-            .font(.stBody)
+            .font(.stCardText)
             .foregroundStyle(block.done ? Color.stAccent : Color.stTextSecondary)
         }
         .buttonStyle(.plain)
@@ -1856,7 +2010,7 @@ private struct MeetingAfterNotesPane: View {
       }
       VStack(alignment: .leading, spacing: DesignSpacing.xxs) {
         Text(verbatim: block.text)
-          .font(.stBody)
+          .font(.stCardText)
           .italic(block.kind == .quote)
           .strikethrough(block.kind == .task && block.done)
           .foregroundStyle(.stTextBody)
@@ -1917,7 +2071,7 @@ private struct MeetingReadableSummary: View {
 
   private func lineText(_ line: String) -> some View {
     Text(HistoryMeetingAfterView.readable(line))
-      .font(.stBody)
+      .font(.stCardText)
       .foregroundStyle(.stTextBody)
       .fixedSize(horizontal: false, vertical: true)
   }
@@ -1958,7 +2112,7 @@ private struct MeetingAfterSummarySections: View {
       Text(verbatim: "•").foregroundStyle(.stTextSecondary).accessibilityHidden(true)
       VStack(alignment: .leading, spacing: DesignSpacing.xxs) {
         Text(verbatim: item.text)
-          .font(.stBody)
+          .font(.stCardText)
           .foregroundStyle(.stTextBody)
           .textSelection(.enabled)
           .fixedSize(horizontal: false, vertical: true)

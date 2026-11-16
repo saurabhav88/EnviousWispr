@@ -177,6 +177,10 @@ private struct MeetingAfterPlayerControls: View {
     .menuStyle(.borderlessButton)
     .menuIndicator(.hidden)
     .fixedSize()
+    .help(
+      Text(
+        "Playback speed \(P.rateLabel(player.playbackRate))",
+        comment: "History transcript dock: the speed menu. %@ is a speed like 1.25×."))
     .accessibilityLabel(
       Text(
         "Playback speed \(P.rateLabel(player.playbackRate))",
@@ -282,6 +286,10 @@ private struct MeetingParticipantsButton: View {
         size: .medium, systemImage: "person.2")
     }
     .settingsButton(.quiet, size: .medium, isEnabled: true)
+    .help(
+      Text(
+        "Who spoke, and for how long",
+        comment: "Meeting player: hover hint on the Participants button."))
     .popover(isPresented: $open) {
       VStack(alignment: .leading, spacing: DesignSpacing.md) {
         Text(
