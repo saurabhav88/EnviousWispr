@@ -179,6 +179,72 @@ struct AudioUnitLaneTests {
       log.all.filter { $0.hasPrefix("completed:") } == ["completed:probe", "completed:route"])
   }
 
+  /// Live UAT finding (#4601 arm 5): when this fails, a press right after a take, while a slow
+  /// but healthy Bluetooth release is still running, shows "can't reach your microphone" after
+  /// one second, because the waiting read's own limit started counting in the queue.
+  @Test("a read waiting behind a slow healthy release is bounded by its deadline, not its limit")
+  func queuedReadLimitStartsWhenItRuns() async {
+    let timers = ManualTimers()
+    let log = Log()
+    let lane = makeLane(timers, log)
+    let gate = Gate()
+    defer { gate.open() }
+    let releasing = Signal()
+    lane.retire {
+      log.add("ran:release")
+      releasing.fire()
+      gate.block()
+    }
+    #expect(await releasing.wait())
+
+    let read = Task { await lane.run("route", deadline: Self.base + .seconds(4)) { 2 } }
+    #expect(await timers.scheduled(.seconds(4)), "the read waits within its own deadline")
+    // One read limit passes while it still waits its turn: it must keep waiting.
+    timers.fire(AudioUnitLane.readLimit)
+    gate.open()
+
+    guard case .value(let two) = await read.value else {
+      Issue.record("a read that waited its turn must still answer")
+      return
+    }
+    #expect(two == 2)
+    #expect(lane.isWedged == false)
+  }
+
+  /// When this fails, a caller waiting behind a stuck driver call waits for as long as the driver
+  /// stays stuck (with no deadline of its own: forever) instead of hearing the lane is wedged.
+  @Test("callers already queued behind a job that passes its limit are answered wedged at once")
+  func queuedCallersHearTheWedge() async {
+    let timers = ManualTimers()
+    let log = Log()
+    let lane = makeLane(timers, log)
+    let gate = Gate()
+    defer { gate.open() }
+    guard let stuck = await startBlockingRead(lane, "probe", gate: gate, log: log) else { return }
+    #expect(await timers.scheduled(AudioUnitLane.readLimit))
+
+    let queued = Task {
+      await lane.run("route", deadline: Self.base + .seconds(30)) { () -> Int in
+        log.add("ran:route")
+        return 2
+      }
+    }
+    #expect(await timers.scheduled(.seconds(30)), "the second read is queued")
+    lane.retire { log.add("ran:retire") }
+    timers.fire(AudioUnitLane.readLimit)
+    #expect(lane.isWedged)
+
+    guard case .wedged = await queued.value else {
+      Issue.record("a queued read must hear the wedge at once")
+      return
+    }
+    gate.open()
+    _ = await stuck.value
+    await lane.drainForTesting()
+    #expect(log.count("ran:route") == 0, "the answered read runs no native work")
+    #expect(log.count("ran:retire") == 1, "a queued release still runs")
+  }
+
   @Test(
     "a queued job whose caller left runs no native work and wedges nothing",
     arguments: ["deadline", "cancel"])

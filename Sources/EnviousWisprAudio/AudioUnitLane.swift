@@ -15,8 +15,12 @@ import os
 ///
 /// - Ordinary queued or running work makes a new caller WAIT (within its own deadline). A normal
 ///   release before a reopen, or a meeting open beside a dictation, is contention, not a fault.
+///   A job's own operation limit starts when it starts RUNNING: time spent waiting its turn counts
+///   only against the caller's deadline (a slow but healthy Bluetooth release ahead of a route read
+///   is not a stuck microphone).
 /// - The lane is **wedged** only while a job that ran past its own operation limit has not
-///   returned. Then new reads and opens are refused at once; retirement is never refused.
+///   returned. Then new reads and opens are refused at once, and reads and opens already queued
+///   behind it are answered `.wedged` at once; retirement is never refused.
 /// - A caller's deadline bounds the CALLER's wait, never the native call. A queued job whose
 ///   caller left (deadline, cancellation, explicit abandonment) runs no native work. A running job
 ///   whose caller left keeps running; if it was an open that succeeded, the lane disposes its
@@ -142,6 +146,7 @@ package final class AudioUnitLane: Sendable {
     /// Resume the waiting caller; set when its continuation exists.
     var deliverTimedOut: (@Sendable () -> Void)?
     var deliverAbandoned: (@Sendable () -> Void)?
+    var deliverWedged: (@Sendable () -> Void)?
     /// Runs once at the first terminal decision (deadline, abandonment, withdrawal), under the
     /// lane's lock and before the caller is resumed: lets the caller freeze what was known then.
     var onTerminal: (@Sendable () -> Void)?
@@ -364,6 +369,7 @@ package final class AudioUnitLane: Sendable {
         let refusal = state.withLock { state -> Refusal? in
           job.deliverTimedOut = { continuation.resume(returning: .timedOut) }
           job.deliverAbandoned = { continuation.resume(returning: .abandoned) }
+          job.deliverWedged = { continuation.resume(returning: .wedged) }
           if job.callerGone { return job.claim() ? .abandoned : nil }
           if state.isWedged { return job.claim() ? .wedged : nil }
           if let attempt,
@@ -382,9 +388,9 @@ package final class AudioUnitLane: Sendable {
           {
             return job.claim() ? .abandoned : nil
           }
-          // The caller never waits past its own deadline nor past this operation's limit.
-          let limitDeadline = now() + limit
-          job.callerDeadline = deadline.map { min($0, limitDeadline) } ?? limitDeadline
+          // Queued, the caller waits within its own deadline only; the operation limit joins it
+          // when the job starts running (`runJob`).
+          job.callerDeadline = deadline
           state.outstanding[job.id] = job
           queue.async { [self] in
             runJob(job, limit: limit) {
@@ -411,16 +417,21 @@ package final class AudioUnitLane: Sendable {
         case .duplicate?, .abandoned?: continuation.resume(returning: .abandoned)
         case nil:
           guard let callerDeadline = state.withLock({ _ in job.callerDeadline }) else { return }
-          // Remaining time from the current clock; the queued-to-running check below also
-          // enforces the deadline, so a late timer cannot let an expired job start.
-          schedule(max(callerDeadline - now(), .zero)) { [self] in
-            let deliver = state.withLock { _ in Self.terminate(job, with: job.deliverTimedOut) }
-            deliver?()
-          }
+          scheduleCallerDeadline(job, callerDeadline)
         }
       }
     } onCancel: {
       let deliver = state.withLock { _ in Self.terminate(job, with: job.deliverAbandoned) }
+      deliver?()
+    }
+  }
+
+  /// Times the caller out at `deadline` (remaining time from the current clock). The
+  /// queued-to-running check and the hand-over also enforce it, so a late timer cannot let an
+  /// expired job start or hand over.
+  private func scheduleCallerDeadline(_ job: Job, _ deadline: ContinuousClock.Instant) {
+    schedule(max(deadline - now(), .zero)) { [self] in
+      let deliver = state.withLock { _ in Self.terminate(job, with: job.deliverTimedOut) }
       deliver?()
     }
   }
@@ -438,7 +449,8 @@ package final class AudioUnitLane: Sendable {
   /// a job whose caller left, or whose caller deadline has passed (even if its timer has not
   /// fired yet), runs no native work.
   private func runJob(_ job: Job, limit: Duration, _ body: @Sendable () -> Void) {
-    let (proceed, lateDelivery) = state.withLock { state -> (Bool, (@Sendable () -> Void)?) in
+    let (proceed, lateDelivery, limitDeadline) = state.withLock {
+      state -> (Bool, (@Sendable () -> Void)?, ContinuousClock.Instant?) in
       if job.operation != .retire {
         var delivery: (@Sendable () -> Void)?
         var withdraw = job.callerGone
@@ -449,26 +461,43 @@ package final class AudioUnitLane: Sendable {
         if withdraw {
           job.phase = .finished
           state.outstanding[job.id] = nil
-          return (false, delivery)
+          return (false, delivery, nil)
         }
       }
       job.phase = .running
       state.running = job
-      return (true, nil)
+      // A waiting caller never waits past this operation's limit, counted from now (§3.1:
+      // queued time is ordinary contention, charged only to the caller's own deadline).
+      if job.operation != .retire, !job.callerGone {
+        let limitEnd = now() + limit
+        if job.callerDeadline.map({ limitEnd < $0 }) ?? true {
+          job.callerDeadline = limitEnd
+          return (true, nil, limitEnd)
+        }
+      }
+      return (true, nil, nil)
     }
     lateDelivery?()
     guard proceed else {
       finishWaiters()
       return
     }
+    if let limitDeadline { scheduleCallerDeadline(job, limitDeadline) }
     let started = now()
     schedule(limit) { [self] in
-      let fired = state.withLock { state -> Bool in
-        guard state.running === job, job.phase == .running, !job.exceeded else { return false }
+      let (fired, queuedDeliveries) = state.withLock { state -> (Bool, [@Sendable () -> Void]) in
+        guard state.running === job, job.phase == .running, !job.exceeded else { return (false, []) }
         job.exceeded = true
-        return true
+        // The lane is wedged: reads and opens still waiting their turn behind this job get the
+        // same answer a new one gets, at once (a caller with no deadline would otherwise wait
+        // for as long as the driver stays stuck). Retirements stay queued.
+        let deliveries = state.outstanding.values
+          .filter { $0.phase == .queued && $0.operation != .retire }
+          .compactMap { Self.terminate($0, with: $0.deliverWedged) }
+        return (true, deliveries)
       }
       if fired { hooks.operationTimedOut(job.id, job.name, limit) }
+      for deliver in queuedDeliveries { deliver() }
     }
     #if DEBUG
       if let stall = takeStallArm(matching: job.operation) {
