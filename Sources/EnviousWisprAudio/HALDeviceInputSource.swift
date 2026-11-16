@@ -177,7 +177,7 @@ private final class HALRenderContext: @unchecked Sendable {
   #if DEBUG
     /// (#1540) DEBUG-only best-effort tripwire for the teardown lifetime
     /// assumption — NOT a formal proof. The render callback increments this on
-    /// entry and `defer`-decrements on every exit; `teardownUnit()` reads it
+    /// entry and `defer`-decrements on every exit; `HALUnitResources.retire()` reads it
     /// after AudioOutputUnitStop/Uninitialize/Dispose and before freeing
     /// `scratch`. A NONZERO reading is always a real fault (a callback was
     /// genuinely still running at free time = a use-after-free window) — there
@@ -442,17 +442,16 @@ final class HALDeviceInputSource: AudioInputSource {
 
   // MARK: - Private state
 
-  private var audioUnit: AudioUnit?
-  private var renderContext: HALRenderContext?
-  private var unmanagedContext: Unmanaged<HALRenderContext>?
-  private var deviceIsAliveListenerDeviceID: AudioDeviceID?
-  private var deviceIsAliveListenerBlock: AudioObjectPropertyListenerBlock?
-  // #1434: mid-recording format-change listeners — one stored token PER
-  // selector (stream format + nominal rate), same queue + add/remove
-  // lifecycle as the DeviceIsAlive listener above.
-  private var formatListenerDeviceID: AudioDeviceID?
-  private var streamFormatListenerBlock: AudioObjectPropertyListenerBlock?
-  private var nominalRateListenerBlock: AudioObjectPropertyListenerBlock?
+  /// #4601 §3.2: the ONE owner of the committed native unit and everything its
+  /// callbacks can reach (render context, the unmanaged callback retain, scratch,
+  /// the stopped flag, the consumer thread and the exact listener registrations).
+  /// Set only at `prepare()`'s commit point; `teardownUnit()` takes it out and
+  /// retires it. The two views below own nothing.
+  private var liveResources: HALUnitResources?
+  private var audioUnit: AudioUnit? { liveResources?.unit }
+  private var renderContext: HALRenderContext? { liveResources?.context }
+  /// Native calls retirement makes; `.live` in production. Test seam only.
+  var nativeCalls = HALNativeCalls.live
   /// #1434: set (MainActor) when a format-change notification fired while
   /// capturing AND the re-read rate differs from the prepare-time rate.
   /// Log-and-telemetry only in v1 — never interrupts the recording. Reset
@@ -476,12 +475,7 @@ final class HALDeviceInputSource: AudioInputSource {
   #if DEBUG
     var debugZeroFillController: DebugZeroFillController?
   #endif
-  /// Dedicated thread draining `HALRenderContext.ring` off the HAL IO thread.
-  /// Retained only to keep it alive; its loop exits on its own once
-  /// `teardownUnit()` signals the semaphore after the stop flag is set.
-  private var consumerThread: Thread?
   private let captureLiveness = HALCaptureLivenessFlag()
-  private var stoppedFlag: HALStoppedFlag?
   private var isRecovering = false
 
   private var boundDeviceID: AudioDeviceID?
@@ -1019,22 +1013,12 @@ final class HALDeviceInputSource: AudioInputSource {
     }
     let status = AudioObjectAddPropertyListenerBlock(deviceID, &addr, Self.listenerQueue, block)
     if status == noErr {
-      deviceIsAliveListenerDeviceID = deviceID
-      deviceIsAliveListenerBlock = block
+      // #4601 §3.2: the exact registration tuple lives with the unit it watches;
+      // `HALUnitResources.retire()` removes it with the same object, address,
+      // queue and block.
+      liveResources?.addListener(
+        .init(object: deviceID, address: addr, queue: Self.listenerQueue, block: block))
     }
-  }
-
-  private func removeDeviceIsAliveListener() {
-    guard let deviceID = deviceIsAliveListenerDeviceID, let block = deviceIsAliveListenerBlock
-    else { return }
-    var addr = AudioObjectPropertyAddress(
-      mSelector: kAudioDevicePropertyDeviceIsAlive,
-      mScope: kAudioObjectPropertyScopeGlobal,
-      mElement: kAudioObjectPropertyElementMain
-    )
-    AudioObjectRemovePropertyListenerBlock(deviceID, &addr, Self.listenerQueue, block)
-    deviceIsAliveListenerDeviceID = nil
-    deviceIsAliveListenerBlock = nil
   }
 
   // MARK: - Private: format-change listeners (#1434)
@@ -1042,8 +1026,8 @@ final class HALDeviceInputSource: AudioInputSource {
   /// Mid-recording format/rate-change observation — Apple's documented AirPods
   /// behavior (forum 770232) is a transient wrong rate corrected via exactly
   /// these notifications. Structural sibling of `registerDeviceIsAliveListener`:
-  /// one stored token PER selector, the shared `listenerQueue`, and a MainActor
-  /// hop before touching source state. v1 is LOG + FLAG only — a forced
+  /// one registration tuple PER selector (owned by `HALUnitResources`, #4601), the
+  /// shared `listenerQueue`, and a MainActor hop before touching source state. v1 is LOG + FLAG only — a forced
   /// interruption would discard the dictation (#1408's known gap), converting
   /// degraded audio into guaranteed total loss.
   private func registerFormatChangeListeners(deviceID: AudioDeviceID) {
@@ -1070,38 +1054,15 @@ final class HALDeviceInputSource: AudioInputSource {
     if AudioObjectAddPropertyListenerBlock(deviceID, &formatAddr, Self.listenerQueue, formatBlock)
       == noErr
     {
-      streamFormatListenerBlock = formatBlock
-      formatListenerDeviceID = deviceID
+      liveResources?.addListener(
+        .init(object: deviceID, address: formatAddr, queue: Self.listenerQueue, block: formatBlock))
     }
     if AudioObjectAddPropertyListenerBlock(deviceID, &rateAddr, Self.listenerQueue, rateBlock)
       == noErr
     {
-      nominalRateListenerBlock = rateBlock
-      formatListenerDeviceID = deviceID
+      liveResources?.addListener(
+        .init(object: deviceID, address: rateAddr, queue: Self.listenerQueue, block: rateBlock))
     }
-  }
-
-  private func removeFormatChangeListeners() {
-    guard let deviceID = formatListenerDeviceID else { return }
-    if let block = streamFormatListenerBlock {
-      var addr = AudioObjectPropertyAddress(
-        mSelector: kAudioDevicePropertyStreamFormat,
-        mScope: kAudioDevicePropertyScopeInput,
-        mElement: kAudioObjectPropertyElementMain
-      )
-      AudioObjectRemovePropertyListenerBlock(deviceID, &addr, Self.listenerQueue, block)
-      streamFormatListenerBlock = nil
-    }
-    if let block = nominalRateListenerBlock {
-      var addr = AudioObjectPropertyAddress(
-        mSelector: kAudioDevicePropertyNominalSampleRate,
-        mScope: kAudioObjectPropertyScopeGlobal,
-        mElement: kAudioObjectPropertyElementMain
-      )
-      AudioObjectRemovePropertyListenerBlock(deviceID, &addr, Self.listenerQueue, block)
-      nominalRateListenerBlock = nil
-    }
-    formatListenerDeviceID = nil
   }
 
   /// MainActor handler for either format-change selector. Guarded on
@@ -1149,8 +1110,10 @@ final class HALDeviceInputSource: AudioInputSource {
   /// ring off the HAL IO thread. Signaling a semaphore (not
   /// `DispatchQueue.async`) from the render callback is the RT-safe wake
   /// primitive (Codex review r1 P2) — `async` enqueue can allocate/lock on
-  /// the calling (IO) thread. Exits on its own once `teardownUnit()` signals
-  /// after `stoppedFlag` is set — never joined, never needs to be.
+  /// the calling (IO) thread. Exits on its own once `HALUnitResources.retire()`
+  /// signals after the stopped flag is set — never joined, never needs to be. The
+  /// closure retains `context` itself, so the thread may drain after retirement;
+  /// it reads only ring-owned samples, never render `scratch` (#4601 §3.2).
   nonisolated private static func makeConsumerThread(context: HALRenderContext) -> Thread {
     let thread = Thread {
       while true {
@@ -1241,22 +1204,30 @@ extension HALDeviceInputSource {
         AudioStatusFormatting.failingStatus(status))
     }
 
+    // #4601 §3.2: from here on the unit has ONE owner. Every failure branch below
+    // retires `resources` (dispose first; callback storage only after a safe
+    // dispose) and throws the setup failure it was given. The cleanup calls' own
+    // statuses go to the retirement report and never replace that step/status
+    // (#1851).
+    let resources = HALUnitResources(unit: unit, native: nativeCalls)
+    func failOpen(_ step: String, _ status: OSStatus? = nil) -> AudioError {
+      Self.failedOpenError(retiring: resources, failure: setupFailure(step, status))
+    }
+
     // Enable input on element 1, disable output on element 0 — input-only.
     var enableIO: UInt32 = 1
     status = AudioUnitSetProperty(
       unit, kAudioOutputUnitProperty_EnableIO, kAudioUnitScope_Input, 1,
       &enableIO, UInt32(MemoryLayout<UInt32>.size))
     guard status == noErr else {
-      AudioComponentInstanceDispose(unit)
-      throw setupFailure("HALDeviceInputSource.prepare.enable_input", status)
+      throw failOpen("HALDeviceInputSource.prepare.enable_input", status)
     }
     var disableIO: UInt32 = 0
     status = AudioUnitSetProperty(
       unit, kAudioOutputUnitProperty_EnableIO, kAudioUnitScope_Output, 0,
       &disableIO, UInt32(MemoryLayout<UInt32>.size))
     guard status == noErr else {
-      AudioComponentInstanceDispose(unit)
-      throw setupFailure("HALDeviceInputSource.prepare.disable_output", status)
+      throw failOpen("HALDeviceInputSource.prepare.disable_output", status)
     }
 
     // Pin the device — this is the whole point: any device, no aggregate.
@@ -1273,8 +1244,7 @@ extension HALDeviceInputSource {
     // setup step failed".
     attemptState.recordBind(succeeded: bindOK)
     guard bindOK else {
-      AudioComponentInstanceDispose(unit)
-      throw setupFailure("HALDeviceInputSource.prepare.set_device", status)
+      throw failOpen("HALDeviceInputSource.prepare.set_device", status)
     }
 
     // #2664: the bound device's identity and channel count, read into LOCALS
@@ -1305,9 +1275,8 @@ extension HALDeviceInputSource {
     // Bose, whose Bluetooth profile happens to already be 16kHz).
     let nativeRead = Self.readNativeStreamFormat(deviceID: deviceID)
     guard let nativeASBD = nativeRead.format else {
-      AudioComponentInstanceDispose(unit)
       // #1851: the HAL read's own status, not an earlier success.
-      throw setupFailure(
+      throw failOpen(
         "HALDeviceInputSource.prepare.query_native_format",
         AudioStatusFormatting.failingStatus(nativeRead.status))
     }
@@ -1316,12 +1285,10 @@ extension HALDeviceInputSource {
         commonFormat: .pcmFormatFloat32, sampleRate: nativeASBD.mSampleRate, channels: 1,
         interleaved: false)
     else {
-      AudioComponentInstanceDispose(unit)
-      throw setupFailure("HALDeviceInputSource.prepare.native_format")
+      throw failOpen("HALDeviceInputSource.prepare.native_format")
     }
     guard let converter = AVAudioConverter(from: nativeFormat, to: Self.targetFormat) else {
-      AudioComponentInstanceDispose(unit)
-      throw setupFailure("HALDeviceInputSource.prepare.converter")
+      throw failOpen("HALDeviceInputSource.prepare.converter")
     }
 
     // Client format on the input element's OUTPUT scope — what our render
@@ -1331,8 +1298,7 @@ extension HALDeviceInputSource {
       unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, 1,
       &clientFormat, UInt32(MemoryLayout<AudioStreamBasicDescription>.size))
     guard status == noErr else {
-      AudioComponentInstanceDispose(unit)
-      throw setupFailure("HALDeviceInputSource.prepare.stream_format", status)
+      throw failOpen("HALDeviceInputSource.prepare.stream_format", status)
     }
 
     // #2664: the ONE capture change. With a mono client format AUHAL takes
@@ -1400,19 +1366,15 @@ extension HALDeviceInputSource {
       ring: ring, stopped: stopped, liveness: captureLiveness, forwarder: fwd,
       nativeFormat: nativeFormat, targetFormat: Self.targetFormat, converter: converter)
     let unmanaged = Unmanaged.passRetained(context)
+    resources.attachCallbackStorage(context: context, unmanaged: unmanaged)
 
-    // No `self.*` assignment above this line: every failure branch below must
-    // release `unmanaged` + deallocate `scratch` + dispose `unit` and leave
-    // `self` untouched (still a fresh, never-prepared instance) so a caller
-    // that retries `prepare()` or calls `teardownUnit()` never double-releases
-    // state this attempt never actually committed.
-    func failPrepare(_ source: String, _ status: OSStatus? = nil) -> Error {
-      unmanaged.release()
-      scratch[0].mData?.deallocate()
-      scratch.unsafeMutablePointer.deallocate()
-      AudioComponentInstanceDispose(unit)
-      return setupFailure(source, status)
-    }
+    // No `self.*` assignment above this line: every failure branch below retires
+    // `resources`, which disposes `unit` and only then (when the dispose is safe)
+    // releases `unmanaged` and deallocates `scratch` (#4601 §3.2: the base order
+    // released callback storage BEFORE dispose). `self` stays untouched (still a
+    // fresh, never-prepared instance), so a caller that retries `prepare()` or
+    // calls `teardownUnit()` never double-releases state this attempt never
+    // actually committed.
 
     var callbackStruct = AURenderCallbackStruct(
       inputProc: halRenderProc,
@@ -1422,34 +1384,32 @@ extension HALDeviceInputSource {
       unit, kAudioOutputUnitProperty_SetInputCallback, kAudioUnitScope_Global, 0,
       &callbackStruct, UInt32(MemoryLayout<AURenderCallbackStruct>.size))
     guard status == noErr else {
-      throw failPrepare("HALDeviceInputSource.prepare.set_callback", status)
+      throw failOpen("HALDeviceInputSource.prepare.set_callback", status)
     }
 
     status = AudioUnitInitialize(unit)
     guard status == noErr else {
-      throw failPrepare("HALDeviceInputSource.prepare.initialize", status)
+      throw failOpen("HALDeviceInputSource.prepare.initialize", status)
     }
+    resources.markInitialized()
     onLifecycleSignal?("hal_configure_completed")
 
     onLifecycleSignal?("hal_start_entered")
     status = AudioOutputUnitStart(unit)
     guard status == noErr else {
       // `status` is the Mac's answer to "start the microphone", the one number
-      // #1851 exists to keep. The cleanup call below returns its own result,
-      // which is discarded and never replaces it.
-      AudioUnitUninitialize(unit)
-      throw failPrepare("HALDeviceInputSource.prepare.start", status)
+      // #1851 exists to keep. The retirement's uninitialize and dispose return
+      // their own results, which go to its report and never replace it.
+      throw failOpen("HALDeviceInputSource.prepare.start", status)
     }
+    resources.markStarted()
     onLifecycleSignal?("hal_start_completed")
 
     // Committed — every fallible step succeeded, so this is the one place
     // `self` state is assigned for this attempt.
+    resources.attachConsumer(Self.makeConsumerThread(context: context))
     self.forwarder = fwd
-    self.renderContext = context
-    self.stoppedFlag = stopped
-    self.unmanagedContext = unmanaged
-    self.audioUnit = unit
-    self.consumerThread = Self.makeConsumerThread(context: context)
+    self.liveResources = resources
     registerDeviceIsAliveListener(deviceID: deviceID)
     registerFormatChangeListeners(deviceID: deviceID)
 
@@ -1512,65 +1472,14 @@ extension HALDeviceInputSource {
     stallWorkItem?.cancel()
     stallWorkItem = nil
     isCapturing = false
-    stoppedFlag?.set()
-    removeDeviceIsAliveListener()
-    removeFormatChangeListeners()
-    if let unit = audioUnit {
-      // These are expected to be synchronous: `AudioOutputUnitStop` +
-      // `AudioUnitUninitialize` + dispose should leave no `halRenderProc`
-      // running, so nothing below races a live callback touching `scratch`.
-      // Apple's docs do NOT explicitly promise the callback has RETURNED
-      // (#1540), so the DEBUG quiescence assert below verifies it empirically
-      // rather than trusting the assumption — this is the load-bearing check
-      // before the in-process collapse (C1) makes a UAF here a full-app crash.
-      AudioOutputUnitStop(unit)
-      AudioUnitUninitialize(unit)
-      AudioComponentInstanceDispose(unit)
+    // #4601 §3.2: the resource owner sets the stopped flag, removes the exact
+    // listener registrations, stops, uninitializes and disposes, wakes the
+    // consumer, and frees callback storage only after a safe native retirement.
+    // Taken out of `self` first so no second owner survives the hand-off.
+    if let resources = liveResources {
+      liveResources = nil
+      resources.retire()
     }
-    #if DEBUG
-      // (#1540) Best-effort quiescence tripwire for the assumption above: after
-      // stop/uninitialize/dispose, NO render callback should still be running,
-      // so freeing `scratch` below cannot be a use-after-free. A NONZERO count
-      // here is always a real fault (a callback genuinely still in flight at
-      // free time) — no false positives — and under stress this catches Apple's
-      // stop failing to quiesce before the in-process collapse (C1) turns it
-      // into a full-app crash. A zero count is strong but not conclusive (see
-      // the counter's declaration). `callbackEnteredAfterStop` is logged for
-      // context but is NOT itself a fault (a callback that bails at the stop
-      // guard is safe).
-      if let context = renderContext {
-        let inFlight = context.inFlightRenderCallbacks.withLock { $0 }
-        let racedStop = context.callbackEnteredAfterStop.withLock { $0 }
-        if inFlight != 0 || racedStop {
-          AudioCaptureManager.btRouteLog(
-            "HAL teardown quiescence (#1540): inFlightRenderCallbacks=\(inFlight) callbackEnteredAfterStop=\(racedStop)"
-              + (inFlight != 0
-                ? " — AudioOutputUnitStop did NOT quiesce the RT callback before free (UAF window)"
-                : " — callback raced the stop flag but bailed safely (no UAF)"))
-        }
-        assert(
-          inFlight == 0,
-          "HAL teardown: \(inFlight) render callback(s) still in flight after stop/dispose — freeing scratch is a use-after-free (#1540)"
-        )
-      }
-    #endif
-    // Wake the consumer thread (blocked on the semaphore) so it observes
-    // `stoppedFlag` and exits its loop. No RT callback can signal again after
-    // `AudioOutputUnitStop` returned above, so this is the FINAL signal —
-    // the thread drains anything left, sees `stopped.isSet()`, and returns.
-    renderContext?.semaphore.signal()
-    if let unmanagedContext {
-      unmanagedContext.release()
-    }
-    if let context = renderContext {
-      context.scratch[0].mData?.deallocate()
-      context.scratch.unsafeMutablePointer.deallocate()
-    }
-    audioUnit = nil
-    renderContext = nil
-    unmanagedContext = nil
-    stoppedFlag = nil
-    consumerThread = nil
     boundDeviceID = nil
     boundUID = nil
     boundTransport = nil
@@ -1594,7 +1503,7 @@ private func halRenderProc(
   let context = Unmanaged<HALRenderContext>.fromOpaque(inRefCon).takeUnretainedValue()
   #if DEBUG
     // (#1540) Count this callback as in-flight for the whole invocation so
-    // `teardownUnit()` can assert quiescence before freeing `scratch`. The
+    // `HALUnitResources.retire()` can assert quiescence before freeing `scratch`. The
     // `defer` guarantees the decrement on EVERY return path below.
     context.inFlightRenderCallbacks.withLock { $0 += 1 }
     defer { context.inFlightRenderCallbacks.withLock { $0 -= 1 } }
@@ -1669,3 +1578,247 @@ private func halRenderProc(
 
   return noErr
 }
+
+// MARK: - Native unit ownership (#4601 §3.2)
+
+/// The native calls a unit's retirement makes. Injectable so tests can gate and
+/// fail them without hardware; `.live` is the real Core Audio API.
+struct HALNativeCalls: Sendable {
+  var stop: @Sendable (AudioUnit) -> OSStatus
+  var uninitialize: @Sendable (AudioUnit) -> OSStatus
+  var dispose: @Sendable (AudioUnit) -> OSStatus
+  var removeListener:
+    @Sendable (
+      AudioObjectID, AudioObjectPropertyAddress, DispatchQueue,
+      @escaping AudioObjectPropertyListenerBlock
+    ) -> OSStatus
+  /// Observation only: called right after callback storage is freed. Production
+  /// passes a no-op; tests use it to see WHEN storage was released.
+  var storageReleased: @Sendable () -> Void
+
+  static let live = HALNativeCalls(
+    stop: { AudioOutputUnitStop($0) },
+    uninitialize: { AudioUnitUninitialize($0) },
+    dispose: { AudioComponentInstanceDispose($0) },
+    removeListener: { object, address, queue, block in
+      var address = address
+      return AudioObjectRemovePropertyListenerBlock(object, &address, queue, block)
+    },
+    storageReleased: {})
+}
+
+/// #4601 §3.2: the ONE owner of a native AUHAL unit and everything its callbacks
+/// can reach: the render context, the unmanaged retain the render callback
+/// dereferences, the scratch buffer it renders into, the stopped flag, the
+/// consumer thread and the exact listener registration tuples.
+///
+/// Built right after `AudioComponentInstanceNew`, so a partial open has an owner
+/// too. `retire()` is the single cleanup authority for every path (normal stop,
+/// abort, rebuild, device vanish, and every failed open), runs at most once, and
+/// frees callback storage only after native retirement establishes safety:
+/// `AudioOutputUnitStop` returned `noErr` (when the unit was started) AND
+/// `AudioComponentInstanceDispose` returned `noErr`. Otherwise the storage and its
+/// retain are kept until process exit and the failure is logged (Chromium keeps
+/// callback storage when AUHAL teardown fails, because callbacks may survive).
+/// The DEBUG #1540 counter is a tripwire, not the safety criterion.
+///
+/// Not `Sendable`: today it is created, committed and retired on the main actor.
+final class HALUnitResources {
+  /// How far the open got, which decides what retirement must undo.
+  enum Stage: Int, Comparable {
+    case created, initialized, started
+    static func < (lhs: Stage, rhs: Stage) -> Bool { lhs.rawValue < rhs.rawValue }
+  }
+
+  /// One successful `AudioObjectAddPropertyListenerBlock`, kept exactly as
+  /// registered so removal uses the same object, address, queue and block.
+  struct ListenerRegistration {
+    let object: AudioObjectID
+    let address: AudioObjectPropertyAddress
+    let queue: DispatchQueue
+    let block: AudioObjectPropertyListenerBlock
+  }
+
+  /// What `retire()` did. Statuses are nil for calls the stage did not need.
+  struct RetirementReport: Equatable {
+    var listenerRemovals: [OSStatus]
+    var stop: OSStatus?
+    var uninitialize: OSStatus?
+    var dispose: OSStatus
+    var storageReleased: Bool
+  }
+
+  let unit: AudioUnit
+  private(set) var stage: Stage = .created
+  fileprivate private(set) var context: HALRenderContext?
+  private var unmanaged: Unmanaged<HALRenderContext>?
+  private var consumerThread: Thread?
+  private(set) var listeners: [ListenerRegistration] = []
+  private let native: HALNativeCalls
+  private(set) var report: RetirementReport?
+
+  init(unit: AudioUnit, native: HALNativeCalls) {
+    self.unit = unit
+    self.native = native
+  }
+
+  /// Whether the render callback's storage (scratch + unmanaged retain) is still
+  /// held. True from attach until a SAFE retirement; stays true after an unsafe one.
+  var holdsCallbackStorage: Bool { unmanaged != nil }
+
+  fileprivate func attachCallbackStorage(
+    context: HALRenderContext, unmanaged: Unmanaged<HALRenderContext>
+  ) {
+    precondition(report == nil && self.unmanaged == nil, "callback storage attached twice")
+    self.context = context
+    self.unmanaged = unmanaged
+  }
+
+  func markInitialized() { stage = max(stage, .initialized) }
+  func markStarted() { stage = .started }
+  fileprivate func attachConsumer(_ thread: Thread) { consumerThread = thread }
+  func addListener(_ registration: ListenerRegistration) {
+    precondition(report == nil, "listener added to a retired unit")
+    listeners.append(registration)
+  }
+
+  /// Retires the unit once; a second call returns the first report and touches
+  /// nothing native.
+  @discardableResult
+  func retire() -> RetirementReport {
+    if let report { return report }
+    // Set before anything blocks: the render callback and the consumer both check it.
+    context?.stopped.set()
+    let removals = listeners.map {
+      native.removeListener($0.object, $0.address, $0.queue, $0.block)
+    }
+    // These are expected to be synchronous: `AudioOutputUnitStop` +
+    // `AudioUnitUninitialize` + dispose should leave no `halRenderProc`
+    // running, so nothing below races a live callback touching `scratch`.
+    // Apple's docs do NOT explicitly promise the callback has RETURNED
+    // (#1540), so the DEBUG quiescence assert below verifies it empirically
+    // rather than trusting the assumption — this is the load-bearing check
+    // before the in-process collapse (C1) makes a UAF here a full-app crash.
+    let stopStatus = stage >= .started ? native.stop(unit) : nil
+    let uninitializeStatus = stage >= .initialized ? native.uninitialize(unit) : nil
+    let disposeStatus = native.dispose(unit)
+    let safe = (stopStatus ?? noErr) == noErr && disposeStatus == noErr
+    #if DEBUG
+      // (#1540) Best-effort quiescence tripwire for the assumption above: after
+      // stop/uninitialize/dispose, NO render callback should still be running,
+      // so freeing `scratch` below cannot be a use-after-free. A NONZERO count
+      // here is always a real fault (a callback genuinely still in flight at
+      // free time) — no false positives — and under stress this catches Apple's
+      // stop failing to quiesce before the in-process collapse (C1) turns it
+      // into a full-app crash. A zero count is strong but not conclusive (see
+      // the counter's declaration). `callbackEnteredAfterStop` is logged for
+      // context but is NOT itself a fault (a callback that bails at the stop
+      // guard is safe). Checked only on a safe retirement: an unsafe one frees
+      // nothing, so a still-running callback is no use-after-free (#4601).
+      if safe, let context {
+        let inFlight = context.inFlightRenderCallbacks.withLock { $0 }
+        let racedStop = context.callbackEnteredAfterStop.withLock { $0 }
+        if inFlight != 0 || racedStop {
+          AudioCaptureManager.btRouteLog(
+            "HAL teardown quiescence (#1540): inFlightRenderCallbacks=\(inFlight) callbackEnteredAfterStop=\(racedStop)"
+              + (inFlight != 0
+                ? " — AudioOutputUnitStop did NOT quiesce the RT callback before free (UAF window)"
+                : " — callback raced the stop flag but bailed safely (no UAF)"))
+        }
+        assert(
+          inFlight == 0,
+          "HAL teardown: \(inFlight) render callback(s) still in flight after stop/dispose — freeing scratch is a use-after-free (#1540)"
+        )
+      }
+    #endif
+    // Wake the consumer thread (blocked on the semaphore) so it observes the
+    // stopped flag and exits its loop. No RT callback can signal again after
+    // `AudioOutputUnitStop` returned above, so this is the FINAL signal —
+    // the thread drains anything left, sees `stopped.isSet()`, and returns.
+    context?.semaphore.signal()
+    var released = false
+    if safe {
+      if let unmanaged, let context {
+        unmanaged.release()
+        context.scratch[0].mData?.deallocate()
+        context.scratch.unsafeMutablePointer.deallocate()
+        self.unmanaged = nil
+        released = true
+        native.storageReleased()
+      }
+    } else if unmanaged != nil {
+      AudioCaptureManager.btRouteLog(
+        "HAL retirement unsafe (#4601): stop=\(stopStatus.map(String.init) ?? "n/a") "
+          + "dispose=\(disposeStatus) — keeping callback storage until process exit")
+    }
+    consumerThread = nil
+    let finished = RetirementReport(
+      listenerRemovals: removals, stop: stopStatus, uninitialize: uninitializeStatus,
+      dispose: disposeStatus, storageReleased: released)
+    report = finished
+    return finished
+  }
+
+  deinit {
+    // Every owner path retires; an unretired owner here would be a leaked open
+    // unit. Release builds free nothing here, which is the safe direction.
+    assert(report != nil, "HALUnitResources released without retire() (#4601)")
+  }
+}
+
+extension HALDeviceInputSource {
+  /// Failed-open cleanup (#4601 §3.2): retires the partial unit and returns the
+  /// setup failure unchanged, whatever the retirement reported (#1851).
+  nonisolated static func failedOpenError(
+    retiring resources: HALUnitResources, failure: AudioError
+  ) -> AudioError {
+    resources.retire()
+    return failure
+  }
+}
+
+#if DEBUG
+  extension HALUnitResources {
+    /// Test seam: a resources owner at `stage` with real callback storage (scratch,
+    /// render context, unmanaged retain) around a fake unit pointer that only the
+    /// injected `native` calls ever receive.
+    static func makeForTesting(
+      stage: Stage, native: HALNativeCalls, listenerCount: Int = 0
+    ) -> HALUnitResources {
+      let unit = AudioUnit(bitPattern: 0x4601)!
+      let resources = HALUnitResources(unit: unit, native: native)
+      let format = AVAudioFormat(
+        commonFormat: .pcmFormatFloat32, sampleRate: 48_000, channels: 1, interleaved: false)!
+      let target = AVAudioFormat(
+        commonFormat: .pcmFormatFloat32, sampleRate: 16_000, channels: 1, interleaved: false)!
+      let capacity = 4096
+      let scratch = AudioBufferList.allocate(maximumBuffers: 1)
+      let storage = UnsafeMutableRawPointer.allocate(
+        byteCount: capacity * MemoryLayout<Float>.size, alignment: MemoryLayout<Float>.alignment)
+      scratch[0] = AudioBuffer(
+        mNumberChannels: 1, mDataByteSize: UInt32(capacity * MemoryLayout<Float>.size),
+        mData: storage)
+      let context = HALRenderContext(
+        audioUnit: unit, scratch: scratch, capacityFrames: capacity,
+        ring: HALSampleRing(slotCount: 2, capacityPerSlot: capacity), stopped: HALStoppedFlag(),
+        liveness: HALCaptureLivenessFlag(), forwarder: PreRollForwarder(), nativeFormat: format,
+        targetFormat: target, converter: AVAudioConverter(from: format, to: target)!)
+      resources.attachCallbackStorage(context: context, unmanaged: .passRetained(context))
+      if stage >= .initialized { resources.markInitialized() }
+      if stage >= .started { resources.markStarted() }
+      for index in 0..<listenerCount {
+        resources.addListener(
+          .init(
+            object: AudioObjectID(index + 1),
+            address: AudioObjectPropertyAddress(
+              mSelector: kAudioDevicePropertyDeviceIsAlive,
+              mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain),
+            queue: .main, block: { _, _ in }))
+      }
+      return resources
+    }
+
+    /// Whether the stopped flag the callbacks read is set.
+    var stoppedFlagIsSetForTesting: Bool { context?.stopped.isSet() ?? false }
+  }
+#endif
