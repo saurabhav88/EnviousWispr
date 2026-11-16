@@ -35,6 +35,9 @@ import Testing
       // User-actionable.
       .permissionDenied: "Microphone access is off.",
       .noMicrophoneFound: "No microphone found. Please connect one.",
+      // #4601 (founder 2026-11-15): the microphone start was not answered.
+      .micNotResponding:
+        "EnviousWispr can't reach your microphone. Another app's audio driver may be stuck. Restarting your Mac usually fixes this.",
       // Informational interruptions.
       .deviceRemoved: "Microphone disconnected.",
       .engineLost: "Recording interrupted.",

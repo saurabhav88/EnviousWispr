@@ -52,6 +52,8 @@ package enum RecordingFailureReason: Equatable, Sendable {
   /// toggle/menu path surfaces the actionable "No microphone found." notice, the
   /// same as the prewarm (PTT) path already does AppKit-side.
   case noMicrophoneFound
+  /// #4601: the microphone start was not answered (`MicrophoneStartFailure.isNotResponding`).
+  case micNotResponding
   case noAudioCaptured
   /// #1920: NO PRODUCTION PRODUCER since the empty-decode path was re-typed to
   /// `RecordingOutcome.asrEmptyDespiteAudio`. Kept, not deleted, for two reasons:
@@ -5151,6 +5153,8 @@ final class RecordingSessionKernel {
     // generic engine-start failure (PR-1 §B.1.2).
     let description = String(describing: error).lowercased()
     if description.contains("permission") { return .permissionDenied }
+    // #4601 §3.7: after permission, the one shared not-responding decision.
+    if MicrophoneStartFailure.isNotResponding(error) { return .micNotResponding }
     return .captureStartFailed
   }
 

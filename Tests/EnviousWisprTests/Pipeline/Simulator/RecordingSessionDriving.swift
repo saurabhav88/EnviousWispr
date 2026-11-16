@@ -711,6 +711,9 @@ final class KernelRecordingSession: RecordingSessionDriving {
     // identically here. The user-facing distinction is proven in
     // TerminalNoticeReasonMappingTests / KernelLifecycleTelemetrySinkTests.
     case .noMicrophoneFound: return .captureStartFailed
+    // #4601: same for a start that was not answered; the user-facing distinction is proven in
+    // TerminalNoticeReasonMappingTests and KernelMicrophoneStartBudgetTests.
+    case .micNotResponding: return .captureStartFailed
     case .noAudioCaptured: return .noAudioCaptured
     case .asrEmpty: return .asrEmpty
     case .asrFailed: return .asrFailed

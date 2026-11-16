@@ -40,6 +40,8 @@ final class FakeAudioCapture: AudioCaptureInterface {
   /// `preWarm()` throws this when non-nil (#903 — lets a test drive the real
   /// `RecordingSessionKernel.preWarm()` rethrow path). Nil = preWarm succeeds.
   var preWarmError: Error?
+  /// #4601: when set, every `startEnginePhase` throws this exact error (a real `AudioError`).
+  var startEnginePhaseError: Error?
 
   // MARK: Observed counters (for FakeAudioCaptureTests teardown assertion)
 
@@ -230,6 +232,7 @@ final class FakeAudioCapture: AudioCaptureInterface {
       currentInputResolutionSource = inputResolutionSourcePerAttempt[index]
     }
     if permissionDenied { throw FakeCaptureError.permissionDenied }
+    if let startEnginePhaseError { throw startEnginePhaseError }
     if failEngineStart { throw FakeCaptureError.engineStartFailed }
     if failEngineStartOnAttempt == startEnginePhaseCallCount {
       throw FakeCaptureError.engineStartFailed

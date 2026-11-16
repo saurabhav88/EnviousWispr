@@ -2074,7 +2074,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       case .zeroSignal:
         return .zeroSignal
       case .prepareFailed, .permissionDenied, .modelWedged, .modelLoadFailed,
-        .captureStartFailed, .noMicrophoneFound, .noAudioCaptured, .asrEmpty,
+        .captureStartFailed, .noMicrophoneFound, .micNotResponding, .noAudioCaptured, .asrEmpty,
         .asrFailed, .asrWedged, .emptyAfterProcessing, .captureStalled:
         return nil
       }

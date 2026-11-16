@@ -35,6 +35,21 @@ struct KernelMicrophoneStartBudgetTests {
     #expect(capture.startEnginePhaseDeadlines == [deadline, deadline])
   }
 
+  /// #4601 §3.7: a take whose own start was not answered ends with the not-responding reason,
+  /// projected to the notice the user sees (not the generic capture error).
+  @Test("an in-session start that was not answered ends with its own reason and notice")
+  func notRespondingInSessionStart() async {
+    let (capture, wrapper) = makeWrapper()
+    capture.startEnginePhaseError = AudioError.microphoneNotResponding(
+      source: "HALDeviceInputSource.prepare.lane_wedged")
+
+    await wrapper.apply(.start)
+    await wrapper.drainReadyWork()
+
+    #expect(wrapper.testKernel.recordingOutcome == .failed(.micNotResponding))
+    #expect(RecordingFailureReason.micNotResponding.terminalNoticeReason == .micNotResponding)
+  }
+
   @Test("pre-warm spends the press's deadline")
   func preWarmUsesThePressDeadline() async throws {
     let (capture, wrapper) = makeWrapper()

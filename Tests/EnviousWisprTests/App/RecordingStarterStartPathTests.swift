@@ -366,6 +366,39 @@ import Testing
     #expect(fx.kernelDriver.state == .error(.permissionDenied))
   }
 
+  /// #4601 §3.7: a pre-warm the audio system did not answer (timed out, refused while stuck, or
+  /// status 60 from starting the unit) shows the "can't reach your microphone" notice; permission
+  /// still wins, and a status 60 from any other step keeps the generic notice.
+  @Test(
+    "a not-responding pre-warm surfaces its own notice; permission wins; near misses stay generic",
+    arguments: [
+      ("timed_out", false, TerminalNoticeReason.micNotResponding),
+      ("start60", false, .micNotResponding),
+      ("timed_out", true, .permissionDenied),
+      ("init60", false, .micWouldNotOpen),
+    ])
+  func notRespondingPreWarmNotice(_ input: (String, Bool, TerminalNoticeReason)) async {
+    let (kind, denied, expected) = input
+    let fx = Self.makeFixture(micStatus: denied ? .denied : .authorized)
+    fx.asr.activeBackendType = .parakeet
+    fx.asr.isModelLoaded = true
+    switch kind {
+    case "timed_out":
+      fx.audio.preWarmError = AudioError.microphoneNotResponding(
+        source: "HALDeviceInputSource.prepare.timed_out")
+    case "start60":
+      fx.audio.preWarmError = AudioError.formatCreationFailed(
+        source: "HALDeviceInputSource.prepare.start", osStatus: 60)
+    default:
+      fx.audio.preWarmError = AudioError.formatCreationFailed(
+        source: "HALDeviceInputSource.prepare.init", osStatus: 60)
+    }
+
+    _ = await fx.starter.start()
+
+    #expect(fx.kernelDriver.state == .error(expected))
+  }
+
   /// The old `toggleAndStartBothRefreshAccessibilityStatus` had ZERO `#expect` —
   /// it only checked crash-freedom, so deleting the AX re-arm block from
   /// `start()`/`toggle()` left it green. This injects a counting spy and asserts

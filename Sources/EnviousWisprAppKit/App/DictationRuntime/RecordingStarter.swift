@@ -550,6 +550,9 @@ final class RecordingStarter {
       let reason: TerminalNoticeReason
       if micPermissionDenied() {
         reason = .permissionDenied
+      } else if MicrophoneStartFailure.isNotResponding(error) {
+        // #4601 §3.7: after permission, the one shared not-responding decision.
+        reason = .micNotResponding
       } else {
         let nsError = error as NSError
         let noMic =

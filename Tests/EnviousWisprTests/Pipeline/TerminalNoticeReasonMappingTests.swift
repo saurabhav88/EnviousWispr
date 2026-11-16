@@ -20,6 +20,7 @@ import Testing
       (.modelLoadFailed, .modelLoadFailed),
       (.captureStartFailed, .captureStartFailed),
       (.noMicrophoneFound, .noMicrophoneFound),
+      (.micNotResponding, .micNotResponding),
       (.noAudioCaptured, .noAudioCaptured),
       (.asrEmpty, .asrEmptyWithSpeech),
       (.asrFailed, .asrFailed),
@@ -49,6 +50,19 @@ import Testing
         == .permissionDenied)
     #expect(
       RecordingSessionKernel.classifyCaptureStartError(NSError(domain: "x", code: 2))
+        == .captureStartFailed)
+    // #4601: a start that was not answered has its own reason; a status-60 near miss does not.
+    #expect(
+      RecordingSessionKernel.classifyCaptureStartError(
+        AudioError.microphoneNotResponding(source: "HALDeviceInputSource.prepare.timed_out"))
+        == .micNotResponding)
+    #expect(
+      RecordingSessionKernel.classifyCaptureStartError(
+        AudioError.formatCreationFailed(source: "HALDeviceInputSource.prepare.start", osStatus: 60))
+        == .micNotResponding)
+    #expect(
+      RecordingSessionKernel.classifyCaptureStartError(
+        AudioError.formatCreationFailed(source: "HALDeviceInputSource.prepare.init", osStatus: 60))
         == .captureStartFailed)
   }
 

@@ -74,6 +74,14 @@ enum DictationNarrator {
       return String(
         localized: "No microphone found. Please connect one.",
         comment: "Pill: no input device is available.")
+    // #4601 (founder 2026-11-15): the start was not answered. The cause is unknown to the app,
+    // so the sentence says "may be"; never a diagnosis.
+    case .micNotResponding:
+      return String(
+        localized:
+          "EnviousWispr can't reach your microphone. Another app's audio driver may be stuck. Restarting your Mac usually fixes this.",
+        comment:
+          "Pill and meeting notice: the microphone did not answer when recording started. The cause is unknown; another app's audio driver is only a possibility, so keep 'may'. Restarting the Mac is the usual fix.")
     // Informational interruptions (audio was saved).
     case .deviceRemoved:
       return String(
