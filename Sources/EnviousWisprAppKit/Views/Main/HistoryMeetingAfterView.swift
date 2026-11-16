@@ -1112,6 +1112,14 @@ struct HistoryMeetingAfterView: View {
         markers: P.noteMarkers(snapshot.document, durationMs: player?.durationMs ?? 0),
         participants: participants,
         onSelectNote: { marker in showNote(marker.id) })
+    } else if !participants.isEmpty {
+      // No bar, but who spoke still stays reachable after the recording is deleted.
+      HStack {
+        Spacer()
+        MeetingParticipantsButton(participants: participants)
+      }
+      .padding(.horizontal, SettingsLayout.contentH)
+      .padding(.bottom, DesignSpacing.xl)
     }
   }
 

@@ -272,7 +272,7 @@ private struct MeetingNoteMarkerTrack: View {
 }
 
 /// Participants: who spoke and their share of the measured speaking time.
-private struct MeetingParticipantsButton: View {
+struct MeetingParticipantsButton: View {
   let participants: [MeetingAfterPresentation.Participant]
   @State private var open = false
 
