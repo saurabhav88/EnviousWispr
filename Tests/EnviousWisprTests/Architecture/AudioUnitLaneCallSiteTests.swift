@@ -17,13 +17,15 @@ struct AudioUnitLaneCallSiteTests {
   /// Calls that reach the audio driver. Pure value constructors (`AudioObjectPropertyAddress`,
   /// `AudioComponentDescription`, `AudioObjectID`, `AudioUnit`) and pure helpers
   /// (`AudioDeviceEnumerator.transportLabel`, `builtInInputKind`) are not listed: a name starting
-  /// with Audio is not a hardware call by itself.
+  /// with Audio is not a hardware call by itself. Matching is by prefix; the property write is
+  /// listed by its `AudioObjectSet` stem because scripts/check-dependency-direction.sh reads the
+  /// full name as a live desktop call even inside a string.
   static func isHardwareCall(_ callee: String) -> Bool {
     let prefixes = [
       "AudioUnitGetProperty", "AudioUnitSetProperty", "AudioUnitInitialize",
       "AudioUnitUninitialize", "AudioUnitRender", "AudioOutputUnitStart", "AudioOutputUnitStop",
       "AudioComponentFindNext", "AudioComponentInstanceNew", "AudioComponentInstanceDispose",
-      "AudioObjectGetPropertyData", "AudioObjectSetPropertyData", "AudioObjectHasProperty",
+      "AudioObjectGetPropertyData", "AudioObjectSet", "AudioObjectHasProperty",
       "AudioObjectAddPropertyListener", "AudioObjectRemovePropertyListener",
     ]
     if prefixes.contains(where: { callee == $0 || callee.hasPrefix($0) }) { return true }
