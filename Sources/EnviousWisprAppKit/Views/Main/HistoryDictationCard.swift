@@ -71,6 +71,9 @@ struct HistoryDictationCard: View {
     HistoryDictationPresentation.editsView
   @State private var openChange: Int?
   @State private var textExpanded = false
+  /// The deletion fence `status` was read under; a player is built only while it still holds
+  /// (Codex r1 on #4611: a lazy first Play must not outrun a deletion that started after the read).
+  @State private var recordingFence: RecordingFence?
   @State private var moreAnchor = HistoryMenuAnchorHolder()
 
   // Chrome
@@ -80,6 +83,11 @@ struct HistoryDictationCard: View {
   @State private var confirming: HistoryDeleteKind?
   /// The last preference change made here, offered for Undo until another action replaces it.
   @State private var preferenceNotice: HistoryPreferenceChange?
+
+  private struct RecordingFence: Equatable {
+    let deletions: Int?
+    let epoch: Int?
+  }
 
   private struct RecordingKey: Hashable {
     let rowID: UUID
@@ -648,6 +656,7 @@ struct HistoryDictationCard: View {
     guard !Task.isCancelled else { return }
     guard before == (arbiter?.deletionCount(for: id), arbiter?.dictationEpoch) else { return }
     status = read
+    recordingFence = RecordingFence(deletions: before.0, epoch: before.1)
     switch read {
     case .available: recordings.changes.note(rowID, hasRecording: true)
     case .absent: recordings.changes.note(rowID, hasRecording: false)
@@ -668,11 +677,17 @@ struct HistoryDictationCard: View {
   private func ensurePlayer() -> MeetingPlaybackController? {
     if let player { return player }
     guard case .available(let url, let durationMs, _) = status,
-      let recordings = transcripts.recordings
+      let recordings = transcripts.recordings, let fence = recordingFence
+    else { return nil }
+    let arbiter = recordings.arbiter
+    guard
+      fence
+        == RecordingFence(
+          deletions: arbiter?.deletionCount(for: .dictation(rowID)), epoch: arbiter?.dictationEpoch)
     else { return nil }
     let made = MeetingPlaybackController(
       media: .dictation(url), durationMs: durationMs, output: MeetingPlaybackEngineOutput(),
-      sourceID: .dictation(rowID), arbiter: recordings.arbiter)
+      sourceID: .dictation(rowID), arbiter: arbiter)
     player = made
     playerURL = url
     return made

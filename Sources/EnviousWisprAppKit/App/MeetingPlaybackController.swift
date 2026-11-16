@@ -244,7 +244,7 @@ final class MeetingPlaybackController {
       }
       // #4611: the voice's shape. A short recording (a dictation) is read whole, so each bar
       // is the loudness of its whole slice; a long one (a meeting) reads six short windows
-      // spread across each slice, so drawing stays quick. Loudness is shown on a decibel
+      // spread at least 2.5 s apart across each slice, so drawing stays quick. Loudness is shown on a decibel
       // scale, the way ears hear it, so speech rises and pauses stay flat.
       let count = min(120, max(1, durationMs / 20))
       let readsWhole = durationMs <= 180_000
@@ -261,7 +261,9 @@ final class MeetingPlaybackController {
           power = samples.reduce(Float(0)) { $0 + $1 * $1 }
           samplesRead = samples.count
         } else {
-          let windows = 6
+          // Windows at least 2.5 s apart: an imported file's reader decodes straight through
+          // gaps under 2 s, which would read the whole file (Codex r1 on #4611).
+          let windows = max(1, min(6, (upper - lower) / 2_500))
           let span = max(1, (upper - lower) / windows)
           for part in 0..<windows {
             let samples = try source.window(startMs: lower + part * span, count: min(60, span))

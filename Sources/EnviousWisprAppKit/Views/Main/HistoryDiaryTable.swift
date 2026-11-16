@@ -217,7 +217,8 @@ struct HistoryDiaryTable: NSViewRepresentable {
         // first so it lands at its real height; every other change (a page, a deletion)
         // applies at once.
         let slidesIn =
-          isAtNewest && removed.isEmpty && !inserted.isEmpty && (inserted.last ?? 0) < 4
+          !environment.accessibilityReduceMotion && isAtNewest && removed.isEmpty
+          && !inserted.isEmpty && (inserted.last ?? 0) < 4
         rows = newRows
         index = Dictionary(
           newRows.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
@@ -298,16 +299,18 @@ struct HistoryDiaryTable: NSViewRepresentable {
       let currentWidth = table.tableColumns.first?.width ?? 0
       guard currentWidth > 1, scroll.contentView.bounds.height > 1 else { return }
       width = currentWidth
+      // During a scroll-bar drag nothing moves the window, a pending restore included (it
+      // applies when the drag ends; Codex r1 on #4611).
+      if isDraggingKnob {
+        noteHeights(measureRowsNearWindow(), keepingPlace: false)
+        return
+      }
       var keep = anchor
       if let target = pendingRestoreTarget() {
         // Go to the restored place first, so the rows measured are the ones around it.
         move(to: target)
         keep = target
         appliedRestoreToken = restore?.token
-      }
-      if isDraggingKnob {
-        noteHeights(measureRowsNearWindow(), keepingPlace: false)
-        return
       }
       for _ in 0..<4 {
         let changed = measureRowsNearWindow()
