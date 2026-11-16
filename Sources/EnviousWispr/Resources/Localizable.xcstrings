@@ -13058,6 +13058,17 @@
         }
       }
     },
+    "How to fix" : {
+      "comment" : "Button on the notice that the microphone did not answer: opens the help page with steps to fix it.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "So behebst du das"
+          }
+        }
+      }
+    },
     "Hungarian" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -19007,6 +19018,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "In neuem Fenster öffnen"
+          }
+        }
+      }
+    },
+    "Open microphone troubleshooting help" : {
+      "comment" : "VoiceOver label for the How to fix button on the microphone-not-responding notice. It opens a help page in the browser.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hilfe bei Mikrofonproblemen öffnen"
           }
         }
       }

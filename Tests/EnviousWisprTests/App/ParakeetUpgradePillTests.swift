@@ -266,7 +266,7 @@ struct ParakeetUpgradePillTests {
     let d = OverlayDirector(
       host: host, scheduler: clock.scheduler,
       announce: { announcements.value.append($0) },
-      livePreview: .disabled, grantAccessibility: {}, openMicrophoneSettings: {},
+      livePreview: .disabled, grantAccessibility: {}, openMicrophoneSettings: {}, openMicrophoneHelp: {},
       advisoryHint: { _ in nil }, selections: { .shipped },
       firstRenderSchedule: { deferred = $0 })
     return (d, { deferred })

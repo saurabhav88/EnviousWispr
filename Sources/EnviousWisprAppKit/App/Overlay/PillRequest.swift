@@ -41,6 +41,10 @@ enum PillAction: Equatable, Sendable {
   /// re-request access if not yet asked — `PermissionsService.requestMicrophoneAccessOrOpenSettings()`
   /// decides which), not for the handler field, matching every other case here.
   case openMicrophoneSettings
+  /// #4601: the "How to fix" button on the microphone-not-responding notice pill. Opens the
+  /// help section (`DictationNarrator.microphoneNotRespondingHelpURL`); never the permission
+  /// settings `openMicrophoneSettings` opens.
+  case openMicrophoneHelp
   /// discardRecoveryHandler.
   case discardRecovery
   /// onEscapeRecoveryPaste, which takes the `CancelUndoPayload`.

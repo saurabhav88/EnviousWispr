@@ -93,6 +93,7 @@ struct PillRequestParityTests {
           appActions.append(.openMicrophoneSettings)
           openMicrophoneSettingsSawPresentation = director.renderModel.state.presentation != nil
         },
+        openMicrophoneHelp: { [self] in appActions.append(.openMicrophoneHelp) },
         advisoryHint: { _ in nil },
         selections: { .shipped },
         firstRenderSchedule: { $0() })
@@ -411,6 +412,21 @@ struct PillRequestParityTests {
     let receipt = try #require(rig.director.present(.error(reason: .permissionDenied)))
     try rig.host.sendUserActionThroughRoot(.openMicrophoneSettings, for: receipt)
     #expect(rig.appActions == [.openMicrophoneSettings])
+  }
+
+  /// #4601: the stuck-microphone notice's "How to fix" reaches the help action (and only it,
+  /// never the permission settings), and the notice then goes.
+  @Test("How to fix reaches the help action, not Open Settings, and the notice then goes")
+  func openMicrophoneHelpIsBound() throws {
+    let rig = Rig()
+    let receipt = try #require(rig.director.present(.error(reason: .micNotResponding)))
+
+    try rig.host.sendUserActionThroughRoot(.openMicrophoneHelp, for: receipt)
+
+    #expect(rig.appActions == [.openMicrophoneHelp])
+    #expect(
+      rig.director.renderModel.state.presentation == nil,
+      "the notice the user already answered is still on screen")
   }
 
   /// Same ordering guarantee as `grantRunsBeforeDismissal` above: the action

@@ -425,6 +425,9 @@ public final class MeetingRecorder {
       _ = await micWriter.finish()
       if lifecycle == .starting { lifecycle = .stopped }
       if let recorderError = error as? RecorderError { throw recorderError }
+      // #4601 §3.7: a microphone that did not answer keeps its own error, so the meeting can
+      // show the "can't reach your microphone" notice instead of the generic one.
+      if MicrophoneStartFailure.isNotResponding(error) { throw error }
       throw RecorderError.microphoneUnavailable(String(describing: error))
     }
     guard lifecycle == .starting, generation == startGeneration else {

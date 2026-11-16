@@ -56,7 +56,7 @@ struct LanguageChipExpiryOwnershipTests {
       scheduler: .manual { armed.work = $0 },
       announce: { _ in },
       livePreview: .disabled,
-      grantAccessibility: {}, openMicrophoneSettings: {}, advisoryHint: { _ in nil },
+      grantAccessibility: {}, openMicrophoneSettings: {}, openMicrophoneHelp: {}, advisoryHint: { _ in nil },
       selections: { .shipped },
       firstRenderSchedule: { $0() })
 

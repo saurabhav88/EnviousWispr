@@ -652,6 +652,11 @@ enum MeetingsPresentation {
     notice == .microphoneDenied
   }
 
+  /// #4601: whether a notice offers "How to fix" (the help section). Never the permission fix.
+  static func offersMicrophoneHelp(_ notice: MeetingCoordinator.Notice) -> Bool {
+    notice == .microphoneNotResponding
+  }
+
   static func notice(_ notice: MeetingCoordinator.Notice) -> String {
     switch notice {
     case .microphoneDenied:
@@ -663,6 +668,9 @@ enum MeetingsPresentation {
       return String(
         localized: "The microphone could not start. Check your microphone and try again.",
         comment: "EnviousMeet: the microphone did not start.")
+    case .microphoneNotResponding:
+      // #4601: one copy owner for dictation and meetings.
+      return DictationNarrator.copy(for: .micNotResponding)
     case .finishDictationFirst:
       return String(
         localized: "Finish your dictation first, then start the meeting.",

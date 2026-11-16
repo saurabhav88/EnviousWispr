@@ -327,6 +327,8 @@ final class OverlayDirector {
   /// no default, so a composition-root caller that forgets to wire it fails to
   /// compile rather than shipping a button that reaches nobody.
   private let openMicrophoneSettings: () -> Void
+  /// #4601: opens the microphone-not-responding help section.
+  private let openMicrophoneHelp: () -> Void
 
   /// #2664: the facts a silent-take advisory needs to name a multi-input
   /// device, resolved at ADMISSION time from settings + the device list. Same
@@ -351,6 +353,8 @@ final class OverlayDirector {
     grantAccessibility: @escaping () -> Void,
     // #2549: same no-default reasoning as `grantAccessibility` above.
     openMicrophoneSettings: @escaping () -> Void,
+    // #4601: same no-default reasoning; the "How to fix" button's handler.
+    openMicrophoneHelp: @escaping () -> Void,
     // #2664: same no-default reasoning again.
     advisoryHint: @escaping @MainActor (TerminalAdvisoryReason) -> MultiInputAdvisoryHint?,
     // **No default either, for the reason directly above** (#2375 C3a). This is
@@ -380,6 +384,7 @@ final class OverlayDirector {
     self.livePreview = livePreview
     self.grantAccessibility = grantAccessibility
     self.openMicrophoneSettings = openMicrophoneSettings
+    self.openMicrophoneHelp = openMicrophoneHelp
     self.advisoryHint = advisoryHint
     self.position = position
     self.model = model
@@ -1509,9 +1514,9 @@ extension OverlayDirector: OverlayPresenting {
     case .warning(let reason):
       handle(.pipeline(.warning(reason: reason)), binding: .none, relay: relay)
     case .error(let reason):
-      // #2549: only `.permissionDenied` carries a button (the "Open Settings"
-      // pill PillCatalog attaches for that one reason) — every other `.error`
-      // reason is unchanged and installs no action binding.
+      // #2549: `.permissionDenied` carries a button (the "Open Settings" pill PillCatalog
+      // attaches for that reason), and #4601 `.micNotResponding` carries "How to fix"; every
+      // other `.error` reason installs no action binding.
       if reason == .permissionDenied {
         handle(
           .pipeline(.error(reason: reason)),
@@ -1519,6 +1524,19 @@ extension OverlayDirector: OverlayPresenting {
             deliver: { [weak self] action in
               guard case .openMicrophoneSettings = action else { return }
               self?.openMicrophoneSettings()
+              self?.dismissSilently()
+            },
+            onExpire: nil),
+          relay: relay)
+      } else if reason == .micNotResponding {
+        // #4601: the "How to fix" button opens the help section, then the pill goes the same
+        // way the permission button's does.
+        handle(
+          .pipeline(.error(reason: reason)),
+          binding: .install(
+            deliver: { [weak self] action in
+              guard case .openMicrophoneHelp = action else { return }
+              self?.openMicrophoneHelp()
               self?.dismissSilently()
             },
             onExpire: nil),

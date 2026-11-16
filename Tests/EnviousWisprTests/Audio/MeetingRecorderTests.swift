@@ -362,6 +362,27 @@ struct MeetingRecorderTests {
     }
   }
 
+  /// #4601: a microphone that did not answer reaches the coordinator as itself (so the meeting
+  /// shows the stuck-microphone notice); any other open failure stays the generic error.
+  @Test("a not-responding open passes its error on; a status-60 near miss stays generic")
+  func notRespondingOpenErrorIsPassedOn() async throws {
+    let stuck = try rig(callSound: false)
+    stuck.microphones[0].openError = AudioError.microphoneNotResponding(
+      source: "HALDeviceInputSource.prepare.timed_out")
+    var passedOn = false
+    do { _ = try await stuck.recorder.start() } catch let error as AudioError {
+      passedOn = MicrophoneStartFailure.isNotResponding(error)
+    }
+    #expect(passedOn)
+
+    let nearMiss = try rig(callSound: false)
+    nearMiss.microphones[0].openError = AudioError.formatCreationFailed(
+      source: "HALDeviceInputSource.prepare.init", osStatus: 60)
+    await #expect(throws: MeetingRecorder.RecorderError.self) {
+      _ = try await nearMiss.recorder.start()
+    }
+  }
+
   @Test("a microphone that fails to open is released, its file closed, and nothing is recorded")
   func microphoneFailureReleasesEverything() async throws {
     let r = try rig()

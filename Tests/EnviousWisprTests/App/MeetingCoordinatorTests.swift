@@ -32,6 +32,8 @@ struct MeetingCoordinatorTests {
       case failEmpty
       /// Parks until `stop` or `stopForQuit`, then reports that the stop took over.
       case hold
+      /// #4601: the microphone did not answer (the recorder passes that error on unchanged).
+      case failNotResponding
     }
 
     let configuration: MeetingRecorder.Configuration
@@ -58,6 +60,9 @@ struct MeetingCoordinatorTests {
       if case .failEmpty = start {
         throw MeetingRecorder.RecorderError.microphoneUnavailable("no_device")
       }
+      if case .failNotResponding = start {
+        throw AudioError.microphoneNotResponding(source: "HALDeviceInputSource.prepare.timed_out")
+      }
       // Real audio in the real meeting folder: what processing reads.
       try MeetingAudioFixture.writeSegment(
         in: configuration.folder, index: 1, startMs: 0, frames: 16_000)
@@ -67,7 +72,7 @@ struct MeetingCoordinatorTests {
         return MeetingRecorder.StartResult(
           microphone: .captured, callSound: callSound,
           echoProvenance: callSound == .captured ? Self.echoProvenance : nil)
-      case .fail, .failEmpty:
+      case .fail, .failEmpty, .failNotResponding:
         throw MeetingRecorder.RecorderError.microphoneUnavailable("microphone_lost")
       case .hold:
         await withCheckedContinuation { continuation in
@@ -1078,6 +1083,19 @@ struct MeetingCoordinatorTests {
         .filter { !$0.hasPrefix(".") }.isEmpty)
     #expect(harness.activitiesBegun == harness.activitiesEnded)
     #expect(harness.jobs.isEmpty)
+  }
+
+  /// #4601: a meeting start whose microphone did not answer shows the stuck-microphone notice,
+  /// not the generic "could not start" one, and leaves no meeting.
+  @Test("a microphone that did not answer shows its own notice and leaves no meeting")
+  func microphoneNotRespondingNotice() async throws {
+    let harness = try Harness()
+    harness.recorderStart = .failNotResponding
+    let coordinator = harness.coordinator
+    await coordinator.start(from: .history)
+    #expect(coordinator.phase == .idle)
+    #expect(coordinator.notice == .microphoneNotResponding)
+    #expect(coordinator.meetings.isEmpty)
   }
 
   @Test("a microphone lost during the start keeps what reached disk and processes it")

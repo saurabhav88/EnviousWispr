@@ -64,7 +64,7 @@ struct RecordingDirectorCaptureTests {
           return .off
         }),
       grantAccessibility: {},
-      openMicrophoneSettings: {},
+      openMicrophoneSettings: {}, openMicrophoneHelp: {},
       advisoryHint: { _ in nil },
       selections: {
         counts.selections += 1
@@ -327,7 +327,7 @@ struct RecordingDirectorCaptureTests {
         wordsCapability: { .available },
         display: { .off }),
       grantAccessibility: {},
-      openMicrophoneSettings: {},
+      openMicrophoneSettings: {}, openMicrophoneHelp: {},
       advisoryHint: { _ in nil },
       selections: { .shipped },
       firstRenderSchedule: { $0() })

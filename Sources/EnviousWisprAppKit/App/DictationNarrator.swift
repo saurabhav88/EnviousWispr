@@ -1,5 +1,6 @@
 import EnviousWisprCore
 import EnviousWisprPipeline
+import Foundation
 
 /// #1567 (heartpath E3): a typed fact for an in-panel recording notice rendered
 /// through `RecordingOverlayPanel.flashRecordingNotice`. Distinct from
@@ -38,6 +39,29 @@ enum RecordingNoticeReason: Equatable, Sendable {
 /// words, and the recovery container AX label — is authored here and nowhere
 /// else. The renderers (panel, main window, sidebar) are pure presenters.
 enum DictationNarrator {
+
+  // MARK: - Microphone not responding (#4601)
+
+  /// The help section the "How to fix" button opens. One owner for the pill and the meeting
+  /// notice.
+  static let microphoneNotRespondingHelpURL = URL(
+    string: "https://enviouswispr.com/help/choosing-your-microphone/#microphone-not-responding")!
+
+  /// The button on the "can't reach your microphone" notice (pill and meeting).
+  static var microphoneHelpButtonLabel: String {
+    String(
+      localized: "How to fix",
+      comment:
+        "Button on the notice that the microphone did not answer: opens the help page with steps to fix it.")
+  }
+
+  /// What VoiceOver says for that button, because "How to fix" alone does not say what opens.
+  static var microphoneHelpAccessibilityLabel: String {
+    String(
+      localized: "Open microphone troubleshooting help",
+      comment:
+        "VoiceOver label for the How to fix button on the microphone-not-responding notice. It opens a help page in the browser.")
+  }
 
   // MARK: - Terminal failures / interruptions (E1)
 

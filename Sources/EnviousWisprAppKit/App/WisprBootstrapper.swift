@@ -1205,6 +1205,10 @@ package final class WisprBootstrapper {
       openMicrophoneSettings: {
         Task { await permissions.requestMicrophoneAccessOrOpenSettings() }
       },
+      // #4601: the not-responding notice's "How to fix" opens the help section in the browser.
+      openMicrophoneHelp: {
+        NSWorkspace.shared.open(DictationNarrator.microphoneNotRespondingHelpURL)
+      },
       // #2664: the silent-take advisory names the multi-input device the user
       // would find selected in Settings right now. Same device rule as the
       // settings row (`InputSocket.socketDevice`), same strong captures as the

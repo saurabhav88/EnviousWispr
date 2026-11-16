@@ -297,6 +297,21 @@ struct MeetingsPresentationTests {
     #expect(others.allSatisfy { !P.offersMicrophoneFix($0) })
   }
 
+  /// #4601: the meeting's stuck-microphone notice is the dictation narrator's sentence (one copy
+  /// owner) and offers How to fix, never Allow Microphone.
+  @Test("microphoneNotResponding uses the narrator sentence and offers only How to fix")
+  func microphoneNotRespondingNotice() {
+    #expect(P.notice(.microphoneNotResponding) == DictationNarrator.copy(for: .micNotResponding))
+    #expect(P.offersMicrophoneHelp(.microphoneNotResponding))
+    #expect(P.offersMicrophoneFix(.microphoneNotResponding) == false)
+    let others: [MeetingCoordinator.Notice] = [
+      .microphoneDenied, .microphoneUnavailable, .finishDictationFirst, .lowDisk,
+      .stoppedLowDisk, .recordingStoppedFileError, .callSoundUnavailable, .callSoundFailed,
+      .storageFailed,
+    ]
+    #expect(others.allSatisfy { !P.offersMicrophoneHelp($0) })
+  }
+
   @Test("the pass's wait for dictation reaches the page, and ends when the pass goes on")
   func waitingForDictationReachesProcessing() async throws {
     let harness = try MeetingCoordinatorTests.Harness()

@@ -424,7 +424,7 @@ struct LearnedCorrectionPillDirectorTests {
       scheduler: clock.scheduler,
       announce: { log.announcements.append($0) },
       livePreview: .disabled,
-      grantAccessibility: {}, openMicrophoneSettings: {}, advisoryHint: { _ in nil },
+      grantAccessibility: {}, openMicrophoneSettings: {}, openMicrophoneHelp: {}, advisoryHint: { _ in nil },
       selections: { .shipped },
       firstRenderSchedule: { $0() })
     return (d, host)
@@ -661,7 +661,7 @@ struct LearnedCorrectionPillDirectorTests {
     var deferred: (() -> Void)?
     let d = OverlayDirector(
       host: host, scheduler: clock.scheduler, announce: { log.announcements.append($0) },
-      livePreview: .disabled, grantAccessibility: {}, openMicrophoneSettings: {},
+      livePreview: .disabled, grantAccessibility: {}, openMicrophoneSettings: {}, openMicrophoneHelp: {},
       advisoryHint: { _ in nil }, selections: { .shipped },
       firstRenderSchedule: { deferred = $0 })
     var wanted = true
