@@ -7,10 +7,12 @@ import SwiftUI
 /// Founder, 2026-11-16: the system pop-up button drew a capsule that did not match the page's
 /// buttons ("these buttons are whack. I prefer this squarish design more", pointing at the
 /// Snippets Import button), and every drop-down should open the same menu the History More
-/// button opens. The trigger is painted by `EnviousButtonStyle` (outlined, rounded rectangle,
-/// medium), the same face as Import, because `menuStyle(.button)` hands the menu's label to the
-/// button style in the environment. The list itself is a real `Picker`, so the menu, its check,
-/// keyboard and VoiceOver behaviour are the system's.
+/// button opens. The label is painted with `EnviousButtonFace` (outlined, rounded rectangle,
+/// medium), the same face as Import, under `menuStyle(.button)` plus `buttonStyle(.plain)`.
+/// Handing the menu a custom `EnviousButtonStyle` instead does not work on macOS: the menu draws
+/// the system grey bordered button and ignores the style (seen in the live app, 2026-11-16).
+/// The list itself is a real `Picker`, so the menu, its check, keyboard and VoiceOver behaviour
+/// are the system's.
 ///
 /// Apply `.settingsArrivalFocusControl()` and `.accessibilityLabel(...)` at the call site, as
 /// for any Settings control.
