@@ -383,10 +383,14 @@ struct HistoryMeetingCard: View {
       guard !record.deletionRequested, record.committedTranscriptGeneration != nil else {
         return nil
       }
-      return transcripts.verifiedRowForDelivery(id: record.transcriptID)
+      // A card is drawn from the catalog, so its transcript may not be loaded yet: the press reads it.
+      return transcripts.verifiedRowForDelivery(id: record.transcriptID, fetchIfNeeded: true)
     }
-    guard let id = transcripts.rowIDs(ofMeeting: meetingID).last else { return nil }
-    return transcripts.verifiedRowForDelivery(id: id)
+    // An orphan card drawn from the catalog names its own row; the coordinator's list may not hold it yet.
+    guard let id = summary?.rowID ?? transcripts.rowIDs(ofMeeting: meetingID).last else {
+      return nil
+    }
+    return transcripts.verifiedRowForDelivery(id: id, fetchIfNeeded: true)
   }
 
   private static func confirmationTitle(_ kind: Deletion) -> String {
