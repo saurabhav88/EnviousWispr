@@ -401,6 +401,8 @@ final class HALDeviceInputSource: AudioInputSource {
     label: "com.enviouswispr.audio.capture-stall.hal"
   )
   private var stallWorkItem: DispatchWorkItem?
+  /// #4601: the stall diagnostic's default input UID, read on the lane when the watchdog arms.
+  private var stallDefaultInputUID: String?
 
   // MARK: - State
 
@@ -415,6 +417,25 @@ final class HALDeviceInputSource: AudioInputSource {
     let status = AudioUnitGetProperty(
       audioUnit, kAudioOutputUnitProperty_IsRunning, kAudioUnitScope_Global, 0, &running, &size)
     return status == noErr && running != 0
+  }
+
+  /// #4601 §3.5: the running check, asked on the audio-unit lane within `deadline` (and the read
+  /// limit). A completed "not running", a timeout or a wedged lane all answer false: a unit that
+  /// cannot be asked is not trusted for a take. Ordinary contention waits. A result for a unit
+  /// replaced meanwhile answers false.
+  func isRunningOnLane(deadline: ContinuousClock.Instant?) async -> Bool {
+    #if DEBUG
+      if let isRunningOverrideForTesting { return isRunningOverrideForTesting }
+    #endif
+    guard let resources = liveResources else { return false }
+    let generation = resources.generation
+    let probe = nativeCalls.isRunning
+    // The owner crosses (single-owner hand-off type); the read only looks at its unit.
+    let outcome = await lane.run("running_probe", deadline: deadline) { probe(resources.unit) }
+    guard liveResources?.generation == generation, case .value(let running) = outcome else {
+      return false
+    }
+    return running
   }
 
   /// Target capture device UID. Nil means follow the live system default input.
@@ -488,6 +509,9 @@ final class HALDeviceInputSource: AudioInputSource {
     /// Test oracle: called on the main actor for every device-vanished delivery, with whether
     /// its generation matched the committed unit.
     var listenerDeliveryObserverForTesting: (@MainActor (Bool) -> Void)?
+    /// Test oracle: called when the vanish handler finishes after its liveness read, with
+    /// whether it interrupted the capture.
+    var vanishHandledObserverForTesting: (@MainActor (Bool) -> Void)?
     /// Test seam: delivers a device-vanished listener callback for `generation` through the real
     /// sink (main-actor hop and generation check included).
     func deliverListenerForTesting(generation: UInt64) {
@@ -502,7 +526,11 @@ final class HALDeviceInputSource: AudioInputSource {
   private var formatDivergenceObserved = false
   /// #1434 test seam: injectable native-rate reader (mirrors this file's other
   /// injected readers). Defaults to the real HAL property query.
-  var nativeRateReader: (AudioDeviceID) -> Double? = { deviceID in
+  /// #4601: the device-alive read (#1408 three-valued), injectable for tests; run on the lane.
+  var livenessReader: @Sendable (AudioDeviceID) -> DeviceLiveness = {
+    CoreAudioDeviceLiveness.classify(deviceID: $0)
+  }
+  var nativeRateReader: @Sendable (AudioDeviceID) -> Double? = { deviceID in
     HALUnitNative.queryNativeStreamFormat(deviceID: deviceID)?.mSampleRate
   }
   private var forwarder: PreRollForwarder?
@@ -791,6 +819,14 @@ final class HALDeviceInputSource: AudioInputSource {
   private func armCaptureStallWatchdog() {
     stallWorkItem?.cancel()
     let armedSession = captureGeneration
+    stallDefaultInputUID = nil
+    Task { [weak self, lane] in
+      let read = await lane.run("default_input_uid") { AudioDeviceEnumerator.defaultInputDeviceUID() }
+      guard let self, self.captureGeneration == armedSession, case .value(let uid) = read else {
+        return
+      }
+      self.stallDefaultInputUID = uid
+    }
     let armedAtNs = DispatchTime.now().uptimeNanoseconds
     let item = Self.makeStallWorkItem(
       armedSession: armedSession, armedAtNs: armedAtNs, source: self)
@@ -820,11 +856,14 @@ final class HALDeviceInputSource: AudioInputSource {
       firedAtUptimeNs: DispatchTime.now().uptimeNanoseconds,
       route: "hal_device_input",
       sourceType: "hal_device_input",
-      engineStartedSuccessfully: isRunning,
+      // #4601 §3.5: no hardware read on the main actor here. "Started" is the committed unit's
+      // own fact (its open started it); the default input UID is an optional diagnostic read on
+      // the lane when the watchdog was armed, nil if that read has not answered.
+      engineStartedSuccessfully: liveResources?.stage == .started,
       tapInstalled: true,
       formatMismatchObserved: false,
       inputDeviceUIDPreferred: targetDeviceUID,
-      inputDeviceUIDSystemDefault: AudioDeviceEnumerator.defaultInputDeviceUID(),
+      inputDeviceUIDSystemDefault: stallDefaultInputUID,
       failureMode: .noBuffers,
       // #1434: the stall fires BEFORE stopCapture(), so the source stamps its
       // own live rate/divergence here — the stop-time metadata object does
@@ -879,6 +918,21 @@ final class HALDeviceInputSource: AudioInputSource {
     teardownUnit()
   }
 
+  /// #4601 §3.6, quit only: the same extraction, then a wait for the native retirement of at
+  /// most `deadline` (the caller's own termination deadline, never a fresh budget). A pending open
+  /// is cancelled first, so it can never commit. If the deadline passes, this returns while the
+  /// queued retirement keeps the callback storage alive until it runs or the process exits. Never
+  /// waits on the main actor and never waits without a bound. Returns whether the microphone's
+  /// native retirement finished in time (true when there was nothing to retire).
+  @discardableResult
+  func stopSynchronously(deadline: ContinuousClock.Instant) -> Bool {
+    abandonPendingAttempt()
+    forwarder?.stop()
+    forwarder = nil
+    streamContinuation = nil
+    return teardownUnit(waitUntil: deadline)
+  }
+
   /// Real settling check (#1434 — replaces a stub whose comment asserted the
   /// exact claim Apple QA1777 refutes: AUHAL does NOT resample input, so a
   /// device whose rate is still renegotiating DOES need waiting out).
@@ -901,14 +955,29 @@ final class HALDeviceInputSource: AudioInputSource {
   /// No bound device / no live unit → true (nothing to stabilize; matches the
   /// manager's no-active-source short-circuit).
   func waitForFormatStabilization(maxWait: TimeInterval, pollInterval: TimeInterval) async -> Bool {
-    guard let deviceID = boundDeviceID, let context = renderContext else { return true }
+    guard let deviceID = boundDeviceID, let context = renderContext,
+      let generation = liveResources?.generation
+    else { return true }
     let preparedRate = context.nativeFormat.sampleRate
     let stabStart = ContinuousClock.now
+    // #4601 §3.5/§3a: each read runs on the audio-unit lane, bounded by the start's own deadline,
+    // this stabilization's budget and the read limit (the lane applies the last). A read that
+    // times out, meets a wedged lane, or answers for a unit replaced meanwhile is an UNUSABLE
+    // rate, so the existing loop ends unstable and the kernel's one rebuild follows.
+    let readDeadline = min(startDeadline ?? .now + .seconds(3600), stabStart + .seconds(maxWait))
     let outcome = await Self.settleNativeRate(
       preparedRate: preparedRate,
       maxWait: maxWait,
       pollInterval: pollInterval,
-      readRate: { [nativeRateReader] in nativeRateReader(deviceID) },
+      readRate: { [weak self, lane, nativeRateReader] in
+        let read = await lane.run("native_rate", deadline: readDeadline) {
+          nativeRateReader(deviceID)
+        }
+        guard self?.liveResources?.generation == generation, case .value(let rate) = read else {
+          return nil
+        }
+        return rate
+      },
       sleep: { try? await Task.sleep(for: $0) }
     )
     let elapsed = Self.stabMs(ContinuousClock.now - stabStart)
@@ -948,7 +1017,7 @@ final class HALDeviceInputSource: AudioInputSource {
     preparedRate: Double,
     maxWait: TimeInterval,
     pollInterval: TimeInterval,
-    readRate: () -> Double?,
+    readRate: () async -> Double?,
     sleep: (Duration) async -> Void
   ) async -> RateSettleOutcome {
     func outcome(_ settled: Double?, polls: Int) -> RateSettleOutcome {
@@ -959,9 +1028,9 @@ final class HALDeviceInputSource: AudioInputSource {
     }
     // Fast path: two reads 10ms apart agree (the common already-settled case
     // returns in ~10ms, keeping the warm PTT path cheap).
-    var lastRate = readRate()
+    var lastRate = await readRate()
     await sleep(.milliseconds(10))
-    var currentRate = readRate()
+    var currentRate = await readRate()
     if isUsableRate(currentRate), currentRate == lastRate {
       return outcome(currentRate, polls: 0)
     }
@@ -973,7 +1042,7 @@ final class HALDeviceInputSource: AudioInputSource {
       lastRate = currentRate
       await sleep(.seconds(pollInterval))
       polls += 1
-      currentRate = readRate()
+      currentRate = await readRate()
       if isUsableRate(currentRate), currentRate == lastRate {
         return outcome(currentRate, polls: polls)
       }
@@ -1025,13 +1094,14 @@ final class HALDeviceInputSource: AudioInputSource {
             self.listenerDeliveryObserverForTesting?(current)
           #endif
           guard current else { return }
-          self.handleDeviceMayHaveVanished(deviceID: deviceID)
+          await self.handleDeviceMayHaveVanished(deviceID: deviceID, generation: generation)
         }
       },
       formatMayHaveChanged: { [weak self] deviceID, selector, generation in
         Task { @MainActor [weak self] in
           guard let self, self.liveResources?.generation == generation else { return }
-          self.handleDeviceFormatMayHaveChanged(deviceID: deviceID, selector: selector)
+          await self.handleDeviceFormatMayHaveChanged(
+            deviceID: deviceID, selector: selector, generation: generation)
         }
       })
   }
@@ -1052,10 +1122,18 @@ final class HALDeviceInputSource: AudioInputSource {
   /// MainActor handler for either format-change selector. Guarded on
   /// `isCapturing` (idle/warm changes are the next prepare()'s problem — the
   /// per-session reset in `startCapture()` keeps them out of telemetry).
-  private func handleDeviceFormatMayHaveChanged(deviceID: AudioDeviceID, selector: String) {
+  private func handleDeviceFormatMayHaveChanged(
+    deviceID: AudioDeviceID, selector: String, generation: UInt64
+  ) async {
     guard isCapturing, let context = renderContext else { return }
     let preparedRate = context.nativeFormat.sampleRate
-    let currentRate = nativeRateReader(deviceID)
+    let session = captureGeneration
+    // #4601 §3.5: the rate read runs on the lane; a timed-out or refused read is "unknown".
+    let read = await lane.run("native_rate") { [nativeRateReader] in nativeRateReader(deviceID) }
+    // Revalidate after the await: same unit, same capture session, still capturing.
+    guard liveResources?.generation == generation, captureGeneration == session, isCapturing
+    else { return }
+    let currentRate: Double? = if case .value(let rate) = read { rate } else { nil }
     let diverged = currentRate != nil && currentRate != preparedRate
     AudioCaptureManager.btRouteLog(
       "HAL format change (\(selector)) mid-capture: prepared=\(Int(preparedRate)) "
@@ -1066,10 +1144,30 @@ final class HALDeviceInputSource: AudioInputSource {
     }
   }
 
-  private func handleDeviceMayHaveVanished(deviceID: AudioDeviceID) {
+  private func handleDeviceMayHaveVanished(deviceID: AudioDeviceID, generation: UInt64) async {
     guard isCapturing, !isRecovering else { return }
-    let liveness = CoreAudioDeviceLiveness.classify(deviceID: deviceID)
-    guard liveness != .alive else { return }
+    let session = captureGeneration
+    // #4601 §3.5: the liveness read runs on the lane; a timed-out or refused read is
+    // `.unverified` (#1408: only a verified removal earns `.deviceRemoved`).
+    let read = await lane.run("device_liveness") { [livenessReader] in livenessReader(deviceID) }
+    let liveness: DeviceLiveness =
+      if case .value(let answer) = read { answer } else { .unverified }
+    // Revalidate after the await: a stale result must never tear down a replacement unit or end
+    // a newer take.
+    guard liveResources?.generation == generation, captureGeneration == session, isCapturing,
+      !isRecovering
+    else {
+      #if DEBUG
+        vanishHandledObserverForTesting?(false)
+      #endif
+      return
+    }
+    guard liveness != .alive else {
+      #if DEBUG
+        vanishHandledObserverForTesting?(false)
+      #endif
+      return
+    }
 
     // #1408: `.removed` is Core Audio confirming the device is gone, and earns
     // the "Microphone disconnected" notice. `.unverified` means the read itself
@@ -1088,6 +1186,9 @@ final class HALDeviceInputSource: AudioInputSource {
     // of rebuilding fresh (cloud review P2).
     teardownUnit()
     onInterrupted?(cause)
+    #if DEBUG
+      vanishHandledObserverForTesting?(true)
+    #endif
   }
 
 }
@@ -1215,7 +1316,8 @@ extension HALDeviceInputSource {
     }
   }
 
-  private func teardownUnit() {
+  @discardableResult
+  private func teardownUnit(waitUntil deadline: ContinuousClock.Instant? = nil) -> Bool {
     // #1523: snapshot the live stop-metadata BEFORE any state is cleared, so the
     // device-vanish salvage (which tears the unit down before the manager reads
     // `captureStopMetadata`) still has rate/counters/channel-count. Only cache a
@@ -1236,6 +1338,7 @@ extension HALDeviceInputSource {
     // listener registrations, stops, uninitializes and disposes, wakes the
     // consumer, and frees callback storage only after a safe native retirement.
     // Taken out of `self` first so no second owner survives the hand-off.
+    var finished = true
     // #4601 §3.4: close forwarding admission BEFORE handing the unit to the lane. The forwarder's
     // own synchronized stop clears its callbacks and finishes its stream, so a consumer already
     // past its stopped-flag check and about to route a chunk delivers nothing. Then the source
@@ -1247,7 +1350,12 @@ extension HALDeviceInputSource {
       resources.markStopping()
       // #4601 §3.4: the native retirement runs on the audio-unit lane and the main actor never
       // waits for it; it stays ordered before any later open of this or any other source.
-      lane.retire { resources.retire() }
+      // §3.6: only quit passes a deadline, and then waits at most until it.
+      if let deadline {
+        finished = lane.retireAndWait(deadline: deadline) { resources.retire() }
+      } else {
+        lane.retire { resources.retire() }
+      }
     }
     boundDeviceID = nil
     boundUID = nil
@@ -1255,6 +1363,7 @@ extension HALDeviceInputSource {
     boundResolutionSource = nil
     boundNativeChannelCount = nil
     boundInputChannel = nil
+    return finished
   }
 }
 
@@ -1454,6 +1563,15 @@ enum HALUnitNative {
   enum OpenResult: Sendable {
     case opened(Opened)
     case failed(Failure)
+  }
+
+  /// The AUHAL running property. Lane only (#4601).
+  static func isRunning(_ unit: AudioUnit) -> Bool {
+    var running: UInt32 = 0
+    var size = UInt32(MemoryLayout<UInt32>.size)
+    let status = AudioUnitGetProperty(
+      unit, kAudioOutputUnitProperty_IsRunning, kAudioUnitScope_Global, 0, &running, &size)
+    return status == noErr && running != 0
   }
 
   static func open(_ request: OpenRequest) -> OpenResult {
@@ -1895,6 +2013,8 @@ struct HALNativeCalls: Sendable {
   /// Observation only: called right after callback storage is freed. Production
   /// passes a no-op; tests use it to see WHEN storage was released.
   var storageReleased: @Sendable () -> Void
+  /// The running property read (lane only). Injectable like the calls above.
+  var isRunning: @Sendable (AudioUnit) -> Bool = { HALUnitNative.isRunning($0) }
 
   static let live = HALNativeCalls(
     stop: { AudioOutputUnitStop($0) },

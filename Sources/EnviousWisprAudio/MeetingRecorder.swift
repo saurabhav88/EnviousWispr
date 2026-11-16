@@ -21,6 +21,9 @@ protocol MeetingMicrophoneSource: AnyObject {
   func beginDelivery() async throws
   /// Stops and releases the device at once. Repeatable.
   func stopNow()
+  /// #4601 §3.6, quit only: the same stop, waiting for the device's release at most until
+  /// `deadline` (the quit's own deadline). Never waits longer, never waits on the main actor.
+  func stopNow(deadline: DispatchTime)
 }
 
 /// The call sound a meeting records (#3972 C2b). Production is `SystemAudioTap`.
@@ -217,6 +220,9 @@ public final class MeetingRecorder {
   /// value it started with and gives up when it no longer matches.
   private var generation = 0
   private var microphone: MeetingMicrophoneSource?
+  /// #4601: the microphone between `open` starting and its publication, so a quit or stop that
+  /// lands meanwhile cancels its pending open.
+  private var openingMicrophone: MeetingMicrophoneSource?
   private var micWriter: MeetingTrackWriter?
   private var callSound: MeetingCallSoundSource?
   private var callWriter: MeetingTrackWriter?
@@ -566,6 +572,8 @@ public final class MeetingRecorder {
     }
     admission.withLock { $0 = nil }
     let bound: String?
+    openingMicrophone = source
+    defer { if openingMicrophone === source { openingMicrophone = nil } }
     do {
       bound = try await source.open(
         targetUID: targetUID, inputChannelByDeviceUID: config.inputChannelByDeviceUID)
@@ -578,7 +586,8 @@ public final class MeetingRecorder {
       source.onSamples = nil
       source.onInterrupted = nil
       source.onStalled = nil
-      source.stopNow()
+      // A stop or quit that landed during the open already stopped this microphone (#4601).
+      if openingMicrophone === source { source.stopNow() }
       if let reason = lostDuringStart, case RecorderError.stoppedDuringStart = error {
         lostDuringStart = nil
         throw RecorderError.microphoneUnavailable(reason)
@@ -673,7 +682,8 @@ public final class MeetingRecorder {
   @discardableResult
   public func stopForQuit(deadline: DispatchTime) -> StopReport {
     if let stopReport { return stopReport }
-    stopCapture()
+    // #4601 §3.6: the microphone's release waits within the SAME quit deadline, not a new one.
+    stopCapture(deadline: deadline)
     // #4355 PR B: the echo worker settles within the FIRST HALF of the same shared deadline
     // (raw for whatever it has not finished), so the files still have the rest to close in.
     echo?.settleAndFlush(
@@ -693,8 +703,9 @@ public final class MeetingRecorder {
     return config.captureCallSound ? nil : .noReference
   }
 
-  /// Admission off and both sources stopped, before any file is closed.
-  private func stopCapture() {
+  /// Admission off and both sources stopped, before any file is closed. `deadline` (quit only)
+  /// bounds the wait for the microphone's release; without it the release never blocks.
+  private func stopCapture(deadline: DispatchTime? = nil) {
     lifecycle = .stopping
     generation += 1
     reopenTask?.cancel()
@@ -703,8 +714,13 @@ public final class MeetingRecorder {
     microphone?.onSamples = nil
     microphone?.onInterrupted = nil
     microphone?.onStalled = nil
-    microphone?.stopNow()
+    // #4601 §3.6: a microphone still opening is reached too, so its pending open is cancelled
+    // and can never commit after the stop.
+    for source in [microphone, openingMicrophone].compactMap({ $0 }) {
+      if let deadline { source.stopNow(deadline: deadline) } else { source.stopNow() }
+    }
     microphone = nil
+    openingMicrophone = nil
     callSound?.stop()
     // #4121: frozen once, after the source stopped and before it is released; a stop that
     // re-enters while the first one awaits its files keeps this value.
@@ -815,6 +831,13 @@ final class HALMeetingMicrophone: MeetingMicrophoneSource {
   }
 
   func stopNow() { source.stopSynchronously() }
+
+  func stopNow(deadline: DispatchTime) {
+    // One clock bridge, from the time remaining on the quit's own deadline.
+    let nowNs = DispatchTime.now().uptimeNanoseconds
+    let remainingNs = deadline.uptimeNanoseconds > nowNs ? deadline.uptimeNanoseconds - nowNs : 0
+    source.stopSynchronously(deadline: ContinuousClock.now + .nanoseconds(Int64(remainingNs)))
+  }
 }
 
 // MARK: - Echo cleanup bridge (#4355 PR B)

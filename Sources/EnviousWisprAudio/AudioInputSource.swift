@@ -99,6 +99,9 @@ protocol AudioInputSource: AnyObject {
   // State
   var isCapturing: Bool { get }  // periphery:ignore - used by conformers for internal guards
   var isRunning: Bool { get }
+  /// #4601 §3.5: the running check without touching hardware on the caller's actor, answered
+  /// within `deadline`. False also when the answer could not be had in time.
+  func isRunningOnLane(deadline: ContinuousClock.Instant?) async -> Bool
 
   // Engine-specific (no-op for HALDeviceInputSource)
   func waitForFormatStabilization(maxWait: TimeInterval, pollInterval: TimeInterval) async -> Bool
@@ -133,5 +136,9 @@ protocol AudioInputSource: AnyObject {
 }
 
 extension AudioInputSource {
+  /// Sources with no hardware running check answer from `isRunning` (test fakes). The HAL source
+  /// implements this itself, asynchronously, so no synchronous witness shadows it.
+  func isRunningOnLane(deadline: ContinuousClock.Instant?) async -> Bool { isRunning }
+
   var captureStopMetadata: CaptureStopMetadata? { nil }
 }

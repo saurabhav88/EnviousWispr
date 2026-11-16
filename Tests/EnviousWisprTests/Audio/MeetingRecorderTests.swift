@@ -86,6 +86,13 @@ struct MeetingRecorderTests {
     }
 
     func stopNow() { stopCount += 1 }
+
+    /// #4601: the quit deadlines this microphone was stopped with.
+    var quitDeadlines: [DispatchTime] = []
+    func stopNow(deadline: DispatchTime) {
+      stopCount += 1
+      quitDeadlines.append(deadline)
+    }
   }
 
   final class FakeCallSound: MeetingCallSoundSource, @unchecked Sendable {
@@ -357,6 +364,32 @@ struct MeetingRecorderTests {
     #expect(r.microphones[0].onSamples == nil)
     #expect(r.calls().isEmpty, "call sound never starts without a microphone")
     #expect(try FileManager.default.contentsOfDirectory(atPath: r.folder.path).isEmpty)
+  }
+
+  @Test("a quit passes its own deadline, unchanged, to the microphone's release")
+  func quitPassesItsDeadlineToTheMicrophone() async throws {
+    let r = try rig()
+    _ = try await r.recorder.start()
+    let deadline = DispatchTime.now() + 2
+    _ = r.recorder.stopForQuit(deadline: deadline)
+    #expect(r.microphones[0].quitDeadlines == [deadline])
+    #expect(r.microphones[0].stopCount == 1)
+  }
+
+  @Test("a quit while the microphone is opening stops it with the quit deadline, once")
+  func quitDuringOpenStopsTheOpeningMicrophone() async throws {
+    let r = try rig()
+    let gate = Gate()
+    r.microphones[0].openGate = gate
+    let start = Task { try await r.recorder.start() }
+    defer { gate.open() }
+    #expect(await gate.waitUntilParked(), "the fake was never entered")
+    let deadline = DispatchTime.now() + 2
+    _ = r.recorder.stopForQuit(deadline: deadline)
+    #expect(r.microphones[0].quitDeadlines == [deadline], "the opening microphone was reached")
+    gate.open()
+    await #expect(throws: (any Error).self) { _ = try await start.value }
+    #expect(r.microphones[0].stopCount == 1, "stopped once, not again by the late open")
   }
 
   @Test("a stop while the microphone is opening ends the start and the late open is released")

@@ -1,6 +1,7 @@
 import EnviousWisprCore
 import Foundation
 import Testing
+import os
 
 @testable import EnviousWisprAudio
 
@@ -113,14 +114,15 @@ struct HALFormatStabilizationTests {
   @Test("no bound device short-circuits true WITHOUT reading the device rate (#1445)")
   func unpreparedDoesNotReadDeviceRate() async {
     let source = HALDeviceInputSource()
-    var readerCalls = 0
+    // #4601: the reader may run on the audio-unit lane, so it counts under a lock.
+    let readerCalls = OSAllocatedUnfairLock(initialState: 0)
     source.nativeRateReader = { _ in
-      readerCalls += 1
+      readerCalls.withLock { $0 += 1 }
       return 24000
     }
     let stabilized = await source.waitForFormatStabilization(maxWait: 1.5, pollInterval: 0.2)
     #expect(stabilized)
-    #expect(readerCalls == 0)  // boundDeviceID/renderContext nil → short-circuit before any read
+    #expect(readerCalls.withLock { $0 } == 0)  // boundDeviceID/renderContext nil → short-circuit before any read
   }
 }
 
