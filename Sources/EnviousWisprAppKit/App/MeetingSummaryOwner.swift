@@ -288,7 +288,10 @@ final class MeetingSummaryOwner {
     let mine = attempts.values.filter { $0.meetingID == meetingID }
     for running in mine { running.task.cancel() }
     for running in mine { await running.task.value }
-    // After the drain, so a finishing attempt cannot keep this meeting's hashes (#4001).
+    // After the drain, so a finishing attempt cannot keep this meeting's hashes (#4001)
+    // or leave a failed mark or preview for a deleted meeting (#4503).
+    previews[meetingID] = nil
+    activity[meetingID] = nil
     fingerprints[meetingID] = nil
   }
 
