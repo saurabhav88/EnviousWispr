@@ -178,7 +178,9 @@ package final class AudioUnitLane: Sendable {
   private let state = OSAllocatedUnfairLock(initialState: State())
   private let schedule: @Sendable (Duration, @escaping @Sendable () -> Void) -> Void
   private let now: @Sendable () -> ContinuousClock.Instant
-  private let hooks: Hooks
+  /// Installable once the app's reporting exists (the process-wide lane is built before it).
+  private let hookStore: OSAllocatedUnfairLock<Hooks>
+  private var hooks: Hooks { hookStore.withLock { $0 } }
   #if DEBUG
     private let stallArm = OSAllocatedUnfairLock<(Operation, Duration)?>(initialState: nil)
     private let stallExecutor: @Sendable (Duration) -> Void
@@ -213,10 +215,16 @@ package final class AudioUnitLane: Sendable {
     self.queue = DispatchQueue(label: label, qos: .userInitiated)
     self.schedule = schedule
     self.now = now
-    self.hooks = hooks
+    self.hookStore = OSAllocatedUnfairLock(initialState: hooks)
     #if DEBUG
       self.stallExecutor = stallExecutor
     #endif
+  }
+
+  /// Installs the hooks the composition root builds (#4601 §3.8: stuck-operation telemetry and
+  /// DEBUG logging). Replaces any earlier set; later jobs report through the new hooks.
+  package func installHooks(_ hooks: Hooks) {
+    hookStore.withLock { $0 = hooks }
   }
 
   // MARK: - Caller operations

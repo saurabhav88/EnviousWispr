@@ -62,6 +62,33 @@ struct InputResolutionTerminalSnapshotTests {
     #expect(props["bind_outcome"] as? String == "not_attempted")
   }
 
+  /// #4601 §3.8: the bypassed default's kind leaves the Mac only when Auto actually bypassed it.
+  @Test("skipped_default_transport rides only when a default was bypassed")
+  func skippedDefaultTransportProjection() {
+    func props(skipped: String?) -> [String: Any] {
+      TelemetryService.inputResolutionProperties(
+        defaultPresent: true, enumerationOutcome: "succeeded", inputDeviceCount: 2,
+        eligibleDeviceCount: 1, inputResolutionSource: "list_fallback",
+        selectedTransport: "built_in", skippedDefaultTransport: skipped, bindOutcome: "succeeded",
+        prepareOutcome: "succeeded", prepareFailedStep: nil, prepareFailedOSStatus: nil,
+        prepareFailedOSStatusFourCC: nil)
+    }
+    #expect(props(skipped: "virtual")["skipped_default_transport"] as? String == "virtual")
+    #expect(props(skipped: nil)["skipped_default_transport"] == nil)
+
+    // The frozen attempt carries the resolver's value through the projection unchanged.
+    var resolution = InputDeviceResolution(
+      outcome: .selected(7, source: .listFallback), defaultPresent: true,
+      enumerationOutcome: .succeeded, inputDeviceCount: 2, eligibleDeviceCount: 1,
+      selectedTransport: "built_in")
+    resolution.skippedDefaultTransport = "aggregate"
+    var state = InputResolutionAttemptState()
+    state.recordBind(succeeded: true)
+    state.recordPrepareSucceeded()
+    let telemetry = InputResolutionAttemptTelemetry(state.finalized(resolution: resolution))
+    #expect(telemetry.skippedDefaultTransport == "aggregate")
+  }
+
   @Test("the not-responding error names its step, has no OSStatus and its own identity")
   func notRespondingErrorIdentity() {
     let error = AudioError.microphoneNotResponding(source: "HALDeviceInputSource.prepare.timed_out")

@@ -28,7 +28,7 @@ api_key.validation_completed	ungraded	ungraded	-	pre-#2987
 app.launched	ungraded	ungraded	-	pre-#2987
 app.idle_memory	per_launch	keep	median idle footprint_mb by app version and word_check_wanted, at the first weekly release review	#3289
 asr.retry_deadline_observed	ungraded	ungraded	-	pre-#2987
-audio.core_audio_read_stuck	rare_failure	keep	#4021 post-release check (plan 3a): timed_out rows per install per day and recovered rows counted separately, beside the Sentry app-hang outcome metric (#4599), 14 days after release	#4021
+audio.core_audio_read_stuck	rare_failure	keep	#4021 post-release check (plan 3a): timed_out rows per install per day and recovered rows counted separately, beside the Sentry app-hang outcome metric (#4599), 14 days after release; #4601 post-release check: microphone_start and microphone_release timed_out and recovered counted separately by app version	#4021
 audio.capture_interrupted	ungraded	ungraded	-	pre-#2987
 audio.dead_mic_recovery	ungraded	ungraded	-	pre-#2987
 audio.dead_mic_retire_attempted	ungraded	ungraded	-	pre-#2987

@@ -290,8 +290,13 @@ struct TelemetryEmitterRegistryTests {
   /// String?` and `bindOutcome: String?` (unknown at a timed-out or refused start is omitted,
   /// never sent as false or `not_attempted`); that one site's identity only, same event, same
   /// per-cold-attempt cadence, no new row or field.
+  /// #4601 C8A: `audioInputResolution` takes `skippedDefaultTransport: String?` (a closed
+  /// transport label, only when Auto bypassed a proven non-microphone default; omitted
+  /// otherwise); that one site's identity only, same event and cadence, no new row. The
+  /// audio-unit lane's stuck jobs reuse the existing `coreAudioReadStuck` site (new closed
+  /// `read` tokens), so no new site.
   static let sitesFingerprint =
-    "840c5ce81f9ca607f1d433a339b975366e0c633a39f4ee04c99bc22e728faf05"
+    "2586d824134c0f922158eac9028eadd8d61ceeb1d3adf483ac81b6f24e09aa81"
   static let ungradedFingerprint =
     "676fe038e6e688fa79c33aae8cec75e5996979f10c3f79775755ec23c5dba168"
 

@@ -177,6 +177,8 @@ struct InputDeviceResolverTests {
     #expect(result.resolutionSource == .listFallback)
     // The enumeration rung 1 normally avoids IS paid for here, and only here.
     #expect(spy.callCount == 1)
+    // #4601 §3.8: the bypassed default's kind rides as a bounded label.
+    #expect(result.skippedDefaultTransport == "virtual")
   }
 
   @Test("an aggregate system default loses Auto to a real microphone")
@@ -191,6 +193,7 @@ struct InputDeviceResolverTests {
 
     #expect(result.selectedDeviceID == 8)
     #expect(result.resolutionSource == .listFallback)
+    #expect(result.skippedDefaultTransport == "aggregate")
   }
 
   /// THE NO-REGRESSION CASE. With no real microphone to divert to, the default
@@ -218,6 +221,7 @@ struct InputDeviceResolverTests {
     #expect(result.selectedDeviceID == 61)
     #expect(result.resolutionSource == .systemDefault)
     #expect(result.thrownError == nil, "diverting nowhere must never become an error")
+    #expect(result.skippedDefaultTransport == nil, "the default was taken, nothing was skipped")
   }
 
   @Test("an unreadable default transport keeps today's behaviour, never diverting on doubt")
@@ -229,6 +233,7 @@ struct InputDeviceResolverTests {
     #expect(result.resolutionSource == .systemDefault)
     #expect(result.enumerationOutcome == .notAttempted)
     #expect(spy.callCount == 0, "uncertainty must not buy an enumeration")
+    #expect(result.skippedDefaultTransport == nil)
   }
 
   @Test("an unknown default transport keeps today's behaviour too")
@@ -256,6 +261,7 @@ struct InputDeviceResolverTests {
     // pins, so only the accidental default is rescued.
     #expect(result.selectedDeviceID == 60)
     #expect(result.resolutionSource == .pinnedUID)
+    #expect(result.skippedDefaultTransport == nil, "a pinned device won; nothing was bypassed")
   }
 
   @Test("a pinned device that vanished falls through a virtual default to a real microphone")
@@ -271,6 +277,7 @@ struct InputDeviceResolverTests {
 
     #expect(result.selectedDeviceID == 7)
     #expect(result.resolutionSource == .listFallback)
+    #expect(result.skippedDefaultTransport == "virtual")
   }
 
   @Test("the default's transport is read at most once per resolve")
@@ -381,6 +388,8 @@ struct InputDeviceResolverTests {
     #expect(result.inputDeviceCount == 1)
     #expect(result.eligibleDeviceCount == 1)
     #expect(spy.callCount == 1)
+    // #4601: list fallback with no default is not a diversion.
+    #expect(result.skippedDefaultTransport == nil)
   }
 
   @Test("default absent selects a USB microphone when no built-in exists")

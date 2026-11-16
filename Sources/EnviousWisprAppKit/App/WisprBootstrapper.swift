@@ -299,6 +299,9 @@ package final class WisprBootstrapper {
     // #4021: one Core Audio lane for every idle-time device read, owned for the app's lifetime
     // through `audioDeviceList.lane`, so only one read can ever be stuck in a driver.
     let coreAudioLane = CoreAudioQueryLane(hooks: CoreAudioLaneReporting.hooks())
+    // #4601 §3.8: the audio-unit lane (every microphone start, release and check) reports a job
+    // that stops answering. Installed here, before any microphone work.
+    AudioUnitLane.shared.installHooks(AudioUnitLaneReporting.hooks())
     // #4021: the one microphone-choice owner, shared by Settings, Setup and the menu bar, so
     // only the latest choice can be saved after its off-main check.
     let microphoneChoices = MicrophoneChoiceOwner(lane: coreAudioLane)
