@@ -246,8 +246,10 @@ final class MeetingPlaybackController {
       // is the loudness of its whole slice; a long one (a meeting) reads six short windows
       // spread at least 2.5 s apart across each slice, so drawing stays quick. Loudness is shown on a decibel
       // scale, the way ears hear it, so speech rises and pauses stay flat.
-      let count = min(120, max(1, durationMs / 20))
       let readsWhole = durationMs <= 180_000
+      // A long recording's slices are at least 2.5 s wide too, so sampled windows never sit
+      // closer than an imported reader's 2 s read-through gap (Codex r2 on #4611).
+      let count = min(120, max(1, durationMs / (readsWhole ? 20 : 2_500)))
       var levels: [Float] = []
       levels.reserveCapacity(count)
       for index in 0..<count {
