@@ -1710,20 +1710,17 @@ final class TurnClock {
   /// microphone they already let go of (and can later see a failure notice for it).
   extension RecordingStarterStartPathTests {
 
-    /// Lets the spawned forward path reach the capture's start (no wall-clock wait).
-    private static func yieldUntil(_ condition: () -> Bool) async {
-      for _ in 0..<500 where !condition() { await Task.yield() }
-    }
-
     @Test("a press's pre-warm and its take's own start share one microphone deadline")
     func pressSharesOneDeadline() async {
       let fx = Self.makeFixture()
       fx.asr.activeBackendType = .parakeet
       fx.asr.isModelLoaded = true
+      let takeStarted = AudioUnitLaneTests.Signal()
+      fx.audio.onStartEnginePhase = { takeStarted.fire() }
       let before = ContinuousClock.now
 
       _ = await fx.starter.start()
-      await Self.yieldUntil { !fx.audio.startEnginePhaseDeadlines.isEmpty }
+      #expect(await takeStarted.wait(), "the take's own start ran")
 
       let preWarm = fx.audio.preWarmDeadlines
       #expect(preWarm.count == 1)
@@ -1731,6 +1728,36 @@ final class TurnClock {
       if let deadline = preWarm.first {
         #expect(deadline >= MicrophoneStartBudget.deadline(from: before))
         #expect(deadline <= MicrophoneStartBudget.deadline(from: .now))
+      }
+    }
+
+    @Test("time spent in the press's preflight waits comes out of its microphone budget")
+    func preflightWaitSpendsTheBudget() async {
+      let fx = Self.makeFixture()
+      fx.asr.activeBackendType = .parakeet
+      fx.asr.isModelLoaded = true
+      let entered = AudioUnitLaneTests.Signal()
+      let release = AudioUnitLaneTests.Signal()
+      fx.starter.isSelectedModelInstalled = {
+        entered.fire()
+        _ = await release.wait()
+        return true
+      }
+      let before = ContinuousClock.now
+
+      let start = Task { await fx.starter.start() }
+      #expect(await entered.wait(), "the press is in its installation read")
+      let preflightEnded = ContinuousClock.now
+      release.fire()
+      _ = await start.value
+
+      let deadline = fx.audio.preWarmDeadlines.first
+      #expect(deadline != nil)
+      if let deadline {
+        #expect(deadline >= MicrophoneStartBudget.deadline(from: before))
+        #expect(
+          deadline < MicrophoneStartBudget.deadline(from: preflightEnded),
+          "the budget began at the press, not after the preflight wait")
       }
     }
 

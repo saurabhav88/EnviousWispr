@@ -353,6 +353,40 @@ import os
       #expect(gate.didExpire == false)
     }
 
+    @Test("a start given up before it reached the manager opens nothing; a later press does")
+    func abandonedBeforeArrivalOpensNothing() async throws {
+      let lane = AudioUnitLane(label: "test.manager.resolve.abandon-early")
+      let manager = Self.makeManager(lane: lane, resolver: Self.immediateResolver())
+      var built = 0
+      let later = GatedSource(step: "later")
+      manager.installSourceFactoryForTesting { _ in
+        built += 1
+        return later
+      }
+      // The press happened, then its release arrived while the start was still in an earlier
+      // await (the engine's cache warm-up), before it reached the manager.
+      let olderDeadline = MicrophoneStartBudget.deadline(from: .now)
+      manager.abandonPendingStart()
+
+      var olderCancelled = false
+      do {
+        try await manager.preWarm(startDeadline: olderDeadline)
+      } catch is CancellationError {
+        olderCancelled = true
+      }
+      #expect(olderCancelled, "the given-up press is abandonment, not an error")
+      #expect(built == 0, "nothing was built or opened for it")
+
+      let newer = Task { () -> Bool in
+        (try? await manager.preWarm(startDeadline: MicrophoneStartBudget.deadline(from: .now)))
+          != nil
+      }
+      #expect(await later.entered.wait(), "the later press reached its microphone prepare")
+      later.release.fire()
+      #expect(await newer.value, "a press after the release still starts")
+      #expect(built == 1)
+    }
+
     @Test("a start whose budget is already spent opens nothing and gets no fresh budget")
     func spentBudgetOpensNothing() async throws {
       let lane = AudioUnitLane(label: "test.manager.resolve.spent")

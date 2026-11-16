@@ -326,6 +326,17 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   /// `abandonPendingStart()` resumes that read at once instead of waiting for it to answer.
   /// A fresh token per read; cleared when the read returns.
   private var pendingReadAttempt: AudioUnitLane.Attempt?
+  /// #4601 §5: when `abandonPendingStart()` last ran. A start whose press came no later than this
+  /// was given up, even if it had not reached this manager yet (it was still in an earlier await,
+  /// such as the engine's cache warm-up): it opens nothing when it arrives.
+  private var startsAbandonedAt: ContinuousClock.Instant?
+
+  /// Throws `CancellationError` for a start whose press (`deadline` minus the budget) was given
+  /// up before it arrived here.
+  private func requireNotAbandoned(_ deadline: ContinuousClock.Instant) throws {
+    guard let abandonedAt = startsAbandonedAt else { return }
+    if deadline - MicrophoneStartBudget.duration <= abandonedAt { throw CancellationError() }
+  }
   /// #4601 §5: the ONE manager request owner. Each `resolveSource()` mints the next value; work
   /// that resumes from an await with an older value is superseded and changes nothing.
   private var resolveRequestID: UInt64 = 0
@@ -580,6 +591,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     effectiveDiscriminatorDevice = nil
     // Re-evaluate route on every recording start — BT state may have changed.
     onLifecycleSignal?("manager_resolve_source_entered")
+    try requireNotAbandoned(startDeadline)
     let (source, _, request) = try await resolveSource(deadline: startDeadline)
     source.onLifecycleSignal = onLifecycleSignal
     onLifecycleSignal?("manager_prepare_entered")
@@ -1193,6 +1205,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
 
   public func preWarm(startDeadline: ContinuousClock.Instant) async throws {
     let preWarmStart = ContinuousClock.now
+    try requireNotAbandoned(startDeadline)
     let (source, reusedWarm, request) = try await resolveSource(deadline: startDeadline)
     let resolveMs = Self.ms(ContinuousClock.now - preWarmStart)
     guard !reusedWarm else {
@@ -1245,6 +1258,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   /// prepares), the lane read it waits on resumes now with `.abandoned`, and the source's cold
   /// attempt is abandoned on the lane. A committed idle unit stays (no teardown here).
   public func abandonPendingStart() {
+    startsAbandonedAt = .now
     resolveRequestID &+= 1
     let read = pendingReadAttempt
     pendingReadAttempt = nil

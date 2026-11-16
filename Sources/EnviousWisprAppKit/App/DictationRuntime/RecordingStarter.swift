@@ -390,6 +390,10 @@ final class RecordingStarter {
   private func start(preAdmitted: PendingDictationRequests.Admission?) async
     -> RecordingStartOutcome
   {
+    // #4601 §3a: the press's microphone-start budget begins HERE, before every preflight wait
+    // (installation read, recovery arm). A press that waited for its engine turn runs again from
+    // the top and starts its budget then: that wait was for the engine, not for the microphone.
+    let pressOrigin = ContinuousClock.now
     // Handed to `DictationLifecycleCoordinator` at the moment a session is
     // minted, and released here on every path that mints nothing. `defer` reads
     // this variable's FINAL value, so the single assignment at the hand-off
@@ -521,9 +525,9 @@ final class RecordingStarter {
           recordingElapsedProvider: { [weak active] in active?.recordingElapsedSeconds },
           isLocked: false)))
     let pttStart = ContinuousClock.now
-    // #4601 §3a: the press's ONE microphone-start budget, minted before the first route or probe
-    // read; the pre-warm and the take's own start below both spend it.
-    let microphoneStartDeadline = MicrophoneStartBudget.deadline(from: pttStart)
+    // #4601 §3a: the press's ONE microphone-start budget (from `pressOrigin`); the pre-warm and
+    // the take's own start below both spend it.
+    let microphoneStartDeadline = MicrophoneStartBudget.deadline(from: pressOrigin)
     do {
       try await active.handle(event: .preWarm(microphoneStartDeadline: microphoneStartDeadline))
     } catch is CancellationError {
@@ -732,6 +736,8 @@ final class RecordingStarter {
   private func toggle(
     source: TriggerSource, preAdmitted: PendingDictationRequests.Admission?
   ) async {
+    // #4601 §3a: same origin rule as `start(preAdmitted:)`.
+    let pressOrigin = ContinuousClock.now
     // #2648 — held from the claim below until either the mint hands it to the
     // lifecycle coordinator or this call ends without minting. Declared out here
     // because the claim happens inside the start-only gate block and the release
@@ -832,8 +838,7 @@ final class RecordingStarter {
     defer { if isStartingFromIdle { endMinting() } }
     accessibilityRefresh()
     let toggleStart = ContinuousClock.now
-    // #4601 §3a: a toggle start's microphone budget begins at this press.
-    let microphoneStartDeadline = MicrophoneStartBudget.deadline(from: toggleStart)
+    let microphoneStartDeadline = MicrophoneStartBudget.deadline(from: pressOrigin)
     do {
       // #1063 PR1: arm recovery ONLY when this toggle STARTS a recording. A stop
       // toggle reaches here too, but the kernel ignores the config — arming there

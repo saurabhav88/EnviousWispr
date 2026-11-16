@@ -56,8 +56,12 @@ final class RouterTestAudioCapture: AudioCaptureInterface {
   /// Fired when `preWarm` starts waiting under `holdPreWarmUntilAbandoned`.
   var onPreWarmHeld: (() -> Void)?
 
+  /// Fired by each `startEnginePhase` after it records its deadline (a subject-fired signal).
+  var onStartEnginePhase: (() -> Void)?
+
   func startEnginePhase(startDeadline: ContinuousClock.Instant) async throws {
     startEnginePhaseDeadlines.append(startDeadline)
+    onStartEnginePhase?()
   }
   func beginCapturePhase(recoveryPayload: Data?) async throws -> AsyncStream<AVAudioPCMBuffer> {
     // #1548 D2: the forward path reaches `.live` sequentially once this returns —
