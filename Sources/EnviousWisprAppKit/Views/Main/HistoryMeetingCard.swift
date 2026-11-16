@@ -154,7 +154,7 @@ struct HistoryMeetingCard: View {
     .contentShape(Rectangle())
     .onTapGesture(perform: onOpen)
     .confirmationDialog(
-      Text(verbatim: confirmingDeletion.map(Self.confirmationMessage) ?? ""),
+      Text(verbatim: Self.confirmationTitle(confirmingDeletion ?? .meeting)),
       isPresented: Binding(
         get: { confirmingDeletion != nil }, set: { if !$0 { confirmingDeletion = nil } }),
       presenting: confirmingDeletion
@@ -387,6 +387,19 @@ struct HistoryMeetingCard: View {
     }
     guard let id = transcripts.rowIDs(ofMeeting: meetingID).last else { return nil }
     return transcripts.verifiedRowForDelivery(id: id)
+  }
+
+  private static func confirmationTitle(_ kind: Deletion) -> String {
+    switch kind {
+    case .recording:
+      String(
+        localized: "Delete this meeting's recording?",
+        comment: "History meeting: confirmation title before deleting only the audio.")
+    case .meeting:
+      String(
+        localized: "Delete this meeting?",
+        comment: "History meeting: confirmation title before deleting the whole meeting.")
+    }
   }
 
   private static func confirmationMessage(_ kind: Deletion) -> String {
