@@ -1716,10 +1716,10 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   }
 
   /// Conservative question detection using strong signals only.
-  /// Returns true if the text contains `?` or starts with an interrogative pattern.
+  /// Returns true if the text contains `?` or full-width `？`, or starts with an interrogative pattern.
   /// Leading fillers and common preambles are stripped before checking.
   private func looksLikeQuestion(_ text: String) -> Bool {
-    if text.contains("?") { return true }
+    if text.contains("?") || text.contains("\u{FF1F}") { return true }
 
     // Strip leading fillers to find the real sentence start.
     let fillers: Set<String> = ["um", "uh", "so", "like", "well", "okay", "ok"]
