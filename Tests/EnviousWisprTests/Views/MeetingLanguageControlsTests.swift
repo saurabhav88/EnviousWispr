@@ -176,6 +176,22 @@ struct MeetingLanguageControlsTests {
       false, model: model, engine: .parakeet, systemLanguage: "ja")
     #expect(settings.meetingLanguageMode == .locked("en"), "Parakeet cannot write Japanese")
 
+    MeetingTranscriptLanguageSection.setAuto(
+      true, model: model, engine: .parakeet, systemLanguage: "fr", localeLanguage: "en")
+    MeetingTranscriptLanguageSection.setAuto(
+      false, model: model, engine: .parakeet, systemLanguage: "fr", localeLanguage: "en")
+    #expect(
+      settings.meetingLanguageMode == .locked("fr"),
+      "#4529: Mac language wins over the app locale")
+
+    MeetingTranscriptLanguageSection.setAuto(
+      true, model: model, engine: .parakeet, systemLanguage: nil, localeLanguage: "de")
+    MeetingTranscriptLanguageSection.setAuto(
+      false, model: model, engine: .parakeet, systemLanguage: nil, localeLanguage: "de")
+    #expect(
+      settings.meetingLanguageMode == .locked("de"),
+      "#4529: app locale is used only when the Mac language is missing or unsupported")
+
     let after = Languages(settings)
     #expect(after.dictation == before.dictation && after.live == before.live)
   }
