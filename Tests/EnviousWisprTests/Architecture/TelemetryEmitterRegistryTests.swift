@@ -286,8 +286,12 @@ struct TelemetryEmitterRegistryTests {
   /// separately, beside the #4599 app-hang outcome metric). Closed `read`/`phase` String tokens
   /// and Int milliseconds only, no device names or UIDs; launch-scoped (no `take_id`); registry
   /// row `keep`.
+  /// #4601 C5A: `audioInputResolution` takes `defaultPresent: Bool?`, `enumerationOutcome:
+  /// String?` and `bindOutcome: String?` (unknown at a timed-out or refused start is omitted,
+  /// never sent as false or `not_attempted`); that one site's identity only, same event, same
+  /// per-cold-attempt cadence, no new row or field.
   static let sitesFingerprint =
-    "965ddc393c27c843e0208f84aebcd3743ccee397e5203cea59a5dceeb1bd718a"
+    "840c5ce81f9ca607f1d433a339b975366e0c633a39f4ee04c99bc22e728faf05"
   static let ungradedFingerprint =
     "676fe038e6e688fa79c33aae8cec75e5996979f10c3f79775755ec23c5dba168"
 
