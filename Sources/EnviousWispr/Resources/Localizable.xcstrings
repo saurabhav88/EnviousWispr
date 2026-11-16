@@ -5169,7 +5169,7 @@
       }
     },
     "Back" : {
-      "comment" : "EnviousMeet setup: goes to the previous screen.\nEnviousMeet setup: shows the previous how-it-works card.\nTranscribe a File: button that returns to the previous step.",
+      "comment" : "EnviousMeet setup: goes to the previous screen.\nEnviousMeet setup: shows the previous how-it-works card.\nHistory More menu: leaves the Polish again list.\nTranscribe a File: button that returns to the previous step.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -17262,6 +17262,17 @@
         }
       }
     },
+    "No recording" : {
+      "comment" : "History dictation card footer: this dictation has no saved recording.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Aufnahme"
+          }
+        }
+      }
+    },
     "No recordings yet" : {
       "localizations" : {
         "de" : {
@@ -19574,17 +19585,6 @@
         }
       }
     },
-    "Paste into the app you were just using" : {
-      "comment" : "History dictation card: tooltip of Paste.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "In die App einfügen, die du gerade verwendet hast"
-          }
-        }
-      }
-    },
     "Paste last dictation" : {
       "comment" : "Menu bar menu, VoiceOver: the icon beside Paste Last Dictation.",
       "localizations" : {
@@ -20016,28 +20016,6 @@
         }
       }
     },
-    "Play from %@" : {
-      "comment" : "History dictation card: plays the recording from where this paragraph starts. %@ is a time like 0:07.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ab %@ abspielen"
-          }
-        }
-      }
-    },
-    "Play from a paragraph" : {
-      "comment" : "History help: item title.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ab einem Absatz abspielen"
-          }
-        }
-      }
-    },
     "Play from here" : {
       "comment" : "EnviousMeet transcript: plays the recording from this turn's start.",
       "localizations" : {
@@ -20127,6 +20105,7 @@
       }
     },
     "Polish again with" : {
+      "comment" : "History: opens the list of AI models to polish this text again.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -23485,7 +23464,7 @@
       }
     },
     "Share" : {
-      "comment" : "EnviousMeet: shares the visible transcript.\nHistory dictation card: shares the text.",
+      "comment" : "EnviousMeet: shares the visible transcript.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -23529,7 +23508,7 @@
       }
     },
     "Share…" : {
-      "comment" : "Export button: share the transcript.",
+      "comment" : "Export button: share the transcript.\nHistory dictation card: shares the text.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -23665,6 +23644,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Schlüssel anzeigen"
+          }
+        }
+      }
+    },
+    "Show less" : {
+      "comment" : "History dictation card: shows only the first lines of the text again.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weniger anzeigen"
+          }
+        }
+      }
+    },
+    "Show more" : {
+      "comment" : "History dictation card: shows the rest of a long text.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mehr anzeigen"
           }
         }
       }
@@ -30018,17 +30019,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wenn ein Meeting beginnt, sucht EnviousMeet den Kalendertermin zu dieser Zeit und nutzt seinen Titel. Wenn sich mehrere Termine überschneiden, bevorzugt es einen mit Meeting-Link oder Ort und behält sonst das Datum als Namen. Die Information darüber, wer eingeladen war, wird mit dem Meeting auf deinem Mac gespeichert und hilft beim Schreiben der Zusammenfassung. Sie wird daher an den von dir gewählten Anbieter für Zusammenfassungen übermittelt, aber nie an Envious Labs. Wenn du das ausschaltest, liest EnviousMeet deinen Kalender nicht mehr; was bereits mit einem Meeting gespeichert wurde, bleibt erhalten, bis du das Meeting löschst. Dein Kalender wird auf deinem Mac gelesen und nie geändert. Im „Verlauf“ kannst du jedes Meeting umbenennen."
-          }
-        }
-      }
-    },
-    "When a recording has times, point at a paragraph to see when you said it, or Tab to it. Click the time to hear that part." : {
-      "comment" : "History help: the time beside each paragraph of a dictation.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wenn eine Aufnahme Zeitangaben hat, zeige auf einen Absatz oder wechsle mit der Tabulatortaste dorthin. So siehst du, wann du ihn gesagt hast. Klicke auf die Zeitangabe, um die Stelle anzuhören."
           }
         }
       }
