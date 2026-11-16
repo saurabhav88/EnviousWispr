@@ -151,15 +151,7 @@ struct HistoryDictationCard: View {
         .foregroundStyle(.stError)
       }
     }
-    .padding(.horizontal, DesignSpacing.xl + DesignSpacing.xxs)
-    .padding(.vertical, DesignSpacing.xl)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .background(Color.stSectionBg, in: RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius))
-    .overlay(
-      RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius)
-        .strokeBorder(cardBorder, lineWidth: 1)
-        .allowsHitTesting(false)
-    )
+    .historyDiaryCard(border: cardBorder)
     // #4609 (Codex code review r1): new texts (a kept polish, a restore) close the comparison
     // rather than showing plain text and then growing into the new markup.
     .onChange(of: texts) { _, _ in
@@ -252,7 +244,8 @@ struct HistoryDictationCard: View {
           set: {
             comparisonView = $0
             openChange = nil
-          })
+          }),
+        hint: { String(localized: Self.viewHint($0)) }
       )
       .fixedSize()
       .accessibilityElement(children: .contain)
@@ -260,9 +253,6 @@ struct HistoryDictationCard: View {
         Text(
           "Which words to show",
           comment: "History dictation card: the Polished, Marked up and Original choice."))
-      Text(Self.viewHint(comparisonView))
-        .font(.stHelper)
-        .foregroundStyle(.stTextSecondary)
     }
   }
 
@@ -347,14 +337,11 @@ struct HistoryDictationCard: View {
         Text(line)
       }
       if lacksRecording {
-        Text(verbatim: "·").accessibilityHidden(true)
-        HStack(spacing: 2) {
-          Image(systemName: "waveform.slash").accessibilityHidden(true)
-          Text("No recording", comment: "History dictation card footer: this dictation has no saved recording.")
-        }
-        .help(Text(Self.absenceLine(absenceReason)))
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text(Self.absenceLine(absenceReason)))
+        HistoryFooterDot()
+        HistoryUnplayableMark(
+          label: LocalizedStringResource(
+            "No recording", comment: "History dictation card footer: this dictation has no saved recording."),
+          reason: String(localized: Self.absenceLine(absenceReason)))
       }
     }
     .font(.stHelper)
@@ -520,34 +507,17 @@ struct HistoryDictationCard: View {
         systemImage: "square.and.arrow.down", kind: .action { saveDocument() }),
       .divider("d1"),
     ]
-    let choices = historyRepolish.choices(.dictation)
-    var polish: [HistoryMenuItem] = choices.map { choice in
-      .init(
-        id: "polish-\(choice.provider.rawValue)-\(choice.model)-\(choice.egOneSize?.rawValue ?? "")",
-        title: HistoryPolishMenu.label(
-          choice, currentProvider: row.llmProvider, currentModel: row.llmModel, currentSize: row.egOneSize),
-        isEnabled: polishPreview.canStart,
-        kind: .action {
-          polishPreview.start(rowID: rowID, choice: choice, runner: historyRepolish, history: transcripts)
-        })
-    }
-    if choices.isEmpty {
-      polish.append(
-        .init(
-          id: "polish-none",
-          title: String(localized: "No models are ready", comment: "History polish menu: no configured AI model can run."),
-          isEnabled: false, kind: .action {}))
-    }
-    polish += [
-      .divider("polish-d"),
-      .init(
-        id: "polish-setup",
-        title: String(localized: "Set up more models in AI Polish"),
-        kind: .action {
-          navigation.request(.aiPolish)
-          appWindow.showWindow()
-        }),
-    ]
+    let polish = HistoryPolishMenu.menuItems(
+      surface: .dictation, choices: historyRepolish.choices(.dictation),
+      currentProvider: row.llmProvider, currentModel: row.llmModel, currentSize: row.egOneSize,
+      isEnabled: polishPreview.canStart,
+      select: { choice in
+        polishPreview.start(rowID: rowID, choice: choice, runner: historyRepolish, history: transcripts)
+      },
+      setUp: {
+        navigation.request(.aiPolish)
+        appWindow.showWindow()
+      })
     items.append(
       .init(
         id: "polish",

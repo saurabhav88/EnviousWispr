@@ -27,11 +27,10 @@ enum HistoryTranscriptPresentation {
 
   // MARK: - Short card
 
-  /// The facts a short card shows as chips, in the order drawn (the legacy row's inventory,
-  /// `TranscriptRowView`): file name, sorted speaker names, Recovered, Interrupted, the polish
-  /// model, the speech engine.
+  /// The facts a short card's footer line shows, in the order drawn (#4611: the Dictations
+  /// footer's order): Recovered, Interrupted, the speech engine, the polish model, sorted
+  /// speaker names. The file name is the card's title, so it is not repeated here.
   enum Chip: Hashable, Sendable {
-    case file(String)
     case speakers(String)
     case recovered
     case interrupted
@@ -42,24 +41,22 @@ enum HistoryTranscriptPresentation {
 
   static func chips(for row: Transcript) -> [Chip] {
     var chips: [Chip] = []
-    if let file = row.importedFileName { chips.append(.file(file)) }
-    if let names = speakerList(row) { chips.append(.speakers(names)) }
     // The legacy row's order: Recovered, then the verified-removal-only Interrupted.
     if row.isRecovered == true { chips.append(.recovered) }
     if row.inputDeviceWasRemoved == true { chips.append(.interrupted) }
-    if row.polishedText != nil { chips.append(.polish(model: row.llmModel)) }
     chips.append(.backend(row.backendType.displayName))
+    if row.polishedText != nil { chips.append(.polish(model: row.llmModel)) }
+    if let names = speakerList(row) { chips.append(.speakers(names)) }
     return chips
   }
 
   static func chips(for summary: HistoryCatalog.Summary) -> [Chip] {
     var chips: [Chip] = []
-    if let name = summary.title { chips.append(.file(name)) }
-    if let names = summary.speakerNames { chips.append(.speakers(names)) }
     if summary.recovered == true { chips.append(.recovered) }
     if summary.interrupted == true { chips.append(.interrupted) }
-    if summary.wasPolished == true { chips.append(.polish(model: summary.polishModel)) }
     if let engine = summary.backendName { chips.append(.backend(engine)) }
+    if summary.wasPolished == true { chips.append(.polish(model: summary.polishModel)) }
+    if let names = summary.speakerNames { chips.append(.speakers(names)) }
     return chips
   }
 
@@ -75,22 +72,17 @@ enum HistoryTranscriptPresentation {
     row.importedFileName ?? transcriptWord
   }
 
-  /// "12:04 long": the source file's length (`Transcript.duration`), nil when unknown.
-  static func lengthLine(for row: Transcript) -> String? {
-    lengthLine(seconds: row.duration)
-  }
-
-  static func lengthLine(seconds: TimeInterval) -> String? {
+  /// "12:04": the source file's length on a footer line, the way a dictation's footer shows
+  /// its recording's length; nil when unknown.
+  static func footerClock(seconds: TimeInterval) -> String? {
     guard seconds > 0 else { return nil }
-    let clock = HistoryDictationPresentation.clock(seconds)
-    return String(
-      localized: "\(clock) long",
-      comment: "History transcript card: how long the original file is. %@ is a time like 12:04.")
+    return HistoryDictationPresentation.clock(seconds)
   }
 
   // MARK: - Original file
 
-  /// What the card's source line and the dock say about the original file.
+  /// What a card's footer and the full view know about the original file: whether it plays,
+  /// and if not, why (the footer's Original unavailable mark and the dock).
   enum SourceLine: Equatable, Sendable {
     /// Not looked up yet: nothing is drawn, so the card never flashes a wrong claim.
     case checking
@@ -138,19 +130,11 @@ enum HistoryTranscriptPresentation {
     return false
   }
 
-  /// The card's short line.
-  static func cardLine(_ line: SourceLine) -> String? {
-    switch line {
-    case .checking, .removed: return nil
-    case .plays:
-      return String(
-        localized: "Plays from the original file",
-        comment: "History transcript card: the original audio or video file was found and can play."
-      )
-    case .unavailable(let reason):
-      return unavailableLine(reason)
-    }
-  }
+  /// The footer mark for an original that can't play (#4611); its reason is
+  /// `unavailableLine`, shown on hover and read by VoiceOver.
+  static let unplayableLabel = LocalizedStringResource(
+    "Original unavailable",
+    comment: "History transcript footer: the original audio or video file can't play. Hover gives the reason.")
 
   /// One sentence per reason. "Unavailable", never a guessed cause such as "moved".
   static func unavailableLine(_ reason: UnavailableReason) -> String {
@@ -189,15 +173,6 @@ enum HistoryTranscriptPresentation {
         localized: "Original file unavailable. It can't be opened for playback.",
         comment: "History transcript: the original file was found but could not be opened to play.")
     }
-  }
-
-  /// The dock's line when nothing can play: the times stay, for reading only.
-  static func dockUnavailableLine(_ reason: UnavailableReason) -> String {
-    String(
-      localized: "\(unavailableLine(reason)) The times are for reading only.",
-      comment:
-        "History transcript dock: why the original can't play, then that turn times can't be clicked. %@ is the reason sentence."
-    )
   }
 
   // MARK: - Locate original
@@ -252,15 +227,13 @@ enum HistoryTranscriptPresentation {
     let polishModel: String?
     let aiPolished: Bool
     let speakers: String?
-    let length: String?
   }
 
   static func provenance(for row: Transcript) -> Provenance {
     Provenance(
       createdAt: row.createdAt, backend: row.backendType.displayName,
       polishModel: row.polishedText != nil ? row.llmModel : nil,
-      aiPolished: row.polishedText != nil, speakers: speakerList(row),
-      length: lengthLine(for: row))
+      aiPolished: row.polishedText != nil, speakers: speakerList(row))
   }
 
   /// The plain document shown when a row has no turns (`nil` or empty), as the legacy detail
