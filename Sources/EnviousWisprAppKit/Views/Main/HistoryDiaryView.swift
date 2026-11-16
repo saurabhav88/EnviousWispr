@@ -28,7 +28,8 @@ struct HistoryDiaryView<
   init(
     coordinator: TranscriptCoordinator,
     @ViewBuilder dictationCard: @escaping (HistoryDictationDisplay, String) -> DictationCard,
-    @ViewBuilder transcriptDestination: @escaping (UUID, @escaping () -> Void) -> TranscriptDestination,
+    @ViewBuilder transcriptDestination: @escaping (UUID, @escaping () -> Void) ->
+      TranscriptDestination,
     @ViewBuilder meetingDestination: @escaping (UUID, @escaping () -> Void) -> MeetingDestination
   ) {
     self.coordinator = coordinator
@@ -45,21 +46,25 @@ struct HistoryDiaryView<
     let source = coordinator.catalogSession?.stableSourceRevision
     // #4598: a page for the same tab, search and filters stays on screen while a newer one is
     // read; its rows are re-verified against their files and it cannot page, select or count.
-    let result = coordinator.catalogSession == nil || saved?.catalogSourceRevision == source
-      ? saved : saved.flatMap { $0.key.context == key.context ? coordinator.retainedHistoryResult($0) : nil }
+    let result =
+      coordinator.catalogSession == nil || saved?.catalogSourceRevision == source
+      ? saved
+      : saved.flatMap {
+        $0.key.context == key.context ? coordinator.retainedHistoryResult($0) : nil
+      }
     let current = result?.key == key
     let canSelect = result.map(coordinator.isCurrentHistoryResult) == true
     let catalogStatus = coordinator.catalogSession?.status
     let openID = state.openItemID
-    let canOpen = openID.map { id in
-      if coordinator.catalogSession != nil { return true }
-      if current, result?.ids.contains(id) == true { return true }
-      return coordinator.isHistoryDestinationAvailable(id)
-    } ?? false
+    let canOpen =
+      openID.map { id in
+        if coordinator.catalogSession != nil { return true }
+        if current, result?.ids.contains(id) == true { return true }
+        return coordinator.isHistoryDestinationAvailable(id)
+      } ?? false
 
     VStack(spacing: 0) {
-      if let openID, tab != .dictations, canOpen
-      {
+      if let openID, tab != .dictations, canOpen {
         destination(for: openID)
           .frame(maxWidth: .infinity, maxHeight: .infinity)
           .environment(\.historyHighlightQuery, state.query)
@@ -105,7 +110,8 @@ struct HistoryDiaryView<
           coordinator: coordinator, tab: tab, state: state, selection: selection,
           isSelecting: isSelecting, result: result, isCurrent: current,
           canSelect: canSelect,
-          liveAnchor: liveAnchor, open: open, loadNext: loadNext, dictationCard: dictationCard)
+          liveAnchor: liveAnchor, open: open, loadNext: loadNext, dictationCard: dictationCard
+        )
         // Its own identity per tab, so each tab's list restores and saves its own place.
         .id(tab)
       }
@@ -113,7 +119,9 @@ struct HistoryDiaryView<
     .onReceive(NotificationCenter.default.publisher(for: .NSSystemTimeZoneDidChange)) { _ in
       groupingRevision &+= 1
     }
-    .onReceive(NotificationCenter.default.publisher(for: NSLocale.currentLocaleDidChangeNotification)) { _ in
+    .onReceive(
+      NotificationCenter.default.publisher(for: NSLocale.currentLocaleDidChangeNotification)
+    ) { _ in
       groupingRevision &+= 1
     }
     .task(id: RefreshKey(query: key, grouping: groupingRevision)) {
@@ -123,7 +131,8 @@ struct HistoryDiaryView<
       // first, so it never jumps back to the place they last left (cloud review on #4582).
       var live = coordinator.requestedHistoryState(for: tab)
       if live.openItemID == nil, let context = liveAnchor.context, context == key.context,
-        context == HistoryPaging.Context(tab: tab, state: live), live.scrollAnchorID != liveAnchor.id
+        context == HistoryPaging.Context(tab: tab, state: live),
+        live.scrollAnchorID != liveAnchor.id
       {
         live.scrollAnchorID = liveAnchor.id
         coordinator.setHistoryState(live, for: tab)
@@ -140,7 +149,9 @@ struct HistoryDiaryView<
     .onChange(of: catalogStatus) { previous, current in
       if previous == .updating, current == .ready {
         AccessibilityNotification.Announcement(
-          String(localized: "History is up to date.", comment: "VoiceOver: the History index finished updating.")
+          String(
+            localized: "History is up to date.",
+            comment: "VoiceOver: the History index finished updating.")
         ).post()
       }
     }
@@ -192,8 +203,11 @@ struct HistoryDiaryView<
     pendingPage = cursor
     Task {
       defer { if pendingPage == cursor { pendingPage = nil } }
-      guard let next = await coordinator.historyResults(for: result.key, extending: result, newer: newer),
-        coordinator.historyTab == tab, results[tab]?.key == result.key else { return }
+      guard
+        let next = await coordinator.historyResults(
+          for: result.key, extending: result, newer: newer),
+        coordinator.historyTab == tab, results[tab]?.key == result.key
+      else { return }
       let current = newer ? results[tab]?.newerContinuation : results[tab]?.continuation
       guard current == cursor else { return }
       results[tab] = next
@@ -259,7 +273,9 @@ private struct HistoryDiaryList<DictationCard: View>: View {
     var rows: [HistoryDiaryTable.RowID] = []
     if isCurrent, let result, result.newerContinuation != nil { rows.append(.newer) }
     for entry in entries {
-      if case .item = entry.id, !coordinator.canRenderHistoryItem(items[entry.position]) { continue }
+      if case .item = entry.id, !coordinator.canRenderHistoryItem(items[entry.position]) {
+        continue
+      }
       lookup[entry.id] = entry
       rows.append(.entry(entry.id))
     }
@@ -269,7 +285,10 @@ private struct HistoryDiaryList<DictationCard: View>: View {
     return HistoryDiaryTable(
       rows: rows, restore: restore, rowsAreFinal: isCurrent && result != nil,
       content: { row in
-        AnyView(HistoryDiaryRowBody { self.row(row, lookup: lookup, items: items, query: context.query, paging: paging) })
+        AnyView(
+          HistoryDiaryRowBody {
+            self.row(row, lookup: lookup, items: items, query: context.query, paging: paging)
+          })
       },
       onScroll: { entry in
         // Kept unobserved, so scrolling does not re-render the page.
@@ -285,7 +304,8 @@ private struct HistoryDiaryList<DictationCard: View>: View {
     }
     .onChange(of: result?.key.context) { _, next in
       guard next == HistoryPaging.Context(tab: tab, state: state) else { return }
-      restore = .init(token: (restore?.token ?? 0) + 1, target: state.scrollAnchorID.map { .item($0) })
+      restore = .init(
+        token: (restore?.token ?? 0) + 1, target: state.scrollAnchorID.map { .item($0) })
     }
     .onDisappear {
       saveLiveAnchor()
@@ -301,13 +321,18 @@ private struct HistoryDiaryList<DictationCard: View>: View {
         }
       } else if items.isEmpty && coordinator.catalogSession?.status == .updating {
         ProgressView()
-      } else if coordinator.catalogSession == nil, items.isEmpty && coordinator.historyReadAvailability == .unavailable {
+      } else if coordinator.catalogSession == nil,
+        items.isEmpty && coordinator.historyReadAvailability == .unavailable
+      {
         ContentUnavailableView {
           Label("Couldn't load History", systemImage: "exclamationmark.triangle")
         } actions: {
           Button("Try again") { coordinator.loadIfNeeded() }
         }
-      } else if items.isEmpty && (!isCurrent || (coordinator.catalogSession == nil && coordinator.historyReadAvailability == .loading)) {
+      } else if items.isEmpty
+        && (!isCurrent
+          || (coordinator.catalogSession == nil && coordinator.historyReadAvailability == .loading))
+      {
         ProgressView()
       } else if let empty = HistoryDiaryLayout.emptyState(
         tab: tab, state: state, matchingCount: items.count)
@@ -346,18 +371,27 @@ private struct HistoryDiaryList<DictationCard: View>: View {
         Button {
           loadNext(result, true)
         } label: {
-          Text("Load more history",
-            comment: "History list: the button at the end of the shown rows that shows older ones.")
-            .font(.stHelper)
-            .foregroundStyle(.stTextSecondary)
-            .padding(.vertical, DesignSpacing.md)
+          Text(
+            "Load more history",
+            comment: "History list: the button at the end of the shown rows that shows older ones."
+          )
+          .font(.stHelper)
+          .foregroundStyle(.stTextSecondary)
+          .padding(.vertical, DesignSpacing.md)
         }
         .buttonStyle(.plain)
+        // A list that reopened at an older place fills in the newer rows by itself as soon as
+        // the top of the list shows, the same way the bottom loads older rows. The table keeps
+        // the reader's place while the newer rows arrive above.
+        .onAppear { loadNext(result, true) }
       }
     case .older:
       Button {
-        if let request = paging.request { loadMore(request) }
-        else if let result { loadNext(result, false) }
+        if let request = paging.request {
+          loadMore(request)
+        } else if let result {
+          loadNext(result, false)
+        }
       } label: {
         Text(
           "Load more history",
@@ -374,7 +408,8 @@ private struct HistoryDiaryList<DictationCard: View>: View {
       let entry = lookup[.day(start)]
       HistoryDayHeader(
         tab: tab, day: .init(start: start, items: [], total: entry?.dayCount ?? 0),
-        hasExactTotal: entry?.dayCount != nil, now: paging.now, isSelecting: isSelecting && canSelect,
+        hasExactTotal: entry?.dayCount != nil, now: paging.now,
+        isSelecting: isSelecting && canSelect,
         selectDay: {
           guard let result else { return }
           Task {
@@ -426,13 +461,16 @@ private struct HistoryDiaryList<DictationCard: View>: View {
         switch summary.key.tab {
         case .dictations:
           HistoryCatalogDictationRow(
-            summary: summary, coordinator: coordinator, query: query, card: dictationCard)
-            .contentShape(Rectangle())
-            .gesture(TapGesture().onEnded {
+            summary: summary, coordinator: coordinator, query: query, card: dictationCard
+          )
+          .contentShape(Rectangle())
+          .gesture(
+            TapGesture().onEnded {
               tick(item.id, extending: NSEvent.modifierFlags.contains(.shift), items: items)
             }, including: isSelecting && canSelect && summary.expiresAt == nil ? .all : .subviews)
         case .transcripts:
-          transcriptCard(summary.key.id, item: item.id, items: items, query: query, summary: summary)
+          transcriptCard(
+            summary.key.id, item: item.id, items: items, query: query, summary: summary)
         case .meetings:
           meetingCard(summary.key.id, item: item.id, items: items, query: query, summary: summary)
         }
@@ -447,7 +485,8 @@ private struct HistoryDiaryList<DictationCard: View>: View {
     summary: HistoryCatalog.Summary? = nil
   ) -> some View {
     let card = HistoryTranscriptCard(
-      rowID: rowID, sources: importedSources, query: query, summary: summary, onOpen: { open(item) },
+      rowID: rowID, sources: importedSources, query: query, summary: summary,
+      onOpen: { open(item) },
       onLocate: { locatingRowID = rowID })
     if isSelecting && canSelect {
       openableCard(item, items: items) { card.allowsHitTesting(false) }
@@ -468,7 +507,8 @@ private struct HistoryDiaryList<DictationCard: View>: View {
     summary: HistoryCatalog.Summary? = nil
   ) -> some View {
     let card = HistoryMeetingCard(
-      meetingID: meetingID, onOpen: { open(item) }, allowsPlayback: !isSelecting, query: query, summary: summary)
+      meetingID: meetingID, onOpen: { open(item) }, allowsPlayback: !isSelecting, query: query,
+      summary: summary)
     if isSelecting && canSelect {
       openableCard(item, items: items) { card.allowsHitTesting(false) }
     } else {
@@ -524,7 +564,9 @@ private struct HistoryDiaryList<DictationCard: View>: View {
   /// result before returning, so a second request for the same window is refused.
   private func loadMore(_ request: HistoryPaging.LoadRequest) {
     var live = coordinator.requestedHistoryState(for: tab)
-    guard let result, result.key == coordinator.historyQueryKey(for: tab, state: live) else { return }
+    guard let result, result.key == coordinator.historyQueryKey(for: tab, state: live) else {
+      return
+    }
     let current = HistoryPaging.window(
       items: result.items,
       context: HistoryPaging.Context(tab: tab, state: live),
@@ -756,7 +798,8 @@ private struct HistoryMeetingsBar: View {
       switch meetings.phase {
       case .idle:
         Button(action: startMeeting) {
-          EnviousButtonLabel(MeetingsCopy.startRecording, size: .medium, systemImage: "record.circle")
+          EnviousButtonLabel(
+            MeetingsCopy.startRecording, size: .medium, systemImage: "record.circle")
         }
         .settingsButton(.filled, size: .medium, isEnabled: startFlow.waitingForMicrophone == nil)
       case .starting, .stopping:

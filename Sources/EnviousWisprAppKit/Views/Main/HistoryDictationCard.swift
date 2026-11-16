@@ -105,7 +105,7 @@ struct HistoryDictationCard: View {
       HistoryDictationPresentation.accepts($0, current: texts) ? $0 : nil
     }
     return VStack(alignment: .leading, spacing: DesignSpacing.lg) {
-      recordingRow
+      if !lacksRecording { recordingRow }
       HistoryPolishPreviewContent(preview: polishPreview)
       if editsOn, texts.differ { viewSwitch }
       HistoryParagraphText(
@@ -202,6 +202,19 @@ struct HistoryDictationCard: View {
 
   private var recordingRevision: Int {
     transcripts.recordings?.changes.revision(for: rowID) ?? 0
+  }
+
+  /// #4611: a dictation without a recording draws no player space; its footer says so. Known
+  /// from the recordings listing before this card's own status read, so the card never changes
+  /// height when that read arrives.
+  private var lacksRecording: Bool {
+    if case .absent = status { return true }
+    return status == nil && transcripts.recordings?.changes.hasRecording(rowID) == false
+  }
+
+  private var absenceReason: RecordedAbsence? {
+    if case .absent(let reason) = status { return reason }
+    return nil
   }
 
   private var isAvailable: Bool {
@@ -320,6 +333,16 @@ struct HistoryDictationCard: View {
       if let line = expiryLine(row) {
         Text(verbatim: "·").accessibilityHidden(true)
         Text(line)
+      }
+      if lacksRecording {
+        Text(verbatim: "·").accessibilityHidden(true)
+        HStack(spacing: 2) {
+          Image(systemName: "waveform.slash").accessibilityHidden(true)
+          Text("No recording", comment: "History dictation card footer: this dictation has no saved recording.")
+        }
+        .help(Text(Self.absenceLine(absenceReason)))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(Self.absenceLine(absenceReason)))
       }
     }
     .font(.stHelper)
@@ -609,6 +632,11 @@ struct HistoryDictationCard: View {
     guard !Task.isCancelled else { return }
     guard before == (arbiter?.deletionCount(for: id), arbiter?.dictationEpoch) else { return }
     status = read
+    switch read {
+    case .available: recordings.changes.note(rowID, hasRecording: true)
+    case .absent: recordings.changes.note(rowID, hasRecording: false)
+    case .unreadable: break
+    }
     guard case .available(let url, let durationMs, _) = read else {
       dropPlayer()
       return

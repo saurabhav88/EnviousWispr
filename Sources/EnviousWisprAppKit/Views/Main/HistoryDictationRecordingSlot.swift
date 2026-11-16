@@ -10,8 +10,9 @@ struct HistoryDictationRecordingSlot: View {
   let player: MeetingPlaybackController?
 
   /// #4609: the slot is as tall as the tallest thing it can show (the player with its
-  /// can't-play line, any absence line, the unreadable line), laid out hidden at this width and
-  /// font, so the card keeps its height whatever the recording status says when it arrives.
+  /// can't-play line, the unreadable line), laid out hidden at this width and font, so the card
+  /// keeps its height whatever the recording status says when it arrives. A dictation without a
+  /// recording draws no slot at all (#4611); its card footer says so.
   var body: some View {
     ZStack(alignment: .topLeading) {
       recordingSlotSizer
@@ -26,25 +27,10 @@ struct HistoryDictationRecordingSlot: View {
         Color.clear.frame(height: MeetingPlaybackControls.buttonSize)
         Text(MeetingPlaybackControls.unavailableMessage).font(.stHelper)
       }
-      ForEach(Self.absenceSizingLines.indices, id: \.self) { index in
-        Label {
-          Text(Self.absenceSizingLines[index])
-        } icon: {
-          Image(systemName: "waveform.slash")
-        }
-        .font(.stHelper)
-      }
       Text(Self.unreadableLine).font(.stHelper)
     }
     .hidden()
     .accessibilityHidden(true)
-  }
-
-  /// Every absence line the slot may show; an expiry uses a three-digit day count, the widest.
-  private static var absenceSizingLines: [LocalizedStringResource] {
-    RecordingAbsence.allCases.map { reason in
-      HistoryDictationCard.absenceLine(reason == .expired ? RecordedAbsence(reason, expiredAfterDays: 365) : RecordedAbsence(reason))
-    } + [HistoryDictationCard.absenceLine(nil)]
   }
 
   private static let unreadableLine = LocalizedStringResource(
@@ -58,19 +44,11 @@ struct HistoryDictationRecordingSlot: View {
         MeetingPlaybackControls(player: player, identifier: "history.card.recording.play")
           .id(ObjectIdentifier(player))
       }
-    case .absent(let reason):
-      Label {
-        Text(HistoryDictationCard.absenceLine(reason))
-      } icon: {
-        Image(systemName: "waveform.slash").accessibilityHidden(true)
-      }
-      .font(.stHelper)
-      .foregroundStyle(.stTextSecondary)
     case .unreadable:
       Text(Self.unreadableLine)
         .font(.stHelper)
         .foregroundStyle(.stTextSecondary)
-    case nil:
+    case .absent, nil:
       EmptyView()
     }
   }

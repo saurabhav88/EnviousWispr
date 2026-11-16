@@ -1,4 +1,5 @@
 import AppKit
+import EnviousWisprCore
 import SwiftUI
 
 /// #4611: History's list on an `NSTableView`, the AppKit list that Mail and Finder use for long
@@ -123,6 +124,13 @@ struct HistoryDiaryTable: NSViewRepresentable {
     /// Set while this list moves the window itself, so the move is not reported as the reader's.
     private var isMovingWindow = false
     private var verifyScheduled = false
+    /// #4611: the reader is dragging the scroll bar. While the knob is held, the list never moves
+    /// the window itself (the knob would leave the pointer) and measures only the rows on screen;
+    /// it measures around the window and settles when the knob is let go.
+    private var isDraggingKnob = false
+    #if DEBUG
+      private var listener = ScrollListener()
+    #endif
 
     func attach(table: NSTableView, scroll: NSScrollView) {
       self.table = table
@@ -137,11 +145,37 @@ struct HistoryDiaryTable: NSViewRepresentable {
         center.addObserver(
           forName: NSView.frameDidChangeNotification, object: scroll, queue: .main
         ) { [weak self] _ in MainActor.assumeIsolated { self?.frameChanged() } })
+      observers.append(
+        center.addObserver(
+          forName: NSScrollView.willStartLiveScrollNotification, object: scroll, queue: .main
+        ) { [weak self] _ in MainActor.assumeIsolated { self?.liveScrollStarted() } })
+      observers.append(
+        center.addObserver(
+          forName: NSScrollView.didEndLiveScrollNotification, object: scroll, queue: .main
+        ) { [weak self] _ in MainActor.assumeIsolated { self?.liveScrollEnded() } })
       // The column takes its new width after the scroll view's frame changes.
       observers.append(
         center.addObserver(
           forName: NSTableView.columnDidResizeNotification, object: table, queue: .main
         ) { [weak self] _ in MainActor.assumeIsolated { self?.frameChanged() } })
+    }
+
+    /// A live scroll that starts with the mouse button down is a scroll bar drag; a trackpad or
+    /// wheel scroll keeps measuring ahead of the window so rows arrive at their real height.
+    private func liveScrollStarted() {
+      isDraggingKnob = NSEvent.pressedMouseButtons & 1 != 0
+      #if DEBUG
+        listener.begin(knob: isDraggingKnob, rows: rows.count)
+      #endif
+    }
+
+    private func liveScrollEnded() {
+      let wasDragging = isDraggingKnob
+      isDraggingKnob = false
+      #if DEBUG
+        listener.end(rows: rows.count)
+      #endif
+      if wasDragging { settle(keeping: captureAnchor()) }
     }
 
     func detach() {
@@ -172,6 +206,9 @@ struct HistoryDiaryTable: NSViewRepresentable {
           case .insert(let offset, _, _): inserted.insert(offset)
           }
         }
+        #if DEBUG
+          listener.rowsChanged(from: rows.count, to: newRows.count)
+        #endif
         rows = newRows
         index = Dictionary(
           newRows.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
@@ -245,6 +282,10 @@ struct HistoryDiaryTable: NSViewRepresentable {
         keep = target
         appliedRestoreToken = restore?.token
       }
+      if isDraggingKnob {
+        noteHeights(measureRowsNearWindow(), keepingPlace: false)
+        return
+      }
       for _ in 0..<4 {
         let changed = measureRowsNearWindow()
         if changed.isEmpty { break }
@@ -269,15 +310,21 @@ struct HistoryDiaryTable: NSViewRepresentable {
     private func measureRowsNearWindow() -> IndexSet {
       guard let table, let scroll else { return [] }
       let visible = scroll.contentView.bounds
-      let near = visible.insetBy(dx: 0, dy: -visible.height)
+      let near = isDraggingKnob ? visible : visible.insetBy(dx: 0, dy: -visible.height)
       let range = table.rows(in: near)
       guard range.length > 0 else { return [] }
       var changed = IndexSet()
       for row in range.location..<(range.location + range.length) {
         let id = rows[row]
         if let known = heights[id], known.width == width { continue }
+        #if DEBUG
+          let started = DispatchTime.now().uptimeNanoseconds
+        #endif
         sizer.rootView = hosted(id)
         let height = max(1, ceil(sizer.fittingSize.height))
+        #if DEBUG
+          listener.measured(nanoseconds: DispatchTime.now().uptimeNanoseconds - started)
+        #endif
         if heights[id]?.height != height { changed.insert(row) }
         heights[id] = (height, width)
       }
@@ -285,9 +332,9 @@ struct HistoryDiaryTable: NSViewRepresentable {
       return changed
     }
 
-    private func noteHeights(_ rows: IndexSet) {
+    private func noteHeights(_ rows: IndexSet, keepingPlace: Bool = true) {
       guard let table, !rows.isEmpty else { return }
-      let anchor = captureAnchor()
+      let anchor = keepingPlace && !isDraggingKnob ? captureAnchor() : nil
       withoutAnimation { table.noteHeightOfRows(withIndexesChanged: rows) }
       if let anchor { move(to: anchor) }
     }
@@ -343,6 +390,9 @@ struct HistoryDiaryTable: NSViewRepresentable {
     private func captureAnchor() -> Anchor? {
       guard let table, let scroll, !rows.isEmpty else { return nil }
       let top = scroll.contentView.bounds.minY
+      // #4611: a reader at the very top of a list that starts at the newest item stays at the
+      // top, so a new dictation arrives in view rather than above it.
+      if isAtNewest { return Anchor(row: nil, offset: 0) }
       let row = table.row(at: NSPoint(x: 1, y: max(top, 0)))
       guard rows.indices.contains(row) else { return nil }
       return Anchor(row: rows[row], offset: top - table.rect(ofRow: row).minY)
@@ -365,13 +415,27 @@ struct HistoryDiaryTable: NSViewRepresentable {
       isMovingWindow = false
     }
 
+    /// The window shows the top of a list that has no newer page above it.
+    private var isAtNewest: Bool {
+      guard let scroll, let first = rows.first else { return false }
+      if case .newer = first { return false }
+      return scroll.contentView.bounds.minY <= 0.5
+    }
+
     private func windowMoved() {
       guard !isMovingWindow, let table, let scroll else { return }
+      #if DEBUG
+        let started = DispatchTime.now().uptimeNanoseconds
+        defer { listener.moved(nanoseconds: DispatchTime.now().uptimeNanoseconds - started) }
+      #endif
       // Measure what is about to come into view before it arrives.
       let changed = measureRowsNearWindow()
       noteHeights(changed)
       let row = table.row(at: NSPoint(x: 1, y: max(scroll.contentView.bounds.minY, 0)))
       guard rows.indices.contains(row) else { return }
+      // At the newest item the saved place is "the newest", so a refresh reads from the newest
+      // and includes a dictation made since.
+      if isAtNewest { return onScroll(nil) }
       switch rows[row] {
       case .entry(let entry): onScroll(entry)
       case .newer: onScroll(nil)
@@ -485,3 +549,59 @@ private final class ReportingHostingView: NSHostingView<HostedRow> {
     onResize?()
   }
 }
+
+#if DEBUG
+  /// #4611 listening code: what one scroll costs, written to app.log when the scroll ends.
+  @MainActor private struct ScrollListener {
+    private var active = false
+    private var knob = false
+    private var began: UInt64 = 0
+    private var moves = 0
+    private var moveTotal: UInt64 = 0
+    private var moveMax: UInt64 = 0
+    private var slowMoves = 0
+    private var measured = 0
+    private var measureTotal: UInt64 = 0
+    private var rowChanges: [String] = []
+    private var startRows = 0
+
+    mutating func begin(knob: Bool, rows: Int) {
+      self = ScrollListener()
+      active = true
+      self.knob = knob
+      began = DispatchTime.now().uptimeNanoseconds
+      startRows = rows
+    }
+
+    mutating func moved(nanoseconds: UInt64) {
+      guard active else { return }
+      moves += 1
+      moveTotal += nanoseconds
+      moveMax = max(moveMax, nanoseconds)
+      if nanoseconds > 16_000_000 { slowMoves += 1 }
+    }
+
+    mutating func measured(nanoseconds: UInt64) {
+      guard active else { return }
+      measured += 1
+      measureTotal += nanoseconds
+    }
+
+    mutating func rowsChanged(from: Int, to: Int) {
+      guard active else { return }
+      rowChanges.append("\(from)->\(to)")
+    }
+
+    mutating func end(rows: Int) {
+      guard active else { return }
+      active = false
+      let ms = { (n: UInt64) in String(format: "%.1f", Double(n) / 1_000_000) }
+      let line =
+        "scroll kind=\(knob ? "scrollbar" : "trackpad") duration=\(ms(DispatchTime.now().uptimeNanoseconds - began))ms "
+        + "moves=\(moves) moveTotal=\(ms(moveTotal))ms moveMax=\(ms(moveMax))ms slowMoves(>16ms)=\(slowMoves) "
+        + "rowsMeasured=\(measured) measureTotal=\(ms(measureTotal))ms rows=\(startRows)->\(rows) "
+        + "pageLoads=[\(rowChanges.joined(separator: ","))]"
+      Task { await AppLogger.shared.log(line, level: .info, category: "HistoryScroll") }
+    }
+  }
+#endif
