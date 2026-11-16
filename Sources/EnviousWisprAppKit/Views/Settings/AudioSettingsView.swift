@@ -110,16 +110,21 @@ struct AudioSettingsView: View {
                   // width they are given, and here they are given only their own.
                   .fixedSize(horizontal: true, vertical: false)
                 } else {
-                  Picker("", selection: socketSelection) {
+                  SettingsMenuPicker(
+                    title: SettingsMapRef.id(.inputSocket).title,
+                    selection: socketSelection,
+                    valueLabel: SettingsMapRef.dynamic(
+                      .inputSocketInput, .inputSocket(index: socketSelection.wrappedValue)
+                    ).title
+                  ) {
                     ForEach(0..<device.inputChannelCount, id: \.self) { index in
                       Text(
                         SettingsMapRef.dynamic(.inputSocketInput, .inputSocket(index: index)).title
                       ).tag(index)
                     }
                   }
-                  .labelsHidden()
                   .settingsArrivalFocusControl()
-                  .fixedSize()
+                  .accessibilityLabel(Text(verbatim: SettingsMapRef.id(.inputSocket).title))
                 }
               }
 

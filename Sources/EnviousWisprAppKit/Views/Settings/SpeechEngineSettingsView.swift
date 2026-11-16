@@ -402,14 +402,17 @@ struct SpeechEngineSettingsView: View {
               icon: "memorychip",
               help: Copy.unloadHelp
             ) {
-              Picker(String(localized: Copy.unloadTitle), selection: $settings.modelUnloadPolicy) {
+              SettingsMenuPicker(
+                title: String(localized: Copy.unloadTitle),
+                selection: $settings.modelUnloadPolicy,
+                valueLabel: settings.modelUnloadPolicy.displayName
+              ) {
                 ForEach(ModelUnloadPolicy.allCases, id: \.self) { policy in
                   Text(policy.displayName).tag(policy)
                 }
               }
-              .labelsHidden()
               .settingsArrivalFocusControl()
-              .fixedSize()
+              .accessibilityLabel(Text(Copy.unloadTitle))
             }
             // Kept visible as well as behind "?": it says what the chosen
             // policy costs on the next recording, which is a consequence of

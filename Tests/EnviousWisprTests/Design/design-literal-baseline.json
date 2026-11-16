@@ -203,7 +203,7 @@
     },
     "Sources\/EnviousWisprAppKit\/Views\/Settings\/SettingsDropdown.swift" : {
       "fontSize" : 4,
-      "radius" : 5
+      "radius" : 4
     },
     "Sources\/EnviousWisprAppKit\/Views\/Settings\/SettingsSearchViews.swift" : {
       "radius" : 5

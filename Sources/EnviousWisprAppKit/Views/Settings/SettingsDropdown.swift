@@ -68,8 +68,11 @@ struct SettingsDropdownHeading: View {
 }
 
 /// One choice: a check for the chosen row, a leading mark, the title, an optional line under
-/// it and an optional trailing view (a verdict chip). The chosen row is tinted and its title
-/// is accent. `spokenTitle` is the VoiceOver name; the chosen state is a trait, not words.
+/// it and an optional trailing view (a verdict chip). It reads like a row of the Mac's own menu
+/// (DESIGN.md "Menus"; founder 2026-11-16: every drop-down looks like the History More menu,
+/// keeping the grey line under each choice): regular-weight title in the reading colour, the
+/// check alone marks the choice, no tinted fill and no accent title. `spokenTitle` is the
+/// VoiceOver name; the chosen state is a trait, not words.
 struct SettingsDropdownRow<Leading: View, Subtitle: View, Trailing: View>: View {
   let isChosen: Bool
   let spokenTitle: String
@@ -86,7 +89,7 @@ struct SettingsDropdownRow<Leading: View, Subtitle: View, Trailing: View>: View 
       HStack(spacing: 10) {
         Image(systemName: "checkmark")
           .font(.system(size: 11, weight: .bold))
-          .foregroundStyle(Color.stAccent)
+          .foregroundStyle(Color.stTextPrimary)
           .opacity(isChosen ? 1 : 0)
           .accessibilityHidden(true)
         leading()
@@ -94,9 +97,9 @@ struct SettingsDropdownRow<Leading: View, Subtitle: View, Trailing: View>: View 
         VStack(alignment: .leading, spacing: 1) {
           Text(title)
             .font(
-              titleIsCode ? .system(size: 14, weight: .semibold, design: .monospaced) : .stRowLabel
+              titleIsCode ? .system(size: 14, design: .monospaced) : .stBody
             )
-            .foregroundStyle(isChosen ? Color.stAccent : Color.stTextPrimary)
+            .foregroundStyle(Color.stTextPrimary)
             .lineLimit(1)
             .truncationMode(.middle)
           subtitle()
@@ -107,9 +110,6 @@ struct SettingsDropdownRow<Leading: View, Subtitle: View, Trailing: View>: View 
       .padding(.horizontal, 10)
       .padding(.vertical, 7)
       .frame(maxWidth: .infinity, alignment: .leading)
-      .background(
-        RoundedRectangle(cornerRadius: 8).fill(isChosen ? Color.stAccentLight : Color.clear)
-      )
       .settingsHoverRow(cornerRadius: 8)
       .contentShape(Rectangle())
       .opacity(isEnabled ? 1 : 0.45)
