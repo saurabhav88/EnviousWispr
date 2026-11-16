@@ -54,6 +54,22 @@ import Testing
     }
   }
 
+  /// #4601: "How to fix" lands on the help section, not the top of the page. The help site makes
+  /// each section's anchor from its heading (github-slugger), so this pins the heading and the
+  /// app's fragment together: renaming either one alone fails here.
+  @Test("the How to fix link targets the help section's heading anchor")
+  func microphoneHelpLinkTargetsTheSection() throws {
+    let url = DictationNarrator.microphoneNotRespondingHelpURL
+    #expect(url.host() == "enviouswispr.com")
+    #expect(url.path() == "/help/choosing-your-microphone/")
+    #expect(url.fragment() == "when-enviouswispr-cant-reach-your-microphone")
+    let article = try String(
+      contentsOf: RepoRoot.url.appending(
+        path: "website/src/content/help/choosing-your-microphone.md"),
+      encoding: .utf8)
+    #expect(article.contains("\n### When EnviousWispr can't reach your microphone\n"))
+  }
+
   // MARK: - Processing phases (E2, #1564)
 
   /// The active-pill / main-window form uses three ASCII periods and the

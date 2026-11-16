@@ -155,18 +155,33 @@ struct SetupPracticeRoute: View {
   }
 
   private func displayed(_ take: SetupPracticeTake) -> SetupPracticeState {
+    let permissions = model.sources.permissions
+    return Self.displayed(
+      take, microphoneOff: permissions.map { $0.microphone() != .authorized } ?? false,
+      accessibilityOff: permissions.map { !$0.accessibilityAllowed() } ?? false,
+      usable: model.isPracticeUsable, attempt: attempt, polishOn: polishIsOn)
+  }
+
+  /// What Practice shows for `take`, in priority order: a take in flight, a permission that is
+  /// off, not ready yet, then (#4601) a microphone that did not answer, then the attempt's own
+  /// outcome. The not-responding case reads the CURRENT phase, so a first press whose pre-warm
+  /// failed with no session (no take, so no terminal receipt) shows it too; a failed take shows
+  /// it the same way. It never touches the attempt, so it cannot create success or erase one.
+  static func displayed(
+    _ take: SetupPracticeTake, microphoneOff: Bool, accessibilityOff: Bool, usable: Bool,
+    attempt: SetupPracticeAttempt, polishOn: Bool
+  ) -> SetupPracticeState {
     switch take.phase {
     case .loadingModel, .transcribing: return .transcribing
     case .recording: return .listening(handsFree: take.locked)
     case .polishing: return .polishing
     case .idle, .complete, .error, .advisory: break
     }
-    if let permissions = model.sources.permissions {
-      if permissions.microphone() != .authorized { return .microphoneOff }
-      if !permissions.accessibilityAllowed() { return .accessibilityOff }
-    }
-    guard model.isPracticeUsable else { return .preparing }
-    return Self.shown(attempt.state, latest: attempt.result, polishOn: polishIsOn)
+    if microphoneOff { return .microphoneOff }
+    if accessibilityOff { return .accessibilityOff }
+    guard usable else { return .preparing }
+    if take.phase == .error(.micNotResponding) { return .microphoneNotResponding }
+    return shown(attempt.state, latest: attempt.result, polishOn: polishOn)
   }
 
   private func finish(_ event: OnboardingEvent) {
@@ -182,6 +197,9 @@ struct SetupPracticeRoute: View {
       switch state {
       case .microphoneOff: result = .microphoneDenied
       case .accessibilityOff: result = .accessibilityDenied
+      // #4601: skipped after a start the microphone did not answer; reported in the existing
+      // failure bucket (no new telemetry value).
+      case .microphoneNotResponding: result = .pipelineFailed
       default: result = attempt.result
       }
     }

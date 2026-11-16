@@ -42,10 +42,14 @@ enum DictationNarrator {
 
   // MARK: - Microphone not responding (#4601)
 
-  /// The help section the "How to fix" button opens. One owner for the pill and the meeting
-  /// notice.
+  /// The help section the "How to fix" button opens. One owner for the pill, the meeting notice
+  /// and Setup. The fragment is the id the help site generates from the section heading
+  /// "When EnviousWispr can't reach your microphone" (github-slugger, as Astro and the help
+  /// catalog use); renaming that heading moves the anchor, so change both together.
   static let microphoneNotRespondingHelpURL = URL(
-    string: "https://enviouswispr.com/help/choosing-your-microphone/#microphone-not-responding")!
+    string:
+      "https://enviouswispr.com/help/choosing-your-microphone/#when-enviouswispr-cant-reach-your-microphone"
+  )!
 
   /// The button on the "can't reach your microphone" notice (pill and meeting).
   static var microphoneHelpButtonLabel: String {

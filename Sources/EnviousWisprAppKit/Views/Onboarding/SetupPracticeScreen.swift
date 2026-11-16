@@ -13,6 +13,9 @@ enum SetupPracticeState: Equatable {
   case workedWithoutPolish
   case missedBox(copiedToClipboard: Bool)
   case pipelineFailed
+  /// #4601: the microphone did not answer (a first press with no session, or a failed take).
+  /// Shows the narrator's sentence and "How to fix"; neither success nor in flight.
+  case microphoneNotResponding
   case microphoneOff, accessibilityOff
 
   var inFlight: Bool {
@@ -48,6 +51,7 @@ enum SetupPracticeState: Equatable {
     case .noSpeech: "Let’s try that again"
     case .missedBox: "Click the box, then talk"
     case .pipelineFailed: "One more time"
+    case .microphoneNotResponding: "Let’s try that again"
     case .microphoneOff: "Turn the microphone back on"
     case .accessibilityOff: "Turn Accessibility back on"
     }
@@ -74,6 +78,8 @@ enum SetupPracticeState: Equatable {
     case .missedBox(copiedToClipboard: false):
       "EnviousWispr types where your cursor is.\nClick here and try again."
     case .pipelineFailed: "That one was on us, not you.\nHold \(key) and say it again."
+    // #4601: shown through `DictationNarrator` (the one copy owner); see `subtitleText`.
+    case .microphoneNotResponding: ""
     case .microphoneOff:
       "macOS has the microphone switched off for EnviousWispr.\nFlip it on and you are right back here."
     case .accessibilityOff:
@@ -135,6 +141,7 @@ struct SetupPracticeScreen: View {
   var voiceLevel: (@MainActor () -> Double)? = nil
   @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
   @Environment(\.overlayReduceMotionOverride) private var reduceMotionOverride
+  @Environment(\.openURL) private var openURL
   private var reduceMotion: Bool { reduceMotionOverride ?? systemReduceMotion }
 
   @FocusState private var editorFocused: Bool
@@ -175,10 +182,18 @@ struct SetupPracticeScreen: View {
           .fixedSize(horizontal: false, vertical: true)  // a long German title wraps, never truncates
           .foregroundStyle(Color.obTextPrimary)
           .accessibilityAddTraits(.isHeader)
-        Text(state.subtitle(key: key))
+        subtitleText
           .font(.firstRunBody)
           .foregroundStyle(Color.obTextSecondary)
           .fixedSize(horizontal: false, vertical: true)
+        if state == .microphoneNotResponding {
+          // #4601: the same help action as the pill and the meeting notice.
+          SetupLinkButton(title: LocalizedStringKey(DictationNarrator.microphoneHelpButtonLabel)) {
+            openURL(DictationNarrator.microphoneNotRespondingHelpURL)
+          }
+          .accessibilityLabel(Text(verbatim: DictationNarrator.microphoneHelpAccessibilityLabel))
+          .accessibilityIdentifier("setup.practice.microphoneHelp")
+        }
       }
       .multilineTextAlignment(.center)
 
@@ -210,6 +225,14 @@ struct SetupPracticeScreen: View {
     .onChange(of: state) { _, new in
       if !new.acceptsFocus { editorFocused = false }
     }
+  }
+
+  /// The narrator owns the not-responding sentence; every other state uses its own subtitle.
+  private var subtitleText: Text {
+    if state == .microphoneNotResponding {
+      return Text(verbatim: DictationNarrator.copy(for: .micNotResponding))
+    }
+    return Text(state.subtitle(key: key))
   }
 
   private var permissionGuide: some View {
