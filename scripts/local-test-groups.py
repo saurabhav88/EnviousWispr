@@ -488,9 +488,9 @@ def run_groups(opts):
         for thread in pumps:
             thread.join(timeout=1)
         if outcomes:
-            # The summary reads the driver logs, so let every pump reach EOF
-            # first: KILL what the stopped groups left (they already had TERM),
-            # which closes their pipes, then wait for the copies to finish.
+            # The summary reads the driver logs, so give every pump the chance to
+            # reach EOF first: KILL what the stopped groups left (they already had
+            # TERM), which closes their pipes, then wait up to the grace period.
             for index in tuple(kill_due):
                 del kill_due[index]
                 stop_group(index, signal.SIGKILL)
