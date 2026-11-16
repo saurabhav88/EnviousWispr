@@ -1,5 +1,6 @@
 import EnviousWisprCore
 import EnviousWisprPipeline
+import Foundation
 
 /// #1567 (heartpath E3): a typed fact for an in-panel recording notice rendered
 /// through `RecordingOverlayPanel.flashRecordingNotice`. Distinct from
@@ -39,6 +40,33 @@ enum RecordingNoticeReason: Equatable, Sendable {
 /// else. The renderers (panel, main window, sidebar) are pure presenters.
 enum DictationNarrator {
 
+  // MARK: - Microphone not responding (#4601)
+
+  /// The help section the "How to fix" button opens. One owner for the pill, the meeting notice
+  /// and Setup. The fragment is the id the help site generates from the section heading
+  /// "When EnviousWispr can't reach your microphone" (github-slugger, as Astro and the help
+  /// catalog use); renaming that heading moves the anchor, so change both together.
+  static let microphoneNotRespondingHelpURL = URL(
+    string:
+      "https://enviouswispr.com/help/choosing-your-microphone/#when-enviouswispr-cant-reach-your-microphone"
+  )!
+
+  /// The button on the "can't reach your microphone" notice (pill and meeting).
+  static var microphoneHelpButtonLabel: String {
+    String(
+      localized: "How to fix",
+      comment:
+        "Button on the notice that the microphone did not answer: opens the help page with steps to fix it.")
+  }
+
+  /// What VoiceOver says for that button, because "How to fix" alone does not say what opens.
+  static var microphoneHelpAccessibilityLabel: String {
+    String(
+      localized: "Open microphone troubleshooting help",
+      comment:
+        "VoiceOver label for the How to fix button on the microphone-not-responding notice. It opens a help page in the browser.")
+  }
+
   // MARK: - Terminal failures / interruptions (E1)
 
   /// The six sentences are founder-LOCKED (issue #1558, 2026-07-15). The design
@@ -74,6 +102,14 @@ enum DictationNarrator {
       return String(
         localized: "No microphone found. Please connect one.",
         comment: "Pill: no input device is available.")
+    // #4601 (founder 2026-11-15): the start was not answered. The cause is unknown to the app,
+    // so the sentence says "may be"; never a diagnosis.
+    case .micNotResponding:
+      return String(
+        localized:
+          "EnviousWispr can't reach your microphone. Another app's audio driver may be stuck. Restarting your Mac usually fixes this.",
+        comment:
+          "Pill and meeting notice: the microphone did not answer when recording started. The cause is unknown; another app's audio driver is only a possibility, so keep 'may'. Restarting the Mac is the usual fix.")
     // Informational interruptions (audio was saved).
     case .deviceRemoved:
       return String(

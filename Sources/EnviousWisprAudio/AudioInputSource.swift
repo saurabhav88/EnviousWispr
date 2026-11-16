@@ -99,6 +99,16 @@ protocol AudioInputSource: AnyObject {
   // State
   var isCapturing: Bool { get }  // periphery:ignore - used by conformers for internal guards
   var isRunning: Bool { get }
+  /// #4601 §3.5: the running check without touching hardware on the caller's actor, answered
+  /// within `deadline`. False also when the answer could not be had in time.
+  /// `attempt` lets the owner abandon the check from outside (§5).
+  func isRunningOnLane(deadline: ContinuousClock.Instant?, attempt: AudioUnitLane.Attempt?) async
+    -> Bool
+  /// #4601 §5: give up a start still being prepared, keeping any committed idle unit.
+  func abandonPendingStart()
+  /// #4601 §5: whether the source still owns a unit it has not handed back, from committed state
+  /// only (no hardware read), so synchronous main-actor fences can use it.
+  var hasCommittedUnit: Bool { get }
 
   // Engine-specific (no-op for HALDeviceInputSource)
   func waitForFormatStabilization(maxWait: TimeInterval, pollInterval: TimeInterval) async -> Bool
@@ -133,5 +143,17 @@ protocol AudioInputSource: AnyObject {
 }
 
 extension AudioInputSource {
+  /// Sources with no hardware running check answer from `isRunning` (test fakes). The HAL source
+  /// implements this itself, asynchronously, so no synchronous witness shadows it.
+  func isRunningOnLane(deadline: ContinuousClock.Instant?, attempt: AudioUnitLane.Attempt?) async
+    -> Bool
+  { isRunning }
+
+  /// Sources with no lane work to abandon (test fakes).
+  func abandonPendingStart() {}
+
+  /// Sources with no unit owner answer from `isRunning` (test fakes keep their running flag).
+  var hasCommittedUnit: Bool { isRunning }
+
   var captureStopMetadata: CaptureStopMetadata? { nil }
 }

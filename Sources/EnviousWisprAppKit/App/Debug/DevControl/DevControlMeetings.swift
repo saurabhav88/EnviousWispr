@@ -811,6 +811,7 @@
       switch notice {
       case .microphoneDenied: return "microphoneDenied"
       case .microphoneUnavailable: return "microphoneUnavailable"
+      case .microphoneNotResponding: return "microphoneNotResponding"
       case .finishDictationFirst: return "finishDictationFirst"
       case .lowDisk: return "lowDisk"
       case .stoppedLowDisk: return "stoppedLowDisk"

@@ -407,7 +407,7 @@
       let clock = LearnedPillClock()
       let director = OverlayDirector(
         host: WindowlessOverlayHost(), scheduler: clock.scheduler, announce: { _ in },
-        livePreview: .disabled, grantAccessibility: {}, openMicrophoneSettings: {},
+        livePreview: .disabled, grantAccessibility: {}, openMicrophoneSettings: {}, openMicrophoneHelp: {},
         advisoryHint: { _ in nil }, selections: { .shipped }, firstRenderSchedule: { $0() })
       let (controller, _, _) = make(director: director)
       controller.selectedID = "learned.added"
@@ -423,7 +423,7 @@
       let clock = LearnedPillClock()
       let director = OverlayDirector(
         host: WindowlessOverlayHost(), scheduler: clock.scheduler, announce: { _ in },
-        livePreview: .disabled, grantAccessibility: {}, openMicrophoneSettings: {},
+        livePreview: .disabled, grantAccessibility: {}, openMicrophoneSettings: {}, openMicrophoneHelp: {},
         advisoryHint: { _ in nil }, selections: { .shipped }, firstRenderSchedule: { $0() })
       let (controller, _, _) = make(director: director)
       controller.selectedID = "escape.undo"
@@ -471,7 +471,7 @@
       var deferred: (() -> Void)?
       let director = OverlayDirector(
         host: WindowlessOverlayHost(), announce: { _ in }, livePreview: .disabled,
-        grantAccessibility: {}, openMicrophoneSettings: {}, advisoryHint: { _ in nil },
+        grantAccessibility: {}, openMicrophoneSettings: {}, openMicrophoneHelp: {}, advisoryHint: { _ in nil },
         selections: { .shipped }, firstRenderSchedule: { deferred = $0 })
       let (controller, _, _) = make(director: director)
       controller.play()

@@ -278,6 +278,20 @@ enum PillCatalog {
               comment: "Pill button: opens the macOS microphone privacy settings."),
             action: .openMicrophoneSettings))
       }
+      // #4601: the not-responding notice is the narrator's three-sentence sentence plus a
+      // "How to fix" button, in the permission notice's 400 width (the button needs the room).
+      // 8 s is reading time for three sentences and lets a pointer or keyboard reach the
+      // button, the same reading-time figure the advisory below uses.
+      if reason == .micNotResponding {
+        return notice(
+          id: id, kind: .notification, text: DictationNarrator.copy(for: reason),
+          width: .fixed(400),
+          expiry: .after(seconds: 8), severity: .error, isMultiline: true,
+          action: NoticeAction(
+            label: DictationNarrator.microphoneHelpButtonLabel,
+            accessibilityLabel: DictationNarrator.microphoneHelpAccessibilityLabel,
+            action: .openMicrophoneHelp))
+      }
       return notice(
         id: id, kind: .notification, text: DictationNarrator.copy(for: reason),
         width: .fixed(messageWidth),

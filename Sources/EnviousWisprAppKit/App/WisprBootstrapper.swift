@@ -299,6 +299,9 @@ package final class WisprBootstrapper {
     // #4021: one Core Audio lane for every idle-time device read, owned for the app's lifetime
     // through `audioDeviceList.lane`, so only one read can ever be stuck in a driver.
     let coreAudioLane = CoreAudioQueryLane(hooks: CoreAudioLaneReporting.hooks())
+    // #4601 §3.8: the audio-unit lane (every microphone start, release and check) reports a job
+    // that stops answering. Installed here, before any microphone work.
+    AudioUnitLane.shared.installHooks(AudioUnitLaneReporting.hooks())
     // #4021: the one microphone-choice owner, shared by Settings, Setup and the menu bar, so
     // only the latest choice can be saved after its off-main check.
     let microphoneChoices = MicrophoneChoiceOwner(lane: coreAudioLane)
@@ -1204,6 +1207,10 @@ package final class WisprBootstrapper {
       // owner Part 2 of #2549 already gave the Settings page and onboarding.
       openMicrophoneSettings: {
         Task { await permissions.requestMicrophoneAccessOrOpenSettings() }
+      },
+      // #4601: the not-responding notice's "How to fix" opens the help section in the browser.
+      openMicrophoneHelp: {
+        NSWorkspace.shared.open(DictationNarrator.microphoneNotRespondingHelpURL)
       },
       // #2664: the silent-take advisory names the multi-input device the user
       // would find selected in Settings right now. Same device rule as the
@@ -2272,6 +2279,7 @@ package final class WisprBootstrapper {
       whisperMemoryPressure: whisperMemoryPressure,
       requestDeviceRefresh: { [weak audioDeviceList] in audioDeviceList?.requestRefresh() },
       coreAudioStall: debugCoreAudioStall(lane: audioDeviceList.lane),
+      audioUnitStall: debugAudioUnitStall(lane: .shared),
       // #996: each real transition into `.recording` cancels a live edit watch.
       // #3242: and pre-loads the word check so the take's check finds it ready.
       // #3988: and restarts the take's local polish engine if something outside

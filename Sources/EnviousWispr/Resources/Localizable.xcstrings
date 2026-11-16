@@ -10600,6 +10600,17 @@
         }
       }
     },
+    "EnviousWispr can't reach your microphone. Another app's audio driver may be stuck. Restarting your Mac usually fixes this." : {
+      "comment" : "Pill and meeting notice: the microphone did not answer when recording started. The cause is unknown; another app's audio driver is only a possibility, so keep 'may'. Restarting the Mac is the usual fix.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr kann nicht auf dein Mikrofon zugreifen. Vielleicht hängt der Audiotreiber einer anderen App. Ein Neustart deines Macs behebt das meistens."
+          }
+        }
+      }
+    },
     "EnviousWispr can't read %@ files yet. Try a file you exported from EnviousWispr, or a plain text list." : {
       "comment" : "Your Words, import: error. %@ is the file's type, such as a file extension.",
       "localizations" : {
@@ -13032,6 +13043,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "So diktierst du"
+          }
+        }
+      }
+    },
+    "How to fix" : {
+      "comment" : "Button on the notice that the microphone did not answer: opens the help page with steps to fix it.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "So behebst du das"
           }
         }
       }
@@ -18974,6 +18996,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "In neuem Fenster öffnen"
+          }
+        }
+      }
+    },
+    "Open microphone troubleshooting help" : {
+      "comment" : "VoiceOver label for the How to fix button on the microphone-not-responding notice. It opens a help page in the browser.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hilfe bei Mikrofonproblemen öffnen"
           }
         }
       }

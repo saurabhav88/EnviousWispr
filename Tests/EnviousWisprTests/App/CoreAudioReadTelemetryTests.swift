@@ -54,6 +54,61 @@ struct CoreAudioReadTelemetryTests {
       ])
   }
 
+  /// #4601 §3.8: the audio-unit lane's stuck jobs reach the same event with their own reads.
+  @Test("A stuck microphone start and its recovery send microphone_start with the job's limit")
+  func audioUnitLaneShapes() {
+    let events = capture {
+      AudioUnitLaneReporting.report(
+        name: "microphone_start", phase: .timedOut, limit: .seconds(5), after: nil)
+      AudioUnitLaneReporting.report(
+        name: "microphone_start", phase: .recovered, limit: .seconds(5), after: .milliseconds(7300))
+      AudioUnitLaneReporting.report(
+        name: "running_probe", phase: .timedOut, limit: .seconds(1), after: nil)
+      AudioUnitLaneReporting.report(
+        name: "microphone_release", phase: .timedOut, limit: .seconds(5), after: nil)
+      AudioUnitLaneReporting.report(name: "not_a_lane_job", phase: .timedOut, limit: .seconds(1), after: nil)
+    }
+    #expect(
+      events == [
+        CapturedTelemetryEvent(
+          name: "audio.core_audio_read_stuck",
+          stringProps: ["read": "microphone_start", "phase": "timed_out"],
+          intProps: ["bound_ms": 5000]),
+        CapturedTelemetryEvent(
+          name: "audio.core_audio_read_stuck",
+          stringProps: ["read": "microphone_start", "phase": "recovered"],
+          intProps: ["bound_ms": 5000, "returned_after_ms": 7300]),
+        CapturedTelemetryEvent(
+          name: "audio.core_audio_read_stuck",
+          stringProps: ["read": "microphone_probe", "phase": "timed_out"],
+          intProps: ["bound_ms": 1000]),
+        CapturedTelemetryEvent(
+          name: "audio.core_audio_read_stuck",
+          stringProps: ["read": "microphone_release", "phase": "timed_out"],
+          intProps: ["bound_ms": 5000]),
+      ])
+  }
+
+  /// Every job name the lane is given in the shipped code has a row in the mapping, so a stuck
+  /// job is never silently dropped. Reads the two submitting files' literal names; the lane's
+  /// own default release name is listed by hand.
+  @Test("Every audio-unit lane job name maps to the event vocabulary")
+  func everyLaneJobNameIsMapped() throws {
+    var names: Set<String> = ["microphone_release"]
+    let pattern = try NSRegularExpression(pattern: #"lane\.(?:run|open)\(\s*"([a-z_]+)""#)
+    for file in [
+      "Sources/EnviousWisprAudio/HALDeviceInputSource.swift",
+      "Sources/EnviousWisprAudio/AudioCaptureManager.swift",
+    ] {
+      let text = try String(contentsOf: RepoRoot.url.appending(path: file), encoding: .utf8)
+      for match in pattern.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
+        if let range = Range(match.range(at: 1), in: text) { names.insert(String(text[range])) }
+      }
+    }
+    #expect(names.count >= 8, "the scan found too few names: \(names.sorted())")
+    #expect(Set(AudioUnitLaneReporting.readForOperation.keys) == names)
+  }
+
   @Test("A timeout never carries returned_after_ms, and an unknown read name sends nothing")
   func omissionsAndClosedVocabulary() {
     let timedOut = capture {
@@ -83,7 +138,8 @@ struct CoreAudioReadTelemetryTests {
       ], "no device name, UID or other content")
     #expect(
       Set(CoreAudioReadTelemetry.Read.allCases.map(\.rawValue)) == [
-        "device_snapshot", "choice_validation",
+        "device_snapshot", "choice_validation", "microphone_start", "microphone_release",
+        "microphone_probe",
       ])
     #expect(
       Set(CoreAudioReadTelemetry.Phase.allCases.map(\.rawValue)) == ["timed_out", "recovered"])

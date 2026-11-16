@@ -112,6 +112,9 @@ final class AppLifecycleCoordinator {
   /// #4021: DEBUG `force_core_audio_stall` target, forwarded into `DebugFaultEndpoint`; nil in
   /// Release.
   private let coreAudioStall: ((Duration) -> Void)?
+  /// #4601: DEBUG `force_core_audio_stall(N,unit:...)` target, forwarded the same way; nil in
+  /// Release.
+  private let audioUnitStall: ((AudioUnitLane.Operation, Duration) -> Void)?
 
   init(
     wheelScrollSmoother: WheelScrollSmoother,
@@ -142,6 +145,7 @@ final class AppLifecycleCoordinator {
     whisperMemoryPressure: (@MainActor () async -> Bool)? = nil,
     requestDeviceRefresh: @escaping @MainActor () -> Void,
     coreAudioStall: ((Duration) -> Void)? = nil,
+    audioUnitStall: ((AudioUnitLane.Operation, Duration) -> Void)? = nil,
     // Required and non-defaulted (review r1): a composition that forgets it
     // must fail to compile, not silently drop the watcher's cancellation.
     onRecordingStarted: @escaping @MainActor () -> Void
@@ -149,6 +153,7 @@ final class AppLifecycleCoordinator {
     self.onRecordingStarted = onRecordingStarted
     self.requestDeviceRefresh = requestDeviceRefresh
     self.coreAudioStall = coreAudioStall
+    self.audioUnitStall = audioUnitStall
     self.wheelScrollSmoother = wheelScrollSmoother
     self.previousApplicationTracker = previousApplicationTracker
     self.settings = settings
@@ -364,7 +369,8 @@ final class AppLifecycleCoordinator {
           batchDecodeFaultController: batchDecodeFaultController,
           whisperMemoryPressure: whisperMemoryPressure,
           qualificationChildTrap: qualificationChildTrap,
-          coreAudioStall: coreAudioStall
+          coreAudioStall: coreAudioStall,
+          audioUnitStall: audioUnitStall
         )
         endpoint.start()
         debugFaultEndpoint = endpoint

@@ -24,6 +24,12 @@ struct SetupPracticeScreenTests {
     #expect(SetupPracticeState.preparing.canContinue(hasSucceeded: true) == false)
     #expect(SetupPracticeState.microphoneOff.canContinue(hasSucceeded: true) == false)
     // #4590: a take that landed without polish is still a success.
+    // #4601: neither success nor in flight: Skip stays, and an earlier success still continues.
+    #expect(SetupPracticeState.microphoneNotResponding.inFlight == false)
+    #expect(SetupPracticeState.microphoneNotResponding.isWorked == false)
+    #expect(SetupPracticeState.microphoneNotResponding.canSkip(hasSucceeded: false))
+    #expect(SetupPracticeState.microphoneNotResponding.canContinue(hasSucceeded: false) == false)
+    #expect(SetupPracticeState.microphoneNotResponding.canContinue(hasSucceeded: true))
     #expect(SetupPracticeState.workedWithoutPolish.canContinue(hasSucceeded: true))
     #expect(SetupPracticeState.workedWithoutPolish.canSkip(hasSucceeded: true) == false)
   }
@@ -205,6 +211,7 @@ struct SetupPracticeScreenTests {
       ("missed-box", .missedBox(copiedToClipboard: false), .live),
       ("copied", .missedBox(copiedToClipboard: true), .live),
       ("pipeline-failed", .pipelineFailed, .live),
+      ("microphone-not-responding", .microphoneNotResponding, .live),
       ("microphone-off", .microphoneOff, .live), ("accessibility-off", .accessibilityOff, .live),
     ]
     let appearances: [(String, ColorScheme, Bool)] = [

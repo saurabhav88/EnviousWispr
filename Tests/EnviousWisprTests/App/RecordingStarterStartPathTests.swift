@@ -197,7 +197,8 @@ import Testing
       heartControlRecovery: hcr,
       recordingLockedAccess: lockAccess,
       languageSuggestionPresenter: nil,
-      pendingRequests: pendingRequests
+      pendingRequests: pendingRequests,
+      abandonPendingStart: { [audio] in audio.abandonPendingStart() }
     )
     let lastRecordingResult = LastRecordingResult()
     let discards = DiscardProbe()
@@ -363,6 +364,39 @@ import Testing
     _ = await fx.starter.start()
 
     #expect(fx.kernelDriver.state == .error(.permissionDenied))
+  }
+
+  /// #4601 §3.7: a pre-warm the audio system did not answer (timed out, refused while stuck, or
+  /// status 60 from starting the unit) shows the "can't reach your microphone" notice; permission
+  /// still wins, and a status 60 from any other step keeps the generic notice.
+  @Test(
+    "a not-responding pre-warm surfaces its own notice; permission wins; near misses stay generic",
+    arguments: [
+      ("timed_out", false, TerminalNoticeReason.micNotResponding),
+      ("start60", false, .micNotResponding),
+      ("timed_out", true, .permissionDenied),
+      ("init60", false, .micWouldNotOpen),
+    ])
+  func notRespondingPreWarmNotice(_ input: (String, Bool, TerminalNoticeReason)) async {
+    let (kind, denied, expected) = input
+    let fx = Self.makeFixture(micStatus: denied ? .denied : .authorized)
+    fx.asr.activeBackendType = .parakeet
+    fx.asr.isModelLoaded = true
+    switch kind {
+    case "timed_out":
+      fx.audio.preWarmError = AudioError.microphoneNotResponding(
+        source: "HALDeviceInputSource.prepare.timed_out")
+    case "start60":
+      fx.audio.preWarmError = AudioError.formatCreationFailed(
+        source: "HALDeviceInputSource.prepare.start", osStatus: 60)
+    default:
+      fx.audio.preWarmError = AudioError.formatCreationFailed(
+        source: "HALDeviceInputSource.prepare.init", osStatus: 60)
+    }
+
+    _ = await fx.starter.start()
+
+    #expect(fx.kernelDriver.state == .error(expected))
   }
 
   /// The old `toggleAndStartBothRefreshAccessibilityStatus` had ZERO `#expect` —
@@ -1701,3 +1735,118 @@ final class TurnClock {
   private(set) var now = ContinuousClock.now
   func advance(milliseconds: Int) { now = now.advanced(by: .milliseconds(milliseconds)) }
 }
+
+#if DEBUG
+  /// #4601 §3a and §5: one press, one microphone-start budget; and a release or cancel during a
+  /// sessionless pre-warm gives the waiting microphone start up at once. When these fail, a stuck
+  /// audio driver holds the start past its budget, or a key-up leaves the user waiting for a
+  /// microphone they already let go of (and can later see a failure notice for it).
+  extension RecordingStarterStartPathTests {
+
+    @Test("a press's pre-warm and its take's own start share one microphone deadline")
+    func pressSharesOneDeadline() async {
+      let fx = Self.makeFixture()
+      fx.asr.activeBackendType = .parakeet
+      fx.asr.isModelLoaded = true
+      let takeStarted = AudioUnitLaneTests.Signal()
+      fx.audio.onStartEnginePhase = { takeStarted.fire() }
+      let before = ContinuousClock.now
+
+      _ = await fx.starter.start()
+      #expect(await takeStarted.wait(), "the take's own start ran")
+
+      let preWarm = fx.audio.preWarmDeadlines
+      #expect(preWarm.count == 1)
+      #expect(fx.audio.startEnginePhaseDeadlines == preWarm, "the take must not renew the budget")
+      if let deadline = preWarm.first {
+        #expect(deadline >= MicrophoneStartBudget.deadline(from: before))
+        #expect(deadline <= MicrophoneStartBudget.deadline(from: .now))
+      }
+    }
+
+    @Test("time spent in the press's preflight waits comes out of its microphone budget")
+    func preflightWaitSpendsTheBudget() async {
+      let fx = Self.makeFixture()
+      fx.asr.activeBackendType = .parakeet
+      fx.asr.isModelLoaded = true
+      let entered = AudioUnitLaneTests.Signal()
+      let release = AudioUnitLaneTests.Signal()
+      fx.starter.isSelectedModelInstalled = {
+        entered.fire()
+        _ = await release.wait()
+        return true
+      }
+      let before = ContinuousClock.now
+
+      let start = Task { await fx.starter.start() }
+      #expect(await entered.wait(), "the press is in its installation read")
+      let preflightEnded = ContinuousClock.now
+      release.fire()
+      _ = await start.value
+
+      let deadline = fx.audio.preWarmDeadlines.first
+      #expect(deadline != nil)
+      if let deadline {
+        #expect(deadline >= MicrophoneStartBudget.deadline(from: before))
+        #expect(
+          deadline < MicrophoneStartBudget.deadline(from: preflightEnded),
+          "the budget began at the press, not after the preflight wait")
+      }
+    }
+
+    @Test("a later press gets its own fresh deadline")
+    func laterPressGetsAFreshDeadline() async {
+      let fx = Self.makeFixture()
+      fx.asr.activeBackendType = .parakeet
+      fx.asr.isModelLoaded = true
+      fx.audio.preWarmError = AudioError.noBuiltInMicrophoneFound
+
+      _ = await fx.starter.start()
+      _ = await fx.starter.start()
+
+      let deadlines = fx.audio.preWarmDeadlines
+      #expect(deadlines.count == 2)
+      if deadlines.count == 2 { #expect(deadlines[1] > deadlines[0]) }
+    }
+
+    @Test(
+      "a release or cancel during a sessionless pre-warm gives the start up at once, quietly",
+      arguments: ["release", "cancel"])
+    func releaseDuringPreWarmAbandonsAtOnce(_ how: String) async {
+      let fx = Self.makeFixture()
+      fx.asr.activeBackendType = .parakeet
+      fx.asr.isModelLoaded = true
+      fx.audio.holdPreWarmUntilAbandoned = true
+      let held = AudioUnitLaneTests.Signal()
+      fx.audio.onPreWarmHeld = { held.fire() }
+
+      let start = Task { await fx.starter.start() }
+      #expect(await held.wait(), "the press is waiting in its pre-warm")
+      #expect(fx.kernelDriver.state == .idle, "no session exists yet")
+      if how == "release" {
+        await fx.finalizer.userStop()
+      } else {
+        await fx.finalizer.cancel(trigger: .shortcut)
+      }
+      _ = await start.value
+
+      #expect(fx.audio.abandonPendingStartCallCount == 1)
+      #expect(fx.kernelDriver.state == .idle, "no session and no failure notice")
+      #expect(Self.showsRecording(fx.overlay) == false, "the recording pill is gone")
+      #expect(fx.audio.startEnginePhaseDeadlines.isEmpty, "the take never started")
+    }
+
+    @Test("a stop during a running session does not give up a microphone start")
+    func stopDuringSessionDoesNotAbandon() async {
+      let fx = Self.makeFixture()
+      fx.asr.activeBackendType = .parakeet
+      fx.asr.isModelLoaded = true
+
+      _ = await fx.starter.start()
+      #expect(fx.kernelDriver.state.isActive, "precondition: a session is running")
+      await fx.finalizer.userStop()
+
+      #expect(fx.audio.abandonPendingStartCallCount == 0)
+    }
+  }
+#endif

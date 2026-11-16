@@ -978,7 +978,9 @@ final class KernelLifecycleTelemetrySink {
         modelError,
         .modelLoadFailed, "asr",
         ["backend": backend.rawValue])
-    case .captureStartFailed:
+    // #4601: a not-responding start keeps the start-failure posture; its thrown error carries
+    // its own Sentry identity (`audio.microphone_not_responding`).
+    case .captureStartFailed, .micNotResponding:
       let error =
         telemetryState.captureFailureError
         ?? KernelFallbackSentryError.captureStartFailed

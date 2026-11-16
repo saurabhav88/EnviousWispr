@@ -104,7 +104,7 @@ struct RetainedPasteNoticeDirectorTests {
     let d = OverlayDirector(
       host: host, scheduler: clock.scheduler,
       announce: { log.announcements.append($0) },
-      livePreview: .disabled, grantAccessibility: {}, openMicrophoneSettings: {},
+      livePreview: .disabled, grantAccessibility: {}, openMicrophoneSettings: {}, openMicrophoneHelp: {},
       advisoryHint: { _ in nil }, selections: { .shipped },
       firstRenderSchedule: { deferring ? (deferred = $0) : $0() })
     return (d, { deferred })
@@ -243,7 +243,7 @@ struct EscapeRecoveryNoticeTests {
     let d = OverlayDirector(
       host: host, scheduler: clock.scheduler,
       announce: { log.announcements.append($0) },
-      livePreview: .disabled, grantAccessibility: {}, openMicrophoneSettings: {},
+      livePreview: .disabled, grantAccessibility: {}, openMicrophoneSettings: {}, openMicrophoneHelp: {},
       advisoryHint: { _ in nil }, selections: { .shipped },
       firstRenderSchedule: { deferring ? (deferred = $0) : $0() })
     return (d, { deferred })

@@ -53,6 +53,11 @@ struct InputDeviceResolution: Sendable {
   /// the frozen snapshot. Nil on the not-attempted default path, where the
   /// transport is genuinely unknown without a second hardware read.
   let selectedTransport: String?
+  /// #4601 §3.8: the transport label of the system default input when Auto DELIBERATELY
+  /// bypassed it (proven not a microphone) for an eligible real microphone. Nil when no
+  /// diversion happened: no default, an unknown transport, a pinned device won, or the default
+  /// was taken. Never inferred from `list_fallback` alone, never a device name or UID.
+  var skippedDefaultTransport: String? = nil
 
   var selectedDeviceID: AudioDeviceID? {
     if case .selected(let id, _) = outcome { return id }
@@ -87,25 +92,26 @@ struct InputDeviceResolution: Sendable {
 /// `AudioDeviceEnumerator.inputDeviceSnapshot()` is the sole list read;
 /// `HALDeviceInputSource` owns opening and committing the chosen device;
 /// `AudioDeviceMonitor` observes device changes and never selects.
-struct InputDeviceResolver {
+/// `Sendable` (#4601): a snapshot of it crosses to the audio-unit lane with each cold open.
+struct InputDeviceResolver: Sendable {
   /// The live system default input. Injected so a test — and the DEBUG UAT seam
   /// — can force its absence, which is the whole failing condition.
-  let defaultInputDeviceID: () -> AudioDeviceID?
+  let defaultInputDeviceID: @Sendable () -> AudioDeviceID?
   /// ONE frozen enumeration. Invoked AT MOST ONCE per `resolve` call: every
   /// count and transport reported below has to describe the same list the
   /// selected device came from.
-  let inputDeviceSnapshot: () -> InputDeviceSnapshot
+  let inputDeviceSnapshot: @Sendable () -> InputDeviceSnapshot
   /// The transport of ONE known device. A targeted property read, not a list
   /// read, so rung 1 can ask what the system default IS without paying for the
   /// enumeration it exists to avoid (#2022).
-  let transportForDevice: (AudioDeviceID) -> UInt32?
+  let transportForDevice: @Sendable (AudioDeviceID) -> UInt32?
 
   init(
-    defaultInputDeviceID: @escaping () -> AudioDeviceID? = AudioDeviceEnumerator
+    defaultInputDeviceID: @escaping @Sendable () -> AudioDeviceID? = AudioDeviceEnumerator
       .defaultInputDeviceID,
-    inputDeviceSnapshot: @escaping () -> InputDeviceSnapshot = AudioDeviceEnumerator
+    inputDeviceSnapshot: @escaping @Sendable () -> InputDeviceSnapshot = AudioDeviceEnumerator
       .inputDeviceSnapshot,
-    transportForDevice: @escaping (AudioDeviceID) -> UInt32? = AudioDeviceEnumerator
+    transportForDevice: @escaping @Sendable (AudioDeviceID) -> UInt32? = AudioDeviceEnumerator
       .transportTypeRaw(for:)
   ) {
     self.defaultInputDeviceID = defaultInputDeviceID
@@ -129,9 +135,11 @@ struct InputDeviceResolver {
     // "fails the allow-list" - nil, unknown and future transports are all
     // uncertainty and return false here - so an unreadable transport keeps
     // today's behaviour exactly. We divert on proof, never on doubt.
+    // #4601: the raw value is kept (not reduced to the Boolean) so a diversion can report
+    // which kind of default it bypassed, with no second read.
+    let defaultTransport = defaultID.flatMap { transportForDevice($0) }
     let defaultProvenNonMicrophone =
-      defaultID.map { AudioDeviceEnumerator.isKnownNonMicrophoneTransport(transportForDevice($0)) }
-      ?? false
+      defaultID != nil && AudioDeviceEnumerator.isKnownNonMicrophoneTransport(defaultTransport)
 
     // Rung 1 — the ordinary Auto path. A present default is taken WITHOUT
     // touching the device list, so the overwhelmingly common case does no
@@ -200,7 +208,8 @@ struct InputDeviceResolver {
     // device's transport was unreadable; `transportLabel` maps nil to nil, and
     // the two cases are already told apart by `outcome`.
     func resolution(
-      _ outcome: InputDeviceResolution.Outcome, transport: UInt32? = nil
+      _ outcome: InputDeviceResolution.Outcome, transport: UInt32? = nil,
+      skippedDefault: UInt32? = nil
     ) -> InputDeviceResolution {
       InputDeviceResolution(
         outcome: outcome,
@@ -208,7 +217,9 @@ struct InputDeviceResolver {
         enumerationOutcome: listComplete ? .succeeded : .succeededPartial,
         inputDeviceCount: candidates.count,
         eligibleDeviceCount: eligible.count,
-        selectedTransport: AudioDeviceEnumerator.transportLabel(forTransportType: transport)
+        selectedTransport: AudioDeviceEnumerator.transportLabel(forTransportType: transport),
+        skippedDefaultTransport: AudioDeviceEnumerator.transportLabel(
+          forTransportType: skippedDefault)
       )
     }
 
@@ -285,8 +296,13 @@ struct InputDeviceResolver {
     // the first allow-listed physical device in snapshot order.
     let builtIn = eligible.first { $0.rawTransport == kAudioDeviceTransportTypeBuiltIn }
     if let chosen = builtIn ?? eligible.first {
+      // #4601 §3.8: reaching here WITH a default means rung 3 declined it, which happens only
+      // when it is proven not a microphone and an eligible one exists: a real diversion. With
+      // no default this is plain list fallback and reports nothing skipped.
+      let bypassed = defaultID != nil && defaultProvenNonMicrophone ? defaultTransport : nil
       return resolution(
-        .selected(chosen.id, source: .listFallback), transport: chosen.rawTransport)
+        .selected(chosen.id, source: .listFallback), transport: chosen.rawTransport,
+        skippedDefault: bypassed)
     }
 
     // Nothing eligible. Which error depends on whether the list PROVES there is
@@ -483,16 +499,21 @@ struct InputResolutionAttemptState: Sendable {
 /// bind failure, or a later setup failure — and never on warm reuse. Carries the
 /// resolution facts frozen at decision time so no consumer re-reads hardware to
 /// describe an attempt that has already finished.
+///
+/// #4601: an immutable terminal snapshot. `resolution` is nil and `bindOutcome` is
+/// nil when the terminal decision came before the open had produced them (the start
+/// budget ran out, or the audio-unit lane refused the start): UNAVAILABLE, never a
+/// fabricated "no default", zero count or `not_attempted`.
 struct FinalizedInputResolutionAttempt: Sendable {
-  let resolution: InputDeviceResolution
-  let bindOutcome: InputBindOutcome
+  let resolution: InputDeviceResolution?
+  let bindOutcome: InputBindOutcome?
   let prepareOutcome: InputPrepareOutcome
   /// #1851: nil unless `prepareOutcome == .failed` AND the failing step is named.
   let failedStep: String?
   let failedOSStatus: OSStatus?
 
   init(
-    resolution: InputDeviceResolution, bindOutcome: InputBindOutcome,
+    resolution: InputDeviceResolution?, bindOutcome: InputBindOutcome?,
     prepareOutcome: InputPrepareOutcome, failedStep: String? = nil,
     failedOSStatus: OSStatus? = nil
   ) {
@@ -501,6 +522,16 @@ struct FinalizedInputResolutionAttempt: Sendable {
     self.prepareOutcome = prepareOutcome
     self.failedStep = failedStep
     self.failedOSStatus = failedOSStatus
+  }
+
+  /// #4601: the terminal snapshot of a start that ended before the open reported its
+  /// resolution or bind (timed out, or refused by a wedged lane). The failed step comes
+  /// from `failure` itself (one value, #1851); no hardware is read.
+  static func unavailable(failure: AudioError) -> FinalizedInputResolutionAttempt {
+    let step = failure.diagnosticSource.flatMap { $0 == "unknown" ? nil : $0 }
+    return FinalizedInputResolutionAttempt(
+      resolution: nil, bindOutcome: nil, prepareOutcome: .failed, failedStep: step,
+      failedOSStatus: failure.diagnosticOSStatus)
   }
 }
 
@@ -511,8 +542,10 @@ struct FinalizedInputResolutionAttempt: Sendable {
 /// without resolver or hardware types escaping this module. `package`, not
 /// `public`: only the app shell needs it.
 package struct InputResolutionAttemptTelemetry: Sendable, Equatable {
-  package let defaultPresent: Bool
-  package let enumerationOutcome: String
+  /// #4601: nil when the resolution was unavailable at the terminal decision.
+  package let defaultPresent: Bool?
+  /// Same nil convention as `defaultPresent`.
+  package let enumerationOutcome: String?
   /// Nil means NOT KNOWN — enumeration was not attempted or its read failed.
   /// Never flatten to zero: zero is a real, different answer meaning the machine
   /// genuinely listed no input devices.
@@ -521,7 +554,10 @@ package struct InputResolutionAttemptTelemetry: Sendable, Equatable {
   package let eligibleDeviceCount: Int?
   package let inputResolutionSource: String?
   package let selectedTransport: String?
-  package let bindOutcome: String
+  /// #4601 §3.8: the transport of the system default Auto deliberately bypassed; nil when none.
+  package let skippedDefaultTransport: String?
+  /// Nil when the bind outcome was unavailable (#4601), never `not_attempted` by default.
+  package let bindOutcome: String?
   package let prepareOutcome: String
   /// #1851: the failing setup step (a fixed producer label), nil unless the cold
   /// attempt failed in a named step. Nil means NOT KNOWN, never a default.
@@ -534,13 +570,14 @@ package struct InputResolutionAttemptTelemetry: Sendable, Equatable {
 
   /// Internal: only this module constructs one.
   init(_ attempt: FinalizedInputResolutionAttempt) {
-    self.defaultPresent = attempt.resolution.defaultPresent
-    self.enumerationOutcome = attempt.resolution.enumerationOutcome.rawValue
-    self.inputDeviceCount = attempt.resolution.inputDeviceCount
-    self.eligibleDeviceCount = attempt.resolution.eligibleDeviceCount
-    self.inputResolutionSource = attempt.resolution.resolutionSource?.rawValue
-    self.selectedTransport = attempt.resolution.selectedTransport
-    self.bindOutcome = attempt.bindOutcome.rawValue
+    self.defaultPresent = attempt.resolution?.defaultPresent
+    self.enumerationOutcome = attempt.resolution?.enumerationOutcome.rawValue
+    self.inputDeviceCount = attempt.resolution?.inputDeviceCount
+    self.eligibleDeviceCount = attempt.resolution?.eligibleDeviceCount
+    self.inputResolutionSource = attempt.resolution?.resolutionSource?.rawValue
+    self.selectedTransport = attempt.resolution?.selectedTransport
+    self.skippedDefaultTransport = attempt.resolution?.skippedDefaultTransport
+    self.bindOutcome = attempt.bindOutcome?.rawValue
     self.prepareOutcome = attempt.prepareOutcome.rawValue
     self.prepareFailedStep = attempt.failedStep
     self.prepareFailedOSStatus = attempt.failedOSStatus.map { Int($0) }

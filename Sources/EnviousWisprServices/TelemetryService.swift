@@ -780,7 +780,9 @@ public final class TelemetryService {
   }
 
   /// #4021: a Core Audio device read on the off-main lane got no answer in time
-  /// (`timed_out`), or such a read finally returned (`recovered`). Shape only: which read, which
+  /// (`timed_out`), or such a read finally returned (`recovered`). #4601: also a job on the
+  /// audio-unit lane (microphone start, release or check) that passed its own operation limit,
+  /// once per such job; starts refused while it is stuck send nothing here. Shape only: which read, which
   /// phase, the bound that read was given and, on recovery, how long it took. No device names,
   /// UIDs or other content. `rare_failure`: zero rows on a healthy Mac; at most one `timed_out`
   /// and one `recovered` per abandoned read, because the lane refuses new reads while one is stuck.
@@ -3599,13 +3601,14 @@ public final class TelemetryService {
   /// the population is complete rather than branch-selected. Warm reuse emits
   /// nothing.
   public func audioInputResolution(
-    defaultPresent: Bool,
-    enumerationOutcome: String,
+    defaultPresent: Bool?,
+    enumerationOutcome: String?,
     inputDeviceCount: Int?,
     eligibleDeviceCount: Int?,
     inputResolutionSource: String?,
     selectedTransport: String?,
-    bindOutcome: String,
+    skippedDefaultTransport: String? = nil,
+    bindOutcome: String?,
     prepareOutcome: String,
     prepareFailedStep: String? = nil,
     prepareFailedOSStatus: Int? = nil,
@@ -3619,6 +3622,7 @@ public final class TelemetryService {
       defaultPresent: defaultPresent, enumerationOutcome: enumerationOutcome,
       inputDeviceCount: inputDeviceCount, eligibleDeviceCount: eligibleDeviceCount,
       inputResolutionSource: inputResolutionSource, selectedTransport: selectedTransport,
+      skippedDefaultTransport: skippedDefaultTransport,
       bindOutcome: bindOutcome, prepareOutcome: prepareOutcome,
       prepareFailedStep: prepareFailedStep, prepareFailedOSStatus: prepareFailedOSStatus,
       prepareFailedOSStatusFourCC: prepareFailedOSStatusFourCC)
@@ -3649,30 +3653,33 @@ public final class TelemetryService {
 
   /// The complete `audio.input_resolution` property list (#1714, #1851).
   /// Optional values are omitted when nil because nil means NOT KNOWN; an
-  /// explicit zero is a real answer and rides as zero.
+  /// explicit zero or false is a real answer and rides as such. #4601: a start
+  /// that ended before its resolution or bind was known leaves `default_present`,
+  /// `enumeration_outcome` and `bind_outcome` out instead of inventing them.
   static func inputResolutionProperties(
-    defaultPresent: Bool,
-    enumerationOutcome: String,
+    defaultPresent: Bool?,
+    enumerationOutcome: String?,
     inputDeviceCount: Int?,
     eligibleDeviceCount: Int?,
     inputResolutionSource: String?,
     selectedTransport: String?,
-    bindOutcome: String,
+    skippedDefaultTransport: String? = nil,
+    bindOutcome: String?,
     prepareOutcome: String,
     prepareFailedStep: String?,
     prepareFailedOSStatus: Int?,
     prepareFailedOSStatusFourCC: String?
   ) -> [String: Any] {
-    var props: [String: Any] = [
-      "default_present": defaultPresent,
-      "enumeration_outcome": enumerationOutcome,
-      "bind_outcome": bindOutcome,
-      "prepare_outcome": prepareOutcome,
-    ]
+    var props: [String: Any] = ["prepare_outcome": prepareOutcome]
+    if let present = defaultPresent { props["default_present"] = present }
+    if let outcome = enumerationOutcome { props["enumeration_outcome"] = outcome }
+    if let bind = bindOutcome { props["bind_outcome"] = bind }
     if let c = inputDeviceCount { props["input_device_count"] = c }
     if let c = eligibleDeviceCount { props["eligible_device_count"] = c }
     if let s = inputResolutionSource { props["input_resolution_source"] = s }
     if let t = selectedTransport { props["selected_transport"] = t }
+    // #4601 §3.8: only when Auto deliberately bypassed the default; a bounded transport label.
+    if let t = skippedDefaultTransport { props["skipped_default_transport"] = t }
     props.merge(
       inputResolutionFailureProperties(
         step: prepareFailedStep, osStatus: prepareFailedOSStatus,
@@ -6053,10 +6060,14 @@ public enum OnboardingTelemetry {
 
 /// The closed vocabularies of `audio.core_audio_read_stuck` (#4021).
 package enum CoreAudioReadTelemetry {
-  /// Which lane read: the device snapshot, or the click-time microphone-choice check.
+  /// Which lane read: the device snapshot, or the click-time microphone-choice check; and
+  /// (#4601) on the audio-unit lane, the microphone start, its release, or a check of it.
   package enum Read: String, Sendable, CaseIterable {
     case deviceSnapshot = "device_snapshot"
     case choiceValidation = "choice_validation"
+    case microphoneStart = "microphone_start"
+    case microphoneRelease = "microphone_release"
+    case microphoneProbe = "microphone_probe"
   }
 
   package enum Phase: String, Sendable, CaseIterable {

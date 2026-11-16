@@ -52,6 +52,8 @@ package enum RecordingFailureReason: Equatable, Sendable {
   /// toggle/menu path surfaces the actionable "No microphone found." notice, the
   /// same as the prewarm (PTT) path already does AppKit-side.
   case noMicrophoneFound
+  /// #4601: the microphone start was not answered (`MicrophoneStartFailure.isNotResponding`).
+  case micNotResponding
   case noAudioCaptured
   /// #1920: NO PRODUCTION PRODUCER since the empty-decode path was re-typed to
   /// `RecordingOutcome.asrEmptyDespiteAudio`. Kept, not deleted, for two reasons:
@@ -1176,7 +1178,10 @@ final class RecordingSessionKernel {
   /// ignored while a session is active (PR-1 §B.1.2 — "don't interrupt
   /// processing"). `config` freezes per-recording settings (VAD, decode
   /// language, model-unload policy) for this session (PR-4 plan §3.3a).
-  func start(config: DictationSessionConfig) {
+  /// `microphoneStartDeadline`: the press's microphone-start deadline (#4601 §3a). Nil only for
+  /// a start with no press (test drivers); it then gets one budget from now.
+  func start(config: DictationSessionConfig, microphoneStartDeadline: ContinuousClock.Instant? = nil)
+  {
     // Legal from `.idle` — which is also where a concluded session rests
     // (`recordingOutcome != nil`); `resetSessionState()` below clears the
     // outcome barrier for the new session (#1548 D1).
@@ -1213,8 +1218,12 @@ final class RecordingSessionKernel {
       self?.refreshCheckpointAfterInferenceEntry(entrySession)
     }
     transition(to: .arming)
+    // Per-session data, handed to this session's forward path only: a later session's
+    // deadline can never reach this one.
+    let microphoneDeadline =
+      microphoneStartDeadline ?? MicrophoneStartBudget.deadline(from: .now)
     spawn(sid) { [weak self] in
-      await self?.runForwardPath(sid)
+      await self?.runForwardPath(sid, microphoneStartDeadline: microphoneDeadline)
     }
   }
 
@@ -1558,7 +1567,12 @@ final class RecordingSessionKernel {
   /// logged + swallowed (the session is not stranded; the start path will
   /// retry capture as needed); an adapter-warm failure leaves `.readiness`
   /// non-ready and the session's own warm-up path handles it.
-  func preWarm() async throws {
+  /// `microphoneStartDeadline`: the press's microphone-start deadline (#4601 §3a), shared with
+  /// the take's own start. Nil only for a call with no press (tests); it then gets one budget
+  /// from this call.
+  func preWarm(microphoneStartDeadline: ContinuousClock.Instant? = nil) async throws {
+    let microphoneDeadline =
+      microphoneStartDeadline ?? MicrophoneStartBudget.deadline(from: .now)
     guard state == .idle else {
       log("preWarm ignored — session active at \(state)")
       return
@@ -1626,7 +1640,7 @@ final class RecordingSessionKernel {
     // downstream in a less informative way.
     let preWarmStart = ContinuousClock.now
     do {
-      try await audioCapture.preWarm()
+      try await audioCapture.preWarm(startDeadline: microphoneDeadline)
       log("preWarm audioCapture.preWarm succeeded sid=\(sid.raw)")
       // GAP 3 app.log parity: emit the OLD TP cold-start preWarm timing
       // (TP:317-321) so debug-mode log scans grep this exact prefix.
@@ -1645,7 +1659,10 @@ final class RecordingSessionKernel {
 
   // MARK: Forward path
 
-  private func runForwardPath(_ sid: SessionID) async {
+  private func runForwardPath(_ sid: SessionID, microphoneStartDeadline: ContinuousClock.Instant)
+    async
+  {
+    var microphoneStartDeadline = microphoneStartDeadline
     guard let config = sessionConfig else {
       // `start(config:)` always sets `sessionConfig` before spawning this —
       // this guard is defensive only and cannot fire in practice.
@@ -1712,8 +1729,17 @@ final class RecordingSessionKernel {
       // transition here), and the overlay reads it for the cold-boot pill.
       didLoadModelThisSession = true
       let modelReceipt = WarmUpModelReceipt()
+      let warmUpStarted = ContinuousClock.now
       let warmResult = await warmUp(sid, modelReceipt: modelReceipt)
       guard isCurrent(sid) else { return }
+      // #4601 §3a: loading the speech model is not microphone work, so it does not spend the
+      // press's microphone budget: the deadline moves later by the load time. A start already given
+      // up before this session existed keeps its press-time deadline, so capture still refuses it
+      // (the abandonment check reads the press from the deadline). This session exists, so no
+      // later abandon can belong to this press.
+      if !audioCapture.isStartAbandoned(startDeadline: microphoneStartDeadline) {
+        microphoneStartDeadline += ContinuousClock.now - warmUpStarted
+      }
       noteTakeModelAfterWarmUp(modelReceipt)
       switch warmResult {
       case .ready:
@@ -1753,9 +1779,10 @@ final class RecordingSessionKernel {
 
     // Capture start.
     do {
-      try await audioCapture.startEnginePhase()
+      try await audioCapture.startEnginePhase(startDeadline: microphoneStartDeadline)
     } catch {
       guard isCurrent(sid) else { return }
+      if finishForUserCommandAfterStartFailure(sid) { return }
       // #1714: this attempt was the last one, so freeze its attribution BEFORE
       // the terminal is published. Without this, every engine-start failure —
       // the exact population this issue exists to measure — would be reported
@@ -1814,9 +1841,11 @@ final class RecordingSessionKernel {
         return
       }
       do {
-        try await audioCapture.startEnginePhase()
+        // #4601 §3a: the one rebuild spends what is left of the SAME budget.
+        try await audioCapture.startEnginePhase(startDeadline: microphoneStartDeadline)
       } catch {
         guard isCurrent(sid) else { return }
+        if finishForUserCommandAfterStartFailure(sid) { return }
         // #1714: the rebuild was the final attempt — freeze ITS source, not the
         // first attempt's. A retry that lands on a different device would
         // otherwise file the failure against the wrong microphone.
@@ -5124,6 +5153,22 @@ final class RecordingSessionKernel {
 
   // Pure classification (no instance state) — `nonisolated static` so it is
   // directly unit-testable via `@testable`.
+  /// #4601 whole-diff review r2: a Stop or Cancel the user gave while a microphone start was
+  /// still waiting (the session exists, so it only latched) wins over that start's later failure,
+  /// the same priority the pre-start checks give it: no not-responding notice for a take the user
+  /// already ended. Returns true when it published the terminal.
+  private func finishForUserCommandAfterStartFailure(_ sid: SessionID) -> Bool {
+    if stopLatched {
+      finishTerminal(.discarded(.releasedBeforeRecording), sid: sid)
+      return true
+    }
+    if cancelRequested {
+      finishTerminal(.cancelled, sid: sid)
+      return true
+    }
+    return false
+  }
+
   nonisolated static func classifyCaptureStartError(_ error: Error) -> RecordingFailureReason {
     // #1558 (cloud review P2 #1563): a missing input device on the toggle/menu
     // start path throws `AudioError.noBuiltInMicrophoneFound`. Classify it
@@ -5136,6 +5181,8 @@ final class RecordingSessionKernel {
     // generic engine-start failure (PR-1 §B.1.2).
     let description = String(describing: error).lowercased()
     if description.contains("permission") { return .permissionDenied }
+    // #4601 §3.7: after permission, the one shared not-responding decision.
+    if MicrophoneStartFailure.isNotResponding(error) { return .micNotResponding }
     return .captureStartFailed
   }
 

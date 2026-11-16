@@ -390,6 +390,10 @@ final class RecordingStarter {
   private func start(preAdmitted: PendingDictationRequests.Admission?) async
     -> RecordingStartOutcome
   {
+    // #4601 §3a: the press's microphone-start budget begins HERE, before every preflight wait
+    // (installation read, recovery arm). A press that waited for its engine turn runs again from
+    // the top and starts its budget then: that wait was for the engine, not for the microphone.
+    let pressOrigin = ContinuousClock.now
     // Handed to `DictationLifecycleCoordinator` at the moment a session is
     // minted, and released here on every path that mints nothing. `defer` reads
     // this variable's FINAL value, so the single assignment at the hand-off
@@ -521,8 +525,11 @@ final class RecordingStarter {
           recordingElapsedProvider: { [weak active] in active?.recordingElapsedSeconds },
           isLocked: false)))
     let pttStart = ContinuousClock.now
+    // #4601 §3a: the press's ONE microphone-start budget (from `pressOrigin`); the pre-warm and
+    // the take's own start below both spend it.
+    let microphoneStartDeadline = MicrophoneStartBudget.deadline(from: pressOrigin)
     do {
-      try await active.handle(event: .preWarm)
+      try await active.handle(event: .preWarm(microphoneStartDeadline: microphoneStartDeadline))
     } catch is CancellationError {
       audioCapture.abortPreWarm()
       recordingOverlay.dismissCurrent(.announced)
@@ -543,6 +550,9 @@ final class RecordingStarter {
       let reason: TerminalNoticeReason
       if micPermissionDenied() {
         reason = .permissionDenied
+      } else if MicrophoneStartFailure.isNotResponding(error) {
+        // #4601 §3.7: after permission, the one shared not-responding decision.
+        reason = .micNotResponding
       } else {
         let nsError = error as NSError
         let noMic =
@@ -616,7 +626,8 @@ final class RecordingStarter {
       // #1171 — no engine-changed re-check here: the `beginMinting()` state-gate
       // (held since before preWarm) guarantees the coordinator did NOT switch the
       // active engine across these awaits, so `active` is still the user's choice.
-      try await active.handle(event: .toggleRecording(config))
+      try await active.handle(
+        event: .toggleRecording(config, microphoneStartDeadline: microphoneStartDeadline))
       dispatchedStart = true
       // The session is minted, so the claim now belongs to the session rather
       // than to this call. Both start methods RETURN while the recording is
@@ -728,6 +739,8 @@ final class RecordingStarter {
   private func toggle(
     source: TriggerSource, preAdmitted: PendingDictationRequests.Admission?
   ) async {
+    // #4601 §3a: same origin rule as `start(preAdmitted:)`.
+    let pressOrigin = ContinuousClock.now
     // #2648 — held from the claim below until either the mint hands it to the
     // lifecycle coordinator or this call ends without minting. Declared out here
     // because the claim happens inside the start-only gate block and the release
@@ -828,6 +841,7 @@ final class RecordingStarter {
     defer { if isStartingFromIdle { endMinting() } }
     accessibilityRefresh()
     let toggleStart = ContinuousClock.now
+    let microphoneStartDeadline = MicrophoneStartBudget.deadline(from: pressOrigin)
     do {
       // #1063 PR1: arm recovery ONLY when this toggle STARTS a recording. A stop
       // toggle reaches here too, but the kernel ignores the config — arming there
@@ -867,7 +881,8 @@ final class RecordingStarter {
         // (held since before the recovery-arm await) guarantees the coordinator did
         // NOT switch the active engine, so `active` is still the user's choice.
       }
-      try await active.handle(event: .toggleRecording(config))
+      try await active.handle(
+        event: .toggleRecording(config, microphoneStartDeadline: microphoneStartDeadline))
       dispatchedStart = true
       // Minted, so the claim belongs to the session now — same hand-off as the
       // PTT path, for the same reason: this method returns while the recording

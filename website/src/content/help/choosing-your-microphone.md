@@ -4,9 +4,9 @@ description: "Letting EnviousWispr follow your Mac's microphone, choosing one yo
 category: "audio-and-microphone"
 section: "Input Configuration"
 order: 1
-keywords: ["microphone", "mic", "input device", "which microphone", "headset", "usb mic", "external mic", "built in mic", "change microphone", "wrong microphone", "music", "spotify", "pause music", "lower the volume", "duck", "mute music while dictating", "other audio", "youtube", "audio interface", "focusrite", "scarlett", "virtual microphone", "wrong input", "records silence"]
+keywords: ["microphone", "mic", "input device", "which microphone", "headset", "usb mic", "external mic", "built in mic", "change microphone", "wrong microphone", "music", "spotify", "pause music", "lower the volume", "duck", "mute music while dictating", "other audio", "youtube", "audio interface", "focusrite", "scarlett", "virtual microphone", "wrong input", "records silence", "microphone not responding", "can't reach your microphone", "audio driver", "stuck driver", "zoom", "teams", "krisp", "how to fix"]
 related: ["bluetooth-and-airpods", "empty-or-missing-transcription"]
-updated: 2026-11-05
+updated: 2026-11-16
 deflection: "can_resolve"
 ---
 EnviousWispr follows whichever microphone your Mac is set to, or uses a specific device you choose. Both choices live under **Dictation Settings** \> **Microphone**.
@@ -47,6 +47,21 @@ To record two people at once, use the mix your interface provides. This setting 
 ### My microphone was unplugged during a recording
 
 EnviousWispr keeps what it recorded up to that point and transcribes it, rather than losing the entire recording.
+
+### When EnviousWispr can't reach your microphone
+
+If you see "EnviousWispr can't reach your microphone" when you start dictating, macOS did not answer when EnviousWispr asked to start the microphone. A meeting can show the same notice when it starts. The notice has a **How to fix** button that opens this section.
+
+One possible cause is another app's audio driver that has stopped responding. Apps that add their own microphones or speakers, such as Zoom, Microsoft Teams or Krisp, install these drivers. EnviousWispr cannot tell what is blocking the microphone, so this is only one possibility.
+
+Work through these steps in order, and try dictating again after each one:
+
+1. **Try again in a few seconds.** If the driver was only busy for a moment, the next try works.
+2. **Quit apps that add audio devices.** Quit Zoom, Teams, Krisp or any other app that adds a microphone or speaker of its own, then try again.
+3. **Restart your Mac.** Save your work first. A restart starts every audio driver fresh, and it usually fixes this.
+4. **Update or remove the driver.** If the notice keeps coming back, update that app, or remove its audio driver by following the instructions from the app's maker.
+
+If the notice still appears after these steps, [send feedback from the app](/help/sending-feedback/) and describe what you were doing when it appeared.
 
 ### I use AirPods or a Bluetooth headset
 

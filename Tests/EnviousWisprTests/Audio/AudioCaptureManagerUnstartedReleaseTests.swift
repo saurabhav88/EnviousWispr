@@ -25,13 +25,15 @@ import Testing
       return (manager, stub)
     }
 
-    @Test("Keep engine warm Off: the prepared source is detached now and then stopped")
-    func offTearsDownNow() async {
+    @Test("Keep engine warm Off: the prepared source is detached and released now")
+    func offTearsDownNow() {
       let (manager, stub) = makeManager(.off)
       manager.releaseUnstartedCapture()
       #expect(!manager.hasActiveSourceForTesting, "the source must be detached synchronously")
-      await manager.awaitEngineStopForTesting()
-      #expect(stub.stopCallCount == 1)
+      // #4601 §3.4: the release is handed off synchronously (the unit goes to the audio-unit
+      // lane); no stop task waits on the main actor.
+      #expect(stub.rebuildCallCount == 1)
+      #expect(stub.stopCallCount == 0)
     }
 
     @Test("A timed policy restarts its countdown and keeps the source until it ends")

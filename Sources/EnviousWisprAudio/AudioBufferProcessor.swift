@@ -35,6 +35,11 @@ public enum AudioError: LocalizedError, CustomNSError, Sendable {
   case formatCreationFailed(source: String = "unknown", osStatus: OSStatus? = nil)
   case alreadyCapturing
   case noBuiltInMicrophoneFound
+  /// #4601: a microphone start did not finish within its budget, or was refused because an
+  /// earlier audio-unit call is still past its own limit. `source` names the step
+  /// (`HALDeviceInputSource.prepare.timed_out` or `.lane_wedged`) so the thrown error and the
+  /// attempt's failed step are built from one value. No `OSStatus`: nothing returned one.
+  case microphoneNotResponding(source: String)
 
   public static let errorDomain = "EnviousWisprAudio.AudioError"
 
@@ -43,6 +48,7 @@ public enum AudioError: LocalizedError, CustomNSError, Sendable {
     case .formatCreationFailed: return 1
     case .alreadyCapturing: return 2
     case .noBuiltInMicrophoneFound: return 3
+    case .microphoneNotResponding: return 4
     }
   }
 
@@ -54,12 +60,16 @@ public enum AudioError: LocalizedError, CustomNSError, Sendable {
     // found. Please connect one.") lives ONLY in `DictationNarrator`;
     // this description is Sentry / diagnostic copy, never shown on a pill.
     case .noBuiltInMicrophoneFound: return "No usable microphone device was found."
+    // Diagnostic-only, like the case above: the customer sentence lives in the narrator.
+    case .microphoneNotResponding: return "The microphone did not respond in time."
     }
   }
 
   public var diagnosticSource: String? {
     switch self {
     case .formatCreationFailed(let source, _):
+      return source
+    case .microphoneNotResponding(let source):
       return source
     case .alreadyCapturing, .noBuiltInMicrophoneFound:
       return nil
@@ -72,7 +82,7 @@ public enum AudioError: LocalizedError, CustomNSError, Sendable {
     switch self {
     case .formatCreationFailed(_, let osStatus):
       return osStatus
-    case .alreadyCapturing, .noBuiltInMicrophoneFound:
+    case .alreadyCapturing, .noBuiltInMicrophoneFound, .microphoneNotResponding:
       return nil
     }
   }
@@ -120,6 +130,7 @@ extension AudioError: StableSentryErrorIdentity {
     case .formatCreationFailed: return "audio.format_creation_failed"
     case .alreadyCapturing: return "audio.already_capturing"
     case .noBuiltInMicrophoneFound: return "audio.no_built_in_microphone_found"
+    case .microphoneNotResponding: return "audio.microphone_not_responding"
     }
   }
 }

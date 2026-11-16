@@ -227,6 +227,7 @@ struct MeetingNoticeBanner: View {
   let notice: MeetingCoordinator.Notice
   @Environment(MeetingCoordinator.self) private var meetings
   @Environment(MeetingStartFlow.self) private var startFlow
+  @Environment(\.openURL) private var openURL
 
   var body: some View {
     HStack(alignment: .top, spacing: 10) {
@@ -251,6 +252,17 @@ struct MeetingNoticeBanner: View {
         .settingsButton(isEnabled: true)
         .settingsArrivalWithoutInheritedPlace()
         .accessibilityIdentifier("meetings.allowMicrophone")
+      }
+      if MeetingsPresentation.offersMicrophoneHelp(notice) {
+        Button {
+          openURL(DictationNarrator.microphoneNotRespondingHelpURL)
+        } label: {
+          EnviousButtonLabel(verbatim: DictationNarrator.microphoneHelpButtonLabel)
+        }
+        .settingsButton(isEnabled: true)
+        .settingsArrivalWithoutInheritedPlace()
+        .accessibilityLabel(Text(verbatim: DictationNarrator.microphoneHelpAccessibilityLabel))
+        .accessibilityIdentifier("meetings.microphoneHelp")
       }
       Button {
         meetings.dismissNotice()

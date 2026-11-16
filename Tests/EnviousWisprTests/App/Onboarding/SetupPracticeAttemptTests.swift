@@ -73,6 +73,61 @@ struct SetupPracticeAttemptTests {
     #expect(attempt.state == .pipelineFailed)
   }
 
+  // MARK: - #4601: a microphone that did not answer
+
+  private func shown(_ take: SetupPracticeTake, _ attempt: SetupPracticeAttempt)
+    -> SetupPracticeState
+  {
+    SetupPracticeRoute.displayed(
+      take, microphoneOff: false, accessibilityOff: false, usable: true, attempt: attempt,
+      polishOn: false)
+  }
+
+  @Test("A first press whose start was not answered shows the notice with no take or receipt")
+  func sessionlessFailureShowsTheNotice() {
+    let attempt = SetupPracticeAttempt()
+    // The pre-warm failed before any session: the phase carries the reason, no take began.
+    #expect(shown(take(.error(.micNotResponding), id: ""), attempt) == .microphoneNotResponding)
+    #expect(attempt.success == nil)
+  }
+
+  @Test("A failed take whose start was not answered shows the same notice, never success")
+  func failedTakeShowsTheNotice() {
+    var attempt = SetupPracticeAttempt()
+    attempt.observe(take(.recording), focusedEditor: "editor")
+    let failed = take(.error(.micNotResponding), terminal: .failed)
+    attempt.observe(failed, focusedEditor: "editor")
+    #expect(shown(failed, attempt) == .microphoneNotResponding)
+    #expect(attempt.success == nil, "a failed attempt cannot establish success")
+  }
+
+  @Test("An earlier verified success survives the notice, and the next press clears it")
+  func successSurvivesAndRetryClears() {
+    var attempt = SetupPracticeAttempt()
+    attempt.observe(take(.recording), focusedEditor: "editor")
+    attempt.observe(take(.complete, terminal: delivered(editor: "editor")), focusedEditor: "editor")
+    #expect(attempt.success == .completed(polished: true))
+
+    let stuck = take(.error(.micNotResponding), id: "")
+    #expect(shown(stuck, attempt) == .microphoneNotResponding)
+    #expect(attempt.success == .completed(polished: true), "the notice does not erase success")
+
+    // The next press is in flight, then lands: the notice is gone.
+    #expect(shown(take(.recording, id: "retry"), attempt) == .listening(handsFree: false))
+    #expect(shown(take(.complete, id: "retry"), attempt) == .worked)
+  }
+
+  @Test("Permission still wins, and a generic failure keeps its own state")
+  func precedenceAndGenericFailure() {
+    let attempt = SetupPracticeAttempt()
+    let stuck = take(.error(.micNotResponding), id: "")
+    #expect(
+      SetupPracticeRoute.displayed(
+        stuck, microphoneOff: true, accessibilityOff: false, usable: true, attempt: attempt,
+        polishOn: false) == .microphoneOff)
+    #expect(shown(take(.error(.micWouldNotOpen), id: ""), attempt) != .microphoneNotResponding)
+  }
+
   private func take(
     _ phase: PipelineState, id: String = "first", terminal: PracticeTakeEvidence? = nil
   ) -> SetupPracticeTake {

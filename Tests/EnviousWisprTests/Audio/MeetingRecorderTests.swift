@@ -73,8 +73,15 @@ struct MeetingRecorderTests {
     var stopCount = 0
     var boundUID = "BuiltInMicrophoneDevice"
 
-    func open(targetUID: String?, inputChannelByDeviceUID: [String: Int]) async throws -> String? {
+    /// #4601: the microphone-start deadline each open received, in order.
+    var openDeadlines: [ContinuousClock.Instant] = []
+
+    func open(
+      targetUID: String?, inputChannelByDeviceUID: [String: Int],
+      startDeadline: ContinuousClock.Instant
+    ) async throws -> String? {
       openTargets.append(targetUID)
+      openDeadlines.append(startDeadline)
       if let openGate { await openGate.pass() }
       if let openError { throw openError }
       return boundUID
@@ -86,6 +93,13 @@ struct MeetingRecorderTests {
     }
 
     func stopNow() { stopCount += 1 }
+
+    /// #4601: the quit deadlines this microphone was stopped with.
+    var quitDeadlines: [DispatchTime] = []
+    func stopNow(deadline: DispatchTime) {
+      stopCount += 1
+      quitDeadlines.append(deadline)
+    }
   }
 
   final class FakeCallSound: MeetingCallSoundSource, @unchecked Sendable {
@@ -348,6 +362,27 @@ struct MeetingRecorderTests {
     }
   }
 
+  /// #4601: a microphone that did not answer reaches the coordinator as itself (so the meeting
+  /// shows the stuck-microphone notice); any other open failure stays the generic error.
+  @Test("a not-responding open passes its error on; a status-60 near miss stays generic")
+  func notRespondingOpenErrorIsPassedOn() async throws {
+    let stuck = try rig(callSound: false)
+    stuck.microphones[0].openError = AudioError.microphoneNotResponding(
+      source: "HALDeviceInputSource.prepare.timed_out")
+    var passedOn = false
+    do { _ = try await stuck.recorder.start() } catch let error as AudioError {
+      passedOn = MicrophoneStartFailure.isNotResponding(error)
+    }
+    #expect(passedOn)
+
+    let nearMiss = try rig(callSound: false)
+    nearMiss.microphones[0].openError = AudioError.formatCreationFailed(
+      source: "HALDeviceInputSource.prepare.init", osStatus: 60)
+    await #expect(throws: MeetingRecorder.RecorderError.self) {
+      _ = try await nearMiss.recorder.start()
+    }
+  }
+
   @Test("a microphone that fails to open is released, its file closed, and nothing is recorded")
   func microphoneFailureReleasesEverything() async throws {
     let r = try rig()
@@ -357,6 +392,32 @@ struct MeetingRecorderTests {
     #expect(r.microphones[0].onSamples == nil)
     #expect(r.calls().isEmpty, "call sound never starts without a microphone")
     #expect(try FileManager.default.contentsOfDirectory(atPath: r.folder.path).isEmpty)
+  }
+
+  @Test("a quit passes its own deadline, unchanged, to the microphone's release")
+  func quitPassesItsDeadlineToTheMicrophone() async throws {
+    let r = try rig()
+    _ = try await r.recorder.start()
+    let deadline = DispatchTime.now() + 2
+    _ = r.recorder.stopForQuit(deadline: deadline)
+    #expect(r.microphones[0].quitDeadlines == [deadline])
+    #expect(r.microphones[0].stopCount == 1)
+  }
+
+  @Test("a quit while the microphone is opening stops it with the quit deadline, once")
+  func quitDuringOpenStopsTheOpeningMicrophone() async throws {
+    let r = try rig()
+    let gate = Gate()
+    r.microphones[0].openGate = gate
+    let start = Task { try await r.recorder.start() }
+    defer { gate.open() }
+    #expect(await gate.waitUntilParked(), "the fake was never entered")
+    let deadline = DispatchTime.now() + 2
+    _ = r.recorder.stopForQuit(deadline: deadline)
+    #expect(r.microphones[0].quitDeadlines == [deadline], "the opening microphone was reached")
+    gate.open()
+    await #expect(throws: (any Error).self) { _ = try await start.value }
+    #expect(r.microphones[0].stopCount == 1, "stopped once, not again by the late open")
   }
 
   @Test("a stop while the microphone is opening ends the start and the late open is released")
@@ -546,6 +607,32 @@ struct MeetingRecorderTests {
     #expect(r.segments.of(.microphone).count == 2)
     #expect(r.recorder.microphoneHealth?.gaps == 1)
     #expect(r.microphones[1].stopCount == 1)
+  }
+
+  /// #4601 §3a: the meeting start gives its microphone open one five-second budget, and a
+  /// reopen after a lost microphone is a start of its own with a fresh budget (never the old,
+  /// possibly spent one). When this fails, a stuck driver can hold a meeting start too long, or
+  /// a reopen fails at once on a deadline that ran out long ago.
+  @Test("a meeting start and its reopen each give the microphone their own start budget")
+  func startAndReopenEachGetABudget() async throws {
+    let r = try rig(microphones: 2, callSound: false)
+    let before = ContinuousClock.now
+    _ = try await r.recorder.start()
+    let startDeadline = try #require(r.microphones[0].openDeadlines.first)
+    #expect(startDeadline >= MicrophoneStartBudget.deadline(from: before))
+    #expect(startDeadline <= MicrophoneStartBudget.deadline(from: .now))
+
+    r.microphones[0].onInterrupted?(.deviceRemoved)
+    defer { r.reopenGate.open() }
+    #expect(await r.reopenGate.waitUntilParked(), "the reopen never paused")
+    let beforeReopen = ContinuousClock.now
+    r.reopenGate.open()
+    await r.recorder.reopenTaskForTesting?.value
+
+    let reopenDeadline = try #require(r.microphones[1].openDeadlines.first)
+    #expect(reopenDeadline >= MicrophoneStartBudget.deadline(from: beforeReopen))
+    #expect(reopenDeadline > startDeadline)
+    await r.recorder.stop()
   }
 
   @Test("a microphone back within 1.5 s keeps its gap: the reopened audio starts where it arrived")

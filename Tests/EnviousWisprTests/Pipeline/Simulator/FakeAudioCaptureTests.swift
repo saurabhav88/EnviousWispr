@@ -1,6 +1,7 @@
 import EnviousWisprCore
 import Foundation
 import Testing
+import EnviousWisprAudio
 
 /// `FakeAudioCapture` behavior tests (epic #827, PR-2 plan §11.2 item B).
 /// Includes the `stopCapture()`-on-cancel-and-on-wedge teardown assertion
@@ -48,7 +49,7 @@ struct FakeAudioCaptureTests {
     let capture = FakeAudioCapture()
     capture.permissionDenied = true
     await #expect(throws: FakeCaptureError.self) {
-      try await capture.startEnginePhase()
+      try await capture.startEnginePhase(startDeadline: MicrophoneStartBudget.deadline(from: .now))
     }
   }
 

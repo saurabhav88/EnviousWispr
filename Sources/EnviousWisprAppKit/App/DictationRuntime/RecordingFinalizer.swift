@@ -34,6 +34,9 @@ final class RecordingFinalizer {
   private var lastUserStopRequest: ContinuousClock.Instant?
   /// #3973 C1: the press waiting for its engine turn, shared with the starter.
   private let pendingRequests: PendingDictationRequests
+  /// #4601 §5: gives up a microphone start still being prepared with no session (the capture
+  /// manager's `abandonPendingStart`). Synchronous, so it runs before any await.
+  private let abandonPendingStart: @MainActor () -> Void
 
   /// #902 test seams — the stop/cancel dispatch steps. Defaults are today's exact
   /// inline calls, so production behavior is identical. Two separate closures
@@ -75,9 +78,11 @@ final class RecordingFinalizer {
     heartControlRecovery: HeartControlRecovery,
     recordingLockedAccess: DictationLifecycleCoordinator.RecordingLockedAccess,
     languageSuggestionPresenter: LanguageSuggestionPresenter?,
-    pendingRequests: PendingDictationRequests
+    pendingRequests: PendingDictationRequests,
+    abandonPendingStart: @escaping @MainActor () -> Void
   ) {
     self.pendingRequests = pendingRequests
+    self.abandonPendingStart = abandonPendingStart
     self.kernelDriver = kernelDriver
     self.whisperKernelDriver = whisperKernelDriver
     self.asrManager = asrManager
@@ -95,6 +100,10 @@ final class RecordingFinalizer {
     pendingRequests.cancelPending()
     let active: KernelDictationDriver =
       asrManager.activeBackendType == .whisper ? whisperKernelDriver : kernelDriver
+    // #4601 §5: a release during a sessionless pre-warm reaches no session (the kernel ignores a
+    // stop while idle), so the waiting microphone start is given up here, before any await, and
+    // the starter's post-await check then dismisses with no notice.
+    if !active.hasSession { abandonPendingStart() }
     do {
       try await requestStopDispatch(active)
     } catch {
@@ -123,6 +132,8 @@ final class RecordingFinalizer {
     // `cancelRecording()` shape Parakeet uses.
     let active: KernelDictationDriver =
       asrManager.activeBackendType == .whisper ? whisperKernelDriver : kernelDriver
+    // #4601 §5: same as `userStop`, before the early returns below.
+    if !active.hasSession { abandonPendingStart() }
     // #2087: abandonment returns at once — no teardown, no terminal await; see policy.
     if CancelAffordancePolicy.isAbandonment(
       trigger: trigger, isEscapeRecoveryTranscribing: active.isEscapeRecoveryTranscribing)

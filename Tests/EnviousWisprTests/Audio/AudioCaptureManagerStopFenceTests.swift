@@ -157,7 +157,7 @@ import Testing
       // leaving this test asserting against a state it never reached.
       manager.warmEnginePolicy = .off
 
-      try await manager.startEnginePhase()
+      try await manager.startEnginePhase(startDeadline: MicrophoneStartBudget.deadline(from: .now))
 
       #expect(stub.prepareCallCount == 1, "the engine really was prepared through startEnginePhase")
       #expect(

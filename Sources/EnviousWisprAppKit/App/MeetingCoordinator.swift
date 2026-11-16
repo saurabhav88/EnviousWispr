@@ -454,6 +454,9 @@ final class MeetingCoordinator {
   enum Notice: Equatable {
     case microphoneDenied
     case microphoneUnavailable
+    /// #4601: the microphone did not answer when the meeting started (narrator-owned sentence
+    /// with a "How to fix" help button).
+    case microphoneNotResponding
     case finishDictationFirst
     case lowDisk
     case stoppedLowDisk
@@ -1180,7 +1183,10 @@ final class MeetingCoordinator {
       self.recorder = nil
       activeMeetingID = nil
       phase = .idle
-      notice = .microphoneUnavailable
+      // #4601 §3.7: permission was settled before the start; this asks the one shared decision.
+      notice =
+        MicrophoneStartFailure.isNotResponding(error)
+        ? .microphoneNotResponding : .microphoneUnavailable
       workChanged()
       // Its row is decided by what reached disk: `start_failed` when nothing did, else the
       // attempt goes on to the terminal of the audio it kept.

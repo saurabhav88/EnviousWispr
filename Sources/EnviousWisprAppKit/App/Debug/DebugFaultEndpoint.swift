@@ -95,6 +95,9 @@
 
     /// #4021: arms a one-shot stall on the shared Core Audio lane (`force_core_audio_stall`).
     private let coreAudioStall: ((Duration) -> Void)?
+    /// #4601 §3.9: arms a one-shot stall for ONE audio-unit lane operation (a microphone open,
+    /// its release, or one named read). Only a job of that operation consumes it.
+    private let audioUnitStall: ((AudioUnitLane.Operation, Duration) -> Void)?
     private var listener: NWListener?
     private let port: UInt16
     private let token: String
@@ -116,9 +119,11 @@
       qualificationAction: ((QualificationAction) -> Void)? = nil,
       qualificationChildTrap:
         (@MainActor () async -> LocalPolishProcessManager.QualificationChildSignal?)? = nil,
-      coreAudioStall: ((Duration) -> Void)? = nil
+      coreAudioStall: ((Duration) -> Void)? = nil,
+      audioUnitStall: ((AudioUnitLane.Operation, Duration) -> Void)? = nil
     ) {
       self.coreAudioStall = coreAudioStall
+      self.audioUnitStall = audioUnitStall
       self.qualificationChildTrap = qualificationChildTrap
       self.qualificationAction = qualificationAction
       self.audioCapture = audioCapture
@@ -424,10 +429,27 @@
       // #4021 Live UAT: the next admitted Core Audio lane read (device snapshot or microphone
       // check) blocks for N seconds on the lane's own queue, the shape a stuck driver gives the
       // app. Logged when armed here and when it fires (`CoreAudioLane` category).
+      //
+      // #4601 §3.9: `force_core_audio_stall(N,unit:open)`, `(N,unit:retire)` or
+      // `(N,unit:read:<name>)` instead arms the audio-unit lane: the next job of exactly that
+      // operation waits N seconds before it runs (a pre-operation delay: it proves the app's
+      // callers stay responsive, not how a native callback behaves). Duration and selector are
+      // validated before anything is armed; an unknown selector is refused, never redirected.
       case let cmd where cmd.hasPrefix("force_core_audio_stall("):
+        if let (arg, selector) = parseTwoStringArgCommand(cmd, prefix: "force_core_audio_stall(") {
+          guard let audioUnitStall else { return "ERR no_dependency" }
+          guard let seconds = Self.stallSeconds(arg),
+            let operation = Self.audioUnitStallOperation(selector)
+          else { return "ERR bad_arg" }
+          audioUnitStall(operation, .milliseconds(Int(seconds * 1000)))
+          await AppLogger.shared.log(
+            "fault armed: next unit lane \(selector) job stalls \(arg) s before it runs",
+            level: .info, category: "AudioUnitLane")
+          return "OK"
+        }
         guard let coreAudioStall else { return "ERR no_dependency" }
         guard let arg = parseStringArgCommand(cmd, prefix: "force_core_audio_stall("),
-          let seconds = Double(arg), seconds.isFinite, seconds >= 1, seconds <= 30
+          let seconds = Self.stallSeconds(arg)
         else { return "ERR bad_arg" }
         coreAudioStall(.milliseconds(Int(seconds * 1000)))
         await AppLogger.shared.log(
@@ -622,6 +644,29 @@
 
     /// Parse `<prefix><arg>)` into the single string argument. Returns nil when the
     /// command is not this shape or the argument is empty.
+    /// A stall length the fault commands accept: 1 to 30 seconds.
+    static func stallSeconds(_ arg: String) -> Double? {
+      guard let seconds = Double(arg), seconds.isFinite, seconds >= 1, seconds <= 30 else {
+        return nil
+      }
+      return seconds
+    }
+
+    /// `unit:open`, `unit:retire` or `unit:read:<name>`, where `<name>` is a read the lane
+    /// actually runs (the reporting table is the list). Anything else is nil (refused).
+    static func audioUnitStallOperation(_ selector: String) -> AudioUnitLane.Operation? {
+      switch selector {
+      case "unit:open": return .open
+      case "unit:retire": return .retire
+      default:
+        let prefix = "unit:read:"
+        guard selector.hasPrefix(prefix) else { return nil }
+        let name = String(selector.dropFirst(prefix.count))
+        guard AudioUnitLaneReporting.readForOperation[name] == .microphoneProbe else { return nil }
+        return .read(name)
+      }
+    }
+
     private func parseStringArgCommand(_ cmd: String, prefix: String) -> String? {
       guard cmd.hasPrefix(prefix), cmd.hasSuffix(")") else { return nil }
       let inner = String(cmd.dropFirst(prefix.count).dropLast())
