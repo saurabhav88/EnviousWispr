@@ -139,7 +139,8 @@ struct HistoryInlinePlayback<Meta: View>: View {
     HStack(spacing: DesignSpacing.md) {
       Button(action: toggle) {
         Image(systemName: HistoryTranscriptPresentation.playSymbol(action))
-          .font(.system(size: 10, weight: .bold))
+          .font(.stHelper.weight(.bold))
+          .imageScale(.small)
           .foregroundStyle(.white)
           .frame(width: Self.buttonSize, height: Self.buttonSize)
           .background(Color.stAccentSolid, in: Circle())
