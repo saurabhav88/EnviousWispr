@@ -342,6 +342,12 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     guard let abandonedAt = startsAbandonedAt else { return false }
     return startDeadline - MicrophoneStartBudget.duration <= abandonedAt
   }
+  /// #4601 whole-diff review r3: starts (`startEnginePhase`, `preWarm`) still resolving or
+  /// opening. While any is in flight the Keep engine warm policy never drops the source it is
+  /// opening (that open would commit into a source the manager no longer holds, and its unit
+  /// would never be released); the start's own end applies the policy instead (`stopCapture`,
+  /// or `releaseUnstartedCapture` for a start that never captured).
+  private var startsInFlight = 0
   /// #4601 §5: the ONE manager request owner. Each `resolveSource()` mints the next value; work
   /// that resumes from an await with an older value is superseded and changes nothing.
   private var resolveRequestID: UInt64 = 0
@@ -594,6 +600,15 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     // because a new `startEnginePhase()` requires the kernel to be `.idle`,
     // reached only through `finishTerminal` — after the stop-time read.
     effectiveDiscriminatorDevice = nil
+    // #4601 whole-diff review r3: this attempt's attribution starts empty BEFORE the first wait,
+    // so a start that fails in resolution (an unanswered route read, a stuck lane) reports an
+    // unknown source, never the previous take's.
+    latestInputResolutionAttempt = nil
+    currentInputResolutionSource = nil
+    // #4601 whole-diff review r3: a start is in flight until this returns or throws (see
+    // `startsInFlight`).
+    startsInFlight += 1
+    defer { startsInFlight -= 1 }
     // Re-evaluate route on every recording start — BT state may have changed.
     onLifecycleSignal?("manager_resolve_source_entered")
     try requireNotAbandoned(startDeadline)
@@ -1168,6 +1183,10 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     /// Test seams (#3878): the warm-engine state `releaseUnstartedCapture()` changes, and a
     /// completion signal for the teardown's asynchronous `source.stop()`.
     var hasActiveSourceForTesting: Bool { activeSource != nil }
+    /// #4601: stands in for a previous take's attribution.
+    func setCurrentInputResolutionSourceForTesting(_ source: String?) {
+      currentInputResolutionSource = source
+    }
     var hasPendingWarmTeardownForTesting: Bool { warmEngineTeardownTask != nil }
     var isIdleTrackedForTesting: Bool { idleSince != nil }
     /// Test seam: waits until every release this manager's sources queued has run.
@@ -1210,6 +1229,8 @@ public final class AudioCaptureManager: AudioCaptureInterface {
 
   public func preWarm(startDeadline: ContinuousClock.Instant) async throws {
     let preWarmStart = ContinuousClock.now
+    startsInFlight += 1
+    defer { startsInFlight -= 1 }
     try requireNotAbandoned(startDeadline)
     let (source, reusedWarm, request) = try await resolveSource(deadline: startDeadline)
     let resolveMs = Self.ms(ContinuousClock.now - preWarmStart)
@@ -1308,7 +1329,9 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     idleSince = clock.now
     warmEngineTeardownTask = Task { [weak self] in
       try? await Task.sleep(for: timeout)
-      guard !Task.isCancelled, let self, !self.isCapturing else { return }
+      guard !Task.isCancelled, let self, !self.isCapturing, self.startsInFlight == 0 else {
+        return
+      }
       self.performEngineTeardown()
     }
   }
@@ -1329,8 +1352,9 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   /// Reconcile engine state when the policy changes while idle.
   /// Called automatically by the warmEnginePolicy setter.
   private func reconcileWarmEnginePolicy() {
-    // If capturing, new policy applies on next stopCapture.
-    guard !isCapturing else { return }
+    // If capturing, new policy applies on next stopCapture; a start still opening applies it when
+    // it ends (`startsInFlight`).
+    guard !isCapturing, startsInFlight == 0 else { return }
     // If engine is not warm, nothing to reconcile.
     guard activeSource != nil else { return }
 
@@ -1352,7 +1376,9 @@ public final class AudioCaptureManager: AudioCaptureInterface {
         let remaining = timeout - elapsed
         warmEngineTeardownTask = Task { [weak self] in
           try? await Task.sleep(for: remaining)
-          guard !Task.isCancelled, let self, !self.isCapturing else { return }
+          guard !Task.isCancelled, let self, !self.isCapturing, self.startsInFlight == 0 else {
+            return
+          }
           self.performEngineTeardown()
         }
       }

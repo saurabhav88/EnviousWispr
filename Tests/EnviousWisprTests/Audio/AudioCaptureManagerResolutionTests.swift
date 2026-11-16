@@ -167,6 +167,65 @@ import os
       #expect(reads.gate.didExpire == false)
     }
 
+    // MARK: - Whole-diff review r3
+
+    /// When this fails, turning Keep engine warm off while a start is still opening the
+    /// microphone drops the source that open commits into, and its unit is never released.
+    @Test("turning Keep engine warm off during a start leaves the microphone it is opening")
+    func warmPolicyWaitsForAStartInFlight() async throws {
+      let lane = AudioUnitLane(label: "test.manager.resolve.policy")
+      let reads = FirstReadGate()
+      let manager = Self.makeManager(lane: lane, resolver: reads.resolver())
+      let warm = Self.warmSource(lane: lane)
+      manager.installCapturedSourceForTesting(warm, sessionID: 1)
+
+      let start = Task { () -> Bool in
+        do {
+          try await manager.startEnginePhase(startDeadline: .now + .seconds(5))
+          return true
+        } catch {
+          return false
+        }
+      }
+      #expect(await reads.entered.wait())
+      manager.warmEnginePolicy = .off
+      #expect(manager.hasActiveSourceForTesting, "the opening start keeps its microphone")
+      reads.gate.open()
+      _ = await start.value
+      await lane.drainForTesting()
+    }
+
+    /// When this fails, a start that fails before choosing a microphone reports the previous
+    /// take's microphone choice in its failure telemetry.
+    @Test("a start that fails in resolution reports no microphone choice, not the previous one")
+    func failedResolutionClearsAttribution() async throws {
+      let timers = AudioUnitLaneTests.ManualTimers()
+      let lane = AudioUnitLane(
+        label: "test.manager.resolve.attribution",
+        schedule: { delay, fire in timers.schedule(delay, fire) },
+        now: { AudioUnitLaneTests.base })
+      let reads = FirstReadGate()
+      let manager = Self.makeManager(lane: lane, resolver: reads.resolver())
+      manager.setCurrentInputResolutionSourceForTesting("system_default")
+
+      let start = Task { () -> Bool in
+        do {
+          try await manager.startEnginePhase(
+            startDeadline: AudioUnitLaneTests.base + .milliseconds(500))
+          return true
+        } catch {
+          return false
+        }
+      }
+      #expect(await reads.entered.wait())
+      #expect(await timers.scheduled(.milliseconds(500)))
+      timers.fire(.milliseconds(500))
+      #expect(await start.value == false)
+      #expect(manager.currentInputResolutionSource == nil)
+      reads.gate.open()
+      await lane.drainForTesting()
+    }
+
     // MARK: - A press the user already replaced
 
     @Test("a replaced start gives up quietly and installs nothing; the newer start wins")
