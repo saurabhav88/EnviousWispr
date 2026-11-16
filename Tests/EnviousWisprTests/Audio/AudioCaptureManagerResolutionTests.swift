@@ -47,6 +47,17 @@ import os
       }
     }
 
+    /// Fires once the manager has minted its second resolution request.
+    private static func secondRequestMinted(_ manager: AudioCaptureManager) -> Signal {
+      let minted = Signal()
+      var count = 0
+      manager.onResolveRequestMintedForTesting = { _ in
+        count += 1
+        if count == 2 { minted.fire() }
+      }
+      return minted
+    }
+
     private static func immediateResolver() -> CaptureRouteResolver {
       CaptureRouteResolver(defaultOutputDeviceID: { nil }, isBluetoothOutputDevice: { _ in false })
     }
@@ -164,6 +175,7 @@ import os
       let lane = AudioUnitLane(label: "test.manager.resolve.superseded")
       let reads = FirstReadGate()
       let manager = Self.makeManager(lane: lane, resolver: reads.resolver())
+      let minted = Self.secondRequestMinted(manager)
 
       let older = Task { () -> String in
         do {
@@ -178,6 +190,7 @@ import os
       #expect(await reads.entered.wait())
       // The newer start's route read queues behind the older one on the serial lane.
       let newer = Task { (try await manager.resolveSourceForTesting()) is HALDeviceInputSource }
+      #expect(await minted.wait(), "the newer request exists before the older read is released")
       reads.gate.open()
 
       #expect(await older.value == "cancelled", "a replaced start is abandonment, not an error")
@@ -194,6 +207,7 @@ import os
       let manager = Self.makeManager(lane: lane, resolver: reads.resolver())
       let warm = Self.warmSource(lane: lane)
       manager.installCapturedSourceForTesting(warm, sessionID: 1)
+      let minted = Self.secondRequestMinted(manager)
 
       // The older start snapshots a different device, so on its own it would replace `warm`.
       manager.preferredInputDeviceIDOverride = "some-other-microphone"
@@ -211,10 +225,63 @@ import os
       // The user goes back to Auto and presses again.
       manager.preferredInputDeviceIDOverride = ""
       let newer = Task { (try await manager.resolveSourceForTesting()) === warm }
+      #expect(await minted.wait(), "the newer request exists before the older read is released")
       reads.gate.open()
 
       #expect(await older.value == "cancelled")
       #expect(try await newer.value, "the older start must not have torn `warm` down")
+      #expect(reads.gate.didExpire == false)
+    }
+
+    @Test("giving up a start while its route read waits installs and prepares nothing")
+    func abortDuringRouteReadInstallsNothing() async throws {
+      let lane = AudioUnitLane(label: "test.manager.resolve.abort")
+      let reads = FirstReadGate()
+      let manager = Self.makeManager(lane: lane, resolver: reads.resolver())
+      var built = 0
+      manager.installSourceFactoryForTesting { _ in
+        built += 1
+        return GatedSource(step: "never")
+      }
+
+      let start = Task { () -> String in
+        do {
+          try await manager.preWarm()
+          return "prepared"
+        } catch is CancellationError {
+          return "cancelled"
+        } catch {
+          return "other: \(error)"
+        }
+      }
+      #expect(await reads.entered.wait())
+      manager.abortPreWarm()
+      reads.gate.open()
+
+      #expect(await start.value == "cancelled", "giving up is abandonment, not an error")
+      #expect(built == 0, "no microphone source may be built")
+      #expect(manager.hasActiveSourceForTesting == false)
+      #expect(reads.gate.didExpire == false)
+    }
+
+    @Test("a settings change during the route read does not mix into the start already running")
+    func settingsSnapshotHoldsAcrossTheWait() async throws {
+      let lane = AudioUnitLane(label: "test.manager.resolve.snapshot")
+      let reads = FirstReadGate()
+      let manager = Self.makeManager(lane: lane, resolver: reads.resolver())
+      manager.preferredInputDeviceIDOverride = "first-microphone"
+      manager.inputChannelByDeviceUID = ["first-microphone": 1]
+
+      let start = Task { () -> [String] in
+        let hal = try #require(try await manager.resolveSourceForTesting() as? HALDeviceInputSource)
+        return [hal.targetDeviceUID ?? "nil", "\(hal.inputChannelByDeviceUID)"]
+      }
+      #expect(await reads.entered.wait())
+      manager.preferredInputDeviceIDOverride = "second-microphone"
+      manager.inputChannelByDeviceUID = ["second-microphone": 0]
+      reads.gate.open()
+
+      #expect(try await start.value == ["first-microphone", "\(["first-microphone": 1])"])
       #expect(reads.gate.didExpire == false)
     }
 
