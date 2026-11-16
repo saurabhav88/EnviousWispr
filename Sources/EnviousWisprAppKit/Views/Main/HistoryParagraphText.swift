@@ -49,14 +49,14 @@ struct HistoryParagraphText: View {
     switch block.content {
     case .plain(let text):
       Self.searchText(text, query: query)
-        .font(.stBody)
+        .font(.stCardText)
         .foregroundStyle(.stTextPrimary)
         .textSelection(.enabled)
     case .markedUp(let runs):
       let styled = Self.attributed(runs)
       Text(query.isEmpty ? styled : Self.highlighting(
         styled, in: runs.map(\.text).joined(), query: query, markedUp: true))
-        .font(.stBody)
+        .font(.stCardText)
         .textSelection(.enabled)
         .accessibilityRepresentation {
           Text(Self.accessibilityText(runs))

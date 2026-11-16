@@ -234,6 +234,10 @@ extension Font {
   static let stBody = Font.system(size: 14, weight: .regular)
   /// Caption / hint / status microcopy: footnotes, link hints, status lines. Same 14pt floor as body; it reads quieter through colour, not size.
   static let stHelper = Font.system(size: 14)
+  /// History day heading ("Sunday, November 15"), as the approved diary mock draws it (founder 2026-11-15, #4611). History only.
+  static let stDayTitle = Font.system(size: 26, weight: .bold)
+  /// The dictated words on a History dictation card, larger than settings body copy because they are the card's content (founder 2026-11-15, #4611). History only.
+  static let stCardText = Font.system(size: 16, weight: .regular)
   /// A settings row's short grey line under its name (#3385). Held at the 14pt floor by founder decision (2026-10-02) rather than the mockup's 13px; kept as its own token so the row line has one owner.
   static let stRowHelper = Font.system(size: 14)
   /// Onboarding step headline.

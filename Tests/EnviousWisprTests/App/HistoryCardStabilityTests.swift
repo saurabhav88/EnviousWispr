@@ -18,19 +18,6 @@ import Testing
 struct HistoryCardStabilityTests {
   init() { _ = NSApplication.shared }
 
-  private func height(_ status: DictationRecordingStatus?) -> CGFloat {
-    let view = NSHostingView(
-      rootView: HistoryDictationRecordingSlot(status: status, player: nil).frame(width: 520))
-    return view.fittingSize.height
-  }
-
-  @Test("The recording line takes the same height before and after its status arrives")
-  func recordingSlotHeightIsFixed() {
-    let before = height(nil)
-    #expect(before > 0)
-    #expect(height(.unreadable) == before)
-  }
-
   @Test("A card knows a dictation has no recording before its own status read (#4611)")
   func recordingPresenceIsKnownBeforeTheCardReads() {
     let changes = DictationRecordingChanges()

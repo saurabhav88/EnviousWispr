@@ -209,14 +209,31 @@ struct HistoryDiaryTable: NSViewRepresentable {
         #if DEBUG
           listener.rowsChanged(from: rows.count, to: newRows.count)
         #endif
+        // #4611: a new dictation arriving while the reader is at the top slides in, measured
+        // first so it lands at its real height; every other change (a page, a deletion)
+        // applies at once.
+        let slidesIn =
+          isAtNewest && removed.isEmpty && !inserted.isEmpty && (inserted.last ?? 0) < 4
         rows = newRows
         index = Dictionary(
           newRows.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
-        withoutAnimation {
+        if slidesIn {
+          let currentWidth = table.tableColumns.first?.width ?? 0
+          if currentWidth > 1 {
+            width = currentWidth
+            for row in inserted { measure(newRows[row]) }
+            sizer.rootView = .empty
+          }
           table.beginUpdates()
-          if !removed.isEmpty { table.removeRows(at: removed, withAnimation: []) }
-          if !inserted.isEmpty { table.insertRows(at: inserted, withAnimation: []) }
+          table.insertRows(at: inserted, withAnimation: [.effectFade, .slideDown])
           table.endUpdates()
+        } else {
+          withoutAnimation {
+            table.beginUpdates()
+            if !removed.isEmpty { table.removeRows(at: removed, withAnimation: []) }
+            if !inserted.isEmpty { table.insertRows(at: inserted, withAnimation: []) }
+            table.endUpdates()
+          }
         }
       }
       // Rows that stay on screen show the latest search, selection mode and environment.
@@ -330,6 +347,12 @@ struct HistoryDiaryTable: NSViewRepresentable {
       }
       sizer.rootView = .empty
       return changed
+    }
+
+    /// Measures one row at the current width with the off-screen copy and keeps the height.
+    private func measure(_ id: RowID) {
+      sizer.rootView = hosted(id)
+      heights[id] = (max(1, ceil(sizer.fittingSize.height)), width)
     }
 
     private func noteHeights(_ rows: IndexSet, keepingPlace: Bool = true) {

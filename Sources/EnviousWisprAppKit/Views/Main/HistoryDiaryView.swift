@@ -138,6 +138,16 @@ struct HistoryDiaryView<
         coordinator.setHistoryState(live, for: tab)
       }
       if let result = await coordinator.historyResults(for: key) {
+        #if DEBUG
+          // #4611 listening code: how long after its save a new item reached the list.
+          if let newest = result.items.first, newest.id != results[tab]?.items.first?.id {
+            let age = Date().timeIntervalSince(newest.createdAt)
+            if age < 120 {
+              let line = "new item shown tab=\(tab.rawValue) secondsAfterSave=\(String(format: "%.2f", age))"
+              Task { await AppLogger.shared.log(line, level: .info, category: "HistoryScroll") }
+            }
+          }
+        #endif
         results[tab] = result
         if isSelecting, coordinator.historyTab == tab {
           if let matching = await coordinator.matchingIDs(for: result) {
@@ -427,8 +437,15 @@ private struct HistoryDiaryList<DictationCard: View>: View {
           .onAppear {
             // A best-effort prefetch hint: it can come early, together with other rows,
             // or twice; `loadMore` accepts one request per window.
-            if item.id == paging.window.tail, let request = paging.request { loadMore(request) }
-            if item.id == items.last?.id, paging.hasNext, let result { loadNext(result, false) }
+            // #4611: the next page starts loading ten cards before the end, so a scroll that
+            // keeps going never meets the end of the list.
+            let ahead = HistoryPaging.pageSize / 3
+            if entry.position >= paging.window.boundary - ahead, let request = paging.request {
+              loadMore(request)
+            }
+            if entry.position >= items.count - ahead, paging.hasNext, let result {
+              loadNext(result, false)
+            }
           }
       }
     }
@@ -688,11 +705,13 @@ private struct HistoryDayHeader: View {
     VStack(alignment: .leading, spacing: DesignSpacing.md) {
       HStack(alignment: .firstTextBaseline, spacing: DesignSpacing.md) {
         Text(title.date)
-          .font(.stRowTitle.bold())
+          .font(.stDayTitle)
           .foregroundStyle(.stTextPrimary)
         if let relative = title.relative {
-          Text(relative)
+          // The approved mock's TODAY / YESTERDAY: the section eyebrow style, in the accent.
+          Text(relative.uppercased())
             .font(.stSectionHeader)
+            .tracking(0.8)
             .foregroundStyle(.stAccent)
         }
         Spacer(minLength: DesignSpacing.md)

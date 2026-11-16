@@ -75,6 +75,12 @@
   --ew-font-st-helper-size: 14px;
   --ew-font-st-helper-weight: 400;
   --ew-font-st-helper-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  --ew-font-st-day-title-size: 26px;
+  --ew-font-st-day-title-weight: 700;
+  --ew-font-st-day-title-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  --ew-font-st-card-text-size: 16px;
+  --ew-font-st-card-text-weight: 400;
+  --ew-font-st-card-text-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
   --ew-font-st-row-helper-size: 14px;
   --ew-font-st-row-helper-weight: 400;
   --ew-font-st-row-helper-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
