@@ -230,7 +230,9 @@ private final class HALRenderContext: @unchecked Sendable {
   /// consumer thread,
   /// never directly from the render callback).
   func drainAndForward() {
-    while let (count, _) = ring.pop(into: &popScratch) {
+    // #4601 §3.4: once the unit is handed off for retirement (stopped flag set on the main actor),
+    // nothing more is forwarded, even if the consumer still holds buffered audio.
+    while !stopped.isSet(), let (count, _) = ring.pop(into: &popScratch) {
       guard
         let nativeBuffer = AVAudioPCMBuffer(
           pcmFormat: nativeFormat, frameCapacity: AVAudioFrameCount(count))
@@ -460,8 +462,9 @@ final class HALDeviceInputSource: AudioInputSource {
   /// now (standalone callers until the press-origin chain is wired; not G2 evidence).
   var startDeadline: ContinuousClock.Instant?
   /// The cold attempt this source is waiting on, if any. Main-actor owned; cleared on every
-  /// terminal path. Abort, a newer attempt and shutdown abandon it on the lane.
-  private var pendingAttemptID: UInt64?
+  /// terminal path. Abort, a newer attempt and shutdown cancel it, which works before lane
+  /// admission too (§5).
+  private var pendingAttempt: AudioUnitLane.Attempt?
   /// Process-unique attempt keys: every source shares one lane, so per-source counters could
   /// collide.
   private static var nextAttemptID: UInt64 = 1
@@ -472,6 +475,9 @@ final class HALDeviceInputSource: AudioInputSource {
     /// Test seam: runs on the main actor right after the lane answers and before the attempt is
     /// revalidated, so a test can invalidate an attempt after transfer and before commit.
     var afterOpenReturnedForTesting: (@MainActor () -> Void)?
+    /// Test seam: runs on the main actor after the attempt is owned and before the lane is asked,
+    /// so a test can cancel an attempt before lane admission.
+    var beforeOpenForTesting: (@MainActor () -> Void)?
     /// Test oracle: called on the main actor for every device-vanished delivery, with whether
     /// its generation matched the committed unit.
     var listenerDeliveryObserverForTesting: (@MainActor (Bool) -> Void)?
@@ -985,9 +991,9 @@ final class HALDeviceInputSource: AudioInputSource {
   }
 
   private func abandonPendingAttempt() {
-    guard let attempt = pendingAttemptID else { return }
-    pendingAttemptID = nil
-    lane.abandon(attempt: attempt)
+    guard let attempt = pendingAttempt else { return }
+    pendingAttempt = nil
+    attempt.cancel()
   }
 
   func rebuild() {
@@ -1095,9 +1101,11 @@ extension HALDeviceInputSource {
     // here, from the record `open` returns.
     // #4601 §5: one attempt per cold prepare; a newer one abandons the older on the lane.
     abandonPendingAttempt()
-    let attemptID = Self.nextAttemptID
+    // Owned before the first suspension, so an abort that lands before lane admission still
+    // cancels it (the lane then runs no native work).
+    let attempt = AudioUnitLane.Attempt(id: Self.nextAttemptID)
     Self.nextAttemptID += 1
-    pendingAttemptID = attemptID
+    pendingAttempt = attempt
     let progress = HALUnitNative.Progress()
     // #3.8: the observer is captured at admission, so the attempt reports exactly once to the
     // owner that started it.
@@ -1115,8 +1123,13 @@ extension HALDeviceInputSource {
     #endif
     let snapshot = request
     let deadline = startDeadline ?? (ContinuousClock.now + AudioUnitLane.openLimit)
+    #if DEBUG
+      beforeOpenForTesting?()
+    #endif
     let outcome = await lane.open(
-      "microphone_start", attempt: attemptID, deadline: deadline, { openWork(snapshot) },
+      "microphone_start", attempt: attempt, deadline: deadline,
+      // §3.8: the facts known at the FIRST terminal decision are frozen there.
+      onTerminal: { progress.freeze() }, { openWork(snapshot) },
       disposeLate: { result in
         // The caller left first: the lane owns this unit and retires it in the same turn.
         if case .opened(let opened) = result { opened.resources.retire() }
@@ -1124,10 +1137,16 @@ extension HALDeviceInputSource {
     #if DEBUG
       afterOpenReturnedForTesting?()
     #endif
-    // Revalidate after the await: an abort, a newer attempt or shutdown may have invalidated
-    // this one while it waited.
-    let stillCurrent = pendingAttemptID == attemptID && !Task.isCancelled
-    if pendingAttemptID == attemptID { pendingAttemptID = nil }
+    // §5, one rule for every outcome: an attempt invalidated while it waited (abort, a newer
+    // attempt, shutdown, task cancellation) ends as abandoned, with no notice, whatever the lane
+    // answered; a unit it was handed is retired here exactly once.
+    let invalidated = pendingAttempt !== attempt || attempt.isCancelled || Task.isCancelled
+    if pendingAttempt === attempt { pendingAttempt = nil }
+    if invalidated {
+      if case .value(.opened(let opened)) = outcome { lane.retire { opened.resources.retire() } }
+      finalize?(progress.terminal(failedStep: "HALDeviceInputSource.prepare.abandoned"))
+      throw CancellationError()
+    }
     let result: HALUnitNative.OpenResult
     switch outcome {
     case .value(let value):
@@ -1142,12 +1161,6 @@ extension HALDeviceInputSource {
       finalize?(progress.terminal(failedStep: "HALDeviceInputSource.prepare.lane_wedged"))
       throw error
     case .abandoned:
-      finalize?(progress.terminal(failedStep: "HALDeviceInputSource.prepare.abandoned"))
-      throw CancellationError()
-    }
-    if !stillCurrent {
-      // Transferred to this caller but no longer wanted: retire exactly once, here.
-      if case .opened(let opened) = result { lane.retire { opened.resources.retire() } }
       finalize?(progress.terminal(failedStep: "HALDeviceInputSource.prepare.abandoned"))
       throw CancellationError()
     }
@@ -1216,6 +1229,9 @@ extension HALDeviceInputSource {
     // listener registrations, stops, uninitializes and disposes, wakes the
     // consumer, and frees callback storage only after a safe native retirement.
     // Taken out of `self` first so no second owner survives the hand-off.
+    // #4601 §3.4: source-owned forwarding state goes with the unit; the stopped flag set below
+    // also stops the consumer forwarding anything it still holds.
+    forwarder = nil
     if let resources = liveResources {
       liveResources = nil
       resources.markStopping()
@@ -1360,15 +1376,26 @@ enum HALUnitNative {
   /// ends early (timed out, abandoned) freezes only what was really observed. Written on the
   /// lane, read on the main actor at the terminal decision; no hardware read fills a gap.
   final class Progress: Sendable {
-    private let state = OSAllocatedUnfairLock<(InputDeviceResolution?, InputBindOutcome?)>(
-      initialState: (nil, nil))
-    func publish(resolution: InputDeviceResolution) { state.withLock { $0.0 = resolution } }
-    func publish(bind: InputBindOutcome) { state.withLock { $0.1 = bind } }
-    /// A terminal snapshot of what was published, failed at `step`.
+    private struct Facts {
+      var resolution: InputDeviceResolution?
+      var bind: InputBindOutcome?
+      var frozen = false
+    }
+    private let state = OSAllocatedUnfairLock(initialState: Facts())
+    func publish(resolution: InputDeviceResolution) {
+      state.withLock { if !$0.frozen { $0.resolution = resolution } }
+    }
+    func publish(bind: InputBindOutcome) {
+      state.withLock { if !$0.frozen { $0.bind = bind } }
+    }
+    /// Called at the first terminal decision: later publications are ignored.
+    func freeze() { state.withLock { $0.frozen = true } }
+    /// A terminal snapshot of what was published before the freeze, failed at `step`.
     func terminal(failedStep: String) -> FinalizedInputResolutionAttempt {
-      let (resolution, bind) = state.withLock { $0 }
+      let facts = state.withLock { $0 }
       return FinalizedInputResolutionAttempt(
-        resolution: resolution, bindOutcome: bind, prepareOutcome: .failed, failedStep: failedStep)
+        resolution: facts.resolution, bindOutcome: facts.bind, prepareOutcome: .failed,
+        failedStep: failedStep)
     }
   }
 
@@ -2064,7 +2091,8 @@ extension HALDeviceInputSource {
     /// render context, unmanaged retain) around a fake unit pointer that only the
     /// injected `native` calls ever receive.
     static func makeForTesting(
-      stage: Stage, native: HALNativeCalls, listenerCount: Int = 0
+      stage: Stage, native: HALNativeCalls, listenerCount: Int = 0,
+      forwarder: PreRollForwarder = PreRollForwarder()
     ) -> HALUnitResources {
       let unit = AudioUnit(bitPattern: 0x4601)!
       let resources = HALUnitResources(unit: unit, native: native)
@@ -2082,7 +2110,7 @@ extension HALDeviceInputSource {
       let context = HALRenderContext(
         audioUnit: unit, scratch: scratch, capacityFrames: capacity,
         ring: HALSampleRing(slotCount: 2, capacityPerSlot: capacity), stopped: HALStoppedFlag(),
-        liveness: HALCaptureLivenessFlag(), forwarder: PreRollForwarder(), nativeFormat: format,
+        liveness: HALCaptureLivenessFlag(), forwarder: forwarder, nativeFormat: format,
         targetFormat: target, converter: AVAudioConverter(from: format, to: target)!)
       resources.attachCallbackStorage(context: context, unmanaged: .passRetained(context))
       if stage >= .initialized { resources.markInitialized() }
@@ -2101,5 +2129,14 @@ extension HALDeviceInputSource {
 
     /// Whether the stopped flag the callbacks read is set.
     var stoppedFlagIsSetForTesting: Bool { context?.stopped.isSet() ?? false }
+
+    /// Test seam: puts one chunk of audio in the ring as if rendered, then runs the consumer's
+    /// drain once, the way the consumer thread does.
+    func renderAndDrainForTesting() {
+      guard let context else { return }
+      let samples = [Float](repeating: 0.25, count: 480)
+      samples.withUnsafeBufferPointer { _ = context.ring.push($0.baseAddress!, count: 480, level: 0.25) }
+      context.drainAndForward()
+    }
   }
 #endif

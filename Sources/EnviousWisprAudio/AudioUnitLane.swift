@@ -43,6 +43,40 @@ package final class AudioUnitLane: Sendable {
     case read(String)
   }
 
+  /// One caller's attempt (#4601 §5). Cancelling it works in every state: before admission
+  /// (the open is refused `.abandoned` with no native work), queued (withdrawn), running (the
+  /// caller resumes at once and a late value is disposed) and after the fact (no effect). The
+  /// token is an object, so no table of cancelled ids is kept. `id` keys the one-outstanding-
+  /// open-per-attempt rule.
+  package final class Attempt: Sendable {
+    package let id: UInt64
+    private let state = OSAllocatedUnfairLock<(cancelled: Bool, onCancel: (@Sendable () -> Void)?)>(
+      initialState: (false, nil))
+
+    package init(id: UInt64) { self.id = id }
+
+    package func cancel() {
+      let action = state.withLock { state -> (@Sendable () -> Void)? in
+        if state.cancelled { return nil }
+        state.cancelled = true
+        defer { state.onCancel = nil }
+        return state.onCancel
+      }
+      action?()
+    }
+
+    package var isCancelled: Bool { state.withLock { $0.cancelled } }
+
+    /// Installs the lane's abandon action; false (and nothing installed) if already cancelled.
+    fileprivate func register(_ onCancel: @escaping @Sendable () -> Void) -> Bool {
+      state.withLock { state -> Bool in
+        if state.cancelled { return false }
+        state.onCancel = onCancel
+        return true
+      }
+    }
+  }
+
   /// Per-operation limits: past this, a running job wedges the lane (§3.1, §3a).
   package static let readLimit: Duration = .seconds(1)
   package static let openLimit: Duration = .seconds(5)
@@ -97,6 +131,9 @@ package final class AudioUnitLane: Sendable {
     /// Resume the waiting caller; set when its continuation exists.
     var deliverTimedOut: (@Sendable () -> Void)?
     var deliverAbandoned: (@Sendable () -> Void)?
+    /// Runs once at the first terminal decision (deadline, abandonment, withdrawal), under the
+    /// lane's lock and before the caller is resumed: lets the caller freeze what was known then.
+    var onTerminal: (@Sendable () -> Void)?
     private var claimed = false
 
     init(id: UInt64, name: String, operation: Operation, attempt: UInt64?) {
@@ -180,20 +217,21 @@ package final class AudioUnitLane: Sendable {
   ) async -> Outcome<Value> {
     await submitAwaiting(
       name, operation: .read(name), attempt: nil, deadline: deadline, limit: Self.readLimit,
-      work: read, disposeLate: { _ in })
+      onTerminal: {}, work: read, disposeLate: { _ in })
   }
 
   /// An open whose value carries resources. If the caller is gone when it returns, `disposeLate`
   /// runs on the lane in the same turn (before any later job). One outstanding open per attempt:
   /// a second open for an attempt whose caller is still waiting is answered `.abandoned`.
   package func open<Value: Sendable>(
-    _ name: String, attempt: UInt64, deadline: ContinuousClock.Instant?,
+    _ name: String, attempt: Attempt, deadline: ContinuousClock.Instant?,
+    onTerminal: @escaping @Sendable () -> Void = {},
     _ work: @escaping @Sendable () -> Value,
     disposeLate: @escaping @Sendable (Value) -> Void
   ) async -> Outcome<Value> {
     await submitAwaiting(
       name, operation: .open, attempt: attempt, deadline: deadline, limit: Self.openLimit,
-      work: work, disposeLate: disposeLate)
+      onTerminal: onTerminal, work: work, disposeLate: disposeLate)
   }
 
   /// Queues a retirement and returns at once. Never refused, even while wedged; stays ordered
@@ -217,17 +255,6 @@ package final class AudioUnitLane: Sendable {
     let remaining = deadline - now()
     guard remaining > .zero else { return false }
     return done.wait(timeout: .now() + Self.seconds(remaining)) == .success
-  }
-
-  /// Abandons every outstanding job of `attempt`: a waiting caller resumes at once with
-  /// `.abandoned`; a queued job runs no native work; a running open's late value is disposed.
-  package func abandon(attempt: UInt64) {
-    let deliveries = state.withLock { state -> [@Sendable () -> Void] in
-      state.outstanding.values.filter { $0.attempt == attempt }.compactMap { job in
-        Self.terminate(job, with: job.deliverAbandoned)
-      }
-    }
-    for deliver in deliveries { deliver() }
   }
 
   /// Calls `callback` once the lane has nothing outstanding: at once when idle now, otherwise right
@@ -285,6 +312,7 @@ package final class AudioUnitLane: Sendable {
   {
     job.callerGone = true
     guard let deliver, job.claim() else { return nil }
+    job.onTerminal?()
     return deliver
   }
 
@@ -300,11 +328,13 @@ package final class AudioUnitLane: Sendable {
   private enum Refusal { case wedged, duplicate, abandoned }
 
   private func submitAwaiting<Value: Sendable>(
-    _ name: String, operation: Operation, attempt: UInt64?, deadline: ContinuousClock.Instant?,
-    limit: Duration, work: @escaping @Sendable () -> Value,
+    _ name: String, operation: Operation, attempt: Attempt?, deadline: ContinuousClock.Instant?,
+    limit: Duration, onTerminal: @escaping @Sendable () -> Void,
+    work: @escaping @Sendable () -> Value,
     disposeLate: @escaping @Sendable (Value) -> Void
   ) async -> Outcome<Value> {
-    let job = makeJob(name, operation, attempt)
+    let job = makeJob(name, operation, attempt?.id)
+    job.onTerminal = onTerminal
     return await withTaskCancellationHandler {
       await withCheckedContinuation { (continuation: CheckedContinuation<Outcome<Value>, Never>) in
         // Admission, the duplicate-attempt check and queue insertion are ONE decision under the
@@ -315,9 +345,20 @@ package final class AudioUnitLane: Sendable {
           if job.callerGone { return job.claim() ? .abandoned : nil }
           if state.isWedged { return job.claim() ? .wedged : nil }
           if let attempt,
-            state.outstanding.values.contains(where: { $0.attempt == attempt && !$0.callerGone })
+            state.outstanding.values.contains(where: { $0.attempt == attempt.id && !$0.callerGone })
           {
             return job.claim() ? .duplicate : nil
+          }
+          // An attempt cancelled before admission runs nothing; otherwise its cancellation
+          // abandons this job from now on.
+          if let attempt,
+            !attempt.register({ [weak self] in
+              guard let self else { return }
+              let deliver = self.state.withLock { _ in Self.terminate(job, with: job.deliverAbandoned) }
+              deliver?()
+            })
+          {
+            return job.claim() ? .abandoned : nil
           }
           // The caller never waits past its own deadline nor past this operation's limit.
           let limitDeadline = now() + limit

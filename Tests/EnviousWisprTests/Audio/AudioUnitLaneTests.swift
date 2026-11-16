@@ -144,7 +144,7 @@ struct AudioUnitLaneTests {
     let lane = makeLane(timers, log)
 
     let outcome = await lane.open(
-      "microphone_start", attempt: 1, deadline: Self.base + .seconds(5), { 7 },
+      "microphone_start", attempt: .init(id: 1), deadline: Self.base + .seconds(5), { 7 },
       disposeLate: { _ in log.add("disposed") })
 
     guard case .value(let value) = outcome else {
@@ -192,7 +192,7 @@ struct AudioUnitLaneTests {
 
     let queued = Task {
       await lane.open(
-        "microphone_start", attempt: 9, deadline: Self.base + .seconds(2),
+        "microphone_start", attempt: .init(id: 9), deadline: Self.base + .seconds(2),
         { () -> Int in
           log.add("ran:open")
           return 3
@@ -231,7 +231,7 @@ struct AudioUnitLaneTests {
     #expect(log.count("timedOut:probe") == 1)
 
     let refused = await lane.open(
-      "microphone_start", attempt: 2, deadline: Self.base + .seconds(5),
+      "microphone_start", attempt: .init(id: 2), deadline: Self.base + .seconds(5),
       { () -> Int in
         log.add("ran:open")
         return 1
@@ -267,9 +267,10 @@ struct AudioUnitLaneTests {
     defer { gate.open() }
     let entered = Signal()
 
+    let token = AudioUnitLane.Attempt(id: 4)
     let open = Task {
       await lane.open(
-        "microphone_start", attempt: 4, deadline: Self.base + .seconds(2),
+        "microphone_start", attempt: token, deadline: Self.base + .seconds(2),
         { () -> Int in
           entered.fire()
           gate.block()
@@ -278,7 +279,7 @@ struct AudioUnitLaneTests {
     }
     #expect(await entered.wait())
     #expect(await timers.scheduled(.seconds(2)))
-    if how == "deadline" { timers.fire(.seconds(2)) } else { lane.abandon(attempt: 4) }
+    if how == "deadline" { timers.fire(.seconds(2)) } else { token.cancel() }
     let outcome = await open.value
     switch (how, outcome) {
     case ("deadline", .timedOut), ("abandon", .abandoned): break
@@ -311,7 +312,7 @@ struct AudioUnitLaneTests {
     #expect(await entered.wait())
     let open = Task {
       await lane.open(
-        "microphone_start", attempt: 5, deadline: Self.base + .seconds(5),
+        "microphone_start", attempt: .init(id: 5), deadline: Self.base + .seconds(5),
         { () -> Int in
           log.add("ran:open")
           return 1
@@ -353,7 +354,7 @@ struct AudioUnitLaneTests {
 
     let queued = Task {
       await lane.open(
-        "microphone_start", attempt: 12, deadline: Self.base + .seconds(2),
+        "microphone_start", attempt: .init(id: 12), deadline: Self.base + .seconds(2),
         { () -> Int in
           log.add("ran:open")
           return 1
@@ -388,7 +389,7 @@ struct AudioUnitLaneTests {
 
     let open = Task {
       await lane.open(
-        "microphone_start", attempt: 13, deadline: Self.base + .seconds(2),
+        "microphone_start", attempt: .init(id: 13), deadline: Self.base + .seconds(2),
         { () -> Int in
           entered.fire()
           gate.block()
@@ -445,7 +446,7 @@ struct AudioUnitLaneTests {
       let opens = (0..<2).map { index in
         Task { () -> AudioUnitLane.Outcome<Int> in
           let outcome = await lane.open(
-            "microphone_start", attempt: attempt, deadline: Self.base + .seconds(5),
+            "microphone_start", attempt: .init(id: attempt), deadline: Self.base + .seconds(5),
             { index }, disposeLate: { _ in })
           if case .abandoned = outcome { arrivals.add() }
           return outcome
@@ -476,7 +477,7 @@ struct AudioUnitLaneTests {
     #expect(stalls.all.isEmpty, "a read and a release leave the arm in place")
 
     _ = await lane.open(
-      "microphone_start", attempt: 6, deadline: Self.base + .seconds(5), { 1 },
+      "microphone_start", attempt: .init(id: 6), deadline: Self.base + .seconds(5), { 1 },
       disposeLate: { _ in })
     #expect(stalls.all == ["stalled"])
     #expect(log.count("stall:microphone_start") == 1)

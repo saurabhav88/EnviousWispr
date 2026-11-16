@@ -22,6 +22,13 @@
       var all: [FinalizedInputResolutionAttempt] = []
     }
 
+    /// Blocks the calling (main) actor until `signal` fires; a plain function so it can be
+    /// called from async test code. The 5 s timeout is only a hang guard.
+    static func holdMainActor(until signal: DispatchSemaphore) -> Bool {
+      // settle: deliberate main-actor hold; the timeout is a hang guard around a real signal.
+      signal.wait(timeout: .now() + 5) == .success
+    }
+
     final class Seen {
       var values: [Bool] = []
     }
@@ -57,10 +64,13 @@
       var attempt = InputResolutionAttemptState()
       attempt.recordBind(succeeded: true)
       attempt.recordPrepareSucceeded()
+      // One forwarder, as in production: the source and the render context share it.
+      let forwarder = PreRollForwarder()
       return .opened(
         HALUnitNative.Opened(
-          resources: HALUnitResources.makeForTesting(stage: .started, native: natives.nativeCalls),
-          forwarder: PreRollForwarder(),
+          resources: HALUnitResources.makeForTesting(
+            stage: .started, native: natives.nativeCalls, forwarder: forwarder),
+          forwarder: forwarder,
           facts: HALUnitNative.Facts(
             deviceID: 7, deviceUID: "mic-7", transportLabel: "built_in",
             resolutionSource: "system_default", nativeChannelCount: 1, inputChannel: 0),
@@ -258,6 +268,108 @@
       #expect(attempts.all.count == 1)
     }
 
+    @Test(
+      "a start that timed out or was refused, then invalidated before main handled it, ends quietly",
+      arguments: ["timeout", "wedged"])
+    func invalidatedTerminalEndsAsAbandoned(how: String) async {
+      let timers = Timers()
+      let attempts = Attempts()
+      let gate = Gate()
+      defer { gate.open() }
+      let entered = Signal()
+      let (source, lane) = makeSource(timers, attempts: attempts) { _ in
+        entered.fire()
+        gate.block()
+        return Self.opened(Natives())
+      }
+      source.afterOpenReturnedForTesting = { [weak source] in source?.abortPrepare() }
+      var stuck: Task<AudioUnitLane.Outcome<Int>, Never>?
+      if how == "wedged" {
+        let probeEntered = Signal()
+        stuck = Task {
+          await lane.run("probe") { () -> Int in
+            probeEntered.fire()
+            gate.block()
+            return 0
+          }
+        }
+        #expect(await probeEntered.wait())
+        #expect(await timers.scheduled(AudioUnitLane.readLimit))
+        timers.fire(AudioUnitLane.readLimit)
+      }
+
+      let start = Task { try await source.prepare() }
+      if how == "timeout" {
+        #expect(await entered.wait())
+        #expect(await timers.scheduled(.seconds(5)))
+        timers.fire(.seconds(5))
+      }
+      let result = await start.result
+      guard case .failure(let error) = result, error is CancellationError else {
+        Issue.record("an invalidated start must end as CancellationError, got \(result)")
+        return
+      }
+      #expect(attempts.all.count == 1)
+      #expect(attempts.all.first?.failedStep == "HALDeviceInputSource.prepare.abandoned")
+      gate.open()
+      _ = await stuck?.value
+      await lane.drainForTesting()
+    }
+
+    @Test("a start cancelled before the lane admits it runs no native work")
+    func cancelledBeforeAdmissionRunsNothing() async {
+      let attempts = Attempts()
+      let ran = OSAllocatedUnfairLock(initialState: false)
+      let (source, lane) = makeSource(Timers(), attempts: attempts) { _ in
+        ran.withLock { $0 = true }
+        return Self.opened(Natives())
+      }
+      source.beforeOpenForTesting = { [weak source] in source?.abortPrepare() }
+
+      let result = await Task { try await source.prepare() }.result
+      guard case .failure(let error) = result, error is CancellationError else {
+        Issue.record("expected CancellationError, got \(result)")
+        return
+      }
+      await lane.drainForTesting()
+      #expect(ran.withLock { $0 } == false)
+      #expect(attempts.all.count == 1)
+    }
+
+    @Test("facts published after the timeout was decided stay out of the report")
+    func reportFreezesAtTheTerminalDecision() async {
+      let timers = Timers()
+      let attempts = Attempts()
+      let gate = Gate()
+      defer { gate.open() }
+      let entered = Signal()
+      let published = DispatchSemaphore(value: 0)
+      let (source, lane) = makeSource(timers, attempts: attempts) { request in
+        entered.fire()
+        gate.block()
+        request.progress.publish(resolution: Self.resolution)
+        request.progress.publish(bind: .succeeded)
+        published.signal()
+        return Self.opened(Natives())
+      }
+
+      let start = Task { try await source.prepare() }
+      #expect(await entered.wait())
+      #expect(await timers.scheduled(.seconds(5)))
+      timers.fire(.seconds(5))
+      gate.open()
+      // settle: the main actor is held here on purpose so the worker publishes BEFORE prepare
+      // resumes and reads the progress; the timeout is only a hang guard.
+      #expect(Self.holdMainActor(until: published))
+      _ = await start.result
+
+      #expect(attempts.all.count == 1)
+      #expect(attempts.all.first?.failedStep == "HALDeviceInputSource.prepare.timed_out")
+      #expect(attempts.all.first?.resolution == nil, "published after the decision")
+      #expect(attempts.all.first?.bindOutcome == nil, "published after the decision")
+      await lane.drainForTesting()
+    }
+
     @Test("a newer attempt abandons the older; the older's late success never commits")
     func newerAttemptWins() async throws {
       let timers = Timers()
@@ -302,12 +414,30 @@
       await lane.drainForTesting()
     }
 
-    @Test("release takes the unit out at once and stops capture before the lane retires it")
+    @Test("release takes the unit out at once and stops forwarding before the lane retires it")
     func releaseHandsOffImmediately() async throws {
       let natives = Natives()
       let attempts = Attempts()
-      let (source, lane) = makeSource(Timers(), attempts: attempts) { _ in Self.opened(natives) }
+      let handedOut = OSAllocatedUnfairLock<HALUnitResources?>(initialState: nil)
+      let forwarded = OSAllocatedUnfairLock(initialState: 0)
+      let (source, lane) = makeSource(Timers(), attempts: attempts) { _ in
+        let result = Self.opened(natives)
+        if case .opened(let opened) = result {
+          handedOut.withLock { $0 = opened.resources }
+          _ = opened.forwarder.activate(
+            onSamples: { _, _ in forwarded.withLock { $0 += 1 } }, onBuffer: nil,
+            continuation: nil, logPrefix: "test")
+        }
+        return result
+      }
       _ = try await source.prepare()
+      guard let resources = handedOut.withLock({ $0 }) else {
+        Issue.record("no resources handed out")
+        return
+      }
+      resources.renderAndDrainForTesting()
+      #expect(forwarded.withLock { $0 } > 0, "control: a live unit forwards audio")
+      let forwardedBeforeRelease = forwarded.withLock { $0 }
       let gate = Gate()
       defer { gate.open() }
       let entered = Signal()
@@ -320,6 +450,9 @@
       source.rebuild()
 
       #expect(source.liveGenerationForTesting == nil, "committed ownership cleared immediately")
+      #expect(resources.stoppedFlagIsSetForTesting, "capture stopped at hand-off")
+      resources.renderAndDrainForTesting()
+      #expect(forwarded.withLock { $0 } == forwardedBeforeRelease, "nothing forwarded after release")
       #expect(natives.disposals == 0, "native retirement waits its turn on the lane")
       gate.open()
       await lane.drainForTesting()
