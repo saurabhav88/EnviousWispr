@@ -60,6 +60,21 @@ class RunnerContract(unittest.TestCase):
                                    f"printf '{key}=%s\\n' \"$v\" >>\"$GITHUB_OUTPUT\"\n")
         (ci / 'compile-eval-packages.sh').write_text(
             '#!/usr/bin/env bash\necho eval >> "$TRACE"\nexit "${EVAL_RC:-0}"\n')
+        # #4618: the push preflight's boundaries. Each records itself and answers
+        # with the real owner's exit contract (0 pass, 1 fail, 2 could not run).
+        (ci / 'fast-checks.sh').write_text(
+            '#!/usr/bin/env bash\nif [ "${1:-}" = --self-test ]; then echo fast-checks-self-test >> "$TRACE"; exit "${FASTCHECKS_SELFTEST_RC:-0}"; fi\n'
+            'echo fast-checks >> "$TRACE"\nexit "${FASTCHECKS_RC:-0}"\n')
+        (lib / 'settings-map-fingerprint.py').write_text(
+            'import os, sys\nopen(os.environ["TRACE"], "a").write("map-fingerprint:" + " ".join(sys.argv[1:]) + "\\n")\n'
+            'sys.exit(int(os.environ.get("MAP_RC", "0")))\n')
+        (lib / 'l10n-build-with-receipt.sh').write_text(
+            'ew_l10n_build_with_receipt() { echo "l10n-wrap:$2" >> "$TRACE"; shift 2; "$@"; }\n')
+        (lib / 'l10n-build-receipt.py').write_text(
+            'import json, os, sys\nopen(os.environ["TRACE"], "a").write("l10n-digest\\n")\n'
+            'print(json.dumps({"input_digest": os.environ.get("L10N_DIGEST", "ab" * 32)}))\n')
+        (lib / 'l10n-catalog-sync.sh').write_text(
+            '#!/usr/bin/env bash\necho "catalog-check:$*" >> "$TRACE"\nexit "${CATALOG_RC:-0}"\n')
         # Replace only dependencies in the private fixture. The runner itself is
         # byte-identical, with no production environment bypass or rewrite.
         (lib / 'ensure-generated.sh').write_text(
@@ -186,7 +201,9 @@ print(json.dumps({'testNodes': [{'nodeType': 'Test Plan', 'children': nodes}]}))
         self.env.pop('XCODE_RC', None)
         for name in ('VERDICT_RC', 'XCRESULT_RC', 'OMIT_SELECTION', 'NODE_SUFFIX', 'CI',
                      'EW_LANE_REQUIRED_BUNDLES', 'EVAL_RC', 'HOLD', 'STARTED', 'MUTATE',
-                     'MUTATE_STAGE', 'TOOLCHAIN_FLAG', 'PLANT_RECEIPT', 'GROUP_RC', 'BUILD_RC'):
+                     'MUTATE_STAGE', 'TOOLCHAIN_FLAG', 'PLANT_RECEIPT', 'GROUP_RC', 'BUILD_RC',
+                     'FASTCHECKS_RC', 'FASTCHECKS_SELFTEST_RC', 'MAP_RC', 'CATALOG_RC', 'L10N_DIGEST', 'EW_ALLOW_NO_RECEIPT',
+                     'EW_REMOTE_CHILD'):
             self.env.pop(name, None)
         self.sentinel = self.root / 'derived/keep-cache'
         self.sentinel.parent.mkdir()
@@ -424,7 +441,12 @@ print(json.dumps({'testNodes': [{'nodeType': 'Test Plan', 'children': nodes}]}))
             with selectors.DefaultSelector() as selector:
                 selector.register(owner.stdout, selectors.EVENT_READ)
                 self.assertTrue(selector.select(timeout=10), 'queued runner did not announce its wait')
-                self.assertIn('waiting', owner.stdout.readline())
+                # #4618: the push preflight prints its lines before the queue wait.
+                for _ in range(6):
+                    line = owner.stdout.readline()
+                    if 'waiting' in line:
+                        break
+                self.assertIn('waiting', line)
             self.assertTrue(self.lock.exists())
             self.assertNotIn('generate', self.trace())
             owner.send_signal(signal.SIGTERM)
@@ -563,6 +585,78 @@ print(json.dumps({'testNodes': [{'nodeType': 'Test Plan', 'children': nodes}]}))
         data = self.receipt_data()
         self.assertEqual((data['configuration'], data['xcode_configuration']), ('Debug', 'Dev'))
         self.assertTrue((self.root / '.derivedData/.ew-build.lock').is_file())
+
+    # --- #4618: push preflight -------------------------------------------------------
+    def test_full_run_runs_the_push_checks_before_the_queue_and_the_catalog_before_tests(self):
+        self.shared_folder_env()
+        result = self.run_runner('--grouped', execution=None)
+        trace = self.trace()
+        dev = str(self.root / '.derivedData/Dev')
+        self.assertLess(trace.index('fast-checks-self-test'), trace.index('fast-checks'))
+        self.assertLess(trace.index('fast-checks'), trace.index('generate'))
+        self.assertLess(trace.index('map-fingerprint:check --root ' + str(self.root)), trace.index('generate'))
+        self.assertIn('l10n-wrap:' + dev, trace)
+        catalog = [line for line in trace if line.startswith('catalog-check:')]
+        self.assertEqual(catalog, ['catalog-check:--check --configuration Dev --derived-data ' + dev
+                                   + ' --expect-inputs ' + 'ab' * 32])
+        self.assertLess(trace.index(catalog[0]), trace.index('groups'))
+        self.assertIn('==> phase push preflight:', result.stdout)
+        self.assertTrue(self.receipt.exists())
+
+    def test_a_failing_fast_check_stops_before_any_build(self):
+        self.shared_folder_env()
+        result = self.run_runner('--grouped', execution=None, rc=1, FASTCHECKS_RC='1')
+        self.assertIn('push preflight: scripts/ci/fast-checks.sh (exit 1) failed', result.stdout)
+        self.assertEqual(self.calls, [])
+        self.assertNotIn('generate', self.trace())
+        self.assertFalse(self.receipt.exists())
+
+    def test_a_failing_fast_checks_self_test_stops_before_any_build(self):
+        self.shared_folder_env()
+        result = self.run_runner('--grouped', execution=None, rc=1, FASTCHECKS_SELFTEST_RC='1')
+        self.assertIn('fast-checks.sh --self-test (exit 1) failed', result.stdout)
+        self.assertEqual(self.calls, [])
+
+    def test_a_stale_settings_map_fingerprint_stops_before_any_build(self):
+        self.shared_folder_env()
+        result = self.run_runner('--grouped', execution=None, rc=1, MAP_RC='1')
+        self.assertIn('the settings-map catalog fingerprint failed', result.stdout)
+        self.assertEqual(self.calls, [])
+
+    def test_an_unreadable_settings_map_fingerprint_leaves_it_to_the_tests(self):
+        self.shared_folder_env()
+        self.run_runner('--grouped', execution=None, MAP_RC='2')
+        self.assertTrue(self.receipt.exists())
+
+    def test_catalog_drift_stops_after_the_build_before_any_test(self):
+        self.shared_folder_env()
+        result = self.run_runner('--grouped', execution=None, rc=1, CATALOG_RC='1')
+        self.assertIn('Fix: bash scripts/lib/l10n-catalog-sync.sh --update --configuration Dev', result.stdout)
+        self.assertIn('scripts/settings-map/export.sh', result.stdout)
+        self.assertNotIn('groups', self.trace())
+        self.assertFalse(self.receipt.exists())
+
+    def test_a_catalog_check_that_cannot_run_never_stops_the_run(self):
+        self.shared_folder_env()
+        result = self.run_runner('--grouped', execution=None, CATALOG_RC='2')
+        self.assertIn('String Catalog check COULD NOT RUN (exit 2', result.stdout)
+        self.assertTrue(self.receipt.exists())
+
+    def test_allow_no_receipt_runs_the_tests_after_a_failed_preflight_without_proof(self):
+        self.shared_folder_env()
+        result = self.run_runner('--grouped', execution=None, FASTCHECKS_RC='1', EW_ALLOW_NO_RECEIPT='1')
+        self.assertIn('groups', self.trace())
+        self.assertNotIn('l10n-wrap:' + str(self.root / '.derivedData/Dev'), self.trace())
+        self.assertIn('NOT issued (the push preflight failed', result.stdout)
+        self.assertFalse(self.receipt.exists())
+
+    def test_filtered_and_remote_child_runs_skip_the_push_preflight(self):
+        self.shared_folder_env()
+        self.run_runner('--filter', 'EnviousWisprTests/A')
+        self.assertNotIn('fast-checks', self.trace())
+        self.run_runner('--grouped', execution=None, EW_REMOTE_CHILD='1')
+        self.assertNotIn('fast-checks', self.trace())
+        self.assertTrue(any(line.startswith('catalog-check:') for line in self.trace()))
 
     def test_without_the_dev_identity_the_debug_lane_keeps_debug_in_the_test_folder(self):
         self.shared_folder_env(identities='     0 valid identities found\n')
