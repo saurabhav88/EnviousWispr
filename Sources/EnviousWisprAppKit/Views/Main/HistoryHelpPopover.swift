@@ -50,7 +50,7 @@ enum HistoryHelpContent {
   static func items(for tab: HistoryTab, retention: DictationRecordingRetention) -> [Item] {
     switch tab {
     case .dictations:
-      return [play, playFromParagraph, showEdits, recordings(retention), search, select]
+      return [play, showEdits, recordings(retention), search, select]
     case .transcripts, .meetings:
       return [open(tab), search, select]
     }
@@ -63,14 +63,6 @@ enum HistoryHelpContent {
       localized:
         "Press play, or drag along the wave to jump. The left number is where you are, the right number is the length.",
       comment: "History help: how the dictation player works."))
-
-  private static let playFromParagraph = Item(
-    icon: "clock",
-    title: String(localized: "Play from a paragraph", comment: "History help: item title."),
-    body: String(
-      localized:
-        "When a recording has times, point at a paragraph to see when you said it, or Tab to it. Click the time to hear that part.",
-      comment: "History help: the time beside each paragraph of a dictation."))
 
   private static let showEdits = Item(
     icon: "pencil.and.list.clipboard",

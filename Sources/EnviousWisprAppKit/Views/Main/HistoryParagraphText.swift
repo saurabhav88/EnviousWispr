@@ -5,12 +5,7 @@ extension EnvironmentValues {
   @Entry var historyHighlightQuery = ""
 }
 
-/// A dictation card's text as blocks with a reserved time gutter (#3147 §3.4). Each block is one
-/// line of the shown text. When the recording and its passage times exist, a block whose passage
-/// was heard shows a small "▶ 0:07" button in the gutter; the gutter's width is always reserved,
-/// so revealing it never moves the text. The card decides when the gutter shows (hover, or any
-/// keyboard focus in the card); a hidden gutter button stays keyboard reachable, and focusing it
-/// reveals the gutter through `focus`.
+/// A dictation card's text as blocks (#3147 §3.4). Each block is one line of the shown text.
 ///
 /// Marked up blocks draw each change's removed words struck through (red) and its polished
 /// words highlighted (green tint, bold), from `MarkUpPalette`, the table the other Marked up
@@ -24,23 +19,10 @@ struct HistoryParagraphText: View {
   struct Block: Equatable, Identifiable {
     let id: Int
     let content: Content
-    /// Where the block's passage starts in the recording; nil leaves its gutter empty.
-    let seconds: Double?
   }
 
   let blocks: [Block]
   var query = ""
-  /// The recording and its passage times exist: the gutter's play buttons may show.
-  let hasGutter: Bool
-  /// Reserve the gutter column even before passage times arrive, so the text never re-wraps
-  /// when they do (#4609: dictation cards keep their height from first display).
-  var reservesGutter = false
-  /// Hover or focus in the card: show the gutter's buttons.
-  let revealGutter: Bool
-  /// Reduce Motion: the gutter appears without its fade.
-  let reduceMotion: Bool
-  let focus: FocusState<HistoryDictationCard.Focus?>.Binding
-  let onPlay: (Double) -> Void
   let onOpenChange: (Int) -> Void
 
   /// The link scheme the Marked up runs carry; never leaves the app.
@@ -49,11 +31,8 @@ struct HistoryParagraphText: View {
   var body: some View {
     VStack(alignment: .leading, spacing: DesignSpacing.md) {
       ForEach(blocks) { block in
-        HStack(alignment: .firstTextBaseline, spacing: DesignSpacing.sm) {
-          if hasGutter || reservesGutter { gutter(for: block) }
-          text(for: block)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
+        text(for: block)
+          .frame(maxWidth: .infinity, alignment: .leading)
       }
     }
     .environment(
@@ -63,40 +42,6 @@ struct HistoryParagraphText: View {
         onOpenChange(index)
         return .handled
       })
-  }
-
-  @ViewBuilder
-  private func gutter(for block: Block) -> some View {
-    let label = HistoryDictationPresentation.clock(block.seconds ?? 0)
-    ZStack(alignment: .leading) {
-      // Reserves the widest label this card can need, so the text never moves.
-      Text(verbatim: "▶ 00:00").font(.stHelper).hidden().accessibilityHidden(true)
-      if hasGutter, let seconds = block.seconds {
-        Button {
-          onPlay(seconds)
-        } label: {
-          HStack(spacing: DesignSpacing.xxs) {
-            Image(systemName: "play.fill")
-              .font(.stHelper)
-              .imageScale(.small)
-              .accessibilityHidden(true)
-            Text(verbatim: label).font(.stHelper).monospacedDigit()
-          }
-          .foregroundStyle(.stAccent)
-          .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .focused(focus, equals: .gutter(block.id))
-        .opacity(revealGutter ? 1 : 0)
-        .animation(reduceMotion ? nil : SettingsHover.animation, value: revealGutter)
-        .accessibilityLabel(
-          Text(
-            "Play from \(label)",
-            comment:
-              "History dictation card: plays the recording from where this paragraph starts. %@ is a time like 0:07."
-          ))
-      }
-    }
   }
 
   @ViewBuilder

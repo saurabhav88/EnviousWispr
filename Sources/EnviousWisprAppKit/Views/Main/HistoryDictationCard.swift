@@ -4,8 +4,8 @@ import EnviousWisprStorage
 import SwiftUI
 
 /// One dictation in History's diary (#3147 §3.4, approved mock Main.dc.html): the recording's
-/// player (or one line saying why there is none), the text in the row's preferred version with a
-/// reserved paragraph time gutter, Show edits with the Polished / Marked up / Original
+/// player (or one line saying why there is none), the text in the row's preferred version, Show
+/// edits with the Polished / Marked up / Original
 /// comparison and the change inspector, a provenance line, and the actions.
 ///
 /// **Delivery reads the live row at the press.** Copy, Paste, Share and Save hand over
@@ -38,9 +38,8 @@ struct HistoryDictationCard: View {
 
   private var rowID: UUID { display.id }
 
-  /// What can hold keyboard focus in the card; any focus reveals the time gutter.
+  /// What can hold keyboard focus in the card; any focus reveals the card's controls.
   enum Focus: Hashable {
-    case gutter(Int)
     case control(String)
   }
 
@@ -61,9 +60,6 @@ struct HistoryDictationCard: View {
   @State private var player: MeetingPlaybackController?
   @State private var playerURL: URL?
   @State private var timeline: [HistoryDictationPresentation.TimedSpan] = []
-  /// Passage times carried onto the polished text, prepared off the main actor for the texts and
-  /// timeline in `key` (Codex PR2 r6): `blocks` never aligns or searches the whole text.
-  @State private var polishedSpans: PolishedSpans?
   @State private var actionFailed = false
 
   // Text
@@ -115,10 +111,6 @@ struct HistoryDictationCard: View {
       HistoryParagraphText(
         blocks: blocks(row: row, texts: texts, prepared: current),
         query: query,
-        hasGutter: player != nil && !timeline.isEmpty, reservesGutter: true, revealGutter: revealGutter,
-        reduceMotion: reduceMotion,
-        focus: $focus,
-        onPlay: { play(from: $0) },
         onOpenChange: { openChange = $0 })
       if let current, editsOn, let index = openChange,
         let detail = HistoryDictationPresentation.detail(of: index, in: current, timeline: timeline)
@@ -174,9 +166,6 @@ struct HistoryDictationCard: View {
       editsRequested = false
       editsOn = true
     }
-    .task(id: PolishedSpans.Key(texts: prepared?.texts, timeline: timeline)) {
-      await preparePolishedSpans()
-    }
     .onDisappear {
       polishPreview.cancel()
       dropPlayer()
@@ -209,7 +198,7 @@ struct HistoryDictationCard: View {
     player?.state == .playing ? Color.stAccent.opacity(0.35) : Color.stDivider
   }
 
-  private var revealGutter: Bool { hovering || focus != nil }
+  private var revealControls: Bool { hovering || focus != nil }
 
   private var recordingRevision: Int {
     transcripts.recordings?.changes.revision(for: rowID) ?? 0
@@ -266,55 +255,14 @@ struct HistoryDictationCard: View {
       : HistoryDictationPresentation.defaultView(for: row.effectivePreferredVersion)
     if view == .markedUp, let prepared {
       return HistoryDictationPresentation.markedUpParagraphs(prepared.markedUp).enumerated().map {
-        HistoryParagraphText.Block(
-          id: $0.offset, content: .markedUp($0.element),
-          seconds: HistoryDictationPresentation.time(ofMarkedUp: $0.element, in: timeline))
+        HistoryParagraphText.Block(id: $0.offset, content: .markedUp($0.element))
       }
     }
     let text = HistoryDictationPresentation.plainText(
       texts, view: view == .markedUp ? .polished : view)
-    // Passage times index the original text; the polished text needs the alignment to carry
-    // them, and stays untimed until it is prepared.
-    let spans: [HistoryDictationPresentation.TimedSpan]
-    if view == .original || !texts.differ {
-      spans = timeline
-    } else if let prepared, let polishedSpans,
-      polishedSpans.key == PolishedSpans.Key(texts: prepared.texts, timeline: timeline)
-    {
-      spans = polishedSpans.spans
-    } else {
-      spans = []
-    }
     return HistoryDictationPresentation.paragraphs(of: text).enumerated().map {
-      HistoryParagraphText.Block(
-        id: $0.offset, content: .plain($0.element.text),
-        seconds: HistoryDictationPresentation.time(of: $0.element.range, in: spans))
+      HistoryParagraphText.Block(id: $0.offset, content: .plain($0.element.text))
     }
-  }
-
-  /// The prepared polished-text times and the inputs they were computed from.
-  struct PolishedSpans: Equatable {
-    struct Key: Equatable {
-      let texts: HistoryDictationPresentation.Texts?
-      let timeline: [HistoryDictationPresentation.TimedSpan]
-    }
-    let key: Key
-    let spans: [HistoryDictationPresentation.TimedSpan]
-  }
-
-  private func preparePolishedSpans() async {
-    let key = PolishedSpans.Key(texts: prepared?.texts, timeline: timeline)
-    guard let prepared, !timeline.isEmpty else {
-      polishedSpans = nil
-      return
-    }
-    let spans = await HistoryDictationPresentation.polishedTimelineInBackground(
-      timeline, original: prepared.texts.original, polished: prepared.texts.polished,
-      alignment: prepared.alignment)
-    // Stored only for the inputs it was computed from; a newer key restarts this task.
-    guard !Task.isCancelled, key == PolishedSpans.Key(texts: self.prepared?.texts, timeline: timeline)
-    else { return }
-    polishedSpans = PolishedSpans(key: key, spans: spans)
   }
 
   private func prepareComparison(_ texts: HistoryDictationPresentation.Texts) async {
@@ -440,8 +388,8 @@ struct HistoryDictationCard: View {
     .fixedSize()
     // Shown on hover and on keyboard focus anywhere in the card, as the mock places them.
     // The state changes without the fade under Reduce Motion.
-    .opacity(revealGutter ? 1 : 0)
-    .animation(reduceMotion ? nil : SettingsHover.animation, value: revealGutter)
+    .opacity(revealControls ? 1 : 0)
+    .animation(reduceMotion ? nil : SettingsHover.animation, value: revealControls)
   }
 
   private func primaryButtons(_ row: HistoryDictationDisplay, hasChanges: Bool) -> some View {
