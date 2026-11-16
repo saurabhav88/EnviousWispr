@@ -233,6 +233,18 @@ struct HistoryInlineTitle: View {
   }
 }
 
+extension HistoryInlineTitle {
+  /// Whether a card holding this title may open on the click it is handling (#4611, founder):
+  /// never while the field is open, and never on the release that saved by clicking away,
+  /// compared by timestamp so the save finishing first cannot let that same click open it.
+  @MainActor
+  static func cardMayOpen(titleEditing: Bool, clickAwayStamp: TimeInterval?) -> Bool {
+    guard !titleEditing else { return false }
+    if let clickAwayStamp, NSApp.currentEvent?.timestamp == clickAwayStamp { return false }
+    return true
+  }
+}
+
 /// The inline title's edit steps (plan §3.6): Return saves, Escape cancels, an empty name
 /// restores the default title, and a failed save keeps the typed name and offers Try again.
 struct HistoryTitleEdit: Equatable {

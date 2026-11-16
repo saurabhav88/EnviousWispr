@@ -1,4 +1,3 @@
-import AppKit
 import EnviousWisprCore
 import EnviousWisprStorage
 import SwiftUI
@@ -197,17 +196,14 @@ struct HistoryTranscriptCard: View {
 
   // MARK: - Buttons
 
-  /// Open, Copy and More, in the Dictations card's place and order (#4611).
-  /// Clicking away from the rename field saves it (#4611, founder): `HistoryInlineTitle` saves
-  /// on that click, and the card stays on the list instead of opening the transcript.
+  /// Clicking away from the rename field saves it and keeps the card on the list (#4611).
   private func openOrFinishRename() {
-    guard !titleEditing else { return }
-    // The same release that saved the name: compared by timestamp, so the save finishing
-    // before this action runs (or a name left unchanged) cannot let the click open the card.
-    if let stamp = clickAwayStamp, NSApp.currentEvent?.timestamp == stamp { return }
+    guard HistoryInlineTitle.cardMayOpen(titleEditing: titleEditing, clickAwayStamp: clickAwayStamp)
+    else { return }
     onOpen()
   }
 
+  /// Open, Copy and More, in the Dictations card's place and order (#4611).
   private func buttonRow(title: String) -> some View {
     let copy = TranscribeFileExport.copyButtonPresentation(
       label: TranscriptDocumentPresenter.exportButtonLabels(mode: .cleaned).copy, copiedAt: copiedAt,
