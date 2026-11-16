@@ -1,3 +1,4 @@
+#if DEBUG
 import Foundation
 import Testing
 import os
@@ -94,11 +95,20 @@ struct AudioUnitLaneTests {
 
   static let base = ContinuousClock.now
 
-  private func makeLane(_ timers: ManualTimers, _ log: Log, stalls: Log? = nil) -> AudioUnitLane {
+  /// The lane's clock, which only the test moves.
+  final class ManualClock: Sendable {
+    private let offset = OSAllocatedUnfairLock(initialState: Duration.zero)
+    var now: ContinuousClock.Instant { AudioUnitLaneTests.base + offset.withLock { $0 } }
+    func advance(_ by: Duration) { offset.withLock { $0 += by } }
+  }
+
+  private func makeLane(
+    _ timers: ManualTimers, _ log: Log, stalls: Log? = nil, clock: ManualClock = ManualClock()
+  ) -> AudioUnitLane {
     AudioUnitLane(
       label: "test.audio.unit-lane",
       schedule: { delay, fire in timers.schedule(delay, fire) },
-      now: { Self.base },
+      now: { clock.now },
       hooks: .init(
         operationTimedOut: { id, name, _ in log.add("timedOut:\(name)#\(id)") },
         operationRecovered: { id, name, _, _ in log.add("recovered:\(name)#\(id)") },
@@ -331,6 +341,93 @@ struct AudioUnitLaneTests {
     #expect(healthy)
   }
 
+  @Test("a queued job whose deadline passed starts no native work even before its timer fires")
+  func expiredQueuedJobNeverStarts() async {
+    let timers = ManualTimers()
+    let log = Log()
+    let clock = ManualClock()
+    let lane = makeLane(timers, log, clock: clock)
+    let gate = Gate()
+    defer { gate.open() }
+    guard let first = await startBlockingRead(lane, "probe", gate: gate, log: log) else { return }
+
+    let queued = Task {
+      await lane.open(
+        "microphone_start", attempt: 12, deadline: Self.base + .seconds(2),
+        { () -> Int in
+          log.add("ran:open")
+          return 1
+        }, disposeLate: { _ in log.add("disposed") })
+    }
+    #expect(await timers.scheduled(.seconds(2)))
+    // Time passes the deadline; the caller's timer is deliberately NOT fired.
+    clock.advance(.seconds(3))
+    gate.open()
+    _ = await first.value
+    guard case .timedOut = await queued.value else {
+      Issue.record("an expired queued open must answer timedOut")
+      return
+    }
+    await lane.drainForTesting()
+    #expect(log.count("ran:open") == 0)
+    #expect(log.count("disposed") == 0)
+    #expect(log.count("timedOut:") == 0)
+    #expect(log.count("recovered:") == 0)
+    #expect(lane.isWedged == false)
+  }
+
+  /// Counts arrivals and fires once `target` is reached.
+  final class Arrivals: Sendable {
+    private let count = OSAllocatedUnfairLock(initialState: 0)
+    private let target: Int
+    let reached = Signal()
+    init(target: Int) { self.target = target }
+    func add() {
+      if count.withLock({ count -> Bool in
+        count += 1
+        return count == target
+      }) { reached.fire() }
+    }
+  }
+
+  @Test("two concurrent opens for one attempt: exactly one is admitted")
+  func duplicateAttemptIsAtomic() async {
+    for round in 0..<20 {
+      let timers = ManualTimers()
+      let log = Log()
+      // An admitted open schedules its 5 s caller timer; a refused one returns at once.
+      // Either way it arrives exactly once, so the gate opens only after both decided.
+      let arrivals = Arrivals(target: 2)
+      let lane = AudioUnitLane(
+        label: "test.audio.unit-lane.duplicate",
+        schedule: { delay, fire in
+          timers.schedule(delay, fire)
+          if delay == .seconds(5) { arrivals.add() }
+        },
+        now: { Self.base })
+      let gate = Gate()
+      guard let first = await startBlockingRead(lane, "probe", gate: gate, log: log) else { return }
+      let attempt = UInt64(100 + round)
+      let opens = (0..<2).map { index in
+        Task { () -> AudioUnitLane.Outcome<Int> in
+          let outcome = await lane.open(
+            "microphone_start", attempt: attempt, deadline: Self.base + .seconds(5),
+            { index }, disposeLate: { _ in })
+          if case .abandoned = outcome { arrivals.add() }
+          return outcome
+        }
+      }
+      #expect(await arrivals.reached.wait(), "round \(round): both opens decided")
+      gate.open()
+      var outcomes: [AudioUnitLane.Outcome<Int>] = []
+      for open in opens { outcomes.append(await open.value) }
+      _ = await first.value
+      let values = outcomes.filter { if case .value = $0 { return true } else { return false } }
+      let abandoned = outcomes.filter { if case .abandoned = $0 { return true } else { return false } }
+      #expect(values.count == 1 && abandoned.count == 1, "round \(round): \(outcomes)")
+    }
+  }
+
   @Test("a stall armed for the open is consumed only by the open")
   func stallArmSelectsItsOperation() async {
     let timers = ManualTimers()
@@ -371,3 +468,4 @@ struct AudioUnitLaneTests {
     _ = await stuck.value
   }
 }
+#endif

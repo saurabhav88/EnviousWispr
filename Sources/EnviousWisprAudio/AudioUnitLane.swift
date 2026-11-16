@@ -77,9 +77,10 @@ package final class AudioUnitLane: Sendable {
     }
   }
 
-  /// One admitted job. Its mutable fields are touched only under the lane's lock (`phase`,
-  /// `callerGone`, `exceeded`, `abandonCaller`) or through its own latch, which is why the
-  /// unchecked `Sendable` holds: there is no unguarded shared mutation.
+  /// One job. Its mutable fields are touched only under the lane's lock, which is why the
+  /// unchecked `Sendable` holds: there is no unguarded shared mutation. The latch is claimed
+  /// exactly once and is the resource-transfer point; terminal claims (deadline, abandonment,
+  /// withdrawal, refusal) happen under the lane's lock together with `callerGone`.
   private final class Job: @unchecked Sendable {
     enum Phase { case queued, running, finished }
     let id: UInt64
@@ -87,15 +88,16 @@ package final class AudioUnitLane: Sendable {
     let operation: Operation
     let attempt: UInt64?
     var phase: Phase = .queued
+    /// Absolute caller deadline (nil for a retirement nobody waits on).
+    var callerDeadline: ContinuousClock.Instant?
     /// The caller stopped waiting (deadline, cancellation, abandonment).
     var callerGone = false
     /// The running job passed its operation limit.
     var exceeded = false
-    /// Resumes the caller with `.abandoned`; set once the continuation exists.
-    var abandonCaller: (@Sendable () -> Void)?
-    /// Set if abandonment arrived before `abandonCaller` existed.
-    var abandonedEarly = false
-    private let latch = OSAllocatedUnfairLock(initialState: false)
+    /// Resume the waiting caller; set when its continuation exists.
+    var deliverTimedOut: (@Sendable () -> Void)?
+    var deliverAbandoned: (@Sendable () -> Void)?
+    private var claimed = false
 
     init(id: UInt64, name: String, operation: Operation, attempt: UInt64?) {
       self.id = id
@@ -104,13 +106,11 @@ package final class AudioUnitLane: Sendable {
       self.attempt = attempt
     }
 
-    /// True for exactly one caller: the transfer point.
+    /// True for exactly one claimant. Called under the lane's lock.
     func claim() -> Bool {
-      latch.withLock { taken -> Bool in
-        if taken { return false }
-        taken = true
-        return true
-      }
+      if claimed { return false }
+      claimed = true
+      return true
     }
   }
 
@@ -184,29 +184,22 @@ package final class AudioUnitLane: Sendable {
   }
 
   /// An open whose value carries resources. If the caller is gone when it returns, `disposeLate`
-  /// runs on the lane in the same turn (before any later job). One outstanding open per attempt.
+  /// runs on the lane in the same turn (before any later job). One outstanding open per attempt:
+  /// a second open for an attempt whose caller is still waiting is answered `.abandoned`.
   package func open<Value: Sendable>(
     _ name: String, attempt: UInt64, deadline: ContinuousClock.Instant?,
     _ work: @escaping @Sendable () -> Value,
     disposeLate: @escaping @Sendable (Value) -> Void
   ) async -> Outcome<Value> {
-    let duplicate = state.withLock { state in
-      state.outstanding.values.contains { $0.attempt == attempt && !$0.callerGone }
-    }
-    if duplicate {
-      assertionFailure("AudioUnitLane: a second open for attempt \(attempt) (#4601)")
-      return .abandoned
-    }
-    return await submitAwaiting(
+    await submitAwaiting(
       name, operation: .open, attempt: attempt, deadline: deadline, limit: Self.openLimit,
       work: work, disposeLate: disposeLate)
   }
 
   /// Queues a retirement and returns at once. Never refused, even while wedged; stays ordered
   /// before every later job.
-  package func retire(_ name: String = "microphone_release", _ work: @escaping @Sendable () -> Void)
-  {
-    _ = submitDetached(name, work)
+  package func retire(_ name: String = "microphone_release", _ work: @escaping @Sendable () -> Void) {
+    submitDetached(name, work)
   }
 
   /// Queues a retirement and waits for it at most until `deadline` (quit only). Returns whether it
@@ -217,7 +210,7 @@ package final class AudioUnitLane: Sendable {
     _ work: @escaping @Sendable () -> Void
   ) -> Bool {
     let done = DispatchSemaphore(value: 0)
-    _ = submitDetached(name) {
+    submitDetached(name) {
       work()
       done.signal()
     }
@@ -229,19 +222,12 @@ package final class AudioUnitLane: Sendable {
   /// Abandons every outstanding job of `attempt`: a waiting caller resumes at once with
   /// `.abandoned`; a queued job runs no native work; a running open's late value is disposed.
   package func abandon(attempt: UInt64) {
-    let resumes = state.withLock { state -> [@Sendable () -> Void] in
-      var resumes: [@Sendable () -> Void] = []
-      for job in state.outstanding.values where job.attempt == attempt && !job.callerGone {
-        job.callerGone = true
-        if let resume = job.abandonCaller {
-          resumes.append(resume)
-        } else {
-          job.abandonedEarly = true
-        }
+    let deliveries = state.withLock { state -> [@Sendable () -> Void] in
+      state.outstanding.values.filter { $0.attempt == attempt }.compactMap { job in
+        Self.terminate(job, with: job.deliverAbandoned)
       }
-      return resumes
     }
-    for resume in resumes { resume() }
+    for deliver in deliveries { deliver() }
   }
 
   /// Calls `callback` once the lane has nothing outstanding: at once when idle now, otherwise right
@@ -284,89 +270,115 @@ package final class AudioUnitLane: Sendable {
 
   // MARK: - Internals
 
-  private func admit(
-    _ name: String, _ operation: Operation, _ attempt: UInt64?, refuseIfWedged: Bool
-  )
-    -> Job?
-  {
-    state.withLock { state -> Job? in
-      if refuseIfWedged && state.isWedged { return nil }
-      let job = Job(id: state.nextID, name: name, operation: operation, attempt: attempt)
-      state.nextID += 1
-      state.outstanding[job.id] = job
-      return job
+  private func makeJob(_ name: String, _ operation: Operation, _ attempt: UInt64?) -> Job {
+    state.withLock { state in
+      defer { state.nextID += 1 }
+      return Job(id: state.nextID, name: name, operation: operation, attempt: attempt)
     }
   }
+
+  /// Under the lane's lock: claims the job's latch for a terminal outcome, marks the caller gone,
+  /// and returns the delivery to run after the lock (nil if someone already claimed it, or the
+  /// continuation does not exist yet, in which case it sees `callerGone` when it does).
+  private static func terminate(_ job: Job, with deliver: (@Sendable () -> Void)?)
+    -> (@Sendable () -> Void)?
+  {
+    job.callerGone = true
+    guard let deliver, job.claim() else { return nil }
+    return deliver
+  }
+
+  private enum Refusal { case wedged, duplicate, abandoned }
 
   private func submitAwaiting<Value: Sendable>(
     _ name: String, operation: Operation, attempt: UInt64?, deadline: ContinuousClock.Instant?,
     limit: Duration, work: @escaping @Sendable () -> Value,
     disposeLate: @escaping @Sendable (Value) -> Void
   ) async -> Outcome<Value> {
-    guard let job = admit(name, operation, attempt, refuseIfWedged: true) else { return .wedged }
-    let admittedAt = now()
-    // The caller never waits past its own deadline nor past this operation's limit.
-    let limitDeadline = admittedAt + limit
-    let callerDeadline = deadline.map { min($0, limitDeadline) } ?? limitDeadline
+    let job = makeJob(name, operation, attempt)
     return await withTaskCancellationHandler {
       await withCheckedContinuation { (continuation: CheckedContinuation<Outcome<Value>, Never>) in
-        let resume: @Sendable (Outcome<Value>) -> Bool = { outcome in
-          guard job.claim() else { return false }
-          continuation.resume(returning: outcome)
-          return true
-        }
-        let abandonedAlready = state.withLock { _ -> Bool in
-          job.abandonCaller = { _ = resume(.abandoned) }
-          return job.abandonedEarly
-        }
-        if abandonedAlready { _ = resume(.abandoned) }
-        queue.async { [self] in
-          runJob(job, limit: limit) {
-            let value = work()
-            // Transfer point: the caller takes the value, or the lane disposes it now.
-            if !resume(.value(value)) { disposeLate(value) }
+        // Admission, the duplicate-attempt check and queue insertion are ONE decision under the
+        // lane's lock, so admission order is execution order (§3.1).
+        let refusal = state.withLock { state -> Refusal? in
+          job.deliverTimedOut = { continuation.resume(returning: .timedOut) }
+          job.deliverAbandoned = { continuation.resume(returning: .abandoned) }
+          if job.callerGone { return job.claim() ? .abandoned : nil }
+          if state.isWedged { return job.claim() ? .wedged : nil }
+          if let attempt,
+            state.outstanding.values.contains(where: { $0.attempt == attempt && !$0.callerGone })
+          {
+            return job.claim() ? .duplicate : nil
           }
+          // The caller never waits past its own deadline nor past this operation's limit.
+          let limitDeadline = now() + limit
+          job.callerDeadline = deadline.map { min($0, limitDeadline) } ?? limitDeadline
+          state.outstanding[job.id] = job
+          queue.async { [self] in
+            runJob(job, limit: limit) {
+              let value = work()
+              // Transfer point: the caller takes the value, or the lane disposes it now.
+              let handOver = self.state.withLock { _ in job.claim() }
+              if handOver {
+                continuation.resume(returning: .value(value))
+              } else {
+                disposeLate(value)
+              }
+            }
+          }
+          return nil
         }
-        let wait = callerDeadline - admittedAt
-        schedule(max(wait, .zero)) { [self] in
-          guard resume(.timedOut) else { return }
-          state.withLock { _ in job.callerGone = true }
+        switch refusal {
+        case .wedged?: continuation.resume(returning: .wedged)
+        case .duplicate?, .abandoned?: continuation.resume(returning: .abandoned)
+        case nil:
+          guard let callerDeadline = state.withLock({ _ in job.callerDeadline }) else { return }
+          // Remaining time from the current clock; the queued-to-running check below also
+          // enforces the deadline, so a late timer cannot let an expired job start.
+          schedule(max(callerDeadline - now(), .zero)) { [self] in
+            let deliver = state.withLock { _ in Self.terminate(job, with: job.deliverTimedOut) }
+            deliver?()
+          }
         }
       }
     } onCancel: {
-      abandonJob(job)
+      let deliver = state.withLock { _ in Self.terminate(job, with: job.deliverAbandoned) }
+      deliver?()
     }
   }
 
-  private func submitDetached(_ name: String, _ work: @escaping @Sendable () -> Void) -> Job {
-    // Retirement is never refused.
-    let job = admit(name, .retire, nil, refuseIfWedged: false)!
-    queue.async { [self] in runJob(job, limit: Self.retireLimit, work) }
-    return job
-  }
-
-  private func abandonJob(_ job: Job) {
-    let resume = state.withLock { _ -> (@Sendable () -> Void)? in
-      job.callerGone = true
-      if job.abandonCaller == nil { job.abandonedEarly = true }
-      return job.abandonCaller
+  private func submitDetached(_ name: String, _ work: @escaping @Sendable () -> Void) {
+    let job = makeJob(name, .retire, nil)
+    // Never refused; admitted and queued in one decision like every other job.
+    state.withLock { state in
+      state.outstanding[job.id] = job
+      queue.async { [self] in runJob(job, limit: Self.retireLimit, work) }
     }
-    resume?()
   }
 
   /// Runs one job on the lane queue. The queued-to-running transition is decided under the lock:
-  /// a job whose caller already left runs no native work.
+  /// a job whose caller left, or whose caller deadline has passed (even if its timer has not
+  /// fired yet), runs no native work.
   private func runJob(_ job: Job, limit: Duration, _ body: @Sendable () -> Void) {
-    let proceed = state.withLock { state -> Bool in
-      if job.callerGone && job.operation != .retire {
-        job.phase = .finished
-        state.outstanding[job.id] = nil
-        return false
+    let (proceed, lateDelivery) = state.withLock { state -> (Bool, (@Sendable () -> Void)?) in
+      if job.operation != .retire {
+        var delivery: (@Sendable () -> Void)?
+        var withdraw = job.callerGone
+        if !withdraw, let deadline = job.callerDeadline, now() >= deadline {
+          withdraw = true
+          delivery = Self.terminate(job, with: job.deliverTimedOut)
+        }
+        if withdraw {
+          job.phase = .finished
+          state.outstanding[job.id] = nil
+          return (false, delivery)
+        }
       }
       job.phase = .running
       state.running = job
-      return true
+      return (true, nil)
     }
+    lateDelivery?()
     guard proceed else {
       finishWaiters()
       return
