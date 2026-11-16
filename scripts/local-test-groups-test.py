@@ -57,7 +57,17 @@ if os.environ.get('HOLD_GROUP') == name:
     child = subprocess.Popen([sys.executable, '-c', child_code, str(root / 'grandchild.pid')])
     while True: time.sleep(0.05)
 if os.environ.get('FAIL_GROUP') == name: sys.exit(65)
-if os.environ.get('DELAY_GROUP') == name: time.sleep(1.5)
+if os.environ.get('DELAY_GROUP') == name:
+    end = time.monotonic() + float(os.environ.get('DELAY_SECONDS', '1.5'))
+    while time.monotonic() < end:  # keep printing: this group is busy, not silent
+        print('still working', flush=True); time.sleep(0.5)
+    marker = root / 'grandchild.pid'
+    if marker.exists():
+        try:
+            os.kill(int(marker.read_text()), 0); state = 'alive'
+        except ProcessLookupError:
+            state = 'gone'
+        (root / 'grandchild-at-peer-end').write_text(state)
 target = 'EnviousWisprTests'
 suites = [a.split(':', 1)[1].split('/')[1] for a in args if a.startswith('-only-testing:')]
 if os.environ.get('MISSING_SUITE') and suites: suites.pop()
@@ -104,7 +114,7 @@ if os.environ.get('DROP_PARAMETER'): roots[0]['children'][0]['children'][0]['chi
         self.env = dict(os.environ, PATH=str(self.bin) + os.pathsep + os.environ["PATH"],
                         FIXTURE_ROOT=str(self.root), CI="")
         for key in ("HOLD_GROUP", "FAIL_GROUP", "FAIL_VERDICT", "MISSING_SUITE", "LEAK_SOURCE",
-                    "FAIL_MERGE", "DROP_MERGED_CASE", "DROP_PARAMETER", "DUPLICATE_IDENTITY", "IGNORE_CHILD_TERM", "DELAY_GROUP", "EW_NO_OUTPUT_LIMIT_SECS", "EW_HUNG_MARKER",
+                    "FAIL_MERGE", "DROP_MERGED_CASE", "DROP_PARAMETER", "DUPLICATE_IDENTITY", "IGNORE_CHILD_TERM", "DELAY_GROUP", "DELAY_SECONDS", "EW_NO_OUTPUT_LIMIT_SECS", "EW_HUNG_MARKER",
                     "EXPECTED_GROUPS", "TEST_RUNNER_EW_WRITE_TEST_INVENTORY_BASELINE",
                     "TEST_RUNNER_EW_REAL_BOUNDARY", "EW_LOCAL_TEST_WORKERS"):
             self.env.pop(key, None)
@@ -118,9 +128,9 @@ if os.environ.get('DROP_PARAMETER'): roots[0]['children'][0]['children'][0]['chi
         path.write_text(source)
         path.chmod(0o755)
 
-    def run_groups(self, rc=0, **env):
+    def run_groups(self, rc=0, timeout=20, **env):
         result = subprocess.run(self.command, env=dict(self.env, **env), capture_output=True,
-                                text=True, timeout=20)
+                                text=True, timeout=timeout)
         self.assertEqual(result.returncode, rc, result.stdout + result.stderr)
         return result
 
@@ -240,6 +250,15 @@ if os.environ.get('DROP_PARAMETER'): roots[0]['children'][0]['children'][0]['chi
         state = subprocess.run(["ps", "-o", "stat=", "-p", str(grandchild)],
                                capture_output=True, text=True).stdout.strip()
         self.assertTrue(not state or state.startswith("Z"), f"hung group's process survived: {state}")
+
+    def test_a_hung_descendant_that_ignores_term_is_killed_before_siblings_end(self):
+        # PR #4613 cloud review: the hung group gets KILL on its own deadline
+        # (limit 2 s + 10 s grace), not only in the final cleanup after the
+        # still-running sibling (14 s) ends.
+        result = self.run_groups(rc=5, timeout=40, HOLD_GROUP="serial", IGNORE_CHILD_TERM="1",
+                                 EW_NO_OUTPUT_LIMIT_SECS="2", DELAY_GROUP="source", DELAY_SECONDS="14")
+        self.assertEqual((self.root / "grandchild-at-peer-end").read_text(), "gone",
+                         result.stdout + result.stderr)
 
     def test_structured_failure_is_not_hidden_by_successful_worker_exit(self):
         self.run_groups(rc=1, FAIL_VERDICT="source")

@@ -392,9 +392,26 @@ def run_groups(opts):
         # recorded and the others run to their own end; the lane fails afterwards
         # with every group's failures listed together.
         outcomes = {}
+        # A group that has ended or hung is stopped on its own clock while the
+        # others keep running: TERM at once, KILL after the grace period. Strays a
+        # finished leader left behind, or a hung descendant that ignores TERM, must
+        # not keep running (or holding a device) until every sibling ends. The
+        # leaders stay unreaped until the final cleanup, so each PGID stays ours.
+        kill_due = {}
+
+        def stop_group(index, sig):
+            try:
+                signal_owned_group(children[index], sig)
+            except Exception as error:
+                print(f"==> Debug {groups[index][0]} group: stop request failed: {error}", flush=True)
+
         while pending:
             if cancelled:
                 raise InterruptedError(f"interrupted by signal {cancelled[0]}")
+            for index, due in tuple(kill_due.items()):
+                if time.monotonic() >= due:
+                    del kill_due[index]
+                    stop_group(index, signal.SIGKILL)
             for index in tuple(pending):
                 name = groups[index][0]
                 rc = observed_exit(children[index])
@@ -405,16 +422,14 @@ def run_groups(opts):
                         print(f"==> HUNG: {text}", flush=True)
                         outcomes[name] = ("hung", text)
                         pending.remove(index)
-                        # TERM now; the owned-group cleanup in the finally block
-                        # KILLs whatever is left once the other groups finish.
-                        try:
-                            signal_owned_group(children[index], signal.SIGTERM)
-                        except Exception as error:
-                            print(f"==> Debug {name} group: stop request failed: {error}", flush=True)
+                        stop_group(index, signal.SIGTERM)
+                        kill_due[index] = time.monotonic() + TERMINATION_GRACE_SECONDS
                         if pending:
                             print(f"==> Debug {name} group stopped; other groups keep running", flush=True)
                     continue
                 pending.remove(index)
+                stop_group(index, signal.SIGTERM)
+                kill_due[index] = time.monotonic() + TERMINATION_GRACE_SECONDS
                 if rc:
                     outcomes[name] = ("failed", rc)
                     print(f"==> Debug {name} group FAILED (exit {rc})"
