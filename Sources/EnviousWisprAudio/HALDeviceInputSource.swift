@@ -445,6 +445,15 @@ final class HALDeviceInputSource: AudioInputSource {
     return running
   }
 
+  /// #4601 §5: committed state only. True while this source owns a unit it has not handed to
+  /// the lane for release.
+  var hasCommittedUnit: Bool {
+    #if DEBUG
+      if let isRunningOverrideForTesting { return isRunningOverrideForTesting }
+    #endif
+    return liveResources != nil
+  }
+
   /// Target capture device UID. Nil means follow the live system default input.
   var targetDeviceUID: String?
 
@@ -663,6 +672,23 @@ final class HALDeviceInputSource: AudioInputSource {
   func boundDeviceMatchesResolvedTargetForReuse() -> Bool {
     guard let bound = currentBoundInputDevice else { return false }
     return inputDeviceResolver.isWarmBindCompatible(bound, preferredUID: targetDeviceUID)
+  }
+
+  /// #4601 §3.5: the same predicate, answered on the audio-unit lane within `deadline` because
+  /// it reads the live device list. A timeout, a wedged lane or a unit replaced meanwhile all
+  /// answer false: a warm unit that cannot be checked is not reused.
+  func warmBindCompatibleOnLane(deadline: ContinuousClock.Instant?) async -> Bool {
+    guard let bound = currentBoundInputDevice else { return false }
+    let generation = liveResources?.generation
+    let resolver = inputDeviceResolver
+    let target = targetDeviceUID
+    let outcome = await lane.run("warm_bind_check", deadline: deadline) {
+      resolver.isWarmBindCompatible(bound, preferredUID: target)
+    }
+    guard liveResources?.generation == generation, case .value(let compatible) = outcome else {
+      return false
+    }
+    return compatible
   }
 
   /// #2664: does the committed unit take the channel the CURRENT preference

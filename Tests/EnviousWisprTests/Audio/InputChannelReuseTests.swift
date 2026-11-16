@@ -67,24 +67,24 @@ import Testing
     // MARK: - The two arms the plan names
 
     @Test("unchanged preference: the warm unit on Input 2 is REUSED")
-    func unchangedPreferenceReuses() {
+    func unchangedPreferenceReuses() async throws {
       let warm = Self.warmSource(channel: 1)
       let manager = Self.makeManager(warm: warm, preference: [Self.boundUID: 1])
 
-      let resolved = manager.resolveSourceForTesting()
+      let resolved = try await manager.resolveSourceForTesting()
 
       #expect(resolved === warm, "an unchanged socket must not force a rebuild")
     }
 
     @Test(
       "changed preference: the warm unit on Input 2 is REBUILT when the user goes back to Input 1")
-    func changedPreferenceRebuilds() {
+    func changedPreferenceRebuilds() async throws {
       let warm = Self.warmSource(channel: 1)
       // The user cleared the choice (or picked Input 1): the map no longer names
       // this device, so the effective channel is 0 and the warm unit is on 1.
       let manager = Self.makeManager(warm: warm, preference: [:])
 
-      let resolved = manager.resolveSourceForTesting()
+      let resolved = try await manager.resolveSourceForTesting()
 
       #expect(resolved !== warm, "a changed socket must tear the warm unit down")
       // The replacement is a fresh production HAL source carrying the manager's
@@ -97,13 +97,13 @@ import Testing
 
     @Test(
       "changed preference the other way: a warm unit on Input 1 is rebuilt when Input 2 is chosen")
-    func choosingInputTwoRebuildsAChannelZeroUnit() {
+    func choosingInputTwoRebuildsAChannelZeroUnit() async throws {
       // This is the customer's exact path: silent take on the default, pick
       // Input 2 in Settings, dictate again inside the warm window.
       let warm = Self.warmSource(channel: 0)
       let manager = Self.makeManager(warm: warm, preference: [Self.boundUID: 1])
 
-      let resolved = manager.resolveSourceForTesting()
+      let resolved = try await manager.resolveSourceForTesting()
 
       #expect(resolved !== warm)
       #expect((resolved as? HALDeviceInputSource)?.inputChannelByDeviceUID == [Self.boundUID: 1])
@@ -112,21 +112,21 @@ import Testing
     // MARK: - Held constant: everything that is NOT the channel
 
     @Test("a preference for a DIFFERENT device leaves the warm unit alone")
-    func otherDevicePreferenceIsIrrelevant() {
+    func otherDevicePreferenceIsIrrelevant() async throws {
       let warm = Self.warmSource(channel: 0)
       let manager = Self.makeManager(warm: warm, preference: ["some-other-interface": 1])
 
-      #expect(manager.resolveSourceForTesting() === warm)
+      #expect(try await manager.resolveSourceForTesting() === warm)
     }
 
     @Test("a preference the bound device cannot honour compares equal to its channel-0 bind")
-    func unusablePreferenceDoesNotForceAPointlessRebuild() {
+    func unusablePreferenceDoesNotForceAPointlessRebuild() async throws {
       // Input 6 chosen for a two-input box: cold prepare would land on channel 0
       // again, so rebuilding every take would only cost the warm engine.
       let warm = Self.warmSource(channel: 0)
       let manager = Self.makeManager(warm: warm, preference: [Self.boundUID: 5])
 
-      #expect(manager.resolveSourceForTesting() === warm)
+      #expect(try await manager.resolveSourceForTesting() === warm)
     }
 
     // MARK: - The predicate itself, keyed by UID
