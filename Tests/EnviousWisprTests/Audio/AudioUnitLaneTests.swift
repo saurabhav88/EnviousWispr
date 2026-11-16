@@ -376,6 +376,40 @@ struct AudioUnitLaneTests {
     #expect(lane.isWedged == false)
   }
 
+  @Test("a running open that returns after its deadline is disposed, even before its timer fires")
+  func runningOpenPastDeadlineIsDisposed() async {
+    let timers = ManualTimers()
+    let log = Log()
+    let clock = ManualClock()
+    let lane = makeLane(timers, log, clock: clock)
+    let gate = Gate()
+    defer { gate.open() }
+    let entered = Signal()
+
+    let open = Task {
+      await lane.open(
+        "microphone_start", attempt: 13, deadline: Self.base + .seconds(2),
+        { () -> Int in
+          entered.fire()
+          gate.block()
+          return 21
+        }, disposeLate: { value in log.add("disposed:\(value)") })
+    }
+    #expect(await entered.wait())
+    let available = Signal()
+    // Time passes the deadline while the open runs; the caller's timer is NOT fired.
+    clock.advance(.seconds(3))
+    gate.open()
+    guard case .timedOut = await open.value else {
+      Issue.record("an open returning past its deadline must answer timedOut")
+      return
+    }
+    lane.whenAvailable { available.fire() }
+    #expect(await available.wait())
+    #expect(log.all.filter { $0.hasPrefix("disposed:") } == ["disposed:21"])
+    #expect(log.count("recovered:") == 0)
+  }
+
   /// Counts arrivals and fires once `target` is reached.
   final class Arrivals: Sendable {
     private let count = OSAllocatedUnfairLock(initialState: 0)

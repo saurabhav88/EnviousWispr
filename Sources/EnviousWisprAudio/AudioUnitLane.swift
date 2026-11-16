@@ -288,6 +288,15 @@ package final class AudioUnitLane: Sendable {
     return deliver
   }
 
+  /// THE deadline rule, used at every decision that can see a passed caller deadline before its
+  /// timer fires (the queued-to-running check and the worker's hand-over): under the lane's lock,
+  /// an unclaimed job whose absolute caller deadline has passed is terminated as timed out.
+  /// Returns nil when the deadline has not passed; otherwise the (possibly empty) delivery.
+  private func expiredDelivery(_ job: Job) -> (@Sendable () -> Void)?? {
+    guard let deadline = job.callerDeadline, now() >= deadline else { return nil }
+    return .some(Self.terminate(job, with: job.deliverTimedOut))
+  }
+
   private enum Refusal { case wedged, duplicate, abandoned }
 
   private func submitAwaiting<Value: Sendable>(
@@ -317,8 +326,14 @@ package final class AudioUnitLane: Sendable {
           queue.async { [self] in
             runJob(job, limit: limit) {
               let value = work()
-              // Transfer point: the caller takes the value, or the lane disposes it now.
-              let handOver = self.state.withLock { _ in job.claim() }
+              // Transfer point: the caller takes the value, or the lane disposes it now. A
+              // passed caller deadline wins even when its timer has not fired yet.
+              let (handOver, timedOut) = self.state.withLock {
+                _ -> (Bool, (@Sendable () -> Void)?) in
+                if let expired = self.expiredDelivery(job) { return (false, expired) }
+                return (job.claim(), nil)
+              }
+              timedOut?()
               if handOver {
                 continuation.resume(returning: .value(value))
               } else {
@@ -364,9 +379,9 @@ package final class AudioUnitLane: Sendable {
       if job.operation != .retire {
         var delivery: (@Sendable () -> Void)?
         var withdraw = job.callerGone
-        if !withdraw, let deadline = job.callerDeadline, now() >= deadline {
+        if !withdraw, let expired = expiredDelivery(job) {
           withdraw = true
-          delivery = Self.terminate(job, with: job.deliverTimedOut)
+          delivery = expired
         }
         if withdraw {
           job.phase = .finished
