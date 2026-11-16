@@ -120,7 +120,37 @@ struct HistoryPolishMenu: View {
     }
   }
 
-  private var setupTitle: LocalizedStringResource {
+  private var setupTitle: LocalizedStringResource { Self.setupTitle(surface) }
+
+  /// The same list as History's own More menu items (#4611): each ready model, "No models are
+  /// ready" when there is none, then the setup link. `setUp` opens the surface's setup page.
+  static func menuItems(
+    surface: HistoryRepolishRunner.Surface, choices: [HistoryPolishChoice], currentProvider: String?,
+    currentModel: String?, currentSize: String?, isEnabled: Bool,
+    select: @escaping (HistoryPolishChoice) -> Void, setUp: @escaping () -> Void
+  ) -> [HistoryMenuItem] {
+    var items: [HistoryMenuItem] = choices.map { choice in
+      .init(
+        id: "polish-\(choice.provider.rawValue)-\(choice.model)-\(choice.egOneSize?.rawValue ?? "")",
+        title: label(
+          choice, currentProvider: currentProvider, currentModel: currentModel, currentSize: currentSize),
+        isEnabled: isEnabled, kind: .action { select(choice) })
+    }
+    if choices.isEmpty {
+      items.append(
+        .init(
+          id: "polish-none",
+          title: String(localized: "No models are ready", comment: "History polish menu: no configured AI model can run."),
+          isEnabled: false, kind: .action {}))
+    }
+    items += [
+      .divider("polish-d"),
+      .init(id: "polish-setup", title: String(localized: setupTitle(surface)), kind: .action(setUp)),
+    ]
+    return items
+  }
+
+  static func setupTitle(_ surface: HistoryRepolishRunner.Surface) -> LocalizedStringResource {
     switch surface {
     case .dictation:
       "Set up more models in AI Polish"

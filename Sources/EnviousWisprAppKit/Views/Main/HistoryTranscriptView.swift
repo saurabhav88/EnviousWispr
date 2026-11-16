@@ -80,6 +80,8 @@ struct HistoryTranscriptView: View {
   @Environment(HistoryPaste.self) private var historyPaste
   @Environment(PreviousApplicationTracker.self) private var previousApplication
   @Environment(HistoryRepolishRunner.self) private var historyRepolish
+  @Environment(HistoryMenuPresenter.self) private var historyMenu
+  @Environment(AppWindowCoordinator.self) private var appWindow
   @Environment(\.historyHighlightQuery) private var searchQuery
 
   // Document
@@ -103,6 +105,7 @@ struct HistoryTranscriptView: View {
   @State private var confirmingDelete = false
   @State private var pendingRetranscription: ImportedASRChoice?
   @State private var locateRequested = false
+  @State private var moreAnchor = HistoryMenuAnchorHolder()
 
   private typealias P = HistoryTranscriptPresentation
 
@@ -298,40 +301,52 @@ struct HistoryTranscriptView: View {
     }
   }
 
-  /// Created date and engine always; the polish model and AI Polished only from real polish
-  /// provenance (legacy header rule).
+  /// One quiet line in the Dictations footer's style (#4611): the date, the speech engine, the
+  /// polish model (only from real polish provenance), speakers, the length, and Original
+  /// unavailable with its reason on hover while the original can't play.
   private func provenance(_ row: Transcript) -> some View {
     let facts = P.provenance(for: row)
     return WrappingHStack(spacing: DesignSpacing.sm) {
       Text(facts.createdAt, format: .dateTime.month().day().year().hour().minute())
-      HStack(spacing: DesignSpacing.xs) {
+      HistoryFooterDot()
+      HStack(spacing: DesignSpacing.xxs) {
         Image(systemName: "waveform").accessibilityHidden(true)
         Text(verbatim: facts.backend)
       }
-      if let model = facts.polishModel {
-        HStack(spacing: DesignSpacing.xs) {
-          Image(systemName: "sparkles").accessibilityHidden(true)
-          Text(verbatim: model)
-        }
-      }
       if facts.aiPolished {
-        Text("AI Polished", comment: "History detail chip: AI polish rewrote this text.")
-          .historyChip(tint: .stAccent, fill: Color.stAccent.opacity(0.16))
+        HistoryFooterDot()
+        HStack(spacing: DesignSpacing.xxs) {
+          Image(systemName: "sparkles").accessibilityHidden(true)
+          Text(verbatim: facts.polishModel ?? "AI")
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+          Text(
+            "AI Polished with \(facts.polishModel ?? "AI")",
+            comment: "History transcript header, VoiceOver: AI polish rewrote this text. %@ is the model name."))
       }
       if let speakers = facts.speakers {
-        HStack(spacing: DesignSpacing.xs) {
+        HistoryFooterDot()
+        HStack(spacing: DesignSpacing.xxs) {
           Image(systemName: "person.2").accessibilityHidden(true)
           Text(verbatim: speakers)
         }
       }
-      if let length = facts.length {
-        Text(verbatim: length)
+      if let clock = P.footerClock(seconds: row.duration) {
+        HistoryFooterDot()
+        Text(verbatim: clock).monospacedDigit()
+      }
+      if case .unavailable(let reason) = sourceLine {
+        HistoryFooterDot()
+        HistoryUnplayableMark(label: P.unplayableLabel, reason: P.unavailableLine(reason))
       }
     }
     .font(.stHelper)
     .foregroundStyle(.stTextSecondary)
   }
 
+  /// Copy and More, the Dictations card's pattern (#4611): Share, Save as, Open in new window,
+  /// Paste, Polish again with, Transcribe again with, Locate original and Delete live in More.
   private func actions(_ row: Transcript) -> some View {
     // Save and Share are enabled from the displayed row without building the export; pressing
     // them still reads the export text from the live row.
@@ -353,137 +368,150 @@ struct HistoryTranscriptView: View {
           if copiedAt == pressed { copiedAt = nil }
         }
       } label: {
-        EnviousButtonLabel(verbatim: copy.title, size: .medium, systemImage: copy.systemImage)
+        Image(systemName: copy.systemImage)
+          .frame(width: 16, height: 16)
       }
       .settingsButton(.quiet, size: .medium, isEnabled: availability != .none)
-
-      // `DeliverableText`, never a String item: the sheet can stay open while the row changes
-      // or goes, so the text is read when the receiving app asks for it.
-      ShareLink(
-        item: DeliverableText(resolve: { exportText }),
-        preview: SharePreview(P.title(for: row))
-      ) {
-        EnviousButtonLabel(
-          verbatim: labels.share, size: .medium, systemImage: "square.and.arrow.up")
-      }
-      .settingsButton(.quiet, size: .medium, isEnabled: availability == .content)
+      .help(Text(verbatim: copy.title))
+      .accessibilityLabel(Text(verbatim: copy.title))
 
       Button {
-        saveDocument(defaultName: P.title(for: row))
+        guard let anchor = moreAnchor.view else { return }
+        historyMenu.toggle(
+          items: moreItems(row, availability: availability, labels: labels), from: anchor)
       } label: {
-        EnviousButtonLabel(
-          verbatim: labels.save, size: .medium, systemImage: "square.and.arrow.down")
+        Image(systemName: "ellipsis")
+          .fontWeight(.bold)
+          .frame(width: 16, height: 16)
       }
-      .settingsButton(.quiet, size: .medium, isEnabled: availability != .none)
-
-      if context == .history {
-        Button {
-          openInNewWindow(rowID)
-        } label: {
-          Image(systemName: "macwindow.badge.plus")
-            .accessibilityHidden(true)
-        }
-        .settingsButton(.quiet, size: .medium, isEnabled: true)
-        .help(Text(Self.newWindowLabel))
-        .accessibilityLabel(Text(Self.newWindowLabel))
-      }
-
-      moreMenu(row)
+      .settingsButton(.quiet, size: .medium, isEnabled: true)
+      .background(HistoryMenuAnchor(holder: moreAnchor))
+      .help(Text("More actions", comment: "History transcript: opens the More menu."))
+      .accessibilityLabel(
+        Text("More actions", comment: "History transcript: opens the More menu."))
     }
     .fixedSize()
   }
 
-  private func moreMenu(_ row: Transcript) -> some View {
+  /// The More menu's items, built when it opens, from the view's live state.
+  private func moreItems(
+    _ row: Transcript, availability: TranscriptDocumentPresenter.ExportAvailability,
+    labels: (copy: String, save: String, share: String)
+  ) -> [HistoryMenuItem] {
     let busy = P.isBusy(retranscription.state(for: rowID))
-    let choices = retranscription.choices(for: rowID)
-    return Menu {
-      HistoryPolishMenu(
-        title: "Polish again with", surface: .transcript, currentProvider: row.llmProvider,
-        currentModel: row.llmModel, currentSize: row.historyPolishEGOneSize,
-        isEnabled: !busy && documentFinished && polishPreview.canStart
-      ) { choice in
-        polishPreview.start(rowID: rowID, choice: choice, runner: historyRepolish, history: transcripts)
-      }
-      Divider()
-      Button {
-        pasteTapped(row)
-      } label: {
-        Label {
-          Text(verbatim: EscapeRecoveryRowPresentation.pasteLabel)
-        } icon: {
-          Image(systemName: "arrow.right.doc.on.clipboard")
-        }
-      }
-      // Legacy parity: unavailable without Accessibility or while the row may not be pasted.
-      .disabled(!permissions.accessibilityGranted || !pasteAllowed(row))
-      Divider()
-      Menu {
-        if choices.isEmpty {
-          Text(
-            "No speech models are ready",
-            comment:
-              "History transcript, Transcribe again with menu: no installed speech model can be used."
-          )
-        }
-        ForEach(choices) { choice in
-          Button {
-            pendingRetranscription = choice
-          } label: {
-            Text(verbatim: choice.isCurrent ? Self.currentChoiceTitle(choice.title) : choice.title)
-          }
-        }
-      } label: {
-        Label {
-          Text(
-            "Transcribe again with",
-            comment:
-              "History transcript, More menu: transcribes the original file again with a chosen speech model."
-          )
-        } icon: {
-          Image(systemName: "arrow.clockwise")
-        }
-      }
-      .disabled(busy || !canRetranscribe || choices.isEmpty)
-      // #4578 (plan §3.10 item 8): with no speech engine downloaded, say how to get one back.
-      .help(
-        choices.isEmpty
-          ? String(
-            localized: "Download a speech engine in Settings to transcribe again.",
-            comment: "History, Transcribe again with menu: tooltip while no speech engine is downloaded.")
-          : "")
-      if offersLocate {
-        Button {
-          locateRequested = true
-        } label: {
-          Label {
-            Text(
-              "Locate original…",
-              comment: "History transcript: choose where the original audio or video file is now.")
-          } icon: {
-            Image(systemName: "magnifyingglass")
-          }
-        }
-      }
-      Divider()
-      Button(role: .destructive) {
-        confirmingDelete = true
-      } label: {
-        Label {
-          Text(
-            "Delete transcript",
-            comment: "VoiceOver label of the History delete button for a transcript.")
-        } icon: {
-          Image(systemName: "trash")
-        }
-      }
-    } label: {
-      Image(systemName: "ellipsis")
+    let speechChoices = retranscription.choices(for: rowID)
+    var items: [HistoryMenuItem] = [
+      .init(
+        id: "share", title: labels.share, systemImage: "square.and.arrow.up",
+        isEnabled: availability == .content,
+        kind: .action {
+          guard let anchor = moreAnchor.view else { return }
+          // `DeliverableText`, never a String item: the picker can stay open while the row
+          // changes or goes, so the text is read when the receiving app asks for it, in the
+          // view and Times the user had when they pressed Share.
+          let provider = NSItemProvider()
+          let history = transcripts
+          let id = rowID
+          let mode = documentView
+          let times = timesOn
+          provider.register(
+            DeliverableText(resolve: {
+              HistoryTranscriptExport.text(rowID: id, coordinator: history, mode: mode, timesOn: times)
+            }))
+          NSSharingServicePicker(items: [provider]).show(
+            relativeTo: anchor.bounds, of: anchor, preferredEdge: .minY)
+        }),
+      .init(
+        id: "save", title: labels.save, systemImage: "square.and.arrow.down",
+        isEnabled: availability != .none,
+        kind: .action { saveDocument(defaultName: P.title(for: row)) }),
+    ]
+    if context == .history {
+      items.append(
+        .init(
+          id: "new-window", title: String(localized: Self.newWindowLabel),
+          systemImage: "macwindow.badge.plus", kind: .action { openInNewWindow(rowID) }))
     }
-    .menuStyle(.borderlessButton)
-    .menuIndicator(.hidden)
-    .fixedSize()
-    .accessibilityLabel(
-      Text("More actions", comment: "History transcript: opens the More menu."))
+    items.append(.divider("d1"))
+    // Legacy parity: unavailable while the row may not be pasted; without Accessibility it opens
+    // the permission page, as the Dictations card does.
+    items.append(
+      .init(
+        id: "paste", title: EscapeRecoveryRowPresentation.pasteLabel,
+        systemImage: "arrow.right.doc.on.clipboard",
+        isEnabled: !permissions.accessibilityGranted || pasteAllowed(row),
+        kind: .action { pasteTapped(row) }))
+    let polish = HistoryPolishMenu.menuItems(
+      surface: .transcript, choices: historyRepolish.choices(.transcript),
+      currentProvider: row.llmProvider, currentModel: row.llmModel,
+      currentSize: row.historyPolishEGOneSize,
+      isEnabled: !busy && documentFinished && polishPreview.canStart,
+      select: { choice in
+        polishPreview.start(rowID: rowID, choice: choice, runner: historyRepolish, history: transcripts)
+      },
+      setUp: {
+        navigation.request(.transcribeFile)
+        appWindow.showWindow()
+      })
+    items.append(
+      .init(
+        id: "polish",
+        title: String(
+          localized: "Polish again with",
+          comment: "History: opens the list of AI models to polish this text again."),
+        systemImage: "sparkles", kind: .submenu(polish)))
+    var speech: [HistoryMenuItem] = speechChoices.map { choice in
+      .init(
+        id: "asr-\(choice.id)",
+        title: choice.isCurrent ? Self.currentChoiceTitle(choice.title) : choice.title,
+        isEnabled: !busy && canRetranscribe,
+        kind: .action { pendingRetranscription = choice })
+    }
+    if speechChoices.isEmpty {
+      // #4578 (plan §3.10 item 8): with no speech engine downloaded, say how to get one back.
+      speech.append(
+        .init(
+          id: "asr-none",
+          title: String(
+            localized: "No speech models are ready",
+            comment:
+              "History transcript, Transcribe again with menu: no installed speech model can be used."),
+          isEnabled: false, kind: .action {}))
+      speech.append(
+        .init(
+          id: "asr-setup",
+          title: String(
+            localized: "Download a speech engine in Settings to transcribe again.",
+            comment: "History, Transcribe again with menu: tooltip while no speech engine is downloaded."),
+          kind: .action {
+            navigation.request(.transcribeFile)
+            appWindow.showWindow()
+          }))
+    }
+    items.append(
+      .init(
+        id: "transcribe-again",
+        title: String(
+          localized: "Transcribe again with",
+          comment:
+            "History transcript, More menu: transcribes the original file again with a chosen speech model."),
+        systemImage: "arrow.clockwise", isEnabled: !busy && (canRetranscribe || speechChoices.isEmpty),
+        kind: .submenu(speech)))
+    if offersLocate {
+      items.append(
+        .init(
+          id: "locate", title: Self.locateLabel, systemImage: "magnifyingglass",
+          kind: .action { locateRequested = true }))
+    }
+    items.append(.divider("d2"))
+    items.append(
+      .init(
+        id: "delete",
+        title: String(
+          localized: "Delete transcript",
+          comment: "VoiceOver label of the History delete button for a transcript."),
+        systemImage: "trash", isDestructive: true, kind: .action { confirmingDelete = true }))
+    return items
   }
 
   private func viewControls(_ row: Transcript) -> some View {
@@ -496,7 +524,8 @@ struct HistoryTranscriptView: View {
           (Self.modeLabel(.markedUp), nil, .markedUp),
           (Self.modeLabel(.original), nil, .original),
         ],
-        selection: $documentView
+        selection: $documentView,
+        hint: { P.viewHint(mode: $0, playable: hasTimes && activePlayer != nil) }
       )
       .fixedSize()
       .accessibilityElement(children: .contain)
@@ -512,10 +541,6 @@ struct HistoryTranscriptView: View {
         .toggleStyle(BrandedToggleStyle())
         .fixedSize()
       }
-      Text(verbatim: P.viewHint(mode: documentView, playable: hasTimes && activePlayer != nil))
-        .font(.stHelper)
-        .foregroundStyle(.stTextSecondary)
-        .lineLimit(1)
     }
   }
 
@@ -564,6 +589,8 @@ struct HistoryTranscriptView: View {
         }
       )
       .equatable()
+      // #4611: the reading size of a dictation card's text.
+      .font(.stCardText)
       // Rename popovers and Marked up diffs belong to one document: this row at this import
       // attempt. Turn IDs are document-local, so another row, or this row's text after
       // Transcribe again with, must start with none of them.
@@ -595,7 +622,7 @@ struct HistoryTranscriptView: View {
           .textSelection(.enabled)
       }
     }
-    .font(.stBody)
+    .font(.stCardText)
     .lineSpacing(3)
     .foregroundStyle(.stTextPrimary)
     .frame(maxWidth: .infinity, alignment: .leading)
@@ -620,14 +647,13 @@ struct HistoryTranscriptView: View {
 
   // MARK: - Dock
 
+  /// The player while the original plays (#4611): with no playable original there is no bar;
+  /// the header's Original unavailable mark says why, and Locate original is in More.
   @ViewBuilder
   private var dock: some View {
     if let player = activePlayer {
-      HistoryTranscriptPlayerBar(content: .player(player))
+      HistoryTranscriptPlayerBar(player: player)
         .id(ObjectIdentifier(player))
-    } else if case .unavailable(let reason) = sourceLine {
-      HistoryTranscriptPlayerBar(
-        content: .unavailable(reason, onLocate: { locateRequested = true }))
     }
   }
 
@@ -721,7 +747,9 @@ struct HistoryTranscriptView: View {
 
   private func pasteTapped(_ row: Transcript) {
     guard permissions.accessibilityGranted else {
+      // Permissions lives in the main window, which may be closed behind a transcript window.
       navigation.request(.appSettings(.permissions))
+      appWindow.showWindow()
       return
     }
     // #3875, #4101: History's clipboard transaction, into the app the user came from, with the
@@ -788,8 +816,14 @@ struct HistoryTranscriptView: View {
 
   // MARK: - Words
 
-  private static let newWindowLabel = LocalizedStringResource(
+  static let newWindowLabel = LocalizedStringResource(
     "Open in new window", comment: "History transcript: opens this transcript in its own window.")
+
+  static var locateLabel: String {
+    String(
+      localized: "Locate original…",
+      comment: "History transcript: choose where the original audio or video file is now.")
+  }
 
   static func currentChoiceTitle(_ title: String) -> String {
     String(

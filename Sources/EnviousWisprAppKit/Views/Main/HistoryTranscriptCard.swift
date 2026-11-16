@@ -2,18 +2,18 @@ import EnviousWisprCore
 import EnviousWisprStorage
 import SwiftUI
 
-/// One imported transcript in the Transcripts tab (#3147 PR3 §3.5, approved mock
-/// Transcripts.dc.html): the file name, its length and the time it was saved, Open, one line
-/// about the original file (with Locate original when it is unavailable), a two-line preview,
-/// and the status chips the legacy row showed (file name, speakers, Recovered, Interrupted, the
-/// polish model, the speech engine).
+/// One imported transcript in the Transcripts tab (#3147 PR3 §3.5; compact layout #4611): the
+/// file name, a two-line preview, one footer line in the Dictations card's style (length,
+/// Recovered, Interrupted, the speech engine, the polish model, speakers, and Original
+/// unavailable when the file can't play), then Open, Copy and More. Locate original and Open in
+/// new window live in More.
 ///
-/// Open and Locate original each keep their keyboard and VoiceOver actions. The card also opens
-/// on a pointer click over the title, preview, metadata or surrounding space.
+/// Open, Copy and More each keep their keyboard and VoiceOver actions. The card also opens on a
+/// pointer click over the title, preview, footer or surrounding space.
 ///
 /// **The original file is looked up off the body**: once when the card appears and whenever the
-/// source owner bumps the row's revision. Nothing is drawn until the answer arrives, so the card
-/// never flashes a claim it has not checked. The card never opens a player.
+/// source owner bumps the row's revision. Nothing is said about it until the answer arrives, so
+/// the card never flashes a claim it has not checked. The card never opens a player.
 struct HistoryTranscriptCard: View {
   let rowID: UUID
   let sources: any ImportedSourceAccessing
@@ -39,7 +39,11 @@ struct HistoryTranscriptCard: View {
   }
 
   @Environment(TranscriptCoordinator.self) private var transcripts
+  @Environment(HistoryMenuPresenter.self) private var historyMenu
+  @Environment(\.openWindow) private var openWindow
   @State private var sourceState: ImportedSourceState?
+  @State private var copiedAt: Date?
+  @State private var moreAnchor = HistoryMenuAnchorHolder()
 
   private typealias P = HistoryTranscriptPresentation
 
@@ -55,74 +59,55 @@ struct HistoryTranscriptCard: View {
     Group {
       if let summary {
         card(
-          title: summary.title ?? P.transcriptWord,
-          length: P.lengthLine(seconds: summary.duration ?? 0), preview: summary.preview,
-          chips: P.chips(for: summary), row: nil)
+          title: summary.title ?? P.transcriptWord, seconds: summary.duration ?? 0,
+          preview: summary.preview, chips: P.chips(for: summary), row: nil)
       } else if let row {
-        card(title: P.title(for: row), length: P.lengthLine(for: row), preview: row.historyText,
+        card(
+          title: P.title(for: row), seconds: row.duration, preview: row.historyText,
           chips: P.chips(for: row), row: row)
       }
     }
     .task(
-          id: SourceKey(
-            rowID: rowID, revision: sources.revision(for: rowID),
-            reference: row.map(ImportedSourceReference.init), sourceRevision: transcripts.catalogSession?.revision)
-        ) {
-          if summary != nil { _ = await transcripts.loadCatalogDetail(rowID) }
-          let state = await sources.state(for: rowID)
-          guard !Task.isCancelled else { return }
-          sourceState = state
-        }
-        .task(id: summary == nil ? nil : rowID) {
-          if summary != nil { await transcripts.holdCatalogDetail(rowID) }
-        }
+      id: SourceKey(
+        rowID: rowID, revision: sources.revision(for: rowID),
+        reference: row.map(ImportedSourceReference.init), sourceRevision: transcripts.catalogSession?.revision)
+    ) {
+      if summary != nil { _ = await transcripts.loadCatalogDetail(rowID) }
+      let state = await sources.state(for: rowID)
+      guard !Task.isCancelled else { return }
+      sourceState = state
+    }
+    .task(id: summary == nil ? nil : rowID) {
+      if summary != nil { await transcripts.holdCatalogDetail(rowID) }
+    }
   }
 
-  private func card(title: String, length: String?, preview: String, chips statusChips: [P.Chip],
-    row: Transcript?) -> some View {
-    let line = cardSourceLine
-    return VStack(alignment: .leading, spacing: DesignSpacing.md) {
-      HStack(alignment: .top, spacing: DesignSpacing.lg) {
-        VStack(alignment: .leading, spacing: DesignSpacing.xxs) {
-          HistoryParagraphText.searchText(title, query: query)
-            .font(.stRowTitle)
-            .foregroundStyle(.stTextPrimary)
-            .lineLimit(1)
-            .truncationMode(.middle)
-          if let length {
-            Text(verbatim: length)
-              .font(.stHelper)
-              .foregroundStyle(.stTextSecondary)
-          }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        Button(action: onOpen) {
-          EnviousButtonLabel(
-            LocalizedStringResource(
-              "Open", comment: "History transcript card: opens the full transcript."),
-            size: .medium, trailingSystemImage: "chevron.right")
-        }
-        .settingsButton(.outlined, size: .medium, isEnabled: true)
-        .accessibilityLabel(
-          Text(
-            "Open \(title)",
-            comment: "History transcript card: VoiceOver label of Open. %@ is the file name."))
-      }
-      sourceRow(line)
+  private func card(
+    title: String, seconds: TimeInterval, preview: String, chips: [P.Chip], row: Transcript?
+  ) -> some View {
+    VStack(alignment: .leading, spacing: DesignSpacing.lg) {
+      HistoryParagraphText.searchText(title, query: query)
+        .font(.stRowTitle)
+        .foregroundStyle(.stTextPrimary)
+        .lineLimit(1)
+        .truncationMode(.middle)
       HistoryParagraphText.searchText(preview, query: query)
-        .font(.stBody)
+        .font(.stCardText)
         .foregroundStyle(.stTextBody)
         .lineLimit(2)
-      chips(statusChips, row: row)
+      footer(seconds: seconds, chips: chips, row: row)
+      buttonRow(title: title)
     }
-    .historyRowCard(isSelected: false)
+    .historyDiaryCard()
     .contentShape(Rectangle())
     .onTapGesture(perform: onOpen)
   }
 
-  /// The card never opens a player, so it promises playback only for a proven original; an
-  /// older row's unproven file offers Locate original with its confirmation instead.
-  private var cardSourceLine: P.SourceLine {
+  // MARK: - Footer
+
+  /// The card never opens a player, so it says nothing about playback for a proven original;
+  /// an unusable one shows the quiet Original unavailable mark, its reason on hover.
+  private var sourceLine: P.SourceLine {
     P.sourceLine(state: sourceState, playable: isAvailable)
   }
 
@@ -131,71 +116,49 @@ struct HistoryTranscriptCard: View {
     return false
   }
 
-  @ViewBuilder
-  private func sourceRow(_ line: P.SourceLine) -> some View {
-    if let text = P.cardLine(line) {
-      HStack(spacing: DesignSpacing.md) {
-        Image(systemName: line == .plays ? "link" : "waveform.slash")
-          .accessibilityHidden(true)
-        Text(verbatim: text)
-          .frame(maxWidth: .infinity, alignment: .leading)
-        if P.offersLocate(line) {
-          // A sibling of Open, never nested in it.
-          Button(action: onLocate) {
-            EnviousButtonLabel(
-              LocalizedStringResource(
-                "Locate original…",
-                comment: "History transcript: choose where the original audio or video file is now."
-              ),
-              size: .medium)
-          }
-          .settingsButton(.quiet, size: .medium, isEnabled: true)
-        }
+  /// One quiet line, the Dictations footer's style (#4611).
+  private func footer(seconds: TimeInterval, chips: [P.Chip], row: Transcript?) -> some View {
+    HStack(spacing: DesignSpacing.sm) {
+      if let clock = P.footerClock(seconds: seconds) {
+        Text(verbatim: clock).monospacedDigit()
+        HistoryFooterDot()
       }
-      .font(.stHelper)
-      .foregroundStyle(.stTextSecondary)
-    }
-  }
-
-  private func chips(_ chips: [P.Chip], row: Transcript?) -> some View {
-    WrappingHStack(spacing: DesignSpacing.sm) {
       // #2087: held countdown or Kept, from the shared Escape Recovery badge view.
       if let row { EscapeRecoveryBadge(transcript: row) }
-      ForEach(chips, id: \.self) { chip in
+      ForEach(Array(chips.enumerated()), id: \.element) { index, chip in
+        if index > 0, Self.isInline(chip), Self.isInline(chips[index - 1]) { HistoryFooterDot() }
         chipView(chip)
       }
+      if case .unavailable(let reason) = sourceLine {
+        HistoryFooterDot()
+        HistoryUnplayableMark(label: P.unplayableLabel, reason: P.unavailableLine(reason))
+      }
+    }
+    .font(.stHelper)
+    .foregroundStyle(.stTextSecondary)
+    .lineLimit(1)
+  }
+
+  /// Plain facts are joined by a dot; Recovered and Interrupted are chips and need none.
+  private static func isInline(_ chip: P.Chip) -> Bool {
+    switch chip {
+    case .recovered, .interrupted: false
+    case .speakers, .polish, .backend: true
     }
   }
 
   @ViewBuilder
   private func chipView(_ chip: P.Chip) -> some View {
     switch chip {
-    case .file(let name):
-      // #2772 finding 11: the file name is the label, not the word "Imported".
-      HStack(spacing: DesignSpacing.xxs) {
-        Image(systemName: "doc.badge.plus").accessibilityHidden(true)
-        Text(verbatim: name)
-      }
-      .lineLimit(1)
-      .truncationMode(.middle)
-      .historyChip(tint: .stAccent, fill: Color.stAccentLight)
-      .accessibilityElement(children: .ignore)
-      .accessibilityLabel(
-        Text(
-          "Imported from \(name)",
-          comment: "History transcript card: VoiceOver label of the file chip. %@ is the file name."
-        ))
     case .speakers(let names):
       HStack(spacing: DesignSpacing.xxs) {
         Image(systemName: "person.2").accessibilityHidden(true)
         Text(verbatim: names)
       }
-      .lineLimit(1)
       .truncationMode(.middle)
-      .historyChip(tint: .stTextSecondary, fill: Color.stTextSecondary.opacity(0.14))
     case .recovered:
       // #1063 PR2: rebuilt from a recovered recording. Icon and text, never colour alone.
-      HStack(spacing: DesignSpacing.xxs) {
+      HStack(spacing: 2) {
         Image(systemName: "arrow.clockwise.circle").accessibilityHidden(true)
         Text("Recovered")
       }
@@ -204,7 +167,7 @@ struct HistoryTranscriptCard: View {
       .accessibilityLabel("Recovered recording")
     case .interrupted:
       // #1408: shown only for a verified device removal, never another cause.
-      HStack(spacing: DesignSpacing.xxs) {
+      HStack(spacing: 2) {
         Image(systemName: "mic.slash.circle").accessibilityHidden(true)
         Text("Interrupted")
       }
@@ -216,10 +179,91 @@ struct HistoryTranscriptCard: View {
         Image(systemName: "sparkles").accessibilityHidden(true)
         Text(verbatim: model ?? "AI")
       }
-      .historyChip(tint: .stAccent, fill: Color.stAccent.opacity(0.16))
     case .backend(let name):
-      Text(verbatim: name)
-        .historyChip(tint: .stTextSecondary, fill: Color.stTextSecondary.opacity(0.14))
+      HStack(spacing: DesignSpacing.xxs) {
+        Image(systemName: "waveform").accessibilityHidden(true)
+        Text(verbatim: name)
+      }
     }
+  }
+
+  // MARK: - Buttons
+
+  /// Open, Copy and More, in the Dictations card's place and order (#4611).
+  private func buttonRow(title: String) -> some View {
+    let copy = TranscribeFileExport.copyButtonPresentation(
+      label: TranscriptDocumentPresenter.exportButtonLabels(mode: .cleaned).copy, copiedAt: copiedAt,
+      now: Date(), holdSeconds: TranscribeFileExport.copiedHoldSeconds)
+    return HStack(spacing: DesignSpacing.md) {
+      Button(action: onOpen) {
+        EnviousButtonLabel(
+          LocalizedStringResource(
+            "Open", comment: "History transcript card: opens the full transcript."),
+          size: .medium, trailingSystemImage: "chevron.right")
+      }
+      .settingsButton(.outlined, size: .medium, isEnabled: true)
+      .accessibilityLabel(
+        Text(
+          "Open \(title)",
+          comment: "History transcript card: VoiceOver label of Open. %@ is the file name."))
+
+      Button {
+        // Read at the press from the live row, never this card's snapshot.
+        guard let text = exportText else { return }
+        TranscribeFileExport.copy(text)
+        let pressed = Date()
+        copiedAt = pressed
+        Task {
+          try? await Task.sleep(for: .seconds(TranscribeFileExport.copiedHoldSeconds))
+          if copiedAt == pressed { copiedAt = nil }
+        }
+      } label: {
+        Image(systemName: copy.systemImage)
+          .frame(width: 16, height: 16)
+      }
+      .settingsButton(.quiet, size: .medium, isEnabled: true)
+      .help(Text(verbatim: copy.title))
+      .accessibilityLabel(Text(verbatim: copy.title))
+
+      Button {
+        guard let anchor = moreAnchor.view else { return }
+        historyMenu.toggle(items: moreItems(), from: anchor)
+      } label: {
+        Image(systemName: "ellipsis")
+          .fontWeight(.bold)
+          .frame(width: 16, height: 16)
+      }
+      .settingsButton(.quiet, size: .medium, isEnabled: true)
+      .background(HistoryMenuAnchor(holder: moreAnchor))
+      .help(Text("More actions", comment: "History transcript: opens the More menu."))
+      .accessibilityLabel(Text("More actions", comment: "History transcript: opens the More menu."))
+    }
+    .fixedSize()
+  }
+
+  /// The card's More menu, built when it opens: Open in new window, and Locate original while
+  /// the original can't play.
+  private func moreItems() -> [HistoryMenuItem] {
+    var items: [HistoryMenuItem] = [
+      .init(
+        id: "new-window", title: String(localized: HistoryTranscriptView.newWindowLabel),
+        systemImage: "macwindow.badge.plus",
+        kind: .action { [openWindow, rowID] in
+          openWindow(id: TranscriptWindowIdentity.sceneID, value: rowID)
+        })
+    ]
+    if P.offersLocate(sourceLine) {
+      items.append(
+        .init(
+          id: "locate", title: HistoryTranscriptView.locateLabel, systemImage: "magnifyingglass",
+          kind: .action(onLocate)))
+    }
+    return items
+  }
+
+  /// The live row's cleaned text with its turn times, read when asked; nil for a row that no
+  /// longer exists.
+  private var exportText: String? {
+    HistoryTranscriptExport.text(rowID: rowID, coordinator: transcripts, mode: .cleaned, timesOn: true)
   }
 }

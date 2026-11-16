@@ -124,17 +124,6 @@
         }
       }
     },
-    "%@ The times are for reading only." : {
-      "comment" : "History transcript dock: why the original can't play, then that turn times can't be clicked. %@ is the reason sentence.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ Die Zeitangaben dienen nur zur Orientierung und sind nicht anklickbar."
-          }
-        }
-      }
-    },
     "%@ V%@" : {
       "comment" : "{R}: the installed model and its version, as in \"EG-1 V1.1\". The first %@ is the model name, the second the version.",
       "localizations" : {
@@ -657,17 +646,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ doppelt aufgeführt"
-          }
-        }
-      }
-    },
-    "%@ long" : {
-      "comment" : "History transcript card: how long the original file is. %@ is a time like 12:04.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dauer: %@"
           }
         }
       }
@@ -2333,6 +2311,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Mit KI nachbearbeitet"
+          }
+        }
+      }
+    },
+    "AI Polished with %@" : {
+      "comment" : "History transcript header, VoiceOver: AI polish rewrote this text. %@ is the model name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mit KI nachbearbeitet (%@)"
           }
         }
       }
@@ -13221,17 +13210,6 @@
         }
       }
     },
-    "Imported from %@" : {
-      "comment" : "History transcript card: VoiceOver label of the file chip. %@ is the file name.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aus %@ importiert"
-          }
-        }
-      }
-    },
     "Importing in progress" : {
       "comment" : "Settings sidebar: file import is running.",
       "localizations" : {
@@ -19246,6 +19224,17 @@
         }
       }
     },
+    "Original unavailable" : {
+      "comment" : "History transcript footer: the original audio or video file can't play. Hover gives the reason.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Original nicht verfügbar"
+          }
+        }
+      }
+    },
     "Other apps" : {
       "comment" : "AI Polish, EG-1 size card, key under the memory bar of the running size: the gray part, memory everything else uses.",
       "localizations" : {
@@ -20078,17 +20067,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Spielt beim Start und Ende einer Aufnahme einen kurzen Ton ab. Personen in deiner Nähe können ihn hören."
-          }
-        }
-      }
-    },
-    "Plays from the original file" : {
-      "comment" : "History transcript card: the original audio or video file was found and can play.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wird aus der Originaldatei abgespielt"
           }
         }
       }

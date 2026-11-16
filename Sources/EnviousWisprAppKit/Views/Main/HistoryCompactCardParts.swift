@@ -217,3 +217,46 @@ struct HistoryInlinePlayback<Meta: View>: View {
 enum HistoryInlinePlaybackMetrics {
   static let buttonSize: CGFloat = 24
 }
+
+// MARK: - Shared card chrome (#4611)
+
+extension View {
+  /// The padding, fill and border every compact History card shares (Dictations and
+  /// Transcripts), so the tabs keep one spacing.
+  func historyDiaryCard(border: Color = .stDivider) -> some View {
+    self
+      .padding(.horizontal, DesignSpacing.xl + DesignSpacing.xxs)
+      .padding(.vertical, DesignSpacing.xl)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(Color.stSectionBg, in: RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius))
+      .overlay(
+        RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius)
+          .strokeBorder(border, lineWidth: 1)
+          .allowsHitTesting(false)
+      )
+  }
+}
+
+/// The dot between two facts on a card's footer line; VoiceOver skips it.
+struct HistoryFooterDot: View {
+  var body: some View {
+    Text(verbatim: "·").accessibilityHidden(true)
+  }
+}
+
+/// A footer fact that says why a card has nothing to play: an icon and a short label, with the
+/// full reason on hover and for VoiceOver (#4611: one quiet mark instead of a sentence line).
+struct HistoryUnplayableMark: View {
+  let label: LocalizedStringResource
+  let reason: String
+
+  var body: some View {
+    HStack(spacing: 2) {
+      Image(systemName: "waveform.slash").accessibilityHidden(true)
+      Text(label)
+    }
+    .help(Text(verbatim: reason))
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel(Text(verbatim: reason))
+  }
+}

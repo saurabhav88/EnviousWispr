@@ -29,7 +29,7 @@ struct HistoryTranscriptPresentationTests {
 
   // MARK: - Card inventory
 
-  @Test("the card keeps every status the legacy row showed, in its order")
+  @Test("the card footer keeps every status the legacy row showed, in the Dictations footer order")
   func chipInventory() {
     let row = Transcript(
       text: "hello there", polishedText: "Hello there.", backendType: .parakeet,
@@ -37,23 +37,24 @@ struct HistoryTranscriptPresentationTests {
       importedFileName: "call.m4a", speakerNames: ["s2": "Zach", "s1": "Ariana"])
     #expect(
       P.chips(for: row) == [
-        .file("call.m4a"), .speakers("Ariana, Zach"), .recovered, .interrupted,
-        .polish(model: "gpt-x"), .backend(ASRBackendType.parakeet.displayName),
+        .recovered, .interrupted, .backend(ASRBackendType.parakeet.displayName),
+        .polish(model: "gpt-x"), .speakers("Ariana, Zach"),
       ])
-    // No polish, no speakers, no flags: only the file and the engine.
+    // No polish, no speakers, no flags: only the engine. The file name is the card's title, so
+    // the footer never repeats it (#4611).
     let plain = Transcript(text: "x", backendType: .whisper, importedFileName: "a.wav")
-    #expect(P.chips(for: plain) == [.file("a.wav"), .backend(ASRBackendType.whisper.displayName)])
+    #expect(P.chips(for: plain) == [.backend(ASRBackendType.whisper.displayName)])
     // A recorded model without polished text is not polish provenance.
     let unpolished = Transcript(text: "x", llmModel: "gpt-x", importedFileName: "a.wav")
     #expect(P.chips(for: unpolished).contains(.polish(model: "gpt-x")) == false)
   }
 
-  @Test("the card's title is the file name and its length is the source duration")
+  @Test("the card's title is the file name and its footer length is the source duration")
   func titleAndLength() {
     let row = Transcript(text: "x", duration: 724, importedFileName: "talk.mp4")
     #expect(P.title(for: row) == "talk.mp4")
-    #expect(P.lengthLine(for: row)?.contains("12:04") == true)
-    #expect(P.lengthLine(for: Transcript(text: "x", importedFileName: "a.wav")) == nil)
+    #expect(P.footerClock(seconds: row.duration) == "12:04")
+    #expect(P.footerClock(seconds: 0) == nil)
   }
 
   // MARK: - Original file copy
@@ -80,7 +81,6 @@ struct HistoryTranscriptPresentationTests {
     #expect(P.offersLocate(.checking) == false)
     #expect(P.offersLocate(.removed) == false)
     #expect(P.offersLocate(.unavailable(.missing)))
-    #expect(P.cardLine(.checking) == nil, "nothing is claimed before the lookup answers")
   }
 
   @Test("no line claims a moved file or a verified one")
@@ -89,7 +89,7 @@ struct HistoryTranscriptPresentationTests {
       .missing, .changed, .unreadable, .unproven, .unsupported, .cannotPlay,
     ]
     let lines =
-      reasons.map(P.unavailableLine) + reasons.map(P.dockUnavailableLine)
+      reasons.map(P.unavailableLine)
       + [ImportedRelocationOutcome.linked, .wrongFile, .stale, .removed].compactMap(
         P.relocationLine)
     for line in lines {
@@ -99,7 +99,6 @@ struct HistoryTranscriptPresentationTests {
       #expect(lower.contains("renamed") == false, "\(line)")
     }
     #expect(P.unavailableLine(.missing).contains("unavailable"))
-    #expect(P.dockUnavailableLine(.missing).contains("reading only"))
   }
 
   @Test("Locate original asks first only for a row with no stored identity")
@@ -190,19 +189,14 @@ struct HistoryTranscriptPresentationTests {
     #expect(P.needsNewPlayer(current: player, currentSource: a, resolved: a))
   }
 
-  @Test("the dock is the mock's 88 points, playing or not")
+  @Test("the dock is the mock's 88 points")
   func dockHeight() {
     let player = MeetingPlaybackController(
       media: .transcript(Tone()), durationMs: 90_000,
       output: MeetingPlaybackControllerTests.FakeOutput())
-    for content in [
-      HistoryTranscriptPlayerBar.Content.player(player),
-      .unavailable(.missing, onLocate: {}),
-    ] {
-      let host = NSHostingView(
-        rootView: HistoryTranscriptPlayerBar(content: content).frame(width: 750))
-      #expect(host.fittingSize.height == HistoryTranscriptPlayerBar.height)
-    }
+    let host = NSHostingView(
+      rootView: HistoryTranscriptPlayerBar(player: player).frame(width: 750))
+    #expect(host.fittingSize.height == HistoryTranscriptPlayerBar.height)
   }
 
   // MARK: - Turn time buttons
@@ -325,11 +319,14 @@ struct HistoryTranscriptPresentationTests {
       try await coordinator.saveAndShow(row)
       let sources = FakeSources()
       sources.answer = .missing
+      let panels = RecordingDesktopPresentationEffects()
       let host = NSHostingView(
         rootView: HistoryTranscriptCard(
           rowID: row.id, sources: sources, onOpen: {}, onLocate: {}
         )
         .environment(coordinator)
+        // The card's "···" menu reads the shared presenter, as in the app (AppHomesEnvironment).
+        .environment(HistoryMenuPresenter(panels: panels))
         .frame(width: 600))
       host.frame = CGRect(x: 0, y: 0, width: 600, height: 300)
       let window = NSWindow(

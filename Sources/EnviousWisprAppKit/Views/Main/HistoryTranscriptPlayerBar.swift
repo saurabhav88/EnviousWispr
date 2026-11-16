@@ -1,65 +1,27 @@
 import SwiftUI
 
 /// The docked player at the bottom of an imported transcript (#3147 PR3 §3.5, the mock's 88 pt
-/// dock). With an opened original: elapsed time, scrubber, total, back and forward 15 seconds,
-/// Play / Pause / Play again, and the speed menu with the shared five speeds
-/// (`MeetingPlaybackController.playbackRates`). Without one: why it can't play, that the turn
-/// times are for reading only, and Locate original.
+/// dock): elapsed time, scrubber, total, back and forward 15 seconds, Play / Pause / Play again,
+/// and the speed menu with the shared five speeds (`MeetingPlaybackController.playbackRates`).
+/// Shown only while the original plays (#4611); the header says why when it can't.
 ///
 /// The position and state are read HERE, so a playback tick re-renders the dock only, never the
 /// transcript above it. The owning view keys this bar by the player's identity, so a new player
 /// starts with no scrub in progress.
 struct HistoryTranscriptPlayerBar: View {
-  enum Content {
-    case player(MeetingPlaybackController)
-    case unavailable(HistoryTranscriptPresentation.UnavailableReason, onLocate: () -> Void)
-  }
-
-  let content: Content
+  let player: MeetingPlaybackController
 
   /// The dock's fixed height (the approved mock's 88 pt).
   static let height: CGFloat = 88
 
   var body: some View {
-    Group {
-      switch content {
-      case .player(let player):
-        HistoryTranscriptPlayerControls(player: player)
-      case .unavailable(let reason, let onLocate):
-        unavailable(reason, onLocate: onLocate)
+    HistoryTranscriptPlayerControls(player: player)
+      .padding(.horizontal, DesignSpacing.xl + DesignSpacing.md)
+      .frame(maxWidth: .infinity, minHeight: Self.height, maxHeight: Self.height)
+      .background(Color.stSectionBg)
+      .overlay(alignment: .top) {
+        Rectangle().fill(Color.stDivider).frame(height: 1).allowsHitTesting(false)
       }
-    }
-    .padding(.horizontal, DesignSpacing.xl + DesignSpacing.md)
-    .frame(maxWidth: .infinity, minHeight: Self.height, maxHeight: Self.height)
-    .background(Color.stSectionBg)
-    .overlay(alignment: .top) {
-      Rectangle().fill(Color.stDivider).frame(height: 1).allowsHitTesting(false)
-    }
-  }
-
-  private func unavailable(
-    _ reason: HistoryTranscriptPresentation.UnavailableReason, onLocate: @escaping () -> Void
-  ) -> some View {
-    HStack(spacing: DesignSpacing.lg) {
-      Image(systemName: "waveform.slash")
-        .font(.stHelper)
-        .foregroundStyle(.stTextSecondary)
-        .accessibilityHidden(true)
-      Text(verbatim: HistoryTranscriptPresentation.dockUnavailableLine(reason))
-        .font(.stHelper)
-        .foregroundStyle(.stTextSecondary)
-        .lineLimit(2)
-        .frame(maxWidth: .infinity, alignment: .leading)
-      Button(action: onLocate) {
-        EnviousButtonLabel(
-          LocalizedStringResource(
-            "Locate original…",
-            comment: "History transcript: choose where the original audio or video file is now."),
-          size: .medium)
-      }
-      .settingsButton(.filled, size: .medium, isEnabled: true)
-    }
-    .accessibilityElement(children: .contain)
   }
 }
 
