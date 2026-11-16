@@ -1547,6 +1547,19 @@ struct BrandedSlider<V: BinaryFloatingPoint>: View where V.Stride: BinaryFloatin
 
 // MARK: - Branded Segmented Picker
 
+/// #4611: a segment's hover explanation and VoiceOver hint, applied only when there is one.
+private struct SegmentHint: ViewModifier {
+  let text: String?
+
+  func body(content: Content) -> some View {
+    if let text {
+      content.help(Text(verbatim: text)).accessibilityHint(Text(verbatim: text))
+    } else {
+      content
+    }
+  }
+}
+
 /// Custom drawn segmented control matching the brand palette. The selected
 /// segment is a solid brand-accent pill with white text (mockup #4); each
 /// segment may carry an optional leading SF Symbol.
@@ -1557,6 +1570,10 @@ struct BrandedSegmentedPicker<T: Hashable>: View {
   /// little bit more padding so they don't look so small"). Every pre-existing
   /// call site keeps the original, tighter padding by leaving this `false`.
   var comfortable: Bool = false
+  /// #4611: a short explanation of one option, shown when the pointer rests on its segment and
+  /// read by VoiceOver as its hint; nil shows none. History's Polished / Marked up / Original
+  /// switch uses it instead of a line of text beside the switch.
+  var hint: (T) -> String? = { _ in nil }
 
   private var verticalPadding: CGFloat { comfortable ? 11 : 7 }
   private var horizontalPadding: CGFloat { comfortable ? 18 : 12 }
@@ -1648,6 +1665,7 @@ struct BrandedSegmentedPicker<T: Hashable>: View {
     .accessibilityValue(
       isSelected
         ? String(localized: "selected", comment: "VoiceOver: a chosen segmented option.") : "")
+    .modifier(SegmentHint(text: hint(option.value)))
   }
 }
 
