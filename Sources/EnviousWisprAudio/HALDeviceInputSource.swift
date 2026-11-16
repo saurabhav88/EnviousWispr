@@ -1758,8 +1758,12 @@ struct HALNativeCalls: Sendable {
 /// callback storage when AUHAL teardown fails, because callbacks may survive).
 /// The DEBUG #1540 counter is a tripwire, not the safety criterion.
 ///
-/// Not `Sendable`: today it is created, committed and retired on the main actor.
-final class HALUnitResources {
+/// `@unchecked Sendable` by single-owner hand-off (#4601 §3.1): exactly one party holds it at a
+/// time (the native open that built it, then either the main-actor source after commit or the
+/// audio-unit lane disposing a late result, then the lane that retires it). Every mutating member
+/// (`attach*`, `mark*`, `addListener`, `retire`) runs on the current owner's thread only; no
+/// party touches it after handing it on.
+final class HALUnitResources: @unchecked Sendable {
   /// How far the open got, which decides what retirement must undo.
   enum Stage: Int, Comparable {
     case created, initialized, started
