@@ -63,10 +63,11 @@ if os.environ.get('DELAY_GROUP') == name:
         print('still working', flush=True); time.sleep(0.5)
     marker = root / 'grandchild.pid'
     if marker.exists():
-        try:
-            os.kill(int(marker.read_text()), 0); state = 'alive'
-        except ProcessLookupError:
-            state = 'gone'
+        # A zombie has run its last instruction; Linux containers whose PID 1
+        # reaps slowly keep one listed, so only a non-zombie state is alive.
+        ps = subprocess.run(['ps', '-o', 'stat=', '-p', marker.read_text().strip()],
+                            capture_output=True, text=True).stdout.strip()
+        state = 'alive' if ps and not ps.startswith('Z') else 'gone'
         (root / 'grandchild-at-peer-end').write_text(state)
 target = 'EnviousWisprTests'
 suites = [a.split(':', 1)[1].split('/')[1] for a in args if a.startswith('-only-testing:')]
