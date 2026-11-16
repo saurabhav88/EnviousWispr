@@ -37,16 +37,17 @@ final class HistoryMenuPresenter {
   private var panel: HistoryMenuPanel?
   private var openedFrom: NSView?
 
-  /// Opens `items` under `anchor`, or closes the menu when it is already open from there.
+  /// Opens `items` under `anchor`, or hides the menu when it is already open from there. The
+  /// menu window is only ever hidden (`orderOut`), never closed.
   func toggle(items: [HistoryMenuItem], from anchor: NSView) {
     if panel != nil, openedFrom === anchor {
-      close()
+      dismiss()
       return
     }
-    close()
+    dismiss()
     guard let window = anchor.window else { return }
     let host = NSHostingView(
-      rootView: HistoryMenuView(items: items, close: { [weak self] in self?.close() }))
+      rootView: HistoryMenuView(items: items, dismiss: { [weak self] in self?.dismiss() }))
     host.sizingOptions = [.intrinsicContentSize]
     let size = host.fittingSize
     let below = window.convertToScreen(anchor.convert(anchor.bounds, to: nil))
@@ -58,7 +59,7 @@ final class HistoryMenuPresenter {
       contentRect: NSRect(origin: origin, size: size),
       styleMask: [.borderless, .nonactivatingPanel],
       backing: .buffered, defer: false)
-    panel.onResign = { [weak self] in self?.close() }
+    panel.onResign = { [weak self] in self?.dismiss() }
     panel.isOpaque = false
     panel.backgroundColor = .clear
     panel.hasShadow = true
@@ -69,7 +70,7 @@ final class HistoryMenuPresenter {
     openedFrom = anchor
   }
 
-  func close() {
+  func dismiss() {
     guard let panel else { return }
     self.panel = nil
     openedFrom = nil
@@ -89,7 +90,7 @@ private final class HistoryMenuPanel: NSPanel {
 
 private struct HistoryMenuView: View {
   let items: [HistoryMenuItem]
-  let close: () -> Void
+  let dismiss: () -> Void
 
   /// The open submenu, if any, and the highlighted row in what is shown.
   @State private var submenu: [HistoryMenuItem]?
@@ -158,7 +159,7 @@ private struct HistoryMenuView: View {
       return .handled
     }
     .onKeyPress(.escape) {
-      close()
+      dismiss()
       return .handled
     }
     .accessibilityElement(children: .contain)
@@ -204,7 +205,7 @@ private struct HistoryMenuView: View {
       if item.id == "back" {
         action()
       } else {
-        close()
+        dismiss()
         action()
       }
     case .submenu(let children):
