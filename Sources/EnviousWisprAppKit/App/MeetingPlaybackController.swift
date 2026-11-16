@@ -220,6 +220,18 @@ final class MeetingPlaybackController {
     return await Self.readWaveform(media: media, durationMs: durationMs)
   }
 
+  /// #4611: bar heights from RMS levels, on a decibel scale relative to the loudest bar: the
+  /// loudest is 1, anything 35 dB or more below it is 0, so speech rises and pauses stay flat.
+  nonisolated static func loudness(_ levels: [Float]) -> [Float] {
+    let peak = levels.max() ?? 0
+    guard peak > 0 else { return levels }
+    let floorDecibels: Float = -35
+    return levels.map { level in
+      let decibels = 20 * log10(max(level / peak, 1e-6))
+      return max(0, 1 - decibels / floorDecibels)
+    }
+  }
+
   @concurrent
   private static func readWaveform(media: PlaybackMedia, durationMs: Int) async -> [Float] {
     do {
@@ -259,13 +271,7 @@ final class MeetingPlaybackController {
         }
         levels.append((power / Float(max(1, samplesRead))).squareRoot())
       }
-      let peak = levels.max() ?? 0
-      guard peak > 0 else { return levels }
-      let floorDecibels: Float = -35
-      return levels.map { level in
-        let decibels = 20 * log10(max(level / peak, 1e-6))
-        return max(0, 1 - decibels / floorDecibels)
-      }
+      return loudness(levels)
     } catch {
       return []
     }
