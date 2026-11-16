@@ -52,6 +52,7 @@ struct HistoryDictationCard: View {
   @Environment(PreviousApplicationTracker.self) private var previousApplication
   @Environment(SettingsManager.self) private var settings
   @Environment(HistoryRepolishRunner.self) private var historyRepolish
+  @Environment(HistoryMenuPresenter.self) private var historyMenu
 
   // Recording
   @State private var status: DictationRecordingStatus?
@@ -470,7 +471,7 @@ struct HistoryDictationCard: View {
     // #4611: the app's own menu (the approved mock), under a round outlined button like Copy.
     Button {
       guard let anchor = moreAnchor.view else { return }
-      HistoryMenuPresenter.shared.toggle(items: moreItems(row), from: anchor)
+      historyMenu.toggle(items: moreItems(row), from: anchor)
     } label: {
       Image(systemName: "ellipsis")
         .fontWeight(.bold)

@@ -104,6 +104,8 @@ package final class WisprBootstrapper {
   /// #4101: History's Paste, one instance, so both details and the main window share the one
   /// paste that may be waiting.
   let historyPaste: HistoryPaste
+  /// #4611: History's own More menu, shown through the panel seam.
+  let historyMenu: HistoryMenuPresenter
   let menuBarController: MenuBarController
   let appLifecycleCoordinator: AppLifecycleCoordinator
 
@@ -3488,6 +3490,7 @@ package final class WisprBootstrapper {
     self.appWindowCoordinator = appWindowCoordinator
     self.previousApplicationTracker = previousApplicationTracker
     self.historyPaste = historyPaste
+    self.historyMenu = HistoryMenuPresenter(panels: presentationEffects.panels)
     self.menuBarController = menuBarController
     self.appLifecycleCoordinator = appLifecycleCoordinator
 
@@ -4034,6 +4037,7 @@ private struct AppHomesEnvironment: ViewModifier {
         .environment(b.appWindowCoordinator)
         .environment(b.previousApplicationTracker)
         .environment(b.historyPaste)
+        .environment(b.historyMenu)
         // The nine view-facing homes (epic #763).
         .environment(b.settings)
         .environment(b.pillAppearance)

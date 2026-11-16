@@ -29,13 +29,18 @@ struct HistoryMenuItem: Identifiable {
   }
 }
 
-/// Opens one History menu at a time.
-@MainActor
+/// Opens one History menu at a time. Built once by `WisprBootstrapper` and handed to History
+/// through the environment; the menu window reaches the screen only through the app's
+/// `PanelPresenting` seam, so no test can put a real window on the desktop.
+@MainActor @Observable
 final class HistoryMenuPresenter {
-  static let shared = HistoryMenuPresenter()
+  @ObservationIgnored private let panels: any PanelPresenting
+  @ObservationIgnored private var panel: HistoryMenuPanel?
+  @ObservationIgnored private weak var openedFrom: NSView?
 
-  private var panel: HistoryMenuPanel?
-  private var openedFrom: NSView?
+  init(panels: any PanelPresenting) {
+    self.panels = panels
+  }
 
   /// Opens `items` under `anchor`, or hides the menu when it is already open from there. The
   /// menu window is only ever hidden (`orderOut`), never closed.
@@ -65,7 +70,7 @@ final class HistoryMenuPresenter {
     panel.hasShadow = true
     panel.level = .popUpMenu
     panel.contentView = host
-    panel.makeKeyAndOrderFront(nil)
+    panels.makeKeyAndOrderFront(panel)
     self.panel = panel
     openedFrom = anchor
   }
