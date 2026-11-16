@@ -213,78 +213,6 @@ enum MeetingAfterPresentation {
     return nil
   }
 
-  // MARK: - Inline title
-
-  /// The inline title's edit steps (plan §3.6): Return saves, Escape cancels, an empty name
-  /// restores the untitled label, and a failed save keeps the typed name and offers Try again.
-  struct TitleEdit: Equatable {
-    enum Phase: Equatable {
-      case idle
-      case editing
-      /// The rename was sent; the field waits for its answer.
-      case saving
-      /// The rename failed; the typed name stays.
-      case failed
-    }
-
-    private(set) var phase: Phase = .idle
-    var draft = ""
-
-    var isEditing: Bool { phase != .idle }
-
-    /// Opens the field with the stored name (empty for the date-based default).
-    mutating func begin(storedTitle: String?) {
-      guard phase == .idle else { return }
-      draft = storedTitle ?? ""
-      phase = .editing
-    }
-
-    /// Escape: back to the shown title, nothing written. Ignored while a rename is in flight,
-    /// so its answer still lands.
-    mutating func cancel() {
-      guard phase != .saving else { return }
-      phase = .idle
-      draft = ""
-    }
-
-    enum Commit: Equatable {
-      /// Nothing changed (same name, or a second Return while saving): close without writing.
-      case unchanged
-      /// Send this name to `MeetingCoordinator.rename`; an empty name clears the title.
-      case rename(String)
-      /// A rename is already in flight.
-      case busy
-    }
-
-    /// Return (or Try again). The coordinator trims and caps; this only decides whether to call.
-    mutating func commit(storedTitle: String?) -> Commit {
-      switch phase {
-      case .idle: return .unchanged
-      case .saving: return .busy
-      case .editing, .failed: break
-      }
-      let typed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-      if typed == (storedTitle ?? "").trimmingCharacters(in: .whitespacesAndNewlines) {
-        phase = .idle
-        draft = ""
-        return .unchanged
-      }
-      phase = .saving
-      return .rename(typed)
-    }
-
-    /// The rename's answer: success closes the field, failure keeps the typed name.
-    mutating func finish(saved: Bool) {
-      guard phase == .saving else { return }
-      if saved {
-        phase = .idle
-        draft = ""
-      } else {
-        phase = .failed
-      }
-    }
-  }
-
   // MARK: - Note markers
 
   struct NoteMarker: Equatable, Identifiable {
@@ -570,13 +498,6 @@ enum MeetingAfterPresentation {
     String(
       localized: "Rename meeting",
       comment: "Meetings: tooltip and VoiceOver label of the meeting title's rename control.")
-  }
-
-  static var renameFailedLine: String {
-    String(
-      localized: "The new name couldn't be saved.",
-      comment:
-        "Meetings: renaming a meeting failed; the typed name stays so the user can try again.")
   }
 
   static var recordingLine: String {

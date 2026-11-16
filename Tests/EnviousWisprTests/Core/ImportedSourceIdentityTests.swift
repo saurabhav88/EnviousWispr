@@ -53,6 +53,34 @@ struct ImportedSourceIdentityTests {
     #expect(decoded.importAttemptID == nil)
   }
 
+  @Test("a renamed import shows its name, keeps it through Transcribe again and a reload, and an empty name goes back to the file name (#4611)")
+  func renamedTitle() throws {
+    let row = Transcript(text: "raw", importedFileName: "a.m4a")
+    #expect(row.customTitle == nil)
+    #expect(row.displayTitle == "a.m4a")
+
+    let renamed = row.renamed(to: "  Board call  ")
+    #expect(renamed.customTitle == "Board call")
+    #expect(renamed.displayTitle == "Board call")
+    #expect(renamed.importedFileName == "a.m4a")
+    #expect(row.renamed(to: String(repeating: "x", count: 200)).customTitle?.count == 120)
+    #expect(renamed.renamed(to: "   ").customTitle == nil)
+    #expect(Transcript(text: "spoken").renamed(to: "Nope").customTitle == nil, "dictations have no title")
+
+    let replaced = renamed.replacingImportedContent(from: Transcript(text: "new"), attemptID: UUID())
+    #expect(replaced.customTitle == "Board call")
+    #expect(replaced.text == "new")
+
+    let reloaded = try JSONDecoder().decode(Transcript.self, from: JSONEncoder().encode(renamed))
+    #expect(reloaded.customTitle == "Board call")
+    var json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(renamed)) as! [String: Any]
+    json.removeValue(forKey: "customTitle")
+    let legacy = try JSONDecoder().decode(
+      Transcript.self, from: JSONSerialization.data(withJSONObject: json))
+    #expect(legacy.customTitle == nil)
+    #expect(legacy.displayTitle == "a.m4a")
+  }
+
   @Test("source and attempt survive a save and reload and change nothing else")
   func sourceFieldsPersistAlone() throws {
     let attempt = UUID()

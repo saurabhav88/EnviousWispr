@@ -392,7 +392,7 @@ final class HistoryCatalogSession {
         preview: "", sources: source.versions, rowID: row.id,
         backendName: row.backendType.displayName, meetingAnalysis: row.speakerAnalysis), searchableFields: [])
     }
-    let title = row.importedFileName
+    let title = row.displayTitle
     let availableText = row.historyText
     let summary = HistoryCatalog.Summary(
       key: .init(tab: row.isImported ? .transcripts : .dictations, id: row.id),
@@ -404,7 +404,9 @@ final class HistoryCatalogSession {
       recovered: row.isRecovered, interrupted: row.inputDeviceWasRemoved,
       dictation: row.isImported ? nil : HistoryDictationDisplay.catalogData(of: row))
     var fields = [availableText]
-    if let title { fields.append(title) }
+    // A renamed import is still found by its file name (#4611).
+    if let customTitle = row.customTitle { fields.append(customTitle) }
+    if let fileName = row.importedFileName { fields.append(fileName) }
     if let names = row.speakerNames { fields.append(contentsOf: names.values) }
     return .init(summary: summary, searchableFields: row.escapeRecoveredAt == nil ? fields : [])
   }

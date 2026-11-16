@@ -36,6 +36,8 @@ package final class WisprBootstrapper {
   let updateCoordinatorHolder: UpdateCoordinatorHolder
   /// #3545: injected into the main window for the Settings search arrival's key watcher.
   let settingsKeyMonitor: any SettingsKeyMonitoring
+  /// #4611: History's click watcher, so clicking away from a rename field saves it.
+  let historyClickMonitor: any HistoryClickMonitoring
   /// #4528 D5: the Setup shortcut screen's window-scoped rehearsal listener.
   let setupShortcutMonitor: any SetupShortcutMonitoring
   /// #3147 PR4A: the meeting page's macOS 14 scroll watcher (`HistoryScrollMonitoring`).
@@ -241,6 +243,9 @@ package final class WisprBootstrapper {
     // #3545: the Settings search arrival's key watcher. Required and non-defaulted for the same
     // reason as `scrollWheelMonitor`.
     settingsKeyMonitor: any SettingsKeyMonitoring,
+    // #4611: History's click watcher. Required and non-defaulted for the same reason as
+    // `scrollWheelMonitor`.
+    historyClickMonitor: any HistoryClickMonitoring,
     // #4528 D5: the Setup shortcut rehearsal listener. Required and non-defaulted for the same
     // reason as `scrollWheelMonitor`.
     setupShortcutMonitor: any SetupShortcutMonitoring,
@@ -2325,6 +2330,7 @@ package final class WisprBootstrapper {
     self.languageSuggestionPresenter = languageSuggestionPresenter
     self.updateCoordinatorHolder = updateCoordinatorHolder
     self.settingsKeyMonitor = settingsKeyMonitor
+    self.historyClickMonitor = historyClickMonitor
     self.setupShortcutMonitor = setupShortcutMonitor
     self.historyScrollMonitor = historyScrollMonitor
     self.sparkleUpdateController = sparkleUpdateController
@@ -4021,6 +4027,7 @@ private struct AppHomesEnvironment: ViewModifier {
         .environment(b.updateCoordinatorHolder)
         .environment(\.settingsKeyMonitor, b.settingsKeyMonitor)
         .environment(\.historyScrollMonitor, b.historyScrollMonitor)
+        .environment(\.historyClickMonitor, b.historyClickMonitor)
         .environment(b.transcriptCoordinator)
         .environment(b.fileImportCoordinator)
         .environment(b.historyRepolish)

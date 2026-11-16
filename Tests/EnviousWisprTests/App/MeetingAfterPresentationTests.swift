@@ -199,7 +199,7 @@ struct MeetingAfterPresentationTests {
 
   @Test("Return with the same name writes nothing and closes")
   func titleUnchanged() {
-    var edit = P.TitleEdit()
+    var edit = HistoryTitleEdit()
     edit.begin(storedTitle: "Sync")
     #expect(edit.draft == "Sync")
     edit.draft = "  Sync "
@@ -209,7 +209,7 @@ struct MeetingAfterPresentationTests {
 
   @Test("an empty name is sent so the coordinator restores the untitled label")
   func titleEmpty() {
-    var edit = P.TitleEdit()
+    var edit = HistoryTitleEdit()
     edit.begin(storedTitle: "Sync")
     edit.draft = "   "
     #expect(edit.commit(storedTitle: "Sync") == .rename(""))
@@ -220,7 +220,7 @@ struct MeetingAfterPresentationTests {
 
   @Test("an untitled meeting opens an empty field")
   func titleUntitled() {
-    var edit = P.TitleEdit()
+    var edit = HistoryTitleEdit()
     edit.begin(storedTitle: nil)
     #expect(edit.draft.isEmpty)
     #expect(edit.commit(storedTitle: nil) == .unchanged)
@@ -228,7 +228,7 @@ struct MeetingAfterPresentationTests {
 
   @Test("a failed rename keeps the typed name; Try again sends it again")
   func titleFailure() {
-    var edit = P.TitleEdit()
+    var edit = HistoryTitleEdit()
     edit.begin(storedTitle: nil)
     edit.draft = "Board review"
     #expect(edit.commit(storedTitle: nil) == .rename("Board review"))
@@ -245,7 +245,7 @@ struct MeetingAfterPresentationTests {
 
   @Test("Escape closes the field without writing")
   func titleCancel() {
-    var edit = P.TitleEdit()
+    var edit = HistoryTitleEdit()
     edit.begin(storedTitle: "Sync")
     edit.draft = "Other"
     edit.cancel()

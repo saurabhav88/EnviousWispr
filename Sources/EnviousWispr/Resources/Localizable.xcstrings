@@ -21947,7 +21947,7 @@
       }
     },
     "Rename" : {
-      "comment" : "EnviousMeet: saves the meeting's new name.",
+      "comment" : "EnviousMeet: saves the meeting's new name.\nHistory transcript: opens the title's rename field.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -21974,6 +21974,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sprecher umbenennen"
+          }
+        }
+      }
+    },
+    "Rename transcript" : {
+      "comment" : "History transcript: tooltip and VoiceOver label of the title's rename control.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkript umbenennen"
           }
         }
       }
@@ -28354,6 +28365,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Transkriptsprache"
+          }
+        }
+      }
+    },
+    "Transcript name" : {
+      "comment" : "History transcript: the rename field's placeholder.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Name des Transkripts"
           }
         }
       }

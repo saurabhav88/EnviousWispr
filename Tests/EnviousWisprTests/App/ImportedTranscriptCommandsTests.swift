@@ -155,6 +155,39 @@ struct ImportedTranscriptCommandsTests {
     #expect(coordinator.currentRow(id: row.id)?.speakerAnalysis != .labeled(count: 2))
   }
 
+  @Test("renaming an import saves its title; a late cleanup and Transcribe again keep it (#4611)")
+  func titleRenameSurvivesLaterWrites() async throws {
+    let coordinator = makeCoordinator()
+    let row = importRow()
+    try await coordinator.saveAndShow(row)
+
+    let ticket = try #require(try await coordinator.beginImportedReplacement(for: row.id))
+    #expect(await coordinator.renameTitle(id: row.id, title: "Board call"))
+    #expect(try await coordinator.durableRow(id: row.id)?.customTitle == "Board call")
+
+    // The cleanup still holds the copy from before the rename.
+    #expect(
+      try await coordinator.updateExistingRow(
+        row.withImportResult("Edited.", wasPolished: true, llmProvider: nil, llmModel: nil)))
+    #expect(coordinator.currentRow(id: row.id)?.customTitle == "Board call")
+
+    // A title-only change does not make Transcribe again throw its work away; the cleanup
+    // above changed the text, so take a fresh ticket for the content check.
+    #expect(try await coordinator.commitImportedReplacement(Transcript(text: "x"), ticket: ticket) == false)
+    let fresh = try #require(try await coordinator.beginImportedReplacement(for: row.id))
+    #expect(await coordinator.renameTitle(id: row.id, title: "Board call, final"))
+    #expect(try await coordinator.commitImportedReplacement(Transcript(text: "new words"), ticket: fresh))
+    let saved = try #require(try await coordinator.durableRow(id: row.id))
+    #expect(saved.text == "new words")
+    #expect(saved.customTitle == "Board call, final")
+
+    #expect(await coordinator.renameTitle(id: row.id, title: ""))
+    #expect(coordinator.currentRow(id: row.id)?.customTitle == nil)
+    let dictation = Transcript(text: "spoken")
+    try await coordinator.saveAndShow(dictation)
+    #expect(await coordinator.renameTitle(id: dictation.id, title: "Nope") == false)
+  }
+
   @Test("Keep new updates both texts while keeping a more recent speaker name and file link")
   func keepPolishPreservesIndependentEdits() async throws {
     let coordinator = makeCoordinator()

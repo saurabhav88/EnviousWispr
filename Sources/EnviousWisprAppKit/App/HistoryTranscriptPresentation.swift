@@ -67,9 +67,9 @@ enum HistoryTranscriptPresentation {
     return names.values.sorted().joined(separator: ", ")
   }
 
-  /// The card's title: the imported file's name, or the kind word for a row without one.
+  /// The card's title: the user's name for the import, else its file name, else the kind word.
   static func title(for row: Transcript) -> String {
-    row.importedFileName ?? transcriptWord
+    row.displayTitle ?? transcriptWord
   }
 
   /// "12:04": the source file's length on a footer line, the way a dictation's footer shows
