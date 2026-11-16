@@ -483,6 +483,30 @@ struct AudioUnitLaneTests {
     #expect(log.count("stall:microphone_start") == 1)
   }
 
+  /// #4601 §3.9: a named-read arm waits for that read; other reads, the open and a release
+  /// leave it in place, and it fires once.
+  @Test("a stall armed for one named read is consumed once, only by that read")
+  func stallArmSelectsItsNamedRead() async {
+    let timers = ManualTimers()
+    let log = Log()
+    let stalls = Log()
+    let lane = makeLane(timers, log, stalls: stalls)
+    lane.armStall(for: .read("running_probe"), .seconds(3))
+
+    _ = await lane.run("route_resolve") { 1 }
+    lane.retire {}
+    _ = await lane.open(
+      "microphone_start", attempt: .init(id: 7), deadline: Self.base + .seconds(5), { 1 },
+      disposeLate: { _ in })
+    await lane.drainForTesting()
+    #expect(stalls.all.isEmpty, "other operations leave the arm in place")
+
+    _ = await lane.run("running_probe") { 1 }
+    _ = await lane.run("running_probe") { 1 }
+    #expect(stalls.all == ["stalled"], "the arm is one-shot")
+    #expect(log.count("stall:running_probe") == 1)
+  }
+
   @MainActor
   @Test("the main actor keeps running while a lane job is blocked")
   func mainActorRunsDuringBlockedJob() async {

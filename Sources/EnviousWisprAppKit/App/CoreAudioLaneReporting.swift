@@ -98,7 +98,7 @@ enum AudioUnitLaneReporting {
       hooks.debugStallFired = { id, name, stall in
         Task {
           await AppLogger.shared.log(
-            "fault fired: unit lane job \(name)#\(id) stalled \(CoreAudioLaneReporting.milliseconds(stall)) ms",
+            "fault fired: unit lane job \(name)#\(id) waits \(CoreAudioLaneReporting.milliseconds(stall)) ms before it runs (pre-operation delay)",
             level: .info, category: "AudioUnitLane")
         }
       }
@@ -116,6 +116,15 @@ enum AudioUnitLaneReporting {
       read: read, phase: phase, boundMs: CoreAudioLaneReporting.milliseconds(limit),
       returnedAfterMs: after.map(CoreAudioLaneReporting.milliseconds))
   }
+}
+
+/// #4601: the DEBUG `force_core_audio_stall(N,unit:...)` target; nil in Release.
+func debugAudioUnitStall(lane: AudioUnitLane) -> ((AudioUnitLane.Operation, Duration) -> Void)? {
+  #if DEBUG
+    return { lane.armStall(for: $0, $1) }
+  #else
+    return nil
+  #endif
 }
 
 /// The DEBUG `force_core_audio_stall` target for the fault endpoint; nil in Release.

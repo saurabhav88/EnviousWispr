@@ -19,7 +19,8 @@ import Testing
     private func makeEndpoint(
       action: @escaping (DebugFaultEndpoint.QualificationAction) -> Void = { _ in },
       child: (@MainActor () async -> LocalPolishProcessManager.QualificationChildSignal?)? = nil,
-      coreAudioStall: ((Duration) -> Void)? = nil
+      coreAudioStall: ((Duration) -> Void)? = nil,
+      audioUnitStall: ((AudioUnitLane.Operation, Duration) -> Void)? = nil
     ) -> DebugFaultEndpoint {
       let clock = FakeClock()
       let engine = FakeEngine(behavior: .batchSuccess(text: "x"), clock: clock)
@@ -61,7 +62,73 @@ import Testing
         kernelDriver: makeDriver(),
         whisperKernelDriver: makeDriver(),
         activeBackend: { .parakeet }, qualificationAction: action, qualificationChildTrap: child,
-        coreAudioStall: coreAudioStall)
+        coreAudioStall: coreAudioStall, audioUnitStall: audioUnitStall)
+    }
+
+    // MARK: - #4601 §3.9: the audio-unit stall selector
+
+    final class StallSpy {
+      var query: [Duration] = []
+      var unit: [(AudioUnitLane.Operation, Duration)] = []
+    }
+
+    private func stallEndpoint(_ spy: StallSpy) -> DebugFaultEndpoint {
+      makeEndpoint(
+        coreAudioStall: { spy.query.append($0) },
+        audioUnitStall: { spy.unit.append(($0, $1)) })
+    }
+
+    @Test("the legacy command still arms the query lane, and only it")
+    func legacyStallArmsTheQueryLane() async {
+      let spy = StallSpy()
+      let endpoint = stallEndpoint(spy)
+      #expect(await endpoint.handleForTesting(command: "force_core_audio_stall(5)") == "OK")
+      #expect(spy.query == [.seconds(5)])
+      #expect(spy.unit.isEmpty)
+    }
+
+    @Test(
+      "a unit selector arms exactly that audio-unit lane operation",
+      arguments: [
+        ("unit:open", AudioUnitLane.Operation.open), ("unit:retire", .retire),
+        ("unit:read:running_probe", .read("running_probe")),
+        ("unit:read:route_resolve", .read("route_resolve")),
+      ])
+    func unitSelectorArmsItsOperation(_ input: (String, AudioUnitLane.Operation)) async {
+      let spy = StallSpy()
+      let endpoint = stallEndpoint(spy)
+      let reply = await endpoint.handleForTesting(command: "force_core_audio_stall(20,\(input.0))")
+      #expect(reply == "OK")
+      #expect(spy.unit.map(\.0) == [input.1])
+      #expect(spy.unit.map(\.1) == [.seconds(20)])
+      #expect(spy.query.isEmpty, "a unit arm never falls back to the query lane")
+    }
+
+    @Test(
+      "a bad duration or selector arms nothing",
+      arguments: [
+        "force_core_audio_stall(0,unit:open)", "force_core_audio_stall(31,unit:open)",
+        "force_core_audio_stall(x,unit:open)", "force_core_audio_stall(5,open)",
+        "force_core_audio_stall(5,unit:start)", "force_core_audio_stall(5,unit:read:)",
+        "force_core_audio_stall(5,unit:read:not_a_lane_read)",
+        "force_core_audio_stall(5,unit:read:microphone_start)",
+        "force_core_audio_stall(5,unit:open,extra)", "force_core_audio_stall(0)",
+      ])
+    func badStallCommandsArmNothing(_ command: String) async {
+      let spy = StallSpy()
+      let endpoint = stallEndpoint(spy)
+      #expect(await endpoint.handleForTesting(command: command) == "ERR bad_arg")
+      #expect(spy.unit.isEmpty && spy.query.isEmpty)
+    }
+
+    @Test("a unit command with no unit lane wired says so and arms nothing")
+    func unitStallWithoutDependency() async {
+      var queried = false
+      let endpoint = makeEndpoint(coreAudioStall: { _ in queried = true })
+      #expect(
+        await endpoint.handleForTesting(command: "force_core_audio_stall(5,unit:open)")
+          == "ERR no_dependency")
+      #expect(queried == false)
     }
 
     @Test(arguments: ["qualification_trap", "qualification_abort"])

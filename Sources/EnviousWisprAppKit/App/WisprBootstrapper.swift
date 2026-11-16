@@ -2279,6 +2279,7 @@ package final class WisprBootstrapper {
       whisperMemoryPressure: whisperMemoryPressure,
       requestDeviceRefresh: { [weak audioDeviceList] in audioDeviceList?.requestRefresh() },
       coreAudioStall: debugCoreAudioStall(lane: audioDeviceList.lane),
+      audioUnitStall: debugAudioUnitStall(lane: .shared),
       // #996: each real transition into `.recording` cancels a live edit watch.
       // #3242: and pre-loads the word check so the take's check finds it ready.
       // #3988: and restarts the take's local polish engine if something outside

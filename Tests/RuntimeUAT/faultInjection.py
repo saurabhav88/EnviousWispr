@@ -276,13 +276,22 @@ def force_cancel() -> str:
     return send("force_cancel")
 
 
-def force_core_audio_stall(seconds: float) -> str:
+def force_core_audio_stall(seconds: float, unit: Optional[str] = None) -> str:
     """#4021 Live UAT: the next Core Audio lane read (device snapshot or microphone check)
     blocks for `seconds` (1-30) on the lane's own queue, the shape a stuck driver gives the
-    app. Replies OK, or ERR bad_arg / ERR no_dependency. Logged in app.log (CoreAudioLane)."""
+    app. Replies OK, or ERR bad_arg / ERR no_dependency. Logged in app.log (CoreAudioLane).
+
+    #4601: with `unit`, the audio-unit lane is armed instead: `"open"` (the microphone start),
+    `"retire"` (its release) or `"read:<name>"` (one named read, e.g. `"read:running_probe"`).
+    Only the next job of that operation waits `seconds` before it runs (a pre-operation delay);
+    other jobs leave the arm in place. Logged in app.log (AudioUnitLane)."""
     if not (1 <= seconds <= 30):
         raise ValueError("seconds must be between 1 and 30")
-    return send(f"force_core_audio_stall({seconds:g})")
+    if unit is None:
+        return send(f"force_core_audio_stall({seconds:g})")
+    if unit not in ("open", "retire") and not (unit.startswith("read:") and len(unit) > 5):
+        raise ValueError("unit must be 'open', 'retire' or 'read:<name>'")
+    return send(f"force_core_audio_stall({seconds:g},unit:{unit})")
 
 
 def whisper_memory_pressure() -> str:
