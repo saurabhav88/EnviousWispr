@@ -103,12 +103,16 @@ struct RecordingsSettingsView: View {
               EmptyView()
             }
             .rowStatus {
-              VStack(alignment: .leading, spacing: DesignSpacing.sm) {
-                ForEach(RecordingsSettingsCopy.usageLines(usage?.latest), id: \.self) { line in
-                  Text(verbatim: line)
-                    .font(.stRowHelper)
-                    .foregroundStyle(.stTextSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+              VStack(alignment: .leading, spacing: DesignSpacing.md) {
+                // The breakdown continues the grey line above it, so it keeps the
+                // label's own line spacing; the warning stands apart.
+                VStack(alignment: .leading, spacing: DesignSpacing.xxs) {
+                  ForEach(RecordingsSettingsCopy.usageLines(usage?.latest), id: \.self) { line in
+                    Text(verbatim: line)
+                      .font(.stRowHelper)
+                      .foregroundStyle(.stTextSecondary)
+                      .fixedSize(horizontal: false, vertical: true)
+                  }
                 }
                 if let warning = retention?.warning {
                   InsetNotice(
@@ -166,20 +170,20 @@ struct RecordingsSettingsView: View {
               map: .id(.deleteRecordings), icon: "trash",
               resolvedHelp: RecordingsSettingsCopy.deleteHelp
             ) {
-              EmptyView()
+              // The buttons are the row's control, on the title's line like every
+              // other row's control (founder 2026-11-16). A narrow window drops
+              // them under the title, and they stack when one line cannot hold both.
+              ViewThatFits(in: .horizontal) {
+                HStack(spacing: DesignSpacing.md) { deleteButtons }
+                VStack(alignment: .leading, spacing: DesignSpacing.md) { deleteButtons }
+              }
             }
             .rowStatus {
-              VStack(alignment: .leading, spacing: DesignSpacing.md) {
-                ViewThatFits(in: .horizontal) {
-                  HStack(spacing: DesignSpacing.md) { deleteButtons }
-                  VStack(alignment: .leading, spacing: DesignSpacing.md) { deleteButtons }
-                }
-                if let deletionResult {
-                  Text(verbatim: deletionResult)
-                    .font(.stRowHelper)
-                    .foregroundStyle(.stTextSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                }
+              if let deletionResult {
+                Text(verbatim: deletionResult)
+                  .font(.stRowHelper)
+                  .foregroundStyle(.stTextSecondary)
+                  .fixedSize(horizontal: false, vertical: true)
               }
             }
           }
