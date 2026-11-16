@@ -246,29 +246,81 @@
       #expect(source.liveGenerationForTesting == nil)
     }
 
-    @Test("stabilization stops at its absolute deadline without another poll sleep")
-    func stabilizationHonorsItsDeadline() async {
+    @Test("stabilization stops at once when a read used up the budget")
+    func stabilizationStopsWhenBudgetIsGone() async {
       let passed = OSAllocatedUnfairLock(initialState: false)
-      let sleeps = OSAllocatedUnfairLock(initialState: 0)
+      let sleeps = OSAllocatedUnfairLock(initialState: [Duration]())
+
+      let outcome = await HALDeviceInputSource.settleNativeRate(
+        preparedRate: 48_000, maxWait: 1.5, pollInterval: 0.2,
+        readRate: {
+          passed.withLock { $0 = true }
+          return 44_100
+        },
+        sleep: { nap in sleeps.withLock { $0.append(nap) } },
+        remaining: { passed.withLock { $0 } ? .zero : .seconds(1) })
+
+      #expect(outcome.settledRate == nil)
+      #expect(outcome.polls == 0)
+      #expect(sleeps.withLock { $0 }.isEmpty, "no sleep after the budget ran out")
+    }
+
+    @Test("a poll sleep is cut to the time left and stabilization ends at the deadline")
+    func stabilizationSleepNeverCrossesTheDeadline() async {
+      // An injected budget: 15 ms left; every sleep spends its own length.
+      let left = OSAllocatedUnfairLock(initialState: Duration.milliseconds(15))
+      let sleeps = OSAllocatedUnfairLock(initialState: [Duration]())
       let reads = OSAllocatedUnfairLock(initialState: 0)
 
       let outcome = await HALDeviceInputSource.settleNativeRate(
         preparedRate: 48_000, maxWait: 1.5, pollInterval: 0.2,
         readRate: {
-          // The first read uses up the remaining budget; reads disagree, so the fast path fails.
-          let count = reads.withLock { count -> Int in
+          // Disagreeing reads, so nothing ever settles.
+          reads.withLock { count -> Double in
             count += 1
-            return count
+            return count.isMultiple(of: 2) ? 48_000 : 44_100
           }
-          passed.withLock { $0 = true }
-          return count == 1 ? 44_100 : 48_000
         },
-        sleep: { _ in sleeps.withLock { $0 += 1 } },
-        deadlinePassed: { passed.withLock { $0 } })
+        sleep: { nap in
+          sleeps.withLock { $0.append(nap) }
+          left.withLock { $0 -= nap }
+        },
+        remaining: { left.withLock { $0 } })
 
       #expect(outcome.settledRate == nil)
-      #expect(outcome.polls == 0)
-      #expect(sleeps.withLock { $0 } == 1, "only the fast path's own short sleep ran")
+      #expect(sleeps.withLock { $0 } == [.milliseconds(10), .milliseconds(5)])
+      #expect(outcome.polls == 1)
+    }
+
+    @Test("abort then quit after the open handed over its unit: retired once, before quit returns")
+    func abortThenQuitAfterHandover() async throws {
+      let timers = Timers()
+      let lane = AudioUnitLane(
+        label: "test.hal.abort.quit", schedule: { delay, fire in timers.schedule(delay, fire) },
+        now: { AudioUnitLaneTests.base })
+      let source = HALDeviceInputSource()
+      source.lane = lane
+      source.startDeadline = AudioUnitLaneTests.base + .seconds(5)
+      let natives = Natives()
+      source.openWorkForTesting = { _ in HALPrepareLifecycleTests.opened(natives) }
+      let quitFinished = Box<Bool?>(nil)
+      let disposalsAtQuit = Box<Int?>(nil)
+      source.afterOpenReturnedForTesting = { [weak source] in
+        source?.abortPrepare()  // clears the pending attempt first
+        quitFinished.value = source?.stopSynchronously(
+          deadline: AudioUnitLaneTests.base + .seconds(5))
+        disposalsAtQuit.value = natives.disposals
+      }
+
+      let result = await Task { try await source.prepare() }.result
+      guard case .failure(let error) = result, error is CancellationError else {
+        Issue.record("expected CancellationError, got \(result)")
+        return
+      }
+      #expect(quitFinished.value == true)
+      #expect(disposalsAtQuit.value == 1, "retired before quit returned")
+      await lane.drainForTesting()
+      #expect(natives.disposals == 1, "and only once")
     }
 
     @Test("stabilization on a wedged lane ends unstable without reading the device")

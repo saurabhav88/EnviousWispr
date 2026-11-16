@@ -939,19 +939,15 @@ final class HALDeviceInputSource: AudioInputSource {
   /// native retirement finished in time (true when there was nothing to retire).
   @discardableResult
   func stopSynchronously(deadline: ContinuousClock.Instant) -> Bool {
-    let pendingOpen = pendingAttempt != nil ? pendingHandoff : nil
     abandonPendingAttempt()
     forwarder?.stop()
     forwarder = nil
     streamContinuation = nil
-    let committedReleased = teardownUnit(waitUntil: deadline)
-    guard let pendingOpen else { return committedReleased }
-    // A cancelled open may still be running on the lane, or may already have handed its unit
-    // to a main-actor continuation that cannot run while quit holds the main actor. This lane
-    // job runs after the open finishes and retires whatever unit nobody took, so its release is
-    // waited for within the same deadline without depending on the main actor.
-    let openSettled = lane.retireAndWait(deadline: deadline) { pendingOpen.take()?.retire() }
-    return committedReleased && openSettled
+    teardownUnit()
+    // Every release this source queued (the committed unit, any abandoned open's unit, earlier
+    // cleanups) is ahead of this empty lane job, so waiting for it within the deadline waits for
+    // all of them, without the main actor.
+    return lane.retireAndWait(deadline: deadline) {}
   }
 
   /// Real settling check (#1434 — replaces a stub whose comment asserted the
@@ -1000,7 +996,7 @@ final class HALDeviceInputSource: AudioInputSource {
         return rate
       },
       sleep: { try? await Task.sleep(for: $0) },
-      deadlinePassed: { ContinuousClock.now >= readDeadline }
+      remaining: { readDeadline - ContinuousClock.now }
     )
     let elapsed = Self.stabMs(ContinuousClock.now - stabStart)
     let settledLabel = outcome.settledRate.map { String(Int($0)) } ?? "unstable"
@@ -1041,7 +1037,7 @@ final class HALDeviceInputSource: AudioInputSource {
     pollInterval: TimeInterval,
     readRate: () async -> Double?,
     sleep: (Duration) async -> Void,
-    deadlinePassed: () -> Bool = { false }
+    remaining: () -> Duration? = { nil }
   ) async -> RateSettleOutcome {
     func outcome(_ settled: Double?, polls: Int) -> RateSettleOutcome {
       RateSettleOutcome(
@@ -1051,8 +1047,15 @@ final class HALDeviceInputSource: AudioInputSource {
     }
     // Fast path: two reads 10ms apart agree (the common already-settled case
     // returns in ~10ms, keeping the warm PTT path cheap).
+    // #4601 §3a: ONE absolute deadline for reads and sleeps. `remaining` (nil = no deadline)
+    // caps every sleep, and the loop ends when it reaches zero or the task is cancelled.
+    func nap(_ wanted: Duration) -> Duration? {
+      guard let left = remaining() else { return wanted }
+      return left > .zero ? min(wanted, left) : nil
+    }
     var lastRate = await readRate()
-    await sleep(.milliseconds(10))
+    guard let firstNap = nap(.milliseconds(10)) else { return outcome(nil, polls: 0) }
+    await sleep(firstNap)
     var currentRate = await readRate()
     if isUsableRate(currentRate), currentRate == lastRate {
       return outcome(currentRate, polls: 0)
@@ -1061,12 +1064,11 @@ final class HALDeviceInputSource: AudioInputSource {
     // no-op sleep terminates deterministically).
     let maxPolls = max(1, Int(maxWait / max(pollInterval, 0.001)))
     var polls = 0
-    // #4601 §3a: the poll budget also stops at the absolute deadline (reads and sleeps share it)
-    // and on cancellation, so a slow read cannot stretch stabilization past its start's budget.
-    while polls < maxPolls, !deadlinePassed(), !Task.isCancelled {
+    while polls < maxPolls, !Task.isCancelled, let pollNap = nap(.seconds(pollInterval)) {
       lastRate = currentRate
-      await sleep(.seconds(pollInterval))
+      await sleep(pollNap)
       polls += 1
+      if let left = remaining(), left <= .zero { break }
       currentRate = await readRate()
       if isUsableRate(currentRate), currentRate == lastRate {
         return outcome(currentRate, polls: polls)
@@ -1091,11 +1093,18 @@ final class HALDeviceInputSource: AudioInputSource {
     teardownUnit()
   }
 
+  /// The ONE way a pending attempt is given up (abort, a newer attempt, stop, quit). It cancels
+  /// the attempt and, in the same step, queues a lane job that retires the attempt's unit if
+  /// nobody took it: that job runs after the open finishes (the lane is serial), so the unit has a
+  /// cleanup owner at once, even when it was already handed to a main-actor continuation that has
+  /// not resumed (§3.6).
   private func abandonPendingAttempt() {
     guard let attempt = pendingAttempt else { return }
+    let handoff = pendingHandoff
     pendingAttempt = nil
     pendingHandoff = nil
     attempt.cancel()
+    if let handoff { lane.retire { handoff.take()?.retire() } }
   }
 
   func rebuild() {
@@ -1357,8 +1366,7 @@ extension HALDeviceInputSource {
     }
   }
 
-  @discardableResult
-  private func teardownUnit(waitUntil deadline: ContinuousClock.Instant? = nil) -> Bool {
+  private func teardownUnit() {
     // #1523: snapshot the live stop-metadata BEFORE any state is cleared, so the
     // device-vanish salvage (which tears the unit down before the manager reads
     // `captureStopMetadata`) still has rate/counters/channel-count. Only cache a
@@ -1379,7 +1387,6 @@ extension HALDeviceInputSource {
     // listener registrations, stops, uninitializes and disposes, wakes the
     // consumer, and frees callback storage only after a safe native retirement.
     // Taken out of `self` first so no second owner survives the hand-off.
-    var finished = true
     // #4601 §3.4: close forwarding admission BEFORE handing the unit to the lane. The forwarder's
     // own synchronized stop clears its callbacks and finishes its stream, so a consumer already
     // past its stopped-flag check and about to route a chunk delivers nothing. Then the source
@@ -1391,12 +1398,7 @@ extension HALDeviceInputSource {
       resources.markStopping()
       // #4601 §3.4: the native retirement runs on the audio-unit lane and the main actor never
       // waits for it; it stays ordered before any later open of this or any other source.
-      // §3.6: only quit passes a deadline, and then waits at most until it.
-      if let deadline {
-        finished = lane.retireAndWait(deadline: deadline) { resources.retire() }
-      } else {
-        lane.retire { resources.retire() }
-      }
+      lane.retire { resources.retire() }
     }
     boundDeviceID = nil
     boundUID = nil
@@ -1404,7 +1406,6 @@ extension HALDeviceInputSource {
     boundResolutionSource = nil
     boundNativeChannelCount = nil
     boundInputChannel = nil
-    return finished
   }
 }
 
