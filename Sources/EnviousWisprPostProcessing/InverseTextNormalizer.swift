@@ -134,7 +134,9 @@ public struct InverseTextNormalizer: Sendable {
 
   static let numwordAlt = alt(numword)
   // A number token: a number-WORD or an already-digit token ('20', '1,234') for mixed-state.
-  static let numtok = alt(numword) + #"|\d[\d,]*"#
+  // A comma counts only as a thousands separator (three digits after it). A list comma ends the
+  // token, so "40, 20, 10 percent" is a list ending in "10%", never one run summed to "70%" (#4632).
+  static let numtok = alt(numword) + #"|\d{1,3}(?:,\d{3})+|\d+"#
   static let tensAlt = alt(Array(tens.keys))
   static let unit19Alt = alt(units.filter { (1...9).contains($0.value) }.map(\.key))
   static let teenAlt = alt(units.filter { (10...19).contains($0.value) }.map(\.key))
@@ -760,9 +762,20 @@ public struct InverseTextNormalizer: Sendable {
       if isDigitComma(w) {
         guard let dv = Int(w.replacingOccurrences(of: ",", with: "")) else { return nil }
         if dv == 0 { return nil }
+        // A digit token obeys the same order rules as the word it stands for, and a number of 100
+        // or more is already whole. Without this, "40 20 10" summed to 70 (#4632).
+        let kind = dv < 10 ? "unit" : dv < 20 ? "teen" : dv < 100 ? "ten" : "big"
+        switch kind {
+        case "unit":
+          if last == "unit" || last == "teen" || last == "big" { return nil }
+        case "teen", "ten":
+          if last == "unit" || last == "teen" || last == "ten" || last == "big" { return nil }
+        default:
+          if last != nil && last != "scale" { return nil }
+        }
         current += dv
         seen = true
-        last = dv < 10 ? "unit" : dv < 20 ? "teen" : dv < 100 ? "ten" : "big"
+        last = kind
         continue
       }
       if let v = units[w] {
