@@ -166,19 +166,39 @@ struct HistoryInlinePlayback<Meta: View>: View {
     let shown = scrubMs ?? Double(player.positionMs)
     return HStack(spacing: DesignSpacing.md) {
       clock(Int(shown))
-      Slider(
-        value: Binding(get: { shown }, set: { scrubMs = $0 }), in: 0...duration,
-        onEditingChanged: { editing in
-          guard !editing, let target = scrubMs else { return }
-          player.seek(toMs: Int(target))
-          scrubMs = nil
+      // #4611: the voice's shape is the scrubber: drag or click on it to move; the played
+      // part is purple and a thin line marks the place. VoiceOver reads and moves it as a
+      // slider.
+      GeometryReader { geometry in
+        let fraction = CGFloat(shown / duration)
+        ZStack(alignment: .leading) {
+          HistoryPlaybackWaveform(player: player, positionMs: Int(shown), inset: 0, height: 22)
+          Rectangle()
+            .fill(Color.stAccent)
+            .frame(width: 2, height: 22)
+            .offset(x: max(0, min(geometry.size.width - 2, fraction * geometry.size.width - 1)))
         }
-      )
-      .tint(.stAccent)
-      .controlSize(.small)
-      .accessibilityLabel(Text("Position", comment: "EnviousMeet: the playback scrubber."))
-      .accessibilityValue(Text(MeetingsPresentation.clock(ms: Int(shown))))
-      .background { HistoryPlaybackWaveform(player: player, positionMs: Int(shown)) }
+        .frame(maxHeight: .infinity)
+        .contentShape(Rectangle())
+        .gesture(
+          DragGesture(minimumDistance: 0)
+            .onChanged { drag in
+              scrubMs = duration * Double(max(0, min(1, drag.location.x / max(1, geometry.size.width))))
+            }
+            .onEnded { _ in
+              guard let target = scrubMs else { return }
+              player.seek(toMs: Int(target))
+              scrubMs = nil
+            })
+      }
+      .frame(height: 24)
+      .accessibilityRepresentation {
+        Slider(
+          value: Binding(get: { shown }, set: { player.seek(toMs: Int($0)) }), in: 0...duration
+        )
+        .accessibilityLabel(Text("Position", comment: "EnviousMeet: the playback scrubber."))
+        .accessibilityValue(Text(MeetingsPresentation.clock(ms: Int(shown))))
+      }
       clock(player.durationMs)
     }
   }

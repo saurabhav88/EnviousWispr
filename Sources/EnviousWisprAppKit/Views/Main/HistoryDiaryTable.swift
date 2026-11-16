@@ -124,6 +124,10 @@ struct HistoryDiaryTable: NSViewRepresentable {
     /// Set while this list moves the window itself, so the move is not reported as the reader's.
     private var isMovingWindow = false
     private var verifyScheduled = false
+    /// Set while the table inserts or removes rows: AppKit can scroll mid-change, when its row
+    /// count and `rows` disagree, so the window is not measured until the change is applied
+    /// (the update settles right after).
+    private var isApplyingRows = false
     /// #4611: the reader is dragging the scroll bar. While the knob is held, the list never moves
     /// the window itself (the knob would leave the pointer) and measures only the rows on screen;
     /// it measures around the window and settles when the knob is let go.
@@ -217,6 +221,8 @@ struct HistoryDiaryTable: NSViewRepresentable {
         rows = newRows
         index = Dictionary(
           newRows.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
+        isApplyingRows = true
+        defer { isApplyingRows = false }
         if slidesIn {
           let currentWidth = table.tableColumns.first?.width ?? 0
           if currentWidth > 1 {
@@ -331,7 +337,7 @@ struct HistoryDiaryTable: NSViewRepresentable {
       let range = table.rows(in: near)
       guard range.length > 0 else { return [] }
       var changed = IndexSet()
-      for row in range.location..<(range.location + range.length) {
+      for row in range.location..<(range.location + range.length) where rows.indices.contains(row) {
         let id = rows[row]
         if let known = heights[id], known.width == width { continue }
         #if DEBUG
@@ -378,7 +384,7 @@ struct HistoryDiaryTable: NSViewRepresentable {
       let range = table.rows(in: scroll.contentView.bounds)
       guard range.length > 0 else { return }
       var changed = IndexSet()
-      for row in range.location..<(range.location + range.length) {
+      for row in range.location..<(range.location + range.length) where rows.indices.contains(row) {
         guard let cell = table.view(atColumn: 0, row: row, makeIfNecessary: false) as? HostCell,
           let shown = cell.shownID, shown == rows[row]
         else { continue }
@@ -446,7 +452,7 @@ struct HistoryDiaryTable: NSViewRepresentable {
     }
 
     private func windowMoved() {
-      guard !isMovingWindow, let table, let scroll else { return }
+      guard !isMovingWindow, !isApplyingRows, let table, let scroll else { return }
       #if DEBUG
         let started = DispatchTime.now().uptimeNanoseconds
         defer { listener.moved(nanoseconds: DispatchTime.now().uptimeNanoseconds - started) }

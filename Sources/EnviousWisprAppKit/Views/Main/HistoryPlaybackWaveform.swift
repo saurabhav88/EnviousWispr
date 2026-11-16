@@ -5,13 +5,17 @@ import SwiftUI
 struct HistoryPlaybackWaveform: View {
   let player: MeetingPlaybackController
   let positionMs: Int
+  /// Matches the native scrubber's thumb inset when drawn under it; 0 when the waveform is the
+  /// scrubber itself (#4611).
+  var inset: CGFloat = DesignSpacing.md
+  var height: CGFloat = DesignSpacing.xxl
   @State private var levels: [Float] = []
 
   var body: some View {
     Canvas { context, size in
       guard !levels.isEmpty else { return }
       let slot = size.width / CGFloat(levels.count)
-      let width = min(4, slot * 0.62)
+      let width = min(3, slot * 0.6)
       let fraction = CGFloat(positionMs) / CGFloat(max(1, player.durationMs))
       for (index, level) in levels.enumerated() {
         let x = (CGFloat(index) + 0.5) * slot
@@ -21,8 +25,8 @@ struct HistoryPlaybackWaveform: View {
         context.fill(Path(roundedRect: bar, cornerRadius: width / 2), with: .color(tint))
       }
     }
-    .frame(height: DesignSpacing.xxl)
-    .padding(.horizontal, DesignSpacing.md)
+    .frame(height: height)
+    .padding(.horizontal, inset)
     .accessibilityHidden(true)
     .allowsHitTesting(false)
     .task(id: player.state == .unavailable) {

@@ -230,20 +230,42 @@ final class MeetingPlaybackController {
       } else {
         source = try open(media)
       }
-      let count = min(80, durationMs)
+      // #4611: the voice's shape. A short recording (a dictation) is read whole, so each bar
+      // is the loudness of its whole slice; a long one (a meeting) reads six short windows
+      // spread across each slice, so drawing stays quick. Loudness is shown on a decibel
+      // scale, the way ears hear it, so speech rises and pauses stay flat.
+      let count = min(120, max(1, durationMs / 20))
+      let readsWhole = durationMs <= 180_000
       var levels: [Float] = []
       levels.reserveCapacity(count)
       for index in 0..<count {
         try Task.checkCancellation()
         let lower = durationMs * index / count
         let upper = durationMs * (index + 1) / count
-        let window = min(80, upper - lower)
-        let samples = try source.window(startMs: lower + (upper - lower - window) / 2, count: window)
-        let power = samples.reduce(Float(0)) { $0 + $1 * $1 }
-        levels.append((power / Float(max(1, samples.count))).squareRoot())
+        var power: Float = 0
+        var samplesRead = 0
+        if readsWhole {
+          let samples = try source.window(startMs: lower, count: max(1, upper - lower))
+          power = samples.reduce(Float(0)) { $0 + $1 * $1 }
+          samplesRead = samples.count
+        } else {
+          let windows = 6
+          let span = max(1, (upper - lower) / windows)
+          for part in 0..<windows {
+            let samples = try source.window(startMs: lower + part * span, count: min(60, span))
+            power += samples.reduce(Float(0)) { $0 + $1 * $1 }
+            samplesRead += samples.count
+          }
+        }
+        levels.append((power / Float(max(1, samplesRead))).squareRoot())
       }
       let peak = levels.max() ?? 0
-      return peak > 0 ? levels.map { $0 / peak } : levels
+      guard peak > 0 else { return levels }
+      let floorDecibels: Float = -35
+      return levels.map { level in
+        let decibels = 20 * log10(max(level / peak, 1e-6))
+        return max(0, 1 - decibels / floorDecibels)
+      }
     } catch {
       return []
     }

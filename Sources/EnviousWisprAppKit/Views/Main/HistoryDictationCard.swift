@@ -71,6 +71,7 @@ struct HistoryDictationCard: View {
     HistoryDictationPresentation.editsView
   @State private var openChange: Int?
   @State private var textExpanded = false
+  @State private var moreAnchor = HistoryMenuAnchorHolder()
 
   // Chrome
   @FocusState private var focus: Focus?
@@ -458,121 +459,128 @@ struct HistoryDictationCard: View {
   }
 
   private func moreMenu(_ row: HistoryDictationDisplay) -> some View {
-    Menu {
-      Button {
-        if permissions.accessibilityGranted {
-          paste(row)
-        } else {
-          navigation.request(.appSettings(.permissions))
-        }
-      } label: {
-        Label {
-          Text(verbatim: EscapeRecoveryRowPresentation.pasteLabel)
-        } icon: {
-          Image(systemName: "arrow.right.doc.on.clipboard")
-        }
-      }
-      .disabled(!pasteAllowed(row) && permissions.accessibilityGranted)
-      ShareLink(
-        item: DeliverableText(resolve: { exportText }),
-        preview: SharePreview(Self.dictationWord)
-      ) {
-        Label {
-          Text("Share", comment: "History dictation card: shares the text.")
-        } icon: {
-          Image(systemName: "square.and.arrow.up")
-        }
-      }
-      Button {
-        saveDocument()
-      } label: {
-        Label {
-          Text("Save as…", comment: "Export button: save the transcript to a file.")
-        } icon: {
-          Image(systemName: "square.and.arrow.down")
-        }
-      }
-      Divider()
-      HistoryPolishMenu(
-        title: "Polish again with", surface: .dictation, currentProvider: row.llmProvider,
-        currentModel: row.llmModel,
-        currentSize: row.egOneSize,
-        isEnabled: polishPreview.canStart
-      ) { choice in
-        polishPreview.start(rowID: rowID, choice: choice, runner: historyRepolish, history: transcripts)
-      }
-      Divider()
-      if case .available(_, _, let pinned) = status {
-        Toggle(
-          isOn: Binding(get: { pinned }, set: { setKeep($0) })
-        ) {
-          Text(
-            "Keep this recording",
-            comment: "History: keeps this dictation's recording from being removed automatically.")
-        }
-      }
-      // The escape route sits beside the action that set it (§3.4: "The same menu offers Use
-      // polished text when original is preferred").
-      switch HistoryDictationPresentation.preferenceAction(for: row) {
-      case .restoreOriginal:
-        Button {
-          setPreference(.original)
-        } label: {
-          Label {
-            Text(
-              "Restore original text",
-              comment: "History dictation card, More menu: shows and delivers your words before AI polish instead of the polished text.")
-          } icon: {
-            Image(systemName: "arrow.uturn.backward")
-          }
-        }
-      case .usePolished:
-        Button {
-          setPreference(nil)
-        } label: {
-          Label {
-            Text(
-              "Use polished text",
-              comment: "History dictation card, More menu: shows and delivers the AI-polished text again.")
-          } icon: {
-            Image(systemName: "sparkles")
-          }
-        }
-      case nil:
-        EmptyView()
-      }
-      Divider()
-      if case .available = status {
-        Button {
-          confirming = .recordingsOnly
-        } label: {
-          Label {
-            Text(
-              "Delete recording, keep text",
-              comment: "History: deletes this dictation's audio and keeps its text.")
-          } icon: {
-            Image(systemName: "waveform.slash")
-          }
-        }
-      }
-      Button(role: .destructive) {
-        confirming = .textAndRecordings
-      } label: {
-        Label {
-          Text("Delete dictation", comment: "VoiceOver label of the History delete button for a dictation.")
-        } icon: {
-          Image(systemName: "trash")
-        }
-      }
+    // #4611: the app's own menu (the approved mock), under a round outlined button like Copy.
+    Button {
+      guard let anchor = moreAnchor.view else { return }
+      HistoryMenuPresenter.shared.toggle(items: moreItems(row), from: anchor)
     } label: {
       Image(systemName: "ellipsis")
+        .fontWeight(.bold)
+        .frame(width: 16, height: 16)
     }
-    .menuStyle(.borderlessButton)
-    .menuIndicator(.hidden)
-    .fixedSize()
+    .settingsButton(.quiet, size: .medium, isEnabled: true)
+    .background(HistoryMenuAnchor(holder: moreAnchor))
     .focused($focus, equals: .control("more"))
+    .help(Text("More actions", comment: "History dictation card: opens the More menu."))
     .accessibilityLabel(
       Text("More actions", comment: "History dictation card: opens the More menu."))
+  }
+
+  /// The More menu's items, built when it opens, from the card's live state.
+  private func moreItems(_ row: HistoryDictationDisplay) -> [HistoryMenuItem] {
+    var items: [HistoryMenuItem] = [
+      .init(
+        id: "paste", title: EscapeRecoveryRowPresentation.pasteLabel,
+        systemImage: "arrow.right.doc.on.clipboard",
+        isEnabled: pasteAllowed(row) || !permissions.accessibilityGranted,
+        kind: .action {
+          if permissions.accessibilityGranted {
+            paste(row)
+          } else {
+            navigation.request(.appSettings(.permissions))
+          }
+        }),
+      .init(
+        id: "share", title: String(localized: "Share…", comment: "History dictation card: shares the text."),
+        systemImage: "square.and.arrow.up",
+        kind: .action {
+          guard let text = exportText, let anchor = moreAnchor.view else { return }
+          NSSharingServicePicker(items: [text]).show(
+            relativeTo: anchor.bounds, of: anchor, preferredEdge: .minY)
+        }),
+      .init(
+        id: "save", title: String(localized: "Save as…", comment: "Export button: save the transcript to a file."),
+        systemImage: "square.and.arrow.down", kind: .action { saveDocument() }),
+      .divider("d1"),
+    ]
+    let choices = historyRepolish.choices(.dictation)
+    var polish: [HistoryMenuItem] = choices.map { choice in
+      .init(
+        id: "polish-\(choice.provider.rawValue)-\(choice.model)-\(choice.egOneSize?.rawValue ?? "")",
+        title: HistoryPolishMenu.label(
+          choice, currentProvider: row.llmProvider, currentModel: row.llmModel, currentSize: row.egOneSize),
+        isEnabled: polishPreview.canStart,
+        kind: .action {
+          polishPreview.start(rowID: rowID, choice: choice, runner: historyRepolish, history: transcripts)
+        })
+    }
+    if choices.isEmpty {
+      polish.append(
+        .init(
+          id: "polish-none",
+          title: String(localized: "No models are ready", comment: "History polish menu: no configured AI model can run."),
+          isEnabled: false, kind: .action {}))
+    }
+    polish += [
+      .divider("polish-d"),
+      .init(
+        id: "polish-setup",
+        title: String(localized: "Set up more models in AI Polish"),
+        kind: .action {
+          navigation.request(.aiPolish)
+          appWindow.showWindow()
+        }),
+    ]
+    items.append(
+      .init(
+        id: "polish",
+        title: String(localized: "Polish again with", comment: "History: opens the list of AI models to polish this text again."),
+        systemImage: "sparkles", kind: .submenu(polish)))
+    if case .available(_, _, let pinned) = status {
+      items.append(
+        .init(
+          id: "keep",
+          title: String(
+            localized: "Keep this recording",
+            comment: "History: keeps this dictation's recording from being removed automatically."),
+          isChecked: pinned, kind: .action { setKeep(!pinned) }))
+    }
+    switch HistoryDictationPresentation.preferenceAction(for: row) {
+    case .restoreOriginal:
+      items.append(
+        .init(
+          id: "restore",
+          title: String(
+            localized: "Restore original text",
+            comment: "History dictation card, More menu: shows and delivers your words before AI polish instead of the polished text."),
+          systemImage: "arrow.uturn.backward", kind: .action { setPreference(.original) }))
+    case .usePolished:
+      items.append(
+        .init(
+          id: "use-polished",
+          title: String(
+            localized: "Use polished text",
+            comment: "History dictation card, More menu: shows and delivers the AI-polished text again."),
+          systemImage: "sparkles", kind: .action { setPreference(nil) }))
+    case nil:
+      break
+    }
+    items.append(.divider("d2"))
+    if case .available = status {
+      items.append(
+        .init(
+          id: "delete-recording",
+          title: String(
+            localized: "Delete recording, keep text",
+            comment: "History: deletes this dictation's audio and keeps its text."),
+          systemImage: "waveform.slash", kind: .action { confirming = .recordingsOnly }))
+    }
+    items.append(
+      .init(
+        id: "delete",
+        title: String(localized: "Delete dictation", comment: "VoiceOver label of the History delete button for a dictation."),
+        systemImage: "trash", isDestructive: true, kind: .action { confirming = .textAndRecordings }))
+    return items
   }
 
   // MARK: - Delivery

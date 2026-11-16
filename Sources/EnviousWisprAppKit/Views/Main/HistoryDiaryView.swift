@@ -665,7 +665,11 @@ private struct HistoryDiaryTime: View {
             .font(.stHelper)
             .foregroundStyle(.stTextSecondary)
             .multilineTextAlignment(.trailing)
-            .lineLimit(2)
+            // #4611: one line; a long app name shrinks a little, then ends in "…", rather than
+            // breaking mid-word in the narrow time column.
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+            .truncationMode(.tail)
         }
       }
       .frame(width: DesignSpacing.xxxl * 3, alignment: .trailing)

@@ -132,6 +132,14 @@ struct HistoryPolishMenu: View {
   }
 
   private func label(_ choice: HistoryPolishChoice) -> String {
+    Self.label(choice, currentProvider: currentProvider, currentModel: currentModel, currentSize: currentSize)
+  }
+
+  /// A choice's menu title: the model, marked when it made the current text, and who receives
+  /// the text when it leaves the Mac. Shared with History's own More menu (#4611).
+  static func label(
+    _ choice: HistoryPolishChoice, currentProvider: String?, currentModel: String?, currentSize: String?
+  ) -> String {
     let sameSize = choice.provider != .egOne || choice.egOneSize?.rawValue == (currentSize ?? "full")
     let isCurrent = currentProvider == choice.provider.rawValue
       && currentModel == choice.model && sameSize
