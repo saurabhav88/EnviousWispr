@@ -1666,8 +1666,7 @@ final class ModelDeliveryHome {
         if finished {
           guard seq > home.lastAppliedSpeakerFinalStateSeq else { return }
           home.lastAppliedSpeakerFinalStateSeq = seq
-          home.speakerFinalState = state
-          home.cancelStaleSpeakerLiveTransfer()
+          home.applySpeakerFinalState(state)
           return
         }
         guard seq > home.lastAppliedSpeakerLiveStateSeq else { return }
@@ -1679,7 +1678,12 @@ final class ModelDeliveryHome {
 
   private func applySpeakerLiveState(_ state: DeliveryState) {
     speakerLiveState = state
-    cancelStaleSpeakerLiveTransfer()
+    cancelStaleSpeakerLiveTransfer(on: state)
+  }
+
+  private func applySpeakerFinalState(_ state: DeliveryState) {
+    speakerFinalState = state
+    cancelStaleSpeakerLiveTransfer(on: state)
   }
 
   /// Applies a state as the delivery observer does, for tests that need one the fake fetch
@@ -1689,8 +1693,7 @@ final class ModelDeliveryHome {
   }
 
   package func applySpeakerFinalStateForTests(_ state: DeliveryState) {
-    speakerFinalState = state
-    cancelStaleSpeakerLiveTransfer()
+    applySpeakerFinalState(state)
   }
 
   // The handoffs of this door, in order, and what orders each one (enumerated after two review
@@ -1708,17 +1711,16 @@ final class ModelDeliveryHome {
   // 5. Remove: requests are refused while it runs; the shared removal stops any attempt.
 
   /// Stops an attempt whose request was cancelled before the controller registered it (handoff 3).
-  private func cancelStaleSpeakerLiveTransfer() {
+  private func cancelStaleSpeakerLiveTransfer(on state: DeliveryState) {
     guard let epoch = speakerLiveFetchEpoch, epoch != speakerLiveIntentEpoch,
       speakerLiveScheduledEpoch == nil, !speakerLiveCancelRunning
     else { return }
-    guard [speakerLiveState, speakerFinalState].contains(where: { state in
-      switch state {
-      case .preparing, .downloading, .verifying: true
-      case .notReady, .admitted, .cancelled, .failed: false
-      }
-    }) else { return }
-    cancelSpeakerLiveTransfer()
+    // Check only the incoming update so an unrelated handle's `.notReady` replay cannot fire a
+    // second cancel from the other handle's transfer state (#4540).
+    switch state {
+    case .preparing, .downloading, .verifying: cancelSpeakerLiveTransfer()
+    case .notReady, .admitted, .cancelled, .failed: break
+    }
   }
 
   /// Sends one cancellation, after any earlier one. A later request waits for it (handoff 2).
