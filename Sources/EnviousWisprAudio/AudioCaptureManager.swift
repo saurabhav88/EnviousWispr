@@ -334,8 +334,13 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   /// Throws `CancellationError` for a start whose press (`deadline` minus the budget) was given
   /// up before it arrived here.
   private func requireNotAbandoned(_ deadline: ContinuousClock.Instant) throws {
-    guard let abandonedAt = startsAbandonedAt else { return }
-    if deadline - MicrophoneStartBudget.duration <= abandonedAt { throw CancellationError() }
+    if isStartAbandoned(startDeadline: deadline) { throw CancellationError() }
+  }
+  /// #4601 §3a: a start is abandoned when `abandonPendingStart()` ran at or after its press (the
+  /// deadline's origin).
+  public func isStartAbandoned(startDeadline: ContinuousClock.Instant) -> Bool {
+    guard let abandonedAt = startsAbandonedAt else { return false }
+    return startDeadline - MicrophoneStartBudget.duration <= abandonedAt
   }
   /// #4601 §5: the ONE manager request owner. Each `resolveSource()` mints the next value; work
   /// that resumes from an await with an older value is superseded and changes nothing.

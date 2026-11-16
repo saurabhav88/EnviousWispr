@@ -1662,6 +1662,7 @@ final class RecordingSessionKernel {
   private func runForwardPath(_ sid: SessionID, microphoneStartDeadline: ContinuousClock.Instant)
     async
   {
+    var microphoneStartDeadline = microphoneStartDeadline
     guard let config = sessionConfig else {
       // `start(config:)` always sets `sessionConfig` before spawning this —
       // this guard is defensive only and cannot fire in practice.
@@ -1728,8 +1729,17 @@ final class RecordingSessionKernel {
       // transition here), and the overlay reads it for the cold-boot pill.
       didLoadModelThisSession = true
       let modelReceipt = WarmUpModelReceipt()
+      let warmUpStarted = ContinuousClock.now
       let warmResult = await warmUp(sid, modelReceipt: modelReceipt)
       guard isCurrent(sid) else { return }
+      // #4601 §3a: loading the speech model is not microphone work, so it does not spend the
+      // press's microphone budget: the deadline moves later by the load time. A start already given
+      // up before this session existed keeps its press-time deadline, so capture still refuses it
+      // (the abandonment check reads the press from the deadline). This session exists, so no
+      // later abandon can belong to this press.
+      if !audioCapture.isStartAbandoned(startDeadline: microphoneStartDeadline) {
+        microphoneStartDeadline += ContinuousClock.now - warmUpStarted
+      }
       noteTakeModelAfterWarmUp(modelReceipt)
       switch warmResult {
       case .ready:

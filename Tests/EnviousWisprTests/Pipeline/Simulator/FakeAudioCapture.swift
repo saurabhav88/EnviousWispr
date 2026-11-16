@@ -221,6 +221,10 @@ final class FakeAudioCapture: AudioCaptureInterface {
   private(set) var startEnginePhaseDeadlines: [MicrophoneStartBudget.Deadline] = []
   private(set) var preWarmDeadlines: [MicrophoneStartBudget.Deadline] = []
   private(set) var abandonPendingStartCallCount = 0
+  /// #4601 §3a: what `isStartAbandoned(startDeadline:)` answers (the real manager's record).
+  var startAbandoned = false
+
+  func isStartAbandoned(startDeadline: MicrophoneStartBudget.Deadline) -> Bool { startAbandoned }
 
   func startEnginePhase(startDeadline: MicrophoneStartBudget.Deadline) async throws {
     startEnginePhaseCallCount += 1
