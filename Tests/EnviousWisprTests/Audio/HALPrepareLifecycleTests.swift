@@ -414,8 +414,8 @@
       await lane.drainForTesting()
     }
 
-    @Test("release takes the unit out at once and stops forwarding before the lane retires it")
-    func releaseHandsOffImmediately() async throws {
+    @Test("release stops delivery even for a chunk already on its way to the forwarder")
+    func releaseStopsInFlightDelivery() async throws {
       let natives = Natives()
       let attempts = Attempts()
       let handedOut = OSAllocatedUnfairLock<HALUnitResources?>(initialState: nil)
@@ -436,25 +436,41 @@
         return
       }
       resources.renderAndDrainForTesting()
-      #expect(forwarded.withLock { $0 } > 0, "control: a live unit forwards audio")
-      let forwardedBeforeRelease = forwarded.withLock { $0 }
+      let healthy = forwarded.withLock { $0 }
+      #expect(healthy > 0, "control: a live unit forwards audio")
+
+      // A consumer that already passed its stopped check and is about to route a chunk.
+      let atRoute = Signal()
       let gate = Gate()
       defer { gate.open() }
-      let entered = Signal()
-      lane.retire {
-        entered.fire()
+      let drained = Signal()
+      resources.setBeforeRouteForTesting {
+        atRoute.fire()
         gate.block()
       }
-      #expect(await entered.wait(), "the lane is busy with an earlier job")
+      Thread {
+        resources.renderAndDrainForTesting()
+        drained.fire()
+      }.start()
+      #expect(await atRoute.wait(), "the consumer reached the routing point")
+      // The lane is busy with an earlier job, so native retirement must wait its turn.
+      let laneGate = Gate()
+      defer { laneGate.open() }
+      let laneBusy = Signal()
+      lane.retire {
+        laneBusy.fire()
+        laneGate.block()
+      }
+      #expect(await laneBusy.wait())
 
       source.rebuild()
-
       #expect(source.liveGenerationForTesting == nil, "committed ownership cleared immediately")
       #expect(resources.stoppedFlagIsSetForTesting, "capture stopped at hand-off")
-      resources.renderAndDrainForTesting()
-      #expect(forwarded.withLock { $0 } == forwardedBeforeRelease, "nothing forwarded after release")
       #expect(natives.disposals == 0, "native retirement waits its turn on the lane")
       gate.open()
+      #expect(await drained.wait())
+      #expect(forwarded.withLock { $0 } == healthy, "the in-flight chunk was not delivered")
+      laneGate.open()
       await lane.drainForTesting()
       #expect(natives.disposals == 1)
     }

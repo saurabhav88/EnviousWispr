@@ -192,6 +192,10 @@ private final class HALRenderContext: @unchecked Sendable {
     /// is SAFE by design; only a nonzero in-flight count at free time is a UAF.
     let callbackEnteredAfterStop = OSAllocatedUnfairLock(initialState: false)
   #endif
+  #if DEBUG
+    /// Test seam: runs on the consumer right before a chunk is routed. Set before any drain runs.
+    nonisolated(unsafe) var debugBeforeRoute: (@Sendable () -> Void)?
+  #endif
   /// Reused destination for `ring.pop(into:)` — sized once to `capacityFrames`
   /// so the drain's bounded memcpy (shared lock with the RT `push()` side)
   /// never allocates; the per-chunk `[Float]`/`AVAudioPCMBuffer` `forward()`
@@ -339,6 +343,9 @@ private final class HALRenderContext: @unchecked Sendable {
     }
     let frameCount = Int(convertedBuffer.frameLength)
     let samples = Array(UnsafeBufferPointer(start: channelData[0], count: frameCount))
+    #if DEBUG
+      debugBeforeRoute?()
+    #endif
     forwarder.route(samples: samples, level: level, buffer: convertedBuffer)
     return .routed
   }
@@ -1229,8 +1236,11 @@ extension HALDeviceInputSource {
     // listener registrations, stops, uninitializes and disposes, wakes the
     // consumer, and frees callback storage only after a safe native retirement.
     // Taken out of `self` first so no second owner survives the hand-off.
-    // #4601 §3.4: source-owned forwarding state goes with the unit; the stopped flag set below
-    // also stops the consumer forwarding anything it still holds.
+    // #4601 §3.4: close forwarding admission BEFORE handing the unit to the lane. The forwarder's
+    // own synchronized stop clears its callbacks and finishes its stream, so a consumer already
+    // past its stopped-flag check and about to route a chunk delivers nothing. Then the source
+    // drops its reference.
+    forwarder?.stop()
     forwarder = nil
     if let resources = liveResources {
       liveResources = nil
@@ -2129,6 +2139,11 @@ extension HALDeviceInputSource {
 
     /// Whether the stopped flag the callbacks read is set.
     var stoppedFlagIsSetForTesting: Bool { context?.stopped.isSet() ?? false }
+
+    /// Test seam: installs a hook the consumer runs right before routing a chunk.
+    func setBeforeRouteForTesting(_ hook: @escaping @Sendable () -> Void) {
+      context?.debugBeforeRoute = hook
+    }
 
     /// Test seam: puts one chunk of audio in the ring as if rendered, then runs the consumer's
     /// drain once, the way the consumer thread does.
