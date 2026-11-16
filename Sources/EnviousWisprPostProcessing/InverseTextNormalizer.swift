@@ -757,8 +757,16 @@ public struct InverseTextNormalizer: Sendable {
     var current = 0
     var last: String? = nil
     var seen = false
+    var afterAnd = false
     for w in words {
-      if w == "and" { continue }
+      if w == "and" {
+        afterAnd = true
+        continue
+      }
+      // "100 and 5" is one amount, as "one hundred and five" is; only an explicit "and" may
+      // follow a whole-hundreds digit token, so "100 20" stays a list (#4632).
+      let joinsHundreds = afterAnd && last == "big" && current % 100 == 0
+      afterAnd = false
       if isDigitComma(w) {
         guard let dv = Int(w.replacingOccurrences(of: ",", with: "")) else { return nil }
         if dv == 0 { return nil }
@@ -767,9 +775,10 @@ public struct InverseTextNormalizer: Sendable {
         let kind = dv < 10 ? "unit" : dv < 20 ? "teen" : dv < 100 ? "ten" : "big"
         switch kind {
         case "unit":
-          if last == "unit" || last == "teen" || last == "big" { return nil }
+          if last == "unit" || last == "teen" || (last == "big" && !joinsHundreds) { return nil }
         case "teen", "ten":
-          if last == "unit" || last == "teen" || last == "ten" || last == "big" { return nil }
+          if last == "unit" || last == "teen" || last == "ten" { return nil }
+          if last == "big" && !joinsHundreds { return nil }
         default:
           if last != nil && last != "scale" { return nil }
         }

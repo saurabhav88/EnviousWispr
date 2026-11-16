@@ -26,6 +26,7 @@ struct InverseTextNormalizerDigitListTests {
     ("prices were 40, 20, 10 dollars", "prices were 40, 20, $10"),
     // no commas at all: still never summed, left as said
     ("the split is 40 20 10 percent", "the split is 40 20 10 percent"),
+    ("the split is 100 20 percent", "the split is 100 20 percent"),
   ]
 
   @Test("a list of numbers is never added into one", arguments: lists)
@@ -44,6 +45,10 @@ struct InverseTextNormalizerDigitListTests {
     ("about two thousand 500 dollars", "about $2,500"),
     ("about twenty five percent", "about 25%"),
     ("about 25 percent", "about 25%"),
+    // an explicit "and" after a whole hundred joins one amount, as the words do
+    ("it cost 100 and 5 dollars", "it cost $105"),
+    ("it cost 100 and five dollars", "it cost $105"),
+    ("it cost 200 and 20 dollars", "it cost $220"),
   ]
 
   @Test("one number, with or without a thousands comma, still converts", arguments: controls)
