@@ -484,6 +484,8 @@ import os
       var isCapturing = false
       var isRunning: Bool { running }
       private(set) var rebuildCallCount = 0
+      private(set) var abandonCallCount = 0
+      func abandonPendingStart() { abandonCallCount += 1 }
       #if DEBUG
         var debugZeroFillController: DebugZeroFillController?
         var wakeDiagnostic: (firstNonZeroRoutedIndex: Int?, routedCountAtActivation: Int?) {
@@ -523,6 +525,36 @@ import os
       }
     }
 
+    /// PR #4628 cloud review: when this fails, a start replaced while its own microphone open is
+    /// still pending (nothing committed yet) is dropped without giving that open up, and a late open
+    /// can leave a running microphone nobody owns.
+    @Test("a start replaced before its open committed gives that open up")
+    func replacedPendingOpenIsGivenUp() async throws {
+      let lane = AudioUnitLane(label: "test.manager.resolve.pending-replace")
+      let manager = Self.makeManager(lane: lane, resolver: Self.immediateResolver())
+      let older = GatedSource(step: "older")
+      older.running = false  // its open has not committed a unit
+      let newer = GatedSource(step: "newer")
+      var built: [GatedSource] = [older, newer]
+      manager.installSourceFactoryForTesting { _ in built.removeFirst() }
+
+      let olderStart = Task {
+        try? await manager.preWarm(startDeadline: MicrophoneStartBudget.deadline(from: .now))
+      }
+      #expect(await older.entered.wait())
+      let newerStart = Task {
+        try await manager.preWarm(startDeadline: MicrophoneStartBudget.deadline(from: .now))
+      }
+      #expect(await newer.entered.wait())
+      #expect(older.abandonCallCount == 1, "the replaced start's pending open was given up")
+      #expect(older.rebuildCallCount == 0, "nothing was committed, so nothing is torn down")
+
+      newer.release.fire()
+      try await newerStart.value
+      older.release.fire()
+      _ = await olderStart.value
+    }
+
     @Test(
       "a replaced start still reports its own attempt once but cannot overwrite the newer start's",
       .tags(.observabilityContract))
@@ -550,6 +582,7 @@ import os
       let newerStart = Task { try await manager.preWarm(startDeadline: MicrophoneStartBudget.deadline(from: .now)) }
       #expect(await newer.entered.wait())
       #expect(older.rebuildCallCount == 1, "the newer start released the older microphone")
+      #expect(older.abandonCallCount == 1, "and gave up the older start's pending open")
 
       newer.release.fire()
       try await newerStart.value

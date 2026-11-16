@@ -1040,6 +1040,9 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   /// the incarnation: with no active source nothing is destroyed, so a bump here
   /// would falsely satisfy `fresh_pipe_proven`.
   private func rebuildActiveSource(_ source: any AudioInputSource) {
+    // #4601 §5: an open still pending on this source is given up first, so it cannot commit a unit
+    // into a source that is being torn down (PR #4628 cloud review).
+    source.abandonPendingStart()
     source.rebuild()
     clearCaptureSessionSource(ifMatching: source)
     #if DEBUG
@@ -1343,6 +1346,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   private func performEngineTeardown() {
     idleSince = nil
     guard let source = activeSource else { return }
+    source.abandonPendingStart()  // #4601 §5: see `rebuildActiveSource`
     activeSource = nil
     clearCaptureSessionSource(ifMatching: source)  // heartpath 5b: don't retain a torn-down source
     Self.btRouteLog("Warm engine teardown")
@@ -1549,9 +1553,14 @@ public final class AudioCaptureManager: AudioCaptureInterface {
       // release goes to the audio-unit lane and stays ordered before the new source's open, which
       // is what the old synchronous teardown here existed to guarantee (no overlap on the same
       // hardware).
-      if activeSource === existing, existing.hasCommittedUnit {
-        Self.btRouteLog("Route changed while warm — tearing down old source")
-        existing.rebuild()
+      // A source replaced while its own open is still pending gives that open up here, so the
+      // open cannot later commit a unit nobody owns (PR #4628 cloud review).
+      if activeSource === existing {
+        existing.abandonPendingStart()
+        if existing.hasCommittedUnit {
+          Self.btRouteLog("Route changed while warm — tearing down old source")
+          existing.rebuild()
+        }
         activeSource = nil
         clearCaptureSessionSource(ifMatching: existing)  // heartpath 5b
       }
