@@ -87,25 +87,26 @@ struct InputDeviceResolution: Sendable {
 /// `AudioDeviceEnumerator.inputDeviceSnapshot()` is the sole list read;
 /// `HALDeviceInputSource` owns opening and committing the chosen device;
 /// `AudioDeviceMonitor` observes device changes and never selects.
-struct InputDeviceResolver {
+/// `Sendable` (#4601): a snapshot of it crosses to the audio-unit lane with each cold open.
+struct InputDeviceResolver: Sendable {
   /// The live system default input. Injected so a test — and the DEBUG UAT seam
   /// — can force its absence, which is the whole failing condition.
-  let defaultInputDeviceID: () -> AudioDeviceID?
+  let defaultInputDeviceID: @Sendable () -> AudioDeviceID?
   /// ONE frozen enumeration. Invoked AT MOST ONCE per `resolve` call: every
   /// count and transport reported below has to describe the same list the
   /// selected device came from.
-  let inputDeviceSnapshot: () -> InputDeviceSnapshot
+  let inputDeviceSnapshot: @Sendable () -> InputDeviceSnapshot
   /// The transport of ONE known device. A targeted property read, not a list
   /// read, so rung 1 can ask what the system default IS without paying for the
   /// enumeration it exists to avoid (#2022).
-  let transportForDevice: (AudioDeviceID) -> UInt32?
+  let transportForDevice: @Sendable (AudioDeviceID) -> UInt32?
 
   init(
-    defaultInputDeviceID: @escaping () -> AudioDeviceID? = AudioDeviceEnumerator
+    defaultInputDeviceID: @escaping @Sendable () -> AudioDeviceID? = AudioDeviceEnumerator
       .defaultInputDeviceID,
-    inputDeviceSnapshot: @escaping () -> InputDeviceSnapshot = AudioDeviceEnumerator
+    inputDeviceSnapshot: @escaping @Sendable () -> InputDeviceSnapshot = AudioDeviceEnumerator
       .inputDeviceSnapshot,
-    transportForDevice: @escaping (AudioDeviceID) -> UInt32? = AudioDeviceEnumerator
+    transportForDevice: @escaping @Sendable (AudioDeviceID) -> UInt32? = AudioDeviceEnumerator
       .transportTypeRaw(for:)
   ) {
     self.defaultInputDeviceID = defaultInputDeviceID
