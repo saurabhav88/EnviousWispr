@@ -347,24 +347,6 @@ enum HistoryDictationPresentation {
     .sorted { $0.range.lowerBound < $1.range.lowerBound }
   }
 
-  /// `polishedTimeline` off the main actor: it aligns and searches whole texts (Codex PR2 r6).
-  @concurrent
-  static func polishedTimelineInBackground(
-    _ spans: [TimedSpan], original: String, polished: String, alignment: WordDiff.Alignment
-  ) async -> [TimedSpan] {
-    polishedTimeline(spans, original: original, polished: polished, alignment: alignment)
-  }
-
-  /// Carries original-text passage times onto the polished text through the same rule.
-  static func polishedTimeline(
-    _ spans: [TimedSpan], original: String, polished: String, alignment: WordDiff.Alignment
-  ) -> [TimedSpan] {
-    spans.compactMap { span in
-      projectForTiming(span.range, original: original, cleaned: polished, alignment: alignment)
-        .map { TimedSpan(range: $0, seconds: span.seconds) }
-    }
-  }
-
   /// `range` carried from `original` onto `cleaned` for a passage TIME, or nil when the
   /// correspondence is not certain (Codex PR2 r5). The display alignment is deterministic but
   /// not proof: when the passage's words occur more than once in the source, a single Myers
@@ -426,22 +408,6 @@ enum HistoryDictationPresentation {
       }
     }
     return nil
-  }
-
-  /// A block's time: the first passage that starts inside it. Nil leaves the gutter empty.
-  static func time(of block: Range<Int>, in spans: [TimedSpan]) -> Double? {
-    spans.first { block.contains($0.range.lowerBound) }?.seconds
-  }
-
-  /// A Marked up block's time, read from the original positions of its kept and removed runs.
-  static func time(ofMarkedUp block: [MarkRun], in spans: [TimedSpan]) -> Double? {
-    let offsets = block.compactMap { run in
-      run.originalOffset.map { $0..<($0 + run.text.utf16.count) }
-    }
-    guard let lower = offsets.map(\.lowerBound).min(),
-      let upper = offsets.map(\.upperBound).max()
-    else { return nil }
-    return time(of: lower..<upper, in: spans)
   }
 
   // MARK: - Change inspector

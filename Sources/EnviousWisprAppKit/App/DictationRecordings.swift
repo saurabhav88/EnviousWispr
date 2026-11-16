@@ -95,7 +95,18 @@ import Foundation
   func start() {
     guard startup == nil else { return }
     // Enqueued now, so it runs before any recording admitted after launch.
-    startup = executor.enqueue { [self] in await launchCleanup() }
+    startup = executor.enqueue { [self] in
+      await launchCleanup()
+      await loadPresence()
+    }
+  }
+
+  /// One listing of the recordings folder, so History knows which cards have a recording before
+  /// it draws them (#4611). A failed listing leaves every card unknown, which draws the player
+  /// space as before.
+  private func loadPresence() async {
+    guard let ids = try? await archive.index() else { return }
+    changes.noteIndex(ids)
   }
 
   /// Awaitable completion of `start()`, for callers and tests that need the cleanup finished.
@@ -366,7 +377,10 @@ import Foundation
       let inFlight = Set(generations.keys)
       generations.removeAll()
       arbiter?.stopAllDictationsForDeletion()
-      defer { changes.changedAll() }
+      defer {
+        changes.changedAll()
+        Task { await loadPresence() }
+      }
       let before = try? await archive.index().count
       var failed = false
       var removed: Int?
@@ -471,7 +485,10 @@ import Foundation
   func removeAllInCommand() async throws {
     generations.removeAll()
     arbiter?.stopAllDictationsForDeletion()
-    defer { changes.changedAll() }
+    defer {
+      changes.changedAll()
+      Task { await loadPresence() }
+    }
     try await archive.removeEverything()
   }
 

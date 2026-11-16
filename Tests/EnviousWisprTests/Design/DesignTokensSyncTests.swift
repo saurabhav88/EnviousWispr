@@ -307,7 +307,8 @@ struct DesignTokensSyncTests {
   static let compiledFonts: [String: Font] = [
     "Font.stSectionHeader": .stSectionHeader, "Font.stRowTitle": .stRowTitle,
     "Font.stRowLabel": .stRowLabel, "Font.stBody": .stBody, "Font.stHelper": .stHelper,
-    "Font.stRowHelper": .stRowHelper, "Font.obDisplay": .obDisplay,
+    "Font.stRowHelper": .stRowHelper, "Font.stDayTitle": .stDayTitle,
+    "Font.stCardText": .stCardText, "Font.obDisplay": .obDisplay,
     "Font.obSubheading": .obSubheading, "Font.obBody": .obBody, "Font.obCaption": .obCaption,
     "Font.obCaptionSmall": .obCaptionSmall, "Font.obLabel": .obLabel,
     "Font.firstRunHero": .firstRunHero, "Font.firstRunDisplay": .firstRunDisplay,

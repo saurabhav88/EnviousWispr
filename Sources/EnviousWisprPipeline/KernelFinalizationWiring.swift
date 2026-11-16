@@ -760,6 +760,10 @@ struct KernelFinalizationWiring {
         backendType: adapter.engineIdentity.backendType,
         llmProvider: outcome.llmProvider,
         llmModel: outcome.llmModel,
+        // #4611: History names the app each dictation went to (the time column and the
+        // All apps filter read `metrics.targetApp`). The full metrics are attached to the
+        // in-memory row after the paste; only the app is known and saved here.
+        metrics: ExecutionMetrics(targetApp: context.targetApp?.bundleIdentifier),
         // #1063 PR1: link this live transcript to its crash-recovery spool (nil
         // unless recovery was armed) so the host deletes that session's spool +
         // key once this save is durable. `isRecovered` is false — this is the

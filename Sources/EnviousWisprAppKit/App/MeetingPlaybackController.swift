@@ -220,6 +220,18 @@ final class MeetingPlaybackController {
     return await Self.readWaveform(media: media, durationMs: durationMs)
   }
 
+  /// #4611: bar heights from RMS levels, on a decibel scale relative to the loudest bar: the
+  /// loudest is 1, anything 35 dB or more below it is 0, so speech rises and pauses stay flat.
+  nonisolated static func loudness(_ levels: [Float]) -> [Float] {
+    let peak = levels.max() ?? 0
+    guard peak > 0 else { return levels }
+    let floorDecibels: Float = -35
+    return levels.map { level in
+      let decibels = 20 * log10(max(level / peak, 1e-6))
+      return max(0, 1 - decibels / floorDecibels)
+    }
+  }
+
   @concurrent
   private static func readWaveform(media: PlaybackMedia, durationMs: Int) async -> [Float] {
     do {
@@ -230,20 +242,40 @@ final class MeetingPlaybackController {
       } else {
         source = try open(media)
       }
-      let count = min(80, durationMs)
+      // #4611: the voice's shape. A short recording (a dictation) is read whole, so each bar
+      // is the loudness of its whole slice; a long one (a meeting) reads six short windows
+      // spread at least 2.5 s apart across each slice, so drawing stays quick. Loudness is shown on a decibel
+      // scale, the way ears hear it, so speech rises and pauses stay flat.
+      let readsWhole = durationMs <= 180_000
+      // A long recording's slices are at least 2.5 s wide too, so sampled windows never sit
+      // closer than an imported reader's 2 s read-through gap (Codex r2 on #4611).
+      let count = min(120, max(1, durationMs / (readsWhole ? 20 : 2_500)))
       var levels: [Float] = []
       levels.reserveCapacity(count)
       for index in 0..<count {
         try Task.checkCancellation()
         let lower = durationMs * index / count
         let upper = durationMs * (index + 1) / count
-        let window = min(80, upper - lower)
-        let samples = try source.window(startMs: lower + (upper - lower - window) / 2, count: window)
-        let power = samples.reduce(Float(0)) { $0 + $1 * $1 }
-        levels.append((power / Float(max(1, samples.count))).squareRoot())
+        var power: Float = 0
+        var samplesRead = 0
+        if readsWhole {
+          let samples = try source.window(startMs: lower, count: max(1, upper - lower))
+          power = samples.reduce(Float(0)) { $0 + $1 * $1 }
+          samplesRead = samples.count
+        } else {
+          // Windows at least 2.5 s apart: an imported file's reader decodes straight through
+          // gaps under 2 s, which would read the whole file (Codex r1 on #4611).
+          let windows = max(1, min(6, (upper - lower) / 2_500))
+          let span = max(1, (upper - lower) / windows)
+          for part in 0..<windows {
+            let samples = try source.window(startMs: lower + part * span, count: min(60, span))
+            power += samples.reduce(Float(0)) { $0 + $1 * $1 }
+            samplesRead += samples.count
+          }
+        }
+        levels.append((power / Float(max(1, samplesRead))).squareRoot())
       }
-      let peak = levels.max() ?? 0
-      return peak > 0 ? levels.map { $0 / peak } : levels
+      return loudness(levels)
     } catch {
       return []
     }

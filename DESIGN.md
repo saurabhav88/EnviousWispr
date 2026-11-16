@@ -227,6 +227,14 @@ Edit values only here, then run `python3 scripts/design/generate-tokens.py`. Col
       "size": 14,
       "usage": "Caption / hint / status microcopy: footnotes, link hints, status lines. Same 14pt floor as body; it reads quieter through colour, not size."
     },
+    "Font.stDayTitle": {
+      "size": 26, "weight": "bold",
+      "usage": "History day heading (\"Sunday, November 15\"), as the approved diary mock draws it (founder 2026-11-15, #4611). History only."
+    },
+    "Font.stCardText": {
+      "size": 16, "weight": "regular",
+      "usage": "The dictated words on a History dictation card, larger than settings body copy because they are the card's content (founder 2026-11-15, #4611). History only."
+    },
     "Font.stRowHelper": {
       "size": 14,
       "usage": "A settings row's short grey line under its name (#3385). Held at the 14pt floor by founder decision (2026-10-02) rather than the mockup's 13px; kept as its own token so the row line has one owner."

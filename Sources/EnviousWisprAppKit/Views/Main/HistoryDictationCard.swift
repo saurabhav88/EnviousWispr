@@ -4,8 +4,8 @@ import EnviousWisprStorage
 import SwiftUI
 
 /// One dictation in History's diary (#3147 §3.4, approved mock Main.dc.html): the recording's
-/// player (or one line saying why there is none), the text in the row's preferred version with a
-/// reserved paragraph time gutter, Show edits with the Polished / Marked up / Original
+/// player (or one line saying why there is none), the text in the row's preferred version, Show
+/// edits with the Polished / Marked up / Original
 /// comparison and the change inspector, a provenance line, and the actions.
 ///
 /// **Delivery reads the live row at the press.** Copy, Paste, Share and Save hand over
@@ -38,9 +38,8 @@ struct HistoryDictationCard: View {
 
   private var rowID: UUID { display.id }
 
-  /// What can hold keyboard focus in the card; any focus reveals the time gutter.
+  /// What can hold keyboard focus in the card; any focus reveals the card's controls.
   enum Focus: Hashable {
-    case gutter(Int)
     case control(String)
   }
 
@@ -53,7 +52,7 @@ struct HistoryDictationCard: View {
   @Environment(PreviousApplicationTracker.self) private var previousApplication
   @Environment(SettingsManager.self) private var settings
   @Environment(HistoryRepolishRunner.self) private var historyRepolish
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @Environment(HistoryMenuPresenter.self) private var historyMenu
 
   // Recording
   @State private var status: DictationRecordingStatus?
@@ -61,9 +60,6 @@ struct HistoryDictationCard: View {
   @State private var player: MeetingPlaybackController?
   @State private var playerURL: URL?
   @State private var timeline: [HistoryDictationPresentation.TimedSpan] = []
-  /// Passage times carried onto the polished text, prepared off the main actor for the texts and
-  /// timeline in `key` (Codex PR2 r6): `blocks` never aligns or searches the whole text.
-  @State private var polishedSpans: PolishedSpans?
   @State private var actionFailed = false
 
   // Text
@@ -75,15 +71,24 @@ struct HistoryDictationCard: View {
   @State private var comparisonView: HistoryDictationPresentation.TextView =
     HistoryDictationPresentation.editsView
   @State private var openChange: Int?
+  @State private var textExpanded = false
+  /// The deletion fence `status` was read under; a player is built only while it still holds
+  /// (Codex r1 on #4611: a lazy first Play must not outrun a deletion that started after the read).
+  @State private var recordingFence: RecordingFence?
+  @State private var moreAnchor = HistoryMenuAnchorHolder()
 
   // Chrome
-  @State private var hovering = false
   @FocusState private var focus: Focus?
   @State private var copiedAt: Date?
   @State private var saveError: String?
   @State private var confirming: HistoryDeleteKind?
   /// The last preference change made here, offered for Undo until another action replaces it.
   @State private var preferenceNotice: HistoryPreferenceChange?
+
+  private struct RecordingFence: Equatable {
+    let deletions: Int?
+    let epoch: Int?
+  }
 
   private struct RecordingKey: Hashable {
     let rowID: UUID
@@ -109,17 +114,21 @@ struct HistoryDictationCard: View {
       HistoryDictationPresentation.accepts($0, current: texts) ? $0 : nil
     }
     return VStack(alignment: .leading, spacing: DesignSpacing.lg) {
-      recordingRow
       HistoryPolishPreviewContent(preview: polishPreview)
       if editsOn, texts.differ { viewSwitch }
-      HistoryParagraphText(
-        blocks: blocks(row: row, texts: texts, prepared: current),
-        query: query,
-        hasGutter: player != nil && !timeline.isEmpty, reservesGutter: true, revealGutter: revealGutter,
-        reduceMotion: reduceMotion,
-        focus: $focus,
-        onPlay: { play(from: $0) },
-        onOpenChange: { openChange = $0 })
+      if editsOn && texts.differ {
+        HistoryParagraphText(
+          blocks: blocks(row: row, texts: texts, prepared: current),
+          query: query,
+          onOpenChange: { openChange = $0 })
+      } else {
+        // #4611: at most four lines until Show more, so a card is light to build and most
+        // cards share a height.
+        HistoryClampedText(
+          text: HistoryDictationPresentation.plainText(
+            texts, view: HistoryDictationPresentation.defaultView(for: row.effectivePreferredVersion)),
+          query: query, expanded: $textExpanded)
+      }
       if let current, editsOn, let index = openChange,
         let detail = HistoryDictationPresentation.detail(of: index, in: current, timeline: timeline)
       {
@@ -128,8 +137,8 @@ struct HistoryDictationCard: View {
           onCopyOriginal: { PasteService.copyToClipboard($0, kind: .kept) },
           onDone: { openChange = nil })
       }
-      provenance(row)
-      actions(row: row, hasChanges: texts.differ)
+      playbackLine(row)
+      buttonRow(row, hasChanges: texts.differ)
       if let change = preferenceNotice {
         preferenceNoticeRow(change)
       }
@@ -151,7 +160,6 @@ struct HistoryDictationCard: View {
         .strokeBorder(cardBorder, lineWidth: 1)
         .allowsHitTesting(false)
     )
-    .onHover { hovering = $0 }
     // #4609 (Codex code review r1): new texts (a kept polish, a restore) close the comparison
     // rather than showing plain text and then growing into the new markup.
     .onChange(of: texts) { _, _ in
@@ -173,9 +181,6 @@ struct HistoryDictationCard: View {
       else { return }
       editsRequested = false
       editsOn = true
-    }
-    .task(id: PolishedSpans.Key(texts: prepared?.texts, timeline: timeline)) {
-      await preparePolishedSpans()
     }
     .onDisappear {
       polishPreview.cancel()
@@ -209,22 +214,27 @@ struct HistoryDictationCard: View {
     player?.state == .playing ? Color.stAccent.opacity(0.35) : Color.stDivider
   }
 
-  private var revealGutter: Bool { hovering || focus != nil }
 
   private var recordingRevision: Int {
     transcripts.recordings?.changes.revision(for: rowID) ?? 0
   }
 
+  /// #4611: a dictation without a recording draws no player space; its footer says so. Known
+  /// from the recordings listing before this card's own status read, so the card never changes
+  /// height when that read arrives.
+  private var lacksRecording: Bool {
+    if case .absent = status { return true }
+    return status == nil && transcripts.recordings?.changes.hasRecording(rowID) == false
+  }
+
+  private var absenceReason: RecordedAbsence? {
+    if case .absent(let reason) = status { return reason }
+    return nil
+  }
+
   private var isAvailable: Bool {
     if case .available = status { return true }
     return false
-  }
-
-  // MARK: - Recording row
-
-  @ViewBuilder
-  private var recordingRow: some View {
-    HistoryDictationRecordingSlot(status: status, player: player)
   }
 
   // MARK: - Text
@@ -266,55 +276,14 @@ struct HistoryDictationCard: View {
       : HistoryDictationPresentation.defaultView(for: row.effectivePreferredVersion)
     if view == .markedUp, let prepared {
       return HistoryDictationPresentation.markedUpParagraphs(prepared.markedUp).enumerated().map {
-        HistoryParagraphText.Block(
-          id: $0.offset, content: .markedUp($0.element),
-          seconds: HistoryDictationPresentation.time(ofMarkedUp: $0.element, in: timeline))
+        HistoryParagraphText.Block(id: $0.offset, content: .markedUp($0.element))
       }
     }
     let text = HistoryDictationPresentation.plainText(
       texts, view: view == .markedUp ? .polished : view)
-    // Passage times index the original text; the polished text needs the alignment to carry
-    // them, and stays untimed until it is prepared.
-    let spans: [HistoryDictationPresentation.TimedSpan]
-    if view == .original || !texts.differ {
-      spans = timeline
-    } else if let prepared, let polishedSpans,
-      polishedSpans.key == PolishedSpans.Key(texts: prepared.texts, timeline: timeline)
-    {
-      spans = polishedSpans.spans
-    } else {
-      spans = []
-    }
     return HistoryDictationPresentation.paragraphs(of: text).enumerated().map {
-      HistoryParagraphText.Block(
-        id: $0.offset, content: .plain($0.element.text),
-        seconds: HistoryDictationPresentation.time(of: $0.element.range, in: spans))
+      HistoryParagraphText.Block(id: $0.offset, content: .plain($0.element.text))
     }
-  }
-
-  /// The prepared polished-text times and the inputs they were computed from.
-  struct PolishedSpans: Equatable {
-    struct Key: Equatable {
-      let texts: HistoryDictationPresentation.Texts?
-      let timeline: [HistoryDictationPresentation.TimedSpan]
-    }
-    let key: Key
-    let spans: [HistoryDictationPresentation.TimedSpan]
-  }
-
-  private func preparePolishedSpans() async {
-    let key = PolishedSpans.Key(texts: prepared?.texts, timeline: timeline)
-    guard let prepared, !timeline.isEmpty else {
-      polishedSpans = nil
-      return
-    }
-    let spans = await HistoryDictationPresentation.polishedTimelineInBackground(
-      timeline, original: prepared.texts.original, polished: prepared.texts.polished,
-      alignment: prepared.alignment)
-    // Stored only for the inputs it was computed from; a newer key restarts this task.
-    guard !Task.isCancelled, key == PolishedSpans.Key(texts: self.prepared?.texts, timeline: timeline)
-    else { return }
-    polishedSpans = PolishedSpans(key: key, spans: spans)
   }
 
   private func prepareComparison(_ texts: HistoryDictationPresentation.Texts) async {
@@ -343,6 +312,10 @@ struct HistoryDictationCard: View {
       // recording says so. Icon and text, never colour alone.
       // #2087: Kept, for a held Escape Recovery dictation the user kept (held rows use the
       // detail view, which shows their countdown).
+      if case .available(_, let durationMs, _) = status {
+        Text(verbatim: MeetingsPresentation.clock(ms: durationMs)).monospacedDigit()
+        Text(verbatim: "·").accessibilityHidden(true)
+      }
       EscapeRecoveryBadge(display: row)
       ForEach(HistoryDictationPresentation.statusFlags(for: row), id: \.self) { flag in
         switch flag {
@@ -373,6 +346,16 @@ struct HistoryDictationCard: View {
         Text(verbatim: "·").accessibilityHidden(true)
         Text(line)
       }
+      if lacksRecording {
+        Text(verbatim: "·").accessibilityHidden(true)
+        HStack(spacing: 2) {
+          Image(systemName: "waveform.slash").accessibilityHidden(true)
+          Text("No recording", comment: "History dictation card footer: this dictation has no saved recording.")
+        }
+        .help(Text(Self.absenceLine(absenceReason)))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(Self.absenceLine(absenceReason)))
+      }
     }
     .font(.stHelper)
     .foregroundStyle(.stTextSecondary)
@@ -398,54 +381,43 @@ struct HistoryDictationCard: View {
     )
   }
 
-  private func actions(row: HistoryDictationDisplay, hasChanges: Bool) -> some View {
-    ViewThatFits(in: .horizontal) {
-      HStack(spacing: DesignSpacing.md) {
-        deliveryButtons(row)
-        Spacer(minLength: 0)
-        primaryButtons(row, hasChanges: hasChanges)
-      }
-      WrappingHStack(spacing: DesignSpacing.md) {
-        deliveryButtons(row)
-        primaryButtons(row, hasChanges: hasChanges)
+  // MARK: - Playback line and buttons (#4611)
+
+  /// One line under the text: Play, then the recording's length and where the text came from.
+  /// While the recording plays (or is paused part way) the same line shows its clock and
+  /// waveform instead, so the card never changes height.
+  private func playbackLine(_ row: HistoryDictationDisplay) -> some View {
+    HStack(spacing: DesignSpacing.md) {
+      if case .available = status {
+        HistoryInlinePlayback(player: player, toggle: togglePlay) {
+          provenance(row)
+        }
+      } else {
+        provenance(row)
+        if case .unreadable = status {
+          Text(Self.unreadableLine)
+            .font(.stHelper)
+            .foregroundStyle(.stTextSecondary)
+            .lineLimit(1)
+        }
       }
     }
+    .frame(minHeight: HistoryInlinePlaybackMetrics.buttonSize)
   }
 
-  private func deliveryButtons(_ row: HistoryDictationDisplay) -> some View {
-    Group {
-      pasteButton(row)
-      ShareLink(
-        item: DeliverableText(resolve: { exportText }),
-        preview: SharePreview(Self.dictationWord)
-      ) {
-        EnviousButtonLabel(
-          LocalizedStringResource("Share", comment: "History dictation card: shares the text."),
-          size: .medium, systemImage: "square.and.arrow.up")
-      }
-      .settingsButton(.quiet, size: .medium, isEnabled: true)
-      .focused($focus, equals: .control("share"))
-      Button {
-        saveDocument()
-      } label: {
-        EnviousButtonLabel(
-          LocalizedStringResource(
-            "Save as…", comment: "Export button: save the transcript to a file."),
-          size: .medium, systemImage: "square.and.arrow.down")
-      }
-      .settingsButton(.quiet, size: .medium, isEnabled: true)
-      .focused($focus, equals: .control("save"))
-    }
-    // Keep each capsule at its natural size so the footer wraps whole buttons.
-    .fixedSize()
-    // Shown on hover and on keyboard focus anywhere in the card, as the mock places them.
-    // The state changes without the fade under Reduce Motion.
-    .opacity(revealGutter ? 1 : 0)
-    .animation(reduceMotion ? nil : SettingsHover.animation, value: revealGutter)
+  static let unreadableLine = LocalizedStringResource(
+    "The recording can't be read right now.",
+    comment: "History: the recording's file or details could not be read just now.")
+
+  private func togglePlay() {
+    guard let player = ensurePlayer() else { return }
+    if player.state == .playing { player.pause() } else { player.play() }
   }
 
-  private func primaryButtons(_ row: HistoryDictationDisplay, hasChanges: Bool) -> some View {
-    Group {
+  /// Show edits, Copy and More, always in this place (#4611): fewer buttons, so a card is light
+  /// to build, and the row never wraps when the window narrows.
+  private func buttonRow(_ row: HistoryDictationDisplay, hasChanges: Bool) -> some View {
+    HStack(spacing: DesignSpacing.md) {
       if hasChanges {
         Button {
           openChange = nil
@@ -482,118 +454,150 @@ struct HistoryDictationCard: View {
           if copiedAt == pressed { copiedAt = nil }
         }
       } label: {
-        EnviousButtonLabel(verbatim: copy.title, size: .medium, systemImage: copy.systemImage)
+        Image(systemName: copy.systemImage)
+          .frame(width: 16, height: 16)
       }
       .settingsButton(.quiet, size: .medium, isEnabled: true)
       .focused($focus, equals: .control("copy"))
+      .help(Text(verbatim: copy.title))
+      .accessibilityLabel(Text(verbatim: copy.title))
 
       moreMenu(row)
     }
     .fixedSize()
   }
 
-  private func pasteButton(_ row: HistoryDictationDisplay) -> some View {
-    Button {
-      if permissions.accessibilityGranted {
-        paste(row)
-      } else {
-        navigation.request(.appSettings(.permissions))
-      }
-    } label: {
-      EnviousButtonLabel(
-        verbatim: EscapeRecoveryRowPresentation.pasteLabel, size: .medium,
-        systemImage: "arrow.right.doc.on.clipboard")
-    }
-    .settingsButton(.quiet, size: .medium, isEnabled: pasteAllowed(row))
-    .focused($focus, equals: .control("paste"))
-    .help(
-      Text(
-        "Paste into the app you were just using",
-        comment: "History dictation card: tooltip of Paste."))
-  }
-
   private func moreMenu(_ row: HistoryDictationDisplay) -> some View {
-    Menu {
-      HistoryPolishMenu(
-        title: "Polish again with", surface: .dictation, currentProvider: row.llmProvider,
-        currentModel: row.llmModel,
-        currentSize: row.egOneSize,
-        isEnabled: polishPreview.canStart
-      ) { choice in
-        polishPreview.start(rowID: rowID, choice: choice, runner: historyRepolish, history: transcripts)
-      }
-      Divider()
-      if case .available(_, _, let pinned) = status {
-        Toggle(
-          isOn: Binding(get: { pinned }, set: { setKeep($0) })
-        ) {
-          Text(
-            "Keep this recording",
-            comment: "History: keeps this dictation's recording from being removed automatically.")
-        }
-      }
-      // The escape route sits beside the action that set it (§3.4: "The same menu offers Use
-      // polished text when original is preferred").
-      switch HistoryDictationPresentation.preferenceAction(for: row) {
-      case .restoreOriginal:
-        Button {
-          setPreference(.original)
-        } label: {
-          Label {
-            Text(
-              "Restore original text",
-              comment: "History dictation card, More menu: shows and delivers your words before AI polish instead of the polished text.")
-          } icon: {
-            Image(systemName: "arrow.uturn.backward")
-          }
-        }
-      case .usePolished:
-        Button {
-          setPreference(nil)
-        } label: {
-          Label {
-            Text(
-              "Use polished text",
-              comment: "History dictation card, More menu: shows and delivers the AI-polished text again.")
-          } icon: {
-            Image(systemName: "sparkles")
-          }
-        }
-      case nil:
-        EmptyView()
-      }
-      Divider()
-      if case .available = status {
-        Button {
-          confirming = .recordingsOnly
-        } label: {
-          Label {
-            Text(
-              "Delete recording, keep text",
-              comment: "History: deletes this dictation's audio and keeps its text.")
-          } icon: {
-            Image(systemName: "waveform.slash")
-          }
-        }
-      }
-      Button(role: .destructive) {
-        confirming = .textAndRecordings
-      } label: {
-        Label {
-          Text("Delete dictation", comment: "VoiceOver label of the History delete button for a dictation.")
-        } icon: {
-          Image(systemName: "trash")
-        }
-      }
+    // #4611: the app's own menu (the approved mock), under a round outlined button like Copy.
+    Button {
+      guard let anchor = moreAnchor.view else { return }
+      historyMenu.toggle(items: moreItems(row), from: anchor)
     } label: {
       Image(systemName: "ellipsis")
+        .fontWeight(.bold)
+        .frame(width: 16, height: 16)
     }
-    .menuStyle(.borderlessButton)
-    .menuIndicator(.hidden)
-    .fixedSize()
+    .settingsButton(.quiet, size: .medium, isEnabled: true)
+    .background(HistoryMenuAnchor(holder: moreAnchor))
     .focused($focus, equals: .control("more"))
+    .help(Text("More actions", comment: "History dictation card: opens the More menu."))
     .accessibilityLabel(
       Text("More actions", comment: "History dictation card: opens the More menu."))
+  }
+
+  /// The More menu's items, built when it opens, from the card's live state.
+  private func moreItems(_ row: HistoryDictationDisplay) -> [HistoryMenuItem] {
+    var items: [HistoryMenuItem] = [
+      .init(
+        id: "paste", title: EscapeRecoveryRowPresentation.pasteLabel,
+        systemImage: "arrow.right.doc.on.clipboard",
+        isEnabled: pasteAllowed(row) || !permissions.accessibilityGranted,
+        kind: .action {
+          if permissions.accessibilityGranted {
+            paste(row)
+          } else {
+            navigation.request(.appSettings(.permissions))
+          }
+        }),
+      .init(
+        id: "share", title: String(localized: "Share…", comment: "History dictation card: shares the text."),
+        systemImage: "square.and.arrow.up",
+        kind: .action {
+          guard let anchor = moreAnchor.view else { return }
+          // Delivery reads the live row when the receiving app asks (`DeliverableText`), so a
+          // deletion or a changed preference while the picker is open never sends old text
+          // (cloud review on #4616).
+          let provider = NSItemProvider()
+          let history = transcripts
+          let id = rowID
+          provider.register(
+            DeliverableText(resolve: { history.dictationTextForDelivery(id: id) }))
+          NSSharingServicePicker(items: [provider]).show(
+            relativeTo: anchor.bounds, of: anchor, preferredEdge: .minY)
+        }),
+      .init(
+        id: "save", title: String(localized: "Save as…", comment: "Export button: save the transcript to a file."),
+        systemImage: "square.and.arrow.down", kind: .action { saveDocument() }),
+      .divider("d1"),
+    ]
+    let choices = historyRepolish.choices(.dictation)
+    var polish: [HistoryMenuItem] = choices.map { choice in
+      .init(
+        id: "polish-\(choice.provider.rawValue)-\(choice.model)-\(choice.egOneSize?.rawValue ?? "")",
+        title: HistoryPolishMenu.label(
+          choice, currentProvider: row.llmProvider, currentModel: row.llmModel, currentSize: row.egOneSize),
+        isEnabled: polishPreview.canStart,
+        kind: .action {
+          polishPreview.start(rowID: rowID, choice: choice, runner: historyRepolish, history: transcripts)
+        })
+    }
+    if choices.isEmpty {
+      polish.append(
+        .init(
+          id: "polish-none",
+          title: String(localized: "No models are ready", comment: "History polish menu: no configured AI model can run."),
+          isEnabled: false, kind: .action {}))
+    }
+    polish += [
+      .divider("polish-d"),
+      .init(
+        id: "polish-setup",
+        title: String(localized: "Set up more models in AI Polish"),
+        kind: .action {
+          navigation.request(.aiPolish)
+          appWindow.showWindow()
+        }),
+    ]
+    items.append(
+      .init(
+        id: "polish",
+        title: String(localized: "Polish again with", comment: "History: opens the list of AI models to polish this text again."),
+        systemImage: "sparkles", kind: .submenu(polish)))
+    if case .available(_, _, let pinned) = status {
+      items.append(
+        .init(
+          id: "keep",
+          title: String(
+            localized: "Keep this recording",
+            comment: "History: keeps this dictation's recording from being removed automatically."),
+          isChecked: pinned, kind: .action { setKeep(!pinned) }))
+    }
+    switch HistoryDictationPresentation.preferenceAction(for: row) {
+    case .restoreOriginal:
+      items.append(
+        .init(
+          id: "restore",
+          title: String(
+            localized: "Restore original text",
+            comment: "History dictation card, More menu: shows and delivers your words before AI polish instead of the polished text."),
+          systemImage: "arrow.uturn.backward", kind: .action { setPreference(.original) }))
+    case .usePolished:
+      items.append(
+        .init(
+          id: "use-polished",
+          title: String(
+            localized: "Use polished text",
+            comment: "History dictation card, More menu: shows and delivers the AI-polished text again."),
+          systemImage: "sparkles", kind: .action { setPreference(nil) }))
+    case nil:
+      break
+    }
+    items.append(.divider("d2"))
+    if case .available = status {
+      items.append(
+        .init(
+          id: "delete-recording",
+          title: String(
+            localized: "Delete recording, keep text",
+            comment: "History: deletes this dictation's audio and keeps its text."),
+          systemImage: "waveform.slash", kind: .action { confirming = .recordingsOnly }))
+    }
+    items.append(
+      .init(
+        id: "delete",
+        title: String(localized: "Delete dictation", comment: "VoiceOver label of the History delete button for a dictation."),
+        systemImage: "trash", isDestructive: true, kind: .action { confirming = .textAndRecordings }))
+    return items
   }
 
   // MARK: - Delivery
@@ -661,18 +665,41 @@ struct HistoryDictationCard: View {
     guard !Task.isCancelled else { return }
     guard before == (arbiter?.deletionCount(for: id), arbiter?.dictationEpoch) else { return }
     status = read
-    guard case .available(let url, let durationMs, _) = read else {
+    recordingFence = RecordingFence(deletions: before.0, epoch: before.1)
+    switch read {
+    case .available: recordings.changes.note(rowID, hasRecording: true)
+    case .absent: recordings.changes.note(rowID, hasRecording: false)
+    case .unreadable: break
+    }
+    guard case .available(let url, _, _) = read else {
       dropPlayer()
       return
     }
+    // #4611: the player is built at the first Play, not when the card appears; a player built
+    // for another file (or one a deletion stopped) goes now.
+    if player != nil, Self.needsNewPlayer(current: player, currentURL: playerURL, read: url) {
+      dropPlayer()
+    }
+  }
+
+  /// The card's player, built on first use for the recording `status` names.
+  private func ensurePlayer() -> MeetingPlaybackController? {
+    if let player { return player }
+    guard case .available(let url, let durationMs, _) = status,
+      let recordings = transcripts.recordings, let fence = recordingFence
+    else { return nil }
+    let arbiter = recordings.arbiter
     guard
-      Self.needsNewPlayer(current: player, currentURL: playerURL, read: url)
-    else { return }
-    dropPlayer()
-    player = MeetingPlaybackController(
+      fence
+        == RecordingFence(
+          deletions: arbiter?.deletionCount(for: .dictation(rowID)), epoch: arbiter?.dictationEpoch)
+    else { return nil }
+    let made = MeetingPlaybackController(
       media: .dictation(url), durationMs: durationMs, output: MeetingPlaybackEngineOutput(),
-      sourceID: id, arbiter: arbiter)
+      sourceID: .dictation(rowID), arbiter: arbiter)
+    player = made
     playerURL = url
+    return made
   }
 
   /// Passage times, read off the main actor only while a recording exists. A missing or
@@ -750,7 +777,7 @@ struct HistoryDictationCard: View {
   }
 
   private func play(from seconds: Double) {
-    guard let player, player.state != .unavailable else { return }
+    guard let player = ensurePlayer(), player.state != .unavailable else { return }
     player.seek(toMs: Int(seconds * 1000))
     player.play()
   }

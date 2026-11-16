@@ -18,21 +18,20 @@ import Testing
 struct HistoryCardStabilityTests {
   init() { _ = NSApplication.shared }
 
-  private func height(_ status: DictationRecordingStatus?) -> CGFloat {
-    let view = NSHostingView(
-      rootView: HistoryDictationRecordingSlot(status: status, player: nil).frame(width: 520))
-    return view.fittingSize.height
-  }
-
-  @Test("The recording line takes the same height before and after its status arrives")
-  func recordingSlotHeightIsFixed() {
-    let before = height(nil)
-    #expect(before > 0)
-    let after = [
-      height(.unreadable), height(.absent(nil)), height(.absent(RecordedAbsence(.recordingsOff))),
-      height(.absent(RecordedAbsence(.expired, expiredAfterDays: 7))),
-    ]
-    #expect(after.allSatisfy { $0 == before }, "status nil \(before) vs \(after)")
+  @Test("A card knows a dictation has no recording before its own status read (#4611)")
+  func recordingPresenceIsKnownBeforeTheCardReads() {
+    let changes = DictationRecordingChanges()
+    let kept = UUID()
+    let none = UUID()
+    #expect(changes.hasRecording(none) == nil)
+    changes.noteIndex([kept])
+    #expect(changes.hasRecording(kept) == true)
+    #expect(changes.hasRecording(none) == false)
+    // A new recording published for a row: unknown until that card reads it again.
+    changes.changed(none)
+    #expect(changes.hasRecording(none) == nil)
+    changes.note(none, hasRecording: true)
+    #expect(changes.hasRecording(none) == true)
   }
 
   @Test("The catalog carries a dictation's full drawn content, past the 600-character preview")

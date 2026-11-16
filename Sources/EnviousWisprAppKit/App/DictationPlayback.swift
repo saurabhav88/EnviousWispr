@@ -144,14 +144,48 @@ final class DictationRecordingChanges {
   /// Told after every change, so recording storage use is measured again (`RecordingRetention`).
   @ObservationIgnored var onChange: (@MainActor () -> Void)?
 
+  /// Which rows have a recording, as last read (#4611). A card draws its final shape from this
+  /// on first display (player space, or none for a dictation without a recording), so it never
+  /// grows or shrinks when its own status read arrives.
+  private var listed: Set<UUID>?
+  private var read: [UUID: Bool] = [:]
+  private var unread: Set<UUID> = []
+
   func changed(_ rowID: UUID) {
     revisions[rowID, default: 0] += 1
+    if !unread.contains(rowID) { unread.insert(rowID) }
     onChange?()
   }
 
   func changedAll() {
     allRevision += 1
+    listed = nil
+    read = [:]
+    unread = []
     onChange?()
+  }
+
+  /// Whether `rowID` has a recording; nil when not known (before the first listing, or after
+  /// a change not yet read again).
+  func hasRecording(_ rowID: UUID) -> Bool? {
+    if unread.contains(rowID) { return nil }
+    if let known = read[rowID] { return known }
+    return listed?.contains(rowID)
+  }
+
+  /// The recordings folder's listing.
+  func noteIndex(_ ids: Set<UUID>) {
+    listed = ids
+    read = [:]
+    unread = []
+  }
+
+  /// A card's fresh status read. Writes only when the answer differs, so cards that agree with
+  /// the listing never redraw each other.
+  func note(_ rowID: UUID, hasRecording: Bool) {
+    if unread.contains(rowID) { unread.remove(rowID) }
+    guard self.hasRecording(rowID) != hasRecording else { return }
+    read[rowID] = hasRecording
   }
 
   /// One number that moves whenever `rowID`'s recording may have changed.
