@@ -367,7 +367,9 @@ struct HistoryMeetingCard: View {
 
   private func canDeliver(_ record: MeetingRecord?) -> Bool {
     // A row whose meeting folder is gone has no record; the press reads the live row (and does nothing without one).
-    guard let record else { return true }
+    guard let record else {
+      return summary?.rowID != nil || !transcripts.rowIDs(ofMeeting: meetingID).isEmpty
+    }
     return !record.deletionRequested && record.committedTranscriptGeneration != nil
   }
 
