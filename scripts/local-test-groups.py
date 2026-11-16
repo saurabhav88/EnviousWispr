@@ -289,11 +289,13 @@ def stop_children(children):
         raise RuntimeError(f"owned group cleanup failed: {failures}")
 
 
-def report_failed_groups(groups, outcomes, group_dir):
+def report_failed_groups(groups, outcomes, group_dir, root):
     """Print one end-of-run summary: every group's outcome, then every failing
     test from every group. Failing tests are the `ERROR: <label> ...` lines the
     verdict owner (lib/lane-verdict.py, via xcode-test-run.sh) already printed
-    into each group's driver log; this only gathers them in one place."""
+    into each group's driver log; this only gathers them in one place. That owner
+    names at most 20 cases per group; past that, the rest are read from the
+    group's result bundle with the same owner's accepted set."""
     print("==> Debug groups summary:", flush=True)
     for name, _, _ in groups:
         kind, detail = outcomes.get(name, ("passed", None))
@@ -304,20 +306,51 @@ def report_failed_groups(groups, outcomes, group_dir):
     for name, _, _ in groups:
         if name not in outcomes:
             continue
+        label = f"Debug {name} group"
         driver = group_dir / (name + "-driver.log")
         try:
             lines = driver.read_text(errors="replace").splitlines()
         except OSError as error:
-            print(f"ERROR: Debug {name} group: driver log unreadable: {error}", flush=True)
+            print(f"ERROR: {label}: driver log unreadable: {error}", flush=True)
             continue
-        found = [line for line in lines if line.startswith(f"ERROR: Debug {name} group")]
+        found = [line for line in lines if line.startswith(f"ERROR: {label}")]
         if not found:
             # No verdict lines (a hang, a crash before the verdict, a setup error):
             # the driver log's tail is the only evidence there is.
-            found = [f"ERROR: Debug {name} group printed no verdict; last driver log lines:"]
+            found = [f"ERROR: {label} printed no verdict; last driver log lines:"]
             found += ["    " + line for line in lines[-25:]]
+        capped = any(line.startswith(f"ERROR: {label} and ") and line.endswith(" more")
+                     for line in found)
         for line in found:
             print(line, flush=True)
+        if capped:
+            for line in uncapped_failures(root, group_dir / (name + ".xcresult"), label):
+                print(line, flush=True)
+
+
+def uncapped_failures(root, bundle, label):
+    """Every case in `bundle` whose result the lane judge does not accept."""
+    import importlib.util
+    try:
+        spec = importlib.util.spec_from_file_location("lane_verdict", root / "scripts/lib/lane-verdict.py")
+        judge = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(judge)
+        result = subprocess.run(
+            ["xcrun", "xcresulttool", "get", "test-results", "tests", "--path", str(bundle)],
+            check=True, capture_output=True, text=True)
+        payload = json.loads(result.stdout)
+        cases = []
+        for node in payload["testNodes"]:
+            judge._test_cases(node, cases)
+    except Exception as error:
+        return [f"ERROR: {label}: full failing list unavailable ({error}); bundle: {bundle}"]
+    accepted = judge._accepted()
+    lines = [f"ERROR: {label} full failing list:"]
+    for case in cases:
+        if case.get("result") not in accepted:
+            identity = case.get("nodeIdentifier") or case.get("name") or "<unnamed test>"
+            lines.append(f"ERROR: {label} result is {case.get('result')!r}: {identity}")
+    return lines
 
 
 def run_groups(opts):
@@ -450,10 +483,20 @@ def run_groups(opts):
         # pipe open. The driver logs are diagnostics only (results and the combined
         # log come from each group's own files), and the owned-group cleanup in the
         # finally block below ends such descendants.
+        # On a full pass they stay diagnostics only; a group still in kill_due is
+        # ended by that cleanup, after the merge (each leader exited cleanly).
         for thread in pumps:
             thread.join(timeout=1)
         if outcomes:
-            report_failed_groups(groups, outcomes, group_dir)
+            # The summary reads the driver logs, so let every pump reach EOF
+            # first: KILL what the stopped groups left (they already had TERM),
+            # which closes their pipes, then wait for the copies to finish.
+            for index in tuple(kill_due):
+                del kill_due[index]
+                stop_group(index, signal.SIGKILL)
+            for thread in pumps:
+                thread.join(timeout=TERMINATION_GRACE_SECONDS)
+            report_failed_groups(groups, outcomes, group_dir, root)
             hung = [detail for kind, detail in outcomes.values() if kind == "hung"]
             names = ", ".join(sorted(outcomes))
             if hung:

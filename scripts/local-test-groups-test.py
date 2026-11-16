@@ -73,6 +73,7 @@ suites = [a.split(':', 1)[1].split('/')[1] for a in args if a.startswith('-only-
 if os.environ.get('MISSING_SUITE') and suites: suites.pop()
 groups = [(target, suites)] if name != 'serial' else [(target, ['StatefulTests']), ('EnviousWisprDesktopEffectsTests', ['DesktopTests']), ('EnviousWisprASRTests', ['ASRTests'])]
 if os.environ.get('LEAK_SOURCE') and name == 'serial': groups[0][1].append('DesktopEffectIsolationFreezeTests')
+if name == 'serial': groups[0][1].extend('ExtraSuite%02d' % i for i in range(int(os.environ.get('EXTRA_SERIAL_SUITES', '0'))))
 bundles = []
 for bundle, suite_names in groups:
     cases = []
@@ -114,7 +115,7 @@ if os.environ.get('DROP_PARAMETER'): roots[0]['children'][0]['children'][0]['chi
         self.env = dict(os.environ, PATH=str(self.bin) + os.pathsep + os.environ["PATH"],
                         FIXTURE_ROOT=str(self.root), CI="")
         for key in ("HOLD_GROUP", "FAIL_GROUP", "FAIL_VERDICT", "MISSING_SUITE", "LEAK_SOURCE",
-                    "FAIL_MERGE", "DROP_MERGED_CASE", "DROP_PARAMETER", "DUPLICATE_IDENTITY", "IGNORE_CHILD_TERM", "DELAY_GROUP", "DELAY_SECONDS", "EW_NO_OUTPUT_LIMIT_SECS", "EW_HUNG_MARKER",
+                    "FAIL_MERGE", "DROP_MERGED_CASE", "DROP_PARAMETER", "DUPLICATE_IDENTITY", "IGNORE_CHILD_TERM", "DELAY_GROUP", "DELAY_SECONDS", "EXTRA_SERIAL_SUITES", "EW_NO_OUTPUT_LIMIT_SECS", "EW_HUNG_MARKER",
                     "EXPECTED_GROUPS", "TEST_RUNNER_EW_WRITE_TEST_INVENTORY_BASELINE",
                     "TEST_RUNNER_EW_REAL_BOUNDARY", "EW_LOCAL_TEST_WORKERS"):
             self.env.pop(key, None)
@@ -235,6 +236,16 @@ if os.environ.get('DROP_PARAMETER'): roots[0]['children'][0]['children'][0]['chi
             self.assertIn(line, summary)
         self.assertIn("==>   source: FAILED (exit 1)", result.stdout)
         self.assertIn("==>   serial: FAILED (exit 1)", result.stdout)
+
+    def test_more_than_twenty_failures_in_one_group_are_all_listed(self):
+        # The verdict owner names 20 cases then "and N more"; the summary lists the rest.
+        result = self.run_groups(rc=1, FAIL_VERDICT="serial", EXTRA_SERIAL_SUITES="22")
+        summary = result.stdout[result.stdout.index("==> Failing tests from all groups:"):]
+        self.assertIn("ERROR: Debug serial group and 5 more", summary)
+        self.assertIn("ERROR: Debug serial group full failing list:", summary)
+        full = summary[summary.index("full failing list:"):]
+        for suite in ["StatefulTests"] + ["ExtraSuite%02d" % i for i in range(22)]:
+            self.assertIn(f"result is 'Failed': {suite}/caseOne()", full)
 
     def test_a_hung_group_is_stopped_while_the_others_still_report(self):
         marker = self.root / "hung-marker"
