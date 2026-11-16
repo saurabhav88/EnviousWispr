@@ -483,16 +483,21 @@ struct InputResolutionAttemptState: Sendable {
 /// bind failure, or a later setup failure — and never on warm reuse. Carries the
 /// resolution facts frozen at decision time so no consumer re-reads hardware to
 /// describe an attempt that has already finished.
+///
+/// #4601: an immutable terminal snapshot. `resolution` is nil and `bindOutcome` is
+/// nil when the terminal decision came before the open had produced them (the start
+/// budget ran out, or the audio-unit lane refused the start): UNAVAILABLE, never a
+/// fabricated "no default", zero count or `not_attempted`.
 struct FinalizedInputResolutionAttempt: Sendable {
-  let resolution: InputDeviceResolution
-  let bindOutcome: InputBindOutcome
+  let resolution: InputDeviceResolution?
+  let bindOutcome: InputBindOutcome?
   let prepareOutcome: InputPrepareOutcome
   /// #1851: nil unless `prepareOutcome == .failed` AND the failing step is named.
   let failedStep: String?
   let failedOSStatus: OSStatus?
 
   init(
-    resolution: InputDeviceResolution, bindOutcome: InputBindOutcome,
+    resolution: InputDeviceResolution?, bindOutcome: InputBindOutcome?,
     prepareOutcome: InputPrepareOutcome, failedStep: String? = nil,
     failedOSStatus: OSStatus? = nil
   ) {
@@ -501,6 +506,16 @@ struct FinalizedInputResolutionAttempt: Sendable {
     self.prepareOutcome = prepareOutcome
     self.failedStep = failedStep
     self.failedOSStatus = failedOSStatus
+  }
+
+  /// #4601: the terminal snapshot of a start that ended before the open reported its
+  /// resolution or bind (timed out, or refused by a wedged lane). The failed step comes
+  /// from `failure` itself (one value, #1851); no hardware is read.
+  static func unavailable(failure: AudioError) -> FinalizedInputResolutionAttempt {
+    let step = failure.diagnosticSource.flatMap { $0 == "unknown" ? nil : $0 }
+    return FinalizedInputResolutionAttempt(
+      resolution: nil, bindOutcome: nil, prepareOutcome: .failed, failedStep: step,
+      failedOSStatus: failure.diagnosticOSStatus)
   }
 }
 
@@ -511,8 +526,10 @@ struct FinalizedInputResolutionAttempt: Sendable {
 /// without resolver or hardware types escaping this module. `package`, not
 /// `public`: only the app shell needs it.
 package struct InputResolutionAttemptTelemetry: Sendable, Equatable {
-  package let defaultPresent: Bool
-  package let enumerationOutcome: String
+  /// #4601: nil when the resolution was unavailable at the terminal decision.
+  package let defaultPresent: Bool?
+  /// Same nil convention as `defaultPresent`.
+  package let enumerationOutcome: String?
   /// Nil means NOT KNOWN — enumeration was not attempted or its read failed.
   /// Never flatten to zero: zero is a real, different answer meaning the machine
   /// genuinely listed no input devices.
@@ -521,7 +538,8 @@ package struct InputResolutionAttemptTelemetry: Sendable, Equatable {
   package let eligibleDeviceCount: Int?
   package let inputResolutionSource: String?
   package let selectedTransport: String?
-  package let bindOutcome: String
+  /// Nil when the bind outcome was unavailable (#4601), never `not_attempted` by default.
+  package let bindOutcome: String?
   package let prepareOutcome: String
   /// #1851: the failing setup step (a fixed producer label), nil unless the cold
   /// attempt failed in a named step. Nil means NOT KNOWN, never a default.
@@ -534,13 +552,13 @@ package struct InputResolutionAttemptTelemetry: Sendable, Equatable {
 
   /// Internal: only this module constructs one.
   init(_ attempt: FinalizedInputResolutionAttempt) {
-    self.defaultPresent = attempt.resolution.defaultPresent
-    self.enumerationOutcome = attempt.resolution.enumerationOutcome.rawValue
-    self.inputDeviceCount = attempt.resolution.inputDeviceCount
-    self.eligibleDeviceCount = attempt.resolution.eligibleDeviceCount
-    self.inputResolutionSource = attempt.resolution.resolutionSource?.rawValue
-    self.selectedTransport = attempt.resolution.selectedTransport
-    self.bindOutcome = attempt.bindOutcome.rawValue
+    self.defaultPresent = attempt.resolution?.defaultPresent
+    self.enumerationOutcome = attempt.resolution?.enumerationOutcome.rawValue
+    self.inputDeviceCount = attempt.resolution?.inputDeviceCount
+    self.eligibleDeviceCount = attempt.resolution?.eligibleDeviceCount
+    self.inputResolutionSource = attempt.resolution?.resolutionSource?.rawValue
+    self.selectedTransport = attempt.resolution?.selectedTransport
+    self.bindOutcome = attempt.bindOutcome?.rawValue
     self.prepareOutcome = attempt.prepareOutcome.rawValue
     self.prepareFailedStep = attempt.failedStep
     self.prepareFailedOSStatus = attempt.failedOSStatus.map { Int($0) }

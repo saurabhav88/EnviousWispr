@@ -623,7 +623,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
       // Provisional: nil when resolution selected nothing, which is honest —
       // there is no device to attribute. The returned bind overwrites this on
       // success.
-      self.currentInputResolutionSource = attempt.resolution.resolutionSource?.rawValue
+      self.currentInputResolutionSource = attempt.resolution?.resolutionSource?.rawValue
       // The manager's own state is stored FIRST, so an external observer can
       // never see the manager mid-update.
       self.forwardLatestInputResolutionAttempt()

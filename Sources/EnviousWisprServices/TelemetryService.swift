@@ -3599,13 +3599,13 @@ public final class TelemetryService {
   /// the population is complete rather than branch-selected. Warm reuse emits
   /// nothing.
   public func audioInputResolution(
-    defaultPresent: Bool,
-    enumerationOutcome: String,
+    defaultPresent: Bool?,
+    enumerationOutcome: String?,
     inputDeviceCount: Int?,
     eligibleDeviceCount: Int?,
     inputResolutionSource: String?,
     selectedTransport: String?,
-    bindOutcome: String,
+    bindOutcome: String?,
     prepareOutcome: String,
     prepareFailedStep: String? = nil,
     prepareFailedOSStatus: Int? = nil,
@@ -3649,26 +3649,26 @@ public final class TelemetryService {
 
   /// The complete `audio.input_resolution` property list (#1714, #1851).
   /// Optional values are omitted when nil because nil means NOT KNOWN; an
-  /// explicit zero is a real answer and rides as zero.
+  /// explicit zero or false is a real answer and rides as such. #4601: a start
+  /// that ended before its resolution or bind was known leaves `default_present`,
+  /// `enumeration_outcome` and `bind_outcome` out instead of inventing them.
   static func inputResolutionProperties(
-    defaultPresent: Bool,
-    enumerationOutcome: String,
+    defaultPresent: Bool?,
+    enumerationOutcome: String?,
     inputDeviceCount: Int?,
     eligibleDeviceCount: Int?,
     inputResolutionSource: String?,
     selectedTransport: String?,
-    bindOutcome: String,
+    bindOutcome: String?,
     prepareOutcome: String,
     prepareFailedStep: String?,
     prepareFailedOSStatus: Int?,
     prepareFailedOSStatusFourCC: String?
   ) -> [String: Any] {
-    var props: [String: Any] = [
-      "default_present": defaultPresent,
-      "enumeration_outcome": enumerationOutcome,
-      "bind_outcome": bindOutcome,
-      "prepare_outcome": prepareOutcome,
-    ]
+    var props: [String: Any] = ["prepare_outcome": prepareOutcome]
+    if let present = defaultPresent { props["default_present"] = present }
+    if let outcome = enumerationOutcome { props["enumeration_outcome"] = outcome }
+    if let bind = bindOutcome { props["bind_outcome"] = bind }
     if let c = inputDeviceCount { props["input_device_count"] = c }
     if let c = eligibleDeviceCount { props["eligible_device_count"] = c }
     if let s = inputResolutionSource { props["input_resolution_source"] = s }

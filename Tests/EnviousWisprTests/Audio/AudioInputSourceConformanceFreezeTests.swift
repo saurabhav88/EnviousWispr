@@ -302,9 +302,9 @@ struct HALInputResolutionFinalizationTests {
     #expect(finalised.first?.bindOutcome == .notAttempted)
     #expect(finalised.first?.prepareOutcome == .failed)
     // The frozen facts travel with it, so no consumer re-reads hardware.
-    #expect(finalised.first?.resolution.enumerationOutcome == .succeeded)
-    #expect(finalised.first?.resolution.inputDeviceCount == 0)
-    #expect(finalised.first?.resolution.defaultPresent == false)
+    #expect(finalised.first?.resolution?.enumerationOutcome == .succeeded)
+    #expect(finalised.first?.resolution?.inputDeviceCount == 0)
+    #expect(finalised.first?.resolution?.defaultPresent == false)
   }
 
   @Test("a device-list read failure with no default also finalises exactly once")
@@ -321,7 +321,7 @@ struct HALInputResolutionFinalizationTests {
     #expect(finalised.count == 1)
     #expect(finalised.first?.bindOutcome == .notAttempted)
     #expect(finalised.first?.prepareOutcome == .failed)
-    #expect(finalised.first?.resolution.enumerationOutcome == .readFailed)
+    #expect(finalised.first?.resolution?.enumerationOutcome == .readFailed)
   }
 
   @Test("warm reuse finalises nothing — a reused bind is not a new resolution")
