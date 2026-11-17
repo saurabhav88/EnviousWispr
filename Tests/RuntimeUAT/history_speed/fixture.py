@@ -244,6 +244,16 @@ class LaunchPlan:
     executable: str
 
 
+def _plist_identity(app: Path) -> str | None:
+    """The bundle identifier in the app's Info.plist, or None when it cannot be read."""
+    import plistlib
+    try:
+        with open(Path(app) / "Contents/Info.plist", "rb") as handle:
+            return plistlib.load(handle).get("CFBundleIdentifier")
+    except (OSError, ValueError, plistlib.InvalidFileException):
+        return None
+
+
 def launch_plan(app: Path, home: Path, base_env: dict[str, str] | None = None) -> LaunchPlan:
     """The exact command and child environment for one isolated launch. Pure: reads nothing but the
     given paths and never changes the caller's environment."""
@@ -251,6 +261,12 @@ def launch_plan(app: Path, home: Path, base_env: dict[str, str] | None = None) -
     executable = app / EXECUTABLE
     if not executable.is_file():
         raise FixtureError(f"no app executable: {executable}")
+    # Only the renamed measurement subject may launch, on every route including the CLI: the
+    # production identity would use production Keychain services and preferences (PR #4658 review).
+    identity = _plist_identity(app)
+    if identity != SUBJECT_BUNDLE_ID:
+        raise FixtureError(f"{app} has bundle identifier {identity!r}, not the renamed subject {SUBJECT_BUNDLE_ID}; "
+                           f"prepare it with prepare_subject first")
     profile = home / PROFILE_NAME
     if not (home / APP_SUPPORT).is_dir() or not profile.is_file():
         raise FixtureError(f"not a regenerated fixture home: {home}")
@@ -344,6 +360,9 @@ def refuse_existing_throwaway(real_home: Path, export=export_domain) -> None:
 def cleanup_throwaway(real_home: Path, *, remover=None, run=subprocess.run, export=export_domain) -> list:
     """After a session: remove the throwaway identity's preferences and HTTP storage. Called only
     after `refuse_existing_throwaway` proved none existed before this session."""
+    # The only identity this may ever delete is the renamed subject's own, never production's.
+    if SUBJECT_BUNDLE_ID == PRODUCTION_DOMAIN or not SUBJECT_BUNDLE_ID.endswith(".historyspeed"):
+        raise FixtureError(f"refusing to delete the state of {SUBJECT_BUNDLE_ID!r}")
     removed = []
     if run(["/usr/bin/defaults", "delete", SUBJECT_BUNDLE_ID], capture_output=True).returncode == 0:
         removed.append(f"defaults domain {SUBJECT_BUNDLE_ID}")

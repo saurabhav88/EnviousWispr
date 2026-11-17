@@ -282,11 +282,21 @@ def main():
             CGEventPost(kCGHIDEventTap, event)
 
     def burst_select_all():
-        """Command-A as raw events, so an overlap posts its second query within milliseconds."""
+        """Command-A with no pacing delay, so an overlap posts its second query within milliseconds.
+        Command is FRAMED like a keyboard (flagsChanged down, key down/up, flagsChanged up) and every
+        event is built before any is posted, the sequence `simulate_input.press_key` owns: a Command
+        flag on the key events alone can leave Command held system-wide (PR #4658 review)."""
         from Quartz import kCGEventFlagMaskCommand
+        events = [keys._flags_changed_event(55, kCGEventFlagMaskCommand, True)]
         for is_down in (True, False):
             event = CGEventCreateKeyboardEvent(None, 0, is_down)   # virtual key 0 is "a"
-            CGEventSetFlags(event, kCGEventFlagMaskCommand)
+            if event is not None:
+                CGEventSetFlags(event, kCGEventFlagMaskCommand)
+            events.append(event)
+        events.append(keys._flags_changed_event(55, 0, False))
+        if any(event is None for event in events):
+            raise RuntimeError("select-all: an event could not be created; nothing posted")
+        for event in events:
             CGEventPost(kCGHIDEventTap, event)
 
     def delete():

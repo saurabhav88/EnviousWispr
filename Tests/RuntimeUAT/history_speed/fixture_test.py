@@ -13,6 +13,7 @@ import importlib.util
 import io
 import json
 import os
+import plistlib
 import signal
 import subprocess
 import sys
@@ -168,6 +169,8 @@ class LaunchTests(Temp):
         self.app = self.root / "EnviousWispr.app"
         (self.app / "Contents/MacOS").mkdir(parents=True)
         (self.app / "Contents/MacOS/EnviousWispr").write_bytes(b"")
+        with open(self.app / "Contents/Info.plist", "wb") as handle:
+            plistlib.dump({"CFBundleIdentifier": fixture.SUBJECT_BUNDLE_ID}, handle)
         self.exe = str(self.app / "Contents/MacOS/EnviousWispr")
         self.spawned = []
 
@@ -199,6 +202,26 @@ class LaunchTests(Temp):
         self.assertEqual(plan.env["CFFIXED_USER_HOME"], str(self.home))
         self.assertEqual(plan.argv, ("/usr/bin/sandbox-exec", "-f", str(self.home / "isolated-release.sb"),
                                      self.exe, "-onboardingState", "completed"))
+
+    def test_plan_refuses_the_production_identity_on_every_route(self):
+        # PR #4658 review: the CLI `launch --app /Applications/EnviousWispr.app` must never start
+        # production. Same app, production identity: the plan, the launch and the CLI all refuse.
+        with open(self.app / "Contents/Info.plist", "wb") as handle:
+            plistlib.dump({"CFBundleIdentifier": fixture.PRODUCTION_DOMAIN}, handle)
+        with self.assertRaisesRegex(fixture.FixtureError, "not the renamed subject"):
+            fixture.launch_plan(self.app, self.home)
+        with self.assertRaisesRegex(fixture.FixtureError, "not the renamed subject"):
+            fixture.launch(self.app, self.home, Path(os.devnull), owner_check=lambda: None,
+                           instances=lambda: {}, spawn=self.spawn)
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+            status = fixture.main(["launch", "--app", str(self.app), "--home", str(self.home)])
+        self.assertEqual(status, 2)
+        self.assertIn("not the renamed subject", err.getvalue())
+        self.assertEqual(self.spawned, [])
+        (self.app / "Contents/Info.plist").unlink()   # no plist at all is refused too
+        with self.assertRaisesRegex(fixture.FixtureError, "not the renamed subject"):
+            fixture.launch_plan(self.app, self.home)
 
     def test_plan_refuses_a_folder_that_is_not_a_fixture_home(self):
         plain = self.root / "plain"
@@ -487,6 +510,8 @@ class AdapterTests(unittest.TestCase):
             app = root / "EnviousWispr.app"
             (app / "Contents/MacOS").mkdir(parents=True)
             (app / "Contents/MacOS/EnviousWispr").write_bytes(b"")
+            with open(app / "Contents/Info.plist", "wb") as handle:
+                plistlib.dump({"CFBundleIdentifier": fixture.SUBJECT_BUNDLE_ID}, handle)
             spawned = []
             with self.ps(2, stderr="ps: cannot list"), self.assertRaisesRegex(
                     fixture.FixtureError, "cannot read running EnviousWispr instances"):

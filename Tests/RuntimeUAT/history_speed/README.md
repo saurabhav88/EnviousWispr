@@ -71,8 +71,14 @@ python3 -B -m unittest discover -s Tests/RuntimeUAT/history_speed -p '*_test.py'
 files, 99 recordings), fresh working homes, launches and stops. A launch sets `HOME` and
 `CFFIXED_USER_HOME` to the working home and runs the renamed subject under `sandbox-exec` (denies the
 real History folders, real EnviousWispr preference writes, containers, logs, credentials fallbacks and
-all outbound network). The throwaway preferences domain must not exist before a session and is removed
-after; the production domain is compared before and after (a change is a finding, never restored over).
+all outbound network). Every launch route (drivers, runner and the `fixture.py launch` CLI) refuses an
+app whose bundle identifier is not the renamed subject, so production can never be started.
+The cleanup deletes only the renamed subject's own state in the real home: the
+`com.enviouswispr.app.historyspeed` defaults domain, its `Library/Preferences/…historyspeed.plist`,
+`Library/HTTPStorages/…historyspeed` and its cookies file, and nothing else. It runs only after
+`refuse_existing_throwaway` proved none of that existed before the session (`ContainedSession`,
+`m5-speed-open.py`). The production domain is compared before and after; a change is a finding,
+never restored over.
 
 ## Known limits
 

@@ -469,8 +469,17 @@ def main():
             load.__exit__(None, None, None)
     report["conditions_end"] = load_tools.machine_conditions()
     verdicts = [r["verdict"] for r in report["runs"]]
-    report["budget_verdict"] = ("PASS" if verdicts and all(v == "PASS" for v in verdicts)
-                                else "FAIL" if "FAIL" in verdicts else "UNPROVEN")
+    # Overall PASS also needs a valid hitch number for every requested case x tab x input: untraced
+    # repeats judge travel and heights only, so they alone cannot pass smoothness (PR #4658 review).
+    requested = {("mid", t, k) for t in tabs for k in inputs}
+    if "--deep" in argv:
+        requested.add(("deep", "Dictations", "trackpad"))
+    hitched = {(r.get("case"), r.get("tab"), r.get("input")) for r in report["runs"]
+               if r.get("hitch", {}).get("ms_per_s") is not None and not r.get("hitch", {}).get("not_traced")}
+    report["groups_without_hitch"] = sorted("/".join(g) for g in requested - hitched)
+    report["budget_verdict"] = ("FAIL" if "FAIL" in verdicts
+                                else "PASS" if verdicts and all(v == "PASS" for v in verdicts)
+                                and not report["groups_without_hitch"] else "UNPROVEN")
     save()
     print("budget_verdict", report["budget_verdict"], "wrote", out / "report.json")
     return 0 if report["budget_verdict"] == "PASS" else 1
