@@ -31,9 +31,15 @@ struct TurnDocumentView<Fallback: View>: View {
   /// #4013 r3 F3: the names the rename popover offers for each speaker. `.none` offers nothing,
   /// as before.
   var renameSuggestions: SpeakerRenameSuggestions = .none
-  /// #3147 PR4A: the font of each turn's time. The meeting after view passes the 14 pt helper
-  /// token; other callers keep the caption size they had.
-  var timeFont: Font = .caption
+  /// #3147 PR4A: the font of each turn's time. The 14 pt helper token by default, so the
+  /// transcript page, the meeting page and Transcribe a File draw the same time (#4611).
+  var timeFont: Font = .stHelper
+  /// The speaker look for every turn shown here, worked out by a caller that draws one turn per
+  /// view over a longer list (the meeting page). Nil works it out from `turns` alone.
+  var speakerLook: TurnSpeakerStyle.Look? = nil
+  /// #4611 T5/T8: the turn playback is in, tinted while Follow playback is on (the transcript
+  /// page). Nil tints nothing.
+  var activeTurnID: String? = nil
   @ViewBuilder let fallback: () -> Fallback
 
   /// No `ScrollView` of its own (found by chunk review): both callers already embed this
@@ -52,16 +58,74 @@ struct TurnDocumentView<Fallback: View>: View {
       LazyVStack(alignment: .leading, spacing: 16) {
         // #4001 H11: surviving unique-ID turns keep their keys when other turns
         // are hidden or shown. Reused IDs can retain state across replacements.
-        ForEach(TurnRowKey.keyed(turns), id: \.key) { _, turn in
+        ForEach(TurnSpeakerStyle.rows(turns), id: \.key) { row in
+          let look = speakerLook ?? row.look
           TurnRowView(
-            turn: turn, onRename: onRename, onRenameCancelled: onRenameCancelled,
+            turn: row.turn, accent: look.accent, continuesSpeaker: look.continuesSpeaker,
+            onRename: onRename, onRenameCancelled: onRenameCancelled,
             onPlayFrom: onPlayFrom, renameSuggestions: renameSuggestions, timeFont: timeFont)
+          .background {
+            if let activeTurnID, row.turn.turnID == activeTurnID {
+              Color.stAccent.opacity(0.08)
+                .padding(.horizontal, -DesignSpacing.sm)
+                .padding(.vertical, -DesignSpacing.xs)
+                .accessibilityHidden(true)
+            }
+          }
         }
       }
       .onAppear(perform: onTurnsDisplayed)
     } else {
       fallback()
     }
+  }
+}
+
+/// Who-is-speaking styling for a turn list (founder, #4611): each named speaker takes the next
+/// speaker color in order of first appearance (a seventh reuses the first), and a turn right
+/// after one by the same speaker leaves its name out. Unknown and "both" turns get no color, nor
+/// do the paragraphs of a one-voice transcript (#4611 T4: name and color only with several).
+enum TurnSpeakerStyle {
+  struct Look: Equatable {
+    /// The speaker's color index, or nil for an unknown or "both" turn.
+    let colorIndex: Int?
+    let continuesSpeaker: Bool
+    var accent: Color? { colorIndex.map(Color.speakerColor(forIndex:)) }
+  }
+
+  struct Row {
+    let key: TurnRowKey
+    let turn: TranscriptDocumentPresenter.RenderedTurn
+    let look: Look
+  }
+
+  static func rows(_ turns: [TranscriptDocumentPresenter.RenderedTurn]) -> [Row] {
+    var order: [String: Int] = [:]
+    var previous: String?
+    return TurnRowKey.keyed(turns).map { key, turn in
+      let id = turn.speakerId
+      let named = id != TurnAssembler.unknownSpeakerID && id != TurnAssembler.bothSpeakersID
+        && id != SingleSpeakerParagraphs.speakerID
+      var index: Int?
+      if named {
+        if order[id] == nil { order[id] = order.count }
+        index = order[id]
+      }
+      defer { previous = id }
+      return Row(
+        key: key, turn: turn,
+        look: Look(colorIndex: index, continuesSpeaker: named && previous == id))
+    }
+  }
+}
+
+extension Color {
+  /// The speaker palette from `DESIGN.md`, in order; a seventh speaker reuses the first.
+  static func speakerColor(forIndex index: Int) -> Color {
+    let palette: [Color] = [
+      .stSpeaker1, .stSpeaker2, .stSpeaker3, .stSpeaker4, .stSpeaker5, .stSpeaker6,
+    ]
+    return palette[index % palette.count]
   }
 }
 
@@ -119,6 +183,10 @@ struct RenameFailure: Equatable, Sendable {
 
 private struct TurnRowView: View {
   let turn: TranscriptDocumentPresenter.RenderedTurn
+  /// The speaker's color for the name and the bar beside the words; nil draws neither.
+  let accent: Color?
+  /// The same speaker spoke the turn before: the name is left out (the time stays).
+  let continuesSpeaker: Bool
   let onRename: (String, String) async -> RenameFailure?
   let onRenameCancelled: () -> Void
   let onPlayFrom: ((Int) -> Void)?
@@ -136,17 +204,45 @@ private struct TurnRowView: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 4) {
       HStack(spacing: 6) {
-        speakerLabel
+        // #4611 T4: a one-voice paragraph shows no name; only its time.
+        if !continuesSpeaker, turn.speakerId != SingleSpeakerParagraphs.speakerID { speakerLabel }
+        // #4611 D15: a purple time means "play from here", as note times do. Where the turn
+        // cannot play, its time stays plain; with times hidden, the play button returns.
         if let timeLabel = turn.timeLabel {
-          Text(timeLabel)
-            .font(timeFont)
-            .foregroundStyle(.secondary)
+          if let onPlayFrom, let startMs = turn.startMs {
+            Button {
+              onPlayFrom(startMs)
+            } label: {
+              Text(timeLabel)
+                .font(timeFont)
+                .monospacedDigit()
+                .foregroundStyle(Color.stAccent)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(
+              Text(
+                "Play from here",
+                comment: "EnviousMeet transcript: plays the recording from this turn's start.")
+            )
+            .accessibilityLabel(
+              Text(
+                "Play from \(timeLabel)",
+                comment:
+                  "EnviousMeet transcript, VoiceOver: a turn's time that plays the recording from there. %@ is the time."
+              ))
+          } else {
+            Text(timeLabel)
+              .font(timeFont)
+              .foregroundStyle(Color.stTextSecondary)
+          }
         }
-        if let onPlayFrom, let startMs = turn.startMs {
+        if turn.timeLabel == nil, let onPlayFrom, let startMs = turn.startMs {
           Button {
             onPlayFrom(startMs)
           } label: {
             Image(systemName: "play.circle")
+              .foregroundStyle(Color.stAccent)
           }
           .buttonStyle(.borderless)
           .help(
@@ -169,6 +265,14 @@ private struct TurnRowView: View {
           .foregroundStyle(Color.stTextSecondary)
       }
     }
+    // The speaker's bar (founder, #4611): a thin line of their color down the turn's left edge.
+    .padding(.leading, accent == nil ? 0 : DesignSpacing.lg)
+    .overlay(alignment: .leading) {
+      if let accent {
+        Capsule().fill(accent).frame(width: 3)
+          .accessibilityHidden(true)
+      }
+    }
   }
 
   /// A real `Button`, never a bare tap gesture (per `accessibility-semantic-controls`) — it
@@ -185,8 +289,8 @@ private struct TurnRowView: View {
       || turn.speakerId == TurnAssembler.bothSpeakersID
     {
       Text(displayName)
-        .font(.subheadline.bold())
-        .foregroundStyle(.secondary)
+        .font(.stRowLabel)
+        .foregroundStyle(Color.stTextSecondary)
     } else {
       Button {
         renamingSpeakerId = turn.speakerId
@@ -195,7 +299,8 @@ private struct TurnRowView: View {
         isRenaming = true
       } label: {
         Text(displayName)
-          .font(.subheadline.bold())
+          .font(.stRowLabel)
+          .foregroundStyle(accent ?? Color.stTextPrimary)
       }
       .buttonStyle(.plain)
       .accessibilityLabel("Rename speaker")
@@ -246,8 +351,14 @@ private struct TurnRowView: View {
   @ViewBuilder private var content: some View {
     switch turn.content {
     case .plain(let text):
-      HistoryParagraphText.searchText(text, query: searchQuery)
-        .textSelection(.enabled)
+      Group {
+        if turn.showsListBullets {
+          HistoryListText(text: text, query: searchQuery)
+        } else {
+          HistoryParagraphText.searchText(text, query: searchQuery)
+        }
+      }
+      .textSelection(.enabled)
     case .markedUp(let diff):
       MarkedUpPassageText(segments: diff.segments)
     }
@@ -326,13 +437,15 @@ private struct RenamePopoverView: View {
   @State private var didCancelExplicitly = false
   @State private var hasCommitted = false
   @State private var highlight = RenameSuggestionHighlight()
+  @FocusState private var fieldFocused: Bool
   private static let maxLength = 60
 
   var body: some View {
     VStack(alignment: .leading, spacing: 4) {
       if !suggestions.isEmpty { suggestionList }
       TextField("Speaker name", text: $name)
-        .textFieldStyle(.roundedBorder)
+        .focused($fieldFocused)
+        .settingsFieldChrome(focused: $fieldFocused)
         .frame(width: 200)
         .onSubmit {
           if let choice = highlight.choice(in: suggestions) {
@@ -349,8 +462,8 @@ private struct RenamePopoverView: View {
         }
       if let failure {
         Text(failure.message)
-          .font(.caption)
-          .foregroundStyle(.red)
+          .font(.stHelper)
+          .foregroundStyle(Color.stError)
       }
     }
     .padding(8)
@@ -364,6 +477,7 @@ private struct RenamePopoverView: View {
       hasCommitted = false
       didCancelExplicitly = false
       highlight.clear()
+      fieldFocused = true
     }
     .onChange(of: suggestions) { _, newValue in highlight.listChanged(to: newValue) }
     .onChange(of: failure) { _, newValue in
@@ -380,8 +494,8 @@ private struct RenamePopoverView: View {
   private var suggestionList: some View {
     VStack(alignment: .leading, spacing: 2) {
       Text("Suggestions", comment: "Speaker rename popover: heading above names to choose from.")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.stHelper)
+        .foregroundStyle(Color.stTextSecondary)
         .accessibilityAddTraits(.isHeader)
       ScrollViewReader { proxy in
         ScrollView {
@@ -393,6 +507,8 @@ private struct RenamePopoverView: View {
               } label: {
                 // A participant's name is content, never a translation key.
                 Text(verbatim: suggestion)
+                  .font(.stBody)
+                  .foregroundStyle(Color.stTextPrimary)
                   .lineLimit(2)
                   .multilineTextAlignment(.leading)
                   .padding(.horizontal, 4)
@@ -403,7 +519,7 @@ private struct RenamePopoverView: View {
               .padding(.vertical, 3)
               .background(
                 RoundedRectangle(cornerRadius: 4)
-                  .fill(highlight.name == suggestion ? Color.accentColor.opacity(0.2) : .clear))
+                  .fill(highlight.name == suggestion ? Color.stAccentLight : .clear))
               .accessibilityAddTraits(highlight.name == suggestion ? .isSelected : [])
               .id(suggestion)
             }

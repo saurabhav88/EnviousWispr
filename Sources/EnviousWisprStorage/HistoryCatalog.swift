@@ -71,7 +71,6 @@ package actor HistoryCatalog {
     package let expiresAt: Date?
     package let rowID: UUID?
     package let duration: TimeInterval?
-    package let speakerNames: String?
     package let backendName: String?
     package let polishModel: String?
     package let wasPolished: Bool?
@@ -86,7 +85,7 @@ package actor HistoryCatalog {
     package init(
       key: Key, date: Date, appKey: String? = nil, title: String? = nil, preview: String,
       sources: [SourceVersion], expiresAt: Date? = nil, rowID: UUID? = nil,
-      duration: TimeInterval? = nil, speakerNames: String? = nil, backendName: String? = nil,
+      duration: TimeInterval? = nil, backendName: String? = nil,
       polishModel: String? = nil, wasPolished: Bool? = nil, recovered: Bool? = nil,
       interrupted: Bool? = nil, meetingAnalysis: TranscriptSpeakerAnalysis? = nil,
       summaryProvider: String? = nil, hasMeetingSummary: Bool? = nil,
@@ -101,7 +100,6 @@ package actor HistoryCatalog {
       self.expiresAt = expiresAt
       self.rowID = rowID
       self.duration = duration
-      self.speakerNames = speakerNames
       self.backendName = backendName
       self.polishModel = polishModel
       self.wasPolished = wasPolished
@@ -169,7 +167,9 @@ package actor HistoryCatalog {
 
   private static let pageSize = 30
   /// 4 (#4609): dictation summaries carry `DictationDisplay`; older catalogs rebuild once.
-  private static let schemaVersion: Int32 = 4
+  /// 5 (#4611): transcript summaries carry their speaker analysis (`meetingAnalysis`) for the
+  /// card's "2 speakers" in place of the speaker names; older catalogs rebuild once.
+  private static let schemaVersion: Int32 = 5
   private let connection: HistoryCatalogConnection
   private let hasTrigram: Bool
 

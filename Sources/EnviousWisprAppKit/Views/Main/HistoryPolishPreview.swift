@@ -201,47 +201,161 @@ extension HistoryPolishChoice {
   }
 }
 
+/// #4611 D8: comparing a new version opens a sheet: Current and New side by side, each scrolling on
+/// its own (stacked when the window is narrow), the model named in the sheet's header, Keep
+/// current and Keep new at the bottom. Escape or closing the sheet keeps the current text. Used
+/// by every History comparison (summary, Polish transcript with, dictation Polish again), so the
+/// app compares the same way everywhere. Placed where the old inline box was; it takes no room.
 struct HistoryPolishComparison: View {
   let current: String
   let new: String
   let model: String
+  var title: LocalizedStringResource = LocalizedStringResource(
+    "Compare versions", comment: "History: the sheet comparing the current and the new text.")
+  /// The texts are summary Markdown: drawn with headings and bullets as the summary pane draws
+  /// them, never with their raw markers. False draws plain text (transcripts, dictations).
+  var formatted = false
   let keep: () -> Void
   let discard: () -> Void
-  @State private var showNew = true
+  @State private var decided = false
 
   var body: some View {
-    VStack(alignment: .leading, spacing: DesignSpacing.lg) {
-      HStack {
-        BrandedSegmentedPicker(
-          options: [
-            (String(localized: "New version"), nil, true),
-            (String(localized: "Current version"), nil, false),
-          ], selection: $showNew
-        )
-        .fixedSize()
-        Spacer()
-        Text(verbatim: model)
+    Color.clear
+      .frame(width: 0, height: 0)
+      .accessibilityHidden(true)
+      .sheet(
+        isPresented: Binding(
+          get: { !decided },
+          set: { presented in
+            // Escape, or any other way the sheet closes without a choice, keeps the current text.
+            if !presented, !decided {
+              decided = true
+              discard()
+            }
+          })
+      ) {
+        HistoryPolishComparisonSheet(
+          current: current, new: new, model: model, title: title, formatted: formatted,
+          keep: {
+            decided = true
+            keep()
+          },
+          discard: {
+            decided = true
+            discard()
+          })
+      }
+  }
+}
+
+private struct HistoryPolishComparisonSheet: View {
+  let current: String
+  let new: String
+  let model: String
+  let title: LocalizedStringResource
+  let formatted: Bool
+  let keep: () -> Void
+  let discard: () -> Void
+
+  var body: some View {
+    VStack(spacing: 0) {
+      HStack(alignment: .firstTextBaseline, spacing: DesignSpacing.md) {
+        Text(title)
+          .font(.stRowTitle)
+          .foregroundStyle(.stTextPrimary)
+        Spacer(minLength: DesignSpacing.md)
+        Text(
+          "New version written with \(model)",
+          comment: "History comparison sheet: which AI model wrote the new version. %@ is the model.")
           .font(.stHelper)
           .foregroundStyle(.stTextSecondary)
       }
-      ScrollView {
-        Text(verbatim: showNew ? new : current)
-          .font(.stBody)
-          .foregroundStyle(.stTextPrimary)
-          .textSelection(.enabled)
-          .frame(maxWidth: .infinity, alignment: .leading)
+      .padding(.horizontal, DesignSpacing.xl)
+      .padding(.vertical, DesignSpacing.lg)
+      Divider()
+      // Side by side when each column gets at least 320 points; stacked otherwise. Measured from
+      // the sheet's own width (a wrapping text's ideal width is its whole unwrapped line).
+      GeometryReader { geometry in
+        let currentColumn = column(
+          LocalizedStringResource("Current", comment: "History comparison sheet: the saved text's column."),
+          text: current)
+        let newColumn = column(
+          LocalizedStringResource("New", comment: "History comparison sheet: the new text's column."),
+          text: new)
+        if geometry.size.width >= 640 {
+          HStack(spacing: 0) {
+            currentColumn
+            Divider()
+            newColumn
+          }
+        } else {
+          VStack(spacing: 0) {
+            currentColumn
+            Divider()
+            newColumn
+          }
+        }
       }
-      .frame(minHeight: 72, maxHeight: 220)
-      HStack {
+      Divider()
+      HStack(spacing: DesignSpacing.md) {
         Spacer()
-        Button("Keep current", action: discard)
-          .settingsButton(.quiet, size: .medium, isEnabled: true)
-        Button("Keep new", action: keep)
-          .settingsButton(.filled, size: .medium, isEnabled: true)
+        Button(action: discard) {
+          EnviousButtonLabel(
+            LocalizedStringResource("Keep current", comment: "History comparison: keeps the saved text."),
+            size: .medium)
+        }
+        .settingsButton(.quiet, size: .medium, isEnabled: true)
+        .keyboardShortcut(.cancelAction)
+        Button(action: keep) {
+          EnviousButtonLabel(
+            LocalizedStringResource("Keep new", comment: "History comparison: saves the new text."),
+            size: .medium)
+        }
+        .settingsButton(.filled, size: .medium, isEnabled: true)
+      }
+      .padding(.horizontal, DesignSpacing.xl)
+      .padding(.vertical, DesignSpacing.lg)
+    }
+    // A sheet takes its content's size: up to 860 points, never wider than the window it covers;
+    // the columns stack when that leaves them too little room.
+    .frame(width: Self.width, height: 540)
+    .background(Color.stSectionBg)
+  }
+
+  /// The window's width less a margin, at most 860 points.
+  private static var width: CGFloat {
+    let window = NSApp.keyWindow?.contentLayoutRect.width ?? 860
+    return max(360, min(860, window - 40))
+  }
+
+  private func column(_ heading: LocalizedStringResource, text: String) -> some View {
+    VStack(alignment: .leading, spacing: 0) {
+      Text(heading)
+        .font(.stSectionHeader)
+        .textCase(.uppercase)
+        .tracking(0.6)
+        .foregroundStyle(.stAccent)
+        .padding(.horizontal, DesignSpacing.xl)
+        .padding(.vertical, DesignSpacing.md)
+      Divider()
+      ScrollView {
+        Group {
+          if formatted {
+            MeetingReadableSummary(blocks: HistoryMeetingAfterView.readableBlocks(text))
+          } else {
+            Text(verbatim: text)
+              .font(.stCardText)
+              .foregroundStyle(.stTextBody)
+              .textSelection(.enabled)
+          }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(DesignSpacing.xl)
       }
     }
-    .padding(DesignSpacing.xl)
-    .background(Color.stAccentLight, in: RoundedRectangle(cornerRadius: DesignRadius.lg))
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel(Text(heading))
   }
 }
 
@@ -283,9 +397,33 @@ struct HistoryPolishPreviewContent: View {
         keep: { preview.keep(candidate, history: history) }, discard: preview.cancel)
     case .keeping: HistoryPolishProgress(title: "Saving…")
     case .failed:
-      Text("Couldn't finish polishing. Choose a model to try again.").font(.stHelper)
+      polishNotice(
+        title: String(
+          localized: "Couldn't finish polishing.",
+          comment: "History: polishing again failed; title of the warning notice."))
     case .stale:
-      Text("The saved text changed. Choose a model to try again.").font(.stHelper)
+      polishNotice(
+        title: String(
+          localized: "The saved text changed.",
+          comment: "History: the text changed while polishing again; title of the warning notice."))
+    }
+  }
+
+  /// A failed or stale polish: the same warning box as a failed meeting summary, with Dismiss.
+  private func polishNotice(title: String) -> some View {
+    InsetNotice(
+      verbatim: String(
+        localized: "Open More actions and choose a model to try again.",
+        comment: "History: under a failed polish; says how to try polishing again."),
+      title: title, systemImage: "exclamationmark.triangle", tint: .stWarning
+    ) {
+      Button(action: preview.cancel) {
+        EnviousButtonLabel(
+          LocalizedStringResource(
+            "Dismiss", comment: "History: hides the failed polish message."),
+          size: .medium)
+      }
+      .settingsButton(.quiet, size: .medium, isEnabled: true)
     }
   }
 }

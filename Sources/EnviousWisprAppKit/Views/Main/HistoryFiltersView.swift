@@ -1,10 +1,20 @@
 import EnviousWisprCore
 import SwiftUI
 
-/// The row under History's tabs (#3147 §3.3): search, the tab's own filter (App on Dictations,
-/// Call app on Meetings), the date filter, Select and help. Every
-/// change goes through the coordinator's per-tab state, so each tab keeps its own.
-struct HistoryFiltersView: View {
+/// The row under History's tabs (#3147 §3.3): search, the date filter, the tab's own filter (App
+/// on Dictations and on Meetings, none on Transcripts), Select and help, in that order on every
+/// tab. Every change goes through the coordinator's per-tab state, so each tab keeps its own.
+///
+/// One look on every tab (founder, #4611): the search field fills the row; the filters and Select
+/// share one shape and one gap; every filter button has the same width, set by the widest of the
+/// filters' usual words, so Any time, Any app and Select sit in the same place on Dictations and
+/// Meetings. Transcripts has no second filter, so its search field is one button longer (founder
+/// chose that over an empty gap, 2026-11-17).
+///
+/// `leading`, the tab's main action (Record a meeting, Transcribe a File), starts the row: one row
+/// with the search field when the window is wide; under the search field, at the left with the
+/// filters at the right, when it is not (founder #4611, 2026-11-17).
+struct HistoryFiltersView<Leading: View>: View {
   let coordinator: TranscriptCoordinator
   let tab: HistoryTab
   let state: HistoryTabState
@@ -16,34 +26,90 @@ struct HistoryFiltersView: View {
 
   private enum Picker: Hashable { case app, callApp, date }
 
+  @ViewBuilder let leading: Leading
+
   var body: some View {
     ViewThatFits(in: .horizontal) {
       HStack(spacing: DesignSpacing.md) {
-        searchField
-        HStack(spacing: DesignSpacing.md) { controls }
-          .fixedSize()
+        leading.fixedSize()
+        searchField.frame(maxWidth: .infinity)
+        controls
       }
       VStack(alignment: .leading, spacing: DesignSpacing.md) {
-        searchField
-        WrappingHStack(spacing: DesignSpacing.md) { controls }
+        searchField.frame(maxWidth: .infinity)
+        HStack(spacing: DesignSpacing.md) {
+          leading.fixedSize()
+          Spacer(minLength: 0)
+          controls
+        }
+      }
+      VStack(alignment: .leading, spacing: DesignSpacing.md) {
+        searchField.frame(maxWidth: .infinity)
+        WrappingHStack(spacing: DesignSpacing.md) {
+          leading.fixedSize()
+          dateButton
+          tabFilter
+          HStack(spacing: DesignSpacing.md) { selectionControls }
+            .fixedSize()
+        }
       }
     }
   }
 
-  @ViewBuilder private var controls: some View {
-    if tab == .dictations { appButton }
-    dateButton
-    if tab == .meetings { callAppButton }
+  /// Any time, the tab's own filter, Select and help, together on the right with one gap.
+  private var controls: some View {
+    HStack(spacing: DesignSpacing.md) {
+      dateButton
+      tabFilter
+      selectionControls
+    }
+    .fixedSize()
+  }
+
+  @ViewBuilder private var tabFilter: some View {
+    switch tab {
+    case .dictations: appButton
+    case .meetings: callAppButton
+    case .transcripts: EmptyView()
+    }
+  }
+
+  /// The words that set every filter button's width: each filter's unfiltered words and the date
+  /// quick picks, in the current language. A longer chosen value is cut short with an ellipsis.
+  private static var filterWidthTitles: [String] {
+    [
+      HistoryDateFilter.label(for: nil, now: Date(), calendar: .current),
+      HistoryFilterLabels.app(.all), HistoryFilterLabels.callApp(nil),
+    ] + HistoryDateFilter.quickPicks.map(\.title)
+  }
+
+  /// Invisible copies of a filter button with each of `titles`, so every filter button is exactly
+  /// as wide as the widest of them.
+  private static func filterWidthSizer(_ titles: [String]) -> some View {
+    ZStack {
+      ForEach(Array(titles.enumerated()), id: \.offset) { _, title in
+        HistoryFilterButtonLabel(title: title)
+          .fixedSize()
+          .modifier(EnviousButtonFace(emphasis: .outlined, shape: .roundedRect, size: .medium))
+      }
+    }
+    .hidden()
+    .accessibilityHidden(true)
+  }
+
+  @ViewBuilder private var selectionControls: some View {
     Button(action: toggleSelecting) {
       EnviousButtonLabel(
         isSelecting
           ? LocalizedStringResource(
-            "Done selecting", comment: "History: leaves selection mode.")
+            "Done", comment: "History: leaves selection mode (the Select button while selecting).")
           : LocalizedStringResource(
             "Select", comment: "History: enters selection mode to delete several items."),
         size: .medium, systemImage: "checkmark.circle")
     }
-    .settingsButton(isSelecting ? .filled : .outlined, size: .medium, isEnabled: true)
+    // The filters' shape, so the row reads as one set of controls (founder, #4611).
+    .settingsButton(
+      isSelecting ? .filled : .outlined, shape: .roundedRect, size: .medium, isEnabled: true)
     SettingsInfoButton(
       rowTitle: String(localized: "History", comment: "History: the page name."),
       tooltip: String(
@@ -68,14 +134,15 @@ struct HistoryFiltersView: View {
       .focused($searchFocused)
     }
     .settingsFieldChrome(focused: $searchFocused)
-    .frame(minWidth: 180, maxWidth: .infinity)
+    .frame(minWidth: 180)
   }
 
   // MARK: - Tab filters
 
   private var appButton: some View {
     filterButton(
-      title: HistoryFilterLabels.app(state.app), isActive: state.app != .all, picker: .app
+      title: HistoryFilterLabels.app(state.app), isActive: state.app != .all, picker: .app,
+      width: 260, maxHeight: 360
     ) {
       HistoryAppPicker(coordinator: coordinator, current: state.app) { choice in
         update { $0.app = choice }
@@ -83,18 +150,18 @@ struct HistoryFiltersView: View {
     }
   }
 
+  /// The Meetings tab's app filter: the same button and list as the other filters.
   private var callAppButton: some View {
     filterButton(
       title: HistoryFilterLabels.callApp(state.callApp), isActive: state.callApp != nil,
-      picker: .callApp
+      picker: .callApp, width: 220
     ) {
-      HistoryChoiceList(
-        choices: HistoryFilterLabels.callAppChoices.map {
-          .init(value: $0, title: HistoryFilterLabels.callApp($0))
-        },
-        current: state.callApp
-      ) { choice in
-        update { $0.callApp = choice }
+      VStack(alignment: .leading, spacing: 2) {
+        ForEach(HistoryFilterLabels.callAppChoices, id: \.self) { family in
+          HistoryChoiceRow(
+            title: HistoryFilterLabels.callApp(family), isCurrent: family == state.callApp
+          ) { update { $0.callApp = family } }
+        }
       }
     }
   }
@@ -102,35 +169,44 @@ struct HistoryFiltersView: View {
   private var dateButton: some View {
     filterButton(
       title: HistoryDateFilter.label(for: state.dateInterval, now: Date(), calendar: .current),
-      isActive: state.dateInterval != nil, picker: .date
+      isActive: state.dateInterval != nil, picker: .date, width: 304
     ) {
       HistoryDatePicker(coordinator: coordinator, tab: tab, current: state.dateInterval) {
         interval in
         update { $0.dateInterval = interval }
       }
+      .padding(6)
     }
   }
 
-  /// One filter control: a button with the current choice that opens its picker. A set filter
-  /// is drawn filled so a narrowed list is visible at a glance.
+  /// One filter control whose list needs more than the Mac menu can draw (counts, a calendar):
+  /// the square drop-down button with the current choice, opening `settingsDropdown`. A set
+  /// filter is drawn filled so a narrowed list is visible at a glance.
   private func filterButton<Content: View>(
-    title: String, isActive: Bool, picker: Picker, @ViewBuilder content: @escaping () -> Content
+    title: String, isActive: Bool, picker: Picker, width: CGFloat, maxHeight: CGFloat? = nil,
+    @ViewBuilder content: @escaping () -> Content
   ) -> some View {
-    Button {
-      openPicker = picker
-    } label: {
-      EnviousButtonLabel(verbatim: title, size: .medium, trailingSystemImage: "chevron.down")
-    }
-    .settingsButton(isActive ? .filled : .outlined, size: .medium, isEnabled: true)
-    .popover(
-      isPresented: Binding(
-        get: { openPicker == picker },
-        set: { if $0 == false, openPicker == picker { openPicker = nil } }),
-      arrowEdge: .bottom
-    ) {
-      content()
-        .padding(12)
-    }
+    // Every filter button has one width: the invisible sizer sets it, the real button fills it.
+    Self.filterWidthSizer(Self.filterWidthTitles)
+      .overlay {
+        Button {
+          openPicker = picker
+        } label: {
+          HistoryFilterButtonLabel(title: title)
+            .frame(maxWidth: .infinity)
+        }
+        .settingsButton(
+          isActive ? .filled : .outlined, shape: .roundedRect, size: .medium, isEnabled: true
+        )
+        .settingsDropdown(
+          isPresented: Binding(
+            get: { openPicker == picker },
+            set: { if $0 == false, openPicker == picker { openPicker = nil } }),
+          width: width, maxHeight: maxHeight
+        ) {
+          content()
+        }
+      }
   }
 
   // MARK: - State
@@ -151,61 +227,37 @@ struct HistoryFiltersView: View {
   }
 }
 
-/// A short list of choices with a checkmark on the current one.
-private struct HistoryChoiceList<Value: Hashable>: View {
-  struct Choice: Identifiable {
-    let value: Value
-    let title: String
-    var id: Value { value }
-  }
-
-  let choices: [Choice]
-  let current: Value
-  let choose: (Value) -> Void
+/// A filter button's words: the current value at the leading edge, cut short with an ellipsis
+/// when it is longer than the button, and the up-down chevron at the trailing edge. The same font
+/// and sizes as `EnviousButtonLabel` at the medium size.
+private struct HistoryFilterButtonLabel: View {
+  let title: String
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 2) {
-      ForEach(choices) { choice in
-        HistoryChoiceRow(
-          title: choice.title, detail: nil, isCurrent: choice.value == current
-        ) { choose(choice.value) }
-      }
+    let size = EnviousButtonFace.Size.medium
+    HStack(spacing: 5) {
+      Text(verbatim: title)
+        .font(.system(size: size.fontSize, weight: .semibold))
+        .lineLimit(1)
+        .truncationMode(.tail)
+      Spacer(minLength: 0)
+      Image(systemName: "chevron.up.chevron.down")
+        .font(.system(size: size.fontSize - 1, weight: .semibold))
+        .accessibilityHidden(true)
     }
-    .frame(minWidth: 220)
   }
 }
 
-/// One row of a filter picker: its name, an optional count, and a checkmark when chosen.
+/// One plain choice of a filter's list (date, Meetings app), drawn as the approved drop-down row.
 private struct HistoryChoiceRow: View {
   let title: String
-  let detail: String?
   let isCurrent: Bool
   let action: () -> Void
 
   var body: some View {
-    Button(action: action) {
-      HStack(spacing: 8) {
-        Image(systemName: "checkmark")
-          .opacity(isCurrent ? 1 : 0)
-          .foregroundStyle(.stAccent)
-          .accessibilityHidden(true)
-        Text(title)
-          .font(.stBody)
-          .foregroundStyle(.stTextPrimary)
-        Spacer(minLength: 12)
-        if let detail {
-          Text(detail)
-            .font(.stHelper.monospacedDigit())
-            .foregroundStyle(.stTextSecondary)
-        }
-      }
-      .padding(.horizontal, 8)
-      .padding(.vertical, 6)
-      .contentShape(Rectangle())
-    }
-    .buttonStyle(.plain)
-    .settingsHoverRow()
-    .accessibilityAddTraits(isCurrent ? .isSelected : [])
+    SettingsDropdownRow(
+      isChosen: isCurrent, spokenTitle: title, action: action,
+      leading: { EmptyView() }, title: title, subtitle: { EmptyView() })
   }
 }
 
@@ -222,17 +274,25 @@ private struct HistoryAppPicker: View {
     VStack(alignment: .leading, spacing: 2) {
       if let options {
         ForEach(options) { option in
-          HistoryChoiceRow(
-            title: HistoryFilterLabels.app(option.filter),
-            detail: option.count.formatted(), isCurrent: option.filter == current
-          ) { choose(option.filter) }
+          let title = HistoryFilterLabels.app(option.filter)
+          SettingsDropdownRow(
+            isChosen: option.filter == current,
+            spokenTitle: "\(title), \(option.count.formatted())",
+            action: { choose(option.filter) },
+            leading: { EmptyView() }, title: title, subtitle: { EmptyView() },
+            trailing: {
+              Text(verbatim: option.count.formatted())
+                .font(.stHelper.monospacedDigit())
+                .foregroundStyle(.stTextSecondary)
+                .accessibilityHidden(true)
+            })
         }
       } else {
         ProgressView().controlSize(.small)
           .frame(maxWidth: .infinity)
+          .padding(.vertical, DesignSpacing.md)
       }
     }
-    .frame(minWidth: 240)
     .task(id: coordinator.catalogSession?.revision ?? UInt64(coordinator.transcriptsRevision)) {
       let result = await coordinator.historyAppOptions()
       if !Task.isCancelled { options = result }
@@ -249,7 +309,7 @@ enum HistoryFilterLabels {
     var id: HistoryAppFilter { filter }
   }
 
-  /// All apps first (every dictation), then each recorded app by count (ties by name), then
+  /// Any app first (every dictation), then each recorded app by count (ties by name), then
   /// Unknown app when any dictation has no recorded app.
   nonisolated static func appOptions(_ apps: [String?]) -> [AppOption] {
     var counts: [String: Int] = [:]
@@ -288,7 +348,7 @@ enum HistoryFilterLabels {
   @MainActor static func app(_ filter: HistoryAppFilter) -> String {
     switch filter {
     case .all:
-      String(localized: "All apps", comment: "History, Dictations: the App filter shows every app.")
+      String(localized: "Any app", comment: "History, Dictations: the App filter shows every app.")
     case .unknown:
       String(
         localized: "Unknown app",
@@ -298,7 +358,7 @@ enum HistoryFilterLabels {
     }
   }
 
-  /// Any call app, then every call app by name.
+  /// Any app, then every call app by name.
   static var callAppChoices: [CallAppFamily?] {
     [nil]
       + CallAppFamily.allCases.sorted {
@@ -309,8 +369,8 @@ enum HistoryFilterLabels {
   static func callApp(_ family: CallAppFamily?) -> String {
     guard let family else {
       return String(
-        localized: "Any call app",
-        comment: "History, Meetings: the Call app filter shows every meeting.")
+        localized: "Any app",
+        comment: "History, Meetings: the app filter shows meetings from every call app.")
     }
     return family.displayName
   }
@@ -331,10 +391,14 @@ enum HistoryDateFilter: Equatable, Sendable {
     let today = calendar.startOfDay(for: now)
     switch self {
     case .today: return Self.days(from: today, count: 1, calendar: calendar)
-    case .yesterday: return Self.days(from: Self.day(today, plus: -1, calendar), count: 1, calendar: calendar)
-    case .last7Days: return Self.days(from: Self.day(today, plus: -6, calendar), count: 7, calendar: calendar)
-    case .last30Days: return Self.days(from: Self.day(today, plus: -29, calendar), count: 30, calendar: calendar)
-    case .day(let date): return Self.days(from: calendar.startOfDay(for: date), count: 1, calendar: calendar)
+    case .yesterday:
+      return Self.days(from: Self.day(today, plus: -1, calendar), count: 1, calendar: calendar)
+    case .last7Days:
+      return Self.days(from: Self.day(today, plus: -6, calendar), count: 7, calendar: calendar)
+    case .last30Days:
+      return Self.days(from: Self.day(today, plus: -29, calendar), count: 30, calendar: calendar)
+    case .day(let date):
+      return Self.days(from: calendar.startOfDay(for: date), count: 1, calendar: calendar)
     }
   }
 
@@ -351,9 +415,11 @@ enum HistoryDateFilter: Equatable, Sendable {
     case .yesterday:
       String(localized: "Yesterday", comment: "History: the day heading for yesterday's items.")
     case .last7Days:
-      String(localized: "Last 7 days", comment: "History date filter: items from the last seven days.")
+      String(
+        localized: "Last 7 days", comment: "History date filter: items from the last seven days.")
     case .last30Days:
-      String(localized: "Last 30 days", comment: "History date filter: items from the last 30 days.")
+      String(
+        localized: "Last 30 days", comment: "History date filter: items from the last 30 days.")
     case .day(let date):
       date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
     }
@@ -365,7 +431,8 @@ enum HistoryDateFilter: Equatable, Sendable {
     guard let interval else {
       return String(localized: "Any time", comment: "History date filter: no date limit.")
     }
-    if let pick = quickPicks.first(where: { $0.interval(now: now, calendar: calendar) == interval }) {
+    if let pick = quickPicks.first(where: { $0.interval(now: now, calendar: calendar) == interval })
+    {
       return pick.title
     }
     let lastDay = calendar.date(byAdding: .second, value: -1, to: interval.end) ?? interval.end
@@ -375,7 +442,8 @@ enum HistoryDateFilter: Equatable, Sendable {
     let style = Date.FormatStyle.dateTime.month(.abbreviated).day()
     return String(
       localized: "\(interval.start.formatted(style)) to \(lastDay.formatted(style))",
-      comment: "History date filter: a range of days. The first %@ is the first day, the second the last.")
+      comment:
+        "History date filter: a range of days. The first %@ is the first day, the second the last.")
   }
 
   /// The month grid for the month holding `month`: leading blanks up to the first weekday, then
@@ -419,32 +487,43 @@ private struct HistoryDatePicker: View {
     VStack(alignment: .leading, spacing: 10) {
       VStack(alignment: .leading, spacing: 2) {
         HistoryChoiceRow(
-          title: HistoryDateFilter.label(for: nil, now: now, calendar: calendar), detail: nil,
+          title: HistoryDateFilter.label(for: nil, now: now, calendar: calendar),
           isCurrent: current == nil
         ) { choose(nil) }
         ForEach(HistoryDateFilter.quickPicks, id: \.title) { pick in
           let interval = pick.interval(now: now, calendar: calendar)
-          HistoryChoiceRow(title: pick.title, detail: nil, isCurrent: current == interval) {
+          HistoryChoiceRow(title: pick.title, isCurrent: current == interval) {
             choose(interval)
           }
         }
       }
       Divider()
+      Text(
+        "Choose one day, or a start and end date, then Apply.",
+        comment: "History date filter: one line above the calendar explaining how to pick days."
+      )
+      .font(.stHelper)
+      .foregroundStyle(.stTextSecondary)
+      .fixedSize(horizontal: false, vertical: true)
       monthHeader
       calendarGrid(now: now)
       HStack {
         if let firstDay {
-          Text(HistoryDateFilter.label(
-            for: HistoryDateFilter.interval(from: firstDay, through: lastDay ?? firstDay, calendar: calendar),
-            now: now, calendar: calendar))
-            .font(.stHelper)
-            .foregroundStyle(.stTextSecondary)
+          Text(
+            HistoryDateFilter.label(
+              for: HistoryDateFilter.interval(
+                from: firstDay, through: lastDay ?? firstDay, calendar: calendar),
+              now: now, calendar: calendar)
+          )
+          .font(.stHelper)
+          .foregroundStyle(.stTextSecondary)
         }
         Spacer()
         Button {
           guard let firstDay else { return }
-          choose(HistoryDateFilter.interval(
-            from: firstDay, through: lastDay ?? firstDay, calendar: calendar))
+          choose(
+            HistoryDateFilter.interval(
+              from: firstDay, through: lastDay ?? firstDay, calendar: calendar))
         } label: {
           EnviousButtonLabel("Apply", size: .regular)
         }
@@ -467,19 +546,31 @@ private struct HistoryDatePicker: View {
 
   private var monthHeader: some View {
     HStack {
-      Button { shiftMonth(-1) } label: { Image(systemName: "chevron.left") }
-        .settingsButton(.quiet, size: .medium, isEnabled: true)
-        .accessibilityLabel(String(localized: "Previous month", comment: "History date picker: shows the month before."))
+      Button {
+        shiftMonth(-1)
+      } label: {
+        Image(systemName: "chevron.left")
+      }
+      .settingsButton(.quiet, size: .medium, isEnabled: true)
+      .accessibilityLabel(
+        String(localized: "Previous month", comment: "History date picker: shows the month before.")
+      )
       Spacer()
       Text(month.formatted(.dateTime.month(.wide).year()))
         .font(.stRowLabel)
         .foregroundStyle(.stTextPrimary)
       Spacer()
-      Button { shiftMonth(1) } label: { Image(systemName: "chevron.right") }
-        .settingsButton(
-          .quiet, size: .medium,
-          isEnabled: calendar.isDate(month, equalTo: Date(), toGranularity: .month) == false)
-        .accessibilityLabel(String(localized: "Next month", comment: "History date picker: shows the month after."))
+      Button {
+        shiftMonth(1)
+      } label: {
+        Image(systemName: "chevron.right")
+      }
+      .settingsButton(
+        .quiet, size: .medium,
+        isEnabled: calendar.isDate(month, equalTo: Date(), toGranularity: .month) == false
+      )
+      .accessibilityLabel(
+        String(localized: "Next month", comment: "History date picker: shows the month after."))
     }
   }
 
@@ -504,9 +595,10 @@ private struct HistoryDatePicker: View {
     }
     let range = draft ?? current
     let inRange = range.map { day >= $0.start && day < $0.end } ?? false
-    let isEndpoint = range.map {
-      day == $0.start || calendar.isDate(day, inSameDayAs: $0.end.addingTimeInterval(-1))
-    } ?? false
+    let isEndpoint =
+      range.map {
+        day == $0.start || calendar.isDate(day, inSameDayAs: $0.end.addingTimeInterval(-1))
+      } ?? false
     let isFuture = day > now
     return Button {
       if firstDay == nil || lastDay != nil {
@@ -539,14 +631,14 @@ private struct HistoryDatePicker: View {
     .buttonStyle(.plain)
     .disabled(isFuture)
     .onHover { hovering in
-      if hovering && !isFuture { hoveredDay = day }
-      else if hoveredDay == day { hoveredDay = nil }
+      if hovering && !isFuture { hoveredDay = day } else if hoveredDay == day { hoveredDay = nil }
     }
     .accessibilityLabel(HistoryDateFilter.day(day).title)
     .accessibilityValue(
       count > 0
         ? String(localized: "Has items", comment: "History date picker: this day has items.")
-        : String(localized: "No items", comment: "History date picker: this day has no items."))
+        : String(localized: "No items", comment: "History date picker: this day has no items.")
+    )
     .accessibilityAddTraits(inRange ? .isSelected : [])
   }
 

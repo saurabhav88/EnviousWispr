@@ -18,7 +18,7 @@ enum TranscriptViewContext {
 /// Times, the turns (or the plain fallback), and the 88 pt docked player that plays the ORIGINAL
 /// file.
 ///
-/// **What it keeps from the legacy detail (`TranscriptDetailView`)**:
+/// **What it keeps from the legacy detail view (removed in #4611)**:
 /// - The view mode and Times are screen-local, start at Cleaned with Times on, and reset when
 ///   the view shows another row.
 /// - Turns render through `TranscriptTurnsDocument`; nil and empty turns both fall back to the
@@ -51,6 +51,8 @@ struct HistoryTranscriptView: View {
   /// transcript window Paste was pressed in).
   let restorePasteSurface: @MainActor () -> Void
   let back: (() -> Void)?
+  /// Previous and next transcript in the Transcripts list (#4611); none in the own window.
+  let neighbors: HistoryNeighbors
 
   init(
     rowID: UUID,
@@ -60,7 +62,8 @@ struct HistoryTranscriptView: View {
     openInNewWindow: @escaping (UUID) -> Void,
     showPasteNotice: @escaping @MainActor (String) -> Void,
     restorePasteSurface: @escaping @MainActor () -> Void,
-    back: (() -> Void)? = nil
+    back: (() -> Void)? = nil,
+    neighbors: HistoryNeighbors = .none
   ) {
     self.rowID = rowID
     self.context = context
@@ -70,6 +73,7 @@ struct HistoryTranscriptView: View {
     self.showPasteNotice = showPasteNotice
     self.restorePasteSurface = restorePasteSurface
     self.back = back
+    self.neighbors = neighbors
   }
 
   @Environment(TranscriptCoordinator.self) private var transcripts
@@ -89,6 +93,9 @@ struct HistoryTranscriptView: View {
   @State private var flatComparison: HistoryDictationPresentation.Prepared?
   @State private var polishPreview = HistoryPolishPreview()
   @State private var timesOn = true
+  /// #4611 T8/T9: Follow playback, as on the meeting page; resets with each row.
+  @State private var follow: MeetingAfterPresentation.Follow = .following
+  @State private var activeTurnID: String?
 
   // Original file
   @State private var sourceState: ImportedSourceState?
@@ -107,7 +114,9 @@ struct HistoryTranscriptView: View {
   @State private var locateRequested = false
   @State private var moreAnchor = HistoryMenuAnchorHolder()
   /// Rename in More opens the title's field (#4611).
-  @State private var renameRequested = false
+  /// The row whose read has finished. Until then a missing row is still loading, not deleted:
+  /// stepping fast with the arrows flashed "no longer in History" (founder, #4611).
+  @State private var finishedReadID: UUID?
 
   private typealias P = HistoryTranscriptPresentation
 
@@ -140,19 +149,25 @@ struct HistoryTranscriptView: View {
           ) {
             await refreshSource()
           }
-      } else {
+      } else if finishedReadID == rowID {
         removedPlaceholder
           .onAppear { dropPlayer() }
+      } else {
+        Color.clear
       }
     }
     .background(Color.stPageBg)
     .task(id: CatalogDetailKey(id: rowID, revision: transcripts.catalogSession?.revision)) {
       _ = await transcripts.loadCatalogDetail(rowID)
+      guard !Task.isCancelled else { return }
+      finishedReadID = rowID
     }
     .task(id: rowID) { await transcripts.holdCatalogDetail(rowID) }
     .onChange(of: rowID) {
       documentView = .cleaned
       timesOn = true
+      follow = .following
+      activeTurnID = nil
       notice = nil
     }
     .onDisappear {
@@ -168,15 +183,10 @@ struct HistoryTranscriptView: View {
       header(row)
         .padding(.horizontal, SettingsLayout.contentH)
         .padding(.top, SettingsLayout.contentTop)
+        .padding(.bottom, DesignSpacing.lg)
+      transcriptPane(row)
+        .padding(.horizontal, SettingsLayout.contentH)
         .padding(.bottom, DesignSpacing.xl)
-      Divider().overlay(Color.stDivider)
-      ScrollView {
-        document(row)
-          .frame(maxWidth: 780, alignment: .leading)
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .padding(.horizontal, SettingsLayout.contentH)
-          .padding(.vertical, DesignSpacing.xxl)
-      }
       dock
     }
     .confirmationDialog(
@@ -255,30 +265,30 @@ struct HistoryTranscriptView: View {
 
   // MARK: - Header
 
+  /// The shared page header (founder, #4611), laid out as the meeting page's (T2): the way back
+  /// alone on the left, previous / next and More at the right, the title, then the facts with
+  /// the engine and polish model as chips. The view picker, Copy and the settings moved into the
+  /// transcript pane (T3, T8).
   private func header(_ row: Transcript) -> some View {
-    VStack(alignment: .leading, spacing: DesignSpacing.lg) {
-      // Side by side when the title keeps a readable width; otherwise the actions move to their
-      // own row (long German labels at the 750 pt window floor squeezed the date into one
-      // letter per line, #3147 PR3 UAT).
-      ViewThatFits(in: .horizontal) {
-        HStack(alignment: .center, spacing: DesignSpacing.lg) {
-          if let back { HistoryDestinationBar(tab: .transcripts, close: back) }
-          titleBlock(row)
-            .frame(minWidth: Self.titleMinWidth, maxWidth: .infinity, alignment: .leading)
-          actions(row)
-        }
-        VStack(alignment: .leading, spacing: DesignSpacing.md) {
-          HStack(spacing: DesignSpacing.lg) {
-            if let back { HistoryDestinationBar(tab: .transcripts, close: back) }
-            titleBlock(row)
-              .frame(maxWidth: .infinity, alignment: .leading)
-          }
-          actions(row)
-        }
-      }
-      if P.hasRenderableTurns(row) || HistoryDictationPresentation.Texts(row).differ {
-        viewControls(row)
-      }
+    HistoryDocumentHeader(
+      tab: .transcripts, back: back, facts: facts(row),
+      neighbors: neighbors,
+      showsViewRow: false,
+      timestamps: nil,
+      trailingNavigation: true,
+      speakersAccessory: speakersButton(row),
+      engineChip: true,
+      polishChip: true
+    ) {
+      TranscriptInlineTitle(
+        rowID: rowID, fallbackTitle: P.title(for: row), font: .stDayTitle)
+    } actions: {
+      actions(row)
+    } picker: {
+      EmptyView()
+    } switches: {
+      EmptyView()
+    } below: {
       retranscriptionStatus
       HistoryPolishPreviewContent(preview: polishPreview)
       if let notice {
@@ -289,107 +299,52 @@ struct HistoryTranscriptView: View {
     }
   }
 
-  /// The narrowest the file name and its facts may get beside the actions.
-  private static let titleMinWidth: CGFloat = 260
-
-  private func titleBlock(_ row: Transcript) -> some View {
-    VStack(alignment: .leading, spacing: DesignSpacing.xxs) {
-      TranscriptInlineTitle(
-        rowID: rowID, fallbackTitle: P.title(for: row), beginRequest: $renameRequested)
-      provenance(row)
-    }
+  /// The facts row: date, length, speakers ("1 speaker" included, T4), the speech engine and the
+  /// polish model (only from real polish provenance). Why the original can't play moved into
+  /// the player card (T7).
+  private func facts(_ row: Transcript) -> HistoryDocumentFacts {
+    let provenance = P.provenance(for: row)
+    return HistoryDocumentFacts(
+      createdAt: provenance.createdAt,
+      length: P.footerClock(seconds: row.duration),
+      speakers: P.speakerCount(row.speakerAnalysis, names: row.speakerNames?.count),
+      engine: provenance.backend,
+      polishModel: provenance.aiPolished ? (provenance.polishModel ?? "AI") : nil)
   }
 
-  /// One quiet line in the Dictations footer's style (#4611): the date, the speech engine, the
-  /// polish model (only from real polish provenance), speakers, the length, and Original
-  /// unavailable with its reason on hover while the original can't play.
-  private func provenance(_ row: Transcript) -> some View {
-    let facts = P.provenance(for: row)
-    return WrappingHStack(spacing: DesignSpacing.sm) {
-      Text(facts.createdAt, format: .dateTime.month().day().year().hour().minute())
-      HistoryFooterDot()
-      HStack(spacing: DesignSpacing.xxs) {
-        Image(systemName: "waveform").accessibilityHidden(true)
-        Text(verbatim: facts.backend)
-      }
-      if facts.aiPolished {
-        HistoryFooterDot()
-        HStack(spacing: DesignSpacing.xxs) {
-          Image(systemName: "sparkles").accessibilityHidden(true)
-          Text(verbatim: facts.polishModel ?? "AI")
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(
-          Text(
-            "AI Polished with \(facts.polishModel ?? "AI")",
-            comment: "History transcript header, VoiceOver: AI polish rewrote this text. %@ is the model name."))
-      }
-      if let speakers = facts.speakers {
-        HistoryFooterDot()
-        HStack(spacing: DesignSpacing.xxs) {
-          Image(systemName: "person.2").accessibilityHidden(true)
-          Text(verbatim: speakers)
-        }
-      }
-      if let clock = P.footerClock(seconds: row.duration) {
-        HistoryFooterDot()
-        Text(verbatim: clock).monospacedDigit()
-      }
-      if case .unavailable(let reason) = sourceLine {
-        HistoryFooterDot()
-        HistoryUnplayableMark(label: P.unplayableLabel, reason: P.unavailableLine(reason))
-      }
-    }
-    .font(.stHelper)
-    .foregroundStyle(.stTextSecondary)
+  /// Two or more speakers: the meeting page's "3 speakers" button (colored dots, a small arrow)
+  /// that opens each speaker's share of the speaking time, measured from the turns' times as on
+  /// a meeting (founder, #4611). One speaker, or turns without times, keep the plain fact.
+  private func speakersButton(_ row: Transcript) -> AnyView? {
+    let turns = row.turns ?? []
+    guard let count = P.speakerNumber(row.speakerAnalysis, names: row.speakerNames?.count), count >= 2,
+      let label = P.speakerCount(row.speakerAnalysis, names: row.speakerNames?.count)
+    else { return nil }
+    let participants = MeetingAfterPresentation.participants(
+      turns: turns, speakerNames: row.speakerNames ?? [:])
+    guard !participants.isEmpty else { return nil }
+    return AnyView(
+      MeetingSpeakersButton(
+        label: label, participants: participants,
+        colorIndices: MeetingAfterPresentation.speakerColorIndices(turns: turns)))
   }
 
-  /// Copy and More, the Dictations card's pattern (#4611): Share, Save as, Open in new window,
+  /// More, the Dictations card's pattern (#4611): Rename, Share, Save as, Open in new window,
   /// Paste, Polish again with, Transcribe again with, Locate original and Delete live in More.
+  /// Copy moved beside the words it copies (T2, T3).
   private func actions(_ row: Transcript) -> some View {
     // Save and Share are enabled from the displayed row without building the export; pressing
     // them still reads the export text from the live row.
     let availability = TranscriptDocumentPresenter.exportAvailability(
       turns: row.turns, fallback: transcripts.textForDelivery(row))
     let labels = TranscriptDocumentPresenter.exportButtonLabels(mode: documentView)
-    let copy = TranscribeFileExport.copyButtonPresentation(
-      label: labels.copy, copiedAt: copiedAt, now: Date(),
-      holdSeconds: TranscribeFileExport.copiedHoldSeconds)
     return HStack(spacing: DesignSpacing.md) {
-      Button {
-        // Read at the press from the live row, never this view's snapshot.
-        guard let text = exportText else { return }
-        TranscribeFileExport.copy(text)
-        let pressed = Date()
-        copiedAt = pressed
-        Task {
-          try? await Task.sleep(for: .seconds(TranscribeFileExport.copiedHoldSeconds))
-          if copiedAt == pressed { copiedAt = nil }
-        }
-      } label: {
-        Image(systemName: copy.systemImage)
-          .frame(width: 16, height: 16)
-      }
-      .settingsButton(.quiet, size: .medium, isEnabled: availability != .none)
-      .help(Text(verbatim: copy.title))
-      .accessibilityLabel(Text(verbatim: copy.title))
-
-      Button {
+      HistoryDocumentMoreButton(anchor: moreAnchor) {
         guard let anchor = moreAnchor.view else { return }
         historyMenu.toggle(
           items: moreItems(row, availability: availability, labels: labels), from: anchor)
-      } label: {
-        Image(systemName: "ellipsis")
-          .fontWeight(.bold)
-          .frame(width: 16, height: 16)
       }
-      .settingsButton(.quiet, size: .medium, isEnabled: true)
-      .background(HistoryMenuAnchor(holder: moreAnchor))
-      .help(Text("More actions", comment: "History transcript: opens the More menu."))
-      .accessibilityLabel(
-        Text("More actions", comment: "History transcript: opens the More menu."))
     }
-    .fixedSize()
   }
 
   /// The More menu's items, built when it opens, from the view's live state.
@@ -399,10 +354,15 @@ struct HistoryTranscriptView: View {
   ) -> [HistoryMenuItem] {
     let busy = P.isBusy(retranscription.state(for: rowID))
     let speechChoices = retranscription.choices(for: rowID)
+    // No Rename: the title's pencil renames (founder #4611, 2026-11-17).
+    // Paste first, as on the Dictations card and the meeting page. Legacy parity: unavailable
+    // while the row may not be pasted; without Accessibility it opens the permission page.
     var items: [HistoryMenuItem] = [
       .init(
-        id: "rename", title: Self.renameLabel, systemImage: "pencil",
-        isEnabled: row.isImported, kind: .action { renameRequested = true }),
+        id: "paste", title: EscapeRecoveryRowPresentation.pasteLabel,
+        systemImage: "arrow.right.doc.on.clipboard",
+        isEnabled: !permissions.accessibilityGranted || pasteAllowed(row),
+        kind: .action { pasteTapped(row) }),
       .init(
         id: "share", title: labels.share, systemImage: "square.and.arrow.up",
         isEnabled: availability == .content,
@@ -435,14 +395,6 @@ struct HistoryTranscriptView: View {
           systemImage: "macwindow.badge.plus", kind: .action { openInNewWindow(rowID) }))
     }
     items.append(.divider("d1"))
-    // Legacy parity: unavailable while the row may not be pasted; without Accessibility it opens
-    // the permission page, as the Dictations card does.
-    items.append(
-      .init(
-        id: "paste", title: EscapeRecoveryRowPresentation.pasteLabel,
-        systemImage: "arrow.right.doc.on.clipboard",
-        isEnabled: !permissions.accessibilityGranted || pasteAllowed(row),
-        kind: .action { pasteTapped(row) }))
     let polish = HistoryPolishMenu.menuItems(
       surface: .transcript, choices: historyRepolish.choices(.transcript),
       currentProvider: row.llmProvider, currentModel: row.llmModel,
@@ -516,34 +468,179 @@ struct HistoryTranscriptView: View {
     return items
   }
 
-  private func viewControls(_ row: Transcript) -> some View {
+  private func viewPicker(_ row: Transcript) -> some View {
     let hasTimes = row.turns?.contains { $0.startMs != nil } == true
     let polished = row.polishedText != nil
-    return WrappingHStack(spacing: DesignSpacing.lg) {
-      BrandedSegmentedPicker(
-        options: [
-          (Self.modeLabel(.cleaned, polished: polished), nil, FileImportCoordinator.DocumentView.cleaned),
-          (Self.modeLabel(.markedUp), nil, .markedUp),
-          (Self.modeLabel(.original), nil, .original),
-        ],
-        selection: $documentView,
-        hint: { P.viewHint(mode: $0, playable: hasTimes && activePlayer != nil) }
-      )
-      .fixedSize()
-      .accessibilityElement(children: .contain)
-      .accessibilityLabel(
-        Text(
-          "Which words to show",
-          comment: "History transcript: the Polished, Marked up and Original choice."))
-      if hasTimes {
-        Toggle(isOn: $timesOn) {
-          Text("Times", comment: "History transcript: shows each turn's start time.")
-            .font(.stRowLabel)
+    return BrandedSegmentedPicker(
+      options: [
+        (Self.modeLabel(.cleaned, polished: polished), nil, FileImportCoordinator.DocumentView.cleaned),
+        (Self.modeLabel(.markedUp), nil, .markedUp),
+        (Self.modeLabel(.original), nil, .original),
+      ],
+      selection: $documentView,
+      hint: { P.viewHint(mode: $0, playable: hasTimes && activePlayer != nil, timesOn: timesOn) }
+    )
+    .fixedSize()
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel(
+      Text(
+        "Which words to show",
+        comment: "History transcript: the Polished, Marked up and Original choice."))
+  }
+
+  // MARK: - Transcript pane (#4611 T1, T3, T8, T9)
+
+  /// The transcript in the meeting page's pane card: one header row (the view picker, Copy and
+  /// the settings button), then the words scrolling under it, for one speaker or several, with
+  /// or without the original. Follow playback scrolls to the turn that plays; a deliberate scroll
+  /// pauses it, and Return to playback floats over the bottom until the reader comes back.
+  private func transcriptPane(_ row: Transcript) -> some View {
+    ScrollViewReader { proxy in
+      VStack(spacing: 0) {
+        paneHeader(row)
+          .padding(.horizontal, DesignSpacing.lg)
+          .padding(.vertical, DesignSpacing.md)
+          .frame(maxWidth: .infinity, alignment: .leading)
+        Divider()
+        ScrollView {
+          document(row)
+            .frame(maxWidth: 780, alignment: .leading)
+            .padding(.horizontal, DesignSpacing.xl)
+            .padding(.vertical, DesignSpacing.xl)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .toggleStyle(BrandedToggleStyle())
-        .fixedSize()
+        // Only a scroll while playing pauses following; reading before Play does not (T9).
+        .meetingUserScroll {
+          if follow == .following, activePlayer?.state == .playing { follow = .suspended }
+        }
+      }
+      .background(
+        Color.stSectionBg, in: RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius))
+      .clipShape(RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius))
+      .overlay(alignment: .bottom) {
+        if canFollow(row), follow == .suspended, activePlayer?.state == .playing {
+          HistoryReturnToPlaybackButton { follow = .following }
+            .shadow(color: .black.opacity(0.28), radius: 9, y: 6)
+            .padding(.bottom, DesignSpacing.xl)
+        }
+      }
+      .background {
+        if let player = activePlayer, let turns = row.turns, !turns.isEmpty {
+          MeetingFollowDriver(
+            player: player, turns: turns, activeTurnID: $activeTurnID,
+            following: follow == .following,
+            scroll: { id in
+              proxy.scrollTo(TurnRowKey(turnID: id, occurrence: 0), anchor: .center)
+            },
+            scrollsWhenPlaybackStarts: true
+          )
+          .id(ObjectIdentifier(player))
+        }
       }
     }
+  }
+
+  /// The view picker (only when there is something to choose), then Copy and the settings button.
+  private func paneHeader(_ row: Transcript) -> some View {
+    let hasTimes = Self.hasTimes(row)
+    let follows = canFollow(row)
+    let availability = TranscriptDocumentPresenter.exportAvailability(
+      turns: row.turns, fallback: transcripts.textForDelivery(row))
+    return HStack(alignment: .center, spacing: DesignSpacing.md) {
+      if P.hasRenderableTurns(row) || HistoryDictationPresentation.Texts(row).differ {
+        viewPicker(row)
+      }
+      Spacer(minLength: 0)
+      HStack(spacing: DesignSpacing.xs) {
+        paneCopyButton(row, isEnabled: availability != .none)
+        MeetingTranscriptSettingsButton(
+          follow: follows
+            ? Binding(get: { follow != .off }, set: { follow = $0 ? .following : .off }) : nil,
+          timestamps: hasTimes ? $timesOn : nil,
+          followUnavailable: follows
+            ? nil
+            : activePlayer == nil
+              ? Text(
+                "Needs audio",
+                comment: "History transcript settings: Follow playback needs the original to play.")
+              : Text(
+                "Needs timestamps",
+                comment: "History transcript settings: Follow playback needs saved turn times."),
+          timestampsUnavailable: hasTimes
+            ? nil
+            : Text(
+              "No times saved",
+              comment: "History transcript settings: this transcript was saved without turn times."))
+      }
+      .fixedSize()
+    }
+    .frame(minHeight: 34)
+  }
+
+  /// #4611 T3: Copy beside the words, copying what this view copies (Marked up copies the cleaned
+  /// text, as before); its spoken name says which. "Copied" holds for two seconds at its size.
+  private func paneCopyButton(_ row: Transcript, isEnabled: Bool) -> some View {
+    let copied = copiedAt != nil
+    let spoken = Self.copySpokenName(mode: documentView, polished: row.polishedText != nil)
+    return Button {
+      // Read at the press from the live row, never this view's snapshot.
+      guard let text = exportText else { return }
+      TranscribeFileExport.copy(text)
+      let pressed = Date()
+      copiedAt = pressed
+      Task {
+        try? await Task.sleep(for: .seconds(TranscribeFileExport.copiedHoldSeconds))
+        if copiedAt == pressed { copiedAt = nil }
+      }
+    } label: {
+      ZStack {
+        EnviousButtonLabel(
+          LocalizedStringResource("Copy", comment: "History meeting: a pane's Copy button."),
+          size: .medium, systemImage: "doc.on.doc"
+        )
+        .opacity(copied ? 0 : 1)
+        EnviousButtonLabel(
+          LocalizedStringResource(
+            "Copied", comment: "History meeting: a pane's Copy button, just after copying."),
+          size: .medium, systemImage: "checkmark"
+        )
+        .opacity(copied ? 1 : 0)
+      }
+    }
+    .settingsButton(.quiet, size: .medium, isEnabled: isEnabled)
+    .disabled(!isEnabled)
+    .help(Text(verbatim: spoken))
+    .accessibilityLabel(Text(verbatim: spoken))
+  }
+
+  static func copySpokenName(mode: FileImportCoordinator.DocumentView, polished: Bool) -> String {
+    switch mode {
+    case .cleaned:
+      polished
+        ? String(localized: "Copy polished text", comment: "History transcript: Copy in Polished.")
+        : String(localized: "Copy cleaned text", comment: "History transcript: Copy in Cleaned.")
+    case .markedUp:
+      String(
+        localized: "Copy cleaned text",
+        comment: "History transcript: Copy in Marked up, which copies the cleaned text.")
+    case .original:
+      String(localized: "Copy original text", comment: "History transcript: Copy in Original.")
+    }
+  }
+
+  static func hasTimes(_ row: Transcript) -> Bool {
+    row.turns?.contains { $0.startMs != nil } == true
+  }
+
+  /// Follow playback needs the original playing and turns with times.
+  private func canFollow(_ row: Transcript) -> Bool {
+    activePlayer != nil && Self.hasTimes(row)
+  }
+
+  /// The tinted turn: only while Follow playback is on and playback has started.
+  private var shownActiveTurnID: String? {
+    guard follow != .off, let player = activePlayer, player.state != .idle else { return nil }
+    return activeTurnID
   }
 
   @ViewBuilder
@@ -583,7 +680,8 @@ struct HistoryTranscriptView: View {
           language: row.language, isMeeting: row.isMeeting, mode: documentView, timesOn: timesOn,
           documentFinished: documentFinished,
           renameSuggestions: SpeakerRenameSuggestions(row: row, roster: nil),
-          playerIdentity: activePlayer.map(ObjectIdentifier.init)),
+          playerIdentity: activePlayer.map(ObjectIdentifier.init),
+          activeTurnID: shownActiveTurnID),
         onPlayFrom: { [player = activePlayer] ms in
           guard let player, player.state != .unavailable else { return }
           player.seek(toMs: ms)
@@ -619,9 +717,15 @@ struct HistoryTranscriptView: View {
           ProgressView("Comparing words")
         }
       } else {
-        HistoryParagraphText.searchText(
-          documentView == .original ? texts.original : texts.polished, query: searchQuery)
-          .textSelection(.enabled)
+        Group {
+          // List lines draw as dots in Polished only; Original keeps the words as heard.
+          if documentView == .original {
+            HistoryParagraphText.searchText(texts.original, query: searchQuery)
+          } else {
+            HistoryListText(text: texts.polished, query: searchQuery)
+          }
+        }
+        .textSelection(.enabled)
       }
     }
     .font(.stCardText)
@@ -649,13 +753,22 @@ struct HistoryTranscriptView: View {
 
   // MARK: - Dock
 
-  /// The player while the original plays (#4611): with no playable original there is no bar;
-  /// the header's Original unavailable mark says why, and Locate original is in More.
+  /// #4611 T6/T7: the meeting page's player card (D10), with no note markers, while the original
+  /// plays; without it the same place says "Audio unavailable" and why (Locate original stays in
+  /// More). While the original is still being checked, nothing shows, as before.
   @ViewBuilder
   private var dock: some View {
     if let player = activePlayer {
-      HistoryTranscriptPlayerBar(player: player)
+      MeetingAfterPlayerBar(content: .player(player))
         .id(ObjectIdentifier(player))
+        .padding(.horizontal, SettingsLayout.contentH)
+        .padding(.bottom, DesignSpacing.xl)
+    } else if case .unavailable(let reason) = sourceLine {
+      MeetingAfterPlayerBar(
+        content: .audioUnavailable(reason: P.unavailableLine(reason))
+      )
+      .padding(.horizontal, SettingsLayout.contentH)
+      .padding(.bottom, DesignSpacing.xl)
     }
   }
 
@@ -820,10 +933,6 @@ struct HistoryTranscriptView: View {
 
   static let newWindowLabel = LocalizedStringResource(
     "Open in new window", comment: "History transcript: opens this transcript in its own window.")
-
-  static var renameLabel: String {
-    String(localized: "Rename", comment: "History transcript: opens the title's rename field.")
-  }
 
   static var locateLabel: String {
     String(

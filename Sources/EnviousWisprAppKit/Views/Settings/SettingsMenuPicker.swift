@@ -23,6 +23,9 @@ struct SettingsMenuPicker<Value: Hashable, Choices: View>: View {
   /// The current choice's words, shown on the button.
   let valueLabel: String
   var isEnabled = true
+  /// The button face. Outlined everywhere; History's filters fill it while a filter narrows
+  /// the list, as its other filter buttons do (#4611).
+  var emphasis: EnviousButtonFace.Emphasis = .outlined
   @ViewBuilder let choices: () -> Choices
 
   var body: some View {
@@ -40,7 +43,7 @@ struct SettingsMenuPicker<Value: Hashable, Choices: View>: View {
       )
       .modifier(
         EnviousButtonFace(
-          emphasis: .outlined, shape: .roundedRect, size: .medium, paintsEnabled: isEnabled))
+          emphasis: emphasis, shape: .roundedRect, size: .medium, paintsEnabled: isEnabled))
     }
     .menuStyle(.button)
     .menuIndicator(.hidden)

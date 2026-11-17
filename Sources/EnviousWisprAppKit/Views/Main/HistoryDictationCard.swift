@@ -30,7 +30,8 @@ struct HistoryDictationCard: View {
   /// #4101: why a History Paste did not happen; the History page holds the notice.
   let showPasteNotice: (String) -> Void
 
-  init(display: HistoryDictationDisplay, query: String, showPasteNotice: @escaping (String) -> Void) {
+  init(display: HistoryDictationDisplay, query: String, showPasteNotice: @escaping (String) -> Void)
+  {
     self.display = display
     self.query = query
     self.showPasteNotice = showPasteNotice
@@ -53,6 +54,7 @@ struct HistoryDictationCard: View {
   @Environment(SettingsManager.self) private var settings
   @Environment(HistoryRepolishRunner.self) private var historyRepolish
   @Environment(HistoryMenuPresenter.self) private var historyMenu
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   // Recording
   @State private var status: DictationRecordingStatus?
@@ -61,6 +63,8 @@ struct HistoryDictationCard: View {
   @State private var playerURL: URL?
   @State private var timeline: [HistoryDictationPresentation.TimedSpan] = []
   @State private var actionFailed = false
+  /// Which action failed, in words (set before each action starts).
+  @State private var actionFailureMessage = ""
 
   // Text
   @State private var prepared: HistoryDictationPresentation.Prepared?
@@ -126,7 +130,8 @@ struct HistoryDictationCard: View {
         // cards share a height.
         HistoryClampedText(
           text: HistoryDictationPresentation.plainText(
-            texts, view: HistoryDictationPresentation.defaultView(for: row.effectivePreferredVersion)),
+            texts,
+            view: HistoryDictationPresentation.defaultView(for: row.effectivePreferredVersion)),
           query: query, expanded: $textExpanded)
       }
       if let current, editsOn, let index = openChange,
@@ -143,10 +148,7 @@ struct HistoryDictationCard: View {
         preferenceNoticeRow(change)
       }
       if actionFailed {
-        Text(
-          "That didn't work. Try again.",
-          comment: "History: a recording action (keep or delete) failed."
-        )
+        Text(verbatim: actionFailureMessage)
         .font(.stHelper)
         .foregroundStyle(.stError)
       }
@@ -169,10 +171,11 @@ struct HistoryDictationCard: View {
     .task(id: editsRequested || editsOn || !timeline.isEmpty ? texts : nil) {
       guard texts.differ, editsRequested || editsOn || !timeline.isEmpty else { return }
       await prepareComparison(texts)
-      guard !Task.isCancelled, editsRequested, prepared.map({ HistoryDictationPresentation.accepts($0, current: texts) }) == true
+      guard !Task.isCancelled, editsRequested,
+        prepared.map({ HistoryDictationPresentation.accepts($0, current: texts) }) == true
       else { return }
       editsRequested = false
-      editsOn = true
+      withAnimation(editsMotion) { editsOn = true }
     }
     .onDisappear {
       polishPreview.cancel()
@@ -202,10 +205,16 @@ struct HistoryDictationCard: View {
     }
   }
 
+  /// #4611: Show edits opens and closes in one motion. The card grows or shrinks with this
+  /// animation while History's list slides the cards below over the same time and curve.
+  private var editsMotion: Animation? {
+    HistoryRowMotion.request()
+    return reduceMotion ? nil : DesignMotion.brisk
+  }
+
   private var cardBorder: Color {
     player?.state == .playing ? Color.stAccent.opacity(0.35) : Color.stDivider
   }
-
 
   private var recordingRevision: Int {
     transcripts.recordings?.changes.revision(for: rowID) ?? 0
@@ -300,8 +309,8 @@ struct HistoryDictationCard: View {
       // #1408 / #1063 PR2: kept from the old History row (cloud review of PR #4555). A dictation
       // whose microphone was removed mid-recording may be cut short; one rebuilt from a recovered
       // recording says so. Icon and text, never colour alone.
-      // #2087: Kept, for a held Escape Recovery dictation the user kept (held rows use the
-      // detail view, which shows their countdown).
+      // #2087: a held Escape Recovery dictation's countdown ("Deleted in 20h"), or Kept after
+      // the user kept it.
       if case .available(_, let durationMs, _) = status {
         Text(verbatim: MeetingsPresentation.clock(ms: durationMs)).monospacedDigit()
         Text(verbatim: "·").accessibilityHidden(true)
@@ -325,10 +334,14 @@ struct HistoryDictationCard: View {
           .accessibilityLabel("Recovered recording")
         }
       }
-      Image(systemName: "waveform").accessibilityHidden(true)
-      Text(verbatim: row.backendName)
+      // A row with no recorded engine name shows no engine part, never a bare icon.
+      let hasEngine = !row.backendName.isEmpty
+      if hasEngine {
+        Image(systemName: "waveform").accessibilityHidden(true)
+        Text(verbatim: row.backendName)
+      }
       if row.polishedText != nil, let model = row.llmModel {
-        Text(verbatim: "·").accessibilityHidden(true)
+        if hasEngine { Text(verbatim: "·").accessibilityHidden(true) }
         Image(systemName: "sparkles").accessibilityHidden(true)
         Text(verbatim: model)
       }
@@ -336,11 +349,13 @@ struct HistoryDictationCard: View {
         Text(verbatim: "·").accessibilityHidden(true)
         Text(line)
       }
-      if lacksRecording {
+      // #2087: a held dictation never has a recording; its countdown already says what it is.
+      if lacksRecording, !isHeld(row) {
         HistoryFooterDot()
         HistoryUnplayableMark(
           label: LocalizedStringResource(
-            "No recording", comment: "History dictation card footer: this dictation has no saved recording."),
+            "No recording",
+            comment: "History dictation card footer: this dictation has no saved recording."),
           reason: String(localized: Self.absenceLine(absenceReason)))
       }
     }
@@ -405,17 +420,36 @@ struct HistoryDictationCard: View {
   /// to build, and the row never wraps when the window narrows.
   private func buttonRow(_ row: HistoryDictationDisplay, hasChanges: Bool) -> some View {
     HStack(spacing: DesignSpacing.md) {
+      // #2087: a held Escape Recovery dictation is deleted in 24 hours unless kept, so Keep is
+      // the card's first button while the offer stands.
+      if isHeld(row) {
+        Button {
+          keepHeld(row)
+        } label: {
+          EnviousButtonLabel(
+            verbatim: EscapeRecoveryRowPresentation.keepLabel, size: .medium,
+            systemImage: "tray.and.arrow.down")
+        }
+        .settingsButton(.outlined, size: .medium, isEnabled: keepAllowed(row))
+        .disabled(!keepAllowed(row))
+        .focused($focus, equals: .control("keep"))
+        .help(
+          Text(
+            "Keep this dictation instead of deleting it in 24 hours",
+            comment: "History dictation card: tooltip of Keep on a cancelled dictation."))
+      }
       if hasChanges {
         Button {
           openChange = nil
           comparisonView = HistoryDictationPresentation.editsView
           if editsOn || editsRequested {
-            editsOn = false
             editsRequested = false
+            withAnimation(editsMotion) { editsOn = false }
           } else if let ready = prepared,
-            HistoryDictationPresentation.accepts(ready, current: HistoryDictationPresentation.Texts(display))
+            HistoryDictationPresentation.accepts(
+              ready, current: HistoryDictationPresentation.Texts(display))
           {
-            editsOn = true
+            withAnimation(editsMotion) { editsOn = true }
           } else {
             editsRequested = true
           }
@@ -487,7 +521,8 @@ struct HistoryDictationCard: View {
           }
         }),
       .init(
-        id: "share", title: String(localized: "Share…", comment: "History dictation card: shares the text."),
+        id: "share",
+        title: String(localized: "Share…", comment: "History dictation card: shares the text."),
         systemImage: "square.and.arrow.up",
         kind: .action {
           guard let anchor = moreAnchor.view else { return }
@@ -503,7 +538,9 @@ struct HistoryDictationCard: View {
             relativeTo: anchor.bounds, of: anchor, preferredEdge: .minY)
         }),
       .init(
-        id: "save", title: String(localized: "Save as…", comment: "Export button: save the transcript to a file."),
+        id: "save",
+        title: String(
+          localized: "Save as…", comment: "Export button: save the transcript to a file."),
         systemImage: "square.and.arrow.down", kind: .action { saveDocument() }),
       .divider("d1"),
     ]
@@ -512,17 +549,23 @@ struct HistoryDictationCard: View {
       currentProvider: row.llmProvider, currentModel: row.llmModel, currentSize: row.egOneSize,
       isEnabled: polishPreview.canStart,
       select: { choice in
-        polishPreview.start(rowID: rowID, choice: choice, runner: historyRepolish, history: transcripts)
+        polishPreview.start(
+          rowID: rowID, choice: choice, runner: historyRepolish, history: transcripts)
       },
       setUp: {
         navigation.request(.aiPolish)
         appWindow.showWindow()
       })
-    items.append(
-      .init(
-        id: "polish",
-        title: String(localized: "Polish again with", comment: "History: opens the list of AI models to polish this text again."),
-        systemImage: "sparkles", kind: .submenu(polish)))
+    // #2087: a held Escape Recovery dictation cannot be polished again (the runner refuses it).
+    if row.escapeRecoveredAt == nil {
+      items.append(
+        .init(
+          id: "polish",
+          title: String(
+            localized: "Polish again with",
+            comment: "History: opens the list of AI models to polish this text again."),
+          systemImage: "sparkles", kind: .submenu(polish)))
+    }
     if case .available(_, _, let pinned) = status {
       items.append(
         .init(
@@ -539,7 +582,9 @@ struct HistoryDictationCard: View {
           id: "restore",
           title: String(
             localized: "Restore original text",
-            comment: "History dictation card, More menu: shows and delivers your words before AI polish instead of the polished text."),
+            comment:
+              "History dictation card, More menu: shows and delivers your words before AI polish instead of the polished text."
+          ),
           systemImage: "arrow.uturn.backward", kind: .action { setPreference(.original) }))
     case .usePolished:
       items.append(
@@ -547,7 +592,8 @@ struct HistoryDictationCard: View {
           id: "use-polished",
           title: String(
             localized: "Use polished text",
-            comment: "History dictation card, More menu: shows and delivers the AI-polished text again."),
+            comment:
+              "History dictation card, More menu: shows and delivers the AI-polished text again."),
           systemImage: "sparkles", kind: .action { setPreference(nil) }))
     case nil:
       break
@@ -560,13 +606,18 @@ struct HistoryDictationCard: View {
           title: String(
             localized: "Delete recording, keep text",
             comment: "History: deletes this dictation's audio and keeps its text."),
-          systemImage: "waveform.slash", kind: .action { confirming = .recordingsOnly }))
+          // Red like the meeting's: it deletes audio for good (DESIGN.md menus, founder #4611).
+          systemImage: "waveform.slash", isDestructive: true,
+          kind: .action { confirming = .recordingsOnly }))
     }
     items.append(
       .init(
         id: "delete",
-        title: String(localized: "Delete dictation", comment: "VoiceOver label of the History delete button for a dictation."),
-        systemImage: "trash", isDestructive: true, kind: .action { confirming = .textAndRecordings }))
+        title: String(
+          localized: "Delete dictation",
+          comment: "VoiceOver label of the History delete button for a dictation."),
+        systemImage: "trash", isDestructive: true, kind: .action { confirming = .textAndRecordings }
+      ))
     return items
   }
 
@@ -583,6 +634,33 @@ struct HistoryDictationCard: View {
       && EscapeRecoveryRowPresentation.allowsPaste(
         escapeRecoveredAt: row.escapeRecoveredAt, now: Date(),
         dictationInFlight: liveRecordingState.pipelineState.isActive)
+  }
+
+  /// #2087: whether this is a held Escape Recovery dictation whose Keep offer still stands. The
+  /// rule lives in `EscapeRecoveryRowPresentation`.
+  private func isHeld(_ row: HistoryDictationDisplay) -> Bool {
+    if case .held = EscapeRecoveryRowPresentation.badge(
+      escapeRecoveredAt: row.escapeRecoveredAt, takeID: row.escapeRecoveryTakeID, now: Date())
+    {
+      return true
+    }
+    return false
+  }
+
+  private func keepAllowed(_ row: HistoryDictationDisplay) -> Bool {
+    EscapeRecoveryRowPresentation.allowsKeep(
+      escapeRecoveredAt: row.escapeRecoveredAt, takeID: row.escapeRecoveryTakeID, now: Date(),
+      dictationInFlight: liveRecordingState.pipelineState.isActive)
+  }
+
+  /// Keep, checked again at the press (a dictation may have started since the button was
+  /// drawn); the coordinator revalidates the live row through the store.
+  private func keepHeld(_ row: HistoryDictationDisplay) {
+    guard keepAllowed(row) else { return }
+    Task {
+      guard let live = transcripts.liveHistoryRow(id: rowID) else { return }
+      await transcripts.keep(live)
+    }
   }
 
   /// History's Paste: the same clipboard transaction as Paste Last Dictation, into the app the
@@ -709,11 +787,14 @@ struct HistoryDictationCard: View {
       if absence?.expiredAfterDays == 1 {
         LocalizedStringResource(
           "Recording expired after 1 day. The text stays.",
-          comment: "History: the recording was removed after the one-day keep period chosen in Settings.")
+          comment:
+            "History: the recording was removed after the one-day keep period chosen in Settings.")
       } else if let days = absence?.expiredAfterDays {
         LocalizedStringResource(
           "Recording expired after \(days) days. The text stays.",
-          comment: "History: the recording was removed after the keep period chosen in Settings. %lld is a number of days, more than one.")
+          comment:
+            "History: the recording was removed after the keep period chosen in Settings. %lld is a number of days, more than one."
+        )
       } else {
         LocalizedStringResource(
           "Recording removed after your keep period. The text stays.",
@@ -755,6 +836,9 @@ struct HistoryDictationCard: View {
   private func setKeep(_ keep: Bool) {
     guard let recordings = transcripts.recordings else { return }
     actionFailed = false
+    actionFailureMessage = String(
+      localized: "Couldn't change whether this recording is kept. Try again.",
+      comment: "History dictation card: keeping or un-keeping the recording failed.")
     Task {
       do {
         if keep {
@@ -774,6 +858,9 @@ struct HistoryDictationCard: View {
   /// shows the new preference at once (edits off, the preference's own view) and offers Undo.
   private func setPreference(_ version: Transcript.PreferredVersion?) {
     actionFailed = false
+    actionFailureMessage = String(
+      localized: "Couldn't change the saved text version. Try again.",
+      comment: "History dictation card: Restore original text or Use polished text failed.")
     Task {
       do {
         guard let change = try await transcripts.setHistoryPreferredVersion(version, for: rowID)
@@ -793,6 +880,9 @@ struct HistoryDictationCard: View {
 
   private func undo(_ change: HistoryPreferenceChange) {
     actionFailed = false
+    actionFailureMessage = String(
+      localized: "Couldn't change the saved text version. Try again.",
+      comment: "History dictation card: Restore original text or Use polished text failed.")
     Task {
       do {
         // False when a later choice replaced this one: nothing to put back, nothing failed.
@@ -813,7 +903,8 @@ struct HistoryDictationCard: View {
         undo(change)
       } label: {
         EnviousButtonLabel(
-          LocalizedStringResource("Undo", comment: "History dictation card: undoes the text choice just made."),
+          LocalizedStringResource(
+            "Undo", comment: "History dictation card: undoes the text choice just made."),
           size: .medium)
       }
       .settingsButton(.quiet, size: .medium, isEnabled: true)
@@ -828,6 +919,14 @@ struct HistoryDictationCard: View {
   private func delete(_ kind: HistoryDeleteKind) {
     confirming = nil
     actionFailed = false
+    actionFailureMessage =
+      kind == .recordingsOnly
+      ? String(
+        localized: "Couldn't delete the recording. Try again.",
+        comment: "History dictation card: deleting only the recording failed.")
+      : String(
+        localized: "Couldn't delete the dictation. Try again.",
+        comment: "History dictation card: deleting the dictation failed.")
     Task {
       let outcome = await transcripts.deleteHistoryItem(id: .transcript(rowID), kind: kind)
       if HistoryDictationPresentation.deletionFailed(outcome) { actionFailed = true }
@@ -838,7 +937,8 @@ struct HistoryDictationCard: View {
     change.after == .original
       ? LocalizedStringResource(
         "Original restored in History",
-        comment: "History dictation card: History now shows and delivers your words before AI polish.")
+        comment:
+          "History dictation card: History now shows and delivers your words before AI polish.")
       : LocalizedStringResource(
         "Polished text back in History",
         comment: "History dictation card: History shows and delivers the AI-polished text again.")
@@ -848,10 +948,12 @@ struct HistoryDictationCard: View {
     switch kind {
     case .recordingsOnly:
       LocalizedStringResource(
-        "Delete the recording?", comment: "History: confirmation title before deleting one dictation's audio.")
+        "Delete the recording?",
+        comment: "History: confirmation title before deleting one dictation's audio.")
     case .textAndRecordings:
       LocalizedStringResource(
-        "Delete this dictation?", comment: "History: confirmation title before deleting one dictation.")
+        "Delete this dictation?",
+        comment: "History: confirmation title before deleting one dictation.")
     }
   }
 
@@ -880,7 +982,7 @@ struct HistoryDictationCard: View {
 
   // MARK: - Words
 
-  static let copiedHoldSeconds: Double = 1.5
+  static let copiedHoldSeconds: Double = TranscribeFileExport.copiedHoldSeconds
 
   static var dictationWord: String {
     String(
@@ -925,7 +1027,8 @@ struct HistoryDictationCard: View {
     switch view {
     case .polished:
       LocalizedStringResource(
-        "What was pasted", comment: "History dictation card: hint beside the Polished view.")
+        "The polished version",
+        comment: "History dictation card: hint beside the Polished view.")
     case .markedUp:
       LocalizedStringResource(
         "Click a marked word to compare",

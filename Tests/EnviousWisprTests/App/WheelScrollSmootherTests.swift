@@ -135,6 +135,25 @@ struct WheelScrollSmootherTests {
     #expect(tuning.boost(0) == 0)
   }
 
+  @Test("While a History menu holds scrolling, the page gets no wheel event and no glide (#4611)")
+  func holdDropsEventsAndStopsTheGlide() throws {
+    let (smoother, box) = makeSmoother(Harness())
+    // A notch already gliding when the menu opens stops where it is.
+    #expect(smoother.handle(try wheelEvent(dy: -1)) == nil)
+    smoother.holdScrolling { _ in false }
+    #expect(smoother.glide.isIdle)
+    let emittedAtHold = box.value.emitted.count
+    #expect(smoother.handle(try wheelEvent(dy: -3, precise: true)) == nil)
+    #expect(smoother.handle(try wheelEvent(dy: -1)) == nil)
+    box.value.now += 1
+    smoother.tick()
+    #expect(box.value.emitted.count == emittedAtHold)
+    // Closing the menu gives scrolling back.
+    smoother.releaseScrolling()
+    let trackpad = try wheelEvent(dy: -3, precise: true)
+    #expect(smoother.handle(trackpad) === trackpad)
+  }
+
   @Test("A precise (trackpad) event passes through as the same instance")
   func preciseEventsPassThrough() throws {
     let event = try wheelEvent(dy: -3, precise: true)

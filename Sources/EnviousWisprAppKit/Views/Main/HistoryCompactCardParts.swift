@@ -25,19 +25,52 @@ struct HistoryClampedText: View {
     } else {
       HistoryClampLayout(spacing: DesignSpacing.xs) {
         styled.hiddenWhenUnplaced()
-        styled.lineLimit(Self.lines).accessibilityHidden(true).hiddenWhenUnplaced()
+        clamped.accessibilityHidden(true).hiddenWhenUnplaced()
         toggle(Text("Show more", comment: "History dictation card: shows the rest of a long text."))
           .hiddenWhenUnplaced()
       }
     }
   }
 
+  /// List lines draw as dots with a hanging indent, as on the transcript and meeting pages
+  /// (`HistoryListText`); other text stays one `Text`.
+  private var blocks: [HistoryListText.Block] { HistoryListText.blocks(text) }
+
+  private var hasList: Bool {
+    blocks.contains { if case .item = $0 { true } else { false } }
+  }
+
   private var styled: some View {
-    HistoryParagraphText.searchText(text, query: query)
-      .font(.stCardText)
-      .foregroundStyle(.stTextPrimary)
-      .textSelection(.enabled)
-      .frame(maxWidth: .infinity, alignment: .leading)
+    HistoryListText(text: text, query: query)
+      .cardTextStyle()
+  }
+
+  /// The first `lines` lines. A `lineLimit` caps each `Text` of a list on its own, so a list
+  /// is cut by `HistoryLineBudgetLayout` instead, which counts lines across the blocks.
+  @ViewBuilder private var clamped: some View {
+    if hasList {
+      HistoryLineBudgetLayout(lines: Self.lines, spacing: DesignSpacing.sm) {
+        Text(verbatim: "A").hiddenWhenUnplaced()
+        ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
+          switch block {
+          case .prose(let lines):
+            HistoryParagraphText.searchText(lines, query: query).hiddenWhenUnplaced()
+          case .item(let item):
+            HStack(alignment: .firstTextBaseline, spacing: DesignSpacing.sm) {
+              Text(verbatim: "•").foregroundStyle(.stTextSecondary)
+              HistoryParagraphText.searchText(item, query: query)
+            }
+            .hiddenWhenUnplaced()
+          case .gap:
+            Color.clear.frame(height: DesignSpacing.md).hiddenWhenUnplaced()
+          }
+        }
+      }
+      .clipped()
+      .cardTextStyle()
+    } else {
+      styled.lineLimit(Self.lines)
+    }
   }
 
   private func toggle(_ label: Text) -> some View {
@@ -53,6 +86,13 @@ struct HistoryClampedText: View {
 }
 
 extension View {
+  fileprivate func cardTextStyle() -> some View {
+    font(.stCardText)
+      .foregroundStyle(.stTextPrimary)
+      .textSelection(.enabled)
+      .frame(maxWidth: .infinity, alignment: .leading)
+  }
+
   /// A subview the clamp layout leaves unplaced gets a zero proposal; this lets it be zero
   /// sized and draw nothing.
   fileprivate func hiddenWhenUnplaced() -> some View {
@@ -105,6 +145,63 @@ private struct HistoryClampLayout: Layout {
       subviews[0].place(at: origin, proposal: open)
       subviews[1].place(at: origin, proposal: .zero)
       subviews[2].place(at: origin, proposal: .zero)
+    }
+  }
+}
+
+/// Subviews: a one-line probe, then the list text's blocks. Places blocks top down until
+/// `lines` lines are used; the block that crosses the limit gets only the height of the lines
+/// left, so its `Text` ends early with an ellipsis. A gap counts as the lines it is high.
+private struct HistoryLineBudgetLayout: Layout {
+  let lines: Int
+  let spacing: CGFloat
+
+  private func frames(width: CGFloat, _ subviews: Subviews) -> [CGRect?] {
+    let open = ProposedViewSize(width: width, height: nil)
+    let lineHeight = max(subviews[0].sizeThatFits(open).height, 1)
+    var frames: [CGRect?] = [nil]
+    var remaining = lines
+    var y: CGFloat = 0
+    for subview in subviews.dropFirst() {
+      guard remaining > 0 else {
+        frames.append(nil)
+        continue
+      }
+      if frames.count > 1 { y += spacing }
+      let natural = subview.sizeThatFits(open).height
+      let used = max(1, Int((natural / lineHeight).rounded()))
+      var height = natural
+      if used > remaining {
+        // Half a line spare so rounding never drops the last whole line.
+        let limit = CGFloat(remaining) * lineHeight + lineHeight / 2
+        height = subview.sizeThatFits(ProposedViewSize(width: width, height: limit)).height
+        remaining = 0
+      } else {
+        remaining -= used
+      }
+      frames.append(CGRect(x: 0, y: y, width: width, height: height))
+      y += height
+    }
+    return frames
+  }
+
+  func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+    let width = proposal.width ?? subviews[0].sizeThatFits(.unspecified).width
+    let bottom = frames(width: width, subviews).compactMap { $0?.maxY }.max() ?? 0
+    return CGSize(width: width, height: bottom)
+  }
+
+  func placeSubviews(
+    in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()
+  ) {
+    for (subview, frame) in zip(subviews, frames(width: bounds.width, subviews)) {
+      guard let frame else {
+        subview.place(at: bounds.origin, proposal: .zero)
+        continue
+      }
+      subview.place(
+        at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY),
+        proposal: ProposedViewSize(width: frame.width, height: frame.height))
     }
   }
 }
@@ -221,9 +318,11 @@ enum HistoryInlinePlaybackMetrics {
 // MARK: - Shared card chrome (#4611)
 
 extension View {
-  /// The padding, fill and border every compact History card shares (Dictations and
-  /// Transcripts), so the tabs keep one spacing.
-  func historyDiaryCard(border: Color = .stDivider) -> some View {
+  /// The padding, fill and border every compact History card shares (Dictations, Transcripts
+  /// and Meetings), so the tabs keep one spacing. `opensOnClick` cards (Transcripts, Meetings)
+  /// also get the row card's pointer feedback, `settingsHoverCard`, which the earlier
+  /// `historyRowCard` gave them (founder, #4611); a Dictations card does not open on a click.
+  func historyDiaryCard(border: Color = .stDivider, opensOnClick: Bool = false) -> some View {
     self
       .padding(.horizontal, DesignSpacing.xl + DesignSpacing.xxs)
       .padding(.vertical, DesignSpacing.xl)
@@ -234,6 +333,7 @@ extension View {
           .strokeBorder(border, lineWidth: 1)
           .allowsHitTesting(false)
       )
+      .settingsHoverCard(cornerRadius: SettingsLayout.sectionRadius, isEnabled: opensOnClick)
   }
 }
 

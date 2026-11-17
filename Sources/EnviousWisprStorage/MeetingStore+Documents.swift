@@ -260,6 +260,7 @@ extension MeetingStore {
     defer { historyChanges?.finish(.meeting(id)) }
     try refuseDocumentWrite(id)
     var next = try currentManifest(id)
+    if next.summary?.inputs != inputs { next.summaryNoticeDismissed = nil }
     next.summary = MeetingDocumentsManifest.Summary(
       sha256: MeetingDocumentHash.sha256(text), origin: origin, inputs: inputs,
       writtenInParts: inputs == nil ? nil : writtenInParts)
@@ -340,6 +341,7 @@ extension MeetingStore {
       return .notesChanged(manifest)
     }
     manifest.summaryPending = nil
+    if manifest.summary?.inputs != inputs { manifest.summaryNoticeDismissed = nil }
     manifest.summary = MeetingDocumentsManifest.Summary(
       sha256: MeetingDocumentHash.sha256(text), origin: .generated, inputs: inputs,
       writtenInParts: writtenInParts)
@@ -358,6 +360,21 @@ extension MeetingStore {
     try refuseDocumentWrite(id)
     var next = try currentManifest(id)
     next.summaryPending = pending ? true : nil
+    try writeManifest(next, meeting: id)
+    return next
+  }
+
+  /// #4611: records the meeting state (`current`, its summary inputs now) at which the person
+  /// dismissed the out-of-date notice, or clears it (nil), keeping the rest of the manifest as
+  /// on disk.
+  public func setSummaryNoticeDismissed(_ current: SummaryInputs?, meeting id: UUID) throws
+    -> MeetingDocumentsManifest
+  {
+    historyChanges?.begin()
+    defer { historyChanges?.finish(.meeting(id)) }
+    try refuseDocumentWrite(id)
+    var next = try currentManifest(id)
+    next.summaryNoticeDismissed = current
     try writeManifest(next, meeting: id)
     return next
   }

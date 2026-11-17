@@ -9,8 +9,6 @@ import SwiftUI
 struct MeetingInlineTitle: View {
   let meetingID: UUID
   var font: Font = .stRowTitle
-  /// Set to true by the owner (Rename in More) to open the field; reset by the shared title.
-  var beginRequest: Binding<Bool> = .constant(false)
   var searchQuery = ""
   var isEditing: Binding<Bool> = .constant(false)
   var clickAwayStamp: Binding<TimeInterval?> = .constant(nil)
@@ -31,7 +29,7 @@ struct MeetingInlineTitle: View {
         rename: { [meetings, meetingID] title in
           await meetings.rename(meetingID: meetingID, title: title)
         },
-        font: font, beginRequest: beginRequest, searchQuery: searchQuery,
+        font: font, searchQuery: searchQuery,
         isEditing: isEditing, clickAwayStamp: clickAwayStamp)
     }
   }

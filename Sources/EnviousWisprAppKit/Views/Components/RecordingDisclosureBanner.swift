@@ -41,11 +41,9 @@ struct RecordingDisclosureBanner: View {
         Button {
           settings.acknowledgeRecordingDisclosure()
         } label: {
-          Image(systemName: "xmark")
-            .frame(width: 24, height: 24)
-            .contentShape(Rectangle())
+          EnviousCloseGlyph()
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(.plain)
         .help(RecordingDisclosureCopy.dismiss)
         .accessibilityLabel(Text(verbatim: RecordingDisclosureCopy.dismiss))
         .accessibilityIdentifier("history.recordingDisclosure.dismiss")

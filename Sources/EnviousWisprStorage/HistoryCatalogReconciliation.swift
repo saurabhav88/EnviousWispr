@@ -1,3 +1,4 @@
+import os
 import Foundation
 
 /// One writer reconciles the catalog against the existing stores. This worker never mutates
@@ -20,13 +21,29 @@ package actor HistoryCatalogReconciliation {
   /// The integration provides the revision of fully admitted canonical mutations. It returns
   /// nil while a source can change without a coherent publication fence.
   private let sourceRevision: @Sendable () -> UInt64?
-  private var inFlight = false
-  private var lastCertificate: (revision: String, source: UInt64)?
+  private struct CoverageState {
+    var inFlight = false
+    var certificate: (revision: String, source: UInt64)?
+  }
+  /// Written only from this actor; read by `currentCoverage` without queueing behind a pass.
+  /// A full pass over a large History runs for seconds with no suspension point, and a page
+  /// read that waited on the actor for its answer (always nil while a pass runs) kept the
+  /// first saved cards off screen until the pass ended.
+  private let coverageState = OSAllocatedUnfairLock(initialState: CoverageState())
+  private var inFlight: Bool {
+    get { coverageState.withLock { $0.inFlight } }
+    set { coverageState.withLock { $0.inFlight = newValue } }
+  }
+  private var lastCertificate: (revision: String, source: UInt64)? {
+    get { coverageState.withLock { $0.certificate } }
+    set { coverageState.withLock { $0.certificate = newValue } }
+  }
   private static let batchSize = 32
 
   /// Recheck at query time. The storage token alone cannot authorize all-matching operations.
-  package func currentCoverage() -> String? {
-    guard let certificate = lastCertificate, certificate.source == sourceRevision(), !inFlight else { return nil }
+  package nonisolated func currentCoverage() -> String? {
+    let state = coverageState.withLock { $0 }
+    guard let certificate = state.certificate, certificate.source == sourceRevision(), !state.inFlight else { return nil }
     return certificate.revision
   }
 

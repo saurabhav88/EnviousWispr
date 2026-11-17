@@ -111,6 +111,11 @@ final class HistoryCatalogSession {
       if let watch {
         changes.advanceWithoutNotice()
         diskWatch = watch
+        // The advance above makes any page read started before it come back empty, and at
+        // launch that read is the first page of saved cards. Ask the screen to read again
+        // now rather than after the full pass this enqueues.
+        revision &+= 1
+        didUpdate?()
         pending.include(.unknown)
         indexIfNeeded()
       } else if status != .unavailable {
@@ -183,7 +188,7 @@ final class HistoryCatalogSession {
     let source = changes.revision
     guard source != nil else { return nil }
     let backend = try await open()
-    let coverage = diskWatch == nil ? nil : await backend.worker.currentCoverage()
+    let coverage = diskWatch == nil ? nil : backend.worker.currentCoverage()
     let boundary: HistoryCatalog.Cursor?
     if let anchor, cursor == nil {
       boundary = try await backend.catalog.cursorBefore(anchor, query: query)
@@ -208,7 +213,7 @@ final class HistoryCatalogSession {
     let source = changes.revision
     guard source != nil else { return nil }
     let backend = try await open()
-    guard diskWatch != nil, let coverage = await backend.worker.currentCoverage() else { return nil }
+    guard diskWatch != nil, let coverage = backend.worker.currentCoverage() else { return nil }
     let result = try await backend.catalog.matchingKeys(query, sourceRevision: coverage)
     guard !Task.isCancelled, id == revision, source == changes.revision else { return nil }
     return result
@@ -226,7 +231,7 @@ final class HistoryCatalogSession {
   func itemCount(now: Date) async throws -> (count: Int, source: UInt64)? {
     guard status == .ready, let source = changes.revision else { return nil }
     let backend = try await open()
-    guard diskWatch != nil, let coverage = await backend.worker.currentCoverage() else { return nil }
+    guard diskWatch != nil, let coverage = backend.worker.currentCoverage() else { return nil }
     let count = try await backend.catalog.itemCount(now: now, sourceRevision: coverage)
     guard !Task.isCancelled, changes.revision == source else { return nil }
     return (count, source)
@@ -236,7 +241,7 @@ final class HistoryCatalogSession {
     let stamp = revision
     guard let source = changes.revision else { return nil }
     let backend = try await open()
-    guard diskWatch != nil, let coverage = await backend.worker.currentCoverage() else { return nil }
+    guard diskWatch != nil, let coverage = backend.worker.currentCoverage() else { return nil }
     let counts = try await backend.catalog.appCounts(now: now, sourceRevision: coverage)
     return stamp == revision && source == changes.revision && !Task.isCancelled ? counts : nil
   }
@@ -245,7 +250,7 @@ final class HistoryCatalogSession {
     let stamp = revision
     guard let source = changes.revision else { return nil }
     let backend = try await open()
-    guard diskWatch != nil, let coverage = await backend.worker.currentCoverage() else { return nil }
+    guard diskWatch != nil, let coverage = backend.worker.currentCoverage() else { return nil }
     let result = try await backend.catalog.activity(query, sourceRevision: coverage)
     return stamp == revision && source == changes.revision && !Task.isCancelled ? result : nil
   }
@@ -399,9 +404,11 @@ final class HistoryCatalogSession {
       date: row.createdAt, appKey: row.isImported ? nil : row.metrics?.targetApp,
       title: title, preview: String(availableText.prefix(600)), sources: source.versions,
       expiresAt: row.escapeRecoveredAt?.addingTimeInterval(AppConstants.pendingTranscriptRetention),
-      rowID: row.id, duration: row.duration, speakerNames: HistoryTranscriptPresentation.speakerList(row),
+      rowID: row.id, duration: row.duration,
       backendName: row.backendType.displayName, polishModel: row.llmModel, wasPolished: row.polishedText != nil,
       recovered: row.isRecovered, interrupted: row.inputDeviceWasRemoved,
+      // #4611: a transcript card counts its speakers from this, as a meeting card does.
+      meetingAnalysis: row.isImported ? HistoryTranscriptPresentation.catalogSpeakerAnalysis(row) : nil,
       dictation: row.isImported ? nil : HistoryDictationDisplay.catalogData(of: row))
     var fields = [availableText]
     // A renamed import is still found by its file name (#4611).

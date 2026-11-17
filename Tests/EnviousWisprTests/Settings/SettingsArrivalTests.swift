@@ -1000,6 +1000,10 @@ struct SettingsArrivalTests {
       return next
     }
 
+    func installConsuming(_ handler: @escaping @MainActor (NSEvent) -> Bool) -> Any? {
+      install { _ = handler($0) }
+    }
+
     func remove(_ token: Any) {
       if let id = token as? Int { handlers[id] = nil }
     }

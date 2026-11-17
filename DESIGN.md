@@ -103,6 +103,30 @@ Edit values only here, then run `python3 scripts/design/generate-tokens.py`. Col
       "light": [0.753, 0.224, 0.169, 1], "dark": [0.937, 0.486, 0.537, 1],
       "group": "Settings status", "usage": "Error and destructive actions (#c0392b / #ef7c89)."
     },
+    "Color.stSpeaker1": {
+      "light": [0.184, 0.435, 0.816, 1], "dark": [0.435, 0.659, 0.969, 1],
+      "group": "Speakers", "usage": "Speaker 1 (blue): turn name and bar (#2f6fd0 / #6fa8f7).", "note": "Six speaker colors (founder, #4611, 2026-11-16): a turn's name and the thin bar beside its words. Speakers take them in order of first appearance; a seventh reuses the first. Not status colors: never use them for success, warning or error."
+    },
+    "Color.stSpeaker2": {
+      "light": [0.69, 0.471, 0.0, 1], "dark": [0.914, 0.71, 0.306, 1],
+      "group": "Speakers", "usage": "Speaker 2 (amber): turn name and bar (#b07800 / #e9b54e)."
+    },
+    "Color.stSpeaker3": {
+      "light": [0.055, 0.561, 0.502, 1], "dark": [0.271, 0.804, 0.733, 1],
+      "group": "Speakers", "usage": "Speaker 3 (teal): turn name and bar (#0e8f80 / #45cdbb)."
+    },
+    "Color.stSpeaker4": {
+      "light": [0.761, 0.235, 0.51, 1], "dark": [0.949, 0.49, 0.718, 1],
+      "group": "Speakers", "usage": "Speaker 4 (pink): turn name and bar (#c23c82 / #f27db7)."
+    },
+    "Color.stSpeaker5": {
+      "light": [0.784, 0.353, 0.118, 1], "dark": [0.949, 0.604, 0.392, 1],
+      "group": "Speakers", "usage": "Speaker 5 (coral): turn name and bar (#c85a1e / #f29a64)."
+    },
+    "Color.stSpeaker6": {
+      "light": [0.357, 0.294, 0.839, 1], "dark": [0.663, 0.608, 0.98, 1],
+      "group": "Speakers", "usage": "Speaker 6 (indigo): turn name and bar (#5b4bd6 / #a99bfa)."
+    },
     "Color.stInputBg": {
       "light": [0.965, 0.957, 0.984, 1], "dark": [0.165, 0.145, 0.212, 1],
       "group": "Settings controls", "usage": "Every field, picker box and segmented track (#f6f4fb / #2a2536).",
@@ -306,6 +330,7 @@ Edit values only here, then run `python3 scripts/design/generate-tokens.py`. Col
 
 - **Light is light and airy; dark is night-comfort.** Dark is not a straight invert: low-chroma violet-neutral surfaces, off-white text capped below pure white, a desaturated lavender accent and muted status colors (#1047).
 - **Two accent tokens (founder, 2026-07-03).** `stAccent` (lavender in dark) is for text and outlines only. A filled selected surface that carries white text uses `stAccentSolid`.
+- **Speaker colors tell speakers apart.** A transcript or meeting turn shows its speaker's name in `stSpeaker1`...`stSpeaker6` with a thin bar of the same color beside the words (`speakerColor(forIndex:)`). They mean "who", never "how it went".
 - **Status colors are semantic.** Use `stSuccess`, `stWarning`, `stError`, never raw `.red`, `.green` or `.orange`.
 - **One control fill.** Every field, picker box and segmented track uses `stInputBg` with the `stInputBorder` hairline, so a typable field never looks like a label.
 - **No default blue.** macOS settings use the brand accent purple, never the system blue.

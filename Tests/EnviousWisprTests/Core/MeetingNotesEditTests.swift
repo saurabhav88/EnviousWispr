@@ -27,10 +27,13 @@ struct MeetingNotesEditTests {
       typed.applying(.replaceText(blockID: block.id, rangeUTF16: 1..<1, text: "udget"), atMs: 9_000))
     #expect(more.blocks[0].text == "Budget")
     #expect(more.blocks[0].startedAtMs == 5_000)
-    // Deleting every character keeps the time it was given.
+    // A line cleared of every character shows no time; its next first character sets a new one.
     let cleared = try #require(
       more.applying(.replaceText(blockID: block.id, rangeUTF16: 0..<6, text: ""), atMs: 12_000))
-    #expect(cleared.blocks[0].startedAtMs == 5_000)
+    #expect(cleared.blocks[0].startedAtMs == nil)
+    let retyped = try #require(
+      cleared.applying(.replaceText(blockID: block.id, rangeUTF16: 0..<0, text: "C"), atMs: 20_000))
+    #expect(retyped.blocks[0].startedAtMs == 20_000)
   }
 
   @Test("a migrated block keeps no time when edited")

@@ -3,10 +3,10 @@ import EnviousWisprPipeline
 import SwiftUI
 
 /// The turn-labeled document of one History row (#4001 H10): its rendered turns and its Marked
-/// up diffs. Compared on `inputs` and used with `.equatable()` by `TranscriptDetailView`, so a
+/// up diffs. Compared on `inputs` and used with `.equatable()` by `HistoryTranscriptView`, so a
 /// detail redraw that leaves the document's inputs unchanged (a dictation step, another row
 /// arriving) does not slice and render every turn again. The diff cache and task still update
-/// this view on their own. `TranscriptDetailView` keys it by the row's id, so each document
+/// this view on their own. `HistoryTranscriptView` keys it by the row's id, so each document
 /// starts with no diffs and no open rename.
 struct TranscriptTurnsDocument: View, Equatable {
   /// Everything the document is drawn from. Text compares by bytes, not Swift `==`:
@@ -28,9 +28,12 @@ struct TranscriptTurnsDocument: View, Equatable {
     /// becomes playable (or a new player replacing a stopped one) redraws the time buttons
     /// instead of keeping a document drawn for the old player.
     var playerIdentity: ObjectIdentifier? = nil
+    /// #4611 T5/T8: the turn playback is in while Follow playback is on; nil tints nothing.
+    var activeTurnID: String? = nil
 
     static func == (a: Inputs, b: Inputs) -> Bool {
       a.rowID == b.rowID && a.mode == b.mode && a.timesOn == b.timesOn
+        && a.activeTurnID == b.activeTurnID
         && a.renameSuggestions == b.renameSuggestions && a.playerIdentity == b.playerIdentity
         && a.documentFinished == b.documentFinished && a.isMeeting == b.isMeeting
         && a.language == b.language
@@ -124,6 +127,7 @@ struct TranscriptTurnsDocument: View, Equatable {
       },
       onPlayFrom: inputs.playerIdentity == nil ? nil : onPlayFrom,
       renameSuggestions: inputs.renameSuggestions,
+      activeTurnID: inputs.activeTurnID,
       fallback: { EmptyView() }
     )
     .task(id: DiffKey.task(for: inputs, pairs: { turnDiffInput })) {

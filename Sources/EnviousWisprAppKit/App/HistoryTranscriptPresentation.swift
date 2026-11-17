@@ -28,8 +28,9 @@ enum HistoryTranscriptPresentation {
   // MARK: - Short card
 
   /// The facts a short card's footer line shows, in the order drawn (#4611: the Dictations
-  /// footer's order): Recovered, Interrupted, the speech engine, the polish model, sorted
-  /// speaker names. The file name is the card's title, so it is not repeated here.
+  /// footer's order): Recovered, Interrupted, the speech engine, the polish model, how many
+  /// speakers ("2 speakers", as meeting cards show it; "1 speaker" for one voice, as the page's
+  /// facts line does). The file name is the card's title, so it is not repeated here.
   enum Chip: Hashable, Sendable {
     case speakers(String)
     case recovered
@@ -46,7 +47,9 @@ enum HistoryTranscriptPresentation {
     if row.inputDeviceWasRemoved == true { chips.append(.interrupted) }
     chips.append(.backend(row.backendType.displayName))
     if row.polishedText != nil { chips.append(.polish(model: row.llmModel)) }
-    if let names = speakerList(row) { chips.append(.speakers(names)) }
+    if let count = speakerCount(row.speakerAnalysis, names: row.speakerNames?.count) {
+      chips.append(.speakers(count))
+    }
     return chips
   }
 
@@ -56,15 +59,39 @@ enum HistoryTranscriptPresentation {
     if summary.interrupted == true { chips.append(.interrupted) }
     if let engine = summary.backendName { chips.append(.backend(engine)) }
     if summary.wasPolished == true { chips.append(.polish(model: summary.polishModel)) }
-    if let names = summary.speakerNames { chips.append(.speakers(names)) }
+    if let count = speakerCount(summary.meetingAnalysis, names: nil) {
+      chips.append(.speakers(count))
+    }
     return chips
   }
 
-  /// Speaker names sorted for a stable order (a dictionary's iteration order is not); nil when
-  /// the row names nobody.
-  static func speakerList(_ row: Transcript) -> String? {
-    guard let names = row.speakerNames, !names.isEmpty else { return nil }
-    return names.values.sorted().joined(separator: ", ")
+  /// "2 speakers" from the stored analysis, the meeting card's wording
+  /// (`MeetingsPresentation.speakers`); "1 speaker" for one voice (#4611 T4). A row with names
+  /// but no analysis counts its names.
+  static func speakerCount(_ analysis: TranscriptSpeakerAnalysis?, names: Int?) -> String? {
+    speakerNumber(analysis, names: names).flatMap { MeetingsPresentation.speakers(.labeled(count: $0)) }
+  }
+
+  /// How many speakers `speakerCount` names: 1 for one voice, the analysis' count, else how many
+  /// speakers carry a name; nil when unknown. The page offers who spoke and for how long from 2.
+  static func speakerNumber(_ analysis: TranscriptSpeakerAnalysis?, names: Int?) -> Int? {
+    switch analysis {
+    case .single?: return 1
+    case .labeled(let count)? where count > 0: return count
+    default:
+      guard let names, names > 0 else { return nil }
+      return names
+    }
+  }
+
+  /// The analysis a transcript's catalog summary keeps for its card: the row's own, or a count of
+  /// its names when that analysis gives no count (an older import), so the card and the page say
+  /// the same number.
+  static func catalogSpeakerAnalysis(_ row: Transcript) -> TranscriptSpeakerAnalysis? {
+    guard speakerNumber(row.speakerAnalysis, names: nil) == nil,
+      let names = row.speakerNames?.count, names > 0
+    else { return row.speakerAnalysis }
+    return .labeled(count: names)
   }
 
   /// The card's title: the user's name for the import, else its file name, else the kind word.
@@ -82,7 +109,7 @@ enum HistoryTranscriptPresentation {
   // MARK: - Original file
 
   /// What a card's footer and the full view know about the original file: whether it plays,
-  /// and if not, why (the footer's Original unavailable mark and the dock).
+  /// and if not, why (the footer's Audio unavailable mark and the dock).
   enum SourceLine: Equatable, Sendable {
     /// Not looked up yet: nothing is drawn, so the card never flashes a wrong claim.
     case checking
@@ -132,9 +159,10 @@ enum HistoryTranscriptPresentation {
 
   /// The footer mark for an original that can't play (#4611); its reason is
   /// `unavailableLine`, shown on hover and read by VoiceOver.
+  /// #4611 T7: the same words the transcript page's player card uses.
   static let unplayableLabel = LocalizedStringResource(
-    "Original unavailable",
-    comment: "History transcript footer: the original audio or video file can't play. Hover gives the reason.")
+    "Audio unavailable",
+    comment: "History transcript card footer: the original audio or video file can't play. Hover gives the reason.")
 
   /// One sentence per reason. "Unavailable", never a guessed cause such as "moved".
   static func unavailableLine(_ reason: UnavailableReason) -> String {
@@ -226,14 +254,13 @@ enum HistoryTranscriptPresentation {
     let backend: String
     let polishModel: String?
     let aiPolished: Bool
-    let speakers: String?
   }
 
   static func provenance(for row: Transcript) -> Provenance {
     Provenance(
       createdAt: row.createdAt, backend: row.backendType.displayName,
       polishModel: row.polishedText != nil ? row.llmModel : nil,
-      aiPolished: row.polishedText != nil, speakers: speakerList(row))
+      aiPolished: row.polishedText != nil)
   }
 
   /// The plain document shown when a row has no turns (`nil` or empty), as the legacy detail
@@ -262,7 +289,7 @@ enum HistoryTranscriptPresentation {
 
   /// The hint beside the view picker.
   static func viewHint(
-    mode: FileImportCoordinator.DocumentView, playable: Bool
+    mode: FileImportCoordinator.DocumentView, playable: Bool, timesOn: Bool = false
   ) -> String {
     switch mode {
     case .original:
@@ -274,7 +301,13 @@ enum HistoryTranscriptPresentation {
         localized: "Struck through: removed by cleanup. Highlighted: added.",
         comment: "History transcript: hint beside the Marked up view, explaining the marks.")
     case .cleaned:
-      playable
+      // #4611 T5: with Timestamps on, a turn's purple time plays from it; off, its play button.
+      playable && timesOn
+        ? String(
+          localized: "Click a purple time to hear that part",
+          comment:
+            "History transcript: hint beside the Cleaned view when the original can play and turn times show.")
+        : playable
         ? String(
           localized: "Click a turn's play button to hear that part",
           comment: "History transcript: hint beside the Cleaned view when the original can play.")

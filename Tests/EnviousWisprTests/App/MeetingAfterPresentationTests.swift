@@ -253,40 +253,6 @@ struct MeetingAfterPresentationTests {
     #expect(edit.commit(storedTitle: "Sync") == .unchanged)
   }
 
-  // MARK: - Markers
-
-  static func block(_ ms: Int?, _ text: String = "note") -> MeetingNoteBlock {
-    MeetingNoteBlock(startedAtMs: ms, text: text)
-  }
-
-  @Test("only timed, non-empty notes inside the recording become markers, in time order")
-  func markers() {
-    let document = MeetingNotesDocument(blocks: [
-      Self.block(30_000, "later"), Self.block(nil, "migrated"), Self.block(10_000, "first"),
-      Self.block(20_000, "   "), Self.block(70_000, "past the end"), Self.block(60_000, "at end"),
-    ])
-    let markers = P.noteMarkers(document, durationMs: 60_000)
-    #expect(markers.map(\.text) == ["first", "later", "at end"])
-    #expect(P.noteMarkers(document, durationMs: 0).isEmpty)
-  }
-
-  @Test("markers closer than the gap merge into one cluster; just apart stay separate")
-  func clusters() {
-    // 1 000 pt track over 100 s: 10 pt per second; the gap is 18 pt (1.8 s).
-    let near = [
-      P.NoteMarker(id: UUID(), ms: 10_000, kind: .text, text: "a"),
-      P.NoteMarker(id: UUID(), ms: 11_700, kind: .text, text: "b"),
-      P.NoteMarker(id: UUID(), ms: 11_799, kind: .task, text: "c"),
-      P.NoteMarker(id: UUID(), ms: 11_800, kind: .text, text: "d"),
-    ]
-    let clusters = P.clusters(near, durationMs: 100_000, trackWidth: 1_000)
-    #expect(clusters.map(\.markers.count) == [3, 1])
-    #expect(clusters[0].ms == 10_000)
-    #expect(P.clusterLabel(clusters[0]) == "3 notes")
-    #expect(P.clusterLabel(clusters[1]) == "1 note")
-    #expect(P.clusters(near, durationMs: 100_000, trackWidth: 0).isEmpty)
-  }
-
   // MARK: - Participants
 
   static func turn(_ id: String, _ speaker: String, _ start: Int?, _ end: Int?) -> Turn {

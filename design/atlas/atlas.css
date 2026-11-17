@@ -18,6 +18,12 @@
   --ew-st-warning: rgb(80% 43.9% 0% / 100%);
   --ew-st-warning-soft: rgb(80% 43.9% 0% / 10%);
   --ew-st-error: rgb(75.3% 22.4% 16.9% / 100%);
+  --ew-st-speaker1: rgb(18.4% 43.5% 81.6% / 100%);
+  --ew-st-speaker2: rgb(69% 47.1% 0% / 100%);
+  --ew-st-speaker3: rgb(5.5% 56.1% 50.2% / 100%);
+  --ew-st-speaker4: rgb(76.1% 23.5% 51% / 100%);
+  --ew-st-speaker5: rgb(78.4% 35.3% 11.8% / 100%);
+  --ew-st-speaker6: rgb(35.7% 29.4% 83.9% / 100%);
   --ew-st-input-bg: rgb(96.5% 95.7% 98.4% / 100%);
   --ew-st-input-border: rgb(54.1% 16.9% 88.6% / 20%);
   --ew-st-divider: rgb(54.1% 16.9% 88.6% / 8%);
@@ -187,6 +193,12 @@
     --ew-st-warning: rgb(90.2% 71.8% 40% / 100%);
     --ew-st-warning-soft: rgb(90.2% 71.8% 40% / 14%);
     --ew-st-error: rgb(93.7% 48.6% 53.7% / 100%);
+    --ew-st-speaker1: rgb(43.5% 65.9% 96.9% / 100%);
+    --ew-st-speaker2: rgb(91.4% 71% 30.6% / 100%);
+    --ew-st-speaker3: rgb(27.1% 80.4% 73.3% / 100%);
+    --ew-st-speaker4: rgb(94.9% 49% 71.8% / 100%);
+    --ew-st-speaker5: rgb(94.9% 60.4% 39.2% / 100%);
+    --ew-st-speaker6: rgb(66.3% 60.8% 98% / 100%);
     --ew-st-input-bg: rgb(16.5% 14.5% 21.2% / 100%);
     --ew-st-input-border: rgb(72.2% 66.7% 83.9% / 30%);
     --ew-st-divider: rgb(72.2% 66.7% 83.9% / 14%);
@@ -250,6 +262,12 @@
   --ew-st-warning: rgb(90.2% 71.8% 40% / 100%);
   --ew-st-warning-soft: rgb(90.2% 71.8% 40% / 14%);
   --ew-st-error: rgb(93.7% 48.6% 53.7% / 100%);
+  --ew-st-speaker1: rgb(43.5% 65.9% 96.9% / 100%);
+  --ew-st-speaker2: rgb(91.4% 71% 30.6% / 100%);
+  --ew-st-speaker3: rgb(27.1% 80.4% 73.3% / 100%);
+  --ew-st-speaker4: rgb(94.9% 49% 71.8% / 100%);
+  --ew-st-speaker5: rgb(94.9% 60.4% 39.2% / 100%);
+  --ew-st-speaker6: rgb(66.3% 60.8% 98% / 100%);
   --ew-st-input-bg: rgb(16.5% 14.5% 21.2% / 100%);
   --ew-st-input-border: rgb(72.2% 66.7% 83.9% / 30%);
   --ew-st-divider: rgb(72.2% 66.7% 83.9% / 14%);

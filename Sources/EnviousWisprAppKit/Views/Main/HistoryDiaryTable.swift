@@ -124,6 +124,8 @@ struct HistoryDiaryTable: NSViewRepresentable {
     /// Set while this list moves the window itself, so the move is not reported as the reader's.
     private var isMovingWindow = false
     private var verifyScheduled = false
+    /// A live scroll (trackpad, wheel or scroll bar) is running.
+    private var isLiveScrolling = false
     /// Set while the table inserts or removes rows: AppKit can scroll mid-change, when its row
     /// count and `rows` disagree, so the window is not measured until the change is applied
     /// (the update settles right after).
@@ -168,6 +170,7 @@ struct HistoryDiaryTable: NSViewRepresentable {
     /// wheel scroll keeps measuring ahead of the window so rows arrive at their real height.
     private func liveScrollStarted() {
       isDraggingKnob = NSEvent.pressedMouseButtons & 1 != 0
+      isLiveScrolling = true
       #if DEBUG
         listener.begin(knob: isDraggingKnob, rows: rows.count)
       #endif
@@ -176,6 +179,7 @@ struct HistoryDiaryTable: NSViewRepresentable {
     private func liveScrollEnded() {
       let wasDragging = isDraggingKnob
       isDraggingKnob = false
+      isLiveScrolling = false
       #if DEBUG
         listener.end(rows: rows.count)
       #endif
@@ -264,7 +268,9 @@ struct HistoryDiaryTable: NSViewRepresentable {
       let cell =
         (tableView.makeView(withIdentifier: Self.cellID, owner: nil) as? HostCell)
         ?? HostCell(identifier: Self.cellID) { [weak self] in self?.scheduleVerify() }
-      if let previous = cell.shownID, previous != rows[row], heightsFromScreen.remove(previous) != nil {
+      if let previous = cell.shownID, previous != rows[row],
+        heightsFromScreen.remove(previous) != nil
+      {
         heights[previous]?.width = 0
       }
       cell.show(hosted(rows[row]))
@@ -328,7 +334,15 @@ struct HistoryDiaryTable: NSViewRepresentable {
         if rows.isEmpty && !rowsAreFinal { return nil }
         return Anchor(row: nil, offset: 0)
       }
-      if index[.entry(target)] != nil { return Anchor(row: .entry(target), offset: 0) }
+      if let at = index[.entry(target)] {
+        // The first item of a day comes back under its day heading, never with the heading
+        // scrolled off above it (founder, #4611: the top meeting showed no date). A scroll
+        // that stopped on a heading saves that day's first item, and Back saves the open item.
+        if at > 0, case .entry(.day) = rows[at - 1] {
+          return Anchor(row: rows[at - 1], offset: 0)
+        }
+        return Anchor(row: .entry(target), offset: 0)
+      }
       if rowsAreFinal { appliedRestoreToken = restore.token }
       return nil
     }
@@ -364,12 +378,27 @@ struct HistoryDiaryTable: NSViewRepresentable {
       heights[id] = (max(1, ceil(sizer.fittingSize.height)), width)
     }
 
-    private func noteHeights(_ rows: IndexSet, keepingPlace: Bool = true) {
+    private func noteHeights(_ rows: IndexSet, keepingPlace: Bool = true, animated: Bool = false) {
       guard let table, !rows.isEmpty else { return }
       let anchor = keepingPlace && !isDraggingKnob ? captureAnchor() : nil
-      withoutAnimation { table.noteHeightOfRows(withIndexesChanged: rows) }
+      if animated {
+        // #4611: the rows below slide over the same time and curve as the card's own SwiftUI
+        // animation (Show edits uses `DesignMotion.brisk`), so the card and its neighbours
+        // move as one.
+        NSAnimationContext.runAnimationGroup { context in
+          context.duration = Self.rowResizeSeconds
+          context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+          context.allowsImplicitAnimation = true
+          table.noteHeightOfRows(withIndexesChanged: rows)
+        }
+      } else {
+        withoutAnimation { table.noteHeightOfRows(withIndexesChanged: rows) }
+      }
       if let anchor { move(to: anchor) }
     }
+
+    /// `DesignMotion.brisk`'s duration: AppKit cannot read a SwiftUI `Animation`.
+    static let rowResizeSeconds: TimeInterval = 0.25
 
     /// A row on screen changed its own height: measure the rows on screen as they are drawn now.
     private func scheduleVerify() {
@@ -398,7 +427,13 @@ struct HistoryDiaryTable: NSViewRepresentable {
           changed.insert(row)
         }
       }
-      noteHeights(changed)
+      // #4611: only a row the reader asked to grow or shrink (Show edits) slides the rows below;
+      // every other height (a row arriving while scrolling, a width change) applies at once, so
+      // scrolling never animates.
+      let animated =
+        !changed.isEmpty && HistoryRowMotion.consume() && !isLiveScrolling
+        && !environment.accessibilityReduceMotion
+      noteHeights(changed, animated: animated)
     }
 
     private func reconfigureVisibleRows() {
@@ -497,6 +532,22 @@ struct HistoryDiaryTable: NSViewRepresentable {
   }
 }
 
+/// #4611: a card about to change its own height on the reader's press (Show edits) asks the list
+/// to slide the rows below with the card's animation. The request lasts one short moment, so it
+/// never reaches a later height change such as a row arriving while scrolling.
+@MainActor enum HistoryRowMotion {
+  private static var requestedAt: ContinuousClock.Instant?
+
+  static func request() { requestedAt = .now }
+
+  /// True once for a request made in the last half second.
+  static func consume() -> Bool {
+    guard let at = requestedAt else { return false }
+    requestedAt = nil
+    return at.duration(to: .now) < .milliseconds(500)
+  }
+}
+
 /// The SwiftUI row inside one cell, at the list's width, with the environment of the list it
 /// sits in (an `NSHostingView` does not inherit SwiftUI environment from the AppKit view above
 /// it, so every home and value the rows read is passed down here, in one place).
@@ -505,6 +556,10 @@ struct HostedRow: View {
   let content: AnyView
   let width: CGFloat
   let environment: EnvironmentValues?
+  /// #4611: the row's drawn height, reported after every layout that changes it. The hosting
+  /// view's intrinsic size does not follow a row's own state change (Show edits measured 120
+  /// while drawing 158), so the list reads this instead.
+  var onHeight: ((CGFloat) -> Void)?
 
   static let empty = HostedRow(id: nil, content: AnyView(EmptyView()), width: 1, environment: nil)
 
@@ -521,6 +576,13 @@ struct HostedRow: View {
       .padding(.horizontal, SettingsLayout.contentH)
       .frame(width: width, alignment: .topLeading)
       .fixedSize(horizontal: false, vertical: true)
+      .background(
+        GeometryReader { geo in
+          Color.clear
+            .onAppear { onHeight?(geo.size.height) }
+            .onChange(of: geo.size.height) { _, height in onHeight?(height) }
+        }
+      )
       // Its own identity per row, so a reused cell starts the row's tasks and state afresh.
       .id(id)
   }
@@ -548,8 +610,11 @@ private final class HostCell: NSView {
   private let host: ReportingHostingView
   private(set) var shownID: HistoryDiaryTable.RowID?
 
+  private let onResize: () -> Void
+
   init(identifier: NSUserInterfaceItemIdentifier, onResize: @escaping () -> Void) {
     host = ReportingHostingView(rootView: .empty)
+    self.onResize = onResize
     super.init(frame: .zero)
     self.identifier = identifier
     clipsToBounds = false
@@ -566,11 +631,32 @@ private final class HostCell: NSView {
   required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
   func show(_ row: HostedRow) {
+    // A refresh of the same row at the same width keeps its drawn height: SwiftUI keeps the
+    // row's state (an open Show edits), and an unchanged height reports nothing new (Codex r1).
+    if row.id != shownID || row.width != shownWidth { reportedHeight = nil }
     shownID = row.id
-    host.rootView = row
+    shownWidth = row.width
+    var reporting = row
+    // A late report from the row this cell showed before is ignored.
+    reporting.onHeight = { [weak self, id = row.id] height in
+      guard let self, self.shownID == id else { return }
+      self.heightReported(height)
+    }
+    host.rootView = reporting
   }
 
-  var naturalHeight: CGFloat { host.intrinsicContentSize.height }
+  private var shownWidth: CGFloat = 0
+
+  /// The row's drawn height as the row last reported it (see `HostedRow.onHeight`).
+  private var reportedHeight: CGFloat?
+
+  private func heightReported(_ height: CGFloat) {
+    guard abs(height - (reportedHeight ?? -1)) > 0.5 else { return }
+    reportedHeight = height
+    onResize()
+  }
+
+  var naturalHeight: CGFloat { reportedHeight ?? host.intrinsicContentSize.height }
 }
 
 private final class ReportingHostingView: NSHostingView<HostedRow> {

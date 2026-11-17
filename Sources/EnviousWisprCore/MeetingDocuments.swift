@@ -18,12 +18,21 @@ public struct MeetingDocumentsManifest: Sendable, Equatable, Codable {
   /// its attempt ends, so a relaunch finishes a summary a quit interrupted. Nil and false mean
   /// none is owed. Optional, so a manifest written before this field decodes unchanged.
   public var summaryPending: Bool?
+  /// #4611: the meeting as it was (its current summary inputs) when the person dismissed the
+  /// "summary may be out of date" notice. The notice stays hidden while the meeting still
+  /// matches this, and shows again after any newer change. Cleared when a summary with other
+  /// inputs is saved. Optional, so a manifest written before this field decodes unchanged.
+  public var summaryNoticeDismissed: SummaryInputs?
 
-  public init(notes: Notes? = nil, summary: Summary? = nil, summaryPending: Bool? = nil) {
+  public init(
+    notes: Notes? = nil, summary: Summary? = nil, summaryPending: Bool? = nil,
+    summaryNoticeDismissed: SummaryInputs? = nil
+  ) {
     formatVersion = Self.currentFormatVersion
     self.notes = notes
     self.summary = summary
     self.summaryPending = summaryPending
+    self.summaryNoticeDismissed = summaryNoticeDismissed
   }
 
   public struct Notes: Sendable, Equatable, Codable {

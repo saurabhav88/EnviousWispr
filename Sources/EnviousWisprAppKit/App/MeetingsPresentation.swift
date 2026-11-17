@@ -840,7 +840,8 @@ enum MeetingExport {
 
   static func document(
     meetingID: UUID, rowID: UUID, documents: MeetingDocumentsOwner,
-    transcripts: TranscriptCoordinator, mode: FileImportCoordinator.DocumentView = .cleaned
+    transcripts: TranscriptCoordinator, mode: FileImportCoordinator.DocumentView = .cleaned,
+    timesOn: Bool = false
   ) async -> Outcome {
     guard await documents.load(meetingID) else {
       // A failed read is reported; a meeting deleted meanwhile simply delivers nothing.
@@ -848,7 +849,7 @@ enum MeetingExport {
     }
     guard let live = transcripts.currentRow(id: rowID),
       let text = MeetingHistoryPresentation.deliveryText(
-        live, projection: transcripts.meetingProjection(of: live), timesOn: false, mode: mode)
+        live, projection: transcripts.meetingProjection(of: live), timesOn: timesOn, mode: mode)
     else { return .nothingToDeliver }
     let notes = documents.notes(meetingID).trimmingCharacters(in: .whitespacesAndNewlines)
     return .document(MeetingsPresentation.exportDocument(transcript: text, notes: notes))

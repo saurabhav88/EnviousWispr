@@ -213,71 +213,6 @@ enum MeetingAfterPresentation {
     return nil
   }
 
-  // MARK: - Note markers
-
-  struct NoteMarker: Equatable, Identifiable {
-    let id: UUID
-    let ms: Int
-    let kind: MeetingNoteBlock.Kind
-    let text: String
-  }
-
-  /// Notes with a meeting time inside the recording, in time order. Migrated notes (no time),
-  /// empty blocks and times past the end are not placed.
-  static func noteMarkers(_ document: MeetingNotesDocument, durationMs: Int) -> [NoteMarker] {
-    guard durationMs > 0 else { return [] }
-    return document.blocks.compactMap { block -> NoteMarker? in
-      let text = block.text.trimmingCharacters(in: .whitespacesAndNewlines)
-      guard let ms = block.startedAtMs, (0...durationMs).contains(ms), !text.isEmpty else {
-        return nil
-      }
-      return NoteMarker(id: block.id, ms: ms, kind: block.kind, text: text)
-    }
-    .sorted { ($0.ms, $0.id.uuidString) < ($1.ms, $1.id.uuidString) }
-  }
-
-  /// Markers drawn on the dock's track. Markers closer than `minimumGap` points merge into one
-  /// cluster ("3 notes") that opens a list.
-  struct MarkerCluster: Equatable, Identifiable {
-    let markers: [NoteMarker]
-    var id: UUID { markers[0].id }
-    /// Where the cluster sits: its first marker's time.
-    var ms: Int { markers[0].ms }
-  }
-
-  static let markerMinimumGap: CGFloat = 18
-
-  static func clusters(
-    _ markers: [NoteMarker], durationMs: Int, trackWidth: CGFloat,
-    minimumGap: CGFloat = markerMinimumGap
-  ) -> [MarkerCluster] {
-    guard durationMs > 0, trackWidth > 0 else { return [] }
-    var result: [[NoteMarker]] = []
-    var clusterStartX: CGFloat = -.infinity
-    for marker in markers {
-      let x = CGFloat(marker.ms) / CGFloat(durationMs) * trackWidth
-      if !result.isEmpty, x - clusterStartX < minimumGap {
-        result[result.count - 1].append(marker)
-      } else {
-        result.append([marker])
-        clusterStartX = x
-      }
-    }
-    return result.map(MarkerCluster.init(markers:))
-  }
-
-  static func clusterLabel(_ cluster: MarkerCluster) -> String {
-    let count = cluster.markers.count
-    if count == 1 {
-      return String(
-        localized: "1 note",
-        comment: "Meeting player: a note marker on the timeline holding one note.")
-    }
-    return String(
-      localized: "\(count) notes",
-      comment: "Meeting player: a note marker holding several notes close together. Never 1.")
-  }
-
   // MARK: - Participants
 
   struct Participant: Equatable, Identifiable {
@@ -311,6 +246,21 @@ enum MeetingAfterPresentation {
         share: Double(ms) / Double(total))
     }
     .sorted { ($1.spokenMs, $0.id) < ($0.spokenMs, $1.id) }
+  }
+
+  /// #4611 D9: each named speaker's color index, in order of first appearance in the turns, the
+  /// same order the transcript colors them in (`TurnSpeakerStyle`). Unknown, "both" and a
+  /// one-voice transcript's paragraphs have none.
+  static func speakerColorIndices(turns: [Turn]) -> [String: Int] {
+    var order: [String: Int] = [:]
+    for turn in turns
+    where turn.speakerId != TurnAssembler.unknownSpeakerID
+      && turn.speakerId != TurnAssembler.bothSpeakersID
+      && turn.speakerId != SingleSpeakerParagraphs.speakerID && order[turn.speakerId] == nil
+    {
+      order[turn.speakerId] = order.count
+    }
+    return order
   }
 
   private static func speakerLabel(id: String, speakerNames: [String: String])
@@ -391,9 +341,10 @@ enum MeetingAfterPresentation {
 
   static func stacksPanes(width: CGFloat) -> Bool { width < sideBySideMinimumWidth }
 
-  /// The approved wide arrangement gives the notes and summary pane the larger share.
+  /// #4611 D11: in a wide window the notes and summary pane and the transcript pane are the
+  /// same width (before, the notes pane took 57%).
   static func notesPaneWidth(width: CGFloat) -> CGFloat {
-    (width - DesignSpacing.xl) * 0.57
+    (width - DesignSpacing.xl) * 0.5
   }
 
   /// The left pane. Your notes is selected first; switching never discards a draft.

@@ -4,7 +4,7 @@ import SwiftUI
 
 /// One imported transcript in the Transcripts tab (#3147 PR3 §3.5; compact layout #4611): the
 /// file name, a two-line preview, one footer line in the Dictations card's style (length,
-/// Recovered, Interrupted, the speech engine, the polish model, speakers, and Original
+/// Recovered, Interrupted, the speech engine, the polish model, how many speakers, and Audio
 /// unavailable when the file can't play), then Open, Copy and More. Locate original and Open in
 /// new window live in More.
 ///
@@ -41,11 +41,14 @@ struct HistoryTranscriptCard: View {
   @Environment(TranscriptCoordinator.self) private var transcripts
   @Environment(HistoryMenuPresenter.self) private var historyMenu
   @Environment(\.openWindow) private var openWindow
+  /// Transcribe again's owner. Optional so a card hosted without it (a test) draws no chip.
+  @Environment(TranscriptRetranscription.self) private var retranscription: TranscriptRetranscription?
   @State private var sourceState: ImportedSourceState?
   @State private var copiedAt: Date?
   @State private var moreAnchor = HistoryMenuAnchorHolder()
-  /// Rename in More opens the title's field (#4611).
-  @State private var renameRequested = false
+  @State private var confirmingDelete = false
+  @State private var deleting = false
+  @State private var deleteFailed = false
   /// The title's rename field is open: a click on the card saves the name instead of opening.
   @State private var titleEditing = false
   /// The click that saved the title by clicking away; that click must not also open the card.
@@ -96,24 +99,48 @@ struct HistoryTranscriptCard: View {
     VStack(alignment: .leading, spacing: DesignSpacing.lg) {
       // Its own buttons, so a click on the title renames instead of opening the card (#4611).
       TranscriptInlineTitle(
-        rowID: rowID, fallbackTitle: title, beginRequest: $renameRequested, searchQuery: query,
+        rowID: rowID, fallbackTitle: title, searchQuery: query,
         isEditing: $titleEditing, clickAwayStamp: $clickAwayStamp)
       HistoryParagraphText.searchText(preview, query: query)
         .font(.stCardText)
         .foregroundStyle(.stTextBody)
         .lineLimit(2)
       footer(seconds: seconds, chips: chips, row: row)
+      if deleteFailed {
+        Text(
+          "Couldn't delete the transcript. Try again.",
+          comment: "History transcript: deleting the transcript failed; it is still here.")
+          .font(.stHelper)
+          .foregroundStyle(.stError)
+      }
       buttonRow(title: title)
     }
-    .historyDiaryCard()
+    .historyDiaryCard(opensOnClick: true)
     .contentShape(Rectangle())
     .onTapGesture(perform: openOrFinishRename)
+    // The same question and words as the transcript page's Delete transcript.
+    .confirmationDialog(
+      Text(
+        "Delete this transcript?",
+        comment: "History transcript: confirmation title before deleting one transcript."),
+      isPresented: $confirmingDelete
+    ) {
+      Button(role: .destructive) {
+        delete()
+      } label: {
+        Text("Delete", comment: "History transcript: confirms deleting one transcript.")
+      }
+    } message: {
+      Text(
+        "Its text is removed from this Mac. Your original file is never deleted. This can't be undone.",
+        comment: "History transcript: confirmation message before deleting one transcript.")
+    }
   }
 
   // MARK: - Footer
 
   /// The card never opens a player, so it says nothing about playback for a proven original;
-  /// an unusable one shows the quiet Original unavailable mark, its reason on hover.
+  /// an unusable one shows the quiet Audio unavailable mark, its reason on hover.
   private var sourceLine: P.SourceLine {
     P.sourceLine(state: sourceState, playable: isAvailable)
   }
@@ -126,6 +153,16 @@ struct HistoryTranscriptCard: View {
   /// One quiet line, the Dictations footer's style (#4611).
   private func footer(seconds: TimeInterval, chips: [P.Chip], row: Transcript?) -> some View {
     HStack(spacing: DesignSpacing.sm) {
+      // While Transcribe again runs, the busy chip meeting cards show (#4611).
+      if let state = retranscription?.state(for: rowID), P.isBusy(state),
+        let line = P.retranscriptionLine(state)
+      {
+        HStack(spacing: DesignSpacing.xxs) {
+          ProgressView().controlSize(.mini).accessibilityHidden(true)
+          Text(verbatim: line)
+        }
+        .historyChip(tint: .stAccent, fill: Color.stAccent.opacity(0.14))
+      }
       if let clock = P.footerClock(seconds: seconds) {
         Text(verbatim: clock).monospacedDigit()
         HistoryFooterDot()
@@ -157,12 +194,8 @@ struct HistoryTranscriptCard: View {
   @ViewBuilder
   private func chipView(_ chip: P.Chip) -> some View {
     switch chip {
-    case .speakers(let names):
-      HStack(spacing: DesignSpacing.xxs) {
-        Image(systemName: "person.2").accessibilityHidden(true)
-        Text(verbatim: names)
-      }
-      .truncationMode(.middle)
+    case .speakers(let count):
+      HistorySpeakersFact(text: count)
     case .recovered:
       // #1063 PR2: rebuilt from a recovered recording. Icon and text, never colour alone.
       HStack(spacing: 2) {
@@ -255,14 +288,12 @@ struct HistoryTranscriptCard: View {
     .fixedSize()
   }
 
-  /// The card's More menu, built when it opens: Open in new window, and Locate original while
-  /// the original can't play.
+  /// The card's More menu, built when it opens: Open in new window, Locate original while the
+  /// original can't play, then Delete transcript (founder #4611, 2026-11-17). No Rename: the
+  /// title's pencil renames. No "delete recording": a transcript keeps no copy of its audio;
+  /// it plays the user's own file, which History never deletes.
   private func moreItems() -> [HistoryMenuItem] {
     var items: [HistoryMenuItem] = [
-      .init(
-        id: "rename", title: HistoryTranscriptView.renameLabel, systemImage: "pencil",
-        isEnabled: transcripts.currentRow(id: rowID)?.isImported == true,
-        kind: .action { renameRequested = true }),
       .init(
         id: "new-window", title: String(localized: HistoryTranscriptView.newWindowLabel),
         systemImage: "macwindow.badge.plus",
@@ -276,7 +307,30 @@ struct HistoryTranscriptCard: View {
           id: "locate", title: HistoryTranscriptView.locateLabel, systemImage: "magnifyingglass",
           kind: .action(onLocate)))
     }
+    items.append(.divider("d1"))
+    items.append(
+      .init(
+        id: "delete",
+        title: String(
+          localized: "Delete transcript",
+          comment: "VoiceOver label of the History delete button for a transcript."),
+        systemImage: "trash", isEnabled: !deleting, isDestructive: true,
+        kind: .action { confirmingDelete = true }))
     return items
+  }
+
+  /// Deletes the transcript's text and its History row; the user's original file stays.
+  private func delete() {
+    confirmingDelete = false
+    guard !deleting else { return }
+    deleting = true
+    deleteFailed = false
+    Task {
+      let outcome = await transcripts.deleteHistoryItem(
+        id: .transcript(rowID), kind: .textAndRecordings)
+      deleting = false
+      deleteFailed = HistoryDictationPresentation.deletionFailed(outcome)
+    }
   }
 
   /// The live row's cleaned text with its turn times, read when asked; nil for a row that no

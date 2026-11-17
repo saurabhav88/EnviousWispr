@@ -46,8 +46,20 @@ package protocol ScrollWheelMonitoring: AnyObject {
   func remove(_ token: Any)
 }
 
+/// Keeps the page still while an app-drawn menu is open, the way a native menu does (History's
+/// More menu, founder #4611). `WheelScrollSmoother` owns the app's one wheel monitor and sends
+/// its glide steps straight to a view, so the hold lives there: a second monitor could not stop
+/// a glide.
 @MainActor
-final class WheelScrollSmoother {
+protocol ScrollHolding: AnyObject {
+  /// Until `releaseScrolling()`, drops every physical wheel event `allowing` refuses and stops
+  /// any glide already under way.
+  func holdScrolling(allowing: @escaping @MainActor (NSEvent) -> Bool)
+  func releaseScrolling()
+}
+
+@MainActor
+final class WheelScrollSmoother: ScrollHolding {
   /// The numbers that decide the feel. Mice differ enormously in what one
   /// click delivers after driver and system acceleration: the reporter's mouse
   /// sends about 0.7 line per slow click, the founder's Razer Naga 0.1 line
@@ -208,6 +220,7 @@ final class WheelScrollSmoother {
   /// into `handle` with that very event is recognised as ours.
   private var delivering: ObjectIdentifier?
   private var loggedFirstNotch = false
+  private var holdAllows: (@MainActor (NSEvent) -> Bool)?
 
   init(
     monitor: any ScrollWheelMonitoring,
@@ -272,6 +285,10 @@ final class WheelScrollSmoother {
   /// when the notch was folded into a glide.
   func handle(_ event: NSEvent) -> NSEvent? {
     if isSynthetic(event) { return event }
+    if event.type == .scrollWheel, let allow = holdAllows, !allow(event) {
+      cancelGlide()
+      return nil
+    }
     guard case .boost(let rawDx, let rawDy) = Planner.classify(event) else {
       // A precise, phased or chorded PHYSICAL event ends any glide.
       if event.type == .scrollWheel { cancelGlide() }
@@ -355,6 +372,15 @@ final class WheelScrollSmoother {
     }
     RunLoop.main.add(timer, forMode: .common)
     self.timer = timer
+  }
+
+  func holdScrolling(allowing allow: @escaping @MainActor (NSEvent) -> Bool) {
+    holdAllows = allow
+    cancelGlide()
+  }
+
+  func releaseScrolling() {
+    holdAllows = nil
   }
 
   private func cancelGlide() {

@@ -74,6 +74,27 @@ extension Color {
   /// Error and destructive actions (#c0392b / #ef7c89).
   static let stError = stDynamic(
     lightRGB: (0.753, 0.224, 0.169, 1), darkRGB: (0.937, 0.486, 0.537, 1))
+  // Speakers
+  /// Speaker 1 (blue): turn name and bar (#2f6fd0 / #6fa8f7).
+  ///
+  /// Six speaker colors (founder, #4611, 2026-11-16): a turn's name and the thin bar beside its words. Speakers take them in order of first appearance; a seventh reuses the first. Not status colors: never use them for success, warning or error.
+  static let stSpeaker1 = stDynamic(
+    lightRGB: (0.184, 0.435, 0.816, 1), darkRGB: (0.435, 0.659, 0.969, 1))
+  /// Speaker 2 (amber): turn name and bar (#b07800 / #e9b54e).
+  static let stSpeaker2 = stDynamic(
+    lightRGB: (0.69, 0.471, 0.0, 1), darkRGB: (0.914, 0.71, 0.306, 1))
+  /// Speaker 3 (teal): turn name and bar (#0e8f80 / #45cdbb).
+  static let stSpeaker3 = stDynamic(
+    lightRGB: (0.055, 0.561, 0.502, 1), darkRGB: (0.271, 0.804, 0.733, 1))
+  /// Speaker 4 (pink): turn name and bar (#c23c82 / #f27db7).
+  static let stSpeaker4 = stDynamic(
+    lightRGB: (0.761, 0.235, 0.51, 1), darkRGB: (0.949, 0.49, 0.718, 1))
+  /// Speaker 5 (coral): turn name and bar (#c85a1e / #f29a64).
+  static let stSpeaker5 = stDynamic(
+    lightRGB: (0.784, 0.353, 0.118, 1), darkRGB: (0.949, 0.604, 0.392, 1))
+  /// Speaker 6 (indigo): turn name and bar (#5b4bd6 / #a99bfa).
+  static let stSpeaker6 = stDynamic(
+    lightRGB: (0.357, 0.294, 0.839, 1), darkRGB: (0.663, 0.608, 0.98, 1))
   // Settings controls
   /// Every field, picker box and segmented track (#f6f4fb / #2a2536).
   ///

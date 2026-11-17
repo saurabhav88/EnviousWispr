@@ -913,6 +913,83 @@ final class MeetingSummaryOwner {
     return recorded != current.summaryInputs || documents.hasUnsavedNotes(meetingID)
   }
 
+  /// #4611: what changed since the summary was written, for the notice's wording. One cause
+  /// only when exactly one kind of input differs; anything else (several, or the current
+  /// meeting cannot be read) is `.several`.
+  enum StaleCause: Equatable, Sendable {
+    case notes
+    case transcript
+    case speakerNames
+    case meetingDetails
+    case summarySetup
+    case several
+  }
+
+  /// #4611: the out-of-date notice to draw, or nil when the summary is current or the person
+  /// dismissed the notice for the meeting as it is now. `current` is what Dismiss records.
+  struct StaleNotice: Equatable {
+    let cause: StaleCause
+    let current: SummaryInputs?
+  }
+
+  func staleNotice(_ meetingID: UUID) -> StaleNotice? {
+    guard isOutOfDate(meetingID), let manifest = documents.manifest(meetingID),
+      let recorded = manifest.summary?.inputs
+    else { return nil }
+    var selection = deps.selection()
+    var choice: HistoryPolishChoice?
+    if let manual = recorded.modelOverride, let provider = LLMProvider(rawValue: recorded.providerID) {
+      selection = (provider, manual.model)
+      choice = HistoryPolishChoice(
+        provider: provider, model: manual.model, egOneSize: manual.egOneSize.flatMap(EGOneSize.init))
+    }
+    let current = currentInputs(meetingID, selection: selection, override: choice)?.summaryInputs
+    let unsaved = documents.hasUnsavedNotes(meetingID)
+    guard
+      Self.noticeShows(
+        current: current, dismissed: manifest.summaryNoticeDismissed, unsavedNotes: unsaved)
+    else { return nil }
+    return StaleNotice(
+      cause: Self.staleCause(recorded: recorded, current: current, unsavedNotes: unsaved),
+      current: current)
+  }
+
+  /// Hidden only while the meeting still matches the state the notice was dismissed at; typed
+  /// notes not yet saved are a newer change.
+  nonisolated static func noticeShows(
+    current: SummaryInputs?, dismissed: SummaryInputs?, unsavedNotes: Bool
+  ) -> Bool {
+    guard let current, let dismissed, !unsavedNotes else { return true }
+    return current != dismissed
+  }
+
+  nonisolated static func staleCause(
+    recorded: SummaryInputs, current: SummaryInputs?, unsavedNotes: Bool
+  ) -> StaleCause {
+    guard let current else { return .several }
+    var causes: [StaleCause] = []
+    if recorded.notesRevision != current.notesRevision || unsavedNotes { causes.append(.notes) }
+    // The transcript's text carries the speaker names, so a rename changes its hash too: with
+    // the same transcript attempt, a changed text beside changed names counts as the rename. The
+    // recorded hash cannot tell a word edit made as well (a kept polish) from the names, so the
+    // names sentence names what surely changed and never says it was the only change.
+    let namesChanged = recorded.speakerNamesSHA256 != current.speakerNamesSHA256
+    if recorded.transcriptAttemptID != current.transcriptAttemptID
+      || (recorded.transcriptSHA256 != current.transcriptSHA256 && !namesChanged)
+    {
+      causes.append(.transcript)
+    }
+    if namesChanged { causes.append(.speakerNames) }
+    if recorded.contextSHA256 != current.contextSHA256 { causes.append(.meetingDetails) }
+    if recorded.promptVersion != current.promptVersion || recorded.providerID != current.providerID
+      || recorded.configurationSHA256 != current.configurationSHA256
+      || recorded.modelOverride != current.modelOverride
+    {
+      causes.append(.summarySetup)
+    }
+    return causes.count == 1 ? causes[0] : .several
+  }
+
   /// Why no summary can be written with the current setting, whatever any attempt did: no
   /// provider, or a provider or model that cannot summarize. Nil when one can be tried.
   func configurationProblem() -> Problem? {

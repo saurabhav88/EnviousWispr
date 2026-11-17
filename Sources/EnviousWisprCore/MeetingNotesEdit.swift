@@ -26,7 +26,7 @@ extension MeetingNotesDocument {
   /// Text with line breaks (a paste) becomes blocks: the first line joins the edited block, each
   /// further line starts a new text block. A block's time is set when its first character is
   /// typed (`atMs`); text moved to another block keeps the time it had, and no time changes
-  /// after it is set.
+  /// while the block holds text. A block left with no text loses its time.
   public func applying(
     _ edit: MeetingNotesEdit, atMs: Int?, newID: () -> UUID = { UUID() }
   ) -> MeetingNotesDocument? {
@@ -108,6 +108,11 @@ extension MeetingNotesDocument {
         Set(document.blocks.map(\.id)).count == document.blocks.count
       else { return nil }
       next = document
+    }
+    // A line with no text is not a note yet: it has no time, and its next first character gives
+    // it the time of that moment (a line cleared and retyped, or left empty by Return at its start).
+    for index in next.blocks.indices where next.blocks[index].text.isEmpty {
+      next.blocks[index].startedAtMs = nil
     }
     return next
   }

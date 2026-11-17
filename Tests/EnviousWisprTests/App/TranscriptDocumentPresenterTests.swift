@@ -1,5 +1,6 @@
 import EnviousWisprCore
 import Foundation
+import SwiftUI
 import Testing
 
 @testable import EnviousWisprAppKit
@@ -277,6 +278,25 @@ struct TranscriptDocumentPresenterTests {
     for entry in hidden { #expect(entry.key == full[entry.turn.turnID]) }
     let reordered = TurnRowKey.keyed(all.reversed())
     for entry in reordered { #expect(entry.key == full[entry.turn.turnID]) }
+  }
+
+  @Test("speakers take colors in order of first appearance and a repeat speaker hides the name")
+  func speakerStyleRows() {
+    func turn(_ id: String, _ speaker: String) -> TranscriptDocumentPresenter.RenderedTurn {
+      TranscriptDocumentPresenter.RenderedTurn(
+        turnID: id, speakerId: speaker, speakerName: nil, timeLabel: nil,
+        content: .plain("Hi"), isUncleaned: false)
+    }
+    let unknown = TurnAssembler.unknownSpeakerID
+    let both = TurnAssembler.bothSpeakersID
+    let speakers = ["B", "A", "A", unknown, unknown, "B", both, "C", "D", "E", "F", "G"]
+    let rows = TurnSpeakerStyle.rows(speakers.enumerated().map { turn("t\($0)", $1) })
+    #expect(rows.map(\.look.colorIndex) == [0, 1, 1, nil, nil, 0, nil, 2, 3, 4, 5, 6])
+    #expect(
+      rows.map(\.look.continuesSpeaker)
+        == [false, false, true, false, false, false, false, false, false, false, false, false])
+    // A seventh speaker reuses the first color.
+    #expect(Color.speakerColor(forIndex: 6) == Color.speakerColor(forIndex: 0))
   }
 
   @Test("rendered turns that differ only by source id are different turns")

@@ -2559,7 +2559,7 @@ final class FileImportCoordinator {
     guard historyIDAtStart == historyID, !Task.isCancelled else { return }
 
     guard
-      let (assembledTurns, labeledCount) = await assembleTurnsOrPersistTerminal(
+      let (assembledTurns, assembledAnalysis) = await assembleTurnsOrPersistTerminal(
         outcome: outcome, timings: timings, historyIDAtStart: historyIDAtStart)
     else { return }
     guard historyIDAtStart == historyID, !Task.isCancelled else { return }
@@ -2567,7 +2567,7 @@ final class FileImportCoordinator {
     // #2851 follow-up: nothing is written here. The turns wait for their section cleanup and
     // are written once, cleaned, by `finishRun` (or raw, by a refused cleanup).
     pendingSpeakerResult = SpeakerStepResult(
-      analysis: .labeled(count: labeledCount), turns: assembledTurns, terminalOutcome: nil)
+      analysis: assembledAnalysis, turns: assembledTurns, terminalOutcome: nil)
     await AppLogger.shared.log(
       "[TurnStorage] assembled turns=\(assembledTurns.count) both=\(assembledTurns.filter { $0.speakerId == TurnAssembler.bothSpeakersID }.count) ms=\(Self.elapsedMs(since: passStart))",
       level: .info, category: "FileImportCoordinator")
@@ -2585,103 +2585,39 @@ final class FileImportCoordinator {
   /// cleanup (the ordinary path) or direct persistence (retry, which skips cleanup).
   private func assembleTurnsOrPersistTerminal(
     outcome: SpeakerAnalysis, timings: SpeakerTimings, historyIDAtStart: UUID?
-  ) async -> (turns: [Turn], labeledCount: Int)? {
-    // Non-labeled outcomes map directly through the one exhaustive mapping (chunk 1) and
-    // never touch turn assembly. A missing `wordTimings` matters ONLY when assembly is
-    // actually needed — checking it before the outcome type would let a merge-input gap
-    // silently override a perfectly good `.single`/`.failed`/`.timedOut` result that has
-    // nothing to do with timings (found by chunk review).
-    guard case .labeled(let labeledCount, let segments) = outcome else {
-      // `.single` is the one non-labeled outcome worth a turn-storage telemetry event of
-      // its own (there is genuinely nothing to store, by design). `.failed`/`.timedOut`/
-      // `.cancelled` are ANALYZER outcomes `emitSpeakerTelemetry` already reported moments
-      // earlier — `nil` here means "write silently, do not double-report."
-      let turnsOutcome: TelemetryService.FileImportTurnsOutcome? =
-        if case .single = outcome { .singleNoTurns } else { nil }
+  ) async -> (turns: [Turn], analysis: TranscriptSpeakerAnalysis)? {
+    if case .single = outcome, let words = timings.words {
+      // Numbers only: the longest gaps the paragraph rule saw (#4611 T4 tuning).
+      let summary = SingleSpeakerParagraphs.gapSummary(words: words, rawText: timings.rawText)
+      await AppLogger.shared.log(
+        "[TurnStorage] single gaps=\(summary) units=\(words.count)", level: .info,
+        category: "FileImportCoordinator")
+    }
+    // The one assembly (shared with Transcribe again with, #4611): paragraphs for one voice,
+    // speaker turns for several, or the analysis alone. Off the main actor and cancellable.
+    let result = await FileImportTurnAssembly.assemble(
+      outcome: outcome, words: timings.words, segments: timings.segments,
+      rawText: timings.rawText)
+    // A stale/cancelled pass writes NOTHING, matching every other staleness guard in this
+    // file. Compares against the LIVE `historyID`, never a value captured at entry.
+    guard historyIDAtStart == historyID, !Task.isCancelled else { return nil }
+    switch result {
+    case .turns(let turns, let analysis):
+      return (turns, analysis)
+    case .none(let analysis, let turnsOutcome, let labeledWithoutTurns):
       pendingSpeakerResult = SpeakerStepResult(
-        analysis: outcome.asStorageAnalysis, turns: nil, terminalOutcome: turnsOutcome)
+        analysis: analysis, turns: nil, terminalOutcome: turnsOutcome)
+      if labeledWithoutTurns {
+        // #2919: the one line that says WHY a labeled analysis stored no turns. Logged AFTER
+        // the assignment, so a replaced document's failure never lands on the next one.
+        let coverage = retainedWordTimingCoverage
+        let speakers: String = if case .labeled(let count, _) = outcome { "\(count)" } else { "n/a" }
+        await AppLogger.shared.log(
+          "[TurnStorage] no speaker turns: timed=\(coverage?.timed ?? -1) total=\(coverage?.total ?? -1) speakers=\(speakers)",
+          level: .info, category: "FileImportCoordinator")
+      }
       return nil
     }
-    let wordTimings = timings.words
-    // #3735 §3.10: segment timings are the second source, for an engine with no word timing.
-    let segmentTimings = Self.segmentTimingsCanBind(timings.segments) ? timings.segments : nil
-    guard wordTimings != nil || segmentTimings != nil else {
-      pendingSpeakerResult = SpeakerStepResult(
-        analysis: .failed(.noWordTimings), turns: nil, terminalOutcome: .noWordTimings)
-      return nil
-    }
-    // The word path keeps precedence; the segment path runs only when the word path has no
-    // timings or binds no individual speaker.
-    var assembledTurns: [Turn] = []
-    if let wordTimings {
-      // Off the main actor: a multi-hour, highly segmented recording's O(words × segments)
-      // scan would otherwise run synchronously on this MainActor-isolated method and freeze
-      // the UI before the background cleanup even claims the engine (found by cloud review).
-      // `entries`/`segments`/`Turn` are all `Sendable` value types, so handing the pure
-      // computation to a detached task changes nothing about its result.
-      //
-      // `Task.detached` is UNSTRUCTURED: cancelling THIS task (e.g. `stop()`'s unconditional
-      // `speakerStepTask?.cancel()`) would not by itself cancel the detached child, leaving it
-      // to run the full scan to completion and this task waiting on it the whole time
-      // (found by cloud review). `withTaskCancellationHandler` propagates cancellation into
-      // the child explicitly; `TurnAssembler.assemble`'s own loop checks `Task.isCancelled`
-      // per entry so the propagated cancellation actually shortens the scan.
-      let assemblyTask = Task.detached(priority: .utility) {
-        TurnAssembler.assemble(entries: wordTimings, segments: segments)
-      }
-      assembledTurns = await withTaskCancellationHandler(
-        operation: { await assemblyTask.value },
-        onCancel: { assemblyTask.cancel() }
-      )
-      // A stale/cancelled pass writes NOTHING here, matching every other staleness guard in
-      // this file — the caller must not fall through to the all-unknown check below and
-      // persist a failure on behalf of a document nobody is watching anymore. Compares against
-      // the LIVE `historyID` property, never `historyIDForWrite` — a value captured once at
-      // entry cannot detect a document swap that happened during this `await`.
-      guard historyIDAtStart == historyID, !Task.isCancelled else { return nil }
-      if Self.bindsIndividualSpeaker(assembledTurns) { return (assembledTurns, labeledCount) }
-    }
-
-    // #3735 §3.10: the segment path, off the main actor and cancellable for the same reasons
-    // as the word path above. A result whose segments overlapped the diarizer at all is
-    // stored even when every turn is Both: segments that mix speakers are a legitimate,
-    // honest result, not missing timings.
-    if let segmentTimings {
-      let rawText = timings.rawText
-      let segmentTask = Task.detached(priority: .utility) {
-        TurnAssembler.assemble(segmentTimings: segmentTimings, rawText: rawText, segments: segments)
-      }
-      let assembly = await withTaskCancellationHandler(
-        operation: { await segmentTask.value },
-        onCancel: { segmentTask.cancel() }
-      )
-      guard historyIDAtStart == historyID, !Task.isCancelled else { return nil }
-      if assembly.anySegmentBound { return (assembly.turns, labeledCount) }
-      assembledTurns = assembly.turns
-    }
-
-    // A space-free script (Chinese, Japanese, ...) makes the production word-timing mapper
-    // (`WordTimingRangeMapper`, #2809) return exactly one untimed entry for the whole
-    // transcript — there is no whitespace to tokenize on, so no engine word can bind to any
-    // text run. Every entry then resolves to "unknown" here, and persisting `.labeled(count:)`
-    // alongside turns that are ALL "unknown" would store a self-contradictory row: the
-    // analysis claims real speakers while the turns say none were ever found (found by cloud
-    // review). Treated the same as `noWordTimings` — from turn assembly's own perspective,
-    // timings that never bind to anything are exactly "nothing to merge against," matching
-    // that reason's own documented scope. The real fix (a mapper that can tokenize a
-    // space-free script) belongs to `WordTimingRangeMapper` itself, out of this phase's scope.
-    pendingSpeakerResult = SpeakerStepResult(
-      analysis: .failed(.noWordTimings), turns: nil, terminalOutcome: .noWordTimings)
-    // #2919: the one line that says WHY a labeled analysis stored no turns. The WhisperKit
-    // long-file failure ran for a day with `outcome=labeled` in the log and nothing after it.
-    // Logged AFTER the assignment, like the success path: an await between the staleness
-    // guard above and the assignment would let a replaced document's failure land on the
-    // next one (found by Codex).
-    let coverage = retainedWordTimingCoverage
-    await AppLogger.shared.log(
-      "[TurnStorage] no speaker turns: timed=\(coverage?.timed ?? -1) total=\(coverage?.total ?? -1) entries=\(assembledTurns.count) speakers=\(labeledCount)",
-      level: .info, category: "FileImportCoordinator")
-    return nil
   }
 
   /// Whether word-path turns name at least one real speaker (not unknown, not Both).
@@ -2810,7 +2746,7 @@ final class FileImportCoordinator {
     guard historyID != nil, historyID == historyIDAtStart else { return }
 
     guard
-      let (assembledTurns, labeledCount) = await assembleTurnsOrPersistTerminal(
+      let (assembledTurns, assembledAnalysis) = await assembleTurnsOrPersistTerminal(
         outcome: outcome, timings: timings, historyIDAtStart: historyIDAtStart)
     else {
       // A terminal result (one voice, no timings, all unknown): written now, since no
@@ -2823,7 +2759,7 @@ final class FileImportCoordinator {
     // #2851 follow-up: the new turns need their own section cleanup before they are shown;
     // `rePolish` cuts the sections from `pendingSpeakerResult` and `finishRun` writes them.
     pendingSpeakerResult = SpeakerStepResult(
-      analysis: .labeled(count: labeledCount), turns: assembledTurns, terminalOutcome: nil)
+      analysis: assembledAnalysis, turns: assembledTurns, terminalOutcome: nil)
     // The step is done as far as `rePolish`'s guard is concerned; the `defer` above sets the
     // same value again on the way out.
     speakerStepState = .finished

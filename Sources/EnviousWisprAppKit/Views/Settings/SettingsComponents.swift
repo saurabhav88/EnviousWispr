@@ -1333,34 +1333,59 @@ extension BrandedPanel where Footnote == EmptyView {
 /// A quiet inset "note" box for use inside a `BrandedPanel`: a purple info glyph
 /// plus microcopy, on the shared control fill (`stInputBg`). Used for the frozen-per-
 /// recording notice so it reads as owned by its card, not floating beneath it.
-struct InsetNotice: View {
+/// `actions` (#4611): optional buttons on a row under the text, inside the same box. `title`
+/// (#4611): an optional first line in the reading colour, with `text` under it. `busy` (#4611):
+/// a small spinner in place of the glyph, for work still running.
+struct InsetNotice<Actions: View>: View {
   /// Resolved text. A literal goes to `text:`, which the catalog extracts by its type; text
   /// that is already translated goes to `verbatim:` (#3142).
   let text: String
+  var title: String? = nil
   var systemImage: String = "info.circle"
   var tint: Color = .stAccent
+  var busy = false
+  let actions: Actions
 
-  init(text: LocalizedStringResource, systemImage: String = "info.circle", tint: Color = .stAccent)
-  {
-    self.init(verbatim: String(localized: text), systemImage: systemImage, tint: tint)
-  }
-
-  init(verbatim text: String, systemImage: String = "info.circle", tint: Color = .stAccent) {
+  init(
+    verbatim text: String, title: String? = nil, systemImage: String = "info.circle",
+    tint: Color = .stAccent, busy: Bool = false, @ViewBuilder actions: () -> Actions
+  ) {
     self.text = text
+    self.title = title
     self.systemImage = systemImage
     self.tint = tint
+    self.busy = busy
+    self.actions = actions()
   }
 
   var body: some View {
     HStack(alignment: .firstTextBaseline, spacing: 8) {
-      Image(systemName: systemImage)
-        .font(.system(size: 14, weight: .medium))
-        .foregroundStyle(tint)
-        .accessibilityHidden(true)
-      Text(text)
-        .font(.stHelper)
-        .foregroundStyle(.stTextSecondary)
-        .fixedSize(horizontal: false, vertical: true)
+      if busy {
+        ProgressView().controlSize(.small).accessibilityHidden(true)
+      } else {
+        Image(systemName: systemImage)
+          .font(.system(size: 14, weight: .medium))
+          .foregroundStyle(tint)
+          .accessibilityHidden(true)
+      }
+      VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 2) {
+          if let title {
+            Text(title)
+              .font(.stHelper)
+              .foregroundStyle(.stTextPrimary)
+              .fixedSize(horizontal: false, vertical: true)
+          }
+          Text(text)
+            .font(.stHelper)
+            .foregroundStyle(.stTextSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .accessibilityElement(children: .combine)
+        if Actions.self != EmptyView.self {
+          HStack(spacing: 8) { actions }
+        }
+      }
       Spacer(minLength: 0)
     }
     .padding(.horizontal, 12)
@@ -1370,6 +1395,17 @@ struct InsetNotice: View {
     .overlay(
       RoundedRectangle(cornerRadius: 9).strokeBorder(Color.stDivider, lineWidth: 1)
     )
+  }
+}
+
+extension InsetNotice where Actions == EmptyView {
+  init(text: LocalizedStringResource, systemImage: String = "info.circle", tint: Color = .stAccent)
+  {
+    self.init(verbatim: String(localized: text), systemImage: systemImage, tint: tint)
+  }
+
+  init(verbatim text: String, systemImage: String = "info.circle", tint: Color = .stAccent) {
+    self.init(verbatim: text, systemImage: systemImage, tint: tint) { EmptyView() }
   }
 }
 
@@ -1433,7 +1469,11 @@ struct BrandedRow<Content: View>: View {
 // MARK: - Branded Toggle Style
 
 /// Green ON / lavender OFF toggle matching the brand mockups, 38x22 px.
+/// `onColor` lets a reading surface use the accent instead of green (founder, #4611: the
+/// History page's Timestamps switch is accent purple).
 struct BrandedToggleStyle: ToggleStyle {
+  var onColor: Color = .stToggleOn
+
   func makeBody(configuration: Configuration) -> some View {
     Button {
       configuration.isOn.toggle()
@@ -1441,7 +1481,7 @@ struct BrandedToggleStyle: ToggleStyle {
       HStack {
         configuration.label
         Spacer()
-        BrandedToggleTrack(isOn: configuration.isOn)
+        BrandedToggleTrack(isOn: configuration.isOn, onColor: onColor)
       }
       // The whole row commits the change -- `contentShape(Rectangle())` below
       // has always made the label, the gap and the track one target -- and
@@ -1472,11 +1512,12 @@ struct BrandedToggleStyle: ToggleStyle {
 private struct BrandedToggleTrack: View {
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   let isOn: Bool
+  let onColor: Color
 
   var body: some View {
     ZStack(alignment: isOn ? .trailing : .leading) {
       Capsule()
-        .fill(isOn ? Color.stToggleOn : Color.stToggleOff)
+        .fill(isOn ? onColor : Color.stToggleOff)
         .frame(width: 38, height: 22)
 
       Circle()
@@ -1574,6 +1615,9 @@ struct BrandedSegmentedPicker<T: Hashable>: View {
   /// read by VoiceOver as its hint; nil shows none. History's Polished / Marked up / Original
   /// switch uses it instead of a line of text beside the switch.
   var hint: (T) -> String? = { _ in nil }
+  /// #4611 D14: a small spinner after an option's label while its work runs (the meeting page's
+  /// AI summary tab while a summary is written). False for every option by default.
+  var busy: (T) -> Bool = { _ in false }
 
   private var verticalPadding: CGFloat { comfortable ? 11 : 7 }
   private var horizontalPadding: CGFloat { comfortable ? 18 : 12 }
@@ -1625,6 +1669,12 @@ struct BrandedSegmentedPicker<T: Hashable>: View {
         }
         Text(option.label)
           .font(.system(size: 14, weight: isSelected ? .semibold : .regular))
+        if busy(option.value) {
+          ProgressView()
+            .controlSize(.mini)
+            .tint(isSelected ? Color.white : .stTextSecondary)
+            .accessibilityHidden(true)
+        }
       }
       .foregroundStyle(isSelected ? Color.white : .stTextSecondary)
       .padding(.vertical, verticalPadding)
