@@ -367,13 +367,15 @@ def main():
                         up_span = sa.moving_span(frames, mid[-1] if mid else None, u0, u1 + QUIET_S, u1)
                         spans_epoch = [None if sp is None else (sp[0] + epoch_offset, sp[1] + epoch_offset)
                                        for sp in (down_span, up_span)]
-                        if hitches is not None and (t_end is None or spans_epoch[-1] is None
-                                                    or spans_epoch[-1][1] > t_end or spans_epoch[0] is None
-                                                    or spans_epoch[0][0] < t_start):
-                            why = "moving spans not inside the recording window"
+                        watched = [u0 + epoch_offset, u1 + QUIET_S + epoch_offset]   # each gesture's watched end
+                        # The trace must cover everything the attribution reads: from the first event to
+                        # the end of the last watched period (Codex round 4).
+                        if hitches is not None and (t_end is None or t_start is None or spans_epoch[0] is None
+                                                    or spans_epoch[-1] is None or d0 + epoch_offset < t_start
+                                                    or watched[-1] > t_end):
+                            why = "the recording does not cover both gestures and their watched periods"
                             hitches = None
                         if hitches is not None:
-                            watched = [u0 + epoch_offset, u1 + QUIET_S + epoch_offset]   # each gesture's watched end
                             run["hitch"] = sa.hitch_rate([(t_start + st, du, p, sy) for st, du, p, sy in hitches],
                                                          spans_epoch, pid, windows=watched)
                         else:
