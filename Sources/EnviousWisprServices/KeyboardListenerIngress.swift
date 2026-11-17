@@ -219,7 +219,7 @@ package final class KeyboardListenerIngress: Sendable {
 
   /// Every virtual key code that is not a standalone modifier, for an ordinary-key resync.
   private static let ordinaryKeyCodes: Set<UInt16> = Set(
-    (0..<128).map(UInt16.init).filter { ModifierKeyCodes.flag(for: $0) == nil })
+    (0..<128).map(UInt16.init).filter { ModifierKeyCodes.isHeldOrdinaryKey($0) })
 
   /// The installation ended: no further input or sweep acts, and a pending sweep is cancelled.
   package func close() {
