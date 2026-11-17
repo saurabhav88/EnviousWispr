@@ -135,16 +135,23 @@ struct HistoryDetailCacheTests {
       try Task.checkCancellation()
       await Task.yield()
     }
+    // Each release is observed through the count (the subject's signal), so a hold that ignored
+    // cancellation fails at the time limit instead of hanging on its task.
     waiting.cancel()
-    await waiting.value
-    #expect(coordinator.catalogDetailHoldCountForTesting(id) == 1)
+    try await untilHolds(1, of: id, in: coordinator)
     second.cancel()
-    await second.value
-    #expect(coordinator.catalogDetailHoldCountForTesting(id) == 0)
+    try await untilHolds(0, of: id, in: coordinator)
 
     let early = Task { await coordinator.holdCatalogDetail(id) }
     early.cancel()
-    await early.value
+    try await untilHolds(0, of: id, in: coordinator)
     #expect(coordinator.catalogDetailHoldCountForTesting(id) == 0)
+  }
+
+  private func untilHolds(_ count: Int, of id: UUID, in coordinator: TranscriptCoordinator) async throws {
+    while coordinator.catalogDetailHoldCountForTesting(id) != count {
+      try Task.checkCancellation()
+      await Task.yield()
+    }
   }
 }
