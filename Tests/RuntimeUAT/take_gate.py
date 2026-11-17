@@ -158,20 +158,41 @@ def output_device():
     return r.stdout.strip()
 
 
-def frontmost_bundle():
-    """The frontmost app's bundle id, read fresh from LaunchServices (`lsappinfo`), or raise
+# `lsappinfo info -only <key> <asn>` prints one of two shapes, by macOS version (#4638):
+#   macOS 26: `"CFBundleIdentifier"="com.apple.TextEdit"` and `"pid"=94732`
+#   macOS 27: a record holding `bundleID="com.apple.TextEdit"` and `pid = 20441 ...`
+# A missing value reads `bundleID=[ NULL ]` and matches neither pattern.
+_LSAPPINFO_PATTERNS = {
+    "bundleid": re.compile(r'(?:\bbundleID|"CFBundleIdentifier")\s*=\s*"([^"]+)"'),
+    "pid": re.compile(r'(?:^|\s)(?:pid|"pid")\s*=\s*(\d+)(?=\s|$)', re.M),
+}
+
+
+def parse_lsappinfo(key, out):
+    """The `key` value ("bundleid" or "pid") from `lsappinfo info -only` output, or None."""
+    m = _LSAPPINFO_PATTERNS[key].search(out)
+    return m.group(1) if m else None
+
+
+def frontmost_field(key):
+    """One field of the frontmost app, read fresh from LaunchServices (`lsappinfo`), or raise
     SetupFailed. Not `NSWorkspace.frontmostApplication`: it is updated by run-loop notifications,
     which a long-running script that never pumps its run loop does not receive."""
     try:
         asn = subprocess.run(["lsappinfo", "front"], capture_output=True, text=True, timeout=5).stdout.strip()
-        out = subprocess.run(["lsappinfo", "info", "-only", "bundleid", asn],
+        out = subprocess.run(["lsappinfo", "info", "-only", key, asn],
                              capture_output=True, text=True, timeout=5).stdout
     except Exception as exc:
         raise SetupFailed("paste-target", f"cannot read the frontmost app: {exc!r}")
-    m = re.search(r'bundleID="([^"]+)"', out)
-    if not asn or not m:
+    value = parse_lsappinfo(key, out) if asn else None
+    if value is None:
         raise SetupFailed("paste-target", f"cannot read the frontmost app (lsappinfo said {out.strip()!r})")
-    return m.group(1)
+    return value
+
+
+def frontmost_bundle():
+    """The frontmost app's bundle id, or raise SetupFailed."""
+    return frontmost_field("bundleid")
 
 
 def check_loopback_output():
@@ -414,6 +435,19 @@ def _self_test():
     p_te = "[x] [INFO] [PipelineTiming] Paste cascade: tier=ax_direct, app=com.apple.TextEdit, duration=5ms\n"
     p_gh = "[x] [INFO] [PipelineTiming] Paste cascade: tier=cgevent, app=com.mitchellh.ghostty, duration=58ms\n"
     print("take_gate --self-test")
+    shapes = (
+        ("macOS 26 bundle id", "bundleid", '"CFBundleIdentifier"="com.apple.TextEdit"\n', te),
+        ("macOS 27 bundle id", "bundleid",
+         '[ NULL ]  ASN:0x0-0x9009: (in front) \n    bundleID="com.apple.TextEdit"\n    bundle path=[ NULL ] \n', te),
+        ("macOS 27 missing bundle id", "bundleid", "    bundleID=[ NULL ] \n", None),
+        ("macOS 26 pid", "pid", '"pid"=94732\n', "94732"),
+        ("macOS 27 pid", "pid",
+         "[ NULL ]  [ NULL ]  \n    pid = 20441 !cgsConnection !signalled type=[ NULL ] \n", "20441"),
+        ("a pid-like word is not the pid", "pid", "    ppid = 1 \n", None),
+        ("empty output", "pid", "", None),
+    )
+    for name, key, out, want in shapes:
+        expect(f"lsappinfo {name}", (parse_lsappinfo(key, out),), want)
     expect("virtual capture, pasted into the target", classify(v + p_te, te), "APP")
     expect("completed take with no paste line", classify(v, te), "COULD_NOT_TELL")
     expect("discarded take with no paste line", classify(nospeech, te), "APP")
