@@ -321,6 +321,17 @@ def main():
             reached = now
         return reached
 
+    def go_to_start(table, area, frame, point, target, run):
+        """Go to `target` points down; a short list (Meetings) that ends first backs off two gestures
+        so a down gesture fits, for the hitch pass and the layout pass alike."""
+        reached = go_to(table, frame, point, target)
+        if at_bottom(table, area):
+            for _ in range(2):
+                gesture("trackpad", point, +1)
+            reached = scrolled(table, frame)
+            run["backed_off_from_end"] = True
+        return reached
+
     def at_bottom(table, area):
         """True when the last loaded row ends at the viewport bottom (a down gesture clamped)."""
         rows = ui.get_attr(table, "AXRows") or []
@@ -367,7 +378,7 @@ def main():
                 if rep < trace_repeats:
                     # Hitch pass, in rows no pass has shown yet (first display costs the most):
                     # no AX reads while gestures run.
-                    reached = go_to(table, frame, point, position)
+                    reached = go_to_start(table, area, frame, point, position, run)
                     run["hitch_pass_at_pt"], run["hitch_pass_fresh"] = reached, reached >= deepest
                     trace = out / f"{label}-{tab}-{kind}-{rep}.trace"
                     frames_path = out / f"{label}-{tab}-{kind}-{rep}.frames.jsonl"
@@ -425,13 +436,7 @@ def main():
                     run["hitch"] = {"ms_per_s": None, "not_traced": True}
                 # Layout pass, again in fresh rows when the list is long enough: AX reads of the
                 # visible rows during the gestures AND while the list settles.
-                ya_pt = go_to(table, frame, point, position)
-                if at_bottom(table, area):
-                    # A short list (Meetings) ends before the target: back off so a down gesture fits.
-                    for _ in range(2):
-                        gesture("trackpad", point, +1)
-                    ya_pt = scrolled(table, frame)
-                    run["backed_off_from_end"] = True
+                ya_pt = go_to_start(table, area, frame, point, position, run)
                 run["layout_pass_at_pt"], run["layout_pass_fresh"] = ya_pt, ya_pt >= deepest
                 start = settled(table)
                 samples = [visible_rows(table)]
