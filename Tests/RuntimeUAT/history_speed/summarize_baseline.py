@@ -74,11 +74,11 @@ def main():
         for (case, tab, kind), runs in groups.items():
             asym = [r["travel"]["asymmetry"] for r in runs if r.get("travel", {}).get("asymmetry") is not None]
             changed = sum(len(r.get("height_changed", [])) for r in runs)
-            traced = [r["hitch"].get("ms_per_s") for r in runs if "from_repeat" not in r.get("hitch", {})]
+            traced = [r["hitch"].get("ms_per_s") for r in runs if not r.get("hitch", {}).get("not_traced")]
             label = "while indexing" if folder == "indexing" else case
             lines.append(f"| **Scroll {tab} {kind} ({label}), all repeats** | hitch {traced} ms/s (traced repeats); "
                          f"worst asymmetry {max(asym) if asym else 'n/a'}; height changes {changed} | "
-                         f"{len(runs)} down+up pairs | 5 ms/s, 0, 2% | "
+                         f"{len(runs)} down+up pairs ({len(traced)} traced) | 5 ms/s, 0, 2% | "
                          f"{'PASS' if all(r.get('verdict') == 'PASS' for r in runs) else 'FAIL' if any(r.get('verdict') == 'FAIL' for r in runs) else 'UNPROVEN'} | |")
         for run in sc.get("runs", []):
             h = run.get("hitch", {})
@@ -90,7 +90,9 @@ def main():
                          f"height changes {len(run.get('height_changed', []))} of {run.get('rows_seen')} rows; "
                          f"travel down {t.get('down')} / up {t.get('up')} pt, asymmetry {t.get('asymmetry')}; "
                          f"kept moving {run.get('kept_moving_s')}; CPU {fmt(res.get('cpu_s'), 's')}, "
-                         f"peak {fmt(res.get('peak_rss_mb'), 'MB')} | 2 gestures | 5 ms/s, 0, 2% | {run.get('verdict')} | |")
+                         f"peak {fmt(res.get('peak_rss_mb'), 'MB')} | 2 gestures | "
+                         f"{'0, 2% (hitch not traced in this repeat)' if h.get('not_traced') else '5 ms/s, 0, 2%'} | "
+                         f"{run.get('verdict')} | |")
     c = load(root / "main" / "card" / "report.json")
     if c:
         for key, title in (("edits", "Show edits"), ("play", "Play")):

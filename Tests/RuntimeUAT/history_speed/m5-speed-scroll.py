@@ -373,8 +373,9 @@ def main():
                             why = "moving spans not inside the recording window"
                             hitches = None
                         if hitches is not None:
+                            watched = [u0 + epoch_offset, u1 + QUIET_S + epoch_offset]   # each gesture's watched end
                             run["hitch"] = sa.hitch_rate([(t_start + st, du, p, sy) for st, du, p, sy in hitches],
-                                                         spans_epoch, pid)
+                                                         spans_epoch, pid, windows=watched)
                         else:
                             run["hitch"] = {"ms_per_s": None, "unproven": why}
                         run["recording"] = {"start_epoch": t_start, "end_epoch": t_end, "spans_epoch": spans_epoch}

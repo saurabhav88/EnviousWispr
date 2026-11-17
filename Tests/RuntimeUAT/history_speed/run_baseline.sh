@@ -18,7 +18,9 @@ SERIES="dictations-common-typed,dictations-two-letter-typed,dictations-q4-typed,
 if [ -e "$OUT" ]; then echo "output exists: $OUT" >&2; exit 2; fi
 # Every session copies ~120,000 fixture files; Spotlight indexes them and loads the Mac for minutes
 # (measured on the M1 2026-11-17: load 15 from mds). A folder whose name ends in .noindex is skipped.
-case "$OUT" in *.noindex/*) ;; *) echo "put the output under a folder named *.noindex (Spotlight): $OUT" >&2; exit 2;; esac
+REAL_PARENT="$(cd "$(dirname "$OUT")" 2>/dev/null && pwd -P)" || { echo "output parent does not exist: $OUT" >&2; exit 2; }
+case "$REAL_PARENT/" in *.noindex/*) ;; *) echo "put the output under a folder named *.noindex (Spotlight): $REAL_PARENT" >&2; exit 2;; esac
+OUT="$REAL_PARENT/$(basename "$OUT")"
 mkdir -p "$OUT"
 python3 -B "$HERE/fixture.py" verify --seed "$SEED" > "$OUT/seed-verify.json"
 python3 -B "$HERE/containment_pilot.py" "$APP" "$SHA" "$SEED" "$OUT/main" \

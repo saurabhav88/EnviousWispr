@@ -53,6 +53,13 @@ class HitchTests(unittest.TestCase):
         self.assertEqual(rate["hitch_ms"], 25.0)
         self.assertEqual(rate["ms_per_s"], 25.0)
 
+    def test_a_trailing_freeze_inside_the_watched_period_counts(self):
+        # Codex round 3: last change 0.1 s, last input 0.4 s, a 500 ms hitch from 0.5 s, watched to 1.9 s.
+        rate = sa.hitch_rate([(0.5, 0.5, 7, False)], [(0.0, 0.4)], pid=7, windows=[1.9])
+        self.assertEqual(rate["hitch_ms"], 500.0)
+        self.assertEqual(rate["moving_s"], 1.0)
+        self.assertEqual(rate["ms_per_s"], 500.0)
+
     def test_no_movement_is_unproven_not_zero(self):
         rate = sa.hitch_rate([], [None])
         self.assertIsNone(rate["ms_per_s"])

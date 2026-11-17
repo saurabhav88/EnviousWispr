@@ -74,18 +74,29 @@ def parse_hitches(xml_text: str):
     return rows
 
 
-def hitch_rate(hitches, spans, pid=None):
+def hitch_rate(hitches, spans, pid=None, windows=None):
     """hitches: [(start_s, duration_s, pid, is_system)] on the same clock as spans [(a, b)]; only the
-    subject's hitches count when `pid` is given. A hitch counts when it overlaps a moving span.
+    subject's hitches count when `pid` is given. A hitch counts when it overlaps a span, or when it
+    starts inside that gesture's observation window (`windows`: the end of each gesture's watched
+    period) after the span: a trailing freeze then extends the interval to the hitch's end, so a
+    freeze after the last changed frame is never dropped (Codex round 3).
     Returns {moving_s, hitch_ms, ms_per_s, count, longest_ms, other_process}."""
-    spans = [s for s in spans if s is not None and s[1] > s[0]]
-    moving = sum(b - a for a, b in spans)
     mine = [h for h in hitches if pid is None or h[2] == pid]
-    inside = [(s, d) for s, d, *_ in mine if any(s < b and s + d > a for a, b in spans)]
-    total_ms = sum(d for _, d in inside) * 1000
+    windows = windows or [None] * len(spans)
+    counted, moving = [], 0.0
+    for span, window_end in zip(spans, windows):
+        if span is None or span[1] <= span[0]:
+            continue
+        a, b = span
+        limit = max(b, window_end) if window_end is not None else b
+        inside = [(s, d) for s, d, *_ in mine if s < limit and s + d > a]
+        end = max([b] + [s + d for s, d in inside if s >= b])
+        counted += inside
+        moving += end - a
+    total_ms = sum(d for _, d in counted) * 1000
     return {"moving_s": round(moving, 3), "hitch_ms": round(total_ms, 1),
             "ms_per_s": round(total_ms / moving, 2) if moving > 0 else None,
-            "count": len(inside), "longest_ms": round(max([d for _, d in inside] or [0]) * 1000, 1),
+            "count": len(counted), "longest_ms": round(max([d for _, d in counted] or [0]) * 1000, 1),
             "other_process": len(hitches) - len(mine)}
 
 
