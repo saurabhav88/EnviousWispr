@@ -134,17 +134,12 @@ def main():
         return (p.x, p.y, s.width, s.height) if ok_p and ok_s else None
 
     def window_and_field():
+        """The window and its History search box, found without walking into the list's rows."""
+        import history_reader
         for window in ui.get_attr(eyes._app, "AXWindows") or []:
-            stack = [(window, 0)]
-            while stack:
-                element, depth = stack.pop()
-                v = values(element)
-                if v is None:
-                    continue
-                if v[5] == SEARCH_PLACEHOLDER:
-                    return window, element
-                if depth < 30 and v[4] is not None and not isinstance(v[4], str):
-                    stack.extend((c, depth + 1) for c in v[4])
+            field = history_reader.find_search_field(window, SEARCH_PLACEHOLDER)
+            if field is not None:
+                return window, field
         return None, None
 
     import history_reader as hr
@@ -194,11 +189,8 @@ def main():
     window_frame = fix_window()
 
     def press_tab(name):
-        for role in ("AXRadioButton", "AXButton"):
-            control = eyes._find_match(window, name, role, exact=True, mx=24)
-            if control is not None:
-                return ui.perform_action(control, "AXPress")
-        return False
+        control = hr.find_button(window, name)
+        return ui.perform_action(control, "AXPress") if control is not None else False
 
     def viewport_of(table):
         area = area_of(table) if table is not None else None

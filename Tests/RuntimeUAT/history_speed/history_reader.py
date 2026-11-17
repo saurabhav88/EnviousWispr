@@ -30,11 +30,45 @@ def _ui():
     return ui
 
 
+def find_outside_list(window, predicate, max_depth=30):
+    """Every element under `window` for which `predicate(element, role)` is true, WITHOUT descending
+    into any AXTable. The list's loaded rows hold hundreds of elements; answering them makes the app
+    build accessibility for every hosted row, which on the M1 (8 GB) kept the main thread busy for
+    minutes while the catalog rebuilt (2026-11-17). The search box, tabs and filters sit outside it."""
+    ui = _ui()
+    found, stack = [], [(window, 0)]
+    while stack:
+        element, depth = stack.pop()
+        role = ui.get_attr(element, "AXRole")
+        if predicate(element, role):
+            found.append(element)
+        if role == "AXTable" or depth >= max_depth:
+            continue
+        children = ui.get_attr(element, "AXChildren") or []
+        stack.extend((child, depth + 1) for child in reversed(list(children)))
+    return found
+
+
+def find_button(window, title):
+    """The first button outside the list whose title or description is `title` (tabs, filters)."""
+    ui = _ui()
+    hits = find_outside_list(window, lambda e, r: r in ("AXButton", "AXRadioButton") and title in (
+        ui.get_attr(e, "AXTitle"), ui.get_attr(e, "AXDescription")))
+    return hits[0] if hits else None
+
+
+def find_search_field(window, placeholder="Search history"):
+    ui = _ui()
+    hits = find_outside_list(window, lambda e, r: r == "AXTextField"
+                             and ui.get_attr(e, "AXPlaceholderValue") == placeholder)
+    return hits[0] if hits else None
+
+
 def find_list(window):
     """(table, scroll area) of the History list: the largest AXTable whose parent is a scroll area."""
     ui = _ui()
     best = None
-    for table in ui.find_all_elements(window, "AXTable", max_depth=30):
+    for table in find_outside_list(window, lambda e, r: r == "AXTable"):
         area = ui.get_attr(table, "AXParent")
         frame = ui.element_frame(area) if area is not None else None
         if not frame or not frame.get("height"):

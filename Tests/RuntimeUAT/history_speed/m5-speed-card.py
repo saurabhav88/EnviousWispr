@@ -83,7 +83,7 @@ def main():
     ui.activate_app(pid)
     assert eyes.nav("History"), "History did not open"
     window = (ui.get_attr(eyes._app, "AXWindows") or [None])[0]
-    control = eyes._find_match(window, "Dictations", "AXButton", exact=True, mx=24)
+    control = hr.find_button(window, "Dictations")
     assert control is not None and ui.perform_action(control, "AXPress") is not False
 
     def wait(predicate, timeout, what):

@@ -118,11 +118,8 @@ def main():
     AXUIElementSetAttributeValue(window, "AXSize", AXValueCreate(kAXValueCGSizeType, CGSize(*WINDOW_SIZE)))
 
     def press_tab(name):
-        for role in ("AXRadioButton", "AXButton"):
-            control_el = eyes._find_match(window, name, role, exact=True, mx=24)
-            if control_el is not None:
-                return ui.perform_action(control_el, "AXPress")
-        return False
+        control_el = hr.find_button(window, name)
+        return ui.perform_action(control_el, "AXPress") if control_el is not None else False
 
     def find_table():
         table, area = hr.find_list(window)
