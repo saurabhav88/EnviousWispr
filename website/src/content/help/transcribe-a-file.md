@@ -9,7 +9,7 @@ related: ["transcribe-a-file-speaker-labels", "transcript-history", "choosing-a-
 updated: 2026-11-05
 deflection: "can_resolve"
 ---
-Transcribe a File takes an audio or video file you already have and gives you back clean, readable text. The recording never leaves your Mac. When the recording has more than one voice and the app can tell them apart and match the words to them, the transcript comes back as speaker turns; see [speaker labels](/help/transcribe-a-file-speaker-labels/).
+Your recording never leaves your Mac. When it has more than one voice and the app can tell them apart, the transcript comes back as speaker turns; see [speaker labels](/help/transcribe-a-file-speaker-labels/).
 
 ### Open Transcribe a File
 
