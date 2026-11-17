@@ -40,14 +40,18 @@ struct HistoryRefreshLoopTests {
         storedKey: { self.stored },
         read: { key in
           self.reads.append(key)
-          let succeeded = await withCheckedContinuation { self.pendingRead = $0 }
+          let succeeded = await withCheckedContinuation { (read: CheckedContinuation<Bool, Never>) in
+            if Task.isCancelled { read.resume(returning: false) } else { self.pendingRead = read }
+          }
           if succeeded { self.stored = key }
         },
         wait: { content, notices in
           // Like the session's `waitForChange`: a counter that already moved returns at once.
           guard self.content == content, self.notices == notices else { return }
           self.waits += 1
-          await withCheckedContinuation { self.pendingWait = $0 }
+          await withCheckedContinuation { (wait: CheckedContinuation<Void, Never>) in
+            if Task.isCancelled { wait.resume() } else { self.pendingWait = wait }
+          }
         })
     }
 

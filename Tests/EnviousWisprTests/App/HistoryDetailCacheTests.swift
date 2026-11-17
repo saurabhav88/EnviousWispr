@@ -125,10 +125,16 @@ struct HistoryDetailCacheTests {
     let id = UUID()
 
     let waiting = Task { await coordinator.holdCatalogDetail(id) }
-    // The subject's own signal: the hold is counted once the task has started holding.
-    while coordinator.catalogDetailHoldCountForTesting(id) == 0 { await Task.yield() }
     let second = Task { await coordinator.holdCatalogDetail(id) }
-    while coordinator.catalogDetailHoldCountForTesting(id) < 2 { await Task.yield() }
+    defer {
+      waiting.cancel()
+      second.cancel()
+    }
+    // The subject's own signal: both holds are counted once their tasks started holding.
+    while coordinator.catalogDetailHoldCountForTesting(id) < 2 {
+      try Task.checkCancellation()
+      await Task.yield()
+    }
     waiting.cancel()
     await waiting.value
     #expect(coordinator.catalogDetailHoldCountForTesting(id) == 1)

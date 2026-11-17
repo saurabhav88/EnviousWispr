@@ -144,7 +144,7 @@ import Testing
       }
       try await waitUntilRegistered(session)
       session.advanceContentForTesting()
-      await content.value
+      await joined(content)
 
       // A change notice wakes it too, with no content publish.
       let notices = session.noticeCount
@@ -153,7 +153,7 @@ import Testing
       }
       try await waitUntilRegistered(session)
       f.changes.externalChange(.transcript(UUID()))
-      await notice.value
+      await joined(notice)
       #expect(session.noticeCount != notices)
 
       // Cancellation after registration resumes and removes the waiter.
@@ -162,7 +162,7 @@ import Testing
       }
       try await waitUntilRegistered(session)
       registered.cancel()
-      await registered.value
+      await joined(registered)
       #expect(session.changeWaiterCountForTesting == 0)
 
       // Cancellation before the waiter registers ends it as well.
@@ -170,9 +170,19 @@ import Testing
         await session.waitForChange(revision: session.revision, notices: session.noticeCount)
       }
       early.cancel()
-      await early.value
+      await joined(early)
       #expect(session.changeWaiterCountForTesting == 0)
       await session.waitForIndexingForTesting()
+    }
+
+    /// Awaits `task`, cancelling it when the test is cancelled (its time limit), so a waiter that
+    /// never wakes fails the test instead of hanging it.
+    private func joined(_ task: Task<Void, Never>) async {
+      await withTaskCancellationHandler {
+        await task.value
+      } onCancel: {
+        task.cancel()
+      }
     }
 
     /// Waits on the subject's own registration signal; yields only while that signal is absent.
