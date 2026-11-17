@@ -145,9 +145,12 @@ def row_heights(table, area):
             return None
         if frame["y"] + frame["height"] <= viewport["y"] or frame["y"] >= viewport["y"] + viewport["height"]:
             continue
-        key = identity(_texts(row))
+        texts = _texts(row)
+        key = identity(texts)
         if key is None:
-            continue   # a paging control or a row still being built
+            if not texts:
+                return None   # a row with no text yet is unreadable: the sample cannot vouch for it
+            continue          # a row with text that is not a card or day header: a paging control
         found[key] = frame["height"]   # keyed by content, not loaded index (paging changes the index)
     return found or None
 
