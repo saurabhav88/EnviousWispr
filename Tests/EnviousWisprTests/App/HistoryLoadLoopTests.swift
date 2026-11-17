@@ -116,19 +116,28 @@ struct HistoryLoadLoopTests {
   private final class Shown {
     var result: HistoryQueryResult?
     var checks = 0
-    private var waiters: [CheckedContinuation<Void, Never>] = []
+    private var waiters: [UUID: CheckedContinuation<Void, Never>] = [:]
 
     func store(_ next: HistoryQueryResult) {
       result = next
       let ready = waiters
       waiters.removeAll()
-      for waiter in ready { waiter.resume() }
+      for waiter in ready.values { waiter.resume() }
     }
 
-    /// Returns once a stored page satisfies `done`.
-    func until(_ done: (HistoryQueryResult) -> Bool) async {
+    /// Returns once a stored page satisfies `done`; throws when the test is cancelled (its time
+    /// limit), so a failure ends instead of waiting forever.
+    func until(_ done: (HistoryQueryResult) -> Bool) async throws {
       while result.map(done) != true {
-        await withCheckedContinuation { waiters.append($0) }
+        try Task.checkCancellation()
+        let id = UUID()
+        await withTaskCancellationHandler {
+          await withCheckedContinuation { (waiter: CheckedContinuation<Void, Never>) in
+            if Task.isCancelled { waiter.resume() } else { waiters[id] = waiter }
+          }
+        } onCancel: {
+          Task { @MainActor in self.waiters.removeValue(forKey: id)?.resume() }
+        }
       }
     }
   }
@@ -136,6 +145,8 @@ struct HistoryLoadLoopTests {
   @Test(
     "The refresh loop hides a changed row of a kept page on each change notice, while a writer is active",
     .timeLimit(.minutes(1)))
+  // Uses a real catalog, folder watcher and indexing passes (the path this protects); 0.7-3.5 s
+  // measured on the M5 Max under load, bounded by the time limit.
   func loopVerifiesKeptPage() async throws {
     let f = try await fixture(rows: 40)
     defer { try? FileManager.default.removeItem(at: f.root) }
@@ -172,20 +183,22 @@ struct HistoryLoadLoopTests {
         wait: { content, notices in await session.waitForChange(revision: content, notices: notices) }
       ).run()
     }
-    await shown.until { $0.items.count == 30 }
+    defer { loop.cancel() }
+    try await shown.until { $0.items.count == 30 }
     let page = try #require(shown.result)
     guard case .catalog(let first) = page.items[0], case .catalog(let second) = page.items[1] else {
       Issue.record("The catalog page did not return catalog rows")
-      loop.cancel()
       return
     }
 
     // A writer is active (the source revision is unknown); another process changes one shown
     // file and its notice arrives. The loop re-checks the kept page and hides only that row.
     f.changes.begin()
+    var writing = true
+    defer { if writing { f.changes.finish(.transcript(second.key.id)) } }
     try appendNewline(to: first.key.id, in: f)
     f.changes.externalChange(.transcript(first.key.id))
-    await shown.until { $0.items.count == 29 }
+    try await shown.until { $0.items.count == 29 }
     #expect(shown.result?.ids.contains(.transcript(first.key.id)) == false)
     #expect(shown.result.map(coordinator.isCurrentHistoryResult) == false)
 
@@ -193,10 +206,11 @@ struct HistoryLoadLoopTests {
     let checks = shown.checks
     try appendNewline(to: second.key.id, in: f)
     f.changes.externalChange(.transcript(second.key.id))
-    await shown.until { $0.items.count == 28 }
+    try await shown.until { $0.items.count == 28 }
     #expect(shown.checks > checks)
     #expect(shown.result?.ids.contains(.transcript(second.key.id)) == false)
 
+    writing = false
     f.changes.finish(.transcript(second.key.id))
     loop.cancel()
     await loop.value
