@@ -123,7 +123,7 @@ struct HistoryCatalogStorageTests {
     nonisolated(unsafe) let handoff = connection
     let cancelled = Task {
       withUnsafeCurrentTask { $0?.cancel() }
-      return try handoff.rows(select) { sqlite3_column_int64($0, 0) }
+      return try handoff.rows(select, stopWhenCancelled: true) { sqlite3_column_int64($0, 0) }
     }
     await #expect(throws: CancellationError.self) { try await cancelled.value }
     #expect(try connection.rows(select) { sqlite3_column_int64($0, 0) } == [1, 2, 3, 4])
@@ -176,6 +176,120 @@ struct HistoryCatalogStorageTests {
         }
       }
     }
+  }
+
+  /// About 200k recursive steps that return no row: a no-match scan with no per-row check.
+  private static let longEmptyScan =
+    "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c WHERE x < 200000) SELECT x FROM c WHERE x < 0"
+
+  private func plainConnection(_ folder: URL) throws -> HistoryCatalogConnection {
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    let connection = try HistoryCatalogConnection(path: databasePath(folder, "plain.sqlite"))
+    try connection.execute("CREATE TABLE t (f BLOB NOT NULL)")
+    try connection.transaction(write: true) {
+      for index in 0..<2_000 {
+        try connection.execute(
+          "INSERT INTO t VALUES (?)", [.bytes(SearchFields.encode(["café \(index) Straße", "日本語"]))])
+      }
+    }
+    return connection
+  }
+
+  @Test("A cancelled search stops, matches no row or not, and never reports an empty success (#4586 B2)")
+  func cancelledSearchStops() async throws {
+    let folder = directory()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let connection = try plainConnection(folder)
+    defer { try? connection.closeDatabase() }
+    let search = "SELECT rowid FROM t WHERE history_contains(f, ?)"
+    let cases: [(String, [HistoryCatalogConnection.Value])] = [
+      (search, [.text("zzzq")]),  // the real matcher over every stored row
+      (Self.longEmptyScan, []),  // long, no row
+      ("SELECT 1 WHERE 0", []),  // finishes before the handler's first check
+    ]
+    // Uncancelled, each finishes and returns nothing.
+    for (sql, values) in cases {
+      #expect(try connection.rows(sql, values, stopWhenCancelled: true) { sqlite3_column_int64($0, 0) }.isEmpty)
+    }
+    // Awaited before the next use, so the two tasks never touch the connection at once.
+    nonisolated(unsafe) let handoff = connection
+    for (sql, values) in cases {
+      let cancelled = Task {
+        withUnsafeCurrentTask { $0?.cancel() }
+        return try handoff.rows(sql, values, stopWhenCancelled: true) { sqlite3_column_int64($0, 0) }
+      }
+      await #expect(throws: CancellationError.self, "\(sql)") { try await cancelled.value }
+    }
+    let found = try connection.rows(search, [.text("café 7 ")], stopWhenCancelled: true) { sqlite3_column_int64($0, 0) }
+    #expect(found == [8])
+  }
+
+  @Test("A read that does not opt in runs to its end under cancellation, inside a search read too")
+  func plainReadsAreNotStopped() async throws {
+    let folder = directory()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let connection = try plainConnection(folder)
+    defer { try? connection.closeDatabase() }
+    struct Refused: Error {}
+    nonisolated(unsafe) let handoff = connection
+    let plain = Task {
+      withUnsafeCurrentTask { $0?.cancel() }
+      return (
+        try handoff.rows(Self.longEmptyScan) { sqlite3_column_int64($0, 0) },
+        try handoff.rows("SELECT count(*) FROM t") { sqlite3_column_int64($0, 0) }
+      )
+    }
+    let (empty, counted) = try await plain.value
+    #expect(empty.isEmpty)
+    #expect(counted == [2_000])
+    // Rows 1 and 2 come back first, then the outer search steps through a long empty tail.
+    let outer =
+      "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c WHERE x < 200000) SELECT x FROM c WHERE x <= 2"
+    nonisolated(unsafe) var innerAfterCancel: [Int64]?
+    let read = Task {
+      try handoff.rows(outer, stopWhenCancelled: true) { row in
+        let value = sqlite3_column_int64(row, 0)
+        if value == 2 {
+          let count = try handoff.rows("SELECT count(*) FROM t") { sqlite3_column_int64($0, 0) }
+          #expect(count == [2_000])
+          var refused = false
+          do { _ = try handoff.rows("SELECT 1") { _ -> Int64 in throw Refused() } } catch is Refused { refused = true }
+          #expect(refused)
+          withUnsafeCurrentTask { $0?.cancel() }
+          // A plain read nested in the search read is still not stopped.
+          innerAfterCancel = try handoff.rows(Self.longEmptyScan) { sqlite3_column_int64($0, 0) }
+        }
+        return value
+      }
+    }
+    // After every inner read ends, the outer search is stoppable again.
+    await #expect(throws: CancellationError.self) { try await read.value }
+    #expect(innerAfterCancel == [])
+    #expect(try connection.rows(outer, stopWhenCancelled: true) { sqlite3_column_int64($0, 0) } == [1, 2])
+  }
+
+  @Test("A write transaction whose task is cancelled still commits all of its writes")
+  func cancelledTaskStillCommitsWrites() async throws {
+    let folder = directory()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let connection = try plainConnection(folder)
+    defer { try? connection.closeDatabase() }
+    try connection.execute("CREATE TABLE w (v INTEGER)")
+    nonisolated(unsafe) let handoff = connection
+    let write = Task {
+      try handoff.transaction(write: true) {
+        withUnsafeCurrentTask { $0?.cancel() }
+        try handoff.execute("INSERT INTO w VALUES (1)")
+        // Reads inside the write, like reconciliation's progress read: a long empty one and one
+        // that returns rows, then apply's INSERT ... RETURNING shape.
+        _ = try handoff.rows(Self.longEmptyScan) { sqlite3_column_int64($0, 0) }
+        #expect(try handoff.rows("SELECT v FROM w") { sqlite3_column_int64($0, 0) } == [1])
+        try handoff.execute("INSERT INTO w VALUES (2)")
+        #expect(try handoff.rows("INSERT INTO w VALUES (3) RETURNING v") { sqlite3_column_int64($0, 0) } == [3])
+      }
+    }
+    try await write.value
+    #expect(try connection.rows("SELECT v FROM w ORDER BY v") { sqlite3_column_int64($0, 0) } == [1, 2, 3])
   }
 }
 

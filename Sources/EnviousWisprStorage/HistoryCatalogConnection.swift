@@ -24,6 +24,13 @@ final class HistoryCatalogConnection {
   /// The SQL texts are fixed literals plus the few shapes `HistoryCatalog` builds from a query;
   /// the cap only bounds a future caller that builds unbounded SQL.
   private static let maxStatements = 64
+  /// Whether each `rows`/`execute` call in progress, outermost first, may be stopped by
+  /// cancellation. The progress handler is installed exactly while the innermost one may.
+  private var stopScopes: [Bool] = []
+  /// SQLite VM steps between cancellation checks while a search read steps (#4586 B2). Measured on the
+  /// 27k-row synthetic catalog (M5 Max, Debug): an uncancelled no-match scan is not measurably
+  /// slower, and a cancelled one stops within about a millisecond (p95 1.2 ms, was 125 ms).
+  private static let progressInterval: Int32 = 1000
   private static let transient = transientDestructor
 
   init(path: String) throws {
@@ -89,26 +96,67 @@ final class HistoryCatalogConnection {
   }
 
   func execute(_ sql: String, _ parameters: [Value] = []) throws {
-    try withStatement(sql, parameters) { statement in
-      var result = sqlite3_step(statement)
-      while result == SQLITE_ROW { result = sqlite3_step(statement) }
-      guard result == SQLITE_DONE else { throw Failure(code: result) }
+    try scoped(stoppable: false) {
+      try withStatement(sql, parameters) { statement in
+        var result = sqlite3_step(statement)
+        while result == SQLITE_ROW { result = sqlite3_step(statement) }
+        guard result == SQLITE_DONE else { throw Failure(code: result) }
+      }
     }
   }
 
+  /// `stopWhenCancelled` is for History's search reads only (#4586 B2): a statement that matches
+  /// few or no rows never reaches the per-row check, so a search superseded by the next
+  /// keystroke would scan every row while the catalog actor makes the next read wait. With it,
+  /// a cancelled Task ends the statement between VM steps and the call throws
+  /// `CancellationError`, never a partial or empty result. Writes, reconciliation and transaction
+  /// control never opt in, and a plain call nested inside a search read runs without the handler.
   func rows<Row>(
-    _ sql: String, _ parameters: [Value] = [], _ read: (OpaquePointer) throws -> Row
+    _ sql: String, _ parameters: [Value] = [], stopWhenCancelled: Bool = false,
+    _ read: (OpaquePointer) throws -> Row
   ) throws -> [Row] {
-    try withStatement(sql, parameters) { statement in
-      var rows: [Row] = []
-      var result = sqlite3_step(statement)
-      while result == SQLITE_ROW {
-        try Task.checkCancellation()
-        rows.append(try read(statement))
-        result = sqlite3_step(statement)
+    try scoped(stoppable: stopWhenCancelled) {
+      try withStatement(sql, parameters) { statement in
+        // A cancelled search can finish before the handler's first check: refuse before
+        // stepping, at each row, and again before reporting success. A plain call never
+        // checks: it is a write, reconciliation or a short lookup that must finish.
+        if stopWhenCancelled { try Task.checkCancellation() }
+        var rows: [Row] = []
+        var result = sqlite3_step(statement)
+        while result == SQLITE_ROW {
+          if stopWhenCancelled { try Task.checkCancellation() }
+          rows.append(try read(statement))
+          result = sqlite3_step(statement)
+        }
+        if result == SQLITE_INTERRUPT, Task.isCancelled { throw CancellationError() }
+        guard result == SQLITE_DONE else { throw Failure(code: result) }
+        if stopWhenCancelled { try Task.checkCancellation() }
+        return rows
       }
-      guard result == SQLITE_DONE else { throw Failure(code: result) }
-      return rows
+    }
+  }
+
+  /// Installs the progress handler while the innermost call may be stopped, and restores the
+  /// enclosing call's state on exit. The handler runs synchronously inside the calling Task,
+  /// between VM steps, so one `history_contains` call already running still finishes first.
+  private func scoped<Result>(stoppable: Bool, _ run: () throws -> Result) throws -> Result {
+    guard let database else { throw Failure(code: SQLITE_ABORT) }
+    let enclosing = stopScopes.last ?? false
+    stopScopes.append(stoppable)
+    if stoppable != enclosing { Self.setStopping(stoppable, on: database) }
+    defer {
+      stopScopes.removeLast()
+      let restored = stopScopes.last ?? false
+      if restored != stoppable { Self.setStopping(restored, on: database) }
+    }
+    return try run()
+  }
+
+  private static func setStopping(_ stopping: Bool, on database: OpaquePointer) {
+    if stopping {
+      sqlite3_progress_handler(database, progressInterval, { _ in Task.isCancelled ? 1 : 0 }, nil)
+    } else {
+      sqlite3_progress_handler(database, 0, nil, nil)
     }
   }
 
