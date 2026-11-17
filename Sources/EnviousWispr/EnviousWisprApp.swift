@@ -40,7 +40,9 @@ struct EnviousWisprApp: App {
     Window(application.mainWindowTitle, id: "main") {
       application.mainWindowContent()
     }
-    .defaultSize(width: 820, height: 600)
+    // First-open size for new users (macOS restores the user's own size after that).
+    // 1100x760 fits the smallest supported screen (13-inch MacBook Air, 1440x900).
+    .defaultSize(width: 1100, height: 760)
     .windowToolbarStyle(.unifiedCompact)
     // #3482: Edit › Find Settings (Command-F), routed to the focused main window.
     .commands { application.mainWindowCommands() }
