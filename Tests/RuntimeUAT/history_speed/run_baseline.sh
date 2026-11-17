@@ -16,6 +16,9 @@ APP="$1"; SHA="$2"; OUT="$3"; BUSY="${4:-}"
 SEED="${HISTORY_SPEED_SEED:-/Users/m4pro_sv/Developer/AgentArtifacts/enviouswispr/runs/2026/11/20261115-020456-4586-history-speed-pr0-fixture-54bb/seed}"
 SERIES="dictations-common-typed,dictations-two-letter-typed,dictations-q4-typed,dictations-accented-typed,dictations-devanagari-typed,transcripts-accented-typed,dictations-rare,dictations-absent,transcripts-filename,meetings-title"
 if [ -e "$OUT" ]; then echo "output exists: $OUT" >&2; exit 2; fi
+# Every session copies ~120,000 fixture files; Spotlight indexes them and loads the Mac for minutes
+# (measured on the M1 2026-11-17: load 15 from mds). A folder whose name ends in .noindex is skipped.
+case "$OUT" in *.noindex/*) ;; *) echo "put the output under a folder named *.noindex (Spotlight): $OUT" >&2; exit 2;; esac
 mkdir -p "$OUT"
 python3 -B "$HERE/fixture.py" verify --seed "$SEED" > "$OUT/seed-verify.json"
 python3 -B "$HERE/containment_pilot.py" "$APP" "$SHA" "$SEED" "$OUT/main" \
