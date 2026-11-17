@@ -140,10 +140,15 @@ struct EscapeRecoveryRowConnectorTests {
   @Test("Copy carries no in-flight restriction")
   func copyIsNotRestrictedByDictation() throws {
     let source = try source(Self.detailPath)
-    let copyAction = try #require(
-      source.components(separatedBy: "TranscribeFileExport.copy(text)").first?
-        .components(separatedBy: "Button {").last,
-      "the Copy button must still exist and have an action body")
+    // #4586: the card's Copy is the shared `HistoryIconCopyButton`; its trailing closure is
+    // the text read at the press, up to the card's focus binding for Copy.
+    let start = try #require(
+      source.range(of: "HistoryIconCopyButton(label: Self.copyLabel)"),
+      "the Copy button must still exist")
+    let end = try #require(
+      source.range(of: ".focused($focus, equals: .control(\"copy\"))", range: start.upperBound..<source.endIndex),
+      "and keep its focus binding right after its text closure")
+    let copyAction = String(source[start.upperBound..<end.lowerBound])
 
     #expect(
       copyAction.contains("pipelineState") == false,

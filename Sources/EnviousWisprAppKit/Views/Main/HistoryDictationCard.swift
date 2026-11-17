@@ -43,7 +43,7 @@ struct HistoryDictationCard: View {
 
   private var rowID: UUID { display.id }
 
-  /// What can hold keyboard focus in the card; any focus reveals the card's controls.
+  /// What can hold keyboard focus in the card: its buttons, each under its own name.
   enum Focus: Hashable {
     case control(String)
   }
@@ -89,7 +89,6 @@ struct HistoryDictationCard: View {
 
   // Chrome
   @FocusState private var focus: Focus?
-  @State private var copiedAt: Date?
   @State private var saveError: String?
   @State private var confirming: HistoryDeleteKind?
   /// The last preference change made here, offered for Undo until another action replaces it.
@@ -530,25 +529,10 @@ struct HistoryDictationCard: View {
         .accessibilityAddTraits(editsOn ? .isSelected : [])
       }
 
-      let copy = TranscribeFileExport.copyButtonPresentation(
-        label: Self.copyLabel, copiedAt: copiedAt, now: Date(), holdSeconds: Self.copiedHoldSeconds)
-      Button {
-        guard let text = exportText else { return }
-        TranscribeFileExport.copy(text)
-        let pressed = Date()
-        copiedAt = pressed
-        Task {
-          try? await Task.sleep(for: .seconds(Self.copiedHoldSeconds))
-          if copiedAt == pressed { copiedAt = nil }
-        }
-      } label: {
-        Image(systemName: copy.systemImage)
-          .frame(width: 16, height: 16)
-      }
-      .settingsButton(.quiet, size: .medium, isEnabled: true)
-      .focused($focus, equals: .control("copy"))
-      .help(Text(verbatim: copy.title))
-      .accessibilityLabel(Text(verbatim: copy.title))
+      // #4586: the shared History Copy (Copied for two seconds), reading the live row at the
+      // press.
+      HistoryIconCopyButton(label: Self.copyLabel) { exportText }
+        .focused($focus, equals: .control("copy"))
 
       moreMenu(row)
     }
@@ -592,17 +576,14 @@ struct HistoryDictationCard: View {
         title: String(localized: "Share…", comment: "History dictation card: shares the text."),
         systemImage: "square.and.arrow.up",
         kind: .action {
-          guard let anchor = moreAnchor.view else { return }
-          // Delivery reads the live row when the receiving app asks (`DeliverableText`), so a
-          // deletion or a changed preference while the picker is open never sends old text
-          // (cloud review on #4616).
-          let provider = NSItemProvider()
+          // Delivery reads the live row when the receiving app asks (`DeliverableText`, inside
+          // `HistoryDelivery.share`), so a deletion or a changed preference while the picker is
+          // open never sends old text (cloud review on #4616).
           let history = transcripts
           let id = rowID
-          provider.register(
-            DeliverableText(resolve: { history.dictationTextForDelivery(id: id) }))
-          NSSharingServicePicker(items: [provider]).show(
-            relativeTo: anchor.bounds, of: anchor, preferredEdge: .minY)
+          HistoryDelivery.share(from: moreAnchor.view) {
+            history.dictationTextForDelivery(id: id)
+          }
         }),
       .init(
         id: "save",
@@ -755,15 +736,8 @@ struct HistoryDictationCard: View {
 
   /// The text is read AFTER the panel closes: the row can be deleted or expire while it is open.
   private func saveDocument() {
-    let panel = NSSavePanel()
-    panel.allowedContentTypes = [.plainText]
-    panel.nameFieldStringValue = Self.dictationWord
-    guard panel.runModal() == .OK, let url = panel.url else { return }
-    guard let text = exportText else { return }
-    do {
-      try text.write(to: url, atomically: true, encoding: .utf8)
-    } catch {
-      saveError = error.localizedDescription
+    HistoryDelivery.save(defaultName: Self.dictationWord, text: { exportText }) {
+      saveError = $0
     }
   }
 
@@ -1032,7 +1006,6 @@ struct HistoryDictationCard: View {
 
   // MARK: - Words
 
-  static let copiedHoldSeconds: Double = TranscribeFileExport.copiedHoldSeconds
 
   static var dictationWord: String {
     String(
