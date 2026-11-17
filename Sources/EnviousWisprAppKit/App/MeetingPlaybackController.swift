@@ -65,6 +65,9 @@ final class MeetingPlaybackController {
   private(set) var state: State = .idle
   /// Where playback is on the meeting timeline: the end of the last window that has played.
   private(set) var positionMs = 0
+  /// Whether `positionMs` is a place the user chose: true once the recording has played or been
+  /// moved. A player never played or moved has no real position (a note typed then gets no time).
+  private(set) var hasPosition = false
   /// Window reads that came back after a seek, pause or stop and were dropped unplayed.
   private(set) var staleReadsDropped = 0
   let durationMs: Int
@@ -151,6 +154,7 @@ final class MeetingPlaybackController {
   func play() {
     guard state != .playing, state != .unavailable, durationMs > 0 else { return }
     if state == .finished { positionMs = 0 }
+    hasPosition = true
     do {
       try output.start()
     } catch {
@@ -179,6 +183,7 @@ final class MeetingPlaybackController {
     let wasPlaying = state == .playing
     halt()
     positionMs = min(max(0, ms), durationMs)
+    hasPosition = true
     guard positionMs < durationMs else {
       state = .finished
       return

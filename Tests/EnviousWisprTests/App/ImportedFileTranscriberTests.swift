@@ -84,6 +84,8 @@ final class ImportedTranscriberRig {
   var identityNow = ImportedSourceIdentity(byteCount: 10, durationMs: 1000, digest: "aa")
   var languageMode: LanguageMode = .auto
   var installed: [ImportedASRChoice] = []
+  /// #4611: the speaker step Transcribe again with runs; nil skips it.
+  var speakerLabeler: (@MainActor ([Float], TimeInterval) async -> SpeakerAnalysis)?
 
   static let identity = ImportedSourceIdentity(byteCount: 10, durationMs: 1000, digest: "aa")
   static let parakeetChoice = ImportedASRSelection.parakeet(
@@ -143,7 +145,8 @@ final class ImportedTranscriberRig {
           samples: [Float](repeating: 0.1, count: 16_000), seconds: 1, byteCount: 10,
           codec: "PCM", sampleRate: 16_000, channelCount: 1)
       },
-      readIdentity: { [identityNow] _ in identityNow })
+      readIdentity: { [identityNow] _ in identityNow },
+      speakerLabeler: speakerLabeler)
     transcriber = made
     return made
   }
@@ -233,6 +236,48 @@ struct ImportedFileTranscriberTests {
     #expect(
       rig.clearAtRelease == [true],
       "the retries run after the lease and job guards clear, or a deferred eviction defers again")
+    #expect(rig.engineIsFree)
+  }
+
+  @Test("one voice: Transcribe again stores paragraph turns, each cleaned as its own part (#4611)")
+  func oneVoiceGetsParagraphTimes() async throws {
+    let rig = ImportedTranscriberRig()
+    // Two sentences of 45 words each with a 3 s pause between them, timed word by word.
+    var text = ""
+    var words: [ASRWordTiming] = []
+    var clock = 0
+    for sentence in 0..<2 {
+      for n in 0..<45 {
+        if !text.isEmpty { text += " " }
+        let lower = text.utf16.count
+        text += "w\(n)" + (n == 44 ? "." : "")
+        words.append(
+          ASRWordTiming(word: "w", range: lower..<text.utf16.count, startMs: clock, endMs: clock + 250))
+        clock += 300
+      }
+      if sentence == 0 { clock += 3_000 }
+    }
+    rig.engines.result = ASRResult(
+      text: text, language: "en", duration: 30, processingTime: 0.5, backendType: .parakeet,
+      wordTimings: words, wordTimingCoverage: ASRWordTimingCoverage(timed: 90, total: 90))
+    var analyzed = 0
+    rig.speakerLabeler = { _, _ in
+      analyzed += 1
+      return .single(segments: [])
+    }
+    let row = try await rig.makeTranscriber().transcribe(
+      url: URL(fileURLWithPath: "/tmp/talk.m4a"), identity: ImportedTranscriberRig.identity,
+      selection: ImportedTranscriberRig.parakeetChoice
+    ).get()
+    #expect(analyzed == 1)
+    #expect(row.speakerAnalysis == .single)
+    let turns = try #require(row.turns)
+    #expect(turns.count == 2)
+    #expect(turns.map(\.startMs) == [0, 16_500])
+    #expect(turns.allSatisfy { $0.speakerId == SingleSpeakerParagraphs.speakerID })
+    #expect(rig.processedParts.first?.count == 2, "one cleanup part per paragraph")
+    #expect(turns.allSatisfy { $0.processedText?.hasPrefix("Polished") == true })
+    #expect(row.speakerNames == nil)
     #expect(rig.engineIsFree)
   }
 

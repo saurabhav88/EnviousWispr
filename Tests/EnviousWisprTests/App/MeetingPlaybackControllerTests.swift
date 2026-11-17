@@ -358,6 +358,19 @@ struct MeetingPlaybackControllerTests {
     #expect(recovered.durationMs > first.durationMs)
   }
 
+  /// When this fails, a note typed after the meeting shows a fake 0:00, or ignores where the
+  /// user moved the play bar.
+  @Test("a player never played or moved has no position; a seek gives it the seek place")
+  func positionIsKnownOnlyAfterPlayOrSeek() throws {
+    let folder = try MeetingAudioFixture.folder("playback-known")
+    let mic = try MeetingAudioFixture.writeSegment(in: folder, index: 1, startMs: 0, frames: 16_000)
+    let player = MeetingPlaybackController(
+      files: [.microphone: [(mic, 0)]], durationMs: 1_000, output: FakeOutput(), windowMs: 250)
+    #expect(!player.hasPosition)
+    player.seek(toMs: 600)
+    #expect(player.hasPosition && player.positionMs == 600 && player.state == .idle)
+  }
+
   @Test("a seek to the end finishes in every state; the next Play starts over")
   func seekToEndFromEveryState() async throws {
     let folder = try MeetingAudioFixture.folder("playback-end")

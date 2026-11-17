@@ -182,10 +182,10 @@ struct HistoryCatalogTests {
       try $0.sourcesStillMatch()
     }
     #expect(current.summaries.map(\.preview) == ["current budget note"])
-    let currentCoverage = await worker.currentCoverage()
+    let currentCoverage = worker.currentCoverage()
     #expect(currentCoverage == revision)
     sourceRevision.withLock { $0 += 1 }
-    let invalidated = await worker.currentCoverage()
+    let invalidated = worker.currentCoverage()
     #expect(invalidated == nil)
 
     let moved = root.appendingPathComponent("saved-transcripts")
@@ -194,7 +194,7 @@ struct HistoryCatalogTests {
       _ = try await worker.reconcile()
       Issue.record("A missing source was treated as a complete empty library")
     } catch is CocoaError {}
-    let unverified = await worker.currentCoverage()
+    let unverified = worker.currentCoverage()
     #expect(unverified == nil)
   }
 
@@ -222,7 +222,7 @@ struct HistoryCatalogTests {
     }
     let first = try await worker.reconcile()
     let established = try #require(first?.revision)
-    #expect(await worker.currentCoverage() == established)
+    #expect(worker.currentCoverage() == established)
     let one = Transcript(text: "first current record", processingTime: 0, backendType: .parakeet)
     let two = Transcript(text: "second current record", processingTime: 0, backendType: .parakeet)
     try stores.save(one)
@@ -235,7 +235,7 @@ struct HistoryCatalogTests {
     }
     let incomplete = try await worker.refresh(partial)
     #expect(incomplete?.revision == nil)
-    #expect(await worker.currentCoverage() == nil)
+    #expect(worker.currentCoverage() == nil)
     let completed = try await worker.reconcile()
     let revision = try #require(completed?.revision)
     let ids = try await catalog.matchingKeys(.init(tab: .dictations), sourceRevision: revision)

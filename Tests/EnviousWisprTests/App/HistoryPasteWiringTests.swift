@@ -125,7 +125,6 @@ struct HistoryPasteWiringTests {
     #expect(history.contains("pasteNotice.text ?? \"\""), "the alert shows the page's notice")
     #expect(history.contains("get: { pasteNotice.text != nil }"))
     #expect(history.contains("pasteNotice.dismiss()"), "OK clears it")
-    #expect(history.contains("TranscriptDetailView(display: row, showPasteNotice: pasteNotice.show)"))
     #expect(history.contains("display: row, query: query, showPasteNotice: pasteNotice.show"))
     // #3147 PR4A: the meeting page reports to the page's notice.
     #expect(history.contains("HistoryMeetingAfterView("))
@@ -140,7 +139,7 @@ struct HistoryPasteWiringTests {
     #expect(window.contains("showPasteNotice: pasteNotice.show,"))
     #expect(window.contains("get: { pasteNotice.text != nil }"), "the window presents its own notice")
     for detail in [
-      "TranscriptDetailView.swift", "HistoryMeetingAfterView.swift", "HistoryTranscriptView.swift",
+      "HistoryDictationCard.swift", "HistoryMeetingAfterView.swift", "HistoryTranscriptView.swift",
     ] {
       let (source, _) = try Self.snapshot("\(Self.sources)/Views/Main/\(detail)")
       #expect(source.contains("@State private var pasteNotice") == false, "\(detail) holds its own notice")

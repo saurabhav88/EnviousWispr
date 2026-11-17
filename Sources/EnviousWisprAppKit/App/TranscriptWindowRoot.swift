@@ -39,6 +39,10 @@ struct TranscriptWindowRoot: View {
     )
     .frame(minWidth: 520, minHeight: 420)
     .background(Color.stPageBg)
+    // The brand tint the main window sets (`SettingsView`), so controls here are not system blue.
+    .tint(.stAccentSolid)
+    // The transcript's own window is History too: rounded-rectangle buttons (founder #4611).
+    .environment(\.enviousButtonShape, .roundedRect)
     .background(
       TranscriptWindowRegistrar(coordinator: b.appWindowCoordinator, hostWindow: hostWindow))
     .alert(

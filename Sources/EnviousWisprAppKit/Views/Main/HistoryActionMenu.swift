@@ -37,9 +37,13 @@ final class HistoryMenuPresenter {
   @ObservationIgnored private let panels: any PanelPresenting
   @ObservationIgnored private var panel: HistoryMenuPanel?
   @ObservationIgnored private weak var openedFrom: NSView?
+  /// Keeps the page still while the menu is open, like a native menu (founder #4611). Nil in
+  /// previews and tests: the page under the menu still scrolls.
+  @ObservationIgnored private let scrollHold: (any ScrollHolding)?
 
-  init(panels: any PanelPresenting) {
+  init(panels: any PanelPresenting, scrollHold: (any ScrollHolding)? = nil) {
     self.panels = panels
+    self.scrollHold = scrollHold
   }
 
   /// Opens `items` under `anchor`, or hides the menu when it is already open from there. The
@@ -55,15 +59,18 @@ final class HistoryMenuPresenter {
       rootView: HistoryMenuView(items: items, dismiss: { [weak self] in self?.dismiss() }))
     host.sizingOptions = [.intrinsicContentSize]
     let size = host.fittingSize
-    let below = window.convertToScreen(anchor.convert(anchor.bounds, to: nil))
-    var origin = NSPoint(x: below.minX, y: below.minY - DesignSpacing.sm - size.height)
-    if let screen = window.screen?.visibleFrame, origin.y < screen.minY {
-      origin.y = below.maxY + DesignSpacing.sm
+    let button = window.convertToScreen(anchor.convert(anchor.bounds, to: nil))
+    let bounds = window.frame
+    let screen = window.screen?.visibleFrame
+    let place = { (size: NSSize) in
+      Self.origin(for: size, button: button, window: bounds, screen: screen)
     }
     let panel = HistoryMenuPanel(
-      contentRect: NSRect(origin: origin, size: size),
+      contentRect: NSRect(origin: place(size), size: size),
       styleMask: [.borderless, .nonactivatingPanel],
       backing: .buffered, defer: false)
+    // A submenu changes the menu's size; it is placed again from the same button.
+    panel.place = place
     panel.onResign = { [weak self] in self?.dismiss() }
     panel.isOpaque = false
     panel.backgroundColor = .clear
@@ -73,10 +80,27 @@ final class HistoryMenuPresenter {
     panels.makeKeyAndOrderFront(panel)
     self.panel = panel
     openedFrom = anchor
+    // Only the menu's own window may scroll; the page under it stays where it is.
+    scrollHold?.holdScrolling { [weak panel] event in
+      panel != nil && event.window === panel
+    }
+  }
+
+  /// Under the button, left edges aligned; right edges aligned instead when that would run past
+  /// the window's right edge (a "···" at the right of the page, founder #4611); above the button
+  /// when there is no room below; and always kept on the screen.
+  static func origin(for size: NSSize, button: NSRect, window: NSRect, screen: NSRect?) -> NSPoint {
+    var origin = NSPoint(x: button.minX, y: button.minY - DesignSpacing.sm - size.height)
+    if origin.x + size.width > window.maxX { origin.x = button.maxX - size.width }
+    guard let screen else { return origin }
+    if origin.y < screen.minY { origin.y = button.maxY + DesignSpacing.sm }
+    origin.x = min(max(origin.x, screen.minX), screen.maxX - size.width)
+    return origin
   }
 
   func dismiss() {
     guard let panel else { return }
+    scrollHold?.releaseScrolling()
     self.panel = nil
     openedFrom = nil
     panel.onResign = nil
@@ -86,6 +110,17 @@ final class HistoryMenuPresenter {
 
 private final class HistoryMenuPanel: NSPanel {
   var onResign: (() -> Void)?
+  /// Where a menu of a given size goes; applied to every size change.
+  var place: ((NSSize) -> NSPoint)?
+
+  override func setFrame(_ frameRect: NSRect, display flag: Bool) {
+    guard let place, frameRect.size != frame.size else {
+      super.setFrame(frameRect, display: flag)
+      return
+    }
+    super.setFrame(NSRect(origin: place(frameRect.size), size: frameRect.size), display: flag)
+  }
+
   override var canBecomeKey: Bool { true }
   override func resignKey() {
     super.resignKey()
@@ -172,7 +207,8 @@ private struct HistoryMenuView: View {
   }
 
   private func row(_ item: HistoryMenuItem) -> some View {
-    Button {
+    // The role tells VoiceOver a Delete row is destructive; the red alone says it only by sight.
+    Button(role: item.isDestructive ? .destructive : nil) {
       run(item)
     } label: {
       HStack(spacing: DesignSpacing.md) {

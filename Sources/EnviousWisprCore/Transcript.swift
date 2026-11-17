@@ -488,7 +488,8 @@ public struct Transcript: Codable, Identifiable, Sendable {
   /// `turns`. Defaulted to `"Speaker N"` by `TurnAssembler.defaultSpeakerNames`, overwritten
   /// only by an explicit rename (phase 4).
   public private(set) var speakerNames: [String: String]?
-  /// Non-nil only when `speakerAnalysis == .labeled`.
+  /// Non-nil only when `speakerAnalysis` is `.labeled`, or `.single` with paragraph times
+  /// (#4611 T4, `SingleSpeakerParagraphs`; no `speakerNames` then).
   public private(set) var turns: [Turn]?
   /// Who wrote each person name in `speakerNames` (#4013 r2 item 4): `.manual` for a name the
   /// user typed or picked, `.auto` for one read from the call app. A speaker with no entry has
@@ -760,7 +761,8 @@ public struct Transcript: Codable, Identifiable, Sendable {
   /// user action named.
   ///
   /// A non-`.labeled` analysis clears both `turns` and `speakerNames`, matching the invariant
-  /// that `turns` is non-nil only when `speakerAnalysis == .labeled`.
+  /// that `turns` is non-nil only when `speakerAnalysis == .labeled`; the one exception is
+  /// `.single` with paragraph turns (#4611 T4), which keeps its turns and no names.
   ///
   /// #4013: provenance moves with each name. A name the user wrote whose speaker is retired, or
   /// cleared with a non-`.labeled` analysis, is kept in `unassignedSpeakerNames` rather than
@@ -772,6 +774,16 @@ public struct Transcript: Codable, Identifiable, Sendable {
   ) -> Transcript {
     var copy = self
     copy.speakerAnalysis = analysis
+    // #4611 T4: one voice keeps its paragraph turns (`SingleSpeakerParagraphs`) for their
+    // times, with no speaker names: there is nobody to tell apart or rename.
+    if case .single = analysis, let newTurns {
+      copy.unassignedSpeakerNames = Self.keepingNames(
+        unassignedSpeakerNames, adding: manualNames(of: speakerNames?.keys.sorted() ?? []))
+      copy.turns = newTurns
+      copy.speakerNames = nil
+      copy.speakerNameSources = nil
+      return copy
+    }
     guard case .labeled = analysis, let newTurns else {
       copy.unassignedSpeakerNames = Self.keepingNames(
         unassignedSpeakerNames, adding: manualNames(of: speakerNames?.keys.sorted() ?? []))

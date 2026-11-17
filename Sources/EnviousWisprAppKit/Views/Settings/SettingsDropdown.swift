@@ -25,11 +25,27 @@ private struct SettingsDropdownMenu<Content: View>: View {
   let maxHeight: CGFloat?
   @ViewBuilder let content: () -> Content
 
+  /// The rows' own height, read from the layout. A popover sizes itself to its content's ideal
+  /// size, and a scroll view's ideal height does not follow rows that arrive after the menu
+  /// opens: the History App filter opened on its loading spinner and stayed one row tall, with
+  /// the apps hidden under a scroll (#4611). An explicit height, the rows' height up to the
+  /// limit, lets the popover grow with them. Read with a background `GeometryReader`, as
+  /// `EGOneSizeCards` and `TranscribeFileView` read their widths.
+  @State private var contentHeight: CGFloat = 0
+
   var body: some View {
     Group {
       if let maxHeight {
-        ScrollView(.vertical) { stack }
-          .frame(maxHeight: maxHeight)
+        ScrollView(.vertical) {
+          stack.background(
+            GeometryReader { geo in
+              Color.clear
+                .onAppear { contentHeight = geo.size.height }
+                .onChange(of: geo.size.height) { _, height in contentHeight = height }
+            })
+        }
+        .frame(height: contentHeight > 0 ? min(contentHeight, maxHeight) : nil)
+        .frame(maxHeight: maxHeight)
       } else {
         stack
       }

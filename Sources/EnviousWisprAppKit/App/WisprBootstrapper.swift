@@ -2255,8 +2255,9 @@ package final class WisprBootstrapper {
     // PR-B.4 of #763: process-lifecycle home. Constructed last. It receives the
     // 10 specific homes it reads.
     let previousApplicationTracker = PreviousApplicationTracker()
+    let wheelScrollSmoother = WheelScrollSmoother(monitor: scrollWheelMonitor)
     let appLifecycleCoordinator = AppLifecycleCoordinator(
-      wheelScrollSmoother: WheelScrollSmoother(monitor: scrollWheelMonitor),
+      wheelScrollSmoother: wheelScrollSmoother,
       previousApplicationTracker: previousApplicationTracker,
       settings: settings,
       permissions: permissions,
@@ -3219,6 +3220,11 @@ package final class WisprBootstrapper {
       },
       installedEngines: { [weak speechModels] in
         await speechModels?.freshInstalledEngines() ?? []
+      },
+      // #4611: the wizard's speaker step, so Transcribe again with keeps speakers and gives a
+      // one-voice file its paragraph times.
+      speakerLabeler: { samples, durationSeconds in
+        await SpeakerLabeler().run(samples: samples, durationSeconds: durationSeconds)
       })
     let transcriptRetranscription = TranscriptRetranscription(
       history: transcriptCoordinator, sources: importedSources,
@@ -3504,7 +3510,8 @@ package final class WisprBootstrapper {
     self.appWindowCoordinator = appWindowCoordinator
     self.previousApplicationTracker = previousApplicationTracker
     self.historyPaste = historyPaste
-    self.historyMenu = HistoryMenuPresenter(panels: presentationEffects.panels)
+    self.historyMenu = HistoryMenuPresenter(
+      panels: presentationEffects.panels, scrollHold: wheelScrollSmoother)
     self.menuBarController = menuBarController
     self.appLifecycleCoordinator = appLifecycleCoordinator
 

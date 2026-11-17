@@ -38,8 +38,11 @@ struct HistoryTranscriptPresentationTests {
     #expect(
       P.chips(for: row) == [
         .recovered, .interrupted, .backend(ASRBackendType.parakeet.displayName),
-        .polish(model: "gpt-x"), .speakers("Ariana, Zach"),
+        .polish(model: "gpt-x"), .speakers("2 speakers"),
       ])
+    // #4611: one voice reads "1 speaker", as the page's facts line does.
+    let single = Transcript(text: "x", importedFileName: "a.wav", speakerAnalysis: .single)
+    #expect(P.chips(for: single).contains(.speakers("1 speaker")))
     // No polish, no speakers, no flags: only the engine. The file name is the card's title, so
     // the footer never repeats it (#4611).
     let plain = Transcript(text: "x", backendType: .whisper, importedFileName: "a.wav")
@@ -47,6 +50,30 @@ struct HistoryTranscriptPresentationTests {
     // A recorded model without polished text is not polish provenance.
     let unpolished = Transcript(text: "x", llmModel: "gpt-x", importedFileName: "a.wav")
     #expect(P.chips(for: unpolished).contains(.polish(model: "gpt-x")) == false)
+  }
+
+  @Test("a transcript's card, its catalog summary and its page say the same number of speakers")
+  func speakerCountAgrees() {
+    let names = ["s1": "Ariana", "s2": "Zach"]
+    let cases: [(TranscriptSpeakerAnalysis?, [String: String]?, Int?)] = [
+      (nil, nil, nil), (.unanalyzed, nil, nil), (.failed(.timedOut), nil, nil),
+      (.single, nil, 1), (.labeled(count: 0), nil, nil), (.labeled(count: 3), nil, 3),
+      // An older import with names but no usable analysis counts its names.
+      (nil, names, 2), (.failed(.timedOut), names, 2), (.labeled(count: 0), names, 2),
+      // The analysis wins over the names.
+      (.single, names, 1), (.labeled(count: 3), names, 3),
+    ]
+    for (analysis, speakerNames, expected) in cases {
+      let row = Transcript(
+        text: "x", importedFileName: "a.wav", speakerAnalysis: analysis,
+        speakerNames: speakerNames)
+      #expect(P.speakerNumber(analysis, names: speakerNames?.count) == expected)
+      // The card drawn from the catalog reads only the stored analysis.
+      let stored = P.catalogSpeakerAnalysis(row)
+      #expect(
+        P.speakerCount(stored, names: nil)
+          == P.speakerCount(analysis, names: speakerNames?.count))
+    }
   }
 
   @Test("the card's title is the file name and its footer length is the source duration")
@@ -189,16 +216,6 @@ struct HistoryTranscriptPresentationTests {
     #expect(P.needsNewPlayer(current: player, currentSource: a, resolved: a))
   }
 
-  @Test("the dock is the mock's 88 points")
-  func dockHeight() {
-    let player = MeetingPlaybackController(
-      media: .transcript(Tone()), durationMs: 90_000,
-      output: MeetingPlaybackControllerTests.FakeOutput())
-    let host = NSHostingView(
-      rootView: HistoryTranscriptPlayerBar(player: player).frame(width: 750))
-    #expect(host.fittingSize.height == HistoryTranscriptPlayerBar.height)
-  }
-
   // MARK: - Turn time buttons
 
   @Test("an original that becomes playable, or a new player, redraws the turn document")
@@ -303,12 +320,16 @@ struct HistoryTranscriptPresentationTests {
   @Test("a transcript without saved turns exports its selected version")
   func flatVersionExport() async throws {
     try await withCoordinator { coordinator in
-      let row = Transcript(text: "raw words", polishedText: "Polished words.", importedFileName: "file.m4a")
+      let row = Transcript(
+        text: "raw words", polishedText: "Polished words.", importedFileName: "file.m4a")
       try await coordinator.saveAndShow(row)
-      #expect(HistoryTranscriptExport.text(
-        rowID: row.id, coordinator: coordinator, mode: .original, timesOn: true) == row.text)
-      #expect(HistoryTranscriptExport.text(
-        rowID: row.id, coordinator: coordinator, mode: .markedUp, timesOn: true) == row.displayText)
+      #expect(
+        HistoryTranscriptExport.text(
+          rowID: row.id, coordinator: coordinator, mode: .original, timesOn: true) == row.text)
+      #expect(
+        HistoryTranscriptExport.text(
+          rowID: row.id, coordinator: coordinator, mode: .markedUp, timesOn: true)
+          == row.displayText)
     }
   }
 

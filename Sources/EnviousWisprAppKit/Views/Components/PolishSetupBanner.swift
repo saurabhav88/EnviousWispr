@@ -20,28 +20,27 @@ struct PolishSetupBanner: View {
   private func content(subject: PolishSetupPromptSubject, episode: PolishSetupEpisodeToken)
     -> some View
   {
-    HStack(spacing: 10) {
+    HStack(alignment: .firstTextBaseline, spacing: DesignSpacing.lg) {
       Image(systemName: "sparkles")
-        .foregroundStyle(.orange)
-        .imageScale(.medium)
+        .foregroundStyle(.stWarning)
         .accessibilityHidden(true)
 
       Text(PolishSetupSurfaceCopy.banner(reason: PolishSetupSurfaceCopy.shortReason(subject.problem, egOneSize: subject.egOneSize)))
-        .font(.callout)
-        .foregroundStyle(.primary)
+        .font(.stBody)
+        .foregroundStyle(.stTextPrimary)
         .fixedSize(horizontal: false, vertical: true)
 
-      Spacer(minLength: 8)
+      Spacer(minLength: 0)
 
-      Button(PolishSetupLeaveDialogContent.Copy.finishSetup) {
+      Button {
         // Through the window's request path, which the leave guard also covers. Not an
         // answer: the banner stays until the setup is finished or it is closed.
         monitor.recordPrompt(.banner, .finishSetup, subject: subject)
         navigationCoordinator.request(.aiPolish)
+      } label: {
+        EnviousButtonLabel(verbatim: PolishSetupLeaveDialogContent.Copy.finishSetup, size: .medium)
       }
-      .buttonStyle(.borderedProminent)
-      .tint(.orange)
-      .controlSize(.small)
+      .settingsButton(.outlined, size: .medium, isEnabled: true)
 
       Button {
         // The episode captured when this banner was drawn; an old close never answers a newer
@@ -49,25 +48,18 @@ struct PolishSetupBanner: View {
         monitor.recordPrompt(.banner, .closed, subject: subject)
         monitor.acknowledge(.banner, in: episode)
       } label: {
-        Image(systemName: "xmark")
-          .imageScale(.small)
+        EnviousCloseGlyph()
       }
       .buttonStyle(.plain)
-      .foregroundStyle(.secondary)
       .help(PolishSetupSurfaceCopy.bannerClose)
       .accessibilityLabel(PolishSetupSurfaceCopy.bannerClose)
     }
-    .padding(.horizontal, 14)
-    .padding(.vertical, 8)
+    .padding(DesignSpacing.xl)
     .background(
-      RoundedRectangle(cornerRadius: 8)
-        .fill(.orange.opacity(0.12))
-        .overlay(
-          RoundedRectangle(cornerRadius: 8)
-            .strokeBorder(.orange.opacity(0.3), lineWidth: 1)
-        )
+      Color.stWarning.opacity(0.12), in: RoundedRectangle(cornerRadius: DesignRadius.lg)
     )
-    .padding(.horizontal, 12)
-    .padding(.top, 8)
+    .accessibilityElement(children: .contain)
+    .padding(.horizontal, DesignSpacing.xl)
+    .padding(.top, DesignSpacing.md)
   }
 }

@@ -38,7 +38,7 @@ struct SettingsNavigationProducerTests {
       file: views + "Components/AccessibilityWarningBanner.swift", callee: "request",
       owner: "button:Fix Now", argument: ".appSettings(.permissions)"),
     Route(
-      "7 History Paste with Accessibility denied", file: views + "Main/TranscriptDetailView.swift",
+      "7 History Paste with Accessibility denied", file: views + "Main/HistoryDictationCard.swift",
       callee: "request", owner: "else:permissions.accessibilityGranted", argument: ".appSettings(.permissions)"),
     Route(
       "8 Quick Add shortcut callout", file: views + "Settings/QuickAddTeachingSection.swift",
@@ -308,10 +308,18 @@ struct SettingsNavigationProducerTests {
             binding.accessorBlock == nil
               ? "binding:\(name.identifier.text)" : "var:\(name.identifier.text)")
         } else if let call = parent.as(FunctionCallExprSyntax.self),
-          call.calledExpression.trimmedDescription == "Button",
-          let title = call.arguments.first?.expression.as(StringLiteralExprSyntax.self)
+          call.calledExpression.trimmedDescription == "Button"
         {
-          owners.append("button:\(title.segments.trimmedDescription)")
+          // `Button("Fix Now")`, or the branded `Button { … } label: { EnviousButtonLabel("Fix Now") }`.
+          let direct = call.arguments.first?.expression.as(StringLiteralExprSyntax.self)
+          let label = call.additionalTrailingClosures.first { $0.label.text == "label" }?.closure
+          let branded = label?.statements.first?.item.as(FunctionCallExprSyntax.self)
+          let brandedTitle =
+            branded?.calledExpression.trimmedDescription == "EnviousButtonLabel"
+            ? branded?.arguments.first?.expression.as(StringLiteralExprSyntax.self) : nil
+          if let title = direct ?? brandedTitle {
+            owners.append("button:\(title.segments.trimmedDescription)")
+          }
         } else if let ifExpr = parent.as(IfExprSyntax.self) {
           let condition = ifExpr.conditions.trimmedDescription
           if let elseBody = ifExpr.elseBody, Syntax(elseBody) == child {

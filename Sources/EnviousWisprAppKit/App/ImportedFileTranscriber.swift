@@ -68,6 +68,10 @@ final class ImportedFileTranscriber {
   private let readIdentity: @Sendable (URL) async throws -> ImportedSourceIdentity
   private let cleanup: Cleanup
   private let captureASRFailure: @MainActor (any Error, ASRBackendType) -> Void
+  /// #4611: the wizard's speaker step (`SpeakerLabeler`), so Transcribe again with finds the
+  /// speakers again and a one-voice file gets its paragraph times. Nil (tests) skips it, and
+  /// the new text then carries no turns, as before.
+  private let speakerLabeler: (@MainActor ([Float], TimeInterval) async -> SpeakerAnalysis)?
 
   /// The run holding the engine now, so the settings gates that defer tearing down a polisher
   /// or an Ollama model in use can see it (the wizard's `pinnedLocalPolishModel` twins). Nil
@@ -87,9 +91,11 @@ final class ImportedFileTranscriber {
       try await ImportedSourceFingerprint.read(url: $0)
     },
     captureASRFailure: @escaping @MainActor (any Error, ASRBackendType) -> Void = { _, _ in },
-    installedEngines: @escaping @MainActor () async -> Set<ASRBackendType> = { [.parakeet, .whisper] }
+    installedEngines: @escaping @MainActor () async -> Set<ASRBackendType> = { [.parakeet, .whisper] },
+    speakerLabeler: (@MainActor ([Float], TimeInterval) async -> SpeakerAnalysis)? = nil
   ) {
     self.installedEngines = installedEngines
+    self.speakerLabeler = speakerLabeler
     self.admission = admission
     self.engines = engines
     self.cleanup = cleanup
@@ -161,6 +167,9 @@ final class ImportedFileTranscriber {
     var language: String?
     if case .locked(let code) = frozen.settings.languageMode { language = code }
     let asr: ASRResult
+    // Kept for the speaker step after the engine copy unloads (the wizard keeps the same PCM).
+    let analysisSamples = speakerLabeler == nil ? [] : (decoded?.samples ?? [])
+    let durationSeconds = decoded?.seconds ?? 0
     do {
       try await engines.load(selection)
       if Task.isCancelled { throw CancellationError() }
@@ -180,33 +189,63 @@ final class ImportedFileTranscriber {
     guard !asr.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
       return .failure(.noSpeech)
     }
-    return await clean(asr, backend: backend, configuration: frozen.configuration)
+    // #4611: who spoke, and the turns (speaker turns, or one voice's paragraphs) the cleanup
+    // then runs per turn, as the wizard does. A failed or skipped step keeps one plain document.
+    var speakers: FileImportTurnAssembly.Result?
+    if let speakerLabeler {
+      let outcome = await speakerLabeler(analysisSamples, durationSeconds)
+      if Task.isCancelled { return .failure(.cancelled) }
+      speakers = await FileImportTurnAssembly.assemble(
+        outcome: outcome, words: asr.wordTimings, segments: asr.segmentTimings, rawText: asr.text)
+      if Task.isCancelled { return .failure(.cancelled) }
+    }
+    return await clean(asr, backend: backend, configuration: frozen.configuration, speakers: speakers)
   }
 
-  /// The wizard's cleanup policy (`FileImportCoordinator.polishAll`), applied to a document with
-  /// no turns: the raw words are the floor, a refused polisher keeps them uncleaned, a part that
-  /// could not be cleaned keeps its words, and a cancelled run produces nothing.
+  /// The wizard's cleanup policy (`FileImportCoordinator.polishAll`): the raw words are the
+  /// floor, a refused polisher keeps them uncleaned, a part that could not be cleaned keeps its
+  /// words, and a cancelled run produces nothing. With turns, each turn is cleaned as its own
+  /// pieces and stored with the speaker analysis, as the wizard's final write does.
   private func clean(
     _ asr: ASRResult, backend: ASRBackendType,
-    configuration: FileImportCoordinator.RunConfiguration
+    configuration: FileImportCoordinator.RunConfiguration,
+    speakers: FileImportTurnAssembly.Result? = nil
   ) async -> Result<Transcript, Failure> {
     let raw = asr.text
+    let turns: [Turn]? = if case .turns(let t, _) = speakers { t } else { nil }
+    let analysis: TranscriptSpeakerAnalysis? =
+      switch speakers {
+      case .turns(_, let a)?: a
+      case .none(let a, _, _)?: a
+      case nil: nil
+      }
+    /// The speaker fields with the turns as cleaned (or raw, when the cleanup never reached them).
+    func withSpeakers(
+      _ transcript: Transcript, parts: [FileImportCoordinator.Part], completed: Bool
+    ) -> Transcript {
+      guard let analysis else { return transcript }
+      let final = turns.map {
+        FileImportDocumentMath.finalTurns($0, parts: parts, cleanupCompleted: completed)
+      }
+      return transcript.mergingSpeakerFields(analysis: analysis, turns: final)
+    }
     let base = Transcript(
       text: raw, language: asr.language, processingTime: asr.processingTime,
       backendType: backend)
     let cut = FileImportDocumentMath.cleanupPieces(
-      turns: nil, rawText: raw,
+      turns: turns, rawText: raw,
       maximumWords: FileImportDocumentMath.partCeiling(configuration))
     guard !cut.pieces.isEmpty else {
       return .success(
-        base.withImportResult(
-          raw, wasPolished: false, llmProvider: configuration.polishProvider.rawValue,
-          llmModel: configuration.polishModel))
+        withSpeakers(
+          base.withImportResult(
+            raw, wasPolished: false, llmProvider: configuration.polishProvider.rawValue,
+            llmModel: configuration.polishModel), parts: [], completed: true))
     }
     let polisherReady = await cleanup.prepareLocalPolish(configuration)
     if Task.isCancelled { return .failure(.cancelled) }
     // The wizard keeps the transcription and refuses only the cleanup.
-    guard polisherReady else { return .success(base) }
+    guard polisherReady else { return .success(withSpeakers(base, parts: [], completed: false)) }
 
     var parts: [FileImportCoordinator.Part] = []
     do {
@@ -217,23 +256,31 @@ final class ImportedFileTranscriber {
           FileImportCoordinator.Part(
             id: index, text: outcome.displayText, isUnpolished: outcome.isUnpolished,
             wasPolished: outcome.polishedText != nil,
-            polishWasAttempted: outcome.wasPolishAttempted, cloudSetup: outcome.cloudSetup))
+            polishWasAttempted: outcome.wasPolishAttempted,
+            turnID: cut.turnIDs.indices.contains(index) ? cut.turnIDs[index] : nil,
+            trailingGap: cut.gaps.indices.contains(index) ? cut.gaps[index] : "",
+            cloudSetup: outcome.cloudSetup))
         return true
       }
     } catch {
       // The processor could not finish its roster: accepted parts stand, the rest stay raw.
     }
     if Task.isCancelled { return .failure(.cancelled) }
+    let completed = parts.count == cut.pieces.count
     for index in parts.count..<cut.pieces.count {
       parts.append(
         FileImportCoordinator.Part(
-          id: index, text: cut.pieces[index], isUnpolished: true, wasPolished: false))
+          id: index, text: cut.pieces[index], isUnpolished: true, wasPolished: false,
+          turnID: cut.turnIDs.indices.contains(index) ? cut.turnIDs[index] : nil,
+          trailingGap: cut.gaps.indices.contains(index) ? cut.gaps[index] : ""))
     }
     return .success(
-      base.withImportResult(
-        FileImportDocumentMath.joinedDocument(parts),
-        wasPolished: parts.contains(where: \.wasPolished),
-        llmProvider: configuration.polishProvider.rawValue, llmModel: configuration.polishModel))
+      withSpeakers(
+        base.withImportResult(
+          FileImportDocumentMath.joinedDocument(parts),
+          wasPolished: parts.contains(where: \.wasPolished),
+          llmProvider: configuration.polishProvider.rawValue, llmModel: configuration.polishModel),
+        parts: parts, completed: completed))
   }
 }
 

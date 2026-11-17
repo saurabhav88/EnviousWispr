@@ -1,51 +1,56 @@
 import EnviousWisprServices
 import SwiftUI
 
-/// Compact amber banner shown when Accessibility permission is missing.
+/// Compact warning banner shown when Accessibility permission is missing.
 ///
-/// Displayed above the history split view. Provides a "Fix Now" shortcut to the
-/// Permissions settings tab and a "Dismiss" button to hide it for the session.
+/// Displayed above the history split view, drawn like `RecordingStorageBanner` (#4611). Provides
+/// a "Fix Now" shortcut to the Permissions settings tab and a "Dismiss" button to hide it for the
+/// session.
 struct AccessibilityWarningBanner: View {
   @Environment(PermissionsService.self) private var permissions
   @Environment(NavigationCoordinator.self) private var navigationCoordinator
 
   var body: some View {
-    HStack(spacing: 10) {
+    HStack(alignment: .firstTextBaseline, spacing: DesignSpacing.lg) {
       Image(systemName: "exclamationmark.shield.fill")
-        .foregroundStyle(.orange)
-        .imageScale(.medium)
+        .foregroundStyle(.stWarning)
+        .accessibilityHidden(true)
 
-      Text("Paste unavailable — Accessibility permission required")
-        .font(.callout)
-        .foregroundStyle(.primary)
+      Text(
+        LocalizedStringResource(
+          "Paste needs Accessibility permission.",
+          comment:
+            "History: banner shown while the app cannot paste because Accessibility permission is off."
+        )
+      )
+      .font(.stBody)
+      .foregroundStyle(.stTextPrimary)
+      .fixedSize(horizontal: false, vertical: true)
 
-      Spacer()
+      Spacer(minLength: 0)
 
-      Button("Fix Now") {
+      Button {
         navigationCoordinator.request(.appSettings(.permissions))
+      } label: {
+        EnviousButtonLabel("Fix Now", size: .medium)
       }
-      .buttonStyle(.borderedProminent)
-      .tint(.orange)
-      .controlSize(.small)
+      .settingsButton(.outlined, size: .medium, isEnabled: true)
 
-      Button("Dismiss") {
+      Button {
         permissions.dismissAccessibilityWarning()
+      } label: {
+        EnviousCloseGlyph()
       }
       .buttonStyle(.plain)
-      .foregroundStyle(.secondary)
-      .controlSize(.small)
+      .help(Text("Dismiss", comment: "Accessibility warning banner: hides the banner."))
+      .accessibilityLabel(Text("Dismiss", comment: "Accessibility warning banner: hides the banner."))
     }
-    .padding(.horizontal, 14)
-    .padding(.vertical, 8)
+    .padding(DesignSpacing.xl)
     .background(
-      RoundedRectangle(cornerRadius: 8)
-        .fill(.orange.opacity(0.12))
-        .overlay(
-          RoundedRectangle(cornerRadius: 8)
-            .strokeBorder(.orange.opacity(0.3), lineWidth: 1)
-        )
+      Color.stWarning.opacity(0.12), in: RoundedRectangle(cornerRadius: DesignRadius.lg)
     )
-    .padding(.horizontal, 12)
-    .padding(.top, 8)
+    .accessibilityElement(children: .contain)
+    .padding(.horizontal, DesignSpacing.xl)
+    .padding(.top, DesignSpacing.md)
   }
 }

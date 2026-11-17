@@ -724,6 +724,9 @@ package protocol SettingsKeyMonitoring: AnyObject {
   /// Calls `handler` with every key-down in the process before any control handles it, and
   /// passes the key on unchanged. Returns the framework's token, or nil when AppKit refused.
   func install(_ handler: @escaping @MainActor (NSEvent) -> Void) -> Any?
+  /// The same watcher, but `handler` returning true keeps the key from every control (History's
+  /// Left and Right arrows, #4611); false passes it on unchanged.
+  func installConsuming(_ handler: @escaping @MainActor (NSEvent) -> Bool) -> Any?
   func remove(_ token: Any)
 }
 

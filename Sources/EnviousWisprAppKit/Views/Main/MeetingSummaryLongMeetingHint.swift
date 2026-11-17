@@ -57,12 +57,14 @@ struct MeetingSummarySettingsLink: View {
     Button {
       Self.open(navigation)
     } label: {
-      Text(
-        "Open Summaries settings",
-        comment: "History, a meeting: opens EnviousMeet's Summaries settings to choose or fix the summary engine."
-      )
+      EnviousButtonLabel(
+        LocalizedStringResource(
+          "Open Summaries settings",
+          comment: "History, a meeting: opens EnviousMeet's Summaries settings to choose or fix the summary engine."
+        ),
+        size: .medium)
     }
-    .buttonStyle(.link)
+    .settingsButton(.quiet, size: .medium, isEnabled: true)
   }
 }
 
@@ -79,10 +81,12 @@ struct MeetingSummaryModelMenuLink: View {
   }
 
   var body: some View {
-    Button(PolishSetupSurfaceCopy.selectNewCloudModel) {
+    Button {
       Self.open(navigation)
+    } label: {
+      EnviousButtonLabel(verbatim: PolishSetupSurfaceCopy.selectNewCloudModel, size: .medium)
     }
-    .buttonStyle(.link)
+    .settingsButton(.quiet, size: .medium, isEnabled: true)
     .accessibilityIdentifier("history.meeting.summarySelectModel")
   }
 }

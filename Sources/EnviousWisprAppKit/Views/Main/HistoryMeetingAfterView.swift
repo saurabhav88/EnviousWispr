@@ -46,6 +46,8 @@ struct HistoryMeetingAfterView: View {
   /// Brings that surface back to the front when Paste needs the user.
   let restorePasteSurface: @MainActor () -> Void
   let back: () -> Void
+  /// Previous and next meeting in the Meetings list (#4611).
+  let neighbors: HistoryNeighbors
 
   init(
     meetingID: UUID,
@@ -53,7 +55,8 @@ struct HistoryMeetingAfterView: View {
     references: any MeetingSummaryReferencing,
     showPasteNotice: @escaping @MainActor (String) -> Void,
     restorePasteSurface: @escaping @MainActor () -> Void,
-    back: @escaping () -> Void
+    back: @escaping () -> Void,
+    neighbors: HistoryNeighbors = .none
   ) {
     self.meetingID = meetingID
     self.notes = notes
@@ -61,6 +64,7 @@ struct HistoryMeetingAfterView: View {
     self.showPasteNotice = showPasteNotice
     self.restorePasteSurface = restorePasteSurface
     self.back = back
+    self.neighbors = neighbors
   }
 
   @Environment(MeetingCoordinator.self) private var meetings
@@ -77,10 +81,18 @@ struct HistoryMeetingAfterView: View {
   // Panes
   @State private var leftPane: P.LeftPane = .notes
   @State private var transcriptMode: FileImportCoordinator.DocumentView = .cleaned
+  /// The header's Timestamps switch (#4611): shows or hides each turn's start time.
+  @State private var timesOn = true
   @State private var transcriptPolish = HistoryPolishPreview()
   @State private var summaryPolishNotice = false
   @State private var keepingSummary = false
   @State private var editingSummary = false
+  /// #4611: Your notes' edit mode, owned here so Edit notes sits on the tab row. Nil until the
+  /// person chooses: the pane then starts in its default mode.
+  @State private var editingNotes: Bool?
+  /// #4611 D1: which pane's Copy just copied, and when (its Copied shows for 2 s).
+  @State private var copiedPane: PaneCopy?
+  @State private var copiedPaneAt: Date?
   @State private var follow: P.Follow = .following
   @State private var activeTurnID: String?
   @State private var highlightedTurnID: String?
@@ -88,7 +100,6 @@ struct HistoryMeetingAfterView: View {
   /// A request to bring a note into view. A fresh request each time, so choosing the same note
   /// again scrolls back to it.
   @State private var noteRequest: NoteRequest?
-  @State private var renameRequested = false
   @State private var openedDuringRecording: UUID?
   @State private var narrowPane: MeetingSessionPane = .notes
   @State private var notesActions = MeetingNotesEditorActions()
@@ -100,6 +111,7 @@ struct HistoryMeetingAfterView: View {
 
   // Actions
   @State private var confirming: Confirmation?
+  @State private var pendingTranscription: MeetingEngineChoice?
   @State private var actionInFlight = false
   @State private var orphanRefused = false
   @State private var audioSize: MeetingsPresentation.AudioSize = .measuring
@@ -236,7 +248,9 @@ struct HistoryMeetingAfterView: View {
       leftPane = .notes
       narrowPane = .notes
       editingSummary = false
+      editingNotes = nil
       follow = .following
+      timesOn = true
       activeTurnID = nil
       highlightedTurnID = nil
       highlightedNoteID = nil
@@ -256,13 +270,43 @@ struct HistoryMeetingAfterView: View {
       Button(role: .destructive) {
         perform(kind)
       } label: {
-        Text("Delete", comment: "EnviousMeet: confirms a deletion.")
+        if kind == .deleteAudio {
+          Text(
+            "Delete recording",
+            comment: "History meeting page: confirms deleting only the meeting's recording.")
+        } else {
+          Text("Delete", comment: "EnviousMeet: confirms a deletion.")
+        }
       }
     } message: { kind in
       Text(verbatim: confirmationMessage(kind))
     }
+    .confirmationDialog(
+      Text(
+        "Transcribe again with \(pendingTranscription.map(MeetingTranscriptEngineRowTitles.title(of:)) ?? "")?",
+        comment:
+          "History meeting: confirmation title before Transcribe again with. %@ is a speech model name."
+      ),
+      isPresented: Binding(
+        get: { pendingTranscription != nil },
+        set: { if !$0 { pendingTranscription = nil } }),
+      presenting: pendingTranscription
+    ) { engine in
+      Button {
+        pendingTranscription = nil
+        transcribeAgain(engine)
+      } label: {
+        Text(
+          "Transcribe again",
+          comment: "History meeting: confirms Transcribe again with.")
+      }
+    } message: { _ in
+      Text(
+        "The new text replaces this meeting's transcript, including speaker names and cleanup. Your recording is kept.",
+        comment: "History meeting: confirmation message before Transcribe again with.")
+    }
     .alert(
-      Text("The transcript could not be saved", comment: "EnviousMeet: Save failed."),
+      Text("Couldn't save the file", comment: "History: the save panel's file could not be written."),
       isPresented: Binding(get: { saveError != nil }, set: { if !$0 { saveError = nil } })
     ) {
       Button(String(localized: "OK", comment: "EnviousMeet: closes the Save error.")) {}
@@ -317,9 +361,12 @@ struct HistoryMeetingAfterView: View {
           Button {
             perform(retry)
           } label: {
-            Text("Try again", comment: "History meeting: runs the failed deletion again.")
+            EnviousButtonLabel(
+              LocalizedStringResource(
+                "Try again", comment: "History meeting: runs the failed deletion again."),
+              size: .medium)
           }
-          .buttonStyle(.link)
+          .settingsButton(.quiet, size: .medium, isEnabled: true)
           .font(.stHelper)
           .disabled(actionInFlight)
         }
@@ -368,7 +415,8 @@ struct HistoryMeetingAfterView: View {
                 following: follow == .following,
                 scroll: { id in
                   proxy.scrollTo(TurnRowKey(turnID: id, occurrence: 0), anchor: .center)
-                }
+                },
+                scrollsWhenPlaybackStarts: true
               )
               .id(ObjectIdentifier(player))
             }
@@ -378,7 +426,7 @@ struct HistoryMeetingAfterView: View {
       .padding(.horizontal, SettingsLayout.contentH)
       .padding(.bottom, DesignSpacing.xl)
       if !isRecordingThisMeeting {
-        dock(record, snapshot: snapshot, row: row, visibleTurns: visibleTurns)
+        dock(record)
           .id(player.map(ObjectIdentifier.init))
       }
     }
@@ -397,22 +445,30 @@ struct HistoryMeetingAfterView: View {
     _ record: MeetingRecord, row: Transcript?, projection: MeetingHistoryPresentation.Projection?,
     snapshot: MeetingNotesSnapshot, visibleTurns: [Turn], width: CGFloat, proxy: ScrollViewProxy
   ) -> some View {
-    let left = leftColumn(
-      record, snapshot: snapshot, visibleTurnIDs: Set(visibleTurns.map(\.id)), proxy: proxy)
-    let right = transcriptColumn(record, row: row, projection: projection)
+    let canDeliver: Bool = {
+      if case .visible? = projection { return true } else { return false }
+    }()
+    let visibleTurnIDs = Set(visibleTurns.map(\.id))
     if isRecordingThisMeeting || openedDuringRecording == meetingID {
       MeetingSessionPanes(
         width: width, recording: isRecordingThisMeeting, selection: $narrowPane
       ) {
-        left
+        leftColumn(
+          record, snapshot: snapshot, visibleTurnIDs: visibleTurnIDs, proxy: proxy,
+          canDeliver: canDeliver)
       } transcript: {
         sessionTranscript(record, row: row, projection: projection)
       }
     } else if P.stacksPanes(width: width) {
       ScrollView {
         VStack(alignment: .leading, spacing: DesignSpacing.xxl) {
-          left
-          right
+          leftColumn(
+            record, snapshot: snapshot, visibleTurnIDs: visibleTurnIDs, proxy: proxy,
+            canDeliver: canDeliver)
+          VStack(alignment: .leading, spacing: DesignSpacing.lg) {
+            transcriptHeader(row: row, projection: projection)
+            transcriptColumn(record, row: row, projection: projection)
+          }
         }
         .padding(.horizontal, DesignSpacing.xl)
         .padding(.vertical, DesignSpacing.xl)
@@ -422,72 +478,182 @@ struct HistoryMeetingAfterView: View {
         Color.stSectionBg, in: RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius)
       )
       .meetingUserScroll { suspendFollow() }
+      .overlay(alignment: .bottom) { returnToPlaybackOverlay(projection: projection) }
     } else {
       HStack(spacing: DesignSpacing.xl) {
-        ScrollView {
-          left
-            .padding(.horizontal, DesignSpacing.xl)
-            .padding(.vertical, DesignSpacing.xl)
-            .frame(maxWidth: .infinity, alignment: .leading)
+        // #4611 D1: each pane's header row stays put above its scrolling body.
+        paneCard {
+          leftHeader(snapshot: snapshot)
+        } body: {
+          VStack(alignment: .leading, spacing: DesignSpacing.lg) {
+            leftBody(
+              record, snapshot: snapshot, visibleTurnIDs: visibleTurnIDs, proxy: proxy,
+              canDeliver: canDeliver)
+          }
+          .padding(.horizontal, DesignSpacing.xl)
+          .padding(.vertical, DesignSpacing.xl)
+          .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(width: P.notesPaneWidth(width: width))
-        .background(
-          Color.stSectionBg, in: RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius))
-        ScrollView {
-          right
+        paneCard(onUserScroll: { suspendFollow() }) {
+          transcriptHeader(row: row, projection: projection)
+        } body: {
+          transcriptColumn(record, row: row, projection: projection)
             .frame(maxWidth: 780, alignment: .leading)
             .padding(.horizontal, DesignSpacing.xl)
             .padding(.vertical, DesignSpacing.xl)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .background(
-          Color.stSectionBg, in: RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius)
-        )
-        .meetingUserScroll { suspendFollow() }
+        .overlay(alignment: .bottom) { returnToPlaybackOverlay(projection: projection) }
       }
+    }
+  }
+
+  /// A pane: its header row, a divider, then its body scrolling under them.
+  /// `onUserScroll`: a deliberate scroll of the body (the transcript's suspends Follow playback).
+  private func paneCard<Header: View, Body: View>(
+    onUserScroll: (() -> Void)? = nil,
+    @ViewBuilder header: () -> Header, @ViewBuilder body: () -> Body
+  ) -> some View {
+    VStack(spacing: 0) {
+      header()
+        .padding(.horizontal, DesignSpacing.lg)
+        .padding(.vertical, DesignSpacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+      Divider()
+      if let onUserScroll {
+        ScrollView { body() }.meetingUserScroll(onUserScroll)
+      } else {
+        ScrollView { body() }
+      }
+    }
+    .background(
+      Color.stSectionBg, in: RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius)
+    )
+    .clipShape(RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius))
+  }
+
+  /// Whether this transcript can follow playback, and whether its turns carry times.
+  private func transcriptOptions(_ projection: MeetingHistoryPresentation.Projection?)
+    -> (canFollow: Bool, hasTimes: Bool)
+  {
+    guard case .visible(let turns, _)? = projection else { return (false, false) }
+    // Same rule as the transcript page: following needs audio and at least one turn time.
+    let hasTimes = turns.contains { $0.startMs != nil }
+    return (playablePlayer != nil && hasTimes, hasTimes)
+  }
+
+  /// The player when it can play. A read failure keeps its player in `.unavailable` (the dock
+  /// still shows why); turn times, note times and Follow offer playback only through this.
+  private var playablePlayer: MeetingPlaybackController? {
+    guard let player, player.state != .unavailable else { return nil }
+    return player
+  }
+
+  /// #4611 D1 / D3: "Transcript", its Copy, and the settings button that holds Follow playback
+  /// and Timestamps.
+  @ViewBuilder
+  fileprivate func transcriptHeader(
+    row: Transcript?, projection: MeetingHistoryPresentation.Projection?
+  ) -> some View {
+    let options = transcriptOptions(projection)
+    let canDeliver: Bool = {
+      if case .visible? = projection { return true } else { return false }
+    }()
+    HStack(alignment: .center, spacing: DesignSpacing.md) {
+      Text("Transcript", comment: "History meeting: the transcript pane's title.")
+        .font(.stRowLabel)
+        .foregroundStyle(.stTextPrimary)
+        .accessibilityAddTraits(.isHeader)
+      Spacer(minLength: 0)
+      HStack(spacing: DesignSpacing.xs) {
+        paneCopyButton(.transcript, isEnabled: canDeliver) { deliveryText() }
+        MeetingTranscriptSettingsButton(
+          follow: options.canFollow
+            ? Binding(get: { follow != .off }, set: { follow = $0 ? .following : .off }) : nil,
+          timestamps: options.hasTimes ? $timesOn : nil,
+          followUnavailable: options.canFollow
+            ? nil
+            : playablePlayer == nil
+              ? Text(
+                "Needs audio",
+                comment: "History meeting: why Follow playback is off, there is no recording.")
+              : Text(
+                "Needs timestamps",
+                comment: "History meeting: why Follow playback is off, no turn has a time."),
+          timestampsUnavailable: options.hasTimes
+            ? nil
+            : Text(
+              "No times saved",
+              comment: "History meeting: why Timestamps is off, this transcript has no times."))
+      }
+      .fixedSize()
+    }
+    .frame(minHeight: 34)
+  }
+
+  /// #4611 D4 / D13: floats over the bottom of the transcript only while following is paused by
+  /// scrolling away (Follow playback still on); no strip otherwise.
+  @ViewBuilder
+  private func returnToPlaybackOverlay(projection: MeetingHistoryPresentation.Projection?)
+    -> some View
+  {
+    // Founder 2026-11-17: with no turn reached yet (0:00, before the first turn) there is
+    // nothing to return to, so the button does not show.
+    if transcriptOptions(projection).canFollow, follow == .suspended,
+      player?.state == .playing, activeTurnID != nil
+    {
+      returnToPlaybackButton
+        .shadow(color: .black.opacity(0.28), radius: 9, y: 6)
+        .padding(.bottom, DesignSpacing.xl)
     }
   }
 
   // MARK: - Header
 
+  /// The shared page header (founder, #4611): back, previous / next and More at the right (D9),
+  /// the title, then the facts row with "3 speakers" (who spoke) and the engine chip. Follow
+  /// playback and Timestamps live in the transcript pane's settings (D3). Under it, only when they
+  /// apply: who the calendar invited (#4286), the fallback engine note and a failure.
   private func header(
     _ record: MeetingRecord, row: Transcript?, projection: MeetingHistoryPresentation.Projection?
   ) -> some View {
-    VStack(alignment: .leading, spacing: DesignSpacing.md) {
-      ViewThatFits(in: .horizontal) {
-        HStack(alignment: .center, spacing: DesignSpacing.lg) {
-          HistoryDestinationBar(tab: .meetings, close: back)
-          titleBlock(record)
-            .frame(minWidth: Self.titleMinWidth, maxWidth: .infinity, alignment: .leading)
-          actions(record, row: row, projection: projection)
-        }
-        VStack(alignment: .leading, spacing: DesignSpacing.md) {
-          HStack(alignment: .top, spacing: DesignSpacing.lg) {
-            HistoryDestinationBar(tab: .meetings, close: back)
-            titleBlock(record)
-              .frame(maxWidth: .infinity, alignment: .leading)
-          }
-          actions(record, row: row, projection: projection)
-        }
+    let visibleTurns: [Turn] = {
+      if case .visible(let turns, _)? = projection { return turns }
+      return []
+    }()
+    let facts = facts(record, row: row)
+    let participants = P.participants(turns: visibleTurns, speakerNames: row?.speakerNames ?? [:])
+    let speakers: AnyView? =
+      if let label = facts.speakers, !participants.isEmpty {
+        AnyView(
+          MeetingSpeakersButton(
+            label: label, participants: participants,
+            colorIndices: P.speakerColorIndices(turns: visibleTurns)))
+      } else {
+        nil
       }
-      statusStrip(record)
-      HistoryPolishPreviewContent(preview: transcriptPolish)
-      summaryPolishPreview
-      noticeView
-    }
-  }
-
-  private static let titleMinWidth: CGFloat = 260
-
-  private func titleBlock(_ record: MeetingRecord) -> some View {
-    VStack(alignment: .leading, spacing: DesignSpacing.xxs) {
-      MeetingInlineTitle(meetingID: meetingID, beginRequest: $renameRequested)
-      factsLine(record)
-      // #4286: who the calendar event invited.
+    return HistoryDocumentHeader(
+      tab: .meetings, back: back,
+      facts: facts, neighbors: neighbors,
+      // No Polished / Marked up / Original here (founder, #4611): it does not apply to meetings.
+      showsViewRow: false,
+      timestamps: nil,
+      trailingNavigation: true, speakersAccessory: speakers, engineChip: true,
+      engineInline: true
+    ) {
+      MeetingInlineTitle(meetingID: meetingID, font: .stDayTitle)
+    } actions: {
+      actions(record, row: row, projection: projection)
+    } picker: {
+      EmptyView()
+    } switches: {
+      EmptyView()
+    } below: {
       if let invited = MeetingsPresentation.invitedLine(meetings.documents.context(meetingID)) {
         Text(verbatim: invited)
           .font(.stHelper)
-          .foregroundStyle(.stTextBody)
+          .foregroundStyle(.stTextSecondary)
           .textSelection(.enabled)
       }
       if record.transcriptEngineFallbackReason != nil, let used = record.transcriptEngineUsed {
@@ -502,51 +668,40 @@ struct HistoryMeetingAfterView: View {
           .foregroundStyle(.stError)
           .fixedSize(horizontal: false, vertical: true)
       }
+      statusStrip(record)
+      HistoryPolishPreviewContent(preview: transcriptPolish)
+      // #4611 D14: a new summary's progress shows in the summary pane; only its comparison
+      // sheet hangs here, so it opens from either tab.
+      summaryComparisonSheet
+      noticeView
     }
   }
 
-  /// One quiet line in the Dictations footer's style (#4611): the date, what is still happening
-  /// (when not ready), the speech engine, the length, the audio size, and Recording deleted with
-  /// its sentence on hover.
-  private func factsLine(_ record: MeetingRecord) -> some View {
+  /// The facts row: date, what is still happening (when not ready), the length, speakers,
+  /// Recording deleted (its sentence on hover), the speech engine that wrote the transcript
+  /// shown (#3973 C3), and the polish model only when the shown transcript was really polished.
+  private func facts(_ record: MeetingRecord, row: Transcript?) -> HistoryDocumentFacts {
     let status = MeetingsPresentation.status(record, processingID: meetings.processing?.meetingID)
-    let audio = record.state == .notesOnly ? nil : MeetingsPresentation.audioSizeLine(audioSize)
-    return WrappingHStack(spacing: DesignSpacing.sm) {
-      Text(record.createdAt, format: .dateTime.month().day().year().hour().minute())
-      if status != .ready {
-        HistoryFooterDot()
-        Text(verbatim: MeetingsPresentation.statusLabel(status))
-      }
-      // #3973 C3: the engine that wrote the transcript shown (the committed one).
-      if let engine = record.transcriptEngineUsed?.backendType.displayName {
-        HistoryFooterDot()
-        HStack(spacing: DesignSpacing.xxs) {
-          Image(systemName: "waveform").accessibilityHidden(true)
-          Text(verbatim: engine)
-        }
-      }
-      if record.recordedDurationMs > 0 {
-        HistoryFooterDot()
-        Text(verbatim: MeetingsPresentation.duration(ms: record.recordedDurationMs))
-          .monospacedDigit()
-      }
-      if let audio {
-        HistoryFooterDot()
-        Text(verbatim: audio)
-      }
-      if P.dockAbsence(record) == .recordingDeleted {
-        HistoryFooterDot()
-        HistoryUnplayableMark(
-          label: LocalizedStringResource(
-            "Recording deleted",
-            comment:
-              "History meeting card footer: this meeting's recording was deleted. Hover gives the full sentence."
-          ),
-          reason: P.recordingDeletedLine)
-      }
-    }
-    .font(.stHelper)
-    .foregroundStyle(.stTextSecondary)
+    let polish = row.map(HistoryTranscriptPresentation.provenance(for:))
+    let unplayable: HistoryDocumentFacts.Unplayable? =
+      P.dockAbsence(record) == .recordingDeleted
+      ? .init(
+        label: LocalizedStringResource(
+          "Recording deleted",
+          comment:
+            "History meeting card footer: this meeting's recording was deleted. Hover gives the full sentence."
+        ),
+        reason: P.recordingDeletedLine)
+      : nil
+    return HistoryDocumentFacts(
+      createdAt: record.createdAt,
+      status: status == .ready ? nil : MeetingsPresentation.statusLabel(status),
+      length: HistoryTranscriptPresentation.footerClock(
+        seconds: Double(record.recordedDurationMs) / 1000),
+      speakers: MeetingsPresentation.speakers(row?.speakerAnalysis),
+      unplayable: unplayable,
+      engine: record.transcriptEngineUsed?.backendType.displayName,
+      polishModel: polish.flatMap { $0.aiPolished ? $0.polishModel : nil })
   }
 
   /// What is still being made: the transcript pass (with its progress), the queue, the summary.
@@ -560,9 +715,11 @@ struct HistoryMeetingAfterView: View {
     } else if let processing = meetings.processing, processing.meetingID == meetingID {
       MeetingProcessingPanel(processing: processing)
     } else {
+      // #4611 D14: a new version written for comparison shows in the summary pane, not here.
+      let previewing = keepingSummary || meetings.summaries?.previews[meetingID] != nil
       let state = P.strip(
         record: record, processing: false, queueWaitsForSpace: meetings.queueWaitsForSpace,
-        writingSummary: meetings.summaries?.isWriting(meetingID) ?? false,
+        writingSummary: !previewing && (meetings.summaries?.isWriting(meetingID) ?? false),
         hasSummary: meetings.documents.summary(meetingID) != nil)
       let writingProvider = meetings.summaries?.writingProvider(for: meetingID)
       let statusLine: String? =
@@ -606,71 +763,20 @@ struct HistoryMeetingAfterView: View {
       if case .visible? = projection { return true }
       return false
     }()
-    return HStack(spacing: DesignSpacing.md) {
-      copyButton(canDeliver: canDeliver)
-      moreButton(record, canDeliver: canDeliver)
-    }
-    .fixedSize()
+    // #4611 D2: copying lives on each pane's own header row now.
+    return moreButton(record, canDeliver: canDeliver)
+      .fixedSize()
   }
 
-  /// The orphan view's Copy, Share and Save as…, each reading the CURRENT row when it acts.
-  @ViewBuilder
-  fileprivate func orphanDeliveryButtons(title: String, canDeliver: Bool) -> some View {
-    let labels = TranscriptDocumentPresenter.exportButtonLabels(mode: transcriptMode)
-    let copy = TranscribeFileExport.copyButtonPresentation(
-      label: transcriptMode == .markedUp
-        ? labels.copy : String(localized: "Copy", comment: "EnviousMeet: copies the visible transcript."),
-      copiedAt: copiedAt, now: Date(), holdSeconds: TranscribeFileExport.copiedHoldSeconds)
-      Button {
-        // Read at the press from the live row, never this view's snapshot.
-        guard let text = deliveryText() else { return }
-        TranscribeFileExport.copy(text)
-        let pressed = Date()
-        copiedAt = pressed
-        Task {
-          try? await Task.sleep(for: .seconds(TranscribeFileExport.copiedHoldSeconds))
-          if copiedAt == pressed { copiedAt = nil }
-        }
-      } label: {
-        EnviousButtonLabel(verbatim: copy.title, size: .medium, systemImage: copy.systemImage)
-      }
-      .settingsButton(.quiet, size: .medium, isEnabled: canDeliver)
-
-      // The text is read when the receiving app asks for it, so a sheet left open never hands
-      // over lines that were deleted or hidden meanwhile.
-      ShareLink(
-        item: DeliverableText(resolve: { deliveryText() }),
-        preview: SharePreview(title)
-      ) {
-        EnviousButtonLabel(
-        verbatim: transcriptMode == .markedUp
-          ? labels.share : String(localized: "Share", comment: "EnviousMeet: shares the visible transcript."),
-          size: .medium, systemImage: "square.and.arrow.up")
-      }
-      .settingsButton(.quiet, size: .medium, isEnabled: canDeliver)
-
-      Button {
-        save(defaultName: title)
-      } label: {
-        EnviousButtonLabel(
-        verbatim: transcriptMode == .markedUp
-          ? labels.save
-          : String(localized: "Save as…", comment: "History meeting: saves the transcript and notes as a text file."),
-          size: .medium, systemImage: "square.and.arrow.down")
-      }
-      .settingsButton(.quiet, size: .medium, isEnabled: canDeliver)
-  }
-
-  /// Copy, the Dictations and Transcripts pattern (#4611): an icon, reading the CURRENT row when
-  /// pressed. Share and Save as… live in More.
+  /// Copy text, the Transcripts page's pattern (#4611), reading the CURRENT row when pressed.
+  /// Share and Save as… live in More.
   private func copyButton(canDeliver: Bool) -> some View {
-    let labels = TranscriptDocumentPresenter.exportButtonLabels(mode: transcriptMode)
     let copy = TranscribeFileExport.copyButtonPresentation(
-      label: transcriptMode == .markedUp
-        ? labels.copy
-        : String(localized: "Copy", comment: "EnviousMeet: copies the visible transcript."),
+      label: HistoryDocumentCopyButton.label(mode: transcriptMode),
       copiedAt: copiedAt, now: Date(), holdSeconds: TranscribeFileExport.copiedHoldSeconds)
-    return Button {
+    return HistoryDocumentCopyButton(
+      title: copy.title, systemImage: copy.systemImage, isEnabled: canDeliver
+    ) {
       // Read at the press from the live row, never this view's snapshot.
       guard let text = deliveryText() else { return }
       TranscribeFileExport.copy(text)
@@ -680,29 +786,36 @@ struct HistoryMeetingAfterView: View {
         try? await Task.sleep(for: .seconds(TranscribeFileExport.copiedHoldSeconds))
         if copiedAt == pressed { copiedAt = nil }
       }
-    } label: {
-      Image(systemName: copy.systemImage)
-        .frame(width: 16, height: 16)
     }
-    .settingsButton(.quiet, size: .medium, isEnabled: canDeliver)
-    .help(Text(verbatim: copy.title))
-    .accessibilityLabel(Text(verbatim: copy.title))
   }
 
-  /// The app's own More menu (#4611), under a round button like Copy.
+  /// The app's own More menu (#4611), under a round button.
   private func moreButton(_ record: MeetingRecord, canDeliver: Bool) -> some View {
-    Button {
+    HistoryDocumentMoreButton(anchor: moreAnchor) {
       guard let anchor = moreAnchor.view else { return }
       historyMenu.toggle(items: moreItems(record, canDeliver: canDeliver), from: anchor)
-    } label: {
-      Image(systemName: "ellipsis")
-        .fontWeight(.bold)
-        .frame(width: 16, height: 16)
     }
-    .settingsButton(.quiet, size: .medium, isEnabled: true)
-    .background(HistoryMenuAnchor(holder: moreAnchor))
-    .help(Text("More actions", comment: "History transcript: opens the More menu."))
-    .accessibilityLabel(Text("More actions", comment: "History transcript: opens the More menu."))
+  }
+
+  /// The AI models that can write the summary again: the More menu's "Write summary again with"
+  /// submenu, and the out-of-date notice's Refresh summary (#4611). Built when a menu opens.
+  fileprivate func summaryModelItems(_ record: MeetingRecord, canDeliver: Bool) -> [HistoryMenuItem]
+  {
+    let savedSummary = meetings.documents.manifest(meetingID)?.summary?.inputs
+    let available =
+      committedRow(record) != nil && canDeliver && !isActive(record) && !actionInFlight
+    return HistoryPolishMenu.menuItems(
+      surface: .summary, choices: historyRepolish.choices(.summary),
+      currentProvider: savedSummary?.providerID,
+      currentModel: savedSummary?.modelOverride?.model,
+      currentSize: savedSummary?.modelOverride?.egOneSize,
+      isEnabled: available && !keepingSummary
+        && meetings.summaries?.isWriting(meetingID) != true,
+      select: { choice in beginSummaryPreview(choice) },
+      setUp: {
+        navigation.request(.meetings(.summaries))
+        appWindowCoordinator.showWindow()
+      })
   }
 
   /// The More menu's items, built when it opens, from the view's live state.
@@ -712,25 +825,27 @@ struct HistoryMeetingAfterView: View {
       canTranscribeAgain: meetings.canTranscribeAgain(meetingID) && !actionInFlight)
     let engines = meetings.transcribeAgainEngines
     let row = committedRow(record)
-    let savedSummary = meetings.documents.manifest(meetingID)?.summary?.inputs
     let available = row != nil && canDeliver && !isActive(record) && !actionInFlight
     let labels = TranscriptDocumentPresenter.exportButtonLabels(mode: transcriptMode)
     let title = MeetingsPresentation.title(record)
+    // No Rename: the title's pencil renames (founder #4611, 2026-11-17).
     var items: [HistoryMenuItem] = [
       .init(
-        id: "rename",
-        title: String(localized: "Rename", comment: "EnviousMeet: saves the meeting's new name."),
-        systemImage: "pencil", isEnabled: record.isWritableByThisBuild && !record.deletionRequested,
-        kind: .action { renameRequested = true }),
-      .init(
-        id: "paste", title: EscapeRecoveryRowPresentation.pasteLabel,
+        // #4611 D5: each delivery names what it delivers.
+        id: "paste",
+        title: String(
+          localized: "Paste transcript into app",
+          comment:
+            "History meeting, More menu: pastes the visible transcript into the previous app."),
         systemImage: "arrow.right.doc.on.clipboard",
         isEnabled: !permissions.accessibilityGranted || canDeliver, kind: .action { pasteTapped() }),
       .init(
         id: "share",
         title: transcriptMode == .markedUp
           ? labels.share
-          : String(localized: "Share", comment: "EnviousMeet: shares the visible transcript."),
+          : String(
+            localized: "Share transcript…",
+            comment: "History meeting, More menu: shares the visible transcript."),
         systemImage: "square.and.arrow.up", isEnabled: canDeliver,
         kind: .action {
           guard let anchor = moreAnchor.view else { return }
@@ -746,8 +861,9 @@ struct HistoryMeetingAfterView: View {
         title: transcriptMode == .markedUp
           ? labels.save
           : String(
-            localized: "Save as…",
-            comment: "History meeting: saves the transcript and notes as a text file."),
+            localized: "Save notes and transcript…",
+            comment:
+              "History meeting, More menu: saves the notes and the transcript as a text file."),
         systemImage: "square.and.arrow.down", isEnabled: canDeliver,
         kind: .action { save(defaultName: title) }),
       .divider("d1"),
@@ -779,31 +895,24 @@ struct HistoryMeetingAfterView: View {
     items.append(
       .init(
         id: "summary",
-        title: String(
-          localized: "Write summary again with",
-          comment:
-            "History meeting, More menu: opens the list of AI models to write the summary again."),
+        title: meetings.documents.summary(meetingID) == nil
+          ? String(
+            localized: "Write summary with",
+            comment:
+              "History meeting, More menu: opens the list of AI models to write the first summary.")
+          : String(
+            localized: "Write summary again with",
+            comment:
+              "History meeting, More menu: opens the list of AI models to write the summary again."),
         systemImage: "sparkles",
-        kind: .submenu(
-          HistoryPolishMenu.menuItems(
-            surface: .summary, choices: historyRepolish.choices(.summary),
-            currentProvider: savedSummary?.providerID,
-            currentModel: savedSummary?.modelOverride?.model,
-            currentSize: savedSummary?.modelOverride?.egOneSize,
-            isEnabled: available && !keepingSummary
-              && meetings.summaries?.isWriting(meetingID) != true,
-            select: { choice in beginSummaryPreview(choice) },
-            setUp: {
-              navigation.request(.meetings(.summaries))
-              appWindowCoordinator.showWindow()
-            }))))
+        kind: .submenu(summaryModelItems(record, canDeliver: canDeliver))))
     var speech: [HistoryMenuItem] = engines.map { engine in
       let title = MeetingTranscriptEngineRowTitles.title(of: engine)
       return .init(
         id: "asr-\(title)",
         title: engine == record.transcriptEngineUsed
           ? HistoryTranscriptView.currentChoiceTitle(title) : title,
-        isEnabled: offered.transcribeAgain, kind: .action { transcribeAgain(engine) })
+        isEnabled: offered.transcribeAgain, kind: .action { pendingTranscription = engine })
     }
     if engines.isEmpty {
       // #4578 (plan §3.10 item 8): with no speech engine downloaded, say how to get one back.
@@ -865,37 +974,119 @@ struct HistoryMeetingAfterView: View {
     meetings.summaries?.startPreview(meetingID, with: choice)
   }
 
-  @ViewBuilder private var summaryPolishPreview: some View {
+  /// #4611 D14: a new summary's progress, its save and its failure, inside the summary pane where
+  /// the new text will land. The current summary stays under it until Keep new.
+  @ViewBuilder fileprivate func summaryPreviewInPane(
+    refreshItems: @escaping () -> [HistoryMenuItem]
+  ) -> some View {
     if let summaries = meetings.summaries {
       if keepingSummary {
-        HistoryPolishProgress(title: "Saving…")
+        InsetNotice(
+          verbatim: String(
+            localized: "Saving…", comment: "History meeting: the kept new summary is being saved."),
+          busy: true
+        ) { EmptyView() }
       } else if let preview = summaries.previews[meetingID] {
         switch preview {
         case .generating:
-          HistoryPolishProgress(title: "Writing a new summary…") {
-            summaries.discardPreview(meetingID)
+          InsetNotice(
+            verbatim: String(
+              localized: "Your current summary stays until you pick.",
+              comment: "History meeting: under Writing a new summary; nothing is replaced yet."),
+            title: String(
+              localized: "Writing a new summary…",
+              comment: "History meeting: a new summary is being written for comparison."),
+            busy: true
+          ) {
+            Button {
+              summaries.discardPreview(meetingID)
+            } label: {
+              EnviousButtonLabel(
+                LocalizedStringResource(
+                  "Cancel", comment: "History meeting: stops writing the new summary."),
+                size: .medium)
+            }
+            .settingsButton(.quiet, size: .medium, isEnabled: true)
           }
-        case .comparing(let candidate):
-          HistoryPolishComparison(
-            current: candidate.current ?? String(localized: "No summary yet"),
-            new: candidate.text, model: candidate.choice.title,
-            keep: {
-              keepingSummary = true
-              Task {
-                summaryPolishNotice =
-                  !(await summaries.keepPreview(meetingID, candidateID: candidate.id))
-                keepingSummary = false
-              }
-            },
-            discard: { summaries.discardPreview(meetingID) }
-          )
-          .id(candidate.id)
+        case .comparing:
+          EmptyView()
         case .failed:
-          Text("Couldn't write a new summary. Choose a model to try again.").font(.stHelper)
+          // Founder 2026-11-17: the failure read like part of the summary; it is a warning box
+          // with the way to try again.
+          summaryProblemNotice(
+            title: String(
+              localized: "Couldn't write a new summary.",
+              comment: "History meeting: writing a new summary for comparison failed."),
+            refreshItems: refreshItems,
+            dismiss: { meetings.summaries?.discardPreview(meetingID) })
         }
       } else if summaryPolishNotice {
-        Text("The saved summary changed. Choose a model to try again.").font(.stHelper)
+        summaryProblemNotice(
+          title: String(
+            localized: "The saved summary changed.",
+            comment:
+              "History meeting: the summary changed while a new one was being kept, so it was not saved."
+          ),
+          refreshItems: refreshItems,
+          dismiss: { summaryPolishNotice = false })
       }
+    }
+  }
+
+  /// A failed new summary (founder 2026-11-17: the same box as the out-of-date notice, nudging to
+  /// a different model): a warning saying so, Try another model (the same list as the More
+  /// menu's "Write summary again with") and Dismiss.
+  private func summaryProblemNotice(
+    title: String, refreshItems: @escaping () -> [HistoryMenuItem], dismiss: @escaping () -> Void
+  ) -> some View {
+    InsetNotice(
+      verbatim: String(
+        localized: "Try writing it with a different model.",
+        comment:
+          "History meeting: under a failed new summary; nudges the user to pick another AI model."),
+      title: title, systemImage: "exclamationmark.triangle", tint: .stWarning
+    ) {
+      MeetingSummaryModelMenuButton(
+        title: LocalizedStringResource(
+          "Try another model",
+          comment:
+            "History meeting: after a failed new summary, opens the list of AI models to try again."
+        ),
+        items: refreshItems)
+      Button(action: dismiss) {
+        EnviousButtonLabel(
+          LocalizedStringResource(
+            "Dismiss", comment: "History meeting: hides the failed new summary message."),
+          size: .medium)
+      }
+      .settingsButton(.quiet, size: .medium, isEnabled: true)
+    }
+    .accessibilityIdentifier("history.meeting.summaryPreviewFailed")
+  }
+
+  /// #4611 D8: the new summary beside the current one, in a sheet over the page, from either tab.
+  @ViewBuilder private var summaryComparisonSheet: some View {
+    if let summaries = meetings.summaries, !keepingSummary,
+      case .comparing(let candidate)? = summaries.previews[meetingID]
+    {
+      HistoryPolishComparison(
+        current: candidate.current ?? String(localized: "No summary yet"),
+        new: candidate.text, model: candidate.choice.title,
+        title: LocalizedStringResource(
+          "Compare summaries",
+          comment: "History meeting: the sheet comparing the current and the new summary."),
+        formatted: true,
+        keep: {
+          keepingSummary = true
+          Task {
+            summaryPolishNotice =
+              !(await summaries.keepPreview(meetingID, candidateID: candidate.id))
+            keepingSummary = false
+          }
+        },
+        discard: { summaries.discardPreview(meetingID) }
+      )
+      .id(candidate.id)
     }
   }
 
@@ -921,12 +1112,13 @@ struct HistoryMeetingAfterView: View {
     case .deleteAudio:
       return String(
         localized:
-          "Delete this meeting's audio? The transcript stays, but you cannot transcribe it again.",
-        comment: "EnviousMeet: confirmation before Delete audio.")
+          "Notes, transcript and summary stay. The recording is permanently deleted, so you can't play it or transcribe it again.",
+        comment: "History meeting page: confirmation message before deleting only the recording.")
     case .deleteMeeting:
       return String(
-        localized: "Delete this meeting, its audio and its transcript? This cannot be undone.",
-        comment: "EnviousMeet: confirmation before Delete meeting.")
+        localized:
+          "Its notes, transcript, summary and recording are removed from this Mac. This can't be undone.",
+        comment: "History meeting page: confirmation message before deleting the whole meeting.")
     }
   }
 
@@ -941,11 +1133,14 @@ struct HistoryMeetingAfterView: View {
   // MARK: - Commands
 
   /// The visible words of the CURRENT row, read at delivery (Copy press, Share request, Paste).
-  private func deliveryText(mode: FileImportCoordinator.DocumentView? = nil) -> String? {
+  /// Copy, Share and Save follow the Timestamps setting; Paste passes `includeTimes: false`.
+  private func deliveryText(
+    mode: FileImportCoordinator.DocumentView? = nil, includeTimes: Bool? = nil
+  ) -> String? {
     guard let row = deliveryRow() else { return nil }
     return MeetingHistoryPresentation.deliveryText(
-      row, projection: transcripts.meetingProjection(of: row), timesOn: false,
-      mode: mode ?? transcriptMode)
+      row, projection: transcripts.meetingProjection(of: row),
+      timesOn: includeTimes ?? timesOn, mode: mode ?? transcriptMode)
   }
 
   /// The row whose words are delivered now: the committed row of a meeting EnviousMeet holds
@@ -963,6 +1158,12 @@ struct HistoryMeetingAfterView: View {
 
   private func perform(_ kind: Confirmation) {
     confirming = nil
+    // A meeting whose folder is gone has no record: its confirmed deletion removes the leftover row.
+    if meetings.record(id: meetingID) == nil, orphanRow != nil, kind == .deleteMeeting {
+      guard !actionInFlight else { return }
+      deleteOrphan()
+      return
+    }
     guard !actionInFlight, meetings.record(id: meetingID) != nil else { return }
     // Playback stops before any file of this meeting is touched.
     dropPlayer()
@@ -1020,7 +1221,7 @@ struct HistoryMeetingAfterView: View {
     historyPaste.paste(
       destination: previousApplication.lastOtherApplication,
       allowed: { true },
-      text: { deliveryText(mode: .cleaned) },
+      text: { deliveryText(mode: .cleaned, includeTimes: false) },
       showHistory: { restorePasteSurface() },
       showNotice: { showPasteNotice($0) })
   }
@@ -1036,7 +1237,7 @@ struct HistoryMeetingAfterView: View {
     Task {
       switch await MeetingExport.document(
         meetingID: meetingID, rowID: rowID, documents: meetings.documents,
-        transcripts: transcripts, mode: transcriptMode)
+        transcripts: transcripts, mode: transcriptMode, timesOn: timesOn)
       {
       case .document(let document):
         do {
@@ -1097,29 +1298,16 @@ struct HistoryMeetingAfterView: View {
 
   // MARK: - Dock
 
+  /// #4611 D10: the player card under the panes. Who spoke lives in the header's speakers button
+  /// (D9), so a meeting with no recording to play has no card; the facts line says why.
   @ViewBuilder
-  private func dock(
-    _ record: MeetingRecord, snapshot: MeetingNotesSnapshot, row: Transcript?, visibleTurns: [Turn]
-  ) -> some View {
-    let participants = P.participants(
-      turns: visibleTurns, speakerNames: row?.speakerNames ?? [:])
+  private func dock(_ record: MeetingRecord) -> some View {
     let absence = P.dockAbsence(record)
-    // #4611: with no recording to play, there is no bar; the facts line says why. Only a recording
-    // still being made ready keeps its bar.
+    // Only a recording still being made ready keeps its card.
     if player != nil || absence == .notReadyYet {
-      MeetingAfterPlayerBar(
-        content: player.map { .player($0) } ?? .unavailable(absence),
-        markers: P.noteMarkers(snapshot.document, durationMs: player?.durationMs ?? 0),
-        participants: participants,
-        onSelectNote: { marker in showNote(marker.id) })
-    } else if !participants.isEmpty {
-      // No bar, but who spoke still stays reachable after the recording is deleted.
-      HStack {
-        Spacer()
-        MeetingParticipantsButton(participants: participants)
-      }
-      .padding(.horizontal, SettingsLayout.contentH)
-      .padding(.bottom, DesignSpacing.xl)
+      MeetingAfterPlayerBar(content: player.map { .player($0) } ?? .unavailable(absence))
+        .padding(.horizontal, SettingsLayout.contentH)
+        .padding(.bottom, DesignSpacing.xl)
     }
   }
 
@@ -1128,11 +1316,16 @@ struct HistoryMeetingAfterView: View {
   private func showNote(_ id: UUID) {
     leftPane = .notes
     narrowPane = .notes
+    // A note shown from a marker or View source opens in read mode, where it is highlighted
+    // (#4611: the edit state lives here, and a recreated notes pane sees no request change).
+    editingNotes = false
     highlightedNoteID = id
     noteRequest = NoteRequest(id: id)
   }
 
   private func suspendFollow() {
+    // Same as the transcript page: scrolling suspends following only while playing.
+    guard player?.state == .playing else { return }
     if follow == .following { follow = .suspended }
   }
 }
@@ -1140,13 +1333,37 @@ struct HistoryMeetingAfterView: View {
 // MARK: - Left pane
 
 extension HistoryMeetingAfterView {
+  /// The left pane's header row and body together, for the layouts that scroll them as one
+  /// (stacked panes, the meeting still on screen from its recording).
   @ViewBuilder
   fileprivate func leftColumn(
     _ record: MeetingRecord, snapshot: MeetingNotesSnapshot, visibleTurnIDs: Set<String>,
-    proxy: ScrollViewProxy
+    proxy: ScrollViewProxy, canDeliver: Bool
   ) -> some View {
     VStack(alignment: .leading, spacing: DesignSpacing.lg) {
       if !isRecordingThisMeeting {
+        leftHeader(snapshot: snapshot)
+      }
+      leftBody(
+        record, snapshot: snapshot, visibleTurnIDs: visibleTurnIDs, proxy: proxy,
+        canDeliver: canDeliver)
+    }
+  }
+
+  /// #4611 D1: one row: Your notes | AI summary, then Edit and Copy for the tab shown. D6: while
+  /// the summary is edited, a full-width row under it carries the save status and Done editing.
+  fileprivate func leftHeader(snapshot: MeetingNotesSnapshot) -> some View {
+    let summaryBusy =
+      keepingSummary || meetings.summaries?.isWriting(meetingID) == true
+      || {
+        if case .generating? = meetings.summaries?.previews[meetingID] {
+          return true
+        } else {
+          return false
+        }
+      }()
+    return VStack(alignment: .leading, spacing: DesignSpacing.sm) {
+      HStack(alignment: .center, spacing: DesignSpacing.md) {
         BrandedSegmentedPicker(
           options: [
             (
@@ -1168,35 +1385,191 @@ extension HistoryMeetingAfterView {
                 localized: "Your own notes for this meeting",
                 comment: "History meeting: hover hint on the Your notes tab.")
             case .summary:
-              String(
-                localized: "The AI-written summary of this meeting",
-                comment: "History meeting: hover hint on the AI summary tab.")
+              summaryBusy
+                ? String(
+                  localized: "AI summary, writing a new version",
+                  comment:
+                    "History meeting: hover hint on the AI summary tab while a summary is written.")
+                : String(
+                  localized: "The AI-written summary of this meeting",
+                  comment: "History meeting: hover hint on the AI summary tab.")
             }
-          }
+          },
+          busy: { $0 == .summary && summaryBusy }
         )
         .fixedSize()
         .accessibilityLabel(
           Text(
             "Notes or summary",
             comment: "History meeting: chooses between the user's notes and the AI summary."))
+        Spacer(minLength: 0)
+        if !(leftPane == .summary && editingSummary) {
+          paneActions(snapshot: snapshot)
+        }
       }
-      switch leftPane {
+      if leftPane == .summary, editingSummary {
+        HStack(alignment: .center, spacing: DesignSpacing.md) {
+          Text(
+            meetings.documents.hasUnsavedSummary(meetingID)
+              ? String(localized: "Saving…", comment: "History meeting: the notes are being saved.")
+              : String(
+                localized: "Saved on this Mac", comment: "History meeting: the notes are saved.")
+          )
+          .font(.stHelper)
+          .foregroundStyle(.stTextSecondary)
+          Spacer(minLength: 0)
+          Button {
+            editingSummary = false
+          } label: {
+            EnviousButtonLabel(
+              LocalizedStringResource(
+                "Done editing", comment: "History meeting: ends editing the summary or the notes."),
+              size: .medium)
+          }
+          .settingsButton(.filled, size: .medium, isEnabled: true)
+        }
+      }
+    }
+  }
+
+  /// Edit (or Done editing) and Copy for the tab shown. Visible words stay short ("Edit",
+  /// "Copy"); the spoken name and tooltip say what each acts on.
+  @ViewBuilder
+  fileprivate func paneActions(snapshot: MeetingNotesSnapshot) -> some View {
+    switch leftPane {
+    case .notes:
+      let editing = editingNotes ?? (openedDuringRecording == meetingID)
+      let notesText = meetings.documents.notes(meetingID)
+      let hasNotes = !notesText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      HStack(spacing: DesignSpacing.xs) {
+        if editing {
+          Button {
+            editingNotes = false
+          } label: {
+            EnviousButtonLabel(
+              LocalizedStringResource(
+                "Done editing", comment: "History meeting: ends editing the summary or the notes."),
+              size: .medium, systemImage: "checkmark")
+          }
+          .settingsButton(.quiet, size: .medium, isEnabled: true)
+        } else if snapshot.canEdit, hasNotes {
+          paneEditButton(
+            spoken: String(
+              localized: "Edit notes", comment: "History meeting: makes the notes editable.")
+          ) { editingNotes = true }
+        }
+        paneCopyButton(.notes, isEnabled: hasNotes) { meetings.documents.notes(meetingID) }
+      }
+      .fixedSize()
+    case .summary:
+      let summary = meetings.documents.summary(meetingID)
+      let hasSummary = summary.map { !$0.isEmpty } ?? false
+      HStack(spacing: DesignSpacing.xs) {
+        if references.document(for: meetingID) != nil || summary != nil {
+          paneEditButton(
+            spoken: String(
+              localized: "Edit summary", comment: "History meeting: makes the summary editable.")
+          ) { editingSummary = true }
+        }
+        paneCopyButton(.summary, isEnabled: hasSummary) { meetings.documents.summary(meetingID) }
+      }
+      .fixedSize()
+    }
+  }
+
+  fileprivate func paneEditButton(spoken: String, action: @escaping () -> Void) -> some View {
+    Button(action: action) {
+      EnviousButtonLabel(
+        LocalizedStringResource(
+          "Edit", comment: "History meeting: a pane's Edit button (notes or summary)."),
+        size: .medium, systemImage: "pencil")
+    }
+    .settingsButton(.quiet, size: .medium, isEnabled: true)
+    .help(Text(verbatim: spoken))
+    .accessibilityLabel(Text(verbatim: spoken))
+  }
+
+  /// What a pane's Copy copies.
+  enum PaneCopy: Equatable {
+    case notes, summary, transcript
+
+    var spoken: String {
+      switch self {
       case .notes:
-        MeetingAfterNotesPane(
-          meetingID: meetingID, notes: notes, snapshot: snapshot,
-          highlightedNoteID: highlightedNoteID,
-          requestNonce: noteRequest?.nonce,
-          onSeek: { ms in player?.seek(toMs: ms) },
-          playbackMs: { notesClockMs() },
-          startsEditing: isRecordingThisMeeting || openedDuringRecording == meetingID,
-          recording: isRecordingThisMeeting,
-          markMoment: markMoment,
-          toggleActionItem: toggleLiveActionItem,
-          editorActions: notesActions)
+        String(localized: "Copy notes", comment: "History meeting: copies the meeting's notes.")
       case .summary:
-        summaryPane(
-          record, snapshot: snapshot, visibleTurnIDs: visibleTurnIDs, proxy: proxy)
+        String(localized: "Copy summary", comment: "History meeting: copies the AI summary.")
+      case .transcript:
+        String(
+          localized: "Copy transcript", comment: "History meeting: copies the visible transcript.")
       }
+    }
+  }
+
+  /// #4611 D1: Copy reads the pane's latest text when pressed, then shows Copied for 2 s at the
+  /// same width and says so to VoiceOver.
+  fileprivate func paneCopyButton(
+    _ kind: PaneCopy, isEnabled: Bool, text: @escaping () -> String?
+  ) -> some View {
+    let copied = copiedPane == kind
+    return Button {
+      guard let value = text(), !value.isEmpty else { return }
+      TranscribeFileExport.copy(value)
+      let pressed = Date()
+      copiedPane = kind
+      copiedPaneAt = pressed
+      Task {
+        try? await Task.sleep(for: .seconds(TranscribeFileExport.copiedHoldSeconds))
+        if copiedPaneAt == pressed { copiedPane = nil }
+      }
+    } label: {
+      ZStack {
+        EnviousButtonLabel(
+          LocalizedStringResource("Copy", comment: "History meeting: a pane's Copy button."),
+          size: .medium, systemImage: "doc.on.doc"
+        )
+        .opacity(copied ? 0 : 1)
+        EnviousButtonLabel(
+          LocalizedStringResource(
+            "Copied", comment: "History meeting: a pane's Copy button, just after copying."),
+          size: .medium, systemImage: "checkmark"
+        )
+        .opacity(copied ? 1 : 0)
+      }
+    }
+    .settingsButton(.quiet, size: .medium, isEnabled: isEnabled)
+    .disabled(!isEnabled)
+    .help(Text(verbatim: kind.spoken))
+    .accessibilityLabel(Text(verbatim: kind.spoken))
+  }
+
+  @ViewBuilder
+  fileprivate func leftBody(
+    _ record: MeetingRecord, snapshot: MeetingNotesSnapshot, visibleTurnIDs: Set<String>,
+    proxy: ScrollViewProxy, canDeliver: Bool
+  ) -> some View {
+    switch leftPane {
+    case .notes:
+      MeetingAfterNotesPane(
+        meetingID: meetingID, notes: notes, snapshot: snapshot,
+        highlightedNoteID: highlightedNoteID,
+        requestNonce: noteRequest?.nonce,
+        onPlayFrom: { ms in
+          player?.seek(toMs: ms)
+          player?.play()
+        },
+        playbackAvailable: playablePlayer != nil,
+        playbackMs: { notesClockMs() },
+        startsEditing: isRecordingThisMeeting || openedDuringRecording == meetingID,
+        editing: $editingNotes,
+        recording: isRecordingThisMeeting,
+        markMoment: markMoment,
+        toggleActionItem: toggleLiveActionItem,
+        editorActions: notesActions)
+    case .summary:
+      summaryPane(
+        record, snapshot: snapshot, visibleTurnIDs: visibleTurnIDs, proxy: proxy,
+        canDeliver: canDeliver)
     }
   }
 
@@ -1227,93 +1600,64 @@ extension HistoryMeetingAfterView {
   }
 
   /// #3147 PR4A: where a new note block starts on the meeting timeline (plan §3.6). While this
-  /// meeting records, its recorded position (the recorder's clock); after Stop, the playback
-  /// position; else unknown.
+  /// meeting records, its recorded position (the recorder's clock); after Stop, the play bar's
+  /// current position once the recording has played or been moved; else unknown (no time).
   @MainActor fileprivate func notesClockMs() -> Int? {
     if case .recording(let id, _) = meetings.phase, id == meetingID {
       return meetings.recordingPositionMs(meetingID: meetingID)
     }
-    return player?.positionMs
+    guard let player, player.hasPosition else { return nil }
+    return player.positionMs
   }
 
   @ViewBuilder
   fileprivate func summaryPane(
     _ record: MeetingRecord, snapshot: MeetingNotesSnapshot, visibleTurnIDs: Set<String>,
-    proxy: ScrollViewProxy
+    proxy: ScrollViewProxy, canDeliver: Bool
   ) -> some View {
+    let refreshItems = { summaryModelItems(record, canDeliver: canDeliver) }
+    summaryPreviewInPane(refreshItems: refreshItems)
     if !editingSummary, let document = references.document(for: meetingID) {
-      VStack(alignment: .leading, spacing: DesignSpacing.lg) {
-        HStack {
-          Spacer(minLength: 0)
-          Button {
-            editingSummary = true
-          } label: {
-            EnviousButtonLabel(
-              LocalizedStringResource(
-                "Edit summary", comment: "History meeting: makes the summary editable."),
-              size: .medium, systemImage: "pencil")
-          }
-          .settingsButton(.quiet, size: .medium, isEnabled: true)
-        }
-        MeetingAfterSummarySections(
-          meetingID: meetingID, document: document, references: references,
-          visibleTurnIDs: visibleTurnIDs,
-          noteBlockIDs: Set(snapshot.document.blocks.map(\.id)),
-          onViewSource: { target in viewSource(target, proxy: proxy) })
-      }
+      MeetingAfterSummarySections(
+        meetingID: meetingID, document: document, references: references,
+        visibleTurnIDs: visibleTurnIDs,
+        noteBlockIDs: Set(snapshot.document.blocks.map(\.id)),
+        sourceMs: { target in sourceMs(target, record: record, snapshot: snapshot) },
+        onViewSource: { target in viewSource(target, proxy: proxy) })
     } else if !editingSummary, let text = meetings.documents.summary(meetingID) {
-      readableSummary(text)
+      readableSummary(text, refreshItems: refreshItems)
     } else {
-      VStack(alignment: .leading, spacing: DesignSpacing.md) {
-        if editingSummary {
-          HStack {
-            Spacer(minLength: 0)
-            Button {
-              editingSummary = false
-            } label: {
-              EnviousButtonLabel(
-                LocalizedStringResource(
-                  "Done editing", comment: "History meeting: ends editing the summary or the notes."
-                ),
-                size: .medium, systemImage: "checkmark")
-            }
-            .settingsButton(.quiet, size: .medium, isEnabled: true)
-          }
-        }
-        // Editing, Write again, writing, problems, save failure and edited-summary protection;
-        // also every state before a summary exists.
-        MeetingSummaryView(meetingID: meetingID, writePreview: beginSummaryPreview)
-      }
+      // Editing, writing, problems, save failure and edited-summary protection; also every
+      // state before a summary exists. Edit summary and Done editing sit on the tab row.
+      MeetingSummaryView(
+        meetingID: meetingID, writePreview: beginSummaryPreview, refreshItems: refreshItems)
+    }
+  }
+
+  /// #4611 D12: the meeting time a summary source sits at, for its link ("Your notes · 0:28").
+  fileprivate func sourceMs(
+    _ target: MeetingAfterPresentation.SourceTarget, record: MeetingRecord,
+    snapshot: MeetingNotesSnapshot
+  ) -> Int? {
+    switch target {
+    case .note(let id):
+      return snapshot.document.blocks.first { $0.id == id }?.startedAtMs
+    case .turn(let id):
+      guard let row = committedRow(record),
+        case .visible(let turns, _) = transcripts.meetingProjection(of: row)
+      else { return nil }
+      return turns.first { $0.id == id }?.startMs
     }
   }
 
   /// A summary with no validated structure (an edited, older or unqualified summary), read
   /// only, with no links. Edit summary opens the full summary controls.
-  fileprivate func readableSummary(_ text: String) -> some View {
+  fileprivate func readableSummary(
+    _ text: String, refreshItems: @escaping () -> [HistoryMenuItem]
+  ) -> some View {
     let documents = meetings.documents
     return VStack(alignment: .leading, spacing: DesignSpacing.md) {
-      HStack {
-        Spacer(minLength: 0)
-        Button {
-          editingSummary = true
-        } label: {
-          EnviousButtonLabel(
-            LocalizedStringResource(
-              "Edit summary", comment: "History meeting: makes the summary editable."),
-            size: .medium, systemImage: "pencil")
-        }
-        .settingsButton(.quiet, size: .medium, isEnabled: true)
-      }
-      if meetings.summaries?.isOutOfDate(meetingID) == true {
-        Text(
-          "The meeting changed after this summary was written. It may be out of date.",
-          comment:
-            "History, a meeting: the summary was written from an older transcript, names or notes."
-        )
-        .font(.stHelper)
-        .foregroundStyle(.stTextSecondary)
-        .fixedSize(horizontal: false, vertical: true)
-      }
+      MeetingSummaryStaleNotice(meetingID: meetingID, refreshItems: refreshItems)
       if documents.summarySaveFailed(meetingID) {
         HStack(alignment: .firstTextBaseline, spacing: DesignSpacing.sm) {
           Text(
@@ -1326,9 +1670,12 @@ extension HistoryMeetingAfterView {
           Button {
             Task { await documents.flushSummary(meetingID) }
           } label: {
-            Text("Try again", comment: "History, a meeting: saves the summary changes again.")
+            EnviousButtonLabel(
+              LocalizedStringResource(
+                "Try again", comment: "History, a meeting: saves the summary changes again."),
+              size: .medium)
           }
-          .buttonStyle(.link)
+          .settingsButton(.quiet, size: .medium, isEnabled: true)
         }
         .font(.stHelper)
       }
@@ -1421,10 +1768,14 @@ extension HistoryMeetingAfterView {
       MeetingLiveWordsView(transcript: live, addQuote: addQuote)
     } else {
       ScrollView {
-        transcriptColumn(record, row: row, projection: projection)
-          .frame(maxWidth: .infinity, alignment: .leading)
+        VStack(alignment: .leading, spacing: DesignSpacing.lg) {
+          transcriptHeader(row: row, projection: projection)
+          transcriptColumn(record, row: row, projection: projection)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
       }
       .meetingUserScroll { suspendFollow() }
+      .overlay(alignment: .bottom) { returnToPlaybackOverlay(projection: projection) }
     }
   }
 
@@ -1435,7 +1786,7 @@ extension HistoryMeetingAfterView {
     VStack(alignment: .leading, spacing: DesignSpacing.lg) {
       transcriptState(record, row: row)
       if let row, let projection {
-        transcriptToolbar(row)
+        if transcripts.meetingHasProbableEcho(row) { transcriptToolbar(row) }
         if rosterRead?.permissionMissing(for: rosterKey(record)) == true {
           speakerNamesPermissionNote
         }
@@ -1443,12 +1794,12 @@ extension HistoryMeetingAfterView {
         case .visible(let turns, _):
           MeetingAfterTurnList(
             rowID: row.id, turns: turns, rawText: row.text,
-            speakerNames: row.speakerNames ?? [:], player: player,
+            speakerNames: row.speakerNames ?? [:], player: playablePlayer,
             renameSuggestions: SpeakerRenameSuggestions(
               row: row, roster: rosterRead?.roster(for: rosterKey(record))),
             highlightedTurnID: highlightedTurnID,
             activeTurnID: follow == .off ? nil : activeTurnID,
-            language: row.language, mode: transcriptMode
+            language: row.language, mode: transcriptMode, timesOn: timesOn
           )
           .equatable()
           .font(.stCardText)
@@ -1535,9 +1886,19 @@ extension HistoryMeetingAfterView {
     .accessibilityElement(children: .combine)
   }
 
+  /// Over the bottom of the transcript while the reader has scrolled away from what plays
+  /// (#4611 D13).
+  fileprivate var returnToPlaybackButton: some View {
+    HistoryReturnToPlaybackButton {
+      follow = .following
+      highlightedTurnID = nil
+    }
+  }
+
+  /// Show probable echo; Timestamps and Follow playback are in the transcript's settings button
+  /// (#4611 D3), Return to playback floats over the transcript (D13).
   fileprivate func transcriptToolbar(_ row: Transcript) -> some View {
     WrappingHStack(spacing: DesignSpacing.lg) {
-      transcriptVersionPicker(row)
       // #3973 C2: the shown row's own generation decides.
       if transcripts.meetingHasProbableEcho(row) {
         Toggle(
@@ -1552,54 +1913,9 @@ extension HistoryMeetingAfterView {
           )
           .font(.stRowLabel)
         }
-        .toggleStyle(BrandedToggleStyle())
+        .toggleStyle(BrandedToggleStyle(onColor: .stAccentSolid))
         .fixedSize()
       }
-      if player != nil {
-        Toggle(
-          isOn: Binding(
-            get: { follow != .off },
-            set: { follow = $0 ? .following : .off })
-        ) {
-          Text(
-            "Follow playback",
-            comment: "History meeting: the transcript scrolls along with the playing recording."
-          )
-          .font(.stRowLabel)
-        }
-        .toggleStyle(BrandedToggleStyle())
-        .fixedSize()
-        if follow == .suspended {
-          Button {
-            follow = .following
-            highlightedTurnID = nil
-          } label: {
-            EnviousButtonLabel(
-              LocalizedStringResource(
-                "Return to playback",
-                comment: "History meeting: scrolls the transcript back to what is playing."),
-              size: .medium, systemImage: "arrow.down.to.line")
-          }
-          .settingsButton(.quiet, size: .medium, isEnabled: true)
-        }
-      }
-    }
-  }
-
-  @ViewBuilder private func transcriptVersionPicker(_ row: Transcript) -> some View {
-    if row.turns?.contains(where: { $0.processedText != nil }) == true {
-      BrandedSegmentedPicker(
-        options: [
-          (
-            HistoryTranscriptView.modeLabel(.cleaned, polished: row.polishedText != nil), nil,
-            FileImportCoordinator.DocumentView.cleaned
-          ),
-          (HistoryTranscriptView.modeLabel(.markedUp), nil, .markedUp),
-          (HistoryTranscriptView.modeLabel(.original), nil, .original),
-        ], selection: $transcriptMode,
-        hint: { HistoryTranscriptPresentation.viewHint(mode: $0, playable: player != nil) }
-      )
-      .fixedSize()
     }
   }
 
@@ -1611,10 +1927,15 @@ extension HistoryMeetingAfterView {
         .foregroundStyle(.stTextSecondary)
         .fixedSize(horizontal: false, vertical: true)
       Spacer(minLength: 0)
-      Button(MeetingHistoryPresentation.speakerNamesPermissionButton) {
+      Button {
         navigation.request(.meetings(.permissions))
         appWindowCoordinator.showWindow()
+      } label: {
+        EnviousButtonLabel(
+          verbatim: MeetingHistoryPresentation.speakerNamesPermissionButton,
+          size: .medium)
       }
+      .settingsButton(.outlined, size: .medium, isEnabled: true)
     }
   }
 }
@@ -1626,46 +1947,42 @@ extension HistoryMeetingAfterView {
   /// EnviousMeet carries out only when the meeting's folder is confirmed absent.
   fileprivate func orphan(_ row: Transcript) -> some View {
     let projection = transcripts.meetingProjection(of: row)
+    let canDeliver: Bool = {
+      if case .visible = projection { return true }
+      return false
+    }()
+    let polish = HistoryTranscriptPresentation.provenance(for: row)
+    // The shared page header (founder, #4611), as on a meeting EnviousMeet holds. The title is
+    // not renamable: there is no meeting folder to save a name to. No version switch and no
+    // player: the founder removed the switch from meetings, and there is no recording to play.
     return VStack(spacing: 0) {
-      VStack(alignment: .leading, spacing: DesignSpacing.md) {
-        HistoryDestinationBar(tab: .meetings, close: back)
-        HStack(alignment: .center, spacing: DesignSpacing.lg) {
-          Text(verbatim: P.fallbackTitle)
-            .font(.stRowTitle)
-            .foregroundStyle(.stTextPrimary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-          let canDeliver: Bool = {
-            if case .visible = projection { return true }
-            return false
-          }()
-          orphanDeliveryButtons(title: P.fallbackTitle, canDeliver: canDeliver)
-          Button {
-            pasteTapped()
-          } label: {
-            EnviousButtonLabel(
-              verbatim: EscapeRecoveryRowPresentation.pasteLabel, size: .medium,
-              systemImage: "arrow.right.doc.on.clipboard")
+      HistoryDocumentHeader(
+        tab: .meetings, back: back,
+        facts: HistoryDocumentFacts(
+          createdAt: row.createdAt,
+          length: HistoryTranscriptPresentation.footerClock(seconds: row.duration),
+          speakers: MeetingsPresentation.speakers(row.speakerAnalysis),
+          engine: row.backendType.displayName,
+          polishModel: polish.aiPolished ? polish.polishModel : nil),
+        neighbors: neighbors, showsViewRow: false, timestamps: nil
+      ) {
+        Text(verbatim: P.fallbackTitle)
+          .font(.stDayTitle)
+          .foregroundStyle(.stTextPrimary)
+      } actions: {
+        HStack(spacing: DesignSpacing.md) {
+          copyButton(canDeliver: canDeliver)
+          HistoryDocumentMoreButton(anchor: moreAnchor) {
+            guard let anchor = moreAnchor.view else { return }
+            historyMenu.toggle(items: orphanMoreItems(canDeliver: canDeliver), from: anchor)
           }
-          .settingsButton(
-            .quiet, size: .medium, isEnabled: permissions.accessibilityGranted && canDeliver)
-          Button(role: .destructive) {
-            actionInFlight = true
-            let shown = presentation
-            Task {
-              let deleted = await meetings.deleteOrphan(meetingID: meetingID)
-              guard shown == presentation else { return }
-              orphanRefused = !deleted
-              actionInFlight = false
-            }
-          } label: {
-            EnviousButtonLabel(
-              LocalizedStringResource(
-                "Delete meeting",
-                comment: "EnviousMeet: removes the meeting, its audio and its transcript."),
-              size: .medium)
-          }
-          .settingsButton(size: .medium, isEnabled: !actionInFlight)
         }
+        .fixedSize()
+      } picker: {
+        EmptyView()
+      } switches: {
+        EmptyView()
+      } below: {
         if orphanRefused {
           Text(
             "This meeting's files are still on this Mac but can't be read, so it can't be deleted here.",
@@ -1685,7 +2002,6 @@ extension HistoryMeetingAfterView {
         Group {
           switch projection {
           case .visible(let turns, _):
-            transcriptVersionPicker(row)
             MeetingAfterTurnList(
               rowID: row.id, turns: turns, rawText: row.text,
               speakerNames: row.speakerNames ?? [:], player: nil,
@@ -1708,8 +2024,59 @@ extension HistoryMeetingAfterView {
         .padding(.horizontal, SettingsLayout.contentH)
         .padding(.vertical, DesignSpacing.xl)
       }
-      MeetingAfterPlayerBar(
-        content: .unavailable(.unavailable), markers: [], participants: [], onSelectNote: { _ in })
+    }
+  }
+
+  /// The orphan page's More menu: Paste, Share, Save as…, then Delete meeting (Paste first, as
+  /// on every History page). Each reads the CURRENT row when it acts.
+  private func orphanMoreItems(canDeliver: Bool) -> [HistoryMenuItem] {
+    let title = P.fallbackTitle
+    return [
+      .init(
+        id: "paste", title: EscapeRecoveryRowPresentation.pasteLabel,
+        systemImage: "arrow.right.doc.on.clipboard",
+        isEnabled: !permissions.accessibilityGranted || canDeliver, kind: .action { pasteTapped() }),
+      .init(
+        id: "share",
+        title: String(localized: "Share", comment: "EnviousMeet: shares the visible transcript."),
+        systemImage: "square.and.arrow.up", isEnabled: canDeliver,
+        kind: .action {
+          guard let anchor = moreAnchor.view else { return }
+          // The text is read when the receiving app asks for it, so a sheet left open never
+          // hands over lines that were deleted or hidden meanwhile.
+          let provider = NSItemProvider()
+          provider.register(DeliverableText(resolve: { deliveryText() }))
+          NSSharingServicePicker(items: [provider]).show(
+            relativeTo: anchor.bounds, of: anchor, preferredEdge: .minY)
+        }),
+      .init(
+        id: "save",
+        title: String(
+          localized: "Save as…",
+          comment: "History meeting: saves the transcript and notes as a text file."),
+        systemImage: "square.and.arrow.down", isEnabled: canDeliver,
+        kind: .action { save(defaultName: title) }),
+      .divider("d1"),
+      .init(
+        id: "delete",
+        title: String(
+          localized: "Delete meeting",
+          comment: "EnviousMeet: removes the meeting, its audio and its transcript."),
+        systemImage: "trash", isEnabled: !actionInFlight, isDestructive: true,
+        kind: .action { confirming = .deleteMeeting }),
+    ]
+  }
+
+  /// Deletes a meeting whose folder is gone. EnviousMeet carries it out only when the folder is
+  /// confirmed absent; otherwise the page says why.
+  private func deleteOrphan() {
+    actionInFlight = true
+    let shown = presentation
+    Task {
+      let deleted = await meetings.deleteOrphan(meetingID: meetingID)
+      guard shown == presentation else { return }
+      orphanRefused = !deleted
+      actionInFlight = false
     }
   }
 }
@@ -1731,12 +2098,14 @@ struct MeetingAfterTurnList: View, Equatable {
   let activeTurnID: String?
   var language: String? = nil
   var mode: FileImportCoordinator.DocumentView = .cleaned
+  /// The page's Timestamps switch; off hides each turn's start time.
+  var timesOn = true
   @Environment(TranscriptCoordinator.self) private var transcripts
   @State private var diffCache: (FileImportCoordinator.TurnDiffInput, [String: WordDiff.Result])?
 
   nonisolated static func == (a: MeetingAfterTurnList, b: MeetingAfterTurnList) -> Bool {
     a.rowID == b.rowID && a.player === b.player && a.renameSuggestions == b.renameSuggestions
-      && a.mode == b.mode && a.language == b.language
+      && a.mode == b.mode && a.language == b.language && a.timesOn == b.timesOn
       && a.highlightedTurnID == b.highlightedTurnID && a.activeTurnID == b.activeTurnID
       && MeetingDocumentHash.sameBytes(a.rawText, b.rawText)
       && MeetingDocumentHash.sameBytes(a.speakerNames, b.speakerNames)
@@ -1756,9 +2125,14 @@ struct MeetingAfterTurnList: View, Equatable {
       MeetingGapPresentation.localized(
         TranscriptDocumentPresenter.render(
           turns: turns, rawText: rawText, speakerNames: speakerNames,
-          mode: mode, timesOn: true, documentFinished: true, diffLookup: { diffs?[$0.id] })) ?? []
+          mode: mode, timesOn: timesOn, documentFinished: true, diffLookup: { diffs?[$0.id] }))
+      ?? []
     LazyVStack(alignment: .leading, spacing: DesignSpacing.md) {
-      ForEach(TurnRowKey.keyed(rendered), id: \.key) { key, turn in
+      // Speaker colors and "same speaker skips the name" are worked out over the whole
+      // meeting (#4611), since each turn below is its own one-turn document.
+      ForEach(TurnSpeakerStyle.rows(rendered), id: \.key) { row in
+        let key = row.key
+        let turn = row.turn
         TurnDocumentView(
           turns: [turn],
           onRename: { speakerId, name in
@@ -1773,6 +2147,7 @@ struct MeetingAfterTurnList: View, Equatable {
           },
           renameSuggestions: renameSuggestions,
           timeFont: .stHelper,
+          speakerLook: row.look,
           fallback: { EmptyView() }
         )
         .padding(DesignSpacing.sm)
@@ -1798,13 +2173,17 @@ struct MeetingAfterTurnList: View, Equatable {
 }
 
 /// Reads the player's position (so a tick re-renders only this invisible view), reports the
-/// turn playback is in, and scrolls to it while Follow playback is on.
-private struct MeetingFollowDriver: View {
+/// turn playback is in, and scrolls to it while Follow playback is on. The transcript page uses
+/// it too (#4611 T8).
+struct MeetingFollowDriver: View {
   let player: MeetingPlaybackController
   let turns: [Turn]
   @Binding var activeTurnID: String?
   let following: Bool
   let scroll: (String) -> Void
+  /// #4611 T8 (transcript page): also brings the playing turn into view when playback starts or
+  /// resumes inside the same turn. The meeting page keeps its behavior (off).
+  var scrollsWhenPlaybackStarts = false
 
   var body: some View {
     let active = MeetingAfterPresentation.activeTurnID(turns: turns, positionMs: player.positionMs)
@@ -1820,6 +2199,10 @@ private struct MeetingFollowDriver: View {
       .onChange(of: following) { _, now in
         if now, let active { withAnimation { scroll(active) } }
       }
+      .onChange(of: player.state) { _, state in
+        guard scrollsWhenPlaybackStarts, following, state == .playing, let active else { return }
+        withAnimation { scroll(active) }
+      }
   }
 }
 
@@ -1833,17 +2216,21 @@ private struct MeetingAfterNotesPane: View {
   let highlightedNoteID: UUID?
   /// A new marker or View source request, even for the same note: it leaves edit mode.
   let requestNonce: UUID?
-  let onSeek: (Int) -> Void
+  /// Plays the recording from a note's time (a click on the time, in read or edit mode).
+  let onPlayFrom: (Int) -> Void
+  /// False once the recording is gone or unreadable: note times are then plain text.
+  let playbackAvailable: Bool
   /// #3147 PR4A: the playback position, so a block typed after Stop starts there (plan §3.6).
   let playbackMs: @MainActor () -> Int?
   let startsEditing: Bool
+  /// #4611: owned by the page, whose tab row draws Edit notes and Done editing.
+  @Binding var editing: Bool?
   let recording: Bool
   let markMoment: () -> Void
   let toggleActionItem: () -> Void
   let editorActions: MeetingNotesEditorActions
-  /// Read mode keeps note times as seek buttons and the marker highlight; Edit notes swaps in
-  /// the block editor, as Edit summary does for the summary.
-  @State private var editing: Bool?
+  // Read mode keeps note times as seek buttons and the marker highlight; Edit notes swaps in
+  // the block editor, as Edit summary does for the summary.
 
   var body: some View {
     Group {
@@ -1867,22 +2254,10 @@ private struct MeetingAfterNotesPane: View {
           HStack { liveNoteControls }
           VStack(alignment: .leading) { liveNoteControls }
         }
-      } else {
-        HStack {
-          Spacer(minLength: 0)
-          Button {
-            editing = false
-          } label: {
-            EnviousButtonLabel(
-              LocalizedStringResource(
-                "Done editing", comment: "History meeting: ends editing the summary or the notes."),
-              size: .medium, systemImage: "checkmark")
-          }
-          .settingsButton(.quiet, size: .medium, isEnabled: true)
-        }
       }
       MeetingNotesBlockEditor(
-        meetingID: meetingID, notes: notes, currentMs: playbackMs, actions: editorActions)
+        meetingID: meetingID, notes: notes, currentMs: playbackMs, playFrom: playbackAvailable ? onPlayFrom : nil,
+        actions: editorActions)
     }
   }
 
@@ -1903,31 +2278,31 @@ private struct MeetingAfterNotesPane: View {
 
   private var reader: some View {
     VStack(alignment: .leading, spacing: DesignSpacing.md) {
-      HStack(alignment: .firstTextBaseline) {
-        saveLine
-        Spacer(minLength: 0)
-        if snapshot.canEdit {
-          Button {
-            editing = true
-          } label: {
-            EnviousButtonLabel(
-              LocalizedStringResource(
-                "Edit notes", comment: "History meeting: makes the notes editable."),
-              size: .medium, systemImage: "pencil")
-          }
-          .settingsButton(.quiet, size: .medium, isEnabled: true)
-        }
-      }
+      saveLine
       let blocks = snapshot.document.blocks.filter {
         !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
       }
       if blocks.isEmpty, snapshot.saveState != .loading {
-        Text(
-          "No notes for this meeting.",
-          comment: "History meeting: the notes pane of a meeting without notes."
-        )
-        .font(.stCardText)
-        .foregroundStyle(.stTextSecondary)
+        // #4611 D16: Write notes starts writing, as Write summary does for the summary.
+        VStack(alignment: .leading, spacing: DesignSpacing.md) {
+          Text(
+            "No notes for this meeting.",
+            comment: "History meeting: the notes pane of a meeting without notes."
+          )
+          .font(.stCardText)
+          .foregroundStyle(.stTextSecondary)
+          if snapshot.canEdit {
+            Button {
+              editing = true
+            } label: {
+              EnviousButtonLabel(
+                LocalizedStringResource(
+                  "Write notes", comment: "History meeting: starts writing notes for this meeting."),
+                size: .medium)
+            }
+            .settingsButton(.outlined, size: .medium, isEnabled: true)
+          }
+        }
       }
       ForEach(blocks) { block in
         blockRow(block)
@@ -1969,9 +2344,11 @@ private struct MeetingAfterNotesPane: View {
         Button {
           Task { _ = await notes.flush(meetingID) }
         } label: {
-          Text("Try again", comment: "History meeting: saves the notes again.")
+          EnviousButtonLabel(
+            LocalizedStringResource(
+              "Try again", comment: "History meeting: saves the notes again."), size: .medium)
         }
-        .buttonStyle(.link)
+        .settingsButton(.quiet, size: .medium, isEnabled: true)
       }
       .font(.stHelper)
     }
@@ -1979,19 +2356,30 @@ private struct MeetingAfterNotesPane: View {
 
   private func blockRow(_ block: MeetingNoteBlock) -> some View {
     HStack(alignment: .firstTextBaseline, spacing: DesignSpacing.md) {
-      if let ms = block.startedAtMs {
-        Button {
-          onSeek(ms)
-        } label: {
+      if let ms = block.startedAtMs, !block.text.isEmpty {
+        if playbackAvailable {
+          Button {
+            onPlayFrom(ms)
+          } label: {
+            Text(verbatim: MeetingsPresentation.clock(ms: ms))
+              .font(.stHelper.monospacedDigit())
+              .foregroundStyle(.stAccent)
+          }
+          .buttonStyle(.plain)
+          .help(
+            Text(
+              "Play the recording from this note",
+              comment: "History meeting: a note's time; plays the recording from there."))
+          .accessibilityLabel(
+            Text(
+              "Play from \(MeetingsPresentation.clock(ms: ms))",
+              comment:
+                "History meeting: VoiceOver label of a note's time. %@ is the time, like 1:05."))
+        } else {
           Text(verbatim: MeetingsPresentation.clock(ms: ms))
             .font(.stHelper.monospacedDigit())
-            .foregroundStyle(.stAccent)
+            .foregroundStyle(.stTextSecondary)
         }
-        .buttonStyle(.plain)
-        .help(
-          Text(
-            "Move the recording to this note",
-            comment: "History meeting: a note's time; moves playback there without playing."))
       }
       if block.kind == .task {
         Button {
@@ -2027,14 +2415,20 @@ private struct MeetingAfterNotesPane: View {
         if block.kind == .quote, let speaker = block.sourceSpeaker {
           HStack(spacing: DesignSpacing.xs) {
             Text(verbatim: speaker)
-            if let sourceMs = block.sourceMs, sourceMs != block.startedAtMs {
+            if playbackAvailable, let sourceMs = block.sourceMs, sourceMs != block.startedAtMs {
               Button {
-                onSeek(sourceMs)
+                onPlayFrom(sourceMs)
               } label: {
-                Text(verbatim: MeetingsPresentation.clock(ms: sourceMs))
+                EnviousButtonLabel(
+                  verbatim: MeetingsPresentation.clock(ms: sourceMs), size: .medium)
               }
-              .buttonStyle(.link)
-              .accessibilityLabel(Text("Move the recording to this note"))
+              .settingsButton(.quiet, size: .medium, isEnabled: true)
+              .accessibilityLabel(
+                Text(
+                  "Play from \(MeetingsPresentation.clock(ms: sourceMs))",
+                  comment:
+                    "History meeting: VoiceOver label of a quote's source time. %@ is the time, like 1:05."
+                ))
             }
           }
           .font(.stHelper)
@@ -2048,7 +2442,8 @@ private struct MeetingAfterNotesPane: View {
 /// A summary drawn read-only from its lines (`HistoryMeetingAfterView.readableBlocks`): headings
 /// as the structured summary draws section titles, bullets with a bullet, paragraphs as body
 /// text. Inline emphasis is kept; links are removed (`readable`).
-private struct MeetingReadableSummary: View {
+/// Also draws both sides of the summary comparison sheet (#4611).
+struct MeetingReadableSummary: View {
   let blocks: [HistoryMeetingAfterView.ReadableBlock]
 
   var body: some View {
@@ -2094,6 +2489,8 @@ private struct MeetingAfterSummarySections: View {
   let references: any MeetingSummaryReferencing
   let visibleTurnIDs: Set<String>
   let noteBlockIDs: Set<UUID>
+  /// The meeting time of a source, for its link's words.
+  let sourceMs: (MeetingAfterPresentation.SourceTarget) -> Int?
   let onViewSource: (MeetingAfterPresentation.SourceTarget) -> Void
 
   var body: some View {
@@ -2124,43 +2521,134 @@ private struct MeetingAfterSummarySections: View {
           .foregroundStyle(.stTextBody)
           .textSelection(.enabled)
           .fixedSize(horizontal: false, vertical: true)
-        HStack(spacing: DesignSpacing.md) {
-          if MeetingAfterPresentation.isFromNotes(sources) {
-            Text(
-              "from your notes",
-              comment: "History meeting summary: the item came from the user's notes."
-            )
-            .historyChip(tint: .stTextSecondary, fill: Color.stTextSecondary.opacity(0.14))
+        // #4611 D12: one small link naming the place ("Your notes · 0:28", "Transcript · 0:00");
+        // it shows and highlights the source and never starts playback.
+        if let target {
+          MeetingSourceLink(place: Self.place(target, ms: sourceMs(target))) {
+            onViewSource(target)
           }
-          if let target {
-            Button {
-              onViewSource(target)
-            } label: {
-              Text(
-                "View source", comment: "History meeting summary: shows where this item came from.")
-            }
-            .buttonStyle(.link)
-            .font(.stHelper)
-          }
+        } else if MeetingAfterPresentation.isFromNotes(sources) {
+          Text(
+            "from your notes",
+            comment: "History meeting summary: the item came from the user's notes."
+          )
+          .font(.stHelper)
+          .foregroundStyle(.stTextSecondary)
         }
       }
     }
   }
 }
 
+extension MeetingAfterSummarySections {
+  /// "Your notes · 0:28", "Transcript · 0:00", or the place alone when it has no time.
+  static func place(_ target: MeetingAfterPresentation.SourceTarget, ms: Int?) -> String {
+    let name =
+      switch target {
+      case .note:
+        String(
+          localized: "Your notes",
+          comment: "History meeting summary: a source link's place, the notes.")
+      case .turn:
+        String(
+          localized: "Transcript",
+          comment: "History meeting summary: a source link's place, the transcript.")
+      }
+    guard let ms else { return name }
+    return "\(name) · \(MeetingsPresentation.clock(ms: ms))"
+  }
+}
+
+/// #4611 D12: a summary item's source, as one small secondary link with a chevron.
+private struct MeetingSourceLink: View {
+  let place: String
+  let action: () -> Void
+  @State private var hovering = false
+
+  var body: some View {
+    Button(action: action) {
+      HStack(spacing: DesignSpacing.xxs) {
+        Text(verbatim: place)
+        Image(systemName: "chevron.right")
+          .imageScale(.small)
+          .accessibilityHidden(true)
+      }
+      .font(.stHelper)
+      .foregroundStyle(hovering ? Color.stAccent : Color.stTextSecondary)
+      .padding(.vertical, 2)
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .onHover { hovering = $0 }
+    .help(
+      Text(
+        "Show where this came from",
+        comment: "History meeting summary: hover hint on a summary item's source link.")
+    )
+    .accessibilityLabel(
+      Text(
+        "Show source: \(place)",
+        comment:
+          "History meeting summary, VoiceOver: a source link. %@ is the place, like Your notes · 0:28."
+      ))
+  }
+}
+
 extension View {
   /// #3147 PR4A: a deliberate user scroll (trackpad, wheel, scroller) suspends Follow playback.
-  /// Programmatic scrolls do not count. Before macOS 15 the scroll phase is not observable, so
-  /// Follow playback is turned off with its toggle instead.
+  /// Programmatic scrolls do not count, and neither does a gesture that moves nothing: on a
+  /// transcript shorter than its pane the phase still turns `.interacting` (founder #4611), so
+  /// only a change of the content offset during the user's gesture counts.
   @ViewBuilder
   func meetingUserScroll(_ action: @escaping () -> Void) -> some View {
     if #available(macOS 15.0, *) {
-      onScrollPhaseChange { _, phase in
-        if phase == .interacting { action() }
-      }
+      modifier(MeetingScrollPhaseObserver(action: action))
     } else {
       modifier(MeetingWheelScrollObserver(action: action))
     }
+  }
+}
+
+/// macOS 15+: the user's gesture (`.interacting`, then `.decelerating` for its momentum) counts
+/// as a scroll only once the content really moves by 1 pt in all, summed over the gesture's
+/// updates (a slow drag moves less than that per update). The offset is clamped to the scrollable
+/// range, so a rubber-band bounce (also on content that fits its pane) moves nothing; a change of
+/// the content, pane or insets size starts the sum again rather than counting as movement.
+@available(macOS 15.0, *)
+private struct MeetingScrollPhaseObserver: ViewModifier {
+  let action: () -> Void
+  @State private var userDriven = false
+  @State private var distance: CGFloat = 0
+
+  func body(content: Content) -> some View {
+    content
+      .onScrollPhaseChange { _, phase in
+        let next = phase == .interacting || phase == .decelerating
+        if !next || !userDriven { distance = 0 }
+        userDriven = next
+      }
+      .onScrollGeometryChange(for: ScrollGeometry.self, of: { $0 }) { old, new in
+        guard old.contentSize == new.contentSize, old.containerSize == new.containerSize,
+          old.contentInsets == new.contentInsets, userDriven
+        else {
+          distance = 0
+          return
+        }
+        distance += abs(Self.clampedOffset(new) - Self.clampedOffset(old))
+        if distance >= 1 {
+          distance = 0
+          action()
+        }
+      }
+  }
+
+  nonisolated private static func clampedOffset(_ geometry: ScrollGeometry) -> CGFloat {
+    let top = geometry.contentInsets.top
+    let range = max(
+      0,
+      geometry.contentSize.height + top + geometry.contentInsets.bottom
+        - geometry.containerSize.height)
+    return min(max(geometry.contentOffset.y + top, 0), range)
   }
 }
 
@@ -2206,5 +2694,23 @@ private struct MeetingWheelScrollObserver: ViewModifier {
         if let installed { installed.monitor.remove(installed.token) }
         installed = nil
       }
+  }
+}
+
+/// "Return to playback" over the bottom of a transcript while the reader has scrolled away from
+/// what plays (#4611 D13 meeting page, T9 transcript page).
+struct HistoryReturnToPlaybackButton: View {
+  let action: () -> Void
+
+  var body: some View {
+    Button(action: action) {
+      EnviousButtonLabel(
+        LocalizedStringResource(
+          "Return to playback",
+          comment: "History meeting: scrolls the transcript back to what is playing."),
+        size: .medium, systemImage: "arrow.down.to.line")
+    }
+    .settingsButton(.filled, size: .medium, isEnabled: true)
+    .fixedSize()
   }
 }

@@ -43,22 +43,13 @@ struct HistoryContentView: View {
       HistoryDiaryView(
         coordinator: transcriptCoordinator,
         dictationCard: { row, query in
-          if row.escapeRecoveredAt != nil {
-            // A held Escape Recovery dictation keeps its own Paste, Keep and Delete (#2087):
-            // it has no recording and no polish history for the dictation card to show.
-            VStack(alignment: .leading, spacing: 6) {
-              // The countdown says this text expires unless kept (#2087).
-              EscapeRecoveryBadge(display: row)
-              TranscriptDetailView(display: row, showPasteNotice: pasteNotice.show)
-            }
+          // A held Escape Recovery dictation (#2087) is a dictation card too: its countdown
+          // chip, Keep, Paste and Delete live in the card.
+          HistoryDictationCard(
+            display: row, query: query, showPasteNotice: pasteNotice.show)
             .id(row.id)
-          } else {
-            HistoryDictationCard(
-              display: row, query: query, showPasteNotice: pasteNotice.show)
-              .id(row.id)
-          }
         },
-        transcriptDestination: { rowID, back in
+        transcriptDestination: { rowID, back, neighbors in
           HistoryTranscriptView(
             rowID: rowID, context: .history, sources: importedSources,
             retranscription: retranscription,
@@ -68,11 +59,11 @@ struct HistoryContentView: View {
               navigation.request(.history)
               appWindow.showWindow()
             },
-            back: back
+            back: back, neighbors: neighbors
           )
           .id(rowID)
         },
-        meetingDestination: { meetingID, back in
+        meetingDestination: { meetingID, back, neighbors in
           // #3147 PR4A: every meeting, live or finished, opens the meeting page; the live
           // recording, its live words and the notes sit on it while it records.
           HistoryMeetingAfterView(
@@ -83,7 +74,7 @@ struct HistoryContentView: View {
               navigation.request(.history)
               appWindow.showWindow()
             },
-            back: back
+            back: back, neighbors: neighbors
           )
           .id(meetingID)
         }
@@ -92,6 +83,8 @@ struct HistoryContentView: View {
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(Color.stPageBg)
+    // Every History button is a rounded rectangle (founder #4611, 2026-11-17).
+    .environment(\.enviousButtonShape, .roundedRect)
     .task { await historyRepolish.refreshAvailability() }
     .task {
       transcriptCoordinator.startHistoryCatalog()

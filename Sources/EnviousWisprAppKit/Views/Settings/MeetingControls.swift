@@ -98,12 +98,13 @@ struct MeetingLivePanel: View {
             Button {
               permissions.openSystemAudioRecordingSettings()
             } label: {
-              Text(
-                "Open System Settings",
-                comment:
-                  "EnviousMeet: opens the macOS privacy setting for recording the Mac's sound.")
+              EnviousButtonLabel(
+                LocalizedStringResource(
+                  "Open System Settings",
+                  comment:
+                    "EnviousMeet: opens the macOS privacy setting for recording the Mac's sound."))
             }
-            .buttonStyle(.link)
+            .settingsButton(.quiet, isEnabled: true)
             .accessibilityIdentifier("meetings.callSoundFix")
           }
         }
@@ -267,9 +268,9 @@ struct MeetingNoticeBanner: View {
       Button {
         meetings.dismissNotice()
       } label: {
-        Image(systemName: "xmark")
+        EnviousCloseGlyph()
       }
-      .buttonStyle(.borderless)
+      .buttonStyle(.plain)
       .accessibilityLabel(
         Text("Dismiss", comment: "EnviousMeet: closes a notice about the last recording."))
     }

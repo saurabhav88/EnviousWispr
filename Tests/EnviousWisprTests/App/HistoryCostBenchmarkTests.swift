@@ -317,9 +317,10 @@ struct HistoryCostBenchmarkTests {
         rootView: AnyView(
           HistoryDiaryView(
             coordinator: coordinator, dictationCard: { _, _ in EmptyView() },
-            transcriptDestination: { _, _ in EmptyView() }, meetingDestination: { _, _ in EmptyView() }
+            transcriptDestination: { _, _, _ in EmptyView() }, meetingDestination: { _, _, _ in EmptyView() }
           )
             .environment(coordinator).environment(homes.recording).environment(homes.metadata)
+            .environment(NavigationCoordinator())
             .environment(homes.meetings.coordinator).environment(homes.flow)))
       host.frame = CGRect(x: 0, y: 0, width: 578, height: 800)
       window = NSWindow(

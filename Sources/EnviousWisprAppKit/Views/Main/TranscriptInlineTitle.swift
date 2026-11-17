@@ -11,7 +11,6 @@ struct TranscriptInlineTitle: View {
   let fallbackTitle: String
   var font: Font = .stRowTitle
   /// Set to true by the owner (Rename in More) to open the field; reset by the shared title.
-  var beginRequest: Binding<Bool> = .constant(false)
   var searchQuery = ""
   var isEditing: Binding<Bool> = .constant(false)
   var clickAwayStamp: Binding<TimeInterval?> = .constant(nil)
@@ -28,7 +27,7 @@ struct TranscriptInlineTitle: View {
         localized: "Transcript name", comment: "History transcript: the rename field's placeholder."),
       storedTitle: { [transcripts, rowID] in transcripts.currentRow(id: rowID)?.customTitle },
       rename: { [transcripts, rowID] title in await transcripts.renameTitle(id: rowID, title: title) },
-      font: font, truncation: .middle, beginRequest: beginRequest, searchQuery: searchQuery,
+      font: font, truncation: .middle, searchQuery: searchQuery,
       isEditing: isEditing, clickAwayStamp: clickAwayStamp)
   }
 

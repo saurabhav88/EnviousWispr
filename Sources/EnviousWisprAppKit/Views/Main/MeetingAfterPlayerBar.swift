@@ -1,10 +1,9 @@
 import SwiftUI
 
-/// The docked player at the bottom of a finished meeting (#3147 PR4A, plan §3.6): elapsed time,
-/// a scrubber carrying the meeting's note markers (close notes merge into one "3 notes" marker
-/// that opens a list), total time, back and forward 15 seconds, Play / Pause / Play again, the
-/// shared speed menu with its checkmark, and Participants (who spoke, and for how long). Without
-/// a playable recording it says why.
+/// The player under a finished meeting's panes (#3147 PR4A, plan §3.6; #4611 D10 one card): back
+/// and forward 15 seconds, Play / Pause / Play again, elapsed time, a line scrubber carrying the
+/// meeting's note markers (close notes merge into one "3 notes" marker that opens a list), total
+/// time and the shared speed menu with its checkmark. Without a playable recording it says why.
 ///
 /// It drives the meeting's ONE shared player (`MeetingPlaybackController`, known to the
 /// now-playing arbiter), never a second engine, with the same speeds, skips and replay as the
@@ -17,24 +16,25 @@ struct MeetingAfterPlayerBar: View {
   enum Content {
     case player(MeetingPlaybackController)
     case unavailable(MeetingAfterPresentation.DockAbsence)
+    /// #4611 T6/T7 (transcript page): "Audio unavailable" and why, in the card's place.
+    case audioUnavailable(reason: String)
   }
 
   let content: Content
-  let markers: [MeetingAfterPresentation.NoteMarker]
-  let participants: [MeetingAfterPresentation.Participant]
-  /// A note marker (or a note in a cluster's list) was chosen.
-  let onSelectNote: (MeetingAfterPresentation.NoteMarker) -> Void
 
-  /// The dock's height (the approved mock's 88 pt).
-  static let height: CGFloat = 88
+  private var isAudioUnavailable: Bool {
+    if case .audioUnavailable = content { return true }
+    return false
+  }
 
+  /// #4611 D10: one card under the panes: round skip buttons, a round Play / Pause, then the
+  /// line scrubber with the note markers, then speed. Who spoke moved to the page header's
+  /// speakers button (D9).
   var body: some View {
     Group {
       switch content {
       case .player(let player):
-        MeetingAfterPlayerControls(
-          player: player, markers: markers, participants: participants,
-          onSelectNote: onSelectNote)
+        MeetingAfterPlayerControls(player: player)
       case .unavailable(let absence):
         HStack(spacing: DesignSpacing.lg) {
           Image(systemName: "waveform.slash")
@@ -46,88 +46,71 @@ struct MeetingAfterPlayerBar: View {
             .foregroundStyle(.stTextSecondary)
             .lineLimit(2)
             .frame(maxWidth: .infinity, alignment: .leading)
-          if !participants.isEmpty {
-            MeetingParticipantsButton(participants: participants)
-          }
         }
+        .frame(minHeight: 48)
+      case .audioUnavailable(let reason):
+        HStack(alignment: .firstTextBaseline, spacing: DesignSpacing.lg) {
+          Image(systemName: "waveform.slash")
+            .font(.stHelper)
+            .foregroundStyle(.stTextSecondary)
+            .accessibilityHidden(true)
+          VStack(alignment: .leading, spacing: DesignSpacing.xxs) {
+            Text(
+              "Audio unavailable",
+              comment: "History transcript player: the original audio or video file can't play.")
+              .font(.stRowLabel)
+              .foregroundStyle(.stTextPrimary)
+            Text(verbatim: reason)
+              .font(.stHelper)
+              .foregroundStyle(.stTextSecondary)
+              .fixedSize(horizontal: false, vertical: true)
+          }
+          .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(minHeight: 48)
+        .accessibilityElement(children: .combine)
       }
     }
-    .padding(.horizontal, DesignSpacing.xl + DesignSpacing.md)
-    .frame(maxWidth: .infinity, minHeight: Self.height, maxHeight: Self.height)
-    .background(Color.stSectionBg)
-    .overlay(alignment: .top) {
-      Rectangle().fill(Color.stDivider).frame(height: 1).allowsHitTesting(false)
-    }
+    .padding(.horizontal, DesignSpacing.xl)
+    .padding(.vertical, DesignSpacing.md)
+    .frame(maxWidth: .infinity)
+    .background(Color.stSectionBg, in: RoundedRectangle(cornerRadius: DesignRadius.xxl))
+    .overlay(
+      // The approved transcript mock draws the Audio unavailable card with a dashed edge.
+      RoundedRectangle(cornerRadius: DesignRadius.xxl)
+        .strokeBorder(
+          Color.stDivider, style: StrokeStyle(lineWidth: 1, dash: isAudioUnavailable ? [4, 3] : []))
+        .allowsHitTesting(false)
+    )
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel(Text("Playback", comment: "Meeting player: the group of playback controls."))
   }
 }
 
 /// The working controls, reading the player's position and state.
 private struct MeetingAfterPlayerControls: View {
   let player: MeetingPlaybackController
-  let markers: [MeetingAfterPresentation.NoteMarker]
-  let participants: [MeetingAfterPresentation.Participant]
-  let onSelectNote: (MeetingAfterPresentation.NoteMarker) -> Void
   @State private var scrubMs: Double?
 
   private typealias P = HistoryTranscriptPresentation
 
   var body: some View {
-    let duration = Double(max(1, player.durationMs))
-    let shown = scrubMs ?? Double(player.positionMs)
     let unavailable = player.state == .unavailable
     let action = P.playAction(for: player.state)
-    return VStack(spacing: DesignSpacing.xs) {
-      HStack(spacing: DesignSpacing.lg) {
-        Text(verbatim: MeetingsPresentation.clock(ms: Int(shown)))
-          .font(.stHelper.monospacedDigit())
-          .foregroundStyle(player.state == .playing ? Color.stAccent : Color.stTextSecondary)
-          .accessibilityHidden(true)
-        Slider(
-          value: Binding(get: { shown }, set: { scrubMs = $0 }), in: 0...duration,
-          onEditingChanged: { editing in
-            guard !editing, let target = scrubMs else { return }
-            player.seek(toMs: Int(target))
-            scrubMs = nil
+    return VStack(alignment: .leading, spacing: DesignSpacing.xs) {
+      ViewThatFits(in: .horizontal) {
+        HStack(spacing: DesignSpacing.lg) {
+          transport(action: action, unavailable: unavailable)
+          seekRow(unavailable: unavailable).frame(minWidth: 280)
+          speedMenu
+        }
+        VStack(alignment: .leading, spacing: DesignSpacing.sm) {
+          seekRow(unavailable: unavailable)
+          HStack {
+            transport(action: action, unavailable: unavailable)
+            Spacer(minLength: 0)
+            speedMenu
           }
-        )
-        .tint(.stAccent)
-        .disabled(unavailable)
-        .accessibilityLabel(
-          Text("Position", comment: "History transcript dock: the playback scrubber.")
-        )
-        .accessibilityValue(Text(verbatim: MeetingsPresentation.clock(ms: Int(shown))))
-        .background {
-          HistoryPlaybackWaveform(player: player, positionMs: Int(shown))
-        }
-        .overlay(alignment: .top) {
-          MeetingNoteMarkerTrack(
-            markers: markers, durationMs: player.durationMs,
-            onSelect: { marker in
-              player.seek(toMs: marker.ms)
-              onSelectNote(marker)
-            })
-        }
-        Text(verbatim: MeetingsPresentation.clock(ms: player.durationMs))
-          .font(.stHelper.monospacedDigit())
-          .foregroundStyle(.stTextSecondary)
-          .accessibilityHidden(true)
-      }
-      HStack(spacing: DesignSpacing.xl) {
-        skipButton(back: true, disabled: unavailable)
-        Button {
-          switch action {
-          case .pause: player.pause()
-          case .play, .replay: player.play()
-          }
-        } label: {
-          EnviousButtonLabel(
-            verbatim: P.playLabel(action), size: .medium, systemImage: P.playSymbol(action))
-        }
-        .settingsButton(.filled, size: .medium, isEnabled: !unavailable)
-        skipButton(back: false, disabled: unavailable)
-        speedMenu
-        if !participants.isEmpty {
-          MeetingParticipantsButton(participants: participants)
         }
       }
       if unavailable {
@@ -141,19 +124,76 @@ private struct MeetingAfterPlayerControls: View {
     }
   }
 
+  private func seekRow(unavailable: Bool) -> some View {
+    let duration = Double(max(1, player.durationMs))
+    let shown = scrubMs ?? Double(player.positionMs)
+    return HStack(spacing: DesignSpacing.md) {
+      Text(verbatim: MeetingsPresentation.clock(ms: Int(shown)))
+        .font(.stHelper.monospacedDigit())
+        .foregroundStyle(player.state == .playing ? Color.stAccent : Color.stTextSecondary)
+        .frame(minWidth: 40, alignment: .trailing)
+        .accessibilityHidden(true)
+      // The native slider is the line: accent fill to the knob, the rest in the track tone.
+      // Founder 2026-11-17: no note markers on it (note times stay in Your notes).
+      Slider(
+        value: Binding(get: { shown }, set: { scrubMs = $0 }), in: 0...duration,
+        onEditingChanged: { editing in
+          guard !editing, let target = scrubMs else { return }
+          player.seek(toMs: Int(target))
+          scrubMs = nil
+        }
+      )
+      .tint(.stAccent)
+      .disabled(unavailable)
+      .accessibilityLabel(
+        Text("Position", comment: "History transcript dock: the playback scrubber.")
+      )
+      .accessibilityValue(Text(verbatim: MeetingsPresentation.clock(ms: Int(shown))))
+      Text(verbatim: MeetingsPresentation.clock(ms: player.durationMs))
+        .font(.stHelper.monospacedDigit())
+        .foregroundStyle(.stTextSecondary)
+        .frame(minWidth: 40, alignment: .leading)
+        .accessibilityHidden(true)
+    }
+  }
+
+  private func transport(action: HistoryTranscriptPresentation.PlayAction, unavailable: Bool)
+    -> some View
+  {
+    HStack(spacing: DesignSpacing.xs) {
+      skipButton(back: true, disabled: unavailable)
+      Button {
+        switch action {
+        case .pause: player.pause()
+        case .play, .replay: player.play()
+        }
+      } label: {
+        Image(systemName: P.playSymbol(action))
+          .font(.stRowTitle)
+          .foregroundStyle(unavailable ? Color.stTextTertiary : Color.white)
+          .frame(width: 48, height: 48)
+          .background(
+            unavailable ? Color.stInputBg : Color.stAccentSolid, in: Circle())
+          .contentShape(Circle())
+      }
+      .buttonStyle(.plain)
+      .disabled(unavailable)
+      .help(Text(verbatim: P.playLabel(action)))
+      .accessibilityLabel(Text(verbatim: P.playLabel(action)))
+      skipButton(back: false, disabled: unavailable)
+    }
+    .fixedSize()
+  }
+
   private func skipButton(back: Bool, disabled: Bool) -> some View {
     Button {
       let target = P.skip(
         from: player.positionMs, by: back ? -P.skipMs : P.skipMs, durationMs: player.durationMs)
       player.seek(toMs: target)
     } label: {
-      Image(systemName: back ? "gobackward.15" : "goforward.15")
-        .font(.stRowTitle)
-        .frame(minWidth: 28, minHeight: 28)
-        .contentShape(Rectangle())
+      MeetingRoundIcon(systemImage: back ? "gobackward.15" : "goforward.15", disabled: disabled)
     }
-    .buttonStyle(.borderless)
-    .foregroundStyle(.stTextBody)
+    .buttonStyle(.plain)
     .disabled(disabled)
     .help(Text(back ? Self.backLabel : Self.forwardLabel))
     .accessibilityLabel(Text(back ? Self.backLabel : Self.forwardLabel))
@@ -171,16 +211,19 @@ private struct MeetingAfterPlayerControls: View {
         }
       }
     } label: {
-      Text(verbatim: P.rateLabel(player.playbackRate))
-        .font(.stRowLabel.monospacedDigit())
+      // #4611 D10 (founder 2026-11-17, the approved mock): plain "1×" in the reading colour, no
+      // border and no arrows; a light accent wash on hover. It still opens the speed menu.
+      MeetingSpeedLabel(text: P.rateLabel(player.playbackRate))
     }
-    .menuStyle(.borderlessButton)
+    .menuStyle(.button)
     .menuIndicator(.hidden)
+    .buttonStyle(.plain)
     .fixedSize()
     .help(
       Text(
         "Playback speed \(P.rateLabel(player.playbackRate))",
-        comment: "History transcript dock: the speed menu. %@ is a speed like 1.25×."))
+        comment: "History transcript dock: the speed menu. %@ is a speed like 1.25×.")
+    )
     .accessibilityLabel(
       Text(
         "Playback speed \(P.rateLabel(player.playbackRate))",
@@ -193,103 +236,105 @@ private struct MeetingAfterPlayerControls: View {
     "Forward 15 seconds", comment: "History transcript dock: jumps 15 seconds forward.")
 }
 
-/// The note markers above the scrubber. Each marker is its own button; a cluster opens the
-/// list of its notes.
-private struct MeetingNoteMarkerTrack: View {
-  let markers: [MeetingAfterPresentation.NoteMarker]
-  let durationMs: Int
-  let onSelect: (MeetingAfterPresentation.NoteMarker) -> Void
-  @State private var openCluster: UUID?
-
-  /// The slider's knob keeps its track this far in from each edge.
-  private static let trackInset: CGFloat = 8
+/// The speed menu's face: the current speed as plain text, 44 pt tall, washed on hover.
+private struct MeetingSpeedLabel: View {
+  let text: String
+  @State private var hovering = false
 
   var body: some View {
-    GeometryReader { geometry in
-      let width = max(0, geometry.size.width - 2 * Self.trackInset)
-      let clusters = MeetingAfterPresentation.clusters(
-        markers, durationMs: durationMs, trackWidth: width)
-      ForEach(clusters) { cluster in
-        marker(cluster)
-          .position(
-            x: Self.trackInset + CGFloat(cluster.ms) / CGFloat(max(1, durationMs)) * width,
-            y: -4)
-      }
-    }
-    .frame(height: 0)
-  }
-
-  private func marker(_ cluster: MeetingAfterPresentation.MarkerCluster) -> some View {
-    let label = MeetingAfterPresentation.clusterLabel(cluster)
-    return Button {
-      if cluster.markers.count == 1 {
-        onSelect(cluster.markers[0])
-      } else {
-        openCluster = cluster.id
-      }
-    } label: {
-      Image(systemName: cluster.markers.count == 1 ? "note.text" : "square.stack")
-        .font(.stHelper)
-        .foregroundStyle(.stAccent)
-        .frame(minWidth: 20, minHeight: 20)
-        .contentShape(Rectangle())
-    }
-    .buttonStyle(.plain)
-    .help(Text(verbatim: cluster.markers.count == 1 ? cluster.markers[0].text : label))
-    .accessibilityLabel(Text(verbatim: label))
-    .popover(
-      isPresented: Binding(
-        get: { openCluster == cluster.id },
-        set: { if !$0, openCluster == cluster.id { openCluster = nil } })
-    ) {
-      VStack(alignment: .leading, spacing: DesignSpacing.sm) {
-        Text(verbatim: label)
-          .font(.stRowLabel)
-          .foregroundStyle(.stTextPrimary)
-        ForEach(cluster.markers) { note in
-          Button {
-            openCluster = nil
-            onSelect(note)
-          } label: {
-            HStack(alignment: .firstTextBaseline, spacing: DesignSpacing.md) {
-              Text(verbatim: MeetingsPresentation.clock(ms: note.ms))
-                .font(.stHelper.monospacedDigit())
-                .foregroundStyle(.stTextSecondary)
-              Text(verbatim: note.text)
-                .font(.stBody)
-                .foregroundStyle(.stTextBody)
-                .lineLimit(2)
-                .frame(maxWidth: 280, alignment: .leading)
-            }
-            .contentShape(Rectangle())
-          }
-          .buttonStyle(.plain)
-        }
-      }
-      .padding(DesignSpacing.lg)
-    }
+    Text(verbatim: text)
+      .font(.stRowLabel)
+      .monospacedDigit()
+      .foregroundStyle(Color.stTextPrimary)
+      .frame(minWidth: 60, minHeight: 44)
+      .padding(.horizontal, DesignSpacing.sm)
+      .background(
+        hovering ? Color.stAccentLight : Color.clear,
+        in: RoundedRectangle(cornerRadius: DesignRadius.lg))
+      .contentShape(RoundedRectangle(cornerRadius: DesignRadius.lg))
+      .onHover { hovering = $0 }
   }
 }
 
-/// Participants: who spoke and their share of the measured speaking time.
-struct MeetingParticipantsButton: View {
+/// A round 44 pt icon button face (the player's skip buttons): secondary at rest, accent on a
+/// light accent wash on hover.
+private struct MeetingRoundIcon: View {
+  let systemImage: String
+  let disabled: Bool
+  @State private var hovering = false
+
+  var body: some View {
+    Image(systemName: systemImage)
+      .font(.stRowTitle)
+      .foregroundStyle(
+        disabled ? Color.stTextTertiary : hovering ? Color.stAccent : Color.stTextSecondary)
+      .frame(width: 44, height: 44)
+      .background(hovering && !disabled ? Color.stAccentLight : Color.clear, in: Circle())
+      .contentShape(Circle())
+      .onHover { hovering = $0 }
+  }
+}
+
+/// #4611 D9: the page header's "3 speakers" with a colored dot per named speaker (the transcript's
+/// speaker colors) and a small down arrow, as plain text. It opens who spoke and their share of the
+/// measured speaking time (the Participants list it replaces).
+struct MeetingSpeakersButton: View {
+  /// "3 speakers".
+  let label: String
   let participants: [MeetingAfterPresentation.Participant]
+  /// Each named speaker's color index (`MeetingAfterPresentation.speakerColorIndices`).
+  let colorIndices: [String: Int]
   @State private var open = false
+  @State private var hovering = false
 
   var body: some View {
     Button {
       open = true
     } label: {
-      EnviousButtonLabel(
-        LocalizedStringResource(
-          "Participants", comment: "Meeting player: opens who spoke and for how long."),
-        size: .medium, systemImage: "person.2")
+      HStack(spacing: DesignSpacing.sm) {
+        let dots = participants.compactMap { colorIndices[$0.id] }.sorted().prefix(6)
+        if !dots.isEmpty {
+          HStack(spacing: -2) {
+            ForEach(Array(dots), id: \.self) { index in
+              Circle()
+                .fill(Color.speakerColor(forIndex: index))
+                .frame(width: 9, height: 9)
+                .overlay(Circle().strokeBorder(Color.stPageBg, lineWidth: 1.5))
+            }
+          }
+          .accessibilityHidden(true)
+        }
+        Text(verbatim: label)
+          .font(.stRowLabel)
+          .monospacedDigit()
+        Image(systemName: "chevron.down")
+          .imageScale(.small)
+          .accessibilityHidden(true)
+      }
+      // Founder 2026-11-17 (the mock): plain text with a small arrow, no border; a light wash on
+      // hover says it opens something.
+      .foregroundStyle(Color.stTextPrimary)
+      .padding(.horizontal, DesignSpacing.sm)
+      .padding(.vertical, DesignSpacing.xxs)
+      .background(
+        hovering ? Color.stAccentLight : Color.clear,
+        in: RoundedRectangle(cornerRadius: DesignRadius.md))
+      .contentShape(RoundedRectangle(cornerRadius: DesignRadius.md))
+      .onHover { hovering = $0 }
     }
-    .settingsButton(.quiet, size: .medium, isEnabled: true)
+    .buttonStyle(.plain)
+    .fixedSize()
     .help(
       Text(
         "Who spoke, and for how long",
-        comment: "Meeting player: hover hint on the Participants button."))
+        comment: "Meeting player: hover hint on the Participants button.")
+    )
+    .accessibilityLabel(
+      Text(
+        "\(label). Show share of speaking time",
+        comment:
+          "History meeting header, VoiceOver: the speakers button. %@ is the count, like 3 speakers.")
+    )
     .popover(isPresented: $open) {
       VStack(alignment: .leading, spacing: DesignSpacing.md) {
         Text(

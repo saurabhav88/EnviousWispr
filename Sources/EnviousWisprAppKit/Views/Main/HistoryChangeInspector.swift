@@ -9,6 +9,10 @@ struct HistoryChangeInspector: View {
   let onHear: (Double) -> Void
   let onCopyOriginal: (String) -> Void
   let onDone: () -> Void
+  /// Copy original shows "Copied" for the shared hold time.
+  /// When Copy original was last pressed; a later press or another change clears it.
+  @State private var copiedOriginalAt: Date?
+  private var copiedOriginal: Bool { copiedOriginalAt != nil }
 
   var body: some View {
     VStack(alignment: .leading, spacing: DesignSpacing.lg) {
@@ -56,12 +60,21 @@ struct HistoryChangeInspector: View {
         if !detail.original.isEmpty {
           Button {
             onCopyOriginal(detail.original)
+            let pressed = Date()
+            copiedOriginalAt = pressed
+            Task {
+              try? await Task.sleep(for: .seconds(TranscribeFileExport.copiedHoldSeconds))
+              if copiedOriginalAt == pressed { copiedOriginalAt = nil }
+            }
           } label: {
             EnviousButtonLabel(
-              LocalizedStringResource(
-                "Copy original",
-                comment: "History change details: copies the words before AI polish."),
-              size: .medium, systemImage: "doc.on.doc")
+              copiedOriginal
+                ? LocalizedStringResource(
+                  "Copied", comment: "History change details: Copy original just copied.")
+                : LocalizedStringResource(
+                  "Copy original",
+                  comment: "History change details: copies the words before AI polish."),
+              size: .medium, systemImage: copiedOriginal ? "checkmark" : "doc.on.doc")
           }
           .settingsButton(.quiet, size: .medium, isEnabled: true)
         }
@@ -77,6 +90,8 @@ struct HistoryChangeInspector: View {
       }
     }
     .padding(DesignSpacing.xl)
+    // The inspector is reused for the next marked change: its Copied state belongs to the last.
+    .onChange(of: detail.original) { _, _ in copiedOriginalAt = nil }
     .background(Color.stInputBg, in: RoundedRectangle(cornerRadius: DesignRadius.xl))
     .overlay(
       RoundedRectangle(cornerRadius: DesignRadius.xl)

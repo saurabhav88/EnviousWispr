@@ -21,6 +21,12 @@ package final class LiveSettingsKeyMonitor: SettingsKeyMonitoring {
     }
   }
 
+  package func installConsuming(_ handler: @escaping @MainActor (NSEvent) -> Bool) -> Any? {
+    NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+      MainActor.assumeIsolated { handler(event) } ? nil : event
+    }
+  }
+
   package func remove(_ token: Any) {
     NSEvent.removeMonitor(token)
   }

@@ -27,7 +27,8 @@ import SwiftUI
 /// render captures; pressed paint is compared in Live UAT (plan §11.1).
 struct EnviousButtonStyle: PrimitiveButtonStyle {
   var emphasis: EnviousButtonFace.Emphasis = .outlined
-  var shape: EnviousButtonFace.Shape = .capsule
+  /// Nil: the surrounding screen's shape (`EnvironmentValues.enviousButtonShape`).
+  var shape: EnviousButtonFace.Shape? = nil
   var size: EnviousButtonFace.Size = .regular
   /// The legacy paint switch: the caller's own `isEnabled`, which decides the enabled or
   /// disabled colours. It never enables anything: activation and hover follow the effective
@@ -87,7 +88,7 @@ extension View {
   /// this type and kept its own modifier still works when CLICKED, so nothing on
   /// screen would say Escape had stopped answering.
   func settingsButton(
-    _ emphasis: EnviousButtonFace.Emphasis = .outlined, shape: EnviousButtonFace.Shape = .capsule,
+    _ emphasis: EnviousButtonFace.Emphasis = .outlined, shape: EnviousButtonFace.Shape? = nil,
     size: EnviousButtonFace.Size = .regular, isEnabled: Bool, shortcut: KeyboardShortcut? = nil
   ) -> some View {
     buttonStyle(
@@ -214,7 +215,9 @@ struct EnviousButtonFace: ViewModifier {
   enum Emphasis { case outlined, filled, destructive, quiet }
 
   /// The outline this button is cut from. Capsule everywhere in Settings; the file-import
-  /// wizard uses the prototype's 9pt rounded rectangle (#2772 finding 9).
+  /// wizard uses the prototype's 9pt rounded rectangle (#2772 finding 9), and so does every
+  /// History button (founder #4611, 2026-11-17), set once for the screen through
+  /// `EnvironmentValues.enviousButtonShape`.
   enum Shape { case capsule, roundedRect }
 
   /// How big. `regular` is every pre-#2772 call site, byte for byte. The other two are the
@@ -248,11 +251,13 @@ struct EnviousButtonFace: ViewModifier {
   }
 
   var emphasis: Emphasis = .outlined
-  var shape: Shape = .capsule
+  /// Nil: the surrounding screen's shape (`EnvironmentValues.enviousButtonShape`).
+  var shape: Shape? = nil
   var size: Size = .regular
   /// The caller's own enabled flag, for paint only. See `EnviousButtonStyle.paintsEnabled`.
   var paintsEnabled = true
 
+  @Environment(\.enviousButtonShape) private var screenShape
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   /// A PARENT can disable this control without touching `isEnabled`, and then
   /// the two disagree. See `SettingsHover.respondsToPointer`.
@@ -265,7 +270,7 @@ struct EnviousButtonFace: ViewModifier {
   }
 
   func body(content: Content) -> some View {
-    switch shape {
+    switch shape ?? screenShape {
     case .capsule: painted(content, in: Capsule())
     case .roundedRect: painted(content, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
     }
@@ -382,4 +387,11 @@ struct EnviousHelpGlyph: View {
       // have the hover effect").
       .settingsHoverQuiet(tint: .stAccent, recoloursContent: false)
   }
+}
+
+extension EnvironmentValues {
+  /// The shape of every `EnviousButtonFace` that does not name its own: capsule in Settings,
+  /// rounded rectangle across History (founder #4611, 2026-11-17: "everything in history that is
+  /// a button rectangular and uniform"; media play buttons stay round).
+  @Entry var enviousButtonShape: EnviousButtonFace.Shape = .capsule
 }

@@ -1295,6 +1295,17 @@
         }
       }
     },
+    "%@. Show share of speaking time" : {
+      "comment" : "History meeting header, VoiceOver: the speakers button. %@ is the count, like 3 speakers.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@. Redeanteil anzeigen"
+          }
+        }
+      }
+    },
     "%@. Undo available." : {
       "comment" : "VoiceOver reading of the pill: %@ is the pill's sentence, then the Undo button is announced.",
       "localizations" : {
@@ -1388,17 +1399,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld ms"
-          }
-        }
-      }
-    },
-    "%lld notes" : {
-      "comment" : "Meeting player: a note marker holding several notes close together. Never 1.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld Notizen"
           }
         }
       }
@@ -1615,17 +1615,6 @@
         }
       }
     },
-    "1 dictation" : {
-      "comment" : "History day heading: one dictation that day.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "1 Diktat"
-          }
-        }
-      }
-    },
     "1 dictation selected" : {
       "comment" : "History selection: one item ticked.",
       "localizations" : {
@@ -1703,17 +1692,6 @@
         }
       }
     },
-    "1 meeting" : {
-      "comment" : "History day heading: one meeting that day.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "1 Meeting"
-          }
-        }
-      }
-    },
     "1 meeting selected" : {
       "comment" : "History selection: one item ticked.",
       "localizations" : {
@@ -1765,17 +1743,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "1 neues Wort gefunden. %@ hast du bereits."
-          }
-        }
-      }
-    },
-    "1 note" : {
-      "comment" : "Meeting player: a note marker on the timeline holding one note.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "1 Notiz"
           }
         }
       }
@@ -1842,17 +1809,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "1 Schreibweise"
-          }
-        }
-      }
-    },
-    "1 transcript" : {
-      "comment" : "History day heading: one transcript that day.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "1 Transkript"
           }
         }
       }
@@ -2300,17 +2256,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Anbieter für KI-Nachbearbeitung"
-          }
-        }
-      }
-    },
-    "AI Polished" : {
-      "comment" : "History detail chip: AI polish rewrote this text.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mit KI nachbearbeitet"
           }
         }
       }
@@ -2793,6 +2738,17 @@
         }
       }
     },
+    "AI summary, writing a new version" : {
+      "comment" : "History meeting: hover hint on the AI summary tab while a summary is written.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-Zusammenfassung, neue Version wird erstellt"
+          }
+        }
+      }
+    },
     "ALL LANGUAGES" : {
       "localizations" : {
         "de" : {
@@ -2972,16 +2928,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Automatisches Einfügen benötigt Zugriff auf Bedienungshilfen"
-          }
-        }
-      }
-    },
-    "Accessibility permission required for paste" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Einfügen benötigt Zugriff auf Bedienungshilfen"
           }
         }
       }
@@ -3660,17 +3606,6 @@
         }
       }
     },
-    "All apps" : {
-      "comment" : "History, Dictations: the App filter shows every app.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Alle Apps"
-          }
-        }
-      }
-    },
     "All categories" : {
       "comment" : "Your Words: filter showing every category.",
       "localizations" : {
@@ -4137,13 +4072,13 @@
         }
       }
     },
-    "Any call app" : {
-      "comment" : "History, Meetings: the Call app filter shows every meeting.",
+    "Any app" : {
+      "comment" : "History, Dictations: the App filter shows every app.\nHistory, Meetings: the app filter shows meetings from every call app.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Alle Anruf-Apps"
+            "value" : "Beliebige App"
           }
         }
       }
@@ -4934,6 +4869,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Das Audio eines Meetings, das gerade aufgenommen oder transkribiert wird, wird nie entfernt. Ohne Audio kann ein Meeting nicht erneut transkribiert werden."
+          }
+        }
+      }
+    },
+    "Audio unavailable" : {
+      "comment" : "History transcript card footer: the original audio or video file can't play. Hover gives the reason.\nHistory transcript player: the original audio or video file can't play.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Audio nicht verfügbar"
           }
         }
       }
@@ -5886,7 +5832,7 @@
       }
     },
     "Cancel" : {
-      "comment" : "App Settings, Recordings: keeps the current keep period.\nEnviousMeet: closes the call-sound explanation without recording.\nEnviousMeet: keeps the meeting as it is.\nHistory selection: keeps the selected items.\nHistory transcript: stops Transcribe again with.\nLive Preview settings, Universal engine card: button. It stops the download.\nSettings > AI Polish, local model row: button that stops the download.\nSpeech engine settings, remove confirm box: keeps the speech model.\nYour Words, Learn from: the Forget learning memory confirmation: keeps the memory.\nYour Words, Learn from: the self-learning dictionary row: button that stops the download.",
+      "comment" : "App Settings, Recordings: keeps the current keep period.\nEnviousMeet: closes the call-sound explanation without recording.\nEnviousMeet: keeps the meeting as it is.\nHistory meeting: stops writing the new summary.\nHistory selection: keeps the selected items.\nHistory transcript: stops Transcribe again with.\nLive Preview settings, Universal engine card: button. It stops the download.\nSettings > AI Polish, local model row: button that stops the download.\nSpeech engine settings, remove confirm box: keeps the speech model.\nYour Words, Learn from: the Forget learning memory confirmation: keeps the memory.\nYour Words, Learn from: the self-learning dictionary row: button that stops the download.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -6883,6 +6829,17 @@
         }
       }
     },
+    "Choose one day, or a start and end date, then Apply." : {
+      "comment" : "History date filter: one line above the calendar explaining how to pick days.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle einen Tag oder ein Start- und Enddatum und klicke dann auf Anwenden."
+          }
+        }
+      }
+    },
     "Choose short, distinctive words after the keyword." : {
       "localizations" : {
         "de" : {
@@ -7255,6 +7212,17 @@
         }
       }
     },
+    "Click %@ above to start one." : {
+      "comment" : "History, Meetings: empty tab explanation. %@ is the name of the record button above the list.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klicke oben auf %@, um ein Meeting zu starten."
+          }
+        }
+      }
+    },
     "Click Change to choose the keys you use." : {
       "localizations" : {
         "de" : {
@@ -7294,6 +7262,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Klicke auf ein markiertes Wort, um zu vergleichen"
+          }
+        }
+      }
+    },
+    "Click a purple time to hear that part" : {
+      "comment" : "History transcript: hint beside the Cleaned view when the original can play and turn times show.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klicke auf eine violette Zeit, um diese Stelle anzuhören"
           }
         }
       }
@@ -7546,6 +7525,28 @@
         }
       }
     },
+    "Compare summaries" : {
+      "comment" : "History meeting: the sheet comparing the current and the new summary.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zusammenfassungen vergleichen"
+          }
+        }
+      }
+    },
+    "Compare versions" : {
+      "comment" : "History: the sheet comparing the current and the new text.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Versionen vergleichen"
+          }
+        }
+      }
+    },
     "Comparing against your existing snippets." : {
       "comment" : "Snippets, import snippets: working.",
       "localizations" : {
@@ -7731,7 +7732,7 @@
       }
     },
     "Copied" : {
-      "comment" : "Transcribe a File: the Copy button's title for two seconds after a press.\nVoiceOver announcement after the transcript is copied.",
+      "comment" : "History change details: Copy original just copied.\nHistory meeting: a pane's Copy button, just after copying.\nTranscribe a File: the Copy button's title for two seconds after a press.\nVoiceOver announcement after the transcript is copied.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -7796,7 +7797,7 @@
       }
     },
     "Copy" : {
-      "comment" : "EnviousMeet: copies the visible transcript.\nHistory dictation card: copies the text.",
+      "comment" : "History dictation card: copies the text.\nHistory meeting: a pane's Copy button.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -7808,6 +7809,17 @@
     },
     "Copy cleaned" : {
       "comment" : "Export button: copy the cleaned text (shown in Marked Up view).",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nachbearbeiteten Text kopieren"
+          }
+        }
+      }
+    },
+    "Copy cleaned text" : {
+      "comment" : "History transcript: Copy in Cleaned.\nHistory transcript: Copy in Marked up, which copies the cleaned text.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -7860,6 +7872,17 @@
         }
       }
     },
+    "Copy notes" : {
+      "comment" : "History meeting: copies the meeting's notes.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notizen kopieren"
+          }
+        }
+      }
+    },
     "Copy original" : {
       "comment" : "History change details: copies the words before AI polish.",
       "localizations" : {
@@ -7867,6 +7890,50 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Original kopieren"
+          }
+        }
+      }
+    },
+    "Copy original text" : {
+      "comment" : "History transcript: Copy in Original.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Originaltext kopieren"
+          }
+        }
+      }
+    },
+    "Copy polished text" : {
+      "comment" : "History transcript: Copy in Polished.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nachbearbeiteten Text kopieren"
+          }
+        }
+      }
+    },
+    "Copy summary" : {
+      "comment" : "History meeting: copies the AI summary.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zusammenfassung kopieren"
+          }
+        }
+      }
+    },
+    "Copy text" : {
+      "comment" : "History transcript and meeting pages: copies the words shown.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Text kopieren"
           }
         }
       }
@@ -7881,12 +7948,13 @@
         }
       }
     },
-    "Copy to clipboard" : {
+    "Copy transcript" : {
+      "comment" : "History meeting card: copies the meeting's transcript. Tooltip and VoiceOver label.\nHistory meeting: copies the visible transcript.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "In die Zwischenablage kopieren"
+            "value" : "Transkript kopieren"
           }
         }
       }
@@ -7988,6 +8056,28 @@
         }
       }
     },
+    "Couldn't change the saved text version. Try again." : {
+      "comment" : "History dictation card: Restore original text or Use polished text failed.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die gespeicherte Textversion konnte nicht geändert werden. Versuch es erneut."
+          }
+        }
+      }
+    },
+    "Couldn't change whether this recording is kept. Try again." : {
+      "comment" : "History dictation card: keeping or un-keeping the recording failed.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Es konnte nicht geändert werden, ob diese Aufnahme behalten wird. Versuch es erneut."
+          }
+        }
+      }
+    },
     "Couldn't confirm the new %@ call" : {
       "comment" : "EnviousMeet: a switch stopped the old recording, but the new call could not be checked; the app's short name.",
       "localizations" : {
@@ -8006,6 +8096,39 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Der gesamte Verlauf konnte nicht gelöscht werden. Versuche es erneut."
+          }
+        }
+      }
+    },
+    "Couldn't delete the dictation. Try again." : {
+      "comment" : "History dictation card: deleting the dictation failed.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Diktat konnte nicht gelöscht werden. Versuch es erneut."
+          }
+        }
+      }
+    },
+    "Couldn't delete the meeting. Try again." : {
+      "comment" : "History meeting card: deleting the meeting failed.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Meeting konnte nicht gelöscht werden. Versuch es erneut."
+          }
+        }
+      }
+    },
+    "Couldn't delete the recording. Try again." : {
+      "comment" : "History dictation card: deleting only the recording failed.\nHistory meeting card: deleting the recording failed.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Aufnahme konnte nicht gelöscht werden. Versuch es erneut."
           }
         }
       }
@@ -8054,12 +8177,13 @@
         }
       }
     },
-    "Couldn't finish polishing. Choose a model to try again." : {
+    "Couldn't finish polishing." : {
+      "comment" : "History: polishing again failed; title of the warning notice.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Die Textoptimierung konnte nicht abgeschlossen werden. Wähle ein Modell, um es erneut zu versuchen."
+            "value" : "Die Nachbearbeitung konnte nicht abgeschlossen werden."
           }
         }
       }
@@ -8109,6 +8233,7 @@
       }
     },
     "Couldn't load History" : {
+      "comment" : "History: the list could not be read.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -8295,12 +8420,13 @@
         }
       }
     },
-    "Couldn't write a new summary. Choose a model to try again." : {
+    "Couldn't write a new summary." : {
+      "comment" : "History meeting: writing a new summary for comparison failed.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Es konnte keine neue Zusammenfassung erstellt werden. Wähle ein Modell, um es erneut zu versuchen."
+            "value" : "Es konnte keine neue Zusammenfassung erstellt werden."
           }
         }
       }
@@ -8382,6 +8508,17 @@
         }
       }
     },
+    "Current" : {
+      "comment" : "History comparison sheet: the saved text's column.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktuell"
+          }
+        }
+      }
+    },
     "Current dictation engine" : {
       "comment" : "Settings search result: the heading that names the speech engine in use.",
       "localizations" : {
@@ -8400,16 +8537,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aktueller Schritt"
-          }
-        }
-      }
-    },
-    "Current version" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aktuelle Version"
           }
         }
       }
@@ -8729,7 +8856,7 @@
       }
     },
     "Delete recording" : {
-      "comment" : "History: confirms deleting one dictation's audio.",
+      "comment" : "History meeting card: confirms deleting only the meeting's recording.\nHistory meeting page: confirms deleting only the meeting's recording.\nHistory: confirms deleting one dictation's audio.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -8860,17 +8987,6 @@
         }
       }
     },
-    "Delete this meeting's audio? The transcript stays, but you cannot transcribe it again." : {
-      "comment" : "EnviousMeet: confirmation before Delete audio.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Audioaufnahme dieses Meetings löschen? Das Transkript bleibt erhalten, aber du kannst das Meeting danach nicht erneut transkribieren."
-          }
-        }
-      }
-    },
     "Delete this meeting's recording?" : {
       "comment" : "History meeting: confirmation title before deleting only the audio.",
       "localizations" : {
@@ -8878,17 +8994,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aufnahme dieses Meetings löschen?"
-          }
-        }
-      }
-    },
-    "Delete this meeting, its audio and its transcript? This cannot be undone." : {
-      "comment" : "EnviousMeet: confirmation before Delete meeting.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dieses Meeting samt Audioaufnahme und Transkript löschen? Das lässt sich nicht rückgängig machen."
           }
         }
       }
@@ -9488,7 +9593,7 @@
       }
     },
     "Dismiss" : {
-      "comment" : "EnviousMeet: closes a notice about the last recording.\nHistory: closes the one-time recording notice for good.",
+      "comment" : "Accessibility warning banner: hides the banner.\nEnviousMeet: closes a notice about the last recording.\nHistory meeting: hides the failed new summary message.\nHistory, a meeting: hides the out-of-date summary notice until the meeting changes again.\nHistory: closes the one-time recording notice for good.\nHistory: hides the failed polish message.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -9532,7 +9637,7 @@
       }
     },
     "Done" : {
-      "comment" : "AI Polish, Ollama: closes the model list sheet.\nHistory change details: closes the details.\nLive Preview settings: catalog done button.\nSpoken punctuation window: button that closes the window.\nTranscribe a File: a step name in the step bar.\nVoiceOver: an Ollama setup step that is finished.",
+      "comment" : "AI Polish, Ollama: closes the model list sheet.\nHistory change details: closes the details.\nHistory: leaves selection mode (the Select button while selecting).\nLive Preview settings: catalog done button.\nSpoken punctuation window: button that closes the window.\nTranscribe a File: a step name in the step bar.\nVoiceOver: an Ollama setup step that is finished.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -9549,17 +9654,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Fertig"
-          }
-        }
-      }
-    },
-    "Done selecting" : {
-      "comment" : "History: leaves selection mode.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Auswahl beenden"
           }
         }
       }
@@ -10242,7 +10336,7 @@
       }
     },
     "Edit" : {
-      "comment" : "Menu bar menu in the closing film's picture of a Mac.",
+      "comment" : "History meeting: a pane's Edit button (notes or summary).\nMenu bar menu in the closing film's picture of a Mac.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -13711,6 +13805,17 @@
         }
       }
     },
+    "Its notes, transcript, summary and recording are removed from this Mac. This can't be undone." : {
+      "comment" : "History meeting card: confirmation message before deleting the whole meeting.\nHistory meeting page: confirmation message before deleting the whole meeting.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Notizen, das Transkript, die Zusammenfassung und die Aufnahme werden von diesem Mac entfernt. Das lässt sich nicht rückgängig machen."
+          }
+        }
+      }
+    },
     "Its text and recording are removed from this Mac. This can't be undone." : {
       "comment" : "History: confirmation message before deleting one dictation.",
       "localizations" : {
@@ -13809,6 +13914,7 @@
       }
     },
     "Keep current" : {
+      "comment" : "History comparison: keeps the saved text.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -13977,6 +14083,7 @@
       }
     },
     "Keep new" : {
+      "comment" : "History comparison: saves the new text.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -14052,6 +14159,17 @@
         }
       }
     },
+    "Keep this dictation instead of deleting it in 24 hours" : {
+      "comment" : "History dictation card: tooltip of Keep on a cancelled dictation.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieses Diktat behalten, statt es nach 24 Stunden zu löschen"
+          }
+        }
+      }
+    },
     "Keep this recording" : {
       "comment" : "History: keeps this dictation's recording from being removed automatically.",
       "localizations" : {
@@ -14059,16 +14177,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Diese Aufnahme behalten"
-          }
-        }
-      }
-    },
-    "Keep this recording permanently instead of letting it be deleted" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Diese Aufnahme dauerhaft behalten, statt sie löschen zu lassen"
           }
         }
       }
@@ -15918,6 +16026,17 @@
         }
       }
     },
+    "Meeting details changed after this summary was written." : {
+      "comment" : "History, a meeting: the meeting's details (such as calendar facts) changed after the AI summary was written.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Meeting-Details wurden geändert, nachdem diese Zusammenfassung erstellt wurde."
+          }
+        }
+      }
+    },
     "Meeting name" : {
       "comment" : "EnviousMeet: the rename field's placeholder.",
       "localizations" : {
@@ -16433,17 +16552,6 @@
         }
       }
     },
-    "Move the recording to this note" : {
-      "comment" : "History meeting: a note's time; moves playback there without playing.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Zur Stelle dieser Notiz springen"
-          }
-        }
-      }
-    },
     "Moving EnviousWispr" : {
       "comment" : "Move to Applications: the heading while the app is being moved. EnviousWispr is the app name; keep it.",
       "localizations" : {
@@ -16640,6 +16748,17 @@
         }
       }
     },
+    "Needs audio" : {
+      "comment" : "History meeting: why Follow playback is off, there is no recording.\nHistory transcript settings: Follow playback needs the original to play.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Benötigt Audio"
+          }
+        }
+      }
+    },
     "Needs macOS 26 or later." : {
       "comment" : "Live Preview settings, preview engine: apple needs newer mac os.",
       "localizations" : {
@@ -16680,6 +16799,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "App erforderlich"
+          }
+        }
+      }
+    },
+    "Needs timestamps" : {
+      "comment" : "History meeting: why Follow playback is off, no turn has a time.\nHistory transcript settings: Follow playback needs saved turn times.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Benötigt Zeitstempel"
           }
         }
       }
@@ -16739,6 +16869,17 @@
         }
       }
     },
+    "New" : {
+      "comment" : "History comparison sheet: the new text's column.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neu"
+          }
+        }
+      }
+    },
     "New %@ call. Take notes on it instead?" : {
       "comment" : "EnviousMeet: a new call started while a meeting records; the app's short name.",
       "localizations" : {
@@ -16792,12 +16933,13 @@
         }
       }
     },
-    "New version" : {
+    "New version written with %@" : {
+      "comment" : "History comparison sheet: which AI model wrote the new version. %@ is the model.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Neue Version"
+            "value" : "Neue Version erstellt mit %@"
           }
         }
       }
@@ -16824,7 +16966,7 @@
       }
     },
     "Next" : {
-      "comment" : "EnviousMeet setup: shows the next how-it-works card.",
+      "comment" : "EnviousMeet setup: shows the next how-it-works card.\nHistory page header: opens the older item below this one in the list.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -17060,6 +17202,7 @@
       }
     },
     "No dictations yet" : {
+      "comment" : "History, Dictations: empty tab title.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -17146,6 +17289,7 @@
       }
     },
     "No matching history." : {
+      "comment" : "History: title when a search or filter finds nothing.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -17274,6 +17418,7 @@
       }
     },
     "No recordings yet" : {
+      "comment" : "History, Meetings: empty tab title.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -17496,7 +17641,19 @@
         }
       }
     },
+    "No times saved" : {
+      "comment" : "History meeting: why Timestamps is off, this transcript has no times.\nHistory transcript settings: this transcript was saved without turn times.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Zeiten gespeichert"
+          }
+        }
+      }
+    },
     "No transcripts yet" : {
+      "comment" : "History, Transcripts: empty tab title.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -18098,6 +18255,17 @@
         }
       }
     },
+    "Notes, transcript and summary stay. The recording is permanently deleted, so you can't play it or transcribe it again." : {
+      "comment" : "History meeting card: confirmation message before deleting only the recording.\nHistory meeting page: confirmation message before deleting only the recording.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notizen, Transkript und Zusammenfassung bleiben erhalten. Die Aufnahme wird dauerhaft gelöscht, du kannst sie also weder abspielen noch erneut transkribieren."
+          }
+        }
+      }
+    },
     "Notes, transcripts and summaries stay. Only the audio is removed from this Mac." : {
       "comment" : "History selection: what deleting meeting recordings removes.",
       "localizations" : {
@@ -18164,6 +18332,7 @@
       }
     },
     "Nothing here yet" : {
+      "comment" : "History: empty list title when nothing was ever saved.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -18881,6 +19050,17 @@
         }
       }
     },
+    "Open More actions and choose a model to try again." : {
+      "comment" : "History: under a failed polish; says how to try polishing again.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öffne „Weitere Aktionen“ und wähle ein Modell, um es erneut zu versuchen."
+          }
+        }
+      }
+    },
     "Open Recordings settings" : {
       "comment" : "History: button on the storage warning that opens App Settings > Recordings.",
       "localizations" : {
@@ -19159,7 +19339,7 @@
       }
     },
     "Original" : {
-      "comment" : "History change details: label before the words before AI polish.\nHistory detail section title: the words as first transcribed.\nHistory dictation card: the view showing your words before AI polish.\nHistory transcript: the words as the speech engine wrote them.",
+      "comment" : "History change details: label before the words before AI polish.\nHistory dictation card: the view showing your words before AI polish.\nHistory transcript: the words as the speech engine wrote them.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -19253,17 +19433,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Original im Verlauf wiederhergestellt"
-          }
-        }
-      }
-    },
-    "Original unavailable" : {
-      "comment" : "History transcript footer: the original audio or video file can't play. Hover gives the reason.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Original nicht verfügbar"
           }
         }
       }
@@ -19498,17 +19667,6 @@
         }
       }
     },
-    "Participants" : {
-      "comment" : "Meeting player: opens who spoke and for how long.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Teilnehmende"
-          }
-        }
-      }
-    },
     "Pashto" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -19597,16 +19755,6 @@
         }
       }
     },
-    "Paste into active app" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "In aktive App einfügen"
-          }
-        }
-      }
-    },
     "Paste last dictation" : {
       "comment" : "Menu bar menu, VoiceOver: the icon beside Paste Last Dictation.",
       "localizations" : {
@@ -19635,6 +19783,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Tastenkürzel zum Einfügen des letzten Diktats"
+          }
+        }
+      }
+    },
+    "Paste needs Accessibility permission." : {
+      "comment" : "History: banner shown while the app cannot paste because Accessibility permission is off.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einfügen benötigt die Berechtigung für Bedienungshilfen."
           }
         }
       }
@@ -19670,12 +19829,13 @@
         }
       }
     },
-    "Paste unavailable — Accessibility permission required" : {
+    "Paste transcript into app" : {
+      "comment" : "History meeting, More menu: pastes the visible transcript into the previous app.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Einfügen nicht verfügbar — Zugriff auf Bedienungshilfen erforderlich"
+            "value" : "Transkript in die App einfügen"
           }
         }
       }
@@ -20038,6 +20198,17 @@
         }
       }
     },
+    "Play from %@" : {
+      "comment" : "EnviousMeet transcript, VoiceOver: a turn's time that plays the recording from there. %@ is the time.\nHistory meeting: VoiceOver label of a note's time. %@ is the time, like 1:05.\nHistory meeting: VoiceOver label of a quote's source time. %@ is the time, like 1:05.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ab %@ abspielen"
+          }
+        }
+      }
+    },
     "Play from here" : {
       "comment" : "EnviousMeet transcript: plays the recording from this turn's start.",
       "localizations" : {
@@ -20060,6 +20231,17 @@
         }
       }
     },
+    "Play the recording from this note" : {
+      "comment" : "History meeting: a note's time; plays the recording from there.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Aufnahme ab dieser Notiz abspielen"
+          }
+        }
+      }
+    },
     "Play your recording" : {
       "comment" : "History help: item title.",
       "localizations" : {
@@ -20067,6 +20249,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aufnahme abspielen"
+          }
+        }
+      }
+    },
+    "Playback" : {
+      "comment" : "Meeting player: the group of playback controls.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wiedergabe"
           }
         }
       }
@@ -20170,7 +20363,7 @@
       }
     },
     "Polished" : {
-      "comment" : "History change details: label before the words AI polish wrote.\nHistory detail section title: the AI-polished text.\nHistory dictation card: the view showing the AI-polished words.\nHistory transcript: the polished words view.",
+      "comment" : "History change details: label before the words AI polish wrote.\nHistory dictation card: the view showing the AI-polished words.\nHistory transcript: the polished words view.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -20471,6 +20664,7 @@
       }
     },
     "Press your keybind and start talking." : {
+      "comment" : "History, Dictations: empty tab explanation.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -20519,6 +20713,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Während einer Aufnahme ist die Vorschau nicht verfügbar."
+          }
+        }
+      }
+    },
+    "Previous" : {
+      "comment" : "History page header: opens the newer item above this one in the list.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorheriges"
           }
         }
       }
@@ -20591,17 +20796,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Priya"
-          }
-        }
-      }
-    },
-    "Processed" : {
-      "comment" : "History detail section title: the cleaned-up text.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Verarbeitet"
           }
         }
       }
@@ -21732,6 +21926,83 @@
         }
       }
     },
+    "Refresh summary" : {
+      "comment" : "History, a meeting: the out-of-date summary notice; opens the list of AI models to write the summary again.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zusammenfassung aktualisieren"
+          }
+        }
+      }
+    },
+    "Refresh the summary to bring it up to date." : {
+      "comment" : "History, a meeting: under the meeting-changed line; what Refresh summary does.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktualisiere die Zusammenfassung, um sie auf den neuesten Stand zu bringen."
+          }
+        }
+      }
+    },
+    "Refresh the summary to include them." : {
+      "comment" : "History, a meeting: under the meeting-details line; what Refresh summary does.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktualisiere die Zusammenfassung, um sie einzubeziehen."
+          }
+        }
+      }
+    },
+    "Refresh the summary to include your changes." : {
+      "comment" : "History, a meeting: under the notes-changed line; what Refresh summary does.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktualisiere die Zusammenfassung, um deine Änderungen einzubeziehen."
+          }
+        }
+      }
+    },
+    "Refresh the summary to match it." : {
+      "comment" : "History, a meeting: under the transcript-changed line; what Refresh summary does.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktualisiere die Zusammenfassung, damit sie dazu passt."
+          }
+        }
+      }
+    },
+    "Refresh the summary to use the current one." : {
+      "comment" : "History, a meeting: under the older-setup line; what Refresh summary does.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktualisiere die Zusammenfassung, um die aktuelle Einstellung zu verwenden."
+          }
+        }
+      }
+    },
+    "Refresh the summary to use the new names." : {
+      "comment" : "History, a meeting: under the speaker-names line; what Refresh summary does.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktualisiere die Zusammenfassung, um die neuen Namen zu verwenden."
+          }
+        }
+      }
+    },
     "Refreshing models…" : {
       "comment" : "AI Polish model menu: models are being loaded.",
       "localizations" : {
@@ -21942,17 +22213,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Modell wird entfernt..."
-          }
-        }
-      }
-    },
-    "Rename" : {
-      "comment" : "EnviousMeet: saves the meeting's new name.\nHistory transcript: opens the title's rename field.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Umbenennen"
           }
         }
       }
@@ -22566,16 +22826,6 @@
         }
       }
     },
-    "Save as a text file" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Als Textdatei speichern"
-          }
-        }
-      }
-    },
     "Save as…" : {
       "comment" : "Export button: save the transcript to a file.\nHistory meeting: saves the transcript and notes as a text file.",
       "localizations" : {
@@ -22605,6 +22855,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Diktataufnahmen speichern"
+          }
+        }
+      }
+    },
+    "Save notes and transcript…" : {
+      "comment" : "History meeting, More menu: saves the notes and the transcript as a text file.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notizen und Transkript speichern …"
           }
         }
       }
@@ -22774,7 +23035,7 @@
       }
     },
     "Saving…" : {
-      "comment" : "History meeting: the notes are being saved.\nHistory, a meeting: the notes are being written to disk.",
+      "comment" : "History meeting: the kept new summary is being saved.\nHistory meeting: the notes are being saved.\nHistory, a meeting: the notes are being written to disk.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -23530,6 +23791,17 @@
         }
       }
     },
+    "Share transcript…" : {
+      "comment" : "History meeting, More menu: shares the visible transcript.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkript teilen …"
+          }
+        }
+      }
+    },
     "Share usage metrics" : {
       "comment" : "Permissions settings, Privacy: switch label.",
       "localizations" : {
@@ -23726,6 +23998,17 @@
         }
       }
     },
+    "Show source: %@" : {
+      "comment" : "History meeting summary, VoiceOver: a source link. %@ is the place, like Your notes · 0:28.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quelle anzeigen: %@"
+          }
+        }
+      }
+    },
     "Show the Bluetooth reminder once per launch." : {
       "comment" : "Microphone settings, Bluetooth guide: short line under Show Bluetooth tips.",
       "localizations" : {
@@ -23754,6 +24037,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Laufende Aufnahme anzeigen"
+          }
+        }
+      }
+    },
+    "Show where this came from" : {
+      "comment" : "History meeting summary: hover hint on a summary item's source link.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anzeigen, woher das stammt"
           }
         }
       }
@@ -24398,6 +24692,17 @@
         }
       }
     },
+    "Speaker names changed after this summary was written." : {
+      "comment" : "History, a meeting: a speaker was renamed after the AI summary was written.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Sprechernamen wurden geändert, nachdem diese Zusammenfassung erstellt wurde."
+          }
+        }
+      }
+    },
     "Speaker names need Accessibility, which was off when this meeting was recorded. Names can't be added to this meeting now, but you can still rename each speaker. Allow Accessibility before your next call." : {
       "comment" : "History: a meeting recorded without the Accessibility permission, so no participant names were read from the call app.",
       "localizations" : {
@@ -24427,6 +24732,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Transkriptions-Engine wird noch heruntergeladen"
+          }
+        }
+      }
+    },
+    "Speech engine: %@" : {
+      "comment" : "History page header, VoiceOver: the speech engine that wrote the words. %@ is its name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkriptions-Engine: %@"
           }
         }
       }
@@ -24579,16 +24895,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aufnahme starten"
-          }
-        }
-      }
-    },
-    "Start a recording from the menu bar." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Starte eine Aufnahme über die Menüleiste."
           }
         }
       }
@@ -25687,17 +25993,6 @@
         }
       }
     },
-    "That didn't work. Try again." : {
-      "comment" : "History meeting card: deleting a meeting or its recording failed.\nHistory: a recording action (keep or delete) failed.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Das hat nicht geklappt. Versuch es erneut."
-          }
-        }
-      }
-    },
     "That download did not finish. Check your connection and try again." : {
       "comment" : "Live Preview settings: pack install failed.",
       "localizations" : {
@@ -26615,17 +26910,6 @@
         }
       }
     },
-    "The meeting changed after this summary was written. It may be out of date." : {
-      "comment" : "History, a meeting: the summary was written from an older transcript, names or notes.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Das Meeting wurde geändert, nachdem diese Zusammenfassung erstellt wurde. Sie ist möglicherweise nicht mehr aktuell."
-          }
-        }
-      }
-    },
     "The meeting couldn't be deleted. Try again." : {
       "comment" : "History meeting: Delete meeting failed.",
       "localizations" : {
@@ -26735,6 +27019,17 @@
         }
       }
     },
+    "The new text replaces this meeting's transcript, including speaker names and cleanup. Your recording is kept." : {
+      "comment" : "History meeting: confirmation message before Transcribe again with.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der neue Text ersetzt das Transkript dieses Meetings, einschließlich Sprechernamen und Nachbearbeitung. Deine Aufnahme bleibt erhalten."
+          }
+        }
+      }
+    },
     "The new text replaces this transcript, including speaker names and cleanup. Your original file isn't changed." : {
       "comment" : "History transcript: confirmation message before Transcribe again with.",
       "localizations" : {
@@ -26764,17 +27059,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Das Modell auf dem Gerät ist noch nicht bereit. Es wird möglicherweise noch heruntergeladen. Versuche es später erneut."
-          }
-        }
-      }
-    },
-    "The original file can't be played right now." : {
-      "comment" : "History transcript dock: reading the original file failed while playing.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Originaldatei kann gerade nicht abgespielt werden."
           }
         }
       }
@@ -26819,6 +27103,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nachbearbeitungs-Engine"
+          }
+        }
+      }
+    },
+    "The polished version" : {
+      "comment" : "History dictation card: hint beside the Polished view.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die nachbearbeitete Version"
           }
         }
       }
@@ -26922,22 +27217,24 @@
         }
       }
     },
-    "The saved summary changed. Choose a model to try again." : {
+    "The saved summary changed." : {
+      "comment" : "History meeting: the summary changed while a new one was being kept, so it was not saved.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Die gespeicherte Zusammenfassung hat sich geändert. Wähle ein Modell, um es erneut zu versuchen."
+            "value" : "Die gespeicherte Zusammenfassung hat sich geändert."
           }
         }
       }
     },
-    "The saved text changed. Choose a model to try again." : {
+    "The saved text changed." : {
+      "comment" : "History: the text changed while polishing again; title of the warning notice.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Der gespeicherte Text hat sich geändert. Wähle ein Modell, um es erneut zu versuchen."
+            "value" : "Der gespeicherte Text hat sich geändert."
           }
         }
       }
@@ -27064,6 +27361,17 @@
         }
       }
     },
+    "The transcript changed after this summary was written." : {
+      "comment" : "History, a meeting: the transcript changed (Transcribe again, or an edit) after the AI summary was written.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Transkript wurde geändert, nachdem diese Zusammenfassung erstellt wurde."
+          }
+        }
+      }
+    },
     "The transcript could not be made. Transcribe again to try once more." : {
       "comment" : "EnviousMeet detail: why a meeting has no transcript, with what to do.",
       "localizations" : {
@@ -27071,17 +27379,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Das Transkript konnte nicht erstellt werden. Versuche es mit „Erneut transkribieren“ noch einmal."
-          }
-        }
-      }
-    },
-    "The transcript could not be saved" : {
-      "comment" : "EnviousMeet: Save failed.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Das Transkript konnte nicht gespeichert werden"
           }
         }
       }
@@ -27557,6 +27854,17 @@
         }
       }
     },
+    "This meeting changed after this summary was written." : {
+      "comment" : "History, a meeting: more than one thing (notes, transcript, names, settings) changed after the AI summary was written.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieses Meeting wurde geändert, nachdem diese Zusammenfassung erstellt wurde."
+          }
+        }
+      }
+    },
     "This meeting has no transcript, so it has no summary." : {
       "comment" : "History, a meeting with no transcript: its Summary tab.",
       "localizations" : {
@@ -27693,6 +28001,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Diese Aufnahme wurde aus dem Verlauf entfernt."
+          }
+        }
+      }
+    },
+    "This summary was written with an older summary setup." : {
+      "comment" : "History, a meeting: the summary engine or model in Settings, the model's version or the app's summary instructions (after an app update) changed after the AI summary was written.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Zusammenfassung wurde mit einer älteren Zusammenfassungs-Einstellung erstellt."
           }
         }
       }
@@ -27959,12 +28278,22 @@
       }
     },
     "Times" : {
-      "comment" : "History transcript: shows each turn's start time.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Mal"
+          }
+        }
+      }
+    },
+    "Timestamps" : {
+      "comment" : "History transcript and meeting pages: shows or hides each turn's start time.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zeitstempel"
           }
         }
       }
@@ -28133,7 +28462,7 @@
       }
     },
     "Transcribe again" : {
-      "comment" : "EnviousMeet setup: welcome tile title.\nHistory transcript: confirms Transcribe again with.",
+      "comment" : "EnviousMeet setup: welcome tile title.\nHistory meeting: confirms Transcribe again with.\nHistory transcript: confirms Transcribe again with.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -28166,7 +28495,7 @@
       }
     },
     "Transcribe again with %@?" : {
-      "comment" : "History transcript: confirmation title before Transcribe again with. %@ is a speech model name.",
+      "comment" : "History meeting: confirmation title before Transcribe again with. %@ is a speech model name.\nHistory transcript: confirmation title before Transcribe again with. %@ is a speech model name.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -28337,7 +28666,7 @@
       }
     },
     "Transcript" : {
-      "comment" : "History detail title for a row made with Transcribe a File. Also the default file name when saving it.\nTranscribe a File, Done step: the document title when the file has no name.\nWindow menu name for a transcript opened in its own window.",
+      "comment" : "History detail title for a row made with Transcribe a File. Also the default file name when saving it.\nHistory meeting summary: a source link's place, the transcript.\nHistory meeting: the transcript pane's title.\nTranscribe a File, Done step: the document title when the file has no name.\nWindow menu name for a transcript opened in its own window.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -28376,6 +28705,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Name des Transkripts"
+          }
+        }
+      }
+    },
+    "Transcript settings" : {
+      "comment" : "History meeting: the transcript pane's settings button.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkript-Einstellungen"
           }
         }
       }
@@ -28456,6 +28796,7 @@
       }
     },
     "Try a different search, or another filter." : {
+      "comment" : "History: explanation when a search or filter finds nothing.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -28466,12 +28807,23 @@
       }
     },
     "Try again" : {
-      "comment" : "History meeting: runs the failed deletion again.\nHistory meeting: saves the notes again.\nHistory, a meeting: reads the saved notes again.\nHistory, a meeting: saves the notes again.\nHistory, a meeting: saves the summary changes again.\nLive Preview settings: pack retry.\nMeetings: saves the meeting's new name again.\nSetup Downloads: retry one card's step.\nTranscribe a File, Done step: button that retries speaker labelling.\nTranscribe a File, Review step: button that retries after a refusal.\nYour Words, Learn from: the self-learning dictionary row: button that retries loading the model.\nYour Words, Learn from: the self-learning dictionary row: retry the word check download.",
+      "comment" : "History meeting: runs the failed deletion again.\nHistory meeting: saves the notes again.\nHistory, a meeting: reads the saved notes again.\nHistory, a meeting: saves the notes again.\nHistory, a meeting: saves the summary changes again.\nHistory: reloads History after it could not be read.\nLive Preview settings: pack retry.\nMeetings: saves the meeting's new name again.\nSetup Downloads: retry one card's step.\nTranscribe a File, Done step: button that retries speaker labelling.\nTranscribe a File, Review step: button that retries after a refusal.\nYour Words, Learn from: the self-learning dictionary row: button that retries loading the model.\nYour Words, Learn from: the self-learning dictionary row: retry the word check download.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Erneut versuchen"
+          }
+        }
+      }
+    },
+    "Try another model" : {
+      "comment" : "History meeting: after a failed new summary, opens the list of AI models to try again.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anderes Modell versuchen"
           }
         }
       }
@@ -28493,6 +28845,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Versuche zuerst diese"
+          }
+        }
+      }
+    },
+    "Try writing it with a different model." : {
+      "comment" : "History meeting: under a failed new summary; nudges the user to pick another AI model.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Versuche, sie mit einem anderen Modell zu erstellen."
           }
         }
       }
@@ -29249,6 +29612,7 @@
       }
     },
     "Use Transcribe a File to add one." : {
+      "comment" : "History, Transcripts: empty tab explanation.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -29659,17 +30023,6 @@
         }
       }
     },
-    "View source" : {
-      "comment" : "History meeting summary: shows where this item came from.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Quelle anzeigen"
-          }
-        }
-      }
-    },
     "Vocabulary Packs" : {
       "comment" : "Your Words: a tab in the side rail.",
       "localizations" : {
@@ -29989,17 +30342,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Was die Spracherkennung vor der Bereinigung geschrieben hat"
-          }
-        }
-      }
-    },
-    "What was pasted" : {
-      "comment" : "History dictation card: hint beside the Polished view.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Der eingefügte Text"
           }
         }
       }
@@ -30554,13 +30896,13 @@
         }
       }
     },
-    "Write again" : {
-      "comment" : "History, a meeting: writes its summary again.",
+    "Write notes" : {
+      "comment" : "History meeting: starts writing notes for this meeting.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Erneut erstellen"
+            "value" : "Notizen schreiben"
           }
         }
       }
@@ -30587,6 +30929,17 @@
         }
       }
     },
+    "Write summary with" : {
+      "comment" : "History meeting, More menu: opens the list of AI models to write the first summary.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zusammenfassung erstellen mit"
+          }
+        }
+      }
+    },
     "Writes down what was said." : {
       "comment" : "Transcribe a File, Review step: the transcription engine's card in the processing path.",
       "localizations" : {
@@ -30599,6 +30952,7 @@
       }
     },
     "Writing a new summary…" : {
+      "comment" : "History meeting: a new summary is being written for comparison.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -31228,6 +31582,17 @@
         }
       }
     },
+    "Your current summary stays until you pick." : {
+      "comment" : "History meeting: under Writing a new summary; nothing is replaced yet.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine aktuelle Zusammenfassung bleibt, bis du auswählst."
+          }
+        }
+      }
+    },
     "Your dictation keeps its full speed. Turn Faster Transcription off to see the preview." : {
       "comment" : "Live Preview settings: status paused detail.",
       "localizations" : {
@@ -31251,6 +31616,7 @@
       }
     },
     "Your dictations, transcripts and recordings will appear here." : {
+      "comment" : "History: empty list explanation when nothing was ever saved.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -31423,7 +31789,7 @@
       }
     },
     "Your notes" : {
-      "comment" : "History meeting: the user's own notes pane.",
+      "comment" : "History meeting summary: a source link's place, the notes.\nHistory meeting: the user's own notes pane.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -31440,6 +31806,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Deine Notizen sind fertig"
+          }
+        }
+      }
+    },
+    "Your notes changed after this summary was written." : {
+      "comment" : "History, a meeting: the user's notes changed after the AI summary was written.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Notizen wurden geändert, nachdem diese Zusammenfassung erstellt wurde."
           }
         }
       }

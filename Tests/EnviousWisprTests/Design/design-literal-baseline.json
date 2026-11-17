@@ -54,15 +54,9 @@
       "fontSize" : 4,
       "radius" : 2
     },
-    "Sources\/EnviousWisprAppKit\/Views\/Components\/AccessibilityWarningBanner.swift" : {
-      "radius" : 2
-    },
     "Sources\/EnviousWisprAppKit\/Views\/Components\/HotkeyRecorderView.swift" : {
       "fontSize" : 1,
       "radius" : 1
-    },
-    "Sources\/EnviousWisprAppKit\/Views\/Components\/PolishSetupBanner.swift" : {
-      "radius" : 2
     },
     "Sources\/EnviousWisprAppKit\/Views\/Components\/UpdateAvailableBanner.swift" : {
       "radius" : 2
@@ -78,10 +72,6 @@
     },
     "Sources\/EnviousWisprAppKit\/Views\/Main\/MeetingSummaryView.swift" : {
       "radius" : 1
-    },
-    "Sources\/EnviousWisprAppKit\/Views\/Main\/TranscriptDetailView.swift" : {
-      "fontSize" : 6,
-      "radius" : 2
     },
     "Sources\/EnviousWisprAppKit\/Views\/Main\/TurnDocumentView.swift" : {
       "radius" : 1

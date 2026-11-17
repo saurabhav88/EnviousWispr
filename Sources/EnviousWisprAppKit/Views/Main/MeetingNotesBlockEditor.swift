@@ -26,12 +26,14 @@ final class MeetingNotesEditorActions {
 /// id, kind and time; a paste of several lines is one step, and so is a run of typing in one
 /// block. A gutter shows when each block was first typed (none for notes
 /// written before blocks) and a task's tick. ⌘⇧7 makes the caret's block an action item or back
-/// to text; ⌘↩ ticks or unticks it. A new block starts at `currentMs`: the playback position
-/// while recording or the playback position after Stop, nil when nothing is known.
+/// to text; ⌘↩ ticks or unticks it. A new block starts at `currentMs`: the recording position
+/// while recording or the play bar's position after Stop, nil when nothing is known. A click on
+/// a block's time calls `playFrom` with it.
 struct MeetingNotesBlockEditor: View {
   let meetingID: UUID
   let notes: any MeetingNotesAccessing
   var currentMs: @MainActor () -> Int? = { nil }
+  var playFrom: (@MainActor (Int) -> Void)?
   var actions: MeetingNotesEditorActions?
 
   var body: some View {
@@ -39,7 +41,7 @@ struct MeetingNotesBlockEditor: View {
     VStack(alignment: .leading, spacing: 8) {
       MeetingNotesTextView(
         meetingID: meetingID, notes: notes, snapshot: snapshot, currentMs: currentMs,
-        actions: actions
+        playFrom: playFrom, actions: actions
       )
       .frame(minHeight: 240)
       .background(
@@ -103,9 +105,11 @@ struct MeetingNotesBlockEditor: View {
           Button {
             Task { _ = await notes.flush(meetingID) }
           } label: {
-            Text("Try again", comment: "History, a meeting: saves the notes again.")
+            EnviousButtonLabel(
+              LocalizedStringResource("Try again", comment: "History, a meeting: saves the notes again."),
+              size: .medium)
           }
-          .buttonStyle(.link)
+          .settingsButton(.quiet, size: .medium, isEnabled: true)
         } else {
           Text(
             "Your saved notes could not be read.",
@@ -117,9 +121,11 @@ struct MeetingNotesBlockEditor: View {
           Button {
             Task { _ = await notes.flush(meetingID) }
           } label: {
-            Text("Try again", comment: "History, a meeting: reads the saved notes again.")
+            EnviousButtonLabel(
+              LocalizedStringResource("Try again", comment: "History, a meeting: reads the saved notes again."),
+              size: .medium)
           }
-          .buttonStyle(.link)
+          .settingsButton(.quiet, size: .medium, isEnabled: true)
         }
       }
       .accessibilityIdentifier("history.meeting.notesSaveFailed")
@@ -227,6 +233,7 @@ struct MeetingNotesTextView: NSViewRepresentable {
   let notes: any MeetingNotesAccessing
   let snapshot: MeetingNotesSnapshot
   let currentMs: @MainActor () -> Int?
+  var playFrom: (@MainActor (Int) -> Void)?
   var actions: MeetingNotesEditorActions?
 
   func makeCoordinator() -> Coordinator { Coordinator() }
@@ -270,6 +277,7 @@ struct MeetingNotesTextView: NSViewRepresentable {
     coordinator.meetingID = meetingID
     coordinator.notes = notes
     coordinator.currentMs = currentMs
+    coordinator.playFrom = playFrom
     coordinator.viewEnabled = context.environment.isEnabled
     actions?.editor = coordinator
     coordinator.sync(snapshot)
@@ -281,6 +289,7 @@ struct MeetingNotesTextView: NSViewRepresentable {
     var meetingID: UUID?
     var notes: (any MeetingNotesAccessing)?
     var currentMs: @MainActor () -> Int? = { nil }
+    var playFrom: (@MainActor (Int) -> Void)?
     var viewEnabled = true
     /// The editor's own undo history (the text view registers none): each step restores the
     /// whole draft as it was, block ids, kinds and times included (`MeetingNotesEdit.restore`).
@@ -579,7 +588,7 @@ final class NotesTextView: NSTextView {
       .foregroundColor: NSColor(Color.stTextTertiary),
     ]
     for (block, top) in zip(blocks, tops) {
-      if let ms = block.startedAtMs {
+      if let ms = block.startedAtMs, !block.text.isEmpty {
         let label = Duration.milliseconds(ms).formatted(.time(pattern: .minuteSecond))
         (label as NSString).draw(at: NSPoint(x: 4, y: top), withAttributes: timeAttributes)
       }
@@ -606,8 +615,16 @@ final class NotesTextView: NSTextView {
     }
     let tops = blockTops()
     // The block whose first line starts at or above the click.
-    if let index = tops.lastIndex(where: { $0 <= point.y }), blocks[index].kind == .task {
-      coordinator?.toggleDone(blocks[index])
+    guard let index = tops.lastIndex(where: { $0 <= point.y }) else { return }
+    let block = blocks[index]
+    let tickStart = MeetingNotesTextView.gutterWidth - MeetingNotesTextView.fontSize - 6
+    if block.kind == .task, point.x >= tickStart {
+      coordinator?.toggleDone(block)
+    } else if let ms = block.startedAtMs, !block.text.isEmpty {
+      // The time plays the recording from that note.
+      coordinator?.playFrom?(ms)
+    } else if block.kind == .task {
+      coordinator?.toggleDone(block)
     }
   }
 

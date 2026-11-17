@@ -14,8 +14,10 @@ struct HistoryDiaryView<
 >: View {
   private let coordinator: TranscriptCoordinator
   private let dictationCard: (HistoryDictationDisplay, String) -> DictationCard
-  private let transcriptDestination: (UUID, @escaping () -> Void) -> TranscriptDestination
-  private let meetingDestination: (UUID, @escaping () -> Void) -> MeetingDestination
+  private let transcriptDestination:
+    (UUID, @escaping () -> Void, HistoryNeighbors) -> TranscriptDestination
+  private let meetingDestination:
+    (UUID, @escaping () -> Void, HistoryNeighbors) -> MeetingDestination
 
   @State private var selection = HistorySelection()
   @State private var isSelecting = false
@@ -28,9 +30,10 @@ struct HistoryDiaryView<
   init(
     coordinator: TranscriptCoordinator,
     @ViewBuilder dictationCard: @escaping (HistoryDictationDisplay, String) -> DictationCard,
-    @ViewBuilder transcriptDestination: @escaping (UUID, @escaping () -> Void) ->
+    @ViewBuilder transcriptDestination: @escaping (UUID, @escaping () -> Void, HistoryNeighbors) ->
       TranscriptDestination,
-    @ViewBuilder meetingDestination: @escaping (UUID, @escaping () -> Void) -> MeetingDestination
+    @ViewBuilder meetingDestination: @escaping (UUID, @escaping () -> Void, HistoryNeighbors) ->
+      MeetingDestination
   ) {
     self.coordinator = coordinator
     self.dictationCard = dictationCard
@@ -68,19 +71,25 @@ struct HistoryDiaryView<
         destination(for: openID)
           .frame(maxWidth: .infinity, maxHeight: .infinity)
           .environment(\.historyHighlightQuery, state.query)
+          .task(id: NeighborKey(open: openID, loaded: result?.items.count ?? 0)) {
+            loadPastEnd(of: openID)
+          }
       } else {
         VStack(alignment: .leading, spacing: 12) {
           SettingsTabStrip(items: HistoryDiaryLayout.tabItems, selection: tabBinding)
           HistoryFiltersView(
             coordinator: coordinator, tab: tab, state: state, isSelecting: isSelecting,
-            toggleSelecting: toggleSelecting)
+            toggleSelecting: toggleSelecting
+          ) {
+            if isSelecting == false { HistoryTabAction(coordinator: coordinator, tab: tab) }
+          }
           if isSelecting {
             HistorySelectionToolbar(
               coordinator: coordinator, tab: tab, selection: selection,
               result: canSelect ? result : nil)
           }
           if tab == .meetings, isSelecting == false {
-            HistoryMeetingsBar(coordinator: coordinator)
+            HistoryMeetingsBar()
           }
           if catalogStatus == .updating {
             Label("Updating History…", systemImage: "clock.arrow.circlepath")
@@ -97,7 +106,12 @@ struct HistoryDiaryView<
               Label("Couldn't load History", systemImage: "exclamationmark.triangle")
                 .foregroundStyle(.stTextSecondary)
               Spacer()
-              Button("Try again") { coordinator.loadIfNeeded() }
+              Button {
+                coordinator.loadIfNeeded()
+              } label: {
+                EnviousButtonLabel(HistoryEmptyMessage.tryAgain, size: .medium)
+              }
+              .settingsButton(.quiet, size: .medium, isEnabled: true)
             }
             .font(.stHelper)
           }
@@ -137,13 +151,23 @@ struct HistoryDiaryView<
         live.scrollAnchorID = liveAnchor.id
         coordinator.setHistoryState(live, for: tab)
       }
+      // With a page open, restore around the item on screen: after the arrows stepped past the
+      // loaded page, a restore around the item first opened lost the open one, and both arrows
+      // stayed disabled (founder, #4611). Back returns to the open item anyway.
+      if let open = live.openItemID, key.context == HistoryPaging.Context(tab: tab, state: live),
+        live.scrollAnchorID != open
+      {
+        live.scrollAnchorID = open
+        coordinator.setHistoryState(live, for: tab)
+      }
       if let result = await coordinator.historyResults(for: key) {
         #if DEBUG
           // #4611 listening code: how long after its save a new item reached the list.
           if let newest = result.items.first, newest.id != results[tab]?.items.first?.id {
             let age = Date().timeIntervalSince(newest.createdAt)
             if age < 120 {
-              let line = "new item shown tab=\(tab.rawValue) secondsAfterSave=\(String(format: "%.2f", age))"
+              let line =
+                "new item shown tab=\(tab.rawValue) secondsAfterSave=\(String(format: "%.2f", age))"
               Task { await AppLogger.shared.log(line, level: .info, category: "HistoryScroll") }
             }
           }
@@ -185,9 +209,66 @@ struct HistoryDiaryView<
   }
 
   @ViewBuilder private func destination(for id: HistoryItemID) -> some View {
+    let neighbors = neighbors(of: id)
     switch id {
-    case .transcript(let rowID): transcriptDestination(rowID, closeOpenItem)
-    case .meeting(let meetingID): meetingDestination(meetingID, closeOpenItem)
+    case .transcript(let rowID): transcriptDestination(rowID, closeOpenItem, neighbors)
+    case .meeting(let meetingID): meetingDestination(meetingID, closeOpenItem, neighbors)
+    }
+  }
+
+  private struct NeighborKey: Equatable {
+    let open: HistoryItemID
+    let loaded: Int
+  }
+
+  /// The open item's list as the reader left it (same tab, search, filters and order, newest
+  /// first), keeping only the items the list draws.
+  private func openList() -> [HistoryListItem]? {
+    let tab = coordinator.historyTab
+    let state = coordinator.requestedHistoryState(for: tab)
+    // The same list while a refresh reads (only its revision differs) still steps, so the
+    // arrows do not blink off on every background update.
+    guard let result = results[tab],
+      result.key.context == coordinator.historyQueryKey(for: tab, state: state).context
+    else { return nil }
+    return result.items.filter { coordinator.canRenderHistoryItem($0) }
+  }
+
+  /// #4611 (founder: "like an email inbox"): the items above and below the open one.
+  private func neighbors(of id: HistoryItemID) -> HistoryNeighbors {
+    guard let items = openList(), let index = items.firstIndex(where: { $0.id == id }) else {
+      return HistoryNeighbors(inList: true)
+    }
+    let previous = index > 0 ? items[index - 1].id : nil
+    let next = index + 1 < items.count ? items[index + 1].id : nil
+    return HistoryNeighbors(
+      inList: true,
+      previous: previous.map { target in { step(to: target) } },
+      next: next.map { target in { step(to: target) } })
+  }
+
+  /// Opens a neighbour in place. The page is rebuilt for it (its own `.id`), so the item left
+  /// stops playing and the new one starts at the top. The list's saved place is left alone: it
+  /// anchors the loaded page, and moving it reloaded the list from the new item, which lost
+  /// Previous. Back still returns to the new item (`closeOpenItem`).
+  private func step(to id: HistoryItemID) {
+    var state = coordinator.requestedHistoryState(for: coordinator.historyTab)
+    guard state.openItemID != nil else { return }
+    state.openItemID = id
+    coordinator.setHistoryState(state, for: coordinator.historyTab)
+  }
+
+  /// At the last (or first) loaded item, reads the next page so Next (or Previous) has a
+  /// neighbour when the list holds more.
+  private func loadPastEnd(of id: HistoryItemID) {
+    let tab = coordinator.historyTab
+    guard let result = results[tab], let items = openList(),
+      let index = items.firstIndex(where: { $0.id == id })
+    else { return }
+    if index == items.count - 1, result.continuation != nil {
+      loadNext(result, newer: false)
+    } else if index == 0, result.newerContinuation != nil {
+      loadNext(result, newer: true)
     }
   }
 
@@ -326,19 +407,16 @@ private struct HistoryDiaryList<DictationCard: View>: View {
     .recordingDimmed()
     .overlay {
       if items.isEmpty && coordinator.catalogSession?.status == .unavailable {
-        ContentUnavailableView {
-          Label("Couldn't load History", systemImage: "exclamationmark.triangle")
-        }
+        HistoryEmptyMessage(
+          systemImage: "exclamationmark.triangle", title: HistoryEmptyMessage.loadFailed)
       } else if items.isEmpty && coordinator.catalogSession?.status == .updating {
         ProgressView()
       } else if coordinator.catalogSession == nil,
         items.isEmpty && coordinator.historyReadAvailability == .unavailable
       {
-        ContentUnavailableView {
-          Label("Couldn't load History", systemImage: "exclamationmark.triangle")
-        } actions: {
-          Button("Try again") { coordinator.loadIfNeeded() }
-        }
+        HistoryEmptyMessage(
+          systemImage: "exclamationmark.triangle", title: HistoryEmptyMessage.loadFailed,
+          retry: { coordinator.loadIfNeeded() })
       } else if items.isEmpty
         && (!isCurrent
           || (coordinator.catalogSession == nil && coordinator.historyReadAvailability == .loading))
@@ -524,8 +602,7 @@ private struct HistoryDiaryList<DictationCard: View>: View {
     summary: HistoryCatalog.Summary? = nil
   ) -> some View {
     let card = HistoryMeetingCard(
-      meetingID: meetingID, onOpen: { open(item) }, allowsPlayback: !isSelecting, query: query,
-      summary: summary)
+      meetingID: meetingID, onOpen: { open(item) }, query: query, summary: summary)
     if isSelecting && canSelect {
       openableCard(item, items: items) { card.allowsHitTesting(false) }
     } else {
@@ -609,6 +686,8 @@ private struct HistoryCatalogDictationRow<Card: View>: View {
   let query: String
   let card: (HistoryDictationDisplay, String) -> Card
 
+  @State private var previewExpanded = false
+
   /// #4609: the card draws complete from the catalog's display data on first display, so no
   /// file read can resize it while the list scrolls. A row this process holds live (just saved
   /// or edited here) draws from that row: for unchanged content both give the same card.
@@ -622,13 +701,10 @@ private struct HistoryCatalogDictationRow<Card: View>: View {
       if let display {
         card(display, query)
       } else {
-        HistoryParagraphText.searchText(summary.preview, query: query)
-          .font(.stBody)
-          .foregroundStyle(.stTextBody)
-          .lineLimit(3)
-          .padding(DesignSpacing.lg)
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .historyRowCard(isSelected: false)
+        // A row the index saved before #4609 has only its preview: the same text and card
+        // frame as a full dictation card, without the buttons it has no data for.
+        HistoryClampedText(text: summary.preview, query: query, expanded: $previewExpanded)
+          .historyDiaryCard()
       }
     }
   }
@@ -719,8 +795,8 @@ private struct HistoryDayHeader: View {
             .foregroundStyle(.stAccent)
         }
         Spacer(minLength: DesignSpacing.md)
-        if hasExactTotal {
-          Text(HistoryDiaryLayout.daySummary(tab: tab, count: day.total))
+        if hasExactTotal, let summary = HistoryDiaryLayout.daySummary(tab: tab, count: day.total) {
+          Text(summary)
             .font(.stHelper)
             .foregroundStyle(.stTextSecondary)
         }
@@ -777,11 +853,21 @@ struct HistoryDestinationBar: View {
   let close: () -> Void
 
   var body: some View {
+    // A plain link, no outline (founder, #4611 page header): the page's own buttons sit on the
+    // right, and the way back reads as navigation, not as one more action.
     Button(action: close) {
-      EnviousButtonLabel(
-        verbatim: HistoryDiaryLayout.tabTitle(tab), size: .medium, systemImage: "chevron.left")
+      HStack(spacing: DesignSpacing.xxs) {
+        Image(systemName: "chevron.left")
+          .fontWeight(.semibold)
+          .accessibilityHidden(true)
+        Text(verbatim: HistoryDiaryLayout.tabTitle(tab))
+      }
+      .font(.stRowLabel)
+      .foregroundStyle(.stTextSecondary)
+      .settingsHoverQuiet(tint: .stAccent)
+      .contentShape(Rectangle())
     }
-    .settingsButton(.quiet, size: .medium, isEnabled: true)
+    .buttonStyle(.plain)
     .accessibilityLabel(
       String(
         localized: "Back to \(HistoryDiaryLayout.tabTitle(tab))",
@@ -789,35 +875,74 @@ struct HistoryDestinationBar: View {
   }
 }
 
-/// The Meetings tab's own controls, moved from the old sidebar header: Record a meeting when
-/// nothing records (the explainer first when it is due), a way to the live meeting while one
-/// records, and the count of meetings a newer version saved.
+/// The Meetings tab's own notices under the filter row: the call sound explainer when it is due
+/// for a Start from History (it stands in for the Record button), and the count of meetings a
+/// newer version saved. Nil-sized when neither applies.
 private struct HistoryMeetingsBar: View {
+  @Environment(MeetingCoordinator.self) private var meetings
+  @Environment(MeetingStartFlow.self) private var startFlow
+
+  var body: some View {
+    let newerLine = HistoryDiaryLayout.newerFormatLine(meetings.newerFormatMeetings.count)
+    if startFlow.pendingExplainer == .history || newerLine != nil {
+      VStack(alignment: .leading, spacing: 8) {
+        if startFlow.pendingExplainer == .history { MeetingCallSoundExplainer() }
+        // Meetings a newer EnviousWispr saved stay on disk, untouched; this build cannot open
+        // them, so they are counted here rather than listed (#3972 §4).
+        if let newerLine {
+          Text(newerLine)
+            .font(.stHelper)
+            .foregroundStyle(.stTextSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+    }
+  }
+}
+
+/// The tab's main action at the start of the filter row (founder #4611): Record a meeting on
+/// Meetings, Transcribe a File on Transcripts, nothing on Dictations. Hidden while selecting.
+struct HistoryTabAction: View {
+  let coordinator: TranscriptCoordinator
+  let tab: HistoryTab
+
+  var body: some View {
+    switch tab {
+    case .dictations: EmptyView()
+    case .transcripts: HistoryTranscribeFileButton()
+    case .meetings: HistoryMeetingRecordButton(coordinator: coordinator)
+    }
+  }
+}
+
+/// Opens the Transcribe a File page, with the sidebar's name and glyph for it.
+private struct HistoryTranscribeFileButton: View {
+  @Environment(NavigationCoordinator.self) private var navigation
+
+  var body: some View {
+    Button {
+      navigation.request(.transcribeFile)
+    } label: {
+      // The sidebar's own name for the page, one owner (`SettingsPage.labelResource`).
+      EnviousButtonLabel(
+        SettingsPage.transcribeFile.labelResource ?? "Transcribe a File",
+        size: .medium, systemImage: SettingsPage.transcribeFile.icon)
+    }
+    .settingsButton(.filled, size: .medium, isEnabled: true)
+  }
+}
+
+/// Start Recording when nothing records; while a meeting records, a way to it. Stop lives in
+/// that meeting and the menu. While the call sound explainer is due it shows below the filter
+/// row instead (`HistoryMeetingsBar`), so this draws nothing.
+private struct HistoryMeetingRecordButton: View {
   let coordinator: TranscriptCoordinator
   @Environment(MeetingCoordinator.self) private var meetings
   @Environment(MeetingStartFlow.self) private var startFlow
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      recordingControl
-      // Meetings a newer EnviousWispr saved stay on disk, untouched; this build cannot open
-      // them, so they are counted here rather than listed (#3972 §4).
-      if let line = HistoryDiaryLayout.newerFormatLine(meetings.newerFormatMeetings.count) {
-        Text(line)
-          .font(.stHelper)
-          .foregroundStyle(.stTextSecondary)
-          .fixedSize(horizontal: false, vertical: true)
-      }
-    }
-    .frame(maxWidth: .infinity, alignment: .leading)
-  }
-
-  /// Start Recording when nothing records (the explainer first when it is due for this Start);
-  /// while a meeting records, a way to it. Stop lives in that meeting and the menu.
-  @ViewBuilder private var recordingControl: some View {
-    if startFlow.pendingExplainer == .history {
-      MeetingCallSoundExplainer()
-    } else {
+    if startFlow.pendingExplainer != .history {
       switch meetings.phase {
       case .idle:
         Button(action: startMeeting) {
@@ -1035,25 +1160,21 @@ enum HistoryDiaryLayout {
     return (date, nil)
   }
 
-  /// "9 dictations", "1 transcript", one whole sentence per count and tab (#3142).
-  static func daySummary(tab: HistoryTab, count: Int) -> String {
-    switch (tab, count == 1) {
-    case (.dictations, true):
-      String(localized: "1 dictation", comment: "History day heading: one dictation that day.")
-    case (.dictations, false):
-      String(
+  /// "9 dictations", one whole sentence per count and tab (#3142). Nil for a day with one item:
+  /// the single card already says it (founder #4611).
+  static func daySummary(tab: HistoryTab, count: Int) -> String? {
+    guard count > 1 else { return nil }
+    switch tab {
+    case .dictations:
+      return String(
         localized: "\(String(count)) dictations",
         comment: "History day heading: how many dictations that day. Never 1.")
-    case (.transcripts, true):
-      String(localized: "1 transcript", comment: "History day heading: one transcript that day.")
-    case (.transcripts, false):
-      String(
+    case .transcripts:
+      return String(
         localized: "\(String(count)) transcripts",
         comment: "History day heading: how many transcripts that day. Never 1.")
-    case (.meetings, true):
-      String(localized: "1 meeting", comment: "History day heading: one meeting that day.")
-    case (.meetings, false):
-      String(
+    case .meetings:
+      return String(
         localized: "\(String(count)) meetings",
         comment: "History day heading: how many meetings that day. Never 1.")
     }
@@ -1087,68 +1208,98 @@ struct HistoryEmptyView: View {
   var body: some View {
     switch state {
     case .nothingYet:
-      ContentUnavailableView(
-        "Nothing here yet",
+      HistoryEmptyMessage(
         systemImage: "doc.text",
-        description: Text("Your dictations, transcripts and recordings will appear here.")
-      )
+        title: LocalizedStringResource(
+          "Nothing here yet", comment: "History: empty list title when nothing was ever saved."),
+        message: LocalizedStringResource(
+          "Your dictations, transcripts and recordings will appear here.",
+          comment: "History: empty list explanation when nothing was ever saved."))
     case .noDictations:
-      ContentUnavailableView(
-        "No dictations yet",
+      HistoryEmptyMessage(
         systemImage: "mic",
-        description: Text("Press your keybind and start talking.")
-      )
+        title: LocalizedStringResource(
+          "No dictations yet", comment: "History, Dictations: empty tab title."),
+        message: LocalizedStringResource(
+          "Press your keybind and start talking.",
+          comment: "History, Dictations: empty tab explanation."))
     case .noTranscripts:
-      ContentUnavailableView(
-        "No transcripts yet",
+      HistoryEmptyMessage(
         systemImage: "doc.text",
-        description: Text("Use Transcribe a File to add one.")
-      )
+        title: LocalizedStringResource(
+          "No transcripts yet", comment: "History, Transcripts: empty tab title."),
+        message: LocalizedStringResource(
+          "Use Transcribe a File to add one.",
+          comment: "History, Transcripts: empty tab explanation."))
     case .noRecordings:
-      ContentUnavailableView(
-        "No recordings yet",
+      HistoryEmptyMessage(
         systemImage: "person.2.wave.2",
-        description: Text("Start a recording from the menu bar.")
-      )
+        title: LocalizedStringResource(
+          "No recordings yet", comment: "History, Meetings: empty tab title."),
+        message: LocalizedStringResource(
+          "Click \(String(localized: MeetingsCopy.startRecording)) above to start one.",
+          comment:
+            "History, Meetings: empty tab explanation. %@ is the name of the record button above the list."
+        ))
     case .noMatches:
-      ContentUnavailableView(
-        "No matching history.",
+      HistoryEmptyMessage(
         systemImage: "magnifyingglass",
-        description: Text("Try a different search, or another filter.")
-      )
+        title: LocalizedStringResource(
+          "No matching history.", comment: "History: title when a search or filter finds nothing."),
+        message: LocalizedStringResource(
+          "Try a different search, or another filter.",
+          comment: "History: explanation when a search or filter finds nothing."))
     }
   }
 }
 
-extension View {
-  /// The bordered card every History row is drawn in: the selected card carries an accent ring
-  /// and a faint wash (mockup #27).
-  func historyRowCard(isSelected: Bool) -> some View {
-    self
-      .padding(12)
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .background {
-        // Opaque base so nothing bleeds through, plus a faint accent wash when
-        // selected (matches the mockup's subtly purple-tinted active card).
-        ZStack {
-          RoundedRectangle(cornerRadius: DesignRadius.xl).fill(Color.stSectionBg)
-          if isSelected {
-            RoundedRectangle(cornerRadius: DesignRadius.xl).fill(Color.stAccent.opacity(0.12))
-          }
-        }
+/// History's own empty or failed list message (#4611): a quiet glyph, a title, one line of help
+/// and an optional button, in the page's fonts and colors rather than the system's
+/// `ContentUnavailableView`.
+struct HistoryEmptyMessage: View {
+  let systemImage: String
+  let title: LocalizedStringResource
+  var message: LocalizedStringResource?
+  var retry: (() -> Void)?
+
+  var body: some View {
+    VStack(spacing: DesignSpacing.md) {
+      Image(systemName: systemImage)
+        .font(.stDayTitle)
+        .foregroundStyle(.stTextTertiary)
+        .padding(.bottom, DesignSpacing.xs)
+        .accessibilityHidden(true)
+      Text(title)
+        .font(.stRowTitle)
+        .foregroundStyle(.stTextPrimary)
+      if let message {
+        Text(message)
+          .font(.stBody)
+          .foregroundStyle(.stTextSecondary)
       }
-      .overlay(
-        RoundedRectangle(cornerRadius: DesignRadius.xl)
-          .strokeBorder(
-            isSelected ? Color.stAccent : Color.stDivider,
-            lineWidth: isSelected ? 2 : 1)
-      )
-      // The row's own pointer feedback: History is the first page the app opens on and a list
-      // whose whole purpose is picking one of many rows.
-      .settingsHoverCard(cornerRadius: DesignRadius.xl, isSelected: isSelected)
-      .contentShape(RoundedRectangle(cornerRadius: DesignRadius.xl))
+      if let retry {
+        Button(action: retry) {
+          EnviousButtonLabel(HistoryEmptyMessage.tryAgain, size: .medium)
+        }
+        .settingsButton(.outlined, size: .medium, isEnabled: true)
+        .padding(.top, DesignSpacing.xs)
+      }
+    }
+    .multilineTextAlignment(.center)
+    .frame(maxWidth: 360)
+    .padding(DesignSpacing.xxl)
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .accessibilityElement(children: .contain)
   }
 
+  static let tryAgain = LocalizedStringResource(
+    "Try again", comment: "History: reloads History after it could not be read.")
+
+  static let loadFailed = LocalizedStringResource(
+    "Couldn't load History", comment: "History: the list could not be read.")
+}
+
+extension View {
   /// One small capsule chip on a History row card: icon and text, never colour alone.
   func historyChip(tint: Color, fill: Color) -> some View {
     self
@@ -1161,8 +1312,7 @@ extension View {
 }
 
 /// The Escape Recovery chip on a History dictation (#2087): the held row's countdown, or Kept
-/// after the user kept it. Shared by the transcript row, the held dictation's detail and the
-/// dictation card (#3147 PR2, Codex r8), so the rule and wording stay in one place.
+/// after the user kept it. Shared by the transcript card and the dictation card (#3147 PR2, Codex r8), so the rule and wording stay in one place.
 struct EscapeRecoveryBadge: View {
   let escapeRecoveredAt: Date?
   let escapeRecoveryTakeID: String?

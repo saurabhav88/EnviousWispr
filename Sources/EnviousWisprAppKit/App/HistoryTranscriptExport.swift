@@ -4,7 +4,7 @@ import Foundation
 import UniformTypeIdentifiers
 
 /// What an imported transcript's Copy, Share, Save and Paste hand over (#3147 PR3), extracted
-/// from the legacy `TranscriptDetailView` so the new transcript view keeps the same rules.
+/// from the legacy transcript detail view (removed in #4611) so the transcript view keeps its rules.
 /// Both read the LIVE row by id at the moment of delivery; nil for a row that is gone.
 @MainActor
 enum HistoryTranscriptExport {

@@ -4,7 +4,7 @@ import SwiftUI
 /// A History title renamed in place: meetings (#3147 PR4A, plan §3.6, founder 2026-11-12) and
 /// imported transcripts (#4611). A pencil appears beside the title on hover and on keyboard
 /// focus, the pointer becomes a text cursor, and the tooltip names the rename. Clicking the
-/// title or the pencil (or the owner's Rename in More, through `beginRequest`) opens the field:
+/// title or the pencil opens the field (founder #4611, 2026-11-17: no Rename in More menus):
 /// Return saves, Escape cancels, an empty name restores the default title.
 ///
 /// **One owner per kind**, behind `rename`: `MeetingCoordinator.rename(meetingID:title:)` or
@@ -33,8 +33,6 @@ struct HistoryInlineTitle: View {
   let rename: @MainActor (String) async -> Bool
   var font: Font = .stRowTitle
   var truncation: Text.TruncationMode = .tail
-  /// Set to true by the owner (Rename in More) to open the field; reset here.
-  var beginRequest: Binding<Bool> = .constant(false)
   var searchQuery = ""
   /// Mirrors whether the field is open, so an owner whose surface opens on a click (the
   /// Transcripts card) can make that click save the name instead (#4611).
@@ -67,12 +65,6 @@ struct HistoryInlineTitle: View {
       } else {
         idle(title)
       }
-    }
-    .onChange(of: beginRequest.wrappedValue) { _, requested in
-      guard requested else { return }
-      beginRequest.wrappedValue = false
-      guard canRename else { return }
-      begin()
     }
     .onDisappear { popCursor() }
     .onChange(of: edit.isEditing) { _, open in isEditing.wrappedValue = open }
@@ -112,14 +104,20 @@ struct HistoryInlineTitle: View {
       Button {
         begin()
       } label: {
+        // In its own small box (founder, #4611): on the card's hover tint a bare pencil blended
+        // into the fill; the rename field's colors set it apart as a button. A rounded rectangle
+        // like every other History button (founder #4611, 2026-11-17).
+        let box = RoundedRectangle(cornerRadius: DesignRadius.sm, style: .continuous)
         Image(systemName: "pencil")
           .font(.stHelper)
-          .frame(minWidth: 22, minHeight: 22)
-          .contentShape(Rectangle())
+          .frame(width: 22, height: 22)
+          .background(box.fill(Color.stInputBg))
+          .overlay(box.strokeBorder(Color.stInputBorder))
+          .contentShape(box)
       }
       .buttonStyle(.borderless)
       .focused($controlFocused, equals: .pencil)
-      .foregroundStyle(.stTextSecondary)
+      .foregroundStyle(.stAccent)
       .help(Text(verbatim: renameHelp))
       .accessibilityLabel(Text(verbatim: renameHelp))
       // Kept in the layout so the title never shifts; shown on hover and keyboard focus.
@@ -156,15 +154,18 @@ struct HistoryInlineTitle: View {
           Button {
             commit()
           } label: {
-            Text("Try again", comment: "Meetings: saves the meeting's new name again.")
+            EnviousButtonLabel(
+              LocalizedStringResource(
+                "Try again", comment: "Meetings: saves the meeting's new name again."))
           }
-          .buttonStyle(.link)
+          .settingsButton(.quiet, isEnabled: true)
           Button {
             cancel()
           } label: {
-            Text("Cancel", comment: "EnviousMeet: keeps the meeting as it is.")
+            EnviousButtonLabel(
+              LocalizedStringResource("Cancel", comment: "EnviousMeet: keeps the meeting as it is."))
           }
-          .buttonStyle(.link)
+          .settingsButton(.quiet, isEnabled: true)
         }
       }
     }
