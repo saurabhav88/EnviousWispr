@@ -60,6 +60,12 @@ class HitchTests(unittest.TestCase):
         self.assertEqual(rate["moving_s"], 1.0)
         self.assertEqual(rate["ms_per_s"], 500.0)
 
+    def test_a_hitch_across_two_gestures_counts_once(self):
+        # Cloud review: a hitch from 1.99 s for 20 ms, gestures 0-0.4 s (watched to 2.0) and 2.0-2.4 s.
+        rate = sa.hitch_rate([(1.99, 0.02, 7, False)], [(0.0, 0.4), (2.0, 2.4)], pid=7, windows=[2.0, 3.0])
+        self.assertEqual(rate["count"], 1)
+        self.assertEqual(rate["hitch_ms"], 20.0)
+
     def test_no_movement_is_unproven_not_zero(self):
         rate = sa.hitch_rate([], [None])
         self.assertIsNone(rate["ms_per_s"])

@@ -83,14 +83,21 @@ def hitch_rate(hitches, spans, pid=None, windows=None):
     Returns {moving_s, hitch_ms, ms_per_s, count, longest_ms, other_process}."""
     mine = [h for h in hitches if pid is None or h[2] == pid]
     windows = windows or [None] * len(spans)
-    counted, moving = [], 0.0
+    counted, seen, moving = [], set(), 0.0
+    starts = [sp[0] for sp in spans if sp is not None]
     for span, window_end in zip(spans, windows):
         if span is None or span[1] <= span[0]:
             continue
         a, b = span
         limit = max(b, window_end) if window_end is not None else b
-        inside = [(s, d) for s, d, *_ in mine if s < limit and s + d > a]
+        later = [x for x in starts if x > a]
+        if later:
+            limit = min(limit, later[0])   # a window never reaches into the next gesture
+        inside = [(s, d) for s, d, *_ in mine if s < limit and s + d > a and (s, d) not in seen]
+        seen.update(inside)                # a hitch spanning two gestures counts once (cloud review)
         end = max([b] + [s + d for s, d in inside if s >= b])
+        if later:
+            end = min(end, later[0])
         counted += inside
         moving += end - a
     total_ms = sum(d for _, d in counted) * 1000

@@ -318,6 +318,7 @@ def main():
             require_identity()
             assert press_tab(tab), f"tab {tab} not found"
             table, area = wait(find_table, 15, f"the {tab} list")
+            hr.require_unfiltered(window, tab)
             current_area["area"] = area
             frame = ui.element_frame(area)
             point = CGPoint(frame["x"] + frame["width"] / 2, frame["y"] + frame["height"] / 2)
@@ -367,9 +368,11 @@ def main():
                         watched = [u0 + epoch_offset, u1 + QUIET_S + epoch_offset]   # each gesture's watched end
                         # The trace must cover everything the attribution reads: from the first event to
                         # the end of the last watched period (Codex round 4).
-                        if hitches is not None and (t_end is None or t_start is None or spans_epoch[0] is None
-                                                    or spans_epoch[-1] is None or d0 + epoch_offset < t_start
-                                                    or watched[-1] > t_end):
+                        if hitches is not None and (spans_epoch[0] is None or spans_epoch[-1] is None):
+                            why = "the list did not move during a gesture (no changed frame)"
+                            hitches = None
+                        elif hitches is not None and (t_end is None or t_start is None
+                                                      or d0 + epoch_offset < t_start or watched[-1] > t_end):
                             why = "the recording does not cover both gestures and their watched periods"
                             hitches = None
                         if hitches is not None:

@@ -157,3 +157,11 @@ def row_heights(table, area):
         texts = _texts(row)
         found[f"{ui.get_attr(row, 'AXIndex')}:{(texts[0] if texts else '')[:40]}"] = frame["height"]
     return found or None
+
+
+def require_unfiltered(window, tab):
+    """Refuse to measure a filtered list: the app keeps each tab's search query (cloud review P1)."""
+    field = find_search_field(window)
+    value = _ui().get_attr(field, "AXValue") if field is not None else None
+    if field is None or value:
+        raise RuntimeError(f"the {tab} list is filtered by {value!r} (or has no search box); clear it first")

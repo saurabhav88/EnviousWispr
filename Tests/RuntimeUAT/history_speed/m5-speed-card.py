@@ -96,6 +96,7 @@ def main():
         raise RuntimeError(f"timed out waiting for {what}")
 
     table, area = wait(lambda: (lambda t: t if t[0] is not None else None)(hr.find_list(window)), 15, "the list")
+    hr.require_unfiltered(window, "Dictations")
 
     def button(row, title):
         for element in ui.find_all_elements(row, "AXButton", max_depth=12):
@@ -176,7 +177,9 @@ def main():
             if first is None:
                 record.update(result="unknown", reason="the picture never changed after the press")
             else:
-                changes = [f for f in after if f["display"] <= held_until]
+                # The last frame before the press starts the chain, so a view that draws in one
+                # captured update still has a last change (cloud review).
+                changes = [before[-1]] + [f for f in after if f["display"] <= held_until]
                 last_change = None
                 for previous, current in zip(changes, changes[1:]):
                     if current["hash"] != previous["hash"]:

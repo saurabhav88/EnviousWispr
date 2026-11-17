@@ -627,14 +627,16 @@ def main():
         # every query this plan can show. Counting starts only after this phase.
         require_identity()
         assert press_tab(tab), f"tab {tab} not found"
-        area = wait_for(lambda: list_area(window), 10, f"the {tab} list")
-        current_area["element"] = area
         park_pointer()
         focus_search_box()
-        wait_for(lambda: list_loaded(area), 30, f"the {tab} list to finish loading")
+        set_query("")   # a query left by an earlier run would filter the list being waited for
+        # Re-find the list on every poll: a query change can replace the table element, and a
+        # stale element never reads as loaded (M1 run 2026-11-17: transcripts-accented timed out).
+        area = wait_for(lambda: (lambda t: t if t is not None and list_loaded(t) else None)(list_area(window)),
+                        30, f"the {tab} list to finish loading")
+        current_area["element"] = area
         crop = list_crop(area)
         queries = plan_queries(steps)
-        set_query("")
         answer_now["unfiltered"] = answer(tab, "")
         readiness = wait_still(name, crop)
         print(name, "ready", json.dumps(readiness), flush=True)
@@ -648,6 +650,9 @@ def main():
         attempts = [run_sequence(name, tab, area, steps, i, crop, capture=not (capture_compare and i % 2))
                     for i in range(count)]
         refs_after, reasons_after = take_references(name, tab, area, queries, crop, "after")
+        # Leave the tab unfiltered: the app keeps each tab's query, and a later driver (card,
+        # scroll) on this tab would otherwise measure a filtered list (cloud review P1).
+        set_query("")
         # Every verified picture of each query, from both reference phases (a query may draw
         # slightly different pixels on different visits; each one was confirmed by accessibility).
         verified = {q: {h for h in (refs_before.get(q), refs_after.get(q)) if h} for q in queries}
