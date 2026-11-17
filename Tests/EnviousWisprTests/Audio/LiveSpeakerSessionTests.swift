@@ -108,7 +108,8 @@ import os
     }
 
     /// Registers first, then checks the current updates, so no publication is missed.
-    func when(_ condition: @escaping @Sendable ([LiveSpeakerUpdate]) -> Bool) -> BoundedWait.Signal {
+    func when(_ condition: @escaping @Sendable ([LiveSpeakerUpdate]) -> Bool) -> BoundedWait.Signal
+    {
       let signal = BoundedWait.Signal()
       let updates = state.withLock { s -> [LiveSpeakerUpdate] in
         s.waits.append((condition, signal))
@@ -183,7 +184,8 @@ import os
       },
       onReleased: { released.fire() })
     return Harness(
-      session: session, recorder: recorder, probe: probe, released: released, loadedFrom: loadedFrom,
+      session: session, recorder: recorder, probe: probe, released: released,
+      loadedFrom: loadedFrom,
       loaderEntered: loaderEntered)
   }
 
@@ -267,12 +269,22 @@ import os
   /// surviving audio is analyzed at ITS written positions (dropped audio never shifts it).
   @Test func refusalRunsNoStepAndTheBoundedBacklogNeverShiftsPositions() async throws {
     let open = OSAllocatedUnfairLock(initialState: false)
-    let h = Self.make(admit: { open.withLock { $0 } }, backlog: 4800)
+    let refused = BoundedWait.Signal()
+    let h = Self.make(
+      admit: {
+        let admitted = open.withLock { $0 }
+        if !admitted { refused.fire() }
+        return admitted
+      }, backlog: 4800)
     h.session.start()
     try await BoundedWait.until(h.recorder.when(Self.isReady))
     // While refused, nothing leaves the queue, so its content is decided by the bound alone:
     // 8,000 samples against 4,800 keep the newest 4,800 (3,200..<8,000).
     for index in 0..<5 { h.session.submit(Self.chunk(start: index * 1600, count: 1600)) }
+    // The session fires `refused` when it asks admission and is told no. Without waiting for
+    // that, the step count below is read before the drain ran, so a session that ignores the
+    // refusal and runs the step anyway would still read zero.
+    try await BoundedWait.until(refused)
     #expect(h.session.droppedSamples == 3200)
     #expect(h.probe.steps.withLock { $0 } == 0)
     // Admitted. A reset marker (queued AFTER the audio) triggers a drain without adding audio.
@@ -323,7 +335,10 @@ import os
       let box = SessionBox()
       let calls = OSAllocatedUnfairLock(initialState: 0)
       let h = Self.make(admit: {
-        let call = calls.withLock { $0 += 1; return $0 }
+        let call = calls.withLock {
+          $0 += 1
+          return $0
+        }
         guard call == closeOnCall else { return true }
         box.close()
         return closeOnCall == 1  // the claim says yes after closing; mid-chunk says no
