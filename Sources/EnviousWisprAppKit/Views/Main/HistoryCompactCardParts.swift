@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import SwiftUI
 
 /// #4611: a History card's text, at most `lines` lines until Show more. Most dictations are
@@ -7,16 +8,43 @@ import SwiftUI
 /// Whether the text is cut is decided by layout, at the card's real width and font: the whole
 /// text and the four-line text are both measured and the layout shows one of them, so the
 /// answer is the same in the list's off-screen measuring copy and on screen.
-struct HistoryClampedText: View {
+///
+/// #4586: compared on its text (by bytes), query and `expanded`, and used with `.equatable()`,
+/// so a card redraw that leaves them unchanged (hover, focus, a Copy tick) does not parse the
+/// text or rebuild it. `onToggle` is left out of the comparison: it only flips the card's own
+/// `@State`, which stays the same storage for the card's lifetime.
+struct HistoryClampedText: View, Equatable {
   let text: String
   let query: String
-  @Binding var expanded: Bool
+  let expanded: Bool
+  let onToggle: () -> Void
   static let lines = 4
 
+  init(text: String, query: String, expanded: Bool, onToggle: @escaping () -> Void) {
+    self.text = text
+    self.query = query
+    self.expanded = expanded
+    self.onToggle = onToggle
+  }
+
+  /// For a caller that keeps Show more in a `Binding` (the diary's preview-only card).
+  init(text: String, query: String, expanded: Binding<Bool>) {
+    self.init(
+      text: text, query: query, expanded: expanded.wrappedValue,
+      onToggle: { expanded.wrappedValue.toggle() })
+  }
+
+  nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
+    lhs.expanded == rhs.expanded && MeetingDocumentHash.sameBytes(lhs.query, rhs.query)
+      && MeetingDocumentHash.sameBytes(lhs.text, rhs.text)
+  }
+
   var body: some View {
+    // Parsed once per body; the whole and the clamped text share it.
+    let blocks = HistoryListText.blocks(text)
     if expanded {
       VStack(alignment: .leading, spacing: DesignSpacing.xs) {
-        styled
+        styled(blocks)
         toggle(
           Text(
             "Show less",
@@ -24,8 +52,8 @@ struct HistoryClampedText: View {
       }
     } else {
       HistoryClampLayout(spacing: DesignSpacing.xs) {
-        styled.hiddenWhenUnplaced()
-        clamped.accessibilityHidden(true).hiddenWhenUnplaced()
+        styled(blocks).hiddenWhenUnplaced()
+        clamped(blocks).accessibilityHidden(true).hiddenWhenUnplaced()
         toggle(Text("Show more", comment: "History dictation card: shows the rest of a long text."))
           .hiddenWhenUnplaced()
       }
@@ -34,21 +62,15 @@ struct HistoryClampedText: View {
 
   /// List lines draw as dots with a hanging indent, as on the transcript and meeting pages
   /// (`HistoryListText`); other text stays one `Text`.
-  private var blocks: [HistoryListText.Block] { HistoryListText.blocks(text) }
-
-  private var hasList: Bool {
-    blocks.contains { if case .item = $0 { true } else { false } }
-  }
-
-  private var styled: some View {
-    HistoryListText(text: text, query: query)
+  private func styled(_ blocks: [HistoryListText.Block]) -> some View {
+    HistoryListText(text: text, blocks: blocks, query: query)
       .cardTextStyle()
   }
 
   /// The first `lines` lines. A `lineLimit` caps each `Text` of a list on its own, so a list
   /// is cut by `HistoryLineBudgetLayout` instead, which counts lines across the blocks.
-  @ViewBuilder private var clamped: some View {
-    if hasList {
+  @ViewBuilder private func clamped(_ blocks: [HistoryListText.Block]) -> some View {
+    if HistoryListText.hasItem(blocks) {
       HistoryLineBudgetLayout(lines: Self.lines, spacing: DesignSpacing.sm) {
         Text(verbatim: "A").hiddenWhenUnplaced()
         ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
@@ -69,13 +91,13 @@ struct HistoryClampedText: View {
       .clipped()
       .cardTextStyle()
     } else {
-      styled.lineLimit(Self.lines)
+      styled(blocks).lineLimit(Self.lines)
     }
   }
 
   private func toggle(_ label: Text) -> some View {
     Button {
-      expanded.toggle()
+      onToggle()
     } label: {
       label
         .font(.stHelper.weight(.medium))
@@ -102,37 +124,54 @@ extension View {
 
 /// Subviews: the whole text, the clamped text, the Show more button. Shows the whole text when
 /// it is no taller than the clamped one, else the clamped text with the button under it.
+///
+/// #4586: the plan for a width is measured once and kept in the layout cache, so
+/// `sizeThatFits` and `placeSubviews` (and repeated passes at one width) share it. Neither
+/// method reads the proposed height. SwiftUI recreates the cache (`makeCache`) whenever the
+/// subviews change: new text, query, font or other environment.
 private struct HistoryClampLayout: Layout {
   let spacing: CGFloat
 
-  private struct Plan {
+  struct Plan {
     let width: CGFloat
     let truncated: Bool
     let textHeight: CGFloat
     let buttonSize: CGSize
   }
 
-  private func plan(_ proposal: ProposedViewSize, _ subviews: Subviews) -> Plan {
-    let width = proposal.width ?? subviews[0].sizeThatFits(.unspecified).width
+  struct Cache {
+    var plans: [CGFloat: Plan] = [:]
+    var unspecifiedWidth: CGFloat?
+  }
+
+  func makeCache(subviews: Subviews) -> Cache { Cache() }
+
+  private func plan(_ proposedWidth: CGFloat?, _ subviews: Subviews, _ cache: inout Cache) -> Plan {
+    let width =
+      proposedWidth
+      ?? HistoryLayoutCacheSupport.unspecifiedWidth(subviews[0], &cache.unspecifiedWidth)
+    if let known = cache.plans[width] { return known }
     let open = ProposedViewSize(width: width, height: nil)
     let whole = subviews[0].sizeThatFits(open).height
     let clamped = subviews[1].sizeThatFits(open).height
     let truncated = whole > clamped + 0.5
-    return Plan(
+    let plan = Plan(
       width: width, truncated: truncated, textHeight: truncated ? clamped : whole,
       buttonSize: truncated ? subviews[2].sizeThatFits(.unspecified) : .zero)
+    HistoryLayoutCacheSupport.store(plan, at: width, in: &cache.plans)
+    return plan
   }
 
-  func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-    let plan = plan(proposal, subviews)
+  func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Cache) -> CGSize {
+    let plan = plan(proposal.width, subviews, &cache)
     let extra = plan.truncated ? spacing + plan.buttonSize.height : 0
     return CGSize(width: plan.width, height: plan.textHeight + extra)
   }
 
   func placeSubviews(
-    in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()
+    in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Cache
   ) {
-    let plan = plan(ProposedViewSize(width: bounds.width, height: nil), subviews)
+    let plan = plan(bounds.width, subviews, &cache)
     let open = ProposedViewSize(width: bounds.width, height: nil)
     let origin = bounds.origin
     if plan.truncated {
@@ -152,11 +191,26 @@ private struct HistoryClampLayout: Layout {
 /// Subviews: a one-line probe, then the list text's blocks. Places blocks top down until
 /// `lines` lines are used; the block that crosses the limit gets only the height of the lines
 /// left, so its `Text` ends early with an ellipsis. A gap counts as the lines it is high.
+/// #4586: frames per width are kept in the layout cache, as in `HistoryClampLayout`.
 private struct HistoryLineBudgetLayout: Layout {
   let lines: Int
   let spacing: CGFloat
 
-  private func frames(width: CGFloat, _ subviews: Subviews) -> [CGRect?] {
+  struct Cache {
+    var frames: [CGFloat: [CGRect?]] = [:]
+    var unspecifiedWidth: CGFloat?
+  }
+
+  func makeCache(subviews: Subviews) -> Cache { Cache() }
+
+  private func frames(width: CGFloat, _ subviews: Subviews, _ cache: inout Cache) -> [CGRect?] {
+    if let known = cache.frames[width] { return known }
+    let result = measureFrames(width: width, subviews)
+    HistoryLayoutCacheSupport.store(result, at: width, in: &cache.frames)
+    return result
+  }
+
+  private func measureFrames(width: CGFloat, _ subviews: Subviews) -> [CGRect?] {
     let open = ProposedViewSize(width: width, height: nil)
     let lineHeight = max(subviews[0].sizeThatFits(open).height, 1)
     var frames: [CGRect?] = [nil]
@@ -185,16 +239,18 @@ private struct HistoryLineBudgetLayout: Layout {
     return frames
   }
 
-  func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-    let width = proposal.width ?? subviews[0].sizeThatFits(.unspecified).width
-    let bottom = frames(width: width, subviews).compactMap { $0?.maxY }.max() ?? 0
+  func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Cache) -> CGSize {
+    let width =
+      proposal.width
+      ?? HistoryLayoutCacheSupport.unspecifiedWidth(subviews[0], &cache.unspecifiedWidth)
+    let bottom = frames(width: width, subviews, &cache).compactMap { $0?.maxY }.max() ?? 0
     return CGSize(width: width, height: bottom)
   }
 
   func placeSubviews(
-    in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()
+    in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Cache
   ) {
-    for (subview, frame) in zip(subviews, frames(width: bounds.width, subviews)) {
+    for (subview, frame) in zip(subviews, frames(width: bounds.width, subviews, &cache)) {
       guard let frame else {
         subview.place(at: bounds.origin, proposal: .zero)
         continue
@@ -203,6 +259,26 @@ private struct HistoryLineBudgetLayout: Layout {
         at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY),
         proposal: ProposedViewSize(width: frame.width, height: frame.height))
     }
+  }
+}
+
+/// The two clamp layouts' shared cache steps (#4586).
+private enum HistoryLayoutCacheSupport {
+  /// A window resize passes through many widths; past this many the cache starts over, so it
+  /// never grows with the resize.
+  static let widthLimit = 8
+
+  static func store<Value>(_ value: Value, at width: CGFloat, in map: inout [CGFloat: Value]) {
+    if map.count >= widthLimit { map.removeAll(keepingCapacity: true) }
+    map[width] = value
+  }
+
+  /// The width a subview takes with no proposal, measured once per cache.
+  static func unspecifiedWidth(_ subview: LayoutSubview, _ known: inout CGFloat?) -> CGFloat {
+    if let known { return known }
+    let width = subview.sizeThatFits(.unspecified).width
+    known = width
+    return width
   }
 }
 

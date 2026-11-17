@@ -14,6 +14,22 @@ import SwiftUI
 struct HistoryListText: View {
   let text: String
   var query = ""
+  /// `blocks(text)` when the caller already parsed it (#4586: the dictation card parses once
+  /// for its whole and clamped text). `text` stays the source for text with no list line.
+  private let parsed: [Block]?
+
+  init(text: String, query: String = "") {
+    self.text = text
+    self.query = query
+    self.parsed = nil
+  }
+
+  /// `blocks` must be `HistoryListText.blocks(text)`.
+  init(text: String, blocks: [Block], query: String = "") {
+    self.text = text
+    self.query = query
+    self.parsed = blocks
+  }
 
   enum Block: Equatable {
     case prose(String)
@@ -23,8 +39,8 @@ struct HistoryListText: View {
   }
 
   var body: some View {
-    let blocks = Self.blocks(text)
-    if blocks.contains(where: { if case .item = $0 { true } else { false } }) {
+    let blocks = parsed ?? Self.blocks(text)
+    if Self.hasItem(blocks) {
       VStack(alignment: .leading, spacing: DesignSpacing.sm) {
         ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
           switch block {
@@ -49,6 +65,11 @@ struct HistoryListText: View {
   }
 
   // MARK: - Pure helpers (read by tests)
+
+  /// Whether the blocks hold a list line, so the text draws as a list.
+  nonisolated static func hasItem(_ blocks: [Block]) -> Bool {
+    blocks.contains { if case .item = $0 { true } else { false } }
+  }
 
   /// The words of a list line after its marker, or nil for any other line. "-" alone, "-5",
   /// "--", an en or em dash, and a dash inside a sentence are not list lines.
