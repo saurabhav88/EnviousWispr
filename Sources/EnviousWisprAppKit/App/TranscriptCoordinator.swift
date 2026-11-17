@@ -21,21 +21,13 @@ final class TranscriptCoordinator {
   /// unavailable instead. Read `visibleTranscripts` or `matchingHistoryItems(in:)`.
   @ObservationIgnored var catalogSession: HistoryCatalogSession?
   @ObservationIgnored private var latestCatalogTask: Task<Void, Never>?
-  private var catalogDetails: [UUID: Transcript] = [:]
-  @ObservationIgnored private var catalogDetailProofs: [UUID: [HistoryCatalog.SourceVersion]] = [:]
+  /// Hydrated History rows for the screens that show them (#4586 H2): one entry per row,
+  /// observed one by one, so hydrating one row redraws only the views reading that row.
+  @ObservationIgnored private let detailCache = HistoryDetailCache()
   @ObservationIgnored private let readSavedHistoryRow: @Sendable (UUID, Date) throws -> Transcript?
   @ObservationIgnored private let readCatalogProof: @Sendable (UUID) throws -> [HistoryCatalog.SourceVersion]
-  @ObservationIgnored private var catalogDetailOrder: [UUID] = []
-  /// How many on-screen views hold each payload (`holdCatalogDetail`).
-  @ObservationIgnored private var catalogDetailPins: [UUID: Int] = [:]
-  @ObservationIgnored private var catalogDetailVersions: [UUID: UInt64] = [:]
   @ObservationIgnored private var liveRowVersions: [UUID: UInt64] = [:]
   @ObservationIgnored private var publishedImportProofs: [UUID: [HistoryCatalog.SourceVersion]] = [:]
-  private struct CatalogDetailRequest: Hashable {
-    let id: UUID
-    let revision: UInt64
-  }
-  @ObservationIgnored private var catalogDetailReads: [CatalogDetailRequest: Task<HistoryTransactionExecutor.VerifiedHistoryRow?, Never>] = [:]
 
   func startHistoryCatalog() {
     guard let catalogSession else {
@@ -93,27 +85,19 @@ final class TranscriptCoordinator {
     guard let catalogSession else { return currentRow(id: id) }
     if !authoritative, let row = verifiedRowForDelivery(id: id) { return row }
     let source = catalogSession.stableSourceRevision
-    let request = CatalogDetailRequest(id: id, revision: catalogSession.revision)
-    let reader: Task<HistoryTransactionExecutor.VerifiedHistoryRow?, Never>
-    if let inFlight = catalogDetailReads[request] {
-      reader = inFlight
-    } else {
+    let revision = catalogSession.revision
+    let reader = detailCache.read(id, revision: revision) {
       let now = clock()
-      reader = Task { [transactionExecutor] in
+      return Task { [transactionExecutor] in
         try? await transactionExecutor.readVerifiedHistoryRow(id: id, now: now)
       }
-      catalogDetailReads[request] = reader
     }
     let payload = await reader.value
-    if catalogDetailReads[request] == reader { catalogDetailReads[request] = nil }
+    detailCache.finishRead(id, revision: revision, reader)
     guard !Task.isCancelled, let payload, Self.isVisible(payload.row, at: clock()),
       !removedRowIDs.contains(id), stillCurrent(id, proof: payload.versions)
     else { return nil }
-    if catalogDetails[id] == nil { catalogDetailOrder.append(id) }
-    catalogDetailVersions[id] = source
-    catalogDetails[id] = payload.row
-    catalogDetailProofs[id] = payload.versions
-    trimCatalogDetails()
+    detailCache.store(id, row: payload.row, proof: payload.versions, version: source)
     return payload.row
   }
 
@@ -121,43 +105,30 @@ final class TranscriptCoordinator {
   /// does when the view leaves the screen or its key changes. A view that shows a payload holds
   /// it, so browsing many other rows never turns an open transcript into the removed
   /// placeholder (Codex whole-diff r5): eviction changes no key that would reload it.
+  ///
+  /// #4586 H2: the hold is counted once and released exactly once. The wait is a task-local
+  /// stream that never yields; its iteration ends when the task is cancelled, whether that
+  /// happened before or during the wait. No sleeping loop.
   func holdCatalogDetail(_ id: UUID) async {
-    catalogDetailPins[id, default: 0] += 1
-    defer {
-      if let count = catalogDetailPins[id], count > 1 {
-        catalogDetailPins[id] = count - 1
-      } else {
-        catalogDetailPins[id] = nil
-      }
-      trimCatalogDetails()
-    }
-    while !Task.isCancelled { try? await Task.sleep(for: .seconds(3600)) }
+    detailCache.acquire(id)
+    defer { detailCache.release(id) }
+    let (held, continuation) = AsyncStream<Never>.makeStream(bufferingPolicy: .bufferingNewest(0))
+    for await _ in held {}
+    // Referenced after the wait, so the stream is not finished early by a released continuation.
+    continuation.finish()
   }
-
-  /// Drops the oldest payloads no view holds, down to the cache limit. Held payloads and the
-  /// latest dictation stay, so the cache may exceed the limit by what is on screen.
-  private func trimCatalogDetails() {
-    while catalogDetailOrder.count > Self.catalogDetailLimit,
-      let index = catalogDetailOrder.firstIndex(where: {
-        $0 != catalogSession?.latestDictation && catalogDetailPins[$0] == nil
-      })
-    {
-      let evicted = catalogDetailOrder.remove(at: index)
-      catalogDetailVersions[evicted] = nil
-      catalogDetails[evicted] = nil
-      catalogDetailProofs[evicted] = nil
-    }
-  }
-
-  private static let catalogDetailLimit = 120
 
   /// How many views hold `id`'s payload now. Tests only.
-  func catalogDetailHoldCountForTesting(_ id: UUID) -> Int { catalogDetailPins[id] ?? 0 }
+  func catalogDetailHoldCountForTesting(_ id: UUID) -> Int { detailCache.entry(id).holds }
 
   private var transcripts: [Transcript] = [] {
     // Every mutation (assignment, insert, subscript, removeAll) passes here, so the list key
     // sees it without each mutation site remembering to (#4001).
-    didSet { transcriptsRevision &+= 1 }
+    didSet {
+      transcriptsRevision &+= 1
+      // #4586: the meeting-text cache follows live-row membership here, not a browse.
+      pruneMeetingDocuments()
+    }
   }
   /// Bumped on every change to `transcripts`: part of the kept list's key (#4001).
   private(set) var transcriptsRevision = 0
@@ -249,9 +220,11 @@ final class TranscriptCoordinator {
 
   @ObservationIgnored private var prunedRevision = -1
 
-  private func pruneMeetingDocuments() {
-    guard prunedRevision != transcriptsRevision else { return }
-    meetingDocuments.prune(keeping: transcripts)
+  /// Drops meeting texts kept for rows that are neither live nor hydrated (#4586: pruning has an
+  /// owner; it ran only inside the in-memory browse before). `force` after hydrated rows left.
+  private func pruneMeetingDocuments(force: Bool = false) {
+    guard force || prunedRevision != transcriptsRevision else { return }
+    meetingDocuments.prune(keeping: transcripts + detailCache.payloadRows)
     prunedRevision = transcriptsRevision
   }
 
@@ -1121,6 +1094,9 @@ final class TranscriptCoordinator {
     self.recordEscapeRecoveryKeep = recordEscapeRecoveryKeep ?? Self.logKeep
     self.emitRenameTelemetry = emitRenameTelemetry
     self.emitTurnsDisplayedTelemetry = emitTurnsDisplayedTelemetry
+    // Held payloads and the latest dictation (Paste Last) stay past the cache limit.
+    detailCache.keeps = { [weak self] id in id == self?.catalogSession?.latestDictation }
+    detailCache.payloadsDropped = { [weak self] in self?.pruneMeetingDocuments(force: true) }
   }
 
   /// Report that a HELD recovery was pasted from History (#2087).
@@ -1337,10 +1313,7 @@ final class TranscriptCoordinator {
   private func recordPublishedVersion(_ id: UUID) {
     liveRowVersions[id] = catalogSession?.stableSourceRevision
     publishedImportProofs[id] = nil
-    catalogDetailProofs[id] = nil
-    catalogDetailVersions[id] = nil
-    catalogDetails[id] = nil
-    catalogDetailOrder.removeAll { $0 == id }
+    detailCache.clear(id)
   }
 
   private func insertByDate(_ transcript: Transcript) {
@@ -1569,8 +1542,10 @@ final class TranscriptCoordinator {
     if let live, Self.isVisible(live, at: clock()),
       (source != nil && liveRowVersions[id] == source) || stillCurrent(id, proof: publishedImportProofs[id])
     { return live }
-    guard let detail = catalogDetails[id], Self.isVisible(detail, at: clock()),
-      (source != nil && catalogDetailVersions[id] == source) || stillCurrent(id, proof: catalogDetailProofs[id])
+    // Reading the entry's row subscribes a view to this row's entry only (#4586 H2).
+    let entry = detailCache.entry(id)
+    guard let detail = entry.row, Self.isVisible(detail, at: clock()),
+      (source != nil && entry.version == source) || stillCurrent(id, proof: entry.proof)
     else { return nil }
     return detail
   }
@@ -1586,7 +1561,8 @@ final class TranscriptCoordinator {
     guard catalogSession != nil else { return currentRow(id: id) }
     guard !removedRowIDs.contains(id), let expected = try? readCatalogProof(id),
       expected.contains(where: { !$0.fingerprint.isEmpty }) else { return nil }
-    if catalogDetailProofs[id] == expected, let row = catalogDetails[id],
+    let entry = detailCache.entry(id)
+    if entry.proof == expected, let row = entry.row,
       Self.isVisible(row, at: clock()) { return row }
     guard fetchIfNeeded else { return nil }
     return try? readSavedHistoryRow(id, clock())
@@ -2515,10 +2491,7 @@ final class TranscriptCoordinator {
     transcripts.removeAll { $0.id == id }
     liveRowVersions[id] = nil
     publishedImportProofs[id] = nil
-    catalogDetailProofs[id] = nil
-    catalogDetailVersions[id] = nil
-    catalogDetails[id] = nil
-    catalogDetailOrder.removeAll { $0 == id }
+    detailCache.clear(id)
     removedRowIDs.insert(id)
     echoShownRowIDs.remove(id)
     refreshDiskStateThenStopIfIdle()
@@ -2586,10 +2559,7 @@ final class TranscriptCoordinator {
       transcripts.removeAll()
       liveRowVersions.removeAll()
       publishedImportProofs.removeAll()
-      catalogDetails.removeAll()
-      catalogDetailProofs.removeAll()
-      catalogDetailVersions.removeAll()
-      catalogDetailOrder.removeAll()
+      detailCache.clearAll()
       removedRowIDs.formUnion(removedIDs)
       echoShownRowIDs.removeAll()
       // The same announcement `delete(_:)` makes, per row, after the list is already empty
