@@ -795,19 +795,6 @@ final class MeetingCoordinator {
     return MeetingPlaybackSource(record: record, folder: deps.store.folder(for: meetingID))
   }
 
-  /// The kept audio's size for the detail view, read on the meeting file queue (never on the
-  /// main actor). A meeting without audio reads `.deleted`; a read that fails says so rather
-  /// than showing zero.
-  func audioSize(meetingID: UUID) async -> MeetingsPresentation.AudioSize {
-    guard let record = records[meetingID] else { return .unreadable }
-    guard record.audioKept else { return .deleted }
-    do {
-      return .bytes(try await writer.run { try $0.audioBytes(meeting: meetingID) })
-    } catch {
-      return .unreadable
-    }
-  }
-
   /// #4013 r3 F3: the participant list saved with the meeting, for the rename suggestions.
   /// Read on the meeting file queue. `nil` when the meeting is unknown, being deleted or losing
   /// its audio (the list goes with the audio), at the start of the read OR when it returns, or

@@ -44,7 +44,6 @@ struct HistoryTranscriptCard: View {
   /// Transcribe again's owner. Optional so a card hosted without it (a test) draws no chip.
   @Environment(TranscriptRetranscription.self) private var retranscription: TranscriptRetranscription?
   @State private var sourceState: ImportedSourceState?
-  @State private var copiedAt: Date?
   @State private var moreAnchor = HistoryMenuAnchorHolder()
   @State private var confirmingDelete = false
   @State private var deleting = false
@@ -238,10 +237,7 @@ struct HistoryTranscriptCard: View {
 
   /// Open, Copy and More, in the Dictations card's place and order (#4611).
   private func buttonRow(title: String) -> some View {
-    let copy = TranscribeFileExport.copyButtonPresentation(
-      label: TranscriptDocumentPresenter.exportButtonLabels(mode: .cleaned).copy, copiedAt: copiedAt,
-      now: Date(), holdSeconds: TranscribeFileExport.copiedHoldSeconds)
-    return HStack(spacing: DesignSpacing.md) {
+    HStack(spacing: DesignSpacing.md) {
       Button(action: openOrFinishRename) {
         EnviousButtonLabel(
           LocalizedStringResource(
@@ -254,23 +250,10 @@ struct HistoryTranscriptCard: View {
           "Open \(title)",
           comment: "History transcript card: VoiceOver label of Open. %@ is the file name."))
 
-      Button {
-        // Read at the press from the live row, never this card's snapshot.
-        guard let text = exportText else { return }
-        TranscribeFileExport.copy(text)
-        let pressed = Date()
-        copiedAt = pressed
-        Task {
-          try? await Task.sleep(for: .seconds(TranscribeFileExport.copiedHoldSeconds))
-          if copiedAt == pressed { copiedAt = nil }
-        }
-      } label: {
-        Image(systemName: copy.systemImage)
-          .frame(width: 16, height: 16)
-      }
-      .settingsButton(.quiet, size: .medium, isEnabled: true)
-      .help(Text(verbatim: copy.title))
-      .accessibilityLabel(Text(verbatim: copy.title))
+      // Read at the press from the live row, never this card's snapshot.
+      HistoryIconCopyButton(
+        label: TranscriptDocumentPresenter.exportButtonLabels(mode: .cleaned).copy
+      ) { exportText }
 
       Button {
         guard let anchor = moreAnchor.view else { return }

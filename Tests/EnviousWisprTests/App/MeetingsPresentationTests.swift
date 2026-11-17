@@ -223,15 +223,8 @@ struct MeetingsPresentationTests {
     #expect(P.actions(marked, isActive: false, canTranscribeAgain: false).delete == false)
   }
 
-  @Test("the audio size line never shows a failed read as zero")
-  func audioSizeLines() {
-    #expect(P.audioSizeLine(.bytes(0)) != P.audioSizeLine(.unreadable))
-    #expect(P.audioSizeLine(.deleted).contains("deleted"))
-    #expect(P.audioSizeLine(.bytes(42_000_000)).hasPrefix("Audio: "))
-  }
-
-  @Test("the coordinator reports kept audio, deleted audio and an unknown meeting distinctly")
-  func coordinatorAudioSize() async throws {
+  @Test("playback reads the kept audio, and no audio means no player")
+  func coordinatorPlaybackSource() async throws {
     let harness = try MeetingCoordinatorTests.Harness()
     var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
     record.state = .ready
@@ -249,12 +242,6 @@ struct MeetingsPresentationTests {
     await MeetingCoordinatorTests.eventually("listed") {
       harness.coordinator.record(id: record.id) != nil
     }
-    guard case .bytes(let bytes) = await harness.coordinator.audioSize(meetingID: record.id) else {
-      Issue.record("kept audio was not measured")
-      return
-    }
-    #expect(bytes > 0)
-    #expect(await harness.coordinator.audioSize(meetingID: UUID()) == .unreadable)
     // Playback reads the files the saved record lists, in its own folder.
     let source = try #require(harness.coordinator.playbackSource(meetingID: record.id))
     #expect(source.files[.microphone]?.map { $0.url.deletingLastPathComponent().lastPathComponent }
@@ -262,7 +249,6 @@ struct MeetingsPresentationTests {
     #expect(source.durationMs == 1_000)
     #expect(harness.coordinator.playbackSource(meetingID: UUID()) == nil)
     await harness.coordinator.deleteAudio(meetingID: record.id)
-    #expect(await harness.coordinator.audioSize(meetingID: record.id) == .deleted)
     #expect(harness.coordinator.playbackSource(meetingID: record.id) == nil, "no audio, no player")
   }
 

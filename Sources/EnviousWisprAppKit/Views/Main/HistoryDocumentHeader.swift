@@ -369,19 +369,25 @@ private struct HistoryWindowReader: NSViewRepresentable {
   }
 }
 
-/// The page header's Copy: an icon and its label, reading the CURRENT text when pressed.
+/// The page header's Copy: an icon and its label, reading the CURRENT text when pressed, then
+/// "Copied" with a checkmark for two seconds (`HistoryCopy`).
 struct HistoryDocumentCopyButton: View {
-  let title: String
-  let systemImage: String
+  let label: String
   let isEnabled: Bool
-  let action: () -> Void
+  let text: () -> String?
+  @State private var copiedAt: Date?
 
   var body: some View {
-    Button(action: action) {
-      EnviousButtonLabel(verbatim: title, size: .medium, systemImage: systemImage)
+    let copy = TranscribeFileExport.copyButtonPresentation(
+      label: label, copiedAt: copiedAt, now: Date(),
+      holdSeconds: TranscribeFileExport.copiedHoldSeconds)
+    Button {
+      HistoryCopy.press(text(), copiedAt: $copiedAt)
+    } label: {
+      EnviousButtonLabel(verbatim: copy.title, size: .medium, systemImage: copy.systemImage)
     }
     .settingsButton(.quiet, size: .medium, isEnabled: isEnabled)
-    .accessibilityLabel(Text(verbatim: title))
+    .accessibilityLabel(Text(verbatim: copy.title))
   }
 
   /// "Copy text", or the Marked up view's own label ("Copy cleaned").

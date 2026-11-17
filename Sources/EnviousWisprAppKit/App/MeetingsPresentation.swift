@@ -616,35 +616,6 @@ enum MeetingsPresentation {
       delete: record.isWritableByThisBuild && !record.deletionRequested)
   }
 
-  /// The kept audio's size, or why it cannot be shown.
-  enum AudioSize: Equatable {
-    case measuring
-    case bytes(Int64)
-    case deleted
-    case unreadable
-  }
-
-  static func audioSizeLine(_ size: AudioSize) -> String {
-    switch size {
-    case .measuring:
-      return String(
-        localized: "Measuring the audio", comment: "EnviousMeet detail: the audio size is loading.")
-    case .bytes(let bytes):
-      let formatted = ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
-      return String(
-        localized: "Audio: \(formatted)",
-        comment: "EnviousMeet detail: how much space the kept recording takes, like 42 MB.")
-    case .deleted:
-      return String(
-        localized: "The audio was deleted. The transcript is kept.",
-        comment: "EnviousMeet detail: after Delete audio.")
-    case .unreadable:
-      return String(
-        localized: "The audio size could not be read.",
-        comment: "EnviousMeet detail: the recording's folder could not be measured.")
-    }
-  }
-
   // MARK: - Notices
 
   /// Whether a notice offers Allow Microphone (the macOS prompt, or System Settings).

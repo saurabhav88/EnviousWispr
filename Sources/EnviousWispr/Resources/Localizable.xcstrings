@@ -4884,17 +4884,6 @@
         }
       }
     },
-    "Audio: %@" : {
-      "comment" : "EnviousMeet detail: how much space the kept recording takes, like 42 MB.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Audioaufnahme: %@"
-          }
-        }
-      }
-    },
     "Auto" : {
       "comment" : "EnviousMeet page, Transcript language: the menu item that sets no language.\nSettings: prefix identifying automatic language mode.",
       "localizations" : {
@@ -15886,17 +15875,6 @@
         }
       }
     },
-    "Measuring the audio" : {
-      "comment" : "EnviousMeet detail: the audio size is loading.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Größe der Audioaufnahme wird ermittelt"
-          }
-        }
-      }
-    },
     "Measuring…" : {
       "comment" : "App Settings, Recordings: storage use is being measured.",
       "localizations" : {
@@ -26462,17 +26440,6 @@
         }
       }
     },
-    "The audio size could not be read." : {
-      "comment" : "EnviousMeet detail: the recording's folder could not be measured.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Größe der Audioaufnahme konnte nicht ermittelt werden."
-          }
-        }
-      }
-    },
     "The audio was deleted before it was transcribed." : {
       "comment" : "EnviousMeet detail: why a meeting has no transcript.",
       "localizations" : {
@@ -26480,17 +26447,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Audioaufnahme wurde gelöscht, bevor sie transkribiert wurde."
-          }
-        }
-      }
-    },
-    "The audio was deleted. The transcript is kept." : {
-      "comment" : "EnviousMeet detail: after Delete audio.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Audioaufnahme wurde gelöscht. Das Transkript bleibt erhalten."
           }
         }
       }

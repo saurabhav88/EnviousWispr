@@ -106,7 +106,6 @@ struct HistoryTranscriptView: View {
   @State private var retainedRate: Float = 1
 
   // Actions
-  @State private var copiedAt: Date?
   @State private var saveError: String?
   @State private var notice: Notice?
   @State private var confirmingDelete = false
@@ -367,21 +366,15 @@ struct HistoryTranscriptView: View {
         id: "share", title: labels.share, systemImage: "square.and.arrow.up",
         isEnabled: availability == .content,
         kind: .action {
-          guard let anchor = moreAnchor.view else { return }
-          // `DeliverableText`, never a String item: the picker can stay open while the row
-          // changes or goes, so the text is read when the receiving app asks for it, in the
-          // view and Times the user had when they pressed Share.
-          let provider = NSItemProvider()
+          // The text is read when the receiving app asks for it, in the view and Times the
+          // user had when they pressed Share.
           let history = transcripts
           let id = rowID
           let mode = documentView
           let times = timesOn
-          provider.register(
-            DeliverableText(resolve: {
-              HistoryTranscriptExport.text(rowID: id, coordinator: history, mode: mode, timesOn: times)
-            }))
-          NSSharingServicePicker(items: [provider]).show(
-            relativeTo: anchor.bounds, of: anchor, preferredEdge: .minY)
+          HistoryDelivery.share(from: moreAnchor.view) {
+            HistoryTranscriptExport.text(rowID: id, coordinator: history, mode: mode, timesOn: times)
+          }
         }),
       .init(
         id: "save", title: labels.save, systemImage: "square.and.arrow.down",
@@ -580,37 +573,11 @@ struct HistoryTranscriptView: View {
   /// #4611 T3: Copy beside the words, copying what this view copies (Marked up copies the cleaned
   /// text, as before); its spoken name says which. "Copied" holds for two seconds at its size.
   private func paneCopyButton(_ row: Transcript, isEnabled: Bool) -> some View {
-    let copied = copiedAt != nil
-    let spoken = Self.copySpokenName(mode: documentView, polished: row.polishedText != nil)
-    return Button {
-      // Read at the press from the live row, never this view's snapshot.
-      guard let text = exportText else { return }
-      TranscribeFileExport.copy(text)
-      let pressed = Date()
-      copiedAt = pressed
-      Task {
-        try? await Task.sleep(for: .seconds(TranscribeFileExport.copiedHoldSeconds))
-        if copiedAt == pressed { copiedAt = nil }
-      }
-    } label: {
-      ZStack {
-        EnviousButtonLabel(
-          LocalizedStringResource("Copy", comment: "History meeting: a pane's Copy button."),
-          size: .medium, systemImage: "doc.on.doc"
-        )
-        .opacity(copied ? 0 : 1)
-        EnviousButtonLabel(
-          LocalizedStringResource(
-            "Copied", comment: "History meeting: a pane's Copy button, just after copying."),
-          size: .medium, systemImage: "checkmark"
-        )
-        .opacity(copied ? 1 : 0)
-      }
-    }
-    .settingsButton(.quiet, size: .medium, isEnabled: isEnabled)
-    .disabled(!isEnabled)
-    .help(Text(verbatim: spoken))
-    .accessibilityLabel(Text(verbatim: spoken))
+    // Read at the press from the live row, never this view's snapshot.
+    HistoryPaneCopyButton(
+      spoken: Self.copySpokenName(mode: documentView, polished: row.polishedText != nil),
+      isEnabled: isEnabled
+    ) { exportText }
   }
 
   static func copySpokenName(mode: FileImportCoordinator.DocumentView, polished: Bool) -> String {
@@ -890,17 +857,7 @@ struct HistoryTranscriptView: View {
 
   /// The text is read AFTER the panel closes: the row can change or be deleted while it is open.
   private func saveDocument(defaultName: String) {
-    let panel = NSSavePanel()
-    panel.allowedContentTypes = [.plainText]
-    panel.nameFieldStringValue = defaultName
-    guard panel.runModal() == .OK, let url = panel.url else { return }
-    guard let text = exportText else { return }
-    do {
-      try text.write(to: url, atomically: true, encoding: .utf8)
-    } catch {
-      // #3908: Foundation's localized sentence, never the NSError debug dump.
-      saveError = error.localizedDescription
-    }
+    HistoryDelivery.save(defaultName: defaultName, text: { exportText }) { saveError = $0 }
   }
 
   // MARK: - Commands
