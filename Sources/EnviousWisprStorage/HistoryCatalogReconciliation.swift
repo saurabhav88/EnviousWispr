@@ -39,6 +39,8 @@ package actor HistoryCatalogReconciliation {
     set { coverageState.withLock { $0.certificate = newValue } }
   }
   private static let batchSize = 32
+  /// One "HistorySpeed" track for every History signpost, shared with the app module.
+  private static let signposter = OSSignposter(subsystem: "com.enviouswispr.app", category: "HistorySpeed")
 
   /// Recheck at query time. The storage token alone cannot authorize all-matching operations.
   package nonisolated func currentCoverage() -> String? {
@@ -69,9 +71,9 @@ package actor HistoryCatalogReconciliation {
     defer { inFlight = false }
 
     let beganAt = sourceRevision()
-    var progress = try await catalog.sourceProgress()
+    var progress = KeyedProgress(try await catalog.sourceProgress())
     try await catalog.apply([])
-    let requireMeetings = progress.values.contains { sources.isMeetingPath($0.path) }
+    let requireMeetings = progress.entries.values.contains { sources.isMeetingPath($0.path) }
     let discovered = try sources.paths(requireMeetings: requireMeetings)
     let paths = Set(discovered.map(\.path))
     let ordered = Dictionary(discovered.map { url in
@@ -82,13 +84,15 @@ package actor HistoryCatalogReconciliation {
       if left != right { return left > right }
       return lhs.0.path < rhs.0.path
     }.map(\.0)
+    // Full-pass source discovery is done (#4586 instruments): content-free, read in Instruments.
+    Self.signposter.emitEvent("HistoryDiscoveryDone")
 
     var pending: [Update] = []
     var unavailable = 0
     var changed = false
     for url in ordered {
       try Task.checkCancellation()
-      let before = progress[url.path]
+      let before = progress.entries[url.path]
       if let before, (try? before.versions.allSatisfy { try $0.stillMatches() }) == true {
         continue
       }
@@ -116,14 +120,14 @@ package actor HistoryCatalogReconciliation {
 
     try Task.checkCancellation()
     let currentPaths = Set(try sources.paths(requireMeetings: requireMeetings).map(\.path))
-    let dropped = Set(progress.keys).subtracting(currentPaths)
-    let retainedKeys = Set(progress.values.filter { currentPaths.contains($0.path) }.compactMap(\.key))
-    let removed = Set(dropped.compactMap { progress[$0]?.key }).subtracting(retainedKeys)
-    for path in dropped { progress.removeValue(forKey: path) }
+    let dropped = Set(progress.entries.keys).subtracting(currentPaths)
+    let retainedKeys = Set(progress.entries.values.filter { currentPaths.contains($0.path) }.compactMap(\.key))
+    let removed = Set(dropped.compactMap { progress.entries[$0]?.key }).subtracting(retainedKeys)
+    for path in dropped { progress.remove(path) }
     if !dropped.isEmpty || !removed.isEmpty { changed = true }
     let revision: String?
-    if let beganAt, currentPaths == paths, currentPaths == Set(progress.keys),
-      (try? progress.values.allSatisfy { entry in
+    if let beganAt, currentPaths == paths, currentPaths == Set(progress.entries.keys),
+      (try? progress.entries.values.allSatisfy { entry in
         try entry.versions.allSatisfy { try $0.stillMatches() }
       }) == true, sourceRevision() == beganAt
     {
@@ -156,7 +160,7 @@ package actor HistoryCatalogReconciliation {
     let previous = lastCertificate
     lastCertificate = nil
     let beganAt = sourceRevision()
-    var progress = try await catalog.sourceProgress()
+    var progress = KeyedProgress(try await catalog.sourceProgress())
     var updates: [Update] = []
     var disappeared: [String] = []
     var unresolved = false
@@ -185,8 +189,8 @@ package actor HistoryCatalogReconciliation {
       }
     }
     let saved = try await commit(updates, tracking: &progress)
-    let removedKeys = Set(disappeared.compactMap { progress.removeValue(forKey: $0)?.key })
-      .subtracting(progress.values.compactMap(\.key))
+    let removedKeys = Set(disappeared.compactMap { progress.remove($0)?.key })
+      .filter { progress.isUnreferenced($0) }
     let certified: Bool
     if let previous, let beganAt, beganAt == sourceRevision() {
       certified = delta.spans(after: previous.source, through: beganAt)
@@ -212,18 +216,56 @@ package actor HistoryCatalogReconciliation {
   }
 
   private func commit(
-    _ pending: [Update], tracking progress: inout [String: HistoryCatalog.SourceProgress]
+    _ pending: [Update], tracking progress: inout KeyedProgress
   ) async throws -> Int {
     try Task.checkCancellation()
     guard !pending.isEmpty else { return 0 }
     let verified = pending.filter { update in
       (try? update.entry.versions.allSatisfy { try $0.stillMatches() }) == true
     }
-    let oldKeys = Set(verified.compactMap { progress[$0.entry.path]?.key })
-    for update in verified { progress[update.entry.path] = update.entry }
-    let currentKeys = Set(progress.values.compactMap(\.key))
-    try await catalog.apply(verified.compactMap(\.projection), removing: Array(oldKeys.subtracting(currentKeys)),
-      recording: verified.map(\.entry))
+    let removed = progress.record(verified.map(\.entry))
+    try await catalog.apply(verified.compactMap(\.projection), removing: removed, recording: verified.map(\.entry))
     return verified.count
+  }
+}
+
+extension HistoryCatalogReconciliation {
+  /// The progress map plus how many entries name each catalog key (#4586 N4), so a commit asks
+  /// "does any source still produce this key?" without rebuilding a set of every key.
+  struct KeyedProgress {
+    private(set) var entries: [String: HistoryCatalog.SourceProgress]
+    private var references: [HistoryCatalog.Key: Int] = [:]
+
+    init(_ entries: [String: HistoryCatalog.SourceProgress]) {
+      self.entries = entries
+      for key in entries.values.compactMap(\.key) { references[key, default: 0] += 1 }
+    }
+
+    func isUnreferenced(_ key: HistoryCatalog.Key) -> Bool { references[key] == nil }
+
+    /// Stores a verified batch. Returns the keys its paths named before the batch that no source
+    /// names now: the rows to delete. A key that appears and leaves within the batch is not one.
+    mutating func record(_ batch: [HistoryCatalog.SourceProgress]) -> [HistoryCatalog.Key] {
+      let before = Set(batch.compactMap { entries[$0.path]?.key })
+      for entry in batch { set(entry) }
+      return before.filter(isUnreferenced)
+    }
+
+    mutating func set(_ entry: HistoryCatalog.SourceProgress) {
+      release(entries.updateValue(entry, forKey: entry.path)?.key)
+      if let key = entry.key { references[key, default: 0] += 1 }
+    }
+
+    @discardableResult
+    mutating func remove(_ path: String) -> HistoryCatalog.SourceProgress? {
+      let removed = entries.removeValue(forKey: path)
+      release(removed?.key)
+      return removed
+    }
+
+    private mutating func release(_ key: HistoryCatalog.Key?) {
+      guard let key, let count = references[key] else { return }
+      references[key] = count > 1 ? count - 1 : nil
+    }
   }
 }

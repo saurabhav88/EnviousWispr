@@ -169,7 +169,9 @@ package actor HistoryCatalog {
   /// 4 (#4609): dictation summaries carry `DictationDisplay`; older catalogs rebuild once.
   /// 5 (#4611): transcript summaries carry their speaker analysis (`meetingAnalysis`) for the
   /// card's "2 speakers" in place of the speaker names; older catalogs rebuild once.
-  private static let schemaVersion: Int32 = 5
+  /// 6 (#4586): searchable fields are a length-prefixed BLOB (`SearchFields`), not JSON text, so
+  /// search reads them without a JSON decoder; older catalogs rebuild once.
+  private static let schemaVersion: Int32 = 6
   private let connection: HistoryCatalogConnection
   private let hasTrigram: Bool
 
@@ -207,7 +209,8 @@ package actor HistoryCatalog {
         try connection.execute("""
           CREATE TABLE entries (
             row_id INTEGER PRIMARY KEY, tab TEXT NOT NULL, id TEXT NOT NULL, saved_at REAL NOT NULL,
-            app TEXT, expires_at REAL, summary BLOB NOT NULL, fields TEXT NOT NULL, ascii_only INTEGER NOT NULL,
+            app TEXT, expires_at REAL, summary BLOB NOT NULL, search_fields BLOB NOT NULL,
+            ascii_only INTEGER NOT NULL,
             UNIQUE (tab, id)
           )
           """)
@@ -281,22 +284,22 @@ package actor HistoryCatalog {
         guard row.date.timeIntervalSinceReferenceDate.isFinite, row.sources.isEmpty == false else {
           throw Failure.invalidProjection
         }
-        let fields = String(decoding: try encoder.encode(projection.searchableFields), as: UTF8.self)
+        let fields = SearchFields.encode(projection.searchableFields)
         let text = projection.searchableFields.joined(separator: "\n")
         let asciiOnly = text.utf8.allSatisfy { $0 < 128 }
         let parameters = row.key.parameters + [
           .number(row.date.timeIntervalSinceReferenceDate),
           row.appKey.map(HistoryCatalogConnection.Value.text) ?? .null,
           row.expiresAt.map { .number($0.timeIntervalSinceReferenceDate) } ?? .null,
-          .bytes(try encoder.encode(row)), .text(fields), .number(asciiOnly ? 1 : 0),
+          .bytes(try encoder.encode(row)), .bytes(fields), .number(asciiOnly ? 1 : 0),
         ]
         let rowID = try connection.rows("""
-          INSERT INTO entries(tab, id, saved_at, app, expires_at, summary, fields, ascii_only)
+          INSERT INTO entries(tab, id, saved_at, app, expires_at, summary, search_fields, ascii_only)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(tab, id) DO UPDATE SET
             saved_at=excluded.saved_at, app=excluded.app, expires_at=excluded.expires_at,
             summary=excluded.summary,
-            fields=excluded.fields, ascii_only=excluded.ascii_only
+            search_fields=excluded.search_fields, ascii_only=excluded.ascii_only
           RETURNING row_id
           """, parameters) { sqlite3_column_int64($0, 0) }.first
         if hasTrigram, let rowID {
@@ -345,22 +348,40 @@ package actor HistoryCatalog {
       let prior = (newer ? rows.count > Self.pageSize : cursor != nil)
         ? (newer ? candidates.last : candidates.first).map { Cursor(date: $0.date, id: $0.key.id) } : nil
       let days = Set(visible.map { query.calendar.startOfDay(for: $0.date) })
-      var counts: [Date: Int]? = nil
-      if certified {
-        counts = [:]
-        for day in days {
-          guard let interval = query.calendar.dateInterval(of: .day, for: day) else { continue }
-          let count = try connection.rows("""
-            SELECT count(*) FROM entries AS e WHERE \(predicate.sql) AND e.saved_at >= ? AND e.saved_at < ?
-            """, predicate.values + [.number(interval.start.timeIntervalSinceReferenceDate),
-                                    .number(interval.end.timeIntervalSinceReferenceDate)]) {
-              Int(sqlite3_column_int64($0, 0))
-            }.first
-          counts?[day] = count
-        }
-      }
+      let counts = certified ? try dayCounts(days, predicate: predicate, calendar: query.calendar) : nil
       return Page(summaries: visible, continuation: continuation, newerContinuation: prior, dayCounts: counts)
     }
+  }
+
+  /// Exact matches per visible day in one statement (#4586 N3): the planner walks the few day
+  /// ranges first and reads each through `saved_order`, so it does the row work of one count per
+  /// day while the trigram candidate subquery in `predicate` runs once instead of once per day.
+  private func dayCounts(
+    _ days: Set<Date>, predicate: (sql: String, values: [HistoryCatalogConnection.Value]),
+    calendar: Calendar
+  ) throws -> [Date: Int] {
+    let ranges = days.sorted().compactMap { day in calendar.dateInterval(of: .day, for: day).map { (day, $0) } }
+    guard ranges.isEmpty == false else { return [:] }
+    let bounds = ranges.enumerated().flatMap { index, range -> [HistoryCatalogConnection.Value] in
+      [.integer(Int64(index)), .number(range.1.start.timeIntervalSinceReferenceDate),
+       .number(range.1.end.timeIntervalSinceReferenceDate)]
+    }
+    var counts = Dictionary(uniqueKeysWithValues: ranges.map { ($0.0, 0) })
+    for (index, count) in try connection.rows(
+      Self.dayCountSQL(days: ranges.count, predicate: predicate.sql), bounds + predicate.values, { (Int(sqlite3_column_int64($0, 0)), Int(sqlite3_column_int64($0, 1))) }) {
+      counts[ranges[index].0] = count
+    }
+    return counts
+  }
+
+  /// `CROSS JOIN` fixes the loop order: the day ranges outside, each read through `saved_order`.
+  static func dayCountSQL(days: Int, predicate: String) -> String {
+    let rows = Array(repeating: "(?, ?, ?)", count: days).joined(separator: ", ")
+    return """
+      WITH days(i, lo, hi) AS (VALUES \(rows))
+      SELECT days.i, count(*) FROM days CROSS JOIN entries AS e
+      WHERE e.saved_at >= days.lo AND e.saved_at < days.hi AND \(predicate) GROUP BY days.i
+      """
   }
 
   package func summary(for key: Key) throws -> Summary? {
@@ -471,7 +492,7 @@ package actor HistoryCatalog {
     }.first == revision
   }
 
-  private func predicate(for query: Query) -> (sql: String, values: [HistoryCatalogConnection.Value]) {
+  func predicate(for query: Query) -> (sql: String, values: [HistoryCatalogConnection.Value]) {
     var conditions = ["e.tab = ?", "(e.expires_at IS NULL OR e.expires_at > ?)"]
     var values: [HistoryCatalogConnection.Value] = [
       .text(query.tab.rawValue), .number(query.now.timeIntervalSinceReferenceDate),
@@ -493,7 +514,7 @@ package actor HistoryCatalog {
         searchConditions.append("(e.ascii_only = 0 OR e.row_id IN (SELECT rowid FROM search WHERE search MATCH ?))")
         searchValues.append(.text("\"\(query.search.replacingOccurrences(of: "\"", with: "\"\""))\""))
       }
-      searchConditions.append("history_contains(e.fields, ?)")
+      searchConditions.append("history_contains(e.search_fields, ?)")
       searchValues.append(.text(query.search))
       let included = query.meetingSearchOverrides.filter { $0.value }.map { $0.key.uuidString }.sorted()
       let excluded = query.meetingSearchOverrides.keys.map(\.uuidString).sorted()
@@ -555,12 +576,9 @@ package actor HistoryCatalog {
       }
       if exists == false || needsRebuild {
         try connection.execute("DELETE FROM search")
-        // Use the decoded fields, just like incremental insertion. JSON escaping must not
-        // remove genuine substring candidates such as quotes or backslashes.
+        // The same body incremental insertion writes: the stored fields joined by newlines.
         try connection.execute("""
-          INSERT INTO search(rowid, body)
-          SELECT e.row_id, (SELECT group_concat(value, char(10)) FROM json_each(e.fields))
-          FROM entries e
+          INSERT INTO search(rowid, body) SELECT e.row_id, history_search_body(e.search_fields) FROM entries e
           """)
         try connection.execute("UPDATE search_rebuild SET needed = 0")
       }
