@@ -163,5 +163,5 @@ def require_unfiltered(window, tab):
     """Refuse to measure a filtered list: the app keeps each tab's search query (cloud review P1)."""
     field = find_search_field(window)
     value = _ui().get_attr(field, "AXValue") if field is not None else None
-    if field is None or value:
+    if field is None or value != "":   # an unreadable value is not proof of an empty box
         raise RuntimeError(f"the {tab} list is filtered by {value!r} (or has no search box); clear it first")

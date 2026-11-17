@@ -138,11 +138,23 @@ def main():
             raise RuntimeError(f"capture invalid: stopped by {lines[0].get('stopped_by')}, error {lines[0].get('stop_error')}")
         return lines[0], lines[1:]
 
+    def restore_card(press_title, undo_title):
+        """Undo the press (Hide edits / Pause) and VERIFY the card is back to `press_title`; raises
+        when it is not, so no later measurement runs on an expanded or playing card."""
+        row = current_row()
+        undo = button(row, undo_title) if row is not None else None
+        if undo is not None:
+            ui.perform_action(undo, "AXPress")
+        wait(lambda: current_row() is not None and button(current_row(), press_title) is not None, DEADLINE_S,
+             f"{press_title} back on the card")
+
     def timed_press(name, press_title, done_title, undo_title, rep, hold_ms=HOLD_MS):
+        restore = lambda: restore_card(press_title, undo_title)
         """Press `press_title` on the card, confirm `done_title` appears and holds, time the picture,
         then press `undo_title` and wait for `press_title` to return (untimed)."""
         path = out / f"{name}-{rep}.jsonl"
         recorder = start_recorder(path)
+        stopped = False
         try:
             target = button(current_row(), press_title)
             if target is None:
@@ -159,8 +171,13 @@ def main():
                     held = False
                 time.sleep(0.03)  # deadline-fallback: paced AX read inside the hold
             held_until = libc.mach_absolute_time()
-        finally:
             header, frames = stop_recorder(recorder, path)
+            stopped = True
+        finally:
+            if not stopped:
+                recorder.kill()
+                recorder.wait()
+                restore()   # an error after the press must not leave edits open or audio playing
         record = {"ax_confirm_ms": round(ms(confirmed - pressed), 1), "held_by_ax": held}
         reference, _ = search_frames.reference_from_frames(frames, held_until, header["timebase_numer"],
                                                            header["timebase_denom"], HOLD_MS)
@@ -188,11 +205,7 @@ def main():
                               last_change_before_hold_end_ms=round(ms(last_change["display"] - pressed), 1)
                               if last_change else None,
                               still_at_hold_end=reference is not None)
-        undo = button(current_row(), undo_title)
-        if undo is not None:
-            ui.perform_action(undo, "AXPress")
-        wait(lambda: current_row() is not None and button(current_row(), press_title) is not None, DEADLINE_S,
-             f"{press_title} back on the card")
+        restore()
         time.sleep(0.5)  # settle: let the card finish collapsing before the next recording starts
         return record
 

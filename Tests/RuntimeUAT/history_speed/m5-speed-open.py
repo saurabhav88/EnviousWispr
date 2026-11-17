@@ -49,6 +49,7 @@ RUNTIME_UAT = HERE.parent
 PAGE_DEADLINE_S = 60.0
 WINDOW_DEADLINE_S = 30.0
 HOLD_MS = 300
+COVERAGE_DEADLINE_S = 900   # 2026-11-15 measured 264.7 s to full coverage on the M5 (old build); M1 rebuild ~180 s
 BUDGET_MS = 300
 SCROLL_BAR = 20
 
@@ -114,6 +115,18 @@ def main():
     if control == "drop-row":
         answer_rows = answer_rows[:1] + answer_rows[2:]
     answer = check.expected_tokens(answer_rows)
+
+    def coverage_complete():
+        import sqlite3
+        db = fixture.catalog_dir(home) / "history.sqlite"
+        if not db.is_file():
+            return False
+        try:
+            with sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=1) as con:
+                row = con.execute("select revision from coverage where revision is not null and revision != ''").fetchone()
+            return row is not None
+        except sqlite3.Error:
+            return False
 
     def start_recorder(path, rect):
         recorder = subprocess.Popen([str(recorder_bin), "--display-rect", rect, "--seconds", str(int(PAGE_DEADLINE_S + 60)),
@@ -194,6 +207,15 @@ def main():
             sample["list_rect"] = f"{int(a['x'])},{int(a['y'])},{int(a['width'] - SCROLL_BAR)},{int(a['height'])}"
             sample["window_frame"] = w
             if recorder is None:
+                if mode == "existing":
+                    # Untimed: the existing-catalog samples need a COMPLETE catalog, and an earlier
+                    # missing-catalog sample may have stopped right after its first page (Codex round 6).
+                    deadline = time.monotonic() + COVERAGE_DEADLINE_S
+                    while time.monotonic() < deadline and not coverage_complete():
+                        time.sleep(1)  # deadline-fallback: poll the catalog's coverage signal
+                    sample["coverage_complete"] = coverage_complete()
+                    if not sample["coverage_complete"]:
+                        raise RuntimeError("the catalog never reached full coverage before existing-catalog samples")
                 sample.update(result="warmup")
                 return sample
             header, frames = stop_recorder(recorder, frames_path)

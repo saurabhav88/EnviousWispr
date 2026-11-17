@@ -650,9 +650,6 @@ def main():
         attempts = [run_sequence(name, tab, area, steps, i, crop, capture=not (capture_compare and i % 2))
                     for i in range(count)]
         refs_after, reasons_after = take_references(name, tab, area, queries, crop, "after")
-        # Leave the tab unfiltered: the app keeps each tab's query, and a later driver (card,
-        # scroll) on this tab would otherwise measure a filtered list (cloud review P1).
-        set_query("")
         # Every verified picture of each query, from both reference phases (a query may draw
         # slightly different pixels on different visits; each one was confirmed by accessibility).
         verified = {q: {h for h in (refs_before.get(q), refs_after.get(q)) if h} for q in queries}
@@ -718,6 +715,18 @@ def main():
             return "PASS"
         return "UNPROVEN"
 
+    def leave_unfiltered(tab):
+        """Clear the tab's query and CONFIRM its unfiltered first page: the app keeps each tab's query,
+        and a later plan or driver on this tab would otherwise measure a filtered or still-changing list
+        (cloud review P1, Codex round 6). Raises when the list does not come back."""
+        focus_search_box()
+        set_query("")
+        fresh = wait_for(lambda: list_area(window), 10, f"the {tab} list")
+        current_area["element"] = fresh
+        confirmed, _, _ = confirm(fresh, answer(tab, ""), [])
+        if confirmed is None:
+            raise RuntimeError(f"the {tab} list did not return to its unfiltered page")
+
     def save_report():
         (out / "report.json").write_text(json.dumps(report, indent=1))
 
@@ -741,7 +750,14 @@ def main():
                         orphan.kill()
                         orphan.wait()
                         live_recorders.remove(orphan)
+                    try:
+                        leave_unfiltered(tab)   # on every exit path, success or not
+                    except Exception as error:
+                        report["left_filtered"] = {"after": name, "tab": tab, "error": str(error)[:300]}
                 save_report()
+                if "left_filtered" in report:
+                    print("stopping: a tab could not be returned to its unfiltered page", flush=True)
+                    break
         report["resources_search_run"] = usage.result()
     finally:
         if busy:
@@ -749,6 +765,8 @@ def main():
     verdicts = [v["summary"].get("budget_verdict", "UNPROVEN") for v in report["series"].values()]
     all_upper = [st["upper_ms"] for v in report["series"].values() for a in v.get("attempts", [])
                  if a.get("valid") and a.get("capture") for st in a.get("steps", []) if st.get("result") == "timed"]
+    if "left_filtered" in report:
+        verdicts.append("UNPROVEN")   # a later plan or driver would have measured a filtered list
     report["overall"] = {"timed_p95_ms": percentiles(all_upper).get("p95"), "timed_n": len(all_upper),
                          "budget_verdict": "PASS" if verdicts and all(v == "PASS" for v in verdicts)
                          else "FAIL" if "FAIL" in verdicts else "UNPROVEN"}

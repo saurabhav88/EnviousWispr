@@ -148,17 +148,22 @@ def main():
         last, since = table_y(table), time.monotonic()
         deadline = since + SETTLE_DEADLINE_S
         seen = [last] if last is not None else []
+        unreadable = 0
         while time.monotonic() < deadline:
             time.sleep(0.05)  # deadline-fallback: paced read inside a deadline-bounded settle wait
             now = table_y(table)
             if now is not None:
                 seen.append(now)
+            else:
+                unreadable += 1
             if on_read is not None:
                 on_read()
             if now is None or last is None or abs(now - last) > 0.5:
                 last, since = now, time.monotonic()
             elif time.monotonic() - since >= SETTLE_S:
                 return now
+        if len(set(seen)) <= 1:   # no observed movement: unreadable positions are not a moving list
+            raise RuntimeError(f"the list position could not be read ({unreadable} failed reads)")
         raise ListKeptMoving(f"the list kept moving for {SETTLE_DEADLINE_S:.0f} s with no input: first-row y "
                              f"ranged {min(seen) if seen else None} to {max(seen) if seen else None}")
 
@@ -332,6 +337,12 @@ def main():
                                        "height_changed": [], "rows_seen": None, "verdict": "FAIL"})
                 save()
                 print(json.dumps({"case": label, "tab": tab, "verdict": "FAIL", "problem": str(moving)}), flush=True)
+            except RuntimeError as unread:
+                report["runs"].append({"case": label, "tab": tab, "input": None, "repeat": None,
+                                       "hitch": {"ms_per_s": None}, "travel": {"asymmetry": None, "problem": str(unread)},
+                                       "height_changed": [], "rows_seen": None, "verdict": "UNPROVEN"})
+                save()
+                print(json.dumps({"case": label, "tab": tab, "verdict": "UNPROVEN", "problem": str(unread)}), flush=True)
 
     def run_tab(tab, inputs, repeats, start_pt, label):
         require_identity()
@@ -379,7 +390,9 @@ def main():
                                 child.wait()
                     deepest = max(deepest, reached + 2 * TRACKPAD["steps"] * TRACKPAD["step_px"])
                     before = [h for t, h in frames if t < d0]
-                    down_span = sa.moving_span(frames, before[-1] if before else None, d0, u0, d1)
+                    # No frame before the first event means no starting picture: any first frame would
+                    # read as movement, so the hitch number is UNPROVEN (Codex round 6).
+                    down_span = sa.moving_span(frames, before[-1], d0, u0, d1) if before else None
                     mid = [h for t, h in frames if t < u0]
                     up_span = sa.moving_span(frames, mid[-1] if mid else None, u0, u1 + QUIET_S, u1)
                     spans_epoch = [None if sp is None else (sp[0] + epoch_offset, sp[1] + epoch_offset)
