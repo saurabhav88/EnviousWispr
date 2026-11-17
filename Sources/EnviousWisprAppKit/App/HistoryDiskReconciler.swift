@@ -458,18 +458,8 @@ import Foundation
   /// unresolved offer, and an offer should not displace a dictation the user
   /// actually completed at the same instant.
   ///
-  /// A plain `sorted` over the concatenation is the obvious alternative and is
-  /// rejected for a narrower reason than it first appears. `Array.sorted` is
-  /// NOT documented as stable, so its behaviour on tied `createdAt` values is
-  /// unspecified — today's implementation happens to preserve input order, and
-  /// nothing promises the next toolchain will. That makes the tie case a
-  /// silent, toolchain-dependent reordering of shipped History, caused by an
-  /// opt-in feature the user may never have turned on. This merge specifies the
-  /// answer instead of inheriting it.
-  ///
-  /// Honest limit: because the current sort IS stable in practice, the two
-  /// implementations differ observably only in which row wins a tie — which is
-  /// exactly what `heldRowLosesATieWithAPermanentRow` pins.
+  /// The merge names the tie winner itself rather than relying on input order to `sorted` (which is
+  /// stable); `heldRowLosesATieWithAPermanentRow` pins it.
   private nonisolated static func mergeNewestFirst(
     _ held: [Transcript], _ permanent: [Transcript]
   ) -> [Transcript] {
