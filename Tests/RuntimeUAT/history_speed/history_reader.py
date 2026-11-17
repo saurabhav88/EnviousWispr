@@ -165,3 +165,29 @@ def require_unfiltered(window, tab):
     value = _ui().get_attr(field, "AXValue") if field is not None else None
     if field is None or value != "":   # an unreadable value is not proof of an empty box
         raise RuntimeError(f"the {tab} list is filtered by {value!r} (or has no search box); clear it first")
+
+
+def row_positions(table, area):
+    """{row identity: (y, height)} for rows on screen, or None when the read failed. The identity is
+    the row's first texts (time label or date, then its content), NOT its index: the list loads and
+    drops whole pages, so a row's index and the first row's position change without anything on
+    screen moving. Identities seen twice in one read are dropped (they cannot be followed)."""
+    ui = _ui()
+    viewport = ui.element_frame(area) if area is not None else None
+    rows = ui.get_attr(table, "AXVisibleRows") if table is not None else None
+    if viewport is None or rows is None:
+        return None
+    found, twice = {}, set()
+    for row in rows:
+        frame = ui.element_frame(row)
+        if frame is None:
+            return None
+        if frame["y"] + frame["height"] <= viewport["y"] or frame["y"] >= viewport["y"] + viewport["height"]:
+            continue
+        key = "|".join(t[:40] for t in _texts(row)[:3])
+        if key in found:
+            twice.add(key)
+        found[key] = (frame["y"], frame["height"])
+    for key in twice:
+        found.pop(key)
+    return found or None

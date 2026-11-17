@@ -143,34 +143,39 @@ def main():
         return hr.first_row_y(table)
 
     def settled(table, on_read=None):
-        """Wait until the table origin holds still for SETTLE_S; return that origin y. `on_read`
-        runs on every poll (the layout pass keeps sampling row heights while the list settles)."""
-        last, since = table_y(table), time.monotonic()
+        """Wait until the rows on screen hold still for SETTLE_S, followed row by row
+        (`history_reader.row_positions`), then return the first row's y (a depth reading for
+        positioning only). Following the rows on screen, not the first row of the whole list,
+        matters: the list loads and drops pages at the top, which moves that first row without
+        anything on screen moving. `on_read(positions)` runs on every poll."""
+        area = current_area["area"]
+        last, since = hr.row_positions(table, area), time.monotonic()
         deadline = since + SETTLE_DEADLINE_S
-        seen = [last] if last is not None else []
-        unreadable = 0
+        moves, unfollowed = [], 0
         while time.monotonic() < deadline:
             time.sleep(0.05)  # deadline-fallback: paced read inside a deadline-bounded settle wait
-            now = table_y(table)
-            if now is not None:
-                seen.append(now)
-            else:
-                unreadable += 1
+            now = hr.row_positions(table, area)
             if on_read is not None:
-                on_read()
-            if now is None or last is None or abs(now - last) > 0.5:
+                on_read(now)
+            step = sa.displacement(last, now)
+            if step is None:
+                unfollowed += 1
+                last, since = now, time.monotonic()
+            elif abs(step) > 0.5:
+                moves.append(step)
                 last, since = now, time.monotonic()
             elif time.monotonic() - since >= SETTLE_S:
-                return now
-        if unreadable or len(set(seen)) <= 1:   # only fully observed movement is a moving list (Codex round 7)
-            raise RuntimeError(f"the list did not settle and its position was not fully readable "
-                               f"({unreadable} failed reads; y ranged {min(seen) if seen else None} to "
-                               f"{max(seen) if seen else None})")
-        raise ListKeptMoving(f"the list kept moving for {SETTLE_DEADLINE_S:.0f} s with no input: first-row y "
-                             f"ranged {min(seen) if seen else None} to {max(seen) if seen else None}")
+                return table_y(table)
+            else:
+                last = now
+        if unfollowed or not moves:   # only fully followed movement is a moving list (Codex round 7)
+            raise RuntimeError(f"the list did not settle and its rows could not be followed "
+                               f"({unfollowed} unfollowed reads, {len(moves)} moves)")
+        raise ListKeptMoving(f"the rows on screen kept moving for {SETTLE_DEADLINE_S:.0f} s with no input: "
+                             f"{len(moves)} moves totalling {round(sum(moves), 1)} pt")
 
     def visible_rows(table):
-        return hr.row_heights(table, current_area["area"])
+        return hr.row_positions(table, current_area["area"])
 
     # ------------------------------------------------------------------ input
     def post_scroll(point, unit, delta, continuous, phase=None):
@@ -293,7 +298,7 @@ def main():
             samples.append(visible_rows(table))
             done.wait(0.04)  # deadline-fallback: paced AX read that ends on the gesture's done signal
         thread.join()
-        return settled(table, lambda: samples.append(visible_rows(table)))
+        return settled(table, samples.append)
 
     report = {"pid": pid, "executable": expected_executable, "window": WINDOW_SIZE, "control": control,
               "budget": sa.BUDGET, "trackpad": TRACKPAD, "wheel": WHEEL, "runs": []}
@@ -426,19 +431,30 @@ def main():
                 # Layout pass, again in fresh rows when the list is long enough: AX reads of the
                 # visible rows during the gestures AND while the list settles.
                 ya_pt = go_to(table, frame, point, position)
+                if at_bottom(table, area):
+                    # A short list (Meetings) ends before the target: back off so a down gesture fits.
+                    for _ in range(2):
+                        gesture("trackpad", point, +1)
+                    ya_pt = scrolled(table, frame)
+                    run["backed_off_from_end"] = True
                 run["layout_pass_at_pt"], run["layout_pass_fresh"] = ya_pt, ya_pt >= deepest
-                samples = [visible_rows(table)]
-                ya = settled(table)
-                yb = layout_gesture(table, kind, point, -1, 1.0, samples)
+                settled(table)
+                down = [visible_rows(table)]
+                layout_gesture(table, kind, point, -1, 1.0, down)
                 clamped_bottom = at_bottom(table, area)
-                yc = layout_gesture(table, kind, point, +1, up_scale, samples)
+                up = [down[-1]]
+                layout_gesture(table, kind, point, +1, up_scale, up)
+                clamped_top = scrolled(table, frame) <= 0.5
                 deepest = max(deepest, ya_pt + 2 * TRACKPAD["steps"] * TRACKPAD["step_px"])
                 position = ya_pt + FRESH_STEP_PT
-                changed, seen, failed = sa.height_changes(samples)
+                samples = down + up[1:]
+                heights = [None if x is None else {k: v[1] for k, v in x.items()} for x in samples]
+                changed, seen, failed = sa.height_changes(heights)
                 run.update(rows_seen=seen, failed_reads=failed, samples=len(samples), height_changed=changed)
-                run["travel"] = sa.travel(ya, yb, yc, top_y=frame["y"])
-                if clamped_bottom and run["travel"]["asymmetry"] is not None:
-                    run["travel"].update(asymmetry=None, problem="the down gesture ended clamped at the bottom")
+                run["travel"] = sa.travel_followed(down, up)
+                if run["travel"]["asymmetry"] is not None and (clamped_bottom or clamped_top):
+                    run["travel"].update(asymmetry=None, problem="the gesture ended clamped at the "
+                                         + ("bottom" if clamped_bottom else "top"))
                 run["verdict"] = sa.verdict(run["hitch"], changed, run["travel"], rows_seen=seen,
                                             failed_reads=failed, hitch_required=rep < trace_repeats)
                 report["runs"].append(run)
