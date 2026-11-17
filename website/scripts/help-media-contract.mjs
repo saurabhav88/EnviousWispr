@@ -13,7 +13,7 @@
 // (WCAG 1.2.1); `videoDescription` only says what the clip shows.
 //
 // Used by scripts/check-help-content.mjs (source side, runs in `npm run build` via prebuild) and by
-// scripts/check-help-media.mjs (built-page side, runs in `npm run check:help`).
+// scripts/check-help-media.mjs (built-page side, runs in `npm run check:site`).
 import fs from 'node:fs';
 import path from 'node:path';
 

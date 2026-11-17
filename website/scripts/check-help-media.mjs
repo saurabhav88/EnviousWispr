@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Built-page check for the help article clip (#3703). Runs from `npm run check:help` after `npm run build`.
+// Built-page check for the help article clip (#3703). Runs from `npm run check:site` after `npm run build`.
 //
 // check-help-content.mjs (prebuild) proves the SOURCE fields obey the contract and the files exist.
 // Nothing else looked at what the template renders, so a template edit that stopped emitting the
