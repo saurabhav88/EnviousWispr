@@ -19,7 +19,11 @@ TOC_XML = """<trace-toc><run number="1"><info><summary>
 class MovingSpanTests(unittest.TestCase):
     def test_span_runs_from_first_to_last_change(self):
         frames = [(0.9, "a"), (1.1, "b"), (1.2, "c"), (1.3, "c"), (1.4, "d"), (2.0, "d")]
-        self.assertEqual(sa.moving_span(frames, "a", 1.0, 3.0), (1.1, 1.4))
+        self.assertEqual(sa.moving_span(frames, "a", 1.0, 3.0), (1.0, 1.4))
+
+    def test_a_freeze_at_the_start_of_the_gesture_stays_in_the_interval(self):
+        frames = [(0.9, "a"), (1.5, "b"), (1.6, "c")]   # 500 ms with no new picture after the first event
+        self.assertEqual(sa.moving_span(frames, "a", 1.0, 3.0), (1.0, 1.6))
 
     def test_still_picture_is_no_span(self):
         frames = [(0.9, "a"), (1.1, "a"), (1.5, "a")]
@@ -53,18 +57,32 @@ class HitchTests(unittest.TestCase):
 
 class HeightTests(unittest.TestCase):
     def test_a_row_that_grows_after_first_display_counts(self):
-        changed, seen = sa.height_changes([{"r1": 40, "r2": 80}, {"r1": 40, "r2": 120}, {"r3": 50}])
-        self.assertEqual(seen, 3)
+        changed, seen, failed = sa.height_changes([{"r1": 40, "r2": 80}, None, {"r1": 40, "r2": 120}, {"r3": 50}])
+        self.assertEqual((seen, failed), (3, 1))
         self.assertEqual(changed, [{"row": "r2", "first": 80, "later": 120}])
 
     def test_half_point_rounding_does_not_count(self):
-        changed, _ = sa.height_changes([{"r1": 40.0}, {"r1": 40.5}])
+        changed, _, _ = sa.height_changes([{"r1": 40.0}, {"r1": 40.5}])
         self.assertEqual(changed, [])
 
 
 class TravelTests(unittest.TestCase):
     def test_equal_travel_is_symmetric(self):
         self.assertEqual(sa.travel(100, -900, 100)["asymmetry"], 0.0)
+
+    def test_moving_on_in_the_same_direction_fails(self):
+        # Codex round 1: absolute distances once called this perfect symmetry.
+        t = sa.travel(0, -1000, -2000)
+        self.assertIsNone(t["asymmetry"])
+        self.assertEqual(sa.verdict({"ms_per_s": 0.0}, [], t), "FAIL")
+
+    def test_a_return_clamped_at_the_top_is_unproven(self):
+        t = sa.travel(-500, -1500, 300, top_y=300)
+        self.assertEqual(t["problem"], "the up gesture ended clamped at the top")
+        self.assertEqual(sa.verdict({"ms_per_s": 0.0}, [], t), "UNPROVEN")
+
+    def test_no_rows_observed_is_unproven(self):
+        self.assertEqual(sa.verdict({"ms_per_s": 0.0}, [], sa.travel(0, -1000, 0), rows_seen=0), "UNPROVEN")
 
     def test_short_return_fails_budget(self):
         t = sa.travel(100, -900, -400)
@@ -73,6 +91,7 @@ class TravelTests(unittest.TestCase):
 
     def test_all_inside_budget_passes(self):
         self.assertEqual(sa.verdict({"ms_per_s": 4.9}, [], sa.travel(0, -1000, -15)), "PASS")
+        self.assertEqual(sa.verdict({"ms_per_s": 5.1}, [], sa.travel(0, -1000, -15)), "FAIL")
 
     def test_one_changed_row_fails(self):
         self.assertEqual(sa.verdict({"ms_per_s": 0.0}, [{"row": "x"}], sa.travel(0, -1000, 0)), "FAIL")

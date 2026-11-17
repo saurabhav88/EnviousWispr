@@ -48,7 +48,9 @@ HERE = Path(__file__).resolve().parent
 RUNTIME_UAT = HERE.parent
 WINDOW_ORIGIN = (40, 30)
 WINDOW_SIZE = (1200, 820)
-MID_START_PT = 2400          # how far below the newest row each run starts
+MID_START_PT = 4000          # how far below the newest row the first pass starts (more than one gesture, so
+                             # the up gesture cannot clamp at the top)
+FRESH_STEP_PT = 6000         # each later pass starts this much deeper, in rows no pass has shown yet
 TRACKPAD = {"step_px": 30, "steps": 50, "interval_s": 0.008}       # 1500 pt in 0.4 s
 WHEEL = {"clicks": 12, "interval_s": 0.05}                          # a brisk wheel flick
 QUIET_S = 1.5                # hitch pass: no AX reads for this long after each gesture
@@ -139,13 +141,16 @@ def main():
         """The first row's screen y: it moves exactly with the scroll position (history_reader)."""
         return hr.first_row_y(table)
 
-    def settled(table):
-        """Wait until the table origin holds still for SETTLE_S; return that origin y."""
+    def settled(table, on_read=None):
+        """Wait until the table origin holds still for SETTLE_S; return that origin y. `on_read`
+        runs on every poll (the layout pass keeps sampling row heights while the list settles)."""
         last, since = table_y(table), time.monotonic()
         deadline = since + SETTLE_DEADLINE_S
         while time.monotonic() < deadline:
             time.sleep(0.05)  # deadline-fallback: paced read inside a deadline-bounded settle wait
             now = table_y(table)
+            if on_read is not None:
+                on_read()
             if now is None or last is None or abs(now - last) > 0.5:
                 last, since = now, time.monotonic()
             elif time.monotonic() - since >= SETTLE_S:
@@ -213,8 +218,8 @@ def main():
         recorder.communicate(timeout=60)  # deadline-fallback: waits for the recorder to write and exit
         lines = [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
         header, frames = lines[0], lines[1:]
-        if header.get("stopped_by") != "signal":
-            raise RuntimeError(f"recorder stopped by {header.get('stopped_by')}")
+        if header.get("stopped_by") != "signal" or header.get("stop_error"):
+            raise RuntimeError(f"capture invalid: stopped by {header.get('stopped_by')}, error {header.get('stop_error')}")
         return sorted((mono_from_mach(f["display"]), f["hash"]) for f in frames
                       if f.get("status") == 0 and f.get("hash"))
 
@@ -226,8 +231,13 @@ def main():
                                  "--attach", str(pid), "--time-limit", f"{seconds}s",
                                  "--output", str(trace)], stdout=open(log_path, "w"), stderr=subprocess.STDOUT)
         # Signal: xctrace prints "Ctrl-C to stop the recording" once the instruments are live.
-        wait(lambda: "Ctrl-C to stop" in log_path.read_text() or proc.poll() is not None,
-             120, "xctrace to start recording")
+        try:
+            wait(lambda: "Ctrl-C to stop" in log_path.read_text() or proc.poll() is not None,
+                 120, "xctrace to start recording")
+        except RuntimeError:
+            proc.kill()
+            proc.wait()
+            raise
         if proc.poll() is not None:
             raise RuntimeError(f"xctrace exited early: {log_path.read_text()[-400:]}")
         return proc
@@ -271,9 +281,7 @@ def main():
             samples.append(visible_rows(table))
             done.wait(0.04)  # deadline-fallback: paced AX read that ends on the gesture's done signal
         thread.join()
-        y = settled(table)
-        samples.append(visible_rows(table))
-        return y
+        return settled(table, lambda: samples.append(visible_rows(table)))
 
     report = {"pid": pid, "executable": expected_executable, "window": WINDOW_SIZE, "control": control,
               "budget": sa.BUDGET, "trackpad": TRACKPAD, "wheel": WHEEL, "runs": []}
@@ -284,6 +292,31 @@ def main():
     current_area = {"area": None}
 
     group_hitch = {}
+
+    def scrolled(table, frame):
+        """How far below its newest row the list sits (points): viewport top minus first-row y."""
+        return frame["y"] - settled(table)
+
+    def go_to(table, frame, point, target):
+        """Trackpad gestures until the list sits at least `target` points down (bounded). Returns the
+        distance reached; less than `target` when the list ends first."""
+        reached = scrolled(table, frame)
+        for _ in range(120):   # bounded: 120 gestures of about 2000 pt
+            if reached >= target:
+                break
+            gesture("trackpad", point, -1)
+            now = scrolled(table, frame)
+            if now <= reached + 1:
+                break   # the list stopped moving: its end
+            reached = now
+        return reached
+
+    def at_bottom(table, area):
+        """True when the last loaded row ends at the viewport bottom (a down gesture clamped)."""
+        rows = ui.get_attr(table, "AXRows") or []
+        viewport = ui.element_frame(area)
+        last = ui.element_frame(rows[-1]) if rows else None
+        return bool(last and viewport and last["y"] + last["height"] <= viewport["y"] + viewport["height"] + 1)
 
     def run_tabs(tabs, inputs, repeats, start_pt, label):
         for tab in tabs:
@@ -296,38 +329,44 @@ def main():
             CGWarpMouseCursorPosition(point)
             wframe = ui.element_frame(window)
             crop = f"{frame['x'] - wframe['x']},{frame['y'] - wframe['y']},{frame['width'] - 20},{frame['height']}"
-            # Start position: trackpad gestures down until the list sits start_pt below its newest
-            # row (the first row's y against the viewport top: an absolute scroll distance).
-            for _ in range(80):   # bounded: 80 gestures of 1500 pt reach about 120,000 pt
-                if frame["y"] - settled(table) >= start_pt:
-                    break
-                gesture("trackpad", point, -1)
-            report.setdefault("start_reached_pt", {})[f"{label}-{tab}"] = frame["y"] - settled(table)
+            deepest = scrolled(table, frame)
+            position = start_pt
             for kind in inputs:
                 for rep in range(repeats):
                     require_identity()
-                    run = {"case": label, "tab": tab, "input": kind, "repeat": rep, "start_pt": start_pt}
+                    run = {"case": label, "tab": tab, "input": kind, "repeat": rep}
                     up_scale = 0.5 if control == "short-return" else 1.0
                     if rep < trace_repeats:
-                        # Hitch pass: no AX reads while gestures run.
+                        # Hitch pass, in rows no pass has shown yet (first display costs the most):
+                        # no AX reads while gestures run.
+                        reached = go_to(table, frame, point, position)
+                        run["hitch_pass_at_pt"], run["hitch_pass_fresh"] = reached, reached >= deepest
                         trace = out / f"{label}-{tab}-{kind}-{rep}.trace"
                         frames_path = out / f"{label}-{tab}-{kind}-{rep}.frames.jsonl"
-                        y0 = settled(table)
-                        xt = start_xctrace(trace, XCTRACE_WINDOW_S)
-                        recorder = start_recorder(frames_path, crop)
-                        with load_tools.ResourceSampler(pid) as usage:
-                            d0, d1 = gesture(kind, point, -1)
-                            time.sleep(QUIET_S)  # settle: hitch pass may not read AX; the list coasts to a stop
-                            u0, u1 = gesture(kind, point, +1, up_scale)
-                            time.sleep(QUIET_S)  # settle: hitch pass may not read AX; the list coasts to a stop
-                        run["resources_hitch_pass"] = usage.result()
-                        frames = stop_recorder(recorder, frames_path)   # before xctrace's slow save
-                        hitches, t_start, t_end, why = finish_xctrace(xt, trace)
+                        xt = recorder = None
+                        try:
+                            xt = start_xctrace(trace, XCTRACE_WINDOW_S)
+                            recorder = start_recorder(frames_path, crop)
+                            with load_tools.ResourceSampler(pid) as usage:
+                                d0, d1 = gesture(kind, point, -1)
+                                time.sleep(QUIET_S)  # settle: hitch pass may not read AX; the list coasts to a stop
+                                u0, u1 = gesture(kind, point, +1, up_scale)
+                                time.sleep(QUIET_S)  # settle: hitch pass may not read AX; the list coasts to a stop
+                            run["resources_hitch_pass"] = usage.result()
+                            frames = stop_recorder(recorder, frames_path)   # before xctrace's slow save
+                            recorder = None
+                            hitches, t_start, t_end, why = finish_xctrace(xt, trace)
+                            xt = None
+                        finally:
+                            for child in (recorder, xt):
+                                if child is not None:
+                                    child.kill()
+                                    child.wait()
+                        deepest = max(deepest, reached + 2 * TRACKPAD["steps"] * TRACKPAD["step_px"])
                         before = [h for t, h in frames if t < d0]
                         down_span = sa.moving_span(frames, before[-1] if before else None, d0, u0)
                         mid = [h for t, h in frames if t < u0]
                         up_span = sa.moving_span(frames, mid[-1] if mid else None, u0, u1 + QUIET_S)
-                        y1 = settled(table)
                         spans_epoch = [None if sp is None else (sp[0] + epoch_offset, sp[1] + epoch_offset)
                                        for sp in (down_span, up_span)]
                         if hitches is not None and (t_end is None or spans_epoch[-1] is None
@@ -336,38 +375,45 @@ def main():
                             why = "moving spans not inside the recording window"
                             hitches = None
                         if hitches is not None:
-                            hitch = sa.hitch_rate([(t_start + st, du, p, sy) for st, du, p, sy in hitches], spans_epoch, pid)
-                            run["hitch"] = hitch
+                            run["hitch"] = sa.hitch_rate([(t_start + st, du, p, sy) for st, du, p, sy in hitches],
+                                                         spans_epoch, pid)
                         else:
                             run["hitch"] = {"ms_per_s": None, "unproven": why}
                         run["recording"] = {"start_epoch": t_start, "end_epoch": t_end, "spans_epoch": spans_epoch}
                         run["frames"] = len(frames)
-                        run["first_frame_before_gesture"] = bool(before)
-                        run["kept_moving_s"] = {"down": sa.kept_moving_after(down_span, d1),
-                                                "up": sa.kept_moving_after(up_span, u1)}
-                        run["hitch_pass_travel"] = {"start_y": y0, "end_y": y1}
+                        run["kept_moving_s"] = {"down": round(sa.kept_moving_after(down_span, d1), 2),
+                                                "up": round(sa.kept_moving_after(up_span, u1), 2)}
                         group_hitch[(label, tab, kind)] = (rep, run["hitch"])
+                        position = reached + FRESH_STEP_PT
                     else:
                         # xctrace saves slowly: later repeats reuse the traced repeat's hitch number
                         # and add their own travel and row-height readings (parent session 2026-11-17).
                         traced = group_hitch.get((label, tab, kind))
-                        run["hitch"] = dict(traced[1], from_repeat=traced[0]) if traced else {"ms_per_s": None,
-                                                                                               "unproven": "no traced repeat"}
-                    # Layout pass: the same gestures, with AX reads of visible rows during movement.
+                        run["hitch"] = dict(traced[1], from_repeat=traced[0]) if traced else {
+                            "ms_per_s": None, "unproven": "no traced repeat"}
+                    # Layout pass, again in fresh rows when the list is long enough: AX reads of the
+                    # visible rows during the gestures AND while the list settles.
+                    ya_pt = go_to(table, frame, point, position)
+                    run["layout_pass_at_pt"], run["layout_pass_fresh"] = ya_pt, ya_pt >= deepest
                     samples = [visible_rows(table)]
                     ya = settled(table)
                     yb = layout_gesture(table, kind, point, -1, 1.0, samples)
+                    clamped_bottom = at_bottom(table, area)
                     yc = layout_gesture(table, kind, point, +1, up_scale, samples)
-                    changed, seen = sa.height_changes(samples)
-                    run["rows_seen"] = seen
-                    run["height_changed"] = changed
-                    run["travel"] = sa.travel(ya, yb, yc)
-                    run["verdict"] = sa.verdict(run["hitch"], changed, run["travel"])
+                    deepest = max(deepest, ya_pt + 2 * TRACKPAD["steps"] * TRACKPAD["step_px"])
+                    position = ya_pt + FRESH_STEP_PT
+                    changed, seen, failed = sa.height_changes(samples)
+                    run.update(rows_seen=seen, failed_reads=failed, samples=len(samples), height_changed=changed)
+                    run["travel"] = sa.travel(ya, yb, yc, top_y=frame["y"])
+                    if clamped_bottom and run["travel"]["asymmetry"] is not None:
+                        run["travel"].update(asymmetry=None, problem="the down gesture ended clamped at the bottom")
+                    run["verdict"] = sa.verdict(run["hitch"], changed, run["travel"], rows_seen=seen)
                     report["runs"].append(run)
                     save()
                     print(json.dumps({"case": label, "tab": tab, "input": kind, "repeat": rep, "verdict": run["verdict"],
                                       "ms_per_s": run["hitch"].get("ms_per_s"), "changed": len(changed),
-                                      "asym": run["travel"]["asymmetry"]}), flush=True)
+                                      "asym": run["travel"]["asymmetry"], "problem": run["travel"]["problem"],
+                                      "fresh": [run.get("hitch_pass_fresh"), run["layout_pass_fresh"]]}), flush=True)
 
     report["conditions_start"] = load_tools.machine_conditions()
     report["busy"] = busy

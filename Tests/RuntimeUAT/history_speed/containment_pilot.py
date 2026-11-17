@@ -166,7 +166,7 @@ def main():
                                      str(subject), str(run / "card")] + extra, capture_output=True, text=True, timeout=3600)
             report["card_run"] = {"exit": result.returncode, "stdout_tail": result.stdout[-3000:],
                                   "stderr_tail": result.stderr[-1500:]}
-        if "--scroll" in OWN:
+        if "--scroll" in sys.argv[5:]:   # not OWN: OWN stops just before --scroll (Codex round 1)
             import subprocess
             extra = sys.argv[sys.argv.index("--scroll") + 1:]   # everything after --scroll
             result = subprocess.run([sys.executable, "-B", str(HERE / "m5-speed-scroll.py"), str(session.pid),
@@ -196,9 +196,16 @@ def main():
                                     capture_output=True, text=True, timeout=7200)
             report["open_runs"][mode] = {"exit": result.returncode, "stdout_tail": result.stdout[-3000:],
                                          "stderr_tail": result.stderr[-1500:]}
+    # Every requested driver must have left a report; a missing one fails the runner.
+    expected = {"search": run_cases is not None, "card": "--card" in OWN, "scroll": "--scroll" in sys.argv[5:]}
+    missing = [name for name, wanted in expected.items() if wanted and not (run / name / "report.json").is_file()]
+    if "--open" in OWN:
+        missing += [f"open-{m}" for m in OWN[OWN.index("--open") + 1].split(",")
+                    if not (run / f"open-{m}" / "report.json").is_file()]
+    report["missing_reports"] = missing
     (run / "pilot.json").write_text(json.dumps(report, indent=1))
     print(json.dumps({k: v for k, v in report.items() if k != "fixture_writes"}, indent=1))
-    return 0
+    return 1 if missing else 0
 
 
 if __name__ == "__main__":

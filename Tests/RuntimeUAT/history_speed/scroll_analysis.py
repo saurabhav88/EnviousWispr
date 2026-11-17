@@ -20,9 +20,11 @@ SETTLE_GAP_S = 0.25          # a picture unchanged this long after the last even
 
 
 def moving_span(frames, before_hash, start_s, end_s):
-    """frames: [(seconds, hash)] sorted by time. Returns (first_change_s, last_change_s) inside
-    [start_s, end_s], or None when the picture never changed (the list did not move)."""
-    first = last = None
+    """The declared interaction interval of one gesture: from its first event (`start_s`) to the last
+    captured frame inside [start_s, end_s] whose picture changed. A freeze at the start of the
+    gesture is inside the interval (Codex round 1: measuring from the first changed frame would
+    drop it). frames: [(seconds, hash)] sorted by time. None when the picture never changed."""
+    last = None
     previous = before_hash
     for at, digest in frames:
         if at < start_s:
@@ -31,11 +33,9 @@ def moving_span(frames, before_hash, start_s, end_s):
         if at > end_s:
             break
         if digest != previous:
-            if first is None:
-                first = at
             last = at
         previous = digest
-    return None if first is None else (first, last)
+    return None if last is None else (start_s, last)
 
 
 def kept_moving_after(span, last_event_s):
@@ -97,34 +97,50 @@ def trace_start_epoch(toc_xml: str):
 
 
 def height_changes(samples):
-    """samples: [{row_key: height}] in time order. Returns (changed rows, rows seen).
-    changed: [{row, first, later}] for every row whose height later moved by > HEIGHT_TOLERANCE."""
-    first, changed = {}, {}
+    """samples: [{row_key: height} or None] in time order (None = a failed read). Returns
+    (changed rows, rows seen, failed reads). changed: [{row, first, later}] for every row whose
+    height later moved by > HEIGHT_TOLERANCE."""
+    first, changed, failed = {}, {}, 0
     for sample in samples:
+        if sample is None:
+            failed += 1
+            continue
         for key, height in sample.items():
             if key not in first:
                 first[key] = height
             elif abs(height - first[key]) > HEIGHT_TOLERANCE and key not in changed:
                 changed[key] = {"row": key, "first": first[key], "later": height}
-    return list(changed.values()), len(first)
+    return list(changed.values()), len(first), failed
 
 
-def travel(y_start, y_after_down, y_after_up):
-    """Table origin y (screen points) before the down gesture, after it, and after the up gesture.
-    Returns {down, up, asymmetry} where asymmetry is |down - up| / down."""
-    down = abs(y_after_down - y_start)
-    up = abs(y_after_up - y_after_down)
-    return {"down": round(down, 1), "up": round(up, 1),
-            "asymmetry": round(abs(down - up) / down, 4) if down > 0 else None}
+def travel(y_start, y_after_down, y_after_up, top_y=None):
+    """First-row screen y before the down gesture, after it, and after the up gesture. Scrolling
+    down moves the first row UP the screen (y falls). Returns {down, up, asymmetry, problem}:
+    asymmetry is |down - up| / down, and None with a `problem` when the list did not move down and
+    then back up, or when the up gesture ended clamped at the top (`top_y`: the first row's y when
+    the list is at its newest row), where equal travel is impossible to judge."""
+    down = y_start - y_after_down
+    up = y_after_up - y_after_down
+    out = {"down": round(down, 1), "up": round(up, 1), "asymmetry": None, "problem": None}
+    if down <= 0 or up <= 0:
+        out["problem"] = "the list did not move down and then back up"
+    elif top_y is not None and abs(y_after_up - top_y) <= 0.5:
+        out["problem"] = "the up gesture ended clamped at the top"
+    else:
+        out["asymmetry"] = round(abs(down - up) / down, 4)
+    return out
 
 
 BUDGET = {"ms_per_s": 5.0, "height_changed": 0, "asymmetry": 0.02}
 
 
-def verdict(hitch, changed, symmetry):
-    """PASS only when every number exists and is inside budget; UNPROVEN when one is missing."""
+def verdict(hitch, changed, symmetry, rows_seen=None):
+    """PASS only when every number exists and is inside budget. FAIL when a number is over budget
+    or the list moved the wrong way. UNPROVEN when a number is missing or no row was observed."""
+    if symmetry is not None and symmetry.get("problem") == "the list did not move down and then back up":
+        return "FAIL"
     if hitch is None or hitch.get("ms_per_s") is None or symmetry is None or symmetry.get("asymmetry") is None \
-            or changed is None:
+            or changed is None or rows_seen == 0:
         return "UNPROVEN"
     ok = hitch["ms_per_s"] <= BUDGET["ms_per_s"] and len(changed) <= BUDGET["height_changed"] \
         and symmetry["asymmetry"] <= BUDGET["asymmetry"]

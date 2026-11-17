@@ -106,16 +106,20 @@ def first_row_y(table):
 
 
 def row_heights(table, area):
-    """{row key: height} for rows on screen; key = row index plus the row's first text."""
+    """{row key: height} for rows on screen, or None when the read failed (a failed read is never an
+    empty observation). Key = row index plus the row's first text."""
     ui = _ui()
-    viewport = ui.element_frame(area)
+    viewport = ui.element_frame(area) if area is not None else None
+    rows = ui.get_attr(table, "AXVisibleRows") if table is not None else None
+    if viewport is None or rows is None:
+        return None
     found = {}
-    for row in ui.get_attr(table, "AXVisibleRows") or []:
+    for row in rows:
         frame = ui.element_frame(row)
-        if frame is None or viewport is None:
-            continue
+        if frame is None:
+            return None
         if frame["y"] + frame["height"] <= viewport["y"] or frame["y"] >= viewport["y"] + viewport["height"]:
             continue
         texts = _texts(row)
         found[f"{ui.get_attr(row, 'AXIndex')}:{(texts[0] if texts else '')[:40]}"] = frame["height"]
-    return found
+    return found or None

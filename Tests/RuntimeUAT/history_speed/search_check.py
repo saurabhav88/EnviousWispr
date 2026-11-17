@@ -6,10 +6,10 @@ total ("3 meetings"). Every card starts with its time label ("8:43\u202fAM", or 
 on Meetings) and its texts follow until the next time label or day header.
 
 Expected tokens come from the independent oracle (`m5-speed-ground-truth.py`): per local day a
-("count", n) token, then one ("row", time label, primary text) per row, newest first. The primary
+("count", n, "Month D") token, then one ("row", time label, primary text) per row, newest first. The primary
 text is the dictation text, the import file name, or the meeting title.
 
-Observed tokens: ("count", n) for a header that shows a total, ("card", time label, texts).
+Observed tokens: ("count", n, "Month D" or None) for a header that shows a total, ("card", time label, texts).
 A card shows a row only when the card's label starts with the row's time label AND one of the
 card's texts, or a contiguous run of them joined by spaces, EQUALS the row's primary text
 (containment is not enough: an old card "alpha beta" must not pass for "alpha"). A header total,
@@ -46,6 +46,23 @@ def time_label(created: float) -> str:
     return moment.strftime("%-I:%M") + "\u202f" + moment.strftime("%p")
 
 
+MONTHS = ("January", "February", "March", "April", "May", "June", "July", "August", "September", "October",
+          "November", "December")
+DAY_RE = re.compile(r"\b(" + "|".join(MONTHS) + r") (\d{1,2})\b")
+
+
+def day_key(date) -> str:
+    """The month and day a day header names: "November 14"."""
+    return f"{MONTHS[date.month - 1]} {date.day}"
+
+
+def day_key_of(text: str):
+    """"Saturday, November 14" (or with a year) -> "November 14"; None for a header with no month
+    and day ("Today"), whose day is then not compared."""
+    m = DAY_RE.search(text)
+    return f"{m.group(1)} {int(m.group(2))}" if m else None
+
+
 def expected_tokens(rows) -> list:
     if not rows:
         return [EMPTY]
@@ -55,7 +72,7 @@ def expected_tokens(rows) -> list:
         if this_day != day:
             day = this_day
             count_at = len(tokens)
-            tokens.append(["count", 0])
+            tokens.append(["count", 0, day_key(this_day)])
         tokens[count_at][1] += 1
         tokens.append(("row", time_label(row.created), normalise(row.shown)))
     return [tuple(t) for t in tokens]
@@ -75,10 +92,12 @@ def tokens_from_items(items) -> list | None:
                 return [EMPTY]
             continue
         if item[0] == "header":
-            for text in item[1]:
-                m = COUNT_RE.match(normalise(text))
+            texts = [normalise(t) for t in item[1]]
+            day = next((key for key in (day_key_of(t) for t in texts) if key), None)
+            for text in texts:
+                m = COUNT_RE.match(text)
                 if m:
-                    tokens.append(("count", int(m.group(1))))
+                    tokens.append(("count", int(m.group(1)), day))
             continue
         label, texts = item[1], [normalise(t) for t in item[2] if normalise(t)]
         if not texts:
@@ -107,7 +126,10 @@ def _align(observed, answer):
     pairs, j = [], 0
     for i, token in enumerate(observed):
         if token[0] == "count":
-            if j >= len(answer) or answer[j][0] != "count" or answer[j][1] != token[1]:
+            # The day total must match, and so must the day when the header names one (a stale page
+            # with the same times, texts and totals on another day is not this answer).
+            if j >= len(answer) or answer[j][0] != "count" or answer[j][1] != token[1] \
+                    or (token[2] is not None and token[2] != answer[j][2]):
                 return None
             j += 1
             continue

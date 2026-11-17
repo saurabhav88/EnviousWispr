@@ -55,6 +55,12 @@ class ResourceSampler:
             self._stop.wait(self.interval)  # deadline-fallback: sampling cadence, ends on the stop signal
 
     def __enter__(self):
+        # A synchronous first reading, so work at the very start of the phase is counted.
+        reading = _ps(self.pid)
+        if reading is not None:
+            self.first = self.last = reading
+            self.peak_mb = reading[1]
+            self.samples = 1
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
         return self
@@ -63,14 +69,16 @@ class ResourceSampler:
         self._stop.set()
         self._thread.join()
         final = _ps(self.pid)
+        self.final_read = final is not None
         if final is not None:
             self.last = final
             self.peak_mb = max(self.peak_mb, final[1])
         return False
 
     def result(self) -> dict:
-        if self.first is None or self.last is None:
-            return {"cpu_s": None, "peak_rss_mb": None, "samples": self.samples}
+        if self.first is None or self.last is None or not getattr(self, "final_read", False):
+            # No baseline or no final reading: the phase was not covered; never a shorter number.
+            return {"cpu_s": None, "peak_rss_mb": None, "samples": self.samples, "covered": False}
         return {"cpu_s": round(self.last[0] - self.first[0], 2), "peak_rss_mb": round(self.peak_mb, 1),
                 "end_rss_mb": round(self.last[1], 1), "samples": self.samples}
 

@@ -128,8 +128,8 @@ def main():
         recorder.communicate(timeout=60)  # deadline-fallback: waits for the recorder to write and exit
         lines = [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
         header, frames = lines[0], lines[1:]
-        if header.get("stopped_by") != "signal":
-            raise RuntimeError(f"recorder stopped by {header.get('stopped_by')}")
+        if header.get("stopped_by") != "signal" or header.get("stop_error"):
+            raise RuntimeError(f"capture invalid: stopped by {header.get('stopped_by')}, error {header.get('stop_error')}")
         return header, frames
 
     def one_launch(index, rect, measured):
@@ -257,12 +257,15 @@ def main():
     finally:
         if busy:
             busy.__exit__(None, None, None)
-        production_after = fixture.export_domain(fixture.PRODUCTION_DOMAIN)
-        changed = sorted(k for k in set(production_before or {}) | set(production_after or {})
-                         if (production_before or {}).get(k) != (production_after or {}).get(k))
-        report["production_changed_keys"] = changed
-        if changed:
-            problems.append(f"production preferences changed (not restored): {changed}")
+        try:   # the comparison and the cleanup are attempted independently; both failures are reported
+            production_after = fixture.export_domain(fixture.PRODUCTION_DOMAIN)
+            changed = sorted(k for k in set(production_before or {}) | set(production_after or {})
+                             if (production_before or {}).get(k) != (production_after or {}).get(k))
+            report["production_changed_keys"] = changed
+            if changed:
+                problems.append(f"production preferences changed (not restored): {changed}")
+        except Exception as error:
+            problems.append(f"production comparison: {error}")
         try:
             report["throwaway_removed"] = fixture.cleanup_throwaway(real_home)
         except Exception as error:   # cleanup failure is a finding, reported, never hidden
@@ -273,7 +276,14 @@ def main():
     for s in measured:
         counts[s["result"]] = counts.get(s["result"], 0) + 1
     report["results"] = counts
-    report["launch_to_page_ms"] = percentiles(timed)
+    report["launch_to_page_ms"] = percentiles(timed)   # timed samples only
+    # Every attempt counts: a missed or untimed sample is slower than any timed one (or unknown), so
+    # the all-attempt p95 is only a number when it falls on a timed sample (Codex round 1).
+    attempts = sorted(timed) + [float("inf")] * (len(measured) - len(timed))
+    if attempts:
+        p95_all = attempts[ceil(len(attempts) * .95) - 1]
+        report["launch_to_page_all_attempts_p95_ms"] = p95_all if p95_all != float("inf") else "not measured (missed or untimed samples)"
+        report["attempts"] = len(measured)
     report["window_to_page_ms"] = percentiles([s["window_to_page_ms"] for s in measured if s["result"] == "timed"])
     report["window_ms"] = percentiles([s["window_ms"] for s in measured if "window_ms" in s])
     report["capture_late"] = sum(1 for s in measured if s.get("capture_late"))
@@ -288,7 +298,7 @@ def main():
     report["conditions_end"] = load_tools.machine_conditions()
     report["problems"] = problems
     (out / "report.json").write_text(json.dumps(report, indent=1))
-    print(json.dumps({k: report[k] for k in ("mode", "results", "launch_to_page_ms", "window_to_page_ms",
+    print(json.dumps({k: report.get(k) for k in ("mode", "results", "launch_to_page_ms", "launch_to_page_all_attempts_p95_ms", "window_to_page_ms",
                                              "capture_late", "budget_verdict", "problems")}))
     return 0 if verdict == "PASS" and not problems else 1
 

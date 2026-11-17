@@ -133,6 +133,8 @@ def main():
         recorder.send_signal(signal.SIGTERM)
         recorder.communicate(timeout=60)  # deadline-fallback: waits for the recorder to write and exit
         lines = [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
+        if lines[0].get("stopped_by") != "signal" or lines[0].get("stop_error"):
+            raise RuntimeError(f"capture invalid: stopped by {lines[0].get('stopped_by')}, error {lines[0].get('stop_error')}")
         return lines[0], lines[1:]
 
     def timed_press(name, press_title, done_title, undo_title, rep, hold_ms=HOLD_MS):
@@ -164,7 +166,9 @@ def main():
         complete = search_frames.complete_frames(frames)
         before = [f for f in complete if f["display"] < pressed]
         after = [f for f in complete if f["display"] >= pressed]
-        if not before or not after:
+        if not held:
+            record.update(result="unknown", reason=f"the card stopped showing {done_title} during the hold")
+        elif not before or not after:
             record.update(result="unknown", reason="no captured frame before or after the press")
         else:
             base = before[-1]["hash"]
@@ -191,7 +195,13 @@ def main():
 
     previous_output = subprocess.run(["SwitchAudioSource", "-c", "-t", "output"], capture_output=True,
                                      text=True).stdout.strip()
+    if not previous_output:
+        raise SystemExit("cannot read the current sound output; refusing to switch it")
     subprocess.run(["SwitchAudioSource", "-t", "output", "-s", SILENT_OUTPUT], check=True, capture_output=True)
+    now = subprocess.run(["SwitchAudioSource", "-c", "-t", "output"], capture_output=True, text=True).stdout.strip()
+    if now != SILENT_OUTPUT:
+        subprocess.run(["SwitchAudioSource", "-t", "output", "-s", previous_output], capture_output=True)
+        raise SystemExit(f"sound output is {now!r}, not {SILENT_OUTPUT!r}; restored and refusing to play")
     report = {"pid": pid, "executable": expected_executable, "row_index": row_index,
               "conditions_start": load_tools.machine_conditions(), "edits": [], "play": [],
               "output_during_run": SILENT_OUTPUT, "output_restored_to": previous_output}
@@ -213,9 +223,14 @@ def main():
                                                         if r.get("result") == "timed"])
         report[f"{key}_untimed"] = sum(1 for r in report[key] if r.get("result") != "timed")
     report["conditions_end"] = load_tools.machine_conditions()
+    restored = report["output_after"] == previous_output
+    report["output_restored"] = restored
     (out / "report.json").write_text(json.dumps(report, indent=1))
     print(json.dumps({k: report[k] for k in ("edits_first_change_ms", "edits_settled_ms", "play_first_change_ms", "edits_untimed",
                                              "play_untimed", "output_after")}))
+    if not restored:
+        print(f"SOUND OUTPUT NOT RESTORED: {report['output_after']!r}, was {previous_output!r}", file=sys.stderr)
+        return 1
     return 0
 
 

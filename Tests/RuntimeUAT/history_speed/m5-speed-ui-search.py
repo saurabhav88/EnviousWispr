@@ -402,10 +402,13 @@ def main():
                 first = None
         return None, verdicts, {}
 
+    live_recorders = []   # every started recorder until it is stopped; killed if a plan raises
+
     def start_recorder(frames_path, crop, seconds):
         recorder = subprocess.Popen([str(recorder_bin), "--pid", str(pid), "--seconds", str(int(seconds)),
                                      "--out", str(frames_path), "--crop", crop],
                                     stdout=subprocess.PIPE, text=True, bufsize=1)
+        live_recorders.append(recorder)
         if not recorder.stdout.readline().startswith('{"ready"'):
             recorder.kill()
             return None
@@ -418,10 +421,14 @@ def main():
                                   text=True).stdout.strip()
         recorder.send_signal(signals.SIGTERM)
         recorder.communicate(timeout=60)  # deadline-fallback: waits for the recorder to write and exit
+        if recorder in live_recorders:
+            live_recorders.remove(recorder)
         lines = [json.loads(l) for l in frames_path.read_text().splitlines() if l.strip()]
         header, frames = lines[0], lines[1:]
         if header.get("stopped_by") != "signal":
             return header, frames, cpu_text, f"recorder stopped by {header.get('stopped_by')}, not by the driver"
+        if header.get("stop_error"):
+            return header, frames, cpu_text, f"capture failed: {header['stop_error']}"
         return header, frames, cpu_text, None
 
     def set_query(query):
@@ -732,6 +739,11 @@ def main():
                 except RuntimeError as error:   # one plan's setup failure is recorded, never fatal to the run
                     report["series"][name] = {"summary": {"tab": tab, "invalid_plan": True, "error": str(error)[:600]}}
                     print(name, "invalid plan:", str(error)[:300], flush=True)
+                finally:
+                    for orphan in list(live_recorders):   # a plan that raised left its recorder running
+                        orphan.kill()
+                        orphan.wait()
+                        live_recorders.remove(orphan)
                 save_report()
         report["resources_search_run"] = usage.result()
     finally:

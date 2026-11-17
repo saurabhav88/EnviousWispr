@@ -10,6 +10,7 @@ import json
 import sys
 import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -169,10 +170,11 @@ class CheckerTests(unittest.TestCase):
         return check.tokens_from_items(list(items))
 
     def test_expected_tokens_carry_day_totals_labels_and_primary_text(self):
+        day = lambda t: check.day_key(datetime.fromtimestamp(check.REFERENCE_EPOCH + t).date())
         self.assertEqual(self.answer, [
-            ("count", 2), ("row", check.time_label(DAY1), "alpha"),
+            ("count", 2, day(DAY1)), ("row", check.time_label(DAY1), "alpha"),
             ("row", check.time_label(DAY1 - 60), "beta text"),
-            ("count", 1), ("row", check.time_label(DAY2), "gamma")])
+            ("count", 1, day(DAY2)), ("row", check.time_label(DAY2), "gamma")])
         self.assertEqual(check.expected_tokens([]), [check.EMPTY])
 
     def test_exact_text_with_matching_label_is_correct(self):
@@ -202,12 +204,18 @@ class CheckerTests(unittest.TestCase):
         observed = self.obs(("card", check.time_label(DAY1 - 3600), ["alpha"]))
         self.assertEqual(check.classify(observed, self.answer, []), "wrong")
 
-    def test_shown_day_total_must_match(self):
+    def test_shown_day_total_and_day_must_match(self):
         a = self.rows[0]
-        good = self.obs(("header", ["Saturday, November 14", "2 meetings"]), self.card(a), ("filled",))
-        bad = self.obs(("header", ["Saturday, November 14", "5 meetings"]), self.card(a))
+        name = datetime.fromtimestamp(check.REFERENCE_EPOCH + DAY1).strftime("%A, %B %-d")
+        other = datetime.fromtimestamp(check.REFERENCE_EPOCH + DAY1 + 7 * DAY).strftime("%A, %B %-d")
+        good = self.obs(("header", [name, "2 meetings"]), self.card(a), ("filled",))
+        bad_total = self.obs(("header", [name, "5 meetings"]), self.card(a), ("filled",))
+        bad_day = self.obs(("header", [other, "2 meetings"]), self.card(a), ("filled",))
+        unnamed_day = self.obs(("header", ["Today", "2 meetings"]), self.card(a), ("filled",))
         self.assertEqual(check.classify(good, self.answer, []), "correct")
-        self.assertEqual(check.classify(bad, self.answer, []), "wrong")
+        self.assertEqual(check.classify(bad_total, self.answer, []), "wrong")
+        self.assertEqual(check.classify(bad_day, self.answer, []), "wrong")
+        self.assertEqual(check.classify(unnamed_day, self.answer, []), "correct")
 
     def test_previous_page_is_retained_and_older_is_stale(self):
         delta = Fake("delta", DAY1 + 60)
