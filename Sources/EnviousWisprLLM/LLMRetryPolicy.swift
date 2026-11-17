@@ -110,10 +110,10 @@ enum LLMRetryPolicy {
         // rate-or-quota ambiguity) surface their actionable notice immediately.
         return reason.isRetryable
       case .egOneSkipped, .localEngineSkipped:
-        // EXPLICIT (#1271): EG-1 bypasses are silent skips, and the single
-        // connection-refused retry that covers the server restart-once
-        // window already happened inside `EGOneConnector`. Retrying here
-        // would stack retries and delay the raw-text fallback.
+        // EXPLICIT (#1271, #4496): local-polish bypasses silently deliver the
+        // deterministic text without blocking dictation; `LocalPolishTransport`
+        // makes a single attempt (`#4496`), and restarting the helper happens in
+        // the background for subsequent takes. Retrying here would delay fallback.
         return false
       case .localPolishNotReady:
         // EXPLICIT (#1305): the Ollama preflight found the server down or the
