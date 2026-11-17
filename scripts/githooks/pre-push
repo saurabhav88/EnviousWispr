@@ -606,7 +606,7 @@ main() {
   WORK="$(mktemp -d "${TMPDIR:-/tmp}/ew-pre-push.XXXXXX")" || hook_fault "cannot create a temp directory"
   # Canonical spelling (/var -> /private/var on macOS) so registration checks match exactly.
   WORK="$(cd "$WORK" && pwd -P)" || hook_fault "cannot resolve the temp directory"
-  echo "==> pre-push: CI gap: the website build and check:help take longer than the local cut; website-check in CI remains the authority." >&2
+  echo "==> pre-push: CI gap: the website build and check:site take longer than the local cut; website-check in CI remains the authority." >&2
   read_receipt_once
 
   while read -r local_ref local_sha remote_ref remote_sha; do

@@ -64,6 +64,10 @@ jobs:
           fi
           echo "Build output verified"
 
+      - name: Check reachability
+        working-directory: website
+        run: npm run check:reachability
+
       # Skip an unchanged deploy. The daily cron rebuilt and re-uploaded
       # byte-identical output on most days (20 of 20 scheduled runs in the 30
       # days to 2026-09-13 deployed; posts go live on a handful of them). The
