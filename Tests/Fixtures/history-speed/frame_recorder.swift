@@ -1,4 +1,6 @@
-// History speed frame recorder (#4586 PR 0). Records every frame ScreenCaptureKit delivers for
+// History speed frame recorder (#4586 PR 0). A standalone tool, not part of any target: it lives in
+// Tests/Fixtures (Apple frameworks only, never an app module) and is built by hand with swiftc for
+// the drivers in Tests/RuntimeUAT/history_speed. Records every frame ScreenCaptureKit delivers for
 // one window, with the WindowServer display time (`SCStreamFrameInfo.displayTime`, host time in
 // mach_absolute_time ticks), the frame status, and a 32x32 grayscale signature of a crop region.
 // The callback only copies a downsampled signature into a preallocated buffer; JSON is written
@@ -8,7 +10,7 @@
 // measurement is over); `--seconds` is only a deadline fallback.
 //
 // Build (into the producing checkout's build/ folder):
-//   swiftc -O -o build/history_speed/frame_recorder Tests/RuntimeUAT/history_speed/frame_recorder.swift
+//   swiftc -O -o build/history_speed/frame_recorder Tests/Fixtures/history-speed/frame_recorder.swift
 // Usage:
 //   frame_recorder --pid <pid> --seconds <max s> --out <file.jsonl> [--crop x,y,w,h] [--title <substring>]
 //   frame_recorder --display-rect x,y,w,h --seconds <max s> --out <file.jsonl>   (no window needed)

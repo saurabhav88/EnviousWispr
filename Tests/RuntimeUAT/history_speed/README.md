@@ -25,7 +25,7 @@ Tests/RuntimeUAT/history_speed/build-release-subject.sh
 ```
 
 ```bash
-mkdir -p build/history_speed && swiftc -O -o build/history_speed/frame_recorder Tests/RuntimeUAT/history_speed/frame_recorder.swift
+mkdir -p build/history_speed && swiftc -O -o build/history_speed/frame_recorder Tests/Fixtures/history-speed/frame_recorder.swift
 ```
 
 The first prints the Release app path and its executable sha256 (the pin every run checks).
