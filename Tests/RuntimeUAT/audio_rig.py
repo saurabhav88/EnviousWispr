@@ -99,9 +99,8 @@ class AppTarget:
                 return False
             info = subprocess.run(["lsappinfo", "info", "-only", "pid", asn],
                                   capture_output=True, text=True, timeout=5, check=True).stdout
-            return any(line.split()[:3] == ["pid", "=", str(client.pid)]
-                       for line in info.splitlines()) and self._is_pinned_process(client) and bool(
-                           get_attr(get_ax_app(client.pid), "AXWindows"))
+            return tg.parse_lsappinfo("pid", info) == str(client.pid) and self._is_pinned_process(client) and bool(
+                get_attr(get_ax_app(client.pid), "AXWindows"))
         except (OSError, subprocess.SubprocessError) as error:
             raise tg.SetupFailed("paste-target", f"cannot verify the pinned dev app: {error}") from error
 
