@@ -29,6 +29,8 @@ Every run records machine conditions (load, peer builds) at start and end.
 Usage: python3 m5-speed-scroll.py <pid> <subject .app> <new out dir> [--tabs Dictations,Transcripts,Meetings]
                                   [--inputs trackpad,wheel] [--repeats N] [--start-pt N] [--idle] [--busy]
                                   [--deep] [--control short-return]
+  --trace-repeats N records xctrace only on the first N repeats of each tab x input (later repeats
+  reuse that hitch number and add travel and row-height readings)
   --deep adds one trackpad run on Dictations from 40000 pt down (many loaded pages)
 The caller holds the dev-app lock and runs the subject inside fixture.ContainedSession
 (containment_pilot.py --scroll does both).
@@ -87,6 +89,7 @@ def main():
     repeats = int(option(argv, "--repeats", "3"))
     control = option(argv, "--control")
     start_pt = float(option(argv, "--start-pt", str(MID_START_PT)))
+    trace_repeats = int(option(argv, "--trace-repeats", "99"))
     busy = "--busy" in argv
     if control not in (None, "short-return"):
         print(f"unknown control {control}", file=sys.stderr)
@@ -280,6 +283,8 @@ def main():
 
     current_area = {"area": None}
 
+    group_hitch = {}
+
     def run_tabs(tabs, inputs, repeats, start_pt, label):
         for tab in tabs:
             require_identity()
@@ -303,43 +308,51 @@ def main():
                     require_identity()
                     run = {"case": label, "tab": tab, "input": kind, "repeat": rep, "start_pt": start_pt}
                     up_scale = 0.5 if control == "short-return" else 1.0
-                    # Hitch pass: no AX reads while gestures run.
-                    trace = out / f"{label}-{tab}-{kind}-{rep}.trace"
-                    frames_path = out / f"{label}-{tab}-{kind}-{rep}.frames.jsonl"
-                    y0 = settled(table)
-                    xt = start_xctrace(trace, XCTRACE_WINDOW_S)
-                    recorder = start_recorder(frames_path, crop)
-                    with load_tools.ResourceSampler(pid) as usage:
-                        d0, d1 = gesture(kind, point, -1)
-                        time.sleep(QUIET_S)  # settle: hitch pass may not read AX; the list coasts to a stop
-                        u0, u1 = gesture(kind, point, +1, up_scale)
-                        time.sleep(QUIET_S)  # settle: hitch pass may not read AX; the list coasts to a stop
-                    run["resources_hitch_pass"] = usage.result()
-                    frames = stop_recorder(recorder, frames_path)   # before xctrace's slow save
-                    hitches, t_start, t_end, why = finish_xctrace(xt, trace)
-                    before = [h for t, h in frames if t < d0]
-                    down_span = sa.moving_span(frames, before[-1] if before else None, d0, u0)
-                    mid = [h for t, h in frames if t < u0]
-                    up_span = sa.moving_span(frames, mid[-1] if mid else None, u0, u1 + QUIET_S)
-                    y1 = settled(table)
-                    spans_epoch = [None if sp is None else (sp[0] + epoch_offset, sp[1] + epoch_offset)
-                                   for sp in (down_span, up_span)]
-                    if hitches is not None and (t_end is None or spans_epoch[-1] is None
-                                                or spans_epoch[-1][1] > t_end or spans_epoch[0] is None
-                                                or spans_epoch[0][0] < t_start):
-                        why = "moving spans not inside the recording window"
-                        hitches = None
-                    if hitches is not None:
-                        hitch = sa.hitch_rate([(t_start + st, du, p, sy) for st, du, p, sy in hitches], spans_epoch, pid)
-                        run["hitch"] = hitch
+                    if rep < trace_repeats:
+                        # Hitch pass: no AX reads while gestures run.
+                        trace = out / f"{label}-{tab}-{kind}-{rep}.trace"
+                        frames_path = out / f"{label}-{tab}-{kind}-{rep}.frames.jsonl"
+                        y0 = settled(table)
+                        xt = start_xctrace(trace, XCTRACE_WINDOW_S)
+                        recorder = start_recorder(frames_path, crop)
+                        with load_tools.ResourceSampler(pid) as usage:
+                            d0, d1 = gesture(kind, point, -1)
+                            time.sleep(QUIET_S)  # settle: hitch pass may not read AX; the list coasts to a stop
+                            u0, u1 = gesture(kind, point, +1, up_scale)
+                            time.sleep(QUIET_S)  # settle: hitch pass may not read AX; the list coasts to a stop
+                        run["resources_hitch_pass"] = usage.result()
+                        frames = stop_recorder(recorder, frames_path)   # before xctrace's slow save
+                        hitches, t_start, t_end, why = finish_xctrace(xt, trace)
+                        before = [h for t, h in frames if t < d0]
+                        down_span = sa.moving_span(frames, before[-1] if before else None, d0, u0)
+                        mid = [h for t, h in frames if t < u0]
+                        up_span = sa.moving_span(frames, mid[-1] if mid else None, u0, u1 + QUIET_S)
+                        y1 = settled(table)
+                        spans_epoch = [None if sp is None else (sp[0] + epoch_offset, sp[1] + epoch_offset)
+                                       for sp in (down_span, up_span)]
+                        if hitches is not None and (t_end is None or spans_epoch[-1] is None
+                                                    or spans_epoch[-1][1] > t_end or spans_epoch[0] is None
+                                                    or spans_epoch[0][0] < t_start):
+                            why = "moving spans not inside the recording window"
+                            hitches = None
+                        if hitches is not None:
+                            hitch = sa.hitch_rate([(t_start + st, du, p, sy) for st, du, p, sy in hitches], spans_epoch, pid)
+                            run["hitch"] = hitch
+                        else:
+                            run["hitch"] = {"ms_per_s": None, "unproven": why}
+                        run["recording"] = {"start_epoch": t_start, "end_epoch": t_end, "spans_epoch": spans_epoch}
+                        run["frames"] = len(frames)
+                        run["first_frame_before_gesture"] = bool(before)
+                        run["kept_moving_s"] = {"down": sa.kept_moving_after(down_span, d1),
+                                                "up": sa.kept_moving_after(up_span, u1)}
+                        run["hitch_pass_travel"] = {"start_y": y0, "end_y": y1}
+                        group_hitch[(label, tab, kind)] = (rep, run["hitch"])
                     else:
-                        run["hitch"] = {"ms_per_s": None, "unproven": why}
-                    run["recording"] = {"start_epoch": t_start, "end_epoch": t_end, "spans_epoch": spans_epoch}
-                    run["frames"] = len(frames)
-                    run["first_frame_before_gesture"] = bool(before)
-                    run["kept_moving_s"] = {"down": sa.kept_moving_after(down_span, d1),
-                                            "up": sa.kept_moving_after(up_span, u1)}
-                    run["hitch_pass_travel"] = {"start_y": y0, "end_y": y1}
+                        # xctrace saves slowly: later repeats reuse the traced repeat's hitch number
+                        # and add their own travel and row-height readings (parent session 2026-11-17).
+                        traced = group_hitch.get((label, tab, kind))
+                        run["hitch"] = dict(traced[1], from_repeat=traced[0]) if traced else {"ms_per_s": None,
+                                                                                               "unproven": "no traced repeat"}
                     # Layout pass: the same gestures, with AX reads of visible rows during movement.
                     samples = [visible_rows(table)]
                     ya = settled(table)

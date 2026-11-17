@@ -67,6 +67,18 @@ def main():
             idle = sc["resources_idle"]
             lines.append(f"| Resources idle on History ({idle.get('seconds')} s) | CPU {fmt(idle.get('cpu_s'), 's')}, "
                          f"peak {fmt(idle.get('peak_rss_mb'), 'MB')} | | none | | {conditions(sc)} |")
+        groups = {}
+        for run in sc.get("runs", []):
+            groups.setdefault((run.get("case", "mid"), run["tab"], run["input"]), []).append(run)
+        for (case, tab, kind), runs in groups.items():
+            asym = [r["travel"]["asymmetry"] for r in runs if r.get("travel", {}).get("asymmetry") is not None]
+            changed = sum(len(r.get("height_changed", [])) for r in runs)
+            traced = [r["hitch"].get("ms_per_s") for r in runs if "from_repeat" not in r.get("hitch", {})]
+            label = "while indexing" if folder == "indexing" else case
+            lines.append(f"| **Scroll {tab} {kind} ({label}), all repeats** | hitch {traced} ms/s (traced repeats); "
+                         f"worst asymmetry {max(asym) if asym else 'n/a'}; height changes {changed} | "
+                         f"{len(runs)} down+up pairs | 5 ms/s, 0, 2% | "
+                         f"{'PASS' if all(r.get('verdict') == 'PASS' for r in runs) else 'FAIL' if any(r.get('verdict') == 'FAIL' for r in runs) else 'UNPROVEN'} | |")
         for run in sc.get("runs", []):
             h = run.get("hitch", {})
             t = run.get("travel", {})

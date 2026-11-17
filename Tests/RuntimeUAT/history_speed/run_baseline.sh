@@ -3,8 +3,8 @@
 # Usage: Tests/RuntimeUAT/history_speed/run_baseline.sh <EnviousWispr.app> <executable sha256> <new out dir> [--busy]
 # Needs: the dev-app lock (claim it first, in its own call), build/history_speed/frame_recorder,
 # Screen Recording for this shell. Writes one folder per contained session and summary.md.
-#   main/      search (10 series x 4 attempts), Show edits + Play (10), idle CPU/memory, scroll
-#              (3 tabs x trackpad + wheel, plus one deep run), then open History missing + existing
+#   main/      search (10 series x 6 attempts), Show edits + Play (10), idle CPU/memory, scroll
+#              (3 tabs x trackpad + wheel x 3 repeats, xctrace on the first; plus one deep run), then open History missing + existing
 #              catalog (15 samples each)
 #   indexing/  one trackpad scroll on Dictations started before the catalog finishes (scroll while
 #              background indexing runs)
@@ -19,8 +19,8 @@ if [ -e "$OUT" ]; then echo "output exists: $OUT" >&2; exit 2; fi
 mkdir -p "$OUT"
 python3 -B "$HERE/fixture.py" verify --seed "$SEED" > "$OUT/seed-verify.json"
 python3 -B "$HERE/containment_pilot.py" "$APP" "$SHA" "$SEED" "$OUT/main" \
-  --run "$HERE/search_cases.json" 4 --only "$SERIES" $BUSY --card --repeats 10 --open missing,existing 15 \
-  --scroll --idle --repeats 1 --deep $BUSY > "$OUT/main.log" 2>&1 || echo "main session exit $?" >> "$OUT/main.log"
+  --run "$HERE/search_cases.json" 6 --only "$SERIES" $BUSY --card --repeats 10 --open missing,existing 15 \
+  --scroll --idle --repeats 3 --trace-repeats 1 --deep $BUSY > "$OUT/main.log" 2>&1 || echo "main session exit $?" >> "$OUT/main.log"
 python3 -B "$HERE/containment_pilot.py" "$APP" "$SHA" "$SEED" "$OUT/indexing" --scroll-early \
   --scroll --tabs Dictations --inputs trackpad --repeats 1 $BUSY > "$OUT/indexing.log" 2>&1 \
   || echo "indexing session exit $?" >> "$OUT/indexing.log"
