@@ -134,6 +134,18 @@ def height_changes(samples):
     return list(changed.values()), len(first), failed
 
 
+def travel_same_row(start, after_down, after_up, top_y=None):
+    """Like `travel`, from (identity, y) readings of the list's first row taken while the list was
+    still. Valid only when it is the SAME row in all three readings: a page that loaded or dropped
+    at the top moves the first row without moving anything on screen."""
+    if None in (start, after_down, after_up):
+        return {"down": None, "up": None, "asymmetry": None, "problem": "the first row could not be read"}
+    if len({start[0], after_down[0], after_up[0]}) != 1:
+        return {"down": None, "up": None, "asymmetry": None,
+                "problem": "the list's first row changed during the gestures (a page loaded or dropped)"}
+    return travel(start[1], after_down[1], after_up[1], top_y)
+
+
 def travel(y_start, y_after_down, y_after_up, top_y=None):
     """First-row screen y before the down gesture, after it, and after the up gesture. Scrolling
     down moves the first row UP the screen (y falls). Returns {down, up, asymmetry, problem}:
@@ -149,51 +161,6 @@ def travel(y_start, y_after_down, y_after_up, top_y=None):
         out["problem"] = "the up gesture ended clamped at the top"
     else:
         out["asymmetry"] = round(abs(down - up) / down, 4)
-    return out
-
-
-def displacement(before, after):
-    """How far the content moved between two reads of the rows on screen ({identity: (y, height)}):
-    the median y change of rows present in both (positive = moved up the screen = scrolled down).
-    None when no row is common to both (the reads were too far apart to follow)."""
-    if not before or not after:
-        return None
-    moves = sorted(before[k][0] - after[k][0] for k in set(before) & set(after))
-    if not moves:
-        return None
-    mid = len(moves) // 2
-    return moves[mid] if len(moves) % 2 else (moves[mid - 1] + moves[mid]) / 2
-
-
-def travel_from_samples(samples):
-    """Total travel over a run of row reads (None reads skipped): the sum of displacements between
-    consecutive successful reads. Returns (travel, gaps): gaps counts consecutive pairs with no
-    common row, which make the total unknown."""
-    reads = [x for x in samples if x]
-    total, gaps = 0.0, 0
-    for before, after in zip(reads, reads[1:]):
-        step = displacement(before, after)
-        if step is None:
-            gaps += 1
-        else:
-            total += step
-    return total, gaps
-
-
-def travel_followed(down_samples, up_samples):
-    """Down/up travel followed row by row (robust to pages loading or dropping at the top).
-    asymmetry None with a problem when a pair of reads shared no row or the list did not move
-    down and then back up."""
-    down, gaps_down = travel_from_samples(down_samples)
-    up, gaps_up = travel_from_samples(up_samples)
-    out = {"down": round(down, 1), "up": round(-up, 1), "asymmetry": None, "problem": None,
-           "unfollowed_steps": gaps_down + gaps_up}
-    if gaps_down or gaps_up:
-        out["problem"] = "the reads were too far apart to follow the rows on screen"
-    elif down <= 0 or -up <= 0:
-        out["problem"] = "the list did not move down and then back up"
-    else:
-        out["asymmetry"] = round(abs(down + up) / down, 4)
     return out
 
 

@@ -12,7 +12,8 @@ Calibrated live on main acd9e956e, Release subject, 2026-11-17 (run folder
 
 `AXRows` lists only the rows the table has loaded (pages of 30); `AXVisibleRows` lists the rows on
 screen. Row frames come from the table's own row rectangles, so an off-screen row still reports its
-position: the first row's y is the list's scroll position (travel), and a visible row's height is
+position: the first loaded row's y moves with the scroll position as long as it stays the same row
+(a page that loads or drops at the top changes which row is first), and a visible row's height is
 the height the table gives it right now.
 
 Reads run on the app's main thread: keep them out of any interval a hitch trace measures.
@@ -129,16 +130,6 @@ def visible_items(table, area):
     return items
 
 
-def first_row_y(table):
-    """Screen y of the table's first row: moves exactly with the scroll position. None if unread."""
-    from ApplicationServices import AXUIElementCopyAttributeValues
-    err, rows = AXUIElementCopyAttributeValues(table, "AXRows", 0, 1, None)
-    if err != 0 or not rows:
-        return None
-    frame = _ui().element_frame(rows[0])
-    return None if frame is None else frame["y"]
-
-
 def row_heights(table, area):
     """{row key: height} for rows on screen, or None when the read failed (a failed read is never an
     empty observation). Key = row index plus the row's first text."""
@@ -167,27 +158,16 @@ def require_unfiltered(window, tab):
         raise RuntimeError(f"the {tab} list is filtered by {value!r} (or has no search box); clear it first")
 
 
-def row_positions(table, area):
-    """{row identity: (y, height)} for rows on screen, or None when the read failed. The identity is
-    the row's first texts (time label or date, then its content), NOT its index: the list loads and
-    drops whole pages, so a row's index and the first row's position change without anything on
-    screen moving. Identities seen twice in one read are dropped (they cannot be followed)."""
-    ui = _ui()
-    viewport = ui.element_frame(area) if area is not None else None
-    rows = ui.get_attr(table, "AXVisibleRows") if table is not None else None
-    if viewport is None or rows is None:
+
+def first_row(table):
+    """(identity, screen y) of the list's first loaded row, or None. One row is read, so this is
+    cheap enough for a slow Mac. The identity is the row's first texts: when a page loads or drops
+    at the top, the first row is a different row and a y difference is not travel."""
+    from ApplicationServices import AXUIElementCopyAttributeValues
+    err, rows = AXUIElementCopyAttributeValues(table, "AXRows", 0, 1, None)
+    if err != 0 or not rows:
         return None
-    found, twice = {}, set()
-    for row in rows:
-        frame = ui.element_frame(row)
-        if frame is None:
-            return None
-        if frame["y"] + frame["height"] <= viewport["y"] or frame["y"] >= viewport["y"] + viewport["height"]:
-            continue
-        key = "|".join(t[:40] for t in _texts(row)[:3])
-        if key in found:
-            twice.add(key)
-        found[key] = (frame["y"], frame["height"])
-    for key in twice:
-        found.pop(key)
-    return found or None
+    frame = _ui().element_frame(rows[0])
+    if frame is None:
+        return None
+    return "|".join(t[:40] for t in _texts(rows[0])[:3]), frame["y"]

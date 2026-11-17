@@ -9,7 +9,7 @@ Drivers that measure History on a founder-free ~27k library against the #4586 bu
 | Open History | `m5-speed-open.py --mode missing\|existing` | p95 ≤ 300 ms | App spawn to the first captured frame showing the complete, correct first Dictations page. `missing` deletes only the derived catalog before each launch (not a reboot-cold launch). |
 | Scroll hitch | `m5-speed-scroll.py` | ≤ 5 ms per moving second | Apple's `xctrace` Animation Hitches rows of the subject's process that overlap a moving span, divided by the moving seconds (frame recorder). Not the same metric as a per-step scroll duration. |
 | Row stability | `m5-speed-scroll.py` | 0 rows | Rows whose AX height changed by > 1 pt after it was first sampled on screen (sampled about every 40 ms; zero samples is not proof of zero drawn changes). |
-| Travel symmetry | `m5-speed-scroll.py` | ≤ 2% | The same gesture down then up; travel is the first row's screen y before and after each gesture. |
+| Travel symmetry | `m5-speed-scroll.py` | ≤ 2% | The same gesture down then up; travel is the list's first loaded row's screen y, read while the list is still, before and after each gesture. If a page loaded or dropped at the top in between (a different first row), the run is UNPROVEN, never a travel number. |
 | Show edits, Play | `m5-speed-card.py` | none set | Press to the first frame showing the opened edits view / the playing card. Sound goes to BlackHole and is restored. |
 | Resources | all drivers (`load_tools.ResourceSampler`) | none set | Subject CPU seconds and peak resident memory per phase (`ps` every 250 ms). |
 

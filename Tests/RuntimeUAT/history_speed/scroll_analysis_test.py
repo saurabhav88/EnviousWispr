@@ -83,26 +83,15 @@ class HeightTests(unittest.TestCase):
         self.assertEqual(changed, [])
 
 
-class FollowedTravelTests(unittest.TestCase):
-    def test_rows_followed_across_reads_give_the_travel(self):
-        a = {"r1": (100, 50), "r2": (150, 50), "r3": (200, 50)}
-        b = {"r2": (50, 50), "r3": (100, 50), "r4": (150, 50)}     # moved up 100 (scrolled down)
-        c = {"r4": (0, 50), "r5": (50, 50)}                         # another 150
-        self.assertEqual(sa.travel_from_samples([a, None, b, c]), (250.0, 0))
+class SameRowTravelTests(unittest.TestCase):
+    def test_the_same_first_row_gives_travel(self):
+        t = sa.travel_same_row(("r1", 100), ("r1", -900), ("r1", 80))
+        self.assertEqual((t["down"], t["up"], t["asymmetry"]), (1000, 980, 0.02))
 
-    def test_a_page_dropped_at_the_top_does_not_count_as_travel(self):
-        # The rows on screen keep their place while the first row of the whole list changes.
-        a = {"r1": (100, 50), "r2": (150, 50)}
-        self.assertEqual(sa.travel_from_samples([a, dict(a), dict(a)]), (0.0, 0))
-
-    def test_equal_followed_travel_passes_and_a_gap_is_unproven(self):
-        down = [{"r1": (100, 50)}, {"r1": (0, 50), "r2": (50, 50)}]
-        up = [{"r1": (0, 50), "r2": (50, 50)}, {"r1": (98, 50)}]
-        t = sa.travel_followed(down, up)
-        self.assertEqual((t["down"], t["up"], t["asymmetry"]), (100.0, 98.0, 0.02))
-        gap = sa.travel_followed([{"r1": (100, 50)}, {"r9": (0, 50)}], up)
-        self.assertIsNone(gap["asymmetry"])
-        self.assertEqual(gap["problem"], "the reads were too far apart to follow the rows on screen")
+    def test_a_page_change_at_the_top_is_unproven_not_travel(self):
+        t = sa.travel_same_row(("r1", 100), ("r0", -4000), ("r1", 80))
+        self.assertIsNone(t["asymmetry"])
+        self.assertEqual(sa.verdict({"ms_per_s": 0.0}, [], t), "UNPROVEN")
 
 
 class TravelTests(unittest.TestCase):
