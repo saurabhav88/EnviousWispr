@@ -22,6 +22,10 @@ import SwiftUI
 ///
 /// **The comparison is prepared off the main actor** and cached by content
 /// (`HistoryDiffCache`); a result is shown only for the texts it was computed from.
+///
+/// **Show edits work happens only on request (#4586).** With Show edits closed the card reads no
+/// timing file and aligns nothing; a press loads the comparison and the recording's passage
+/// times together and opens once both are ready for the current texts and recording revision.
 struct HistoryDictationCard: View {
   /// What the card draws (#4609): complete on first display, so the card never resizes when a
   /// file read finishes. Actions read the live row at the press.
@@ -61,7 +65,9 @@ struct HistoryDictationCard: View {
   @State private var polishPreview = HistoryPolishPreview()
   @State private var player: MeetingPlaybackController?
   @State private var playerURL: URL?
-  @State private var timeline: [HistoryDictationPresentation.TimedSpan] = []
+  /// Passage times loaded for one row, recording revision and text; loaded only behind Show
+  /// edits (#4586).
+  @State private var timed: TimedLoad?
   @State private var actionFailed = false
   /// Which action failed, in words (set before each action starts).
   @State private var actionFailureMessage = ""
@@ -99,11 +105,32 @@ struct HistoryDictationCard: View {
     let revision: Int
   }
 
+  /// What passage times are loaded for: the row, its recording revision (a new recording, a
+  /// deletion or a Keep change moves it) and the original text the times are carried onto.
   private struct TimingKey: Hashable {
     let rowID: UUID
     let revision: Int
     let original: String
-    let available: Bool
+  }
+
+  private struct TimedLoad {
+    let key: TimingKey
+    let spans: [HistoryDictationPresentation.TimedSpan]
+  }
+
+  /// The Show edits load's identity: a change to either restarts it.
+  private struct EditsLoadKey: Hashable {
+    let texts: HistoryDictationPresentation.Texts
+    let timing: TimingKey
+  }
+
+  /// How a load's timing step ended.
+  private enum TimingOutcome: Sendable {
+    /// Times for this key were already loaded.
+    case kept
+    /// Loaded; empty when the recording has no timing file or it could not be read.
+    case loaded([HistoryDictationPresentation.TimedSpan])
+    case cancelled
   }
 
   var body: some View {
@@ -121,10 +148,11 @@ struct HistoryDictationCard: View {
       HistoryPolishPreviewContent(preview: polishPreview)
       if editsOn, texts.differ { viewSwitch }
       if editsOn && texts.differ {
-        HistoryParagraphText(
-          blocks: blocks(row: row, texts: texts, prepared: current),
-          query: query,
-          onOpenChange: { openChange = $0 })
+        HistoryEditsText(
+          texts: texts, view: comparisonView, prepared: current, query: query,
+          onOpenChange: { openChange = $0 }
+        )
+        .equatable()
       } else {
         // #4611: at most four lines until Show more, so a card is light to build and most
         // cards share a height.
@@ -132,7 +160,9 @@ struct HistoryDictationCard: View {
           text: HistoryDictationPresentation.plainText(
             texts,
             view: HistoryDictationPresentation.defaultView(for: row.effectivePreferredVersion)),
-          query: query, expanded: $textExpanded)
+          query: query, expanded: textExpanded, onToggle: { textExpanded.toggle() }
+        )
+        .equatable()
       }
       if let current, editsOn, let index = openChange,
         let detail = HistoryDictationPresentation.detail(of: index, in: current, timeline: timeline)
@@ -162,20 +192,13 @@ struct HistoryDictationCard: View {
       openChange = nil
     }
     .task(id: RecordingKey(rowID: rowID, revision: recordingRevision)) { await refreshRecording() }
+    // #4586: nil while Show edits is neither requested nor open, so a closed card reads no
+    // timing and prepares no comparison.
     .task(
-      id: TimingKey(
-        rowID: rowID, revision: recordingRevision, original: row.text, available: isAvailable)
+      id: (editsRequested || editsOn) && texts.differ
+        ? EditsLoadKey(texts: texts, timing: currentTimingKey) : nil
     ) {
-      await refreshTiming(original: row.text)
-    }
-    .task(id: editsRequested || editsOn || !timeline.isEmpty ? texts : nil) {
-      guard texts.differ, editsRequested || editsOn || !timeline.isEmpty else { return }
-      await prepareComparison(texts)
-      guard !Task.isCancelled, editsRequested,
-        prepared.map({ HistoryDictationPresentation.accepts($0, current: texts) }) == true
-      else { return }
-      editsRequested = false
-      withAnimation(editsMotion) { editsOn = true }
+      await loadEdits(texts: texts, timing: currentTimingKey)
     }
     .onDisappear {
       polishPreview.cancel()
@@ -233,9 +256,28 @@ struct HistoryDictationCard: View {
     return nil
   }
 
-  private var isAvailable: Bool {
-    if case .available = status { return true }
-    return false
+  private var currentTimingKey: TimingKey {
+    TimingKey(rowID: rowID, revision: recordingRevision, original: display.text)
+  }
+
+  /// The passage times the open comparison uses. An open card keeps the times it has for this
+  /// row and text while a recording change reloads them (a Keep change reloads the same times,
+  /// so Hear does not blink); the reload replaces them. The change inspector keeps Hear's space
+  /// either way.
+  private var timeline: [HistoryDictationPresentation.TimedSpan] {
+    guard let timed, timed.key.rowID == rowID, timed.key.original == display.text else {
+      return []
+    }
+    return timed.spans
+  }
+
+  /// Show edits may open: the comparison answers the current texts and the passage times are
+  /// loaded for the current row, recording revision and text. Both ways of opening read this.
+  private var editsReady: Bool {
+    let texts = HistoryDictationPresentation.Texts(display)
+    guard texts.differ, let prepared, HistoryDictationPresentation.accepts(prepared, current: texts)
+    else { return false }
+    return timed?.key == currentTimingKey
   }
 
   // MARK: - Text
@@ -265,41 +307,69 @@ struct HistoryDictationCard: View {
     }
   }
 
-  private func blocks(
-    row: HistoryDictationDisplay, texts: HistoryDictationPresentation.Texts,
-    prepared: HistoryDictationPresentation.Prepared?
-  ) -> [HistoryParagraphText.Block] {
-    let view: HistoryDictationPresentation.TextView =
-      editsOn && texts.differ
-      ? comparisonView
-      : HistoryDictationPresentation.defaultView(for: row.effectivePreferredVersion)
-    if view == .markedUp, let prepared {
-      return HistoryDictationPresentation.markedUpParagraphs(prepared.markedUp).enumerated().map {
-        HistoryParagraphText.Block(id: $0.offset, content: .markedUp($0.element))
-      }
-    }
-    let text = HistoryDictationPresentation.plainText(
-      texts, view: view == .markedUp ? .polished : view)
-    return HistoryDictationPresentation.paragraphs(of: text).enumerated().map {
-      HistoryParagraphText.Block(id: $0.offset, content: .plain($0.element.text))
-    }
-  }
-
-  private func prepareComparison(_ texts: HistoryDictationPresentation.Texts) async {
-    if let cached = HistoryDiffCache.shared.result(for: texts) {
-      prepared = cached
+  /// #4586: the Show edits load. The comparison (cached by content, else prepared off the main
+  /// actor) and the passage times (read on the recording archive's actor, aligned off the main
+  /// actor) load together; this body only publishes. Nothing is published unless the card still
+  /// wants edits for the same texts and recording revision, and a cancelled load publishes
+  /// nothing.
+  private func loadEdits(
+    texts: HistoryDictationPresentation.Texts, timing key: TimingKey
+  ) async {
+    guard !Task.isCancelled, editsRequested || editsOn else { return }
+    guard texts.differ else {
+      editsRequested = false
       return
     }
-    let result = await HistoryDictationPresentation.prepareInBackground(texts)
-    guard !Task.isCancelled else { return }
-    HistoryDiffCache.shared.store(result)
+    let cached = HistoryDiffCache.shared.result(for: texts)
+    let timingSource: DictationRecordings?? =
+      timed?.key == key ? .none : .some(transcripts.recordings)
+    async let comparison = Self.comparison(texts, cached: cached)
+    async let timing = Self.loadTiming(timingSource, key: key)
+    let (computed, outcome) = await (comparison, timing)
+    guard !Task.isCancelled, let result = computed else { return }
+    if cached == nil { HistoryDiffCache.shared.store(result) }
     // The row may have changed while this ran (a restore): show only an answer for the texts the
     // card draws now (#4609: the display data, never a hydrated payload).
-    guard
+    guard editsRequested || editsOn,
       HistoryDictationPresentation.accepts(
-        result, current: HistoryDictationPresentation.Texts(display))
+        result, current: HistoryDictationPresentation.Texts(display)),
+      currentTimingKey == key
     else { return }
+    switch outcome {
+    case .cancelled: return
+    case .kept: break
+    case .loaded(let spans): timed = TimedLoad(key: key, spans: spans)
+    }
     prepared = result
+    guard editsRequested, editsReady else { return }
+    editsRequested = false
+    withAnimation(editsMotion) { editsOn = true }
+  }
+
+  private nonisolated static func comparison(
+    _ texts: HistoryDictationPresentation.Texts, cached: HistoryDictationPresentation.Prepared?
+  ) async -> HistoryDictationPresentation.Prepared? {
+    if let cached { return cached }
+    // A cancelled load starts no alignment (Swift cancellation is only a flag).
+    guard !Task.isCancelled else { return nil }
+    return await HistoryDictationPresentation.prepareInBackground(texts)
+  }
+
+  /// Passage times for `key`. `recordings` is `.none` when they are already loaded, and
+  /// `.some(nil)` with no recordings store (untimed). A missing or unreadable timing file
+  /// leaves the card untimed; it never blocks Show edits or playback.
+  private nonisolated static func loadTiming(
+    _ recordings: DictationRecordings??, key: TimingKey
+  ) async -> TimingOutcome {
+    guard let recordings else { return .kept }
+    guard let recordings else { return .loaded([]) }
+    guard !Task.isCancelled else { return .cancelled }
+    let timing = try? await recordings.timing(for: key.rowID)
+    guard !Task.isCancelled else { return .cancelled }
+    let spans = await HistoryDictationPresentation.timelineInBackground(
+      timing, original: key.original)
+    guard !Task.isCancelled else { return .cancelled }
+    return .loaded(spans)
   }
 
   // MARK: - Footer
@@ -445,10 +515,7 @@ struct HistoryDictationCard: View {
           if editsOn || editsRequested {
             editsRequested = false
             withAnimation(editsMotion) { editsOn = false }
-          } else if let ready = prepared,
-            HistoryDictationPresentation.accepts(
-              ready, current: HistoryDictationPresentation.Texts(display))
-          {
+          } else if editsReady {
             withAnimation(editsMotion) { editsOn = true }
           } else {
             editsRequested = true
@@ -750,23 +817,6 @@ struct HistoryDictationCard: View {
     return made
   }
 
-  /// Passage times, read off the main actor only while a recording exists. A missing or
-  /// unreadable timing file leaves the card untimed; it never blocks playback.
-  private func refreshTiming(original: String) async {
-    guard isAvailable, let recordings = transcripts.recordings else {
-      timeline = []
-      return
-    }
-    let timing = try? await recordings.timing(for: rowID)
-    guard !Task.isCancelled else { return }
-    let spans = await HistoryDictationPresentation.timelineInBackground(timing, original: original)
-    // Published only for the row, recording and text it was computed for.
-    // A new recording or row change restarts this task (`.task(id:)`), which cancels it.
-    guard !Task.isCancelled, isAvailable, display.text == original
-    else { return }
-    timeline = spans
-  }
-
   /// One line per recorded reason (#3147 §3.4). Legacy or unexplained absence never guesses. An
   /// expiry names the keep period recorded when it happened, never today's setting.
   static func absenceLine(_ absence: RecordedAbsence?) -> LocalizedStringResource {
@@ -1037,6 +1087,42 @@ struct HistoryDictationCard: View {
       LocalizedStringResource(
         "Your words before AI polish",
         comment: "History dictation card: hint beside the Original view.")
+    }
+  }
+}
+
+/// #4586: the open Show edits text. Compared on what it draws (the texts, the chosen view, the
+/// comparison it was drawn from and the search) and used with `.equatable()`, so a card redraw
+/// that changes none of them (hover, focus, a Copy tick) does not split paragraphs or rebuild
+/// the marked-up and highlighted text. `onOpenChange` is left out: it only sets the card's own
+/// `@State`.
+private struct HistoryEditsText: View, Equatable {
+  let texts: HistoryDictationPresentation.Texts
+  let view: HistoryDictationPresentation.TextView
+  /// The comparison accepted for `texts`, or nil while none is.
+  let prepared: HistoryDictationPresentation.Prepared?
+  let query: String
+  let onOpenChange: (Int) -> Void
+
+  nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
+    lhs.view == rhs.view && lhs.texts == rhs.texts && lhs.prepared?.texts == rhs.prepared?.texts
+      && MeetingDocumentHash.sameBytes(lhs.query, rhs.query)
+  }
+
+  var body: some View {
+    HistoryParagraphText(blocks: blocks, query: query, onOpenChange: onOpenChange)
+  }
+
+  private var blocks: [HistoryParagraphText.Block] {
+    if view == .markedUp, let prepared {
+      return HistoryDictationPresentation.markedUpParagraphs(prepared.markedUp).enumerated().map {
+        HistoryParagraphText.Block(id: $0.offset, content: .markedUp($0.element))
+      }
+    }
+    let text = HistoryDictationPresentation.plainText(
+      texts, view: view == .markedUp ? .polished : view)
+    return HistoryDictationPresentation.paragraphs(of: text).enumerated().map {
+      HistoryParagraphText.Block(id: $0.offset, content: .plain($0.element.text))
     }
   }
 }
