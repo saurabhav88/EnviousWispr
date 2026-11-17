@@ -52,13 +52,19 @@ final class TranscriptCoordinator {
     latestCatalogTask = Task { [weak self, weak catalogSession] in
       guard let self, let catalogSession, catalogSession.status == .ready,
         let source = catalogSession.stableSourceRevision else { return }
+      // #4586 H1: `page` no longer refuses a page after a content publish, so this scan checks
+      // the content revision itself: a catalog rebuilt under the same source revision must not
+      // let an old cursor walk the new catalog and name an older dictation.
+      let content = catalogSession.revision
+      let unchanged = {
+        !Task.isCancelled && source == catalogSession.stableSourceRevision && content == catalogSession.revision
+      }
       var cursor: HistoryCatalog.Cursor?
       repeat {
         guard let page = try? await catalogSession.page(.init(tab: .dictations), after: cursor),
-          !Task.isCancelled, source == catalogSession.stableSourceRevision else { return }
+          unchanged() else { return }
         for card in page.summaries where card.expiresAt == nil {
-          guard let row = await loadCatalogDetail(card.key.id), !Task.isCancelled,
-            source == catalogSession.stableSourceRevision else { return }
+          guard let row = await loadCatalogDetail(card.key.id), unchanged() else { return }
           if Self.isReusableDictation(row, at: clock()) {
             catalogSession.updateLatestDictation(row.id)
             return
@@ -66,7 +72,7 @@ final class TranscriptCoordinator {
         }
         cursor = page.continuation
       } while cursor != nil
-      if !Task.isCancelled, source == catalogSession.stableSourceRevision {
+      if unchanged() {
         catalogSession.updateLatestDictation(nil)
       }
     }
@@ -254,21 +260,44 @@ final class TranscriptCoordinator {
     for key: HistoryQueryKey, extending previous: HistoryQueryResult? = nil, newer: Bool = false
   ) async -> HistoryQueryResult? {
     if let catalogSession {
+      let tab = key.context.tab
+      // #4586 H1: a replacement read survives a content publish (same request, same source); an
+      // extension must still match the live key exactly, so pages from two content
+      // generations are never joined.
+      let stillWanted = { [self] () -> Bool in
+        let live = historyQueryKey(for: tab, state: requestedHistoryState(for: tab))
+        return previous == nil ? live.request == key.request : (live == key && previous?.key == key)
+      }
+      guard stillWanted() else { return nil }
       let query = await catalogQuery(for: key)
-      let anchor = requestedHistoryState(for: key.context.tab).scrollAnchorID
+      let anchor = requestedHistoryState(for: tab).scrollAnchorID
       let anchorID = anchor.map { id in
         switch id {
         case .transcript(let value), .meeting(let value): value
         }
       }
       guard let source = catalogSession.stableSourceRevision,
-        previous == nil || previous?.catalogSourceRevision == source,
-        let page = try? await catalogSession.page(
-          query, after: newer ? previous?.newerContinuation : previous?.continuation,
-          restoring: previous == nil ? anchorID : nil, newer: newer),
-        !Task.isCancelled, source == catalogSession.stableSourceRevision,
-        key == historyQueryKey(for: key.context.tab, state: requestedHistoryState(for: key.context.tab))
+        previous == nil || previous?.catalogSourceRevision == source, stillWanted()
       else { return nil }
+      let interval = HistorySignpost.signposter.beginInterval("HistoryPage")
+      let read: HistoryCatalog.Page?
+      do {
+        read = try await catalogSession.page(
+          query, after: newer ? previous?.newerContinuation : previous?.continuation,
+          restoring: previous == nil ? anchorID : nil, newer: newer)
+      } catch {
+        HistorySignpost.signposter.endInterval("HistoryPage", interval, "failed")
+        HistorySignpost.event("HistoryPageFailed")
+        return nil
+      }
+      guard let page = read, !Task.isCancelled, source == catalogSession.stableSourceRevision,
+        stillWanted()
+      else {
+        HistorySignpost.signposter.endInterval("HistoryPage", interval, "superseded")
+        HistorySignpost.event("HistoryPageSuperseded")
+        return nil
+      }
+      HistorySignpost.signposter.endInterval("HistoryPage", interval, "accepted")
       var items = previous?.items ?? []
       var ids = Set(items.map(\.id))
       let added = page.summaries.map(HistoryListItem.catalog).filter { ids.insert($0.id).inserted }
@@ -645,25 +674,57 @@ final class TranscriptCoordinator {
 
 
   /// Everything the query uses from the live owners.
+  ///
+  /// #4586 H1: two parts with two jobs. `request` is what the reader asked for (tab, search,
+  /// filters, echo choices, drafts, expiry pulse, locale): a change starts a new read. `revision`
+  /// is the catalog content revision the read started under: it is the freshness proof a result
+  /// carries, so a page overtaken by a content publish still displays but cannot authorize
+  /// selection, paging or open (`isCurrentHistoryResult`) until the follow-up read lands.
   struct HistoryQueryKey: Equatable, Sendable {
     let revision: Int
-    let pulse: Int
-    let context: HistoryPaging.Context
+    let request: Request
+
+    struct Request: Equatable, Sendable {
+      let pulse: Int
+      let context: HistoryPaging.Context
+      let echoShown: Set<UUID>
+      let meetings: [MeetingRecord]
+      let pendingVisible: [Bool]
+      /// While searching: every meeting row's facts and notes (a held row's too), read before
+      /// the search runs, so a meeting that does not match yet is still watched. The build reads
+      /// them from here and never asks the closures again.
+      let searchFacts: [SearchFact]?
+      let locale: String
+      let localizations: [String]
+      let calendar: Calendar
+      let draftNotes: [UUID: String]
+    }
+
+    init(
+      revision: Int, pulse: Int, context: HistoryPaging.Context, echoShown: Set<UUID>,
+      meetings: [MeetingRecord], pendingVisible: [Bool], searchFacts: [SearchFact]?,
+      locale: String, localizations: [String], calendar: Calendar, draftNotes: [UUID: String] = [:]
+    ) {
+      self.revision = revision
+      request = Request(
+        pulse: pulse, context: context, echoShown: echoShown, meetings: meetings,
+        pendingVisible: pendingVisible, searchFacts: searchFacts, locale: locale,
+        localizations: localizations, calendar: calendar, draftNotes: draftNotes)
+    }
+
+    var pulse: Int { request.pulse }
+    var context: HistoryPaging.Context { request.context }
     var kind: HistoryListKind { HistoryListKind(context.tab) }
     var filter: HistoryListFilter { context.filter }
     var query: String { context.query }
-    let echoShown: Set<UUID>
-    let meetings: [MeetingRecord]
-    let pendingVisible: [Bool]
-    /// While searching: every meeting row's facts and notes (a held row's too), read before
-    /// the search runs, so a meeting that does not match yet is still watched. The build reads
-    /// them from here and never asks the closures again.
-    let searchFacts: [SearchFact]?
-    let locale: String
-    let localizations: [String]
-    let calendar: Calendar
-    var draftNotes: [UUID: String] = [:]
-
+    var echoShown: Set<UUID> { request.echoShown }
+    var meetings: [MeetingRecord] { request.meetings }
+    var pendingVisible: [Bool] { request.pendingVisible }
+    var searchFacts: [SearchFact]? { request.searchFacts }
+    var locale: String { request.locale }
+    var localizations: [String] { request.localizations }
+    var calendar: Calendar { request.calendar }
+    var draftNotes: [UUID: String] { request.draftNotes }
   }
 
   struct SearchFact: Equatable, Sendable {

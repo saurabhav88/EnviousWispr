@@ -2,6 +2,7 @@ import EnviousWisprCore
 import EnviousWisprStorage
 import Foundation
 import Observation
+import os
 
 /// Connects the shared source owners to a single derived catalog. The diary can open this
 /// independently of legacy command hydration; catalog failure never changes a source write.
@@ -14,7 +15,18 @@ final class HistoryCatalogSession {
   }
 
   private(set) var status: Status = .updating
+  /// The CONTENT revision (#4586 H1): advances only when catalog rows or source proofs changed,
+  /// the catalog was replaced, indexing failed after possibly committing rows, or a pass
+  /// certified a source revision. A status-only change (`updating`, `ready`, `unavailable`)
+  /// leaves it alone, so it never re-keys the History list or a detail read. Every write goes
+  /// through `advanceContent()`, which also wakes `waitForChange`.
   private(set) var revision: UInt64 = 0
+  /// Outside and in-process change notices seen by this session (#4586 N1), unobserved. The
+  /// History list wakes on it to re-check a kept page's rows before any publish arrives.
+  @ObservationIgnored private(set) var noticeCount: UInt64 = 0
+  @ObservationIgnored private var changeWaiters: [UUID: CheckedContinuation<Void, Never>] = [:]
+  /// Reset when a pass starts, so the first committed batch of each pass is marked once.
+  @ObservationIgnored private var batchMarked = false
   private(set) var latestDictation: UUID?
 
   @ObservationIgnored private let changes: HistorySourceChanges
@@ -71,6 +83,8 @@ final class HistoryCatalogSession {
         // #4598: a notice only adds work. It never withdraws what the screen shows or
         // re-creates the watcher; a pass publishes when it actually changes something.
         pending.include(event)
+        noticeCount &+= 1
+        resumeChangeWaiters()
         indexIfNeeded()
       }
     }
@@ -114,14 +128,14 @@ final class HistoryCatalogSession {
         // The advance above makes any page read started before it come back empty, and at
         // launch that read is the first page of saved cards. Ask the screen to read again
         // now rather than after the full pass this enqueues.
-        revision &+= 1
+        advanceContent()
         didUpdate?()
         pending.include(.unknown)
         indexIfNeeded()
       } else if status != .unavailable {
         // No watcher: coverage-dependent reads stay off; activation retries (sourceMayHaveChanged).
+        // Status only (#4586 H1): no catalog row changed, so the list keeps its page.
         status = .unavailable
-        revision &+= 1
         didUpdate?()
       }
       if rewatchRequested {
@@ -149,7 +163,39 @@ final class HistoryCatalogSession {
 
   private func invalidate() {
     status = .updating
+    advanceContent()
+  }
+
+  private func advanceContent() {
     revision &+= 1
+    resumeChangeWaiters()
+  }
+
+  private func resumeChangeWaiters() {
+    guard !changeWaiters.isEmpty else { return }
+    let waiting = changeWaiters
+    changeWaiters.removeAll()
+    for waiter in waiting.values { waiter.resume() }
+  }
+
+  /// Returns once the content revision differs from `revision` or a change notice arrived after
+  /// `notices` was read, or when the calling task is cancelled (#4586 H1). It returns at once
+  /// if either already moved. Cancellation before or after the wait registers is handled: the
+  /// registration re-checks `Task.isCancelled` on the main actor, and the cancel path resumes
+  /// the registered waiter on the main actor, so neither order loses a wake or leaks a waiter.
+  func waitForChange(revision expected: UInt64, notices: UInt64) async {
+    let id = UUID()
+    await withTaskCancellationHandler {
+      await withCheckedContinuation { (waiter: CheckedContinuation<Void, Never>) in
+        if Task.isCancelled || revision != expected || noticeCount != notices {
+          waiter.resume()
+        } else {
+          changeWaiters[id] = waiter
+        }
+      }
+    } onCancel: {
+      Task { @MainActor [weak self] in self?.changeWaiters.removeValue(forKey: id)?.resume() }
+    }
   }
 
   /// The interface language and locale this process localizes previews for. Both are fixed
@@ -184,7 +230,6 @@ final class HistoryCatalogSession {
   func page(
     _ query: HistoryCatalog.Query, after cursor: HistoryCatalog.Cursor? = nil, restoring anchor: UUID? = nil, newer: Bool = false
   ) async throws -> HistoryCatalog.Page? {
-    let id = revision
     let source = changes.revision
     guard source != nil else { return nil }
     let backend = try await open()
@@ -204,7 +249,14 @@ final class HistoryCatalogSession {
       if HistoryCatalog.needsRebuild(error) { requestRebuild() }
       throw error
     }
-    guard !Task.isCancelled, id == revision, source == changes.revision else { return nil }
+    #if DEBUG
+      await beforePageFenceForTesting?()
+    #endif
+    // #4586 H1: the page fences on the source revision only. A content publish while it was
+    // read (indexing progress, a new certificate) does not throw it away; the list reads again
+    // after showing it, and a page read under an older content revision cannot authorize
+    // selection or paging (`TranscriptCoordinator.isCurrentHistoryResult`).
+    guard !Task.isCancelled, source == changes.revision else { return nil }
     return result
   }
 
@@ -287,6 +339,7 @@ final class HistoryCatalogSession {
         // has no exact totals or selection. A pass that ends certified must therefore publish
         // even for an unchanged source revision, or that page is never re-read (#4605 review).
         publishedCertifiedSource = nil
+        batchMarked = false
         do {
           if rebuildRequested {
             rebuildRequested = false
@@ -324,7 +377,9 @@ final class HistoryCatalogSession {
           return
         } catch {
           status = .unavailable
-          revision &+= 1
+          // Content, not only status (#4586 H1): batches committed before the error may have
+          // had their publishes throttled, and the error withdrew coverage.
+          advanceContent()
           if HistoryCatalog.needsRebuild(error) { rebuildRequested = true }
           scheduleRetry()
         }
@@ -358,8 +413,20 @@ final class HistoryCatalogSession {
     status = next
     if let certified { publishedCertifiedSource = certified }
     publishedAt = now
-    revision &+= 1
+    if pass.changed, !batchMarked {
+      batchMarked = true
+      HistorySignpost.event("HistoryFirstBatchCommit")
+    }
+    // #4586 H1: only rows, proofs or a restored certificate (#4605) are content; a publish that
+    // only moves the status leaves the list's key and every detail read alone.
+    if Self.advancesContent(changed: pass.changed, newCertificate: newCertificate) { advanceContent() }
     didUpdate?()
+  }
+
+  /// Whether a publish is a content change (#4586 H1). Kept as one decision so a test can pin
+  /// it without a staged indexing pass.
+  nonisolated static func advancesContent(changed: Bool, newCertificate: Bool) -> Bool {
+    changed || newCertificate
   }
 
   // periphery:ignore - The session integration test waits for the real indexing task.
@@ -383,6 +450,14 @@ final class HistoryCatalogSession {
 
   // periphery:ignore - Tests check the one watcher is installed (#4598).
   var watcherIsInstalledForTesting: Bool { diskWatch != nil }
+
+  #if DEBUG
+    /// Runs inside `page` after the read and before its fence (#4586 H1 tests).
+    @ObservationIgnored var beforePageFenceForTesting: (@MainActor () async -> Void)?
+    /// A content publish with no indexing pass behind it (#4586 H1 tests).
+    func advanceContentForTesting() { advanceContent() }
+    var changeWaiterCountForTesting: Int { changeWaiters.count }
+  #endif
 
   nonisolated private static func project(_ source: HistoryCatalogSources.Saved) -> HistoryCatalog.Projection? {
     if let meeting = source.meeting {
@@ -416,5 +491,15 @@ final class HistoryCatalogSession {
     if let fileName = row.importedFileName { fields.append(fileName) }
     if let names = row.speakerNames { fields.append(contentsOf: names.values) }
     return .init(summary: summary, searchableFields: row.escapeRecoveredAt == nil ? fields : [])
+  }
+}
+
+/// Content-free History timing marks for Instruments (#4586; names in the shared notes). They
+/// carry names only, never row text, titles or ids.
+enum HistorySignpost {
+  nonisolated static let signposter = OSSignposter(subsystem: "com.enviouswispr.app", category: "HistorySpeed")
+
+  nonisolated static func event(_ name: StaticString) {
+    signposter.emitEvent(name)
   }
 }

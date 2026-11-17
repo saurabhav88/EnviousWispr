@@ -123,6 +123,9 @@ struct HistoryQueryResult: Sendable {
   }
 
   let key: TranscriptCoordinator.HistoryQueryKey
+  /// New for every constructed result (#4586): a later step that started from one stored result
+  /// publishes only while that same result is still stored, whatever else changed.
+  let identity = UUID()
   let items: [HistoryListItem]
   let positions: [HistoryItemID: Int]
   let ids: Set<HistoryItemID>

@@ -138,47 +138,8 @@ struct HistoryDiaryView<
     ) { _ in
       groupingRevision &+= 1
     }
-    .task(id: RefreshKey(query: key, grouping: groupingRevision)) {
-      guard results[tab]?.key != key else { return }
-      // A refresh with the same tab, search and filters (a catalog update, an expiry, a time
-      // zone or locale change) restores around the saved anchor: save where the reader is now
-      // first, so it never jumps back to the place they last left (cloud review on #4582).
-      var live = coordinator.requestedHistoryState(for: tab)
-      if live.openItemID == nil, let context = liveAnchor.context, context == key.context,
-        context == HistoryPaging.Context(tab: tab, state: live),
-        live.scrollAnchorID != liveAnchor.id
-      {
-        live.scrollAnchorID = liveAnchor.id
-        coordinator.setHistoryState(live, for: tab)
-      }
-      // With a page open, restore around the item on screen: after the arrows stepped past the
-      // loaded page, a restore around the item first opened lost the open one, and both arrows
-      // stayed disabled (founder, #4611). Back returns to the open item anyway.
-      if let open = live.openItemID, key.context == HistoryPaging.Context(tab: tab, state: live),
-        live.scrollAnchorID != open
-      {
-        live.scrollAnchorID = open
-        coordinator.setHistoryState(live, for: tab)
-      }
-      if let result = await coordinator.historyResults(for: key) {
-        #if DEBUG
-          // #4611 listening code: how long after its save a new item reached the list.
-          if let newest = result.items.first, newest.id != results[tab]?.items.first?.id {
-            let age = Date().timeIntervalSince(newest.createdAt)
-            if age < 120 {
-              let line =
-                "new item shown tab=\(tab.rawValue) secondsAfterSave=\(String(format: "%.2f", age))"
-              Task { await AppLogger.shared.log(line, level: .info, category: "HistoryScroll") }
-            }
-          }
-        #endif
-        results[tab] = result
-        if isSelecting, coordinator.historyTab == tab {
-          if let matching = await coordinator.matchingIDs(for: result) {
-            selection.retain(Set(matching))
-          }
-        }
-      }
+    .task(id: RefreshKey(request: key.request, grouping: groupingRevision)) {
+      await refresh(tab: tab)
     }
     .onChange(of: catalogStatus) { previous, current in
       if previous == .updating, current == .ready {
@@ -198,8 +159,88 @@ struct HistoryDiaryView<
   }
 
   private struct RefreshKey: Equatable {
-    let query: TranscriptCoordinator.HistoryQueryKey
+    let request: TranscriptCoordinator.HistoryQueryKey.Request
     let grouping: Int
+  }
+
+  /// What one read attempt was made under: a repeat of the same stamp is not tried again.
+  private struct AttemptStamp: Equatable {
+    let key: TranscriptCoordinator.HistoryQueryKey
+    let notices: UInt64
+    let source: UInt64?
+  }
+
+  /// #4586 H1: keeps `tab`'s list current for one request (tab, search, filters, grouping). A
+  /// content publish never cancels a read in flight: the read lands, is shown, and the loop
+  /// reads once more for the newer content. A read that came back empty (a writer was active)
+  /// is tried again on the next content publish or change notice, never in a tight loop.
+  private func refresh(tab: HistoryTab) async {
+    guard let session = coordinator.catalogSession else {
+      await readPage(tab: tab, key: currentKey(tab))
+      return
+    }
+    var attempted: AttemptStamp?
+    while !Task.isCancelled {
+      let content = session.revision
+      let notices = session.noticeCount
+      let key = currentKey(tab)
+      let stamp = AttemptStamp(key: key, notices: notices, source: session.stableSourceRevision)
+      if results[tab]?.key != key, attempted != stamp {
+        attempted = stamp
+        await readPage(tab: tab, key: key)
+      }
+      await session.waitForChange(revision: content, notices: notices)
+    }
+  }
+
+  private func currentKey(_ tab: HistoryTab) -> TranscriptCoordinator.HistoryQueryKey {
+    coordinator.historyQueryKey(for: tab, state: coordinator.requestedHistoryState(for: tab))
+  }
+
+  /// One read for `key`, then publish (the body that ran once per key before #4586).
+  private func readPage(tab: HistoryTab, key: TranscriptCoordinator.HistoryQueryKey) async {
+    guard results[tab]?.key != key else { return }
+    // A refresh with the same tab, search and filters (a catalog update, an expiry, a time
+    // zone or locale change) restores around the saved anchor: save where the reader is now
+    // first, so it never jumps back to the place they last left (cloud review on #4582).
+    var live = coordinator.requestedHistoryState(for: tab)
+    if live.openItemID == nil, let context = liveAnchor.context, context == key.context,
+      context == HistoryPaging.Context(tab: tab, state: live),
+      live.scrollAnchorID != liveAnchor.id
+    {
+      live.scrollAnchorID = liveAnchor.id
+      coordinator.setHistoryState(live, for: tab)
+    }
+    // With a page open, restore around the item on screen: after the arrows stepped past the
+    // loaded page, a restore around the item first opened lost the open one, and both arrows
+    // stayed disabled (founder, #4611). Back returns to the open item anyway.
+    if let open = live.openItemID, key.context == HistoryPaging.Context(tab: tab, state: live),
+      live.scrollAnchorID != open
+    {
+      live.scrollAnchorID = open
+      coordinator.setHistoryState(live, for: tab)
+    }
+    guard let result = await coordinator.historyResults(for: key), !Task.isCancelled,
+      coordinator.historyTab == tab
+    else { return }
+    #if DEBUG
+      // #4611 listening code: how long after its save a new item reached the list.
+      if let newest = result.items.first, newest.id != results[tab]?.items.first?.id {
+        let age = Date().timeIntervalSince(newest.createdAt)
+        if age < 120 {
+          let line =
+            "new item shown tab=\(tab.rawValue) secondsAfterSave=\(String(format: "%.2f", age))"
+          Task { await AppLogger.shared.log(line, level: .info, category: "HistoryScroll") }
+        }
+      }
+    #endif
+    results[tab] = result
+    HistoryFirstPage.accepted(tab)
+    if isSelecting, coordinator.historyTab == tab {
+      if let matching = await coordinator.matchingIDs(for: result), isSelecting {
+        selection.retain(Set(matching))
+      }
+    }
   }
 
   private var tabBinding: Binding<HistoryTab> {
@@ -288,7 +329,8 @@ struct HistoryDiaryView<
     let tab = result.key.context.tab
     let cursor = newer ? result.newerContinuation : result.continuation
     let current = newer ? results[tab]?.newerContinuation : results[tab]?.continuation
-    guard let cursor, pendingPage == nil, current == cursor,
+    // #4586: only from the stored result; the coordinator also requires the live key.
+    guard let cursor, pendingPage == nil, current == cursor, results[tab]?.identity == result.identity,
       result.catalogSourceRevision == coordinator.catalogSession?.stableSourceRevision
     else { return }
     pendingPage = cursor
@@ -297,10 +339,8 @@ struct HistoryDiaryView<
       guard
         let next = await coordinator.historyResults(
           for: result.key, extending: result, newer: newer),
-        coordinator.historyTab == tab, results[tab]?.key == result.key
+        coordinator.historyTab == tab, results[tab]?.identity == result.identity
       else { return }
-      let current = newer ? results[tab]?.newerContinuation : results[tab]?.continuation
-      guard current == cursor else { return }
       results[tab] = next
     }
   }
@@ -1375,4 +1415,18 @@ struct EscapeRecoveryBadge: View {
 private final class HistoryLiveAnchor {
   var id: HistoryItemID?
   var context: HistoryPaging.Context?
+}
+
+/// #4586 signposts for the first page of each tab since launch: accepted when stored, drawn on
+/// the next main run-loop turn, after `HistoryDiaryTable` installed its rows. "Drawn" brackets
+/// the table insert; it is not a frame timestamp.
+@MainActor
+private enum HistoryFirstPage {
+  static var seen: Set<HistoryTab> = []
+
+  static func accepted(_ tab: HistoryTab) {
+    guard seen.insert(tab).inserted else { return }
+    HistorySignpost.event("HistoryFirstPageAccepted")
+    DispatchQueue.main.async { HistorySignpost.event("HistoryFirstPageDrawn") }
+  }
 }
