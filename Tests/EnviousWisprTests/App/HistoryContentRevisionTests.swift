@@ -63,6 +63,30 @@ import Testing
           == advances)
     }
 
+    @Test("A status-only publish leaves the content revision; changed rows advance it")
+    func statusOnlyPublishKeepsRevision() async throws {
+      let f = try await fixture(rows: 3)
+      defer { try? FileManager.default.removeItem(at: f.root) }
+      #expect(f.session.status == .ready)
+      // An unreadable History file makes the next pass report the source unavailable without
+      // changing a catalog row: a status-only publish.
+      let bad = UUID()
+      let transcripts = f.root.appendingPathComponent("transcripts")
+      try Data("not a transcript".utf8).write(to: transcripts.appendingPathComponent("\(bad.uuidString).json"))
+      let before = f.session.revision
+      f.changes.externalChange(.transcript(bad))
+      await f.session.waitForIndexingForTesting()
+      #expect(f.session.status == .unavailable)
+      #expect(f.session.revision == before)
+      // A real row change is content.
+      try FileManager.default.removeItem(at: transcripts.appendingPathComponent("\(bad.uuidString).json"))
+      let saved = Transcript(text: "new row", processingTime: 0, backendType: .parakeet)
+      try TranscriptStore(directory: transcripts).save(saved)
+      f.changes.externalChange(.transcript(saved.id))
+      await f.session.waitForIndexingForTesting()
+      #expect(f.session.revision != before)
+    }
+
     @Test("A page read across a content publish is kept, shown and not yet current")
     func pageSurvivesContentPublish() async throws {
       let f = try await fixture(rows: 5)

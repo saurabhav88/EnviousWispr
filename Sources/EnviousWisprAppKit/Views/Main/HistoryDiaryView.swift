@@ -163,34 +163,21 @@ struct HistoryDiaryView<
     let grouping: Int
   }
 
-  /// What one read attempt was made under: a repeat of the same stamp is not tried again.
-  private struct AttemptStamp: Equatable {
-    let key: TranscriptCoordinator.HistoryQueryKey
-    let notices: UInt64
-    let source: UInt64?
-  }
-
-  /// #4586 H1: keeps `tab`'s list current for one request (tab, search, filters, grouping). A
-  /// content publish never cancels a read in flight: the read lands, is shown, and the loop
-  /// reads once more for the newer content. A read that came back empty (a writer was active)
-  /// is tried again on the next content publish or change notice, never in a tight loop.
+  /// #4586 H1: keeps `tab`'s list current for one request (`HistoryRefreshLoop`).
   private func refresh(tab: HistoryTab) async {
     guard let session = coordinator.catalogSession else {
       await readPage(tab: tab, key: currentKey(tab))
       return
     }
-    var attempted: AttemptStamp?
-    while !Task.isCancelled {
-      let content = session.revision
-      let notices = session.noticeCount
-      let key = currentKey(tab)
-      let stamp = AttemptStamp(key: key, notices: notices, source: session.stableSourceRevision)
-      if results[tab]?.key != key, attempted != stamp {
-        attempted = stamp
-        await readPage(tab: tab, key: key)
-      }
-      await session.waitForChange(revision: content, notices: notices)
-    }
+    await HistoryRefreshLoop(
+      counters: {
+        .init(content: session.revision, notices: session.noticeCount, source: session.stableSourceRevision)
+      },
+      currentKey: { currentKey(tab) },
+      storedKey: { results[tab]?.key },
+      read: { key in await readPage(tab: tab, key: key) },
+      wait: { content, notices in await session.waitForChange(revision: content, notices: notices) }
+    ).run()
   }
 
   private func currentKey(_ tab: HistoryTab) -> TranscriptCoordinator.HistoryQueryKey {
@@ -374,9 +361,10 @@ private struct HistoryDiaryList<DictationCard: View>: View {
   let loadNext: (HistoryQueryResult, Bool) -> Void
   let dictationCard: (HistoryDictationDisplay, String) -> DictationCard
 
-  /// #4611: the place to put at the top once its rows are installed (on appear, and when the
-  /// search or filters change).
-  @State private var restore: HistoryDiaryTable.Restore?
+  /// #4611: the place to put at the top once its rows are installed. The first page for the
+  /// tab's current search restores its saved place; a later search or filter starts at the top
+  /// (#4586, `HistoryListPlace`).
+  @State private var place = PlaceBox()
   /// #3147 PR3: the import whose Locate original flow is running, and its one-line result.
   @State private var locatingRowID: UUID?
   @State private var locateNote: LocateNote?
@@ -412,6 +400,13 @@ private struct HistoryDiaryList<DictationCard: View>: View {
     }
     if request != nil || hasNext { rows.append(.older) }
     let paging = Paging(window: window, request: request, hasNext: hasNext, now: Date())
+    // Decided here, in the same update that hands the table its rows, so a new search's rows
+    // never land at the old place first (#4586). `place` is unobserved: this changes no state.
+    let restore = place.value.restore(
+      shownContext: result?.key.context, requested: HistoryPaging.Context(tab: tab, state: state),
+      saved: state.scrollAnchorID
+    ).map { HistoryDiaryTable.Restore(token: $0.token, target: $0.target.map { .item($0) }) }
+    if !rows.isEmpty, isCurrent { HistoryFirstPage.installing(tab) }
 
     return HistoryDiaryTable(
       rows: rows, restore: restore, rowsAreFinal: isCurrent && result != nil,
@@ -428,16 +423,8 @@ private struct HistoryDiaryList<DictationCard: View>: View {
         liveAnchor.context = result.key.context
       }
     )
-    // Each tab keeps its place (#3147 §3.3): restored when its list appears, saved when it
-    // leaves for another tab or an open item.
-    .onAppear {
-      restore = .init(token: 1, target: state.scrollAnchorID.map { .item($0) })
-    }
-    .onChange(of: result?.key.context) { _, next in
-      guard next == HistoryPaging.Context(tab: tab, state: state) else { return }
-      restore = .init(
-        token: (restore?.token ?? 0) + 1, target: state.scrollAnchorID.map { .item($0) })
-    }
+    // Each tab keeps its place (#3147 §3.3): restored when its list appears (`place`), saved when
+    // it leaves for another tab or an open item. A new search or filter starts at the top.
     .onDisappear {
       saveLiveAnchor()
       liveAnchor.context = nil
@@ -1422,11 +1409,24 @@ private final class HistoryLiveAnchor {
 /// the table insert; it is not a frame timestamp.
 @MainActor
 private enum HistoryFirstPage {
-  static var seen: Set<HistoryTab> = []
+  static var accepted: Set<HistoryTab> = []
+  static var drawn: Set<HistoryTab> = []
 
   static func accepted(_ tab: HistoryTab) {
-    guard seen.insert(tab).inserted else { return }
+    guard accepted.insert(tab).inserted else { return }
     HistorySignpost.event("HistoryFirstPageAccepted")
+  }
+
+  /// Called by the list body that hands the table a current, non-empty page; the table installs
+  /// those rows in the same update, so the next main run-loop turn is after the install.
+  static func installing(_ tab: HistoryTab) {
+    guard accepted.contains(tab), drawn.insert(tab).inserted else { return }
     DispatchQueue.main.async { HistorySignpost.event("HistoryFirstPageDrawn") }
   }
+}
+
+/// The list's place decision, kept outside observation so deciding it never redraws the list.
+@MainActor
+private final class PlaceBox {
+  var value = HistoryListPlace()
 }

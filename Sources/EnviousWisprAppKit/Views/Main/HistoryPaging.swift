@@ -200,3 +200,73 @@ struct HistoryQueryResult: Sendable {
     }
   }
 }
+
+/// #4586 H1: the loop that keeps one History tab's list current for one request (tab, search,
+/// filters, grouping). A content publish never cancels a read in flight: the read lands, is
+/// shown, and the loop reads once more for the newer content. A read that came back empty (a
+/// writer was active, the source moved) is tried again on the next content publish or change
+/// notice, never in a tight loop: each (key, notices, source) stamp is attempted once.
+@MainActor
+struct HistoryRefreshLoop {
+  struct Counters: Equatable {
+    let content: UInt64
+    let notices: UInt64
+    let source: UInt64?
+  }
+
+  private struct Stamp: Equatable {
+    let key: TranscriptCoordinator.HistoryQueryKey
+    let notices: UInt64
+    let source: UInt64?
+  }
+
+  let counters: @MainActor () -> Counters
+  let currentKey: @MainActor () -> TranscriptCoordinator.HistoryQueryKey
+  /// The key of the result stored for the tab now.
+  let storedKey: @MainActor () -> TranscriptCoordinator.HistoryQueryKey?
+  let read: @MainActor (TranscriptCoordinator.HistoryQueryKey) async -> Void
+  /// Returns once either counter moved from the given values, or on cancellation.
+  let wait: @MainActor (_ content: UInt64, _ notices: UInt64) async -> Void
+
+  func run() async {
+    var attempted: Stamp?
+    while !Task.isCancelled {
+      let now = counters()
+      let key = currentKey()
+      let stamp = Stamp(key: key, notices: now.notices, source: now.source)
+      if storedKey() != key, attempted != stamp {
+        attempted = stamp
+        await read(key)
+      }
+      await wait(now.content, now.notices)
+    }
+  }
+}
+
+/// #4586 (bug found by the History speed drivers on `acd9e956e`): where a History list opens. The
+/// first page shown for the tab's current search and filters restores the tab's saved place (a
+/// return to the tab, or Back from an open item); any later change of search or filters starts
+/// at the top, even when the saved row is also in the new results. A page for an older search
+/// that is still on screen while the new one is read asks for nothing, so the list stays put.
+struct HistoryListPlace {
+  struct Restore: Equatable {
+    let token: Int
+    let target: HistoryItemID?
+  }
+
+  private var shown: HistoryPaging.Context?
+  private var current: Restore?
+
+  /// The restore the list should apply while showing a result for `shownContext`, when the
+  /// tab now asks for `requested` and its saved place is `saved`.
+  mutating func restore(
+    shownContext: HistoryPaging.Context?, requested: HistoryPaging.Context, saved: HistoryItemID?
+  ) -> Restore? {
+    guard let shownContext, shownContext == requested, shownContext != shown else { return current }
+    let first = shown == nil
+    shown = shownContext
+    current = Restore(token: (current?.token ?? 0) + 1, target: first ? saved : nil)
+    return current
+  }
+}
+
