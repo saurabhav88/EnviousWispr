@@ -14,11 +14,13 @@ The caller must hold the dev-app lock (claimed in a separate tool call).
 
 Usage: python3 containment_pilot.py <pinned EnviousWispr.app> <expected sha256> <seed dir> <new run dir>
          [--calibrate] [--run <cases.json> <samples> [--capture-compare] [--busy]] [--scroll [scroll options...]]
-         [--card [--repeats N]] [--open missing|existing <samples> [--busy] [--control drop-row]] [--scroll-early] [--hold]
+         [--card [--repeats N]] [--open missing|existing|missing,existing <samples> [--busy] [--control drop-row]]
+         [--scroll-early] [--hold]
   --open     after the contained session (which builds full coverage), run m5-speed-open.py on the same
              subject and home; it launches and stops the subject itself, once per sample
   --scroll-early  do not wait for catalog coverage (scroll while background indexing runs)
-  --scroll   run m5-speed-scroll.py on the contained subject; every argument after it is passed through
+  --scroll   run m5-speed-scroll.py on the contained subject; every argument after it is passed through,
+             so it goes last. Order inside one session: search, card, scroll; --open runs after it.
   --hold     keep the subject running for hand probing until a file named `stop` appears in the run dir
 """
 import json
@@ -31,6 +33,8 @@ import time
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import fixture  # noqa: E402
+
+OWN = []
 
 WATCH_EXACT = ["Library/Application Support/EnviousWispr", fixture.API_KEY_FOLDER, fixture.RECOVERY_KEY_FOLDER,
                "Library/Containers/com.enviouswispr.app", "Library/Logs/EnviousWispr"]
@@ -95,15 +99,19 @@ def window_listed(pid):
 
 
 def main():
+    # Options for this runner and the search, card and open drivers come before --scroll; everything
+    # after --scroll belongs to the scroll driver.
+    global OWN
+    OWN = sys.argv[5:sys.argv.index("--scroll")] if "--scroll" in sys.argv else sys.argv[5:]
     if len(sys.argv) < 5 or sys.argv[1] in ("-h", "--help"):
         print(__doc__)
         return 2
     app, sha, seed, run = Path(sys.argv[1]), sys.argv[2], Path(sys.argv[3]), Path(sys.argv[4])
-    calibrate = "--calibrate" in sys.argv[5:]
+    calibrate = "--calibrate" in OWN
     run_cases = None
-    if "--run" in sys.argv[5:]:
-        at = sys.argv.index("--run")
-        run_cases, run_samples = Path(sys.argv[at + 1]), sys.argv[at + 2]
+    if "--run" in OWN:
+        at = OWN.index("--run")
+        run_cases, run_samples = Path(OWN[at + 1]), OWN[at + 2]
     run.mkdir(parents=True, exist_ok=False)
     real_home = Path(fixture.pwd_home())
     subject = fixture.prepare_subject(app, run / "subject", sha)
@@ -117,7 +125,7 @@ def main():
         wait_for(lambda: window_listed(session.pid), 60, "the subject's window")
         report["window_after_s"] = round(time.time() - started, 2)
         # 2026-11-15 measured 264.7 s from launch to full coverage on the 27k seed (scrollfix-rel-1).
-        if "--scroll-early" not in sys.argv[5:]:
+        if "--scroll-early" not in OWN:
             wait_for(lambda: coverage_ready(home), 900, "full catalog coverage")
         report["coverage_after_s"] = round(time.time() - started, 2)
         if calibrate:
@@ -126,7 +134,7 @@ def main():
             plan = [(tab, None) for tab in ("Dictations", "Transcripts", "Meetings")]
             plan += [("Meetings", "Budget"), ("Dictations", "Fire onboarding"), ("Transcripts", "voice"),
                      ("Dictations", "zqxjvkwplm")]
-            if "--only-empty" in sys.argv:
+            if "--only-empty" in OWN:
                 plan = [("Dictations", "zqxjvkwplm")]
             for tab, query in plan:
                 out = run / (f"calibrate-{tab}.json" if query is None else f"calibrate-{tab}-{query[:6]}.json")
@@ -135,34 +143,36 @@ def main():
                                         capture_output=True, text=True, timeout=180)
                 report["calibration"][out.stem] = {"exit": result.returncode, "out": str(out),
                                               "stderr_tail": result.stderr[-400:]}
-        if "--hold" in sys.argv[5:]:
+        if "--hold" in OWN:
             (run / "pid.txt").write_text(str(session.pid))
             print(json.dumps({"holding": session.pid, "subject": str(subject), "home": str(home)}), flush=True)
             wait_for(lambda: (run / "stop").exists(), 7200, "the stop file")
-        if "--scroll" in sys.argv[5:]:
-            import subprocess
-            extra = sys.argv[sys.argv.index("--scroll") + 1:]
-            result = subprocess.run([sys.executable, "-B", str(HERE / "m5-speed-scroll.py"), str(session.pid),
-                                     str(subject), str(run / "scroll")] + extra,
-                                    capture_output=True, text=True, timeout=7200)
-            report["scroll_run"] = {"exit": result.returncode, "stdout_tail": result.stdout[-3000:],
-                                    "stderr_tail": result.stderr[-1500:]}
-        if "--card" in sys.argv[5:]:
-            import subprocess
-            extra = ["--repeats", sys.argv[sys.argv.index("--repeats") + 1]] if "--repeats" in sys.argv else []
-            result = subprocess.run([sys.executable, "-B", str(HERE / "m5-speed-card.py"), str(session.pid),
-                                     str(subject), str(run / "card")] + extra, capture_output=True, text=True, timeout=3600)
-            report["card_run"] = {"exit": result.returncode, "stdout_tail": result.stdout[-3000:],
-                                  "stderr_tail": result.stderr[-1500:]}
+        # Search runs first: a scroll leaves the tab's saved anchor deep in the list, and main
+        # restores that anchor for a new search (finding sent to the parent session 2026-11-17).
         if run_cases is not None:
             import subprocess
             result = subprocess.run([sys.executable, "-B", str(HERE / "m5-speed-ui-search.py"), "run",
                                      str(session.pid), str(subject), str(home), str(run_cases), str(run / "search"),
-                                     run_samples] + (["--capture-compare"] if "--capture-compare" in sys.argv[5:] else [])
-                                    + (["--busy"] if "--busy" in sys.argv[5:] else [])
-                                    + (["--only", sys.argv[sys.argv.index("--only") + 1]] if "--only" in sys.argv else []),
+                                     run_samples] + (["--capture-compare"] if "--capture-compare" in OWN else [])
+                                    + (["--busy"] if "--busy" in OWN else [])
+                                    + (["--only", OWN[OWN.index("--only") + 1]] if "--only" in OWN else []),
                                     capture_output=True, text=True, timeout=7200)
             report["search_run"] = {"exit": result.returncode, "stdout_tail": result.stdout[-3000:],
+                                    "stderr_tail": result.stderr[-1500:]}
+        if "--card" in OWN:
+            import subprocess
+            extra = ["--repeats", OWN[OWN.index("--repeats") + 1]] if "--repeats" in OWN else []
+            result = subprocess.run([sys.executable, "-B", str(HERE / "m5-speed-card.py"), str(session.pid),
+                                     str(subject), str(run / "card")] + extra, capture_output=True, text=True, timeout=3600)
+            report["card_run"] = {"exit": result.returncode, "stdout_tail": result.stdout[-3000:],
+                                  "stderr_tail": result.stderr[-1500:]}
+        if "--scroll" in OWN:
+            import subprocess
+            extra = sys.argv[sys.argv.index("--scroll") + 1:]   # everything after --scroll
+            result = subprocess.run([sys.executable, "-B", str(HERE / "m5-speed-scroll.py"), str(session.pid),
+                                     str(subject), str(run / "scroll")] + extra,
+                                    capture_output=True, text=True, timeout=7200)
+            report["scroll_run"] = {"exit": result.returncode, "stdout_tail": result.stdout[-3000:],
                                     "stderr_tail": result.stderr[-1500:]}
     report["session"] = session.report
     db = fixture.catalog_dir(home) / "history.sqlite"
@@ -173,17 +183,19 @@ def main():
     report["real_home_changes"] = changed
     report["fixture_writes"] = sorted(str(p.relative_to(home)) for p in home.rglob("*")
                                       if p.is_file() and p.stat().st_mtime >= started)[:200]
-    if "--open" in sys.argv[5:]:
+    if "--open" in OWN:
         import subprocess
-        at = sys.argv.index("--open")
-        extra = [a for a in ("--busy",) if a in sys.argv[5:]]
-        if "--control" in sys.argv:
-            extra += ["--control", sys.argv[sys.argv.index("--control") + 1]]
-        result = subprocess.run([sys.executable, "-B", str(HERE / "m5-speed-open.py"), str(subject), str(home),
-                                 str(run / "open"), "--mode", sys.argv[at + 1], "--samples", sys.argv[at + 2]] + extra,
-                                capture_output=True, text=True, timeout=7200)
-        report["open_run"] = {"exit": result.returncode, "stdout_tail": result.stdout[-3000:],
-                              "stderr_tail": result.stderr[-1500:]}
+        at = OWN.index("--open")
+        extra = [a for a in ("--busy",) if a in OWN]
+        if "--control" in OWN:
+            extra += ["--control", OWN[OWN.index("--control") + 1]]
+        report["open_runs"] = {}
+        for mode in OWN[at + 1].split(","):   # e.g. "missing,existing"
+            result = subprocess.run([sys.executable, "-B", str(HERE / "m5-speed-open.py"), str(subject), str(home),
+                                     str(run / f"open-{mode}"), "--mode", mode, "--samples", OWN[at + 2]] + extra,
+                                    capture_output=True, text=True, timeout=7200)
+            report["open_runs"][mode] = {"exit": result.returncode, "stdout_tail": result.stdout[-3000:],
+                                         "stderr_tail": result.stderr[-1500:]}
     (run / "pilot.json").write_text(json.dumps(report, indent=1))
     print(json.dumps({k: v for k, v in report.items() if k != "fixture_writes"}, indent=1))
     return 0

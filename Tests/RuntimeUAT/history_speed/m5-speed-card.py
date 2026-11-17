@@ -4,11 +4,16 @@ On the Dictations tab of a running subject, the driver picks the first visible c
 "Play" and a "Show edits" button, then for each of N repeats:
 
 - Show edits: press it (AXPress, timestamp taken right before the press), confirm by AX that the
-  card now offers "Hide edits", hold, and time to the FIRST captured frame of the list that shows
-  the held picture (`search_frames.reference_from_frames`). Then press "Hide edits" and wait until
-  the card shows "Show edits" again (untimed).
-- Play: press Play, confirm by AX that the card shows "Pause", hold, time to the first frame showing
-  the held picture; then press Pause (untimed). The Mac's sound output is switched to "BlackHole 2ch"
+  card now offers "Hide edits" and keeps offering it for HOLD_MS. Then press "Hide edits" and wait
+  until the card shows "Show edits" again (untimed).
+- Play: press Play, confirm by AX that the card shows "Pause" and keeps it; then press Pause.
+
+Number per press: `first_change_ms`, press to the first captured frame of the list that differs from
+the last frame before the press (the first visible response). Neither view holds a still picture
+(the playing card animates; the edits view can keep changing), so no "final picture" endpoint is
+claimed; for Show edits the driver watches for EDITS_HOLD_MS and `edits_settled_ms` is the last
+change when the picture was still at the end (the opened view finished drawing); `last_change_before_hold_end_ms` records when the picture last changed before the hold
+ended, and `still_at_hold_end` whether it was still. Upper bounds: capture misses some frames. The Mac's sound output is switched to "BlackHole 2ch"
   for the run and restored afterwards, so the room stays silent.
 
 Both are upper bounds on the first correct picture (capture misses some frames). The AX labels
@@ -29,6 +34,7 @@ import time
 HERE = Path(__file__).resolve().parent
 RUNTIME_UAT = HERE.parent
 HOLD_MS = 300
+EDITS_HOLD_MS = 2000   # the edits view keeps changing after it opens: watch long enough to see it settle
 DEADLINE_S = 10.0
 SCROLL_BAR = 20
 SILENT_OUTPUT = "BlackHole 2ch"
@@ -129,7 +135,7 @@ def main():
         lines = [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
         return lines[0], lines[1:]
 
-    def timed_press(name, press_title, done_title, undo_title, rep):
+    def timed_press(name, press_title, done_title, undo_title, rep, hold_ms=HOLD_MS):
         """Press `press_title` on the card, confirm `done_title` appears and holds, time the picture,
         then press `undo_title` and wait for `press_title` to return (untimed)."""
         path = out / f"{name}-{rep}.jsonl"
@@ -143,7 +149,7 @@ def main():
             wait(lambda: current_row() is not None and button(current_row(), done_title) is not None, DEADLINE_S,
                  f"{done_title} on the card")
             confirmed = libc.mach_absolute_time()
-            hold_end = time.monotonic() + HOLD_MS / 1000
+            hold_end = time.monotonic() + hold_ms / 1000
             held = True
             while time.monotonic() < hold_end:
                 if button(current_row(), done_title) is None:
@@ -152,16 +158,29 @@ def main():
             held_until = libc.mach_absolute_time()
         finally:
             header, frames = stop_recorder(recorder, path)
-        record = {"ax_confirm_ms": round(ms(confirmed - pressed), 1)}
-        reference, why = search_frames.reference_from_frames(frames, held_until, header["timebase_numer"],
-                                                             header["timebase_denom"], HOLD_MS)
-        complete = [f for f in search_frames.complete_frames(frames) if f["display"] >= pressed]
-        hit = next((f for f in complete if f["hash"] == reference), None) if reference else None
-        if not held or hit is None:
-            record.update(result="unknown", reason="not held" if not held else (why or "no frame shows it"))
+        record = {"ax_confirm_ms": round(ms(confirmed - pressed), 1), "held_by_ax": held}
+        reference, _ = search_frames.reference_from_frames(frames, held_until, header["timebase_numer"],
+                                                           header["timebase_denom"], HOLD_MS)
+        complete = search_frames.complete_frames(frames)
+        before = [f for f in complete if f["display"] < pressed]
+        after = [f for f in complete if f["display"] >= pressed]
+        if not before or not after:
+            record.update(result="unknown", reason="no captured frame before or after the press")
         else:
-            record.update(result="timed", upper_ms=round(ms(hit["display"] - pressed), 1),
-                          capture_late=hit is complete[0])
+            base = before[-1]["hash"]
+            first = next((f for f in after if f["hash"] != base), None)
+            if first is None:
+                record.update(result="unknown", reason="the picture never changed after the press")
+            else:
+                changes = [f for f in after if f["display"] <= held_until]
+                last_change = None
+                for previous, current in zip(changes, changes[1:]):
+                    if current["hash"] != previous["hash"]:
+                        last_change = current
+                record.update(result="timed", first_change_ms=round(ms(first["display"] - pressed), 1),
+                              last_change_before_hold_end_ms=round(ms(last_change["display"] - pressed), 1)
+                              if last_change else None,
+                              still_at_hold_end=reference is not None)
         undo = button(current_row(), undo_title)
         if undo is not None:
             ui.perform_action(undo, "AXPress")
@@ -178,19 +197,25 @@ def main():
               "output_during_run": SILENT_OUTPUT, "output_restored_to": previous_output}
     try:
         for rep in range(repeats):
-            report["edits"].append(timed_press("edits", "Show edits", "Hide edits", "Hide edits", rep))
+            report["edits"].append(timed_press("edits", "Show edits", "Hide edits", "Hide edits", rep,
+                                               EDITS_HOLD_MS))
             report["play"].append(timed_press("play", "Play", "Pause", "Pause", rep))
             print(json.dumps({"rep": rep, "edits": report["edits"][-1], "play": report["play"][-1]}), flush=True)
     finally:
         subprocess.run(["SwitchAudioSource", "-t", "output", "-s", previous_output], capture_output=True)
         report["output_after"] = subprocess.run(["SwitchAudioSource", "-c", "-t", "output"], capture_output=True,
                                                 text=True).stdout.strip()
+    report["edits_settled_ms"] = percentiles([r["last_change_before_hold_end_ms"] for r in report["edits"]
+                                              if r.get("result") == "timed" and r.get("still_at_hold_end")
+                                              and r.get("last_change_before_hold_end_ms") is not None])
     for key in ("edits", "play"):
-        report[f"{key}_ms"] = percentiles([r["upper_ms"] for r in report[key] if r.get("result") == "timed"])
+        report[f"{key}_first_change_ms"] = percentiles([r["first_change_ms"] for r in report[key]
+                                                        if r.get("result") == "timed"])
         report[f"{key}_untimed"] = sum(1 for r in report[key] if r.get("result") != "timed")
     report["conditions_end"] = load_tools.machine_conditions()
     (out / "report.json").write_text(json.dumps(report, indent=1))
-    print(json.dumps({k: report[k] for k in ("edits_ms", "play_ms", "edits_untimed", "play_untimed", "output_after")}))
+    print(json.dumps({k: report[k] for k in ("edits_first_change_ms", "edits_settled_ms", "play_first_change_ms", "edits_untimed",
+                                             "play_untimed", "output_after")}))
     return 0
 
 

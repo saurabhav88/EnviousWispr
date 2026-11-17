@@ -28,7 +28,8 @@ Every run records machine conditions (load, peer builds) at start and end.
 
 Usage: python3 m5-speed-scroll.py <pid> <subject .app> <new out dir> [--tabs Dictations,Transcripts,Meetings]
                                   [--inputs trackpad,wheel] [--repeats N] [--start-pt N] [--idle] [--busy]
-                                  [--control short-return]
+                                  [--deep] [--control short-return]
+  --deep adds one trackpad run on Dictations from 40000 pt down (many loaded pages)
 The caller holds the dev-app lock and runs the subject inside fixture.ContainedSession
 (containment_pilot.py --scroll does both).
 """
@@ -54,6 +55,7 @@ SETTLE_DEADLINE_S = 15.0
 XCTRACE_WINDOW_S = 10        # recording length: both gestures and their quiet periods fit inside
 XCTRACE_HANG_S = 300         # #4587 hang guard; one 5 s recording took 64 s to start, record and save under load
 IDLE_S = 30
+DEEP_START_PT = 40000        # more than ten loaded pages of 30 rows on Dictations
 
 
 def option(argv, name, default=None):
@@ -278,7 +280,7 @@ def main():
 
     current_area = {"area": None}
 
-    def run_tabs():
+    def run_tabs(tabs, inputs, repeats, start_pt, label):
         for tab in tabs:
             require_identity()
             assert press_tab(tab), f"tab {tab} not found"
@@ -289,20 +291,21 @@ def main():
             CGWarpMouseCursorPosition(point)
             wframe = ui.element_frame(window)
             crop = f"{frame['x'] - wframe['x']},{frame['y'] - wframe['y']},{frame['width'] - 20},{frame['height']}"
-            top_y = settled(table)
-            # Mid-list start: trackpad gestures down until the list sits MID_START_PT below the top.
+            # Start position: trackpad gestures down until the list sits start_pt below its newest
+            # row (the first row's y against the viewport top: an absolute scroll distance).
             for _ in range(80):   # bounded: 80 gestures of 1500 pt reach about 120,000 pt
-                if top_y - settled(table) >= start_pt:
+                if frame["y"] - settled(table) >= start_pt:
                     break
                 gesture("trackpad", point, -1)
+            report.setdefault("start_reached_pt", {})[f"{label}-{tab}"] = frame["y"] - settled(table)
             for kind in inputs:
                 for rep in range(repeats):
                     require_identity()
-                    run = {"tab": tab, "input": kind, "repeat": rep}
+                    run = {"case": label, "tab": tab, "input": kind, "repeat": rep, "start_pt": start_pt}
                     up_scale = 0.5 if control == "short-return" else 1.0
                     # Hitch pass: no AX reads while gestures run.
-                    trace = out / f"{tab}-{kind}-{rep}.trace"
-                    frames_path = out / f"{tab}-{kind}-{rep}.frames.jsonl"
+                    trace = out / f"{label}-{tab}-{kind}-{rep}.trace"
+                    frames_path = out / f"{label}-{tab}-{kind}-{rep}.frames.jsonl"
                     y0 = settled(table)
                     xt = start_xctrace(trace, XCTRACE_WINDOW_S)
                     recorder = start_recorder(frames_path, crop)
@@ -349,7 +352,7 @@ def main():
                     run["verdict"] = sa.verdict(run["hitch"], changed, run["travel"])
                     report["runs"].append(run)
                     save()
-                    print(json.dumps({"tab": tab, "input": kind, "repeat": rep, "verdict": run["verdict"],
+                    print(json.dumps({"case": label, "tab": tab, "input": kind, "repeat": rep, "verdict": run["verdict"],
                                       "ms_per_s": run["hitch"].get("ms_per_s"), "changed": len(changed),
                                       "asym": run["travel"]["asymmetry"]}), flush=True)
 
@@ -365,7 +368,10 @@ def main():
         load.__enter__()
         report["busy_processes"] = load.count
     try:
-        run_tabs()
+        run_tabs(tabs, inputs, repeats, start_pt, "mid")
+        if "--deep" in argv:
+            # Many loaded pages: Dictations from DEEP_START_PT below the newest row, trackpad only.
+            run_tabs(["Dictations"], ["trackpad"], 1, DEEP_START_PT, "deep")
     finally:
         if load:
             load.__exit__(None, None, None)
