@@ -164,9 +164,13 @@ def main():
         dirty = None
         if run_cases is not None:
             search_report = run / "search" / "report.json"
-            left = json.loads(search_report.read_text()).get("left_filtered") if search_report.is_file() else "no report"
-            if left:
-                dirty = f"search left the list filtered: {left}"
+            final = json.loads(search_report.read_text()) if search_report.is_file() else {}
+            # Only a FINISHED search run (its `overall` written last) proves every tab was restored;
+            # a partial report from a run that died mid-plan proves nothing (Codex round 8).
+            if "overall" not in final:
+                dirty = "the search run did not finish; tab restoration unverified"
+            elif final.get("left_filtered"):
+                dirty = f"search left the list filtered: {final['left_filtered']}"
         if "--card" in OWN and dirty:
             report["card_run"] = {"skipped": dirty}
         elif "--card" in OWN:
