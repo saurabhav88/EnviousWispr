@@ -234,17 +234,45 @@ final class TranscriptCoordinator {
         return nil
       }
       HistorySignpost.signposter.endInterval("HistoryPage", interval, "accepted")
-      var items = previous?.items ?? []
-      var ids = Set(items.map(\.id))
-      let added = page.summaries.map(HistoryListItem.catalog).filter { ids.insert($0.id).inserted }
-      if newer { items.insert(contentsOf: added, at: 0) } else { items.append(contentsOf: added) }
-      let counts = page.dayCounts.map { (previous?.catalogDayCounts ?? [:]).merging($0) { _, new in new } }
-      return try? HistoryQueryResult(key: key, items: items, continuation: newer ? previous?.continuation : page.continuation,
-        newerContinuation: newer || previous == nil ? page.newerContinuation : previous?.newerContinuation,
-        catalogSourceRevision: source, catalogDayCounts: counts)
+      // #4586 H5: the result is built off the main actor (`@concurrent`), then the same
+      // freshness checks run again before it is returned.
+      guard
+        let built = await Self.buildResult(
+          key: key, page: page, previous: previous, newer: newer, source: source),
+        !Task.isCancelled, source == catalogSession.stableSourceRevision, stillWanted()
+      else { return nil }
+      return built
     }
     // Production always has a catalog session (`WisprBootstrapper`); without one nothing is listed.
     return nil
+  }
+
+  /// Builds the result for one page off the main actor (#4586 H5): the first page laid out
+  /// whole, an older page appended incrementally, a newer page (rare: restoring upward) laid out
+  /// whole again. `@concurrent` is the mechanism; `onMainThread` lets a test observe it.
+  @concurrent nonisolated static func buildResult(
+    key: HistoryQueryKey, page: HistoryCatalog.Page, previous: HistoryQueryResult?, newer: Bool,
+    source: UInt64, onMainThread: (@Sendable (Bool) -> Void)? = nil
+  ) async -> HistoryQueryResult? {
+    // `Thread.isMainThread` is unavailable in async code; the C call answers the same question.
+    onMainThread?(pthread_main_np() != 0)
+    let added = page.summaries.map(HistoryListItem.catalog)
+    let counts = page.dayCounts.map { (previous?.catalogDayCounts ?? [:]).merging($0) { _, new in new } }
+    guard let previous else {
+      return try? HistoryQueryResult(
+        key: key, items: added, continuation: page.continuation,
+        newerContinuation: page.newerContinuation, catalogSourceRevision: source,
+        catalogDayCounts: counts)
+    }
+    if newer {
+      var ids = previous.ids
+      let fresh = added.filter { ids.insert($0.id).inserted }
+      return try? HistoryQueryResult(
+        key: key, items: fresh + previous.items, continuation: previous.continuation,
+        newerContinuation: page.newerContinuation, catalogSourceRevision: source,
+        catalogDayCounts: counts)
+    }
+    return try? previous.appending(added, continuation: page.continuation, catalogDayCounts: counts)
   }
 
   private func catalogQuery(for context: HistoryPaging.Context, calendar: Calendar = .current) -> HistoryCatalog.Query {
