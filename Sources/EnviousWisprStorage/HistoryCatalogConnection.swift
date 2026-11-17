@@ -24,6 +24,12 @@ final class HistoryCatalogConnection {
   /// The SQL texts are fixed literals plus the few shapes `HistoryCatalog` builds from a query;
   /// the cap only bounds a future caller that builds unbounded SQL.
   private static let maxStatements = 64
+  /// Nested `rows` calls in progress. The outermost one installs and removes the progress handler.
+  private var readDepth = 0
+  /// SQLite VM steps between cancellation checks while `rows` steps (#4586 B2). Measured on the
+  /// 27k-row synthetic catalog (M5 Max, Debug): an uncancelled no-match scan is not measurably
+  /// slower, and a cancelled one stops within about a millisecond (p95 1.2 ms, was 125 ms).
+  private static let progressInterval: Int32 = 1000
   private static let transient = transientDestructor
 
   init(path: String) throws {
@@ -100,16 +106,37 @@ final class HistoryCatalogConnection {
     _ sql: String, _ parameters: [Value] = [], _ read: (OpaquePointer) throws -> Row
   ) throws -> [Row] {
     try withStatement(sql, parameters) { statement in
-      var rows: [Row] = []
-      var result = sqlite3_step(statement)
-      while result == SQLITE_ROW {
-        try Task.checkCancellation()
-        rows.append(try read(statement))
-        result = sqlite3_step(statement)
+      try stoppingWhenCancelled {
+        var rows: [Row] = []
+        var result = sqlite3_step(statement)
+        while result == SQLITE_ROW {
+          try Task.checkCancellation()
+          rows.append(try read(statement))
+          result = sqlite3_step(statement)
+        }
+        if result == SQLITE_INTERRUPT, Task.isCancelled { throw CancellationError() }
+        guard result == SQLITE_DONE else { throw Failure(code: result) }
+        return rows
       }
-      guard result == SQLITE_DONE else { throw Failure(code: result) }
-      return rows
     }
+  }
+
+  /// A statement that matches few or no rows never reaches the per-row check above, so a search
+  /// superseded by the next keystroke would scan every row while the catalog actor makes the
+  /// next read wait (#4586 B2). This handler ends the step with SQLITE_INTERRUPT once the calling
+  /// Task is cancelled. It runs synchronously inside that Task, between VM steps, so one
+  /// `history_contains` call already running still finishes first. `execute` stays without it.
+  private func stoppingWhenCancelled<Result>(_ run: () throws -> Result) throws -> Result {
+    guard let database else { throw Failure(code: SQLITE_ABORT) }
+    if readDepth == 0 {
+      sqlite3_progress_handler(database, Self.progressInterval, { _ in Task.isCancelled ? 1 : 0 }, nil)
+    }
+    readDepth += 1
+    defer {
+      readDepth -= 1
+      if readDepth == 0 { sqlite3_progress_handler(database, 0, nil, nil) }
+    }
+    return try run()
   }
 
   func transaction<Result>(write: Bool = false, _ run: () throws -> Result) throws -> Result {

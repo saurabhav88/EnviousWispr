@@ -177,6 +177,95 @@ struct HistoryCatalogStorageTests {
       }
     }
   }
+
+  /// About 200k recursive steps that return no row: a no-match scan with no per-row check.
+  private static let longEmptyScan =
+    "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c WHERE x < 200000) SELECT x FROM c WHERE x < 0"
+
+  private func plainConnection(_ folder: URL) throws -> HistoryCatalogConnection {
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    let connection = try HistoryCatalogConnection(path: databasePath(folder, "plain.sqlite"))
+    try connection.execute("CREATE TABLE t (f BLOB NOT NULL)")
+    try connection.transaction(write: true) {
+      for index in 0..<2_000 {
+        try connection.execute(
+          "INSERT INTO t VALUES (?)", [.bytes(SearchFields.encode(["café \(index) Straße", "日本語"]))])
+      }
+    }
+    return connection
+  }
+
+  @Test("A cancelled search that matches no row stops instead of scanning every row (#4586 B2)")
+  func cancelledEmptyScanStops() async throws {
+    let folder = directory()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let connection = try plainConnection(folder)
+    defer { try? connection.closeDatabase() }
+    let search = "SELECT rowid FROM t WHERE history_contains(f, ?)"
+    // Uncancelled, both statements finish and return nothing.
+    #expect(try connection.rows(search, [.text("zzzq")]) { sqlite3_column_int64($0, 0) }.isEmpty)
+    #expect(try connection.rows(Self.longEmptyScan) { sqlite3_column_int64($0, 0) }.isEmpty)
+    // Awaited before the next use, so the two tasks never touch the connection at once.
+    nonisolated(unsafe) let handoff = connection
+    for (sql, values) in [(search, [HistoryCatalogConnection.Value.text("zzzq")]), (Self.longEmptyScan, [])] {
+      let cancelled = Task {
+        withUnsafeCurrentTask { $0?.cancel() }
+        return try handoff.rows(sql, values) { sqlite3_column_int64($0, 0) }
+      }
+      await #expect(throws: CancellationError.self, "\(sql)") { try await cancelled.value }
+    }
+    #expect(try connection.rows(search, [.text("café 7 ")]) { sqlite3_column_int64($0, 0) } == [8])
+  }
+
+  @Test("A nested read keeps the outer read stoppable after it returns or throws")
+  func nestedReadKeepsOuterStoppable() async throws {
+    let folder = directory()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let connection = try plainConnection(folder)
+    defer { try? connection.closeDatabase() }
+    struct Refused: Error {}
+    nonisolated(unsafe) let handoff = connection
+    // Rows 1 and 2 come back first, then the outer statement steps through a long empty tail.
+    let outer =
+      "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c WHERE x < 200000) SELECT x FROM c WHERE x <= 2"
+    let read = Task {
+      try handoff.rows(outer) { row in
+        let value = sqlite3_column_int64(row, 0)
+        if value == 2 {
+          let count = try handoff.rows("SELECT count(*) FROM t") { sqlite3_column_int64($0, 0) }
+          #expect(count == [2_000])
+          var refused = false
+          do { _ = try handoff.rows("SELECT 1") { _ -> Int64 in throw Refused() } } catch is Refused { refused = true }
+          #expect(refused)
+          withUnsafeCurrentTask { $0?.cancel() }
+        }
+        return value
+      }
+    }
+    await #expect(throws: CancellationError.self) { try await read.value }
+    #expect(try connection.rows(outer) { sqlite3_column_int64($0, 0) } == [1, 2])
+  }
+
+  @Test("A write transaction stopped by cancellation keeps none of its writes")
+  func cancelledTransactionRollsBack() async throws {
+    let folder = directory()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let connection = try plainConnection(folder)
+    try connection.execute("CREATE TABLE w (v INTEGER)")
+    nonisolated(unsafe) let handoff = connection
+    let write = Task {
+      try handoff.transaction(write: true) {
+        try handoff.execute("INSERT INTO w VALUES (1)")
+        withUnsafeCurrentTask { $0?.cancel() }
+        _ = try handoff.rows(Self.longEmptyScan) { sqlite3_column_int64($0, 0) }
+      }
+    }
+    await #expect(throws: CancellationError.self) { try await write.value }
+    #expect(try connection.rows("SELECT count(*) FROM w") { sqlite3_column_int64($0, 0) } == [0])
+    try connection.transaction(write: true) { try connection.execute("INSERT INTO w VALUES (2)") }
+    #expect(try connection.rows("SELECT v FROM w") { sqlite3_column_int64($0, 0) } == [2])
+    try connection.closeDatabase()
+  }
 }
 
 /// A fixed sequence, so every run checks the same batches.
