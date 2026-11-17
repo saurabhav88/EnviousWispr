@@ -406,7 +406,11 @@ private struct HistoryDiaryList<DictationCard: View>: View {
       shownContext: result?.key.context, requested: HistoryPaging.Context(tab: tab, state: state),
       saved: state.scrollAnchorID
     ).map { HistoryDiaryTable.Restore(token: $0.token, target: $0.target.map { .item($0) }) }
-    if !rows.isEmpty, isCurrent { HistoryFirstPage.installing(tab) }
+    // The first page shown for the current search counts as drawn even when a content publish
+    // overtook its read (it shows, though it is not yet current).
+    if !rows.isEmpty, result?.key.context == HistoryPaging.Context(tab: tab, state: state) {
+      HistoryFirstPage.installing(tab)
+    }
 
     return HistoryDiaryTable(
       rows: rows, restore: restore, rowsAreFinal: isCurrent && result != nil,
