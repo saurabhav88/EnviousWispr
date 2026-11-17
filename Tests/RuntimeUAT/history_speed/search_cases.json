@@ -1,0 +1,127 @@
+{
+ "_doc": "History search cases (#4586 G1). 'historical' are the seven 2026-11-14 cases, unchanged (m5-speed-search-cases.json); the driver runs each pasted as one event AND typed one event per character. 'sequences' add overlapping replacement and clearing per tab: 'overlap' posts the first query, selects all and posts the second at once, so the second supersedes a pending first. 2026-11-17 (#4586 WP-A, parent scope): short (AI, Q4) and non-ASCII (accented, Devanagari) queries added; their answers come from Foundation matching pinned to the fixture locale.",
+ "historical": [
+  {
+   "name": "dictations-rare",
+   "tab": "Dictations",
+   "kind": "positive",
+   "query": "Fire onboarding from again"
+  },
+  {
+   "name": "dictations-common",
+   "tab": "Dictations",
+   "kind": "positive",
+   "query": "the"
+  },
+  {
+   "name": "dictations-absent",
+   "tab": "Dictations",
+   "kind": "negative",
+   "query": "zqxjvkwplm"
+  },
+  {
+   "name": "dictations-deep-partial",
+   "tab": "Dictations",
+   "kind": "positive",
+   "query": "budg"
+  },
+  {
+   "name": "dictations-short",
+   "tab": "Dictations",
+   "kind": "positive",
+   "query": "qu"
+  },
+  {
+   "name": "transcripts-filename",
+   "tab": "Transcripts",
+   "kind": "positive",
+   "query": "voice_at_risk-0038-2"
+  },
+  {
+   "name": "meetings-title",
+   "tab": "Meetings",
+   "kind": "positive",
+   "query": "Budget Review Update"
+  },
+  {
+   "name": "dictations-two-letter",
+   "tab": "Dictations",
+   "kind": "positive",
+   "query": "AI"
+  },
+  {
+   "name": "dictations-q4",
+   "tab": "Dictations",
+   "kind": "positive",
+   "query": "Q4"
+  },
+  {
+   "name": "dictations-accented",
+   "tab": "Dictations",
+   "kind": "positive",
+   "query": "días"
+  },
+  {
+   "name": "dictations-devanagari",
+   "tab": "Dictations",
+   "kind": "positive",
+   "query": "है"
+  },
+  {
+   "name": "transcripts-accented",
+   "tab": "Transcripts",
+   "kind": "positive",
+   "query": "réunion"
+  },
+  {
+   "name": "meetings-two-letter",
+   "tab": "Meetings",
+   "kind": "positive",
+   "query": "AI"
+  }
+ ],
+ "sequences": [
+  {
+   "name": "dictations-overlap",
+   "tab": "Dictations",
+   "steps": [
+    [
+     "overlap",
+     "the",
+     "qu"
+    ],
+    [
+     "clear"
+    ]
+   ]
+  },
+  {
+   "name": "transcripts-overlap",
+   "tab": "Transcripts",
+   "steps": [
+    [
+     "overlap",
+     "voice",
+     "clip"
+    ],
+    [
+     "clear"
+    ]
+   ]
+  },
+  {
+   "name": "meetings-overlap",
+   "tab": "Meetings",
+   "steps": [
+    [
+     "overlap",
+     "Budget",
+     "Quarterly"
+    ],
+    [
+     "clear"
+    ]
+   ]
+  }
+ ]
+}
