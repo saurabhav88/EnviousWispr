@@ -42,9 +42,10 @@ def main():
         if r:
             p = r["launch_to_page_ms"]
             w = r["window_to_page_ms"]
-            lines.append(f"| Open History, {mode} catalog: launch → complete first page | p50 {fmt(p.get('p50'))}, "
-                         f"p95 {fmt(p.get('p95'))} (window → page p95 {fmt(w.get('p95'))}; results {r['results']}, "
-                         f"capture late {r['capture_late']}) | {p.get('n', 0)} | 300 ms p95 | {r['budget_verdict']} | "
+            lines.append(f"| Open History, {mode} catalog: launch → complete first page | all-attempt p95 "
+                         f"{fmt(r.get('launch_to_page_all_attempts_p95_ms'))} over {r.get('attempts')} attempts; "
+                         f"timed-only p50 {fmt(p.get('p50'))}, p95 {fmt(p.get('p95'))} (window → page p95 {fmt(w.get('p95'))}; results {r['results']}, "
+                         f"capture late {r['capture_late']}) | {r.get('attempts', p.get('n', 0))} | 300 ms p95 | {r['budget_verdict']} | "
                          f"{conditions(r)} |")
     s = load(root / "main" / "search" / "report.json")
     if s:

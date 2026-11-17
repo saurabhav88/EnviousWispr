@@ -197,15 +197,15 @@ def main():
                                      text=True).stdout.strip()
     if not previous_output:
         raise SystemExit("cannot read the current sound output; refusing to switch it")
-    subprocess.run(["SwitchAudioSource", "-t", "output", "-s", SILENT_OUTPUT], check=True, capture_output=True)
-    now = subprocess.run(["SwitchAudioSource", "-c", "-t", "output"], capture_output=True, text=True).stdout.strip()
-    if now != SILENT_OUTPUT:
-        subprocess.run(["SwitchAudioSource", "-t", "output", "-s", previous_output], capture_output=True)
-        raise SystemExit(f"sound output is {now!r}, not {SILENT_OUTPUT!r}; restored and refusing to play")
     report = {"pid": pid, "executable": expected_executable, "row_index": row_index,
               "conditions_start": load_tools.machine_conditions(), "edits": [], "play": [],
               "output_during_run": SILENT_OUTPUT, "output_restored_to": previous_output}
     try:
+        # The switch sits inside the try, so the finally restores the output whatever happens next.
+        subprocess.run(["SwitchAudioSource", "-t", "output", "-s", SILENT_OUTPUT], check=True, capture_output=True)
+        now = subprocess.run(["SwitchAudioSource", "-c", "-t", "output"], capture_output=True, text=True).stdout.strip()
+        if now != SILENT_OUTPUT:
+            raise RuntimeError(f"sound output is {now!r}, not {SILENT_OUTPUT!r}; refusing to play")
         for rep in range(repeats):
             report["edits"].append(timed_press("edits", "Show edits", "Hide edits", "Hide edits", rep,
                                                EDITS_HOLD_MS))
@@ -215,6 +215,8 @@ def main():
         subprocess.run(["SwitchAudioSource", "-t", "output", "-s", previous_output], capture_output=True)
         report["output_after"] = subprocess.run(["SwitchAudioSource", "-c", "-t", "output"], capture_output=True,
                                                 text=True).stdout.strip()
+        if report["output_after"] != previous_output:   # loud on every exit path, including an exception
+            print(f"SOUND OUTPUT NOT RESTORED: {report['output_after']!r}, was {previous_output!r}", file=sys.stderr)
     report["edits_settled_ms"] = percentiles([r["last_change_before_hold_end_ms"] for r in report["edits"]
                                               if r.get("result") == "timed" and r.get("still_at_hold_end")
                                               and r.get("last_change_before_hold_end_ms") is not None])

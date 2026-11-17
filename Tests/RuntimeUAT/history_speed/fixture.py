@@ -410,9 +410,13 @@ class ContainedSession:
         except Exception as error:
             problems.append(f"stop: {error}")
         self.report["stopped"] = stopped
-        after = self.export(PRODUCTION_DOMAIN)
-        changed = sorted(k for k in set(self.before or {}) | set(after or {})
-                         if (self.before or {}).get(k) != (after or {}).get(k))
+        changed = []
+        try:   # comparison and cleanup are attempted independently; both failures are reported
+            after = self.export(PRODUCTION_DOMAIN)
+            changed = sorted(k for k in set(self.before or {}) | set(after or {})
+                             if (self.before or {}).get(k) != (after or {}).get(k))
+        except Exception as error:
+            problems.append(f"production comparison: {error}")
         self.report["production_changed_keys"] = changed
         if not stopped:
             problems.append("cleanup skipped: the subject may still be writing its throwaway state")

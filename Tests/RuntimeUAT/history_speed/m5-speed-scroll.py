@@ -291,8 +291,6 @@ def main():
 
     current_area = {"area": None}
 
-    group_hitch = {}
-
     def scrolled(table, frame):
         """How far below its newest row the list sits (points): viewport top minus first-row y."""
         return frame["y"] - settled(table)
@@ -364,9 +362,9 @@ def main():
                                     child.wait()
                         deepest = max(deepest, reached + 2 * TRACKPAD["steps"] * TRACKPAD["step_px"])
                         before = [h for t, h in frames if t < d0]
-                        down_span = sa.moving_span(frames, before[-1] if before else None, d0, u0)
+                        down_span = sa.moving_span(frames, before[-1] if before else None, d0, u0, d1)
                         mid = [h for t, h in frames if t < u0]
-                        up_span = sa.moving_span(frames, mid[-1] if mid else None, u0, u1 + QUIET_S)
+                        up_span = sa.moving_span(frames, mid[-1] if mid else None, u0, u1 + QUIET_S, u1)
                         spans_epoch = [None if sp is None else (sp[0] + epoch_offset, sp[1] + epoch_offset)
                                        for sp in (down_span, up_span)]
                         if hitches is not None and (t_end is None or spans_epoch[-1] is None
@@ -383,14 +381,11 @@ def main():
                         run["frames"] = len(frames)
                         run["kept_moving_s"] = {"down": round(sa.kept_moving_after(down_span, d1), 2),
                                                 "up": round(sa.kept_moving_after(up_span, u1), 2)}
-                        group_hitch[(label, tab, kind)] = (rep, run["hitch"])
                         position = reached + FRESH_STEP_PT
                     else:
-                        # xctrace saves slowly: later repeats reuse the traced repeat's hitch number
-                        # and add their own travel and row-height readings (parent session 2026-11-17).
-                        traced = group_hitch.get((label, tab, kind))
-                        run["hitch"] = dict(traced[1], from_repeat=traced[0]) if traced else {
-                            "ms_per_s": None, "unproven": "no traced repeat"}
+                        # xctrace saves slowly: later repeats measure travel and row heights only; their
+                        # hitch is not measured (the traced repeat reports it; parent session 2026-11-17).
+                        run["hitch"] = {"ms_per_s": None, "not_traced": True}
                     # Layout pass, again in fresh rows when the list is long enough: AX reads of the
                     # visible rows during the gestures AND while the list settles.
                     ya_pt = go_to(table, frame, point, position)
@@ -407,7 +402,8 @@ def main():
                     run["travel"] = sa.travel(ya, yb, yc, top_y=frame["y"])
                     if clamped_bottom and run["travel"]["asymmetry"] is not None:
                         run["travel"].update(asymmetry=None, problem="the down gesture ended clamped at the bottom")
-                    run["verdict"] = sa.verdict(run["hitch"], changed, run["travel"], rows_seen=seen)
+                    run["verdict"] = sa.verdict(run["hitch"], changed, run["travel"], rows_seen=seen,
+                                                failed_reads=failed, hitch_required=rep < trace_repeats)
                     report["runs"].append(run)
                     save()
                     print(json.dumps({"case": label, "tab": tab, "input": kind, "repeat": rep, "verdict": run["verdict"],

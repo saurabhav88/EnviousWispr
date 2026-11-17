@@ -57,6 +57,7 @@ class ResourceSampler:
     def __enter__(self):
         # A synchronous first reading, so work at the very start of the phase is counted.
         reading = _ps(self.pid)
+        self.baseline_read = reading is not None
         if reading is not None:
             self.first = self.last = reading
             self.peak_mb = reading[1]
@@ -76,7 +77,7 @@ class ResourceSampler:
         return False
 
     def result(self) -> dict:
-        if self.first is None or self.last is None or not getattr(self, "final_read", False):
+        if not getattr(self, "baseline_read", False) or self.last is None or not getattr(self, "final_read", False):
             # No baseline or no final reading: the phase was not covered; never a shorter number.
             return {"cpu_s": None, "peak_rss_mb": None, "samples": self.samples, "covered": False}
         return {"cpu_s": round(self.last[0] - self.first[0], 2), "peak_rss_mb": round(self.peak_mb, 1),

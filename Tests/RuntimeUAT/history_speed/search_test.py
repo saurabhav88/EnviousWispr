@@ -211,11 +211,20 @@ class CheckerTests(unittest.TestCase):
         good = self.obs(("header", [name, "2 meetings"]), self.card(a), ("filled",))
         bad_total = self.obs(("header", [name, "5 meetings"]), self.card(a), ("filled",))
         bad_day = self.obs(("header", [other, "2 meetings"]), self.card(a), ("filled",))
-        unnamed_day = self.obs(("header", ["Today", "2 meetings"]), self.card(a), ("filled",))
+        unnamed_day = self.obs(("header", ["Week of", "2 meetings"]), self.card(a), ("filled",))
         self.assertEqual(check.classify(good, self.answer, []), "correct")
         self.assertEqual(check.classify(bad_total, self.answer, []), "wrong")
         self.assertEqual(check.classify(bad_day, self.answer, []), "wrong")
         self.assertEqual(check.classify(unnamed_day, self.answer, []), "correct")
+
+    def test_relative_and_dated_headers_resolve_to_full_dates(self):
+        from datetime import date
+        today = date(2026, 11, 17)
+        self.assertEqual(check.day_key_of("Today", today), "2026-11-17")
+        self.assertEqual(check.day_key_of("Yesterday", today), "2026-11-16")
+        self.assertEqual(check.day_key_of("Saturday, November 14", today), "2026-11-14")
+        self.assertEqual(check.day_key_of("Monday, March 3, 2025", today), "2025-03-03")
+        self.assertIsNone(check.day_key_of("2 dictations", today))
 
     def test_previous_page_is_retained_and_older_is_stale(self):
         delta = Fake("delta", DAY1 + 60)

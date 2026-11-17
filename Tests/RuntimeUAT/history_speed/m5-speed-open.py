@@ -139,10 +139,11 @@ def main():
             sample["catalog_deleted"] = fixture.reset_catalog(home)
         frames_path = out / f"open-{index}.jsonl"
         recorder = start_recorder(frames_path, rect) if rect else None
-        pid = fixture.launch(subject, home, out / "app.log")
-        spawned = fixture.LAST_SPAWN_AT
-        sample["pid"] = pid
+        pid = None
         try:
+            pid = fixture.launch(subject, home, out / "app.log")
+            spawned = fixture.LAST_SPAWN_AT
+            sample["pid"] = pid
             window, window_at = None, None
             deadline = time.monotonic() + WINDOW_DEADLINE_S
             while time.monotonic() < deadline and window is None:
@@ -224,7 +225,8 @@ def main():
             if recorder is not None:
                 recorder.kill()
                 recorder.wait()
-            fixture.stop(pid, executable)
+            if pid is not None:
+                fixture.stop(pid, executable)
 
     # ------------------------------------------------------------------ session
     fixture._default_owner_check()

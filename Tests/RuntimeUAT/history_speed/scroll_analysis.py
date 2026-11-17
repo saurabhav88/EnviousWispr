@@ -19,11 +19,12 @@ HEIGHT_TOLERANCE = 1.0       # points; AX frames are rounded to whole or half po
 SETTLE_GAP_S = 0.25          # a picture unchanged this long after the last event ends a moving span
 
 
-def moving_span(frames, before_hash, start_s, end_s):
-    """The declared interaction interval of one gesture: from its first event (`start_s`) to the last
-    captured frame inside [start_s, end_s] whose picture changed. A freeze at the start of the
-    gesture is inside the interval (Codex round 1: measuring from the first changed frame would
-    drop it). frames: [(seconds, hash)] sorted by time. None when the picture never changed."""
+def moving_span(frames, before_hash, start_s, end_s, last_event_s=None):
+    """The declared interaction interval of one gesture: from its first event (`start_s`) to the
+    later of its last event (`last_event_s`) and the last captured frame inside [start_s, end_s]
+    whose picture changed. Freezes at the start, in the middle and up to the last event all stay
+    inside (Codex rounds 1-2). frames: [(seconds, hash)] sorted by time. None when the picture
+    never changed (the list did not move)."""
     last = None
     previous = before_hash
     for at, digest in frames:
@@ -35,7 +36,9 @@ def moving_span(frames, before_hash, start_s, end_s):
         if digest != previous:
             last = at
         previous = digest
-    return None if last is None else (start_s, last)
+    if last is None:
+        return None
+    return (start_s, max(last, last_event_s if last_event_s is not None else last))
 
 
 def kept_moving_after(span, last_event_s):
@@ -134,14 +137,21 @@ def travel(y_start, y_after_down, y_after_up, top_y=None):
 BUDGET = {"ms_per_s": 5.0, "height_changed": 0, "asymmetry": 0.02}
 
 
-def verdict(hitch, changed, symmetry, rows_seen=None):
-    """PASS only when every number exists and is inside budget. FAIL when a number is over budget
-    or the list moved the wrong way. UNPROVEN when a number is missing or no row was observed."""
+def verdict(hitch, changed, symmetry, rows_seen=None, failed_reads=0, hitch_required=True):
+    """PASS only when every number exists and is inside budget. FAIL when a number is over budget,
+    a row changed height, or the list moved the wrong way. UNPROVEN when a number is missing, no row
+    was observed, or a height read failed (unless a change already proves FAIL). A repeat without
+    its own hitch trace is judged on travel and heights only (`hitch_required=False`)."""
     if symmetry is not None and symmetry.get("problem") == "the list did not move down and then back up":
         return "FAIL"
-    if hitch is None or hitch.get("ms_per_s") is None or symmetry is None or symmetry.get("asymmetry") is None \
-            or changed is None or rows_seen == 0:
+    if changed:
+        return "FAIL"
+    if hitch_required and hitch is not None and hitch.get("ms_per_s") is not None \
+            and hitch["ms_per_s"] > BUDGET["ms_per_s"]:
+        return "FAIL"
+    if symmetry is not None and symmetry.get("asymmetry") is not None and symmetry["asymmetry"] > BUDGET["asymmetry"]:
+        return "FAIL"
+    if (hitch_required and (hitch is None or hitch.get("ms_per_s") is None)) or symmetry is None \
+            or symmetry.get("asymmetry") is None or changed is None or rows_seen == 0 or failed_reads:
         return "UNPROVEN"
-    ok = hitch["ms_per_s"] <= BUDGET["ms_per_s"] and len(changed) <= BUDGET["height_changed"] \
-        and symmetry["asymmetry"] <= BUDGET["asymmetry"]
-    return "PASS" if ok else "FAIL"
+    return "PASS"

@@ -29,6 +29,10 @@ class MovingSpanTests(unittest.TestCase):
         frames = [(0.9, "a"), (1.1, "a"), (1.5, "a")]
         self.assertIsNone(sa.moving_span(frames, "a", 1.0, 3.0))
 
+    def test_the_interval_runs_to_the_last_event_even_after_the_last_change(self):
+        frames = [(0.9, "a"), (1.05, "b"), (1.1, "c")]   # the picture froze at 1.1 while events ran to 2.0
+        self.assertEqual(sa.moving_span(frames, "a", 1.0, 3.0, last_event_s=2.0), (1.0, 2.0))
+
     def test_kept_moving_after_last_event(self):
         self.assertAlmostEqual(sa.kept_moving_after((1.0, 2.5), 2.0), 0.5)
         self.assertEqual(sa.kept_moving_after((1.0, 1.8), 2.0), 0.0)
@@ -83,6 +87,16 @@ class TravelTests(unittest.TestCase):
 
     def test_no_rows_observed_is_unproven(self):
         self.assertEqual(sa.verdict({"ms_per_s": 0.0}, [], sa.travel(0, -1000, 0), rows_seen=0), "UNPROVEN")
+
+    def test_a_failed_height_read_is_unproven_unless_a_change_already_fails(self):
+        t = sa.travel(0, -1000, 0)
+        self.assertEqual(sa.verdict({"ms_per_s": 0.0}, [], t, rows_seen=5, failed_reads=1), "UNPROVEN")
+        self.assertEqual(sa.verdict({"ms_per_s": 0.0}, [{"row": "x"}], t, rows_seen=5, failed_reads=1), "FAIL")
+
+    def test_an_untraced_repeat_is_judged_on_travel_and_heights_only(self):
+        t = sa.travel(0, -1000, 0)
+        self.assertEqual(sa.verdict({"ms_per_s": None}, [], t, rows_seen=5, hitch_required=False), "PASS")
+        self.assertEqual(sa.verdict({"ms_per_s": None}, [], t, rows_seen=5), "UNPROVEN")
 
     def test_short_return_fails_budget(self):
         t = sa.travel(100, -900, -400)

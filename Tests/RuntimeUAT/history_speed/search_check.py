@@ -6,10 +6,10 @@ total ("3 meetings"). Every card starts with its time label ("8:43\u202fAM", or 
 on Meetings) and its texts follow until the next time label or day header.
 
 Expected tokens come from the independent oracle (`m5-speed-ground-truth.py`): per local day a
-("count", n, "Month D") token, then one ("row", time label, primary text) per row, newest first. The primary
+("count", n, ISO day) token, then one ("row", time label, primary text) per row, newest first. The primary
 text is the dictation text, the import file name, or the meeting title.
 
-Observed tokens: ("count", n, "Month D" or None) for a header that shows a total, ("card", time label, texts).
+Observed tokens: ("count", n, ISO day or None) for a header that shows a total, ("card", time label, texts).
 A card shows a row only when the card's label starts with the row's time label AND one of the
 card's texts, or a contiguous run of them joined by spaces, EQUALS the row's primary text
 (containment is not enough: an old card "alpha beta" must not pass for "alpha"). A header total,
@@ -48,19 +48,29 @@ def time_label(created: float) -> str:
 
 MONTHS = ("January", "February", "March", "April", "May", "June", "July", "August", "September", "October",
           "November", "December")
-DAY_RE = re.compile(r"\b(" + "|".join(MONTHS) + r") (\d{1,2})\b")
+DAY_RE = re.compile(r"\b(" + "|".join(MONTHS) + r") (\d{1,2})(?:, (\d{4}))?\b")
 
 
 def day_key(date) -> str:
-    """The month and day a day header names: "November 14"."""
-    return f"{MONTHS[date.month - 1]} {date.day}"
+    """The calendar day a day header names, as ISO "2026-11-14"."""
+    return date.isoformat()
 
 
-def day_key_of(text: str):
-    """"Saturday, November 14" (or with a year) -> "November 14"; None for a header with no month
-    and day ("Today"), whose day is then not compared."""
+def day_key_of(text: str, today=None):
+    """A day header's text as ISO date: "Today", "Yesterday", "Saturday, November 14" (this year)
+    or "Monday, March 3, 2025". None when the text names no day (it is then not compared)."""
+    from datetime import date, timedelta
+    today = today or date.today()
+    lowered = text.strip().lower()
+    if lowered == "today":
+        return today.isoformat()
+    if lowered == "yesterday":
+        return (today - timedelta(days=1)).isoformat()
     m = DAY_RE.search(text)
-    return f"{m.group(1)} {int(m.group(2))}" if m else None
+    if not m:
+        return None
+    year = int(m.group(3)) if m.group(3) else today.year
+    return date(year, MONTHS.index(m.group(1)) + 1, int(m.group(2))).isoformat()
 
 
 def expected_tokens(rows) -> list:
