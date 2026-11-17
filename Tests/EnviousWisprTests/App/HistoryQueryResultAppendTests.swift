@@ -115,6 +115,9 @@ struct HistoryQueryResultAppendTests {
     var start = 0
     var result: HistoryQueryResult?
     var pages = 0
+    // The expectation is built from the pages as supplied, never from the result under test.
+    var expectedItems: [HistoryCatalog.Summary] = []
+    var expectedCounts: [Date: Int]?
     while start < all.count {
       // Pages of 0 to 35 items, sometimes repeating the previous page's last item.
       let overlap = start > 0 && random.next(4) == 0 ? 1 : 0
@@ -124,27 +127,27 @@ struct HistoryQueryResultAppendTests {
       let summaries = Array(all[from..<end])
       // Certified pages carry the counts of every day they show; a few lose certification.
       let certified = random.next(6) != 0
+      let pageCounts = certified ? Self.counts(Array(all[0..<end])) : nil
+      let continuation = end < all.count ? Self.cursor(after: summaries.last ?? all[max(from - 1, 0)]) : nil
       let page = HistoryCatalog.Page(
-        summaries: summaries,
-        continuation: end < all.count ? Self.cursor(after: summaries.last) : nil,
-        newerContinuation: nil, dayCounts: certified ? Self.counts(Array(all[0..<end])) : nil)
+        summaries: summaries, continuation: continuation, newerContinuation: nil, dayCounts: pageCounts)
       result = await TranscriptCoordinator.buildResult(
         key: Self.key(), page: page, previous: result, newer: false, source: 7, onMainThread: probe)
-      #expect(result != nil)
       pages += 1
-      start = max(end, start + (size == 0 ? 1 : 0))
-      if size == 0, end == from, start <= all.count {
-        // An empty page must still leave the list as it was.
-        continue
+      for summary in summaries where expectedItems.contains(where: { $0.key == summary.key }) == false {
+        expectedItems.append(summary)
       }
+      expectedCounts = pageCounts.map { (pages == 1 ? [:] : expectedCounts ?? [:]).merging($0) { _, new in new } }
+      let step = try #require(result, "seed \(seed), page \(pages)")
+      #expect(step.items.map(\.id) == expectedItems.map { HistoryListItem.catalog($0).id }, "seed \(seed), page \(pages): rows")
+      #expect(step.continuation == continuation, "seed \(seed), page \(pages): continuation")
+      #expect(step.catalogDayCounts == expectedCounts, "seed \(seed), page \(pages): counts")
+      let whole = try HistoryQueryResult(
+        key: Self.key(), items: expectedItems.map(HistoryListItem.catalog), continuation: continuation,
+        newerContinuation: nil, catalogSourceRevision: 7, catalogDayCounts: expectedCounts)
+      Self.expectSame(step, whole, "seed \(seed), page \(pages)")
+      start = max(end, start + (size == 0 ? 1 : 0))
     }
-    let appended = try #require(result)
-    let whole = try HistoryQueryResult(
-      key: Self.key(), items: appended.items, continuation: appended.continuation,
-      newerContinuation: appended.newerContinuation, catalogSourceRevision: 7,
-      catalogDayCounts: appended.catalogDayCounts)
-    #expect(Set(appended.items.map(\.id)).count == appended.items.count, "no item listed twice")
-    Self.expectSame(appended, whole, "seed \(seed), \(pages) pages")
     // Every build ran off the main actor.
     #expect(main.withLock { $0 }.allSatisfy { $0 == false })
     #expect(main.withLock { $0 }.count == pages)

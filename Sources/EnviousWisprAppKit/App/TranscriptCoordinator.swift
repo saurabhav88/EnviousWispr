@@ -240,7 +240,12 @@ final class TranscriptCoordinator {
         let built = await Self.buildResult(
           key: key, page: page, previous: previous, newer: newer, source: source),
         !Task.isCancelled, source == catalogSession.stableSourceRevision, stillWanted()
-      else { return nil }
+      else {
+        // The read itself was accepted (its interval ended); the result is refused because the
+        // request or source moved while it was built.
+        HistorySignpost.event("HistoryPageSuperseded")
+        return nil
+      }
       return built
     }
     // Production always has a catalog session (`WisprBootstrapper`); without one nothing is listed.
