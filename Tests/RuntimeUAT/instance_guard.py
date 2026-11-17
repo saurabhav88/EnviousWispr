@@ -54,8 +54,13 @@ def running_enviouswispr_instances():
     # truncation. It earns its place because the failure would be SILENT and in
     # the dangerous direction: a truncated suffix drops a real instance, and the
     # verdict becomes unattributable with nothing to indicate it.
-    out = subprocess.run(["ps", "-eww", "-o", "pid=,comm="],
-                         capture_output=True, text=True).stdout
+    result = subprocess.run(["ps", "-eww", "-o", "pid=,comm="],
+                            capture_output=True, text=True)
+    # A failed listing is "could not tell", never "nothing running" (#4586): an empty map
+    # from a failed `ps` would let a caller launch or act beside an instance it cannot see.
+    if result.returncode != 0:
+        raise RuntimeError(f"ps failed (exit {result.returncode}): {result.stderr.strip()}")
+    out = result.stdout
     me = str(os.getpid())
     found = {}
     for line in out.splitlines():
@@ -176,6 +181,19 @@ def run_guard_cases():
     ]
 
     failures = []
+    # A failed listing must raise, not read as zero instances (#4586).
+    def failing(cmd, *a, **k):
+        if list(cmd[:1]) == ["ps"]:
+            return types.SimpleNamespace(stdout="", stderr="ps: boom", returncode=2)
+        return real_run(cmd, *a, **k)
+    subprocess.run = failing
+    try:
+        running_enviouswispr_instances()
+        failures.append("failed ps listing: returned a map instead of raising")
+    except RuntimeError:
+        print("  ok      failed ps listing raises instead of reading as zero instances")
+    finally:
+        subprocess.run = real_run
     for name, rows, want_n, want_pass in cases:
         subprocess.run = fake(rows)
         try:
@@ -189,7 +207,7 @@ def run_guard_cases():
                             f"(want {'PASS' if want_pass else 'REFUSED'})")
         else:
             print(f"  ok      {name}")
-    return failures, len(cases)
+    return failures, len(cases) + 1
 
 
 def _self_test():
