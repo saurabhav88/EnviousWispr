@@ -142,10 +142,24 @@ struct HistoryDetailCacheTests {
     second.cancel()
     try await untilHolds(0, of: id, in: coordinator)
 
-    let early = Task { await coordinator.holdCatalogDetail(id) }
+    // Cancelled before it starts waiting: the hold still returns, and leaves no count behind.
+    let finished = Finished()
+    let early = Task {
+      await coordinator.holdCatalogDetail(id)
+      finished.done = true
+    }
+    defer { early.cancel() }
     early.cancel()
-    try await untilHolds(0, of: id, in: coordinator)
+    while finished.done == false {
+      try Task.checkCancellation()
+      await Task.yield()
+    }
     #expect(coordinator.catalogDetailHoldCountForTesting(id) == 0)
+  }
+
+  @MainActor
+  private final class Finished {
+    var done = false
   }
 
   private func untilHolds(_ count: Int, of id: UUID, in coordinator: TranscriptCoordinator) async throws {

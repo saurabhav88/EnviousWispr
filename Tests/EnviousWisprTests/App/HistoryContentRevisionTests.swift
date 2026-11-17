@@ -142,6 +142,7 @@ import Testing
       let content = Task {
         await session.waitForChange(revision: session.revision, notices: session.noticeCount)
       }
+      defer { content.cancel() }
       try await waitUntilRegistered(session)
       session.advanceContentForTesting()
       await joined(content)
@@ -151,6 +152,7 @@ import Testing
       let notice = Task {
         await session.waitForChange(revision: session.revision, notices: notices)
       }
+      defer { notice.cancel() }
       try await waitUntilRegistered(session)
       f.changes.externalChange(.transcript(UUID()))
       await joined(notice)
@@ -160,6 +162,7 @@ import Testing
       let registered = Task {
         await session.waitForChange(revision: session.revision, notices: session.noticeCount)
       }
+      defer { registered.cancel() }
       try await waitUntilRegistered(session)
       registered.cancel()
       await joined(registered)
@@ -169,6 +172,7 @@ import Testing
       let early = Task {
         await session.waitForChange(revision: session.revision, notices: session.noticeCount)
       }
+      defer { early.cancel() }
       early.cancel()
       await joined(early)
       #expect(session.changeWaiterCountForTesting == 0)
