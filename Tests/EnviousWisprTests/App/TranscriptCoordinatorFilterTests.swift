@@ -13,8 +13,9 @@ import EnviousWisprAppKitTestSupport
 /// what happens to an open item when a search, an update, an expiry or a deletion takes its row
 /// away.
 ///
-/// Rows go through a real `TranscriptStore` under a temp directory, the way the coordinator's
-/// other suites do, so the in-memory contract is asserted against real disk semantics.
+/// Lists are read through the production path (#4586): real folders and a real catalog session,
+/// as `HistoryCatalogRig` wires them. An open item is no longer closed when its row leaves the
+/// list: production never ran that clearing, so its tests are gone.
 @MainActor
 /// Class: `.productOutcome` — the rows each History tab lists, and whether an open item stays open
 /// when the list changes under the user.
@@ -57,35 +58,31 @@ struct TranscriptCoordinatorFilterTests {
 
   @Test("Dictations and Transcripts each list only their own kind")
   func filterListsByKind() async throws {
-    let (coordinator, _) = makeCoordinator()
     let d1 = dictation("first dictation", ageSeconds: 30)
     let t1 = transcript("an interview", file: "interview.m4a", ageSeconds: 20)
     let d2 = dictation("second dictation", ageSeconds: 10)
-    try await coordinator.saveAndShow(d1)
-    try await coordinator.saveAndShow(t1)
-    try await coordinator.saveAndShow(d2)
+    let rig = try await HistoryCatalogRig.make(rows: [d1, t1, d2])
+    defer { rig.remove() }
 
-    #expect(coordinator.matchingRowIDs(in: .dictations) == [d2.id, d1.id])
-    #expect(coordinator.matchingRowIDs(in: .transcripts) == [t1.id])
+    #expect(await rig.listedRowIDs(.dictations) == [d2.id, d1.id])
+    #expect(await rig.listedRowIDs(.transcripts) == [t1.id])
   }
 
   @Test("search runs inside the tab, and still reaches the imported file name")
   func searchRunsInsideTheFilter() async throws {
-    let (coordinator, _) = makeCoordinator()
     let d = dictation("notes from the marketing call", ageSeconds: 20)
     let t = transcript("we talked about the launch", file: "marketing_sync.wav", ageSeconds: 10)
-    try await coordinator.saveAndShow(d)
-    try await coordinator.saveAndShow(t)
+    let rig = try await HistoryCatalogRig.make(rows: [d, t])
+    defer { rig.remove() }
 
-    coordinator.setHistoryQuery("marketing", in: .dictations)
-    coordinator.setHistoryQuery("marketing", in: .transcripts)
-    #expect(coordinator.matchingRowIDs(in: .dictations) == [d.id], "the import is outside the tab")
-    #expect(coordinator.matchingRowIDs(in: .transcripts) == [t.id], "found by its file name")
+    rig.coordinator.setHistoryQuery("marketing", in: .dictations)
+    rig.coordinator.setHistoryQuery("marketing", in: .transcripts)
+    #expect(await rig.listedRowIDs(.dictations) == [d.id], "the import is outside the tab")
+    #expect(await rig.listedRowIDs(.transcripts) == [t.id], "found by its file name")
   }
 
   @Test("search matches a renamed speaker's name, which does not enter displayText (#2811)")
   func searchMatchesSpeakerNames() async throws {
-    let (coordinator, _) = makeCoordinator()
     let labeled = Transcript(
       text: "hello there friend", language: "en", duration: 61, backendType: .parakeet,
       importedFileName: "interview.m4a", speakerAnalysis: .labeled(count: 2),
@@ -95,51 +92,46 @@ struct TranscriptCoordinatorFilterTests {
         Turn(id: "6-18", speakerId: "B", startMs: 5000, endMs: 5400, originalTextRange: 6..<18),
       ])
     let unrelated = transcript("a totally different recording", file: "other.m4a")
-    try await coordinator.saveAndShow(unrelated)
-    try await coordinator.saveAndShow(labeled)
+    let rig = try await HistoryCatalogRig.make(rows: [unrelated, labeled])
+    defer { rig.remove() }
+    let coordinator = rig.coordinator
 
     coordinator.setHistoryQuery("Zach", in: .transcripts)
     #expect(
-      coordinator.matchingRowIDs(in: .transcripts) == [labeled.id],
+      await rig.listedRowIDs(.transcripts) == [labeled.id],
       "a speaker's own name must be searchable even though it never enters displayText")
 
     coordinator.setHistoryQuery("Ariana", in: .transcripts)
-    #expect(
-      coordinator.matchingRowIDs(in: .transcripts) == [labeled.id],
-      "every speaker name, not just one")
+    #expect(await rig.listedRowIDs(.transcripts) == [labeled.id], "every speaker name, not just one")
 
     coordinator.setHistoryQuery("nobody named this", in: .transcripts)
-    #expect(coordinator.matchingRowIDs(in: .transcripts).isEmpty)
+    #expect(await rig.listedRowIDs(.transcripts).isEmpty)
   }
 
   @Test("a held recovery is listed under Dictations, never under Transcripts")
   func heldRowIsADictation() async throws {
-    let (coordinator, store) = makeCoordinator()
     let heldRow = held("cancelled words", age: 60)
-    try store.savePending(heldRow)
-    try store.save(transcript("a file", file: "file.m4a", ageSeconds: 10))
-    coordinator.load()
-    await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
+    let rig = try await HistoryCatalogRig.make(
+      rows: [transcript("a file", file: "file.m4a", ageSeconds: 10)], pending: [heldRow])
+    defer { rig.remove() }
 
-    #expect(coordinator.matchingRowIDs(in: .dictations) == [heldRow.id], "under Dictations")
+    #expect(await rig.listedRowIDs(.dictations) == [heldRow.id], "under Dictations")
     #expect(
-      coordinator.matchingRowIDs(in: .transcripts).contains(heldRow.id) == false,
+      await rig.listedRowIDs(.transcripts).contains(heldRow.id) == false,
       "a cancelled take is not a file import")
   }
 
   @Test("a held recovery is excluded from a nonempty search on every tab")
   func heldRowIsNeverSearched() async throws {
-    let (coordinator, store) = makeCoordinator()
     let heldRow = held("cancelled words", age: 60)
-    try store.savePending(heldRow)
-    coordinator.load()
-    await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
+    let rig = try await HistoryCatalogRig.make(pending: [heldRow])
+    defer { rig.remove() }
 
-    #expect(coordinator.matchingRowIDs(in: .dictations) == [heldRow.id], "listed with no search")
+    #expect(await rig.listedRowIDs(.dictations) == [heldRow.id], "listed with no search")
     for tab in HistoryTab.allCases {
-      coordinator.setHistoryQuery("cancelled", in: tab)
+      rig.coordinator.setHistoryQuery("cancelled", in: tab)
       #expect(
-        coordinator.matchingRowIDs(in: tab).contains(heldRow.id) == false,
+        await rig.listedRowIDs(tab).contains(heldRow.id) == false,
         "an accidental Escape must not pollute search results under \(tab)")
     }
   }
@@ -156,7 +148,9 @@ struct TranscriptCoordinatorFilterTests {
     try await coordinator.saveAndShow(dictation("two", ageSeconds: 20))
     try await coordinator.saveAndShow(transcript("three", file: "three.m4a", ageSeconds: 10))
 
-    #expect(coordinator.completedItemCount == 3, "three completed rows, the held offer is not one")
+    #expect(
+      coordinator.visibleTranscripts.filter { $0.escapeRecoveredAt == nil }.count == 3,
+      "three completed rows, the held offer is not one")
     #expect(coordinator.dictationCount == 2)
     coordinator.setHistoryQuery("two", in: .dictations)
     #expect(coordinator.dictationCount == 2, "onboarding's count does not follow a tab's search")
@@ -177,112 +171,54 @@ struct TranscriptCoordinatorFilterTests {
     #expect(coordinator.openHistoryItemID(in: .transcripts) == .transcript(t1.id))
   }
 
-  @Test("Delete All closes the open item and empties every tab")
+  @Test("Delete All empties every tab")
   func deleteAllShowsNothing() async throws {
-    let (coordinator, _) = makeCoordinator()
     let t = transcript("a file", file: "file.m4a")
-    try await coordinator.saveAndShow(dictation("a dictation"))
-    try await coordinator.saveAndShow(t)
-    coordinator.openHistoryItem(.transcript(t.id), in: .transcripts)
-    await coordinator.deleteAll()
-    #expect(coordinator.openHistoryItemID(in: .transcripts) == nil)
-    for tab in HistoryTab.allCases { #expect(coordinator.matchingRowIDs(in: tab).isEmpty) }
+    let rig = try await HistoryCatalogRig.make(rows: [dictation("a dictation"), t])
+    defer { rig.remove() }
+    let coordinator = rig.coordinator
+    #expect(await rig.listedRowIDs(.transcripts) == [t.id], "precondition: there is something")
+
+    let confirmation = try #require(await coordinator.deleteAllConfirmation())
+    try await rig.applying { await coordinator.deleteAll(confirmedSource: confirmation.source) }
+    for tab in HistoryTab.allCases { #expect(await rig.listedRowIDs(tab).isEmpty) }
   }
 
-  @Test("a cleanup that stops an open import matching the search closes it")
-  func aRowUpdateThatLeavesTheSearchClearsTheSelection() async throws {
-    let (coordinator, _) = makeCoordinator()
-    let raw = transcript("um so the plan is", file: "plan.m4a")
-    try await coordinator.saveAndShow(raw)
-    coordinator.setHistoryQuery("um", in: .transcripts)
-    coordinator.openHistoryItem(.transcript(raw.id), in: .transcripts)
-    #expect(coordinator.openHistoryItemID(in: .transcripts) == .transcript(raw.id))
+  // Deleted (#4586): "a cleanup that stops an open import matching the search closes it" and
+  // "an open recovery that expires closes". Both asserted only that an open item is cleared
+  // when its row leaves the list, which `historyState(for:)` did and production never called.
 
-    let cleaned = Transcript(
-      id: raw.id, text: raw.text, polishedText: "So the plan is.", language: "en", duration: 61,
-      backendType: .parakeet, createdAt: raw.createdAt, importedFileName: "plan.m4a")
-    try await coordinator.updateExistingRow(cleaned)
-    #expect(coordinator.openHistoryItemID(in: .transcripts) == nil, "the row left the tab's list")
-  }
+  // Deleted (#4586): "listing one kind of 25,000 rows costs the same order as listing another"
+  // compared two passes over the in-memory array. The catalog filters by tab in SQL, so there is
+  // no such pass; nothing a person sees is lost.
 
-  // MARK: Cost
+  // MARK: Rows the store would refuse to return
 
-  /// The kind filter is one more pass over the same array as the search, so it must cost the
-  /// same order as the pass History already makes. A relation between two passes measured in
-  /// one process, never an absolute: an absolute would freeze this machine, not the code.
-  @Test("listing one kind of 25,000 rows costs the same order as listing another")
-  func filterCostIsTheSameOrderAsListing() throws {
-    let (coordinator, _) = makeCoordinator()
-    var rows: [Transcript] = []
-    rows.reserveCapacity(25_000)
-    for i in 0..<25_000 {
-      rows.append(
-        i % 5 == 0
-          ? transcript("row \(i)", file: "file-\(i).m4a", ageSeconds: TimeInterval(i))
-          : dictation("row \(i)", ageSeconds: TimeInterval(i)))
+  @Test("an expired recovery is listed on no tab")
+  func expiredRowIsNeverListed() async throws {
+    let expired = held("expired", age: AppConstants.pendingTranscriptRetention + 60)
+    let kept = dictation("kept")
+    let rig = try await HistoryCatalogRig.make(rows: [kept], pending: [expired])
+    defer { rig.remove() }
+
+    for tab in HistoryTab.allCases {
+      #expect(
+        await rig.listedRowIDs(tab).contains(expired.id) == false, "expired under \(tab)")
     }
-    // Bulk seam in both configurations (#3013): the Release fallback used to be
-    // `saveAndShow` per row, 25,000 writes before the stopwatch started.
-    coordinator.setTranscriptsForTesting(rows)
-
-    let clock = ContinuousClock()
-    func fastest(_ body: () -> Int) -> (Duration, Int) {
-      var best: Duration = .seconds(1_000)
-      var count = 0
-      for _ in 0..<3 {
-        let start = clock.now
-        count = body()
-        best = min(best, clock.now - start)
-      }
-      return (best, count)
-    }
-
-    let (unfiltered, allCount) = fastest { coordinator.matchingHistoryItems(in: .dictations).count }
-    let (filtered, transcriptCount) = fastest {
-      coordinator.matchingHistoryItems(in: .transcripts).count
-    }
-
-    #expect(allCount == 20_000)
-    #expect(transcriptCount == 5_000)
-    #expect(
-      filtered <= unfiltered * 4,
-      "one extra pass over the array must stay within a small multiple of the pass History already makes: filtered \(filtered) vs listed \(unfiltered)"
-    )
+    #expect(await rig.listedRowIDs(.dictations) == [kept.id])
   }
 
   #if DEBUG
-    // MARK: Rows the store would refuse to return
-
-    @Test("an expired recovery is listed on no tab")
-    func expiredRowIsNeverListed() {
+    @Test("an expired recovery is not counted")
+    func expiredRowIsNotCounted() {
       let (coordinator, _) = makeCoordinator()
       let expired = held("expired", age: AppConstants.pendingTranscriptRetention + 60)
       let kept = dictation("kept")
       coordinator.setTranscriptsForTesting([expired, kept])
 
-      for tab in HistoryTab.allCases {
-        #expect(
-          coordinator.matchingRowIDs(in: tab).contains(expired.id) == false, "expired under \(tab)")
-      }
-      #expect(coordinator.matchingRowIDs(in: .dictations) == [kept.id])
-      #expect(coordinator.completedItemCount == 1, "the kept dictation is the only row counted")
-    }
-
-    @Test("an open recovery that expires closes")
-    func selectedRowExpiringIsEmptyNotFallback() {
-      let (coordinator, _) = makeCoordinator()
-      let live = held("cancelled", age: 60)
-      coordinator.setTranscriptsForTesting([live])
-      coordinator.openHistoryItem(.transcript(live.id), in: .dictations)
-      #expect(coordinator.openHistoryItemID(in: .dictations) == .transcript(live.id))
-
-      // The same row, past its window: what read-time expiry sees on the next render.
-      let expired = Transcript(
-        id: live.id, text: live.text, createdAt: live.createdAt,
-        escapeRecoveredAt: Date().addingTimeInterval(-AppConstants.pendingTranscriptRetention - 60),
-        escapeRecoveryTakeID: live.escapeRecoveryTakeID)
-      coordinator.setTranscriptsForTesting([expired])
-      #expect(coordinator.openHistoryItemID(in: .dictations) == nil)
+      #expect(
+        coordinator.visibleTranscripts.map(\.id) == [kept.id],
+        "the kept dictation is the only row visible, so the only one counted")
     }
   #endif
 }

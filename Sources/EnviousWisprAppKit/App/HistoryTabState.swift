@@ -11,8 +11,8 @@ enum HistoryAppFilter: Hashable, Sendable {
   case named(String)
 }
 
-/// One History tab's own state (#3147 §3.3): its search, filters, open item, scroll place and
-/// how many rows it has paged in. Each tab keeps its own; switching tabs never resets another.
+/// One History tab's own state (#3147 §3.3): its search, filters, open item and scroll place.
+/// Each tab keeps its own; switching tabs never resets another.
 struct HistoryTabState: Equatable, Sendable {
   var query = ""
   /// Dictations tab.
@@ -23,7 +23,6 @@ struct HistoryTabState: Equatable, Sendable {
   var callApp: CallAppFamily?
   var openItemID: HistoryItemID?
   var scrollAnchorID: HistoryItemID?
-  var requestedCount = HistoryTabState.pageSize
 
   /// Rows paged in per step (`HistoryPaging`).
   static let pageSize = 30

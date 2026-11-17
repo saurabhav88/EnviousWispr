@@ -76,7 +76,7 @@ struct HistoryLoadLoopTests {
 
     // Before any newer page arrives, the screen keeps every unaffected row and hides only the
     // row whose file changed; the kept page cannot page or authorize selection.
-    let kept = try #require(f.coordinator.retainedHistoryResult(shown))
+    let kept = try #require(await f.coordinator.retainedHistoryResult(shown))
     #expect(kept.items.count == 29)
     #expect(!kept.ids.contains(.transcript(edited.key.id)))
     #expect(kept.continuation == nil && kept.catalogDayCounts == nil)
@@ -85,7 +85,7 @@ struct HistoryLoadLoopTests {
     // During an in-process write the source revision is unknown; a second shown row changed
     // in that interval is still hidden on the next render (Codex code review r1).
     f.changes.begin()
-    _ = try #require(f.coordinator.retainedHistoryResult(shown))
+    _ = try #require(await f.coordinator.retainedHistoryResult(shown))
     guard case .catalog(let second) = shown.items[1] else {
       Issue.record("The catalog page did not return catalog rows")
       return
@@ -95,7 +95,7 @@ struct HistoryLoadLoopTests {
     try secondHandle.seekToEnd()
     try secondHandle.write(contentsOf: Data("\n".utf8))
     try secondHandle.close()
-    let keptAgain = try #require(f.coordinator.retainedHistoryResult(shown))
+    let keptAgain = try #require(await f.coordinator.retainedHistoryResult(shown))
     #expect(keptAgain.items.count == 28)
     #expect(!keptAgain.ids.contains(.transcript(second.key.id)))
     f.changes.finish(.transcript(second.key.id))
@@ -108,6 +108,119 @@ struct HistoryLoadLoopTests {
         for: f.coordinator.historyQueryKey(
           for: .dictations, state: f.coordinator.requestedHistoryState(for: .dictations))))
     #expect(fresh.items.count == 30)
+  }
+
+  /// What the History list stores for one tab, as the diary's `results[tab]` does, with a signal
+  /// for every store so the test waits on the subject, never on time.
+  @MainActor
+  private final class Shown {
+    var result: HistoryQueryResult?
+    var checks = 0
+    private var waiters: [UUID: CheckedContinuation<Void, Never>] = [:]
+
+    func store(_ next: HistoryQueryResult) {
+      result = next
+      let ready = waiters
+      waiters.removeAll()
+      for waiter in ready.values { waiter.resume() }
+    }
+
+    /// Returns once a stored page satisfies `done`; throws when the test is cancelled (its time
+    /// limit), so a failure ends instead of waiting forever.
+    func until(_ done: (HistoryQueryResult) -> Bool) async throws {
+      while result.map(done) != true {
+        try Task.checkCancellation()
+        let id = UUID()
+        await withTaskCancellationHandler {
+          await withCheckedContinuation { (waiter: CheckedContinuation<Void, Never>) in
+            if Task.isCancelled { waiter.resume() } else { waiters[id] = waiter }
+          }
+        } onCancel: {
+          Task { @MainActor in self.waiters.removeValue(forKey: id)?.resume() }
+        }
+      }
+    }
+  }
+
+  @Test(
+    "The refresh loop hides a changed row of a kept page on each change notice, while a writer is active",
+    .timeLimit(.minutes(1)))
+  // Uses a real catalog, folder watcher and indexing passes (the path this protects); 0.7-3.5 s
+  // measured on the M5 Max under load, bounded by the time limit.
+  func loopVerifiesKeptPage() async throws {
+    let f = try await fixture(rows: 40)
+    defer { try? FileManager.default.removeItem(at: f.root) }
+    let shown = Shown()
+    let coordinator = f.coordinator
+    let session = f.session
+    let key: @MainActor @Sendable () -> TranscriptCoordinator.HistoryQueryKey = { coordinator.historyQueryKey(for: .dictations, state: coordinator.requestedHistoryState(for: .dictations)) }
+    let verification = HistoryRetainedVerification(
+      stamp: {
+        guard let saved = shown.result, saved.catalogSourceRevision != session.stableSourceRevision else { return nil }
+        return .init(
+          key: key(), notices: session.noticeCount, source: session.stableSourceRevision, grouping: 0,
+          stored: saved.identity)
+      },
+      stored: { shown.result },
+      verify: { saved in
+        shown.checks += 1
+        return await coordinator.retainedHistoryResult(saved)
+      },
+      store: { shown.store($0) })
+    final class Done { var stamp: HistoryRetainedVerification.Stamp? }
+    let done = Done()
+    let loop = Task { @MainActor in
+      await HistoryRefreshLoop(
+        beforeRead: { done.stamp = await verification.run(done: done.stamp) },
+        counters: {
+          .init(content: session.revision, notices: session.noticeCount, source: session.stableSourceRevision)
+        },
+        currentKey: key,
+        storedKey: { shown.result?.key },
+        read: { key in
+          if let page = await coordinator.historyResults(for: key) { shown.store(page) }
+        },
+        wait: { content, notices in await session.waitForChange(revision: content, notices: notices) }
+      ).run()
+    }
+    defer { loop.cancel() }
+    try await shown.until { $0.items.count == 30 }
+    let page = try #require(shown.result)
+    guard case .catalog(let first) = page.items[0], case .catalog(let second) = page.items[1] else {
+      Issue.record("The catalog page did not return catalog rows")
+      return
+    }
+
+    // A writer is active (the source revision is unknown); another process changes one shown
+    // file and its notice arrives. The loop re-checks the kept page and hides only that row.
+    f.changes.begin()
+    var writing = true
+    defer { if writing { f.changes.finish(.transcript(second.key.id)) } }
+    try appendNewline(to: first.key.id, in: f)
+    f.changes.externalChange(.transcript(first.key.id))
+    try await shown.until { $0.items.count == 29 }
+    #expect(shown.result?.ids.contains(.transcript(first.key.id)) == false)
+    #expect(shown.result.map(coordinator.isCurrentHistoryResult) == false)
+
+    // A second change in the same writer interval is hidden on its own notice.
+    let checks = shown.checks
+    try appendNewline(to: second.key.id, in: f)
+    f.changes.externalChange(.transcript(second.key.id))
+    try await shown.until { $0.items.count == 28 }
+    #expect(shown.checks > checks)
+    #expect(shown.result?.ids.contains(.transcript(second.key.id)) == false)
+
+    writing = false
+    f.changes.finish(.transcript(second.key.id))
+    loop.cancel()
+    await loop.value
+  }
+
+  private func appendNewline(to id: UUID, in f: Fixture) throws {
+    let handle = try FileHandle(forWritingTo: f.transcripts.appendingPathComponent("\(id.uuidString).json"))
+    try handle.seekToEnd()
+    try handle.write(contentsOf: Data("\n".utf8))
+    try handle.close()
   }
 
   @Test("An outside deletion of one dictation removes that row and restores coverage")

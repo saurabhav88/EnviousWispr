@@ -510,8 +510,9 @@ struct DictationRecordingsTests {
     selection.select([.transcript(row.id)])
     await selection.deleteSelected(kind: .textAndRecordings, coordinator: rig.coordinator)
     #expect(rig.coordinator.currentRow(id: row.id) == nil)
-    // The diary's production prune: the row is no longer listed.
-    selection.retain(Set(rig.coordinator.matchingHistoryItems(in: .dictations).map(\.id)))
+    // The diary's production prune: the deleted row is no longer listed, so the list holds
+    // nothing (#4586: the in-memory list this once read is gone; the row is gone either way).
+    selection.retain(Set<HistoryItemID>())
     #expect(selection.selectedIDs == [.transcript(row.id)])
 
     try FileManager.default.removeItem(at: pins)

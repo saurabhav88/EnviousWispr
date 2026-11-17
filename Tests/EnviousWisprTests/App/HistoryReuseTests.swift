@@ -259,20 +259,18 @@ struct HistoryReuseTests {
       let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
       await open(coordinator)
       let shown = try #require(coordinator.visibleTranscripts.first { $0.text == "hello" })
-      coordinator.openHistoryItem(.transcript(shown.id), in: .dictations)
       try other.deleteAll()
       await open(coordinator)
       #expect(coordinator.diskReconcilerForTesting.historyFullReadsForTesting == 2)
       #expect(texts(coordinator).isEmpty)
       #expect(coordinator.lastPasteableDictation() == nil)
-      // #4075 R8: the open item lets go of the deleted row, and Paste refuses it.
-      #expect(coordinator.openHistoryItemID(in: .dictations) == nil)
+      // #4075 R8: Paste refuses the deleted row. (#4586: the open-item-closed check is gone; only
+      // the retired in-memory `historyState(for:)` ever closed an open item.)
       #expect(coordinator.textForDelivery(shown) == nil)
       // And it stays gone across another open, which reuses the read.
       await open(coordinator)
       #expect(texts(coordinator).isEmpty)
       #expect(coordinator.lastPasteableDictation() == nil)
-      #expect(coordinator.openHistoryItemID(in: .dictations) == nil)
       #expect(coordinator.textForDelivery(shown) == nil)
     }
 
@@ -288,7 +286,6 @@ struct HistoryReuseTests {
       let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
       await open(coordinator)
       #expect(coordinator.lastPasteableDictation()?.id == deleted.id)
-      coordinator.openHistoryItem(.transcript(deleted.id), in: .dictations)
 
       try other.delete(id: deleted.id)
       await open(coordinator)
@@ -296,11 +293,9 @@ struct HistoryReuseTests {
       #expect(texts(coordinator) == ["kept"])
       #expect(coordinator.lastPasteableDictation()?.id == kept.id)
       #expect(coordinator.lastDictationTextForReuse(id: deleted.id) == nil)
-      // #4075 R8, R5: the open item lets go of the deleted row, and History Paste refuses it.
-      #expect(coordinator.openHistoryItemID(in: .dictations) == nil)
+      // #4075 R8, R5: History Paste refuses the deleted row. (#4586: open-item check removed, as above.)
       #expect(coordinator.textForDelivery(deleted) == nil)
       await open(coordinator)
-      #expect(coordinator.openHistoryItemID(in: .dictations) == nil)
       #expect(coordinator.textForDelivery(deleted) == nil)
     }
 

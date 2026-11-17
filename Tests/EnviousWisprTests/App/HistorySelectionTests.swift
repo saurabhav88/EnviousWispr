@@ -269,11 +269,7 @@ struct HistorySelectionTests {
   }
 
   @Test("Select all matching and Select day reach items on pages not yet drawn")
-  func selectionReachesUndrawnPages() {
-    let coordinator = TranscriptCoordinator(
-      store: TranscriptStore(
-        directory: TestTemporaryDirectory.url
-          .appendingPathComponent("ew-3147-selection-\(UUID().uuidString)", isDirectory: true)))
+  func selectionReachesUndrawnPages() async throws {
     let calendar = Calendar.current
     let today = calendar.startOfDay(for: Date())
     // 75 dictations: 40 today (newest first, one minute apart), 35 yesterday.
@@ -282,28 +278,29 @@ struct HistorySelectionTests {
       let createdAt = day.addingTimeInterval(TimeInterval(12 * 3600 - (index % 40) * 60))
       return Transcript(text: "row \(index)", createdAt: createdAt)
     }
-    coordinator.setTranscriptsForTesting(rows)
-    let matching = coordinator.matchingHistoryItems(in: .dictations)
-    #expect(matching.count == 75)
-    let drawn = HistoryPaging.window(
-      items: matching, context: HistoryPaging.Context(tab: .dictations, state: HistoryTabState()),
-      state: HistoryPaging.State(), selected: nil
-    ).boundary
-    #expect(drawn == 30)
+    let rig = try await HistoryCatalogRig.make(rows: rows)
+    defer { rig.remove() }
+    let coordinator = rig.coordinator
+
+    let key = coordinator.historyQueryKey(for: .dictations, state: HistoryTabState())
+    let page = try #require(await coordinator.historyResults(for: key))
+    #expect(page.items.count == HistoryPaging.pageSize, "the diary draws one page of 30")
+    #expect(page.continuation != nil, "the other 45 are not drawn yet")
 
     let yesterday = HistorySelection()
-    yesterday.select(
-      HistoryDiaryLayout.ids(
-        onDayOf: calendar.date(byAdding: .day, value: -1, to: today)!, in: matching,
-        calendar: calendar))
+    let yesterdayIDs = try #require(
+      await coordinator.matchingIDs(
+        for: page, day: calendar.date(byAdding: .day, value: -1, to: today)!))
+    yesterday.select(Set(yesterdayIDs))
     #expect(yesterday.selectedIDs.count == 35, "every one of yesterday's items is past page 1")
 
+    let matching = try #require(await coordinator.matchingIDs(for: page))
     let all = HistorySelection()
-    all.select(Set(matching.map(\.id)))
+    all.select(Set(matching))
     #expect(all.selectedIDs.count == 75)
     let other = HistoryItemID.transcript(UUID())
     all.select([other])
-    all.deselect(Set(matching.map(\.id)))
+    all.deselect(Set(matching))
     #expect(all.selectedIDs == [other])
   }
 }

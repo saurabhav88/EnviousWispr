@@ -1,0 +1,171 @@
+import EnviousWisprAppKitTestSupport
+import EnviousWisprCore
+import Foundation
+import Observation
+import Testing
+import os
+
+@testable import EnviousWisprAppKit
+@testable import EnviousWisprStorage
+
+/// #4586 H2/N5: History keeps hydrated rows in one cache whose entries are observed one by one,
+/// so a card redraws only when its own row arrives or leaves, and a row an open screen holds is
+/// never dropped under it.
+@MainActor
+@Suite(
+  "History detail cache tells only the card whose row changed", .tags(.productOutcome),
+  .timeLimit(.minutes(1)))
+struct HistoryDetailCacheTests {
+  private final class Flag: Sendable {
+    private let state = OSAllocatedUnfairLock(initialState: false)
+    var fired: Bool { state.withLock { $0 } }
+    func fire() { state.withLock { $0 = true } }
+  }
+
+  private func watch(_ entry: HistoryDetailCache.Entry) -> Flag {
+    let flag = Flag()
+    withObservationTracking {
+      _ = entry.row
+    } onChange: {
+      flag.fire()
+    }
+    return flag
+  }
+
+  private func row(_ text: String) -> Transcript { Transcript(text: text) }
+
+  @Test("Hydrating one row does not redraw a card showing another")
+  func perEntryObservation() {
+    let cache = HistoryDetailCache(keeps: { _ in false })
+    let a = UUID()
+    let b = UUID()
+    let flag = watch(cache.entry(a))
+    cache.store(b, row: row("b"), proof: [], version: 1)
+    #expect(flag.fired == false)
+    cache.store(a, row: row("a"), proof: [], version: 1)
+    #expect(flag.fired)
+  }
+
+  @Test("Hydrating one row through the coordinator redraws only views showing that row")
+  func coordinatorReadersAreIndependent() async throws {
+    let root = TestTemporaryDirectory.url.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let changes = HistorySourceChanges()
+    let store = TranscriptStore(directory: root.appendingPathComponent("transcripts"), historyChanges: changes)
+    let meetings = MeetingStore(root: root.appendingPathComponent("Meetings"), historyChanges: changes)
+    // B is the newest dictation, so the latest-dictation scan after indexing reads only B.
+    let base = Date(timeIntervalSinceReferenceDate: 750_000_000)
+    let a = Transcript(text: "row a", processingTime: 0, backendType: .parakeet, createdAt: base)
+    let b = Transcript(
+      text: "row b", processingTime: 0, backendType: .parakeet, createdAt: base.addingTimeInterval(60))
+    try store.save(a)
+    try store.save(b)
+    let session = HistoryCatalogSession(
+      changes: changes, sources: store.historyCatalogSources(meetings: meetings),
+      directory: root.appendingPathComponent("catalog"))
+    let coordinator = TranscriptCoordinator(store: store)
+    coordinator.catalogSession = session
+    coordinator.startHistoryCatalog()
+    await session.waitForIndexingForTesting()
+
+    let flag = Flag()
+    withObservationTracking {
+      _ = coordinator.currentRow(id: a.id)
+    } onChange: {
+      flag.fire()
+    }
+    _ = try #require(await coordinator.loadCatalogDetail(b.id, authoritative: true))
+    #expect(flag.fired == false)
+    _ = try #require(await coordinator.loadCatalogDetail(a.id, authoritative: true))
+    #expect(flag.fired)
+    #expect(coordinator.currentRow(id: a.id)?.text == "row a")
+  }
+
+  @Test("Eviction empties the oldest unheld row, keeps its entry and tells its readers")
+  func evictionKeepsIdentity() {
+    let cache = HistoryDetailCache(limit: 2, keeps: { _ in false })
+    let ids = [UUID(), UUID(), UUID()]
+    let first = cache.entry(ids[0])
+    cache.store(ids[0], row: row("0"), proof: [], version: 1)
+    let flag = watch(first)
+    cache.store(ids[1], row: row("1"), proof: [], version: 1)
+    cache.store(ids[2], row: row("2"), proof: [], version: 1)
+    #expect(flag.fired)
+    #expect(cache.entry(ids[0]) === first)
+    #expect(first.row == nil)
+    #expect(cache.payloadCountForTesting() == 2)
+  }
+
+  @Test("Held and kept rows survive eviction; clearing keeps the hold")
+  func heldAndKeptRowsStay() {
+    let kept = UUID()
+    let held = UUID()
+    let other = UUID()
+    let cache = HistoryDetailCache(limit: 1, keeps: { $0 == kept })
+    cache.acquire(held)
+    cache.store(kept, row: row("kept"), proof: [], version: 1)
+    cache.store(held, row: row("held"), proof: [], version: 1)
+    cache.store(other, row: row("other"), proof: [], version: 1)
+    #expect(cache.entry(kept).row?.text == "kept")
+    #expect(cache.entry(held).row?.text == "held")
+    #expect(cache.entry(other).row == nil)
+    cache.clear(held)
+    #expect(cache.entry(held).row == nil)
+    #expect(cache.entry(held).holds == 1)
+    cache.release(held)
+    #expect(cache.entry(held).holds == 0)
+  }
+
+  @Test("A hold ends exactly once when its view goes away, before or after it started waiting")
+  func holdReleasedOnCancellation() async throws {
+    let root = TestTemporaryDirectory.url.appendingPathComponent(
+      UUID().uuidString, isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: root))
+    let id = UUID()
+
+    let waiting = Task { await coordinator.holdCatalogDetail(id) }
+    let second = Task { await coordinator.holdCatalogDetail(id) }
+    defer {
+      waiting.cancel()
+      second.cancel()
+    }
+    // The subject's own signal: both holds are counted once their tasks started holding.
+    while coordinator.catalogDetailHoldCountForTesting(id) < 2 {
+      try Task.checkCancellation()
+      await Task.yield()
+    }
+    // Each release is observed through the count (the subject's signal), so a hold that ignored
+    // cancellation fails at the time limit instead of hanging on its task.
+    waiting.cancel()
+    try await untilHolds(1, of: id, in: coordinator)
+    second.cancel()
+    try await untilHolds(0, of: id, in: coordinator)
+
+    // Cancelled before it starts waiting: the hold still returns, and leaves no count behind.
+    let finished = Finished()
+    let early = Task {
+      await coordinator.holdCatalogDetail(id)
+      finished.done = true
+    }
+    defer { early.cancel() }
+    early.cancel()
+    while finished.done == false {
+      try Task.checkCancellation()
+      await Task.yield()
+    }
+    #expect(coordinator.catalogDetailHoldCountForTesting(id) == 0)
+  }
+
+  @MainActor
+  private final class Finished {
+    var done = false
+  }
+
+  private func untilHolds(_ count: Int, of id: UUID, in coordinator: TranscriptCoordinator) async throws {
+    while coordinator.catalogDetailHoldCountForTesting(id) != count {
+      try Task.checkCancellation()
+      await Task.yield()
+    }
+  }
+}

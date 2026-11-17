@@ -8,10 +8,9 @@
   @testable import EnviousWisprStorage
   import EnviousWisprAppKitTestSupport
 
-  /// #4001: when these fail, History shows a stale list (a row added, replaced, deleted, expired,
-  /// filtered or searched does not appear or disappear), counts or a tab's open item disagree
-  /// with the list, or the window stops redrawing when something changes, because the list is
-  /// now built once and kept.
+  /// #4001, #4586: when these fail, History lists the wrong held, marked, rowless or searched
+  /// meetings and rows, or a meeting's preview and summary text disagree with the projection or
+  /// are kept for rows that are gone.
   @MainActor
   @Suite("History kept list", .tags(.productOutcome, .localParallel))
   struct TranscriptCoordinatorListCacheTests {
@@ -28,79 +27,72 @@
       var invited: [UUID: [String]] = [:]
     }
 
-    /// One coordinator that keeps its list and one that never does, fed the same inputs.
+    /// One coordinator fed the meeting sources the tests change, as History reads them.
     @MainActor
     final class World {
       let sources = Sources()
       var time = Date(timeIntervalSinceReferenceDate: 800_000_000)
       let cached: TranscriptCoordinator
-      let reference: TranscriptCoordinator
-      var both: [TranscriptCoordinator] { [cached, reference] }
 
       init() {
-        func make() -> TranscriptCoordinator {
-          let dir = TestTemporaryDirectory.url
-            .appendingPathComponent("ew-4001-cache-\(UUID().uuidString)", isDirectory: true)
-          // No pulse ever runs: a pulse sweeps with the wall clock, not `time`.
-          return TranscriptCoordinator(
-            store: TranscriptStore(directory: dir),
-            // test-fixture-timer: a pulse sleep that never ends, so no pulse runs in these tests
-            pendingPulseSleep: { _ in try? await Task.sleep(for: .seconds(86_400)) })
+        let dir = TestTemporaryDirectory.url
+          .appendingPathComponent("ew-4001-cache-\(UUID().uuidString)", isDirectory: true)
+        // No pulse ever runs: a pulse sweeps with the wall clock, not `time`.
+        cached = TranscriptCoordinator(
+          store: TranscriptStore(directory: dir),
+          // test-fixture-timer: a pulse sleep that never ends, so no pulse runs in these tests
+          pendingPulseSleep: { _ in try? await Task.sleep(for: .seconds(86_400)) })
+        let c = cached
+        c.clock = { [unowned self] in time }
+        c.meetingRecords = { [unowned self] in sources.records }
+        c.meetingInfo = { [unowned self] id in
+          sources.infoOverride[id]
+            ?? sources.records.first { $0.id == id }.flatMap { MeetingHistoryInfo.paired(with: $0) }
         }
-        cached = make()
-        reference = make()
-        reference.listCacheDisabledForTesting = true
-        for c in both {
-          c.clock = { [unowned self] in time }
-          c.meetingRecords = { [unowned self] in sources.records }
-          c.meetingInfo = { [unowned self] id in
-            sources.infoOverride[id]
-              ?? sources.records.first { $0.id == id }.flatMap { MeetingHistoryInfo.paired(with: $0) }
-          }
-          c.meetingNotes = { [unowned self] in sources.notes[$0] }
-          c.meetingInvited = { [unowned self] in sources.invited[$0] ?? [] }
-        }
+        c.meetingNotes = { [unowned self] in sources.notes[$0] }
+        c.meetingInvited = { [unowned self] in sources.invited[$0] ?? [] }
       }
 
-      func setRows(_ rows: [Transcript]) { for c in both { c.setTranscriptsForTesting(rows) } }
+      func setRows(_ rows: [Transcript]) { cached.setTranscriptsForTesting(rows) }
       var rows: [Transcript] { cached.rawTranscriptsForTesting }
     }
 
-    /// What every list reader answers.
-    struct Snapshot: Equatable {
-      struct Item: Equatable {
-        let id: HistoryItemID
-        let rowID: UUID?
-        let rowText: String?
-        let held: Bool
-        let recordState: MeetingState?
-        let recordTitle: String?
-      }
-      let deletableCount: Int
-      /// Each tab's matching items under its own search and filters, in `HistoryTab` order, with
-      /// the same contents as `items` so a stale row kept under its id is caught.
-      let tabItems: [[Item]]
-      /// Each tab's open item, as History reads it.
-      let open: [HistoryItemID?]
+    final class Flag: @unchecked Sendable { var value = false }
+
+    /// A clock a catalog test moves by hand.
+    @MainActor
+    final class TestClock {
+      var now: Date
+      init(_ now: Date) { self.now = now }
     }
 
-    static func snapshot(_ c: TranscriptCoordinator) -> Snapshot {
-      func snapshotItem(_ item: HistoryListItem) -> Snapshot.Item {
-        let record: MeetingRecord? =
-          if case .meeting(let meeting) = item { meeting.record } else { nil }
-        return Snapshot.Item(
-          id: item.id, rowID: item.row?.id, rowText: item.row?.displayText,
-          held: item.row?.escapeRecoveredAt != nil, recordState: record?.state,
-          recordTitle: record?.title)
+    /// The production History path (#4586): `records` become real meeting folders, `rows` and
+    /// `pending` real transcript files, a catalog indexes them, and the coordinator reads the
+    /// same records through `sources` as the EnviousMeet wiring gives them. `prepare` writes more
+    /// into the meeting store before indexing starts.
+    static func catalogRig(
+      records: [MeetingRecord] = [], rows: [Transcript] = [], pending: [Transcript] = [],
+      sources: Sources = Sources(), clock: TestClock? = nil,
+      prepare: (MeetingStore) throws -> Void = { _ in }
+    ) async throws -> HistoryCatalogRig {
+      sources.records = records
+      return try await HistoryCatalogRig.make(rows: rows, pending: pending) { coordinator, store in
+        for record in records { try store.create(record) }
+        try prepare(store)
+        if let clock { coordinator.clock = { clock.now } }
+        coordinator.meetingRecords = { sources.records }
+        coordinator.meetingRecord = { id in sources.records.first { $0.id == id } }
+        coordinator.meetingInfo = { id in
+          sources.records.first { $0.id == id }.flatMap { MeetingHistoryInfo.paired(with: $0) }
+        }
       }
-      return Snapshot(
-        deletableCount: c.deletableCount,
-        tabItems: HistoryTab.allCases.map { c.matchingHistoryItems(in: $0).map(snapshotItem) },
-        open: HistoryTab.allCases.map { c.historyState(for: $0).openItemID })
     }
 
-    static func expectAgree(_ w: World, _ step: String) {
-      #expect(snapshot(w.cached) == snapshot(w.reference), "step: \(step)")
+    static func attendee(_ name: String?, _ email: String?, at: Date) -> MeetingFact {
+      AttendeeFact(
+        name: name, email: email, role: .required, status: .accepted, isSelf: false,
+        isOrganizer: false
+      ).fact(source: MeetingFact.eventKitSource, capturedAt: at)
     }
 
     static func meetingRow(
@@ -124,349 +116,146 @@
       return record
     }
 
-    @Test("after every kind of change the kept list equals a list that is never kept")
-    func keptListMatchesNeverKept() async {
-      let w = World()
-      var rng = SeededGenerator(seed: 4001)
-      let retention = AppConstants.pendingTranscriptRetention
-      for step in 0..<600 {
-        let at = w.time.addingTimeInterval(-Double(step) - 1)
-        switch Int.random(in: 0..<20, using: &rng) {
-        case 0:
-          w.setRows(w.rows + [Transcript(text: "dictation \(step) zebra", createdAt: at)])
-        case 1:
-          let row = Transcript(
-            text: "file \(step)", language: "en", duration: 10, backendType: .parakeet,
-            createdAt: at, importedFileName: "giraffe-\(step).m4a")
-          w.setRows(w.rows + [row])
-        case 2:
-          // A held (Escape-recovered) row, stamped near the end of its window or in the future.
-          let stamp = w.time.addingTimeInterval(
-            [-retention + 2, -retention + 30, -10, 30, 90].randomElement(using: &rng)!)
-          w.setRows(
-            w.rows + [
-              Transcript(
-                text: "held \(step) zebra", createdAt: at, escapeRecoveredAt: stamp,
-                escapeRecoveryTakeID: "take-\(step)")
-            ])
-        case 3:
-          if let victim = w.rows.randomElement(using: &rng) {
-            for c in w.both { try? await c.removeRow(id: victim.id) }
-            // #4075 S1: each command now suspends, so both lists settle their post-removal
-            // refresh before they are compared.
-            for c in w.both { await c.waitForRefreshForTesting() }
-          }
-        case 4:
-          // Replaced under the same id, through the save path.
-          if let old = w.rows.first(where: { !$0.isMeeting && $0.escapeRecoveredAt == nil }) {
-            let new = Transcript(
-              id: old.id, text: "replaced \(step) giraffe", createdAt: old.createdAt)
-            for c in w.both { try? await c.saveAndShow(new) }
-            // #4075 S1: each command now suspends, so both lists settle their post-removal
-            // refresh before they are compared.
-            for c in w.both { await c.waitForRefreshForTesting() }
-          }
-        case 5:
-          // Bulk replacement: the same rows in a new order, one dropped.
-          w.setRows(Array(w.rows.shuffled(using: &rng).dropFirst()))
-        case 6:
-          let record = Self.record(at: at, ready: Bool.random(using: &rng))
-          w.sources.records.append(record)
-          if Bool.random(using: &rng) {
-            w.setRows(w.rows + [Self.meetingRow(record.id, words: "meeting \(step) zebra", at: at)])
-          }
-        case 7:
-          // An orphan: a meeting row whose meeting EnviousMeet does not hold.
-          let id = UUID()
-          w.setRows(w.rows + [Self.meetingRow(id, words: "orphan \(step)", at: at)])
-          if Bool.random(using: &rng) {
-            w.sources.infoOverride[id] = MeetingHistoryInfo(echoTurnIDs: [], title: "Orphan zebra")
-          }
-        case 8:
-          // A held meeting row (its notes still count in a search).
-          if let record = w.sources.records.randomElement(using: &rng) {
-            let row = Self.meetingRow(
-              record.id, words: "held meeting \(step)", at: at,
-              heldAt: w.time.addingTimeInterval(
-                [-5, -retention + 2].randomElement(using: &rng)!))
-            w.setRows(w.rows + [row])
-          }
-        case 9:
-          if !w.sources.records.isEmpty {
-            let i = Int.random(in: 0..<w.sources.records.count, using: &rng)
-            w.sources.records[i].title = Bool.random(using: &rng) ? "Zebra sync" : nil
-          }
-        case 10:
-          if !w.sources.records.isEmpty {
-            let i = Int.random(in: 0..<w.sources.records.count, using: &rng)
-            w.sources.records[i].deletionRequested.toggle()
-          }
-        case 11:
-          if !w.sources.records.isEmpty {
-            let i = Int.random(in: 0..<w.sources.records.count, using: &rng)
-            w.sources.records[i].state = w.sources.records[i].state == .ready ? .processing : .ready
-            w.sources.records[i].echoTurnIDs = Bool.random(using: &rng) ? ["t0"] : []
-          }
-        case 12:
-          if let id = w.rows.compactMap(\.meetingID).randomElement(using: &rng) {
-            w.sources.infoOverride[id] =
-              Bool.random(using: &rng)
-              ? MeetingHistoryInfo(echoTurnIDs: ["t0"], title: "Giraffe review") : nil
-          }
-        case 13:
-          if let id = (w.sources.records.map(\.id) + w.rows.compactMap(\.meetingID))
-            .randomElement(using: &rng)
-          {
-            w.sources.notes[id] = Bool.random(using: &rng) ? "ask about zebra" : "nothing"
-          }
-        case 14:
-          if let row = w.rows.first(where: \.isMeeting) {
-            let show = !w.cached.isShowingEcho(rowID: row.id)
-            for c in w.both { c.setShowEcho(show, rowID: row.id) }
-          }
-        case 15:
-          // A tab's date filter: the last hour, an hour long window in the past, or none.
-          let tab = HistoryTab.allCases.randomElement(using: &rng)!
-          let interval = [
-            nil, DateInterval(start: w.time.addingTimeInterval(-3_600), end: w.time),
-            DateInterval(start: w.time.addingTimeInterval(-7_200), duration: 3_600),
-          ].randomElement(using: &rng)!
-          for c in w.both {
-            var state = c.historyState(for: tab)
-            state.dateInterval = interval
-            c.setHistoryState(state, for: tab)
-          }
-        case 16:
-          let tab = HistoryTab.allCases.randomElement(using: &rng)!
-          let query = ["", "zebra", "giraffe", "maria", "meeting"].randomElement(using: &rng)!
-          for c in w.both { c.setHistoryQuery(query, in: tab) }
-        case 17:
-          let tab = HistoryTab.allCases.randomElement(using: &rng)!
-          let pick = w.cached.matchingHistoryItems(in: tab).randomElement(using: &rng)?.id
-          for c in w.both { c.openHistoryItem(pick, in: tab) }
-        case 18:
-          // Deleting the open dictation of a warmed list.
-          _ = w.cached.matchingHistoryItems(in: .dictations)
-          if case .transcript(let id)? = w.cached.historyState(for: .dictations).openItemID {
-            for c in w.both { try? await c.removeRow(id: id) }
-            // #4075 S1: each command now suspends, so both lists settle their post-removal
-            // refresh before they are compared.
-            for c in w.both { await c.waitForRefreshForTesting() }
-          }
-        default:
-          // Time passes without a pulse, across held rows' expiry and future-skew boundaries.
-          w.time = w.time.addingTimeInterval([1, 20, 45, 61, 120].randomElement(using: &rng)!)
-        }
-        Self.expectAgree(w, "\(step)")
-      }
-    }
-
-    @Test("a held row leaves the kept list exactly at its moment, without a pulse")
-    func heldRowExpiresAtItsMoment() {
-      let w = World()
-      let stamp = w.time
+    @Test("a held row leaves the list exactly at its moment, without a pulse")
+    func heldRowExpiresAtItsMoment() async throws {
+      let stamp = Date()
       let held = Transcript(
         text: "held", createdAt: stamp, escapeRecoveredAt: stamp, escapeRecoveryTakeID: "take")
-      w.setRows([held])
-      let pulse = w.cached.expiryPulse
+      let time = TestClock(stamp)
+      let rig = try await Self.catalogRig(pending: [held], clock: time)
+      defer { rig.remove() }
+      let pulse = rig.coordinator.expiryPulse
       let expiry = stamp.addingTimeInterval(AppConstants.pendingTranscriptRetention)
-      w.time = expiry.addingTimeInterval(-0.001)
-      #expect(w.cached.matchingHistoryItems(in: .dictations).map(\.id) == [.transcript(held.id)])
-      Self.expectAgree(w, "just before")
-      w.time = expiry
-      #expect(w.cached.matchingHistoryItems(in: .dictations).isEmpty)
-      Self.expectAgree(w, "at expiry")
-      #expect(w.cached.expiryPulse == pulse, "no pulse ran")
+      time.now = expiry.addingTimeInterval(-0.001)
+      #expect(await rig.listedRowIDs(.dictations) == [held.id], "just before")
+      time.now = expiry
+      #expect(await rig.listedRowIDs(.dictations).isEmpty, "at expiry")
+      #expect(rig.coordinator.expiryPulse == pulse, "no pulse ran")
     }
 
-    @Test("a held row stamped in the future appears once the clock is within the skew tolerance")
-    func futureStampCrossesTheSkewBoundary() {
-      let w = World()
+    // #4586 C: the old "appears once the clock is within the skew tolerance" half cannot be
+    // staged. The catalog admits a pending row once, at index time, against the wall clock, so a
+    // moved test clock never re-admits a corrupt stamp. The corrupt half and the tolerance edge
+    // are kept; the rule itself is Core/PendingAdmissionTests.
+    @Test("a held row stamped past the skew tolerance is corrupt and never listed; within it, it is")
+    func futureStampIsCorruptPastTheTolerance() async throws {
+      let now = Date()
       let tolerance = AppConstants.pendingClockSkewTolerance
-      let stamp = w.time.addingTimeInterval(tolerance + 1)
-      let held = Transcript(
-        text: "held", createdAt: w.time, escapeRecoveredAt: stamp, escapeRecoveryTakeID: "take")
-      w.setRows([held])
-      #expect(w.cached.matchingHistoryItems(in: .dictations).isEmpty, "a stamp past the tolerance is corrupt")
-      Self.expectAgree(w, "corrupt")
-      w.time = w.time.addingTimeInterval(1)
-      #expect(w.cached.matchingHistoryItems(in: .dictations).map(\.id) == [.transcript(held.id)])
-      Self.expectAgree(w, "within tolerance")
+      let corrupt = Transcript(
+        text: "corrupt", createdAt: now, escapeRecoveredAt: now.addingTimeInterval(tolerance + 30),
+        escapeRecoveryTakeID: "take-corrupt")
+      let early = Transcript(
+        text: "early", createdAt: now, escapeRecoveredAt: now.addingTimeInterval(tolerance / 2),
+        escapeRecoveryTakeID: "take-early")
+      let ordinary = Transcript(text: "ordinary", createdAt: now)
+      let rig = try await Self.catalogRig(rows: [ordinary], pending: [corrupt, early])
+      defer { rig.remove() }
+      let listed = Set(await rig.listedRowIDs(.dictations))
+      #expect(listed.contains(corrupt.id) == false, "a stamp past the tolerance is corrupt")
+      #expect(listed == [ordinary.id, early.id], "a stamp within the tolerance is listed")
     }
 
-    @Test("counts the kept list gives for orphans, marked meetings, held rows and repeated ids")
-    func countsForEveryKind() {
-      let w = World()
-      let ready = Self.record(at: w.time, ready: true)
-      var marked = Self.record(at: w.time, ready: true)
+    @Test("what History lists for orphans, marked meetings, held rows and meetings with no row")
+    func countsForEveryKind() async throws {
+      let now = Date()
+      let ready = Self.record(at: now, ready: true)
+      var marked = Self.record(at: now, ready: true)
       marked.deletionRequested = true
-      let rowless = Self.record(at: w.time, ready: false)
-      let expiredOnly = Self.record(at: w.time, ready: true)
-      w.sources.records = [ready, marked, rowless, rowless, expiredOnly]
+      let rowless = Self.record(at: now, ready: false)
       let orphan = UUID()
-      w.setRows([
-        Transcript(text: "a", createdAt: w.time),
-        Transcript(
-          text: "held", createdAt: w.time, escapeRecoveredAt: w.time, escapeRecoveryTakeID: "t"),
-        Self.meetingRow(ready.id, words: "ready", at: w.time),
-        Self.meetingRow(marked.id, words: "marked", at: w.time),
-        Self.meetingRow(orphan, words: "orphan", at: w.time),
-        // A meeting whose only row is a held row past its time: the meeting has no visible row.
-        Self.meetingRow(
-          expiredOnly.id, words: "expired", at: w.time,
-          heldAt: w.time.addingTimeInterval(-AppConstants.pendingTranscriptRetention)),
-      ])
-      // Listed: a, held, ready, rowless (once per record), orphan, expiredOnly without its row;
-      // the marked meeting is not.
+      let dictation = Transcript(text: "a", createdAt: now)
+      let held = Transcript(
+        text: "held", createdAt: now, escapeRecoveredAt: now, escapeRecoveryTakeID: "t")
+      let rig = try await Self.catalogRig(
+        records: [ready, marked, rowless],
+        rows: [
+          dictation,
+          Self.meetingRow(ready.id, rowID: ready.transcriptID, words: "ready", at: now),
+          Self.meetingRow(marked.id, rowID: marked.transcriptID, words: "marked", at: now),
+          Self.meetingRow(orphan, words: "orphan", at: now),
+        ], pending: [held])
+      defer { rig.remove() }
+      #expect(Set(await rig.listedRowIDs(.dictations)) == [dictation.id, held.id])
+      #expect(await rig.listedIDs(.transcripts).isEmpty)
+      // The marked meeting is not listed, not even as its row; the meeting with no row is.
       #expect(
-        HistoryTab.allCases.reduce(0) { $0 + w.cached.matchingHistoryItems(in: $1).count } == 7)
-      #expect(w.cached.completedItemCount == 6, "the held row is not counted")
-      // Every visible row (5) plus each unmarked record without a visible row (rowless twice,
-      // expiredOnly once).
-      #expect(w.cached.deletableCount == 8)
-      Self.expectAgree(w, "counts")
+        Set(await rig.listedIDs(.meetings))
+          == [.meeting(ready.id), .meeting(rowless.id), .meeting(orphan)])
+      #expect(await rig.listedIDs(.meetings).count == 3, "each meeting is one item")
     }
 
     @Test("a meeting whose notes start to match appears in the search")
-    func notesBecomingAMatchAppear() {
-      let w = World()
-      let record = Self.record(at: w.time, ready: true)
-      w.sources.records = [record]
-      w.setRows([Self.meetingRow(record.id, words: "standup", at: w.time)])
-      for c in w.both { c.setHistoryQuery("zebra", in: .meetings) }
-      #expect(w.cached.matchingHistoryItems(in: .meetings).isEmpty)
-      w.sources.notes[record.id] = "ask about zebra"
-      #expect(w.cached.matchingHistoryItems(in: .meetings).map(\.id) == [.meeting(record.id)])
-      Self.expectAgree(w, "notes match")
+    func notesBecomingAMatchAppear() async throws {
+      let at = Date()
+      let record = Self.record(at: at, ready: true)
+      let rig = try await Self.catalogRig(
+        records: [record],
+        rows: [Self.meetingRow(record.id, rowID: record.transcriptID, words: "standup", at: at)])
+      defer { rig.remove() }
+      rig.coordinator.setHistoryQuery("zebra", in: .meetings)
+      #expect(await rig.listedIDs(.meetings).isEmpty)
+      try await rig.applying {
+        try Data("ask about zebra".utf8).write(
+          to: rig.meetings.notesURL(for: record.id), options: .atomic)
+        // Saving the record again is the change notice the catalog re-reads the folder on.
+        try rig.meetings.save(record)
+      }
+      #expect(await rig.listedIDs(.meetings) == [.meeting(record.id)])
     }
 
-    @Test("#4286: a meeting found only by its invited people appears, updates and disappears")
-    func invitedTermsMatch() {
-      let w = World()
-      let record = Self.record(at: w.time, ready: true)
-      w.sources.records = [record]
-      w.setRows([Self.meetingRow(record.id, words: "standup", at: w.time)])
-      for c in w.both { c.setHistoryQuery("ACME", in: .meetings) }
-      #expect(w.cached.matchingHistoryItems(in: .meetings).isEmpty)
-      w.sources.invited[record.id] = ["Dana Lee", "dana@acme.com", "acme.com"]
-      #expect(w.cached.matchingHistoryItems(in: .meetings).map(\.id) == [.meeting(record.id)], "case-insensitive substring")
-      Self.expectAgree(w, "invited match")
-      let builds = w.cached.listBuildsForTesting
-      _ = w.cached.matchingHistoryItems(in: .meetings)
-      #expect(w.cached.listBuildsForTesting == builds, "unchanged input reuses the kept list")
-      w.sources.invited[record.id] = ["Li Wu", "li@other.org", "other.org"]
-      #expect(w.cached.matchingHistoryItems(in: .meetings).isEmpty, "a changed list no longer matches")
-      Self.expectAgree(w, "invited changed")
-      for c in w.both { c.setHistoryQuery("li wu", in: .meetings) }
-      #expect(w.cached.matchingHistoryItems(in: .meetings).map(\.id) == [.meeting(record.id)])
-      w.sources.invited[record.id] = nil
-      #expect(w.cached.matchingHistoryItems(in: .meetings).isEmpty, "removed terms no longer match")
-      Self.expectAgree(w, "invited removed")
+    // #4586 C: invited people are saved as appended facts, so the old "changed list no longer
+    // matches" and "removed terms no longer match" halves cannot exist on disk; a new person
+    // added later is the update that can.
+    @Test("#4286: a meeting found only by its invited people appears and picks up added people")
+    func invitedTermsMatch() async throws {
+      let at = Date()
+      let record = Self.record(at: at, ready: true)
+      let rig = try await Self.catalogRig(
+        records: [record],
+        rows: [Self.meetingRow(record.id, rowID: record.transcriptID, words: "standup", at: at)])
+      defer { rig.remove() }
+      rig.coordinator.setHistoryQuery("ACME", in: .meetings)
+      #expect(await rig.listedIDs(.meetings).isEmpty)
+      try await rig.applying {
+        try rig.meetings.appendFacts(
+          [Self.attendee("Dana Lee", "dana@acme.com", at: at)], meeting: record.id)
+      }
+      #expect(await rig.listedIDs(.meetings) == [.meeting(record.id)], "case-insensitive substring")
+      rig.coordinator.setHistoryQuery("li wu", in: .meetings)
+      #expect(await rig.listedIDs(.meetings).isEmpty)
+      try await rig.applying {
+        try rig.meetings.appendFacts(
+          [Self.attendee("Li Wu", "li@other.org", at: at)], meeting: record.id)
+      }
+      #expect(await rig.listedIDs(.meetings) == [.meeting(record.id)])
     }
 
     @Test("#4286: invited people never make an unfinished or withheld meeting a match")
-    func invitedRespectsFences() {
-      let w = World()
-      let processing = Self.record(at: w.time, ready: false)
-      var withheld = Self.record(at: w.time, ready: true)
-      withheld.deletionRequested = true
-      w.sources.records = [processing, withheld]
-      w.setRows([
-        Self.meetingRow(processing.id, words: "standup", at: w.time),
-        Self.meetingRow(withheld.id, words: "standup", at: w.time),
-      ])
-      w.sources.invited = [processing.id: ["acme.com"], withheld.id: ["acme.com"]]
-      for c in w.both { c.setHistoryQuery("acme", in: .meetings) }
-      #expect(w.cached.matchingHistoryItems(in: .meetings).contains { $0.id == .meeting(processing.id) } == false)
-      #expect(w.cached.matchingHistoryItems(in: .meetings).contains { $0.id == .meeting(withheld.id) } == false)
-      Self.expectAgree(w, "fenced")
-    }
-
-    /// After a kept answer, a reader of the tab lists must be told about `change`.
-    /// With `tab`, the reader is that one tab's matching list; without, all three.
-    func expectObserved(
-      _ name: String, _ w: World, tab: HistoryTab? = nil, change: () -> Void
-    ) {
-      let c = w.cached
-      let read = {
-        for each in tab.map({ [$0] }) ?? HistoryTab.allCases { _ = c.matchingHistoryItems(in: each) }
+    func invitedRespectsFences() async throws {
+      let at = Date()
+      let processing = Self.record(at: at, ready: false)
+      let withheld = Self.record(at: at, ready: true)
+      let control = Self.record(at: at, ready: true)
+      let sources = Sources()
+      let rig = try await Self.catalogRig(
+        records: [processing, withheld, control],
+        rows: [processing, withheld, control].map {
+          Self.meetingRow($0.id, rowID: $0.transcriptID, words: "standup", at: at)
+        }, sources: sources
+      ) { store in
+        for record in [processing, withheld, control] {
+          try store.appendFacts([Self.attendee("Dana", "dana@acme.com", at: at)], meeting: record.id)
+        }
+        // The deletion mark lands after the facts: a marked meeting refuses new facts.
+        var marked = withheld
+        marked.deletionRequested = true
+        try store.save(marked)
+        sources.records = [processing, marked, control]
       }
-      read()
-      read()  // the second read is a kept answer
-      let fired = Flag()
-      withObservationTracking {
-        read()
-      } onChange: {
-        fired.value = true
-      }
-      change()
-      #expect(fired.value, "\(name) did not reach a reader of the kept list")
-    }
-
-    /// #4075 S1: the same check for a change made by an awaited History command.
-    func expectObserved(_ name: String, _ w: World, change: () async -> Void) async {
-      let c = w.cached
-      let readAll = { for tab in HistoryTab.allCases { _ = c.matchingHistoryItems(in: tab) } }
-      readAll()
-      readAll()  // the second read is a kept answer
-      let fired = Flag()
-      withObservationTracking {
-        readAll()
-      } onChange: {
-        fired.value = true
-      }
-      await change()
-      #expect(fired.value, "\(name) did not reach a reader of the kept list")
-    }
-
-    final class Flag: @unchecked Sendable { var value = false }
-
-    @Test("a reader of the kept list is told about every input change")
-    func everyInputIsObserved() async throws {
-      let w = World()
-      let c = w.cached
-      let record = Self.record(at: w.time, ready: true)
-      let orphan = UUID()
-      w.sources.records = [record]
-      w.setRows([
-        Transcript(text: "a", createdAt: w.time),
-        Self.meetingRow(record.id, words: "standup", at: w.time),
-        Self.meetingRow(orphan, words: "orphan", at: w.time),
-      ])
-      await expectObserved("a saved row", w) { try? await c.saveAndShow(Transcript(text: "new")) }
-      let first = try #require(c.rawTranscriptsForTesting.first)
-      await expectObserved("a row replaced under its id", w) {
-        try? await c.saveAndShow(Transcript(id: first.id, text: "changed", createdAt: first.createdAt))
-      }
-      expectObserved("a bulk replacement", w, tab: nil) {
-        c.setTranscriptsForTesting(c.rawTranscriptsForTesting.reversed())
-      }
-      expectObserved("a tab's filter", w, tab: .dictations) {
-        var state = c.historyState(for: .dictations)
-        state.dateInterval = DateInterval(start: w.time.addingTimeInterval(-60), end: w.time)
-        c.setHistoryState(state, for: .dictations)
-      }
-      expectObserved("the pulse", w, tab: nil) { c.bumpExpiryPulseForTesting() }
-      expectObserved("an echo choice", w, tab: nil) { c.setShowEcho(true, rowID: UUID()) }
-      expectObserved("a meeting record", w, tab: nil) { w.sources.records[0].title = "Zebra" }
-      expectObserved("a tab's search", w, tab: .meetings) { c.setHistoryQuery("zebra", in: .meetings) }
-      // While searching, each meeting's facts are watched, matching or not. The orphan's words,
-      // title and speaker names do not match "zebra", so only its notes can make it a match.
-      expectObserved("an orphan's info", w, tab: .meetings) {
-        w.sources.infoOverride[orphan] = MeetingHistoryInfo(echoTurnIDs: [], title: "Giraffe")
-      }
-      #expect(!c.matchingHistoryItems(in: .meetings).contains { $0.id == .meeting(orphan) })
-      expectObserved("unmatched notes", w, tab: .meetings) { w.sources.notes[orphan] = "zebra" }
-      #expect(c.matchingHistoryItems(in: .meetings).contains { $0.id == .meeting(orphan) })
-      expectObserved("a matched meeting's notes", w, tab: .meetings) { w.sources.notes[record.id] = "x" }
-      w.sources.records[0].title = nil
-      #expect(c.matchingHistoryItems(in: .meetings).contains { $0.id == .meeting(record.id) } == false)
-      expectObserved("unmatched invited people", w, tab: .meetings) { w.sources.invited[record.id] = ["zebra co"] }
-      #expect(c.matchingHistoryItems(in: .meetings).contains { $0.id == .meeting(record.id) })
-      expectObserved("a matched meeting's invited people", w, tab: .meetings) { w.sources.invited[record.id] = [] }
-      #expect(c.matchingHistoryItems(in: .meetings).contains { $0.id == .meeting(record.id) } == false)
-      let row = try #require(c.rawTranscriptsForTesting.first { !$0.isMeeting })
-      await expectObserved("a deletion", w) { try? await c.removeRow(id: row.id) }
+      defer { rig.remove() }
+      rig.coordinator.setHistoryQuery("acme", in: .meetings)
+      let listed = await rig.listedIDs(.meetings)
+      #expect(listed == [.meeting(control.id)], "only the finished, unmarked meeting matches")
     }
 
     // MARK: - Meeting preview text (#4001 step 2a)
@@ -493,15 +282,17 @@
 
     /// The preview the row showed before step 2a: the whole projection, cut to its preview.
     static func projectedPreview(_ c: TranscriptCoordinator, _ row: Transcript) -> String {
-      MeetingHistoryPresentation.previewText(c.meetingProjection(of: row))
+      // The pure projection, read straight from the sources: never the kept meeting text.
+      guard let meetingID = row.meetingID else {
+        return MeetingHistoryPresentation.unavailableMessage
+      }
+      return MeetingHistoryPresentation.previewText(
+        MeetingHistoryPresentation.project(
+          row, info: c.meetingInfo?(meetingID), showEcho: c.isShowingEcho(rowID: row.id)))
     }
 
     static func expectPreviewAgrees(_ w: World, _ row: Transcript, _ step: String) {
-      let expected = projectedPreview(w.reference, row)
-      #expect(w.cached.meetingPreviewText(of: row) == expected, "cached, \(step)")
-      #expect(w.reference.meetingPreviewText(of: row) == expected, "reference, \(step)")
-      #expect(
-        projectedPreview(w.cached, row) == expected, "both coordinators project alike, \(step)")
+      #expect(w.cached.meetingPreviewText(of: row) == projectedPreview(w.cached, row), "\(step)")
     }
 
     @Test("a meeting preview is the projection's preview for every kind of meeting")
@@ -634,35 +425,6 @@
       }
     }
 
-    @Test("search and the preview share one kept entry, whichever reads first")
-    func searchAndPreviewShareOneEntry() {
-      for searchFirst in [true, false] {
-        let w = World()
-        let c = w.cached
-        let record = Self.record(at: w.time, ready: true)
-        w.sources.records = [record]
-        let row = Self.twoTurnRow(record.id, at: w.time)
-        w.setRows([row])
-        func search() {
-          c.setHistoryQuery("friday", in: .meetings)
-          _ = c.matchingHistoryItems(in: .meetings)
-          c.setHistoryQuery("", in: .meetings)
-        }
-        if searchFirst { search() } else { _ = c.meetingPreviewText(of: row) }
-        let built = c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting
-        #expect(built == 1, "searchFirst \(searchFirst): one projection for the first read")
-        if searchFirst { _ = c.meetingPreviewText(of: row) } else { search() }
-        #expect(
-          c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting == built,
-          "searchFirst \(searchFirst): reused")
-        // Hidden and unavailable meetings never match a search on their hidden words.
-        w.sources.infoOverride[record.id] = MeetingHistoryInfo(echoTurnIDs: ["t0", "t1"])
-        c.setHistoryQuery("friday", in: .meetings)
-        #expect(c.matchingHistoryItems(in: .meetings).isEmpty, "searchFirst \(searchFirst): hidden words do not match")
-        c.setHistoryQuery("", in: .meetings)
-      }
-    }
-
     @Test("each projection input changes the preview exactly as the projection does")
     func everyInputChangesThePreview() {
       let w = World()
@@ -703,7 +465,7 @@
       record.echoTurnIDs = ["t0"]
       w.sources.records = [record]
       Self.expectPreviewAgrees(w, renamed, "echo IDs")
-      for c in w.both { c.setShowEcho(true, rowID: renamed.id) }
+      w.cached.setShowEcho(true, rowID: renamed.id)
       Self.expectPreviewAgrees(w, renamed, "echo shown")
       // Info availability: the meeting stops being ready.
       record.state = .processing
@@ -772,13 +534,12 @@
       ]
       w.setRows(rows)
       for show in [false, true] {
-        for c in w.both { for row in rows { c.setShowEcho(show, rowID: row.id) } }
+        for row in rows { w.cached.setShowEcho(show, rowID: row.id) }
         for (i, row) in rows.enumerated() {
           let info = row.meetingID.flatMap { w.cached.meetingInfo?($0) }
-          let expected = Self.directSummaryText(w.reference, row)
+          let expected = Self.directSummaryText(w.cached, row)
           #expect(
             w.cached.summaryVisibleText(of: row, info: info) == expected, "row \(i) show \(show)")
-          #expect(w.reference.summaryVisibleText(of: row, info: info) == expected)
         }
       }
       #expect(
@@ -798,16 +559,14 @@
         (row, .init(echoTurnIDs: ["t0", "t1"]), true),
         (empty, nil, false),
       ]
-      for c in w.both {
-        let counter = { c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting }
-        for (i, (r, info, noWords)) in cases.enumerated() {
-          #expect(c.summaryHasNoWords(of: r, info: info) == noWords, "case \(i)")
-          let built = counter()
-          // The same inputs again: the cached coordinator answers from its kept text, the
-          // bypassed one projects again; both give the same answer.
-          #expect(c.summaryHasNoWords(of: r, info: info) == noWords, "case \(i) again")
-          #expect(counter() == built + (c === w.cached ? 0 : 1), "case \(i) reuse")
-        }
+      let c = w.cached
+      let counter = { c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting }
+      for (i, (r, info, noWords)) in cases.enumerated() {
+        #expect(c.summaryHasNoWords(of: r, info: info) == noWords, "case \(i)")
+        let built = counter()
+        // The same inputs again: answered from the kept text.
+        #expect(c.summaryHasNoWords(of: r, info: info) == noWords, "case \(i) again")
+        #expect(counter() == built, "case \(i) reuse")
       }
     }
 
@@ -846,41 +605,68 @@
       #expect(a == b, "they look the same to ==")
       #expect(
         b.map { Array($0.utf8) }
-          == Self.directSummaryText(w.reference, replaced).map { Array($0.utf8) },
+          == Self.directSummaryText(w.cached, replaced).map { Array($0.utf8) },
         "and the kept text has the new bytes")
     }
 
-    @Test("the summary-only cache is pruned with the list even when search kept nothing")
-    func summaryCacheIsPruned() {
-      let w = World()
-      let c = w.cached
-      let record = Self.record(at: w.time, ready: true)
-      w.sources.records = [record]
-      let row = Self.twoTurnRow(record.id, at: w.time)
-      w.setRows([row])
-      let info = c.meetingInfo?(record.id)
-      _ = c.summaryVisibleText(of: row, info: info)
+    @Test("the meeting-text cache follows live rows: a removed or replaced row's kept text is dropped")
+    func meetingTextIsPrunedWithLiveRows() {
+      for replacement in [[], [Transcript(text: "another", createdAt: Date())]] {
+        let w = World()
+        let c = w.cached
+        let record = Self.record(at: w.time, ready: true)
+        w.sources.records = [record]
+        let row = Self.twoTurnRow(record.id, at: w.time)
+        w.setRows([row])
+        let info = c.meetingInfo?(record.id)
+        _ = c.summaryVisibleText(of: row, info: info)
+        _ = c.meetingPreviewText(of: row)
+        let built = c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting
+        w.setRows(replacement)  // the row leaves the live list: the pruning trigger
+        w.setRows([row])
+        _ = c.summaryVisibleText(of: row, info: info)
+        #expect(
+          c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting == built + 1,
+          "the removed row's kept summary text was dropped (replacement of \(replacement.count))")
+        _ = c.meetingPreviewText(of: row)
+        #expect(
+          c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting == built + 2,
+          "the removed row's kept preview text was dropped (replacement of \(replacement.count))")
+      }
+    }
+
+    // #4586 C: the old test pruned through the in-memory browse. Production prunes when live rows
+    // change (above) and when hydrated detail payloads leave the cache (here).
+    @Test("a hydrated detail payload leaving the cache drops its meeting text; payload rows stay")
+    func meetingTextIsPrunedWhenPayloadsLeave() async throws {
+      let at = Date()
+      let a = Self.twoTurnRow(UUID(), at: at)
+      let b = Self.twoTurnRow(UUID(), at: at)
+      let neither = Self.twoTurnRow(UUID(), at: at)  // never saved, never live, never hydrated
+      let rig = try await Self.catalogRig(rows: [a, b])
+      defer { rig.remove() }
+      let c = rig.coordinator
+      let info = MeetingHistoryInfo(echoTurnIDs: [])
+      let hydratedA = try #require(await c.loadCatalogDetail(a.id, authoritative: true))
+      let hydratedB = try #require(await c.loadCatalogDetail(b.id, authoritative: true))
+      for row in [hydratedA, hydratedB, neither] { _ = c.summaryVisibleText(of: row, info: info) }
       let built = c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting
-      w.setRows([])
-      _ = c.matchingHistoryItems(in: .meetings)  // a rebuild prunes
-      w.setRows([row])
-      _ = c.summaryVisibleText(of: row, info: info)
+      #expect(built == 3)
+
+      // A's payload is evicted by its removal (`detailCache.clear`), which prunes the text.
+      try await c.removeRow(id: a.id)
+      _ = c.summaryVisibleText(of: hydratedB, info: info)
+      #expect(
+        c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting == built,
+        "a row whose payload is still held keeps its text")
+      _ = c.summaryVisibleText(of: hydratedA, info: info)
       #expect(
         c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting == built + 1,
-        "the removed row's kept text was dropped")
-    }
-  }
-
-  /// A small deterministic generator (SplitMix64), so a failing step reproduces.
-  struct SeededGenerator: RandomNumberGenerator {
-    private var state: UInt64
-    init(seed: UInt64) { state = seed }
-    mutating func next() -> UInt64 {
-      state &+= 0x9E37_79B9_7F4A_7C15
-      var z = state
-      z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
-      z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
-      return z ^ (z >> 31)
+        "the evicted payload's text was dropped")
+      _ = c.summaryVisibleText(of: neither, info: info)
+      #expect(
+        c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting == built + 2,
+        "a row that is neither live nor hydrated keeps no text")
     }
   }
 #endif

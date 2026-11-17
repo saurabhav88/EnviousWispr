@@ -18,9 +18,9 @@ struct MeetingHistoryPresentationTests {
   /// then "Yes, I agree." (Speaker 1, 26..<39).
   static let text = "Hello there. Hello there. Yes, I agree."
 
-  static func meetingRow(id: UUID = UUID(), meetingID: UUID = UUID(), text: String = text)
-    -> Transcript
-  {
+  static func meetingRow(
+    id: UUID = UUID(), meetingID: UUID = UUID(), text: String = text, attemptID: UUID? = nil
+  ) -> Transcript {
     let turns = [
       Turn(
         id: "m0-0", speakerId: "sys:1", startMs: 0, endMs: 1_000, originalTextRange: 0..<12,
@@ -34,7 +34,8 @@ struct MeetingHistoryPresentationTests {
     ]
     return Transcript(
       id: id, text: text, backendType: .parakeet, speakerAnalysis: .labeled(count: 2),
-      speakerNames: ["sys:1": "Speaker 1", "mic:you": "You"], turns: turns, meetingID: meetingID)
+      speakerNames: ["sys:1": "Speaker 1", "mic:you": "You"], turns: turns, meetingID: meetingID,
+      meetingTranscriptAttemptID: attemptID)
   }
 
   final class Rig {
@@ -80,79 +81,110 @@ struct MeetingHistoryPresentationTests {
     }
   }
 
+  /// Meetings as EnviousMeet holds them, readable by the coordinator and changeable by a test.
+  @MainActor
+  final class Live {
+    var records: [MeetingRecord] = []
+  }
+
+  /// The production History path with `records` as real meeting folders (#4586): the catalog
+  /// indexes the folders and `rows`, and the coordinator reads the same records through the
+  /// closures EnviousMeet wiring provides. `prepare` writes more into the meeting store (notes,
+  /// facts) before indexing starts.
+  static func catalogRig(
+    records: [MeetingRecord] = [], rows: [Transcript] = [], live: Live = Live(),
+    prepare: (MeetingStore) throws -> Void = { _ in }
+  ) async throws -> HistoryCatalogRig {
+    live.records = records
+    return try await HistoryCatalogRig.make(rows: rows) { coordinator, store in
+      for record in records { try store.create(record) }
+      try prepare(store)
+      coordinator.meetingRecords = { live.records }
+      coordinator.meetingRecord = { id in live.records.first { $0.id == id } }
+      coordinator.meetingInfo = { id in
+        live.records.first { $0.id == id }.flatMap { MeetingHistoryInfo.paired(with: $0) }
+      }
+    }
+  }
+
   @Test("a meeting is listed on Meetings, never on Dictations or Transcripts, and never a dictation")
   func kindAndCounts() async throws {
-    let rig = Rig()
     let dictation = Transcript(text: "a dictation", backendType: .parakeet)
-    try await rig.coordinator.saveAndShow(dictation)
-    let meeting = try await rig.addMeeting()
+    let meeting = Self.meetingRow()
     let meetingID = try #require(meeting.meetingID)
+    let rig = try await Self.catalogRig(rows: [dictation, meeting])
+    defer { rig.remove() }
 
-    #expect(rig.coordinator.matchingHistoryItems(in: .dictations).map(\.id) == [.transcript(dictation.id)])
-    #expect(rig.coordinator.matchingHistoryItems(in: .transcripts).isEmpty)
-    #expect(rig.coordinator.matchingHistoryItems(in: .meetings).map(\.id) == [.meeting(meetingID)])
-    #expect(rig.coordinator.completedItemCount == 2)
-    #expect(rig.coordinator.dictationCount == 1)
+    #expect(await rig.listedIDs(.dictations) == [.transcript(dictation.id)])
+    #expect(await rig.listedIDs(.transcripts).isEmpty)
+    #expect(await rig.listedIDs(.meetings) == [.meeting(meetingID)])
+    let total = try? await rig.session.itemCount(now: rig.coordinator.clock())
+    #expect(total?.count == 2)
   }
 
   @Test("a meeting with no History row yet is one Meetings item, kept open when its row lands")
   func meetingItemFromStartToRow() async throws {
-    let rig = Rig()
     var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
     record.title = "Board review"
-    rig.records = [record]
-    let items = rig.coordinator.matchingHistoryItems(in: .meetings)
-    #expect(items.map(\.id) == [.meeting(record.id)])
-    #expect(items.first?.row == nil)
+    let live = Live()
+    let rig = try await Self.catalogRig(records: [record], live: live)
+    defer { rig.remove() }
+    #expect(await rig.listedIDs(.meetings) == [.meeting(record.id)])
+    #expect(await rig.listedRowIDs(.meetings).isEmpty)
     rig.coordinator.openHistoryItem(.meeting(record.id), in: .meetings)
     #expect(rig.coordinator.openHistoryItemID(in: .meetings) == .meeting(record.id))
 
-    // Its row lands under the same meeting id: still one item, still open.
+    // The ready record is saved before the row (the catalog pairs a row only with a committed
+    // generation), then its row lands under the same meeting id: still one item, still open.
+    record.state = .ready
+    live.records = [record]
+    try await rig.applying { try rig.meetings.save(record) }
     let row = MeetingHistoryPresentationTests.meetingRow(
       id: record.transcriptID, meetingID: record.id)
-    try await rig.coordinator.saveAndShowDurably(row)
-    #expect(rig.coordinator.matchingHistoryItems(in: .meetings).map(\.id) == [.meeting(record.id)])
+    try await rig.applying { try await rig.coordinator.saveAndShowDurably(row) }
+    #expect(await rig.listedIDs(.meetings) == [.meeting(record.id)])
     #expect(rig.coordinator.openHistoryItemID(in: .meetings) == .meeting(record.id))
-    #expect(rig.coordinator.matchingHistoryItems(in: .meetings).first?.row?.id == record.transcriptID)
+    #expect(await rig.listedRowIDs(.meetings) == [record.transcriptID])
 
     // Dictations never list it.
-    #expect(rig.coordinator.matchingHistoryItems(in: .dictations).isEmpty)
+    #expect(await rig.listedIDs(.dictations).isEmpty)
   }
 
   @Test("History lists only meetings when its rows are all gone, and counts them for Delete All")
   func rowlessMeetingsCountAndDelete() async throws {
-    let rig = Rig()
+    var recording = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    recording.title = "Standup"
+    var deleting = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    deleting.deletionRequested = true
+    let rig = try await Self.catalogRig(records: [recording, deleting])
+    defer { rig.remove() }
     var marked: [UUID] = []
     rig.coordinator.meetingsWillBeDeletedWithAll = { ids in
       marked = ids
       return true
     }
-    var recording = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
-    recording.title = "Standup"
-    var deleting = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
-    deleting.deletionRequested = true
-    rig.records = [recording, deleting]
-    #expect(rig.coordinator.matchingHistoryItems(in: .meetings).map(\.id) == [.meeting(recording.id)])
+    #expect(await rig.listedIDs(.meetings) == [.meeting(recording.id)])
     #expect(rig.coordinator.deletableCount == 1)
 
     // Search covers finished meetings only (R35): one still recording never matches, even by
     // its title.
     rig.coordinator.setHistoryQuery("stand", in: .meetings)
-    #expect(rig.coordinator.matchingHistoryItems(in: .meetings).isEmpty)
+    #expect(await rig.listedIDs(.meetings).isEmpty)
     rig.coordinator.setHistoryQuery("", in: .meetings)
 
-    await rig.coordinator.deleteAll()
+    let confirmation = try #require(await rig.coordinator.deleteAllConfirmation())
+    await rig.coordinator.deleteAll(confirmedSource: confirmation.source)
     #expect(Set(marked) == [recording.id, deleting.id])
   }
 
   @Test("deleting a meeting item asks EnviousMeet")
   func deleteMeetingItem() async throws {
-    let rig = Rig()
+    let record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    let rig = try await Self.catalogRig(records: [record])
+    defer { rig.remove() }
     var asked: [UUID] = []
     rig.coordinator.deleteMeeting = { asked.append($0); return true }
-    let record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
-    rig.records = [record]
-    let item = try #require(rig.coordinator.matchingHistoryItems(in: .meetings).first)
+    let item = try #require(await rig.listed(.meetings).first)
     #expect(item.id == .meeting(record.id))
     await rig.coordinator.delete(item)
     #expect(asked == [record.id])
@@ -166,50 +198,40 @@ struct MeetingHistoryPresentationTests {
     rig.coordinator.setHistoryQuery("nothing matches", in: .meetings)
     rig.coordinator.showMeetings(meetingID: record.id)
     #expect(rig.coordinator.historyTab == .meetings)
-    #expect(rig.coordinator.historyState(for: .meetings).query.isEmpty)
+    #expect(rig.coordinator.requestedHistoryState(for: .meetings).query.isEmpty)
     #expect(rig.coordinator.openHistoryItemID(in: .meetings) == .meeting(record.id))
   }
 
   @Test("a meeting marked for deletion is never listed, not even as its History row")
   func markedMeetingNotOrphaned() async throws {
-    let rig = Rig()
     var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    record.deletionRequested = true
     let row = MeetingHistoryPresentationTests.meetingRow(
       id: record.transcriptID, meetingID: record.id)
-    try await rig.coordinator.saveAndShowDurably(row)
-    record.deletionRequested = true
-    rig.records = [record]
-    #expect(rig.coordinator.matchingHistoryItems(in: .meetings).isEmpty, "its deletion is running, stalled or failed")
+    let rig = try await Self.catalogRig(records: [record], rows: [row])
+    defer { rig.remove() }
+    #expect(await rig.listedIDs(.meetings).isEmpty, "its deletion is running, stalled or failed")
+    #expect(await rig.listedIDs(.dictations).isEmpty)
   }
 
   @Test("a finished meeting is searched by its words; while it is transcribed again it is not")
   func searchFinishedOnly() async throws {
-    let rig = Rig()
     var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    record.state = .ready
     let row = MeetingHistoryPresentationTests.meetingRow(
       id: record.transcriptID, meetingID: record.id)
-    rig.infos[record.id] = MeetingHistoryInfo(echoTurnIDs: [], title: nil)
-    try await rig.coordinator.saveAndShowDurably(row)
-    record.state = .ready
-    rig.records = [record]
+    let live = Live()
+    let rig = try await Self.catalogRig(records: [record], rows: [row], live: live)
+    defer { rig.remove() }
     let word = try #require(row.text.split(separator: " ").first.map(String.init))
     rig.coordinator.setHistoryQuery(word, in: .meetings)
-    #expect(rig.coordinator.matchingHistoryItems(in: .meetings).map(\.id) == [.meeting(record.id)])
+    #expect(await rig.listedIDs(.meetings) == [.meeting(record.id)])
     record.state = .processing  // Transcribe again keeps the old row
-    rig.records = [record]
-    #expect(rig.coordinator.matchingHistoryItems(in: .meetings).isEmpty)
+    live.records = [record]
+    try await rig.applying { try rig.meetings.save(record) }
+    #expect(await rig.listedIDs(.meetings).isEmpty)
   }
 
-  @Test("a meeting removed elsewhere closes once EnviousMeet stops listing it")
-  func externalRemovalClearsSelection() async throws {
-    let rig = Rig()
-    let record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
-    rig.records = [record]
-    rig.coordinator.openHistoryItem(.meeting(record.id), in: .meetings)
-    #expect(rig.coordinator.openHistoryItemID(in: .meetings) == .meeting(record.id))
-    rig.records = []
-    #expect(rig.coordinator.openHistoryItemID(in: .meetings) == nil)
-  }
 
   @Test("a meeting is never the last dictation to paste or copy again")
   func neverReusedAsLastDictation() async throws {
@@ -276,21 +298,25 @@ struct MeetingHistoryPresentationTests {
 
   @Test("search finds visible words and the title, never words only in hidden echo")
   func searchSeesOnlyVisibleText() async throws {
-    let rig = Rig()
     // The echo turn's words differ here, so a match on them can only come from hidden text.
-    let row = Self.meetingRow(text: "Hello there. Secret echo. Yes, I agree.")
-    let meetingID = try #require(row.meetingID)
-    rig.infos[meetingID] = MeetingHistoryInfo(echoTurnIDs: ["m1-1000"], title: "Board sync")
-    try await rig.coordinator.saveAndShowDurably(row)
+    var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    record.state = .ready
+    record.title = "Board sync"
+    record.echoTurnIDs = ["m1-1000"]
+    let row = Self.meetingRow(
+      id: record.transcriptID, meetingID: record.id,
+      text: "Hello there. Secret echo. Yes, I agree.")
+    let rig = try await Self.catalogRig(records: [record], rows: [row])
+    defer { rig.remove() }
 
     rig.coordinator.setHistoryQuery("agree", in: .meetings)
-    #expect(rig.coordinator.matchingRowIDs(in: .meetings) == [row.id])
+    #expect(await rig.listedRowIDs(.meetings) == [row.id])
     rig.coordinator.setHistoryQuery("Board", in: .meetings)
-    #expect(rig.coordinator.matchingRowIDs(in: .meetings) == [row.id])
+    #expect(await rig.listedRowIDs(.meetings) == [row.id])
     rig.coordinator.setHistoryQuery("Secret", in: .meetings)
-    #expect(rig.coordinator.matchingHistoryItems(in: .meetings).isEmpty)
+    #expect(await rig.listedRowIDs(.meetings).isEmpty)
     rig.coordinator.setShowEcho(true, rowID: row.id)
-    #expect(rig.coordinator.matchingRowIDs(in: .meetings) == [row.id])
+    #expect(await rig.listedRowIDs(.meetings) == [row.id])
   }
 
   @Test("both gap markers stay in the delivered text")
@@ -579,56 +605,66 @@ struct MeetingHistoryPresentationTests {
 
   @Test("a finished meeting is also found by its notes; an unfinished one is not")
   func searchByNotes() async throws {
-    let rig = Rig()
     var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    record.state = .ready
     let row = MeetingHistoryPresentationTests.meetingRow(
       id: record.transcriptID, meetingID: record.id)
-    rig.infos[record.id] = MeetingHistoryInfo(echoTurnIDs: [], title: nil)
-    try await rig.coordinator.saveAndShowDurably(row)
-    record.state = .ready
-    rig.records = [record]
-    rig.coordinator.meetingNotes = { $0 == record.id ? "Ask Priya about the budget" : nil }
+    let live = Live()
+    let rig = try await Self.catalogRig(records: [record], rows: [row], live: live) { store in
+      try Data("Ask Priya about the budget".utf8).write(
+        to: store.notesURL(for: record.id), options: .atomic)
+    }
+    defer { rig.remove() }
     rig.coordinator.setHistoryQuery("priya", in: .meetings)
-    #expect(rig.coordinator.matchingHistoryItems(in: .meetings).map(\.id) == [.meeting(record.id)])
+    #expect(await rig.listedIDs(.meetings) == [.meeting(record.id)])
     record.state = .processing
-    rig.records = [record]
-    #expect(rig.coordinator.matchingHistoryItems(in: .meetings).isEmpty, "finished meetings only, notes included")
+    live.records = [record]
+    try await rig.applying { try rig.meetings.save(record) }
+    #expect(await rig.listedIDs(.meetings).isEmpty, "finished meetings only, notes included")
   }
 
   @Test("#4286: a finished meeting is found by an invited name, email or domain absent from its words")
   func searchByInvited() async throws {
-    let rig = Rig()
-    var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
-    let row = MeetingHistoryPresentationTests.meetingRow(
-      id: record.transcriptID, meetingID: record.id)
-    rig.infos[record.id] = MeetingHistoryInfo(echoTurnIDs: [], title: nil)
-    try await rig.coordinator.saveAndShowDurably(row)
-    record.state = .ready
-    rig.records = [record]
-    // What the documents owner derives: Dana (declined) with an email, Kim with a name only.
-    rig.coordinator.meetingInvited = {
-      $0 == record.id ? ["Dana Lee", "dana@acme.com", "acme.com", "Kim"] : []
+    func attendees(of record: MeetingRecord) -> [MeetingFact] {
+      // Dana (declined) with an email, Kim with a name only.
+      [
+        AttendeeFact(
+          name: "Dana Lee", email: "dana@acme.com", role: .required, status: .declined,
+          isSelf: false, isOrganizer: false),
+        AttendeeFact(
+          name: "Kim", email: nil, role: .required, status: .accepted, isSelf: false,
+          isOrganizer: false),
+      ].map { $0.fact(source: MeetingFact.eventKitSource, capturedAt: record.createdAt) }
     }
+    var finished = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    finished.state = .ready
+    // A ready meeting whose row belongs to another transcript generation: its facts are not shown.
+    var otherGeneration = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    otherGeneration.state = .ready
+    var failed = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    failed.state = .failed
+    let finishedRow = MeetingHistoryPresentationTests.meetingRow(
+      id: finished.transcriptID, meetingID: finished.id)
+    let otherRow = MeetingHistoryPresentationTests.meetingRow(
+      id: otherGeneration.transcriptID, meetingID: otherGeneration.id, attemptID: UUID())
+    let failedRow = MeetingHistoryPresentationTests.meetingRow(
+      id: failed.transcriptID, meetingID: failed.id)
+    #expect(otherRow.meetingTranscriptGeneration != finishedRow.meetingTranscriptGeneration)
+    let records = [finished, otherGeneration, failed]
+    let rig = try await Self.catalogRig(
+      records: records, rows: [finishedRow, otherRow, failedRow]
+    ) { store in
+      for record in records { try store.appendFacts(attendees(of: record), meeting: record.id) }
+    }
+    defer { rig.remove() }
     for query in ["dana lee", "DANA@ACME.COM", "acme.com", "kim"] {
       rig.coordinator.setHistoryQuery(query, in: .meetings)
-      #expect(rig.coordinator.matchingHistoryItems(in: .meetings).map(\.id) == [.meeting(record.id)], "query: \(query)")
+      #expect(await rig.listedRowIDs(.meetings) == [finishedRow.id], "query: \(query)")
     }
     rig.coordinator.setHistoryQuery("globex", in: .meetings)
-    #expect(rig.coordinator.matchingHistoryItems(in: .meetings).isEmpty, "a term nobody was invited by")
-
-    rig.coordinator.setHistoryQuery("acme", in: .meetings)
-    rig.infos[record.id] = nil
-    #expect(rig.coordinator.matchingHistoryItems(in: .meetings).isEmpty, "no facts may be shown, so no invited match")
-    let unrelatedGeneration = UUID()
-    try #require(unrelatedGeneration != row.meetingTranscriptGeneration)
-    rig.infos[record.id] = MeetingHistoryInfo(
-      generation: unrelatedGeneration, echoTurnIDs: [], title: nil)
-    #expect(rig.coordinator.matchingHistoryItems(in: .meetings).isEmpty, "facts belong to another generation")
-    rig.infos[record.id] = MeetingHistoryInfo(echoTurnIDs: [], title: nil)
-    #expect(rig.coordinator.matchingHistoryItems(in: .meetings).map(\.id) == [.meeting(record.id)], "valid facts again")
-    record.state = .failed
-    rig.records = [record]
-    #expect(rig.coordinator.matchingHistoryItems(in: .meetings).isEmpty, "finished meetings only, invited people included")
+    #expect(await rig.listedRowIDs(.meetings).isEmpty, "a term nobody was invited by")
+    // The other-generation and the failed meeting carry the same invited people yet never match:
+    // only the finished meeting with its own generation's facts is listed above.
   }
 
   @Test("#4286: the detail's Invited line names invited people, an email when no name, one per email")

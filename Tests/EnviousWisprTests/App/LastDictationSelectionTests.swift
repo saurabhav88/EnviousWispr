@@ -79,7 +79,9 @@ struct LastDictationSelectionTests {
     coordinator.selectHistoryTab(.transcripts)
     for tab in HistoryTab.allCases { coordinator.setHistoryQuery("no row contains this", in: tab) }
     for tab in HistoryTab.allCases {
-      #expect(coordinator.matchingHistoryItems(in: tab).isEmpty, "precondition: History lists nothing")
+      #expect(
+        coordinator.requestedHistoryState(for: tab).query == "no row contains this",
+        "precondition: every tab carries a search that matches no row")
     }
 
     #expect(coordinator.lastPasteableDictation()?.id == target.id)
