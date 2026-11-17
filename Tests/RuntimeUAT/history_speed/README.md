@@ -83,7 +83,10 @@ never restored over.
 ## Known limits
 
 - AX reads run on the app's main thread: the scroll hitch pass makes none while gestures run.
-- Synthetic trackpad events carry no device momentum (no fling); the founder's hand test follows.
+- Synthetic trackpad gestures end with a short fixed momentum tail, as hardware ends a flick. Without it
+  AppKit keeps tracking the gesture and swallows the next scroll event, which once read as a 9.1% wheel
+  "asymmetry" (package G, 2026-11-17). A real trackpad lifted slowly (no momentum) is not simulated; the
+  founder's hand test covers it.
 - Screen capture misses some drawn frames: every timed number is an upper bound on the first correct
   picture, and brief stale frames between captures cannot be seen.
 - `xctrace` stops by its own time limit (a SIGINT stop hung and never saved, #4587); saving takes
