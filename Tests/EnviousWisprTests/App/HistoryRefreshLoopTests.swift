@@ -63,57 +63,79 @@ struct HistoryRefreshLoopTests {
   }
 
   /// Yields only until the loop reaches the next point the test drives (the subject's signal).
-  private func untilReading(_ world: World) async {
-    while world.pendingRead == nil { await Task.yield() }
+  private func untilReading(_ world: World) async throws {
+    while world.pendingRead == nil {
+      try Task.checkCancellation()
+      await Task.yield()
+    }
   }
 
-  private func untilParked(_ world: World) async {
-    while world.pendingWait == nil { await Task.yield() }
+  private func untilParked(_ world: World) async throws {
+    while world.pendingWait == nil {
+      try Task.checkCancellation()
+      await Task.yield()
+    }
+  }
+
+  /// Ends the loop on every exit, releasing any read or wait it is parked in.
+  private func stop(_ task: Task<Void, Never>, _ world: World) async {
+    task.cancel()
+    world.finishRead(succeeded: false)
+    world.wake()
+    await task.value
   }
 
   @Test("A read overtaken by a content publish is kept, then the newer content is read")
-  func overtakenReadIsKept() async {
+  func overtakenReadIsKept() async throws {
     let world = World()
     let task = Task { await world.loop().run() }
-    await untilReading(world)
+    // Synchronous on every exit: releases whatever the loop is parked in and cancels it.
+    defer {
+      task.cancel()
+      world.finishRead(succeeded: false)
+      world.wake()
+    }
+    try await untilReading(world)
     world.content = 1
     world.finishRead(succeeded: true)
-    await untilReading(world)
+    try await untilReading(world)
     // The overtaken read was stored, and the newer content was read next without a wait.
     #expect(world.stored?.revision == 0)
     #expect(world.reads.map(\.revision) == [0, 1])
     #expect(world.waits == 0)
     world.finishRead(succeeded: true)
-    await untilParked(world)
+    try await untilParked(world)
     #expect(world.stored?.revision == 1)
-    task.cancel()
-    world.wake()
-    await task.value
+    await stop(task, world)
   }
 
   @Test("An empty read is retried on the next notice and parks when nothing changed")
-  func emptyReadRetriesOnNotice() async {
+  func emptyReadRetriesOnNotice() async throws {
     let world = World()
     let task = Task { await world.loop().run() }
-    await untilReading(world)
+    // Synchronous on every exit: releases whatever the loop is parked in and cancels it.
+    defer {
+      task.cancel()
+      world.finishRead(succeeded: false)
+      world.wake()
+    }
+    try await untilReading(world)
     world.finishRead(succeeded: false)
-    await untilParked(world)
+    try await untilParked(world)
     #expect(world.reads.count == 1)
     // A wake with nothing changed does not read again.
     world.wake()
-    await untilParked(world)
+    try await untilParked(world)
     #expect(world.reads.count == 1)
     // A change notice with the same content retries the same key once.
     world.notices += 1
     world.wake()
-    await untilReading(world)
+    try await untilReading(world)
     #expect(world.reads.count == 2)
     #expect(world.reads[1] == world.reads[0])
     world.finishRead(succeeded: true)
-    await untilParked(world)
-    task.cancel()
-    world.wake()
-    await task.value
+    try await untilParked(world)
+    await stop(task, world)
   }
 
   @Test("A new search opens at the top; returning to the tab restores its place")

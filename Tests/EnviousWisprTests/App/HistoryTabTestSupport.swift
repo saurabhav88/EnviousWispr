@@ -126,10 +126,13 @@ extension HistoryCatalogRig {
   /// result of indexing it. `settle()` alone can return before a late change notice has queued
   /// its pass; the content revision moving is the signal that the pass finished. Only for a
   /// change that alters what is indexed: a write the catalog finds unchanged never advances it.
-  func applying(_ change: () async throws -> Void) async rethrows {
+  /// Throws when the test is cancelled (its time limit), so a change that never reaches the
+  /// catalog fails the test instead of hanging it.
+  func applying(_ change: () async throws -> Void) async throws {
     let before = session.revision
     try await change()
     while session.revision == before {
+      try Task.checkCancellation()
       await session.waitForChange(revision: before, notices: session.noticeCount)
     }
     await settle()

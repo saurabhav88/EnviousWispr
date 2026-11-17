@@ -1470,7 +1470,7 @@ struct TranscriptCoordinatorMeetingTests {
       try await rig.applying { try await coordinator.saveAndShow(newer) }
       #expect(await rig.listedRowIDs(.dictations) == [newer.id, older.id], "control: both are listed")
       coordinator.setShowEcho(true, rowID: newer.id)
-      await rig.applying { await coordinator.delete(newer) }
+      try await rig.applying { await coordinator.delete(newer) }
       #expect(coordinator.isShowingEcho(rowID: newer.id) == false)
       #expect(await rig.listedRowIDs(.dictations) == [older.id])
       // A second delete of the gone row is a no-op.

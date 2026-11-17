@@ -142,7 +142,7 @@ import Testing
       let content = Task {
         await session.waitForChange(revision: session.revision, notices: session.noticeCount)
       }
-      await waitUntilRegistered(session)
+      try await waitUntilRegistered(session)
       session.advanceContentForTesting()
       await content.value
 
@@ -151,7 +151,7 @@ import Testing
       let notice = Task {
         await session.waitForChange(revision: session.revision, notices: notices)
       }
-      await waitUntilRegistered(session)
+      try await waitUntilRegistered(session)
       f.changes.externalChange(.transcript(UUID()))
       await notice.value
       #expect(session.noticeCount != notices)
@@ -160,7 +160,7 @@ import Testing
       let registered = Task {
         await session.waitForChange(revision: session.revision, notices: session.noticeCount)
       }
-      await waitUntilRegistered(session)
+      try await waitUntilRegistered(session)
       registered.cancel()
       await registered.value
       #expect(session.changeWaiterCountForTesting == 0)
@@ -176,8 +176,11 @@ import Testing
     }
 
     /// Waits on the subject's own registration signal; yields only while that signal is absent.
-    private func waitUntilRegistered(_ session: HistoryCatalogSession) async {
-      while session.changeWaiterCountForTesting == 0 { await Task.yield() }
+    private func waitUntilRegistered(_ session: HistoryCatalogSession) async throws {
+      while session.changeWaiterCountForTesting == 0 {
+        try Task.checkCancellation()
+        await Task.yield()
+      }
     }
   }
 #endif
