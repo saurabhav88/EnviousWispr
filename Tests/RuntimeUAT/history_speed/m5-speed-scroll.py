@@ -162,8 +162,10 @@ def main():
                 last, since = now, time.monotonic()
             elif time.monotonic() - since >= SETTLE_S:
                 return now
-        if len(set(seen)) <= 1:   # no observed movement: unreadable positions are not a moving list
-            raise RuntimeError(f"the list position could not be read ({unreadable} failed reads)")
+        if unreadable or len(set(seen)) <= 1:   # only fully observed movement is a moving list (Codex round 7)
+            raise RuntimeError(f"the list did not settle and its position was not fully readable "
+                               f"({unreadable} failed reads; y ranged {min(seen) if seen else None} to "
+                               f"{max(seen) if seen else None})")
         raise ListKeptMoving(f"the list kept moving for {SETTLE_DEADLINE_S:.0f} s with no input: first-row y "
                              f"ranged {min(seen) if seen else None} to {max(seen) if seen else None}")
 

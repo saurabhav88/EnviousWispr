@@ -723,8 +723,8 @@ def main():
         set_query("")
         fresh = wait_for(lambda: list_area(window), 10, f"the {tab} list")
         current_area["element"] = fresh
-        confirmed, _, _ = confirm(fresh, answer(tab, ""), [])
-        if confirmed is None:
+        confirmed, _, post = confirm(fresh, answer(tab, ""), [])
+        if confirmed is None or not all_correct(post):
             raise RuntimeError(f"the {tab} list did not return to its unfiltered page")
 
     def save_report():

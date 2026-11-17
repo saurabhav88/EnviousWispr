@@ -159,14 +159,28 @@ def main():
                                     capture_output=True, text=True, timeout=7200)
             report["search_run"] = {"exit": result.returncode, "stdout_tail": result.stdout[-3000:],
                                     "stderr_tail": result.stderr[-1500:]}
-        if "--card" in OWN:
+        # A driver that could not restore the list (search left a tab filtered, card left edits
+        # open or audio playing) makes every later driver in this session UNPROVEN: skip them.
+        dirty = None
+        if run_cases is not None:
+            search_report = run / "search" / "report.json"
+            left = json.loads(search_report.read_text()).get("left_filtered") if search_report.is_file() else "no report"
+            if left:
+                dirty = f"search left the list filtered: {left}"
+        if "--card" in OWN and dirty:
+            report["card_run"] = {"skipped": dirty}
+        elif "--card" in OWN:
             import subprocess
             extra = ["--repeats", OWN[OWN.index("--repeats") + 1]] if "--repeats" in OWN else []
             result = subprocess.run([sys.executable, "-B", str(HERE / "m5-speed-card.py"), str(session.pid),
                                      str(subject), str(run / "card")] + extra, capture_output=True, text=True, timeout=3600)
             report["card_run"] = {"exit": result.returncode, "stdout_tail": result.stdout[-3000:],
                                   "stderr_tail": result.stderr[-1500:]}
-        if "--scroll" in sys.argv[5:]:   # not OWN: OWN stops just before --scroll (Codex round 1)
+            if result.returncode != 0:
+                dirty = f"the card driver failed (exit {result.returncode}); the card may be left open or playing"
+        if "--scroll" in sys.argv[5:] and dirty:
+            report["scroll_run"] = {"skipped": dirty}
+        elif "--scroll" in sys.argv[5:]:   # not OWN: OWN stops just before --scroll (Codex round 1)
             import subprocess
             extra = sys.argv[sys.argv.index("--scroll") + 1:]   # everything after --scroll
             result = subprocess.run([sys.executable, "-B", str(HERE / "m5-speed-scroll.py"), str(session.pid),
