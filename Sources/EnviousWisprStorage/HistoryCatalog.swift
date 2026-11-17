@@ -338,7 +338,7 @@ package actor HistoryCatalog {
       let rows = try connection.rows("""
         SELECT e.summary FROM entries AS e WHERE \(predicate.sql)\(boundary)
         ORDER BY e.saved_at \(order), e.id \(order) LIMIT \(Self.pageSize + 1)
-        """, parameters, decodeSummary)
+        """, parameters, stopWhenCancelled: true, decodeSummary)
       let candidates = Array(rows.prefix(Self.pageSize))
       let verified = try candidates.filter(verify)
       let visible = newer ? Array(verified.reversed()) : verified
@@ -368,7 +368,7 @@ package actor HistoryCatalog {
     }
     var counts = Dictionary(uniqueKeysWithValues: ranges.map { ($0.0, 0) })
     for (index, count) in try connection.rows(
-      Self.dayCountSQL(days: ranges.count, predicate: predicate.sql), bounds + predicate.values, { (Int(sqlite3_column_int64($0, 0)), Int(sqlite3_column_int64($0, 1))) }) {
+      Self.dayCountSQL(days: ranges.count, predicate: predicate.sql), bounds + predicate.values, stopWhenCancelled: true, { (Int(sqlite3_column_int64($0, 0)), Int(sqlite3_column_int64($0, 1))) }) {
       counts[ranges[index].0] = count
     }
     return counts
@@ -394,13 +394,13 @@ package actor HistoryCatalog {
     let predicate = predicate(for: query)
     let anchor = try connection.rows(
       "SELECT e.saved_at FROM entries AS e WHERE \(predicate.sql) AND e.id = ?",
-      predicate.values + [.text(id.uuidString)]
+      predicate.values + [.text(id.uuidString)], stopWhenCancelled: true
     ) { sqlite3_column_double($0, 0) }.first
     guard let anchor else { return nil }
     return try connection.rows("""
       SELECT e.id, e.saved_at FROM entries AS e WHERE \(predicate.sql) AND (e.saved_at, e.id) > (?, ?)
       ORDER BY e.saved_at ASC, e.id ASC LIMIT 1
-      """, predicate.values + [.number(anchor), .text(id.uuidString)]) { row in
+      """, predicate.values + [.number(anchor), .text(id.uuidString)], stopWhenCancelled: true) { row in
         guard let id = UUID(uuidString: HistoryCatalogConnection.text(row, 0)) else {
           throw Failure.incompatibleSchema
         }
@@ -414,7 +414,7 @@ package actor HistoryCatalog {
       let predicate = predicate(for: query)
       return try connection.rows(
         "SELECT e.id FROM entries AS e WHERE \(predicate.sql) ORDER BY e.saved_at DESC, e.id DESC",
-        predicate.values
+        predicate.values, stopWhenCancelled: true
       ) { row in
         guard let id = UUID(uuidString: HistoryCatalogConnection.text(row, 0)) else {
           throw Failure.incompatibleSchema
@@ -455,7 +455,8 @@ package actor HistoryCatalog {
       guard try hasCoverage(sourceRevision) else { throw Failure.incompleteCoverage }
       let query = predicate(for: Query(tab: .dictations, now: now))
       return try connection.rows(
-        "SELECT e.app, count(*) FROM entries AS e WHERE \(query.sql) GROUP BY e.app", query.values
+        "SELECT e.app, count(*) FROM entries AS e WHERE \(query.sql) GROUP BY e.app", query.values,
+        stopWhenCancelled: true
       ) { row in
         let app = sqlite3_column_type(row, 0) == SQLITE_NULL ? nil : HistoryCatalogConnection.text(row, 0)
         return (app, Int(sqlite3_column_int64(row, 1)))
@@ -467,7 +468,9 @@ package actor HistoryCatalog {
     try connection.transaction {
       guard try hasCoverage(sourceRevision) else { throw Failure.incompleteCoverage }
       let predicate = predicate(for: query)
-      return try connection.rows("SELECT e.saved_at FROM entries AS e WHERE \(predicate.sql)", predicate.values) {
+      return try connection.rows(
+        "SELECT e.saved_at FROM entries AS e WHERE \(predicate.sql)", predicate.values, stopWhenCancelled: true
+      ) {
         Date(timeIntervalSinceReferenceDate: sqlite3_column_double($0, 0))
       }.reduce(into: [:]) {
         $0[query.calendar.startOfDay(for: $1), default: 0] += 1
@@ -480,7 +483,7 @@ package actor HistoryCatalog {
       guard try hasCoverage(sourceRevision) else { throw Failure.incompleteCoverage }
       return try connection.rows(
         "SELECT count(*) FROM entries WHERE expires_at IS NULL OR expires_at > ?",
-        [.number(now.timeIntervalSinceReferenceDate)]
+        [.number(now.timeIntervalSinceReferenceDate)], stopWhenCancelled: true
       ) { Int(sqlite3_column_int64($0, 0)) }.first ?? 0
     }
   }
