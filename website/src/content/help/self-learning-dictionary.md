@@ -9,7 +9,7 @@ related: ["adding-custom-words", "how-custom-word-correction-works", "adding-a-w
 updated: 2026-10-24
 deflection: "can_resolve"
 ---
-The Self-Learning Dictionary adds words to your dictionary for you. When you fix a misheard word in text EnviousWispr pasted a moment ago, and a check on your Mac agrees it was a correction, the word you typed is saved in Your Words with the mishearing attached. A small pill gives you four seconds to undo it. You never have to open Settings to teach it a name.
+When a check on your Mac agrees your edit was a correction, the word joins **Your Words** with the mishearing attached, without opening Settings.
 
 ### Teach it a word by fixing it
 

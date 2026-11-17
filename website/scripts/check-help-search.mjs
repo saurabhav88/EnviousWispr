@@ -76,6 +76,9 @@ const ADVERSARIAL = [
   ['words on screen while i talk', 'live-preview-words-on-screen', ['live-transcription-streaming-asr']],
   ['write text while i talk', 'live-transcription-streaming-asr', ['live-preview-words-on-screen']],
   ['text appears while speaking', 'live-transcription-streaming-asr', ['live-preview-words-on-screen']],
+  // #3498: both queries used to mis-rank before the November refresh.
+  ['start word', 'spoken-punctuation-and-emoji', ['first-word-gets-cut-off']],
+  ['right option not working', 'accessibility-permission-not-working', ['what-is-ai-polish']],
 ];
 
 const OFFTOPIC = ['how do i print a document', 'buy a new macbook', 'reset my iphone'];

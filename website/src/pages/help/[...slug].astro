@@ -116,7 +116,13 @@ if (props.kind === 'category') {
 }
 
 const article = props.kind === 'article' ? props.article : null;
-const Content = article ? (await render(article)).Content : null;
+const rendered = article ? await render(article) : null;
+const Content = rendered?.Content ?? null;
+const headings = rendered?.headings ?? [];
+const wordCount = article?.body ? article.body.trim().split(/\s+/).length : 0;
+const tocDepth = headings.some((h) => h.depth === 2) ? 2 : 3;
+const tocHeadings = wordCount >= 1000 ? headings.filter((h) => h.depth === tocDepth) : [];
+const showToc = tocHeadings.length >= 4;
 const sections = props.kind === 'category' ? groupBySection(articlesInCategory(articles, props.categorySlug)) : [];
 const showSectionHeadings = props.kind === 'category' && sections.length > 1
   && articlesInCategory(articles, props.categorySlug).length > 4;
@@ -181,6 +187,16 @@ const alsoRead = article ? related(articles, article) : [];
           </video>
           <figcaption id="help-video-desc">Silent demonstration of the written steps below. {article!.data.videoDescription}</figcaption>
         </figure>
+      )}
+      {showToc && (
+        <nav class="help-toc" aria-label="On this page">
+          <div class="help-toc-title">On this page</div>
+          <ul>
+            {tocHeadings.map((h) => (
+              <li><a href={`#${h.slug}`}>{h.text}</a></li>
+            ))}
+          </ul>
+        </nav>
       )}
       <div class="help-body"><Content /></div>
 
@@ -250,6 +266,38 @@ const alsoRead = article ? related(articles, article) : [];
   .help-video { margin: 0 0 28px; }
   .help-video video { display: block; width: 100%; height: auto; aspect-ratio: 16 / 10; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
   .help-video figcaption { margin-top: 8px; font-size: 13px; line-height: 1.5; color: var(--text-3); }
+
+  .help-toc {
+    margin: 0 0 28px;
+    padding: 16px 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+  }
+  .help-toc-title {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--text-3);
+    margin-bottom: 10px;
+  }
+  .help-toc ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 6px 18px;
+  }
+  .help-toc a {
+    font-size: 14px;
+    line-height: 1.45;
+    color: var(--accent);
+    text-decoration: none;
+  }
+  .help-toc a:hover { text-decoration: underline; text-underline-offset: 2px; }
+  :global(.help-body h2), :global(.help-body h3), :global(.help-body h4) { scroll-margin-top: 110px; }
 
   .help-section-title { font-size: 13px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-3); margin: 30px 0 10px; }
 
