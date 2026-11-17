@@ -118,12 +118,13 @@ final class HistoryCatalogConnection {
     try scoped(stoppable: stopWhenCancelled) {
       try withStatement(sql, parameters) { statement in
         // A cancelled search can finish before the handler's first check: refuse before
-        // stepping and again before reporting success.
+        // stepping, at each row, and again before reporting success. A plain call never
+        // checks: it is a write, reconciliation or a short lookup that must finish.
         if stopWhenCancelled { try Task.checkCancellation() }
         var rows: [Row] = []
         var result = sqlite3_step(statement)
         while result == SQLITE_ROW {
-          try Task.checkCancellation()
+          if stopWhenCancelled { try Task.checkCancellation() }
           rows.append(try read(statement))
           result = sqlite3_step(statement)
         }

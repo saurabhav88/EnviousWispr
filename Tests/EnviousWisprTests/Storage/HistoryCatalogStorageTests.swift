@@ -123,7 +123,7 @@ struct HistoryCatalogStorageTests {
     nonisolated(unsafe) let handoff = connection
     let cancelled = Task {
       withUnsafeCurrentTask { $0?.cancel() }
-      return try handoff.rows(select) { sqlite3_column_int64($0, 0) }
+      return try handoff.rows(select, stopWhenCancelled: true) { sqlite3_column_int64($0, 0) }
     }
     await #expect(throws: CancellationError.self) { try await cancelled.value }
     #expect(try connection.rows(select) { sqlite3_column_int64($0, 0) } == [1, 2, 3, 4])
@@ -234,9 +234,14 @@ struct HistoryCatalogStorageTests {
     nonisolated(unsafe) let handoff = connection
     let plain = Task {
       withUnsafeCurrentTask { $0?.cancel() }
-      return try handoff.rows(Self.longEmptyScan) { sqlite3_column_int64($0, 0) }
+      return (
+        try handoff.rows(Self.longEmptyScan) { sqlite3_column_int64($0, 0) },
+        try handoff.rows("SELECT count(*) FROM t") { sqlite3_column_int64($0, 0) }
+      )
     }
-    #expect(try await plain.value.isEmpty)
+    let (empty, counted) = try await plain.value
+    #expect(empty.isEmpty)
+    #expect(counted == [2_000])
     // Rows 1 and 2 come back first, then the outer search steps through a long empty tail.
     let outer =
       "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c WHERE x < 200000) SELECT x FROM c WHERE x <= 2"
@@ -275,13 +280,16 @@ struct HistoryCatalogStorageTests {
       try handoff.transaction(write: true) {
         withUnsafeCurrentTask { $0?.cancel() }
         try handoff.execute("INSERT INTO w VALUES (1)")
-        // A long read inside the write, like reconciliation's progress read.
+        // Reads inside the write, like reconciliation's progress read: a long empty one and one
+        // that returns rows, then apply's INSERT ... RETURNING shape.
         _ = try handoff.rows(Self.longEmptyScan) { sqlite3_column_int64($0, 0) }
+        #expect(try handoff.rows("SELECT v FROM w") { sqlite3_column_int64($0, 0) } == [1])
         try handoff.execute("INSERT INTO w VALUES (2)")
+        #expect(try handoff.rows("INSERT INTO w VALUES (3) RETURNING v") { sqlite3_column_int64($0, 0) } == [3])
       }
     }
     try await write.value
-    #expect(try connection.rows("SELECT v FROM w ORDER BY v") { sqlite3_column_int64($0, 0) } == [1, 2])
+    #expect(try connection.rows("SELECT v FROM w ORDER BY v") { sqlite3_column_int64($0, 0) } == [1, 2, 3])
   }
 }
 
