@@ -43,7 +43,6 @@ struct HistoryMeetingCard: View {
   @State private var titleEditing = false
   /// The click that saved the title by clicking away; that click must not also open the card.
   @State private var clickAwayStamp: TimeInterval?
-  @State private var copiedAt: Date?
   @State private var confirmingDeletion: Deletion?
   @State private var deleting = false
   @State private var deleteFailed = false
@@ -261,12 +260,7 @@ struct HistoryMeetingCard: View {
 
   /// Open, Copy and More, in the Dictations card's place and order (#4611).
   private func buttonRow(_ card: P.Card, record: MeetingRecord?) -> some View {
-    let copy = TranscribeFileExport.copyButtonPresentation(
-      label: String(
-        localized: "Copy transcript",
-        comment: "History meeting card: copies the meeting's transcript. Tooltip and VoiceOver label."),
-      copiedAt: copiedAt, now: Date(), holdSeconds: TranscribeFileExport.copiedHoldSeconds)
-    return HStack(spacing: DesignSpacing.md) {
+    HStack(spacing: DesignSpacing.md) {
       Button(action: openOrFinishRename) {
         EnviousButtonLabel(
           LocalizedStringResource("Open", comment: "History meeting card: opens the meeting."),
@@ -278,23 +272,14 @@ struct HistoryMeetingCard: View {
           "Open \(card.title)",
           comment: "History meeting card: VoiceOver label of Open. %@ is the meeting's name."))
 
-      Button {
-        // Read at the press from the live row, never this card's snapshot.
-        guard let text = deliveryText() else { return }
-        TranscribeFileExport.copy(text)
-        let pressed = Date()
-        copiedAt = pressed
-        Task {
-          try? await Task.sleep(for: .seconds(TranscribeFileExport.copiedHoldSeconds))
-          if copiedAt == pressed { copiedAt = nil }
-        }
-      } label: {
-        Image(systemName: copy.systemImage)
-          .frame(width: 16, height: 16)
-      }
-      .settingsButton(.quiet, size: .medium, isEnabled: canDeliver(record))
-      .help(Text(verbatim: copy.title))
-      .accessibilityLabel(Text(verbatim: copy.title))
+      // Read at the press from the live row, never this card's snapshot.
+      HistoryIconCopyButton(
+        label: String(
+          localized: "Copy transcript",
+          comment:
+            "History meeting card: copies the meeting's transcript. Tooltip and VoiceOver label."),
+        isEnabled: canDeliver(record)
+      ) { deliveryText() }
 
       Button {
         guard let anchor = moreAnchor.view else { return }
