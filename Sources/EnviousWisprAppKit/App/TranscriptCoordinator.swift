@@ -353,14 +353,24 @@ final class TranscriptCoordinator {
   }
 
   /// #4598: an older page kept on screen while the current one is read. Each catalog row must
-  /// still match its source files on every call (a changed or deleted recording is hidden on its
-  /// own row; no cache, since the source revision is nil while a writer is active), and the page
-  /// carries no day totals or continuations, so it cannot page or authorize selection
+  /// still match its source files (a changed or deleted recording is hidden on its own row), and
+  /// the page carries no day totals or continuations, so it cannot page or authorize selection
   /// (`isCurrentHistoryResult` also requires the current source revision).
-  func retainedHistoryResult(_ saved: HistoryQueryResult) -> HistoryQueryResult? {
-    let items = saved.items.filter { item in
-      guard case .catalog(let summary) = item else { return true }
-      return (try? summary.sourcesStillMatch()) == true
+  /// #4586 N1: the file checks run off the main actor (`@concurrent`), once per change the list
+  /// wakes for, never while drawing; the list drops the answer if anything moved meanwhile.
+  func retainedHistoryResult(_ saved: HistoryQueryResult) async -> HistoryQueryResult? {
+    await Self.verifyRetained(saved)
+  }
+
+  @concurrent private nonisolated static func verifyRetained(_ saved: HistoryQueryResult) async -> HistoryQueryResult? {
+    var items: [HistoryListItem] = []
+    for item in saved.items {
+      guard !Task.isCancelled else { return nil }
+      guard case .catalog(let summary) = item else {
+        items.append(item)
+        continue
+      }
+      if (try? summary.sourcesStillMatch()) == true { items.append(item) }
     }
     return try? HistoryQueryResult(key: saved.key, items: items, catalogSourceRevision: saved.catalogSourceRevision)
   }

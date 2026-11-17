@@ -48,13 +48,10 @@ struct HistoryDiaryView<
     let saved = results[tab]
     let source = coordinator.catalogSession?.stableSourceRevision
     // #4598: a page for the same tab, search and filters stays on screen while a newer one is
-    // read; its rows are re-verified against their files and it cannot page, select or count.
+    // read; it cannot page, select or count. #4586 N1: its rows are re-verified against their
+    // files by the refresh loop on every wake, never here while drawing.
     let result =
-      saved?.catalogSourceRevision == source
-      ? saved
-      : saved.flatMap {
-        $0.key.context == key.context ? coordinator.retainedHistoryResult($0) : nil
-      }
+      saved?.catalogSourceRevision == source || saved?.key.context == key.context ? saved : nil
     let current = result?.key == key
     let canSelect = result.map(coordinator.isCurrentHistoryResult) == true
     let catalogStatus = coordinator.catalogSession?.status
@@ -149,7 +146,20 @@ struct HistoryDiaryView<
       await readPage(tab: tab, key: currentKey(tab))
       return
     }
+    let retained = RetainedDone()
+    let verification = HistoryRetainedVerification(
+      stamp: {
+        guard let saved = results[tab], saved.catalogSourceRevision != session.stableSourceRevision
+        else { return nil }
+        return .init(
+          key: currentKey(tab), notices: session.noticeCount, source: session.stableSourceRevision,
+          grouping: groupingRevision, stored: saved.identity)
+      },
+      stored: { results[tab] },
+      verify: { saved in await coordinator.retainedHistoryResult(saved) },
+      store: { results[tab] = $0 })
     await HistoryRefreshLoop(
+      beforeRead: { retained.stamp = await verification.run(done: retained.stamp) },
       counters: {
         .init(content: session.revision, notices: session.noticeCount, source: session.stableSourceRevision)
       },
@@ -187,9 +197,18 @@ struct HistoryDiaryView<
       live.scrollAnchorID = open
       coordinator.setHistoryState(live, for: tab)
     }
-    guard let result = await coordinator.historyResults(for: key), !Task.isCancelled,
+    guard let read = await coordinator.historyResults(for: key), !Task.isCancelled,
       coordinator.historyTab == tab
     else { return }
+    // #4586 N1: the same page again is not re-published; a newer content revision is recorded
+    // on the stored page without rebuilding it.
+    let result: HistoryQueryResult
+    if let stored = results[tab], stored.samePage(as: read) {
+      guard stored.key != read.key else { return }
+      result = stored.restamped(key: read.key)
+    } else {
+      result = read
+    }
     #if DEBUG
       // #4611 listening code: how long after its save a new item reached the list.
       if let newest = result.items.first, newest.id != results[tab]?.items.first?.id {
@@ -1364,6 +1383,12 @@ private enum HistoryFirstPage {
     guard accepted.contains(tab), drawn.insert(tab).inserted else { return }
     DispatchQueue.main.async { HistorySignpost.event("HistoryFirstPageDrawn") }
   }
+}
+
+/// The last kept-page verification done by a refresh loop (unobserved).
+@MainActor
+private final class RetainedDone {
+  var stamp: HistoryRetainedVerification.Stamp?
 }
 
 /// The list's place decision, kept outside observation so deciding it never redraws the list.

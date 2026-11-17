@@ -76,7 +76,7 @@ struct HistoryLoadLoopTests {
 
     // Before any newer page arrives, the screen keeps every unaffected row and hides only the
     // row whose file changed; the kept page cannot page or authorize selection.
-    let kept = try #require(f.coordinator.retainedHistoryResult(shown))
+    let kept = try #require(await f.coordinator.retainedHistoryResult(shown))
     #expect(kept.items.count == 29)
     #expect(!kept.ids.contains(.transcript(edited.key.id)))
     #expect(kept.continuation == nil && kept.catalogDayCounts == nil)
@@ -85,7 +85,7 @@ struct HistoryLoadLoopTests {
     // During an in-process write the source revision is unknown; a second shown row changed
     // in that interval is still hidden on the next render (Codex code review r1).
     f.changes.begin()
-    _ = try #require(f.coordinator.retainedHistoryResult(shown))
+    _ = try #require(await f.coordinator.retainedHistoryResult(shown))
     guard case .catalog(let second) = shown.items[1] else {
       Issue.record("The catalog page did not return catalog rows")
       return
@@ -95,7 +95,7 @@ struct HistoryLoadLoopTests {
     try secondHandle.seekToEnd()
     try secondHandle.write(contentsOf: Data("\n".utf8))
     try secondHandle.close()
-    let keptAgain = try #require(f.coordinator.retainedHistoryResult(shown))
+    let keptAgain = try #require(await f.coordinator.retainedHistoryResult(shown))
     #expect(keptAgain.items.count == 28)
     #expect(!keptAgain.ids.contains(.transcript(second.key.id)))
     f.changes.finish(.transcript(second.key.id))

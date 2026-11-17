@@ -133,6 +133,34 @@ struct HistoryQueryResult: Sendable {
       catalogDayCounts: catalogDayCounts)
   }
 
+  /// Whether `other` lists exactly this page for the same request and source (#4586 N1): the
+  /// same items with the same catalog content, continuations and day counts. Its key's content
+  /// revision may differ.
+  func samePage(as other: HistoryQueryResult) -> Bool {
+    guard key.request == other.key.request, catalogSourceRevision == other.catalogSourceRevision,
+      continuation == other.continuation, newerContinuation == other.newerContinuation,
+      catalogDayCounts == other.catalogDayCounts, items.count == other.items.count
+    else { return false }
+    for (mine, theirs) in zip(items, other.items) {
+      guard case .catalog(let left) = mine, case .catalog(let right) = theirs, left == right else {
+        return false
+      }
+    }
+    return true
+  }
+
+  /// This page under `key` (the content revision a newer read of the same page carried), with a
+  /// new identity and the same arrays, so recording its freshness rebuilds nothing.
+  func restamped(key: TranscriptCoordinator.HistoryQueryKey) -> HistoryQueryResult {
+    HistoryQueryResult(
+      key: key, items: items,
+      layout: Layout(
+        positions: positions, entries: entries, rowOffsets: rowOffsets, dayPositions: dayPositions,
+        dayEntries: dayEntries),
+      ids: ids, continuation: continuation, newerContinuation: newerContinuation,
+      catalogSourceRevision: catalogSourceRevision, catalogDayCounts: catalogDayCounts)
+  }
+
   /// What the list draws from the items: positions, headings and rows in order.
   private struct Layout: Sendable {
     var positions: [HistoryItemID: Int] = [:]
@@ -196,6 +224,9 @@ struct HistoryQueryResult: Sendable {
 /// notice, never in a tight loop: each (key, notices, source) stamp is attempted once.
 @MainActor
 struct HistoryRefreshLoop {
+  /// Runs first on every pass, before any read (#4586 N1: a kept page's rows are re-checked
+  /// against their files on every wake, not while drawing).
+  let beforeRead: @MainActor () async -> Void
   struct Counters: Equatable {
     let content: UInt64
     let notices: UInt64
@@ -221,6 +252,7 @@ struct HistoryRefreshLoop {
     while !Task.isCancelled {
       let now = counters()
       let key = currentKey()
+      await beforeRead()
       let stamp = Stamp(key: key, notices: now.notices, source: now.source)
       if storedKey() != key, attempted != stamp {
         attempted = stamp
@@ -255,6 +287,38 @@ struct HistoryListPlace {
     shown = shownContext
     current = Restore(token: (current?.token ?? 0) + 1, target: first ? saved : nil)
     return current
+  }
+}
+
+/// #4586 N1: re-checks a kept page's rows against their files off the drawing path, and drops
+/// the answer when anything it was computed from moved before it finished: the tab's key, the
+/// change notices, the source revision, the grouping, or the stored page itself.
+@MainActor
+struct HistoryRetainedVerification {
+  struct Stamp: Equatable {
+    let key: TranscriptCoordinator.HistoryQueryKey
+    let notices: UInt64
+    let source: UInt64?
+    let grouping: Int
+    let stored: UUID
+  }
+
+  /// The stamp to verify under now, or nil when no kept page needs checking.
+  let stamp: @MainActor () -> Stamp?
+  let stored: @MainActor () -> HistoryQueryResult?
+  let verify: @MainActor (HistoryQueryResult) async -> HistoryQueryResult?
+  let store: @MainActor (HistoryQueryResult) -> Void
+
+  /// Verifies once for a stamp not yet `done`; returns the stamp now done. A dropped answer
+  /// leaves `done` as it was, so the newer change is verified on its own wake.
+  func run(done: Stamp?) async -> Stamp? {
+    guard let before = stamp(), before != done, let saved = stored(), saved.identity == before.stored
+    else { return done }
+    guard let verified = await verify(saved), !Task.isCancelled, stamp() == before,
+      stored()?.identity == before.stored
+    else { return done }
+    store(verified)
+    return stamp()
   }
 }
 

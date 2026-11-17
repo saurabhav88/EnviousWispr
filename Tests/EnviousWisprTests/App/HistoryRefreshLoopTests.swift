@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprStorage
 import Foundation
 import Testing
 
@@ -23,6 +24,7 @@ struct HistoryRefreshLoopTests {
     var pendingRead: CheckedContinuation<Bool, Never>?
     var pendingWait: CheckedContinuation<Void, Never>?
     var waits = 0
+    var beforeReads = 0
 
     func key() -> TranscriptCoordinator.HistoryQueryKey {
       .init(
@@ -32,6 +34,7 @@ struct HistoryRefreshLoopTests {
 
     func loop() -> HistoryRefreshLoop {
       HistoryRefreshLoop(
+        beforeRead: { self.beforeReads += 1 },
         counters: { .init(content: self.content, notices: self.notices, source: self.source) },
         currentKey: { self.key() },
         storedKey: { self.stored },
@@ -136,4 +139,75 @@ struct HistoryRefreshLoopTests {
     var returned = HistoryListPlace()
     #expect(returned.restore(shownContext: all, requested: all, saved: deep)?.target == deep)
   }
+
+  @Test("A kept page's file check is dropped when anything moved, and done once per change")
+  func retainedVerificationDropsStaleAnswers() async {
+    let key = World().key()
+    let page = try? HistoryQueryResult(key: key, items: [])
+    let checked = try? HistoryQueryResult(key: key, items: [])
+    guard let page, let checked else {
+      Issue.record("could not build a page")
+      return
+    }
+    final class Box {
+      var stored: HistoryQueryResult
+      var notices: UInt64 = 0
+      var verifications = 0
+      var duringVerify: () -> Void = {}
+      init(_ stored: HistoryQueryResult) { self.stored = stored }
+    }
+    let box = Box(page)
+    let verification = HistoryRetainedVerification(
+      stamp: { .init(key: key, notices: box.notices, source: 2, grouping: 0, stored: box.stored.identity) },
+      stored: { box.stored },
+      verify: { _ in
+        box.verifications += 1
+        box.duringVerify()
+        return checked
+      },
+      store: { box.stored = $0 })
+
+    // A change notice while the check runs: the answer is dropped and the stamp stays undone.
+    box.duringVerify = { box.notices += 1 }
+    let dropped = await verification.run(done: nil)
+    #expect(dropped == nil)
+    #expect(box.stored.identity == page.identity)
+
+    // Nothing moves: the checked page is stored and that stamp is done.
+    box.duringVerify = {}
+    let done = await verification.run(done: dropped)
+    #expect(box.stored.identity == checked.identity)
+    #expect(done != nil)
+
+    // The same stamp again: no second check.
+    let count = box.verifications
+    #expect(await verification.run(done: done) == done)
+    #expect(box.verifications == count)
+  }
+
+  @Test("The same page read again is recognized; a newer content revision is recorded without a rebuild")
+  func samePageIsRecognized() throws {
+    let older = World()
+    let newer = World()
+    newer.content = 1
+    let summary = HistoryCatalog.Summary(
+      key: .init(tab: .dictations, id: UUID()), date: Date(timeIntervalSinceReferenceDate: 780_000_000),
+      preview: "", sources: [])
+    let first = try HistoryQueryResult(
+      key: older.key(), items: [.catalog(summary)], catalogSourceRevision: 3, catalogDayCounts: [:])
+    let again = try HistoryQueryResult(
+      key: newer.key(), items: [.catalog(summary)], catalogSourceRevision: 3, catalogDayCounts: [:])
+    #expect(first.samePage(as: again))
+    let restamped = first.restamped(key: again.key)
+    #expect(restamped.key == again.key)
+    #expect(restamped.identity != first.identity)
+    #expect(restamped.items.map(\.id) == first.items.map(\.id))
+    let other = try HistoryQueryResult(
+      key: newer.key(), items: [], catalogSourceRevision: 3, catalogDayCounts: [:])
+    #expect(first.samePage(as: other) == false)
+    let otherSource = try HistoryQueryResult(
+      key: newer.key(), items: [.catalog(summary)], catalogSourceRevision: 4, catalogDayCounts: [:])
+    #expect(first.samePage(as: otherSource) == false)
+  }
 }
+
