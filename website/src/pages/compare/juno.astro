@@ -1,5 +1,6 @@
 ---
 import CompareLayout from '../../layouts/CompareLayout.astro';
+import { faqAnswerHtml } from '../../utils/compare-faq.js';
 import CompareDecisionSummary from '../../components/CompareDecisionSummary.astro';
 
 const meta = {
@@ -244,7 +245,7 @@ const faqs = [
       </span>
       <span class="hero-pill">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        0.61s median latency
+        Sub-second for short dictations
       </span>
     </div>
     <div class="hero-cta reveal">
@@ -382,7 +383,7 @@ const faqs = [
           </tr>
           <tr>
             <td>Transcription latency</td>
-            <td><span class="table-highlight">0.61s median</span>; ~1.65s with on-device AI polish</td>
+            <td><span class="table-highlight">Under a second</span> for typical short dictations; AI polish adds time that grows with length</td>
             <td>Not published</td>
           </tr>
           <tr>
@@ -513,22 +514,22 @@ const faqs = [
     </div>
     <div class="speed-stats">
       <div class="speed-card reveal">
-        <div class="speed-value">0.61s</div>
-        <div class="speed-label">Median transcription</div>
-        <div class="speed-detail">From end of speech to raw text</div>
+        <div class="speed-value">&lt;1s</div>
+        <div class="speed-label">Transcription, short dictations</div>
+        <div class="speed-detail">Typical time after you stop speaking</div>
       </div>
       <div class="speed-card reveal">
-        <div class="speed-value">1.65s</div>
-        <div class="speed-label">With AI polish</div>
-        <div class="speed-detail">EG-1 or Apple, on-device</div>
+        <div class="speed-value">Scales</div>
+        <div class="speed-label">AI polish time</div>
+        <div class="speed-detail">Grows with how much you dictated</div>
       </div>
       <div class="speed-card reveal">
         <div class="speed-value">0ms</div>
         <div class="speed-label">Network overhead</div>
-        <div class="speed-detail">Immune to bad Wi-Fi</div>
+        <div class="speed-detail">Transcription is immune to bad Wi-Fi</div>
       </div>
     </div>
-    <p style="font-size: 11px; color: var(--text-3); margin-top: 12px; text-align: center;">Based on production data from Apple Silicon Macs. Results vary by hardware and settings. Juno does not publish comparable latency figures.</p>
+    <p style="font-size: 11px; color: var(--text-3); margin-top: 12px; text-align: center;">Transcription time is the median for short dictations (under 5 seconds of speech) with the default Parakeet Ultra engine, from production use on Apple Silicon Macs, measured October 2026. It is still under a second on the oldest supported Macs (M1). It excludes AI polish and pasting; longer recordings take longer. Juno does not publish comparable latency figures.</p>
   </div>
 </section>
 
@@ -609,46 +610,12 @@ const faqs = [
       <h2 class="section-title">Common questions</h2>
     </div>
     <div class="faq-list">
-      <div class="faq-item reveal">
-        <div class="faq-q">Is EnviousWispr free, like Juno?</div>
-        <p class="faq-a">Yes. Both EnviousWispr and Juno are completely free, with no subscription, no usage cap, and no account required. Both are also open source: EnviousWispr under GPLv3, Juno under MIT.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">What Mac do I need for each app?</div>
-        <p class="faq-a">This is the biggest practical difference. Juno's own site states it needs an M2 or newer Apple Silicon Mac, macOS 15 Sequoia or later, and at least 24GB of RAM. EnviousWispr runs on any Apple Silicon Mac (M1 or later) on macOS 14 Sonoma or later, with no published RAM minimum. If you own an M1 Mac, or a Mac with 16GB of RAM, or you have not updated to macOS 15, EnviousWispr works there and Juno's own stated requirements say it will not.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Is Juno just a dictation app, or something more?</div>
-        <p class="faq-a">Something more. Juno can create Notes, Reminders, and one-shot alarms from Voice Actions after you say Hey Juno. Its separate Voice Commands for rewriting text do not need a wake phrase while dictating. It can also learn from clear corrections, expand snippets, and apply a different Style per app. EnviousWispr has snippets too, and otherwise focuses on turning speech into clean text wherever your cursor is.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Does Juno have AI cleanup like EnviousWispr's EG-1?</div>
-        <p class="faq-a">Yes, and like EG-1, it runs on-device with no prompt for you to write. Opening Juno's own model manager shows the pieces: Whisper Large V3 Turbo transcribes, a small Qwen3 0.6B model handles live correction as you speak, and a larger Qwen3 4B Instruct model does smart formatting afterward, both separate downloads from transcription itself. The main difference is scope: EG-1 is purpose-built for cleaning up dictation and its performance is something we measure and publish. Juno's cleanup is part of a broader voice-assistant pipeline that also handles rewriting and app actions, and we found no published benchmark for it.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Can I use EnviousWispr completely offline?</div>
-        <p class="faq-a">Yes. After the one-time model download, transcription runs entirely on-device with no internet required. AI polish can also run offline using EG-1 (our own model, macOS 14+), S1-mini by Superwhisper, Apple Intelligence (macOS 26+), or Ollama with a local model. Cloud providers like OpenAI, Claude, or Gemini are optional and require your own API key.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Is EnviousWispr open source like Juno?</div>
-        <p class="faq-a">Yes, though under a different license. EnviousWispr is licensed under the GNU General Public License v3 (GPLv3), a copyleft license: a distributed derivative must also be open under GPLv3. Juno is licensed under the MIT license, a more permissive license that lets anyone fold the code into a closed-source or commercial product. Both are genuinely open source.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Can I import my Juno custom words into EnviousWispr?</div>
-        <p class="faq-a">Yes. EnviousWispr's Smart Import reads your custom vocabulary directly out of Juno, without changing Juno's own files, and shows you every word it found before anything joins your library. Juno ships with roughly 400 built-in terms of its own; only the words you added are imported, so your list stays yours. It also imports from Wispr Flow, Superwhisper, FluidVoice, Handy, TypeWhisper, Spokenly, and Vox.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Does Juno support Intel Macs or older Apple Silicon?</div>
-        <p class="faq-a">No, per Juno's own stated requirements: M2 or newer only. EnviousWispr supports every Apple Silicon Mac starting with the original M1.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Can I recover a dictation I cancelled by accident with Juno?</div>
-        <p class="faq-a">We found no documentation of a recovery or undo feature for a cancelled Juno dictation. EnviousWispr has Escape Recovery, on by default, which keeps a dictation you cancel with your keybind or a triple press instead of discarding it instantly, and offers an Undo button afterward.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Can I switch from Juno to EnviousWispr easily?</div>
-        <p class="faq-a">Yes. Download EnviousWispr, set your keybind, and Smart Import can bring your Juno custom words across in one pass. There is no other data to migrate for dictation purposes, though Juno's Notes, Reminders, and alarm actions have no equivalent in EnviousWispr, since we are a dictation tool rather than a voice assistant. Both apps work in any text field on macOS.</p>
-      </div>
+      {faqs.map(({ q, a }) => (
+        <div class="faq-item reveal">
+          <div class="faq-q">{q}</div>
+          <p class="faq-a" set:html={faqAnswerHtml(a)} />
+        </div>
+      ))}
     </div>
   </div>
 </section>

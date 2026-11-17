@@ -1,5 +1,6 @@
 ---
 import CompareLayout from '../../layouts/CompareLayout.astro';
+import { faqAnswerHtml } from '../../utils/compare-faq.js';
 
 const meta = {
   "slug": "willow-voice",
@@ -20,11 +21,11 @@ const faqs = [
   },
   {
     "q": "Is EnviousWispr really free with no limits?",
-    "a": "Yes. No subscription, no usage caps, no word-per-week limits. Willow Voice's free tier is unlimited on its weaker model, but its premium Scribe feature is capped at 20 uses per week. EnviousWispr has no such restriction."
+    "a": "Yes. No subscription, no usage caps, no word-per-week limits. Willow Voice's free tier is unlimited on its weaker model, but its premium Scribe feature is capped at 20 uses per week. EnviousWispr has no such restriction. The source code is open source on GitHub under the GPLv3 license."
   },
   {
     "q": "Does Willow Voice work offline?",
-    "a": "Partly. Willow Voice transcribes in the cloud by default, and now also offers an offline mode that runs on your device; Willow's own pages describe it for Mac and iOS on its paid plan. EnviousWispr was built on-device from the start and works offline on every plan, because there is only one, and it is free. Parakeet Ultra and Whisper run natively on Apple Silicon, delivering 0.61s median latency without any cloud dependency."
+    "a": "Partly. Willow Voice transcribes in the cloud by default, and now also offers an offline mode that runs on your device; Willow's own pages describe it for Mac and iOS on its paid plan. EnviousWispr was built on-device from the start and works offline on every plan, because there is only one, and it is free. Parakeet Ultra and Whisper run natively on Apple Silicon, with no cloud dependency; short dictations are typically transcribed in under a second."
   },
   {
     "q": "Does EnviousWispr work offline?",
@@ -36,7 +37,7 @@ const faqs = [
   },
   {
     "q": "Can I switch from Willow Voice easily?",
-    "a": "Yes. Download EnviousWispr, set your keybind, and start dictating. There is no data to migrate. Both apps work in any text field on macOS."
+    "a": "Yes. Download EnviousWispr, set your keybind, and start dictating. There is no data to migrate. Both apps work in any text field on macOS. See the [2-minute getting started guide](/blog/getting-started-enviouswispr-under-2-minutes/)."
   },
   {
     "q": "What Mac do I need?",
@@ -44,14 +45,14 @@ const faqs = [
   },
   {
     "q": "Does EnviousWispr use the cloud at all?",
-    "a": "Transcription is always on-device. If you choose to enable AI polish with a cloud provider, only the text transcript is sent using your own API key. You can also polish with a local model for fully offline operation."
+    "a": "Transcription is always on-device. If you choose to enable AI polish with a cloud provider (OpenAI, Gemini, or Claude), only the text transcript is sent using your own API key. You can also polish with a local model for fully offline operation. The choice is yours."
   },
   {
     "q": "Is EnviousWispr open source?",
-    "a": "Open source under the GNU General Public License v3 (GPLv3), an OSI-approved license. You can read, build, and inspect every line of code on GitHub. Contributions are welcome."
+    "a": "Open source under the GNU General Public License v3 (GPLv3), an OSI-approved license. You can read, build, inspect, and contribute to every line of code on GitHub. Contributions are welcome."
   },
   {
-    "q": "How does EnviousWispr handle filler words like um and uh?",
+    "q": "How does EnviousWispr handle filler words like \"um\" and \"uh\"?",
     "a": "EnviousWispr automatically strips filler words from transcripts before they reach your text field. This happens at the post-processing stage, before AI polish, so even without an LLM enabled your text comes out clean."
   },
   {
@@ -246,7 +247,7 @@ const faqs = [
       </span>
       <span class="hero-pill">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        0.61s median latency
+        Sub-second for short dictations
       </span>
     </div>
     <div class="hero-cta reveal">
@@ -286,7 +287,7 @@ const faqs = [
                - Security: willowvoice.com - SOC 2, HIPAA, zero data retention, privacy mode (Business/Enterprise tiers)
                - Backing: YC-backed
              Firsthand testing: Willow Voice was not tested firsthand for this comparison.
-             EnviousWispr latency (0.61s / 1.65s) and language count (99+ via Whisper) re-measured 2026-08-21.
+             EnviousWispr transcription timing: Sources/EnviousWisprAppKit/Views/Settings/EngineChoicePresentation.swift (#3792, measured 2026-10-15); no whole-path speed figure (#3895); language count (99+ via Whisper) re-measured 2026-08-21.
              2026-10-17 re-check (willowvoice.com, willowvoice.com/pricing, willowvoice.com/blog, help.willowvoice.com):
                Homepage now lists "Offline mode: Dictate without an internet connection, powered entirely by your device."
                Willow's blog (2026-10-16) describes it for Mac and iOS (not Windows); its pricing help article lists offline
@@ -393,13 +394,13 @@ const faqs = [
           </tr>
           <tr>
             <td>Transcription latency</td>
-            <td><span class="table-highlight">0.61s median</span>; ~1.65s with on-device AI polish</td>
+            <td><span class="table-highlight">Under a second</span> for typical short dictations; AI polish adds time that grows with length</td>
             <td>Claims "as little as 200ms"; depends on network and server load</td>
           </tr>
         </tbody>
       </table>
     </div>
-    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">*Based on Willow Voice's public pricing page, last checked October 2026 ($12/mo billed annually for the Pro plan). EnviousWispr latency from production PostHog data on Apple Silicon Macs, 30-day trailing median. Willow Voice claims source-verified from willowvoice.com; not firsthand-tested. "Not specified" means the feature is not documented on their public site. Competitor claims last verified: 2026-10-17.</p>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">*Based on Willow Voice's public pricing page, last checked October 2026 ($12/mo billed annually for the Pro plan). EnviousWispr transcription time is the median for short dictations with the default engine, from production use on Apple Silicon Macs (October 2026), excluding AI polish and pasting. Willow Voice claims source-verified from willowvoice.com; not firsthand-tested. "Not specified" means the feature is not documented on their public site. Competitor claims last verified: 2026-10-17.</p>
     <div style="text-align: center; margin-top: 28px;">
       <a href="/#download" class="btn-primary">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -431,7 +432,7 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">⚡</div>
         <div class="advantage-title">Fast local transcription</div>
-        <p class="advantage-desc">Median time to text is 0.61s on Apple Silicon. With AI polish, 1.65s. No network round-trips, no server queues. Immune to bad Wi-Fi, VPN latency, or cloud outages.</p>
+        <p class="advantage-desc">Short dictations are typically transcribed in under a second on Apple Silicon, and AI polish adds time that grows with length. Transcription has no network round-trips or server queues, so it is immune to bad Wi-Fi, VPN latency, or cloud outages.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🚫</div>
@@ -550,26 +551,26 @@ const faqs = [
     <div class="section-head reveal">
       <div class="section-label-pill amber">Speed</div>
       <h2 class="section-title">Fast because there is no upload step</h2>
-      <p class="section-sub">On Apple Silicon Macs, EnviousWispr transcribes speech locally. No network round-trip before text appears.</p>
+      <p class="section-sub">On Apple Silicon Macs, EnviousWispr transcribes speech locally. Transcription never waits on an upload round trip.</p>
     </div>
     <div class="speed-stats">
       <div class="speed-card reveal">
-        <div class="speed-value">0.61s</div>
-        <div class="speed-label">Median transcription</div>
-        <div class="speed-detail">From end of speech to raw text</div>
+        <div class="speed-value">&lt;1s</div>
+        <div class="speed-label">Transcription, short dictations</div>
+        <div class="speed-detail">Typical time after you stop speaking</div>
       </div>
       <div class="speed-card reveal">
-        <div class="speed-value">1.65s</div>
-        <div class="speed-label">With AI polish</div>
-        <div class="speed-detail">EG-1 or Apple, on-device</div>
+        <div class="speed-value">Scales</div>
+        <div class="speed-label">AI polish time</div>
+        <div class="speed-detail">Grows with how much you dictated</div>
       </div>
       <div class="speed-card reveal">
         <div class="speed-value">0ms</div>
         <div class="speed-label">Network overhead</div>
-        <div class="speed-detail">Immune to bad Wi-Fi</div>
+        <div class="speed-detail">Transcription is immune to bad Wi-Fi</div>
       </div>
     </div>
-    <p style="font-size: 11px; color: var(--text-3); margin-top: 12px; text-align: center;">Based on production data from Apple Silicon Macs. Results vary by hardware and settings.</p>
+    <p style="font-size: 11px; color: var(--text-3); margin-top: 12px; text-align: center;">Transcription time is the median for short dictations (under 5 seconds of speech) with the default Parakeet Ultra engine, from production use on Apple Silicon Macs, measured October 2026. It is still under a second on the oldest supported Macs (M1). It excludes AI polish and pasting; longer recordings take longer.</p>
   </div>
 </section>
 
@@ -620,50 +621,12 @@ const faqs = [
       <h2 class="section-title">Common questions</h2>
     </div>
     <div class="faq-list">
-      <div class="faq-item reveal">
-        <div class="faq-q">Is there a free alternative to Willow Voice?</div>
-        <p class="faq-a">Yes. EnviousWispr offers on-device transcription on Apple Silicon Macs, completely free, with no account, no word limits, and no subscription required. It works offline and keeps your audio on your device.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Is EnviousWispr really free with no limits?</div>
-        <p class="faq-a">Yes. No subscription, no usage caps, no word-per-week limits. Willow Voice's free tier is unlimited on its weaker model, but its premium Scribe feature is capped at 20 uses per week. EnviousWispr has no such restriction. The source code is open source on GitHub under the GPLv3 license.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Does Willow Voice work offline?</div>
-        <p class="faq-a">Partly. Willow Voice transcribes in the cloud by default, and now also offers an offline mode that runs on your device; Willow's own pages describe it for Mac and iOS on its paid plan. EnviousWispr was built on-device from the start and works offline on every plan, because there is only one, and it is free. Parakeet Ultra and Whisper run natively on Apple Silicon, delivering 0.61s median latency without any cloud dependency.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Does EnviousWispr work offline?</div>
-        <p class="faq-a">Transcription runs entirely on-device and works without internet. AI polish requires an LLM; you can use a local model for fully offline operation or bring your own API key for a cloud provider.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Will my audio be used for training?</div>
-        <p class="faq-a">No. Your audio is processed on your Mac and discarded after transcription. It never leaves your device, so it cannot be used for anything else.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Can I switch from Willow Voice easily?</div>
-        <p class="faq-a">Yes. Download EnviousWispr, set your keybind, and start dictating. There is no data to migrate. Both apps work in any text field on macOS. See the <a href="/blog/getting-started-enviouswispr-under-2-minutes/" style="color: var(--accent); text-decoration: underline;">2-minute getting started guide</a>.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">What Mac do I need?</div>
-        <p class="faq-a">Any Mac with Apple Silicon (M1 or later) running macOS 14 Sonoma or newer. The Neural Engine and GPU on Apple Silicon are what make on-device transcription fast.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Does EnviousWispr use the cloud at all?</div>
-        <p class="faq-a">Transcription is always on-device. If you choose to enable AI polish with a cloud provider (OpenAI, Gemini, or Claude), only the text transcript is sent using your own API key. You can also polish with a local model for fully offline operation. The choice is yours.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Is EnviousWispr open source?</div>
-        <p class="faq-a">Open source under the GNU General Public License v3 (GPLv3), an OSI-approved license. You can read, build, inspect, and contribute to every line of code on GitHub. Contributions are welcome.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">How does EnviousWispr handle filler words like "um" and "uh"?</div>
-        <p class="faq-a">EnviousWispr automatically strips filler words (um, uh, like, you know) from transcripts before they reach your text field. This happens at the post-processing stage, before AI polish, so even without an LLM enabled your text comes out clean.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">What happens to my clipboard when EnviousWispr pastes text?</div>
-        <p class="faq-a">When clipboard restoration is on (the default), EnviousWispr saves your clipboard contents before a clipboard-based paste and restores them afterward, unless another app changes the clipboard in between. Direct text insertion never touches your clipboard at all.</p>
-      </div>
+      {faqs.map(({ q, a }) => (
+        <div class="faq-item reveal">
+          <div class="faq-q">{q}</div>
+          <p class="faq-a" set:html={faqAnswerHtml(a)} />
+        </div>
+      ))}
     </div>
   </div>
 </section>

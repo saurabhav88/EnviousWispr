@@ -33,9 +33,8 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.
 const COUNT = '99+';
 
 // [file, phrase] — phrase is a single-line substring of the claim and carries
-// COUNT exactly once. Pairs where the same sentence ships twice in one file
-// (FAQ JSON + rendered FAQ) are listed once per copy, with the wrapper that
-// distinguishes the two.
+// COUNT exactly once. A compare page's visible FAQ is rendered from its `faqs`
+// list (#3866), so an FAQ answer is listed once, by its `"a": "` source line.
 const SITES = [
   ['README.md', 'Whisper (99+ languages, with automatic language detection)'],
   ['README.md', 'Broadest language coverage and automatic language detection | 99+ languages | ~0.9 GB'],
@@ -53,7 +52,6 @@ const SITES = [
   ['website/src/pages/compare/best-dictation-apps-for-mac.astro', 'you can switch to Whisper for 99+ languages.'],
   ['website/src/pages/compare/fluidvoice.astro', '"a": "EnviousWispr runs Parakeet Ultra for 25 European languages and Whisper for 99+ languages, switched manually under Dictation Settings, Engine.'],
   ['website/src/pages/compare/fluidvoice.astro', '<td>25 European (Parakeet), 99+ via Whisper</td>'],
-  ['website/src/pages/compare/fluidvoice.astro', '<p class="faq-a">EnviousWispr runs Parakeet Ultra for 25 European languages and Whisper for 99+ languages, switched manually under Dictation Settings, Engine.'],
   ['website/src/pages/compare/google-docs-voice-typing.astro', '<td>25 European (Parakeet), 99+ languages via Whisper</td>'],
   ['website/src/pages/compare/google-docs-voice-typing.astro', 'Whisper supports 99+ but with varying accuracy'],
   ['website/src/pages/compare/handy.astro', '<td>25 European (Parakeet), 99+ via Whisper</td>'],
@@ -62,15 +60,11 @@ const SITES = [
   ['website/src/pages/compare/superwhisper.astro', '"a": "Yes. EnviousWispr offers on-device transcription on Apple Silicon Macs, completely free, with no account or subscription required. It uses Parakeet Ultra for 25 European languages and Whisper for 99+."'],
   ['website/src/pages/compare/superwhisper.astro', 'language count (99+ via Whisper) re-measured 2026-08-21'],
   ['website/src/pages/compare/superwhisper.astro', '<td>25 European (Parakeet), 99+ languages via Whisper</td>'],
-  ['website/src/pages/compare/superwhisper.astro', '<p class="faq-a">Yes. EnviousWispr offers on-device transcription on Apple Silicon Macs, completely free, with no account or subscription required. It uses Parakeet Ultra for 25 European languages and Whisper for 99+.</p>'],
   ['website/src/pages/compare/typewhisper.astro', '"a": "EnviousWispr runs Parakeet Ultra for 25 European languages and Whisper for 99+ languages, switched manually in Settings.'],
-  ['website/src/pages/compare/typewhisper.astro', '<p class="faq-a">EnviousWispr runs Parakeet Ultra for 25 European languages and Whisper for 99+ languages, switched manually in Settings.'],
   ['website/src/pages/compare/voiceink.astro', '"a": "Yes. Parakeet Ultra covers 25 European languages. For wider coverage, you can switch EnviousWispr to Whisper, which supports 99+ languages. VoiceInk\'s language coverage depends on the model you pick; its Whisper and Nemotron models cover many languages."'],
-  ['website/src/pages/compare/voiceink.astro', 'EnviousWispr supports 99+ languages via Whisper and 25 European languages with Parakeet Ultra.'],
   ['website/src/pages/compare/voiceink.astro', '<td>25 European (Parakeet), 99+ languages via Whisper</td>'],
   ['website/src/pages/compare/voiceink.astro', 'Whisper handles 99+ languages when you need wider coverage'],
   ['website/src/pages/compare/voiceink.astro', 'EnviousWispr supports 99+ via Whisper, and Parakeet Ultra (the fast engine)'],
-  ['website/src/pages/compare/voiceink.astro', '<p class="faq-a">Yes. Parakeet Ultra covers 25 European languages. For wider coverage, you can switch EnviousWispr to Whisper, which supports 99+ languages. VoiceInk\'s language coverage depends on the model you pick; its Whisper and Nemotron models cover many languages.</p>'],
   ['website/src/pages/compare/voiceink.astro', 'EnviousWispr supports 99+ via Whisper, and its fastest engine (Parakeet Ultra)'],
   ['website/src/pages/compare/whisper-cpp.astro', '<td>25 European (Parakeet), 99+ via Whisper</td>'],
   ['website/src/pages/compare/whisper-cpp.astro', 'with 99+ languages via Whisper as a secondary option'],
