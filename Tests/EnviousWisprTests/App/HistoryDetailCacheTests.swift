@@ -46,6 +46,41 @@ struct HistoryDetailCacheTests {
     #expect(flag.fired)
   }
 
+  @Test("Hydrating one row through the coordinator redraws only views showing that row")
+  func coordinatorReadersAreIndependent() async throws {
+    let root = TestTemporaryDirectory.url.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let changes = HistorySourceChanges()
+    let store = TranscriptStore(directory: root.appendingPathComponent("transcripts"), historyChanges: changes)
+    let meetings = MeetingStore(root: root.appendingPathComponent("Meetings"), historyChanges: changes)
+    // B is the newest dictation, so the latest-dictation scan after indexing reads only B.
+    let base = Date(timeIntervalSinceReferenceDate: 750_000_000)
+    let a = Transcript(text: "row a", processingTime: 0, backendType: .parakeet, createdAt: base)
+    let b = Transcript(
+      text: "row b", processingTime: 0, backendType: .parakeet, createdAt: base.addingTimeInterval(60))
+    try store.save(a)
+    try store.save(b)
+    let session = HistoryCatalogSession(
+      changes: changes, sources: store.historyCatalogSources(meetings: meetings),
+      directory: root.appendingPathComponent("catalog"))
+    let coordinator = TranscriptCoordinator(store: store)
+    coordinator.catalogSession = session
+    coordinator.startHistoryCatalog()
+    await session.waitForIndexingForTesting()
+
+    let flag = Flag()
+    withObservationTracking {
+      _ = coordinator.currentRow(id: a.id)
+    } onChange: {
+      flag.fire()
+    }
+    _ = try #require(await coordinator.loadCatalogDetail(b.id, authoritative: true))
+    #expect(flag.fired == false)
+    _ = try #require(await coordinator.loadCatalogDetail(a.id, authoritative: true))
+    #expect(flag.fired)
+    #expect(coordinator.currentRow(id: a.id)?.text == "row a")
+  }
+
   @Test("Eviction empties the oldest unheld row, keeps its entry and tells its readers")
   func evictionKeepsIdentity() {
     let cache = HistoryDetailCache(limit: 2, keeps: { _ in false })
