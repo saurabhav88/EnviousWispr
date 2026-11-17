@@ -186,15 +186,16 @@ struct HistoryDiaryTests {
 
   @Test("the App picker lists Any app, then apps by count, then Unknown app")
   func appOptions() {
+    // The catalog's per-app counts; nil and "" are both a dictation with no recorded app.
     let options = HistoryFilterLabels.appOptions(
-      ["Slack", "Mail", "Slack", nil, "", "Notes", "Mail", "Slack"])
+      counts: [("Slack", 3), ("Mail", 2), (nil, 1), ("", 1), ("Notes", 1)])
     #expect(
       options == [
         .init(filter: .all, count: 8), .init(filter: .named("Slack"), count: 3),
         .init(filter: .named("Mail"), count: 2), .init(filter: .named("Notes"), count: 1),
         .init(filter: .unknown, count: 2),
       ])
-    #expect(HistoryFilterLabels.appOptions(["Slack"]).contains { $0.filter == .unknown } == false)
+    #expect(HistoryFilterLabels.appOptions(counts: [("Slack", 1)]).contains { $0.filter == .unknown } == false)
   }
 
   @MainActor
@@ -213,7 +214,7 @@ struct HistoryDiaryTests {
         == "Visual Studio Code")
     #expect(
       HistoryAppName.label(for: "Google Chrome", installedName: { _ in nil }) == "Google Chrome")
-    let options = HistoryFilterLabels.appOptions(["com.openai.codex", "Codex"])
+    let options = HistoryFilterLabels.appOptions(counts: [("com.openai.codex", 1), ("Codex", 1)])
     #expect(Set(options.map(\.filter)) == [.all, .named("com.openai.codex"), .named("Codex")])
   }
 

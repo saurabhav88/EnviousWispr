@@ -310,20 +310,7 @@ enum HistoryFilterLabels {
   }
 
   /// Any app first (every dictation), then each recorded app by count (ties by name), then
-  /// Unknown app when any dictation has no recorded app.
-  nonisolated static func appOptions(_ apps: [String?]) -> [AppOption] {
-    var counts: [String: Int] = [:]
-    var unknown = 0
-    for app in apps {
-      if let app, app.isEmpty == false {
-        counts[app, default: 0] += 1
-      } else {
-        unknown += 1
-      }
-    }
-    return appOptions(counts: counts.map { (Optional($0.key), $0.value) } + [(nil, unknown)])
-  }
-
+  /// Unknown app when any dictation has no recorded app. `grouped` is the catalog's per-app counts.
   nonisolated static func appOptions(counts grouped: [(String?, Int)]) -> [AppOption] {
     var counts: [String: Int] = [:]
     var unknown = 0

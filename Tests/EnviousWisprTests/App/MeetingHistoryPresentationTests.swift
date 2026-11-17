@@ -619,8 +619,7 @@ struct MeetingHistoryPresentationTests {
     #expect(await rig.listedIDs(.meetings) == [.meeting(record.id)])
     record.state = .processing
     live.records = [record]
-    try rig.meetings.save(record)
-    await rig.settle()
+    try await rig.applying { try rig.meetings.save(record) }
     #expect(await rig.listedIDs(.meetings).isEmpty, "finished meetings only, notes included")
   }
 

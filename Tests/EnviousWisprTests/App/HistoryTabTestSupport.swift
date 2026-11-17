@@ -1,6 +1,7 @@
 import EnviousWisprAppKitTestSupport
 import EnviousWisprCore
 import Foundation
+import Testing
 
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprStorage
@@ -77,32 +78,39 @@ struct HistoryCatalogRig {
   }
 
   /// Every item `tab` lists now under its search and filters, all pages, newest first, as the
-  /// diary draws them (items the screen hides at render time are left out).
-  func listed(_ tab: HistoryTab) async -> [HistoryListItem] {
-    let key = coordinator.historyQueryKey(
-      for: tab, state: coordinator.requestedHistoryState(for: tab))
-    guard var result = await coordinator.historyResults(for: key) else { return [] }
-    while result.newerContinuation != nil,
-      let next = await coordinator.historyResults(for: key, extending: result, newer: true)
-    {
+  /// diary draws them (items the screen hides at render time are left out). A refused or failed
+  /// read of any page is recorded as a test failure, never returned as an empty or short list.
+  func listed(_ tab: HistoryTab, sourceLocation: SourceLocation = #_sourceLocation) async -> [HistoryListItem] {
+    let key = coordinator.historyQueryKey(for: tab, state: coordinator.requestedHistoryState(for: tab))
+    guard var result = await coordinator.historyResults(for: key) else {
+      Issue.record("History refused or failed the first page of \(tab)", sourceLocation: sourceLocation)
+      return []
+    }
+    while result.newerContinuation != nil {
+      guard let next = await coordinator.historyResults(for: key, extending: result, newer: true) else {
+        Issue.record("History refused or failed a newer page of \(tab)", sourceLocation: sourceLocation)
+        return []
+      }
       result = next
     }
-    while result.continuation != nil,
-      let next = await coordinator.historyResults(for: key, extending: result)
-    {
+    while result.continuation != nil {
+      guard let next = await coordinator.historyResults(for: key, extending: result) else {
+        Issue.record("History refused or failed an older page of \(tab)", sourceLocation: sourceLocation)
+        return []
+      }
       result = next
     }
     return result.items.filter { coordinator.canRenderHistoryItem($0) }
   }
 
   /// The identities `tab` lists now, all pages.
-  func listedIDs(_ tab: HistoryTab) async -> [HistoryItemID] {
-    await listed(tab).map(\.id)
+  func listedIDs(_ tab: HistoryTab, sourceLocation: SourceLocation = #_sourceLocation) async -> [HistoryItemID] {
+    await listed(tab, sourceLocation: sourceLocation).map(\.id)
   }
 
   /// The History row ids `tab` lists now (a meeting's row id when it has one), all pages.
-  func listedRowIDs(_ tab: HistoryTab) async -> [UUID] {
-    await listed(tab).compactMap { item in
+  func listedRowIDs(_ tab: HistoryTab, sourceLocation: SourceLocation = #_sourceLocation) async -> [UUID] {
+    await listed(tab, sourceLocation: sourceLocation).compactMap { item in
       if case .catalog(let summary) = item { return summary.rowID }
       return item.row?.id
     }

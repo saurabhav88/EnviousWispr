@@ -586,9 +586,6 @@ final class TranscriptCoordinator {
 
     var pulse: Int { request.pulse }
     var context: HistoryPaging.Context { request.context }
-    var kind: HistoryListKind { HistoryListKind(context.tab) }
-    var filter: HistoryListFilter { context.filter }
-    var query: String { context.query }
     var echoShown: Set<UUID> { request.echoShown }
     var locale: String { request.locale }
     var localizations: [String] { request.localizations }
@@ -2526,19 +2523,6 @@ enum HistoryEmptyState: Equatable, Sendable {
   case noRecordings
   /// Rows exist, none matching the search.
   case noMatches
-}
-
-/// Which kind of item a History list shows: one tab's kind.
-enum HistoryListKind: Equatable, Sendable {
-  case dictations, transcripts, meetings
-
-  init(_ tab: HistoryTab) {
-    switch tab {
-    case .dictations: self = .dictations
-    case .transcripts: self = .transcripts
-    case .meetings: self = .meetings
-    }
-  }
 }
 
 /// One History list item's identity (#3972 R45): a dictation or an import by its row's id, a

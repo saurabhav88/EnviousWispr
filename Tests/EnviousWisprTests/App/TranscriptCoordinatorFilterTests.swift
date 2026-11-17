@@ -180,8 +180,7 @@ struct TranscriptCoordinatorFilterTests {
     #expect(await rig.listedRowIDs(.transcripts) == [t.id], "precondition: there is something")
 
     let confirmation = try #require(await coordinator.deleteAllConfirmation())
-    await coordinator.deleteAll(confirmedSource: confirmation.source)
-    await rig.settle()
+    await rig.applying { await coordinator.deleteAll(confirmedSource: confirmation.source) }
     for tab in HistoryTab.allCases { #expect(await rig.listedRowIDs(tab).isEmpty) }
   }
 
