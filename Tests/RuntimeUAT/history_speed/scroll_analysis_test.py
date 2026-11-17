@@ -88,6 +88,10 @@ class SameRowTravelTests(unittest.TestCase):
         t = sa.travel_same_row(("r1", 100), ("r1", -900), ("r1", 80))
         self.assertEqual((t["down"], t["up"], t["asymmetry"]), (1000, 980, 0.02))
 
+    def test_a_list_that_never_moved_is_unproven_not_fail(self):
+        t = sa.travel_same_row(("r1", 100), ("r1", 100), ("r1", 100))
+        self.assertEqual(sa.verdict({"ms_per_s": 0.0}, [], t), "UNPROVEN")
+
     def test_a_page_change_at_the_top_is_unproven_not_travel(self):
         t = sa.travel_same_row(("r1", 100), ("r0", -4000), ("r1", 80))
         self.assertIsNone(t["asymmetry"])

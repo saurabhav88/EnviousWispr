@@ -155,7 +155,9 @@ def travel(y_start, y_after_down, y_after_up, top_y=None):
     down = y_start - y_after_down
     up = y_after_up - y_after_down
     out = {"down": round(down, 1), "up": round(up, 1), "asymmetry": None, "problem": None}
-    if down <= 0 or up <= 0:
+    if down == 0 and up == 0:
+        out["problem"] = "the list did not move (nothing to compare)"   # UNPROVEN, not a wrong-way move
+    elif down <= 0 or up <= 0:
         out["problem"] = "the list did not move down and then back up"
     elif top_y is not None and abs(y_after_up - top_y) <= 0.5:
         out["problem"] = "the up gesture ended clamped at the top"

@@ -148,9 +148,9 @@ def main():
         moves, changes, unread = [], 0, 0
         while time.monotonic() < deadline:
             time.sleep(0.05)  # deadline-fallback: paced read inside a deadline-bounded settle wait
-            now = hr.first_row(table)
             if on_read is not None:
-                on_read()
+                on_read()   # before the position read, so stillness is timed from position reads
+            now = hr.first_row(table)
             if now is None or last is None:
                 unread += 1
                 last, since = now, time.monotonic()

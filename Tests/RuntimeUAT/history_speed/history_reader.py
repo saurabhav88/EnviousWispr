@@ -131,8 +131,8 @@ def visible_items(table, area):
 
 
 def row_heights(table, area):
-    """{row key: height} for rows on screen, or None when the read failed (a failed read is never an
-    empty observation). Key = row index plus the row's first text."""
+    """{row identity: height} for cards and day headers on screen, or None when the read failed (a
+    failed read is never an empty observation)."""
     ui = _ui()
     viewport = ui.element_frame(area) if area is not None else None
     rows = ui.get_attr(table, "AXVisibleRows") if table is not None else None
@@ -145,8 +145,10 @@ def row_heights(table, area):
             return None
         if frame["y"] + frame["height"] <= viewport["y"] or frame["y"] >= viewport["y"] + viewport["height"]:
             continue
-        texts = _texts(row)
-        found[f"{ui.get_attr(row, 'AXIndex')}:{(texts[0] if texts else '')[:40]}"] = frame["height"]
+        key = identity(_texts(row))
+        if key is None:
+            continue   # a paging control or a row still being built
+        found[key] = frame["height"]   # keyed by content, not loaded index (paging changes the index)
     return found or None
 
 
@@ -159,15 +161,27 @@ def require_unfiltered(window, tab):
 
 
 
+def identity(texts):
+    """A row's stable identity: ALL its texts, for a card (starts with its time label) or a day
+    header (starts with a date or Today/Yesterday). None for anything else (a paging control, a row
+    still being built): such a row cannot be followed across page loads (Codex round 10)."""
+    from search_check import day_key_of
+    if not texts or not (TIME_LABEL.match(texts[0]) or day_key_of(texts[0])):
+        return None
+    return "\x1f".join(texts)
+
+
 def first_row(table):
-    """(identity, screen y) of the list's first loaded row, or None. One row is read, so this is
-    cheap enough for a slow Mac. The identity is the row's first texts: when a page loads or drops
-    at the top, the first row is a different row and a y difference is not travel."""
+    """(identity, screen y) of the first card or day header among the list's first loaded rows, or
+    None. A few rows are read, so this stays cheap on a slow Mac. When a page loads or drops at the
+    top, the first row is a different row and a y difference is not travel."""
     from ApplicationServices import AXUIElementCopyAttributeValues
-    err, rows = AXUIElementCopyAttributeValues(table, "AXRows", 0, 1, None)
+    err, rows = AXUIElementCopyAttributeValues(table, "AXRows", 0, 3, None)
     if err != 0 or not rows:
         return None
-    frame = _ui().element_frame(rows[0])
-    if frame is None:
-        return None
-    return "|".join(t[:40] for t in _texts(rows[0])[:3]), frame["y"]
+    for row in rows:
+        key = identity(_texts(row))
+        if key is not None:
+            frame = _ui().element_frame(row)
+            return None if frame is None else (key, frame["y"])
+    return None
