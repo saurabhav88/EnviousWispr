@@ -50,7 +50,7 @@ struct HistoryDiaryView<
     // #4598: a page for the same tab, search and filters stays on screen while a newer one is
     // read; its rows are re-verified against their files and it cannot page, select or count.
     let result =
-      coordinator.catalogSession == nil || saved?.catalogSourceRevision == source
+      saved?.catalogSourceRevision == source
       ? saved
       : saved.flatMap {
         $0.key.context == key.context ? coordinator.retainedHistoryResult($0) : nil
@@ -59,12 +59,7 @@ struct HistoryDiaryView<
     let canSelect = result.map(coordinator.isCurrentHistoryResult) == true
     let catalogStatus = coordinator.catalogSession?.status
     let openID = state.openItemID
-    let canOpen =
-      openID.map { id in
-        if coordinator.catalogSession != nil { return true }
-        if current, result?.ids.contains(id) == true { return true }
-        return coordinator.isHistoryDestinationAvailable(id)
-      } ?? false
+    let canOpen = openID != nil
 
     VStack(spacing: 0) {
       if let openID, tab != .dictations, canOpen {
@@ -99,21 +94,6 @@ struct HistoryDiaryView<
             Label("Couldn't load History", systemImage: "exclamationmark.triangle")
               .font(.stHelper)
               .foregroundStyle(.stTextSecondary)
-          } else if catalogStatus == nil, coordinator.historyReadAvailability == .unavailable,
-            result?.items.isEmpty == false
-          {
-            HStack {
-              Label("Couldn't load History", systemImage: "exclamationmark.triangle")
-                .foregroundStyle(.stTextSecondary)
-              Spacer()
-              Button {
-                coordinator.loadIfNeeded()
-              } label: {
-                EnviousButtonLabel(HistoryEmptyMessage.tryAgain, size: .medium)
-              }
-              .settingsButton(.quiet, size: .medium, isEnabled: true)
-            }
-            .font(.stHelper)
           }
         }
         .padding(.horizontal, SettingsLayout.contentH)
@@ -305,8 +285,7 @@ struct HistoryDiaryView<
     var state = coordinator.requestedHistoryState(for: tab)
     guard results[tab]?.key == coordinator.historyQueryKey(for: tab, state: state),
       results[tab]?.ids.contains(id) == true,
-      coordinator.catalogSession == nil
-        || results[tab]?.catalogSourceRevision == coordinator.catalogSession?.stableSourceRevision
+      results[tab]?.catalogSourceRevision == coordinator.catalogSession?.stableSourceRevision
     else { return }
     state.openItemID = id
     coordinator.setHistoryState(state, for: coordinator.historyTab)
@@ -378,14 +357,8 @@ private struct HistoryDiaryList<DictationCard: View>: View {
   var body: some View {
     let items = result?.items ?? []
     let context = result?.key.context ?? HistoryPaging.Context(tab: tab, state: state)
-    let window = HistoryPaging.window(
-      items: items, context: context, state: HistoryPaging.state(state, tab: tab),
-      selected: state.scrollAnchorID, positions: result?.positions)
-    let catalog = result?.catalogSourceRevision != nil
-    let request = isCurrent && !catalog ? HistoryPaging.request(for: window) : nil
-    let hasNext = catalog && isCurrent && result?.continuation != nil
-    let boundary = catalog ? items.count : window.boundary
-    let entries = result?.entries(through: boundary) ?? []
+    let hasNext = isCurrent && result?.continuation != nil
+    let entries = result?.entries(through: items.count) ?? []
     var lookup: [HistoryDiaryLayout.EntryID: HistoryQueryResult.Entry] = [:]
     // One flat list of day headings and items. The result preserves positions, but cards read
     // live detail: an expired recovery or a meeting being deleted is left out of the rows.
@@ -398,8 +371,8 @@ private struct HistoryDiaryList<DictationCard: View>: View {
       lookup[entry.id] = entry
       rows.append(.entry(entry.id))
     }
-    if request != nil || hasNext { rows.append(.older) }
-    let paging = Paging(window: window, request: request, hasNext: hasNext, now: Date())
+    if hasNext { rows.append(.older) }
+    let paging = Paging(hasNext: hasNext, now: Date())
     // Decided here, in the same update that hands the table its rows, so a new search's rows
     // never land at the old place first (#4586). `place` is unobserved: this changes no state.
     let restore = place.value.restore(
@@ -442,16 +415,7 @@ private struct HistoryDiaryList<DictationCard: View>: View {
           systemImage: "exclamationmark.triangle", title: HistoryEmptyMessage.loadFailed)
       } else if items.isEmpty && coordinator.catalogSession?.status == .updating {
         ProgressView()
-      } else if coordinator.catalogSession == nil,
-        items.isEmpty && coordinator.historyReadAvailability == .unavailable
-      {
-        HistoryEmptyMessage(
-          systemImage: "exclamationmark.triangle", title: HistoryEmptyMessage.loadFailed,
-          retry: { coordinator.loadIfNeeded() })
-      } else if items.isEmpty
-        && (!isCurrent
-          || (coordinator.catalogSession == nil && coordinator.historyReadAvailability == .loading))
-      {
+      } else if items.isEmpty && !isCurrent {
         ProgressView()
       } else if let empty = HistoryDiaryLayout.emptyState(
         tab: tab, state: state, matchingCount: items.count)
@@ -472,8 +436,6 @@ private struct HistoryDiaryList<DictationCard: View>: View {
 
   /// What the rows need to ask for the next page.
   private struct Paging {
-    let window: HistoryPaging.Window
-    let request: HistoryPaging.LoadRequest?
     let hasNext: Bool
     let now: Date
   }
@@ -506,9 +468,7 @@ private struct HistoryDiaryList<DictationCard: View>: View {
       }
     case .older:
       Button {
-        if let request = paging.request {
-          loadMore(request)
-        } else if let result {
+        if let result {
           loadNext(result, false)
         }
       } label: {
@@ -544,14 +504,11 @@ private struct HistoryDiaryList<DictationCard: View>: View {
         let item = items[entry.position]
         self.row(for: item, items: items, query: query)
           .onAppear {
-            // A best-effort prefetch hint: it can come early, together with other rows,
-            // or twice; `loadMore` accepts one request per window.
+            // A best-effort prefetch hint: it can come early, together with other rows, or
+            // twice; `loadNext` accepts one read per cursor.
             // #4611: the next page starts loading ten cards before the end, so a scroll that
             // keeps going never meets the end of the list.
             let ahead = HistoryPaging.pageSize / 3
-            if entry.position >= paging.window.boundary - ahead, let request = paging.request {
-              loadMore(request)
-            }
             if entry.position >= items.count - ahead, paging.hasNext, let result {
               loadNext(result, false)
             }
@@ -682,26 +639,6 @@ private struct HistoryDiaryList<DictationCard: View>: View {
     } else {
       selection.toggle(id)
     }
-  }
-
-  /// The one load action for the last row and Load more history. Synchronous on the main actor:
-  /// it rebuilds the window from live state, accepts at most one page for it and stores the
-  /// result before returning, so a second request for the same window is refused.
-  private func loadMore(_ request: HistoryPaging.LoadRequest) {
-    var live = coordinator.requestedHistoryState(for: tab)
-    guard let result, result.key == coordinator.historyQueryKey(for: tab, state: live) else {
-      return
-    }
-    let current = HistoryPaging.window(
-      items: result.items,
-      context: HistoryPaging.Context(tab: tab, state: live),
-      state: HistoryPaging.state(live, tab: tab), selected: live.scrollAnchorID,
-      positions: result.positions)
-    let next = HistoryPaging.load(
-      request, state: HistoryPaging.state(live, tab: tab), current: current)
-    guard next.requested != live.requestedCount else { return }
-    live.requestedCount = next.requested
-    coordinator.setHistoryState(live, for: tab)
   }
 }
 

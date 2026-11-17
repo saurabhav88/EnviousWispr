@@ -528,7 +528,7 @@ struct MeetingWiringTests {
     #expect(FileManager.default.fileExists(atPath: rig.store.folder(for: record.id).path) == false)
   }
 
-  @Test("#4286: after a relaunch, an invited-only search matches once the launch read lands")
+  @Test("#4286: after a relaunch, an invited-only search matches and the launch read loads the invited people")
   func relaunchInvitedSearch() async throws {
     let rig = try Rig()
     var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
@@ -545,21 +545,32 @@ struct MeetingWiringTests {
     let row = Transcript(
       id: record.transcriptID, text: "standup", backendType: .parakeet, meetingID: record.id)
     try await rig.transcripts.saveAndShowDurably(row)
-    rig.transcripts.setHistoryQuery("acme.com", in: .meetings)
-    #expect(
-      rig.transcripts.matchingHistoryItems(in: .meetings).isEmpty, "nothing listed before the launch")
 
-    let hold = MeetingDocumentsOwnerTests.holdFileQueue()
+    // History lists through the catalog, as the app wires it (#4586): it indexes the meeting
+    // folder's facts when it starts, with no launch read involved.
+    let changes = HistorySourceChanges()
+    let historyStore = TranscriptStore(
+      directory: rig.root.appendingPathComponent("history"), historyChanges: changes)
+    let catalogRoot = TestTemporaryDirectory.url.appendingPathComponent(
+      "MeetingWiringTests-catalog-\(UUID().uuidString)", isDirectory: true)
+    let session = HistoryCatalogSession(
+      changes: changes, sources: historyStore.historyCatalogSources(meetings: rig.store),
+      directory: catalogRoot)
+    rig.transcripts.catalogSession = session
+    let history = HistoryCatalogRig(
+      root: catalogRoot, changes: changes, store: historyStore, meetings: rig.store,
+      session: session, coordinator: rig.transcripts)
+    defer { history.remove() }
+
     let coordinator = MeetingWiring.make(rig.inputs)
     coordinator.launch()
-    #expect(
-      rig.transcripts.matchingHistoryItems(in: .meetings).isEmpty,
-      "no invited match while the launch read waits")
-    hold.signal()
-    await MeetingCoordinatorTests.eventually("invited-only match after the launch read") {
-      rig.transcripts.matchingRowIDs(in: .meetings) == [row.id]
+    rig.transcripts.startHistoryCatalog()
+    await session.waitForIndexingForTesting()
+    rig.transcripts.setHistoryQuery("acme.com", in: .meetings)
+    #expect(await history.listedRowIDs(.meetings) == [row.id])
+    await MeetingCoordinatorTests.eventually("invited people loaded by the launch read") {
+      coordinator.documents.invitedSearchTerms(record.id).contains("acme.com")
     }
-    #expect(coordinator.documents.invitedSearchTerms(record.id).contains("acme.com"))
   }
 
   @Test("a meeting delete from History that cannot finish shows History's failure message (#4079)")

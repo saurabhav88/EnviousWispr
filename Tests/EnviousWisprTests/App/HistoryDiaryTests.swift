@@ -269,24 +269,31 @@ struct HistoryDiaryTests {
       store: TranscriptStore(
         directory: TestTemporaryDirectory.url
           .appendingPathComponent("ew-3147-open-\(UUID().uuidString)", isDirectory: true)))
-    let meetingID = UUID()
-    coordinator.setTranscriptsForTesting([Transcript(text: "standup", meetingID: meetingID)])
-    let id = HistoryItemID.meeting(meetingID)
+    let record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    coordinator.meetingRecord = { $0 == record.id ? record : nil }
+    let id = HistoryItemID.meeting(record.id)
 
     var filtered = HistoryTabState()
     let calendar = Calendar.current
     let lastWeek = calendar.date(byAdding: .day, value: -7, to: calendar.startOfDay(for: Date()))!
     filtered.dateInterval = DateInterval(start: lastWeek, duration: 86_400)
+    #expect(
+      coordinator.isListedMeeting(record.id, under: HistoryTabState()),
+      "precondition: unfiltered, the live meeting is listed")
+    #expect(
+      coordinator.isListedMeeting(record.id, under: filtered) == false,
+      "precondition: the date filter hides today's meeting")
     filtered.query = "budget"
     coordinator.setHistoryState(filtered, for: .meetings)
-    let listed = coordinator.matchingHistoryItems(in: .meetings).contains { $0.id == id }
-    #expect(listed == false, "precondition: the filter hides today's meeting")
+    let listed = coordinator.isListedMeeting(
+      record.id, under: coordinator.requestedHistoryState(for: .meetings))
+    #expect(listed == false, "precondition: the filter and search hide today's meeting")
 
     let opened = HistoryDiaryLayout.opening(
-      id, in: coordinator.historyState(for: .meetings), isListed: listed)
+      id, in: coordinator.requestedHistoryState(for: .meetings), isListed: listed)
     coordinator.setHistoryState(opened, for: .meetings)
-    #expect(coordinator.historyState(for: .meetings).openItemID == id)
-    #expect(coordinator.historyState(for: .meetings).dateInterval == nil)
+    #expect(coordinator.requestedHistoryState(for: .meetings).openItemID == id)
+    #expect(coordinator.requestedHistoryState(for: .meetings).dateInterval == nil)
 
     var kept = HistoryTabState()
     kept.query = "standup"
@@ -305,13 +312,13 @@ struct HistoryDiaryTests {
     let dictation = Transcript(text: "a dictation")
     coordinator.setTranscriptsForTesting([transcript, dictation])
 
-    var state = coordinator.historyState(for: .transcripts)
+    var state = coordinator.requestedHistoryState(for: .transcripts)
     state.openItemID = .transcript(transcript.id)
     coordinator.setHistoryState(state, for: .transcripts)
     coordinator.selectHistoryTab(.dictations)
     coordinator.selectHistoryTab(.transcripts)
 
-    #expect(coordinator.historyState(for: .transcripts).openItemID == .transcript(transcript.id))
-    #expect(coordinator.historyState(for: .dictations).openItemID == nil)
+    #expect(coordinator.requestedHistoryState(for: .transcripts).openItemID == .transcript(transcript.id))
+    #expect(coordinator.requestedHistoryState(for: .dictations).openItemID == nil)
   }
 }

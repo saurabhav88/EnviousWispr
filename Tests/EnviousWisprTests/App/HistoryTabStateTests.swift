@@ -8,7 +8,8 @@ import Testing
 
 /// History's three tabs (#3147 §3.3): each lists only its kind, keeps its own search and filters,
 /// lists every matching item across pages, and History search reads each dictation's preferred
-/// text. Rows go through a real `TranscriptStore` under a temp directory.
+/// text. Rows go through the production path (#4586): real folders and a real catalog session,
+/// as `HistoryCatalogRig` wires them.
 @MainActor
 /// Class: `.productOutcome` — which items each History tab lists, and what the user's search,
 /// filters and open item do when tabs switch.
@@ -39,42 +40,41 @@ struct HistoryTabStateTests {
       speakerAnalysis: speakers)
   }
 
-  private func rowIDs(_ items: [HistoryListItem]) -> [UUID] { items.compactMap(\.row?.id) }
-
   @Test("each tab lists only its own kind")
   func tabsListTheirKind() async throws {
-    let coordinator = makeCoordinator()
     let d = dictation("a dictation", age: 20)
     let t = imported("an interview", speakers: .single, age: 10)
     let m = Transcript(text: "a meeting", meetingID: UUID())
-    for row in [d, t, m] { try await coordinator.saveAndShow(row) }
+    let rig = try await HistoryCatalogRig.make(rows: [d, t, m])
+    defer { rig.remove() }
 
-    #expect(rowIDs(coordinator.matchingHistoryItems(in: .dictations)) == [d.id])
-    #expect(rowIDs(coordinator.matchingHistoryItems(in: .transcripts)) == [t.id])
-    #expect(rowIDs(coordinator.matchingHistoryItems(in: .meetings)) == [m.id])
+    #expect(await rig.listedRowIDs(.dictations) == [d.id])
+    #expect(await rig.listedRowIDs(.transcripts) == [t.id])
+    #expect(await rig.listedRowIDs(.meetings) == [m.id])
   }
 
   @Test("a tab keeps its search when another tab searches or the user switches tabs")
   func tabsKeepTheirOwnSearch() async throws {
-    let coordinator = makeCoordinator()
     let apple = dictation("apple pie", age: 20)
     let pear = dictation("pear tart", age: 10)
     let talk = imported("apple orchard talk", speakers: .single)
-    for row in [apple, pear, talk] { try await coordinator.saveAndShow(row) }
+    let rig = try await HistoryCatalogRig.make(rows: [apple, pear, talk])
+    defer { rig.remove() }
+    let coordinator = rig.coordinator
 
-    var dictations = coordinator.historyState(for: .dictations)
+    var dictations = coordinator.requestedHistoryState(for: .dictations)
     dictations.query = "pear"
     coordinator.setHistoryState(dictations, for: .dictations)
-    var transcripts = coordinator.historyState(for: .transcripts)
+    var transcripts = coordinator.requestedHistoryState(for: .transcripts)
     transcripts.query = "orchard"
     coordinator.setHistoryState(transcripts, for: .transcripts)
     coordinator.selectHistoryTab(.transcripts)
     coordinator.selectHistoryTab(.dictations)
 
-    #expect(coordinator.historyState(for: .dictations).query == "pear")
-    #expect(rowIDs(coordinator.matchingHistoryItems(in: .dictations)) == [pear.id])
-    #expect(rowIDs(coordinator.matchingHistoryItems(in: .transcripts)) == [talk.id])
-    #expect(coordinator.historyState(for: .meetings) == HistoryTabState())
+    #expect(coordinator.requestedHistoryState(for: .dictations).query == "pear")
+    #expect(await rig.listedRowIDs(.dictations) == [pear.id])
+    #expect(await rig.listedRowIDs(.transcripts) == [talk.id])
+    #expect(coordinator.requestedHistoryState(for: .meetings) == HistoryTabState())
   }
 
   @Test("choosing a tab remembers it once; reopening at launch remembers nothing")
@@ -95,85 +95,89 @@ struct HistoryTabStateTests {
 
   @Test("App filter: one named app, or the dictations with no recorded app")
   func appFilter() async throws {
-    let coordinator = makeCoordinator()
     let slack = dictation("to slack", app: "Slack", age: 30)
     let mail = dictation("to mail", app: "Mail", age: 20)
     let none = dictation("to nowhere", app: nil, age: 10)
-    for row in [slack, mail, none] { try await coordinator.saveAndShow(row) }
+    let rig = try await HistoryCatalogRig.make(rows: [slack, mail, none])
+    defer { rig.remove() }
 
     var state = HistoryTabState()
     state.app = .named("Slack")
-    coordinator.setHistoryState(state, for: .dictations)
-    #expect(rowIDs(coordinator.matchingHistoryItems(in: .dictations)) == [slack.id])
+    rig.coordinator.setHistoryState(state, for: .dictations)
+    #expect(await rig.listedRowIDs(.dictations) == [slack.id])
 
     state.app = .unknown
-    coordinator.setHistoryState(state, for: .dictations)
-    #expect(rowIDs(coordinator.matchingHistoryItems(in: .dictations)) == [none.id])
+    rig.coordinator.setHistoryState(state, for: .dictations)
+    #expect(await rig.listedRowIDs(.dictations) == [none.id])
   }
 
   @Test("date filter: start included, end excluded")
   func dateFilterBounds() async throws {
-    let coordinator = makeCoordinator()
     let start = Date(timeIntervalSinceReferenceDate: 800_000_000)
     let end = start.addingTimeInterval(86_400)
     let atStart = Transcript(text: "at start", createdAt: start)
     let beforeEnd = Transcript(text: "before end", createdAt: end.addingTimeInterval(-0.001))
     let atEnd = Transcript(text: "at end", createdAt: end)
-    for row in [atStart, beforeEnd, atEnd] { try await coordinator.saveAndShow(row) }
+    let rig = try await HistoryCatalogRig.make(rows: [atStart, beforeEnd, atEnd])
+    defer { rig.remove() }
 
     var state = HistoryTabState()
     state.dateInterval = DateInterval(start: start, end: end)
-    coordinator.setHistoryState(state, for: .dictations)
-    #expect(
-      Set(rowIDs(coordinator.matchingHistoryItems(in: .dictations)))
-        == [atStart.id, beforeEnd.id])
+    rig.coordinator.setHistoryState(state, for: .dictations)
+    #expect(Set(await rig.listedRowIDs(.dictations)) == [atStart.id, beforeEnd.id])
   }
 
   @Test("date filter keeps only items inside the interval")
   func dateFilter() async throws {
-    let coordinator = makeCoordinator()
     let recent = dictation("recent", age: 60)
     let old = dictation("old", age: 3 * 86_400)
-    for row in [recent, old] { try await coordinator.saveAndShow(row) }
+    let rig = try await HistoryCatalogRig.make(rows: [recent, old])
+    defer { rig.remove() }
 
     var state = HistoryTabState()
     state.dateInterval = DateInterval(start: Date().addingTimeInterval(-86_400), end: Date())
-    coordinator.setHistoryState(state, for: .dictations)
-    #expect(rowIDs(coordinator.matchingHistoryItems(in: .dictations)) == [recent.id])
+    rig.coordinator.setHistoryState(state, for: .dictations)
+    #expect(await rig.listedRowIDs(.dictations) == [recent.id])
   }
 
-  @Test("matching items cover every page, not only the 30 drawn")
-  func matchingCoversAllPages() async throws {
-    let coordinator = makeCoordinator()
-    for i in 0..<45 { try await coordinator.saveAndShow(dictation("row \(i)", age: Double(i))) }
-    #expect(coordinator.matchingHistoryItems(in: .dictations).count == 45)
-  }
+  // Deleted (#4586): "matching items cover every page, not only the 30 drawn" read the in-memory
+  // list. The catalog's own page-and-count tests cover the same promise:
+  // HistoryCatalogSessionTests (30 then 40 via `extending:`, `matchingIDs` = 40) and
+  // Storage/HistoryCatalogTests (paging and `matchingKeys` over ties).
 
-  @Test("a changed search starts paging again; an open item that stops matching reads as closed")
-  func searchResetsPagingAndClosesHiddenItem() async throws {
+  @Test("a changed search or filter starts again at the top; an unchanged one keeps its place")
+  func searchResetsScrollPosition() async throws {
     let coordinator = makeCoordinator()
-    let apple = dictation("apple", age: 10)
-    try await coordinator.saveAndShow(apple)
+    let apple = HistoryItemID.transcript(UUID())
 
     var state = HistoryTabState()
-    state.requestedCount = 90
-    state.openItemID = .transcript(apple.id)
+    state.scrollAnchorID = apple
+    state.openItemID = apple
     coordinator.setHistoryState(state, for: .dictations)
-    #expect(coordinator.historyState(for: .dictations).requestedCount == 90)
-    #expect(coordinator.historyState(for: .dictations).openItemID == .transcript(apple.id))
+    #expect(coordinator.requestedHistoryState(for: .dictations).scrollAnchorID == apple)
+    #expect(coordinator.requestedHistoryState(for: .dictations).openItemID == apple)
+
+    // Same search and filters (an open item changed): the place is kept.
+    state.openItemID = nil
+    coordinator.setHistoryState(state, for: .dictations)
+    #expect(coordinator.requestedHistoryState(for: .dictations).scrollAnchorID == apple)
 
     state.query = "banana"
     coordinator.setHistoryState(state, for: .dictations)
-    let after = coordinator.historyState(for: .dictations)
-    #expect(after.requestedCount == HistoryTabState.pageSize)
-    #expect(after.openItemID == nil)
+    #expect(coordinator.requestedHistoryState(for: .dictations).scrollAnchorID == nil)
+
+    state.scrollAnchorID = apple
+    state.app = .named("Slack")
+    coordinator.setHistoryState(state, for: .dictations)
+    #expect(coordinator.requestedHistoryState(for: .dictations).scrollAnchorID == nil)
   }
 
   @Test("History search reads each dictation's preferred text")
   func searchReadsPreferredText() async throws {
-    let coordinator = makeCoordinator()
     let row = dictation("um raw words", polished: "Clean words.").preferring(.original)
-    try await coordinator.saveAndShow(row)
+    let rig = try await HistoryCatalogRig.make(rows: [row])
+    defer { rig.remove() }
+    let coordinator = rig.coordinator
 
     var state = HistoryTabState()
     state.query = "raw"
@@ -184,7 +188,7 @@ struct HistoryTabStateTests {
 
     state.query = "Clean"
     coordinator.setHistoryState(state, for: .dictations)
-    #expect(coordinator.matchingHistoryItems(in: .dictations).isEmpty)
+    #expect(await rig.listedIDs(.dictations).isEmpty)
     #expect(await coordinator.historyResults(for: rawKey) == nil)
     let cleanKey = coordinator.historyQueryKey(for: .dictations, state: state)
     #expect(await coordinator.historyResults(for: cleanKey)?.ids.isEmpty == true)
@@ -192,18 +196,18 @@ struct HistoryTabStateTests {
 
   @Test("activity counts one entry per day under the tab's other filters")
   func activityCountsPerDay() async throws {
-    let coordinator = makeCoordinator()
     let calendar = Calendar(identifier: .gregorian)
     let now = Date()
     let rows = [
       dictation("a", age: 0), dictation("b", age: 1), dictation("c", age: 3 * 86_400),
     ]
-    for row in rows { try await coordinator.saveAndShow(row) }
+    let rig = try await HistoryCatalogRig.make(rows: rows)
+    defer { rig.remove() }
     var state = HistoryTabState()
     state.dateInterval = DateInterval(start: now.addingTimeInterval(-60), end: now)
-    coordinator.setHistoryState(state, for: .dictations)
+    rig.coordinator.setHistoryState(state, for: .dictations)
 
-    let counts = await coordinator.historyActivity(in: .dictations, calendar: calendar)
+    let counts = await rig.coordinator.historyActivity(in: .dictations, calendar: calendar)
     let byDay = Dictionary(grouping: rows.map(\.createdAt)) { calendar.startOfDay(for: $0) }
       .mapValues(\.count)
     #expect(counts == byDay)

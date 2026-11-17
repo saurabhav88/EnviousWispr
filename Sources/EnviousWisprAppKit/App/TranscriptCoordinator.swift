@@ -18,7 +18,7 @@ final class TranscriptCoordinator {
   /// Guarding it was tried and is not enough: a scanner over the source can
   /// match a name, not a type, so it flags an unrelated `transcripts` elsewhere
   /// and misses a bare access from an extension. The compiler makes the mistake
-  /// unavailable instead. Read `visibleTranscripts` or `matchingHistoryItems(in:)`.
+  /// unavailable instead. Read `visibleTranscripts`; History lists rows through its catalog.
   @ObservationIgnored var catalogSession: HistoryCatalogSession?
   @ObservationIgnored private var latestCatalogTask: Task<Void, Never>?
   /// Hydrated History rows for the screens that show them (#4586 H2): one entry per row,
@@ -171,52 +171,15 @@ final class TranscriptCoordinator {
     historyTabStates[tab] ?? HistoryTabState()
   }
 
-  func historyState(for tab: HistoryTab) -> HistoryTabState {
-    var state = historyTabStates[tab] ?? HistoryTabState()
-    guard state.openItemID != nil || state.scrollAnchorID != nil else { return state }
-    let listed = matchingHistoryItems(in: tab, state: state)
-    if let open = state.openItemID, !listed.contains(where: { $0.id == open }) { state.openItemID = nil }
-    if let anchor = state.scrollAnchorID, !listed.contains(where: { $0.id == anchor }) { state.scrollAnchorID = nil }
-    return state
-  }
-
-
-  /// Replaces `tab`'s state. A changed search or filter starts paging again from the top.
+  /// Replaces `tab`'s state. A changed search or filter starts again at the top.
   func setHistoryState(_ state: HistoryTabState, for tab: HistoryTab) {
     var next = state
     let previous = historyTabStates[tab] ?? HistoryTabState()
     if previous.query != next.query || previous.listFilter != next.listFilter {
-      next.requestedCount = HistoryTabState.pageSize
       next.scrollAnchorID = nil
     }
     historyTabStates[tab] = next
   }
-
-  /// Synchronous reference for the existing query and cache tests.
-  func matchingHistoryItems(in tab: HistoryTab) -> [HistoryListItem] {
-    matchingHistoryItems(in: tab, state: requestedHistoryState(for: tab))
-  }
-
-  private func matchingHistoryItems(in tab: HistoryTab, state: HistoryTabState) -> [HistoryListItem] {
-    let now = clock()
-    let key = historyQueryKey(for: tab, state: state, referenceTime: now)
-    if !meetingDocumentsBypass, let kept = tabListCache[tab], kept.key == key {
-      return kept.items
-    }
-    #if DEBUG
-      listBuildsForTesting += 1
-    #endif
-    let items = (try? Self.buildListedItems(rows: transcripts, at: now, from: key) { [self] row, info in
-      searchableText(
-        of: row, info: info, showEcho: key.echoShown.contains(row.id),
-        locale: key.locale, localizations: key.localizations)
-    }) ?? []
-    if !meetingDocumentsBypass { tabListCache[tab] = KeptList(key: key, items: items) }
-    pruneMeetingDocuments()
-    return items
-  }
-
-  @ObservationIgnored private var tabListCache: [HistoryTab: KeptList] = [:]
 
   @ObservationIgnored private var prunedRevision = -1
 
@@ -228,7 +191,7 @@ final class TranscriptCoordinator {
     prunedRevision = transcriptsRevision
   }
 
-  /// Snapshot the existing copy-on-write array on MainActor; inspect its contents off it.
+  /// One page of `key`'s list from the catalog, or `previous` extended by the next one.
   func historyResults(
     for key: HistoryQueryKey, extending previous: HistoryQueryResult? = nil, newer: Bool = false
   ) async -> HistoryQueryResult? {
@@ -280,19 +243,8 @@ final class TranscriptCoordinator {
         newerContinuation: newer || previous == nil ? page.newerContinuation : previous?.newerContinuation,
         catalogSourceRevision: source, catalogDayCounts: counts)
     }
-    guard !Task.isCancelled,
-      key == historyQueryKey(for: key.context.tab, state: requestedHistoryState(for: key.context.tab))
-    else { return nil }
-    let rows = transcripts
-    let now = clock()
-    let needsIndex = rowIndexCache?.revision != key.revision
-    let (result, index) = await Self.runHistoryQuery(rows: rows, at: now, key: key, needsIndex: needsIndex)
-    guard !Task.isCancelled,
-      key == historyQueryKey(for: key.context.tab, state: requestedHistoryState(for: key.context.tab))
-    else { return nil }
-    if let index { rowIndexCache = index }
-    pruneMeetingDocuments()
-    return result
+    // Production always has a catalog session (`WisprBootstrapper`); without one nothing is listed.
+    return nil
   }
 
   private func catalogQuery(for context: HistoryPaging.Context, calendar: Calendar = .current) -> HistoryCatalog.Query {
@@ -354,12 +306,7 @@ final class TranscriptCoordinator {
   }
 
   func matchingIDs(for result: HistoryQueryResult, day: Date? = nil) async -> [HistoryItemID]? {
-    guard isCurrentHistoryResult(result) else { return nil }
-    guard let catalogSession else {
-      return result.items.filter { item in
-        day.map { result.calendar.isDate(item.createdAt, inSameDayAs: $0) } ?? true
-      }.map(\.id)
-    }
+    guard isCurrentHistoryResult(result), let catalogSession else { return nil }
     var context = result.key.context
     if let day, let range = result.calendar.dateInterval(of: .day, for: day) {
       var filter = context.filter
@@ -391,12 +338,8 @@ final class TranscriptCoordinator {
   }
 
   func isCurrentHistoryResult(_ result: HistoryQueryResult) -> Bool {
-    let ready: Bool
-    if let catalogSession {
-      ready = result.catalogDayCounts != nil && result.catalogSourceRevision == catalogSession.stableSourceRevision
-    } else {
-      ready = historyReadAvailability == .ready
-    }
+    guard let catalogSession else { return false }
+    let ready = result.catalogDayCounts != nil && result.catalogSourceRevision == catalogSession.stableSourceRevision
     return ready && result.key.context.tab == historyTab
       && result.key == historyQueryKey(for: historyTab, state: requestedHistoryState(for: historyTab))
   }
@@ -407,18 +350,6 @@ final class TranscriptCoordinator {
     else { return false }
     return Self.matchesFilter(
       state.listFilter, .meeting(HistoryMeetingItem(meetingID: id, record: record, row: nil)))
-  }
-
-  func isHistoryDestinationAvailable(_ id: HistoryItemID) -> Bool {
-    switch id {
-    case .transcript(let id):
-      return currentRow(id: id)?.isImported == true
-    case .meeting(let id):
-      if let record = historyMeetingRecord(id) {
-        return !record.deletionRequested
-      }
-      return !rowIDs(ofMeeting: id).isEmpty
-    }
   }
 
   func canRenderHistoryItem(_ item: HistoryListItem) -> Bool {
@@ -444,17 +375,6 @@ final class TranscriptCoordinator {
     return meetingRecords?().first(where: { $0.id == id })
   }
 
-  @concurrent private static func runHistoryQuery(
-    rows: [Transcript], at now: Date, key: HistoryQueryKey, needsIndex: Bool
-  ) async -> (HistoryQueryResult?, RowIndex?) {
-    guard let items = try? buildListedItems(
-      rows: rows, at: now, from: key,
-      meetingText: { visibleMeetingSearchText($0, facts: $1, key: key) })
-    else { return (nil, nil) }
-    let index = needsIndex ? Self.makeRowIndex(rows, revision: key.revision) : nil
-    return (try? HistoryQueryResult(key: key, items: items), index)
-  }
-
   /// The calendar uses the same query, with its date range omitted.
   func historyActivity(in tab: HistoryTab, calendar: Calendar) async -> [Date: Int] {
     var state = requestedHistoryState(for: tab)
@@ -468,14 +388,7 @@ final class TranscriptCoordinator {
       guard !Task.isCancelled, key == historyQueryKey(for: tab, state: current) else { return [:] }
       return counts ?? [:]
     }
-    let key = historyQueryKey(for: tab, state: state)
-    let rows = transcripts
-    let now = clock()
-    let counts = await Self.runHistoryActivity(rows: rows, at: now, key: key, calendar: calendar)
-    var current = requestedHistoryState(for: tab)
-    current.dateInterval = nil
-    guard !Task.isCancelled, key == historyQueryKey(for: tab, state: current) else { return [:] }
-    return counts
+    return [:]
   }
 
   func historyAppOptions() async -> [HistoryFilterLabels.AppOption] {
@@ -483,45 +396,7 @@ final class TranscriptCoordinator {
       let counts = (try? await catalogSession.appCounts(now: clock())) ?? []
       return HistoryFilterLabels.appOptions(counts: counts)
     }
-    let rows = transcripts
-    let now = clock()
-    return await Self.collectHistoryApps(rows, now: now)
-  }
-
-  @concurrent private static func collectHistoryApps(
-    _ rows: [Transcript], now: Date
-  ) async -> [HistoryFilterLabels.AppOption] {
-    var apps: [String?] = []
-    for row in rows {
-      guard !Task.isCancelled else { return [] }
-      if !row.isImported && !row.isMeeting && isVisible(row, at: now) {
-        apps.append(row.metrics?.targetApp)
-      }
-    }
-    return HistoryFilterLabels.appOptions(apps)
-  }
-
-  @concurrent private static func runHistoryActivity(
-    rows: [Transcript], at now: Date, key: HistoryQueryKey, calendar: Calendar
-  ) async -> [Date: Int] {
-    guard let items = try? buildListedItems(
-      rows: rows, at: now, from: key, meetingText: { visibleMeetingSearchText($0, facts: $1, key: key) })
-    else { return [:] }
-    var counts: [Date: Int] = [:]
-    for item in items {
-      guard !Task.isCancelled else { return [:] }
-      counts[calendar.startOfDay(for: item.createdAt), default: 0] += 1
-    }
-    return counts
-  }
-
-  private nonisolated static func visibleMeetingSearchText(
-    _ row: Transcript, facts: MeetingHistoryInfo?, key: HistoryQueryKey
-  ) -> String {
-    if case .visible(_, let text) = MeetingHistoryPresentation.project(
-      row, info: facts, showEcho: key.echoShown.contains(row.id))
-    { return text }
-    return ""
+    return []
   }
 
   /// Re-render pulse for pending Escape Recovery rows (#2087).
@@ -640,12 +515,6 @@ final class TranscriptCoordinator {
   /// across an expiry boundary without sleeping (#4001).
   @ObservationIgnored var clock: () -> Date = Date.init
 
-  private struct KeptList {
-    let key: HistoryQueryKey
-    let items: [HistoryListItem]
-  }
-
-
   /// Everything the query uses from the live owners.
   ///
   /// #4586 H1: two parts with two jobs. `request` is what the reader asked for (tab, search,
@@ -661,12 +530,6 @@ final class TranscriptCoordinator {
       let pulse: Int
       let context: HistoryPaging.Context
       let echoShown: Set<UUID>
-      let meetings: [MeetingRecord]
-      let pendingVisible: [Bool]
-      /// While searching: every meeting row's facts and notes (a held row's too), read before
-      /// the search runs, so a meeting that does not match yet is still watched. The build reads
-      /// them from here and never asks the closures again.
-      let searchFacts: [SearchFact]?
       let locale: String
       let localizations: [String]
       let calendar: Calendar
@@ -675,13 +538,11 @@ final class TranscriptCoordinator {
 
     init(
       revision: Int, pulse: Int, context: HistoryPaging.Context, echoShown: Set<UUID>,
-      meetings: [MeetingRecord], pendingVisible: [Bool], searchFacts: [SearchFact]?,
       locale: String, localizations: [String], calendar: Calendar, draftNotes: [UUID: String] = [:]
     ) {
       self.revision = revision
       request = Request(
-        pulse: pulse, context: context, echoShown: echoShown, meetings: meetings,
-        pendingVisible: pendingVisible, searchFacts: searchFacts, locale: locale,
+        pulse: pulse, context: context, echoShown: echoShown, locale: locale,
         localizations: localizations, calendar: calendar, draftNotes: draftNotes)
     }
 
@@ -691,64 +552,27 @@ final class TranscriptCoordinator {
     var filter: HistoryListFilter { context.filter }
     var query: String { context.query }
     var echoShown: Set<UUID> { request.echoShown }
-    var meetings: [MeetingRecord] { request.meetings }
-    var pendingVisible: [Bool] { request.pendingVisible }
-    var searchFacts: [SearchFact]? { request.searchFacts }
     var locale: String { request.locale }
     var localizations: [String] { request.localizations }
     var calendar: Calendar { request.calendar }
     var draftNotes: [UUID: String] { request.draftNotes }
   }
 
-  struct SearchFact: Equatable, Sendable {
-    let meetingID: UUID
-    let info: MeetingHistoryInfo?
-    let notes: String?
-    /// #4286: the meeting's invited search terms.
-    let invited: [String]
-  }
-
-  func historyQueryKey(
-    for tab: HistoryTab, state: HistoryTabState, referenceTime: Date? = nil
-  ) -> HistoryQueryKey {
-    if let catalogSession, referenceTime == nil {
-      return HistoryQueryKey(
-        revision: Int(truncatingIfNeeded: catalogSession.revision), pulse: expiryPulse,
-        context: HistoryPaging.Context(tab: tab, state: state),
-        echoShown: tab == .meetings ? echoShownRowIDs : [], meetings: [],
-        pendingVisible: [], searchFacts: nil, locale: Locale.current.identifier,
-        localizations: Bundle.main.preferredLocalizations, calendar: .current,
-        draftNotes: tab == .meetings && !state.query.isEmpty ? (meetingHistoryDrafts?() ?? [:]) : [:])
-    }
-    let records = tab == .meetings ? (meetingRecords?() ?? []) : []
-    let factIDs = referenceTime == nil ? records.map(\.id) : rowIndex.meetingRowIDs
-    let facts: [SearchFact]? = tab == .meetings && !state.query.isEmpty
-      ? factIDs.map { id in
-        SearchFact(
-          meetingID: id, info: meetingInfo?(id), notes: meetingNotes?(id),
-          invited: meetingInvited?(id) ?? [])
-      } : nil
-    return HistoryQueryKey(
-      revision: transcriptsRevision, pulse: expiryPulse,
+  /// The key `tab`'s list is read under now: the request plus the catalog content revision.
+  func historyQueryKey(for tab: HistoryTab, state: HistoryTabState) -> HistoryQueryKey {
+    HistoryQueryKey(
+      revision: Int(truncatingIfNeeded: catalogSession?.revision ?? 0), pulse: expiryPulse,
       context: HistoryPaging.Context(tab: tab, state: state),
-      echoShown: tab == .meetings ? echoShownRowIDs : [], meetings: records,
-      pendingVisible: referenceTime.map { now in
-        rowIndex.pending.map { Self.isVisible(transcripts[$0], at: now) }
-      } ?? [],
-      searchFacts: facts, locale: Locale.current.identifier,
-      localizations: Bundle.main.preferredLocalizations, calendar: .current)
+      echoShown: tab == .meetings ? echoShownRowIDs : [], locale: Locale.current.identifier,
+      localizations: Bundle.main.preferredLocalizations, calendar: .current,
+      draftNotes: tab == .meetings && !state.query.isEmpty ? (meetingHistoryDrafts?() ?? [:]) : [:])
   }
 
-  /// Where the held rows sit in `transcripts` and which meetings have a row, rebuilt only when
-  /// the rows change (#4001), so checking the kept list does not scan every row.
+  /// Where the held rows sit in `transcripts` and how many rows each meeting has, rebuilt only
+  /// when the rows change (#4001), so counts and row lookups do not scan every row.
   private var rowIndex: RowIndex {
     let revision = transcriptsRevision
-    #if DEBUG
-      let reuse = !listCacheDisabledForTesting
-    #else
-      let reuse = true
-    #endif
-    if reuse, let kept = rowIndexCache, kept.revision == revision { return kept }
+    if let kept = rowIndexCache, kept.revision == revision { return kept }
     let index = Self.makeRowIndex(transcripts, revision: revision)
     rowIndexCache = index
     return index
@@ -757,95 +581,25 @@ final class TranscriptCoordinator {
   private nonisolated static func makeRowIndex(_ rows: [Transcript], revision: Int) -> RowIndex {
     var pending: [Int] = []
     var positions: [UUID: Int] = [:]
-    var meetingRowIDs: [UUID] = []
+    var meetingRowCounts: [UUID: Int] = [:]
     for (i, row) in rows.enumerated() {
       if positions[row.id] == nil { positions[row.id] = i }
       if row.escapeRecoveredAt != nil { pending.append(i) }
-      if let meetingID = row.meetingID { meetingRowIDs.append(meetingID) }
+      if let meetingID = row.meetingID { meetingRowCounts[meetingID, default: 0] += 1 }
     }
     return RowIndex(
-      revision: revision, pending: pending, positions: positions, meetingRowIDs: meetingRowIDs,
-      meetingRowCounts: meetingRowIDs.reduce(into: [:]) { $0[$1, default: 0] += 1 })
+      revision: revision, pending: pending, positions: positions, meetingRowCounts: meetingRowCounts)
   }
 
   private struct RowIndex: Sendable {
     let revision: Int
     let pending: [Int]
     let positions: [UUID: Int]
-    let meetingRowIDs: [UUID]
     /// How many rows each meeting has, held rows included.
     let meetingRowCounts: [UUID: Int]
   }
 
   @ObservationIgnored private var rowIndexCache: RowIndex?
-
-  #if DEBUG
-    /// Builds the list and the meeting search text afresh on every read: the reference the
-    /// cache tests compare against.
-    @ObservationIgnored var listCacheDisabledForTesting = false
-    /// #4001 H4: full list builds, so a test can tell a skipped read from a cache hit.
-    @ObservationIgnored private(set) var listBuildsForTesting = 0
-  #endif
-
-  /// Filter the active kind before constructing its results. Other tabs never read meeting data.
-  private nonisolated static func buildListedItems(
-    rows: [Transcript], at now: Date, from key: HistoryQueryKey,
-    meetingText: (Transcript, MeetingHistoryInfo?) -> String
-  ) throws -> [HistoryListItem] {
-    if key.kind != .meetings {
-      var items: [HistoryListItem] = []
-      for row in rows {
-        try Task.checkCancellation()
-        guard row.meetingID == nil, row.isImported == (key.kind == .transcripts),
-          isVisible(row, at: now) else { continue }
-        let item = HistoryListItem.transcript(row)
-        if matchesFilter(key.filter, item),
-          key.query.isEmpty || matchesSearch(
-            row, query: key.query, text: row.historyText, info: nil)
-        { items.append(item) }
-      }
-      return items
-    }
-
-    var rowsByMeeting: [UUID: Transcript] = [:]
-    for row in rows {
-      try Task.checkCancellation()
-      if let id = row.meetingID, isVisible(row, at: now) { rowsByMeeting[id] = row }
-    }
-    var meetings: [HistoryMeetingItem] = []
-    for record in key.meetings {
-      let row = rowsByMeeting.removeValue(forKey: record.id)
-      guard !record.deletionRequested else { continue }
-      meetings.append(HistoryMeetingItem(meetingID: record.id, record: record, row: row))
-    }
-    // Orphans stay browseable, even when their meeting document is unavailable.
-    for (id, row) in rowsByMeeting {
-      meetings.append(HistoryMeetingItem(meetingID: id, record: nil, row: row))
-    }
-    let facts = Dictionary(
-      (key.searchFacts ?? []).map { ($0.meetingID, $0) }, uniquingKeysWith: { first, _ in first })
-    var items: [HistoryListItem] = []
-    for meeting in meetings.sorted(by: { $0.createdAt > $1.createdAt }) {
-      try Task.checkCancellation()
-      let item = HistoryListItem.meeting(meeting)
-      guard matchesFilter(key.filter, item) else { continue }
-      if !key.query.isEmpty {
-        guard let row = meeting.row, meeting.record.map({ $0.state == .ready }) ?? true
-        else { continue }
-        let fact = facts[meeting.meetingID]
-        guard matchesSearch(
-          row, query: key.query, text: meetingText(row, fact?.info), info: fact?.info)
-          || (fact?.notes?.localizedCaseInsensitiveContains(key.query) ?? false)
-          || (fact.map {
-            $0.info?.matching(row) != nil
-              && $0.invited.contains { $0.localizedCaseInsensitiveContains(key.query) }
-          } ?? false)
-        else { continue }
-      }
-      items.append(item)
-    }
-    return items
-  }
 
   /// Whether `item` passes a History tab's filters (#3147 §3.3). A filter a kind does not carry
   /// (App on a meeting, Call app on a dictation) never lets that item through once it is set.
@@ -910,16 +664,6 @@ final class TranscriptCoordinator {
     // #4001: the view reads this on every redraw (the Delete All button and its confirmation
     // text), so it reads the row index instead of scanning every row: every row is visible
     // except the held rows whose time has run out.
-    #if DEBUG
-      if listCacheDisabledForTesting {
-        let visible = visibleTranscripts
-        let meetingsWithRows = Set(visible.compactMap(\.meetingID))
-        return visible.count
-          + (meetingRecords?() ?? []).filter { record in
-            !record.deletionRequested && !meetingsWithRows.contains(record.id)
-          }.count
-      }
-    #endif
     _ = expiryPulse
     let now = clock()
     let index = rowIndex
@@ -2374,7 +2118,7 @@ final class TranscriptCoordinator {
     // visible turns, a filter, are computed here.
     let text = meetingDocuments.text(
       of: row, info: info, showEcho: showEcho, locale: Locale.current.identifier,
-      localizations: Bundle.main.preferredLocalizations, bypass: meetingDocumentsBypass)
+      localizations: Bundle.main.preferredLocalizations, bypass: false)
     switch text.kind {
     case .unavailable: return .unavailable
     case .everythingHidden: return .everythingHidden
@@ -2396,34 +2140,12 @@ final class TranscriptCoordinator {
     let text = meetingDocuments.text(
       of: row, info: meetingInfo?(meetingID), showEcho: isShowingEcho(rowID: row.id),
       locale: Locale.current.identifier, localizations: Bundle.main.preferredLocalizations,
-      bypass: meetingDocumentsBypass)
+      bypass: false)
     switch text.kind {
     case .visible: return text.plain
     case .everythingHidden: return MeetingHistoryPresentation.everythingHiddenMessage
     case .unavailable: return MeetingHistoryPresentation.unavailableMessage
     }
-  }
-
-  /// The text search reads: a meeting's visible text only, never hidden echo lines.
-  private func searchableText(
-    of row: Transcript, info: MeetingHistoryInfo?, showEcho: Bool, locale: String,
-    localizations: [String]
-  ) -> String {
-    guard row.isMeeting else { return row.historyText }
-    let text = meetingDocuments.text(
-      of: row, info: info, showEcho: showEcho, locale: locale, localizations: localizations,
-      bypass: meetingDocumentsBypass)
-    return text.kind == .visible ? text.plain : ""
-  }
-
-  /// Whether the meeting document cache is bypassed: only the DEBUG reference build of the list
-  /// (`listCacheDisabledForTesting`), never Release.
-  private var meetingDocumentsBypass: Bool {
-    #if DEBUG
-      listCacheDisabledForTesting
-    #else
-      false
-    #endif
   }
 
   /// A meeting summary's source text: the visible text, echo always hidden, nil when nothing is
@@ -2443,7 +2165,7 @@ final class TranscriptCoordinator {
   ) -> HistoryMeetingDocumentCache.MeetingText {
     meetingDocuments.summaryText(
       of: row, info: info, locale: Locale.current.identifier,
-      localizations: Bundle.main.preferredLocalizations, bypass: meetingDocumentsBypass)
+      localizations: Bundle.main.preferredLocalizations, bypass: false)
   }
 
   /// Removes one row from disk and from the list (#2807). Announces nothing: `delete(_:)`

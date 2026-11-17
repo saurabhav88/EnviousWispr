@@ -27,8 +27,7 @@ struct HistoryRefreshLoopTests {
     func key() -> TranscriptCoordinator.HistoryQueryKey {
       .init(
         revision: Int(content), pulse: 0,
-        context: .init(tab: .dictations, query: "", filter: .none), echoShown: [], meetings: [],
-        pendingVisible: [], searchFacts: nil, locale: "", localizations: [], calendar: .current)
+        context: .init(tab: .dictations, query: "", filter: .none), echoShown: [], locale: "", localizations: [], calendar: .current)
     }
 
     func loop() -> HistoryRefreshLoop {
