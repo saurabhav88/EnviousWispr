@@ -95,6 +95,17 @@ extension Color {
   /// Speaker 6 (indigo): turn name and bar (#5b4bd6 / #a99bfa).
   static let stSpeaker6 = stDynamic(
     lightRGB: (0.357, 0.294, 0.839, 1), darkRGB: (0.663, 0.608, 0.98, 1))
+  // Overlay pills
+  /// The learned-word pill's icon glyph and Undo word (#6b2bcc / #c4a8ff).
+  ///
+  /// Brand purple for TEXT and GLYPHS on a floating pill, tuned to read on the opaque `PillPalette` fills in both appearances (founder #4675: layout from the approved mock, colors from this book). Not the settings accent: the pill sits on its own opaque ground, and the dark value is lighter so the small Undo word keeps its contrast.
+  static let pillAccent = stDynamic(
+    lightRGB: (0.42, 0.169, 0.8, 1), darkRGB: (0.769, 0.659, 1.0, 1))
+  /// The wash behind the learned-word pill's icon disc and Undo button.
+  ///
+  /// A translucent wash over the pill's own opaque fill, so the composited color is the same wherever the pill floats.
+  static let pillAccentWash = stDynamic(
+    lightRGB: (0.486, 0.227, 0.929, 0.1), darkRGB: (0.545, 0.361, 0.929, 0.3))
   // Settings controls
   /// Every field, picker box and segmented track (#f6f4fb / #2a2536).
   ///

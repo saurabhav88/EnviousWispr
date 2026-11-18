@@ -107,9 +107,9 @@ extension TelemetryService: LearnedCorrectionTelemetrySink {}
 /// Undo record is the one owner of what was added.
 struct LearnedCorrectionPillModel: Sendable, Equatable {
   enum Kind: Sendable, Equatable {
-    /// `Added “<canonical>” to Dictionary`.
+    /// Subtitle `Added to dictionary` under the word `<canonical>`.
     case added
-    /// `“<canonical>” updated`: a sound-alike joined a word that existed.
+    /// Subtitle `Updated in dictionary` under the word `<canonical>`: a sound-alike joined a word that existed.
     case updated
   }
   /// What the pill is showing. Only `.learned` draws the Undo button; the

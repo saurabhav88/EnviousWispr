@@ -2308,7 +2308,7 @@ struct OverlayDirectorTests {
     #expect(rig.host.presentCount == 3)
     #expect(rig.clock.armedSeconds == [12, 3, 1.5])
     #expect(rig.announcements.count == announcedAtPending + 1)
-    #expect(rig.announcements.last?.text == "Undone")
+    #expect(rig.announcements.last?.text == "\u{201C}Tuist\u{201D} removed")
     rig.clock.advance(to: 12)
     #expect(rig.director.renderModel.state.presentation == nil)
 

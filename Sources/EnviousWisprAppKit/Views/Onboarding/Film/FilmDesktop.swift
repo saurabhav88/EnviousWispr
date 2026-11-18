@@ -288,41 +288,28 @@ struct FilmProcessingPill: View {
   }
 }
 
-/// The learned-word pill, built from `CorrectionLearnedPillView`'s own parts (its copy, metrics,
-/// capsule and `SpectralRail`) so the film can drive the Undo rail from its clock and pause it.
-/// The live view animates the rail on its own timer and carries a real Undo button, which a
-/// film must not have.
+/// The learned-word pill, drawn by the app's own `CorrectionLearnedPillFace` (the live pill's
+/// card, copy, metrics and `SpectralRail`) with the rail driven from the film's clock so Pause
+/// holds it. The film shows the card as the unanswered offer: Undo and × both visible, neither
+/// pressable (the face's actions are no-ops and hit testing is off). The film's own scene track
+/// depicts the 12 s countdown compressed into the scene's 4 s; film time is illustrative.
 struct FilmLearnedPill: View {
   let word: String
-  /// How far the Undo window has run, 0 to 1.
+  /// How far the countdown has run, 0 to 1.
   var progress: Double
   var reduceMotion: Bool
+
+  @Environment(\.colorScheme) private var colorScheme
 
   var body: some View {
     let model = LearnedCorrectionPillModel(
       id: Self.filmID, wordID: Self.filmID, canonical: word, kind: .added)
-    HStack(spacing: UndoPillMetrics.rowGap) {
-      Text(CorrectionLearnedPillCopy.sentence(for: model))
-        .font(.system(size: UndoPillMetrics.sentenceSize, weight: .medium))
-        .foregroundStyle(.white)
-        .lineLimit(1)
-      Text(CorrectionLearnedPillCopy.undo)
-        .font(.system(size: UndoPillMetrics.actionSize, weight: .semibold))
-        .foregroundStyle(.white)
-        .padding(.horizontal, UndoPillMetrics.actionPaddingAcross)
-        .padding(.vertical, UndoPillMetrics.actionPaddingDown)
-        .overlay(Capsule().strokeBorder(Color.white.opacity(0.55), lineWidth: 1))
-    }
-    .padding(.horizontal, UndoPillMetrics.sidePadding)
-    .padding(.vertical, UndoPillMetrics.verticalPadding)
-    .background(OverlayCapsuleBackground(animatesGlow: false))
-    .overlay {
-      SpectralRail(
-        progress: progress, palette: .dark,
-        showsBloom: RailMotion.showsBloom(reduceMotion: reduceMotion)
-      )
-      .padding(1.5)
-    }
+    CorrectionLearnedPillFace(
+      line: CorrectionLearnedPillCopy.line(for: model),
+      progress: progress,
+      palette: PillPalette.forScheme(colorScheme),
+      showsBloom: RailMotion.showsBloom(reduceMotion: reduceMotion)
+    )
     .fixedSize()
     .allowsHitTesting(false)
   }

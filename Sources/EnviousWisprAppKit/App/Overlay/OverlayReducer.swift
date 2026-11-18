@@ -753,8 +753,9 @@ struct OverlayReducer {
   //   this pill, .learned        | hover in / out                     | pause / resume with at least 2 s left
   //   this pill, result          | hover                              | noChange: the dwell is not pausable
   //   this pill, .learned        | undo(pillID) action                | morph to .undoPending (hover cleared), delivered once; other ids dropped
-  //   this pill, .undoPending    | undo action                        | dropped
-  //   this pill, result          | undo action                        | dropped
+  //   this pill, .learned        | dismiss(pillID) action             | slot emptied, expiry cancelled, hover cleared, one end effect; other ids dropped
+  //   this pill, .undoPending    | undo or dismiss action             | dropped
+  //   this pill, result          | undo or dismiss action             | dropped
   //   this pill, .undoPending    | expiry / learned / saveError / preempt | closes or is replaced with no end effect: the Undo record is already claimed, the write continues
   //   empty or a learned pill    | saveError                          | admitted / replaces the learned pill: 3 s notice, no button
 
@@ -976,15 +977,21 @@ struct OverlayReducer {
 
   private mutating func reduceAction(_ id: PresentationID, _ action: PillAction) -> OverlayPlan {
     guard isCurrent(id), let current = state.current else { return .noChange }
-    // #996 auto-learn: Undo is gated on the pill it shows and on the `.learned`
-    // phase; a press on a result, or naming another pill, reaches nobody.
-    // There is no keyboard dismiss: the pill never takes focus, so an
-    // unanswered pill leaves on its dwell (`expiryFired`).
+    // #996 auto-learn: Undo and × are gated on the pill they show and on the `.learned`
+    // phase; a press on a result or a Pending offer, or naming another pill, reaches nobody.
+    // There is no keyboard dismiss: the pill never takes focus, so an unanswered pill
+    // leaves on its dwell (`expiryFired`) or on a click on ×.
     if case .undoLearnedCorrection(let pillID) = action {
       guard case .correctionLearned(let shown) = current.content, shown.id == pillID,
         case .learned = shown.phase
       else { return .noChange }
       return acceptUndo(action, shown: shown, current: current)
+    }
+    if case .dismissLearnedCorrection(let pillID) = action {
+      guard case .correctionLearned(let shown) = current.content, shown.id == pillID,
+        case .learned = shown.phase
+      else { return .noChange }
+      return dismissLearned(shown: shown, current: current)
     }
     return OverlayPlan(presentation: current, didChange: false, deliverAction: action)
   }
@@ -1012,6 +1019,20 @@ struct OverlayReducer {
       presentation: pending, didChange: true,
       expiryCommand: .enterPending(id: current.id, minimumSeconds: minimum),
       deliverAction: action)
+  }
+
+  /// × on the unanswered offer (#4675, plan §3.4): the slot empties exactly as expiry empties it,
+  /// the dwell is cancelled (a paused remainder with it), hover is cleared, and the offer is
+  /// reported ended once so the coordinator drops its Undo record. The word stays: nothing here
+  /// touches the dictionary. A second press, or an expiry already in flight, finds no current
+  /// presentation and is dropped by `isCurrent`.
+  private mutating func dismissLearned(
+    shown: LearnedCorrectionPillModel, current: PillDefinition
+  ) -> OverlayPlan {
+    state.set(current: nil, pipelineIntent: .hidden, isHovered: false)
+    return OverlayPlan(
+      presentation: nil, didChange: true, expiryCommand: .cancel,
+      effects: [.correctionLearnedEnded(pillID: shown.id, presentation: current.id)])
   }
 
   private mutating func reduceHover(_ id: PresentationID, _ hovering: Bool) -> OverlayPlan {

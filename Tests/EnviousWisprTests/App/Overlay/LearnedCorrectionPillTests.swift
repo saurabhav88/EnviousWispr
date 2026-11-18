@@ -126,15 +126,18 @@ final class LearnedOverlayHostFake: LearnedCorrectionOverlayHosting {
 struct LearnedCorrectionPillCopyTests {
 
   @Test(
-    "the two sentences name the correct word only, in curly quotes; the results and the button are fixed words"
+    "the card's lines are the approved whole phrases: the word is the title, the subtitle says Added or Updated, the results and the button are fixed words"
   )
   func exactStrings() {
     let added = LearnedPillFixture.model(canonical: "Tuist", kind: .added)
     let updated = LearnedPillFixture.model(canonical: "Saira", kind: .updated)
-    #expect(
-      CorrectionLearnedPillCopy.sentence(for: added) == "Added \u{201C}Tuist\u{201D} to Dictionary")
-    #expect(CorrectionLearnedPillCopy.sentence(for: updated) == "\u{201C}Saira\u{201D} updated")
-    #expect(CorrectionLearnedPillCopy.undo == "Undo")
+    let addedLine = CorrectionLearnedPillCopy.line(for: added)
+    let updatedLine = CorrectionLearnedPillCopy.line(for: updated)
+    #expect(addedLine.title == "Tuist" && addedLine.subtitle == "Added to dictionary")
+    #expect(updatedLine.title == "Saira" && updatedLine.subtitle == "Updated in dictionary")
+    #expect(addedLine.undoLabel == "Undo" && CorrectionLearnedPillCopy.undo == "Undo")
+    #expect(addedLine.closeLabel == "Close and keep \u{201C}Tuist\u{201D}")
+    #expect(updatedLine.closeLabel == "Close and keep \u{201C}Saira\u{201D}")
     #expect(CorrectionLearnedPillCopy.undone == "Undone")
     #expect(CorrectionLearnedPillCopy.couldNotUndo == "Couldn\u{2019}t undo")
     #expect(
@@ -146,56 +149,198 @@ struct LearnedCorrectionPillCopyTests {
     #expect(CorrectionLearnedPillCopy.undoneDwellSeconds == 1.5)
     #expect(CorrectionLearnedPillCopy.errorDwellSeconds == 3)
     #expect(CorrectionLearnedPillCopy.minimumScale == 0.5)
+    #expect(CorrectionLearnedPillCopy.maximumSentenceWidth == 400)
+  }
+
+  /// The card hosted on its own, as one off-screen `NSHostingView` at its fitting size.
+  @MainActor private static func fittingSize(
+    of line: CorrectionLearnedPillCopy.Line, palette: PillPalette = .dark
+  ) -> CGSize {
+    let host = NSHostingView(
+      rootView: CorrectionLearnedPillFace(line: line, progress: 0.4, palette: palette))
+    host.layoutSubtreeIfNeeded()
+    return host.fittingSize
+  }
+
+  /// A phase's line with its text replaced, to stand in for a translation.
+  private static func line(
+    _ base: CorrectionLearnedPillCopy.Line, title: String? = nil, subtitle: String? = nil,
+    undo: String? = nil
+  ) -> CorrectionLearnedPillCopy.Line {
+    CorrectionLearnedPillCopy.Line(
+      title: title ?? base.title, subtitle: subtitle ?? base.subtitle, controls: base.controls,
+      isError: base.isError, undoLabel: undo ?? base.undoLabel, closeLabel: base.closeLabel,
+      announcement: base.announcement)
+  }
+
+  /// The widest the card can be without its controls, from the fonts and metrics, measured
+  /// independently of the view's own layout: the paddings, the icon, the text block and the gaps.
+  private static func claimedWidth(
+    textWidth: CGFloat, undoWord: String
+  ) -> CGFloat {
+    let undo =
+      ceil(
+        (undoWord as NSString).size(withAttributes: [
+          .font: NSFont.systemFont(ofSize: LearnedPillMetrics.undoSize, weight: .semibold)
+        ]).width) + 2 * LearnedPillMetrics.undoPaddingAcross
+    return LearnedPillMetrics.leadingPadding + LearnedPillMetrics.discSize
+      + LearnedPillMetrics.rowGap + textWidth + LearnedPillMetrics.textToControlsGap + undo
+      + LearnedPillMetrics.controlGap + LearnedPillMetrics.closeSize
+      + LearnedPillMetrics.trailingPadding
+  }
+
+  private static func subtitleWidth(_ text: String) -> CGFloat {
+    ceil(
+      (text as NSString).size(withAttributes: [
+        .font: NSFont.systemFont(ofSize: LearnedPillMetrics.subtitleSize, weight: .regular)
+      ]).width)
   }
 
   @Test(
-    "a very long word cannot push the Undo button off the screen: the pill's fitting width is capped"
+    "a 512-scalar word cannot push Undo and × off the card: the fitting width stays inside the cap plus the controls, and the controls' room is still counted"
   )
   @MainActor func longWordStaysOnScreen() {
-    let long = String(repeating: "Supercalifragilistic", count: 25)  // 500 scalars, the stored limit's neighbourhood
-    let model = LearnedPillFixture.model(canonical: long, kind: .added)
-    let host = NSHostingView(
-      rootView: CorrectionLearnedPillView(model: model, onUndo: {}, dwell: nil))
-    host.layoutSubtreeIfNeeded()
-    let width = host.fittingSize.width
-    // The sentence is capped, and the button plus paddings ride beside it.
-    #expect(width <= CorrectionLearnedPillCopy.maximumSentenceWidth + 140, "fitting width \(width)")
-    // Control: a short word is narrower than the cap.
-    let short = NSHostingView(
-      rootView: CorrectionLearnedPillView(
-        model: LearnedPillFixture.model(canonical: "Tuist", kind: .added), onUndo: {}, dwell: nil))
-    short.layoutSubtreeIfNeeded()
-    #expect(short.fittingSize.width < CorrectionLearnedPillCopy.maximumSentenceWidth)
+    let long = String(repeating: "Supercalifragilistic", count: 26)  // 520 scalars
+    #expect(long.unicodeScalars.count >= 512)
+    let longLine = CorrectionLearnedPillCopy.line(
+      for: LearnedPillFixture.model(canonical: long, kind: .added))
+    let shortLine = CorrectionLearnedPillCopy.line(
+      for: LearnedPillFixture.model(canonical: "Tuist", kind: .added))
+    let long512 = Self.fittingSize(of: longLine)
+    let short = Self.fittingSize(of: shortLine)
+    #expect(short.width > 0 && short.height > 0, "the short card did not lay out")
+    // The word is capped at 400; the icon, gaps, paddings and both controls ride beside it.
+    let cap = CorrectionLearnedPillCopy.maximumSentenceWidth
+    let beside = Self.claimedWidth(textWidth: 0, undoWord: longLine.undoLabel)
+    #expect(long512.width <= cap + beside + 1, "fitting width \(long512.width)")
+    #expect(
+      long512.width >= cap + beside - 1,
+      "the long word did not reach the cap, so the cap is not what limits it: \(long512.width)")
+    // Control: a short word is narrower than the cap alone.
+    #expect(short.width < cap)
+    #expect(long512.height == short.height, "a long word changed the card's height")
   }
 
   @Test(
-    "only the learned phase offers Undo; the results draw their fixed line, and only the error is red"
+    "a three-times-long subtitle and Undo label widen the card instead of clipping the controls: the width covers every part, and the height does not change"
   )
-  func phaseButtonPolicy() {
+  @MainActor func longTranslationWidensTheCard() {
+    let base = CorrectionLearnedPillCopy.line(
+      for: LearnedPillFixture.model(canonical: "Tuist", kind: .added))
+    let longSubtitle = String(repeating: base.subtitle ?? "", count: 3)
+    let longUndo = String(repeating: base.undoLabel, count: 3)
+    #expect(!longSubtitle.isEmpty)
+    let normal = Self.fittingSize(of: base)
+    let widened = Self.fittingSize(
+      of: Self.line(base, subtitle: longSubtitle, undo: longUndo))
+    #expect(normal.width > 0)
+    let claimed = Self.claimedWidth(
+      textWidth: Self.subtitleWidth(longSubtitle), undoWord: longUndo)
+    #expect(
+      widened.width >= claimed - 1,
+      "the card is \(widened.width) wide but its parts need \(claimed): a control is clipped")
+    #expect(widened.width > normal.width, "the long translation did not widen the card")
+    #expect(widened.height == normal.height, "the long translation changed the height")
+  }
+
+  @Test(
+    "Pending keeps the offer's size (its controls stay laid out, invisible) and a result drops them, so the card changes size once, at the result"
+  )
+  @MainActor func pendingKeepsTheCardSize() {
+    func size(_ phase: LearnedCorrectionPillModel.Phase) -> CGSize {
+      Self.fittingSize(
+        of: CorrectionLearnedPillCopy.line(
+          for: LearnedPillFixture.model(canonical: "Tuist", kind: .added, phase: phase)))
+    }
+    let offer = size(.learned)
+    let pending = size(.undoPending)
+    let result = size(.undone)
+    #expect(offer.width > 0 && offer.height > 0)
+    #expect(pending == offer, "pressing Undo resized the card: \(offer) to \(pending)")
+    #expect(result.width < offer.width, "the result card kept the controls' room")
+    #expect(result.height == offer.height, "the result changed the height")
+  }
+
+  @Test(
+    "the light and dark palettes lay the card out to the same size, so an appearance change cannot move the buttons"
+  )
+  @MainActor func themesShareOneSize() {
+    let line = CorrectionLearnedPillCopy.line(for: LearnedPillFixture.model())
+    #expect(
+      Self.fittingSize(of: line, palette: .light) == Self.fittingSize(of: line, palette: .dark))
+  }
+
+  @Test(
+    "the card follows the dwell: a paused dwell is a still picture of its frozen share, a running one animates the rest over what is left, and a resume that added time moves the line back"
+  )
+  func railFollowsTheDwell() {
+    let id = PresentationID()
+    let now = Date(timeIntervalSince1970: 1_000)
+    // Frozen at 7 s left of 12: 5/12 drawn, nothing to animate, however much later it is read.
+    let paused = OverlayDwellWindow(id: id, pausedAt: now, remaining: 7, totalSeconds: 12)
+    let frozen = CorrectionLearnedPillView.railPlan(for: paused, at: now.addingTimeInterval(500))
+    #expect(frozen.start == 5.0 / 12.0 && frozen.animatesOver == nil)
+    // Running, 2 s into a 12 s dwell: 2/12 drawn, 10 s to animate.
+    let running = OverlayDwellWindow(id: id, startedAt: now, seconds: 12)
+    let early = CorrectionLearnedPillView.railPlan(for: running, at: now.addingTimeInterval(2))
+    #expect(early.start == 2.0 / 12.0 && early.animatesOver == 10)
+    // Resumed with the 2 s floor after 0.5 s were left (11.5 s elapsed): the share is 10/12, so the
+    // line moves back from 11.5/12, and it animates over the 2 s.
+    let resumed = OverlayDwellWindow(id: id, startedAt: now, seconds: 2, totalSeconds: 12)
+    let floor = CorrectionLearnedPillView.railPlan(for: resumed, at: now)
+    #expect(floor.start == 10.0 / 12.0 && floor.animatesOver == 2)
+    #expect(floor.start < 11.5 / 12.0)
+    // A running dwell read after its end is full and animates nothing.
+    let late = CorrectionLearnedPillView.railPlan(for: running, at: now.addingTimeInterval(13))
+    #expect(late.start == 1 && late.animatesOver == nil)
+  }
+
+  @Test(
+    "the offer shows Undo and × and the countdown; Pending keeps the room without the controls' action or the countdown; results have no controls and only the error is red"
+  )
+  func phaseControlPolicy() {
     let learned = CorrectionLearnedPillCopy.line(for: LearnedPillFixture.model(phase: .learned))
-    #expect(learned.showsUndo && !learned.isError && learned.text.hasPrefix("Added"))
+    #expect(learned.controls == .live && learned.showsCountdown && !learned.isError)
+    #expect(learned.title == "Tuist" && learned.subtitle == "Added to dictionary")
     let pending = CorrectionLearnedPillCopy.line(
       for: LearnedPillFixture.model(canonical: "Tuist", phase: .undoPending))
     #expect(
-      !pending.showsUndo && !pending.isError && pending.text.hasPrefix("Added"),
-      "Pending keeps the card and its sentence, without the button")
-    let undone = CorrectionLearnedPillCopy.line(for: LearnedPillFixture.model(phase: .undone))
-    #expect(!undone.showsUndo && !undone.isError && undone.text == "Undone")
+      pending.controls == .reserved && !pending.showsCountdown && !pending.isError
+        && pending.title == "Tuist" && pending.subtitle == "Added to dictionary",
+      "Pending keeps the card and its text, with both controls out of play")
+    let removed = CorrectionLearnedPillCopy.line(
+      for: LearnedPillFixture.model(kind: .added, phase: .undone))
+    #expect(
+      removed.controls == .none && !removed.isError && removed.subtitle == nil
+        && removed.title == "\u{201C}Tuist\u{201D} removed")
+    let restored = CorrectionLearnedPillCopy.line(
+      for: LearnedPillFixture.model(kind: .updated, phase: .undone))
+    #expect(restored.controls == .none && !restored.isError && restored.title == "Undone")
     let failed = CorrectionLearnedPillCopy.line(for: LearnedPillFixture.model(phase: .undoError))
-    #expect(!failed.showsUndo && failed.isError && failed.text == "Couldn\u{2019}t undo")
+    #expect(
+      failed.controls == .none && failed.isError && failed.subtitle == nil
+        && failed.title == "Couldn\u{2019}t undo")
   }
 
   @Test(
-    "the announcement is the sentence plus Undo available while Undo is offered, and the bare line otherwise"
+    "the announcement is the word, the subtitle and Undo available while Undo is offered, and the bare result line otherwise; Undo of an added word says removed, of an updated word says Undone"
   )
   func announcement() {
     let learned = LearnedPillFixture.model(canonical: "Tuist", kind: .updated)
     #expect(
       CorrectionLearnedPillCopy.announcement(for: learned)
-        == "\u{201C}Tuist\u{201D} updated. Undo available.")
+        == "Tuist, Updated in dictionary. Undo available.")
     #expect(
-      CorrectionLearnedPillCopy.announcement(for: LearnedPillFixture.model(phase: .undone))
-        == "Undone")
+      CorrectionLearnedPillCopy.announcement(
+        for: LearnedPillFixture.model(canonical: "Tuist", kind: .added))
+        == "Tuist, Added to dictionary. Undo available.")
+    #expect(
+      CorrectionLearnedPillCopy.announcement(
+        for: LearnedPillFixture.model(kind: .added, phase: .undone))
+        == "\u{201C}Tuist\u{201D} removed")
+    #expect(
+      CorrectionLearnedPillCopy.announcement(
+        for: LearnedPillFixture.model(kind: .updated, phase: .undone)) == "Undone")
   }
 }
 
@@ -233,7 +378,7 @@ struct LearnedCorrectionPillReducerTests {
     #expect(shown.requestedWidth == .measured && shown.reservesFixedHeight == nil)
     #expect(plan.expiryCommand == .arm(id: id, seconds: 12, target: .presentation))
     #expect(plan.announcement?.isHighPriority == false)
-    #expect(plan.announcement?.text == "Added \u{201C}Tuist\u{201D} to Dictionary. Undo available.")
+    #expect(plan.announcement?.text == "Tuist, Added to dictionary. Undo available.")
     #expect(r.state.featureSlotIsAvailable == false, "no other feature displaces it")
     // Hover freezes the countdown and leaving resumes it; the clock owns the
     // arithmetic, so the reducer only names the floor.
@@ -333,7 +478,7 @@ struct LearnedCorrectionPillReducerTests {
     #expect(shown.id != firstID && shown.content == .correctionLearned(second))
     #expect(plan.expiryCommand == .arm(id: shown.id, seconds: 12, target: .presentation))
     #expect(plan.effects == [.correctionLearnedEnded(pillID: first.id, presentation: firstID)])
-    #expect(plan.announcement?.text == "\u{201C}Saira\u{201D} updated. Undo available.")
+    #expect(plan.announcement?.text == "Saira, Updated in dictionary. Undo available.")
   }
 
   @Test("a learned pill replaces a result still on screen, and the result owes no end effect")
@@ -370,7 +515,7 @@ struct LearnedCorrectionPillReducerTests {
     let pending = try #require(press.presentation)
     #expect(pending.id == id, "the morph keeps the presentation identity")
     #expect(Self.pill(r)?.phase == .undoPending && Self.pill(r)?.id == model.id)
-    #expect(CorrectionLearnedPillCopy.line(for: try #require(Self.pill(r))).showsUndo == false)
+    #expect(CorrectionLearnedPillCopy.line(for: try #require(Self.pill(r))).controls == .reserved)
     #expect(pending.expiry == .after(seconds: 3, hover: .ignore))
     #expect(press.expiryCommand == .enterPending(id: id, minimumSeconds: 3))
     #expect(!r.state.isHovered, "the hover flag is cleared")
@@ -379,6 +524,70 @@ struct LearnedCorrectionPillReducerTests {
     #expect(Self.pressUndo(&r, id, model) == .noChange, "a repeat press while Pending is dropped")
     _ = r.reduce(.correctionLearnedResult(pillID: model.id, presentation: id, phase: .undone))
     #expect(Self.pressUndo(&r, id, model) == .noChange, "no button on a result")
+  }
+
+  @Test(
+    "× closes the unanswered offer, running or paused, exactly as expiry does: the slot empties, hover and the dwell are cleared and one end effect is emitted; a stale id, another pill, Pending and a result drop it, and a second press or an expiry already in flight finds nothing"
+  )
+  func dismissGate() throws {
+    let id = PresentationID()
+    let model = LearnedPillFixture.model()
+
+    // Running.
+    var r = OverlayReducer(makeID: { id })
+    _ = r.reduce(.correctionLearned(model))
+    #expect(r.reduce(.action(id, .dismissLearnedCorrection(pillID: UUID()))) == .noChange)
+    #expect(
+      r.reduce(.action(PresentationID(), .dismissLearnedCorrection(pillID: model.id))) == .noChange)
+    #expect(Self.pill(r)?.phase == .learned, "a refused press changed the slot")
+    let plan = r.reduce(.action(id, .dismissLearnedCorrection(pillID: model.id)))
+    #expect(plan.presentation == nil && plan.didChange && plan.deliverAction == nil)
+    #expect(plan.expiryCommand == .cancel)
+    #expect(plan.effects == [.correctionLearnedEnded(pillID: model.id, presentation: id)])
+    #expect(plan.announcement == nil)
+    #expect(r.state.current == nil && r.state.pipelineIntent == .hidden && !r.state.isHovered)
+    #expect(
+      r.reduce(.action(id, .dismissLearnedCorrection(pillID: model.id))) == .noChange,
+      "a second press after the slot closed")
+    #expect(r.reduce(.expiryFired(id)) == .noChange, "an expiry already in flight after ×")
+
+    // The same plan as expiry, apart from nothing: the slot, command and effect match.
+    var expiring = OverlayReducer(makeID: { id })
+    _ = expiring.reduce(.correctionLearned(model))
+    let expired = expiring.reduce(.expiryFired(id))
+    #expect(
+      plan.presentation == expired.presentation && plan.expiryCommand == expired.expiryCommand
+        && plan.effects == expired.effects)
+
+    // Paused: hover set, the same close, and the hover flag cleared.
+    var p = OverlayReducer(makeID: { id })
+    _ = p.reduce(.correctionLearned(model))
+    #expect(p.reduce(.hoverChanged(id, true)).expiryCommand == .pause)
+    #expect(p.state.isHovered)
+    let pausedPlan = p.reduce(.action(id, .dismissLearnedCorrection(pillID: model.id)))
+    #expect(pausedPlan.presentation == nil && pausedPlan.expiryCommand == .cancel)
+    #expect(pausedPlan.effects == [.correctionLearnedEnded(pillID: model.id, presentation: id)])
+    #expect(p.state.current == nil && !p.state.isHovered)
+    #expect(p.reduce(.hoverChanged(id, false)) == .noChange, "a hover exit after × resumes nothing")
+
+    // Pending: dropped, and Undo's claimed record is untouched (no end effect).
+    var pending = OverlayReducer(makeID: { id })
+    _ = pending.reduce(.correctionLearned(model))
+    Self.pressUndo(&pending, id, model)
+    #expect(pending.reduce(.action(id, .dismissLearnedCorrection(pillID: model.id))) == .noChange)
+    #expect(Self.pill(pending)?.phase == .undoPending)
+
+    // Results: no button, so dropped.
+    for phase in [LearnedCorrectionPillModel.Phase.undone, .undoError] {
+      var result = OverlayReducer(makeID: { id })
+      _ = result.reduce(.correctionLearned(model))
+      Self.pressUndo(&result, id, model)
+      _ = result.reduce(.correctionLearnedResult(pillID: model.id, presentation: id, phase: phase))
+      #expect(Self.pill(result)?.phase == phase)
+      #expect(
+        result.reduce(.action(id, .dismissLearnedCorrection(pillID: model.id))) == .noChange,
+        "a result (\(phase)) took ×")
+    }
   }
 
   @Test("a result cannot be applied to a pill that is still the unanswered offer")
@@ -419,7 +628,9 @@ struct LearnedCorrectionPillReducerTests {
 
     let plan = r.reduce(
       .correctionLearnedResult(pillID: model.id, presentation: id, phase: .undone))
-    #expect(plan.announcement?.text == "Undone", "the result copy is announced once, with the plan")
+    #expect(
+      plan.announcement?.text == "\u{201C}Tuist\u{201D} removed",
+      "the result copy is announced once, with the plan; an added word was removed")
     #expect(plan.announcement?.isHighPriority == false)
     let shown = try #require(plan.presentation)
     #expect(shown.id == id && Self.pill(r)?.phase == .undone && Self.pill(r)?.id == model.id)
@@ -437,6 +648,15 @@ struct LearnedCorrectionPillReducerTests {
     #expect(Self.pill(e)?.phase == .undoError)
     #expect(errorPlan.expiryCommand == .arm(id: id, seconds: 3, target: .presentation))
     #expect(errorPlan.announcement?.text == "Couldn\u{2019}t undo")
+
+    // Undo of an UPDATED word restores the earlier entry, so it says Undone, not removed.
+    let updated = LearnedPillFixture.model(canonical: "Saira", kind: .updated)
+    var u = OverlayReducer(makeID: { id })
+    _ = u.reduce(.correctionLearned(updated))
+    Self.pressUndo(&u, id, updated)
+    let updatedPlan = u.reduce(
+      .correctionLearnedResult(pillID: updated.id, presentation: id, phase: .undone))
+    #expect(updatedPlan.announcement?.text == "Undone")
   }
 
   @Test(
@@ -1036,6 +1256,71 @@ struct LearnedCorrectionPillDirectorTests {
   }
 
   @Test(
+    "× at the root closes the offer once, whether running or paused: the pill leaves, the end callback fires once, Undo never fires, and no deadline or hover resume brings anything back"
+  )
+  func dismissThroughTheRoot() throws {
+    // Running, 5 s in.
+    let clock = LearnedPillClock()
+    let log = Log()
+    let (d, host) = hoverDirector(clock, log)
+    let model = LearnedPillFixture.model()
+    let receipt = try #require(d.present(request(model, log)))
+    clock.advance(to: 5)
+    try host.press(.dismissLearnedCorrection(pillID: model.id), over: receipt)
+    #expect(d.renderModel.state.presentation == nil, "× left the pill on screen")
+    #expect(log.ended == 1 && log.undos == 0)
+    #expect(d.renderModel.state.dwell == nil, "the published dwell outlived the pill")
+    try host.press(.dismissLearnedCorrection(pillID: model.id), over: receipt)
+    clock.advance(to: 500)
+    #expect(log.ended == 1 && log.undos == 0, "a repeat press or the old 12 s deadline reported again")
+    #expect(clock.armedSeconds == [12], "× armed something")
+
+    // Paused: hover first, then ×; the frozen remainder must not come back.
+    let clock2 = LearnedPillClock()
+    let log2 = Log()
+    let (d2, host2) = hoverDirector(clock2, log2)
+    let model2 = LearnedPillFixture.model()
+    let receipt2 = try #require(d2.present(request(model2, log2)))
+    clock2.advance(to: 3)
+    try host2.hover(true, over: receipt2)
+    #expect(d2.renderModel.state.dwell?.isPaused == true)
+    try host2.press(.dismissLearnedCorrection(pillID: model2.id), over: receipt2)
+    #expect(d2.renderModel.state.presentation == nil && log2.ended == 1 && log2.undos == 0)
+    try host2.hover(false, over: receipt2)
+    clock2.advance(to: 500)
+    #expect(clock2.armedSeconds == [12], "the paused remainder was re-armed after ×")
+    #expect(log2.ended == 1, "a dead pill's timer reported the offer ended again")
+
+    // A stale press naming another pill reaches nobody.
+    let clock3 = LearnedPillClock()
+    let log3 = Log()
+    let (d3, host3) = hoverDirector(clock3, log3)
+    let model3 = LearnedPillFixture.model()
+    let receipt3 = try #require(d3.present(request(model3, log3)))
+    try host3.press(.dismissLearnedCorrection(pillID: UUID()), over: receipt3)
+    #expect(shown(d3)?.id == model3.id && log3.ended == 0)
+  }
+
+  @Test(
+    "× pressed once Undo has been accepted reaches nobody: Pending stays, the write still returns its result, and no end is reported"
+  )
+  func dismissAfterUndoIsDropped() throws {
+    let clock = LearnedPillClock()
+    let log = Log()
+    let (d, host) = hoverDirector(clock, log)
+    let model = LearnedPillFixture.model()
+    let receipt = try #require(d.present(request(model, log)))
+    try host.press(.undoLearnedCorrection(pillID: model.id), over: receipt)
+    try host.press(.dismissLearnedCorrection(pillID: model.id), over: receipt)
+    #expect(shown(d)?.phase == .undoPending && log.ended == 0 && log.undos == 1)
+    d.resolveLearnedCorrection(
+      pillID: model.id, presentation: receipt.presentationID, phase: .undone)
+    #expect(shown(d)?.phase == .undone, "× on Pending closed the pill before its result")
+    try host.press(.dismissLearnedCorrection(pillID: model.id), over: receipt)
+    #expect(shown(d)?.phase == .undone && log.ended == 0, "× on a result closed it")
+  }
+
+  @Test(
     "the result announces its copy once when the morph lands; a repeated or late result adds nothing and reopens nothing"
   )
   func resultAnnouncedOnceAndLateResultDropped() throws {
@@ -1050,7 +1335,7 @@ struct LearnedCorrectionPillDirectorTests {
 
     d.resolveLearnedCorrection(
       pillID: model.id, presentation: receipt.presentationID, phase: .undone)
-    #expect(log.announcements.map(\.text).suffix(1) == ["Undone"])
+    #expect(log.announcements.map(\.text).suffix(1) == ["\u{201C}Tuist\u{201D} removed"])
     #expect(log.announcements.count == 2 && log.announcements.last?.isHighPriority == false)
     d.resolveLearnedCorrection(
       pillID: model.id, presentation: receipt.presentationID, phase: .undoError)

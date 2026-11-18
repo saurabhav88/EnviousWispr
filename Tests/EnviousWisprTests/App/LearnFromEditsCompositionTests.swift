@@ -28,6 +28,7 @@ struct LearnFromEditsCompositionTests {
     let customWords: CustomWordsCoordinator
     let packs: VocabularyPackManager
     let overlay: OverlayDirector
+    let overlayHost: WindowlessOverlayHost
     let registry: PasteCompletionRegistry
     let observer: ObserverFake
     let clock: ObserverClock
@@ -52,8 +53,9 @@ struct LearnFromEditsCompositionTests {
     _ = await customWords.add(CustomWord(canonical: "Saira"))
     let packs = VocabularyPackManager(defaults: defaults)
     let armed = Armed()
+    let overlayHost = WindowlessOverlayHost()
     let overlay = OverlayDirector(
-      host: WindowlessOverlayHost(),
+      host: overlayHost,
       scheduler: .manual { armed.work = $0 },
       announce: { _ in },
       livePreview: .disabled,
@@ -82,7 +84,7 @@ struct LearnFromEditsCompositionTests {
       debugExportPath: debugExportPath)
     return Fixture(
       settings: settings, customWords: customWords, packs: packs, overlay: overlay,
-      registry: registry, observer: observer, clock: clock, judge: judge, telemetry: telemetry,
+      overlayHost: overlayHost, registry: registry, observer: observer, clock: clock, judge: judge, telemetry: telemetry,
       wiring: wiring, dir: dir)
   }
 
@@ -154,6 +156,39 @@ struct LearnFromEditsCompositionTests {
     let g = await fixture()
     g.registry.emit(paste())
     #expect(await waitUntil { g.telemetry.events.contains(.skipped(.modelUnavailable)) }, "the paste reached the watcher and found no judge: \(g.telemetry.events)")
+  }
+
+  @Test(
+    "× on the offered pill, through the composed graph, closes it and ends the Undo offer while the saved word stays; Undo then has nothing to claim"
+  )
+  func closeKeepsTheWordAndEndsTheOffer() async throws {
+    let f = await fixture(judgeServes: true)
+    let edits = EditCaptureFake()
+    edits.outcomes = [
+      .captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))
+    ]
+    f.registry.emit(paste(edits))
+    #expect(await waitUntil { f.observer.starts == 1 }, "a paste through the registry started a watch")
+    f.observer.fire(.settled(region: "Ask Saira today"))
+    #expect(await waitUntil { f.telemetry.events.contains(.undoShown) }, "\(f.telemetry.events)")
+    guard case .correctionLearned(let pill)? = f.overlay.renderModel.state.presentation?.content else {
+      Issue.record("the Undo pill did not reach the overlay")
+      return
+    }
+    #expect(f.wiring.coordinator.undoRecord?.pillID == pill.id, "the offer was not live before ×")
+    let eventsBefore = f.telemetry.events
+
+    try f.overlayHost.sendCurrentUserActionThroughRoot(.dismissLearnedCorrection(pillID: pill.id))
+
+    #expect(f.overlay.renderModel.state.presentation == nil, "× left the pill on screen")
+    #expect(f.wiring.coordinator.undoRecord == nil, "the Undo offer outlived the pill")
+    let saira = try #require(f.customWords.customWords.first { $0.canonical == "Saira" })
+    #expect(saira.aliases == ["sarah"] && saira.learnedAliases == ["sarah"], "× took the saved word back")
+    #expect(f.telemetry.events == eventsBefore, "× emitted telemetry")
+    // The offer is gone: an Undo naming the closed pill finds no presentation and claims nothing.
+    #expect(f.overlay.renderModel.state.presentation == nil)
+    #expect(f.wiring.coordinator.claimUndo(pillID: pill.id) == nil)
+    #expect(f.customWords.customWords.first { $0.canonical == "Saira" }?.aliases == ["sarah"])
   }
 
   @Test("with a serving judge a paste starts a watch; the toggle fan-out cancels it as toggle_off; a recording start finishes the next as next_dictation_started")

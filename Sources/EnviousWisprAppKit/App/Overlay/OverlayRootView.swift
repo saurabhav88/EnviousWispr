@@ -191,13 +191,18 @@ struct OverlayRootView: View {
         onNotNow: { press(.dismissPolishSetup, on: presentation) })
 
     case .correctionLearned(let model):
-      // #996 auto-learn: Undo is dispatched with the model's own pill id, and
-      // only from the `.learned` phase (a result draws no button).
+      // #996 auto-learn: Undo and × are dispatched with the model's own pill id, and
+      // only from the `.learned` phase (Pending and a result draw no live button).
       CorrectionLearnedPillView(
         model: model,
         onUndo: {
           if case .learned = model.phase {
             press(.undoLearnedCorrection(pillID: model.id), on: presentation)
+          }
+        },
+        onDismiss: {
+          if case .learned = model.phase {
+            press(.dismissLearnedCorrection(pillID: model.id), on: presentation)
           }
         },
         // Already matched to this presentation at publication — see

@@ -181,7 +181,8 @@ enum FilmScript {
     static let fix = FilmTrack(.easeOut, (0, 0), (1.0, 0), (1.5, 1))  // fLrnFix
     static let pillOpacity = FilmTrack(.easeOut, (0, 0), (1.5, 0), (1.7, 1), (5.7, 1), (5.9, 0))
     static let pillRise = FilmTrack(.easeOut, (0, 0), (1.5, 0), (1.7, 1))  // fLrnPill
-    /// The Undo window running out, 0 to 1 (`fLrnRail`, drawn by the app's own rail).
+    /// The Undo window running out, 0 to 1 (`fLrnRail`, drawn by the app's own rail). The live pill
+    /// counts down 12 s; the film draws that countdown over this 4 s track.
     static let undoWindow = FilmTrack(.linear, (0, 0), (1.7, 0), (5.7, 1))
     static let nextTime = FilmTrack(.soft, (0, 0), (3.6, 0), (4.0, 1))  // fLrnNext
   }

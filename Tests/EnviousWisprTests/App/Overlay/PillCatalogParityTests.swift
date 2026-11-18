@@ -109,6 +109,7 @@ struct PillCatalogParityTests {
     case .closeBluetoothAwareness: return "closeBluetoothAwareness"
     case .openBluetoothSettings: return "openBluetoothSettings"
     case .undoLearnedCorrection: return "undoLearnedCorrection"
+    case .dismissLearnedCorrection: return "dismissLearnedCorrection"
     case .finishPolishSetup: return "finishPolishSetup"
     case .dismissPolishSetup: return "dismissPolishSetup"
     }

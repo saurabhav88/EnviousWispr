@@ -1174,6 +1174,23 @@
         }
       }
     },
+    "%@, %@. Undo available." : {
+      "comment" : "VoiceOver reading of the pill: the first %@ is the saved word, the second the small line under it, then the Undo button is announced.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$@. Undo available."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@, %2$@. „Rückgängig“ verfügbar."
+          }
+        }
+      }
+    },
     "%@, example, pastes %@" : {
       "localizations" : {
         "en" : {
@@ -1302,17 +1319,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@. Redeanteil anzeigen"
-          }
-        }
-      }
-    },
-    "%@. Undo available." : {
-      "comment" : "VoiceOver reading of the pill: %@ is the pill's sentence, then the Undo button is announced.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@. „Rückgängig“ verfügbar."
           }
         }
       }
@@ -3409,13 +3415,13 @@
         }
       }
     },
-    "Added “%@” to Dictionary" : {
-      "comment" : "Pill after a correction taught the app a new word. %@ is that word.",
+    "Added to dictionary" : {
+      "comment" : "Small line under the word on the pill shown after a correction taught the app a new word.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "„%@“ zum Wörterbuch hinzugefügt"
+            "value" : "Zum Wörterbuch hinzugefügt"
           }
         }
       }
@@ -7381,6 +7387,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Modelle schließen"
+          }
+        }
+      }
+    },
+    "Close and keep “%@”" : {
+      "comment" : "VoiceOver label of the × button on the pill shown after a word was saved to the dictionary: closes the pill and keeps the word. %@ is that word.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schließen und „%@“ behalten"
           }
         }
       }
@@ -29145,7 +29162,7 @@
       }
     },
     "Undone" : {
-      "comment" : "Pill result after the user pressed Undo: the word was removed again.",
+      "comment" : "Pill result after the user pressed Undo on a word that was updated: the earlier entry is back.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -29444,6 +29461,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Update-Status nicht verfügbar"
+          }
+        }
+      }
+    },
+    "Updated in dictionary" : {
+      "comment" : "Small line under the word on the pill shown after a correction changed a word already in the dictionary.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Im Wörterbuch aktualisiert"
           }
         }
       }
@@ -34806,13 +34834,13 @@
         }
       }
     },
-    "“%@” updated" : {
-      "comment" : "Pill after a correction changed a word already in the dictionary. %@ is that word.",
+    "“%@” removed" : {
+      "comment" : "Pill result after the user pressed Undo on a word that was just added to the dictionary. %@ is that word.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "„%@“ aktualisiert"
+            "value" : "„%@“ entfernt"
           }
         }
       }
