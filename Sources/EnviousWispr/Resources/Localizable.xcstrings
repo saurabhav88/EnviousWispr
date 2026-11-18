@@ -34973,6 +34973,42 @@
         }
       }
     },
+    "whatsNew.calmer-self-learning-pill.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry calmer-self-learning-pill).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A calmer Self-Learning pill"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein ruhigerer Selbstlern-Hinweis"
+          }
+        }
+      }
+    },
+    "whatsNew.calmer-self-learning-pill.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry calmer-self-learning-pill).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "When Self-Learning saves a word, the pill now stays for 12 seconds and waits while your pointer rests on it. Click Undo to reverse the dictionary change, or click × to close the pill and keep the word. You can always change learned words in Your Words."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn das Selbstlernende Wörterbuch ein Wort speichert, bleibt der Hinweis jetzt 12 Sekunden lang sichtbar. Solange dein Mauszeiger über dem Hinweis steht, läuft die Zeit nicht weiter. Klicke auf „Rückgängig“, um die Änderung am Wörterbuch zurückzunehmen, oder auf ×, um den Hinweis zu schließen und das Wort zu behalten. Gelernte Wörter kannst du jederzeit unter „Deine Wörter“ ändern."
+          }
+        }
+      }
+    },
     "whatsNew.introducing-enviousmeet.title" : {
       "comment" : "Settings > What's New: the title of one feature announcement (entry introducing-enviousmeet).",
       "extractionState" : "manual",

@@ -90,6 +90,21 @@ enum WhatsNewContent {
         "You can now remove Parakeet or Whisper from your Mac to free up space, in Dictation Settings > Engine or EnviousMeet > Models. A removed engine never downloads again on its own. Choose Set up model when you want it back, and meetings use your other downloaded engine meanwhile.",
       version: "2.6.1"
     ),
+    // Draft entry (#4675), not founder copy yet: the release checklist puts it before the founder.
+    // Claims checked against code: 12 s dwell (CorrectionLearnedPillCopy.learnedDwellSeconds);
+    // the countdown freezes while the pointer rests on the pill and resumes on leave
+    // (PillExpiryClock, HoverPolicy.resume); Undo reverses the dictionary change; x closes the
+    // pill and keeps the word (CorrectionLearnedPillCopy.closeLabel); learned words are managed
+    // in Your Words. Runtime behavior is for Live UAT. Supersedes the dated
+    // longer-undo-for-learned-words entry (2.5.2) going forward; that entry stays as history.
+    Entry(
+      id: "calmer-self-learning-pill",
+      icon: "timer",
+      title: "A calmer Self-Learning pill",
+      description:
+        "When Self-Learning saves a word, the pill now stays for 12 seconds and waits while your pointer rests on it. Click Undo to reverse the dictionary change, or click × to close the pill and keep the word. You can always change learned words in Your Words.",
+      version: "2.6.1"
+    ),
 
     // MARK: - v2.6.0
 
