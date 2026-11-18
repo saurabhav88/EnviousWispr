@@ -482,8 +482,8 @@ final class OverlayDirector {
           + "must be installed in the same operation that presents it")
     }
     #if DEBUG
-      // The UAT verdict source for hover (Tests/RuntimeUAT/learn_from_edits_uat.py): proves a
-      // pointer move reached the app before a pause is judged. DEBUG only; no text, ids only.
+      // Supports hand checks of hover with a real mouse: shows that a pointer move reached the app
+      // and which hover policy applied. DEBUG only; no text, ids only.
       if case .hoverChanged(let id, let hovering) = event {
         let policy: String
         switch reducer.state.current?.expiry {

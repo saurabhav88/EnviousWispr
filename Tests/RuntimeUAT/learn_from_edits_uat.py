@@ -968,19 +968,6 @@ def frontmost_pid():
     return int(app.processIdentifier()) if app else None
 
 
-def hover_pill():
-    """Put the pointer ON the pill, only with a real Undo button and a valid
-    frame. The 12-second window freezes under the pointer and resumes with at
-    least 2 seconds left when it leaves (#4675; the 2026-09-27 "hovering over
-    pill does not stop the timer" decision is retired). Returns False when the
-    button or its frame is missing."""
-    frame = pill_frame()
-    if frame is None or not (frame["width"] > 0 and frame["height"] > 0):
-        return False
-    si.move_mouse(int(frame["x"] + frame["width"] / 2), int(frame["y"] + frame["height"] / 2))
-    return True
-
-
 def ax_copy(element, attr):
     """One raw AX attribute read: `(error, value)`. A seam so a test can inject
     failures; `ui_helpers.get_attr` folds every error into None and so cannot
@@ -1052,20 +1039,19 @@ def undo_present_or_abort(label, expected_pid, max_depth=12):
 
 
 UNPAUSED_DWELL_S = 12.0     # the offer's dwell without hover
-RESUME_FLOOR_S = 2.0        # a hover exit leaves at least this much
-AX_SLACK_S = 0.5            # accessibility polling tolerance
-PRE_HOVER_RUN_S = 6.0       # countdown time before the pointer arrives
-RESUME_TOLERANCE_S = 1.5    # AX polling tolerance on the resumed deadline
-GUIDED_EDGE_WAIT_S = 5.0    # how long the guided arm waits for a logged hover entry or exit
-OPT_IN_ARMS = {"hover-guided"}  # arms that need a person and never run by default
+RESUME_TOLERANCE_S = 1.5    # AX polling tolerance on the dismissal deadline
 
 
 def case_expiry_unhovered(path):
     """Unattended. No hover: the Undo pill must leave on its own at its 12 s dwell, measured
     from when the Undo button is first seen, with the word kept. Verdicts: the Undo button's
     absence through accessibility, no `learn_undone`, and the word still in the file. The
-    pointer stays parked. The pill's picture is taken once, up front, without a prompt. The
-    hover pause is checked by the opt-in `hover-guided` arm, which needs a real pointer."""
+    pointer stays parked. The pill's picture is taken once, up front, without a prompt.
+
+    Hover pause is NOT checked by this script. It is covered by the director and clock tests and
+    checked by hand with a real mouse (founder 2026-11-18, #4675), because synthetic mouse moves
+    posted after synthetic keystrokes (this script types its fix) produce no hover events in the
+    app: the cursor stays obscured and adding delta fields did not help."""
     label = "expiry-unhovered"
     pair = PAIRS["expiry-under-hover"]
     mark, _, heard = dictate(path, label, pair)
@@ -1102,157 +1088,6 @@ def case_expiry_unhovered(path):
     return check(label, ok,
                  f"heard={heard!r} first_seen_to_gone_s={'none' if gone_after is None else f'{gone_after:.2f}'} "
                  f"expected_s={UNPAUSED_DWELL_S:.1f}±{RESUME_TOLERANCE_S:.1f} undone={undone} persisted={bool(persisted)}")
-
-
-def case_hover_guided(path):
-    """OPT-IN (`--only hover-guided`), never in the default run: it needs a real pointer.
-    A person may have to move the REAL mouse onto the pill, and later off it, when the
-    synthetic move does not register (it usually does not right after this case types its
-    fix). The case waits for the app's own `hover ... hovering=true/false` log lines and times
-    from those CONFIRMED entry and exit instants, never from when the script moved the pointer;
-    no entry line within the wait is INSTRUMENT.
-
-    No Undo pressed. With TextEdit frontmost the countdown runs about 6 s
-    (from when the Undo button is first seen), then the pointer is held on the
-    pill PAST its unpaused 12 s deadline and the offer must still be there (the
-    countdown froze). The pointer then leaves. The offer must survive the 2 s
-    minimum (within AX polling tolerance) and disappear no later than the
-    remainder frozen at the hover, max(12 - pre_hover_s, 2), plus 1.5 s of AX
-    tolerance: a pill that restarts the full 12 s on exit fails. No
-    `learn_undone`, and the word stays in the file. The app logs no "pill
-    ended" token, so the verdicts are the Undo button's presence and absence
-    through accessibility. The 2 s floor is not exercised live (the remainder
-    here is well above it; unit tests cover the floor), and the rail's own
-    freeze and resume are Live UAT by eye.
-
-    The pill's picture is taken ONCE, right after the button is first seen and before the
-    pre-hover wait, with a non-prompting region capture (`capture_pill`); it never runs inside
-    the timed hover hold. Every bound is measured from the first-seen instant on one monotonic
-    clock, so a slow capture shortens the pre-hover wait instead of shifting the verdict.
-
-    HOVER PROOF: after the move the case requires the DEBUG overlay log line
-    `hover id=... hovering=true policy=resume` within 1.5 s; without it the case aborts as
-    INSTRUMENT (a real mouse must confirm), so a pill that simply expired is never a product FAIL
-    when the pointer never reached the app.
-
-    INSTRUMENT LIMIT (measured 2026-11-18): synthetic CGEvent mouse moves posted right after
-    synthetic keystrokes (this case types its fix) produce NO hover events in the app: the
-    cursor stays obscured and adding delta fields did not help, while a real mouse works
-    (founder check). A pill that expires "while hovered" right after typing is therefore not
-    proof the product ignores hover, and this case cannot tell that apart from a real
-    failure; confirm with a real mouse, or let the obscured cursor state clear first."""
-    label = "hover-guided"
-    pair = PAIRS["expiry-under-hover"]
-    mark, _, heard = dictate(path, label, pair)
-    apply_fix(path, label, heard, pair.correct)
-    judged = wait_judged(mark)
-    if not judged:
-        return check(label, False, "no learn_judged after the fix")
-    state = wait_added(mark, label)
-    if state is None:
-        return check(label, False, "judged but no learn_added")
-    expected_pid = app_pid()
-    if expected_pid is None:
-        raise Aborted(f"{label}: no dev app process before hover; instrument failure")
-    # Precondition: the button must exist before the pointer moves.
-    if not wait_for("the Undo button before hover", undo_button, deadline=2.0):
-        return check(label, False, "precondition failed: no Undo button before hover")
-    # The countdown is measured from the moment the button was first seen, on this one clock.
-    shown_at = time.monotonic()
-    textedit_pid = find_app_pid("TextEdit")
-    if textedit_pid is None or frontmost_pid() != textedit_pid:
-        raise Aborted(f"{label}: TextEdit is not frontmost before hover; instrument failure")
-    # The visual proof, outside the timed hover check and without a prompt (see the docstring).
-    if not capture_pill("hover-guided-pill.png"):
-        raise Aborted(f"{label}: the pill capture is missing or empty (visual proof required)")
-    if frontmost_pid() != textedit_pid:
-        raise Aborted(f"{label}: TextEdit lost focus during the pill capture; instrument failure")
-    # Let the countdown run before hovering, so a resume has a remainder that
-    # differs from a full restart. The offer must still be there when we arrive.
-    while time.monotonic() < shown_at + PRE_HOVER_RUN_S:
-        if frontmost_pid() != textedit_pid:
-            raise Aborted(f"{label}: TextEdit lost focus before the hover; instrument failure")
-        if not undo_present_or_abort(label, expected_pid):
-            return check(label, False,
-                         f"precondition failed: the offer disappeared {time.monotonic() - shown_at:.2f}s in, before the hover")
-        time.sleep(0.25)  # settle: poll interval between AX reads
-    hover_mark = log_mark()
-    hovered = hover_pill()
-    if not hovered:
-        return check(label, False, "precondition failed: no valid Undo button frame to hover")
-    print("    GUIDED: if the pointer did not land on the pill, move the REAL mouse onto it now "
-          f"(waiting up to {GUIDED_EDGE_WAIT_S:.0f} s for the app to log the hover).", flush=True)
-    # The entry instant is the app's own `hovering=true` log line, not our move: a synthetic move
-    # right after synthetic typing may never arrive, and the pill may simply expire meanwhile.
-    entry_deadline = time.monotonic() + GUIDED_EDGE_WAIT_S
-    while not has(hover_mark, "hovering=true policy=resume"):
-        if time.monotonic() >= entry_deadline:
-            park_pointer()
-            raise Aborted(f"{label}: no 'hovering=true policy=resume' overlay log line within "
-                          f"{GUIDED_EDGE_WAIT_S:.0f} s; the pointer never reached the app as a hover "
-                          "(cursor obscured after synthetic typing), so a real mouse must confirm; instrument failure")
-        if not undo_present_or_abort(label, expected_pid):
-            park_pointer()
-            raise Aborted(f"{label}: the offer ended before any hover was logged; the pointer never reached "
-                          "the app, so this is not a pause verdict; instrument failure")
-        time.sleep(0.25)  # settle: poll interval between log reads
-    hover_at = time.monotonic()
-    pre_hover_s = hover_at - shown_at
-    # Hold past the unpaused deadline: the pill must outlive it under the pointer.
-    held_until = shown_at + UNPAUSED_DWELL_S + 1.5
-    present_through_hold = True
-    while time.monotonic() < held_until:
-        if frontmost_pid() != textedit_pid:
-            raise Aborted(f"{label}: TextEdit lost focus during the hover hold; instrument failure")
-        if not undo_present_or_abort(label, expected_pid):
-            present_through_hold = False
-            break
-        time.sleep(0.25)  # settle: poll interval between AX reads
-    hold_s = time.monotonic() - hover_at
-    if not present_through_hold:
-        park_pointer()
-        return check(label, False,
-                     f"the offer disappeared {hold_s:.2f}s into the hover, before the unpaused {UNPAUSED_DWELL_S:.0f}s deadline plus slack: hover did not freeze it")
-    # Leave, then take the EXIT instant from the app's own `hovering=false` line.
-    exit_mark = log_mark()
-    park_pointer()
-    print("    GUIDED: if the pointer is still on the pill, move the REAL mouse off it now.", flush=True)
-    exit_deadline = time.monotonic() + GUIDED_EDGE_WAIT_S
-    while not has(exit_mark, "hovering=false policy=resume"):
-        if time.monotonic() >= exit_deadline:
-            raise Aborted(f"{label}: no 'hovering=false policy=resume' overlay log line within "
-                          f"{GUIDED_EDGE_WAIT_S:.0f} s of leaving; the pointer exit is unconfirmed; instrument failure")
-        time.sleep(0.25)  # settle: poll interval between log reads
-    exit_at = time.monotonic()
-    survived_minimum = True
-    gone_after = None
-    # The remainder frozen at the hover. Neither a full 12 s restart nor an
-    # early close may pass. (The 2 s floor itself is not tested live: the
-    # remainder here is well above it, and the unit tests cover the floor.)
-    expected_remaining = max(UNPAUSED_DWELL_S - pre_hover_s, RESUME_FLOOR_S)
-    bound = expected_remaining + RESUME_TOLERANCE_S
-    # A pill that always resumes at the 2 s floor must not pass: the dismissal has to land
-    # near the remainder that was frozen, not merely after the floor.
-    lower_bound = max(expected_remaining - RESUME_TOLERANCE_S, RESUME_FLOOR_S)
-    while time.monotonic() - exit_at < bound:
-        present = undo_present_or_abort(label, expected_pid)
-        elapsed = time.monotonic() - exit_at
-        if not present:
-            gone_after = elapsed
-            break
-        time.sleep(0.25)  # settle: poll interval between AX reads
-    if gone_after is not None and gone_after < RESUME_FLOOR_S - AX_SLACK_S:
-        survived_minimum = False
-    persisted = wait_for("the word still in custom-words.json", lambda: learned_alias(pair, heard), deadline=2.0)
-    undone = has(mark, "learn_undone")
-    ok = (present_through_hold and gone_after is not None and survived_minimum
-          and lower_bound <= gone_after <= bound and not undone and bool(persisted))
-    return check(label, ok,
-                 f"heard={heard!r} hovered={hovered} pre_hover_s={pre_hover_s:.2f} "
-                 f"hover_hold_s={hold_s:.2f} "
-                 f"exit_to_gone_s={'none' if gone_after is None else f'{gone_after:.2f}'} "
-                 f"expected_remaining_s={expected_remaining:.2f} "
-                 f"survived_2s_minimum={survived_minimum} undone={undone} persisted={bool(persisted)}")
 
 
 def your_words_window(app):
@@ -1519,17 +1354,49 @@ def audio_route():
 
 # --- main -------------------------------------------------------------------
 
+# Every arm, in run order. `--only` is checked against this before the app is touched.
+ARM_NAMES = [
+    "new-word-undo", "existing-word", "expiry-unhovered", "persists-in-your-words",
+    "admission-refused", "negative", "toggle-off", "next-dictation", "deletion-only",
+    "punctuated-join", "learned-check", "learned-check-door-off",
+]
+RETIRED_ARMS = {
+    "expiry-under-hover": "it was replaced by `expiry-unhovered`; hover pause is checked by hand "
+                          "with a real mouse (founder 2026-11-18, #4675)",
+    "hover-guided": "the hover arm was removed; hover pause is checked by hand with a real mouse "
+                    "(founder 2026-11-18, #4675)",
+}
+
+
+def parse_only(raw):
+    """The arms named by `--only`, or a usage message (str) when any name is unknown or the
+    selection is empty. An empty `raw` means every arm; a non-empty one that names nothing
+    (for example ",") is an error, never a successful run of zero arms."""
+    if not raw:
+        return set()
+    names = [a.strip() for a in raw.split(",") if a.strip()]
+    if not names:
+        return f"--only {raw!r} names no arm; valid arms: {', '.join(ARM_NAMES)}"
+    unknown = [n for n in names if n not in ARM_NAMES]
+    if unknown:
+        notes = "".join(f"\n  {n}: {RETIRED_ARMS[n]}" for n in unknown if n in RETIRED_ARMS)
+        return (f"unknown --only arm(s): {', '.join(unknown)}; valid arms: {', '.join(ARM_NAMES)}"
+                + notes)
+    return set(names)
+
 def main():
     global run_dir
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-dir", required=True)
     parser.add_argument("--export", required=True, help="the locked candidate's fp32 export directory")
-    parser.add_argument("--only", default="", help="comma-separated arms to run (default: every arm except the opt-in ones, "
-                        "which need a person: hover-guided)")
+    parser.add_argument("--only", default="", help="comma-separated arms to run (default all): "
+                        + ", ".join(ARM_NAMES))
     args = parser.parse_args()
+    only = parse_only(args.only)
+    if isinstance(only, str):
+        parser.error(only)  # usage error: exits 2 before any app or file work
     run_dir = os.path.abspath(args.run_dir)
     os.makedirs(run_dir, exist_ok=True)
-    only = set(a for a in args.only.split(",") if a)
 
     if screen_is_locked():
         raise Aborted("the screen is locked; unlock it and hands off the Mac")
@@ -1585,13 +1452,11 @@ def main():
             ("punctuated-join", True, None, True, case_punctuated_join),
             ("learned-check", True, "learned", True, case_learned_check),
             ("learned-check-door-off", True, "learned", True, case_learned_check_door_off),
-            # Opt-in only (--only hover-guided): needs a real pointer; see its docstring.
-            ("hover-guided", True, "manual", True, case_hover_guided),
         ]
+        if [case[0] for case in cases] != ARM_NAMES:
+            raise Aborted("ARM_NAMES and the case list differ; fix the script")
         for name, toggle_on, seed, relaunch, fn in cases:
             if only and name not in only:
-                continue
-            if not only and name in OPT_IN_ARMS:
                 continue
             print(f"\n=== {name} ===", flush=True)
             case_mark = log_mark()
