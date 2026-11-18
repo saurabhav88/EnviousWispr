@@ -8,14 +8,24 @@ import Foundation
 enum HistoryPaging {
   static let pageSize = HistoryTabState.pageSize
 
-  /// `canPage`: the stored page is for this request and its source is the current one (load
-  /// more, the newer row). `isFinal`: also read under a certificate, so its row set is complete
-  /// for the query (a missing restore anchor is given up, an empty list is really empty).
+  /// `canPage`: the stored page is for this request, its source is the current one and it has
+  /// day counts: the same authority `isCurrentHistoryResult` applies (load more, the newer row).
+  /// `isFinal` equals it: such a page's row set is complete for the query (a missing restore
+  /// anchor is given up, an empty list is really empty).
   static func finality(
     result: HistoryQueryResult?, key: TranscriptCoordinator.HistoryQueryKey, source: UInt64?
   ) -> (canPage: Bool, isFinal: Bool) {
-    let canPage = result?.key == key && source != nil && result?.catalogSourceRevision == source
-    return (canPage, canPage && result?.catalogDayCounts != nil)
+    let canPage =
+      result?.key == key && source != nil && result?.catalogSourceRevision == source
+      && result?.catalogDayCounts != nil
+    return (canPage, canPage)
+  }
+
+  /// An extension may be stored only for the live key and a page of the current, non-nil source.
+  static func extensionMayStore(
+    _ next: HistoryQueryResult, liveKey: TranscriptCoordinator.HistoryQueryKey, source: UInt64?
+  ) -> Bool {
+    next.key == liveKey && source != nil && next.catalogSourceRevision == source
   }
 
   /// The tab, search and filters a page was read for.

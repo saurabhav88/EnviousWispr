@@ -317,7 +317,7 @@ struct HistoryRefreshLoopTests {
     "Finality: a page can page only for its key and the current source, and is final only with day counts",
     arguments: [
       (true, 5 as UInt64?, 5 as UInt64?, true, true, true),
-      (true, 5, 5, false, true, false),
+      (true, 5, 5, false, false, false),
       (true, 5, 6, true, false, false),
       (true, 5, nil, true, false, false),
       (false, 5, 5, true, false, false),
@@ -334,6 +334,19 @@ struct HistoryRefreshLoopTests {
     #expect(result.canPage == canPage)
     #expect(result.isFinal == isFinal)
     #expect(HistoryPaging.finality(result: nil, key: world.key(), source: source).canPage == false)
+  }
+
+  @Test("An extension is stored only for the live key and the current source")
+  func extensionMayStoreCombinations() throws {
+    let world = World()
+    let next = try HistoryQueryResult(
+      key: world.key(), items: [], catalogSourceRevision: 5, catalogDayCounts: [:])
+    let live = world.key()
+    #expect(HistoryPaging.extensionMayStore(next, liveKey: live, source: 5))
+    world.content = 1
+    #expect(HistoryPaging.extensionMayStore(next, liveKey: world.key(), source: 5) == false)
+    #expect(HistoryPaging.extensionMayStore(next, liveKey: live, source: 6) == false)
+    #expect(HistoryPaging.extensionMayStore(next, liveKey: live, source: nil) == false)
   }
 
   @Test("An extension slot is released only by the request that owns it")

@@ -323,9 +323,8 @@ struct HistoryDiaryView<
   private func open(_ id: HistoryItemID) {
     let tab = coordinator.historyTab
     var state = coordinator.requestedHistoryState(for: tab)
-    guard results[tab]?.key == coordinator.historyQueryKey(for: tab, state: state),
-      results[tab]?.ids.contains(id) == true,
-      results[tab]?.catalogSourceRevision == coordinator.catalogSession?.stableSourceRevision
+    guard let stored = results[tab], stored.key == coordinator.historyQueryKey(for: tab, state: state),
+      stored.ids.contains(id), coordinator.isCurrentHistoryResult(stored)
     else { return }
     state.openItemID = id
     coordinator.setHistoryState(state, for: coordinator.historyTab)
@@ -337,7 +336,7 @@ struct HistoryDiaryView<
     let current = newer ? results[tab]?.newerContinuation : results[tab]?.continuation
     // #4586: only from the stored result; the coordinator also requires the live key.
     guard let cursor, current == cursor, results[tab]?.identity == result.identity,
-      result.catalogSourceRevision == coordinator.catalogSession?.stableSourceRevision,
+      coordinator.isCurrentHistoryResult(result),
       let token = extensionSlot.claim(cursor)
     else { return }
     Task {
@@ -361,6 +360,10 @@ struct HistoryDiaryView<
         coordinator.historyTab == tab, results[tab]?.identity == result.identity
       else { return }
       // No suspension between the ownership check above and this store.
+      guard
+        HistoryPaging.extensionMayStore(
+          next, liveKey: currentKey(tab), source: coordinator.catalogSession?.stableSourceRevision)
+      else { return }
       results[tab] = next
       published = true
     }

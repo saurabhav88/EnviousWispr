@@ -403,6 +403,23 @@ import Testing
       #expect(f.coordinator.isCurrentHistoryResult(fresh))
     }
 
+    @Test("A save that opens during the read leaves the page display-only")
+    func writerOpeningDuringReadIsDisplayOnly() async throws {
+      let f = try await fixture(rows: 40)
+      defer { try? FileManager.default.removeItem(at: f.root) }
+      f.session.beforePageFenceForTesting = { f.changes.begin() }
+      defer {
+        f.session.beforePageFenceForTesting = nil
+        f.changes.finish(.transcript(UUID()))
+      }
+      let shown = try #require(await f.coordinator.historyResults(for: key(f)))
+      #expect(shown.items.count == 30)
+      #expect(shown.catalogDayCounts == nil)
+      #expect(shown.continuation == nil)
+      #expect(shown.newerContinuation == nil)
+      #expect(f.coordinator.isCurrentHistoryResult(shown) == false)
+    }
+
     @Test("A page read while a writer is open shows its rows as display-only until the writer finishes")
     func writerHeldOpenPageIsDisplayOnly() async throws {
       let f = try await fixture(rows: 40)

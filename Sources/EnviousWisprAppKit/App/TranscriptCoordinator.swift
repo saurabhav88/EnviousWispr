@@ -252,11 +252,15 @@ final class TranscriptCoordinator {
         return nil
       }
       HistorySignpost.signposter.endInterval("HistoryPage", interval, "accepted")
+      // A save that opened (or any source move) after admission can overlap the read, so the
+      // page is display-only unless admission was settled and the source did not move since.
+      let after = catalogSession.admission()
+      let displayOnly = admitted.map { !$0.settled || after.revision != $0.revision } ?? false
       // #4586 H5: the result is built off the main actor (`@concurrent`), then the request
       // checks run again (and, for an extension, the source check) before it is returned.
       let built = await Self.buildResult(
         key: key, page: page, previous: previous, newer: newer, source: source,
-        displayOnly: admitted.map { !$0.settled } ?? false)
+        displayOnly: displayOnly)
       #if DEBUG
         await afterBuildResultForTesting?()
       #endif
