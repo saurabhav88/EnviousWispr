@@ -1057,6 +1057,11 @@ struct LearnedCorrectionPillDirectorTests {
     func resizeCurrentPresentation(to size: CGSize) { inner.resizeCurrentPresentation(to: size) }
     func hide() { inner.hide() }
 
+    func send(_ event: OverlayEvent) throws {
+      let hosted = try #require(root, "nothing was presented, so no root exists")
+      hosted.sendEvent(event)
+    }
+
     func hover(_ entering: Bool, over receipt: PillReceipt) throws {
       let hosted = try #require(root, "nothing was presented, so no root exists to hover")
       hosted.sendEvent(.hoverChanged(receipt.presentationID, entering))
@@ -1103,6 +1108,68 @@ struct LearnedCorrectionPillDirectorTests {
     clock.advance(to: 107)
     #expect(d.renderModel.state.presentation == nil)
     #expect(log.ended == 1 && log.undos == 0, "the offer must be reported ended exactly once")
+  }
+
+  @Test(
+    "a second learned word replacing a hovered offer is told the pointer is already on it, so it is paused and outlives 12 s; without that enter it counts down under the pointer"
+  )
+  func replacementUnderARestingPointerIsPaused() throws {
+    // Control: the reducer admits a replacement with hover cleared, so with no new enter the
+    // replacement expires under the pointer. This is why the root must replay the enter.
+    do {
+      let clock = LearnedPillClock()
+      let log = Log()
+      let (d, host) = hoverDirector(clock, log)
+      let first = try #require(d.present(request(LearnedPillFixture.model(canonical: "Tuist"), log)))
+      clock.advance(to: 5)
+      try host.hover(true, over: first)
+      let second = LearnedPillFixture.model(canonical: "Saurabh")
+      _ = try #require(d.present(request(second, log)))
+      clock.advance(to: 5 + 12)
+      #expect(d.renderModel.state.presentation == nil, "control: with no new enter the replacement should expire")
+    }
+    // The real sequence through the root's hover tracker.
+    let clock = LearnedPillClock()
+    let log = Log()
+    let (d, host) = hoverDirector(clock, log)
+    var tracker = RootHoverTracker()
+    let first = try #require(d.present(request(LearnedPillFixture.model(canonical: "Tuist"), log)))
+    clock.advance(to: 5)
+    try host.send(tracker.pointerChanged(id: first.presentationID, hovering: true))
+    let secondModel = LearnedPillFixture.model(canonical: "Saurabh")
+    let second = try #require(d.present(request(secondModel, log)))
+    #expect(second.presentationID != first.presentationID)
+    // What the root's onChange does when the presented id changes under a hovered pointer.
+    let owed = tracker.presentationChanged(from: first.presentationID, to: second.presentationID)
+    let replay = try #require(owed, "a replacement under a hovered pointer owes an enter")
+    try host.send(replay)
+    let frozen = try #require(d.renderModel.state.dwell)
+    #expect(frozen.pausedRemaining == 12 && frozen.isPaused, "the replacement was not paused")
+    clock.advance(to: 5 + 100)
+    #expect(shown(d)?.id == secondModel.id, "the replacement expired under the pointer")
+    // The pointer leaving resumes the replacement's whole 12 s and then it ends.
+    try host.send(tracker.pointerChanged(id: second.presentationID, hovering: false))
+    clock.advance(to: 105 + 11.999)
+    #expect(shown(d)?.id == secondModel.id)
+    clock.advance(to: 105 + 12)
+    #expect(d.renderModel.state.presentation == nil)
+  }
+
+  @Test("the hover tracker replays an enter only for a replacement under a hovered pointer; a closed presentation clears it")
+  func hoverTrackerRules() {
+    let a = PresentationID()
+    let b = PresentationID()
+    var tracker = RootHoverTracker()
+    #expect(tracker.presentationChanged(from: a, to: b) == nil, "not hovered: nothing to replay")
+    _ = tracker.pointerChanged(id: a, hovering: true)
+    #expect(tracker.presentationChanged(from: nil, to: b) == nil, "a first presentation owes no replay")
+    #expect(tracker.presentationChanged(from: a, to: b) == .hoverChanged(b, true))
+    #expect(tracker.presentationChanged(from: b, to: nil) == nil)
+    #expect(!tracker.isHovered, "a closed presentation never reports the pointer leaving, so it is cleared")
+    #expect(tracker.presentationChanged(from: nil, to: a) == nil)
+    _ = tracker.pointerChanged(id: a, hovering: true)
+    _ = tracker.pointerChanged(id: a, hovering: false)
+    #expect(tracker.presentationChanged(from: a, to: b) == nil, "the pointer left: no replay")
   }
 
   @Test("a leave event with 0.5 s left resumes with the 2 s floor, and the published progress share moves back")

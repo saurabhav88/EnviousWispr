@@ -721,6 +721,45 @@ def screenshot(name):
 PILL_CAPTURE_PAD = (300, 24, 60, 24)  # left, top, right, bottom around the Undo button's frame
 
 
+def display_bounds():
+    """Every active display's rectangle `(x, y, w, h)` in the top-left global space that AX frames
+    and `screencapture -R` both use (CGDisplayBounds; a display left of or above the main one has
+    negative coordinates). An empty list when the displays cannot be read."""
+    try:
+        import Quartz
+        err, ids, count = Quartz.CGGetActiveDisplayList(16, None, None)
+        if err != 0:
+            return []
+        rects = []
+        for display in ids[:count]:
+            b = Quartz.CGDisplayBounds(display)
+            rects.append((b.origin.x, b.origin.y, b.size.width, b.size.height))
+        return rects
+    except Exception as error:
+        print(f"    (display bounds unreadable: {error})")
+        return []
+
+
+def capture_rect(frame, displays):
+    """The padded capture rectangle `(x, y, w, h)` around the button's AX frame, in global
+    coordinates. It is NOT clamped to zero (a display with a negative origin keeps its real
+    coordinates); it is only clipped to the bounds of the display that contains the button's centre,
+    and left as is when no display is known to contain it."""
+    left, top, right, bottom = PILL_CAPTURE_PAD
+    x0 = int(frame["x"]) - left
+    y0 = int(frame["y"]) - top
+    x1 = int(frame["x"]) + int(frame["width"]) + right
+    y1 = int(frame["y"]) + int(frame["height"]) + bottom
+    cx = frame["x"] + frame["width"] / 2
+    cy = frame["y"] + frame["height"] / 2
+    for dx, dy, dw, dh in displays:
+        if dx <= cx < dx + dw and dy <= cy < dy + dh:
+            x0, y0 = max(x0, int(dx)), max(y0, int(dy))
+            x1, y1 = min(x1, int(dx + dw)), min(y1, int(dy + dh))
+            break
+    return x0, y0, x1 - x0, y1 - y0
+
+
 def capture_pill(name, timeout_s=10.0, label=None, expected_pid=None):
     """Visual proof of the pill that cannot prompt or move focus: `screencapture -x -R` of a
     region around the Undo button's AX frame (the pill is the capsule around it). No window
@@ -734,11 +773,7 @@ def capture_pill(name, timeout_s=10.0, label=None, expected_pid=None):
     frame = pill_frame()
     if frame is None or not (frame["width"] > 0 and frame["height"] > 0):
         return False
-    left, top, right, bottom = PILL_CAPTURE_PAD
-    x = max(0, int(frame["x"]) - left)
-    y = max(0, int(frame["y"]) - top)
-    width = int(frame["width"]) + left + right
-    height = int(frame["height"]) + top + bottom
+    x, y, width, height = capture_rect(frame, display_bounds())
     path = os.path.join(run_dir, name)
     if os.path.exists(path):
         os.remove(path)

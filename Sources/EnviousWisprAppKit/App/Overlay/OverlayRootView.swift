@@ -20,6 +20,11 @@ struct OverlayRootView: View {
 
   @ObservedObject var model: OverlayRenderModel
 
+  /// Whether the pointer is over the root, as `.onHover` last reported it. The `.onHover` below sits
+  /// OUTSIDE `.id(presentation.id)`, so a replacement under a resting pointer fires no new enter;
+  /// this is what lets the root tell the replacement the pointer is already on it.
+  @State private var hover = RootHoverTracker()
+
   /// Where an interaction goes. One closure carrying whole EVENTS rather than
   /// bare actions, because both things a view reports — a press and a hover —
   /// have to name the presentation they happened to.
@@ -89,8 +94,16 @@ struct OverlayRootView: View {
           // `OverlayEvent.hoverChanged` both existed — and nothing ever sent the
           // event, so the language chip's pause did nothing at all. A capability
           // with no producer reads as present in every grep of the vocabulary.
-          .onHover { sendEvent(.hoverChanged(presentation.id, $0)) }
+          .onHover { sendEvent(hover.pointerChanged(id: presentation.id, hovering: $0)) }
       }
+    }
+    // A replacement keeps the pointer where it was but starts with the reducer's hover cleared
+    // and a fresh dwell: tell it the pointer is already on it, or it counts down under the
+    // pointer. The reducer's policy gate makes this a no-op for pills that ignore hover, and a
+    // pill that restarts on hover simply cancels, exactly as a real enter would.
+    .onChange(of: frame.presentation?.id) { old, new in
+      guard let event = hover.presentationChanged(from: old, to: new) else { return }
+      sendEvent(event)
     }
   }
 
@@ -350,5 +363,32 @@ struct OverlayRootView: View {
     case .distress: return .interruption
     case .advisory: return .advisory
     }
+  }
+}
+
+
+/// What the root remembers about the pointer, so a replacement presentation under a resting
+/// pointer is told about it. Pure, so a test can drive it without SwiftUI's hover delivery.
+struct RootHoverTracker: Equatable {
+  private(set) var isHovered = false
+
+  /// The pointer entered or left the presentation `id`: remember it and name the event.
+  mutating func pointerChanged(id: PresentationID, hovering: Bool) -> OverlayEvent {
+    isHovered = hovering
+    return .hoverChanged(id, hovering)
+  }
+
+  /// The presented id changed. A replacement (id to a different id) under a hovered pointer owes
+  /// the new presentation an enter; a presentation that went away clears the state, because its
+  /// view is gone and will never report the pointer leaving.
+  mutating func presentationChanged(from old: PresentationID?, to new: PresentationID?)
+    -> OverlayEvent?
+  {
+    guard let new else {
+      isHovered = false
+      return nil
+    }
+    guard old != nil, isHovered else { return nil }
+    return .hoverChanged(new, true)
   }
 }
