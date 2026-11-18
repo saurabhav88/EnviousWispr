@@ -25,6 +25,16 @@ final class HistoryCatalogSession {
   /// History list wakes on it to re-check a kept page's rows before any publish arrives.
   @ObservationIgnored private(set) var noticeCount: UInt64 = 0
   @ObservationIgnored private var changeWaiters: [UUID: CheckedContinuation<Void, Never>] = [:]
+  /// Page reads in flight (#4586 package I): an ordinary full pass lets the reads already
+  /// waiting when it has its backend reach the catalog first.
+  @ObservationIgnored private let pageReads = HistoryPageReads()
+  /// Waiters resumed whenever the registration or indexing task ends (`waitForTaskEnd`): a page
+  /// read waiting for the watcher, and `waitForIndexingForTesting`.
+  @ObservationIgnored private var taskEndWaiters: [UUID: CheckedContinuation<Void, Never>] = [:]
+  /// True while the indexing loop holds a full pass that has not yet called `reconcile`
+  /// (#4586 package I). The worker reads the source revision when `reconcile` begins, so a
+  /// watcher registration landing now is covered by that pass and queues no second one.
+  @ObservationIgnored private var fullPassAwaitingStart = false
   /// Reset when a pass starts, so the first committed batch of each pass is marked once.
   @ObservationIgnored private var batchMarked = false
   private(set) var latestDictation: UUID?
@@ -121,17 +131,28 @@ final class HistoryCatalogSession {
         HistoryDiskWatch(directories: directories, scope: scope, changed: deliver)
       }.value
       guard let self, !Task.isCancelled else { return }
+      #if DEBUG
+        await beforeWatcherInstallForTesting?()
+      #endif
       registration = nil
+      defer { resumeTaskEndWaiters() }
       if let watch {
         changes.advanceWithoutNotice()
         diskWatch = watch
-        // The advance above makes any page read started before it come back empty, and at
-        // launch that read is the first page of saved cards. Ask the screen to read again
-        // now rather than after the full pass this enqueues.
+        HistorySignpost.event("HistoryWatcherReady")
+        // A first page read across this install is shown as not current (its source differs
+        // from the one now stable) and the list reads again; an extension read across it is
+        // refused. Ask the screen to read again now rather than after the full pass this
+        // enqueues.
         advanceContent()
         didUpdate?()
-        pending.include(.unknown)
-        indexIfNeeded()
+        // #4586 package I: a full pass that has not reached `reconcile` yet reads the source
+        // revision after this advance, so it already restores coverage; a second full scan
+        // would repeat it. A pass already reconciling, or none, still gets one queued.
+        if !fullPassAwaitingStart {
+          pending.include(.unknown)
+          indexIfNeeded()
+        }
       } else if status != .unavailable {
         // No watcher: coverage-dependent reads stay off; activation retries (sourceMayHaveChanged).
         // Status only (#4586 H1): no catalog row changed, so the list keeps its page.
@@ -227,13 +248,35 @@ final class HistoryCatalogSession {
     return opened
   }
 
+  /// One atomic read of the source counter and whether a writer is open (see
+  /// `HistorySourceChanges.admission`). A first page samples it once and passes it to `page`.
+  func admission() -> (revision: UInt64, settled: Bool) { changes.admission }
+
+  /// `admitted` marks a first page (`cursor == nil`) whose caller stamps the result with the
+  /// admission it sampled: the source revision gates display no longer, only authority, so such
+  /// a read neither refuses a nil source at the start nor a moved source at the end. Coverage
+  /// is used only when the admission was settled and the watcher is installed. An extension
+  /// (`cursor != nil`) and callers without an admission keep both refusals.
   func page(
-    _ query: HistoryCatalog.Query, after cursor: HistoryCatalog.Cursor? = nil, restoring anchor: UUID? = nil, newer: Bool = false
+    _ query: HistoryCatalog.Query, after cursor: HistoryCatalog.Cursor? = nil, restoring anchor: UUID? = nil, newer: Bool = false,
+    admitted: (revision: UInt64, settled: Bool)? = nil
   ) async throws -> HistoryCatalog.Page? {
+    let readID = beginPageRead()
+    defer { endPageRead(readID) }
+    guard !Task.isCancelled else { return nil }
+    let admittedFirstPage = cursor == nil ? admitted : nil
     let source = changes.revision
-    guard source != nil else { return nil }
+    if admittedFirstPage == nil { guard source != nil else { return nil } }
     let backend = try await open()
-    let coverage = diskWatch == nil ? nil : backend.worker.currentCoverage()
+    #if DEBUG
+      await beforePageCatalogForTesting?()
+    #endif
+    let coverage: String?
+    if let admittedFirstPage {
+      coverage = admittedFirstPage.settled && diskWatch != nil ? backend.worker.currentCoverage() : nil
+    } else {
+      coverage = diskWatch == nil ? nil : backend.worker.currentCoverage()
+    }
     let boundary: HistoryCatalog.Cursor?
     if let anchor, cursor == nil {
       boundary = try await backend.catalog.cursorBefore(anchor, query: query)
@@ -252,13 +295,21 @@ final class HistoryCatalogSession {
     #if DEBUG
       await beforePageFenceForTesting?()
     #endif
-    // #4586 H1: the page fences on the source revision only. A content publish while it was
-    // read (indexing progress, a new certificate) does not throw it away; the list reads again
-    // after showing it, and a page read under an older content revision cannot authorize
-    // selection or paging (`TranscriptCoordinator.isCurrentHistoryResult`).
+    // #4586 H1: a content publish while the page was read (indexing progress, a new
+    // certificate) does not throw it away; the list reads again after showing it, and a page
+    // read under an older content revision cannot authorize selection or paging
+    // (`TranscriptCoordinator.isCurrentHistoryResult`).
+    if admittedFirstPage != nil { return Task.isCancelled ? nil : result }
     guard !Task.isCancelled, source == changes.revision else { return nil }
     return result
   }
+
+  /// Registers a page read in flight (#4586 package I); pair with `endPageRead` on every exit.
+  /// A caller that captures a source revision and builds a result around `page` holds its own
+  /// registration across both, so a full pass lets the whole first page go first.
+  func beginPageRead() -> UInt64 { pageReads.begin() }
+
+  func endPageRead(_ id: UInt64) { pageReads.end(id) }
 
   func matchingKeys(_ query: HistoryCatalog.Query) async throws -> [HistoryCatalog.Key]? {
     let id = revision
@@ -331,17 +382,25 @@ final class HistoryCatalogSession {
     guard indexing == nil, !pending.scopes.isEmpty else { return }
     indexing = Task(priority: .utility) { [weak self] in
       guard let self else { return }
-      defer { indexing = nil }
+      defer {
+        indexing = nil
+        resumeTaskEndWaiters()
+      }
       while !pending.scopes.isEmpty {
         let delta = pending
         pending = HistorySourceChanges.Delta()
+        fullPassAwaitingStart = delta.scopes.contains(.all)
+        defer { fullPassAwaitingStart = false }
         // Every pass withdraws the worker's certificate while it runs, so a page read meanwhile
         // has no exact totals or selection. A pass that ends certified must therefore publish
         // even for an unchanged source revision, or that page is never re-read (#4605 review).
         publishedCertifiedSource = nil
         batchMarked = false
         do {
+          // Recovery keeps precedence: a rebuild iteration never waits for page reads.
+          var rebuilding = false
           if rebuildRequested {
+            rebuilding = true
             rebuildRequested = false
             if let backend {
               try await backend.catalog.closeDatabase()
@@ -350,8 +409,30 @@ final class HistoryCatalogSession {
             try HistoryCatalog.discardFiles(in: directory)
           }
           let backend = try await open()
+          #if DEBUG
+            afterPassOpenForTesting?()
+          #endif
           let pass: HistoryCatalogReconciliation.Pass?
           if delta.scopes.contains(.all) {
+            // #4586 package I: the pass and the first page read resume together from `open()`
+            // and compete for the catalog actor, which is not FIFO; the pass's first steps
+            // (every source's progress) then held the first page for 130-240 ms on the M5. The
+            // reads already waiting now go first; later reads never join this snapshot. This
+            // bounds who is waited for, not how long. Scoped refreshes do not wait.
+            if !rebuilding, await pageReads.waitForActive() {
+              HistorySignpost.event("HistoryPassWaitedForReads")
+            }
+            try Task.checkCancellation()
+            // A read that waited may have found the catalog damaged and asked for a rebuild:
+            // recovery keeps precedence, so this pass becomes the rebuild iteration instead.
+            if !rebuilding, rebuildRequested {
+              pending.include(.unknown)
+              continue
+            }
+            #if DEBUG
+              beforeReconcileForTesting?()
+            #endif
+            fullPassAwaitingStart = false
             pass = try await backend.worker.reconcile { [weak self] pass in
               await self?.publishProgress(pass)
             }
@@ -432,14 +513,14 @@ final class HistoryCatalogSession {
   // periphery:ignore - The session integration test waits for the real indexing task.
   /// Waits until the watcher registration and every queued pass have finished, including
   /// feed events still in flight to the observation task.
+  /// Ends early when the calling task is cancelled (#4586 package I), so a stalled pass fails a
+  /// test at its time limit instead of hanging it: it waits on a continuation the registration
+  /// and indexing tasks resume when they end, never on their `value`.
   func waitForIndexingForTesting() async {
     var idleChecks = 0
-    while idleChecks < 3 {
-      if let registration {
-        await registration.value
-        idleChecks = 0
-      } else if let indexing {
-        await indexing.value
+    while idleChecks < 3, !Task.isCancelled {
+      if registration != nil || indexing != nil {
+        await waitForTaskEnd { registration == nil && indexing == nil }
         idleChecks = 0
       } else {
         await Task.yield()
@@ -448,14 +529,58 @@ final class HistoryCatalogSession {
     }
   }
 
+  /// Returns at once when `done()` holds or the caller is cancelled; otherwise when the
+  /// registration or indexing task next ends (callers re-check `done` in a loop). Cancellation
+  /// before or after the wait registers is handled as in `waitForChange`.
+  private func waitForTaskEnd(_ done: @MainActor () -> Bool) async {
+    let id = UUID()
+    await withTaskCancellationHandler {
+      await withCheckedContinuation { (waiter: CheckedContinuation<Void, Never>) in
+        if Task.isCancelled || done() {
+          waiter.resume()
+        } else {
+          taskEndWaiters[id] = waiter
+        }
+      }
+    } onCancel: {
+      Task { @MainActor [weak self] in self?.taskEndWaiters.removeValue(forKey: id)?.resume() }
+    }
+  }
+
+  private func resumeTaskEndWaiters() {
+    guard !taskEndWaiters.isEmpty else { return }
+    let waiting = taskEndWaiters
+    taskEndWaiters.removeAll()
+    for waiter in waiting.values { waiter.resume() }
+  }
+
   // periphery:ignore - Tests check the one watcher is installed (#4598).
   var watcherIsInstalledForTesting: Bool { diskWatch != nil }
 
   #if DEBUG
     /// Runs inside `page` after the read and before its fence (#4586 H1 tests).
     @ObservationIgnored var beforePageFenceForTesting: (@MainActor () async -> Void)?
+    /// Runs inside `page` after the backend is open and before any catalog call (#4586 package I).
+    @ObservationIgnored var beforePageCatalogForTesting: (@MainActor () async -> Void)?
+    /// Runs in the indexing loop right after the backend is open (#4586 package I). Synchronous,
+    /// so observing adds no suspension before the read snapshot.
+    @ObservationIgnored var afterPassOpenForTesting: (@MainActor () -> Void)?
+    /// Runs right before a full pass calls `reconcile` (#4586 package I). Synchronous, so it adds
+    /// no suspension after the cancellation check.
+    @ObservationIgnored var beforeReconcileForTesting: (@MainActor () -> Void)?
+    /// Runs in the watcher registration after the stream is built and before it is installed
+    /// (#4586 package I), so a test can hold a registration in progress.
+    @ObservationIgnored var beforeWatcherInstallForTesting: (@MainActor () async -> Void)?
     /// A content publish with no indexing pass behind it (#4586 H1 tests).
     func advanceContentForTesting() { advanceContent() }
+    /// A full re-check with no source change, as the launch pass and the retry ask for one.
+    func requestFullPassForTesting() {
+      pending.include(.unknown)
+      indexIfNeeded()
+    }
+    /// The watched-root-changed path: drop the stream and register again.
+    func rewatchForTesting() { rootChanged() }
+    var fullPassAwaitingStartForTesting: Bool { fullPassAwaitingStart }
     var changeWaiterCountForTesting: Int { changeWaiters.count }
   #endif
 
@@ -503,3 +628,66 @@ enum HistorySignpost {
     signposter.emitEvent(name)
   }
 }
+
+/// The History page reads in flight (#4586 package I). A full re-check waits for the reads that
+/// were active when it asked, and only those: a read that starts later never joins that wait, so
+/// the set waited for is finite (its duration is not bounded). Main actor only.
+@MainActor
+final class HistoryPageReads {
+  private var nextID: UInt64 = 0
+  private var active: Set<UInt64> = []
+  private var waiters: [UUID: Waiter] = [:]
+
+  private struct Waiter {
+    var remaining: Set<UInt64>
+    let continuation: CheckedContinuation<Void, Never>
+  }
+
+  /// Registers a read; pair with `end(_:)` on every exit.
+  func begin() -> UInt64 {
+    nextID &+= 1
+    active.insert(nextID)
+    return nextID
+  }
+
+  func end(_ id: UInt64) {
+    active.remove(id)
+    for (key, waiter) in waiters {
+      var waiter = waiter
+      waiter.remaining.remove(id)
+      if waiter.remaining.isEmpty {
+        waiters[key] = nil
+        waiter.continuation.resume()
+      } else {
+        waiters[key] = waiter
+      }
+    }
+  }
+
+  /// Waits until every read active now has ended, or the calling task is cancelled. Returns
+  /// whether there was anything to wait for. Cancellation before or after the wait registers is
+  /// handled the same way as `HistoryCatalogSession.waitForChange`.
+  func waitForActive() async -> Bool {
+    let snapshot = active
+    guard !snapshot.isEmpty else { return false }
+    let key = UUID()
+    await withTaskCancellationHandler {
+      await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+        let remaining = snapshot.intersection(active)
+        if Task.isCancelled || remaining.isEmpty {
+          continuation.resume()
+        } else {
+          waiters[key] = Waiter(remaining: remaining, continuation: continuation)
+        }
+      }
+    } onCancel: {
+      Task { @MainActor [weak self] in self?.waiters.removeValue(forKey: key)?.continuation.resume() }
+    }
+    return true
+  }
+
+  #if DEBUG
+    var waiterCountForTesting: Int { waiters.count }
+  #endif
+}
+

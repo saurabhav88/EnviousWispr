@@ -8,6 +8,37 @@ import Foundation
 enum HistoryPaging {
   static let pageSize = HistoryTabState.pageSize
 
+  /// `canPage`: the stored page is for this request, its source is the current one and it is not
+  /// display-only (a save overlapped its read). Day counts are not required: an uncertified list
+  /// (watcher down, unreadable file) still opens and pages with file-checked rows.
+  /// `isFinal` also needs day counts (certification): only then is the row set complete for the
+  /// query (a missing restore anchor is given up, an empty list is really empty).
+  static func finality(
+    result: HistoryQueryResult?, key: TranscriptCoordinator.HistoryQueryKey, source: UInt64?
+  ) -> (canPage: Bool, isFinal: Bool) {
+    let canPage =
+      result?.key == key && source != nil && result?.catalogSourceRevision == source
+      && result?.displayOnly == false
+    return (canPage, canPage && result?.catalogDayCounts != nil)
+  }
+
+  /// Whether a stored page may open an item: the `canPage` rule.
+  static func mayOpen(
+    result: HistoryQueryResult?, key: TranscriptCoordinator.HistoryQueryKey, source: UInt64?
+  ) -> Bool {
+    finality(result: result, key: key, source: source).canPage
+  }
+
+  /// An extension may be stored only for the live key and a page of the current, non-nil source
+  /// that is not display-only. Day counts are not required: an uncertified list must still make
+  /// progress, or "Load more" would retry the same cursor forever.
+  static func extensionMayStore(
+    _ next: HistoryQueryResult, liveKey: TranscriptCoordinator.HistoryQueryKey, source: UInt64?
+  ) -> Bool {
+    next.key == liveKey && source != nil && next.catalogSourceRevision == source
+      && !next.displayOnly
+  }
+
   /// The tab, search and filters a page was read for.
   struct Context: Equatable, Sendable {
     let tab: HistoryTab
@@ -47,6 +78,8 @@ struct HistoryQueryResult: Sendable {
   let newerContinuation: HistoryCatalog.Cursor?
   let catalogSourceRevision: UInt64?
   let catalogDayCounts: [Date: Int]?
+  /// A save overlapped the read: rows only, no counts or cursors, and no paging or open.
+  let displayOnly: Bool
   private let entries: [Entry]
   private let rowOffsets: [Int]
   private let dayPositions: [Date: Int]
@@ -56,7 +89,7 @@ struct HistoryQueryResult: Sendable {
     key: TranscriptCoordinator.HistoryQueryKey, items: [HistoryListItem],
     continuation: HistoryCatalog.Cursor? = nil, newerContinuation: HistoryCatalog.Cursor? = nil,
     catalogSourceRevision: UInt64? = nil,
-    catalogDayCounts: [Date: Int]? = nil
+    catalogDayCounts: [Date: Int]? = nil, displayOnly: Bool = false
   ) throws {
     var layout = Layout()
     try Self.layOut(
@@ -65,15 +98,17 @@ struct HistoryQueryResult: Sendable {
     self.init(
       key: key, items: items, layout: layout, ids: Set(layout.positions.keys),
       continuation: continuation, newerContinuation: newerContinuation,
-      catalogSourceRevision: catalogSourceRevision, catalogDayCounts: catalogDayCounts)
+      catalogSourceRevision: catalogSourceRevision, catalogDayCounts: catalogDayCounts,
+      displayOnly: displayOnly)
   }
 
   private init(
     key: TranscriptCoordinator.HistoryQueryKey, items: [HistoryListItem], layout: Layout,
     ids: Set<HistoryItemID>, continuation: HistoryCatalog.Cursor?,
     newerContinuation: HistoryCatalog.Cursor?, catalogSourceRevision: UInt64?,
-    catalogDayCounts: [Date: Int]?
+    catalogDayCounts: [Date: Int]?, displayOnly: Bool
   ) {
+    self.displayOnly = displayOnly
     self.key = key
     self.items = items
     self.continuation = continuation
@@ -95,7 +130,8 @@ struct HistoryQueryResult: Sendable {
   /// when the merged catalog counts changed it. The arrays are still copied once when this
   /// result is also held elsewhere (copy-on-write); no smaller total cost is claimed.
   func appending(
-    _ added: [HistoryListItem], continuation: HistoryCatalog.Cursor?, catalogDayCounts: [Date: Int]?
+    _ added: [HistoryListItem], continuation: HistoryCatalog.Cursor?, catalogDayCounts: [Date: Int]?,
+    displayOnly: Bool = false
   ) throws -> HistoryQueryResult {
     var ids = ids
     let fresh = added.filter { ids.insert($0.id).inserted }
@@ -130,7 +166,7 @@ struct HistoryQueryResult: Sendable {
     return HistoryQueryResult(
       key: key, items: all, layout: layout, ids: ids, continuation: continuation,
       newerContinuation: newerContinuation, catalogSourceRevision: catalogSourceRevision,
-      catalogDayCounts: catalogDayCounts)
+      catalogDayCounts: catalogDayCounts, displayOnly: displayOnly)
   }
 
   /// Whether `other` lists exactly this page for the same request and source (#4586 N1): the
@@ -158,7 +194,8 @@ struct HistoryQueryResult: Sendable {
         positions: positions, entries: entries, rowOffsets: rowOffsets, dayPositions: dayPositions,
         dayEntries: dayEntries),
       ids: ids, continuation: continuation, newerContinuation: newerContinuation,
-      catalogSourceRevision: catalogSourceRevision, catalogDayCounts: catalogDayCounts)
+      catalogSourceRevision: catalogSourceRevision, catalogDayCounts: catalogDayCounts,
+      displayOnly: displayOnly)
   }
 
   /// What the list draws from the items: positions, headings and rows in order.
@@ -219,9 +256,15 @@ struct HistoryQueryResult: Sendable {
 
 /// #4586 H1: the loop that keeps one History tab's list current for one request (tab, search,
 /// filters, grouping). A content publish never cancels a read in flight: the read lands, is
-/// shown, and the loop reads once more for the newer content. A read that came back empty (a
-/// writer was active, the source moved) is tried again on the next content publish or change
+/// shown, and the loop reads once more for the newer content. A first-page read is shown even
+/// when a writer was active, and read again when its source differs from the current one. A
+/// read returns nothing only when cancelled, unwanted (search or filters changed), failed, or
+/// for an extension whose source moved; it is tried again on the next content publish or change
 /// notice, never in a tight loop: each (key, notices, source) stamp is attempted once.
+/// A stored page whose source stamp differs from the current source is read again (the source
+/// gates authority, not display). A key change reads at once; a source-only difference reads at
+/// most once per `sourcePace`, measured from the end of the previous read and never reset by
+/// notices, so a burst gives one trailing read and sustained writes a bounded rate.
 @MainActor
 struct HistoryRefreshLoop {
   /// Runs first on every pass, before any read (#4586 N1: a kept page's rows are re-checked
@@ -243,24 +286,69 @@ struct HistoryRefreshLoop {
   let currentKey: @MainActor () -> TranscriptCoordinator.HistoryQueryKey
   /// The key of the result stored for the tab now.
   let storedKey: @MainActor () -> TranscriptCoordinator.HistoryQueryKey?
+  /// The source revision the stored result was read from.
+  let storedSource: @MainActor () -> UInt64?
   let read: @MainActor (TranscriptCoordinator.HistoryQueryKey) async -> Void
   /// Returns once either counter moved from the given values, or on cancellation.
   let wait: @MainActor (_ content: UInt64, _ notices: UInt64) async -> Void
+  /// Sleeps for the duration, or returns early on cancellation.
+  let pace: @MainActor (Duration) async -> Void
+  let now: @MainActor () -> ContinuousClock.Instant
+
+  static let sourcePace = Duration.milliseconds(250)
 
   func run() async {
     var attempted: Stamp?
+    var paceDeadline: ContinuousClock.Instant?
     while !Task.isCancelled {
-      let now = counters()
+      let sampled = counters()
       let key = currentKey()
       await beforeRead()
-      let stamp = Stamp(key: key, notices: now.notices, source: now.source)
-      if storedKey() != key, attempted != stamp {
+      let stamp = Stamp(key: key, notices: sampled.notices, source: sampled.source)
+      let needsKey = storedKey() != key
+      let needsSource = !needsKey && storedSource() != sampled.source
+      if needsKey || needsSource, attempted != stamp {
+        if needsSource, let deadline = paceDeadline, now() < deadline {
+          await pace(deadline - now())
+          continue
+        }
         attempted = stamp
         await read(key)
+        paceDeadline = now() + Self.sourcePace
       }
-      await wait(now.content, now.notices)
+      await wait(sampled.content, sampled.notices)
     }
   }
+}
+
+/// The one extension (older or newer page) read in flight for a tab, owned by a per-request
+/// token: only the task holding the current token may release the slot, so a stale task (after a
+/// tab switch away and back) cannot clear a newer request's claim.
+struct HistoryExtensionSlot {
+  private var held: (token: UUID, cursor: HistoryCatalog.Cursor)?
+
+  var isClaimed: Bool { held != nil }
+
+  /// A new token, or nil while another request holds the slot.
+  mutating func claim(_ cursor: HistoryCatalog.Cursor) -> UUID? {
+    guard held == nil else { return nil }
+    let token = UUID()
+    held = (token, cursor)
+    return token
+  }
+
+  /// Clears the slot and returns true only when `token` still owns it.
+  mutating func release(_ token: UUID) -> Bool {
+    guard held?.token == token else { return false }
+    held = nil
+    return true
+  }
+
+  /// True while `token` still owns the slot (not released, cleared or superseded).
+  func owns(_ token: UUID) -> Bool { held?.token == token }
+
+  /// A tab switch drops any claim.
+  mutating func clear() { held = nil }
 }
 
 /// #4586 (bug found by the History speed drivers on `acd9e956e`): where a History list opens. The
@@ -312,7 +400,8 @@ struct HistoryRetainedVerification {
   /// Verifies once for a stamp not yet `done`; returns the stamp now done. A dropped answer
   /// leaves `done` as it was, so the newer change is verified on its own wake.
   func run(done: Stamp?) async -> Stamp? {
-    guard let before = stamp(), before != done, let saved = stored(), saved.identity == before.stored
+    guard let before = stamp(), before != done, let saved = stored(),
+      saved.identity == before.stored
     else { return done }
     guard let verified = await verify(saved), !Task.isCancelled, stamp() == before,
       stored()?.identity == before.stored
@@ -321,4 +410,3 @@ struct HistoryRetainedVerification {
     return stamp()
   }
 }
-

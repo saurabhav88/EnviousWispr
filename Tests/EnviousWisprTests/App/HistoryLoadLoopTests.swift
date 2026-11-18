@@ -116,6 +116,8 @@ struct HistoryLoadLoopTests {
   private final class Shown {
     var result: HistoryQueryResult?
     var checks = 0
+    /// Replacement reads that finished (a read held at the gate has not).
+    var reads = 0
     private var waiters: [UUID: CheckedContinuation<Void, Never>] = [:]
 
     func store(_ next: HistoryQueryResult) {
@@ -142,23 +144,70 @@ struct HistoryLoadLoopTests {
     }
   }
 
-  @Test(
-    "The refresh loop hides a changed row of a kept page on each change notice, while a writer is active",
-    .timeLimit(.minutes(1)))
-  // Uses a real catalog, folder watcher and indexing passes (the path this protects); 0.7-3.5 s
-  // measured on the M5 Max under load, bounded by the time limit.
-  func loopVerifiesKeptPage() async throws {
-    let f = try await fixture(rows: 40)
-    defer { try? FileManager.default.removeItem(at: f.root) }
-    let shown = Shown()
+  /// Holds the loop's reads while closed; every wait ends on release or cancellation.
+  @MainActor
+  private final class ReadGate {
+    var closed = false
+    private(set) var holding = false
+    private var parked: CheckedContinuation<Void, Never>?
+
+    func pass() async {
+      guard closed else { return }
+      holding = true
+      await withTaskCancellationHandler {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+          if Task.isCancelled || !closed { continuation.resume() } else { parked = continuation }
+        }
+      } onCancel: {
+        Task { @MainActor in self.open() }
+      }
+    }
+
+    func open() {
+      closed = false
+      parked?.resume()
+      parked = nil
+    }
+  }
+
+  /// The loop task and the flag it sets when `run()` returns, so a test never joins the task.
+  @MainActor
+  private final class RunningLoop {
+    var ended = false
+    var task: Task<Void, Never>!
+
+    func untilEnded() async throws {
+      task.cancel()
+      while !ended {
+        try Task.checkCancellation()
+        await Task.yield()
+      }
+    }
+  }
+
+  /// Once `freeze()` runs, the verification's stamp reports the key, notice count and source
+  /// revision captured at that moment (its grouping is already constant); only the stored page
+  /// identity stays live.
+  @MainActor
+  private final class FrozenStamp {
+    var values: (key: TranscriptCoordinator.HistoryQueryKey, notices: UInt64, source: UInt64?)?
+    var capture: (@MainActor () -> (key: TranscriptCoordinator.HistoryQueryKey, notices: UInt64, source: UInt64?))?
+    func freeze() { values = capture?() }
+  }
+
+  private func startLoop(
+    _ f: Fixture, _ shown: Shown, gate: ReadGate? = nil, frozen: FrozenStamp? = nil
+  ) -> RunningLoop {
     let coordinator = f.coordinator
     let session = f.session
     let key: @MainActor @Sendable () -> TranscriptCoordinator.HistoryQueryKey = { coordinator.historyQueryKey(for: .dictations, state: coordinator.requestedHistoryState(for: .dictations)) }
+    frozen?.capture = { (key(), session.noticeCount, session.stableSourceRevision) }
     let verification = HistoryRetainedVerification(
       stamp: {
         guard let saved = shown.result, saved.catalogSourceRevision != session.stableSourceRevision else { return nil }
         return .init(
-          key: key(), notices: session.noticeCount, source: session.stableSourceRevision, grouping: 0,
+          key: frozen?.values?.key ?? key(), notices: frozen?.values?.notices ?? session.noticeCount,
+          source: frozen?.values.map(\.source) ?? session.stableSourceRevision, grouping: 0,
           stored: saved.identity)
       },
       stored: { shown.result },
@@ -169,7 +218,8 @@ struct HistoryLoadLoopTests {
       store: { shown.store($0) })
     final class Done { var stamp: HistoryRetainedVerification.Stamp? }
     let done = Done()
-    let loop = Task { @MainActor in
+    let running = RunningLoop()
+    running.task = Task { @MainActor in
       await HistoryRefreshLoop(
         beforeRead: { done.stamp = await verification.run(done: done.stamp) },
         counters: {
@@ -177,13 +227,35 @@ struct HistoryLoadLoopTests {
         },
         currentKey: key,
         storedKey: { shown.result?.key },
+        storedSource: { shown.result?.catalogSourceRevision },
         read: { key in
-          if let page = await coordinator.historyResults(for: key) { shown.store(page) }
+          await gate?.pass()
+          if let page = await coordinator.historyResults(for: key) {
+            shown.store(page)
+            shown.reads += 1
+          }
         },
-        wait: { content, notices in await session.waitForChange(revision: content, notices: notices) }
+        wait: { content, notices in await session.waitForChange(revision: content, notices: notices) },
+        pace: { try? await Task.sleep(for: $0) },
+        now: { .now }
       ).run()
+      running.ended = true
     }
-    defer { loop.cancel() }
+    return running
+  }
+
+  @Test(
+    "The refresh loop hides a changed row of a kept page on each change notice, while a writer is active",
+    .timeLimit(.minutes(1)))
+  // Uses a real catalog, folder watcher and indexing passes (the path this protects); 0.7-3.5 s
+  // measured on the M5 Max under load, bounded by the time limit.
+  func loopVerifiesKeptPage() async throws {
+    let f = try await fixture(rows: 40)
+    defer { try? FileManager.default.removeItem(at: f.root) }
+    let shown = Shown()
+    let coordinator = f.coordinator
+    let loop = startLoop(f, shown)
+    defer { loop.task.cancel() }
     try await shown.until { $0.items.count == 30 }
     let page = try #require(shown.result)
     guard case .catalog(let first) = page.items[0], case .catalog(let second) = page.items[1] else {
@@ -191,36 +263,100 @@ struct HistoryLoadLoopTests {
       return
     }
 
-    // A writer is active (the source revision is unknown); another process changes one shown
-    // file and its notice arrives. The loop re-checks the kept page and hides only that row.
+    // A writer is active (the source revision is unknown); another process removes one shown
+    // file and its notice arrives. The list hides only that row (a display-only re-read or the
+    // kept page's re-check).
     f.changes.begin()
     var writing = true
     defer { if writing { f.changes.finish(.transcript(second.key.id)) } }
-    try appendNewline(to: first.key.id, in: f)
+    try removeShownFile(to: first.key.id, in: f)
     f.changes.externalChange(.transcript(first.key.id))
-    try await shown.until { $0.items.count == 29 }
+    try await shown.until { !$0.ids.contains(.transcript(first.key.id)) }
     #expect(shown.result?.ids.contains(.transcript(first.key.id)) == false)
     #expect(shown.result.map(coordinator.isCurrentHistoryResult) == false)
 
     // A second change in the same writer interval is hidden on its own notice.
     let checks = shown.checks
-    try appendNewline(to: second.key.id, in: f)
+    try removeShownFile(to: second.key.id, in: f)
     f.changes.externalChange(.transcript(second.key.id))
-    try await shown.until { $0.items.count == 28 }
+    try await shown.until { !$0.ids.contains(.transcript(second.key.id)) }
     #expect(shown.checks > checks)
     #expect(shown.result?.ids.contains(.transcript(second.key.id)) == false)
 
     writing = false
     f.changes.finish(.transcript(second.key.id))
-    loop.cancel()
-    await loop.value
+    try await loop.untilEnded()
   }
 
-  private func appendNewline(to id: UUID, in f: Fixture) throws {
-    let handle = try FileHandle(forWritingTo: f.transcripts.appendingPathComponent("\(id.uuidString).json"))
-    try handle.seekToEnd()
-    try handle.write(contentsOf: Data("\n".utf8))
-    try handle.close()
+  @Test(
+    "The loop publishes the kept page's removal before any replacement read",
+    .timeLimit(.minutes(1)))
+  func loopPublishesRemovalBeforeReplacementRead() async throws {
+    let f = try await fixture(rows: 40)
+    defer { try? FileManager.default.removeItem(at: f.root) }
+    let shown = Shown()
+    let gate = ReadGate()
+    defer { gate.open() }
+    let frozen = FrozenStamp()
+    let loop = startLoop(f, shown, gate: gate, frozen: frozen)
+    defer { loop.task.cancel() }
+    try await shown.until { $0.items.count == 30 }
+    // The loop is parked (no read in flight) before reads are held and the files are removed, so
+    // the notices below wake it into `beforeRead`, which runs the verification BEFORE the loop
+    // reaches its (held) replacement read.
+    while f.session.changeWaiterCountForTesting == 0 {
+      try Task.checkCancellation()
+      await Task.yield()
+    }
+    let page = try #require(shown.result)
+    guard case .catalog(let first) = page.items[0], case .catalog(let second) = page.items[1] else {
+      Issue.record("The catalog page did not return catalog rows")
+      return
+    }
+    // The whole stamp except the stored page identity (key, notices, source, grouping) is frozen,
+    // so neither the folder watcher's notices nor indexing publishing the deletion can make the
+    // verifier discard its answer at an unpredictable moment. The discard-on-change behavior
+    // itself is covered by HistoryRefreshLoopTests.retainedVerificationDropsStaleAnswers.
+    frozen.freeze()
+    gate.closed = true
+    let readsBefore = shown.reads
+    let checksBefore = shown.checks
+    f.changes.begin()
+    var writing = true
+    defer { if writing { f.changes.finish(.transcript(second.key.id)) } }
+    try removeShownFile(to: first.key.id, in: f)
+    try removeShownFile(to: second.key.id, in: f)
+    f.changes.externalChange(.transcript(first.key.id))
+    f.changes.externalChange(.transcript(second.key.id))
+
+    // The read gate stays CLOSED for the whole assertion, so only the verification can have
+    // removed the rows: wait until the loop is held at its replacement read with a stored page
+    // that lacks both.
+    let lacksRemoved: (HistoryQueryResult) -> Bool = {
+      !$0.ids.contains(.transcript(first.key.id)) && !$0.ids.contains(.transcript(second.key.id))
+    }
+    while !(gate.holding && shown.result.map(lacksRemoved) == true) {
+      try Task.checkCancellation()
+      await Task.yield()
+    }
+    #expect(gate.holding)
+    #expect(shown.reads == readsBefore)
+    #expect(shown.checks > checksBefore)
+    #expect(shown.result?.items.count == 28)
+    #expect(shown.result?.ids.contains(.transcript(first.key.id)) == false)
+    #expect(shown.result?.ids.contains(.transcript(second.key.id)) == false)
+
+    gate.open()
+    writing = false
+    f.changes.finish(.transcript(second.key.id))
+    try await loop.untilEnded()
+  }
+
+  private func removeShownFile(to id: UUID, in f: Fixture) throws {
+    // Another process removes the shown file. (An appended byte no longer works: the display no
+    // longer waits for a stable source, so a re-read can show a changed row once the catalog
+    // re-indexed it.)
+    try FileManager.default.removeItem(at: f.transcripts.appendingPathComponent("\(id.uuidString).json"))
   }
 
   @Test("An outside deletion of one dictation removes that row and restores coverage")
