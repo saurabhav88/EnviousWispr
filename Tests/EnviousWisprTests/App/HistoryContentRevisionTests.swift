@@ -93,6 +93,10 @@ import Testing
     private final class ReadOrder {
       var events: [String] = []
       var readRefused: Bool?
+      /// The page the held read returned, stored by the read itself.
+      var page: HistoryCatalog.Page?
+      /// The result the list loop stored, as `HistoryDiaryView.results[tab]` does.
+      var stored: HistoryQueryResult?
       var reconciles = 0
       private var gate: CheckedContinuation<Void, Never>?
       private(set) var holding = false
@@ -143,6 +147,7 @@ import Testing
       let read = Task { @MainActor in
         let page = try? await f.session.page(.init(tab: .dictations))
         order.readRefused = page == nil
+        order.page = page
         order.events.append("read done")
         return page
       }
@@ -193,7 +198,7 @@ import Testing
       // Nothing changed the source, so the rows reach the list.
       try await order.until("read done")
       #expect(order.readRefused == false)
-      #expect(await read.value?.summaries.count == 3)
+      #expect(order.page?.summaries.count == 3)
       await f.session.waitForIndexingForTesting()
     }
 
@@ -226,20 +231,47 @@ import Testing
       f.session.rewatchForTesting()
       defer { order.release() }
       try await order.untilHolding()
-      let read = Task { @MainActor in await f.coordinator.historyResults(for: key(f)) }
-      defer { read.cancel() }
+      // The real list loop, wired as `HistoryDiaryView.refresh(tab:)` wires it. It reports its
+      // own progress through `order`, so nothing awaits the task itself.
+      let session = f.session
+      let coordinator = f.coordinator
+      let loop = Task { @MainActor in
+        await HistoryRefreshLoop(
+          beforeRead: {},
+          counters: {
+            .init(
+              content: session.revision, notices: session.noticeCount,
+              source: session.stableSourceRevision)
+          },
+          currentKey: { key(f) },
+          storedKey: { order.stored?.key },
+          read: { key in
+            if let result = await coordinator.historyResults(for: key) { order.stored = result }
+          },
+          wait: { content, notices in
+            await session.waitForChange(revision: content, notices: notices)
+          }
+        ).run()
+      }
+      defer { loop.cancel() }
       // The read parks on the registration: it never reads rows the watcher does not cover.
       while f.session.taskEndWaiterCountForTesting == 0 {
         try Task.checkCancellation()
         await Task.yield()
       }
       #expect(order.events.contains("catalog") == false)
+      #expect(order.stored == nil)
       f.session.beforeWatcherInstallForTesting = nil
       order.release()
-      let result = try #require(await read.value)
+      while order.stored == nil {
+        try Task.checkCancellation()
+        await Task.yield()
+      }
+      let result = try #require(order.stored)
       #expect(result.items.count == 3)
       #expect(result.catalogSourceRevision == f.session.stableSourceRevision)
       #expect(f.session.watcherIsInstalledForTesting)
+      loop.cancel()
       await f.session.waitForIndexingForTesting()
     }
 
