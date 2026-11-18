@@ -58,11 +58,13 @@ struct HistoryDiaryView<
     let (canPage, isFinal) = HistoryPaging.finality(result: result, key: key, source: source)
     let canSelect = result.map(coordinator.isCurrentHistoryResult) == true
     let catalogStatus = coordinator.catalogSession?.status
+    let showsUpdating = coordinator.catalogSession?.showsUpdating == true
     let openID = state.openItemID
-    let canOpen = openID != nil
+    let showsDetail = openID != nil && tab != .dictations
+    let listShowsUpdating = showsUpdating && !showsDetail
 
     VStack(spacing: 0) {
-      if let openID, tab != .dictations, canOpen {
+      if let openID, showsDetail {
         destination(for: openID)
           .frame(maxWidth: .infinity, maxHeight: .infinity)
           .environment(\.historyHighlightQuery, state.query)
@@ -89,7 +91,7 @@ struct HistoryDiaryView<
           if tab == .meetings, isSelecting == false {
             HistoryMeetingsBar()
           }
-          if catalogStatus == .updating {
+          if listShowsUpdating {
             Label("Updating History…", systemImage: "clock.arrow.circlepath")
               .font(.stHelper)
               .foregroundStyle(.stTextSecondary)
@@ -124,8 +126,10 @@ struct HistoryDiaryView<
     .task(id: RefreshKey(request: key.request, grouping: groupingRevision)) {
       await refresh(tab: tab)
     }
-    .onChange(of: catalogStatus) { previous, current in
-      if previous == .updating, current == .ready {
+    .onChange(of: listShowsUpdating) { previous, current in
+      // Only a label the list actually presented is followed by the "up to date" announcement;
+      // opening a detail hides the label without completing anything.
+      if previous, !current, !showsUpdating, catalogStatus == .ready {
         AccessibilityNotification.Announcement(
           String(
             localized: "History is up to date.",
@@ -473,7 +477,9 @@ private struct HistoryDiaryList<DictationCard: View>: View {
     // #4001 step 2a: the recording state is read inside the modifier, not by this body.
     .recordingDimmed()
     .overlay {
-      if items.isEmpty && coordinator.catalogSession?.status == .unavailable {
+      if items.isEmpty, coordinator.catalogSession?.status == .unavailable,
+        coordinator.catalogSession?.showsUpdating != true
+      {
         HistoryEmptyMessage(
           systemImage: "exclamationmark.triangle", title: HistoryEmptyMessage.loadFailed)
       } else if items.isEmpty && coordinator.catalogSession?.status == .updating {
