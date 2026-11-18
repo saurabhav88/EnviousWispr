@@ -19,6 +19,33 @@ class Clock:
         return self.t
 
 
+class FindBannerTest(unittest.TestCase):
+    class Reader:
+        def __init__(self, elements):   # [(identifier, role)]
+            self.elements = elements
+
+        def find_outside_list(self, window, predicate):
+            return [e for e in self.elements if predicate(e, e[1])]
+
+    class UI:
+        @staticmethod
+        def get_attr(element, name):
+            return element[0] if name == "AXIdentifier" else None
+
+    def find(self, elements):
+        return banner_watch.find_banner(self.Reader(elements), self.UI, "w")
+
+    def test_banner_present(self):
+        self.assertIs(self.find([("history.recordingStorage.openSettings", "AXButton")]), True)
+
+    def test_absent_on_a_loaded_page(self):
+        self.assertIs(self.find([("x", "AXButton"), ("y", "AXGroup")]), False)
+
+    def test_nothing_readable_is_unknown_not_absent(self):
+        self.assertIsNone(self.find([]))
+        self.assertIsNone(self.find([("x", "AXGroup")]))
+
+
 class WatchTest(unittest.TestCase):
     def run_watch(self, shown_at, deadline=1000, start=0, unreadable_at=()):
         clock = Clock(start=start)
