@@ -107,15 +107,19 @@ extension TelemetryService: LearnedCorrectionTelemetrySink {}
 /// Undo record is the one owner of what was added.
 struct LearnedCorrectionPillModel: Sendable, Equatable {
   enum Kind: Sendable, Equatable {
-    /// `Added “<canonical>” to Dictionary`.
+    /// Subtitle `Added to dictionary` under the word `<canonical>`.
     case added
-    /// `“<canonical>” updated`: a sound-alike joined a word that existed.
+    /// Subtitle `Updated in dictionary` under the word `<canonical>`: a sound-alike joined a word that existed.
     case updated
   }
   /// What the pill is showing. Only `.learned` draws the Undo button; the
   /// two results are same-identity morphs the reducer applies (chunk 3b).
   enum Phase: Sendable, Equatable {
     case learned
+    /// Undo was pressed and its record claimed; the write may still be waiting
+    /// behind another dictionary command. No button, hover ignored, closes
+    /// silently when its dwell ends (#4675, plan §3.2b).
+    case undoPending
     /// `Undone`, 1.5 s, no button.
     case undone
     /// `Couldn’t undo`, 3 s, error tone, no button.
@@ -452,17 +456,27 @@ final class LearnedCorrectionCoordinator {
 
   // MARK: - Step 10: undo
 
-  /// Put back exactly what `learn` changed, only if the live word still equals
-  /// the post-save snapshot; otherwise write nothing.
-  @discardableResult
-  func undo(pillID: UUID) async -> UndoOutcome {
-    // Claimed at the click (#4086): the Undo may wait behind an earlier dictionary command,
-    // and the pill expiring meanwhile must not take the accepted Undo with it.
+  /// Claim the Undo record for the pill the person just pressed Undo on.
+  ///
+  /// **Synchronous on purpose, and it runs at the click (#4086, #4675).** The Undo may wait
+  /// behind an earlier dictionary command, and the pill expiring meanwhile must not take the
+  /// accepted Undo with it. Claiming before anything can suspend also means a newer learn that
+  /// arrives after the click replaces nothing: the record is already in the caller's hands.
+  /// No record for this pill (expired, replaced, already claimed) closes only that pill and
+  /// returns nil.
+  func claimUndo(pillID: UUID) -> UndoRecord? {
     guard let record = undoRecord, record.pillID == pillID else {
       presenter?.close(pillID: pillID)
-      return .stale
+      return nil
     }
     undoRecord = nil
+    return record
+  }
+
+  /// Put back exactly what `learn` changed, only if the live word still equals
+  /// the post-save snapshot; otherwise write nothing. `record` is what `claimUndo` returned.
+  @discardableResult
+  func performUndo(record: UndoRecord, pillID: UUID) async -> UndoOutcome {
     let result = ActionResult<UndoOutcome>(.stale)
     await vocabulary.perform { [self] in
       result.value = await undoInsideAction(record, pillID: pillID)

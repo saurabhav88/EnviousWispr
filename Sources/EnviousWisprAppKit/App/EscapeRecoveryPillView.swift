@@ -113,8 +113,8 @@ struct EscapeRecoveryPillView: View {
   }
 
   /// **The rail is a PICTURE of the director's dwell, and this view owns no
-  /// clock.** `PillCatalog` gives this pill `.after(seconds: 3, pausesOnHover:
-  /// true)`, `OverlayRootView` forwards hover so the reducer can cancel and
+  /// clock.** `PillCatalog` gives this pill `.after(seconds: 3, hover:
+  /// .restartFull)`, `OverlayRootView` forwards hover so the reducer can cancel and
   /// re-arm, and `PillExpiryClock` is the one thing that dismisses. This function
   /// only decides where the animation starts and how long it has left.
   private func scheduleExpiry() {
@@ -156,19 +156,19 @@ struct EscapeRecoveryPillFace: View {
   @State private var isActionHovered = false
 
   var body: some View {
-    HStack(spacing: UndoPillMetrics.rowGap) {
+    HStack(spacing: EscapeRecoveryPillMetrics.rowGap) {
       Text(DictationNarrator.escapeRecoveryPillTitle)
-        .font(.system(size: UndoPillMetrics.sentenceSize, weight: .medium))
+        .font(.system(size: EscapeRecoveryPillMetrics.sentenceSize, weight: .medium))
         .foregroundStyle(palette.text)
         .lineLimit(1)
 
       Button(action: onPress) {
         Text(DictationNarrator.escapeRecoveryPillAction)
-          .font(.system(size: UndoPillMetrics.actionSize, weight: .semibold))
+          .font(.system(size: EscapeRecoveryPillMetrics.actionSize, weight: .semibold))
           .foregroundStyle(palette.actionText)
           .lineLimit(1)
-          .padding(.horizontal, UndoPillMetrics.actionPaddingAcross)
-          .padding(.vertical, UndoPillMetrics.actionPaddingDown)
+          .padding(.horizontal, EscapeRecoveryPillMetrics.actionPaddingAcross)
+          .padding(.vertical, EscapeRecoveryPillMetrics.actionPaddingDown)
           .background(
             RoundedRectangle(cornerRadius: PillMetrics.actionRadius, style: .continuous)
               .fill(isActionHovered ? palette.actionFillHover : palette.actionFill)
@@ -183,15 +183,14 @@ struct EscapeRecoveryPillFace: View {
       .accessibilityLabel(DictationNarrator.escapeRecoveryPillAction)
       .onHover { isActionHovered = $0 }
     }
-    // Content-sized (#3747): the pill is its row plus the shared Undo padding, so
-    // it can never disagree with the learned-word pill about height.
+    // Content-sized (#3747): the pill is its row plus this pill's own padding.
     //
     // The sentence centres in the WHOLE pill, because the rail is an overlay on
     // the rim rather than a row in a stack. Putting the bar in the layout steals
     // height from the bottom and lifts the text above the pill's true middle,
     // which reads as cramped at the top.
-    .padding(.horizontal, UndoPillMetrics.sidePadding)
-    .padding(.vertical, UndoPillMetrics.verticalPadding)
+    .padding(.horizontal, EscapeRecoveryPillMetrics.sidePadding)
+    .padding(.vertical, EscapeRecoveryPillMetrics.verticalPadding)
     .background(Capsule().fill(palette.fill))
     // Both overlays sit IN FRONT of the button and are pure decoration, so both
     // opt out of hit testing. A stroked shape is hit-testable by default and its
@@ -208,15 +207,14 @@ struct EscapeRecoveryPillFace: View {
 
 // MARK: - Metrics
 
-/// **The geometry both Undo pills share (#3747, founder 2026-10-14: "make the
-/// dictation cancelled pill the same size as the added to dictionary pill").**
+/// **The Escape Recovery pill's own geometry.**
 ///
-/// `CorrectionLearnedPillView` and `EscapeRecoveryPillFace` read these same
-/// numbers, so one cannot be retuned without the other. The values are the
-/// learned-word pill's own, moved here unchanged. Widths still differ, because
-/// the two sentences differ; the heights and type sizes are what a person
-/// compares.
-enum UndoPillMetrics {
+/// These were the numbers both Undo pills shared (#3747, founder 2026-10-14: "make the dictation
+/// cancelled pill the same size as the added to dictionary pill"). The learned-word pill was
+/// redesigned on 2026-11-18 (#4675: icon, word, subtitle and two buttons) and now has its own
+/// `LearnedPillMetrics`; the founder kept this pill as it was. The values are the old shared
+/// numbers, moved here unchanged, so this pill looks exactly as it did.
+enum EscapeRecoveryPillMetrics {
   /// The sentence, drawn medium weight.
   static let sentenceSize: CGFloat = 13
   /// The button word, drawn semibold. This is a FONT size, not the button height.
@@ -229,7 +227,9 @@ enum UndoPillMetrics {
   static let verticalPadding: CGFloat = 10
 }
 
-/// The cancel pill's own geometry that the learned-word pill does not share.
+/// The geometry the Escape Recovery pill and the learned-word pill both read: the action radius
+/// and the inset of the countdown rail. Everything else is each pill's own (`EscapeRecoveryPillMetrics`,
+/// `LearnedPillMetrics`).
 ///
 /// **The panel is EXACTLY the pill, and that is a placement requirement
 /// rather than a saving (Codex review round 2, 2026-08-19).**
@@ -288,6 +288,14 @@ struct PillPalette {
   var actionRim: Color
   var actionText: Color
   var spectrum: [Color]
+  /// The quieter second line of a pill and its icon-less buttons (#4675).
+  var secondaryText: Color
+  /// The accent the learned-word pill draws its icon and its Undo word in (`Color.pillAccent`).
+  var accent: Color
+  /// The wash behind that icon and behind the Undo button (`Color.pillAccentWash`).
+  var accentWash: Color
+  /// The hover fill of a quiet round button such as ×.
+  var quietHover: Color
 
   static func forScheme(_ scheme: ColorScheme) -> PillPalette {
     scheme == .dark ? .dark : .light
@@ -301,7 +309,11 @@ struct PillPalette {
     actionFillHover: .white.opacity(0.26),
     actionRim: .clear,
     actionText: .white,
-    spectrum: PillSpectrum.dark
+    spectrum: PillSpectrum.dark,
+    secondaryText: .pillSecondaryText,
+    accent: .pillAccent,
+    accentWash: .pillAccentWash,
+    quietHover: .pillQuietHover
   )
 
   static let light = PillPalette(
@@ -312,7 +324,11 @@ struct PillPalette {
     actionFillHover: .black.opacity(0.13),
     actionRim: .black.opacity(0.09),
     actionText: Color(red: 0.10, green: 0.10, blue: 0.13),
-    spectrum: PillSpectrum.light
+    spectrum: PillSpectrum.light,
+    secondaryText: .pillSecondaryText,
+    accent: .pillAccent,
+    accentWash: .pillAccentWash,
+    quietHover: .pillQuietHover
   )
 }
 

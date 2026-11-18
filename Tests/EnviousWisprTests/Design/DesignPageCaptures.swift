@@ -299,6 +299,18 @@ enum DesignPageCaptures {
           wordID: UUID(uuidString: "4506A71A-0000-0000-0000-000000000003")!,
           canonical: "Tuist", kind: .added, phase: .learned))
     ),
+    // The result after Undo on an added word. Production never REQUESTS this phase: the reducer
+    // morphs the offer into it (`correctionLearnedResult`). The request exists so the atlas
+    // fixture is built from the same model type and copy as the live result, and so the
+    // exhaustive notice check covers it.
+    (
+      "correction-learned-removed",
+      .correctionLearned(
+        LearnedCorrectionPillModel(
+          id: UUID(uuidString: "4506A71A-0000-0000-0000-000000000002")!,
+          wordID: UUID(uuidString: "4506A71A-0000-0000-0000-000000000003")!,
+          canonical: "Tuist", kind: .added, phase: .undone))
+    ),
     (
       "language-chip",
       .passiveChip(
@@ -344,7 +356,14 @@ enum DesignPageCaptures {
     case .bluetoothAwareness: "bluetooth"
     case .escapeRecovery: "escape-recovery"
     case .importStatus: "import-status"
-    case .correctionLearned: "correction-learned"
+    case .correctionLearned(let model):
+      switch model.phase {
+      case .learned: "correction-learned"
+      case .undone: "correction-learned-removed"  // an added word's removed result
+      // Pending and "Couldn't undo" have no atlas picture of their own: Pending draws the offer's
+      // card with its controls hidden, and the error is covered by the face tests (#4675 chunk 4).
+      case .undoPending, .undoError: nil
+      }
     case .correctionLearnedSaveError: "correction-save-error"
     case .polishSetupCard: "polish-setup-card"
     case .parakeetUpgrade: "parakeet-upgrade"
@@ -359,6 +378,12 @@ enum DesignPageCaptures {
     let definition = PillCatalog.entry(
       for: request, id: PresentationID(rawValue: UUID())
     ).definition
+    // The learned-word pill is drawn by its production face at a fixed countdown share, so the
+    // offer's brand rail is a visible stretch and not the live view's t=0 spark. The wrapper
+    // that follows the dwell clock is not used: a still picture needs no clock.
+    if case .correctionLearned(let learned)? = definition?.content {
+      return AnyView(LearnedPillCapture(model: learned))
+    }
     let model = OverlayRenderModel()
     model.publish(definition)
     // The interruption pill pulses on a clock (red lips and edge glow), so two runs differ; it is
@@ -401,5 +426,26 @@ enum DesignPageCaptures {
     default:
       throw DesignRenderHarness.RenderError("unknown logo fixture \(key)")
     }
+  }
+}
+
+/// The learned-word card as the atlas photographs it: `CorrectionLearnedPillFace` with the copy
+/// the live pill uses, the palette of the capture's own appearance, and the countdown a fixed
+/// way along. A result has no countdown, so its progress is never drawn.
+private struct LearnedPillCapture: View {
+  let model: LearnedCorrectionPillModel
+  /// How far along the offer's rail is drawn. Fixed so every run is the same picture.
+  static let railProgress = 0.4
+
+  @Environment(\.colorScheme) private var colorScheme
+
+  var body: some View {
+    CorrectionLearnedPillFace(
+      line: CorrectionLearnedPillCopy.line(for: model),
+      progress: Self.railProgress,
+      palette: PillPalette.forScheme(colorScheme)
+    )
+    .fixedSize()
+    .allowsHitTesting(false)
   }
 }

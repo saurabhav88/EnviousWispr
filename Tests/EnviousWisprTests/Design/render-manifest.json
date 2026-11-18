@@ -3475,7 +3475,7 @@
       "pageWidth": 0,
       "appearance": "light",
       "locale": "en_US",
-      "state": "overlay notice from PillCatalog: correction-learned"
+      "state": "learned-word offer, production face, countdown rail at 40 percent"
     },
     {
       "name": "notice-correction-learned-dark",
@@ -3484,7 +3484,25 @@
       "pageWidth": 0,
       "appearance": "dark",
       "locale": "en_US",
-      "state": "overlay notice from PillCatalog: correction-learned"
+      "state": "learned-word offer, production face, countdown rail at 40 percent"
+    },
+    {
+      "name": "notice-correction-learned-removed-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "notice-correction-learned-removed",
+      "pageWidth": 0,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "learned-word result after Undo (phase undone), production face, no countdown"
+    },
+    {
+      "name": "notice-correction-learned-removed-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "notice-correction-learned-removed",
+      "pageWidth": 0,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "learned-word result after Undo (phase undone), production face, no countdown"
     },
     {
       "name": "notice-language-chip-light",

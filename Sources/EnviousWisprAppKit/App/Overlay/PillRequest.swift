@@ -70,11 +70,13 @@ enum PillAction: Equatable, Sendable {
   case closeBluetoothAwareness
   /// bluetoothAwarenessAdjustSettingsHandler.
   case openBluetoothSettings
-  /// #996 auto-learn: the Undo pill's one button. Carries the pill's own UUID
-  /// so a press on a pill the slot no longer shows undoes nothing. There is no
-  /// dismiss action: the pill never takes keyboard focus, so an unanswered
-  /// pill leaves on its dwell.
+  /// #996 auto-learn: the Undo pill's Undo button. Carries the pill's own UUID
+  /// so a press on a pill the slot no longer shows undoes nothing.
   case undoLearnedCorrection(pillID: UUID)
+  /// #4675: the Undo pill's × button. Closes the pill and keeps the word. Carries the pill's
+  /// own UUID like Undo, so a press on a pill the slot no longer shows closes nothing. The
+  /// pill still never takes keyboard focus; this is a click, not a key.
+  case dismissLearnedCorrection(pillID: UUID)
   /// #3438: the AI polish setup card's "Finish setup".
   case finishPolishSetup
   /// #3438: the AI polish setup card's "Not now". Distinct from Finish setup: the two are
@@ -104,7 +106,7 @@ enum PillEffect: Equatable, Sendable {
   /// arrives or leaves. Nothing in the first model expressed it at all.
   case recordingStateChanged(Bool)
   /// #996 auto-learn: an admitted Undo pill left the screen in its `.learned`
-  /// phase without Undo being pressed (dwell fired, replaced by another
+  /// phase without Undo being pressed (dwell fired, × pressed, replaced by another
   /// learned pill, or displaced). The director routes it to the pill's own
   /// binding, which tells the learned coordinator to drop its Undo record.
   /// Emitted at most once per presentation identity. A result phase leaving

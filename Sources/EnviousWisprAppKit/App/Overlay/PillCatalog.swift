@@ -327,7 +327,7 @@ enum PillCatalog {
     case .passiveChip(let payload):
       return PillDefinition(
         id: id, content: .languageChip(payload: payload),
-        expiry: .after(seconds: 6, pausesOnHover: true),
+        expiry: .after(seconds: 6, hover: .restartFull),
         // #3912: the sentence wraps and the chip grows taller; its buttons stay put.
         requestedWidth: .fixed(340))  // :1410
 
@@ -416,23 +416,26 @@ enum PillCatalog {
 
     case .correctionLearned(let model):
       // 2026-09-21 plan §3.1 step 9, widened to three seconds on 2026-09-22
-      // (founder, live UAT: "the pill wasn't there long enough"), then to four
-      // on 2026-09-27 (founder, ENVIOUSWISPR-5E) alongside the countdown rail
-      // `CorrectionLearnedPillView` now draws. Hover still does NOT pause it
-      // (founder: "hovering over pill does not stop the timer"). Measured
-      // width: the view pins none, and the sentence shrinks to fit one line.
-      // The `Undone` / `Couldn’t undo` results re-arm their own dwell in the
-      // reducer.
+      // (founder, live UAT: "the pill wasn't there long enough"), to four on
+      // 2026-09-27 (founder, ENVIOUSWISPR-5E) alongside the countdown rail
+      // `CorrectionLearnedPillView` draws, and to twelve on 2026-11-17/18
+      // (founder, #4675). The 2026-09-27 decision that hover does NOT stop the
+      // timer ("hovering over pill does not stop the timer") is RETIRED: hover
+      // now freezes the countdown and leaving resumes it with at least two
+      // seconds left. Measured width: the view pins none, and the sentence
+      // shrinks to fit one line. The `Undone` / `Couldn’t undo` results re-arm
+      // their own dwell in the reducer.
       return PillDefinition(
         id: id, content: .correctionLearned(model),
         expiry: .after(
-          seconds: CorrectionLearnedPillCopy.learnedDwellSeconds, pausesOnHover: false),
+          seconds: CorrectionLearnedPillCopy.learnedDwellSeconds,
+          hover: .resume(floorSeconds: CorrectionLearnedPillCopy.hoverResumeFloorSeconds)),
         requestedWidth: .measured)
 
     case .correctionLearnedSaveError(let error):
       return PillDefinition(
         id: id, content: .correctionLearnedSaveError(error),
-        expiry: .after(seconds: CorrectionLearnedPillCopy.errorDwellSeconds, pausesOnHover: false),
+        expiry: .after(seconds: CorrectionLearnedPillCopy.errorDwellSeconds, hover: .ignore),
         requestedWidth: .measured)
 
     case .escapeRecovery(let transcriptID):
@@ -453,7 +456,7 @@ enum PillCatalog {
         // every diff review, because nothing in a diff can contradict a promise.
         // C4 was recorded as doing it and did not; C18 did.
         id: id, content: .escapeRecovery(transcriptID: transcriptID),
-        expiry: .after(seconds: 3, pausesOnHover: true), requestedWidth: .measured)
+        expiry: .after(seconds: 3, hover: .restartFull), requestedWidth: .measured)
 
     case .recording(let level, let design):
       // Moved from `OverlayReducer.presentation(for:id:)` in C3a with its own

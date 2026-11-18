@@ -7,19 +7,24 @@ founder's pre-PR gate, end to end.
 Run with the screen UNLOCKED and hands off the Mac. It dictates a sentence
 through the speaker into a real TextEdit document, makes a scripted fix through
 accessibility, waits for the word to be SAVED (`learn_added`) and for the
-3-second Undo pill (`learn_undo_shown`), presses Undo through accessibility,
-lets another pill expire under the pointer, reads Your Words for the sparkle
+12-second Undo pill (`learn_undo_shown`), presses Undo through accessibility,
+holds the pointer over another pill past its 12 seconds and lets it expire after the pointer leaves, reads Your Words for the sparkle
 and the Auto-learned filter, and reads every verdict from `app.log` and from
 `custom-words.json`. Every step waits on a SIGNAL the app produces, with a
 deadline as the fallback, never as the mechanism (`wait_for` returns whether
 the signal arrived). The one thing the app does not log is the pill LEAVING
 without Undo: that verdict is the Undo button's absence through accessibility
-inside a wall-clock bound, plus the word still being in the file.
+inside a wall-clock bound, plus the word still being in the file. The 12
+second window freezes while the pointer is over the pill and resumes with at
+least 2 seconds left when it leaves (#4675); the rail's own freeze and resume
+are checked by eye in Live UAT, not here.
 
 Codified AFTER a hand-driven round 1 (founder 2026-09-20: the first UAT round
 is driven by hand, the script comes after) and rewritten for the 2026-09-21
 pivot (no question to answer, no waiting list: the word is added at once and a pill
-offers Undo for 3 seconds; hover does not pause it). What round 1 taught this
+offers Undo for 3 seconds; hover did not pause it, a 2026-09-27 founder
+decision RETIRED on 2026-11-17/18 by #4675: the window is now 12 seconds and
+hover pauses and resumes it). What round 1 taught this
 file still holds: the heard form is whatever the recogniser DELIVERED between
 two anchor words, never a fixed regex; the target must be a word the
 recogniser does not already know; `custom-words.json` is a dictionary, so
@@ -605,8 +610,8 @@ def clear_field(path):
 
 def undo_button():
     """The Undo pill's one button, by its accessibility label. The pill shows
-    for 3 seconds after admission, so callers wait on `learn_undo_shown` first
-    and look with a short deadline."""
+    for 12 seconds after admission (longer while hovered), so callers wait on
+    `learn_undo_shown` first and look with a short deadline."""
     pid = app_pid()
     if pid is None:
         return None
@@ -691,13 +696,103 @@ def find_button_by_prefix(element, prefix, depth=0, max_depth=12):
     return None
 
 
+def fresh_artifact_ok(path, started_at):
+    """True only for a file this attempt wrote: it exists, is non-empty, and was modified at or
+    after `started_at` (wall clock). A leftover from an earlier run in a reused `--run-dir` fails."""
+    try:
+        return os.path.getsize(path) > 0 and os.path.getmtime(path) >= started_at - 0.001
+    except OSError:
+        return False
+
+
 def screenshot(name):
     path = os.path.join(run_dir, name)
+    if os.path.exists(path):
+        os.remove(path)  # never let an old picture from a reused run dir answer for this attempt
+    started_at = time.time()
     try:
         w.screenshot(path, window=False)
     except Exception as error:
         print(f"    (screenshot failed: {error})")
-    return os.path.exists(path) and os.path.getsize(path) > 0
+        return False
+    return fresh_artifact_ok(path, started_at)
+
+
+PILL_CAPTURE_PAD = (300, 24, 60, 24)  # left, top, right, bottom around the Undo button's frame
+
+
+def display_bounds():
+    """Every active display's rectangle `(x, y, w, h)` in the top-left global space that AX frames
+    and `screencapture -R` both use (CGDisplayBounds; a display left of or above the main one has
+    negative coordinates). An empty list when the displays cannot be read."""
+    try:
+        import Quartz
+        err, ids, count = Quartz.CGGetActiveDisplayList(16, None, None)
+        if err != 0:
+            return []
+        rects = []
+        for display in ids[:count]:
+            b = Quartz.CGDisplayBounds(display)
+            rects.append((b.origin.x, b.origin.y, b.size.width, b.size.height))
+        return rects
+    except Exception as error:
+        print(f"    (display bounds unreadable: {error})")
+        return []
+
+
+def capture_rect(frame, displays):
+    """The padded capture rectangle `(x, y, w, h)` around the button's AX frame, in global
+    coordinates. It is NOT clamped to zero (a display with a negative origin keeps its real
+    coordinates); it is only clipped to the bounds of the display that contains the button's centre,
+    and left as is when no display is known to contain it."""
+    left, top, right, bottom = PILL_CAPTURE_PAD
+    x0 = int(frame["x"]) - left
+    y0 = int(frame["y"]) - top
+    x1 = int(frame["x"]) + int(frame["width"]) + right
+    y1 = int(frame["y"]) + int(frame["height"]) + bottom
+    cx = frame["x"] + frame["width"] / 2
+    cy = frame["y"] + frame["height"] / 2
+    for dx, dy, dw, dh in displays:
+        if dx <= cx < dx + dw and dy <= cy < dy + dh:
+            x0, y0 = max(x0, int(dx)), max(y0, int(dy))
+            x1, y1 = min(x1, int(dx + dw)), min(y1, int(dy + dh))
+            break
+    return x0, y0, x1 - x0, y1 - y0
+
+
+def capture_pill(name, timeout_s=10.0, label=None, expected_pid=None):
+    """Visual proof of the pill that cannot prompt or move focus: `screencapture -x -R` of a
+    region around the Undo button's AX frame (the pill is the capsule around it). No window
+    picker and no full-screen helper, so it cannot raise the screen-capture prompt that
+    steals TextEdit's focus. Any old target file is deleted first, an error or non-zero exit
+    fails at once, and success needs a NEW non-empty file written after the attempt started
+    (a reused `--run-dir` cannot supply an old picture). The image is a DIAGNOSTIC, never analysed:
+    when `label` and `expected_pid` are given, the strict Undo reader is re-checked right AFTER the
+    capture returns, and a pill that is gone by then makes the capture not proof. The caller
+    treats False as an instrument failure."""
+    frame = pill_frame()
+    if frame is None or not (frame["width"] > 0 and frame["height"] > 0):
+        return False
+    x, y, width, height = capture_rect(frame, display_bounds())
+    path = os.path.join(run_dir, name)
+    if os.path.exists(path):
+        os.remove(path)
+    started_at = time.time()
+    try:
+        done = subprocess.run(["/usr/sbin/screencapture", "-x", "-R", f"{x},{y},{width},{height}", path],
+                              check=False, timeout=timeout_s, capture_output=True)
+    except Exception as error:
+        print(f"    (pill capture failed: {error})")
+        return False
+    if done.returncode != 0:
+        print(f"    (pill capture failed: screencapture exit {done.returncode})")
+        return False
+    if not fresh_artifact_ok(path, started_at):
+        return False
+    if label is not None and not undo_present_or_abort(label, expected_pid):
+        print("    (pill capture discarded: the Undo button was gone right after the capture)")
+        return False
+    return True
 
 
 class PillNotAdmitted(Exception):
@@ -784,7 +879,7 @@ def alias_landed(pair, heard_text):
 
 
 def press_undo(label):
-    """Find and press the pill's Undo button. The window is 3 seconds from
+    """Find and press the pill's Undo button. The window is 12 seconds from
     admission, so the search deadline is short and a miss is the rig's
     timing (INSTRUMENT), not the product."""
     button = wait_for("the pill's Undo button", undo_button, deadline=1.5)
@@ -814,8 +909,10 @@ def case_new_word_undo(path):
     if not screenshot("new-word-undone.png"):
         raise Aborted("new-word-undo: the Undone screenshot is missing or empty (visual proof required)")
     removed = wait_for("the word to leave custom-words.json", lambda: word_named(pair.correct) is None, deadline=5.0)
-    ok = bool(undone) and undone.group(1) == "added" and undone.group(2) == "undone" and bool(removed)
-    return check("new-word-undo", ok, f"undone={undone.group(0) if undone else None} removed={bool(removed)}")
+    # "removed" is an absence: it only counts when the word was SEEN saved just before the Undo.
+    ok = (bool(saved) and bool(undone) and undone.group(1) == "added"
+          and undone.group(2) == "undone" and bool(removed))
+    return check("new-word-undo", ok, f"saved_before_undo={bool(saved)} undone={undone.group(0) if undone else None} removed={bool(removed)}")
 
 
 def case_existing_word(path):
@@ -922,51 +1019,194 @@ def case_punctuated_join(path):
 
 def park_pointer():
     """Park the pointer top-left, over nothing that reacts to a bare move, so
-    no case starts with it over the pill's place (the pill does not pause
-    under hover, but a screenshot of it should show it unobstructed)."""
+    no case starts with it over the pill's place (the pointer over the pill
+    freezes its countdown, and a screenshot of it should show it unobstructed)."""
     si.move_mouse(4, 4)
     time.sleep(0.2)  # settle: the move reaches the overlay before the next step
 
 
-def hover_pill():
-    """Put the pointer ON the pill. The 3-second window must not pause or
-    extend (founder: "hovering over pill does not stop the timer")."""
-    frame = pill_frame()
-    if frame is None:
-        return False
-    si.move_mouse(int(frame["x"] + frame["width"] / 2), int(frame["y"] + frame["height"] / 2))
-    return True
+def frontmost_pid():
+    """The frontmost application's pid, or None."""
+    from AppKit import NSDate, NSDefaultRunLoopMode, NSRunLoop, NSWorkspace
+    NSRunLoop.currentRunLoop().runMode_beforeDate_(
+        NSDefaultRunLoopMode, NSDate.dateWithTimeIntervalSinceNow_(0.05))
+    app = NSWorkspace.sharedWorkspace().frontmostApplication()
+    return int(app.processIdentifier()) if app else None
 
 
-def case_expiry_under_hover(path):
-    """No Undo pressed: the pill leaves by itself at 3 seconds with the pointer
-    over it, and the word stays. The app logs no "pill ended" token; the
-    verdict is the Undo button's absence inside a wall-clock bound (3 s plus
-    0.5 s of accessibility slack) with no `learn_undone`, plus the word in
-    the file afterwards. The pointer must have reached the pill."""
+def ax_copy(element, attr):
+    """One raw AX attribute read: `(error, value)`. A seam so a test can inject
+    failures; `ui_helpers.get_attr` folds every error into None and so cannot
+    tell "no such attribute" from "the read failed"."""
+    from ApplicationServices import AXUIElementCopyAttributeValue
+    return AXUIElementCopyAttributeValue(element, attr, None)
+
+
+class StaleElement(Exception):
+    """An element below the window list vanished between being listed and being read
+    (AXError InvalidUIElement). Only the scan in `undo_present_or_abort` catches it."""
+
+
+STALE_SCAN_RETRIES = 3  # fresh AXWindows scans allowed after a stale element
+
+
+def ax_read(element, attr, label, optional, below_windows=False):
+    """The attribute's value. `optional` attributes may be legitimately absent
+    (no value, unsupported); any other error, and any error on a required
+    attribute, is an INSTRUMENT failure that must never read as "absent".
+    With `below_windows`, InvalidUIElement (the element closed mid-scan) raises
+    `StaleElement` instead, so the caller can rescan from a fresh window list."""
+    from ApplicationServices import (kAXErrorAttributeUnsupported, kAXErrorInvalidUIElement,
+                                     kAXErrorNoValue, kAXErrorSuccess)
+    err, value = ax_copy(element, attr)
+    if err == kAXErrorSuccess:
+        return value
+    if below_windows and err == kAXErrorInvalidUIElement:
+        raise StaleElement(attr)
+    if optional and err in (kAXErrorNoValue, kAXErrorAttributeUnsupported):
+        return None
+    raise Aborted(f"{label}: the accessibility read of {attr} failed (AXError {err}); instrument failure")
+
+
+def undo_present_or_abort(label, expected_pid, max_depth=12):
+    """Whether the Undo button is there, as a read that can tell absence from
+    failure. Local to this case; `undo_button()` stays the lenient lookup.
+    The expected dev-app process must be the one running before and after the
+    walk, the window list must be read successfully, and every element on the
+    path must be readable; otherwise this raises an instrument failure instead
+    of returning False. An element that closed mid-scan (a correct dismissal
+    racing the read) restarts the scan from a fresh window list, up to
+    STALE_SCAN_RETRIES times; the pill counts as gone only after a COMPLETE scan
+    finds no button, and exhausting the retries is an instrument failure."""
+    def walk(element, depth):
+        if ax_read(element, "AXRole", label, optional=True, below_windows=True) == "AXButton":
+            for attr in ("AXDescription", "AXTitle"):
+                if ax_read(element, attr, label, optional=True, below_windows=True) == "Undo":
+                    return True
+        if depth >= max_depth:
+            return False
+        return any(walk(child, depth + 1)
+                   for child in (ax_read(element, "AXChildren", label, optional=True,
+                                         below_windows=True) or []))
+
+    for _ in range(1 + STALE_SCAN_RETRIES):
+        if app_pid() != expected_pid:
+            raise Aborted(f"{label}: the dev app (pid {expected_pid}) is gone or was replaced; instrument failure")
+        app = get_ax_app(expected_pid)
+        windows = ax_read(app, "AXWindows", label, optional=False) or []
+        try:
+            found = any(walk(window, 0) for window in windows)
+        except StaleElement:
+            continue
+        if app_pid() != expected_pid:
+            raise Aborted(f"{label}: the dev app (pid {expected_pid}) exited during the read; instrument failure")
+        return found
+    raise Aborted(f"{label}: an accessibility element went stale on {1 + STALE_SCAN_RETRIES} consecutive scans; instrument failure")
+
+
+STILL_PRESENT_AFTER_S = 5.0   # an offer still there this long after we first saw it outlived the old 4 s dwell
+CLOSES_BY_S = 20.0            # and it must close on its own by this long after we first saw it
+
+
+def case_expiry_unhovered(path):
+    """Unattended, no pointer. The Undo pill must outlast the OLD 4 s dwell and then close on its
+    own, with the word kept. This live arm proves exactly that and no more: the exact 12 s
+    boundary, the 2 s hover floor and the 3 s Pending minimum are covered by the director and
+    clock tests with an injected clock (`LearnedCorrectionPillDirectorTests.undoWindow`: on
+    screen at 11.999 s, gone at 12.000 s). The app's admission instant cannot be measured exactly
+    from outside (the `learn_undo_shown` log line is written after the pill shows), so every bound
+    is measured from the FIRST SIGHTING: the end of the scan that first found the Undo button,
+    which is at or after the admission.
+
+    Each scan is timed [start, end] on the monotonic clock. A PRESENT scan proves the pill existed
+    somewhere inside it, so only its START counts; an ABSENT scan proves it gone by its END.
+      PASS:  a present scan STARTED at >= first_seen + 5 s and an absent scan ENDED by
+             first_seen + 20 s, no `learn_undone`, the word still in custom-words.json.
+      FAIL:  a scan that STARTED after first_seen + 20 s still found the pill (it never closes).
+      INSTRUMENT: an absent scan ended before first_seen + 5 s (first_seen is when this script found
+             the pill, not when it appeared, so an early close is inconclusive), and anything else
+             the intervals cannot decide (a poll gap or stalled scan).
+    The pill's picture is taken once, up front, without a prompt (a diagnostic).
+
+    Hover pause is NOT checked by this script. It is covered by the director and clock tests and
+    checked by hand with a real mouse (founder 2026-11-18, #4675), because synthetic mouse moves
+    posted after synthetic keystrokes (this script types its fix) produce no hover events in the
+    app: the cursor stays obscured and adding delta fields did not help."""
+    label = "expiry-unhovered"
     pair = PAIRS["expiry-under-hover"]
-    mark, _, heard = dictate(path, "expiry-under-hover", pair)
-    apply_fix(path, "expiry-under-hover", heard, pair.correct)
-    judged = wait_judged(mark)
-    if not judged:
-        return check("expiry-under-hover", False, "no learn_judged after the fix")
-    state = wait_added(mark, "expiry-under-hover")
-    if state is None:
-        return check("expiry-under-hover", False, "judged but no learn_added")
-    shown_at = time.monotonic()
-    hovered = hover_pill()
-    if not screenshot("expiry-under-hover-pill.png"):
-        raise Aborted("expiry-under-hover: the pill screenshot is missing or empty (visual proof required)")
-    gone = wait_for("the Undo button to leave", lambda: undo_button() is None, deadline=3.5)
-    left_after = time.monotonic() - shown_at
-    park_pointer()
+    mark, _, heard = dictate(path, label, pair)
+    apply_fix(path, label, heard, pair.correct)
+    if not wait_judged(mark):
+        return check(label, False, "no learn_judged after the fix")
+    if wait_added(mark, label) is None:
+        return check(label, False, "judged but no learn_added")
+    expected_pid = app_pid()
+    if expected_pid is None:
+        raise Aborted(f"{label}: no dev app process before the wait; instrument failure")
+    if not wait_for("the Undo button", undo_button, deadline=2.0):
+        return check(label, False, "precondition failed: no Undo button after learn_added")
+    first_seen = time.monotonic()  # the end of the first sighting: the pill existed by then
+    textedit_pid = find_app_pid("TextEdit")
+    if textedit_pid is None or frontmost_pid() != textedit_pid:
+        raise Aborted(f"{label}: TextEdit is not frontmost; instrument failure")
+    if not capture_pill("expiry-unhovered-pill.png", label=label, expected_pid=expected_pid):
+        raise Aborted(f"{label}: the pill capture failed, is stale, or the pill was gone right after it "
+                      "(visual proof required); instrument failure")
+    present_after = first_seen + STILL_PRESENT_AFTER_S
+    closes_by = first_seen + CLOSES_BY_S
+    last_present_start = None
+    first_absent_end = None
+    longest_scan = 0.0
+
+    def scan_once():
+        nonlocal longest_scan
+        if frontmost_pid() != textedit_pid:
+            raise Aborted(f"{label}: TextEdit lost focus during the wait; instrument failure")
+        started = time.monotonic()
+        present = undo_present_or_abort(label, expected_pid)
+        ended = time.monotonic()
+        longest_scan = max(longest_scan, ended - started)
+        return present, started, ended
+
+    while first_absent_end is None and time.monotonic() < closes_by:
+        present, started, ended = scan_once()
+        if present:
+            last_present_start = started
+            time.sleep(0.25)  # settle: poll interval between AX reads
+        else:
+            first_absent_end = ended
+    if first_absent_end is None:
+        # Past the bound with no absence yet: one more scan; it STARTS after closes_by.
+        present, started, ended = scan_once()
+        if present:
+            last_present_start = started
+        else:
+            first_absent_end = ended
+
+    def rel(value):
+        return "none" if value is None else f"{value - first_seen:.2f}"
+    detail = (f"heard={heard!r} last_present_start_s={rel(last_present_start)} "
+              f"first_absent_end_s={rel(first_absent_end)} longest_scan_s={longest_scan:.2f} "
+              f"bounds=[present at >={STILL_PRESENT_AFTER_S:.0f}s, gone by {CLOSES_BY_S:.0f}s] "
+              "(relative to the first sighting)")
     persisted = wait_for("the word still in custom-words.json", lambda: learned_alias(pair, heard), deadline=2.0)
     undone = has(mark, "learn_undone")
-    # `hovered` is REQUIRED: a run that never reached the pill would prove
-    # only that pills expire, not that hover leaves the window alone.
-    ok = hovered and bool(gone) and left_after <= 3.5 and not undone and bool(persisted)
-    return check("expiry-under-hover", ok,
-                 f"heard={heard!r} hovered={hovered} pill_gone={bool(gone)} left_after_s={left_after:.2f} undone={undone} persisted={bool(persisted)}")
+    if first_absent_end is None:
+        return check(label, False, detail + f" persisted={bool(persisted)}: the pill was still there "
+                     f"in a scan that started after {CLOSES_BY_S:.0f}s; it never closed on its own")
+    if first_absent_end < present_after:
+        # first_seen is when THIS SCRIPT found the pill, not when it appeared, so a close within
+        # 5 s of it says nothing certain about the dwell. The exact dwell is a unit-test claim.
+        raise Aborted(f"{label}: the pill was gone within {STILL_PRESENT_AFTER_S:.0f}s of the first "
+                      "sighting; inconclusive (the sighting may have been late); the exact dwell is "
+                      f"covered by LearnedCorrectionPillDirectorTests.undoWindow ({detail})")
+    if (last_present_start is not None and last_present_start >= present_after
+            and first_absent_end <= closes_by):
+        return check(label, not undone and bool(persisted),
+                     detail + f" undone={undone} persisted={bool(persisted)}")
+    raise Aborted(f"{label}: the scans cannot show both that the pill outlasted "
+                  f"{STILL_PRESENT_AFTER_S:.0f}s and closed by {CLOSES_BY_S:.0f}s (a poll gap or a "
+                  f"stalled scan); inconclusive; instrument failure ({detail})")
 
 
 def your_words_window(app):
@@ -1088,15 +1328,16 @@ def case_admission_refused(path):
     ended = wait_for("observation ended by the next dictation", lambda: re.search(r"learn_observation_ended reason=next_dictation_started settled_bursts=\d+", log_since(mark)), deadline=10.0)
     judged = wait_judged(mark, deadline=10.0)
     state = wait_added(mark, "admission-refused", expect_pill=False) if judged else None
-    wait_for("the recording to start", lambda: has(mark, "Recording started"), deadline=10.0)
+    recording = wait_for("the recording to start", lambda: has(mark, "Recording started"), deadline=10.0)
     time.sleep(1.5)  # settle: the pill's admission is decided while the recording holds the slot
     shown = has(mark, "learn_undo_shown")
     w.tap("Stop Recording")
     wait_for("the take's terminal", lambda: has(mark, "dictation_terminal") or has(mark, "Pipeline timing TOTAL"), deadline=45.0)
     saved = learned_alias(pair, heard)
-    ok = bool(started) and bool(ended) and state is not None and not shown and saved
+    # "no pill" is an absence: it counts only while a recording was really holding the slot.
+    ok = bool(started) and bool(ended) and bool(recording) and state is not None and not shown and saved
     return check("admission-refused", ok,
-                 f"started={bool(started)} ended={bool(ended)} state={state} undo_shown={shown} saved={saved}")
+                 f"started={bool(started)} ended={bool(ended)} recording_started={bool(recording)} state={state} undo_shown={shown} saved={saved}")
 
 
 def case_negative(path):
@@ -1109,7 +1350,9 @@ def case_negative(path):
         return check("negative", False, "no learn_judged after the rewrite-shaped edit")
     # The claim is an ABSENCE (no save, no pill), bounded by the observation's end.
     clear_field(path)
-    wait_for("observation end", lambda: has(mark, "learn_observation_ended"), deadline=12.0)
+    ended = wait_for("observation end", lambda: has(mark, "learn_observation_ended"), deadline=12.0)
+    if not ended:
+        raise Aborted("negative: the observation never ended, so the absence of a save or pill proves nothing")
     lines = "\n".join(learn_lines(mark))
     return check("negative", "accepted=0" in judged and "learn_added" not in lines and "learn_undo_shown" not in lines,
                  f"judged={judged} added={'learn_added' in lines} undo_shown={'learn_undo_shown' in lines}")
@@ -1233,16 +1476,53 @@ def audio_route():
 
 # --- main -------------------------------------------------------------------
 
+# Every arm, in run order. `--only` is checked against this before the app is touched.
+ARM_NAMES = [
+    "new-word-undo", "existing-word", "expiry-unhovered", "persists-in-your-words",
+    "admission-refused", "negative", "toggle-off", "next-dictation", "deletion-only",
+    "punctuated-join", "learned-check", "learned-check-door-off",
+]
+RETIRED_ARMS = {
+    "expiry-under-hover": "it was replaced by `expiry-unhovered`; hover pause is checked by hand "
+                          "with a real mouse (founder 2026-11-18, #4675)",
+    "hover-guided": "the hover arm was removed; hover pause is checked by hand with a real mouse "
+                    "(founder 2026-11-18, #4675)",
+}
+
+
+def parse_only(raw):
+    """The arms named by `--only`, or a usage message (str) when any name is unknown or the
+    selection is empty. An empty `raw` means every arm; a non-empty one that names nothing
+    (for example ",") is an error, never a successful run of zero arms."""
+    if not raw:
+        return set()
+    names = [a.strip() for a in raw.split(",") if a.strip()]
+    if not names:
+        return f"--only {raw!r} names no arm; valid arms: {', '.join(ARM_NAMES)}"
+    unknown = [n for n in names if n not in ARM_NAMES]
+    if unknown:
+        notes = "".join(f"\n  {n}: {RETIRED_ARMS[n]}" for n in unknown if n in RETIRED_ARMS)
+        return (f"unknown --only arm(s): {', '.join(unknown)}; valid arms: {', '.join(ARM_NAMES)}"
+                + notes)
+    chosen = set(names)
+    if "persists-in-your-words" in chosen and "expiry-unhovered" not in chosen:
+        return ("persists-in-your-words reads the word `expiry-unhovered` learns in the same launch; "
+                "add expiry-unhovered to --only")
+    return chosen
+
 def main():
     global run_dir
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-dir", required=True)
     parser.add_argument("--export", required=True, help="the locked candidate's fp32 export directory")
-    parser.add_argument("--only", default="", help="comma-separated arms to run (default all)")
+    parser.add_argument("--only", default="", help="comma-separated arms to run (default all): "
+                        + ", ".join(ARM_NAMES))
     args = parser.parse_args()
+    only = parse_only(args.only)
+    if isinstance(only, str):
+        parser.error(only)  # usage error: exits 2 before any app or file work
     run_dir = os.path.abspath(args.run_dir)
     os.makedirs(run_dir, exist_ok=True)
-    only = set(a for a in args.only.split(",") if a)
 
     if screen_is_locked():
         raise Aborted("the screen is locked; unlock it and hands off the Mac")
@@ -1287,7 +1567,7 @@ def main():
         cases = [
             ("new-word-undo", True, None, True, case_new_word_undo),
             ("existing-word", True, "seed", True, case_existing_word),
-            ("expiry-under-hover", True, "manual", True, case_expiry_under_hover),
+            ("expiry-unhovered", True, "manual", True, case_expiry_unhovered),
             # Same launch as the case before it: the word it learned must persist.
             ("persists-in-your-words", True, None, False, case_persists_then_your_words),
             ("admission-refused", True, None, True, case_admission_refused),
@@ -1299,6 +1579,8 @@ def main():
             ("learned-check", True, "learned", True, case_learned_check),
             ("learned-check-door-off", True, "learned", True, case_learned_check_door_off),
         ]
+        if [case[0] for case in cases] != ARM_NAMES:
+            raise Aborted("ARM_NAMES and the case list differ; fix the script")
         for name, toggle_on, seed, relaunch, fn in cases:
             if only and name not in only:
                 continue

@@ -790,7 +790,9 @@ struct FilmLearnScene: View {
         }
         .frame(width: 330, height: 72)
         .opacity(next)
-        .offset(y: 198 + 10 * (1 - next))
+        // 214, not 198: the learned card is 56 pt tall now (#4675), so it ends at 206 and the
+        // window's title bar must start below that or the card's rail crosses the title.
+        .offset(y: 214 + 10 * (1 - next))
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }

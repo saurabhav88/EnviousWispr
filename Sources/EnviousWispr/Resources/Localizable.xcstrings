@@ -1174,6 +1174,23 @@
         }
       }
     },
+    "%@, %@. Undo available." : {
+      "comment" : "VoiceOver reading of the pill: the first %@ is the saved word, the second the small line under it, then the Undo button is announced.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$@. Undo available."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@, %2$@. „Rückgängig“ verfügbar."
+          }
+        }
+      }
+    },
     "%@, example, pastes %@" : {
       "localizations" : {
         "en" : {
@@ -1302,17 +1319,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@. Redeanteil anzeigen"
-          }
-        }
-      }
-    },
-    "%@. Undo available." : {
-      "comment" : "VoiceOver reading of the pill: %@ is the pill's sentence, then the Undo button is announced.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@. „Rückgängig“ verfügbar."
           }
         }
       }
@@ -3409,13 +3415,13 @@
         }
       }
     },
-    "Added “%@” to Dictionary" : {
-      "comment" : "Pill after a correction taught the app a new word. %@ is that word.",
+    "Added to dictionary" : {
+      "comment" : "Small line under the word on the pill shown after a correction taught the app a new word.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "„%@“ zum Wörterbuch hinzugefügt"
+            "value" : "Zum Wörterbuch hinzugefügt"
           }
         }
       }
@@ -7381,6 +7387,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Modelle schließen"
+          }
+        }
+      }
+    },
+    "Close and keep “%@”" : {
+      "comment" : "VoiceOver label of the × button on the pill shown after a word was saved to the dictionary: closes the pill and keeps the word. %@ is that word.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schließen und „%@“ behalten"
           }
         }
       }
@@ -29145,7 +29162,7 @@
       }
     },
     "Undone" : {
-      "comment" : "Pill result after the user pressed Undo: the word was removed again.",
+      "comment" : "Pill result after the user pressed Undo on a word that was updated: the earlier entry is back.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -29444,6 +29461,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Update-Status nicht verfügbar"
+          }
+        }
+      }
+    },
+    "Updated in dictionary" : {
+      "comment" : "Small line under the word on the pill shown after a correction changed a word already in the dictionary.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Im Wörterbuch aktualisiert"
           }
         }
       }
@@ -34806,13 +34834,13 @@
         }
       }
     },
-    "“%@” updated" : {
-      "comment" : "Pill after a correction changed a word already in the dictionary. %@ is that word.",
+    "“%@” removed" : {
+      "comment" : "Pill result after the user pressed Undo on a word that was just added to the dictionary. %@ is that word.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "„%@“ aktualisiert"
+            "value" : "„%@“ entfernt"
           }
         }
       }
@@ -34941,6 +34969,42 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Du kannst jetzt unter Diktateinstellungen > Engine oder EnviousMeet > Modelle Parakeet oder Whisper von deinem Mac entfernen, um Speicherplatz freizugeben. Eine entfernte Transkriptions-Engine wird nie wieder von selbst heruntergeladen. Wähle „Modell einrichten“, wenn du sie zurückhaben möchtest. Für Meetings wird bis dahin deine andere heruntergeladene Transkriptions-Engine verwendet."
+          }
+        }
+      }
+    },
+    "whatsNew.calmer-self-learning-pill.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry calmer-self-learning-pill).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A calmer Self-Learning pill"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein ruhigerer Selbstlern-Hinweis"
+          }
+        }
+      }
+    },
+    "whatsNew.calmer-self-learning-pill.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry calmer-self-learning-pill).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The Self-Learning pill now stays for 12 seconds when it appears, and waits while your pointer rests on it. Click Undo to reverse the dictionary change, or click × to close the pill and keep the word. You can always change learned words in Your Words."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn der Hinweis des Selbstlernenden Wörterbuchs erscheint, bleibt er jetzt 12 Sekunden lang sichtbar. Solange dein Mauszeiger über dem Hinweis steht, läuft die Zeit nicht weiter. Klicke auf „Rückgängig“, um die Änderung am Wörterbuch zurückzunehmen, oder auf ×, um den Hinweis zu schließen und das Wort zu behalten. Gelernte Wörter kannst du jederzeit unter „Deine Wörter“ ändern."
           }
         }
       }

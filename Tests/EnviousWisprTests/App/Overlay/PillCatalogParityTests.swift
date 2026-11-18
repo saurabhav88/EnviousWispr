@@ -109,6 +109,7 @@ struct PillCatalogParityTests {
     case .closeBluetoothAwareness: return "closeBluetoothAwareness"
     case .openBluetoothSettings: return "openBluetoothSettings"
     case .undoLearnedCorrection: return "undoLearnedCorrection"
+    case .dismissLearnedCorrection: return "dismissLearnedCorrection"
     case .finishPolishSetup: return "finishPolishSetup"
     case .dismissPolishSetup: return "dismissPolishSetup"
     }
@@ -124,8 +125,13 @@ struct PillCatalogParityTests {
   private static func frozen(_ expiry: OverlayExpiry) -> FrozenExpiry {
     switch expiry {
     case .untilReplaced: return .untilReplaced
-    case .after(let seconds, let pausesOnHover):
-      return .after(seconds: seconds, pausesOnHover: pausesOnHover)
+    case .after(let seconds, let hover):
+      switch hover {
+      case .ignore: return .after(seconds: seconds, hover: "ignore")
+      case .restartFull: return .after(seconds: seconds, hover: "restartFull")
+      case .resume(let floorSeconds):
+        return .after(seconds: seconds, hover: "resume(floor: \(floorSeconds))")
+      }
     }
   }
 

@@ -956,7 +956,13 @@ import EnviousWisprAppKitTestSupport
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/Overlay/OverlayDirector.swift",
       matcher: "prepare",
-      text: "let armExpiry = expiryClock.prepare(plan.expiryCommand) { [weak self] id, target in",
+      text: "armExpiry = expiryClock.prepare(plan.expiryCommand, onExpiry: onExpiry)",
+      classification: .unrelatedDomain),
+    // #4675: the Pending entry, applied only after the host accepted the Undo morph.
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/Overlay/OverlayDirector.swift",
+      matcher: "prepare",
+      text: "self.expiryClock.prepare(",
       classification: .unrelatedDomain),
 
     // MARK: ObservedCorrectionWatcher (#996 chunk 5e) — learn-from-edits

@@ -273,6 +273,8 @@ struct DesignTokensSyncTests {
     "Color.stAccentSolid": .stAccentSolid, "Color.stToggleOn": .stToggleOn,
     "Color.stToggleOff": .stToggleOff, "Color.stSuccess": .stSuccess,
     "Color.stWarning": .stWarning, "Color.stWarningSoft": .stWarningSoft,
+    "Color.pillAccent": .pillAccent, "Color.pillAccentWash": .pillAccentWash,
+    "Color.pillSecondaryText": .pillSecondaryText, "Color.pillQuietHover": .pillQuietHover,
     "Color.stError": .stError, "Color.stInputBg": .stInputBg,
     "Color.stInputBorder": .stInputBorder, "Color.stDivider": .stDivider,
     "Color.stSpeaker1": .stSpeaker1, "Color.stSpeaker2": .stSpeaker2,

@@ -27,6 +27,11 @@ final class OverlayDirector {
 
   private var reducer: OverlayReducer
   private let host: any OverlayWindowHosting
+  private let mouseLocation: () -> CGPoint
+  /// Whether the pointer was last reported over the presented pill (from the hover events this
+  /// director already receives). Only a replacement's placement consults it; it is cleared whenever
+  /// the window is hidden or refused, because that view will never report the pointer leaving.
+  private var pointerInsidePill = false
   private let model: OverlayRenderModel
 
   /// The ONE dismissal clock. The director owns no timer and no dwell window of
@@ -373,7 +378,17 @@ final class OverlayDirector {
     // itself so the bound is asserted without a sleep.
     scheduleReconciliation: @escaping (@escaping () -> Void) -> Void = { work in
       DispatchQueue.main.async(execute: work)
-    }
+    },
+    // A MECHANISM default, kept internal: the expiry clock reads the time to work
+    // out a deadline and a remainder, and a test that drives `scheduler` by hand
+    // must drive that reading by the same fake time (#4675).
+    now: @escaping () -> Date = Date.init,
+    // As `now`: the expiry clock's remainder math reads a steady clock, and a test
+    // driving `scheduler` by hand must drive it by the same fake time.
+    uptime: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+    // Where the pointer is, in global AppKit coordinates (the panel frame's space). The root asks
+    // whether a replacement pill is really under it; a test drives it with a chosen point.
+    mouseLocation: @escaping () -> CGPoint = { NSEvent.mouseLocation }
   ) {
     self.firstRenderSchedule = firstRenderSchedule
     self.selections = selections
@@ -388,8 +403,9 @@ final class OverlayDirector {
     self.advisoryHint = advisoryHint
     self.position = position
     self.model = model
+    self.mouseLocation = mouseLocation
     self.expiryClock = PillExpiryClock(
-      schedule: scheduler, publishDwell: { [weak model] in model?.markDwellStarted($0) })
+      schedule: scheduler, now: now, uptime: uptime, publishDwell: { [weak model] in model?.markDwellStarted($0) })
     self.reducer = OverlayReducer(makeID: makeID)
   }
 
@@ -474,6 +490,29 @@ final class OverlayDirector {
         "use presentRecording(...) — a recording's providers and its resolved design "
           + "must be installed in the same operation that presents it")
     }
+    // Only the CURRENT presentation's hover events speak for the pointer: a late exit from a replaced
+    // pill must not clear it while the pointer is still over the replacement.
+    if case .hoverChanged(let id, let hovering) = event, reducer.state.current?.id == id {
+      pointerInsidePill = hovering
+    }
+    #if DEBUG
+      // Supports hand checks of hover with a real mouse: shows that a pointer move reached the app
+      // and which hover policy applied. DEBUG only; no text, ids only.
+      if case .hoverChanged(let id, let hovering) = event {
+        let policy: String
+        switch reducer.state.current?.expiry {
+        case .after(_, let hover)?:
+          switch hover {
+          case .ignore: policy = "ignore"
+          case .restartFull: policy = "restartFull"
+          case .resume: policy = "resume"
+          }
+        default: policy = "none"
+        }
+        let line = "hover id=\(id.rawValue.uuidString) hovering=\(hovering) policy=\(policy)"
+        Task { await AppLogger.shared.log(line, level: .info, category: "Overlay") }
+      }
+    #endif
     apply(reducer.reduce(event), binding: binding, relay: relay)
   }
 
@@ -820,28 +859,54 @@ final class OverlayDirector {
       relay?.disarm()
       return
     }
+    // **Delivered BEFORE the render when the plan changes the slot too (the accepted Undo,
+    // #4675 plan §3.2b.3).** The owner's handler may close the very presentation this plan is
+    // about to draw: a nil Undo claim closes its own pill synchronously, and rendering the
+    // Pending morph afterwards would resurrect a pill the owner just removed. So deliver first,
+    // then re-read the slot revision exactly as for effects above; if delivery moved the slot,
+    // this plan is stale and is discarded, with nothing prepared, armed or rendered.
+    if plan.didChange, let action = plan.deliverAction {
+      let revisionBeforeDelivery = reducer.state.slotRevision
+      deliver(action)
+      guard reducer.state.slotRevision == revisionBeforeDelivery else {
+        relay?.disarm()
+        return
+      }
+    }
     // The expiry rules — a dwell starts when the pill is VISIBLE, a cancel takes
     // effect immediately, one armed timer at a time — are owned by
     // `PillExpiryClock`. The director decides WHAT the plan is and hands the
     // command over; it holds no timer of its own.
-    let armExpiry = expiryClock.prepare(plan.expiryCommand) { [weak self] id, target in
+    let onExpiry: (PresentationID, OverlayExpiryTarget) -> Void = { [weak self] id, target in
       switch target {
       case .presentation: self?.handle(.expiryFired(id), binding: .none)
       case .inPanelNotice: self?.handle(.inPanelNoticeExpiryFired(id), binding: .none)
       }
     }
-    // **Which of `PillExpiryClock`'s three meanings this plan carries, kept
-    // explicit rather than folded into the returned closure.** `.unchanged`
-    // and `.cancel` both hand back an indistinguishable no-op — `.cancel`'s
+    // `.enterPending` is NOT prepared here: it re-times the live dwell, so it runs only once the
+    // host has accepted the morph (see `pendingEntryStart`). Every other command is prepared now.
+    let armExpiry: () -> Void
+    if case .enterPending(let id, let minimumSeconds) = plan.expiryCommand {
+      armExpiry = pendingEntryStart(
+        id: id, minimumSeconds: minimumSeconds, onExpiry: onExpiry)
+    } else {
+      armExpiry = expiryClock.prepare(plan.expiryCommand, onExpiry: onExpiry)
+    }
+    // **Which of `PillExpiryClock`'s meanings this plan carries, kept
+    // explicit rather than folded into the returned closure.** `.unchanged`,
+    // `.cancel` and `.pause` all hand back an indistinguishable no-op — their
     // real effect already ran INSIDE `prepare` above — so a coalescing
-    // decision (preserve a still-pending arm vs. clear it vs. replace it)
+    // decision (preserve a still-pending start vs. clear it vs. replace it)
     // cannot be read back out of `armExpiry` itself; it has to travel
-    // alongside it. `PillExpiryClock.swift:66` owns which case means what.
+    // alongside it. A `.pause` clears like a `.cancel`: a start prepared for an
+    // earlier arm must not begin under a hover. A `.resume` replaces like an
+    // `.arm`, and begins only once the host has accepted the presentation.
+    // `PillExpiryClock` owns which case means what.
     let expiryUpdate: PendingExpiryUpdate
     switch plan.expiryCommand {
     case .unchanged: expiryUpdate = .preserve
-    case .cancel: expiryUpdate = .clear
-    case .arm: expiryUpdate = .replace(armExpiry)
+    case .cancel, .pause: expiryUpdate = .clear
+    case .arm, .resume, .enterPending: expiryUpdate = .replace(armExpiry)
     }
 
     // **FAIL CLOSED: the recovery pill needs a payload the intent cannot carry.**
@@ -947,20 +1012,49 @@ final class OverlayDirector {
       announce(announcement)
     }
 
-    if let action = plan.deliverAction {
-      if let binding = activeBinding, binding.id == reducer.state.current?.id {
-        binding.deliver(action)
-      } else {
-        // **Loud, not silent.** The reducer only emits `deliverAction` for the
-        // CURRENT presentation, so arriving here without a matching binding is
-        // an invariant failure, not a race. Dropping it quietly would lose a
-        // button press with nothing anywhere to say so.
-        assertionFailure(
-          "an action for the live presentation had no binding — the request that "
-            + "produced it did not carry its handler")
-      }
+    // A slot-changing plan delivered above, before its render.
+    if !plan.didChange, let action = plan.deliverAction {
+      deliver(action)
     }
+  }
 
+  /// Hand a plan's action to the feature that owns the live presentation.
+  private func deliver(_ action: PillAction) {
+    if let binding = activeBinding, binding.id == reducer.state.current?.id {
+      binding.deliver(action)
+    } else {
+      // **Loud, not silent.** The reducer only emits `deliverAction` for the
+      // CURRENT presentation, so arriving here without a matching binding is
+      // an invariant failure, not a race. Dropping it quietly would lose a
+      // button press with nothing anywhere to say so.
+      assertionFailure(
+        "an action for the live presentation had no binding — the request that "
+          + "produced it did not carry its handler")
+    }
+  }
+
+  /// The start for `.enterPending`, called by `finishRender` only after the host accepted the
+  /// Pending morph (#4675, plan §3.2b.3).
+  ///
+  /// **Why the clock command waits for acceptance and re-checks the slot.** `render` reports
+  /// `.completed` for both acceptance and refusal, so a command sent after it could arm a timer
+  /// for a pill the host never showed. The slot revision and the Pending phase are captured
+  /// when the plan is built and compared again when the render lands: if anything moved the
+  /// slot, or the presentation is no longer this Pending morph, no deadline is armed. A refused
+  /// morph never gets here: its rollback cancels the outgoing dwell.
+  private func pendingEntryStart(
+    id: PresentationID, minimumSeconds: Double,
+    onExpiry: @escaping (PresentationID, OverlayExpiryTarget) -> Void
+  ) -> () -> Void {
+    let revision = reducer.state.slotRevision
+    return { [weak self] in
+      guard let self, self.reducer.state.slotRevision == revision,
+        let current = self.reducer.state.current, current.id == id,
+        case .correctionLearned(let shown) = current.content, shown.phase == .undoPending
+      else { return }
+      self.expiryClock.prepare(
+        .enterPending(id: id, minimumSeconds: minimumSeconds), onExpiry: onExpiry)()
+    }
   }
 
   /// **Discharges the obligation `OverlayContent.recording` records**: the
@@ -1083,6 +1177,7 @@ final class OverlayDirector {
       let detached = pendingFirstAcceptance?.relays ?? []
       pendingFirstAcceptance = nil
       presentedID = nil
+      pointerInsidePill = false
       host.hide()
       // **A dismissal still announces "Recording complete" and still owes
       // whatever expiry command this plan carried** — `.hidden` has no
@@ -1280,8 +1375,22 @@ final class OverlayDirector {
         return .completed
       }
     }
+    let replacedID = presentedID
     if performRender(presentation, rootView: root) {
       expiryStart?()
+      // A REPLACEMENT keeps the pointer where it was but the reducer admitted it with hover cleared
+      // and a fresh dwell. The host has now placed it, so the pointer's real position can be judged
+      // against the frame it actually has: replay the enter only if the pointer was over the pill
+      // and is inside the new frame (a narrower pill may have left it outside). Run after the
+      // dwell started, so a pause freezes it. Goes through the normal event path, so the reducer's
+      // policy gate applies. A pill appearing fresh gets no replay.
+      if let replacedID, replacedID != presentation.id {
+        if pointerInsidePill, host.placedFrame?.contains(mouseLocation()) == true {
+          handle(.hoverChanged(presentation.id, true), binding: .none)
+        } else {
+          pointerInsidePill = false
+        }
+      }
       if let announcement { announce(announcement) }
       relays.forEach { $0.resolve(true) }
     } else {
@@ -1402,6 +1511,7 @@ final class OverlayDirector {
       // leaving it would show the NEW content in the OUTGOING pill's frame.
       // Clear the claim AND take the window down.
       presentedID = nil
+      pointerInsidePill = false
       host.hide()
       return false
     }

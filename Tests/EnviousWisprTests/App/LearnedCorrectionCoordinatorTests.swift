@@ -7,6 +7,19 @@ import Testing
 @testable import EnviousWisprAppKit
 import EnviousWisprAppKitTestSupport
 
+// MARK: - Test plumbing
+
+extension LearnedCorrectionCoordinator {
+  /// The click's claim followed by the write: the two steps `LearnedCorrectionOverlayPresenter`
+  /// runs, kept as one call so tests that only care about the write's outcome stay short. A nil
+  /// claim reports `.stale`, which is what the removed combined entry point returned for it.
+  @discardableResult
+  func undoThroughClaim(pillID: UUID) async -> UndoOutcome {
+    guard let record = claimUndo(pillID: pillID) else { return .stale }
+    return await performUndo(record: record, pillID: pillID)
+  }
+}
+
 // MARK: - Doubles
 
 @MainActor
@@ -259,7 +272,7 @@ struct LearnedCorrectionCoordinatorTests {
     let record = try #require(f.coordinator.undoRecord)
     #expect(record.preSave == saira && record.postSave == live && record.operation == .updated)
 
-    await #expect(await f.coordinator.undo(pillID: pill.id) == .undone)
+    await #expect(await f.coordinator.undoThroughClaim(pillID: pill.id) == .undone)
     #expect(f.library.userWords == [saira], "exact pre-save word")
     #expect(
       f.telemetry.events.suffix(2) == [
@@ -283,7 +296,7 @@ struct LearnedCorrectionCoordinatorTests {
     let live = try #require(f.library.userWords.first { $0.id == github.id })
     #expect(live.source == .user && live.aliases == ["git hub", "get hub", "git-hub"])
     #expect(live.learnedAliases == ["git-hub"])
-    await #expect(await f.coordinator.undo(pillID: pill.id) == .undone)
+    await #expect(await f.coordinator.undoThroughClaim(pillID: pill.id) == .undone)
     #expect(f.library.overrideRemoves == [github.id] && f.library.removes.isEmpty, "no tombstone")
     #expect(f.library.userWords == [github], "the built-in shows again as it shipped")
   }
@@ -306,7 +319,7 @@ struct LearnedCorrectionCoordinatorTests {
     #expect(f.telemetry.events == [.added(.packOverride, .judge)])
     #expect(f.coordinator.undoRecord?.preSave == nil)
 
-    await #expect(await f.coordinator.undo(pillID: pill.id) == .undone)
+    await #expect(await f.coordinator.undoThroughClaim(pillID: pill.id) == .undone)
     #expect(f.library.userWords.isEmpty && f.library.removes == [pack.id])
     #expect(
       f.telemetry.events.suffix(2) == [
@@ -338,7 +351,7 @@ struct LearnedCorrectionCoordinatorTests {
     #expect(f.telemetry.events == [.added(.newWord, .judge)])
     #expect(f.coordinator.undoRecord?.operation == .added)
 
-    await #expect(await f.coordinator.undo(pillID: pill.id) == .undone)
+    await #expect(await f.coordinator.undoThroughClaim(pillID: pill.id) == .undone)
     #expect(f.library.userWords.isEmpty)
     #expect(
       f.telemetry.events.suffix(2) == [
@@ -363,7 +376,7 @@ struct LearnedCorrectionCoordinatorTests {
     #expect(
       f.coordinator.undoRecord?.operation == .restoredBuiltin(.deletedBuiltin(id: github.id)))
 
-    await #expect(await f.coordinator.undo(pillID: pill.id) == .undone)
+    await #expect(await f.coordinator.undoThroughClaim(pillID: pill.id) == .undone)
     #expect(f.library.redeletes == [github.id] && f.library.userWords.isEmpty)
     #expect(f.library.deletedBuiltins == [github], "tombstone back, alias gone")
   }
@@ -520,7 +533,7 @@ struct LearnedCorrectionCoordinatorTests {
     let second = try #require(shown(f))
     #expect(f.coordinator.undoRecord?.pillID == second.id)
     #expect(f.presenter.calls == [.show(first), .show(second)], "two shows, no separate close")
-    await #expect(await f.coordinator.undo(pillID: first.id) == .stale)
+    await #expect(await f.coordinator.undoThroughClaim(pillID: first.id) == .stale)
     #expect(f.library.userWords.map(\.canonical) == ["Kwmala", "Tuist"], "the first add stays")
   }
 
@@ -547,7 +560,7 @@ struct LearnedCorrectionCoordinatorTests {
     #expect(f.coordinator.undoRecord != nil, "a stale end is a no-op")
     f.coordinator.pillEnded(pillID: pill.id)
     #expect(f.coordinator.undoRecord == nil)
-    await #expect(await f.coordinator.undo(pillID: pill.id) == .stale)
+    await #expect(await f.coordinator.undoThroughClaim(pillID: pill.id) == .stale)
     #expect(f.library.removes.isEmpty && f.library.userWords.count == 1)
     #expect(f.telemetry.events == [.added(.newWord, .judge)], "no undone row for a stale id")
   }
@@ -563,7 +576,7 @@ struct LearnedCorrectionCoordinatorTests {
     await f.coordinator.learn(original: "sara", corrected: "Saira", expectedTarget: .newWord)
     let pill = try #require(shown(f))
     f.library.userWords[0].category = .brand
-    await #expect(await f.coordinator.undo(pillID: pill.id) == .alreadyChanged)
+    await #expect(await f.coordinator.undoThroughClaim(pillID: pill.id) == .alreadyChanged)
     #expect(f.library.updates.isEmpty && f.library.removes.isEmpty)
     #expect(f.library.userWords[0].aliases == ["sara"] && f.library.userWords[0].category == .brand)
     #expect(f.telemetry.events.last == .undone(.updated, .alreadyChanged, .judge, nil))
@@ -577,7 +590,7 @@ struct LearnedCorrectionCoordinatorTests {
     await f.coordinator.learn(original: "kumala", corrected: "Kwmala", expectedTarget: .newWord)
     let pill = try #require(shown(f))
     f.library.userWords = []
-    await #expect(await f.coordinator.undo(pillID: pill.id) == .alreadyChanged)
+    await #expect(await f.coordinator.undoThroughClaim(pillID: pill.id) == .alreadyChanged)
     #expect(f.library.removes.isEmpty)
   }
 
@@ -588,7 +601,7 @@ struct LearnedCorrectionCoordinatorTests {
     await f.coordinator.learn(original: "kumala", corrected: "Kwmala", expectedTarget: .newWord)
     let pill = try #require(shown(f))
     f.library.removeRefusal = "locked"
-    await #expect(await f.coordinator.undo(pillID: pill.id) == .failed)
+    await #expect(await f.coordinator.undoThroughClaim(pillID: pill.id) == .failed)
     #expect(f.telemetry.events.last == .undone(.added, .failed, .judge, nil))
     #expect(f.presenter.calls.last == .undoError(pill.id))
     #expect(f.library.userWords.count == 1, "the word stays")
@@ -598,7 +611,7 @@ struct LearnedCorrectionCoordinatorTests {
     await g.coordinator.learn(original: "sara", corrected: "Saira", expectedTarget: .newWord)
     let pill2 = try #require(shown(g))
     g.library.silentUpdate = true
-    await #expect(g.coordinator.undo(pillID: pill2.id) == .failed)
+    await #expect(g.coordinator.undoThroughClaim(pillID: pill2.id) == .failed)
     #expect(!g.presenter.calls.contains(.undone(pill2.id)))
     #expect(g.telemetry.events.last == .undone(.updated, .failed, .judge, nil))
   }
@@ -607,8 +620,40 @@ struct LearnedCorrectionCoordinatorTests {
   func staleUndo() async {
     let f = fixture()
     let id = UUID()
-    #expect(await f.coordinator.undo(pillID: id) == .stale)
+    #expect(await f.coordinator.undoThroughClaim(pillID: id) == .stale)
     #expect(f.presenter.calls == [.close(id)] && f.telemetry.events.isEmpty)
+  }
+
+  @Test(
+    "claimUndo takes the record at the click: a newer learn afterwards cannot replace it, and the claimed Undo still removes ITS word"
+  )
+  func claimedRecordSurvivesANewerLearn() async throws {
+    let f = fixture()
+    await f.coordinator.learn(original: "kumala", corrected: "Kwmala", expectedTarget: .newWord)
+    let first = try #require(shown(f))
+    let record = try #require(f.coordinator.claimUndo(pillID: first.id))
+    #expect(record.pillID == first.id && f.coordinator.undoRecord == nil)
+
+    await f.coordinator.learn(original: "twist", corrected: "Tuist", expectedTarget: .newWord)
+    let second = try #require(shown(f))
+    #expect(f.coordinator.undoRecord?.pillID == second.id, "the newer learn owns its own record")
+
+    await #expect(
+      await f.coordinator.performUndo(record: record, pillID: first.id) == .undone)
+    #expect(f.library.userWords.map(\.canonical) == ["Tuist"], "only the claimed word went")
+    #expect(f.coordinator.undoRecord?.pillID == second.id, "the write left the newer record alone")
+    #expect(!f.presenter.calls.contains(.close(first.id)))
+  }
+
+  @Test("a second claim for the same pill finds nothing, closes only that pill and writes nothing")
+  func repeatedClaimIsNil() async throws {
+    let f = fixture()
+    await f.coordinator.learn(original: "kumala", corrected: "Kwmala", expectedTarget: .newWord)
+    let pill = try #require(shown(f))
+    #expect(f.coordinator.claimUndo(pillID: pill.id) != nil)
+    #expect(f.coordinator.claimUndo(pillID: pill.id) == nil)
+    #expect(f.presenter.calls.last == .close(pill.id))
+    #expect(f.library.removes.isEmpty && f.library.userWords.count == 1)
   }
 
   // MARK: Learning memory (#3975)
@@ -621,7 +666,7 @@ struct LearnedCorrectionCoordinatorTests {
     for _ in 0..<2 {
       await f.coordinator.learn(original: "kumala", corrected: "Kwmala", expectedTarget: .newWord)
       let pill = try #require(shown(f))
-      await #expect(await f.coordinator.undo(pillID: pill.id) == .undone)
+      await #expect(await f.coordinator.undoThroughClaim(pillID: pill.id) == .undone)
     }
     let key = CorrectionPairKey.make(original: "kumala", corrected: "Kwmala")
     #expect(f.memory.isBlocked(key))
@@ -644,7 +689,7 @@ struct LearnedCorrectionCoordinatorTests {
     let key = CorrectionPairKey.make(original: "kumala", corrected: "Kwmala")
     await f.coordinator.learn(original: "kumala", corrected: "Kwmala", expectedTarget: .newWord)
     let first = try #require(shown(f))
-    await #expect(await f.coordinator.undo(pillID: first.id) == .undone)
+    await #expect(await f.coordinator.undoThroughClaim(pillID: first.id) == .undone)
     #expect(f.memory.entry(key)?.userNos == 1 && f.memory.isBlocked(key) == false)
     #expect(
       f.telemetry.events.suffix(2) == [
@@ -655,7 +700,7 @@ struct LearnedCorrectionCoordinatorTests {
       await f.coordinator.learn(original: "kumala", corrected: "Kwmala", expectedTarget: .newWord)
         != .blocked)
     let second = try #require(shown(f))
-    await #expect(await f.coordinator.undo(pillID: second.id) == .undone)
+    await #expect(await f.coordinator.undoThroughClaim(pillID: second.id) == .undone)
     #expect(f.memory.isBlocked(key))
     #expect(
       f.telemetry.events.suffix(2) == [
@@ -675,7 +720,7 @@ struct LearnedCorrectionCoordinatorTests {
     #expect(
       f.coordinator.undoRecord?.pairKey
         == CorrectionPairKey.make(original: "kumala", corrected: "Kwmala"))
-    await f.coordinator.undo(pillID: pill.id)
+    await f.coordinator.undoThroughClaim(pillID: pill.id)
     #expect(
       f.telemetry.events.suffix(2) == [
         .undone(.added, .undone, .repeat, .watching), .refusedByUser(.undo, .watching),
@@ -691,7 +736,7 @@ struct LearnedCorrectionCoordinatorTests {
     await changed.coordinator.learn(original: "kumala", corrected: "Kwmala", expectedTarget: .newWord)
     let pill1 = try #require(shown(changed))
     changed.library.userWords[0].category = .brand
-    await #expect(changed.coordinator.undo(pillID: pill1.id) == .alreadyChanged)
+    await #expect(changed.coordinator.undoThroughClaim(pillID: pill1.id) == .alreadyChanged)
     #expect(changed.memory.entry(key) == nil)
     #expect(changed.telemetry.events.last == .undone(.added, .alreadyChanged, .judge, nil))
 
@@ -699,12 +744,12 @@ struct LearnedCorrectionCoordinatorTests {
     await failed.coordinator.learn(original: "kumala", corrected: "Kwmala", expectedTarget: .newWord)
     let pill2 = try #require(shown(failed))
     failed.library.removeRefusal = "locked"
-    await #expect(failed.coordinator.undo(pillID: pill2.id) == .failed)
+    await #expect(failed.coordinator.undoThroughClaim(pillID: pill2.id) == .failed)
     #expect(failed.memory.entry(key) == nil)
     #expect(failed.telemetry.events.last == .undone(.added, .failed, .judge, nil))
 
     let stale = fixture()
-    await #expect(stale.coordinator.undo(pillID: UUID()) == .stale)
+    await #expect(stale.coordinator.undoThroughClaim(pillID: UUID()) == .stale)
     #expect(stale.memory.entry(key) == nil && stale.telemetry.events.isEmpty)
   }
 
@@ -728,7 +773,7 @@ struct LearnedCorrectionCoordinatorTests {
     coordinator.attach(presenter: presenter)
     await coordinator.learn(original: "kumala", corrected: "Kwmala", expectedTarget: .newWord)
     let pill = try #require(presenter.offers.last)
-    await #expect(await coordinator.undo(pillID: pill.id) == .undone)
+    await #expect(await coordinator.undoThroughClaim(pillID: pill.id) == .undone)
     #expect(library.userWords.isEmpty, "the Undo itself landed")
     #expect(telemetry.events.last == .undone(.added, .undone, .judge, nil))
     #expect(!telemetry.events.contains { if case .refusedByUser = $0 { true } else { false } })
@@ -743,7 +788,7 @@ struct LearnedCorrectionCoordinatorTests {
     await f.coordinator.learn(original: "sara", corrected: "Saira", expectedTarget: .newWord)
     let pill = try #require(shown(f))
     f.coordinator.pillAdmitted(pillID: pill.id)
-    await f.coordinator.undo(pillID: pill.id)
+    await f.coordinator.undoThroughClaim(pillID: pill.id)
     #expect(
       f.telemetry.events == [
         .added(.existingWord, .judge), .undoShown, .undone(.updated, .undone, .judge, .watching),
