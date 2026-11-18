@@ -377,7 +377,10 @@ final class OverlayDirector {
     // A MECHANISM default, kept internal: the expiry clock reads the time to work
     // out a deadline and a remainder, and a test that drives `scheduler` by hand
     // must drive that reading by the same fake time (#4675).
-    now: @escaping () -> Date = Date.init
+    now: @escaping () -> Date = Date.init,
+    // As `now`: the expiry clock's remainder math reads a steady clock, and a test
+    // driving `scheduler` by hand must drive it by the same fake time.
+    uptime: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
   ) {
     self.firstRenderSchedule = firstRenderSchedule
     self.selections = selections
@@ -393,7 +396,7 @@ final class OverlayDirector {
     self.position = position
     self.model = model
     self.expiryClock = PillExpiryClock(
-      schedule: scheduler, now: now, publishDwell: { [weak model] in model?.markDwellStarted($0) })
+      schedule: scheduler, now: now, uptime: uptime, publishDwell: { [weak model] in model?.markDwellStarted($0) })
     self.reducer = OverlayReducer(makeID: makeID)
   }
 

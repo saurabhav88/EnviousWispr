@@ -22,8 +22,17 @@ struct PillExpiryClockTests {
     var scheduledSeconds: [Double] = []
     var dispatches: [(id: PresentationID, target: OverlayExpiryTarget)] = []
     var now = Date(timeIntervalSince1970: 1_000)
+    /// The steady clock the timer runs on; only real elapsed time moves it.
+    var uptime: TimeInterval = 5_000
 
-    func advance(by seconds: Double) { now = now.addingTimeInterval(seconds) }
+    /// Real time passing: both clocks move.
+    func advance(by seconds: Double) {
+      now = now.addingTimeInterval(seconds)
+      uptime += seconds
+    }
+
+    /// A wall-clock correction: only the `Date` moves, the steady clock does not.
+    func jumpWallClock(by seconds: Double) { now = now.addingTimeInterval(seconds) }
 
     private(set) lazy var clock = PillExpiryClock(
       schedule: OverlayScheduler { [unowned self] seconds, body in
@@ -33,6 +42,7 @@ struct PillExpiryClockTests {
         return work
       },
       now: { [unowned self] in self.now },
+      uptime: { [unowned self] in self.uptime },
       publishDwell: { [unowned self] in self.published.append($0) })
 
     func recordFired(_ id: PresentationID, _ target: OverlayExpiryTarget) {
@@ -122,6 +132,7 @@ struct PillExpiryClockTests {
         return OverlayScheduledWork(body: body)
       },
       now: { Date(timeIntervalSince1970: 1_000) },
+      uptime: { 5_000 },
       publishDwell: { _ in })
     let pill = Self.id()
 
@@ -249,28 +260,29 @@ struct PillExpiryClockTests {
     #expect(rig.dispatches.isEmpty, "a paused dwell still expired")
   }
 
-  @Test("a wall clock that jumps backward cannot freeze more than the original total")
-  func pauseClampsTheRemainderWhenTheWallClockJumpsBack() throws {
-    let rig = Rig()
-    let pill = Self.id()
-    let onExpiry: (PresentationID, OverlayExpiryTarget) -> Void = { rig.recordFired($0, $1) }
-    rig.clock.prepare(.arm(id: pill, seconds: 12, target: .presentation), onExpiry: onExpiry)()
-    // The deadline sits 12 s ahead of the start. Moving `now` 54 s BACK makes the unclamped
-    // remainder 12 + 54 = 66 s, so removing the clamp fails the 12 s assertions below.
-    rig.advance(by: -54)
+  @Test("a wall-clock jump, forward or backward, cannot change the frozen remainder")
+  func pauseIgnoresWallClockJumps() throws {
+    let onExpiry: (PresentationID, OverlayExpiryTarget) -> Void = { _, _ in }
+    // Forward jump of 60 s and backward jump of 54 s, each after 3 of 12 s of real time.
+    // Reading the wall clock would freeze 0 s (forward: deadline - now < 0) or 66 s
+    // (backward: clamped to 12); the steady clock freezes 9 s both times.
+    for jump in [60.0, -54.0] {
+      let rig = Rig()
+      let pill = Self.id()
+      rig.clock.prepare(.arm(id: pill, seconds: 12, target: .presentation), onExpiry: onExpiry)()
+      rig.advance(by: 3)
+      rig.jumpWallClock(by: jump)
 
-    _ = rig.clock.prepare(.pause, onExpiry: onExpiry)
+      _ = rig.clock.prepare(.pause, onExpiry: onExpiry)
 
-    let frozen = try Self.latest(rig)
-    #expect(frozen.isPaused)
-    #expect(frozen.pausedRemaining == 12, "a backward wall-clock jump inflated the frozen remainder")
-    #expect(frozen.totalSeconds == 12)
+      let frozen = try Self.latest(rig)
+      #expect(frozen.isPaused)
+      #expect(frozen.pausedRemaining == 9, "a \(jump) s wall-clock jump changed the frozen remainder")
+      #expect(frozen.totalSeconds == 12)
 
-    let start = rig.clock.prepare(.resume(id: pill, floorSeconds: 2), onExpiry: onExpiry)
-    start()
-    let resumed = try #require(rig.scheduledSeconds.last)
-    #expect(resumed <= 12, "the resumed countdown outlasted the original dwell")
-    #expect(try Self.latest(rig).seconds <= 12)
+      rig.clock.prepare(.resume(id: pill, floorSeconds: 2), onExpiry: onExpiry)()
+      #expect(rig.scheduledSeconds.last == 9, "resume did not arm the steady-clock remainder")
+    }
   }
 
   @Test("an invalidated callback does not fire after a pause, even when called directly")
@@ -283,6 +295,7 @@ struct PillExpiryClockTests {
         return OverlayScheduledWork(body: body)
       },
       now: { Date(timeIntervalSince1970: 1_000) },
+      uptime: { 5_000 },
       publishDwell: { _ in })
     let pill = Self.id()
     clock.prepare(
@@ -436,7 +449,7 @@ struct PillExpiryClockTests {
         seconds.append(after)
         return OverlayScheduledWork(body: body)
       },
-      now: { now }, publishDwell: { published.append($0) })
+      now: { now }, uptime: { now.timeIntervalSince1970 }, publishDwell: { published.append($0) })
     let pill = Self.id()
     let onExpiry: (PresentationID, OverlayExpiryTarget) -> Void = { id, _ in dispatches.append(id) }
     clock.prepare(.arm(id: pill, seconds: 12, target: .presentation), onExpiry: onExpiry)()

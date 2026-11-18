@@ -2188,7 +2188,8 @@ struct OverlayDirectorTests {
         livePreview: .disabled,
         grantAccessibility: {}, openMicrophoneSettings: {}, openMicrophoneHelp: {},
         advisoryHint: { _ in nil }, selections: { .shipped },
-        firstRenderSchedule: { $0() }, now: { [unowned self] in self.clock.date })
+        firstRenderSchedule: { $0() }, now: { [unowned self] in self.clock.date },
+        uptime: { [unowned self] in self.clock.uptime })
       coordinator = LearnedCorrectionCoordinator(
         vocabulary: library.access, memory: .forTests(), telemetry: telemetry)
       presenter = LearnedCorrectionOverlayPresenter(host: director, coordinator: coordinator)

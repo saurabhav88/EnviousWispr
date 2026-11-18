@@ -72,8 +72,9 @@ final class PillExpiryClock {
   private var preparedArm: Dwell?
 
   /// The STARTED dwell, with the instant it ends, so `.pause` can store what was
-  /// left. Cleared whenever `activeArmID` is.
-  private var running: (dwell: Dwell, deadline: Date)?
+  /// left. The deadline is on the steady `uptime` clock, the same one the timer
+  /// runs on, never a `Date`. Cleared whenever `activeArmID` is.
+  private var running: (dwell: Dwell, deadline: TimeInterval)?
 
   /// A hover-frozen dwell and the time that was left. Discarded by cancel and by
   /// the next arm (a replacement), consumed by the resume that starts again.
@@ -90,16 +91,22 @@ final class PillExpiryClock {
   }
 
   private let schedule: OverlayScheduler
+  /// Wall clock: only stamps the published window's `startedAt` for drawing.
   private let now: () -> Date
+  /// Steady clock for the clock's own remainder math; production reads mach
+  /// uptime, which is what `DispatchTime` (the timer) counts.
+  private let uptime: () -> TimeInterval
   private let publishDwell: (OverlayDwellWindow?) -> Void
 
   init(
     schedule: OverlayScheduler = .live,
     now: @escaping () -> Date = Date.init,
+    uptime: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
     publishDwell: @escaping (OverlayDwellWindow?) -> Void
   ) {
     self.schedule = schedule
     self.now = now
+    self.uptime = uptime
     self.publishDwell = publishDwell
   }
 
@@ -212,6 +219,7 @@ final class PillExpiryClock {
     _ dwell: Dwell, onExpiry: @escaping (PresentationID, OverlayExpiryTarget) -> Void
   ) {
     let startedAt = now()
+    let startedUptime = uptime()
     // This is the instant the dwell begins, and a view drawing a countdown has
     // no other way to know it.
     publishDwell(
@@ -219,7 +227,7 @@ final class PillExpiryClock {
         id: dwell.id, startedAt: startedAt, seconds: dwell.seconds, totalSeconds: dwell.total))
     let armID = UUID()
     activeArmID = armID
-    running = (dwell, startedAt.addingTimeInterval(dwell.seconds))
+    running = (dwell, startedUptime + dwell.seconds)
     armed = schedule.after(dwell.seconds) { [weak self] in
       // Verified before dispatching the captured presentation and target.
       guard let self, self.activeArmID == armID else { return }
@@ -231,12 +239,12 @@ final class PillExpiryClock {
 
   /// Seconds left on a running dwell, kept inside 0...total.
   ///
-  /// The deadline is a wall-clock `Date` while the timer itself runs on
-  /// `DispatchTime`. If the wall clock jumps backward during a pill (a clock
-  /// correction or the user changing the time), `deadline - now()` can exceed the
-  /// dwell's original total, so it is clamped rather than trusted.
-  private func remainder(of running: (dwell: Dwell, deadline: Date)) -> Double {
-    min(max(0, running.deadline.timeIntervalSince(now())), running.dwell.total)
+  /// Read from `uptime`, the steady clock `DispatchTime` counts, so a wall-clock
+  /// jump during a pill (a clock correction, or the user changing the time, forward
+  /// or backward) cannot change what hover freezes or resumes. `now()` is a `Date`
+  /// and is used only to stamp the published window. The clamp is a backstop.
+  private func remainder(of running: (dwell: Dwell, deadline: TimeInterval)) -> Double {
+    min(max(0, running.deadline - uptime()), running.dwell.total)
   }
 
   /// Stop the armed callback without touching prepared or frozen state.

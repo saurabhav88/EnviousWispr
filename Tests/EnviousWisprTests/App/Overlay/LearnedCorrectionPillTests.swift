@@ -34,6 +34,9 @@ final class LearnedPillClock {
   /// deadline arithmetic use `now`, which production reads from `Date`).
   var date: Date { Date(timeIntervalSince1970: 1_000 + now) }
 
+  /// The same fake time as a steady-clock reading, for the expiry clock's remainder math.
+  var uptime: TimeInterval { 1_000 + now }
+
   var scheduler: OverlayScheduler {
     OverlayScheduler { [unowned self] seconds, body in
       let work = OverlayScheduledWork(body: body)
@@ -832,7 +835,7 @@ struct LearnedCorrectionPillDirectorTests {
       grantAccessibility: {}, openMicrophoneSettings: {}, openMicrophoneHelp: {}, advisoryHint: { _ in nil },
       selections: { .shipped },
       firstRenderSchedule: { $0() },
-      now: { clock.date })
+      now: { clock.date }, uptime: { clock.uptime })
   }
 
   private func request(
