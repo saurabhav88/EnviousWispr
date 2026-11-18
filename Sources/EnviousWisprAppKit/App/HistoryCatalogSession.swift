@@ -581,7 +581,6 @@ final class HistoryCatalogSession {
     /// The watched-root-changed path: drop the stream and register again.
     func rewatchForTesting() { rootChanged() }
     var fullPassAwaitingStartForTesting: Bool { fullPassAwaitingStart }
-    var taskEndWaiterCountForTesting: Int { taskEndWaiters.count }
     var changeWaiterCountForTesting: Int { changeWaiters.count }
   #endif
 

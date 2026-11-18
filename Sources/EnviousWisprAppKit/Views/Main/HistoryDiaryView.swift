@@ -66,7 +66,10 @@ struct HistoryDiaryView<
         destination(for: openID)
           .frame(maxWidth: .infinity, maxHeight: .infinity)
           .environment(\.historyHighlightQuery, state.query)
-          .task(id: NeighborKey(open: openID, loaded: result?.items.count ?? 0, identity: result?.identity)) {
+          .task(
+            id: NeighborKey(
+              open: openID, loaded: result?.items.count ?? 0, identity: result?.identity)
+          ) {
             loadPastEnd(of: openID)
           }
       } else {
@@ -164,13 +167,16 @@ struct HistoryDiaryView<
     await HistoryRefreshLoop(
       beforeRead: { retained.stamp = await verification.run(done: retained.stamp) },
       counters: {
-        .init(content: session.revision, notices: session.noticeCount, source: session.stableSourceRevision)
+        .init(
+          content: session.revision, notices: session.noticeCount,
+          source: session.stableSourceRevision)
       },
       currentKey: { currentKey(tab) },
       storedKey: { results[tab]?.key },
       storedSource: { results[tab]?.catalogSourceRevision },
       read: { key in await readPage(tab: tab, key: key) },
-      wait: { content, notices in await session.waitForChange(revision: content, notices: notices) },
+      wait: { content, notices in await session.waitForChange(revision: content, notices: notices)
+      },
       pace: { try? await Task.sleep(for: $0) },
       now: { .now }
     ).run()
@@ -335,9 +341,11 @@ struct HistoryDiaryView<
       let token = extensionSlot.claim(cursor)
     else { return }
     Task {
-      // Only the owner of the slot clears it, and only the owner retries below.
+      var published = false
+      // Only the owner of the slot clears it. It retries below only when it did not publish
+      // itself and the stored page still moved (a successful extension never asks for more).
       defer {
-        if extensionSlot.release(token) {
+        if extensionSlot.release(token), !published {
           let tab = result.key.context.tab
           if let now = results[tab], now.identity != result.identity,
             let open = coordinator.requestedHistoryState(for: tab).openItemID
@@ -349,9 +357,12 @@ struct HistoryDiaryView<
       guard
         let next = await coordinator.historyResults(
           for: result.key, extending: result, newer: newer),
+        extensionSlot.owns(token),
         coordinator.historyTab == tab, results[tab]?.identity == result.identity
       else { return }
+      // No suspension between the ownership check above and this store.
       results[tab] = next
+      published = true
     }
   }
 

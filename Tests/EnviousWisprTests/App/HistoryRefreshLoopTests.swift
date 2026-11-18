@@ -37,7 +37,8 @@ struct HistoryRefreshLoopTests {
     func key() -> TranscriptCoordinator.HistoryQueryKey {
       .init(
         revision: Int(content), pulse: 0,
-        context: .init(tab: .dictations, query: "", filter: .none), echoShown: [], locale: "", localizations: [], calendar: .current)
+        context: .init(tab: .dictations, query: "", filter: .none), echoShown: [], locale: "",
+        localizations: [], calendar: .current)
     }
 
     func loop() -> HistoryRefreshLoop {
@@ -50,7 +51,8 @@ struct HistoryRefreshLoopTests {
         read: { key in
           self.reads.append(key)
           let startSource = self.source
-          let succeeded = await withCheckedContinuation { (read: CheckedContinuation<Bool, Never>) in
+          let succeeded = await withCheckedContinuation {
+            (read: CheckedContinuation<Bool, Never>) in
             if Task.isCancelled { read.resume(returning: false) } else { self.pendingRead = read }
           }
           if succeeded {
@@ -71,6 +73,14 @@ struct HistoryRefreshLoopTests {
           self.elapsed += duration
         },
         now: { self.origin + self.elapsed })
+    }
+
+    var ended = false
+
+    /// Runs the loop and signals its end, so a test never joins the task.
+    func run() async {
+      await loop().run()
+      ended = true
     }
 
     func finishRead(succeeded: Bool) {
@@ -104,13 +114,19 @@ struct HistoryRefreshLoopTests {
     task.cancel()
     world.finishRead(succeeded: false)
     world.wake()
-    await task.value
+    // The loop ends on its own signal; the test's time limit cancels this wait if it never does.
+    while !world.ended {
+      guard !Task.isCancelled else { return }
+      world.finishRead(succeeded: false)
+      world.wake()
+      await Task.yield()
+    }
   }
 
   @Test("A read overtaken by a content publish is kept, then the newer content is read")
   func overtakenReadIsKept() async throws {
     let world = World()
-    let task = Task { await world.loop().run() }
+    let task = Task { await world.run() }
     // Synchronous on every exit: releases whatever the loop is parked in and cancels it.
     defer {
       task.cancel()
@@ -134,7 +150,7 @@ struct HistoryRefreshLoopTests {
   @Test("An empty read is retried on the next notice and parks when nothing changed")
   func emptyReadRetriesOnNotice() async throws {
     let world = World()
-    let task = Task { await world.loop().run() }
+    let task = Task { await world.run() }
     // Synchronous on every exit: releases whatever the loop is parked in and cancels it.
     defer {
       task.cancel()
@@ -163,7 +179,7 @@ struct HistoryRefreshLoopTests {
   @Test("A source-only burst during one read gives one trailing read after one pace")
   func sourceBurstGivesOneTrailingRead() async throws {
     let world = World()
-    let task = Task { await world.loop().run() }
+    let task = Task { await world.run() }
     defer {
       task.cancel()
       world.finishRead(succeeded: false)
@@ -188,7 +204,7 @@ struct HistoryRefreshLoopTests {
   @Test("A finish notice that lands during a read wakes the next iteration without parking")
   func noticeDuringReadDoesNotPark() async throws {
     let world = World()
-    let task = Task { await world.loop().run() }
+    let task = Task { await world.run() }
     defer {
       task.cancel()
       world.finishRead(succeeded: false)
@@ -210,7 +226,7 @@ struct HistoryRefreshLoopTests {
   func attemptedStampParks() async throws {
     let world = World()
     world.storedSourceOverride = 0
-    let task = Task { await world.loop().run() }
+    let task = Task { await world.run() }
     defer {
       task.cancel()
       world.finishRead(succeeded: false)
@@ -231,7 +247,7 @@ struct HistoryRefreshLoopTests {
   @Test("Continuous source churn over N pace periods gives at most N+1 source-driven reads")
   func continuousChurnIsPaced() async throws {
     let world = World()
-    let task = Task { await world.loop().run() }
+    let task = Task { await world.run() }
     defer {
       task.cancel()
       world.finishRead(succeeded: false)
@@ -255,7 +271,7 @@ struct HistoryRefreshLoopTests {
   @Test("A key change reads at once and never waits for the pace")
   func keyChangeBypassesPace() async throws {
     let world = World()
-    let task = Task { await world.loop().run() }
+    let task = Task { await world.run() }
     defer {
       task.cancel()
       world.finishRead(succeeded: false)
@@ -274,11 +290,14 @@ struct HistoryRefreshLoopTests {
     await stop(task, world)
   }
 
-  @Test("Two pages with the same rows and different sources are different pages; the place does not move")
+  @Test(
+    "Two pages with the same rows and different sources are different pages; the place does not move"
+  )
   func sameRowsNewSourceIsADifferentPage() throws {
     let world = World()
     let summary = HistoryCatalog.Summary(
-      key: .init(tab: .dictations, id: UUID()), date: Date(timeIntervalSinceReferenceDate: 780_000_000),
+      key: .init(tab: .dictations, id: UUID()),
+      date: Date(timeIntervalSinceReferenceDate: 780_000_000),
       preview: "", sources: [])
     let first = try HistoryQueryResult(
       key: world.key(), items: [.catalog(summary)], catalogSourceRevision: 3, catalogDayCounts: [:])
@@ -308,7 +327,8 @@ struct HistoryRefreshLoopTests {
   ) throws {
     let world = World()
     let stored = try HistoryQueryResult(
-      key: world.key(), items: [], catalogSourceRevision: stamp, catalogDayCounts: counts ? [:] : nil)
+      key: world.key(), items: [], catalogSourceRevision: stamp,
+      catalogDayCounts: counts ? [:] : nil)
     world.content = sameKey ? 0 : 1
     let result = HistoryPaging.finality(result: stored, key: world.key(), source: source)
     #expect(result.canPage == canPage)
@@ -329,14 +349,22 @@ struct HistoryRefreshLoopTests {
     slot.clear()
     let second = slot.claim(cursor)
     #expect(second != nil)
+    #expect(slot.owns(first!) == false)
+    #expect(slot.owns(second!))
     let staleRelease = slot.release(first!)
     #expect(staleRelease == false)
     #expect(slot.isClaimed)
     let ownerRelease = slot.release(second!)
     #expect(ownerRelease)
     #expect(slot.isClaimed == false)
+    #expect(slot.owns(second!) == false)
     let again = slot.release(second!)
     #expect(again == false)
+    // After a clear the former owner no longer owns.
+    let third = slot.claim(cursor)
+    #expect(slot.owns(third!))
+    slot.clear()
+    #expect(slot.owns(third!) == false)
   }
 
   @Test("A new search opens at the top; returning to the tab restores its place")
@@ -381,7 +409,9 @@ struct HistoryRefreshLoopTests {
     }
     let box = Box(page)
     let verification = HistoryRetainedVerification(
-      stamp: { .init(key: key, notices: box.notices, source: 2, grouping: 0, stored: box.stored.identity) },
+      stamp: {
+        .init(key: key, notices: box.notices, source: 2, grouping: 0, stored: box.stored.identity)
+      },
       stored: { box.stored },
       verify: { _ in
         box.verifications += 1
@@ -408,13 +438,16 @@ struct HistoryRefreshLoopTests {
     #expect(box.verifications == count)
   }
 
-  @Test("The same page read again is recognized; a newer content revision is recorded without a rebuild")
+  @Test(
+    "The same page read again is recognized; a newer content revision is recorded without a rebuild"
+  )
   func samePageIsRecognized() throws {
     let older = World()
     let newer = World()
     newer.content = 1
     let summary = HistoryCatalog.Summary(
-      key: .init(tab: .dictations, id: UUID()), date: Date(timeIntervalSinceReferenceDate: 780_000_000),
+      key: .init(tab: .dictations, id: UUID()),
+      date: Date(timeIntervalSinceReferenceDate: 780_000_000),
       preview: "", sources: [])
     let first = try HistoryQueryResult(
       key: older.key(), items: [.catalog(summary)], catalogSourceRevision: 3, catalogDayCounts: [:])
@@ -433,4 +466,3 @@ struct HistoryRefreshLoopTests {
     #expect(first.samePage(as: otherSource) == false)
   }
 }
-

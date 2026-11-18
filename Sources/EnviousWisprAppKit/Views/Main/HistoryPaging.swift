@@ -229,8 +229,10 @@ struct HistoryQueryResult: Sendable {
 
 /// #4586 H1: the loop that keeps one History tab's list current for one request (tab, search,
 /// filters, grouping). A content publish never cancels a read in flight: the read lands, is
-/// shown, and the loop reads once more for the newer content. A read that came back empty (a
-/// writer was active, the source moved) is tried again on the next content publish or change
+/// shown, and the loop reads once more for the newer content. A first-page read is shown even
+/// when a writer was active, and read again when its source differs from the current one. A
+/// read returns nothing only when cancelled, unwanted (search or filters changed), failed, or
+/// for an extension whose source moved; it is tried again on the next content publish or change
 /// notice, never in a tight loop: each (key, notices, source) stamp is attempted once.
 /// A stored page whose source stamp differs from the current source is read again (the source
 /// gates authority, not display). A key change reads at once; a source-only difference reads at
@@ -315,6 +317,9 @@ struct HistoryExtensionSlot {
     return true
   }
 
+  /// True while `token` still owns the slot (not released, cleared or superseded).
+  func owns(_ token: UUID) -> Bool { held?.token == token }
+
   /// A tab switch drops any claim.
   mutating func clear() { held = nil }
 }
@@ -368,7 +373,8 @@ struct HistoryRetainedVerification {
   /// Verifies once for a stamp not yet `done`; returns the stamp now done. A dropped answer
   /// leaves `done` as it was, so the newer change is verified on its own wake.
   func run(done: Stamp?) async -> Stamp? {
-    guard let before = stamp(), before != done, let saved = stored(), saved.identity == before.stored
+    guard let before = stamp(), before != done, let saved = stored(),
+      saved.identity == before.stored
     else { return done }
     guard let verified = await verify(saved), !Task.isCancelled, stamp() == before,
       stored()?.identity == before.stored
@@ -377,4 +383,3 @@ struct HistoryRetainedVerification {
     return stamp()
   }
 }
-

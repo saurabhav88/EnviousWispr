@@ -142,15 +142,48 @@ struct HistoryLoadLoopTests {
     }
   }
 
-  @Test(
-    "The refresh loop hides a changed row of a kept page on each change notice, while a writer is active",
-    .timeLimit(.minutes(1)))
-  // Uses a real catalog, folder watcher and indexing passes (the path this protects); 0.7-3.5 s
-  // measured on the M5 Max under load, bounded by the time limit.
-  func loopVerifiesKeptPage() async throws {
-    let f = try await fixture(rows: 40)
-    defer { try? FileManager.default.removeItem(at: f.root) }
-    let shown = Shown()
+  /// Holds the loop's reads while closed; every wait ends on release or cancellation.
+  @MainActor
+  private final class ReadGate {
+    var closed = false
+    private(set) var holding = false
+    private var parked: CheckedContinuation<Void, Never>?
+
+    func pass() async {
+      guard closed else { return }
+      holding = true
+      await withTaskCancellationHandler {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+          if Task.isCancelled || !closed { continuation.resume() } else { parked = continuation }
+        }
+      } onCancel: {
+        Task { @MainActor in self.open() }
+      }
+    }
+
+    func open() {
+      closed = false
+      parked?.resume()
+      parked = nil
+    }
+  }
+
+  /// The loop task and the flag it sets when `run()` returns, so a test never joins the task.
+  @MainActor
+  private final class RunningLoop {
+    var ended = false
+    var task: Task<Void, Never>!
+
+    func untilEnded() async throws {
+      task.cancel()
+      while !ended {
+        try Task.checkCancellation()
+        await Task.yield()
+      }
+    }
+  }
+
+  private func startLoop(_ f: Fixture, _ shown: Shown, gate: ReadGate? = nil) -> RunningLoop {
     let coordinator = f.coordinator
     let session = f.session
     let key: @MainActor @Sendable () -> TranscriptCoordinator.HistoryQueryKey = { coordinator.historyQueryKey(for: .dictations, state: coordinator.requestedHistoryState(for: .dictations)) }
@@ -169,7 +202,8 @@ struct HistoryLoadLoopTests {
       store: { shown.store($0) })
     final class Done { var stamp: HistoryRetainedVerification.Stamp? }
     let done = Done()
-    let loop = Task { @MainActor in
+    let running = RunningLoop()
+    running.task = Task { @MainActor in
       await HistoryRefreshLoop(
         beforeRead: { done.stamp = await verification.run(done: done.stamp) },
         counters: {
@@ -179,14 +213,30 @@ struct HistoryLoadLoopTests {
         storedKey: { shown.result?.key },
         storedSource: { shown.result?.catalogSourceRevision },
         read: { key in
+          await gate?.pass()
           if let page = await coordinator.historyResults(for: key) { shown.store(page) }
         },
         wait: { content, notices in await session.waitForChange(revision: content, notices: notices) },
         pace: { try? await Task.sleep(for: $0) },
         now: { .now }
       ).run()
+      running.ended = true
     }
-    defer { loop.cancel() }
+    return running
+  }
+
+  @Test(
+    "The refresh loop hides a changed row of a kept page on each change notice, while a writer is active",
+    .timeLimit(.minutes(1)))
+  // Uses a real catalog, folder watcher and indexing passes (the path this protects); 0.7-3.5 s
+  // measured on the M5 Max under load, bounded by the time limit.
+  func loopVerifiesKeptPage() async throws {
+    let f = try await fixture(rows: 40)
+    defer { try? FileManager.default.removeItem(at: f.root) }
+    let shown = Shown()
+    let coordinator = f.coordinator
+    let loop = startLoop(f, shown)
+    defer { loop.task.cancel() }
     try await shown.until { $0.items.count == 30 }
     let page = try #require(shown.result)
     guard case .catalog(let first) = page.items[0], case .catalog(let second) = page.items[1] else {
@@ -216,8 +266,54 @@ struct HistoryLoadLoopTests {
 
     writing = false
     f.changes.finish(.transcript(second.key.id))
-    loop.cancel()
-    await loop.value
+    try await loop.untilEnded()
+  }
+
+  @Test(
+    "The loop publishes the kept page's removal before any replacement read",
+    .timeLimit(.minutes(1)))
+  func loopPublishesRemovalBeforeReplacementRead() async throws {
+    let f = try await fixture(rows: 40)
+    defer { try? FileManager.default.removeItem(at: f.root) }
+    let shown = Shown()
+    let gate = ReadGate()
+    defer { gate.open() }
+    let loop = startLoop(f, shown, gate: gate)
+    defer { loop.task.cancel() }
+    try await shown.until { $0.items.count == 30 }
+    // The loop is parked (no read in flight) before reads are held and the file is removed.
+    while f.session.changeWaiterCountForTesting == 0 {
+      try Task.checkCancellation()
+      await Task.yield()
+    }
+    let page = try #require(shown.result)
+    guard case .catalog(let first) = page.items[0], case .catalog(let second) = page.items[1] else {
+      Issue.record("The catalog page did not return catalog rows")
+      return
+    }
+    gate.closed = true
+    f.changes.begin()
+    var writing = true
+    defer { if writing { f.changes.finish(.transcript(second.key.id)) } }
+    try removeShownFile(to: first.key.id, in: f)
+    try removeShownFile(to: second.key.id, in: f)
+    f.changes.externalChange(.transcript(first.key.id))
+    f.changes.externalChange(.transcript(second.key.id))
+
+    // The loop reached its replacement read and every read is held: only the retained page's
+    // verification, run before that read, can have removed the rows.
+    while !gate.holding {
+      try Task.checkCancellation()
+      await Task.yield()
+    }
+    #expect(shown.result?.ids.contains(.transcript(first.key.id)) == false)
+    #expect(shown.result?.ids.contains(.transcript(second.key.id)) == false)
+    #expect(shown.result?.items.count == 28)
+
+    gate.open()
+    writing = false
+    f.changes.finish(.transcript(second.key.id))
+    try await loop.untilEnded()
   }
 
   private func removeShownFile(to id: UUID, in f: Fixture) throws {

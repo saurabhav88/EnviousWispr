@@ -93,6 +93,14 @@ import Testing
       #expect(f.session.revision != before)
     }
 
+    /// What the list loop stored and how many reads it ran, as `HistoryDiaryView` keeps them.
+    @MainActor
+    private final class LoopBox {
+      var result: HistoryQueryResult?
+      var reads = 0
+      var ended = false
+    }
+
     /// What the ordering tests observe, all on the main actor: the events in order, and the gate
     /// that holds one page read before its catalog call.
     @MainActor
@@ -101,10 +109,6 @@ import Testing
       var readRefused: Bool?
       /// The page the held read returned, stored by the read itself.
       var page: HistoryCatalog.Page?
-      /// The result the list loop stored, as `HistoryDiaryView.results[tab]` does.
-      var stored: HistoryQueryResult?
-      /// The first completed list read: nil until one finishes, `.some(nil)` if it returned nothing.
-      var firstRead: HistoryQueryResult??
       var reconciles = 0
       private var gate: CheckedContinuation<Void, Never>?
       private(set) var holding = false
@@ -428,8 +432,58 @@ import Testing
         result: empty, key: empty.key, source: f.session.stableSourceRevision)
       #expect(emptyHeld.isFinal == false)
 
+      // The real refresh loop, wired as `HistoryDiaryView.refresh(tab:)` wires it, shows that
+      // display-only page and parks while the writer is open; the writer's finish alone wakes it.
+      let box = LoopBox()
+      let coordinator = f.coordinator
+      let session = f.session
+      let queryKey: @MainActor @Sendable () -> TranscriptCoordinator.HistoryQueryKey = {
+        coordinator.historyQueryKey(
+          for: .dictations, state: coordinator.requestedHistoryState(for: .dictations))
+      }
+      let loop = Task { @MainActor in
+        await HistoryRefreshLoop(
+          beforeRead: {},
+          counters: {
+            .init(
+              content: session.revision, notices: session.noticeCount,
+              source: session.stableSourceRevision)
+          },
+          currentKey: queryKey,
+          storedKey: { box.result?.key },
+          storedSource: { box.result?.catalogSourceRevision },
+          read: { key in
+            if let page = await coordinator.historyResults(for: key) { box.result = page }
+            box.reads += 1
+          },
+          wait: { content, notices in
+            await session.waitForChange(revision: content, notices: notices)
+          },
+          pace: { try? await Task.sleep(for: $0) },
+          now: { .now }
+        ).run()
+        box.ended = true
+      }
+      defer { loop.cancel() }
+      while box.result == nil || session.changeWaiterCountForTesting == 0 {
+        try Task.checkCancellation()
+        await Task.yield()
+      }
+      let parked = try #require(box.result)
+      #expect(coordinator.isCurrentHistoryResult(parked) == false)
+      let readsWhileOpen = box.reads
       writing = false
       f.changes.finish(.transcript(UUID()))
+      while box.reads <= readsWhileOpen {
+        try Task.checkCancellation()
+        await Task.yield()
+      }
+      loop.cancel()
+      while !box.ended {
+        try Task.checkCancellation()
+        await Task.yield()
+      }
+      await f.session.waitForIndexingForTesting()
       await f.session.waitForIndexingForTesting()
       let final = try #require(await f.coordinator.historyResults(for: key(f)))
       #expect(final.items.isEmpty)
@@ -504,53 +558,63 @@ import Testing
       await session.waitForChange(revision: session.revision &+ 1, notices: session.noticeCount)
 
       // A content publish wakes a registered waiter.
-      let content = Task {
-        await session.waitForChange(revision: session.revision, notices: session.noticeCount)
-      }
-      defer { content.cancel() }
+      let content = spawnWaiter(session, revision: session.revision, notices: session.noticeCount)
+      defer { content.task.cancel() }
       try await waitUntilRegistered(session)
       session.advanceContentForTesting()
-      await joined(content)
+      try await joined(content)
 
       // A change notice wakes it too, with no content publish.
       let notices = session.noticeCount
-      let notice = Task {
-        await session.waitForChange(revision: session.revision, notices: notices)
-      }
-      defer { notice.cancel() }
+      let notice = spawnWaiter(session, revision: session.revision, notices: notices)
+      defer { notice.task.cancel() }
       try await waitUntilRegistered(session)
       f.changes.externalChange(.transcript(UUID()))
-      await joined(notice)
+      try await joined(notice)
       #expect(session.noticeCount != notices)
 
       // Cancellation after registration resumes and removes the waiter.
-      let registered = Task {
-        await session.waitForChange(revision: session.revision, notices: session.noticeCount)
-      }
-      defer { registered.cancel() }
+      let registered = spawnWaiter(
+        session, revision: session.revision, notices: session.noticeCount)
+      defer { registered.task.cancel() }
       try await waitUntilRegistered(session)
-      registered.cancel()
-      await joined(registered)
+      registered.task.cancel()
+      try await joined(registered)
       #expect(session.changeWaiterCountForTesting == 0)
 
       // Cancellation before the waiter registers ends it as well.
-      let early = Task {
-        await session.waitForChange(revision: session.revision, notices: session.noticeCount)
-      }
-      defer { early.cancel() }
-      early.cancel()
-      await joined(early)
+      let early = spawnWaiter(session, revision: session.revision, notices: session.noticeCount)
+      defer { early.task.cancel() }
+      early.task.cancel()
+      try await joined(early)
       #expect(session.changeWaiterCountForTesting == 0)
       await session.waitForIndexingForTesting()
     }
 
-    /// Awaits `task`, cancelling it when the test is cancelled (its time limit), so a waiter that
-    /// never wakes fails the test instead of hanging it.
-    private func joined(_ task: Task<Void, Never>) async {
-      await withTaskCancellationHandler {
-        await task.value
-      } onCancel: {
-        task.cancel()
+    /// A change waiter and a flag it sets when `waitForChange` returns.
+    @MainActor
+    private final class Waiter {
+      var ended = false
+      var task: Task<Void, Never>!
+    }
+
+    private func spawnWaiter(
+      _ session: HistoryCatalogSession, revision: UInt64, notices: UInt64
+    ) -> Waiter {
+      let waiter = Waiter()
+      waiter.task = Task { @MainActor in
+        await session.waitForChange(revision: revision, notices: notices)
+        waiter.ended = true
+      }
+      return waiter
+    }
+
+    /// Waits for the waiter's own end signal; throws on test cancellation (its time limit), so a
+    /// waiter that never wakes fails the test instead of hanging it.
+    private func joined(_ waiter: Waiter) async throws {
+      while !waiter.ended {
+        try Task.checkCancellation()
+        await Task.yield()
       }
     }
 
