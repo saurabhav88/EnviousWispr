@@ -274,28 +274,29 @@ struct LearnedCorrectionPillCopyTests {
   }
 
   @Test(
-    "the card follows the dwell: a paused dwell is a still picture of its frozen share, a running one animates the rest over what is left, and a resume that added time moves the line back"
+    "the rail is the dwell's share at the drawn instant: nothing before a dwell lands, a paused dwell is a still picture of its frozen share, a running one grows with time, and a resume that added time moves the line back"
   )
   func railFollowsTheDwell() {
     let id = PresentationID()
     let now = Date(timeIntervalSince1970: 1_000)
-    // Frozen at 7 s left of 12: 5/12 drawn, nothing to animate, however much later it is read.
+    // No window yet: empty.
+    #expect(CorrectionLearnedPillView.railProgress(for: nil, at: now) == 0)
+    // Frozen at 7 s left of 12: 5/12 drawn, however much later it is read.
     let paused = OverlayDwellWindow(id: id, pausedAt: now, remaining: 7, totalSeconds: 12)
-    let frozen = CorrectionLearnedPillView.railPlan(for: paused, at: now.addingTimeInterval(500))
-    #expect(frozen.start == 5.0 / 12.0 && frozen.animatesOver == nil)
-    // Running, 2 s into a 12 s dwell: 2/12 drawn, 10 s to animate.
+    #expect(CorrectionLearnedPillView.railProgress(for: paused, at: now.addingTimeInterval(500)) == 5.0 / 12.0)
+    // Running, 2 s then 8 s into a 12 s dwell: 2/12, then 8/12.
     let running = OverlayDwellWindow(id: id, startedAt: now, seconds: 12)
-    let early = CorrectionLearnedPillView.railPlan(for: running, at: now.addingTimeInterval(2))
-    #expect(early.start == 2.0 / 12.0 && early.animatesOver == 10)
+    #expect(CorrectionLearnedPillView.railProgress(for: running, at: now.addingTimeInterval(2)) == 2.0 / 12.0)
+    #expect(CorrectionLearnedPillView.railProgress(for: running, at: now.addingTimeInterval(8)) == 8.0 / 12.0)
     // Resumed with the 2 s floor after 0.5 s were left (11.5 s elapsed): the share is 10/12, so the
-    // line moves back from 11.5/12, and it animates over the 2 s.
+    // line moves back from 11.5/12, and reaches full 2 s later.
     let resumed = OverlayDwellWindow(id: id, startedAt: now, seconds: 2, totalSeconds: 12)
-    let floor = CorrectionLearnedPillView.railPlan(for: resumed, at: now)
-    #expect(floor.start == 10.0 / 12.0 && floor.animatesOver == 2)
-    #expect(floor.start < 11.5 / 12.0)
-    // A running dwell read after its end is full and animates nothing.
-    let late = CorrectionLearnedPillView.railPlan(for: running, at: now.addingTimeInterval(13))
-    #expect(late.start == 1 && late.animatesOver == nil)
+    let floor = CorrectionLearnedPillView.railProgress(for: resumed, at: now)
+    #expect(floor == 10.0 / 12.0)
+    #expect(floor < 11.5 / 12.0)
+    #expect(CorrectionLearnedPillView.railProgress(for: resumed, at: now.addingTimeInterval(2)) == 1)
+    // A running dwell read after its end is full.
+    #expect(CorrectionLearnedPillView.railProgress(for: running, at: now.addingTimeInterval(13)) == 1)
   }
 
   @Test(

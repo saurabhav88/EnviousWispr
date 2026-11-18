@@ -347,73 +347,31 @@ struct CorrectionLearnedPillView: View {
 
   @Environment(\.colorScheme) private var colorScheme
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
-  /// How far the rail has travelled, 0 to 1. Driven by `dwell`, never by a
-  /// clock of its own — see `EscapeRecoveryPillView.progress` for why.
-  @State private var progress: Double = 0
-  /// Which `followDwell` call may still start its animation. A deferred start
-  /// that finds a newer call has run does nothing.
-  @State private var followGeneration = 0
 
+  /// **The rail is drawn, not animated.** Every frame reads the share from the published dwell
+  /// at that frame's instant. A `@State` progress driven by `withAnimation` cannot do this: SwiftUI
+  /// animations are additive, so the in-flight fill keeps its residual after a hover freezes
+  /// the value, and the line drew near empty and climbed back. A paused window is a still
+  /// picture (the schedule stops and the share ignores the date); a resume that adds time moves
+  /// the line back by construction.
   var body: some View {
-    CorrectionLearnedPillFace(
-      line: CorrectionLearnedPillCopy.line(for: model),
-      progress: progress,
-      palette: PillPalette.forScheme(colorScheme),
-      showsBloom: RailMotion.showsBloom(reduceMotion: reduceMotion),
-      onUndo: onUndo,
-      onDismiss: onDismiss
-    )
-    .onAppear { followDwell() }
-    .onChange(of: dwell) { _, _ in followDwell() }
+    TimelineView(.animation(minimumInterval: nil, paused: dwell?.isPaused ?? true)) { context in
+      CorrectionLearnedPillFace(
+        line: CorrectionLearnedPillCopy.line(for: model),
+        progress: Self.railProgress(for: dwell, at: context.date),
+        palette: PillPalette.forScheme(colorScheme),
+        showsBloom: RailMotion.showsBloom(reduceMotion: reduceMotion),
+        onUndo: onUndo,
+        onDismiss: onDismiss
+      )
+    }
   }
 
-  /// Where the rail starts and whether it then animates, for a dwell at an instant. A paused
-  /// dwell is a still picture of its frozen share; a running one animates the rest of the way
-  /// over what is left; one already past its end is full. Pure, so a test can read each case.
-  static func railPlan(for dwell: OverlayDwellWindow, at now: Date) -> (
-    start: Double, animatesOver: Double?
-  ) {
-    let start = dwell.elapsedFraction(at: now)
-    guard !dwell.isPaused else { return (start, nil) }
-    let remaining = dwell.remaining(at: now)
-    guard remaining > 0 else { return (1, nil) }
-    return (start, remaining)
-  }
-
-  /// Draw the rail for the dwell as it stands now.
-  ///
-  /// **Runs on every dwell change, not once per pill.** A hover freezes the
-  /// countdown and leaving resumes it, possibly with MORE time than was left
-  /// (the floor), so the rail must follow each published window. The view is
-  /// rebuilt for a new presentation (`OverlayRootView` keys it by id), which is
-  /// what ends one pill's rail before the next begins. The share drawn is the
-  /// window's own remainder of the ORIGINAL total, so a resume that added time
-  /// moves the line back, which is the truth.
-  private func followDwell() {
-    guard let dwell else { return }
-    followGeneration += 1
-    let generation = followGeneration
-    let plan = Self.railPlan(for: dwell, at: Date())
-    let movesBack = plan.start < progress
-    var instant = Transaction()
-    instant.disablesAnimations = true
-    withTransaction(instant) { progress = plan.start }
-    guard let over = plan.animatesOver else {
-      if !dwell.isPaused { withTransaction(instant) { progress = 1 } }
-      return
-    }
-    guard movesBack else {
-      withAnimation(.linear(duration: over)) { progress = 1 }
-      return
-    }
-    // The rail has to move BACK first (a resume that was given more than was left). Setting the
-    // start and the animated end in one update can be coalesced into a single change, so the
-    // rail would keep filling from its old, nearly full position. The start is rendered now;
-    // the animation begins on the next main-queue turn, unless a newer dwell change ran first.
-    DispatchQueue.main.async {
-      guard followGeneration == generation else { return }
-      withAnimation(.linear(duration: over)) { progress = 1 }
-    }
+  /// The share of the original dwell that has run by `now`: a paused window is its frozen share
+  /// whatever the instant, a running one grows with time, a window past its end is full, and no
+  /// window yet is empty. Pure, so a test can read each case.
+  static func railProgress(for dwell: OverlayDwellWindow?, at now: Date) -> Double {
+    dwell?.elapsedFraction(at: now) ?? 0
   }
 }
 
