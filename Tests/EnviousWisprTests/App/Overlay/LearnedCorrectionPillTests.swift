@@ -225,6 +225,28 @@ struct LearnedCorrectionPillCopyTests {
   }
 
   @Test(
+    "an added word too long to fit even at the smallest scale shows the short Undone result, a normal word keeps its full message, and the card stays inside the cap"
+  )
+  @MainActor func longRemovedWordFallsBackToUndone() {
+    let long = String(repeating: "Supercalifragilistic", count: 26)
+    let longLine = CorrectionLearnedPillCopy.line(
+      for: LearnedPillFixture.model(canonical: long, kind: .added, phase: .undone))
+    #expect(longLine.title.contains(long), "the full message carries the word")
+    #expect(CorrectionLearnedPillCopy.displayedTitle(for: longLine) == CorrectionLearnedPillCopy.undone)
+    let shortLine = CorrectionLearnedPillCopy.line(
+      for: LearnedPillFixture.model(canonical: "Tuist", kind: .added, phase: .undone))
+    #expect(CorrectionLearnedPillCopy.displayedTitle(for: shortLine) == shortLine.title)
+    // An updated word has no "removed" form, so nothing falls back.
+    let updated = CorrectionLearnedPillCopy.line(
+      for: LearnedPillFixture.model(canonical: long, kind: .updated, phase: .undone))
+    #expect(CorrectionLearnedPillCopy.displayedTitle(for: updated) == updated.title)
+    // What this proves about layout: the face still lays out inside the cap. It cannot read
+    // which branch rendered; the branch choice is the displayedTitle assertions above.
+    let width = Self.fittingSize(of: longLine).width
+    #expect(width <= CorrectionLearnedPillCopy.maximumSentenceWidth + 2 * LearnedPillMetrics.leadingPadding + LearnedPillMetrics.discSize + LearnedPillMetrics.rowGap + 1)
+  }
+
+  @Test(
     "a three-times-long subtitle and Undo label widen the card instead of clipping the controls: the width covers every part, and the height does not change"
   )
   @MainActor func longTranslationWidensTheCard() {

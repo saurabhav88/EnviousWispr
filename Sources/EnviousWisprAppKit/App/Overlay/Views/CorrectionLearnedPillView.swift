@@ -81,6 +81,21 @@ enum CorrectionLearnedPillCopy {
     let announcement: String
     /// Whether the countdown line draws: only while Undo can still be pressed.
     var showsCountdown: Bool { controls == .live }
+    /// A shorter localized result drawn instead of `title` when `title` cannot fit even at the
+    /// smallest text scale (a very long added word in "<word> removed"), so the confirmation is
+    /// never cropped away. nil when the title has no shorter form.
+    var fallbackTitle: String? = nil
+  }
+
+  /// The title to draw: the full message when it fits the cap at the smallest scale the pill
+  /// allows, otherwise the line's `fallbackTitle`. Measured with the title's own font, so a
+  /// word that only just fits keeps its full message.
+  static func displayedTitle(for line: Line) -> String {
+    guard let fallback = line.fallbackTitle else { return line.title }
+    let natural = (line.title as NSString).size(withAttributes: [
+      .font: NSFont.systemFont(ofSize: LearnedPillMetrics.wordSize, weight: .semibold)
+    ]).width
+    return natural * minimumScale <= maximumSentenceWidth ? line.title : fallback
   }
 
   static func subtitle(for kind: LearnedCorrectionPillModel.Kind) -> String {
@@ -134,7 +149,8 @@ enum CorrectionLearnedPillCopy {
       let title = undoneTitle(for: model)
       return Line(
         title: title, subtitle: nil, controls: .none, isError: false,
-        undoLabel: undo, closeLabel: close, announcement: title)
+        undoLabel: undo, closeLabel: close, announcement: title,
+        fallbackTitle: model.kind == .added ? undone : nil)
     case .undoError:
       return Line(
         title: couldNotUndo, subtitle: nil, controls: .none, isError: true,
@@ -253,7 +269,7 @@ struct CorrectionLearnedPillFace: View {
   /// line too and is NOT capped: a long translation widens the pill rather than clipping.
   private var text: some View {
     VStack(alignment: .leading, spacing: LearnedPillMetrics.titleGap) {
-      Text(line.title)
+      Text(CorrectionLearnedPillCopy.displayedTitle(for: line))
         .font(.system(size: LearnedPillMetrics.wordSize, weight: .semibold))
         .foregroundStyle(line.isError ? Color.stError : palette.text)
         .lineLimit(1)

@@ -1077,6 +1077,11 @@ def case_expiry_under_hover(path):
     the timed hover hold. Every bound is measured from the first-seen instant on one monotonic
     clock, so a slow capture shortens the pre-hover wait instead of shifting the verdict.
 
+    HOVER PROOF: after the move the case requires the DEBUG overlay log line
+    `hover id=... hovering=true policy=resume` within 1.5 s; without it the case aborts as
+    INSTRUMENT (a real mouse must confirm), so a pill that simply expired is never a product FAIL
+    when the pointer never reached the app.
+
     INSTRUMENT LIMIT (measured 2026-11-18): synthetic CGEvent mouse moves posted right after
     synthetic keystrokes (this case types its fix) produce NO hover events in the app: the
     cursor stays obscured and adding delta fields did not help, while a real mouse works
@@ -1120,9 +1125,19 @@ def case_expiry_under_hover(path):
         time.sleep(0.25)  # settle: poll interval between AX reads
     hover_at = time.monotonic()
     pre_hover_s = hover_at - shown_at
+    hover_mark = log_mark()
     hovered = hover_pill()
     if not hovered:
         return check(label, False, "precondition failed: no valid Undo button frame to hover")
+    # Prove the pointer move REACHED the app before any pause is judged: the DEBUG overlay logs
+    # one `hover ... hovering=true policy=resume` line per hover. None means the synthetic move
+    # produced no hover event (cursor obscured after synthetic typing), which is the rig.
+    if not wait_for("the app logging a hover on the pill",
+                    lambda: has(hover_mark, "hovering=true policy=resume"), deadline=1.5):
+        park_pointer()
+        raise Aborted(f"{label}: the pointer move never reached the app as a hover (no "
+                      "'hovering=true policy=resume' overlay log line within 1.5 s); the cursor is "
+                      "obscured after synthetic typing, so a real mouse must confirm; instrument failure")
     # Hold past the unpaused deadline: the pill must outlive it under the pointer.
     held_until = shown_at + UNPAUSED_DWELL_S + 1.5
     present_through_hold = True

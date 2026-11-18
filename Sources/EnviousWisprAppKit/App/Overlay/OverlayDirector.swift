@@ -481,6 +481,24 @@ final class OverlayDirector {
         "use presentRecording(...) — a recording's providers and its resolved design "
           + "must be installed in the same operation that presents it")
     }
+    #if DEBUG
+      // The UAT verdict source for hover (Tests/RuntimeUAT/learn_from_edits_uat.py): proves a
+      // pointer move reached the app before a pause is judged. DEBUG only; no text, ids only.
+      if case .hoverChanged(let id, let hovering) = event {
+        let policy: String
+        switch reducer.state.current?.expiry {
+        case .after(_, let hover)?:
+          switch hover {
+          case .ignore: policy = "ignore"
+          case .restartFull: policy = "restartFull"
+          case .resume: policy = "resume"
+          }
+        default: policy = "none"
+        }
+        let line = "hover id=\(id.rawValue.uuidString) hovering=\(hovering) policy=\(policy)"
+        Task { await AppLogger.shared.log(line, level: .info, category: "Overlay") }
+      }
+    #endif
     apply(reducer.reduce(event), binding: binding, relay: relay)
   }
 
