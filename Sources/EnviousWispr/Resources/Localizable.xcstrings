@@ -34998,13 +34998,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "When Self-Learning saves a word, the pill now stays for 12 seconds and waits while your pointer rests on it. Click Undo to reverse the dictionary change, or click × to close the pill and keep the word. You can always change learned words in Your Words."
+            "value" : "The Self-Learning pill now stays for 12 seconds when it appears, and waits while your pointer rests on it. Click Undo to reverse the dictionary change, or click × to close the pill and keep the word. You can always change learned words in Your Words."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wenn das Selbstlernende Wörterbuch ein Wort speichert, bleibt der Hinweis jetzt 12 Sekunden lang sichtbar. Solange dein Mauszeiger über dem Hinweis steht, läuft die Zeit nicht weiter. Klicke auf „Rückgängig“, um die Änderung am Wörterbuch zurückzunehmen, oder auf ×, um den Hinweis zu schließen und das Wort zu behalten. Gelernte Wörter kannst du jederzeit unter „Deine Wörter“ ändern."
+            "value" : "Wenn der Hinweis des Selbstlernenden Wörterbuchs erscheint, bleibt er jetzt 12 Sekunden lang sichtbar. Solange dein Mauszeiger über dem Hinweis steht, läuft die Zeit nicht weiter. Klicke auf „Rückgängig“, um die Änderung am Wörterbuch zurückzunehmen, oder auf ×, um den Hinweis zu schließen und das Wort zu behalten. Gelernte Wörter kannst du jederzeit unter „Deine Wörter“ ändern."
           }
         }
       }

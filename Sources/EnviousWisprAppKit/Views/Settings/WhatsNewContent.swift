@@ -102,7 +102,7 @@ enum WhatsNewContent {
       icon: "timer",
       title: "A calmer Self-Learning pill",
       description:
-        "When Self-Learning saves a word, the pill now stays for 12 seconds and waits while your pointer rests on it. Click Undo to reverse the dictionary change, or click × to close the pill and keep the word. You can always change learned words in Your Words.",
+        "The Self-Learning pill now stays for 12 seconds when it appears, and waits while your pointer rests on it. Click Undo to reverse the dictionary change, or click × to close the pill and keep the word. You can always change learned words in Your Words.",
       version: "2.6.1"
     ),
 

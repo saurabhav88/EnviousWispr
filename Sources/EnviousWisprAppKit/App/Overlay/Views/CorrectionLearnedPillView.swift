@@ -296,14 +296,14 @@ struct CorrectionLearnedPillFace: View {
         .fixedSize()
         .padding(.horizontal, LearnedPillMetrics.undoPaddingAcross)
         .padding(.vertical, LearnedPillMetrics.undoPaddingDown)
+        // Both washes sit BEHIND the label: a hover tint drawn over the text would lower its contrast.
         .background(
-          RoundedRectangle(cornerRadius: PillMetrics.actionRadius, style: .continuous)
-            .fill(palette.accentWash)
-        )
-        .overlay(
-          RoundedRectangle(cornerRadius: PillMetrics.actionRadius, style: .continuous)
-            .fill(isUndoHovered ? palette.accentWash : .clear)
-            .allowsHitTesting(false)
+          ZStack {
+            RoundedRectangle(cornerRadius: PillMetrics.actionRadius, style: .continuous)
+              .fill(palette.accentWash)
+            RoundedRectangle(cornerRadius: PillMetrics.actionRadius, style: .continuous)
+              .fill(isUndoHovered ? palette.accentWash : .clear)
+          }
         )
         .contentShape(Rectangle())
     }
