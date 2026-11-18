@@ -137,6 +137,16 @@ Edit values only here, then run `python3 scripts/design/generate-tokens.py`. Col
       "group": "Overlay pills", "usage": "The wash behind the learned-word pill's icon disc and Undo button.",
       "note": "A translucent wash over the pill's own opaque fill, so the composited color is the same wherever the pill floats."
     },
+    "Color.pillSecondaryText": {
+      "light": [0, 0, 0, 0.55], "dark": [1, 1, 1, 0.62],
+      "group": "Overlay pills", "usage": "The quieter second line of a pill and its icon-less buttons, such as the learned-word pill's subtitle and ×.",
+      "note": "Black or white at a fixed opacity over the pill's own opaque fill (`PillPalette`), so it reads as the pill's text one step quieter in either appearance."
+    },
+    "Color.pillQuietHover": {
+      "light": [0, 0, 0, 0.08], "dark": [1, 1, 1, 0.14],
+      "group": "Overlay pills", "usage": "The hover fill of a quiet round pill button such as the learned-word pill's ×.",
+      "note": "A translucent fill over the pill's own opaque ground, so the composited color is the same wherever the pill floats."
+    },
     "Color.stInputBg": {
       "light": [0.965, 0.957, 0.984, 1], "dark": [0.165, 0.145, 0.212, 1],
       "group": "Settings controls", "usage": "Every field, picker box and segmented track (#f6f4fb / #2a2536).",

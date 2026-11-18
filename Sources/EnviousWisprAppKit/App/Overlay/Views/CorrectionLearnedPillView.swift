@@ -355,9 +355,14 @@ struct CorrectionLearnedPillView: View {
   /// picture (the schedule stops and the share ignores the date); a resume that adds time moves
   /// the line back by construction.
   var body: some View {
-    TimelineView(.animation(minimumInterval: nil, paused: dwell?.isPaused ?? true)) { context in
+    // Frames are only needed while the rail is drawn and moving: not when hovered (frozen), and
+    // not in Pending or a result, where the face shows no rail (`line.showsCountdown`).
+    let line = CorrectionLearnedPillCopy.line(for: model)
+    TimelineView(
+      .animation(minimumInterval: nil, paused: (dwell?.isPaused ?? true) || !line.showsCountdown)
+    ) { context in
       CorrectionLearnedPillFace(
-        line: CorrectionLearnedPillCopy.line(for: model),
+        line: line,
         progress: Self.railProgress(
           for: dwell, atUptime: ProcessInfo.processInfo.systemUptime, orDate: context.date),
         palette: PillPalette.forScheme(colorScheme),

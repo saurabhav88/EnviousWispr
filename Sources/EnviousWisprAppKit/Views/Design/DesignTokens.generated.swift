@@ -106,6 +106,16 @@ extension Color {
   /// A translucent wash over the pill's own opaque fill, so the composited color is the same wherever the pill floats.
   static let pillAccentWash = stDynamic(
     lightRGB: (0.486, 0.227, 0.929, 0.1), darkRGB: (0.545, 0.361, 0.929, 0.3))
+  /// The quieter second line of a pill and its icon-less buttons, such as the learned-word pill's subtitle and ×.
+  ///
+  /// Black or white at a fixed opacity over the pill's own opaque fill (`PillPalette`), so it reads as the pill's text one step quieter in either appearance.
+  static let pillSecondaryText = stDynamic(
+    lightRGB: (0, 0, 0, 0.55), darkRGB: (1, 1, 1, 0.62))
+  /// The hover fill of a quiet round pill button such as the learned-word pill's ×.
+  ///
+  /// A translucent fill over the pill's own opaque ground, so the composited color is the same wherever the pill floats.
+  static let pillQuietHover = stDynamic(
+    lightRGB: (0, 0, 0, 0.08), darkRGB: (1, 1, 1, 0.14))
   // Settings controls
   /// Every field, picker box and segmented track (#f6f4fb / #2a2536).
   ///

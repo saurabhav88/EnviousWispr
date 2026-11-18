@@ -26,6 +26,8 @@
   --ew-st-speaker6: rgb(35.7% 29.4% 83.9% / 100%);
   --ew-pill-accent: rgb(42% 16.9% 80% / 100%);
   --ew-pill-accent-wash: rgb(48.6% 22.7% 92.9% / 10%);
+  --ew-pill-secondary-text: rgb(0% 0% 0% / 55%);
+  --ew-pill-quiet-hover: rgb(0% 0% 0% / 8%);
   --ew-st-input-bg: rgb(96.5% 95.7% 98.4% / 100%);
   --ew-st-input-border: rgb(54.1% 16.9% 88.6% / 20%);
   --ew-st-divider: rgb(54.1% 16.9% 88.6% / 8%);
@@ -203,6 +205,8 @@
     --ew-st-speaker6: rgb(66.3% 60.8% 98% / 100%);
     --ew-pill-accent: rgb(76.9% 65.9% 100% / 100%);
     --ew-pill-accent-wash: rgb(54.5% 36.1% 92.9% / 30%);
+    --ew-pill-secondary-text: rgb(100% 100% 100% / 62%);
+    --ew-pill-quiet-hover: rgb(100% 100% 100% / 14%);
     --ew-st-input-bg: rgb(16.5% 14.5% 21.2% / 100%);
     --ew-st-input-border: rgb(72.2% 66.7% 83.9% / 30%);
     --ew-st-divider: rgb(72.2% 66.7% 83.9% / 14%);
@@ -274,6 +278,8 @@
   --ew-st-speaker6: rgb(66.3% 60.8% 98% / 100%);
   --ew-pill-accent: rgb(76.9% 65.9% 100% / 100%);
   --ew-pill-accent-wash: rgb(54.5% 36.1% 92.9% / 30%);
+  --ew-pill-secondary-text: rgb(100% 100% 100% / 62%);
+  --ew-pill-quiet-hover: rgb(100% 100% 100% / 14%);
   --ew-st-input-bg: rgb(16.5% 14.5% 21.2% / 100%);
   --ew-st-input-border: rgb(72.2% 66.7% 83.9% / 30%);
   --ew-st-divider: rgb(72.2% 66.7% 83.9% / 14%);

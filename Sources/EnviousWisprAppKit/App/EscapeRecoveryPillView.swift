@@ -310,10 +310,10 @@ struct PillPalette {
     actionRim: .clear,
     actionText: .white,
     spectrum: PillSpectrum.dark,
-    secondaryText: .white.opacity(0.62),
+    secondaryText: .pillSecondaryText,
     accent: .pillAccent,
     accentWash: .pillAccentWash,
-    quietHover: .white.opacity(0.14)
+    quietHover: .pillQuietHover
   )
 
   static let light = PillPalette(
@@ -325,10 +325,10 @@ struct PillPalette {
     actionRim: .black.opacity(0.09),
     actionText: Color(red: 0.10, green: 0.10, blue: 0.13),
     spectrum: PillSpectrum.light,
-    secondaryText: .black.opacity(0.55),
+    secondaryText: .pillSecondaryText,
     accent: .pillAccent,
     accentWash: .pillAccentWash,
-    quietHover: .black.opacity(0.08)
+    quietHover: .pillQuietHover
   )
 }
 
