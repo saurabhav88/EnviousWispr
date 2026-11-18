@@ -83,7 +83,9 @@ struct HistoryCatalogSearchTests {
 
   /// SQLite opens the catalog without following links, and the temporary folder sits under /var.
   private func databasePath(_ folder: URL, _ name: String = "history.sqlite") -> String {
-    guard let resolved = realpath(folder.path, nil) else { return folder.appendingPathComponent(name).path }
+    guard let resolved = realpath(folder.path, nil) else {
+      return folder.appendingPathComponent(name).path
+    }
     defer { free(resolved) }
     return String(cString: resolved) + "/" + name
   }
@@ -128,11 +130,13 @@ struct HistoryCatalogSearchTests {
     let catalog = try await makeCatalog(Self.rows, in: folder)
     let included = Self.rows[19].key
     let excluded = Self.rows[18].key
-    let dates = DateInterval(start: Self.base.addingTimeInterval(60), end: Self.base.addingTimeInterval(1_200))
+    let dates = DateInterval(
+      start: Self.base.addingTimeInterval(60), end: Self.base.addingTimeInterval(1_200))
     let expected = Self.rows.filter {
       $0.date >= dates.start && $0.date < dates.end
         && ($0.key == included
-          || ($0.key != excluded && $0.fields.contains { $0.localizedCaseInsensitiveContains("budget") }))
+          || ($0.key != excluded
+            && $0.fields.contains { $0.localizedCaseInsensitiveContains("budget") }))
     }.sorted { $0.date > $1.date }.map(\.key)
     #expect(expected == [included])
     let actual = try await catalog.matchingKeys(
@@ -160,7 +164,9 @@ struct HistoryCatalogSearchTests {
     ) { _ in true }
     // The cursor is the match just newer than the anchor; each direction excludes the cursor row.
     #expect(cursor.id == expected[expected.count - 2].id)
-    #expect(newer.summaries.map(\.key) + [expected[expected.count - 2]] + older.summaries.map(\.key) == expected)
+    #expect(
+      newer.summaries.map(\.key) + [expected[expected.count - 2]] + older.summaries.map(\.key)
+        == expected)
   }
 
   @Test("Day counts match a per-day count across a daylight saving change")
@@ -233,7 +239,8 @@ struct HistoryCatalogSearchTests {
     for index in 0..<210 { fields.append(["common word \(index) budget"]) }
     for index in 0..<30 { fields.append(["rare quartz \(index)"]) }
     fields += [
-      ["Straße"], ["STRASSE"], ["strasse"], ["ſtrasse"], ["café crème"], ["cafe\u{301} noir"], ["é"],
+      ["Straße"], ["STRASSE"], ["strasse"], ["ſtrasse"], ["café crème"], ["cafe\u{301} noir"],
+      ["é"],
       ["Résumé"], ["नमस्ते दुनिया"], ["है"], ["हिन्दी भाषा में खोज"], ["日本語のメモ"], ["İstanbul"],
       ["istanbul"], ["ISTANBUL"], ["ıstanbul"], ["a\u{200D}b"], ["soft\u{00AD}hyphen"], ["emoji 🎉"],
       ["ｂｕｄｇｅｔ"], ["key"], ["Key"], ["\u{212A}ey"], ["ﬁle"], ["file"], ["caf", "é au lait"],
@@ -245,10 +252,13 @@ struct HistoryCatalogSearchTests {
       Row(
         key: .init(
           tab: .dictations,
-          id: UUID(uuid: (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, UInt8(index >> 8), UInt8(index & 255)))),
+          id: UUID(
+            uuid: (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, UInt8(index >> 8), UInt8(index & 255)))
+        ),
         // The override-only row sits two days after the rest, so its day exists on page one only
         // through the override.
-        date: differentialBase.addingTimeInterval(Double(index) * 1_200 + (fields == ["override only"] ? 172_800 : 0)),
+        date: differentialBase.addingTimeInterval(
+          Double(index) * 1_200 + (fields == ["override only"] ? 172_800 : 0)),
         app: nil, fields: fields)
     }
   }()
@@ -296,7 +306,9 @@ struct HistoryCatalogSearchTests {
       })
   }
 
-  @Test("Accented, non-Latin and Straße-family queries return exactly the rows, pages and day counts a plain Foundation scan finds")
+  @Test(
+    "Accented, non-Latin and Straße-family queries return exactly the rows, pages and day counts a plain Foundation scan finds"
+  )
   func nonASCIIQueriesMatchFoundation() async throws {
     let folder = directory()
     defer { try? FileManager.default.removeItem(at: folder) }
@@ -304,16 +316,23 @@ struct HistoryCatalogSearchTests {
     let rows = Self.differentialRows
     #expect(rows.count > 300)
     // Expected results come from the raw fixture fields, before any catalog read.
-    var expected: [String: [HistoryCatalog.Key]] = [:]
-    for query in Self.differentialQueries { expected[query] = oracle(query, rows: rows) }
-    // Canonically equal spellings are one String to Swift, so compare scalars.
-    #expect(Set(Self.differentialQueries.map { $0.unicodeScalars.map(\.value) }).count == Self.differentialQueries.count)
-    #expect((expected["é"] ?? []).count > 30, "an accented match beyond the first page")
-    #expect((expected["caf\né au"] ?? []).isEmpty, "a match must not span two fields")
-    #expect((expected["STRAẞE"] ?? []).count >= 3, "oracle premise: STRAẞE finds Straße, STRASSE and strasse rows")
+    // An array, not a String-keyed dictionary: canonically equal spellings such as "café" and
+    // "cafe\u{301}" are one String key to Swift and would overwrite each other.
+    let expected = Self.differentialQueries.map { query in
+      (query: query, keys: oracle(query, rows: rows))
+    }
+    #expect(
+      Set(Self.differentialQueries.map { $0.unicodeScalars.map(\.value) }).count
+        == Self.differentialQueries.count)
+    #expect(oracle("é", rows: rows).count > 30, "an accented match beyond the first page")
+    #expect(oracle("caf\né au", rows: rows).isEmpty, "a match must not span two fields")
+    let sharpSMatches = Set(oracle("STRAẞE", rows: rows))
+    for spelling in ["Straße", "STRASSE", "strasse"] {
+      let row = try #require(rows.first { $0.fields == [spelling] })
+      #expect(sharpSMatches.contains(row.key), "STRAẞE finds \(spelling)")
+    }
     let catalog = try await makeCatalog(rows, in: folder)
-    for query in Self.differentialQueries {
-      let want = try #require(expected[query])
+    for (query, want) in expected {
       let search = HistoryCatalog.Query(tab: .dictations, search: query, calendar: calendar)
       let keys = try await catalog.matchingKeys(search, sourceRevision: "all")
       #expect(keys == want, "matchingKeys for \(query.debugDescription)")
@@ -327,7 +346,9 @@ struct HistoryCatalogSearchTests {
     }
   }
 
-  @Test("A true override on a non-matching row and a false override on a saved match win in keys, pages and page-one day counts")
+  @Test(
+    "A true override on a non-matching row and a false override on a saved match win in keys, pages and page-one day counts"
+  )
   func overridesWithAccentedQuery() async throws {
     let folder = directory()
     defer { try? FileManager.default.removeItem(at: folder) }
@@ -352,10 +373,13 @@ struct HistoryCatalogSearchTests {
     let after = expectedDayCounts(matching: expectedRows, calendar: calendar)
     #expect(paged.firstPage.dayCounts == after)
     // Both overrides change a page-one day count, so ignoring either one is visible there.
-    let before = expectedDayCounts(matching: rows.filter { base.contains($0.key) }, calendar: calendar)
+    let before = expectedDayCounts(
+      matching: rows.filter { base.contains($0.key) }, calendar: calendar)
     #expect(before[calendar.startOfDay(for: asciiRow.date)] == nil)
     #expect(after[calendar.startOfDay(for: asciiRow.date)] == 1)
-    #expect(before[calendar.startOfDay(for: savedMatch.date)] != after[calendar.startOfDay(for: savedMatch.date)])
+    #expect(
+      before[calendar.startOfDay(for: savedMatch.date)]
+        != after[calendar.startOfDay(for: savedMatch.date)])
   }
 
   @Test("History search keeps the baseline SQL for ASCII and non-ASCII queries")
@@ -365,7 +389,8 @@ struct HistoryCatalogSearchTests {
     let catalog = try await makeCatalog(Self.rows, in: folder)
     // Literals as the code before H2 produced them (HistoryCatalog.predicate(for:)).
     let head = "e.tab = ? AND (e.expires_at IS NULL OR e.expires_at > ?)"
-    let trigram = "(e.ascii_only = 0 OR e.row_id IN (SELECT rowid FROM search WHERE search MATCH ?))"
+    let trigram =
+      "(e.ascii_only = 0 OR e.row_id IN (SELECT rowid FROM search WHERE search MATCH ?))"
     let contains = "history_contains(e.search_fields, ?)"
     let override = UUID()
     let cases: [(HistoryCatalog.Query, String)] = [
@@ -399,7 +424,8 @@ struct HistoryCatalogSearchTests {
     }
     let quoted = await catalog.predicate(
       for: .init(
-        tab: .dictations, search: "a\"b", app: "Mail", now: Date(timeIntervalSinceReferenceDate: 42)))
+        tab: .dictations, search: "a\"b", app: "Mail", now: Date(timeIntervalSinceReferenceDate: 42)
+      ))
     #expect(quoted.sql == "\(head) AND coalesce(e.app, '') = ? AND \(trigram) AND \(contains)")
     try #require(quoted.values.count == 5)
     guard case .number(let now) = quoted.values[1] else {
