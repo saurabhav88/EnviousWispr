@@ -1,6 +1,10 @@
 import EnviousWisprCore
 import SwiftUI
 
+#if DEBUG
+  import os
+#endif
+
 /// The row under History's tabs (#3147 §3.3): search, the date filter, the tab's own filter (App
 /// on Dictations and on Meetings, none on Transcripts), Select and help, in that order on every
 /// tab. Every change goes through the coordinator's per-tab state, so each tab keeps its own.
@@ -17,53 +21,63 @@ import SwiftUI
 struct HistoryFiltersView<Leading: View>: View {
   let coordinator: TranscriptCoordinator
   let tab: HistoryTab
-  let state: HistoryTabState
+  /// The tab's filters only: the row of controls never reads the query, so a keystroke leaves
+  /// its input equal.
+  let filter: HistoryListFilter
   let isSelecting: Bool
   let toggleSelecting: () -> Void
 
-  @FocusState private var searchFocused: Bool
   @State private var openPicker: Picker?
 
-  private enum Picker: Hashable { case app, callApp, date }
+  private enum Picker: String, Hashable { case app, callApp, date }
 
-  @ViewBuilder let leading: Leading
+  let leading: Leading
 
-  var body: some View {
-    ViewThatFits(in: .horizontal) {
-      HStack(spacing: DesignSpacing.md) {
-        leading.fixedSize()
-        searchField.frame(maxWidth: .infinity)
-        controls
-      }
-      VStack(alignment: .leading, spacing: DesignSpacing.md) {
-        searchField.frame(maxWidth: .infinity)
-        HStack(spacing: DesignSpacing.md) {
-          leading.fixedSize()
-          Spacer(minLength: 0)
-          controls
-        }
-      }
-      VStack(alignment: .leading, spacing: DesignSpacing.md) {
-        searchField.frame(maxWidth: .infinity)
-        WrappingHStack(spacing: DesignSpacing.md) {
-          leading.fixedSize()
-          dateButton
-          tabFilter
-          HStack(spacing: DesignSpacing.md) { selectionControls }
-            .fixedSize()
-        }
-      }
-    }
+  init(
+    coordinator: TranscriptCoordinator, tab: HistoryTab, state: HistoryTabState,
+    isSelecting: Bool, toggleSelecting: @escaping () -> Void,
+    @ViewBuilder leading: () -> Leading
+  ) {
+    self.coordinator = coordinator
+    self.tab = tab
+    self.filter = state.listFilter
+    self.isSelecting = isSelecting
+    self.toggleSelecting = toggleSelecting
+    self.leading = leading()
   }
 
-  /// Any time, the tab's own filter, Select and help, together on the right with one gap.
-  private var controls: some View {
-    HStack(spacing: DesignSpacing.md) {
-      dateButton
-      tabFilter
-      selectionControls
+  /// The search field on its own row, then the row of controls (#4586 WP-H). The search row's
+  /// size never depends on the typed text, and the controls row is rebuilt only when its own
+  /// inputs change, so a keystroke does not measure the controls.
+  var body: some View {
+    #if DEBUG
+      let _ = HistoryFilterBarProbe.current?.pickerStates.append(openPicker?.rawValue)
+    #endif
+    VStack(alignment: .leading, spacing: DesignSpacing.md) {
+      HistorySearchSlot(
+        coordinator: coordinator, tab: tab,
+        dismissPicker: { if openPicker != nil { openPicker = nil } }
+      )
+      .historyFilterBarMark("search")
+      HistoryFilterControlsRow(
+        key: .init(
+          tab: tab, isSelecting: isSelecting, filter: filter, openPicker: openPicker?.rawValue)
+      ) {
+        HistoryFilterControlsShapes(
+          leading: leading.historyFilterBarMark("leading"),
+          date: dateButton.historyFilterBarMark("date"),
+          tabFilter: tabFilter.historyFilterBarMark("tabFilter"),
+          selection: selectionControls)
+      }
+      .equatable()
     }
-    .fixedSize()
+    #if DEBUG
+      .onAppear {
+        HistoryFilterBarProbe.current?.openPicker = { name in
+          openPicker = Picker(rawValue: name)
+        }
+      }
+    #endif
   }
 
   @ViewBuilder private var tabFilter: some View {
@@ -109,7 +123,9 @@ struct HistoryFiltersView<Leading: View>: View {
     }
     // The filters' shape, so the row reads as one set of controls (founder, #4611).
     .settingsButton(
-      isSelecting ? .filled : .outlined, shape: .roundedRect, size: .medium, isEnabled: true)
+      isSelecting ? .filled : .outlined, shape: .roundedRect, size: .medium, isEnabled: true
+    )
+    .historyFilterBarMark("select")
     SettingsInfoButton(
       rowTitle: String(localized: "History", comment: "History: the page name."),
       tooltip: String(
@@ -117,34 +133,17 @@ struct HistoryFiltersView<Leading: View>: View {
     ) {
       HistoryHelpPopover(tab: tab)
     }
-  }
-
-  private var searchField: some View {
-    HStack(spacing: 6) {
-      Image(systemName: "magnifyingglass")
-        .foregroundStyle(.stTextTertiary)
-        .accessibilityHidden(true)
-      // #2807: History holds dictations AND transcripts, so the box searches "history".
-      TextField(
-        String(localized: "Search history", comment: "History: the search box placeholder."),
-        text: binding(\.query)
-      )
-      .textFieldStyle(.plain)
-      .font(.stBody)
-      .focused($searchFocused)
-    }
-    .settingsFieldChrome(focused: $searchFocused)
-    .frame(minWidth: 180)
+    .historyFilterBarMark("help")
   }
 
   // MARK: - Tab filters
 
   private var appButton: some View {
     filterButton(
-      title: HistoryFilterLabels.app(state.app), isActive: state.app != .all, picker: .app,
-      width: 260, maxHeight: 360
+      label: HistoryFilterButtonLabel(title: HistoryFilterLabels.app(filter.app)),
+      isActive: filter.app != .all, picker: .app, width: 260, maxHeight: 360
     ) {
-      HistoryAppPicker(coordinator: coordinator, current: state.app) { choice in
+      HistoryAppPicker(coordinator: coordinator, current: filter.app) { choice in
         update { $0.app = choice }
       }
     }
@@ -153,13 +152,13 @@ struct HistoryFiltersView<Leading: View>: View {
   /// The Meetings tab's app filter: the same button and list as the other filters.
   private var callAppButton: some View {
     filterButton(
-      title: HistoryFilterLabels.callApp(state.callApp), isActive: state.callApp != nil,
-      picker: .callApp, width: 220
+      label: HistoryFilterButtonLabel(title: HistoryFilterLabels.callApp(filter.callApp)),
+      isActive: filter.callApp != nil, picker: .callApp, width: 220
     ) {
       VStack(alignment: .leading, spacing: 2) {
         ForEach(HistoryFilterLabels.callAppChoices, id: \.self) { family in
           HistoryChoiceRow(
-            title: HistoryFilterLabels.callApp(family), isCurrent: family == state.callApp
+            title: HistoryFilterLabels.callApp(family), isCurrent: family == filter.callApp
           ) { update { $0.callApp = family } }
         }
       }
@@ -168,10 +167,10 @@ struct HistoryFiltersView<Leading: View>: View {
 
   private var dateButton: some View {
     filterButton(
-      title: HistoryDateFilter.label(for: state.dateInterval, now: Date(), calendar: .current),
-      isActive: state.dateInterval != nil, picker: .date, width: 304
+      label: HistoryDateButtonLabel(interval: filter.dateInterval),
+      isActive: filter.dateInterval != nil, picker: .date, width: 304
     ) {
-      HistoryDatePicker(coordinator: coordinator, tab: tab, current: state.dateInterval) {
+      HistoryDatePicker(coordinator: coordinator, tab: tab, current: filter.dateInterval) {
         interval in
         update { $0.dateInterval = interval }
       }
@@ -182,8 +181,8 @@ struct HistoryFiltersView<Leading: View>: View {
   /// One filter control whose list needs more than the Mac menu can draw (counts, a calendar):
   /// the square drop-down button with the current choice, opening `settingsDropdown`. A set
   /// filter is drawn filled so a narrowed list is visible at a glance.
-  private func filterButton<Content: View>(
-    title: String, isActive: Bool, picker: Picker, width: CGFloat, maxHeight: CGFloat? = nil,
+  private func filterButton<Label: View, Content: View>(
+    label: Label, isActive: Bool, picker: Picker, width: CGFloat, maxHeight: CGFloat? = nil,
     @ViewBuilder content: @escaping () -> Content
   ) -> some View {
     // Every filter button has one width: the invisible sizer sets it, the real button fills it.
@@ -192,7 +191,7 @@ struct HistoryFiltersView<Leading: View>: View {
         Button {
           openPicker = picker
         } label: {
-          HistoryFilterButtonLabel(title: title)
+          label
             .frame(maxWidth: .infinity)
         }
         .settingsButton(
@@ -211,19 +210,435 @@ struct HistoryFiltersView<Leading: View>: View {
 
   // MARK: - State
 
-  private func binding<Value>(_ keyPath: WritableKeyPath<HistoryTabState, Value>) -> Binding<Value>
-  {
-    Binding(
-      get: { coordinator.requestedHistoryState(for: tab)[keyPath: keyPath] },
-      set: { value in update { $0[keyPath: keyPath] = value } })
-  }
-
   /// Applies `change` to the tab's live state; a picker choice also closes its popover.
   private func update(_ change: (inout HistoryTabState) -> Void) {
     var live = coordinator.requestedHistoryState(for: tab)
     change(&live)
     coordinator.setHistoryState(live, for: tab)
-    openPicker = nil
+    if openPicker != nil { openPicker = nil }
+  }
+}
+
+// MARK: - Search row
+
+/// The search field's look: magnifier, "Search history" field, the settings field chrome.
+private struct HistorySearchFieldFrame: View {
+  let text: Binding<String>
+  let focused: FocusState<Bool>.Binding
+
+  var body: some View {
+    HStack(spacing: 6) {
+      Image(systemName: "magnifyingglass")
+        .foregroundStyle(.stTextTertiary)
+        .accessibilityHidden(true)
+      // #2807: History holds dictations AND transcripts, so the box searches "history".
+      TextField(
+        String(localized: "Search history", comment: "History: the search box placeholder."),
+        text: text
+      )
+      .textFieldStyle(.plain)
+      .font(.stBody)
+      .focused(focused)
+    }
+    .settingsFieldChrome(focused: focused)
+  }
+}
+
+/// What the row measures for the search field: an invisible copy of the empty field (same
+/// placeholder, icon, chrome and 180 pt floor) whose size never depends on the typed text, with
+/// the live field drawn over it at whatever size the row offers.
+struct HistorySearchSlot: View {
+  let coordinator: TranscriptCoordinator
+  let tab: HistoryTab
+  let dismissPicker: () -> Void
+  @FocusState private var sizerFocused: Bool
+
+  var body: some View {
+    HistorySearchFieldFrame(text: .constant(""), focused: $sizerFocused)
+      .frame(minWidth: 180)
+      .hidden()
+      .accessibilityHidden(true)
+      .frame(maxWidth: .infinity)
+      .overlay {
+        HistorySearchField(coordinator: coordinator, tab: tab, dismissPicker: dismissPicker)
+      }
+  }
+}
+
+/// The live field. It reads and writes the tab's query in the coordinator on every keystroke, as
+/// the bar's field always did, and follows tab switches and external clears.
+private struct HistorySearchField: View {
+  let coordinator: TranscriptCoordinator
+  let tab: HistoryTab
+  let dismissPicker: () -> Void
+  @FocusState private var focused: Bool
+
+  var body: some View {
+    HistorySearchFieldFrame(
+      text: Binding(
+        get: { coordinator.requestedHistoryState(for: tab).query },
+        set: { value in
+          var live = coordinator.requestedHistoryState(for: tab)
+          live.query = value
+          coordinator.setHistoryState(live, for: tab)
+          dismissPicker()
+        }),
+      focused: $focused)
+  }
+}
+
+// MARK: - Controls row
+
+#if DEBUG
+  /// What a test reads from the bar: how often the controls row built its body, the frames of the
+  /// controls and of the arrangement the row chose, and the date button's titles. Set by a test;
+  /// nil in the app.
+  @MainActor final class HistoryFilterBarProbe {
+    static var current: HistoryFilterBarProbe?
+    var rowBodies = 0
+    var frames: [String: CGRect] = [:]
+    var dateTitles: [(interval: DateInterval?, title: String)] = []
+    /// Opens a picker by its raw name, as a click on its button does. Set by the bar when it appears.
+    var openPicker: ((String) -> Void)?
+    /// The open picker (raw name, nil when closed) at each build of the bar.
+    var pickerStates: [String?] = []
+    /// What the controls layout did (read from its own thread-agnostic counters).
+    let layout = HistoryFilterLayoutCounts()
+  }
+
+  /// Counters of `HistoryFilterControlsLayout`: child measurements, arrangements computed and the
+  /// placement it made.
+  final class HistoryFilterLayoutCounts: Sendable {
+    struct State {
+      var measurements = 0
+      var arrangements = 0
+      /// Every placement: the proposed width, the width of the bounds it was placed in, and
+      /// whether it was the one-row shape. The window's size walk places at its own proposals
+      /// (nil, infinity, 0) too.
+      var placements: [(proposalWidth: CGFloat?, boundsWidth: CGFloat, oneRow: Bool)] = []
+    }
+
+    private let state = OSAllocatedUnfairLock(initialState: State())
+
+    var measurements: Int { state.withLock { $0.measurements } }
+    var arrangements: Int { state.withLock { $0.arrangements } }
+    var placements: [(proposalWidth: CGFloat?, boundsWidth: CGFloat, oneRow: Bool)] {
+      state.withLock { $0.placements }
+    }
+    func measured() { state.withLock { $0.measurements += 1 } }
+    func arranged() { state.withLock { $0.arrangements += 1 } }
+    func placed(proposalWidth: CGFloat?, boundsWidth: CGFloat, oneRow: Bool) {
+      state.withLock { $0.placements.append((proposalWidth, boundsWidth, oneRow)) }
+    }
+    func reset() { state.withLock { $0 = State() } }
+  }
+
+  private struct HistoryFilterBarMark: ViewModifier {
+    let name: String
+    func body(content: Content) -> some View {
+      content.background {
+        GeometryReader { proxy in
+          let _ = HistoryFilterBarProbe.current?.frames[name] = proxy.frame(in: .global)
+          Color.clear
+        }
+      }
+    }
+  }
+#endif
+
+extension View {
+  /// Names a part of the filter bar so a debug test can read its frame; nothing in Release.
+  func historyFilterBarMark(_ name: String) -> some View {
+    #if DEBUG
+      modifier(HistoryFilterBarMark(name: name))
+    #else
+      self
+    #endif
+  }
+}
+
+/// The row of controls, rebuilt only when `key` changes. The query is not in the key: a keystroke
+/// builds the bar again, and SwiftUI skips this row, including building its controls (`content`
+/// runs in `body`, after the equality check). `leading` observes its own state (the Meetings
+/// button follows the meeting phase), so it still updates by itself.
+struct HistoryFilterControlsRow<Content: View>: View, Equatable {
+  struct Key: Equatable, Sendable {
+    var tab: HistoryTab
+    var isSelecting: Bool
+    var filter: HistoryListFilter
+    var openPicker: String?
+  }
+
+  let key: Key
+  let content: @MainActor () -> Content
+
+  init(key: Key, @ViewBuilder content: @escaping @MainActor () -> Content) {
+    self.key = key
+    self.content = content
+  }
+
+  nonisolated static func == (lhs: Self, rhs: Self) -> Bool { lhs.key == rhs.key }
+
+  var body: some View {
+    #if DEBUG
+      let _ = HistoryFilterBarProbe.current?.rowBodies += 1
+    #endif
+    content()
+  }
+}
+
+/// The date button's words. They come from the saved interval and today's date, so they are
+/// recomputed when the day, the time zone or the locale changes: "Today" saved yesterday reads
+/// "Yesterday" this morning, with the saved interval and the query untouched.
+struct HistoryDateButtonLabel: View {
+  let interval: DateInterval?
+  var now: @MainActor () -> Date = { Date() }
+  @State private var generation = 0
+
+  var body: some View {
+    let _ = generation
+    let title = HistoryDateFilter.label(for: interval, now: now(), calendar: .current)
+    #if DEBUG
+      let _ = HistoryFilterBarProbe.current?.dateTitles.append((interval, title))
+    #endif
+    HistoryFilterButtonLabel(title: title)
+      .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in
+        generation += 1
+      }
+      .onReceive(NotificationCenter.default.publisher(for: .NSSystemTimeZoneDidChange)) { _ in
+        generation += 1
+      }
+      .onReceive(
+        NotificationCenter.default.publisher(for: NSLocale.currentLocaleDidChangeNotification)
+      ) { _ in
+        generation += 1
+      }
+  }
+}
+
+/// Which control a child of `HistoryFilterControlsLayout` is.
+private enum HistoryFilterControlRole: Hashable { case none, leading, date, tabFilter, selection }
+
+private struct HistoryFilterControlRoleKey: LayoutValueKey {
+  static let defaultValue = HistoryFilterControlRole.none
+}
+
+/// Today's two narrow-width shapes of the controls, without the search field: `leading` at the
+/// left with the controls at the right when they fit one row; otherwise everything wrapped,
+/// top-aligned (founder #4611, 2026-11-17). One layout decides, with a cache that holds every
+/// proposal the window's size walk makes (`WrappingHStack` keeps one width, so each of those
+/// proposals measured every child again).
+struct HistoryFilterControlsShapes<
+  Leading: View, DateControl: View, TabFilter: View, Selection: View
+>: View {
+  let leading: Leading
+  let date: DateControl
+  let tabFilter: TabFilter
+  let selection: Selection
+
+  var body: some View {
+    #if DEBUG
+      let layout = HistoryFilterControlsLayout(counts: HistoryFilterBarProbe.current?.layout)
+    #else
+      let layout = HistoryFilterControlsLayout()
+    #endif
+    layout {
+      leading.fixedSize().layoutValue(key: HistoryFilterControlRoleKey.self, value: .leading)
+      date.layoutValue(key: HistoryFilterControlRoleKey.self, value: .date)
+      tabFilter.layoutValue(key: HistoryFilterControlRoleKey.self, value: .tabFilter)
+      HStack(spacing: DesignSpacing.md) { selection }
+        .fixedSize()
+        .layoutValue(key: HistoryFilterControlRoleKey.self, value: .selection)
+    }
+  }
+}
+
+/// The controls row's arrangement. One row (when `leading`, a gap and the controls fit): `leading`
+/// at the left, the controls at the right, all centered vertically. Otherwise the flow of
+/// `WrappingHStack` at the offered width: top-aligned rows, a new row only when an item would end
+/// past the width, an oversized first item stays. Results are cached per width (children are
+/// always measured at an unspecified height, so height never changes an arrangement) and dropped
+/// when the children change.
+private struct HistoryFilterControlsLayout: Layout {
+  #if DEBUG
+    var counts: HistoryFilterLayoutCounts?
+  #endif
+
+  private static let gap = DesignSpacing.md
+  private static let cacheLimit = 8
+
+  struct Key: Hashable {
+    var width: CGFloat?
+  }
+
+  struct Ideals {
+    var leading: CGSize?
+    var date: CGSize
+    var tabFilter: CGSize?
+    var selection: CGSize
+  }
+
+  struct Arrangement {
+    var oneRow: Bool
+    var size: CGSize
+    /// Frames from the top-left, left to right.
+    var frames: [(index: Int, frame: CGRect)]
+  }
+
+  struct Cache {
+    var index: [HistoryFilterControlRole: Int] = [:]
+    var count = 0
+    var ideals: Ideals?
+    var results: [Key: Arrangement] = [:]
+  }
+
+  func makeCache(subviews: Subviews) -> Cache {
+    var cache = Cache()
+    refresh(&cache, subviews)
+    return cache
+  }
+
+  /// Called when the children change: everything cached described the old ones.
+  func updateCache(_ cache: inout Cache, subviews: Subviews) {
+    refresh(&cache, subviews)
+  }
+
+  private func refresh(_ cache: inout Cache, _ subviews: Subviews) {
+    cache.index = [:]
+    for (position, subview) in subviews.enumerated() {
+      let role = subview[HistoryFilterControlRoleKey.self]
+      if role != .none, cache.index[role] == nil { cache.index[role] = position }
+    }
+    cache.count = subviews.count
+    cache.ideals = nil
+    cache.results = [:]
+  }
+
+  func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Cache) -> CGSize {
+    arrangement(width: proposal.width, subviews: subviews, cache: &cache)?.size ?? .zero
+  }
+
+  func placeSubviews(
+    in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Cache
+  ) {
+    guard let result = arrangement(width: bounds.width, subviews: subviews, cache: &cache)
+    else { return }
+    #if DEBUG
+      counts?.placed(
+        proposalWidth: proposal.width, boundsWidth: bounds.width, oneRow: result.oneRow)
+    #endif
+    // SwiftUI mirrors a custom layout's placement in a right-to-left layout by itself.
+    for (index, frame) in result.frames {
+      subviews[index].place(
+        at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY),
+        anchor: .topLeading,
+        proposal: ProposedViewSize(width: frame.width, height: frame.height))
+    }
+  }
+
+  // MARK: Resolving
+
+  private func measure(_ index: Int, _ proposal: ProposedViewSize, _ subviews: Subviews) -> CGSize {
+    #if DEBUG
+      counts?.measured()
+    #endif
+    return subviews[index].sizeThatFits(proposal)
+  }
+
+  private func arrangement(
+    width offered: CGFloat?, subviews: Subviews, cache: inout Cache
+  ) -> Arrangement? {
+    // A cache from a different set of children must not place these: refuse it.
+    if cache.count != subviews.count { refresh(&cache, subviews) }
+    let width = offered.flatMap { $0.isFinite ? max($0, 0) : nil }
+    let key = Key(width: width)
+    if let known = cache.results[key] { return known }
+    guard let date = cache.index[.date], let selection = cache.index[.selection] else { return nil }
+    let ideals =
+      cache.ideals
+      ?? Ideals(
+        leading: cache.index[.leading].map { measure($0, .unspecified, subviews) },
+        date: measure(date, .unspecified, subviews),
+        tabFilter: cache.index[.tabFilter].map { measure($0, .unspecified, subviews) },
+        selection: measure(selection, .unspecified, subviews))
+    cache.ideals = ideals
+    #if DEBUG
+      counts?.arranged()
+    #endif
+    let result = resolve(width: width, ideals: ideals, subviews: subviews, cache: cache)
+    if cache.results.count >= Self.cacheLimit { cache.results = [:] }
+    cache.results[key] = result
+    return result
+  }
+
+  private func resolve(
+    width: CGFloat?, ideals: Ideals, subviews: Subviews, cache: Cache
+  ) -> Arrangement {
+    let gap = Self.gap
+    var controls: [(index: Int, size: CGSize)] = [(cache.index[.date]!, ideals.date)]
+    if let tab = ideals.tabFilter, let index = cache.index[.tabFilter] {
+      controls.append((index, tab))
+    }
+    controls.append((cache.index[.selection]!, ideals.selection))
+    let controlsWidth =
+      controls.reduce(0) { $0 + $1.size.width } + gap * CGFloat(controls.count - 1)
+    let controlsHeight = controls.map(\.size.height).max() ?? 0
+    let leading = ideals.leading
+    let rowHeight = max(leading?.height ?? 0, controlsHeight)
+    // `leading`, the stack's gap, the spacer (no width), the stack's gap, the controls.
+    let oneRowWidth = (leading.map { $0.width + gap } ?? 0) + gap + controlsWidth
+
+    if width == nil || oneRowWidth <= width! {
+      let total = width ?? oneRowWidth
+      var frames: [(Int, CGRect)] = []
+      if let leading, let index = cache.index[.leading] {
+        frames.append(
+          (
+            index,
+            CGRect(
+              x: 0, y: (rowHeight - leading.height) / 2, width: leading.width,
+              height: leading.height)
+          ))
+      }
+      var x = total - controlsWidth
+      for (index, size) in controls {
+        frames.append(
+          (
+            index,
+            CGRect(x: x, y: (rowHeight - size.height) / 2, width: size.width, height: size.height)
+          ))
+        x += size.width + gap
+      }
+      return Arrangement(
+        oneRow: true, size: CGSize(width: total, height: rowHeight), frames: frames)
+    }
+
+    // Wrapped: `WrappingHStack`'s flow at this width, each item asked at the full width.
+    let total = width!
+    let proposal = ProposedViewSize(width: total, height: nil)
+    var items: [(Int, CGSize)] = []
+    if let index = cache.index[.leading] {
+      items.append((index, measure(index, proposal, subviews)))
+    }
+    for (index, _) in controls { items.append((index, measure(index, proposal, subviews))) }
+    var frames: [(Int, CGRect)] = []
+    var x: CGFloat = 0
+    var y: CGFloat = 0
+    var rowMax: CGFloat = 0
+    var extent: CGFloat = 0
+    for (index, size) in items {
+      if x + size.width > total, x > 0 {
+        x = 0
+        y += rowMax + gap
+        rowMax = 0
+      }
+      frames.append((index, CGRect(x: x, y: y, width: size.width, height: size.height)))
+      rowMax = max(rowMax, size.height)
+      x += size.width + gap
+      extent = max(extent, x - gap)
+    }
+    return Arrangement(
+      oneRow: false, size: CGSize(width: extent, height: y + rowMax), frames: frames)
   }
 }
 
