@@ -8,28 +8,35 @@ import Foundation
 enum HistoryPaging {
   static let pageSize = HistoryTabState.pageSize
 
-  /// `canPage`: the stored page is for this request, its source is the current one and it has
-  /// day counts: the same authority `isCurrentHistoryResult` applies (load more, the newer row).
-  /// `isFinal` equals it: such a page's row set is complete for the query (a missing restore
-  /// anchor is given up, an empty list is really empty).
+  /// `canPage`: the stored page is for this request, its source is the current one and it is not
+  /// display-only (a save overlapped its read). Day counts are not required: an uncertified list
+  /// (watcher down, unreadable file) still opens and pages with file-checked rows.
+  /// `isFinal` also needs day counts (certification): only then is the row set complete for the
+  /// query (a missing restore anchor is given up, an empty list is really empty).
   static func finality(
     result: HistoryQueryResult?, key: TranscriptCoordinator.HistoryQueryKey, source: UInt64?
   ) -> (canPage: Bool, isFinal: Bool) {
     let canPage =
       result?.key == key && source != nil && result?.catalogSourceRevision == source
-      && result?.catalogDayCounts != nil
-    return (canPage, canPage)
+      && result?.displayOnly == false
+    return (canPage, canPage && result?.catalogDayCounts != nil)
+  }
+
+  /// Whether a stored page may open an item: the `canPage` rule.
+  static func mayOpen(
+    result: HistoryQueryResult?, key: TranscriptCoordinator.HistoryQueryKey, source: UInt64?
+  ) -> Bool {
+    finality(result: result, key: key, source: source).canPage
   }
 
   /// An extension may be stored only for the live key and a page of the current, non-nil source
-  /// that carries day counts. An older page can come back without counts when a file fails
-  /// verification before the watcher reports the change; storing it would replace the good page
-  /// and, since paging needs counts, hide "Load more" until a refresh. Keeping the page is correct.
+  /// that is not display-only. Day counts are not required: an uncertified list must still make
+  /// progress, or "Load more" would retry the same cursor forever.
   static func extensionMayStore(
     _ next: HistoryQueryResult, liveKey: TranscriptCoordinator.HistoryQueryKey, source: UInt64?
   ) -> Bool {
     next.key == liveKey && source != nil && next.catalogSourceRevision == source
-      && next.catalogDayCounts != nil
+      && !next.displayOnly
   }
 
   /// The tab, search and filters a page was read for.
@@ -71,6 +78,8 @@ struct HistoryQueryResult: Sendable {
   let newerContinuation: HistoryCatalog.Cursor?
   let catalogSourceRevision: UInt64?
   let catalogDayCounts: [Date: Int]?
+  /// A save overlapped the read: rows only, no counts or cursors, and no paging or open.
+  let displayOnly: Bool
   private let entries: [Entry]
   private let rowOffsets: [Int]
   private let dayPositions: [Date: Int]
@@ -80,7 +89,7 @@ struct HistoryQueryResult: Sendable {
     key: TranscriptCoordinator.HistoryQueryKey, items: [HistoryListItem],
     continuation: HistoryCatalog.Cursor? = nil, newerContinuation: HistoryCatalog.Cursor? = nil,
     catalogSourceRevision: UInt64? = nil,
-    catalogDayCounts: [Date: Int]? = nil
+    catalogDayCounts: [Date: Int]? = nil, displayOnly: Bool = false
   ) throws {
     var layout = Layout()
     try Self.layOut(
@@ -89,15 +98,17 @@ struct HistoryQueryResult: Sendable {
     self.init(
       key: key, items: items, layout: layout, ids: Set(layout.positions.keys),
       continuation: continuation, newerContinuation: newerContinuation,
-      catalogSourceRevision: catalogSourceRevision, catalogDayCounts: catalogDayCounts)
+      catalogSourceRevision: catalogSourceRevision, catalogDayCounts: catalogDayCounts,
+      displayOnly: displayOnly)
   }
 
   private init(
     key: TranscriptCoordinator.HistoryQueryKey, items: [HistoryListItem], layout: Layout,
     ids: Set<HistoryItemID>, continuation: HistoryCatalog.Cursor?,
     newerContinuation: HistoryCatalog.Cursor?, catalogSourceRevision: UInt64?,
-    catalogDayCounts: [Date: Int]?
+    catalogDayCounts: [Date: Int]?, displayOnly: Bool
   ) {
+    self.displayOnly = displayOnly
     self.key = key
     self.items = items
     self.continuation = continuation
@@ -119,7 +130,8 @@ struct HistoryQueryResult: Sendable {
   /// when the merged catalog counts changed it. The arrays are still copied once when this
   /// result is also held elsewhere (copy-on-write); no smaller total cost is claimed.
   func appending(
-    _ added: [HistoryListItem], continuation: HistoryCatalog.Cursor?, catalogDayCounts: [Date: Int]?
+    _ added: [HistoryListItem], continuation: HistoryCatalog.Cursor?, catalogDayCounts: [Date: Int]?,
+    displayOnly: Bool = false
   ) throws -> HistoryQueryResult {
     var ids = ids
     let fresh = added.filter { ids.insert($0.id).inserted }
@@ -154,7 +166,7 @@ struct HistoryQueryResult: Sendable {
     return HistoryQueryResult(
       key: key, items: all, layout: layout, ids: ids, continuation: continuation,
       newerContinuation: newerContinuation, catalogSourceRevision: catalogSourceRevision,
-      catalogDayCounts: catalogDayCounts)
+      catalogDayCounts: catalogDayCounts, displayOnly: displayOnly)
   }
 
   /// Whether `other` lists exactly this page for the same request and source (#4586 N1): the
@@ -182,7 +194,8 @@ struct HistoryQueryResult: Sendable {
         positions: positions, entries: entries, rowOffsets: rowOffsets, dayPositions: dayPositions,
         dayEntries: dayEntries),
       ids: ids, continuation: continuation, newerContinuation: newerContinuation,
-      catalogSourceRevision: catalogSourceRevision, catalogDayCounts: catalogDayCounts)
+      catalogSourceRevision: catalogSourceRevision, catalogDayCounts: catalogDayCounts,
+      displayOnly: displayOnly)
   }
 
   /// What the list draws from the items: positions, headings and rows in order.

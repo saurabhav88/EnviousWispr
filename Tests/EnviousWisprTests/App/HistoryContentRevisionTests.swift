@@ -547,6 +547,80 @@ import Testing
       #expect(done.isFinal)
     }
 
+    @Test("An unreadable file does not lock the list")
+    func unreadableFileDoesNotLockTheList() async throws {
+      let f = try await fixture(rows: 70)
+      defer { try? FileManager.default.removeItem(at: f.root) }
+      let bad = UUID()
+      let transcripts = f.root.appendingPathComponent("transcripts")
+      try Data("not a transcript".utf8).write(
+        to: transcripts.appendingPathComponent("\(bad.uuidString).json"))
+      f.changes.externalChange(.transcript(bad))
+      await f.session.waitForIndexingForTesting()
+      #expect(f.session.status == .unavailable)
+      let first = try #require(await f.coordinator.historyResults(for: key(f)))
+      let source = f.session.stableSourceRevision
+      #expect(first.items.isEmpty == false)
+      #expect(first.catalogDayCounts == nil)
+      #expect(first.displayOnly == false)
+      #expect(HistoryPaging.finality(result: first, key: first.key, source: source).canPage)
+      #expect(HistoryPaging.mayOpen(result: first, key: first.key, source: source))
+      #expect(f.coordinator.isCurrentHistoryResult(first) == false)
+      var current = first
+      var steps = 0
+      while current.continuation != nil {
+        try Task.checkCancellation()
+        steps += 1
+        #expect(steps <= 10)
+        if steps > 10 { break }
+        let next = try #require(await f.coordinator.historyResults(for: first.key, extending: current))
+        #expect(
+          HistoryPaging.extensionMayStore(
+            next, liveKey: key(f), source: f.session.stableSourceRevision))
+        #expect(next.items.count > current.items.count)
+        current = next
+      }
+      #expect(current.continuation == nil)
+      #expect(current.items.count == 70)
+    }
+
+    @Test("A save-overlap page is not paged; the next read makes progress")
+    func saveOverlapPageIsNotPaged() async throws {
+      let f = try await fixture(rows: 40)
+      defer { try? FileManager.default.removeItem(at: f.root) }
+      // The hook may run more than once per read; every begin gets its own finish.
+      var opened = 0
+      f.session.beforePageFenceForTesting = {
+        opened += 1
+        f.changes.begin()
+      }
+      defer {
+        f.session.beforePageFenceForTesting = nil
+        for _ in 0..<opened { f.changes.finish(.transcript(UUID())) }
+      }
+      let shown = try #require(await f.coordinator.historyResults(for: key(f)))
+      f.session.beforePageFenceForTesting = nil
+      let source = f.session.stableSourceRevision
+      #expect(shown.displayOnly)
+      #expect(HistoryPaging.finality(result: shown, key: shown.key, source: source).canPage == false)
+      #expect(HistoryPaging.mayOpen(result: shown, key: shown.key, source: source) == false)
+      #expect(HistoryPaging.extensionMayStore(shown, liveKey: key(f), source: source) == false)
+      for _ in 0..<opened { f.changes.finish(.transcript(UUID())) }
+      opened = 0
+      var page: HistoryQueryResult
+      repeat {
+        let content = f.session.revision
+        let notices = f.session.noticeCount
+        await f.session.waitForIndexingForTesting()
+        page = try #require(await f.coordinator.historyResults(for: key(f)))
+        if f.coordinator.isCurrentHistoryResult(page) { break }
+        try Task.checkCancellation()
+        await f.session.waitForChange(revision: content, notices: notices)
+      } while true
+      #expect(page.displayOnly == false)
+      #expect(page.continuation != nil)
+    }
+
     @Test("An extension read across a source move is refused")
     func extensionRefusedAcrossSourceMove() async throws {
       let f = try await fixture(rows: 40)

@@ -295,7 +295,7 @@ final class TranscriptCoordinator {
       return try? HistoryQueryResult(
         key: key, items: added, continuation: displayOnly ? nil : page.continuation,
         newerContinuation: displayOnly ? nil : page.newerContinuation, catalogSourceRevision: source,
-        catalogDayCounts: counts)
+        catalogDayCounts: counts, displayOnly: displayOnly)
     }
     if newer {
       var ids = previous.ids
@@ -303,9 +303,10 @@ final class TranscriptCoordinator {
       return try? HistoryQueryResult(
         key: key, items: fresh + previous.items, continuation: previous.continuation,
         newerContinuation: page.newerContinuation, catalogSourceRevision: source,
-        catalogDayCounts: counts)
+        catalogDayCounts: counts, displayOnly: displayOnly)
     }
-    return try? previous.appending(added, continuation: page.continuation, catalogDayCounts: counts)
+    return try? previous.appending(
+      added, continuation: page.continuation, catalogDayCounts: counts, displayOnly: displayOnly)
   }
 
   private func catalogQuery(for context: HistoryPaging.Context, calendar: Calendar = .current) -> HistoryCatalog.Query {
@@ -405,7 +406,7 @@ final class TranscriptCoordinator {
       }
       if (try? summary.sourcesStillMatch()) == true { items.append(item) }
     }
-    return try? HistoryQueryResult(key: saved.key, items: items, catalogSourceRevision: saved.catalogSourceRevision)
+    return try? HistoryQueryResult(key: saved.key, items: items, catalogSourceRevision: saved.catalogSourceRevision, displayOnly: saved.displayOnly)
   }
 
   func isCurrentHistoryResult(_ result: HistoryQueryResult) -> Bool {

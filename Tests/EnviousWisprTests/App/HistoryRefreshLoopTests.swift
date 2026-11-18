@@ -314,29 +314,33 @@ struct HistoryRefreshLoopTests {
   }
 
   @Test(
-    "Finality: a page can page only for its key and the current source, and is final only with day counts",
+    "Finality: a page can page and open for its key and the current source unless display-only; it is final only with day counts",
     arguments: [
-      (true, 5 as UInt64?, 5 as UInt64?, true, true, true),
-      (true, 5, 5, false, false, false),
-      (true, 5, 6, true, false, false),
-      (true, 5, nil, true, false, false),
-      (false, 5, 5, true, false, false),
+      (true, 5 as UInt64?, 5 as UInt64?, true, false, true, true),
+      (true, 5, 5, false, false, true, false),
+      (true, 5, 5, true, true, false, false),
+      (true, 5, 5, false, true, false, false),
+      (true, 5, 6, true, false, false, false),
+      (true, 5, nil, true, false, false, false),
+      (false, 5, 5, true, false, false, false),
     ])
   func finalityCombinations(
-    sameKey: Bool, stamp: UInt64?, source: UInt64?, counts: Bool, canPage: Bool, isFinal: Bool
+    sameKey: Bool, stamp: UInt64?, source: UInt64?, counts: Bool, displayOnly: Bool, canPage: Bool,
+    isFinal: Bool
   ) throws {
     let world = World()
     let stored = try HistoryQueryResult(
       key: world.key(), items: [], catalogSourceRevision: stamp,
-      catalogDayCounts: counts ? [:] : nil)
+      catalogDayCounts: counts ? [:] : nil, displayOnly: displayOnly)
     world.content = sameKey ? 0 : 1
     let result = HistoryPaging.finality(result: stored, key: world.key(), source: source)
     #expect(result.canPage == canPage)
     #expect(result.isFinal == isFinal)
+    #expect(HistoryPaging.mayOpen(result: stored, key: world.key(), source: source) == canPage)
     #expect(HistoryPaging.finality(result: nil, key: world.key(), source: source).canPage == false)
   }
 
-  @Test("An extension is stored only for the live key and the current source")
+  @Test("An extension is stored for the live key and the current source unless display-only")
   func extensionMayStoreCombinations() throws {
     let world = World()
     let next = try HistoryQueryResult(
@@ -347,10 +351,15 @@ struct HistoryRefreshLoopTests {
     #expect(HistoryPaging.extensionMayStore(next, liveKey: world.key(), source: 5) == false)
     #expect(HistoryPaging.extensionMayStore(next, liveKey: live, source: 6) == false)
     #expect(HistoryPaging.extensionMayStore(next, liveKey: live, source: nil) == false)
+    world.content = 0
+    // Uncertified (no counts) but file-checked: stored, so paging makes progress.
     let noCounts = try HistoryQueryResult(
       key: world.key(), items: [], catalogSourceRevision: 5, catalogDayCounts: nil)
-    world.content = 0
-    #expect(HistoryPaging.extensionMayStore(noCounts, liveKey: noCounts.key, source: 5) == false)
+    #expect(HistoryPaging.extensionMayStore(noCounts, liveKey: noCounts.key, source: 5))
+    let display = try HistoryQueryResult(
+      key: world.key(), items: [], catalogSourceRevision: 5, catalogDayCounts: nil,
+      displayOnly: true)
+    #expect(HistoryPaging.extensionMayStore(display, liveKey: display.key, source: 5) == false)
   }
 
   @Test("An extension slot is released only by the request that owns it")

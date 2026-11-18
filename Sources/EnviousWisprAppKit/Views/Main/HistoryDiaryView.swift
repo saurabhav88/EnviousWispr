@@ -324,7 +324,9 @@ struct HistoryDiaryView<
     let tab = coordinator.historyTab
     var state = coordinator.requestedHistoryState(for: tab)
     guard let stored = results[tab], stored.key == coordinator.historyQueryKey(for: tab, state: state),
-      stored.ids.contains(id), coordinator.isCurrentHistoryResult(stored)
+      stored.ids.contains(id),
+      HistoryPaging.mayOpen(
+        result: stored, key: stored.key, source: coordinator.catalogSession?.stableSourceRevision)
     else { return }
     state.openItemID = id
     coordinator.setHistoryState(state, for: coordinator.historyTab)
@@ -336,7 +338,9 @@ struct HistoryDiaryView<
     let current = newer ? results[tab]?.newerContinuation : results[tab]?.continuation
     // #4586: only from the stored result; the coordinator also requires the live key.
     guard let cursor, current == cursor, results[tab]?.identity == result.identity,
-      coordinator.isCurrentHistoryResult(result),
+      HistoryPaging.finality(
+        result: result, key: currentKey(tab), source: coordinator.catalogSession?.stableSourceRevision
+      ).canPage,
       let token = extensionSlot.claim(cursor)
     else { return }
     Task {
