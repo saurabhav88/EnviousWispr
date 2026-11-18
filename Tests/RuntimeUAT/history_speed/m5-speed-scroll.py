@@ -25,7 +25,8 @@ full catalog coverage (containment_pilot.py waits for it).
 Options: `--start-pt N` starts N points below the newest row (default 2400; "deep" runs use about
 40000, which loads more than ten pages of 30 rows); `--idle` first samples CPU and memory for 30 s
 of idle History; `--busy` runs one busy loop per performance core for the whole run (busy Mac).
-Control: `--control short-return` makes the up gesture half as long (travel must FAIL).
+Control: `--control short-return` halves the up gesture's finger-motion steps (trackpad; the momentum
+tail stays full) or wheel clicks, so travel must FAIL.
 Every run records machine conditions (load, peer builds) at start and end.
 
 Usage: python3 m5-speed-scroll.py <pid> <subject .app> <new out dir> [--tabs Dictations,Transcripts,Meetings]
