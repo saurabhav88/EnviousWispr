@@ -952,10 +952,15 @@ public enum PasteService {
   /// (`classifyInsertOutcome`), and `writeCall` keeps the setter's own answer only as a
   /// record.
   ///
-  /// `.cannotComplete` is the one answer that skips the read-back: the destination did not
-  /// reply in time, more AX calls would hold the main thread against the same stalled app,
-  /// and a write that timed out may still land. It is unverifiable, which never pastes
-  /// again. `readProbe` is a closure so that branch provably performs no read.
+  /// Two answers skip the read-back, and `readProbe` is a closure so they provably perform
+  /// no read:
+  /// - `.cannotComplete`: the destination did not reply in time, more AX calls would hold
+  ///   the main thread against the same stalled app, and a write that timed out may still
+  ///   land. It is unverifiable, which never pastes again.
+  /// - `.invalidUIElement`: the element was already gone when the setter ran (an app that
+  ///   rebuilds its text box), so the write had nowhere to land and reading the dead element
+  ///   proves nothing. It is `.noMutation`, so the key paste and its window gate (#3961)
+  ///   still decide whether the replacement box gets the text, as before #4664.
   internal static func finishAccessibilityWrite(
     setterError: AXError,
     attemptedText: String,
@@ -965,8 +970,12 @@ public enum PasteService {
     readProbe: () -> AXInsertProbe
   ) -> AXInsertResult {
     let setterSucceeded = setterError == .success
-    let outcome: AXInsertOutcome =
-      setterError == .cannotComplete ? .unverifiable : classifyInsertOutcome(readProbe())
+    let outcome: AXInsertOutcome
+    switch setterError {
+    case .cannotComplete: outcome = .unverifiable
+    case .invalidUIElement: outcome = .noMutation
+    default: outcome = classifyInsertOutcome(readProbe())
+    }
     let writeCall: AXWriteCall =
       setterSucceeded
       ? .succeeded(attemptedText: attemptedText) : .failed(attemptedText: attemptedText)

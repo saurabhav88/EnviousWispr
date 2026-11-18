@@ -314,6 +314,26 @@ struct PasteAccessibilityInsertionTests {
     #expect(result.declineReason == .unverifiable)
   }
 
+  @Test("A setter on a vanished element allows the key paste without another AX read")
+  func setterInvalidElementKeepsFallback() {
+    var readCount = 0
+    let result = PasteService.finishAccessibilityWrite(
+      setterError: .invalidUIElement,
+      attemptedText: "ZZ",
+      payloadKind: .legacy,
+      settability: nil,
+      beforeImage: .init(count: 10, selectionLength: 0)
+    ) {
+      readCount += 1
+      return probe(inserted: 2, before: 10, after: 12, readBack: true)
+    }
+
+    #expect(readCount == 0)
+    #expect(result.outcome == .noMutation)
+    #expect(result.declineReason == .setFailed)
+    #expect(result.writeCall == .failed(attemptedText: "ZZ"))
+  }
+
   @Test("A successful setter keeps today's result: verified, no decline reason")
   func setterSuccessUnchanged() {
     let result = PasteService.finishAccessibilityWrite(
