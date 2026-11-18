@@ -2,7 +2,7 @@
 """Does a dictation land in one named app, and what does the paste check say there? (#4047)
 
     python3 Tests/RuntimeUAT/paste_check_app_uat.py --app <bundle id> [--takes N] [--source saved|tts]
-        [--seed S] [--clear none|ctrl-u] [--wait MAX_SECONDS] [--run-dir D]
+        [--sentence TEXT] [--seed S] [--clear none|ctrl-u] [--wait MAX_SECONDS] [--run-dir D]
     python3 Tests/RuntimeUAT/uat.py run paste-check-app --target <bundle id> --run-dir D   (front door)
 
 Put the app's text field (or terminal prompt) in front first; the script never stages a field.
@@ -15,6 +15,14 @@ one landing line for that app and route (a direct `ax_direct` write or clipboard
 landing check and reads `not_applicable`). A take whose evidence is missing gets an INVALID row;
 the run stops on a setup failure or a take not proven stopped, and still writes its results. Anything else (a panel took the focus, extra recordings started) is
 INVALID and never evidence. Whether the words really landed is the caller's screenshot.
+
+COPIES (#4664): with `--source tts` each row also reads the target app's focused text field through
+Accessibility before and after the take and counts how many more times the spoken sentence (without
+its final punctuation, case-insensitive) appears in it: `copies=1` is one delivery, `copies=2` a
+double paste. The cascade count cannot see a double that the DESTINATION produces (Telegram applies
+an accessibility write that reports an error, and the app then pastes again: 28 takes read
+`cascades=1` while every one doubled). `copies=-` means it could not be read (saved source, no
+focused field, or no readable value). The field text is read on this Mac only and never stored.
 
 `--source saved` (default) replays the founder's own saved dictations
 (`~/Library/Application Support/EnviousWispr/dictation-audio/*/raw.wav`, completed, 2 to 8 s,
@@ -30,7 +38,8 @@ inside a take makes that row INVALID (never a wrong VALID).
 `--clear ctrl-u` empties a shell prompt after each take (terminals); `none` (default) leaves the
 text for the caller to remove. Run `--takes 1` first as a smoke test.
 
-Exit 0 when every take was valid, 1 when any was invalid (including a failed take setup check),
+Exit 0 when every take was valid and no measured take read other than `copies=1`, 1 when any was
+invalid (including a failed take setup check) or any measured take read `copies` other than 1,
 2 when the setup failed or the clipboard could not be restored.
 """
 import argparse
@@ -53,11 +62,33 @@ import learn_from_edits_apps_uat as apps  # noqa: E402
 import paste_landing_uat as p  # noqa: E402
 import take_gate as tg  # noqa: E402
 import wispr_eyes as w  # noqa: E402
+from ui_helpers import get_attr, get_ax_app  # noqa: E402
 from audio_rig import AppTarget, AudioRig, _wait_frontmost  # noqa: E402
 
 ARCHIVE = os.path.expanduser("~/Library/Application Support/EnviousWispr/dictation-audio")
 SENTENCE = "Send the draft to Maya tomorrow morning."
 KEY_TIERS = p.KEY_TIERS  # the routes that run the landing check (one owner)
+
+
+def field_text(bundle_id):
+    """The focused text field's value in `bundle_id`'s app, or None when it cannot be read."""
+    from AppKit import NSRunningApplication
+    running = NSRunningApplication.runningApplicationsWithBundleIdentifier_(bundle_id)
+    if len(running) != 1:
+        return None
+    focused = get_attr(get_ax_app(running[0].processIdentifier()), "AXFocusedUIElement")
+    value = get_attr(focused, "AXValue") if focused is not None else None
+    return str(value) if value is not None else None
+
+
+def copies_of(sentence, before, after):
+    """How many more times `sentence` (no final punctuation, any case) appears after the take."""
+    if before is None or after is None:
+        return None
+    core = sentence.strip().rstrip(".!?").strip().lower()
+    if not core:
+        return None
+    return after.lower().count(core) - before.lower().count(core)
 
 
 def saved_clips(seed):
@@ -130,6 +161,8 @@ def main():
     parser.add_argument("--app", required=True, help="bundle id of the frontmost target app")
     parser.add_argument("--takes", type=int, default=1)
     parser.add_argument("--source", choices=["saved", "tts"], default="saved")
+    parser.add_argument("--sentence", default=SENTENCE,
+                        help="what --source tts speaks (default: the fixed sentence)")
     parser.add_argument("--seed", type=int, default=4047)
     parser.add_argument("--clear", choices=["none", "ctrl-u"], default="none")
     parser.add_argument("--wait", type=float, default=30.0,
@@ -164,6 +197,7 @@ def main():
                 lines, cascades = [], []
                 text = ""
                 error = ""
+                field_before = field_after = None
 
                 try:
                     audio = (normalised(clips[n - 1], folder, n)
@@ -173,11 +207,13 @@ def main():
                         raise tg.SetupFailed(
                             "paste-target", f"{args.app} did not come to the front")
                     base = u.log_size()
+                    if audio is None:
+                        field_before = field_text(args.app)
                     # The cascade line first: only a key paste writes a PASTE_LANDING line, so
                     # the landing check is waited for only when the route was one (#4047).
                     lines, cascades = p.take(
                         args.app, base, bundle=args.app, route=rig.route,
-                        sentence=SENTENCE if audio is None else "(saved dictation)",
+                        sentence=args.sentence if audio is None else "(saved dictation)",
                         audio=audio, wait=args.wait, until_terminal=True,
                         expect_landing=False)
 
@@ -196,6 +232,9 @@ def main():
                     text = u.log_since(base)
                     lines = p.LANDING.findall(text)
                     cascades = p.CASCADE.findall(text)
+                    if audio is None:
+                        time.sleep(0.5)  # settle: a late second copy lands after the cascade; no ack
+                        field_after = field_text(args.app)
 
                 except (tg.SetupFailed, tg.CouldNotTell, u.Aborted,
                         OSError, subprocess.SubprocessError) as exc:
@@ -233,10 +272,13 @@ def main():
                     "not_applicable"
                     if len(mine) == 1 and tier in known_tiers
                     and not key_route and not lines else "-")
-                rows.append((n, valid, tier, verdict, time.monotonic() - start))
+                copies = (copies_of(args.sentence, field_before, field_after)
+                          if args.source == "tts" else None)
+                rows.append((n, valid, tier, verdict, time.monotonic() - start, copies))
                 print(
                     f"ROW {n} {'VALID' if valid else 'INVALID'} "
-                    f"tier={tier} verdict={verdict} cascades={len(cascades)} "
+                    f"tier={tier} verdict={verdict} "
+                    f"copies={'-' if copies is None else copies} cascades={len(cascades)} "
                     f"landing_lines={len(lines)} failed_checks={len(failed)} "
                     f"secs={rows[-1][4]:.0f} error={error!r}", flush=True)
 
@@ -262,20 +304,27 @@ def main():
     counts = {}
     for row in valid_rows:
         counts[row[3]] = counts.get(row[3], 0) + 1
-    print(f"SUMMARY {len(rows)} takes, {len(valid_rows)} valid; verdicts {counts}")
+    copy_counts = {}
+    for row in valid_rows:
+        key = "-" if row[5] is None else row[5]
+        copy_counts[key] = copy_counts.get(key, 0) + 1
+    print(f"SUMMARY {len(rows)} takes, {len(valid_rows)} valid; verdicts {counts}; "
+          f"copies {copy_counts}")
     if args.run_dir:
         with open(os.path.join(args.run_dir, "paste-check-app.json"), "w") as fh:
             json.dump({
                 "app": args.app, "source": args.source, "seed": args.seed,
+                "sentence": args.sentence if args.source == "tts" else None,
                 "clipboard_restored": restored, "setup_failed": run_failed,
                 "rows": [
                     {"take": r[0], "valid": r[1], "tier": r[2],
-                     "verdict": r[3], "seconds": round(r[4], 1)}
+                     "verdict": r[3], "seconds": round(r[4], 1), "copies": r[5]}
                     for r in rows]
             }, fh, indent=2)
     if run_failed or not restored:
         return 2
-    return 0 if len(valid_rows) == len(rows) == args.takes else 1
+    doubled = [r for r in valid_rows if r[5] is not None and r[5] != 1]
+    return 0 if len(valid_rows) == len(rows) == args.takes and not doubled else 1
 
 if __name__ == "__main__":
     sys.exit(main())
