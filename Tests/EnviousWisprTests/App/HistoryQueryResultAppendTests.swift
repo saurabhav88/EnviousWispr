@@ -137,7 +137,10 @@ struct HistoryQueryResultAppendTests {
       for summary in summaries where expectedItems.contains(where: { $0.key == summary.key }) == false {
         expectedItems.append(summary)
       }
-      expectedCounts = pageCounts.map { (pages == 1 ? [:] : expectedCounts ?? [:]).merging($0) { _, new in new } }
+      // A joined list is certified only when every page was.
+      expectedCounts =
+        pages == 1
+        ? pageCounts : expectedCounts.flatMap { stored in pageCounts.map { stored.merging($0) { _, new in new } } }
       let step = try #require(result, "seed \(seed), page \(pages)")
       #expect(step.items.map(\.id) == expectedItems.map { HistoryListItem.catalog($0).id }, "seed \(seed), page \(pages): rows")
       #expect(step.continuation == continuation, "seed \(seed), page \(pages): continuation")
@@ -151,6 +154,36 @@ struct HistoryQueryResultAppendTests {
     // Every build ran off the main actor.
     #expect(main.withLock { $0 }.allSatisfy { $0 == false })
     #expect(main.withLock { $0 }.count == pages)
+  }
+
+  @Test("A joined list has day counts only when the stored list and the new page both do")
+  func joinedCountsNeedEveryPage() async throws {
+    let day = Date(timeIntervalSinceReferenceDate: 780_000_000)
+    let first = (0..<3).map { Self.summary(at: day.addingTimeInterval(Double(-60 * $0))) }
+    let second = (3..<6).map { Self.summary(at: day.addingTimeInterval(Double(-60 * $0))) }
+    func firstPage(counts: [Date: Int]?) async throws -> HistoryQueryResult {
+      try #require(
+        await TranscriptCoordinator.buildResult(
+          key: Self.key(),
+          page: .init(
+            summaries: first, continuation: Self.cursor(after: first.last), newerContinuation: nil,
+            dayCounts: counts),
+          previous: nil, newer: false, source: 7))
+    }
+    func extend(_ previous: HistoryQueryResult) async throws -> HistoryQueryResult {
+      try #require(
+        await TranscriptCoordinator.buildResult(
+          key: Self.key(),
+          page: .init(
+            summaries: second, continuation: nil, newerContinuation: nil,
+            dayCounts: Self.counts(first + second)),
+          previous: previous, newer: false, source: 7))
+    }
+    let uncertifiedFirst = try await firstPage(counts: nil)
+    #expect(uncertifiedFirst.catalogDayCounts == nil)
+    #expect(try await extend(uncertifiedFirst).catalogDayCounts == nil)
+    let certifiedFirst = try await firstPage(counts: Self.counts(first + second))
+    #expect(try await extend(certifiedFirst).catalogDayCounts == Self.counts(first + second))
   }
 
   @Test("A page that continues the last shown day joins that day's heading")

@@ -288,7 +288,18 @@ final class TranscriptCoordinator {
     // `Thread.isMainThread` is unavailable in async code; the C call answers the same question.
     onMainThread?(pthread_main_np() != 0)
     let added = page.summaries.map(HistoryListItem.catalog)
-    let counts = displayOnly ? nil : page.dayCounts.map { (previous?.catalogDayCounts ?? [:]).merging($0) { _, new in new } }
+    // An extension joins the stored list, so its counts are certified only when BOTH the stored
+    // list and the new page carry counts; one uncertified part leaves the whole list uncertified.
+    let counts: [Date: Int]?
+    if displayOnly {
+      counts = nil
+    } else if let previous {
+      counts = previous.catalogDayCounts.flatMap { stored in
+        page.dayCounts.map { stored.merging($0) { _, new in new } }
+      }
+    } else {
+      counts = page.dayCounts
+    }
     guard let previous else {
       // A display-only page (read while a writer was open) shows its rows and nothing that
       // could authorize paging or exact totals.
