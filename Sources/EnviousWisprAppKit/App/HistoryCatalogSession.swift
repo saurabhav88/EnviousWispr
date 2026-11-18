@@ -427,9 +427,13 @@ final class HistoryCatalogSession {
         indexing = nil
         // A drained queue or a cancelled task ends the repair label; the status is untouched.
         if Task.isCancelled || !rebuildRequested {
-          if repairing || Task.isCancelled { needsFullBuild = false }
+          // A drained queue ends the active repair only. A pass that could not certify keeps
+          // its row and build reasons, so a list still missing a row keeps its label.
           repairing = false
-          passCommittedRows = false
+          if Task.isCancelled {
+            needsFullBuild = false
+            passCommittedRows = false
+          }
           syncShowsUpdating()
         }
         resumeTaskEndWaiters()
