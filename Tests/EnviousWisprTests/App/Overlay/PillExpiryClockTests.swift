@@ -19,11 +19,19 @@ struct PillExpiryClockTests {
   private final class Rig {
     var scheduled: [OverlayScheduledWork] = []
     var published: [OverlayDwellWindow?] = []
+    var scheduledSeconds: [Double] = []
     var dispatches: [(id: PresentationID, target: OverlayExpiryTarget)] = []
-    let now = Date(timeIntervalSince1970: 1_000)
+    var now = Date(timeIntervalSince1970: 1_000)
+
+    func advance(by seconds: Double) { now = now.addingTimeInterval(seconds) }
 
     private(set) lazy var clock = PillExpiryClock(
-      schedule: .manual { [unowned self] in self.scheduled.append($0) },
+      schedule: OverlayScheduler { [unowned self] seconds, body in
+        let work = OverlayScheduledWork(body: body)
+        self.scheduled.append(work)
+        self.scheduledSeconds.append(seconds)
+        return work
+      },
       now: { [unowned self] in self.now },
       publishDwell: { [unowned self] in self.published.append($0) })
 
@@ -208,5 +216,184 @@ struct PillExpiryClockTests {
     #expect(
       rig.published.count == publishedCount,
       "an unchanged plan republished the dwell, which restarts a countdown that is still running")
+  }
+
+  // MARK: - Hover pause and resume (#4675)
+
+  /// The latest published window, which a row reads rather than clock state.
+  private static func latest(_ rig: Rig) throws -> OverlayDwellWindow {
+    try #require(rig.published.last ?? nil, "no dwell window is published")
+  }
+
+  @Test("pause freezes the remainder of the original total and invalidates the armed callback")
+  func pauseStoresTheRemainder() throws {
+    let rig = Rig()
+    let pill = Self.id()
+    rig.clock.prepare(
+      .arm(id: pill, seconds: 12, target: .presentation), onExpiry: { rig.recordFired($0, $1) })()
+    let armed = try #require(rig.scheduled.first)
+    rig.advance(by: 4)
+
+    _ = rig.clock.prepare(.pause, onExpiry: { rig.recordFired($0, $1) })
+
+    #expect(armed.isCancelled, "pause left the armed callback live")
+    let frozen = try Self.latest(rig)
+    #expect(frozen.pausedRemaining == 8)
+    #expect(frozen.totalSeconds == 12)
+    #expect(frozen.isPaused)
+    // Frozen: the same share at any later instant.
+    #expect(frozen.elapsedFraction(at: rig.now) == 4.0 / 12.0)
+    #expect(frozen.elapsedFraction(at: rig.now.addingTimeInterval(60)) == 4.0 / 12.0)
+    #expect(frozen.remaining(at: rig.now.addingTimeInterval(60)) == 8)
+    armed.fire()
+    #expect(rig.dispatches.isEmpty, "a paused dwell still expired")
+  }
+
+  @Test("an invalidated callback does not fire after a pause, even when called directly")
+  func pausedCallbackDispatchesNothing() throws {
+    var bodies: [() -> Void] = []
+    var dispatches: [PresentationID] = []
+    let clock = PillExpiryClock(
+      schedule: OverlayScheduler { _, body in
+        bodies.append(body)
+        return OverlayScheduledWork(body: body)
+      },
+      now: { Date(timeIntervalSince1970: 1_000) },
+      publishDwell: { _ in })
+    let pill = Self.id()
+    clock.prepare(
+      .arm(id: pill, seconds: 12, target: .presentation), onExpiry: { id, _ in dispatches.append(id) })()
+
+    _ = clock.prepare(.pause, onExpiry: { id, _ in dispatches.append(id) })
+    bodies[0]()
+
+    #expect(dispatches.isEmpty, "the callback armed before the pause still dispatched")
+  }
+
+  @Test("resume arms the ordinary remainder and draws it as a share of the original total")
+  func resumeArmsTheRemainder() throws {
+    let rig = Rig()
+    let pill = Self.id()
+    let onExpiry: (PresentationID, OverlayExpiryTarget) -> Void = { rig.recordFired($0, $1) }
+    rig.clock.prepare(.arm(id: pill, seconds: 12, target: .presentation), onExpiry: onExpiry)()
+    rig.advance(by: 4)
+    _ = rig.clock.prepare(.pause, onExpiry: onExpiry)
+    rig.advance(by: 30)
+
+    let start = rig.clock.prepare(.resume(id: pill, floorSeconds: 2), onExpiry: onExpiry)
+    #expect(rig.scheduled.count == 1, "resume armed before the host accepted the pill")
+    start()
+
+    #expect(rig.scheduled.count == 2)
+    #expect(rig.scheduledSeconds.last == 8, "the pause time was counted against the dwell")
+    let running = try Self.latest(rig)
+    #expect(!running.isPaused)
+    #expect(running.seconds == 8)
+    #expect(running.totalSeconds == 12)
+    #expect(running.startedAt == rig.now)
+    #expect(running.elapsedFraction(at: rig.now) == 4.0 / 12.0)
+
+    try #require(rig.scheduled.last).fire()
+    #expect(rig.dispatches.count == 1)
+    #expect(rig.dispatches.first?.id == pill)
+    #expect(rig.dispatches.first?.target == .presentation)
+  }
+
+  @Test("resume with half a second left arms the two second floor and the rail moves back")
+  func resumeFloorRaisesTheRemainder() throws {
+    let rig = Rig()
+    let pill = Self.id()
+    let onExpiry: (PresentationID, OverlayExpiryTarget) -> Void = { rig.recordFired($0, $1) }
+    rig.clock.prepare(.arm(id: pill, seconds: 12, target: .presentation), onExpiry: onExpiry)()
+    rig.advance(by: 11.5)
+    _ = rig.clock.prepare(.pause, onExpiry: onExpiry)
+    let frozen = try Self.latest(rig)
+    #expect(frozen.pausedRemaining == 0.5)
+
+    rig.clock.prepare(.resume(id: pill, floorSeconds: 2), onExpiry: onExpiry)()
+
+    #expect(rig.scheduledSeconds.last == 2)
+    let running = try Self.latest(rig)
+    #expect(running.totalSeconds == 12, "the floor must not change the original total")
+    #expect(running.elapsedFraction(at: rig.now) == 10.0 / 12.0)
+    #expect(
+      running.elapsedFraction(at: rig.now) < frozen.elapsedFraction(at: rig.now),
+      "the added time did not move the line back")
+  }
+
+  @Test("cancel discards a paused dwell, so a later resume starts nothing")
+  func cancelDiscardsPausedState() {
+    let rig = Rig()
+    let pill = Self.id()
+    let onExpiry: (PresentationID, OverlayExpiryTarget) -> Void = { rig.recordFired($0, $1) }
+    rig.clock.prepare(.arm(id: pill, seconds: 12, target: .presentation), onExpiry: onExpiry)()
+    _ = rig.clock.prepare(.pause, onExpiry: onExpiry)
+    _ = rig.clock.prepare(.cancel, onExpiry: onExpiry)
+
+    rig.clock.prepare(.resume(id: pill, floorSeconds: 2), onExpiry: onExpiry)()
+
+    #expect(rig.scheduled.count == 1, "a cancelled pill's dwell came back")
+    #expect(rig.published.last ?? nil == nil)
+  }
+
+  @Test("a replacement discards the outgoing paused dwell")
+  func replacementDiscardsPausedState() {
+    let rig = Rig()
+    let first = Self.id()
+    let second = Self.id()
+    let onExpiry: (PresentationID, OverlayExpiryTarget) -> Void = { rig.recordFired($0, $1) }
+    rig.clock.prepare(.arm(id: first, seconds: 12, target: .presentation), onExpiry: onExpiry)()
+    _ = rig.clock.prepare(.pause, onExpiry: onExpiry)
+    rig.clock.prepare(.arm(id: second, seconds: 12, target: .presentation), onExpiry: onExpiry)()
+    #expect(rig.scheduled.count == 2)
+
+    rig.clock.prepare(.resume(id: first, floorSeconds: 2), onExpiry: onExpiry)()
+
+    #expect(rig.scheduled.count == 2, "the replaced pill's remainder was resumed")
+    #expect(rig.scheduledSeconds.last == 12)
+  }
+
+  @Test("resume for another presentation id starts nothing")
+  func resumeForAnotherIDStartsNothing() {
+    let rig = Rig()
+    let pill = Self.id()
+    let onExpiry: (PresentationID, OverlayExpiryTarget) -> Void = { rig.recordFired($0, $1) }
+    rig.clock.prepare(.arm(id: pill, seconds: 12, target: .presentation), onExpiry: onExpiry)()
+    _ = rig.clock.prepare(.pause, onExpiry: onExpiry)
+
+    rig.clock.prepare(.resume(id: Self.id(), floorSeconds: 2), onExpiry: onExpiry)()
+
+    #expect(rig.scheduled.count == 1)
+  }
+
+  @Test("a pause before the first start holds the whole dwell, and the stale start cannot arm")
+  func pauseBeforeStartHoldsTheWholeDwell() throws {
+    let rig = Rig()
+    let pill = Self.id()
+    let onExpiry: (PresentationID, OverlayExpiryTarget) -> Void = { rig.recordFired($0, $1) }
+    let start = rig.clock.prepare(.arm(id: pill, seconds: 12, target: .presentation), onExpiry: onExpiry)
+
+    _ = rig.clock.prepare(.pause, onExpiry: onExpiry)
+    start()
+    #expect(rig.scheduled.isEmpty, "a start prepared before the pause armed under the hover")
+
+    rig.clock.prepare(.resume(id: pill, floorSeconds: 2), onExpiry: onExpiry)()
+    #expect(rig.scheduledSeconds == [12])
+    #expect(try Self.latest(rig).totalSeconds == 12)
+  }
+
+  @Test("a start prepared by resume is dropped when a pause lands before it runs")
+  func pauseBeforeResumeStartsDropsTheStart() {
+    let rig = Rig()
+    let pill = Self.id()
+    let onExpiry: (PresentationID, OverlayExpiryTarget) -> Void = { rig.recordFired($0, $1) }
+    rig.clock.prepare(.arm(id: pill, seconds: 12, target: .presentation), onExpiry: onExpiry)()
+    _ = rig.clock.prepare(.pause, onExpiry: onExpiry)
+    let resumeStart = rig.clock.prepare(.resume(id: pill, floorSeconds: 2), onExpiry: onExpiry)
+
+    _ = rig.clock.prepare(.pause, onExpiry: onExpiry)
+    resumeStart()
+
+    #expect(rig.scheduled.count == 1, "a superseded resume start armed a timer")
   }
 }

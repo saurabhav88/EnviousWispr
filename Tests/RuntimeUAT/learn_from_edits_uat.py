@@ -7,19 +7,24 @@ founder's pre-PR gate, end to end.
 Run with the screen UNLOCKED and hands off the Mac. It dictates a sentence
 through the speaker into a real TextEdit document, makes a scripted fix through
 accessibility, waits for the word to be SAVED (`learn_added`) and for the
-3-second Undo pill (`learn_undo_shown`), presses Undo through accessibility,
-lets another pill expire under the pointer, reads Your Words for the sparkle
+12-second Undo pill (`learn_undo_shown`), presses Undo through accessibility,
+holds the pointer over another pill past its 12 seconds and lets it expire after the pointer leaves, reads Your Words for the sparkle
 and the Auto-learned filter, and reads every verdict from `app.log` and from
 `custom-words.json`. Every step waits on a SIGNAL the app produces, with a
 deadline as the fallback, never as the mechanism (`wait_for` returns whether
 the signal arrived). The one thing the app does not log is the pill LEAVING
 without Undo: that verdict is the Undo button's absence through accessibility
-inside a wall-clock bound, plus the word still being in the file.
+inside a wall-clock bound, plus the word still being in the file. The 12
+second window freezes while the pointer is over the pill and resumes with at
+least 2 seconds left when it leaves (#4675); the rail's own freeze and resume
+are checked by eye in Live UAT, not here.
 
 Codified AFTER a hand-driven round 1 (founder 2026-09-20: the first UAT round
 is driven by hand, the script comes after) and rewritten for the 2026-09-21
 pivot (no question to answer, no waiting list: the word is added at once and a pill
-offers Undo for 3 seconds; hover does not pause it). What round 1 taught this
+offers Undo for 3 seconds; hover did not pause it, a 2026-09-27 founder
+decision RETIRED on 2026-11-17/18 by #4675: the window is now 12 seconds and
+hover pauses and resumes it). What round 1 taught this
 file still holds: the heard form is whatever the recogniser DELIVERED between
 two anchor words, never a fixed regex; the target must be a word the
 recogniser does not already know; `custom-words.json` is a dictionary, so
@@ -605,8 +610,8 @@ def clear_field(path):
 
 def undo_button():
     """The Undo pill's one button, by its accessibility label. The pill shows
-    for 3 seconds after admission, so callers wait on `learn_undo_shown` first
-    and look with a short deadline."""
+    for 12 seconds after admission (longer while hovered), so callers wait on
+    `learn_undo_shown` first and look with a short deadline."""
     pid = app_pid()
     if pid is None:
         return None
@@ -784,7 +789,7 @@ def alias_landed(pair, heard_text):
 
 
 def press_undo(label):
-    """Find and press the pill's Undo button. The window is 3 seconds from
+    """Find and press the pill's Undo button. The window is 12 seconds from
     admission, so the search deadline is short and a miss is the rig's
     timing (INSTRUMENT), not the product."""
     button = wait_for("the pill's Undo button", undo_button, deadline=1.5)
@@ -922,51 +927,161 @@ def case_punctuated_join(path):
 
 def park_pointer():
     """Park the pointer top-left, over nothing that reacts to a bare move, so
-    no case starts with it over the pill's place (the pill does not pause
-    under hover, but a screenshot of it should show it unobstructed)."""
+    no case starts with it over the pill's place (the pointer over the pill
+    freezes its countdown, and a screenshot of it should show it unobstructed)."""
     si.move_mouse(4, 4)
     time.sleep(0.2)  # settle: the move reaches the overlay before the next step
 
 
+def frontmost_pid():
+    """The frontmost application's pid, or None."""
+    from AppKit import NSDate, NSDefaultRunLoopMode, NSRunLoop, NSWorkspace
+    NSRunLoop.currentRunLoop().runMode_beforeDate_(
+        NSDefaultRunLoopMode, NSDate.dateWithTimeIntervalSinceNow_(0.05))
+    app = NSWorkspace.sharedWorkspace().frontmostApplication()
+    return int(app.processIdentifier()) if app else None
+
+
 def hover_pill():
-    """Put the pointer ON the pill. The 3-second window must not pause or
-    extend (founder: "hovering over pill does not stop the timer")."""
+    """Put the pointer ON the pill, only with a real Undo button and a valid
+    frame. The 12-second window freezes under the pointer and resumes with at
+    least 2 seconds left when it leaves (#4675; the 2026-09-27 "hovering over
+    pill does not stop the timer" decision is retired). Returns False when the
+    button or its frame is missing."""
     frame = pill_frame()
-    if frame is None:
+    if frame is None or not (frame["width"] > 0 and frame["height"] > 0):
         return False
     si.move_mouse(int(frame["x"] + frame["width"] / 2), int(frame["y"] + frame["height"] / 2))
     return True
 
 
+def ax_copy(element, attr):
+    """One raw AX attribute read: `(error, value)`. A seam so a test can inject
+    failures; `ui_helpers.get_attr` folds every error into None and so cannot
+    tell "no such attribute" from "the read failed"."""
+    from ApplicationServices import AXUIElementCopyAttributeValue
+    return AXUIElementCopyAttributeValue(element, attr, None)
+
+
+def ax_read(element, attr, label, optional):
+    """The attribute's value. `optional` attributes may be legitimately absent
+    (no value, unsupported); any other error, and any error on a required
+    attribute, is an INSTRUMENT failure that must never read as "absent"."""
+    from ApplicationServices import kAXErrorAttributeUnsupported, kAXErrorNoValue, kAXErrorSuccess
+    err, value = ax_copy(element, attr)
+    if err == kAXErrorSuccess:
+        return value
+    if optional and err in (kAXErrorNoValue, kAXErrorAttributeUnsupported):
+        return None
+    raise Aborted(f"{label}: the accessibility read of {attr} failed (AXError {err}); instrument failure")
+
+
+def undo_present_or_abort(label, expected_pid, max_depth=12):
+    """Whether the Undo button is there, as a read that can tell absence from
+    failure. Local to this case; `undo_button()` stays the lenient lookup.
+    The expected dev-app process must be the one running before and after the
+    walk, the window list must be read successfully, and every element on the
+    path must be readable; otherwise this raises an instrument failure instead
+    of returning False."""
+    if app_pid() != expected_pid:
+        raise Aborted(f"{label}: the dev app (pid {expected_pid}) is gone or was replaced; instrument failure")
+    app = get_ax_app(expected_pid)
+    windows = ax_read(app, "AXWindows", label, optional=False) or []
+
+    def walk(element, depth):
+        if ax_read(element, "AXRole", label, optional=True) == "AXButton":
+            for attr in ("AXDescription", "AXTitle"):
+                if ax_read(element, attr, label, optional=True) == "Undo":
+                    return True
+        if depth >= max_depth:
+            return False
+        return any(walk(child, depth + 1)
+                   for child in (ax_read(element, "AXChildren", label, optional=True) or []))
+
+    found = any(walk(window, 0) for window in windows)
+    if app_pid() != expected_pid:
+        raise Aborted(f"{label}: the dev app (pid {expected_pid}) exited during the read; instrument failure")
+    return found
+
+
+UNPAUSED_DWELL_S = 12.0     # the offer's dwell without hover
+RESUME_FLOOR_S = 2.0        # a hover exit leaves at least this much
+AX_SLACK_S = 0.5            # accessibility polling tolerance
+
+
 def case_expiry_under_hover(path):
-    """No Undo pressed: the pill leaves by itself at 3 seconds with the pointer
-    over it, and the word stays. The app logs no "pill ended" token; the
-    verdict is the Undo button's absence inside a wall-clock bound (3 s plus
-    0.5 s of accessibility slack) with no `learn_undone`, plus the word in
-    the file afterwards. The pointer must have reached the pill."""
+    """No Undo pressed. With TextEdit frontmost the pointer is held on the pill
+    PAST its unpaused 12 s deadline and the offer must still be there (the
+    countdown froze). The pointer then leaves; the offer must survive the 2 s
+    minimum (within AX polling tolerance) and disappear within a bounded
+    resumed dwell, with no `learn_undone` and the word still in the file. The
+    app logs no "pill ended" token, so the verdicts are the Undo button's
+    presence and absence through accessibility. The rail's own freeze and
+    resume are Live UAT by eye."""
+    label = "expiry-under-hover"
     pair = PAIRS["expiry-under-hover"]
-    mark, _, heard = dictate(path, "expiry-under-hover", pair)
-    apply_fix(path, "expiry-under-hover", heard, pair.correct)
+    mark, _, heard = dictate(path, label, pair)
+    apply_fix(path, label, heard, pair.correct)
     judged = wait_judged(mark)
     if not judged:
-        return check("expiry-under-hover", False, "no learn_judged after the fix")
-    state = wait_added(mark, "expiry-under-hover")
+        return check(label, False, "no learn_judged after the fix")
+    state = wait_added(mark, label)
     if state is None:
-        return check("expiry-under-hover", False, "judged but no learn_added")
+        return check(label, False, "judged but no learn_added")
     shown_at = time.monotonic()
+    expected_pid = app_pid()
+    if expected_pid is None:
+        raise Aborted(f"{label}: no dev app process before hover; instrument failure")
+    # Precondition: the button must exist before the pointer moves.
+    if not wait_for("the Undo button before hover", undo_button, deadline=2.0):
+        return check(label, False, "precondition failed: no Undo button before hover")
+    textedit_pid = find_app_pid("TextEdit")
+    if textedit_pid is None or frontmost_pid() != textedit_pid:
+        raise Aborted(f"{label}: TextEdit is not frontmost before hover; instrument failure")
+    hover_at = time.monotonic()
     hovered = hover_pill()
+    if not hovered:
+        return check(label, False, "precondition failed: no valid Undo button frame to hover")
     if not screenshot("expiry-under-hover-pill.png"):
-        raise Aborted("expiry-under-hover: the pill screenshot is missing or empty (visual proof required)")
-    gone = wait_for("the Undo button to leave", lambda: undo_button() is None, deadline=3.5)
-    left_after = time.monotonic() - shown_at
+        raise Aborted(f"{label}: the pill screenshot is missing or empty (visual proof required)")
+    # Hold past the unpaused deadline: the pill must outlive it under the pointer.
+    held_until = shown_at + UNPAUSED_DWELL_S + 1.5
+    present_through_hold = True
+    while time.monotonic() < held_until:
+        if frontmost_pid() != textedit_pid:
+            raise Aborted(f"{label}: TextEdit lost focus during the hover hold; instrument failure")
+        if not undo_present_or_abort(label, expected_pid):
+            present_through_hold = False
+            break
+        time.sleep(0.25)  # settle: poll interval between AX reads
+    hold_s = time.monotonic() - hover_at
+    if not present_through_hold:
+        park_pointer()
+        return check(label, False,
+                     f"the offer disappeared {hold_s:.2f}s into the hover, before the unpaused {UNPAUSED_DWELL_S:.0f}s deadline plus slack: hover did not freeze it")
+    # Leave, timestamped, then watch the resumed dwell.
     park_pointer()
+    exit_at = time.monotonic()
+    survived_minimum = True
+    gone_after = None
+    bound = UNPAUSED_DWELL_S + 1.0
+    while time.monotonic() - exit_at < bound:
+        present = undo_present_or_abort(label, expected_pid)
+        elapsed = time.monotonic() - exit_at
+        if not present:
+            gone_after = elapsed
+            break
+        time.sleep(0.25)  # settle: poll interval between AX reads
+    if gone_after is not None and gone_after < RESUME_FLOOR_S - AX_SLACK_S:
+        survived_minimum = False
     persisted = wait_for("the word still in custom-words.json", lambda: learned_alias(pair, heard), deadline=2.0)
     undone = has(mark, "learn_undone")
-    # `hovered` is REQUIRED: a run that never reached the pill would prove
-    # only that pills expire, not that hover leaves the window alone.
-    ok = hovered and bool(gone) and left_after <= 3.5 and not undone and bool(persisted)
-    return check("expiry-under-hover", ok,
-                 f"heard={heard!r} hovered={hovered} pill_gone={bool(gone)} left_after_s={left_after:.2f} undone={undone} persisted={bool(persisted)}")
+    ok = (present_through_hold and gone_after is not None and survived_minimum
+          and not undone and bool(persisted))
+    return check(label, ok,
+                 f"heard={heard!r} hovered={hovered} hover_hold_s={hold_s:.2f} "
+                 f"exit_to_gone_s={'none' if gone_after is None else f'{gone_after:.2f}'} "
+                 f"survived_2s_minimum={survived_minimum} undone={undone} persisted={bool(persisted)}")
 
 
 def your_words_window(app):

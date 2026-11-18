@@ -373,7 +373,11 @@ final class OverlayDirector {
     // itself so the bound is asserted without a sleep.
     scheduleReconciliation: @escaping (@escaping () -> Void) -> Void = { work in
       DispatchQueue.main.async(execute: work)
-    }
+    },
+    // A MECHANISM default, kept internal: the expiry clock reads the time to work
+    // out a deadline and a remainder, and a test that drives `scheduler` by hand
+    // must drive that reading by the same fake time (#4675).
+    now: @escaping () -> Date = Date.init
   ) {
     self.firstRenderSchedule = firstRenderSchedule
     self.selections = selections
@@ -389,7 +393,7 @@ final class OverlayDirector {
     self.position = position
     self.model = model
     self.expiryClock = PillExpiryClock(
-      schedule: scheduler, publishDwell: { [weak model] in model?.markDwellStarted($0) })
+      schedule: scheduler, now: now, publishDwell: { [weak model] in model?.markDwellStarted($0) })
     self.reducer = OverlayReducer(makeID: makeID)
   }
 
@@ -830,18 +834,21 @@ final class OverlayDirector {
       case .inPanelNotice: self?.handle(.inPanelNoticeExpiryFired(id), binding: .none)
       }
     }
-    // **Which of `PillExpiryClock`'s three meanings this plan carries, kept
-    // explicit rather than folded into the returned closure.** `.unchanged`
-    // and `.cancel` both hand back an indistinguishable no-op — `.cancel`'s
+    // **Which of `PillExpiryClock`'s meanings this plan carries, kept
+    // explicit rather than folded into the returned closure.** `.unchanged`,
+    // `.cancel` and `.pause` all hand back an indistinguishable no-op — their
     // real effect already ran INSIDE `prepare` above — so a coalescing
-    // decision (preserve a still-pending arm vs. clear it vs. replace it)
+    // decision (preserve a still-pending start vs. clear it vs. replace it)
     // cannot be read back out of `armExpiry` itself; it has to travel
-    // alongside it. `PillExpiryClock.swift:66` owns which case means what.
+    // alongside it. A `.pause` clears like a `.cancel`: a start prepared for an
+    // earlier arm must not begin under a hover. A `.resume` replaces like an
+    // `.arm`, and begins only once the host has accepted the presentation.
+    // `PillExpiryClock` owns which case means what.
     let expiryUpdate: PendingExpiryUpdate
     switch plan.expiryCommand {
     case .unchanged: expiryUpdate = .preserve
-    case .cancel: expiryUpdate = .clear
-    case .arm: expiryUpdate = .replace(armExpiry)
+    case .cancel, .pause: expiryUpdate = .clear
+    case .arm, .resume: expiryUpdate = .replace(armExpiry)
     }
 
     // **FAIL CLOSED: the recovery pill needs a payload the intent cannot carry.**

@@ -170,7 +170,7 @@ struct RecordingTransactionTests {
   func incumbentHoverDoesNotInvalidate() throws {
     var r = OverlayReducer()
     // **A HOVER-PAUSABLE incumbent, and that is the whole fixture.** `.engineReady`
-    // has `pausesOnHover: false`, so `reduceHover` returns `.noChange` and the
+    // has `hover: .ignore`, so `reduceHover` returns `.noChange` and the
     // hover never happens — this case passed with hover handling entirely broken.
     // Escape Recovery pauses on hover, so the event is genuinely accepted.
     let incumbent = try #require(
@@ -261,7 +261,7 @@ struct RecordingTransactionTests {
   ///
   /// **THE FIXTURE IS A HOVER-PAUSABLE PILL, and that is the whole test.** This
   /// case used `reducerWithLiveRecording()`, whose expiry is not
-  /// `.after(_, pausesOnHover: true)`, so `reduceHover` returned `.noChange` at
+  /// `.after(_, hover: .restartFull)`, so `reduceHover` returned `.noChange` at
   /// its guard and `state.set` was never reached. It was asserting that a
   /// revision does not move across an event that does nothing — true of any
   /// implementation, including one that advances the revision on every hover
@@ -290,10 +290,12 @@ struct RecordingTransactionTests {
     // merely "not unchanged" — `.unchanged` is what a dropped stale event returns
     // and is exactly the reading this precondition exists to refuse.
     let left = r.reduce(.hoverChanged(pill.id, false))
-    var rearmed = false
-    if case .arm = left.expiryCommand { rearmed = true }
     #expect(!r.state.isHovered, "the fixture never left the hovered state")
-    #expect(rearmed, "the hover-exit event did not re-arm: \(left.expiryCommand)")
+    // Escape Recovery keeps `.restartFull`: exit arms exactly its own 3 s, never
+    // a remainder (#4675 §3.1, pinned here because only its catalog row did).
+    #expect(
+      left.expiryCommand == .arm(id: pill.id, seconds: 3, target: .presentation),
+      "the hover-exit event did not re-arm the full 3 s: \(left.expiryCommand)")
     #expect(
       r.recordingReconciliationSnapshot.revision == before,
       "leaving a hover advanced the slot revision")

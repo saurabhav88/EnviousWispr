@@ -85,7 +85,7 @@ struct OverlayRootView: View {
           // achieve by destroying the window.
           .id(presentation.id)
           // Hover-pause was expressible from the first model —
-          // `OverlayExpiry.after(seconds:pausesOnHover:)` and
+          // `OverlayExpiry.after(seconds:hover:)` and
           // `OverlayEvent.hoverChanged` both existed — and nothing ever sent the
           // event, so the language chip's pause did nothing at all. A capability
           // with no producer reads as present in every grep of the vocabulary.

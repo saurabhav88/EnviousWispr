@@ -102,6 +102,12 @@ enum OverlayExpiryCommand: Equatable {
   /// Disarm and arm nothing: the presentation went away, or hover paused it.
   case cancel
   case arm(id: PresentationID, seconds: Double, target: OverlayExpiryTarget)
+  /// Freeze the armed dwell and keep what was left (`HoverPolicy.resume`). Unlike
+  /// `.cancel`, the remainder survives for a later `.resume`.
+  case pause
+  /// Start the frozen dwell again with `max(remaining, floorSeconds)` left. Like
+  /// `.arm`, it begins only once the host has accepted the presentation.
+  case resume(id: PresentationID, floorSeconds: Double)
 }
 
 /// What the director must do to make reality match the reducer's decision.
@@ -727,18 +733,19 @@ struct OverlayReducer {
   //   slot holds                 | event                              | result
   //   ---------------------------|------------------------------------|------------------------------------------
   //   pipeline busy              | learned                            | refused (noChange): the word is saved, no Undo
-  //   empty, idle                | learned (.learned phase)           | admitted: 3 s dwell, hover does not pause
+  //   empty, idle                | learned (.learned phase)           | admitted: 12 s dwell, hover pauses and resumes it
   //   empty, idle                | learned (result phase)             | refused: a result cannot create a pill
   //   another feature/notice     | learned                            | refused: never displace anything else
   //   this pill, .learned        | learned, same model                | noChange: identity, binding and dwell kept
-  //   ANOTHER learned pill       | learned                            | replaced: new id, fresh 3 s, one end effect for the outgoing .learned
+  //   ANOTHER learned pill       | learned                            | replaced: new id, fresh 12 s, one end effect for the outgoing .learned
   //   this pill, .learned        | result(pillID, presentation)       | morph: button gone, fresh 1.5 s (undone) or 3 s (undoError)
   //   this pill, result          | result / learned                   | noChange: a result never goes back
   //   this pill, any phase       | close(pillID)                      | slot emptied, expiry cancelled, no end effect
   //   anything else              | close(pillID)                      | noChange
   //   this pill, .learned        | expiry                             | slot emptied, one end effect
   //   this pill, result          | expiry                             | slot emptied, no end effect
-  //   this pill                  | hover                              | noChange: the dwell is not pausable
+  //   this pill, .learned        | hover in / out                     | pause / resume with at least 2 s left
+  //   this pill, result          | hover                              | noChange: the dwell is not pausable
   //   this pill, .learned        | undo(pillID) action                | delivered once to the binding; other ids dropped
   //   this pill, result          | undo action                        | dropped
   //   empty or a learned pill    | saveError                          | admitted / replaces the learned pill: 3 s notice, no button
@@ -797,7 +804,7 @@ struct OverlayReducer {
       id: shown.id, wordID: shown.wordID, canonical: shown.canonical, kind: shown.kind, phase: phase)
     let updated = PillDefinition(
       id: current.id, content: .correctionLearned(result),
-      expiry: .after(seconds: seconds, pausesOnHover: false),
+      expiry: .after(seconds: seconds, hover: .ignore),
       requestedWidth: current.requestedWidth, reservesFixedHeight: current.reservesFixedHeight)
     state.set(current: updated, isHovered: false)
     return OverlayPlan(
@@ -971,27 +978,37 @@ struct OverlayReducer {
 
   private mutating func reduceHover(_ id: PresentationID, _ hovering: Bool) -> OverlayPlan {
     guard isCurrent(id), let current = state.current else { return .noChange }
-    // **Only a hover-PAUSABLE presentation records hover at all.** The first
-    // version set `isHovered` unconditionally and only then checked
-    // `pausesOnHover`, so a stray hover over an ordinary notice suppressed its
+    // **Only a presentation whose policy reacts to hover records hover at all.**
+    // The first version set `isHovered` unconditionally and only then checked
+    // whether the dwell was pausable, so a stray hover over an ordinary notice suppressed its
     // expiry permanently — it would sit on screen until something replaced it.
     // Cloud review found it; no test reached it because every hover case in the
-    // suite used a pausable kind.
-    guard case .after(let seconds, true) = current.expiry, state.isHovered != hovering else {
+    // suite used a kind that reacts to hover.
+    guard case .after(let seconds, let policy) = current.expiry, state.isHovered != hovering
+    else { return .noChange }
+    switch policy {
+    case .ignore:
       return .noChange
+    case .restartFull:
+      state.set(current: current, isHovered: hovering)
+      // Hover-enter CANCELS the armed timer; leaving re-arms from FULL rather
+      // than resuming the remainder, matching both shipped hover-restarting
+      // pills (`EscapeRecoveryPillView.swift`, `LanguageChipView`).
+      return hovering
+        ? OverlayPlan(presentation: current, didChange: false, expiryCommand: .cancel)
+        : OverlayPlan(
+          presentation: current, didChange: false,
+          expiryCommand: .arm(id: current.id, seconds: seconds, target: .presentation))
+    case .resume(let floorSeconds):
+      state.set(current: current, isHovered: hovering)
+      // Hover-enter FREEZES the remainder and leaving continues it, with at
+      // least `floorSeconds` left. `PillExpiryClock` owns the arithmetic.
+      return hovering
+        ? OverlayPlan(presentation: current, didChange: false, expiryCommand: .pause)
+        : OverlayPlan(
+          presentation: current, didChange: false,
+          expiryCommand: .resume(id: current.id, floorSeconds: floorSeconds))
     }
-    state.set(current: current, isHovered: hovering)
-    // Leaving re-arms from FULL rather than resuming the remainder, matching
-    // both shipped hover-pausing pills (`EscapeRecoveryPillView.swift`,
-    // `LanguageChipView`).
-    // Hover-enter CANCELS the armed timer; leaving re-arms from FULL rather than
-    // resuming the remainder, matching both shipped hover-pausing pills
-    // (`EscapeRecoveryPillView.swift`, `LanguageChipView`).
-    return hovering
-      ? OverlayPlan(presentation: current, didChange: false, expiryCommand: .cancel)
-      : OverlayPlan(
-        presentation: current, didChange: false,
-        expiryCommand: .arm(id: current.id, seconds: seconds, target: .presentation))
   }
 
   private mutating func reduceExpiry(_ id: PresentationID) -> OverlayPlan {

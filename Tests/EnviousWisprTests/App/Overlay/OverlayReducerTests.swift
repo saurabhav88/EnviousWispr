@@ -330,11 +330,11 @@ struct OverlayReducerTests {
     #expect(r.state.current?.id == id, "a stray expiry closed the live recording pill")
   }
 
-  /// Hover must not suppress the expiry of a notice that is not hover-pausable.
+  /// Hover must not suppress the expiry of a notice whose policy is `.ignore`.
   /// The first version recorded hover unconditionally and only then checked
-  /// `pausesOnHover`, so a stray pointer over an ordinary notice left it on
+  /// whether the dwell reacts to hover, so a stray pointer over an ordinary notice left it on
   /// screen until something replaced it. No existing test reached it because
-  /// every hover case in this suite used a pausable kind.
+  /// every hover case in this suite used a kind that reacts to hover.
   @Test("hovering a non-pausable notice does not stop it expiring")
   func hoverDoesNotPauseAnOrdinaryNotice() {
     var r = Self.makeReducer()

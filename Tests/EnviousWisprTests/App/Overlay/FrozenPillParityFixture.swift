@@ -39,7 +39,9 @@ enum FrozenWidth: Equatable, Sendable {
 
 enum FrozenExpiry: Equatable, Sendable {
   case untilReplaced
-  case after(seconds: Double, pausesOnHover: Bool)
+  /// `hover` is what a pointer over the pill does, as a plain word so the oracle
+  /// names no production type: "ignore", "restartFull" or "resume(floor: N)".
+  case after(seconds: Double, hover: String)
 }
 
 struct FrozenAnnouncement: Equatable, Sendable {
@@ -157,7 +159,7 @@ enum FrozenPillParity {
         kind: "processing", text: "Copied. Press ⌘V to paste", secondary: nil,
         severity: "neutral", isMultiline: false, actionLabel: nil, actionCase: nil),
       width: .measured, fixedHeight: nil,
-      expiry: .after(seconds: 2.5, pausesOnHover: false),
+      expiry: .after(seconds: 2.5, hover: "ignore"),
       announcement: FrozenAnnouncement(text: "Text copied to clipboard", isHighPriority: true)),
 
     FrozenRow(
@@ -167,7 +169,7 @@ enum FrozenPillParity {
         severity: "neutral", isMultiline: true, actionLabel: "Grant",
         actionCase: "grantAccessibility"),
       width: .fixed(300), fixedHeight: nil,  // #3912: content height
-      expiry: .after(seconds: 6, pausesOnHover: false),
+      expiry: .after(seconds: 6, hover: "ignore"),
       announcement: FrozenAnnouncement(
         text: "Accessibility permission needed for auto-paste", isHighPriority: true)),
 
@@ -183,7 +185,7 @@ enum FrozenPillParity {
         kind: "notification", text: "Pasted without AI polish.", secondary: nil,
         severity: "warning", isMultiline: true, actionLabel: nil, actionCase: nil),
       width: .fixed(320), fixedHeight: nil,
-      expiry: .after(seconds: 2.5, pausesOnHover: false),
+      expiry: .after(seconds: 2.5, hover: "ignore"),
       announcement: FrozenAnnouncement(
         text: "Warning: Pasted without AI polish.", isHighPriority: false)),
 
@@ -195,7 +197,7 @@ enum FrozenPillParity {
         kind: "notification", text: "Transcription error. Try again.", secondary: nil,
         severity: "error", isMultiline: true, actionLabel: nil, actionCase: nil),
       width: .fixed(320), fixedHeight: nil,
-      expiry: .after(seconds: 3, pausesOnHover: false),
+      expiry: .after(seconds: 3, hover: "ignore"),
       announcement: FrozenAnnouncement(
         text: "Error: Transcription error. Try again.", isHighPriority: true)),
 
@@ -210,7 +212,7 @@ enum FrozenPillParity {
         secondary: nil, severity: "advisory", isMultiline: true, actionLabel: nil,
         actionCase: nil),
       width: .fixed(360), fixedHeight: nil,
-      expiry: .after(seconds: 8, pausesOnHover: false),
+      expiry: .after(seconds: 8, hover: "ignore"),
       announcement: FrozenAnnouncement(
         text:
           "Audio isn't capturing. Your lid may be closed, your headset muted, or there may be a hardware issue. Please check your microphone settings.",
@@ -224,7 +226,7 @@ enum FrozenPillParity {
         kind: "notification", text: "Microphone disconnected.", secondary: nil,
         severity: "distress", isMultiline: true, actionLabel: nil, actionCase: nil),
       width: .fixed(320), fixedHeight: nil,
-      expiry: .after(seconds: 2, pausesOnHover: false),
+      expiry: .after(seconds: 2, hover: "ignore"),
       announcement: FrozenAnnouncement(
         text: "Interruption: Microphone disconnected.", isHighPriority: true)),
 
@@ -233,7 +235,7 @@ enum FrozenPillParity {
     FrozenRow(
       label: "passiveChip", hasDefinition: true, contentTag: "languageChip", notice: nil,
       width: .fixed(340), fixedHeight: nil,
-      expiry: .after(seconds: 6, pausesOnHover: true),
+      expiry: .after(seconds: 6, hover: "restartFull"),
       announcement: FrozenAnnouncement(text: "Detected Spanish", isHighPriority: false)),
 
     // #3912 re-froze this row's box (founder-approved wrap design, 2026-10-17): it wraps at
@@ -245,7 +247,7 @@ enum FrozenPillParity {
         secondary: "Parakeet is warming up after a restart", severity: "neutral",
         isMultiline: false, actionLabel: nil, actionCase: nil),
       width: .fixed(320), fixedHeight: nil,
-      expiry: .after(seconds: 2, pausesOnHover: false),
+      expiry: .after(seconds: 2, hover: "ignore"),
       announcement: FrozenAnnouncement(
         text: "Getting dictation ready, one moment", isHighPriority: false)),
 
@@ -257,7 +259,7 @@ enum FrozenPillParity {
         kind: "ready", text: "Ready — press to dictate", secondary: nil, severity: "neutral",
         isMultiline: false, actionLabel: nil, actionCase: nil),
       width: .fixed(320), fixedHeight: nil,
-      expiry: .after(seconds: 1.5, pausesOnHover: false),
+      expiry: .after(seconds: 1.5, hover: "ignore"),
       announcement: FrozenAnnouncement(
         text: "Dictation ready. Press to start.", isHighPriority: true)),
 
@@ -270,7 +272,7 @@ enum FrozenPillParity {
         secondary: "Anything saved lands in History", severity: "neutral", isMultiline: true,
         actionLabel: "Discard", actionCase: "discardRecovery"),
       width: .fixed(320), fixedHeight: nil,
-      expiry: .after(seconds: 6, pausesOnHover: false),
+      expiry: .after(seconds: 6, hover: "ignore"),
       announcement: FrozenAnnouncement(
         text: "Recovering your last recording. Press Discard to skip.", isHighPriority: true)),
 
@@ -285,7 +287,7 @@ enum FrozenPillParity {
         kind: "ready", text: "Recovered your last recording", secondary: "Saved to History",
         severity: "neutral", isMultiline: false, actionLabel: nil, actionCase: nil),
       width: .fixed(320), fixedHeight: nil,
-      expiry: .after(seconds: 3, pausesOnHover: false),
+      expiry: .after(seconds: 3, hover: "ignore"),
       announcement: FrozenAnnouncement(
         text: "Recovered your last recording. Saved to History.", isHighPriority: true)),
 
@@ -316,7 +318,7 @@ enum FrozenPillParity {
     FrozenRow(
       label: "escapeRecovery", hasDefinition: true, contentTag: "escapeRecovery", notice: nil,
       width: .measured, fixedHeight: nil,
-      expiry: .after(seconds: 3, pausesOnHover: true),
+      expiry: .after(seconds: 3, hover: "restartFull"),
       announcement: FrozenAnnouncement(
         text: "Dictation cancelled. Press Undo to get it back, or find it in History.",
         isHighPriority: false)),
@@ -329,7 +331,7 @@ enum FrozenPillParity {
         kind: "importStatus", text: "Imported 12 words", secondary: nil, severity: "neutral",
         isMultiline: true, actionLabel: nil, actionCase: nil),
       width: .measured, fixedHeight: nil,
-      expiry: .after(seconds: 3, pausesOnHover: false),
+      expiry: .after(seconds: 3, hover: "ignore"),
       announcement: nil),
 
     // The accessibility path's two outcomes. The refused case draws the CLIPBOARD definition
@@ -341,7 +343,7 @@ enum FrozenPillParity {
         kind: "processing", text: "Copied. Press ⌘V to paste", secondary: nil,
         severity: "neutral", isMultiline: false, actionLabel: nil, actionCase: nil),
       width: .measured, fixedHeight: nil,
-      expiry: .after(seconds: 2.5, pausesOnHover: false),
+      expiry: .after(seconds: 2.5, hover: "ignore"),
       announcement: FrozenAnnouncement(
         text: "Copied. Press ⌘V to paste", isHighPriority: true)),
 
@@ -352,7 +354,7 @@ enum FrozenPillParity {
         severity: "neutral", isMultiline: true, actionLabel: "Grant",
         actionCase: "grantAccessibility"),
       width: .fixed(300), fixedHeight: nil,  // #3912: content height
-      expiry: .after(seconds: 6, pausesOnHover: false),
+      expiry: .after(seconds: 6, hover: "ignore"),
       announcement: FrozenAnnouncement(
         text: "Accessibility permission needed for auto-paste", isHighPriority: true)),
   ]

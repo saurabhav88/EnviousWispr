@@ -29,6 +29,11 @@ final class LearnedPillClock {
   private(set) var armed: [(deadline: Double, work: OverlayScheduledWork)] = []
   private(set) var armedSeconds: [Double] = []
 
+  /// The fake time as a `Date`, handed to the director so its expiry clock
+  /// reads the SAME time the scheduler is advanced by (#4675: remainder and
+  /// deadline arithmetic use `now`, which production reads from `Date`).
+  var date: Date { Date(timeIntervalSince1970: 1_000 + now) }
+
   var scheduler: OverlayScheduler {
     OverlayScheduler { [unowned self] seconds, body in
       let work = OverlayScheduledWork(body: body)
@@ -136,7 +141,8 @@ struct LearnedCorrectionPillCopyTests {
       CorrectionLearnedPillCopy.saveError(
         LearnedCorrectionSaveError(canonical: "Tuist", reason: .vocabularyWriteFailed))
         == "Couldn\u{2019}t save \u{201C}Tuist\u{201D}")
-    #expect(CorrectionLearnedPillCopy.learnedDwellSeconds == 4)
+    #expect(CorrectionLearnedPillCopy.learnedDwellSeconds == 12)
+    #expect(CorrectionLearnedPillCopy.hoverResumeFloorSeconds == 2)
     #expect(CorrectionLearnedPillCopy.undoneDwellSeconds == 1.5)
     #expect(CorrectionLearnedPillCopy.errorDwellSeconds == 3)
     #expect(CorrectionLearnedPillCopy.minimumScale == 0.5)
@@ -200,7 +206,7 @@ struct LearnedCorrectionPillReducerTests {
   }
 
   @Test(
-    "a learned pill is admitted on an idle, empty slot with a 4 s dwell that hover does not pause, measured width, and a spoken sentence"
+    "a learned pill is admitted on an idle, empty slot with a 12 s dwell that hover pauses and resumes with a 2 s floor, measured width, and a spoken sentence"
   )
   func admittedWhenIdleAndEmpty() throws {
     let id = PresentationID()
@@ -210,15 +216,58 @@ struct LearnedCorrectionPillReducerTests {
     #expect(plan.didChange)
     let shown = try #require(plan.presentation)
     #expect(shown.id == id && shown.content == .correctionLearned(model))
-    #expect(shown.expiry == .after(seconds: 4, pausesOnHover: false))
+    #expect(shown.expiry == .after(seconds: 12, hover: .resume(floorSeconds: 2)))
     #expect(shown.requestedWidth == .measured && shown.reservesFixedHeight == nil)
-    #expect(plan.expiryCommand == .arm(id: id, seconds: 4, target: .presentation))
+    #expect(plan.expiryCommand == .arm(id: id, seconds: 12, target: .presentation))
     #expect(plan.announcement?.isHighPriority == false)
     #expect(plan.announcement?.text == "Added \u{201C}Tuist\u{201D} to Dictionary. Undo available.")
     #expect(r.state.featureSlotIsAvailable == false, "no other feature displaces it")
-    // Hover is a no-op: the dwell is not pausable.
-    #expect(r.reduce(.hoverChanged(id, true)) == .noChange)
-    #expect(r.reduce(.hoverChanged(id, false)) == .noChange)
+    // Hover freezes the countdown and leaving resumes it; the clock owns the
+    // arithmetic, so the reducer only names the floor.
+    let entered = r.reduce(.hoverChanged(id, true))
+    #expect(entered.expiryCommand == .pause && entered.didChange == false)
+    #expect(r.reduce(.hoverChanged(id, true)) == .noChange, "a repeated enter is dropped")
+    let left = r.reduce(.hoverChanged(id, false))
+    #expect(left.expiryCommand == .resume(id: id, floorSeconds: 2) && left.didChange == false)
+    #expect(r.reduce(.hoverChanged(id, false)) == .noChange, "a repeated exit is dropped")
+    #expect(r.reduce(.hoverChanged(PresentationID(), true)) == .noChange, "a stale id is dropped")
+  }
+
+  @Test(
+    "a result is not hover-resumable, a paused offer is ended by an Escape Recovery pill, and a replacement arms a fresh 12 s"
+  )
+  func hoverPolicyAcrossTransitions() throws {
+    let id = PresentationID()
+    var r = OverlayReducer(makeID: { id })
+    let model = LearnedPillFixture.model()
+    _ = r.reduce(.correctionLearned(model))
+    _ = r.reduce(
+      .correctionLearnedResult(pillID: model.id, presentation: id, phase: .undone))
+    #expect(r.reduce(.hoverChanged(id, true)) == .noChange, "an Undone result ignores hover")
+
+    var ids = [id, PresentationID()]
+    var p = OverlayReducer(makeID: { ids.removeFirst() })
+    _ = p.reduce(.correctionLearned(model))
+    #expect(p.reduce(.hoverChanged(id, true)).expiryCommand == .pause)
+    let second = LearnedPillFixture.model(canonical: "Saira")
+    let replaced = p.reduce(.correctionLearned(second))
+    #expect(replaced.effects == [.correctionLearnedEnded(pillID: model.id, presentation: id)])
+    guard case .arm(_, let seconds, .presentation) = replaced.expiryCommand else {
+      Issue.record("the replacement did not arm: \(replaced.expiryCommand)")
+      return
+    }
+    #expect(seconds == 12, "the replacement inherited the paused remainder")
+    #expect(!p.state.isHovered, "the replacement inherited the hover")
+
+    var escapeIDs = [id, PresentationID()]
+    var e = OverlayReducer(makeID: { escapeIDs.removeFirst() })
+    _ = e.reduce(.correctionLearned(model))
+    _ = e.reduce(.hoverChanged(id, true))
+    let escape = e.reduce(.pipeline(.escapeRecovery(transcriptID: UUID())))
+    #expect(escape.effects.contains(.correctionLearnedEnded(pillID: model.id, presentation: id)))
+    var rearmed = false
+    if case .arm(_, let seconds, _) = escape.expiryCommand { rearmed = seconds == 3 }
+    #expect(rearmed, "Escape Recovery arms its own 3 s, not the paused offer's remainder")
   }
 
   @Test(
@@ -246,7 +295,7 @@ struct LearnedCorrectionPillReducerTests {
   }
 
   @Test(
-    "a different learned pill replaces the current one: new identity, fresh 4 s, one end effect for the outgoing offer; a same-pill repeat changes nothing"
+    "a different learned pill replaces the current one: new identity, fresh 12 s, one end effect for the outgoing offer; a same-pill repeat changes nothing"
   )
   func replacementAndRepeat() throws {
     var ids = [PresentationID(), PresentationID()]
@@ -263,7 +312,7 @@ struct LearnedCorrectionPillReducerTests {
     #expect(plan.didChange)
     let shown = try #require(plan.presentation)
     #expect(shown.id != firstID && shown.content == .correctionLearned(second))
-    #expect(plan.expiryCommand == .arm(id: shown.id, seconds: 4, target: .presentation))
+    #expect(plan.expiryCommand == .arm(id: shown.id, seconds: 12, target: .presentation))
     #expect(plan.effects == [.correctionLearnedEnded(pillID: first.id, presentation: firstID)])
     #expect(plan.announcement?.text == "\u{201C}Saira\u{201D} updated. Undo available.")
   }
@@ -320,7 +369,7 @@ struct LearnedCorrectionPillReducerTests {
       .correctionLearnedResult(pillID: model.id, presentation: id, phase: .undone))
     let shown = try #require(plan.presentation)
     #expect(shown.id == id && Self.pill(r)?.phase == .undone && Self.pill(r)?.id == model.id)
-    #expect(shown.expiry == .after(seconds: 1.5, pausesOnHover: false))
+    #expect(shown.expiry == .after(seconds: 1.5, hover: .ignore))
     #expect(plan.expiryCommand == .arm(id: id, seconds: 1.5, target: .presentation))
     #expect(
       r.reduce(.correctionLearnedResult(pillID: model.id, presentation: id, phase: .undoError))
@@ -383,7 +432,7 @@ struct LearnedCorrectionPillReducerTests {
     let shown = try #require(plan.presentation)
     #expect(shown.content == .correctionLearnedSaveError(error))
     #expect(
-      shown.expiry == .after(seconds: 3, pausesOnHover: false) && shown.requestedWidth == .measured)
+      shown.expiry == .after(seconds: 3, hover: .ignore) && shown.requestedWidth == .measured)
     #expect(plan.announcement?.text == "Couldn\u{2019}t save \u{201C}Tuist\u{201D}")
     #expect(
       e.reduce(.action(shown.id, .undoLearnedCorrection(pillID: UUID()))) == .noChange, "no button")
@@ -419,15 +468,21 @@ struct LearnedCorrectionPillDirectorTests {
     OverlayDirector, WindowlessOverlayHost
   ) {
     let host = WindowlessOverlayHost()
-    let d = OverlayDirector(
+    return (director(clock, log, host: host), host)
+  }
+
+  private func director(
+    _ clock: LearnedPillClock, _ log: Log, host: any OverlayWindowHosting
+  ) -> OverlayDirector {
+    OverlayDirector(
       host: host,
       scheduler: clock.scheduler,
       announce: { log.announcements.append($0) },
       livePreview: .disabled,
       grantAccessibility: {}, openMicrophoneSettings: {}, openMicrophoneHelp: {}, advisoryHint: { _ in nil },
       selections: { .shipped },
-      firstRenderSchedule: { $0() })
-    return (d, host)
+      firstRenderSchedule: { $0() },
+      now: { clock.date })
   }
 
   private func request(
@@ -445,7 +500,7 @@ struct LearnedCorrectionPillDirectorTests {
     return model
   }
 
-  @Test("the pill is on screen at 3.999 s after admission and gone at 4.000 s, reported ended once")
+  @Test("the pill is on screen at 11.999 s after admission and gone at 12.000 s, reported ended once")
   func undoWindow() throws {
     let clock = LearnedPillClock()
     let log = Log()
@@ -453,10 +508,10 @@ struct LearnedCorrectionPillDirectorTests {
     let model = LearnedPillFixture.model()
     let receipt = try #require(d.present(request(model, log)) { log.results.append($0) })
     #expect(log.results == [.presented(receipt)])
-    #expect(clock.armedSeconds == [4], "the dwell armed at admission, for exactly four seconds")
-    clock.advance(to: 3.999)
+    #expect(clock.armedSeconds == [12], "the dwell armed at admission, for exactly twelve seconds")
+    clock.advance(to: 11.999)
     #expect(shown(d)?.id == model.id && log.ended == 0)
-    clock.advance(to: 4.0)
+    clock.advance(to: 12.0)
     #expect(d.renderModel.state.presentation == nil)
     #expect(log.ended == 1 && log.undos == 0)
   }
@@ -495,9 +550,9 @@ struct LearnedCorrectionPillDirectorTests {
     clock.advance(to: 0.5)
     d.resolveLearnedCorrection(
       pillID: model.id, presentation: receipt.presentationID, phase: .undone)
-    #expect(clock.armedSeconds == [4, 1.5])
+    #expect(clock.armedSeconds == [12, 1.5])
     clock.advance(to: 1.999)
-    #expect(shown(d)?.phase == .undone, "the old 4 s deadline was cancelled")
+    #expect(shown(d)?.phase == .undone, "the old 12 s deadline was cancelled")
     clock.advance(to: 2.0)
     #expect(d.renderModel.state.presentation == nil, "1.5 s after the morph at 0.5 s")
     #expect(log.ended == 0, "a result is not an unanswered offer")
@@ -545,9 +600,9 @@ struct LearnedCorrectionPillDirectorTests {
     #expect(first.undos == 0, "the outgoing binding is gone")
     try host.sendUserActionThroughRoot(.undoLearnedCorrection(pillID: m2.id), for: r2)
     #expect(second.undos == 1)
-    clock.advance(to: 4.999)
-    #expect(shown(d)?.id == m2.id, "the second pill's own four seconds run from 1.0 s")
-    clock.advance(to: 5.0)
+    clock.advance(to: 12.999)
+    #expect(shown(d)?.id == m2.id, "the second pill's own twelve seconds run from 1.0 s")
+    clock.advance(to: 13.0)
     #expect(d.renderModel.state.presentation == nil && first.ended == 1 && second.ended == 1)
   }
 
@@ -565,11 +620,191 @@ struct LearnedCorrectionPillDirectorTests {
       d.present(request(model, second)) == nil,
       "a repeat keeps the incumbent's receipt; it is not a new admission")
     #expect(shown(d)?.id == model.id && d.isCurrent(receipt))
-    #expect(clock.armedSeconds == [4], "the repeat did not re-arm the dwell")
+    #expect(clock.armedSeconds == [12], "the repeat did not re-arm the dwell")
     try host.sendUserActionThroughRoot(.undoLearnedCorrection(pillID: model.id), for: receipt)
     #expect(first.undos == 1 && second.undos == 0)
-    clock.advance(to: 4)
+    clock.advance(to: 12)
     #expect(first.ended == 1 && second.ended == 0)
+  }
+
+  // MARK: Hover pause and resume (#4675)
+
+  /// Hosts the director like `WindowlessOverlayHost` and keeps the root the
+  /// director built, so a test can inject a hover event at the root's own
+  /// `sendEvent` callback (the windowless host has no hover entry point).
+  ///
+  /// **What this does and does not prove.** It proves the director, reducer and
+  /// clock react to `.hoverChanged` arriving at that callback, through the
+  /// published dwell and its progress share. It does NOT prove that SwiftUI's
+  /// `.onHover` fires, that a real pointer reaches the panel, or that the rail
+  /// is drawn frozen; those are Live UAT.
+  @MainActor
+  private final class HoverHost: OverlayWindowHosting {
+    private let inner = WindowlessOverlayHost()
+    private var root: OverlayRootView?
+
+    func present(
+      _ view: NSView, width: OverlayWidth, fixedHeight: CGFloat?, isFresh: Bool,
+      position: OverlayPillPosition
+    ) -> Bool {
+      root = (view as? NSHostingView<OverlayRootView>)?.rootView
+      return inner.present(
+        view, width: width, fixedHeight: fixedHeight, isFresh: isFresh, position: position)
+    }
+    func resizeCurrentPresentation(to size: CGSize) { inner.resizeCurrentPresentation(to: size) }
+    func hide() { inner.hide() }
+
+    func hover(_ entering: Bool, over receipt: PillReceipt) throws {
+      let hosted = try #require(root, "nothing was presented, so no root exists to hover")
+      hosted.sendEvent(.hoverChanged(receipt.presentationID, entering))
+    }
+  }
+
+  private func hoverDirector(_ clock: LearnedPillClock, _ log: Log) -> (OverlayDirector, HoverHost) {
+    let host = HoverHost()
+    return (director(clock, log, host: host), host)
+  }
+
+  @Test(
+    "a hover event at the root freezes the published dwell and its progress share, and a leave event resumes the ordinary remainder to a single end"
+  )
+  func hoverEventFreezesAndResumesThePublishedDwell() throws {
+    let clock = LearnedPillClock()
+    let log = Log()
+    let (d, host) = hoverDirector(clock, log)
+    let model = LearnedPillFixture.model()
+    let receipt = try #require(d.present(request(model, log)))
+
+    clock.advance(to: 5)
+    try host.hover(true, over: receipt)
+    let frozen = try #require(d.renderModel.state.dwell, "a hover published no frozen dwell")
+    #expect(frozen.pausedRemaining == 7 && frozen.totalSeconds == 12)
+    clock.advance(to: 100)
+    #expect(shown(d)?.id == model.id && log.ended == 0, "the paused offer expired under the pointer")
+    #expect(d.renderModel.state.dwell == frozen, "the frozen dwell moved while hovered")
+    #expect(
+      frozen.elapsedFraction(at: clock.date) == 5.0 / 12.0, "the rail share changed during hover")
+
+    try host.hover(false, over: receipt)
+    #expect(clock.armedSeconds == [12, 7], "leaving armed something other than the 7 s remainder")
+    let running = try #require(d.renderModel.state.dwell)
+    #expect(!running.isPaused && running.seconds == 7 && running.totalSeconds == 12)
+    #expect(running.elapsedFraction(at: clock.date) == 5.0 / 12.0)
+    clock.advance(to: 106.999)
+    #expect(shown(d)?.id == model.id && log.ended == 0)
+    clock.advance(to: 107)
+    #expect(d.renderModel.state.presentation == nil)
+    #expect(log.ended == 1 && log.undos == 0, "the offer must be reported ended exactly once")
+  }
+
+  @Test("a leave event with 0.5 s left resumes with the 2 s floor, and the published progress share moves back")
+  func hoverExitEventFloorRaisesTheRemainder() throws {
+    let clock = LearnedPillClock()
+    let log = Log()
+    let (d, host) = hoverDirector(clock, log)
+    let model = LearnedPillFixture.model()
+    let receipt = try #require(d.present(request(model, log)))
+
+    clock.advance(to: 11.5)
+    try host.hover(true, over: receipt)
+    let frozen = try #require(d.renderModel.state.dwell)
+    #expect(frozen.pausedRemaining == 0.5)
+    clock.advance(to: 61.5)
+    try host.hover(false, over: receipt)
+
+    #expect(clock.armedSeconds == [12, 2])
+    let running = try #require(d.renderModel.state.dwell)
+    #expect(running.totalSeconds == 12)
+    #expect(running.elapsedFraction(at: clock.date) == 10.0 / 12.0)
+    #expect(running.elapsedFraction(at: clock.date) < frozen.elapsedFraction(at: clock.date))
+    clock.advance(to: 63.499)
+    #expect(shown(d)?.id == model.id && log.ended == 0)
+    clock.advance(to: 63.5)
+    #expect(d.renderModel.state.presentation == nil && log.ended == 1)
+  }
+
+  @Test(
+    "a second learned word replaces a paused offer with a fresh 12 s, the first is reported ended once and its hover exit is dead"
+  )
+  func replacementOfAPausedOffer() throws {
+    let clock = LearnedPillClock()
+    let first = Log()
+    let second = Log()
+    let (d, host) = hoverDirector(clock, first)
+    let m1 = LearnedPillFixture.model(canonical: "Tuist")
+    let r1 = try #require(d.present(request(m1, first)))
+    clock.advance(to: 3)
+    try host.hover(true, over: r1)
+
+    let m2 = LearnedPillFixture.model(canonical: "Saira", kind: .updated)
+    let r2 = try #require(d.present(request(m2, second)))
+    #expect(first.ended == 1 && second.ended == 0)
+    #expect(clock.armedSeconds == [12, 12], "the replacement did not arm a fresh 12 s")
+    let fresh = try #require(d.renderModel.state.dwell)
+    #expect(fresh.id == r2.presentationID && !fresh.isPaused && fresh.seconds == 12)
+
+    // The outgoing pill's pointer leaving must not resume its discarded remainder.
+    try host.hover(false, over: r1)
+    #expect(clock.armedSeconds == [12, 12])
+    clock.advance(to: 14.999)
+    #expect(shown(d)?.id == m2.id, "the second pill's own twelve seconds run from 3.0 s")
+    clock.advance(to: 15)
+    #expect(d.renderModel.state.presentation == nil)
+    #expect(first.ended == 1 && second.ended == 1)
+  }
+
+  @Test("a recording preempts a paused offer, which is reported ended, and nothing resumes later")
+  func recordingPreemptsAPausedOffer() throws {
+    let clock = LearnedPillClock()
+    let log = Log()
+    let (d, host) = hoverDirector(clock, log)
+    let receipt = try #require(d.present(request(LearnedPillFixture.model(), log)))
+    clock.advance(to: 2)
+    try host.hover(true, over: receipt)
+
+    d.present(
+      .recording(
+        RecordingPillInput(
+          audioLevel: 0.2, audioLevelProvider: { 0.2 }, recordingElapsedProvider: { nil },
+          isLocked: false)))
+    #expect(log.ended == 1)
+    guard case .recording? = d.renderModel.state.presentation?.content else {
+      Issue.record("the recording did not take the slot")
+      return
+    }
+    let armed = clock.armedSeconds
+    try host.hover(false, over: receipt)
+    #expect(clock.armedSeconds == armed, "the preempted offer's remainder came back")
+    clock.advance(to: 500)
+    guard case .recording? = d.renderModel.state.presentation?.content else {
+      Issue.record("a dead offer's timer ended the recording")
+      return
+    }
+    #expect(log.ended == 1)
+  }
+
+  @Test("Escape Recovery preempts a paused offer, which is reported ended, and arms its own 3 s")
+  func escapeRecoveryPreemptsAPausedOffer() throws {
+    let clock = LearnedPillClock()
+    let log = Log()
+    let (d, host) = hoverDirector(clock, log)
+    let receipt = try #require(d.present(request(LearnedPillFixture.model(), log)))
+    clock.advance(to: 2)
+    try host.hover(true, over: receipt)
+
+    let payload = CancelUndoPayload(
+      transcriptID: UUID(), targetApp: nil, targetElement: nil, targetWindow: nil,
+      takeFacts: .testNone)
+    _ = d.present(.escapeRecovery(payload: payload, onPaste: { _ in }))
+
+    #expect(log.ended == 1)
+    guard case .escapeRecovery? = d.renderModel.state.presentation?.content else {
+      Issue.record("Escape Recovery did not take the slot")
+      return
+    }
+    #expect(clock.armedSeconds == [12, 3], "Escape Recovery inherited the paused remainder")
+    let dwell = try #require(d.renderModel.state.dwell)
+    #expect(!dwell.isPaused && dwell.seconds == 3 && dwell.totalSeconds == 3)
   }
 
   @Test(

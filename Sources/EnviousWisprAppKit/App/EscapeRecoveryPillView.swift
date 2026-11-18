@@ -113,8 +113,8 @@ struct EscapeRecoveryPillView: View {
   }
 
   /// **The rail is a PICTURE of the director's dwell, and this view owns no
-  /// clock.** `PillCatalog` gives this pill `.after(seconds: 3, pausesOnHover:
-  /// true)`, `OverlayRootView` forwards hover so the reducer can cancel and
+  /// clock.** `PillCatalog` gives this pill `.after(seconds: 3, hover:
+  /// .restartFull)`, `OverlayRootView` forwards hover so the reducer can cancel and
   /// re-arm, and `PillExpiryClock` is the one thing that dismisses. This function
   /// only decides where the animation starts and how long it has left.
   private func scheduleExpiry() {
