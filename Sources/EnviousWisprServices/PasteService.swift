@@ -816,9 +816,10 @@ public enum PasteService {
     /// that reached the setter.
     ///
     /// Review finding, 2026-09-04: attaching it to the success path alone discarded it on the
-    /// two paths where the observation is MOST useful. A Tier 1 write that returned an error,
-    /// and a decline after the reads, both hand delivery to the fallback — and that fallback
-    /// delivery is measurable, with a before-image already in hand. Reporting those as
+    /// two paths where the observation is MOST useful. A Tier 1 write that returned an error
+    /// (which, since #4664, may also have landed and be verified), and a decline after the
+    /// reads, can both hand delivery to the fallback — and that fallback delivery is
+    /// measurable, with a before-image already in hand. Reporting those as
     /// `no_before_image` would have excluded exactly the uncertain cases the instrument exists
     /// for. **Whether the SETTER ran is a separate question, answered by `writeCall`.**
     package var copiesBeforeImage: CopiesBeforeImage?
@@ -943,24 +944,27 @@ public enum PasteService {
     return .unverifiable
   }
 
-  /// Turn one Tier 1 setter call into its result, for BOTH setter answers (#4664).
+  /// Turn one Tier 1 setter call into its result, whatever the setter answered (#4664).
   ///
-  /// The setter's return code is not evidence of what landed: Telegram returns
-  /// `kAXErrorFailure` (-25200) from `AXSelectedText` and applies the write anyway, and
-  /// trusting that error is what pasted every Telegram dictation a second time. So every
-  /// ordinary answer goes through the same two-sided read-back as a success
-  /// (`classifyInsertOutcome`), and `writeCall` keeps the setter's own answer only as a
-  /// record.
+  /// The setter's return code is not evidence of what landed. Telegram returns
+  /// `kAXErrorFailure` (-25200) from `AXSelectedText` and applies the write anyway (#4664),
+  /// and Chrome acts on an `AXEnhancedUserInterface` set that returns `kAXErrorNotImplemented`
+  /// (accessibility-macos.md, #3286). So the FIELD decides: every answer that leaves the
+  /// element addressable reads it back and goes through the same two-sided evidence rule as
+  /// a success (`classifyInsertOutcome`). The return code only breaks a tie, when the field
+  /// cannot prove either way:
   ///
-  /// Two answers skip the read-back, and `readProbe` is a closure so they provably perform
-  /// no read:
-  /// - `.cannotComplete`: the destination did not reply in time, more AX calls would hold
-  ///   the main thread against the same stalled app, and a write that timed out may still
-  ///   land. It is unverifiable, which never pastes again.
-  /// - `.invalidUIElement`: the element was already gone when the setter ran (an app that
-  ///   rebuilds its text box), so the write had nowhere to land and reading the dead element
-  ///   proves nothing. It is `.noMutation`, so the key paste and its window gate (#3961)
-  ///   still decide whether the replacement box gets the text, as before #4664.
+  /// - `.success` / `.failure` (the app's own generic "did not succeed", Telegram's answer):
+  ///   an unprovable result stays `.unverifiable`, which never pastes again.
+  /// - Any other refusal (`.attributeUnsupported`, `.notImplemented`, `.illegalArgument`,
+  ///   `.apiDisabled`, ... and any value a future SDK adds): an unprovable result is
+  ///   `.noMutation`, so the key paste and its window gate (#3961) decide, as before #4664.
+  /// - Two answers skip the read entirely, and `readProbe` is a closure so they provably do:
+  ///   `.cannotComplete` (the destination did not reply in time; more AX calls would hold the
+  ///   main thread against the same stalled app, and a timed-out write may still land) is
+  ///   `.unverifiable`; `.invalidUIElement` (the element was already gone, an app that rebuilt
+  ///   its text box; the write had nowhere to land and the dead element cannot be read) is
+  ///   `.noMutation`.
   internal static func finishAccessibilityWrite(
     setterError: AXError,
     attemptedText: String,
@@ -972,15 +976,24 @@ public enum PasteService {
     let setterSucceeded = setterError == .success
     let outcome: AXInsertOutcome
     switch setterError {
-    case .cannotComplete: outcome = .unverifiable
-    case .invalidUIElement: outcome = .noMutation
-    default: outcome = classifyInsertOutcome(readProbe())
+    case .cannotComplete:
+      outcome = .unverifiable
+    case .invalidUIElement:
+      outcome = .noMutation
+    case .success, .failure:
+      outcome = classifyInsertOutcome(readProbe())
+    default:
+      // A refusal: the field still decides, and only an unprovable result falls back to
+      // today's key paste.
+      let proven = classifyInsertOutcome(readProbe())
+      outcome = proven == .unverifiable ? .noMutation : proven
     }
     let writeCall: AXWriteCall =
       setterSucceeded
       ? .succeeded(attemptedText: attemptedText) : .failed(attemptedText: attemptedText)
-    // `set_failed` keeps its meaning: the setter refused AND the whole field is proven
-    // untouched. A recovered error (verified) carries no decline reason at all.
+    // `set_failed`: the setter answered an error and the cascade may paste: the field was
+    // proven untouched, or a refusal left it unprovable, or the element was gone. A recovered
+    // error (verified) carries no decline reason at all.
     let reason: AXDeclineReason? =
       !setterSucceeded && outcome == .noMutation ? .setFailed : declineReason(for: outcome)
 
