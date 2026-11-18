@@ -483,7 +483,8 @@ struct HistoryFilterBarLayoutTests {
       layoutMeasurements: 0, layoutArrangements: 0)
 
     @Test(
-      "focus followed at once by the first character costs the controls row and the layout nothing")
+      "focus followed at once by the first character reaches the query and the field and changes neither the layout nor the search frame"
+    )
     func focusThenFirstCharacter() throws {
       try withRig { rig in
         let searchFrame = try #require(rig.probe.frames["search"])
@@ -491,8 +492,9 @@ struct HistoryFilterBarLayoutTests {
         try focus(rig)
         try type("a", into: rig.field)
         try settle(rig.view, rig.counts, rig.results)
-        // The first edit, before any counter is reset: the character reached the query and cost
-        // the controls row, the controls and the layout nothing.
+        // The first edit, before any counter is reset: the character reached the query and the
+        // field. Row rebuilds are not asserted here (focus may cost some); the assertions below
+        // cover the layout and the search frame only.
         #expect(
           rig.coordinator.requestedHistoryState(for: .dictations).query == "a",
           "the first character reached the query")
