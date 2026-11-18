@@ -402,17 +402,33 @@ struct HistoryDateButtonLabel: View {
       let _ = HistoryFilterBarProbe.current?.dateTitles.append((interval, title))
     #endif
     HistoryFilterButtonLabel(title: title)
-      .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in
-        generation += 1
-      }
-      .onReceive(NotificationCenter.default.publisher(for: .NSSystemTimeZoneDidChange)) { _ in
-        generation += 1
-      }
-      .onReceive(
-        NotificationCenter.default.publisher(for: NSLocale.currentLocaleDidChangeNotification)
-      ) { _ in
-        generation += 1
-      }
+      .modifier(HistoryDateClockObserver(isActive: interval != nil, generation: $generation))
+  }
+}
+
+/// Redraws the date button when the day, the time zone or the locale changes, but only while a
+/// date filter is set: "Any time" reads the same on every day.
+private struct HistoryDateClockObserver: ViewModifier {
+  let isActive: Bool
+  @Binding var generation: Int
+
+  @ViewBuilder func body(content: Content) -> some View {
+    if isActive {
+      content
+        .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in
+          generation += 1
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .NSSystemTimeZoneDidChange)) { _ in
+          generation += 1
+        }
+        .onReceive(
+          NotificationCenter.default.publisher(for: NSLocale.currentLocaleDidChangeNotification)
+        ) { _ in
+          generation += 1
+        }
+    } else {
+      content
+    }
   }
 }
 

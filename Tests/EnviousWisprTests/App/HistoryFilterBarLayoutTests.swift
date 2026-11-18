@@ -186,13 +186,39 @@ struct HistoryFilterBarLayoutTests {
   }
 
   #if DEBUG
-    /// One row needs: [leading and a gap], the spacer's gap, then the controls with their gaps.
-    private func oneRowWidth(_ spec: Spec) -> CGFloat {
+    /// Remembers each fixture's oracle width: finding it lays the original bar out many times.
+    @MainActor private final class FitWidths { static var byName: [String: CGFloat] = [:] }
+
+    /// The narrowest width at which the ORIGINAL bar puts the controls on one lower row, found by
+    /// sweeping `OriginalBar` itself: coarse steps of 16 points upward from 60, then whole points
+    /// back through the last step. A width is "one lower row" when the date control is below the
+    /// search field and right of where the wrapped flow puts it. Nothing here repeats
+    /// production's arithmetic.
+    private func oneRowWidth(_ spec: Spec) throws -> CGFloat {
+      if let known = FitWidths.byName[spec.name] { return known }
+      let frames = Frames()
+      let old = host(
+        OriginalBar(spec: spec, frames: frames).environment(\.layoutDirection, .leftToRight),
+        width: 60)
       let gap = DesignSpacing.md
-      let controls =
-        [spec.date.width, spec.tabFilter?.width, spec.selection.width].compactMap { $0 }
-      let controlsWidth = controls.reduce(0, +) + gap * CGFloat(controls.count - 1)
-      return (spec.leading.map { $0.width + gap } ?? 0) + gap + controlsWidth
+      func lowerRow(at width: CGFloat) -> Bool {
+        old.frame = NSRect(x: 0, y: 0, width: width, height: 300)
+        old.layoutSubtreeIfNeeded()
+        guard let search = frames.rects["search"], let date = frames.rects["date"],
+          date.minY >= search.maxY
+        else { return false }
+        let flowX = frames.rects["leading"].map { $0.maxX + gap } ?? 0
+        return date.minX > flowX + 0.01
+      }
+      var coarse: CGFloat = 60
+      while coarse < 2000, lowerRow(at: coarse) == false { coarse += 16 }
+      try #require(
+        coarse < 2000 && lowerRow(at: coarse),
+        "\(spec.name): original lower row was never observed")
+      var width = max(60, coarse - 16)
+      while width < coarse, lowerRow(at: width) == false { width += 1 }
+      FitWidths.byName[spec.name] = width
+      return width
     }
 
     @Test(
@@ -203,7 +229,7 @@ struct HistoryFilterBarLayoutTests {
       HistoryFilterBarProbe.current = probe
       defer { HistoryFilterBarProbe.current = nil }
       for spec in Self.specs {
-        let threshold = oneRowWidth(spec)
+        let threshold = try oneRowWidth(spec)
         var comparedBelow = 0
         var comparedAtOrAbove = 0
         for width in [threshold - 40, threshold - 1, threshold, threshold + 1, threshold + 40] {
@@ -456,31 +482,8 @@ struct HistoryFilterBarLayoutTests {
       rowBodies: 0, measurements: 0, leadingBuilds: 0, searchFrameChanged: false,
       layoutMeasurements: 0, layoutArrangements: 0)
 
-    /// What the focus alone, and the focus followed at once by the first character, cost the
-    /// controls row. Printed so the log says which of the two causes a first-key rebuild.
-    private func report(_ label: String, _ cost: Cost) {
-      print(
-        "FIRSTKEY \(label): row builds \(cost.rowBodies), controls measurements \(cost.measurements), leading builds \(cost.leadingBuilds), layout measurements \(cost.layoutMeasurements), layout arrangements \(cost.layoutArrangements), search frame changed \(cost.searchFrameChanged)"
-      )
-    }
-
-    @Test("focusing the empty search field: what it costs the controls row (reported)")
-    func focusAlone() throws {
-      try withRig { rig in
-        let searchFrame = try #require(rig.probe.frames["search"])
-        let fieldFrame = rig.field.frame
-        try focus(rig)
-        try settle(rig.view, rig.counts, rig.results)
-        let cost = cost(rig, searchFrame: searchFrame, fieldFrame: fieldFrame)
-        report("focus alone", cost)
-        #expect(
-          rig.coordinator.requestedHistoryState(for: .dictations).query.isEmpty,
-          "focus alone writes no query")
-      }
-    }
-
     @Test(
-      "focus followed at once by the first character: what it costs the controls row (reported)")
+      "focus followed at once by the first character costs the controls row and the layout nothing")
     func focusThenFirstCharacter() throws {
       try withRig { rig in
         let searchFrame = try #require(rig.probe.frames["search"])
@@ -488,8 +491,21 @@ struct HistoryFilterBarLayoutTests {
         try focus(rig)
         try type("a", into: rig.field)
         try settle(rig.view, rig.counts, rig.results)
+        // The first edit, before any counter is reset: the character reached the query and cost
+        // the controls row, the controls and the layout nothing.
+        #expect(
+          rig.coordinator.requestedHistoryState(for: .dictations).query == "a",
+          "the first character reached the query")
+        #expect(rig.field.stringValue == "a")
         let first = cost(rig, searchFrame: searchFrame, fieldFrame: fieldFrame)
-        report("focus, then the first character", first)
+        // Focus may legitimately cost row work on its own (an earlier focus-only run did), so this
+        // case asserts what the first character must never change: the layout and the search
+        // frame. The strict zero for the first edit after focus settles is in
+        // `typingLeavesTheControlsAlone`.
+        #expect(
+          first.layoutMeasurements == 0 && first.layoutArrangements == 0
+            && first.searchFrameChanged == false,
+          "focus plus the first character changed layout: \(first)")
         reset(rig)
         for letter in "bcdefghij" {
           try type(String(letter), into: rig.field)
@@ -792,7 +808,8 @@ struct HistoryFilterBarLayoutTests {
 
     /// The widths at which the original wrapped bar puts an item on another row: the first width
     /// whose row positions differ from the one before it, below the one-row width.
-    private func wrapBreaks(_ spec: Spec) -> [CGFloat] {
+    private func wrapBreaks(_ spec: Spec) throws -> [CGFloat] {
+      let fit = try oneRowWidth(spec)
       let frames = Frames()
       let old = host(OriginalBar(spec: spec, frames: frames), width: 60)
       func signature() -> [CGFloat] {
@@ -801,7 +818,7 @@ struct HistoryFilterBarLayoutTests {
       var breaks: [CGFloat] = []
       var previous = signature()
       var width: CGFloat = 61
-      while width < oneRowWidth(spec) {
+      while width < fit {
         old.frame = NSRect(x: 0, y: 0, width: width, height: 300)
         old.layoutSubtreeIfNeeded()
         let now = signature()
@@ -820,7 +837,7 @@ struct HistoryFilterBarLayoutTests {
       HistoryFilterBarProbe.current = probe
       defer { HistoryFilterBarProbe.current = nil }
       for spec in Self.specs {
-        let breaks = wrapBreaks(spec)
+        let breaks = try wrapBreaks(spec)
         try #require(breaks.isEmpty == false, "\(spec.name): the original wraps somewhere")
         for edge in breaks {
           for width in [edge - 1, edge, edge + 1] {
@@ -847,7 +864,7 @@ struct HistoryFilterBarLayoutTests {
       HistoryFilterBarProbe.current = probe
       defer { HistoryFilterBarProbe.current = nil }
       let spec = Self.specs[2]  // wide Meetings: leading and the app filter
-      let fit = oneRowWidth(spec)
+      let fit = try oneRowWidth(spec)
       for (width, shape) in [
         (fit + 40, "oneRow"), (fit - 60, "wrapped"), (CGFloat(400), "wrapped"),
       ] {
@@ -952,6 +969,42 @@ struct HistoryFilterBarLayoutTests {
         name: NSLocale.currentLocaleDidChangeNotification, object: nil)
       pump(view)
       #expect(afterZone > before && mine(probe, today).count > afterZone)
+    }
+    @Test("an unfiltered date label does not redraw when the day, the zone or the locale changes")
+    func unfilteredDateLabelStaysQuiet() throws {
+      let probe = HistoryFilterBarProbe()
+      HistoryFilterBarProbe.current = probe
+      defer { HistoryFilterBarProbe.current = nil }
+      let calendar = Calendar.current
+      let now =
+        calendar.date(from: DateComponents(year: 2026, month: 11, day: 18, hour: 12)) ?? Date()
+      let active = HistoryDateFilter.today.interval(now: now, calendar: calendar)
+      let quiet = NSHostingView(rootView: HistoryDateButtonLabel(interval: nil, now: { now }))
+      let live = NSHostingView(rootView: HistoryDateButtonLabel(interval: active, now: { now }))
+      let first = window(hosting: quiet)
+      let second = window(hosting: live)
+      defer {
+        first.close()
+        second.close()
+      }
+      pump(quiet)
+      pump(live)
+      func draws(_ interval: DateInterval?) -> Int {
+        probe.dateTitles.filter { $0.interval == interval }.count
+      }
+      let unfilteredBefore = draws(nil)
+      let activeBefore = draws(active)
+      try #require(unfilteredBefore >= 1 && activeBefore >= 1, "both labels drew once")
+      for name in [
+        Notification.Name.NSCalendarDayChanged, .NSSystemTimeZoneDidChange,
+        NSLocale.currentLocaleDidChangeNotification,
+      ] {
+        NotificationCenter.default.post(name: name, object: nil)
+      }
+      pump(quiet)
+      pump(live)
+      #expect(draws(nil) == unfilteredBefore, "\"Any time\" did not redraw")
+      #expect(draws(active) > activeBefore, "control: a label with an active interval did redraw")
     }
   #endif
 
