@@ -28,6 +28,8 @@ final class HistoryCatalogSession {
   /// Page reads in flight (#4586 package I): an ordinary full pass lets the reads already
   /// waiting when it has its backend reach the catalog first.
   @ObservationIgnored private let pageReads = HistoryPageReads()
+  /// Test waiters for the registration and indexing tasks to end (`waitForIndexingForTesting`).
+  @ObservationIgnored private var idleWaiters: [UUID: CheckedContinuation<Void, Never>] = [:]
   /// Reset when a pass starts, so the first committed batch of each pass is marked once.
   @ObservationIgnored private var batchMarked = false
   private(set) var latestDictation: UUID?
@@ -125,6 +127,7 @@ final class HistoryCatalogSession {
       }.value
       guard let self, !Task.isCancelled else { return }
       registration = nil
+      defer { resumeIdleWaiters() }
       if let watch {
         changes.advanceWithoutNotice()
         diskWatch = watch
@@ -339,7 +342,10 @@ final class HistoryCatalogSession {
     guard indexing == nil, !pending.scopes.isEmpty else { return }
     indexing = Task(priority: .utility) { [weak self] in
       guard let self else { return }
-      defer { indexing = nil }
+      defer {
+        indexing = nil
+        resumeIdleWaiters()
+      }
       while !pending.scopes.isEmpty {
         let delta = pending
         pending = HistorySourceChanges.Delta()
@@ -458,20 +464,42 @@ final class HistoryCatalogSession {
   // periphery:ignore - The session integration test waits for the real indexing task.
   /// Waits until the watcher registration and every queued pass have finished, including
   /// feed events still in flight to the observation task.
+  /// Ends early when the calling task is cancelled (#4586 package I), so a stalled pass fails a
+  /// test at its time limit instead of hanging it: it waits on a continuation the registration
+  /// and indexing tasks resume when they end, never on their `value`.
   func waitForIndexingForTesting() async {
     var idleChecks = 0
-    while idleChecks < 3 {
-      if let registration {
-        await registration.value
-        idleChecks = 0
-      } else if let indexing {
-        await indexing.value
+    while idleChecks < 3, !Task.isCancelled {
+      if registration != nil || indexing != nil {
+        await waitUntilIdleStep()
         idleChecks = 0
       } else {
         await Task.yield()
         idleChecks += 1
       }
     }
+  }
+
+  private func waitUntilIdleStep() async {
+    let id = UUID()
+    await withTaskCancellationHandler {
+      await withCheckedContinuation { (waiter: CheckedContinuation<Void, Never>) in
+        if Task.isCancelled || (registration == nil && indexing == nil) {
+          waiter.resume()
+        } else {
+          idleWaiters[id] = waiter
+        }
+      }
+    } onCancel: {
+      Task { @MainActor [weak self] in self?.idleWaiters.removeValue(forKey: id)?.resume() }
+    }
+  }
+
+  private func resumeIdleWaiters() {
+    guard !idleWaiters.isEmpty else { return }
+    let waiting = idleWaiters
+    idleWaiters.removeAll()
+    for waiter in waiting.values { waiter.resume() }
   }
 
   // periphery:ignore - Tests check the one watcher is installed (#4598).
