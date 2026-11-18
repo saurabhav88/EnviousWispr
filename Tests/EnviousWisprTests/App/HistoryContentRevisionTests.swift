@@ -281,11 +281,19 @@ import Testing
       #expect(r.session.watcherIsInstalledForTesting == false)
       r.session.beforeWatcherInstallForTesting = nil
       order.release()
-      await r.session.waitForIndexingForTesting()
-      let again = try #require(await r.coordinator.historyResults(for: key(r)))
+      // Loops because the change notice reaches the session asynchronously.
+      var again: HistoryQueryResult
+      var done: (canPage: Bool, isFinal: Bool)
+      repeat {
+        await r.session.waitForIndexingForTesting()
+        again = try #require(await r.coordinator.historyResults(for: key(r)))
+        done = HistoryPaging.finality(
+          result: again, key: key(r), source: r.session.stableSourceRevision)
+        if done.isFinal { break }
+        try Task.checkCancellation()
+        await Task.yield()
+      } while true
       #expect(again.items.count == 4)
-      let done = HistoryPaging.finality(
-        result: again, key: key(r), source: r.session.stableSourceRevision)
       #expect(done.isFinal)
     }
     @Test("A watcher registered while a full pass waits for reads adds no second full scan")
@@ -358,8 +366,15 @@ import Testing
       #expect(f.coordinator.isCurrentHistoryResult(shown) == false)
       #expect(shown.catalogSourceRevision != f.session.stableSourceRevision)
       // The following read for the current request is current once indexing has settled.
-      await f.session.waitForIndexingForTesting()
-      let next = try #require(await f.coordinator.historyResults(for: key(f)))
+      // Loops because the change notice reaches the session asynchronously.
+      var next: HistoryQueryResult
+      repeat {
+        await f.session.waitForIndexingForTesting()
+        next = try #require(await f.coordinator.historyResults(for: key(f)))
+        if f.coordinator.isCurrentHistoryResult(next) { break }
+        try Task.checkCancellation()
+        await Task.yield()
+      } while true
       #expect(next.items.count == 5)
       #expect(f.coordinator.isCurrentHistoryResult(next))
     }
@@ -500,12 +515,19 @@ import Testing
         try Task.checkCancellation()
         await Task.yield()
       }
-      await f.session.waitForIndexingForTesting()
-      await f.session.waitForIndexingForTesting()
-      let final = try #require(await f.coordinator.historyResults(for: key(f)))
+      // Loops because the change notice reaches the session asynchronously.
+      var final: HistoryQueryResult
+      var emptyDone: (canPage: Bool, isFinal: Bool)
+      repeat {
+        await f.session.waitForIndexingForTesting()
+        final = try #require(await f.coordinator.historyResults(for: key(f)))
+        emptyDone = HistoryPaging.finality(
+          result: final, key: final.key, source: f.session.stableSourceRevision)
+        if emptyDone.isFinal { break }
+        try Task.checkCancellation()
+        await Task.yield()
+      } while true
       #expect(final.items.isEmpty)
-      let emptyDone = HistoryPaging.finality(
-        result: final, key: final.key, source: f.session.stableSourceRevision)
       #expect(emptyDone.canPage)
       #expect(emptyDone.isFinal)
 
