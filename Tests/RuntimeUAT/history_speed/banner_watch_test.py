@@ -20,13 +20,13 @@ class Clock:
 
 
 class WatchTest(unittest.TestCase):
-    def run_watch(self, shown_at, deadline=1000, start=0):
+    def run_watch(self, shown_at, deadline=1000, start=0, unreadable_at=()):
         clock = Clock(start=start)
         tick = {"n": 0}
 
         def read():
             tick["n"] += 1
-            return tick["n"] in shown_at
+            return None if tick["n"] in unreadable_at else tick["n"] in shown_at
         return banner_watch.watch(read, clock.now, lambda: None, deadline)
 
     def test_banner_seen_reports_first_time(self):
@@ -47,6 +47,12 @@ class WatchTest(unittest.TestCase):
         r = self.run_watch(set(), start=2000)
         self.assertFalse(r["watched_to_deadline"])
         self.assertEqual(r["reads"], 1)
+
+    def test_an_unreadable_window_is_not_a_banner_free_watch(self):
+        r = self.run_watch(set(), unreadable_at={5, 6})
+        self.assertFalse(r["watched_to_deadline"])
+        self.assertEqual(r["unreadable_reads"], 2)
+        self.assertIsNone(r["seen_at_ms"])
 
     def test_banner_matched_by_identifier(self):
         self.assertEqual(banner_watch.BANNER_IDENTIFIER, "history.recordingStorage.openSettings")

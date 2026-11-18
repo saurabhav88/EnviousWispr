@@ -223,7 +223,9 @@ def main():
     report["missing_reports"] = missing
     (run / "pilot.json").write_text(json.dumps(report, indent=1))
     print(json.dumps({k: v for k, v in report.items() if k != "fixture_writes"}, indent=1))
-    return 1 if missing else 0
+    banner_failed = [m for m, r in report.get("open_runs", {}).items() if r["exit"] != 0] \
+        if ("--storage-warning" in OWN or "--watch-banner" in OWN) else []
+    return 1 if missing or banner_failed else 0   # a banner diagnostic's own failing exit fails the pilot
 
 
 if __name__ == "__main__":
