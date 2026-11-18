@@ -490,7 +490,11 @@ final class OverlayDirector {
         "use presentRecording(...) — a recording's providers and its resolved design "
           + "must be installed in the same operation that presents it")
     }
-    if case .hoverChanged(_, let hovering) = event { pointerInsidePill = hovering }
+    // Only the CURRENT presentation's hover events speak for the pointer: a late exit from a replaced
+    // pill must not clear it while the pointer is still over the replacement.
+    if case .hoverChanged(let id, let hovering) = event, reducer.state.current?.id == id {
+      pointerInsidePill = hovering
+    }
     #if DEBUG
       // Supports hand checks of hover with a real mouse: shows that a pointer move reached the app
       // and which hover policy applied. DEBUG only; no text, ids only.

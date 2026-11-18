@@ -1175,6 +1175,41 @@ struct LearnedCorrectionPillDirectorTests {
     #expect(!result.paused && !result.shownLater)
   }
 
+  /// A to B to C, each a learned word replacing the last at a narrow frame, the pointer resting at
+  /// (150, 30). `afterB` runs once B is on screen and paused. Returns whether C was paused.
+  private func replaceTwice(afterB: (HoverHost, PillReceipt, PillReceipt) throws -> Void) throws -> Bool {
+    let clock = LearnedPillClock()
+    let log = Log()
+    let (d, host) = hoverDirector(clock, log, mouse: { CGPoint(x: 150, y: 30) })
+    let narrow = CGRect(x: 0, y: 0, width: 200, height: 60)
+    host.frame = CGRect(x: 0, y: 0, width: 400, height: 60)
+    let a = try #require(d.present(request(LearnedPillFixture.model(canonical: "Tuist"), log)))
+    try host.hover(true, over: a)
+    host.frameAfterNextPresent = narrow
+    let b = try #require(d.present(request(LearnedPillFixture.model(canonical: "Saurabh"), log)))
+    #expect(d.renderModel.state.dwell?.isPaused == true, "B (replacing the hovered A) should be paused")
+    try afterB(host, a, b)
+    host.frameAfterNextPresent = narrow
+    _ = try #require(d.present(request(LearnedPillFixture.model(canonical: "Vaish"), log)))
+    return d.renderModel.state.dwell?.isPaused == true
+  }
+
+  @Test("a STALE hover exit from a replaced pill does not clear the pointer: the next replacement is still paused")
+  func staleExitDoesNotClearThePointer() throws {
+    let cPaused = try replaceTwice { host, a, _ in
+      try host.hover(false, over: a)  // late exit naming A, which B already replaced
+    }
+    #expect(cPaused, "a stale exit for A cleared the flag while the pointer is still over the pills")
+  }
+
+  @Test("control: a hover exit for the CURRENT pill still clears the pointer, so the next replacement is not paused")
+  func currentExitClearsThePointer() throws {
+    let cPaused = try replaceTwice { host, _, b in
+      try host.hover(false, over: b)
+    }
+    #expect(!cPaused, "an exit for the current pill should have cleared the flag")
+  }
+
   @Test("a pill that appears fresh (the slot was emptied first) gets no replay, even with the pointer inside its frame")
   func freshAppearanceGetsNoReplay() throws {
     let clock = LearnedPillClock()
