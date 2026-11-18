@@ -99,6 +99,47 @@ struct PillExpiryClockTests {
     #expect(rig.dispatches.isEmpty, "a cancelled timer still dispatched an expiry")
   }
 
+  /// `OverlayScheduledWork.fire()` on a cancelled handle only proves the
+  /// scheduler's own cancel guard. This captures the scheduled CLOSURE through the
+  /// scheduler injection and invokes it directly, so the clock's own identity
+  /// check is what is under test. The same presentation id is armed twice: the id
+  /// cannot distinguish the arms, only the per-arm identity can.
+  @Test("an invalidated callback for the same presentation id dispatches nothing")
+  func invalidatedCallbackForSamePresentationDispatchesNothing() throws {
+    var bodies: [() -> Void] = []
+    var dispatches: [(id: PresentationID, target: OverlayExpiryTarget)] = []
+    let clock = PillExpiryClock(
+      schedule: OverlayScheduler { _, body in
+        bodies.append(body)
+        return OverlayScheduledWork(body: body)
+      },
+      now: { Date(timeIntervalSince1970: 1_000) },
+      publishDwell: { _ in })
+    let pill = Self.id()
+
+    clock.prepare(
+      .arm(id: pill, seconds: 3, target: .presentation), onExpiry: { dispatches.append(($0, $1)) })()
+    clock.prepare(
+      .arm(id: pill, seconds: 3, target: .presentation), onExpiry: { dispatches.append(($0, $1)) })()
+    #expect(bodies.count == 2, "each started arm schedules its own callback")
+
+    bodies[0]()
+    #expect(dispatches.isEmpty, "a replaced arm's callback dispatched for the same presentation")
+
+    // Positive control: the current callback dispatches, once.
+    bodies[1]()
+    bodies[1]()
+    #expect(dispatches.count == 1, "the current callback dispatched \(dispatches.count) times")
+    #expect(dispatches.first?.id == pill)
+
+    // Cancel invalidates a started arm immediately, before its timer is touched.
+    clock.prepare(
+      .arm(id: pill, seconds: 3, target: .inPanelNotice), onExpiry: { dispatches.append(($0, $1)) })()
+    _ = clock.prepare(.cancel, onExpiry: { dispatches.append(($0, $1)) })
+    bodies[2]()
+    #expect(dispatches.count == 1, "a cancelled arm's callback still dispatched")
+  }
+
   /// A start closure that has been superseded must not arm, and starting the live
   /// one twice must not arm twice.
   ///

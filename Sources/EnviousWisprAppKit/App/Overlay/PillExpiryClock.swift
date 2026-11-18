@@ -38,6 +38,21 @@ final class PillExpiryClock {
   /// one.
   private var pendingArmToken: UUID?
 
+  /// Which STARTED arm may still call out when its timer fires.
+  ///
+  /// **Separate from `pendingArmToken` on purpose.** The token answers "may this
+  /// prepared start begin?" and is consumed the moment it does; this answers "is
+  /// the callback that is now scheduled still the current one?" and lives until
+  /// that arm expires, is cancelled or is replaced. Each start mints a fresh
+  /// identity, so re-arming the SAME presentation id still invalidates the
+  /// earlier callback: the presentation id cannot tell the two arms apart, and
+  /// the scheduler's own cancel flag is the only other guard, which a captured
+  /// closure never consults.
+  ///
+  /// Cleared by cancel and by the next arm (before it starts), and consumed when
+  /// the callback dispatches, so a callback calls out at most once.
+  private var activeArmID: UUID?
+
   private let schedule: OverlayScheduler
   private let now: () -> Date
   private let publishDwell: (OverlayDwellWindow?) -> Void
@@ -75,6 +90,7 @@ final class PillExpiryClock {
 
     case .cancel:
       pendingArmToken = nil
+      activeArmID = nil
       armed?.cancel()
       armed = nil
       publishDwell(nil)
@@ -83,6 +99,7 @@ final class PillExpiryClock {
     case .arm(let id, let seconds, let target):
       armed?.cancel()
       armed = nil
+      activeArmID = nil
       let token = UUID()
       pendingArmToken = token
       return { [weak self] in
@@ -93,7 +110,14 @@ final class PillExpiryClock {
         // it.
         self.publishDwell(
           OverlayDwellWindow(id: id, startedAt: self.now(), seconds: seconds))
-        self.armed = self.schedule.after(seconds) { onExpiry(id, target) }
+        let armID = UUID()
+        self.activeArmID = armID
+        self.armed = self.schedule.after(seconds) { [weak self] in
+          // Verified before dispatching the captured presentation and target.
+          guard let self, self.activeArmID == armID else { return }
+          self.activeArmID = nil
+          onExpiry(id, target)
+        }
       }
     }
   }
