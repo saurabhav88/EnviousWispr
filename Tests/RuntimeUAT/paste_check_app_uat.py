@@ -77,10 +77,9 @@ KEY_TIERS = p.KEY_TIERS  # the routes that run the landing check (one owner)
 
 
 def field_text(bundle_id):
-    """(identity, text) of the focused text field in `bundle_id`'s app, or None when unreadable.
+    """(element, text) of the focused text field in `bundle_id`'s app, or None when unreadable.
 
-    `identity` is the element's role, description and placeholder, so a count never compares two
-    different fields."""
+    The element itself is kept so a count never compares two different fields (`same_field`)."""
     from AppKit import NSRunningApplication
     running = NSRunningApplication.runningApplicationsWithBundleIdentifier_(bundle_id)
     if len(running) != 1:
@@ -91,15 +90,19 @@ def field_text(bundle_id):
     value = get_attr(focused, "AXValue")
     if not isinstance(value, str):
         return None
-    identity = tuple(str(get_attr(focused, a)) for a in
-                     ("AXRole", "AXDescription", "AXPlaceholderValue"))
-    return identity, str(value)
+    return focused, str(value)
 
 
 def delivered_text(take_log):
     """This take's delivered text from its app.log slice, or None unless exactly one dictation."""
     records = collect_dictations(take_log.splitlines())
     return final_text(records[0]) if len(records) == 1 else None
+
+
+def same_field(a, b):
+    """Whether two AX element references name the same element (CFEqual, not Python identity)."""
+    from CoreFoundation import CFEqual
+    return bool(CFEqual(a, b))
 
 
 def _norm(text):
@@ -110,7 +113,7 @@ def copies_of(sentence, before, after):
     """How many more times `sentence` (no final punctuation, any case, whitespace runs as one
     space) appears after the take. `before`/`after` are `field_text` results; None when either is
     unreadable or they name different fields."""
-    if sentence is None or before is None or after is None or before[0] != after[0]:
+    if sentence is None or before is None or after is None or not same_field(before[0], after[0]):
         return None
     core = _norm(sentence).rstrip(".!?").strip()
     if not core:
