@@ -316,19 +316,13 @@ struct PasteAccessibilityInsertionTests {
 
   // A refusal (any error other than failure, cannotComplete and invalidUIElement) still reads
   // the field: proof wins over the code (Chrome acts on a set that returns notImplemented).
-  // Only an unprovable field falls back to today's key paste.
-  static let refusals: [AXError] = [
-    .illegalArgument, .invalidUIElementObserver, .attributeUnsupported, .actionUnsupported,
-    .notificationUnsupported, .notImplemented, .notificationAlreadyRegistered,
-    .notificationNotRegistered, .apiDisabled, .noValue, .parameterizedAttributeUnsupported,
-    .notEnoughPrecision,
-  ]
-
-  @Test("A setter refusal with an unreadable field allows the key paste", arguments: refusals)
-  func setterRefusalUnprovableKeepsFallback(error: AXError) {
+  // Only an unprovable field falls back to today's key paste. Every refusal takes the same
+  // `default` branch, so one representative stands for them all.
+  @Test("A setter refusal with an unreadable field allows the key paste")
+  func setterRefusalUnprovableKeepsFallback() {
     var readCount = 0
     let result = PasteService.finishAccessibilityWrite(
-      setterError: error,
+      setterError: .notImplemented,
       attemptedText: "ZZ",
       payloadKind: .legacy,
       settability: nil,

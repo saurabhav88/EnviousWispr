@@ -965,6 +965,12 @@ public enum PasteService {
   ///   `.unverifiable`; `.invalidUIElement` (the element was already gone, an app that rebuilt
   ///   its text box; the write had nowhere to land and the dead element cannot be read) is
   ///   `.noMutation`.
+  ///
+  /// Known limit, shared with the success path: dictating exactly the text that is already
+  /// selected leaves the field byte-identical whether or not the write landed, so it reads
+  /// `.verified` and the key paste does not run. The visible text is the dictated text either
+  /// way; only the caret differs (the selection may stay). Telling the two apart needs an
+  /// after-read of the selection range. Reopen if a report shows it.
   internal static func finishAccessibilityWrite(
     setterError: AXError,
     attemptedText: String,
