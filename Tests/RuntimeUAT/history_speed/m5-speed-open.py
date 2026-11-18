@@ -161,15 +161,22 @@ def main():
         BANNER_WATCH_S after the spawn, watch for the recordings storage-warning banner and how far the
         list moved from where it was when the page was first confirmed (`start_y`). Accessibility reads,
         outside the list only (history_reader.find_outside_list)."""
-        seen_at, moved_to = None, start_y
+        seen_at, moved_to, reads, before_page = None, start_y, 0, False
         while ms(libc.mach_absolute_time() - spawned) < BANNER_WATCH_S * 1000:
-            if seen_at is None and hr.find_outside_list(window, lambda e, r: r == "AXStaticText" and str(
-                    ui.get_attr(e, "AXValue") or "").startswith(BANNER_PREFIX)):
+            shown = bool(hr.find_outside_list(window, lambda e, r: r == "AXStaticText" and str(
+                ui.get_attr(e, "AXValue") or "").startswith(BANNER_PREFIX)))
+            if shown and seen_at is None:
                 seen_at = round(ms(libc.mach_absolute_time() - spawned))
+                before_page = reads == 0   # already there at the first read: the page started below it
             moved_to = (ui.element_frame(area) or {}).get("y", moved_to)
+            reads += 1
             time.sleep(0.1)  # deadline-fallback: paced read inside the banner watch window
-        return {"seen_at_ms": seen_at, "list_y_at_page": start_y, "list_y_after": moved_to,
-                "jump_pt": None if start_y is None or moved_to is None else round(moved_to - start_y, 1)}
+        # No reads (the page came after the watch window) or a banner already shown at the first read
+        # leave the jump unknown, never a reassuring 0 (Codex review).
+        known = reads > 0 and not before_page and start_y is not None and moved_to is not None
+        return {"reads": reads, "seen_at_ms": seen_at, "banner_before_first_read": before_page,
+                "list_y_at_page": start_y, "list_y_after": moved_to,
+                "jump_pt": round(moved_to - start_y, 1) if known else None}
 
     def one_launch(index, rect, measured):
         """One launch; returns a sample record. `rect` is the capture rectangle or None (warm-up)."""
@@ -345,6 +352,8 @@ def main():
         banners = [s["banner"] for s in measured if s.get("banner")]
         report["banner_jump"] = {"samples": len(banners),
                                  "seen": sum(1 for b in banners if b["seen_at_ms"] is not None),
+                                 "watched": sum(1 for b in banners if b["reads"]),
+                                 "jump_unknown": sum(1 for b in banners if b["jump_pt"] is None),
                                  "seen_at_ms": sorted(b["seen_at_ms"] for b in banners if b["seen_at_ms"] is not None),
                                  "jump_pt": sorted(b["jump_pt"] for b in banners if b["jump_pt"] is not None)}
     p95 = report["launch_to_page_ms"].get("p95")
@@ -355,6 +364,9 @@ def main():
     else:
         verdict = "UNPROVEN"
     report["budget_verdict"] = verdict
+    if storage_warning:
+        # A labelled banner check, not a timing run: never published as an open-History number.
+        report["budget_verdict"] = "NOT A TIMING RUN (storage-warning banner check)"
     report["conditions_end"] = load_tools.machine_conditions()
     report["problems"] = problems
     (out / "report.json").write_text(json.dumps(report, indent=1))
