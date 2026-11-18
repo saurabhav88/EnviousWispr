@@ -35,3 +35,15 @@ def banner_jump(polls):
         record["list_y_before"], record["list_y_after"] = before[-1], after[0]
         record["jump_pt"] = round(after[0] - before[-1], 1)
     return record
+
+
+def read_poll(read_banner, read_y):
+    """One poll: banner, then list y, then the banner again. If the two banner reads differ the banner
+    appeared (or went) between them, so the y may belong to either layout: it is invalid (None) and
+    `shown` takes the second read. Returns (shown, y)."""
+    before = read_banner()
+    y = read_y()
+    after = read_banner()
+    if before != after:
+        return after, None
+    return after, y

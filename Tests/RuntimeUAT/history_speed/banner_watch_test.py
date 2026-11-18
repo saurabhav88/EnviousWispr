@@ -44,6 +44,26 @@ class BannerJumpTest(unittest.TestCase):
         self.assertIsNone(banner_watch.banner_jump([])["jump_pt"])
 
 
+class StraddlingPollTest(unittest.TestCase):
+    def test_banner_appearing_between_the_reads_invalidates_the_position(self):
+        banner = iter([False, True])   # absent at the first read, present at the second
+        self.assertEqual(banner_watch.read_poll(lambda: next(banner), lambda: 376), (True, None))
+
+    def test_stable_poll_keeps_the_position(self):
+        self.assertEqual(banner_watch.read_poll(lambda: False, lambda: 311), (False, 311))
+        self.assertEqual(banner_watch.read_poll(lambda: True, lambda: 376), (True, 376))
+
+    def test_straddling_poll_never_gives_a_false_zero(self):
+        # reviewer's case: the banner appears mid-poll and the list y is already the shifted 376
+        banner = iter([False, True])
+        shown, y = banner_watch.read_poll(lambda: next(banner), lambda: 376)
+        polls = [(2900, False, 311), (3000, shown, y), (3100, True, 376)]
+        self.assertEqual(banner_watch.banner_jump(polls)["jump_pt"], 65)
+        # with no valid read before the straddling poll the jump is not measured, never 0
+        alone = banner_watch.banner_jump([(3000, shown, y), (3100, True, 376)])
+        self.assertIsNone(alone["jump_pt"])
+
+
 class SummarizerExclusionTest(unittest.TestCase):
     def summarize(self, extra):
         with tempfile.TemporaryDirectory() as d:

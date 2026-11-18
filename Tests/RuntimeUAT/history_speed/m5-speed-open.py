@@ -171,8 +171,8 @@ def main():
         confirmation is a poll that shows it with nothing before it (jump not measured)."""
         polls = []
         while not polls or ms(libc.mach_absolute_time() - spawned) < BANNER_WATCH_S * 1000:
-            shown = banner_watch.find_banner(hr, ui, window)
-            y = first_y if not polls else (ui.element_frame(area) or {}).get("y")
+            shown, y = banner_watch.read_poll(lambda: banner_watch.find_banner(hr, ui, window),
+                                              lambda: first_y if not polls else (ui.element_frame(area) or {}).get("y"))
             polls.append((round(ms(libc.mach_absolute_time() - spawned)), shown, y))
             time.sleep(0.1)  # deadline-fallback: paced read inside the banner watch window
         return banner_watch.banner_jump(polls)
