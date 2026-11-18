@@ -1071,8 +1071,30 @@ def undo_present_or_abort(label, expected_pid, max_depth=12):
 
 UNPAUSED_DWELL_S = 12.0     # the offer's dwell without hover
 RESUME_TOLERANCE_S = 1.5    # AX polling tolerance on the dismissal deadline
-MAX_SIGHTING_LAG_S = 1.0    # first sighting of the button may trail learn_undo_shown by this much
+MAX_ADMISSION_BRACKET_S = 1.5  # the admission instant must be known to within this
 MAX_SCAN_S = 1.0            # a longer AX scan around the deadline cannot show when the pill left
+
+
+LOG_STAMP = re.compile(r"\[(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:[+-]\d\d:\d\d|Z))\]")
+
+
+def log_stamp_monotonic(mark, token, clock_offset):
+    """The app.log timestamp of the FIRST line since `mark` containing `token` (written like
+    `[2026-11-18T12:42:17-06:00]`, whole seconds), as a monotonic-clock value: epoch seconds minus
+    `clock_offset` (time.time() - time.monotonic() captured once). None when no such line or no
+    parsable stamp, never a guess."""
+    for line in log_since(mark).split("\n"):
+        if token not in line:
+            continue
+        found = LOG_STAMP.search(line)
+        if not found:
+            return None
+        try:
+            stamp = datetime.fromisoformat(found.group(1).replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        return stamp.timestamp() - clock_offset
+    return None
 
 
 def case_expiry_unhovered(path):
@@ -1087,27 +1109,35 @@ def case_expiry_unhovered(path):
     app: the cursor stays obscured and adding delta fields did not help."""
     label = "expiry-unhovered"
     pair = PAIRS["expiry-under-hover"]
+    clock_offset = time.time() - time.monotonic()  # wall clock minus monotonic, captured once
     mark, _, heard = dictate(path, label, pair)
     apply_fix(path, label, heard, pair.correct)
     if not wait_judged(mark):
         return check(label, False, "no learn_judged after the fix")
     if wait_added(mark, label) is None:
         return check(label, False, "judged but no learn_added")
-    # `wait_added` returns as soon as it sees `learn_undo_shown` (polled every 0.25 s; app.log
-    # stamps only have 1 s resolution), so this instant is the pill's admission as observed.
-    admitted_seen_at = time.monotonic()
+    # `wait_added` returns as soon as it sees `learn_undo_shown` (polled every 0.25 s).
+    observed_at = time.monotonic()
     expected_pid = app_pid()
     if expected_pid is None:
         raise Aborted(f"{label}: no dev app process before the wait; instrument failure")
     if not wait_for("the Undo button", undo_button, deadline=2.0):
         return check(label, False, "precondition failed: no Undo button after learn_added")
-    shown_at = time.monotonic()
-    # The 12 s are counted from the first sighting of the button, so a late first sighting would
-    # make a correct dwell look short. A lag over MAX_SIGHTING_LAG_S is inconclusive, never a verdict.
-    sighting_lag = shown_at - admitted_seen_at
-    if sighting_lag > MAX_SIGHTING_LAG_S:
-        raise Aborted(f"{label}: the Undo button was first seen {sighting_lag:.2f}s after learn_undo_shown "
-                      f"was observed (limit {MAX_SIGHTING_LAG_S:.1f}s); the 12 s clock would start late; "
+    shown_at = time.monotonic()  # the end of the first sighting: the pill existed by then
+    # BRACKET the admission instant instead of trusting one point. Lower bound: the
+    # learn_undo_shown line's own app.log stamp (1 s resolution, so floored; nothing is
+    # earlier than its second), moved onto the monotonic clock by the offset taken at case
+    # start. Upper bound: the earlier of when the script observed the line and the end of the
+    # first sighting scan (a button found during a scan existed by the scan's end).
+    admit_lower = log_stamp_monotonic(mark, "learn_undo_shown", clock_offset)
+    if admit_lower is None:
+        raise Aborted(f"{label}: the learn_undo_shown line has no readable app.log timestamp; "
+                      "the admission instant cannot be bracketed; instrument failure")
+    admit_upper = min(observed_at, shown_at)
+    if admit_upper - admit_lower > MAX_ADMISSION_BRACKET_S:
+        raise Aborted(f"{label}: the admission instant is only known to within "
+                      f"{admit_upper - admit_lower:.2f}s (limit {MAX_ADMISSION_BRACKET_S:.1f}s: the line "
+                      "was read or the pill first found too long after it was logged); "
                       "inconclusive; instrument failure")
     textedit_pid = find_app_pid("TextEdit")
     if textedit_pid is None or frontmost_pid() != textedit_pid:
@@ -1115,15 +1145,21 @@ def case_expiry_unhovered(path):
     if not capture_pill("expiry-unhovered-pill.png", label=label, expected_pid=expected_pid):
         raise Aborted(f"{label}: the pill capture failed, is stale, or the pill was gone right after it "
                       "(visual proof required); instrument failure")
-    # Interval reasoning, never a stamp taken after a scan. Each scan is timed [start, end] on the
-    # monotonic clock. A PRESENT result proves the pill existed somewhere inside the scan, so
-    # for "still there late enough" only the scan START counts. An ABSENT result proves it was
-    # gone by the scan END, so for "gone in time" only the END counts. A scan longer than
-    # MAX_SCAN_S around the deadline, or intervals that cannot decide, are INSTRUMENT
-    # (inconclusive), never PASS or FAIL.
-    bound = UNPAUSED_DWELL_S + RESUME_TOLERANCE_S
-    lower_bound = UNPAUSED_DWELL_S - RESUME_TOLERANCE_S
-    last_present_start = 0.0  # the first-seen observation itself is a presence at 0
+    # Interval reasoning on ONE monotonic clock. A PRESENT scan proves presence somewhere inside
+    # it, so only its START counts for "still there"; an ABSENT scan proves the pill gone by its
+    # END. With the true admission A somewhere in [admit_lower, admit_upper]:
+    #   PASS needs presence started at >= admit_upper + lower_dwell (so >= A + lower_dwell) and
+    #        absence ended at <= admit_lower + upper_dwell (so <= A + upper_dwell);
+    #   FAIL is certain only when an absent scan ended before admit_lower + lower_dwell (early
+    #        for every A) or a scan started after admit_upper + upper_dwell and still found it;
+    #   anything else, or a scan over MAX_SCAN_S around the deadline, is INSTRUMENT.
+    lower_dwell = UNPAUSED_DWELL_S - RESUME_TOLERANCE_S
+    upper_dwell = UNPAUSED_DWELL_S + RESUME_TOLERANCE_S
+    pass_present_after = admit_upper + lower_dwell
+    pass_absent_by = admit_lower + upper_dwell
+    fail_early_before = admit_lower + lower_dwell
+    fail_late_after = admit_upper + upper_dwell
+    last_present_start = None
     first_absent_end = None
     longest_scan = 0.0
     longest_in_window = 0.0
@@ -1132,15 +1168,18 @@ def case_expiry_unhovered(path):
         nonlocal longest_scan, longest_in_window
         if frontmost_pid() != textedit_pid:
             raise Aborted(f"{label}: TextEdit lost focus during the wait; instrument failure")
-        started = time.monotonic() - shown_at
+        started = time.monotonic()
         present = undo_present_or_abort(label, expected_pid)
-        ended = time.monotonic() - shown_at
+        ended = time.monotonic()
         longest_scan = max(longest_scan, ended - started)
-        if ended >= lower_bound:
+        if ended >= fail_early_before:
             longest_in_window = max(longest_in_window, ended - started)
         return present, started, ended
 
-    while first_absent_end is None and time.monotonic() - shown_at < bound:
+    # The first sighting itself is a presence (its scan started before shown_at; use shown_at,
+    # the conservative end, so it never counts as "late").
+    last_present_start = admit_lower  # trivially present at admission; far below any bound
+    while first_absent_end is None and time.monotonic() < fail_late_after:
         present, started, ended = scan_once()
         if present:
             last_present_start = started
@@ -1148,40 +1187,39 @@ def case_expiry_unhovered(path):
         else:
             first_absent_end = ended
     if first_absent_end is None:
-        # Past the bound with no absence yet: one more scan decides between "still there" (a scan
-        # that STARTED after the bound and found it: the dwell overran) and an undecidable end.
+        # Past the bound with no absence yet: one more scan decides between "still there" (it
+        # STARTED after the bound and found the pill: the dwell overran) and an undecidable end.
         present, started, ended = scan_once()
         if present:
             last_present_start = started
         else:
             first_absent_end = ended
-    detail = (f"heard={heard!r} sighting_lag_s={sighting_lag:.2f} "
-              f"last_present_start_s={last_present_start:.2f} "
-              f"first_absent_end_s={'none' if first_absent_end is None else f'{first_absent_end:.2f}'} "
-              f"longest_scan_s={longest_scan:.2f} expected_s={UNPAUSED_DWELL_S:.1f}±{RESUME_TOLERANCE_S:.1f}")
+
+    def rel(value):
+        return "none" if value is None else f"{value - shown_at:.2f}"
+    detail = (f"heard={heard!r} admit_lower_s={rel(admit_lower)} admit_upper_s={rel(admit_upper)} "
+              f"last_present_start_s={rel(last_present_start)} first_absent_end_s={rel(first_absent_end)} "
+              f"longest_scan_s={longest_scan:.2f} expected_s={UNPAUSED_DWELL_S:.1f}±{RESUME_TOLERANCE_S:.1f}"
+              " (all relative to the first sighting)")
     if longest_in_window > MAX_SCAN_S:
         raise Aborted(f"{label}: an accessibility scan around the deadline took {longest_in_window:.2f}s "
                       f"(limit {MAX_SCAN_S:.1f}s), so when the pill left is unknown; inconclusive; "
                       f"instrument failure ({detail})")
-    if first_absent_end is None:
-        persisted = wait_for("the word still in custom-words.json", lambda: learned_alias(pair, heard), deadline=2.0)
-        return check(label, False, detail + f" persisted={bool(persisted)}: the pill was still there after {bound:.1f}s")
-    if first_absent_end > bound and last_present_start >= lower_bound:
-        raise Aborted(f"{label}: the pill was first proven gone at {first_absent_end:.2f}s, after the "
-                      f"{bound:.1f}s bound; it may have left in time; inconclusive; instrument failure ({detail})")
-    if first_absent_end < lower_bound:
-        decided_early = True   # proven gone before the lower bound: the pill left early
-    elif last_present_start < lower_bound:
-        raise Aborted(f"{label}: the pill was last proven present at {last_present_start:.2f}s and proven "
-                      f"gone only at {first_absent_end:.2f}s, so it may have left before the "
-                      f"{lower_bound:.1f}s lower bound; inconclusive; instrument failure ({detail})")
-    else:
-        decided_early = False
     persisted = wait_for("the word still in custom-words.json", lambda: learned_alias(pair, heard), deadline=2.0)
     undone = has(mark, "learn_undone")
-    ok = (not decided_early and last_present_start >= lower_bound and first_absent_end <= bound
-          and not undone and bool(persisted))
-    return check(label, ok, detail + f" undone={undone} persisted={bool(persisted)}")
+    if first_absent_end is None:
+        # the final scan started after fail_late_after and found the pill
+        return check(label, False, detail + f" persisted={bool(persisted)}: the pill was still there "
+                     f"after {upper_dwell:.1f}s from admission")
+    if first_absent_end < fail_early_before:
+        return check(label, False, detail + f" persisted={bool(persisted)}: the pill was gone before "
+                     f"{lower_dwell:.1f}s from admission")
+    if last_present_start >= pass_present_after and first_absent_end <= pass_absent_by:
+        return check(label, not undone and bool(persisted),
+                     detail + f" undone={undone} persisted={bool(persisted)}")
+    raise Aborted(f"{label}: the scans cannot place the pill's dismissal inside "
+                  f"[{lower_dwell:.1f}s, {upper_dwell:.1f}s] of an admission known only to a bracket; "
+                  f"inconclusive; instrument failure ({detail})")
 
 
 def your_words_window(app):
