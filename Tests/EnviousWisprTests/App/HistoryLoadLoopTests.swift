@@ -116,6 +116,8 @@ struct HistoryLoadLoopTests {
   private final class Shown {
     var result: HistoryQueryResult?
     var checks = 0
+    /// Every result the retained verification itself stored (not a replacement read's page).
+    var verifierStores: [HistoryQueryResult] = []
     private var waiters: [UUID: CheckedContinuation<Void, Never>] = [:]
 
     func store(_ next: HistoryQueryResult) {
@@ -199,7 +201,10 @@ struct HistoryLoadLoopTests {
         shown.checks += 1
         return await coordinator.retainedHistoryResult(saved)
       },
-      store: { shown.store($0) })
+      store: {
+        shown.verifierStores.append($0)
+        shown.store($0)
+      })
     final class Done { var stamp: HistoryRetainedVerification.Stamp? }
     let done = Done()
     let running = RunningLoop()
@@ -300,15 +305,27 @@ struct HistoryLoadLoopTests {
     f.changes.externalChange(.transcript(first.key.id))
     f.changes.externalChange(.transcript(second.key.id))
 
-    // The loop reached its replacement read and every read is held: only the retained page's
-    // verification, run before that read, can have removed the rows.
+    // The loop reached its replacement read. A change notice arriving while the verification was
+    // checking files makes it correctly discard that answer, so release the read and let the next
+    // wake verify again; the verifier's own store must then lack both removed rows, whatever the
+    // replacement reads show.
     while !gate.holding {
       try Task.checkCancellation()
       await Task.yield()
     }
-    #expect(shown.result?.ids.contains(.transcript(first.key.id)) == false)
-    #expect(shown.result?.ids.contains(.transcript(second.key.id)) == false)
-    #expect(shown.result?.items.count == 28)
+    gate.open()
+    let lacksRemoved: (HistoryQueryResult) -> Bool = {
+      !$0.ids.contains(.transcript(first.key.id)) && !$0.ids.contains(.transcript(second.key.id))
+    }
+    while !shown.verifierStores.contains(where: lacksRemoved) {
+      try Task.checkCancellation()
+      await Task.yield()
+    }
+    let verified = try #require(
+      shown.verifierStores.first(where: lacksRemoved))
+    #expect(verified.items.count == 28)
+    #expect(!verified.ids.contains(.transcript(first.key.id)))
+    #expect(!verified.ids.contains(.transcript(second.key.id)))
 
     gate.open()
     writing = false
