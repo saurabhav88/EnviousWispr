@@ -350,6 +350,9 @@ struct CorrectionLearnedPillView: View {
   /// How far the rail has travelled, 0 to 1. Driven by `dwell`, never by a
   /// clock of its own — see `EscapeRecoveryPillView.progress` for why.
   @State private var progress: Double = 0
+  /// Which `followDwell` call may still start its animation. A deferred start
+  /// that finds a newer call has run does nothing.
+  @State private var followGeneration = 0
 
   var body: some View {
     CorrectionLearnedPillFace(
@@ -388,7 +391,10 @@ struct CorrectionLearnedPillView: View {
   /// moves the line back, which is the truth.
   private func followDwell() {
     guard let dwell else { return }
+    followGeneration += 1
+    let generation = followGeneration
     let plan = Self.railPlan(for: dwell, at: Date())
+    let movesBack = plan.start < progress
     var instant = Transaction()
     instant.disablesAnimations = true
     withTransaction(instant) { progress = plan.start }
@@ -396,7 +402,18 @@ struct CorrectionLearnedPillView: View {
       if !dwell.isPaused { withTransaction(instant) { progress = 1 } }
       return
     }
-    withAnimation(.linear(duration: over)) { progress = 1 }
+    guard movesBack else {
+      withAnimation(.linear(duration: over)) { progress = 1 }
+      return
+    }
+    // The rail has to move BACK first (a resume that was given more than was left). Setting the
+    // start and the animated end in one update can be coalesced into a single change, so the
+    // rail would keep filling from its old, nearly full position. The start is rendered now;
+    // the animation begins on the next main-queue turn, unless a newer dwell change ran first.
+    DispatchQueue.main.async {
+      guard followGeneration == generation else { return }
+      withAnimation(.linear(duration: over)) { progress = 1 }
+    }
   }
 }
 
