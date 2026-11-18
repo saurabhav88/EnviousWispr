@@ -705,6 +705,32 @@ def screenshot(name):
     return os.path.exists(path) and os.path.getsize(path) > 0
 
 
+PILL_CAPTURE_PAD = (300, 24, 60, 24)  # left, top, right, bottom around the Undo button's frame
+
+
+def capture_pill(name, timeout_s=10.0):
+    """Visual proof of the pill that cannot prompt or move focus: `screencapture -x -R` of a
+    region around the Undo button's AX frame (the pill is the capsule around it). No window
+    picker and no full-screen helper, so it cannot raise the screen-capture prompt that
+    steals TextEdit's focus. Returns True only for a non-empty file; the caller treats a
+    False as an instrument failure."""
+    frame = pill_frame()
+    if frame is None or not (frame["width"] > 0 and frame["height"] > 0):
+        return False
+    left, top, right, bottom = PILL_CAPTURE_PAD
+    x = max(0, int(frame["x"]) - left)
+    y = max(0, int(frame["y"]) - top)
+    width = int(frame["width"]) + left + right
+    height = int(frame["height"]) + top + bottom
+    path = os.path.join(run_dir, name)
+    try:
+        subprocess.run(["/usr/sbin/screencapture", "-x", "-R", f"{x},{y},{width},{height}", path],
+                       check=True, timeout=timeout_s, capture_output=True)
+    except Exception as error:
+        print(f"    (pill capture failed: {error})")
+    return os.path.exists(path) and os.path.getsize(path) > 0
+
+
 class PillNotAdmitted(Exception):
     """Judged and SAVED, but the overlay refused the Undo pill. After a mic
     retire in the same take that is the rig, not the product: the retire ends
@@ -1044,7 +1070,19 @@ def case_expiry_under_hover(path):
     ended" token, so the verdicts are the Undo button's presence and absence
     through accessibility. The 2 s floor is not exercised live (the remainder
     here is well above it; unit tests cover the floor), and the rail's own
-    freeze and resume are Live UAT by eye."""
+    freeze and resume are Live UAT by eye.
+
+    The pill's picture is taken ONCE, right after the button is first seen and before the
+    pre-hover wait, with a non-prompting region capture (`capture_pill`); it never runs inside
+    the timed hover hold. Every bound is measured from the first-seen instant on one monotonic
+    clock, so a slow capture shortens the pre-hover wait instead of shifting the verdict.
+
+    INSTRUMENT LIMIT (measured 2026-11-18): synthetic CGEvent mouse moves posted right after
+    synthetic keystrokes (this case types its fix) produce NO hover events in the app: the
+    cursor stays obscured and adding delta fields did not help, while a real mouse works
+    (founder check). A pill that expires "while hovered" right after typing is therefore not
+    proof the product ignores hover, and this case cannot tell that apart from a real
+    failure; confirm with a real mouse, or let the obscured cursor state clear first."""
     label = "expiry-under-hover"
     pair = PAIRS["expiry-under-hover"]
     mark, _, heard = dictate(path, label, pair)
@@ -1061,11 +1099,16 @@ def case_expiry_under_hover(path):
     # Precondition: the button must exist before the pointer moves.
     if not wait_for("the Undo button before hover", undo_button, deadline=2.0):
         return check(label, False, "precondition failed: no Undo button before hover")
-    # The countdown is measured from the moment the button was first seen.
+    # The countdown is measured from the moment the button was first seen, on this one clock.
     shown_at = time.monotonic()
     textedit_pid = find_app_pid("TextEdit")
     if textedit_pid is None or frontmost_pid() != textedit_pid:
         raise Aborted(f"{label}: TextEdit is not frontmost before hover; instrument failure")
+    # The visual proof, outside the timed hover check and without a prompt (see the docstring).
+    if not capture_pill("expiry-under-hover-pill.png"):
+        raise Aborted(f"{label}: the pill capture is missing or empty (visual proof required)")
+    if frontmost_pid() != textedit_pid:
+        raise Aborted(f"{label}: TextEdit lost focus during the pill capture; instrument failure")
     # Let the countdown run before hovering, so a resume has a remainder that
     # differs from a full restart. The offer must still be there when we arrive.
     while time.monotonic() < shown_at + PRE_HOVER_RUN_S:
@@ -1080,8 +1123,6 @@ def case_expiry_under_hover(path):
     hovered = hover_pill()
     if not hovered:
         return check(label, False, "precondition failed: no valid Undo button frame to hover")
-    if not screenshot("expiry-under-hover-pill.png"):
-        raise Aborted(f"{label}: the pill screenshot is missing or empty (visual proof required)")
     # Hold past the unpaused deadline: the pill must outlive it under the pointer.
     held_until = shown_at + UNPAUSED_DWELL_S + 1.5
     present_through_hold = True
