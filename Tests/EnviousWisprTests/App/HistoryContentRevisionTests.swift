@@ -92,6 +92,7 @@ import Testing
     @MainActor
     private final class ReadOrder {
       var events: [String] = []
+      var readRefused: Bool?
       private var gate: CheckedContinuation<Void, Never>?
       private(set) var holding = false
 
@@ -120,6 +121,22 @@ import Testing
         }
       }
 
+      /// Runs `work` in its own task and waits for it to finish, ending early (throwing) when
+      /// the test is cancelled, so a stalled read or pass fails the test instead of hanging it.
+      func untilFinished(_ work: @escaping @MainActor () async -> Void) async throws {
+        let id = "finished \(UUID().uuidString)"
+        let task = Task { @MainActor in
+          await work()
+          self.events.append(id)
+        }
+        do {
+          try await until(id)
+        } catch {
+          task.cancel()
+          throw error
+        }
+      }
+
       func untilHolding() async throws {
         while holding == false {
           try Task.checkCancellation()
@@ -137,7 +154,13 @@ import Testing
       f.session.beforePageCatalogForTesting = { await order.hold() }
       f.session.beforePageFenceForTesting = { order.events.append("catalog read") }
       let read = Task { try? await f.session.page(.init(tab: .dictations)) }
-      try await order.untilHolding()
+      do {
+        try await order.untilHolding()
+      } catch {
+        read.cancel()
+        order.release()
+        throw error
+      }
       f.session.beforePageCatalogForTesting = nil
       f.session.afterPassOpenForTesting = { whenPassOpens(read) }
       f.session.beforeReconcileForTesting = {
@@ -174,8 +197,8 @@ import Testing
       #expect(order.events.firstIndex(of: "catalog read")! < order.events.firstIndex(of: "reconcile")!)
       // The read finishes either way; the outside change it overlapped may refuse it (a valid
       // source-change refusal), which this ordering test does not judge.
-      _ = await read.value
-      await f.session.waitForIndexingForTesting()
+      try await order.untilFinished { _ = await read.value }
+      try await order.untilFinished { await f.session.waitForIndexingForTesting() }
     }
 
     @Test("A waiting page read that is cancelled lets the re-check go on")
@@ -188,8 +211,9 @@ import Testing
       let read = try await holdReadThenRequestPass(f, order) { read in read.cancel() }
       defer { order.release() }
       try await order.until("reconcile")
-      #expect(await read.value == nil)
-      await f.session.waitForIndexingForTesting()
+      try await order.untilFinished { order.readRefused = await read.value == nil }
+      #expect(order.readRefused == true)
+      try await order.untilFinished { await f.session.waitForIndexingForTesting() }
     }
 
     @Test("A page read across a content publish is kept, shown and not yet current")
