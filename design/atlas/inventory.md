@@ -291,13 +291,16 @@ Short messages that take the pill's place after or around a recording. Built fro
 **Bluetooth microphone.** A tall card (light in light mode, dark in dark mode): title "Bluetooth mic detected", three tips with round icons, a filled purple "Got it" button and an "Adjust settings" link, close X top right, rainbow line on the bottom edge.
 
 ## notice-escape-recovery
-**Escape Recovery.** "Dictation cancelled" with an "Undo" capsule button and a short countdown line along the bottom left. `CorrectionLearnedPillView` family.
+**Escape Recovery.** "Dictation cancelled" with an "Undo" capsule button and a short countdown line along the bottom left. `EscapeRecoveryPillFace`.
 
 ## notice-import-status
 **Import status.** Arrows icon, "Importing your words now. Check progress on the Dictionary page." `ImportStatusOverlayView`.
 
 ## notice-correction-learned
-**Word learned.** "Added “Tuist” to Dictionary" with an "Undo" capsule button and the countdown line. `CorrectionLearnedPillView`.
+**Word learned.** A pill with a round book icon, the word “Tuist” in bold over the small line "Added to dictionary", a filled "Undo" capsule button and a quiet round × button, with the rainbow countdown line along the bottom (drawn 40 percent of the way in this picture). × closes the pill and keeps the word. Stays 12 seconds, and waits while the pointer rests on it. `CorrectionLearnedPillFace` (`CorrectionLearnedPillView.swift`).
+
+## notice-correction-learned-removed
+**Word removed.** The result after Undo on an added word: one line, "“Tuist” removed", on the same pill with the book icon. No Undo, no × and no countdown line. `CorrectionLearnedPillFace`.
 
 ## notice-language-chip
 **Language chip.** Globe icon, "Detected Spanish. Lock it?", a filled blue "Lock" button and a quiet "Dismiss" button. `LanguageChipView`.
