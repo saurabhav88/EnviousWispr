@@ -21,11 +21,15 @@ enum HistoryPaging {
     return (canPage, canPage)
   }
 
-  /// An extension may be stored only for the live key and a page of the current, non-nil source.
+  /// An extension may be stored only for the live key and a page of the current, non-nil source
+  /// that carries day counts. An older page can come back without counts when a file fails
+  /// verification before the watcher reports the change; storing it would replace the good page
+  /// and, since paging needs counts, hide "Load more" until a refresh. Keeping the page is correct.
   static func extensionMayStore(
     _ next: HistoryQueryResult, liveKey: TranscriptCoordinator.HistoryQueryKey, source: UInt64?
   ) -> Bool {
     next.key == liveKey && source != nil && next.catalogSourceRevision == source
+      && next.catalogDayCounts != nil
   }
 
   /// The tab, search and filters a page was read for.

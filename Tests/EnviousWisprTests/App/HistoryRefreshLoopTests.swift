@@ -347,6 +347,10 @@ struct HistoryRefreshLoopTests {
     #expect(HistoryPaging.extensionMayStore(next, liveKey: world.key(), source: 5) == false)
     #expect(HistoryPaging.extensionMayStore(next, liveKey: live, source: 6) == false)
     #expect(HistoryPaging.extensionMayStore(next, liveKey: live, source: nil) == false)
+    let noCounts = try HistoryQueryResult(
+      key: world.key(), items: [], catalogSourceRevision: 5, catalogDayCounts: nil)
+    world.content = 0
+    #expect(HistoryPaging.extensionMayStore(noCounts, liveKey: noCounts.key, source: 5) == false)
   }
 
   @Test("An extension slot is released only by the request that owns it")
