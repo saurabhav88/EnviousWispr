@@ -59,6 +59,7 @@ enum DesignPartsSheets {
     "OnboardingButtonStyle": "controls",
     "SettingsSummaryCard": "cards",
     "EngineCard": "cards",
+    "CorrectionLearnedPillFace": "cards",
   ]
 
   static func sheet(_ name: String) -> AnyView? {
@@ -360,6 +361,30 @@ enum DesignPartsSheets {
             isSelected: false, onSelect: {})
         }
         .environment(\.settingsPR1Density, true)
+        LearnedPillFaceSample()
+      }
+    }
+  }
+
+  /// `CorrectionLearnedPillFace` at rest: the real face and copy, the palette of the sheet's own
+  /// appearance, and the countdown a fixed way along so every run draws the same picture.
+  private struct LearnedPillFaceSample: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+      VStack(alignment: .leading, spacing: 6) {
+        DesignPartsSheets.label("CorrectionLearnedPillFace")
+        CorrectionLearnedPillFace(
+          line: CorrectionLearnedPillCopy.line(
+            for: LearnedCorrectionPillModel(
+              id: UUID(uuidString: "4506A71A-0000-0000-0000-000000000002")!,
+              wordID: UUID(uuidString: "4506A71A-0000-0000-0000-000000000003")!,
+              canonical: "Tuist", kind: .added, phase: .learned)),
+          progress: 0.4,
+          palette: PillPalette.forScheme(colorScheme)
+        )
+        .fixedSize()
+        .allowsHitTesting(false)
       }
     }
   }
