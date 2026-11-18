@@ -23,6 +23,9 @@ final class HistoryCatalogSession {
   private(set) var showsUpdating = false
   @ObservationIgnored private var needsFullBuild = false
   @ObservationIgnored private var passCommittedRows = false
+  /// A rebuild or repair of a damaged or replaced catalog is under way: the label shows even
+  /// while `status` is `.unavailable` (the person is waiting on the repair, not on a failure).
+  @ObservationIgnored private var repairing = false
   /// The CONTENT revision (#4586 H1): advances only when catalog rows or source proofs changed,
   /// the catalog was replaced, indexing failed after possibly committing rows, or a pass
   /// certified a source revision. A status-only change (`updating`, `ready`, `unavailable`)
@@ -201,15 +204,16 @@ final class HistoryCatalogSession {
   /// after every write to `status` or either reason. Only a certifying publish ends the reasons
   /// (`publishProgress`).
   private func syncShowsUpdating() {
-    let next = status != .unavailable && (needsFullBuild || passCommittedRows)
+    let next = repairing || rebuildRequested || (status != .unavailable && (needsFullBuild || passCommittedRows))
     if showsUpdating != next { showsUpdating = next }
     #if DEBUG
       updatingStateForTesting?(status, showsUpdating)
     #endif
   }
 
-  private func markCatalogBuildNeeded() {
+  private func markCatalogBuildNeeded(repair: Bool = false) {
     needsFullBuild = true
+    if repair { repairing = true }
     syncShowsUpdating()
   }
 
@@ -263,7 +267,7 @@ final class HistoryCatalogSession {
       do {
         catalog = try HistoryCatalog(directory: directory, projectionContext: Self.projectionContext)
       } catch where HistoryCatalog.needsRebuild(error) {
-        await self?.markCatalogBuildNeeded()
+        await self?.markCatalogBuildNeeded(repair: true)
         try HistoryCatalog.discardFiles(in: directory)
         catalog = try HistoryCatalog(directory: directory, projectionContext: Self.projectionContext)
       }
@@ -397,6 +401,7 @@ final class HistoryCatalogSession {
     guard !rebuildRequested else { return }
     rebuildRequested = true
     needsFullBuild = true
+    repairing = true
     invalidate()
     pending.include(.unknown)
     indexIfNeeded()
@@ -438,7 +443,7 @@ final class HistoryCatalogSession {
           if rebuildRequested {
             rebuilding = true
             rebuildRequested = false
-            markCatalogBuildNeeded()
+            markCatalogBuildNeeded(repair: true)
             if let backend {
               try await backend.catalog.closeDatabase()
               self.backend = nil
@@ -494,12 +499,18 @@ final class HistoryCatalogSession {
         } catch is CancellationError {
           return
         } catch {
+          // A damaged catalog starts its repair label in the same turn as the error (#4586).
+          if HistoryCatalog.needsRebuild(error) {
+            rebuildRequested = true
+            needsFullBuild = true
+            repairing = true
+          }
           status = .unavailable
           syncShowsUpdating()
           // Content, not only status (#4586 H1): batches committed before the error may have
           // had their publishes throttled, and the error withdrew coverage.
           advanceContent()
-          if HistoryCatalog.needsRebuild(error) { rebuildRequested = true }
+
           scheduleRetry()
         }
       }
@@ -530,6 +541,7 @@ final class HistoryCatalogSession {
     if next == .ready, pass.revision != nil, !rebuildRequested {
       needsFullBuild = false
       passCommittedRows = false
+      repairing = false
     } else if pass.changedRows {
       passCommittedRows = true
     }

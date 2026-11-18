@@ -141,7 +141,8 @@ struct HistoryCatalogTests {
         project: project)
       let interrupted = Task {
         try await worker.reconcile { pass in
-          if pass.revision == nil {
+          // Only a committed batch counts: a detection signal (`changed == false`) comes first.
+          if pass.revision == nil, pass.changed {
             withUnsafeCurrentTask { $0?.cancel() }
           }
         }

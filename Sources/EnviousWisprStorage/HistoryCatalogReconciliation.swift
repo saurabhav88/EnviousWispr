@@ -94,6 +94,9 @@ package actor HistoryCatalogReconciliation {
     var unavailable = 0
     var changed = false
     var changedRows = false
+    // The first displayed-row difference found is reported once BEFORE the commit that applies it,
+    // so the screen can say so while the page is still missing the item (#4586).
+    var detectedRows = false
     for url in ordered {
       try Task.checkCancellation()
       let before = progress.entries[url.path]
@@ -106,6 +109,12 @@ package actor HistoryCatalogReconciliation {
         let entry = HistoryCatalog.SourceProgress(
           path: url.path, versions: snapshot.versions, key: projection?.summary.key)
         pending.append(Update(entry: entry, projection: projection))
+        if !detectedRows, projection != nil,
+          before?.key != entry.key || before?.versions != entry.versions
+        {
+          detectedRows = true
+          await onProgress(Pass(revision: nil, changed: false, changedRows: true))
+        }
       } catch {
         unavailable += 1
         // Preserve the last known key/proof. It remains ineligible while the source is
@@ -132,6 +141,7 @@ package actor HistoryCatalogReconciliation {
     let removed = Set(dropped.compactMap { progress.entries[$0]?.key }).subtracting(retainedKeys)
     for path in dropped { progress.remove(path) }
     if !dropped.isEmpty || !removed.isEmpty { changed = true }
+    if !removed.isEmpty, !detectedRows { await onProgress(Pass(revision: nil, changed: false, changedRows: true)) }
     let revision: String?
     if let beganAt, currentPaths == paths, currentPaths == Set(progress.entries.keys),
       (try? progress.entries.values.allSatisfy { entry in
