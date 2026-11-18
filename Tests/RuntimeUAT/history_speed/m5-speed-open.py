@@ -35,7 +35,10 @@ passes the app's own setting `recordingStorageWarningThreshold=none` in its laun
 preference is written): otherwise the warning banner appears 2.4-3.9 s after launch and pushes the
 page down about 65 pt. `--storage-warning` launches WITHOUT that argument and reports the banner
 (`banner_jump`: when it appeared and how far the list moved): a labelled check of a real
-user-visible jump, not a timing run. `--watch-banner` runs the same watch with the warning off.
+user-visible jump, not a timing run. `--watch-banner` runs the same watch with the warning off. Both
+are banner-only diagnostics: no frame recorder, no timing numbers, no budget verdict, and their own
+exit status (0 when the expectation holds: banner seen on every sample / never seen; 1 otherwise).
+The banner is matched by its accessibility identifier, and the list position is read in the same loop.
 
 Usage: python3 m5-speed-open.py <subject .app> <fixture home> <new out dir> --mode missing|existing
                                 [--samples 20] [--warmups 2] [--busy] [--control drop-row] [--storage-warning] [--watch-banner]
@@ -57,7 +60,6 @@ PAGE_DEADLINE_S = 60.0
 WINDOW_DEADLINE_S = 30.0
 HOLD_MS = 300
 BANNER_WATCH_S = 8.0               # the banner appeared 2.4-3.9 s after launch on the M1 (#4586)
-BANNER_PREFIX = "Recordings use about"
 COVERAGE_DEADLINE_S = 900   # 2026-11-15 measured 264.7 s to full coverage on the M5 (old build); M1 rebuild ~180 s
 BUDGET_MS = 300
 SCROLL_BAR = 20
@@ -86,6 +88,7 @@ def main():
     import ui_helpers as ui
     import fixture
     import history_reader as hr
+    import banner_watch
     import load_tools
     import search_check as check
     import search_frames
@@ -97,6 +100,10 @@ def main():
     control = option(argv, "--control")
     storage_warning = "--storage-warning" in argv
     watch = "--watch-banner" in argv   # watch for the banner with the warning OFF (proof it stays off)
+    banner_mode = storage_warning or watch
+    if storage_warning and watch:
+        print("--storage-warning and --watch-banner are separate checks; pick one", file=sys.stderr)
+        return 2
     if control not in (None, "drop-row"):
         print(f"unknown control {control}", file=sys.stderr)
         return 2
@@ -104,7 +111,7 @@ def main():
     truth = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(truth)
     recorder_bin = RUNTIME_UAT.parent.parent / "build" / "history_speed" / "frame_recorder"
-    if not recorder_bin.is_file():
+    if not banner_mode and not recorder_bin.is_file():
         raise SystemExit(f"build the frame recorder first: {recorder_bin}")
     if fixture.subject_identity(subject) != fixture.SUBJECT_BUNDLE_ID:
         raise SystemExit(f"{subject} is not the renamed measurement subject")
@@ -156,27 +163,19 @@ def main():
             raise RuntimeError(f"capture invalid: stopped by {header.get('stopped_by')}, error {header.get('stop_error')}")
         return header, frames
 
-    def watch_banner(window, area, spawned, start_y):
-        """Labelled jump check (`--storage-warning`, or `--watch-banner` with the warning off): until
-        BANNER_WATCH_S after the spawn, watch for the recordings storage-warning banner and how far the
-        list moved from where it was when the page was first confirmed (`start_y`). Accessibility reads,
-        outside the list only (history_reader.find_outside_list)."""
-        seen_at, moved_to, reads, before_page = None, start_y, 0, False
-        while ms(libc.mach_absolute_time() - spawned) < BANNER_WATCH_S * 1000:
-            shown = bool(hr.find_outside_list(window, lambda e, r: r == "AXStaticText" and str(
-                ui.get_attr(e, "AXValue") or "").startswith(BANNER_PREFIX)))
-            if shown and seen_at is None:
-                seen_at = round(ms(libc.mach_absolute_time() - spawned))
-                before_page = reads == 0   # already there at the first read: the page started below it
-            moved_to = (ui.element_frame(area) or {}).get("y", moved_to)
-            reads += 1
+    def watch_banner(window, area, spawned, first_y):
+        """Banner-only check: from page confirmation until BANNER_WATCH_S after the spawn, poll the banner
+        (by accessibility identifier, outside the list only: history_reader.find_outside_list) and the list
+        position TOGETHER in one loop, so a move between the two reads cannot be missed. The first poll
+        pairs the position read at confirmation with the first banner read, so a banner already there at
+        confirmation is a poll that shows it with nothing before it (jump not measured)."""
+        polls = []
+        while not polls or ms(libc.mach_absolute_time() - spawned) < BANNER_WATCH_S * 1000:
+            shown = banner_watch.find_banner(hr, ui, window)
+            y = first_y if not polls else (ui.element_frame(area) or {}).get("y")
+            polls.append((round(ms(libc.mach_absolute_time() - spawned)), shown, y))
             time.sleep(0.1)  # deadline-fallback: paced read inside the banner watch window
-        # No reads (the page came after the watch window) or a banner already shown at the first read
-        # leave the jump unknown, never a reassuring 0 (Codex review).
-        known = reads > 0 and not before_page and start_y is not None and moved_to is not None
-        return {"reads": reads, "seen_at_ms": seen_at, "banner_before_first_read": before_page,
-                "list_y_at_page": start_y, "list_y_after": moved_to,
-                "jump_pt": round(moved_to - start_y, 1) if known else None}
+        return banner_watch.banner_jump(polls)
 
     def one_launch(index, rect, measured):
         """One launch; returns a sample record. `rect` is the capture rectangle or None (warm-up)."""
@@ -184,7 +183,7 @@ def main():
         if mode == "missing":
             sample["catalog_deleted"] = fixture.reset_catalog(home)
         frames_path = out / f"open-{index}.jsonl"
-        recorder = start_recorder(frames_path, rect) if rect else None
+        recorder = start_recorder(frames_path, rect) if rect and not banner_mode else None
         pid = None
         try:
             pid = fixture.launch(subject, home, out / "app.log", storage_warning=storage_warning)
@@ -230,6 +229,10 @@ def main():
                 return sample
             sample["ax_confirm_ms"] = round(ms(confirmed - spawned), 1)
             y_at_page = (ui.element_frame(area) or {}).get("y")   # the jump check starts here
+            if banner_mode:   # banner-only: no hold, no capture, no timing
+                sample["banner"] = watch_banner(window, area, spawned, y_at_page)
+                sample["result"] = "banner"
+                return sample
             hold_end = time.monotonic() + HOLD_MS / 1000
             held = True
             while time.monotonic() < hold_end:
@@ -237,8 +240,6 @@ def main():
                     held = False
                 time.sleep(0.03)  # deadline-fallback: paced AX read inside the hold
             held_until = libc.mach_absolute_time()
-            if storage_warning or watch:
-                sample["banner"] = watch_banner(window, area, spawned, y_at_page)
             a, w = ui.element_frame(area), ui.element_frame(window)
             sample["list_rect"] = f"{int(a['x'])},{int(a['y'])},{int(a['width'] - SCROLL_BAR)},{int(a['height'])}"
             sample["window_frame"] = w
@@ -291,7 +292,7 @@ def main():
     fixture.refuse_existing_throwaway(real_home)
     production_before = fixture.export_domain(fixture.PRODUCTION_DOMAIN)
     report = {"mode": mode, "subject": str(subject), "home": str(home), "control": control,
-              "storage_warning": storage_warning,
+              "storage_warning": storage_warning, "watch_banner": watch,
               "budget_ms": BUDGET_MS, "answer_rows_checked": "newest Dictations, unfiltered",
               "conditions_start": load_tools.machine_conditions(), "samples": []}
     busy = load_tools.BusyLoad() if "--busy" in argv else None
@@ -301,19 +302,19 @@ def main():
         if busy:
             busy.__enter__()
         rect = None
-        for index in range(warmups):
+        for index in range(0 if banner_mode else warmups):
             sample = one_launch(index, None, False)
             report["samples"].append(sample)
             rect = sample.get("list_rect", rect)
             print(json.dumps({k: sample.get(k) for k in ("index", "result", "list_rect", "ax_confirm_ms")}), flush=True)
-        if rect is None:
+        if rect is None and not banner_mode:
             raise RuntimeError("warm-up never showed the page; cannot place the capture")
         report["capture_rect"] = rect
-        for index in range(warmups, warmups + samples):
+        for index in range(0 if banner_mode else warmups, samples if banner_mode else warmups + samples):
             sample = one_launch(index, rect, True)
             report["samples"].append(sample)
             print(json.dumps({k: sample.get(k) for k in ("index", "result", "launch_to_page_ms", "window_ms",
-                                                          "capture_late", "reason")}), flush=True)
+                                                          "capture_late", "reason", "banner")}), flush=True)
             (out / "report.json").write_text(json.dumps(report, indent=1))
     finally:
         if busy:
@@ -332,6 +333,26 @@ def main():
         except Exception as error:   # cleanup failure is a finding, reported, never hidden
             problems.append(f"cleanup: {error}")
     measured = [s for s in report["samples"] if s["measured"]]
+    if banner_mode:   # banner-only report and exit status: no percentiles, no budget verdict
+        banners = [s["banner"] for s in measured if s.get("banner")]
+        seen = sum(1 for b in banners if b["seen_at_ms"] is not None)
+        report["diagnostic"] = "storage-warning" if storage_warning else "watch-banner"
+        report["banner_check"] = {
+            "expectation": "banner seen on every sample" if storage_warning else "banner never seen",
+            "samples": len(measured), "watched": len(banners), "seen": seen,
+            "seen_at_ms": sorted(b["seen_at_ms"] for b in banners if b["seen_at_ms"] is not None),
+            "jump_pt": sorted(b["jump_pt"] for b in banners if b["jump_pt"] is not None),
+            "jump_not_measured": [b["jump_not_measured"] for b in banners if b["jump_pt"] is None],
+            "missed": [s.get("reason") for s in measured if s["result"] != "banner"]}
+        holds = len(banners) == len(measured) == samples and (seen == len(banners) if storage_warning else seen == 0)
+        report["banner_check"]["expectation_held"] = holds
+        report["budget_verdict"] = "NOT A TIMING RUN (banner check)"
+        report["conditions_end"] = load_tools.machine_conditions()
+        report["problems"] = problems
+        (out / "report.json").write_text(json.dumps(report, indent=1))
+        print(json.dumps({"mode": mode, "diagnostic": report["diagnostic"], "banner_check": report["banner_check"],
+                          "problems": problems}))
+        return 0 if holds and not problems else 1
     timed = [s["launch_to_page_ms"] for s in measured if s["result"] == "timed"]
     counts = {}
     for s in measured:
@@ -348,14 +369,6 @@ def main():
     report["window_to_page_ms"] = percentiles([s["window_to_page_ms"] for s in measured if s["result"] == "timed"])
     report["window_ms"] = percentiles([s["window_ms"] for s in measured if "window_ms" in s])
     report["capture_late"] = sum(1 for s in measured if s.get("capture_late"))
-    if storage_warning or watch:   # the labelled jump check: banner seen and how far it moved the page
-        banners = [s["banner"] for s in measured if s.get("banner")]
-        report["banner_jump"] = {"samples": len(banners),
-                                 "seen": sum(1 for b in banners if b["seen_at_ms"] is not None),
-                                 "watched": sum(1 for b in banners if b["reads"]),
-                                 "jump_unknown": sum(1 for b in banners if b["jump_pt"] is None),
-                                 "seen_at_ms": sorted(b["seen_at_ms"] for b in banners if b["seen_at_ms"] is not None),
-                                 "jump_pt": sorted(b["jump_pt"] for b in banners if b["jump_pt"] is not None)}
     p95 = report["launch_to_page_ms"].get("p95")
     if counts.get("missed") or (p95 is not None and p95 > BUDGET_MS):
         verdict = "FAIL"
@@ -364,9 +377,6 @@ def main():
     else:
         verdict = "UNPROVEN"
     report["budget_verdict"] = verdict
-    if storage_warning:
-        # A labelled banner check, not a timing run: never published as an open-History number.
-        report["budget_verdict"] = "NOT A TIMING RUN (storage-warning banner check)"
     report["conditions_end"] = load_tools.machine_conditions()
     report["problems"] = problems
     (out / "report.json").write_text(json.dumps(report, indent=1))
