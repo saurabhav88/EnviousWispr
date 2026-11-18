@@ -25,6 +25,9 @@ final class HistoryCatalogSession {
   /// History list wakes on it to re-check a kept page's rows before any publish arrives.
   @ObservationIgnored private(set) var noticeCount: UInt64 = 0
   @ObservationIgnored private var changeWaiters: [UUID: CheckedContinuation<Void, Never>] = [:]
+  /// Page reads in flight (#4586 package I): an ordinary full pass lets the reads already
+  /// waiting when it has its backend reach the catalog first.
+  @ObservationIgnored private let pageReads = HistoryPageReads()
   /// Reset when a pass starts, so the first committed batch of each pass is marked once.
   @ObservationIgnored private var batchMarked = false
   private(set) var latestDictation: UUID?
@@ -230,6 +233,8 @@ final class HistoryCatalogSession {
   func page(
     _ query: HistoryCatalog.Query, after cursor: HistoryCatalog.Cursor? = nil, restoring anchor: UUID? = nil, newer: Bool = false
   ) async throws -> HistoryCatalog.Page? {
+    let readID = pageReads.begin()
+    defer { pageReads.end(readID) }
     let source = changes.revision
     guard source != nil else { return nil }
     let backend = try await open()
@@ -344,7 +349,10 @@ final class HistoryCatalogSession {
         publishedCertifiedSource = nil
         batchMarked = false
         do {
+          // Recovery keeps precedence: a rebuild iteration never waits for page reads.
+          var rebuilding = false
           if rebuildRequested {
+            rebuilding = true
             rebuildRequested = false
             if let backend {
               try await backend.catalog.closeDatabase()
@@ -358,6 +366,15 @@ final class HistoryCatalogSession {
           #endif
           let pass: HistoryCatalogReconciliation.Pass?
           if delta.scopes.contains(.all) {
+            // #4586 package I: the pass and the first page read resume together from `open()`
+            // and compete for the catalog actor, which is not FIFO; the pass's first steps
+            // (every source's progress) then held the first page for 130-240 ms on the M5. The
+            // reads already waiting now go first; later reads never join this snapshot. This
+            // bounds who is waited for, not how long. Scoped refreshes do not wait.
+            if !rebuilding, await pageReads.waitForActive() {
+              HistorySignpost.event("HistoryPassWaitedForReads")
+            }
+            try Task.checkCancellation()
             #if DEBUG
               await beforeReconcileForTesting?()
             #endif
@@ -518,3 +535,66 @@ enum HistorySignpost {
     signposter.emitEvent(name)
   }
 }
+
+/// The History page reads in flight (#4586 package I). A full re-check waits for the reads that
+/// were active when it asked, and only those: a read that starts later never joins that wait, so
+/// the set waited for is finite (its duration is not bounded). Main actor only.
+@MainActor
+final class HistoryPageReads {
+  private var nextID: UInt64 = 0
+  private var active: Set<UInt64> = []
+  private var waiters: [UUID: Waiter] = [:]
+
+  private struct Waiter {
+    var remaining: Set<UInt64>
+    let continuation: CheckedContinuation<Void, Never>
+  }
+
+  /// Registers a read; pair with `end(_:)` on every exit.
+  func begin() -> UInt64 {
+    nextID &+= 1
+    active.insert(nextID)
+    return nextID
+  }
+
+  func end(_ id: UInt64) {
+    active.remove(id)
+    for (key, waiter) in waiters {
+      var waiter = waiter
+      waiter.remaining.remove(id)
+      if waiter.remaining.isEmpty {
+        waiters[key] = nil
+        waiter.continuation.resume()
+      } else {
+        waiters[key] = waiter
+      }
+    }
+  }
+
+  /// Waits until every read active now has ended, or the calling task is cancelled. Returns
+  /// whether there was anything to wait for. Cancellation before or after the wait registers is
+  /// handled the same way as `HistoryCatalogSession.waitForChange`.
+  func waitForActive() async -> Bool {
+    let snapshot = active
+    guard !snapshot.isEmpty else { return false }
+    let key = UUID()
+    await withTaskCancellationHandler {
+      await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+        let remaining = snapshot.intersection(active)
+        if Task.isCancelled || remaining.isEmpty {
+          continuation.resume()
+        } else {
+          waiters[key] = Waiter(remaining: remaining, continuation: continuation)
+        }
+      }
+    } onCancel: {
+      Task { @MainActor [weak self] in self?.waiters.removeValue(forKey: key)?.continuation.resume() }
+    }
+    return true
+  }
+
+  #if DEBUG
+    var waiterCountForTesting: Int { waiters.count }
+  #endif
+}
+
