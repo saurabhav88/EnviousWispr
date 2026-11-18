@@ -55,9 +55,11 @@ while background indexing runs). Search: `--only <series>`, `--busy`.
 The fixture's recordings (~2.15 GB) exceed the default 2 GB storage warning threshold. Every launch
 passes the app's own setting `recordingStorageWarningThreshold=none` as a launch argument (nothing is
 written to any preferences), because the banner appears 2.4-3.9 s after launch and pushes the page down
-about 65 pt, which voids open-History samples. `m5-speed-open.py --storage-warning` (or
-`containment_pilot.py --open … --storage-warning`) launches without it and reports `banner_jump`: a
-labelled check of that real user-visible jump.
+about 65 pt, which voids open-History samples. `m5-speed-open.py --storage-warning` (banner expected) and `--watch-banner` (banner must stay off), also
+through `containment_pilot.py --open ...`, are banner-only checks labelled `NOT A TIMING RUN`: per launch
+they report only whether the banner was seen and its first-seen ms after spawn. They fail if a launch was
+not read until 8 s after spawn, or the expectation does not hold, and `--samples` must be at least 1. The
+banner jump itself is #4667. Their reports are excluded from `summarize_baseline.py`.
 
 ## Controls (each driver shown able to fail)
 

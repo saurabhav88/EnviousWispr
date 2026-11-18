@@ -33,15 +33,15 @@ Control: `--control drop-row` removes one expected row from the answer: no sampl
 The fixture's recordings (~2.15 GB) are over the default 2 GB storage warning threshold, so every launch
 passes the app's own setting `recordingStorageWarningThreshold=none` in its launch arguments (no
 preference is written): otherwise the warning banner appears 2.4-3.9 s after launch and pushes the
-page down about 65 pt. `--storage-warning` launches WITHOUT that argument and reports the banner
-(`banner_jump`: when it appeared and how far the list moved): a labelled check of a real
-user-visible jump, not a timing run. `--watch-banner` runs the same watch with the warning off. Both
-are banner-only diagnostics: no frame recorder, no timing numbers, no budget verdict, and their own
-exit status (0 when the expectation holds: banner seen on every sample / never seen; 1 otherwise).
-The banner is matched by its accessibility identifier, and the list position is read in the same loop.
+page down about 65 pt. `--storage-warning` launches WITHOUT that argument and `--watch-banner` launches
+with it; both are banner-only diagnostics (NOT A TIMING RUN): no frame recorder, no timing numbers, no
+budget verdict, no page confirmation. Per launch they report only whether the banner (matched by its
+accessibility identifier) was seen and its first-seen time in ms after spawn. Own exit status: 0 when
+the banner was seen on every launch (`--storage-warning`) / never seen (`--watch-banner`) and every
+launch was read until BANNER_WATCH_S after spawn; 1 otherwise. `--samples` must be at least 1 there.
 
 Usage: python3 m5-speed-open.py <subject .app> <fixture home> <new out dir> --mode missing|existing
-                                [--samples 20] [--warmups 2] [--busy] [--control drop-row] [--storage-warning] [--watch-banner]
+                                [--samples 20] [--warmups 2] [--busy] [--control drop-row] [--storage-warning | --watch-banner]
 The caller holds the dev-app lock; no other instance of the subject may run.
 """
 import importlib.util
@@ -104,6 +104,9 @@ def main():
     if storage_warning and watch:
         print("--storage-warning and --watch-banner are separate checks; pick one", file=sys.stderr)
         return 2
+    if banner_mode and samples < 1:
+        print("--samples must be at least 1 for a banner diagnostic", file=sys.stderr)
+        return 2
     if control not in (None, "drop-row"):
         print(f"unknown control {control}", file=sys.stderr)
         return 2
@@ -163,19 +166,13 @@ def main():
             raise RuntimeError(f"capture invalid: stopped by {header.get('stopped_by')}, error {header.get('stop_error')}")
         return header, frames
 
-    def watch_banner(window, area, spawned, first_y):
-        """Banner-only check: from page confirmation until BANNER_WATCH_S after the spawn, poll the banner
-        (by accessibility identifier, outside the list only: history_reader.find_outside_list) and the list
-        position TOGETHER in one loop, so a move between the two reads cannot be missed. The first poll
-        pairs the position read at confirmation with the first banner read, so a banner already there at
-        confirmation is a poll that shows it with nothing before it (jump not measured)."""
-        polls = []
-        while not polls or ms(libc.mach_absolute_time() - spawned) < BANNER_WATCH_S * 1000:
-            shown, y = banner_watch.read_poll(lambda: banner_watch.find_banner(hr, ui, window),
-                                              lambda: first_y if not polls else (ui.element_frame(area) or {}).get("y"))
-            polls.append((round(ms(libc.mach_absolute_time() - spawned)), shown, y))
-            time.sleep(0.1)  # deadline-fallback: paced read inside the banner watch window
-        return banner_watch.banner_jump(polls)
+    def watch_banner(window, spawned):
+        """Banner-only: read the banner (by accessibility identifier, outside the list) until the first
+        read at or after BANNER_WATCH_S after the spawn."""
+        return banner_watch.watch(lambda: banner_watch.find_banner(hr, ui, window),
+                                  lambda: ms(libc.mach_absolute_time() - spawned),
+                                  lambda: time.sleep(0.1),  # deadline-fallback: paced read inside the banner watch window
+                                  BANNER_WATCH_S * 1000)
 
     def one_launch(index, rect, measured):
         """One launch; returns a sample record. `rect` is the capture rectangle or None (warm-up)."""
@@ -201,6 +198,10 @@ def main():
                 sample.update(result="missed", reason="no window")
                 return sample
             sample["window_ms"] = round(ms(window_at - spawned), 1)
+            if banner_mode:   # banner-only: no page confirmation, no hold, no capture, no timing
+                sample["banner"] = watch_banner(window, spawned)
+                sample["result"] = "banner"
+                return sample
             first, confirmed, table, area, last_verdict = None, None, None, None, None
             verdicts = {}
             deadline = time.monotonic() + PAGE_DEADLINE_S
@@ -228,11 +229,6 @@ def main():
                                                       f"(last read {last_verdict})")
                 return sample
             sample["ax_confirm_ms"] = round(ms(confirmed - spawned), 1)
-            y_at_page = (ui.element_frame(area) or {}).get("y")   # the jump check starts here
-            if banner_mode:   # banner-only: no hold, no capture, no timing
-                sample["banner"] = watch_banner(window, area, spawned, y_at_page)
-                sample["result"] = "banner"
-                return sample
             hold_end = time.monotonic() + HOLD_MS / 1000
             held = True
             while time.monotonic() < hold_end:
@@ -292,27 +288,27 @@ def main():
     fixture.refuse_existing_throwaway(real_home)
     production_before = fixture.export_domain(fixture.PRODUCTION_DOMAIN)
     report = {"mode": mode, "subject": str(subject), "home": str(home), "control": control,
-              "storage_warning": storage_warning, "watch_banner": watch,
               "budget_ms": BUDGET_MS, "answer_rows_checked": "newest Dictations, unfiltered",
               "conditions_start": load_tools.machine_conditions(), "samples": []}
     report_diag = {}
 
     def write_banner_report(final):
-        """The banner-only report: only the diagnostic's own fields, never a timing field."""
+        """The banner-only report: NOT A TIMING RUN, only the diagnostic's own fields."""
         measured = [s for s in report["samples"] if s["measured"]]
         banners = [s["banner"] for s in measured if s.get("banner")]
         seen = sum(1 for b in banners if b["seen_at_ms"] is not None)
-        check = {"expectation": "banner seen on every sample" if storage_warning else "banner never seen",
-                 "samples": len(measured), "watched": len(banners), "seen": seen,
+        full = sum(1 for b in banners if b["watched_to_deadline"])
+        check = {"expectation": "banner seen on every launch" if storage_warning else "banner never seen",
+                 "samples": len(measured), "watched": len(banners), "watched_to_deadline": full, "seen": seen,
                  "seen_at_ms": sorted(b["seen_at_ms"] for b in banners if b["seen_at_ms"] is not None),
-                 "jump_pt": sorted(b["jump_pt"] for b in banners if b["jump_pt"] is not None),
-                 "jump_not_measured": [b["jump_not_measured"] for b in banners if b["jump_pt"] is None],
                  "missed": [s.get("reason") for s in measured if s["result"] != "banner"]}
-        holds = len(banners) == len(measured) == samples and (seen == len(banners) if storage_warning else seen == 0)
+        holds = (len(banners) == len(measured) == samples and full == len(banners)
+                 and (seen == len(banners) if storage_warning else seen == 0))
         check["expectation_held"] = holds
         report_diag.clear()
         report_diag.update({
-            "mode": mode, "diagnostic": "storage-warning" if storage_warning else "watch-banner",
+            "label": "NOT A TIMING RUN", "mode": mode,
+            "diagnostic": "storage-warning" if storage_warning else "watch-banner",
             "subject": report["subject"], "home": report["home"],
             "storage_warning": storage_warning, "watch_banner": watch,
             "samples": [{k: s[k] for k in ("index", "result", "reason", "banner") if k in s} for s in report["samples"]],
@@ -341,12 +337,13 @@ def main():
         for index in range(0 if banner_mode else warmups, samples if banner_mode else warmups + samples):
             sample = one_launch(index, rect, True)
             report["samples"].append(sample)
-            print(json.dumps({k: sample.get(k) for k in ("index", "result", "launch_to_page_ms", "window_ms",
-                                                          "capture_late", "reason", "banner")}), flush=True)
             if banner_mode:
+                print(json.dumps({k: sample.get(k) for k in ("index", "result", "reason", "banner")}), flush=True)
                 write_banner_report(False)
-            else:
-                (out / "report.json").write_text(json.dumps(report, indent=1))
+                continue
+            print(json.dumps({k: sample.get(k) for k in ("index", "result", "launch_to_page_ms", "window_ms",
+                                                          "capture_late", "reason")}), flush=True)
+            (out / "report.json").write_text(json.dumps(report, indent=1))
     finally:
         if busy:
             busy.__exit__(None, None, None)
@@ -366,7 +363,7 @@ def main():
     measured = [s for s in report["samples"] if s["measured"]]
     if banner_mode:   # banner-only report and exit status: built from scratch, no timing fields at all
         holds = write_banner_report(True)
-        print(json.dumps({"mode": mode, "diagnostic": report_diag["diagnostic"], "banner_check": report_diag["banner_check"],
+        print(json.dumps({"label": "NOT A TIMING RUN", "mode": mode, "diagnostic": report_diag["diagnostic"], "banner_check": report_diag["banner_check"],
                           "problems": problems}))
         return 0 if holds and not problems else 1
     timed = [s["launch_to_page_ms"] for s in measured if s["result"] == "timed"]

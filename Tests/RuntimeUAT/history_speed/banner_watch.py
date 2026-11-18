@@ -1,7 +1,8 @@
 """Recordings storage-warning banner watch for the History speed drivers (#4586 WP-A).
 
 The banner is found by the accessibility identifier of its "Open Recordings settings" button
-(RecordingsSettingsView), not by its translated text. Pure logic lives here so it is testable offline.
+(RecordingsSettingsView), not by its translated text. The diagnostic reports only whether the banner
+was seen and when (ms after spawn). Pure logic lives here so it is testable offline.
 """
 BANNER_IDENTIFIER = "history.recordingStorage.openSettings"
 
@@ -12,38 +13,22 @@ def find_banner(history_reader, ui, window):
         window, lambda e, r: ui.get_attr(e, "AXIdentifier") == BANNER_IDENTIFIER))
 
 
-def banner_jump(polls):
-    """`polls` is [(t_ms, shown, list_y_or_None)] taken together, in order, from page confirmation.
+def watch(read_banner, now_ms, pause, deadline_ms):
+    """Poll `read_banner` until the first read at or after `deadline_ms` (now_ms() is ms after spawn).
 
-    Returns the report record. The jump is a number only when a valid list-position read exists both
-    before the first poll that shows the banner and at or after it (the reads bracket the change);
-    otherwise `jump_pt` is None with a `jump_not_measured` reason, never 0."""
-    seen = next((i for i, p in enumerate(polls) if p[1]), None)
-    record = {"reads": len(polls), "seen_at_ms": polls[seen][0] if seen is not None else None,
-              "list_y_before": None, "list_y_after": None, "jump_pt": None, "jump_not_measured": None}
-    if seen is None:
-        record["jump_not_measured"] = "banner never seen" if polls else "no reads"
-        return record
-    before = [p[2] for p in polls[:seen] if p[2] is not None]
-    after = [p[2] for p in polls[seen:] if p[2] is not None]
-    if not before:
-        record["jump_not_measured"] = "no valid list position read before the banner first appeared"
-    elif not after:
-        record["jump_not_measured"] = "no valid list position read after the banner appeared"
-    else:
-        # the read that brackets the change: last one before, first one at or after the banner poll
-        record["list_y_before"], record["list_y_after"] = before[-1], after[0]
-        record["jump_pt"] = round(after[0] - before[-1], 1)
-    return record
-
-
-def read_poll(read_banner, read_y):
-    """One poll: banner, then list y, then the banner again. If the two banner reads differ the banner
-    appeared (or went) between them, so the y may belong to either layout: it is invalid (None) and
-    `shown` takes the second read. Returns (shown, y)."""
-    before = read_banner()
-    y = read_y()
-    after = read_banner()
-    if before != after:
-        return after, None
-    return after, y
+    Returns {"reads", "seen_at_ms", "watched_to_deadline"}. `seen_at_ms` is the first read that showed
+    the banner, else None. `watched_to_deadline` is true only when the FIRST read happened before the
+    deadline, so the reads covered the whole window up to it; a launch whose first read came late was
+    not watched and must not count as "banner never seen"."""
+    reads, seen_at, first_at = 0, None, None
+    while True:
+        shown = read_banner()
+        t = now_ms()
+        reads += 1
+        first_at = t if first_at is None else first_at
+        if shown and seen_at is None:
+            seen_at = round(t)
+        if t >= deadline_ms:
+            break
+        pause()
+    return {"reads": reads, "seen_at_ms": seen_at, "watched_to_deadline": first_at < deadline_ms}

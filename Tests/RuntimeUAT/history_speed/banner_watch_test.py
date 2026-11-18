@@ -10,58 +10,46 @@ sys.path.insert(0, str(HERE))
 import banner_watch
 
 
-class BannerJumpTest(unittest.TestCase):
-    def test_bracketed_move_is_measured(self):
-        r = banner_watch.banner_jump([(3000, False, 311), (3100, False, 311), (3200, True, 376), (3300, True, 376)])
-        self.assertEqual(r["jump_pt"], 65)
-        self.assertIsNone(r["jump_not_measured"])
-        self.assertEqual(r["seen_at_ms"], 3200)
+class Clock:
+    def __init__(self, step=100, start=0):
+        self.t, self.step = start - step, step
 
-    def test_later_movement_after_the_banner_is_not_counted(self):
-        r = banner_watch.banner_jump([(3000, False, 311), (3100, True, 376), (3200, True, 500)])
-        self.assertEqual(r["jump_pt"], 65)
-
-    def test_banner_on_first_poll_is_not_measured(self):
-        r = banner_watch.banner_jump([(3000, True, 376), (3100, True, 376)])
-        self.assertIsNone(r["jump_pt"])
-        self.assertIn("before", r["jump_not_measured"])
-
-    def test_unreadable_position_before_is_not_measured(self):
-        r = banner_watch.banner_jump([(3000, False, None), (3100, True, 376)])
-        self.assertIsNone(r["jump_pt"])
-
-    def test_unreadable_position_after_is_not_measured(self):
-        r = banner_watch.banner_jump([(3000, False, 311), (3100, True, None), (3200, True, None)])
-        self.assertIsNone(r["jump_pt"])
-        self.assertIn("after", r["jump_not_measured"])
-
-    def test_never_seen_is_not_a_zero_jump(self):
-        r = banner_watch.banner_jump([(3000, False, 311), (3100, False, 311)])
-        self.assertIsNone(r["jump_pt"])
-        self.assertEqual(r["jump_not_measured"], "banner never seen")
-
-    def test_no_reads(self):
-        self.assertIsNone(banner_watch.banner_jump([])["jump_pt"])
+    def now(self):
+        self.t += self.step
+        return self.t
 
 
-class StraddlingPollTest(unittest.TestCase):
-    def test_banner_appearing_between_the_reads_invalidates_the_position(self):
-        banner = iter([False, True])   # absent at the first read, present at the second
-        self.assertEqual(banner_watch.read_poll(lambda: next(banner), lambda: 376), (True, None))
+class WatchTest(unittest.TestCase):
+    def run_watch(self, shown_at, deadline=1000, start=0):
+        clock = Clock(start=start)
+        tick = {"n": 0}
 
-    def test_stable_poll_keeps_the_position(self):
-        self.assertEqual(banner_watch.read_poll(lambda: False, lambda: 311), (False, 311))
-        self.assertEqual(banner_watch.read_poll(lambda: True, lambda: 376), (True, 376))
+        def read():
+            tick["n"] += 1
+            return tick["n"] in shown_at
+        return banner_watch.watch(read, clock.now, lambda: None, deadline)
 
-    def test_straddling_poll_never_gives_a_false_zero(self):
-        # reviewer's case: the banner appears mid-poll and the list y is already the shifted 376
-        banner = iter([False, True])
-        shown, y = banner_watch.read_poll(lambda: next(banner), lambda: 376)
-        polls = [(2900, False, 311), (3000, shown, y), (3100, True, 376)]
-        self.assertEqual(banner_watch.banner_jump(polls)["jump_pt"], 65)
-        # with no valid read before the straddling poll the jump is not measured, never 0
-        alone = banner_watch.banner_jump([(3000, shown, y), (3100, True, 376)])
-        self.assertIsNone(alone["jump_pt"])
+    def test_banner_seen_reports_first_time(self):
+        r = self.run_watch({3, 4})
+        self.assertEqual(r["seen_at_ms"], 200)
+        self.assertTrue(r["watched_to_deadline"])
+
+    def test_never_seen_is_none(self):
+        r = self.run_watch(set())
+        self.assertIsNone(r["seen_at_ms"])
+        self.assertTrue(r["watched_to_deadline"])
+        self.assertEqual(r["reads"], 11)
+
+    def test_reads_continue_to_the_deadline_even_after_the_banner(self):
+        self.assertEqual(self.run_watch({1})["reads"], 11)
+
+    def test_first_read_after_the_deadline_is_not_a_watch(self):
+        r = self.run_watch(set(), start=2000)
+        self.assertFalse(r["watched_to_deadline"])
+        self.assertEqual(r["reads"], 1)
+
+    def test_banner_matched_by_identifier(self):
+        self.assertEqual(banner_watch.BANNER_IDENTIFIER, "history.recordingStorage.openSettings")
 
 
 class SummarizerExclusionTest(unittest.TestCase):
