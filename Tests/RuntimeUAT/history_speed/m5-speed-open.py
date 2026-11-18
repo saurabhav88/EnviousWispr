@@ -295,6 +295,34 @@ def main():
               "storage_warning": storage_warning, "watch_banner": watch,
               "budget_ms": BUDGET_MS, "answer_rows_checked": "newest Dictations, unfiltered",
               "conditions_start": load_tools.machine_conditions(), "samples": []}
+    report_diag = {}
+
+    def write_banner_report(final):
+        """The banner-only report: only the diagnostic's own fields, never a timing field."""
+        measured = [s for s in report["samples"] if s["measured"]]
+        banners = [s["banner"] for s in measured if s.get("banner")]
+        seen = sum(1 for b in banners if b["seen_at_ms"] is not None)
+        check = {"expectation": "banner seen on every sample" if storage_warning else "banner never seen",
+                 "samples": len(measured), "watched": len(banners), "seen": seen,
+                 "seen_at_ms": sorted(b["seen_at_ms"] for b in banners if b["seen_at_ms"] is not None),
+                 "jump_pt": sorted(b["jump_pt"] for b in banners if b["jump_pt"] is not None),
+                 "jump_not_measured": [b["jump_not_measured"] for b in banners if b["jump_pt"] is None],
+                 "missed": [s.get("reason") for s in measured if s["result"] != "banner"]}
+        holds = len(banners) == len(measured) == samples and (seen == len(banners) if storage_warning else seen == 0)
+        check["expectation_held"] = holds
+        report_diag.clear()
+        report_diag.update({
+            "mode": mode, "diagnostic": "storage-warning" if storage_warning else "watch-banner",
+            "subject": report["subject"], "home": report["home"],
+            "storage_warning": storage_warning, "watch_banner": watch,
+            "samples": [{k: s[k] for k in ("index", "result", "reason", "banner") if k in s} for s in report["samples"]],
+            "banner_check": check, "conditions_start": report["conditions_start"]})
+        if final:
+            report_diag["conditions_end"] = load_tools.machine_conditions()
+            report_diag["problems"] = problems
+        (out / "report.json").write_text(json.dumps(report_diag, indent=1))
+        return holds
+
     busy = load_tools.BusyLoad() if "--busy" in argv else None
     report["busy"] = busy.count if busy else 0
     problems = []
@@ -315,7 +343,10 @@ def main():
             report["samples"].append(sample)
             print(json.dumps({k: sample.get(k) for k in ("index", "result", "launch_to_page_ms", "window_ms",
                                                           "capture_late", "reason", "banner")}), flush=True)
-            (out / "report.json").write_text(json.dumps(report, indent=1))
+            if banner_mode:
+                write_banner_report(False)
+            else:
+                (out / "report.json").write_text(json.dumps(report, indent=1))
     finally:
         if busy:
             busy.__exit__(None, None, None)
@@ -333,24 +364,9 @@ def main():
         except Exception as error:   # cleanup failure is a finding, reported, never hidden
             problems.append(f"cleanup: {error}")
     measured = [s for s in report["samples"] if s["measured"]]
-    if banner_mode:   # banner-only report and exit status: no percentiles, no budget verdict
-        banners = [s["banner"] for s in measured if s.get("banner")]
-        seen = sum(1 for b in banners if b["seen_at_ms"] is not None)
-        report["diagnostic"] = "storage-warning" if storage_warning else "watch-banner"
-        report["banner_check"] = {
-            "expectation": "banner seen on every sample" if storage_warning else "banner never seen",
-            "samples": len(measured), "watched": len(banners), "seen": seen,
-            "seen_at_ms": sorted(b["seen_at_ms"] for b in banners if b["seen_at_ms"] is not None),
-            "jump_pt": sorted(b["jump_pt"] for b in banners if b["jump_pt"] is not None),
-            "jump_not_measured": [b["jump_not_measured"] for b in banners if b["jump_pt"] is None],
-            "missed": [s.get("reason") for s in measured if s["result"] != "banner"]}
-        holds = len(banners) == len(measured) == samples and (seen == len(banners) if storage_warning else seen == 0)
-        report["banner_check"]["expectation_held"] = holds
-        report["budget_verdict"] = "NOT A TIMING RUN (banner check)"
-        report["conditions_end"] = load_tools.machine_conditions()
-        report["problems"] = problems
-        (out / "report.json").write_text(json.dumps(report, indent=1))
-        print(json.dumps({"mode": mode, "diagnostic": report["diagnostic"], "banner_check": report["banner_check"],
+    if banner_mode:   # banner-only report and exit status: built from scratch, no timing fields at all
+        holds = write_banner_report(True)
+        print(json.dumps({"mode": mode, "diagnostic": report_diag["diagnostic"], "banner_check": report_diag["banner_check"],
                           "problems": problems}))
         return 0 if holds and not problems else 1
     timed = [s["launch_to_page_ms"] for s in measured if s["result"] == "timed"]

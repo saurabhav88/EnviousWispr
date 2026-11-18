@@ -31,6 +31,7 @@ def banner_jump(polls):
     elif not after:
         record["jump_not_measured"] = "no valid list position read after the banner appeared"
     else:
-        record["list_y_before"], record["list_y_after"] = before[-1], after[-1]
-        record["jump_pt"] = round(after[-1] - before[-1], 1)
+        # the read that brackets the change: last one before, first one at or after the banner poll
+        record["list_y_before"], record["list_y_after"] = before[-1], after[0]
+        record["jump_pt"] = round(after[0] - before[-1], 1)
     return record

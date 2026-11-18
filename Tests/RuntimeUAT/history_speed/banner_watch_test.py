@@ -17,6 +17,10 @@ class BannerJumpTest(unittest.TestCase):
         self.assertIsNone(r["jump_not_measured"])
         self.assertEqual(r["seen_at_ms"], 3200)
 
+    def test_later_movement_after_the_banner_is_not_counted(self):
+        r = banner_watch.banner_jump([(3000, False, 311), (3100, True, 376), (3200, True, 500)])
+        self.assertEqual(r["jump_pt"], 65)
+
     def test_banner_on_first_poll_is_not_measured(self):
         r = banner_watch.banner_jump([(3000, True, 376), (3100, True, 376)])
         self.assertIsNone(r["jump_pt"])
