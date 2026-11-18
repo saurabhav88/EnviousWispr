@@ -819,7 +819,7 @@
 
     @Test("an ordinary silence-timeout write takes only the slider's quarter-second values")
     func silenceTimeoutTakesSliderValues() throws {
-      let offered = ["0.5", "0.75", "1.0", "1.25", "1.5", "1.75", "2.0", "2.25", "2.5", "2.75", "3.0"]
+      let offered = ["0.5", "0.75", "1.0", "1.25", "1.5", "1.75", "2.0", "2.25", "2.5", "2.75", "3.0", "3.25", "3.5", "3.75", "4.0", "4.25", "4.5", "4.75", "5.0"]
       for text in offered {
         let (_, _, settings) = Self.fixture()
         settings.vadSilenceTimeout = text == "0.5" ? 3.0 : 0.5
@@ -838,7 +838,7 @@
     @Test("off-step or out-of-range values are checkFailed, wrong types badValue, nothing written")
     func silenceTimeoutRefusals() throws {
       for (text, code) in [
-        ("0.25", "checkFailed"), ("3.25", "checkFailed"), ("1.1", "checkFailed"),
+        ("0.25", "checkFailed"), ("5.25", "checkFailed"), ("1.1", "checkFailed"),
         ("0.6", "checkFailed"), ("120", "checkFailed"), ("1e30", "badValue"), ("true", "badValue"),
         ("\"2\"", "badValue"), ("null", "badValue"),
       ] {

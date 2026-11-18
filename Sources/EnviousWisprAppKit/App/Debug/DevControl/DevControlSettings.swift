@@ -743,7 +743,8 @@
         guard SilenceTimeoutSlider.offers(seconds) else {
           return .refused(
             code: "checkFailed",
-            message: "the pause slider offers 0.5 to 3.0 seconds in 0.25 steps; use force to stage another value")
+            message:
+              "the pause slider offers \(SilenceTimeoutSlider.range.lowerBound) to \(SilenceTimeoutSlider.range.upperBound) seconds in \(SilenceTimeoutSlider.step) steps; use force to stage another value")
         }
         return outcome(assign(key, value: value, to: settings, forced: false))
       case .channelCommand:
@@ -1018,7 +1019,7 @@
     /// The silence detector turns the timeout into a chunk count with
     /// `Int(ceil(timeout / chunkDuration))`, which traps when the quotient is not
     /// representable. A finite value whose count is representable is admitted even far
-    /// outside the screen's 0.5-3.0 range.
+    /// outside the screen's slider range.
     nonisolated static func silenceTimeoutIsConvertible(_ seconds: Double) -> Bool {
       guard seconds.isFinite else { return false }
       let chunkDuration = Double(SilenceDetector.chunkSize) / AudioConstants.sampleRate
