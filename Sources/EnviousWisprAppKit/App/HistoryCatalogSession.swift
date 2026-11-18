@@ -381,6 +381,12 @@ final class HistoryCatalogSession {
               HistorySignpost.event("HistoryPassWaitedForReads")
             }
             try Task.checkCancellation()
+            // A read that waited may have found the catalog damaged and asked for a rebuild:
+            // recovery keeps precedence, so this pass becomes the rebuild iteration instead.
+            if !rebuilding, rebuildRequested {
+              pending.include(.unknown)
+              continue
+            }
             #if DEBUG
               beforeReconcileForTesting?()
             #endif
