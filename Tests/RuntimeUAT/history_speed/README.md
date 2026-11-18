@@ -50,6 +50,16 @@ Scroll options: `--start-pt 40000` (deep: more than ten loaded pages), `--tabs M
 `--busy`; `containment_pilot.py --scroll-early` starts the scroll before catalog coverage (scrolling
 while background indexing runs). Search: `--only <series>`, `--busy`.
 
+## Quick mode
+
+`run_baseline.sh <app> <sha256> <new out dir> --quick` is the check that must fit in 5 minutes wall time per Mac,
+fixture copy, catalog wait and cleanup included (not an exact science; over 300 s the script prints a WARNING, never fails). One pilot
+session only: search 3 series x 3 attempts, open History existing x3 then missing x1 (missing stops at its first
+confirmed page), scroll 3 tabs x trackpad + wheel x 1 with `--trace-repeats 0` (no xctrace, so hitch is
+NOT MEASURED, shown as such, never 0; travel asymmetry and row height changes are still measured), idle CPU 10 s
+(`--idle-seconds`). No indexing session, Show edits or Play, deep run. Total wall seconds go to `wall-time.txt`
+and the last line of `summary.md`. The full mode is unchanged.
+
 ## Storage-warning banner
 
 The fixture's recordings (~2.15 GB) exceed the default 2 GB storage warning threshold. Every launch

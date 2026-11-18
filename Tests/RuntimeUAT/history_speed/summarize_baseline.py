@@ -78,17 +78,20 @@ def main():
             changed = sum(len(r.get("height_changed", [])) for r in runs)
             traced = [r["hitch"].get("ms_per_s") for r in runs if not r.get("hitch", {}).get("not_traced")]
             label = "while indexing" if folder == "indexing" else case
-            lines.append(f"| **Scroll {tab} {kind} ({label}), all repeats** | hitch {traced} ms/s (traced repeats); "
+            hitch_text = f"{traced} ms/s (traced repeats)" if traced else "NOT MEASURED (no xctrace; not 0)"
+            lines.append(f"| **Scroll {tab} {kind} ({label}), all repeats** | hitch {hitch_text}; "
                          f"worst asymmetry {max(asym) if asym else 'n/a'}; height changes {changed} | "
                          f"{len(runs)} down+up pairs ({len(traced)} traced) | 5 ms/s, 0, 2% | "
-                         f"{'PASS' if all(r.get('verdict') == 'PASS' for r in runs) else 'FAIL' if any(r.get('verdict') == 'FAIL' for r in runs) else 'UNPROVEN'} | |")
+                         f"{'FAIL' if any(r.get('verdict') == 'FAIL' for r in runs) else 'PASS' if traced and all(r.get('verdict') == 'PASS' for r in runs) else 'UNPROVEN'} | |")
         for run in sc.get("runs", []):
             h = run.get("hitch", {})
             t = run.get("travel", {})
             label = "while indexing" if folder == "indexing" else run.get("case", "mid")
             res = run.get("resources_hitch_pass", {})
-            lines.append(f"| Scroll {run['tab']} {run['input']} ({label}) | hitch {fmt(h.get('ms_per_s'), 'ms/s')} over "
-                         f"{fmt(h.get('moving_s'), 's')} moving{' (' + h['unproven'] + ')' if h.get('unproven') else ''}; "
+            hitch_cell = ("hitch NOT MEASURED (no xctrace; not 0)" if h.get("not_traced") else
+                          f"hitch {fmt(h.get('ms_per_s'), 'ms/s')} over {fmt(h.get('moving_s'), 's')} moving"
+                          f"{' (' + h['unproven'] + ')' if h.get('unproven') else ''}")
+            lines.append(f"| Scroll {run['tab']} {run['input']} ({label}) | {hitch_cell}; "
                          f"height changes {len(run.get('height_changed', []))} of {run.get('rows_seen')} rows; "
                          f"travel down {t.get('down')} / up {t.get('up')} pt, asymmetry {t.get('asymmetry')}; "
                          f"kept moving {run.get('kept_moving_s')}; CPU {fmt(res.get('cpu_s'), 's')}, "

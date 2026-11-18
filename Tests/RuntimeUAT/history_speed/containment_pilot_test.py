@@ -23,6 +23,12 @@ class PilotArgs(unittest.TestCase):
         self.assertEqual(r.returncode, 2)
         self.assertIn("--open", r.stderr)
 
+    def test_open_spec_parse(self):
+        sys.path.insert(0, str(HERE))
+        import containment_pilot as pilot
+        self.assertEqual(pilot.parse_open_spec("missing,existing", "15"), [("missing", "15"), ("existing", "15")])
+        self.assertEqual(pilot.parse_open_spec("existing:3,missing:1", "--warmups"), [("existing", "3"), ("missing", "1")])
+
 
 if __name__ == "__main__":
     unittest.main()
