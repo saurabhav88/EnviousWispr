@@ -79,7 +79,11 @@ struct PillExpiryClockTests {
 
     #expect(rig.scheduled.count == 1, "starting armed \(rig.scheduled.count) timers")
     let window = try #require(rig.published.last ?? nil, "starting published no dwell window")
-    #expect(window == OverlayDwellWindow(id: pill, startedAt: rig.now, seconds: 3))
+    #expect(
+      window
+        == OverlayDwellWindow(
+          id: pill, startedAt: rig.now, seconds: 3, startedUptime: rig.uptime),
+      "a running window carries the injected steady-clock reading it started at")
   }
 
   // MARK: - Cancellation is immediate
@@ -459,7 +463,11 @@ struct PillExpiryClockTests {
 
     #expect(seconds == [12, 3], "1 s was left, so the minimum is what arms")
     let window = try #require(published.last ?? nil)
-    #expect(window == OverlayDwellWindow(id: pill, startedAt: now, seconds: 3, totalSeconds: 12))
+    #expect(
+      window
+        == OverlayDwellWindow(
+          id: pill, startedAt: now, seconds: 3, totalSeconds: 12,
+          startedUptime: now.timeIntervalSince1970))
     bodies[0]()
     #expect(dispatches.isEmpty, "the 12 s callback fired after Pending replaced it")
     bodies[1]()

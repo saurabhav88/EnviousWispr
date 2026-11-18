@@ -274,29 +274,40 @@ struct LearnedCorrectionPillCopyTests {
   }
 
   @Test(
-    "the rail is the dwell's share at the drawn instant: nothing before a dwell lands, a paused dwell is a still picture of its frozen share, a running one grows with time, and a resume that added time moves the line back"
+    "the rail is the dwell's share on the steady clock: nothing before a dwell lands, a paused dwell is a still picture, a running one grows with uptime whatever the wall clock reads, and a resume that added time moves the line back"
   )
   func railFollowsTheDwell() {
     let id = PresentationID()
     let now = Date(timeIntervalSince1970: 1_000)
+    let up0: TimeInterval = 5_000
+    func progress(_ window: OverlayDwellWindow?, up: Double, wall: Double? = nil) -> Double {
+      CorrectionLearnedPillView.railProgress(
+        for: window, atUptime: up0 + up, orDate: now.addingTimeInterval(wall ?? up))
+    }
     // No window yet: empty.
-    #expect(CorrectionLearnedPillView.railProgress(for: nil, at: now) == 0)
+    #expect(progress(nil, up: 0) == 0)
     // Frozen at 7 s left of 12: 5/12 drawn, however much later it is read.
     let paused = OverlayDwellWindow(id: id, pausedAt: now, remaining: 7, totalSeconds: 12)
-    #expect(CorrectionLearnedPillView.railProgress(for: paused, at: now.addingTimeInterval(500)) == 5.0 / 12.0)
-    // Running, 2 s then 8 s into a 12 s dwell: 2/12, then 8/12.
-    let running = OverlayDwellWindow(id: id, startedAt: now, seconds: 12)
-    #expect(CorrectionLearnedPillView.railProgress(for: running, at: now.addingTimeInterval(2)) == 2.0 / 12.0)
-    #expect(CorrectionLearnedPillView.railProgress(for: running, at: now.addingTimeInterval(8)) == 8.0 / 12.0)
+    #expect(progress(paused, up: 500) == 5.0 / 12.0)
+    // Running with a steady anchor, 2 s then 8 s of uptime in: 2/12, then 8/12.
+    let running = OverlayDwellWindow(id: id, startedAt: now, seconds: 12, startedUptime: up0)
+    #expect(progress(running, up: 2) == 2.0 / 12.0)
+    #expect(progress(running, up: 8) == 8.0 / 12.0)
+    // A wall clock that jumped forward 600 s or back 600 s changes nothing.
+    #expect(progress(running, up: 2, wall: 602) == 2.0 / 12.0)
+    #expect(progress(running, up: 2, wall: -598) == 2.0 / 12.0)
+    // Without an anchor the Date path is used.
+    let unanchored = OverlayDwellWindow(id: id, startedAt: now, seconds: 12)
+    #expect(progress(unanchored, up: 0, wall: 3) == 3.0 / 12.0)
     // Resumed with the 2 s floor after 0.5 s were left (11.5 s elapsed): the share is 10/12, so the
     // line moves back from 11.5/12, and reaches full 2 s later.
-    let resumed = OverlayDwellWindow(id: id, startedAt: now, seconds: 2, totalSeconds: 12)
-    let floor = CorrectionLearnedPillView.railProgress(for: resumed, at: now)
-    #expect(floor == 10.0 / 12.0)
-    #expect(floor < 11.5 / 12.0)
-    #expect(CorrectionLearnedPillView.railProgress(for: resumed, at: now.addingTimeInterval(2)) == 1)
+    let resumed = OverlayDwellWindow(
+      id: id, startedAt: now, seconds: 2, totalSeconds: 12, startedUptime: up0)
+    #expect(progress(resumed, up: 0) == 10.0 / 12.0)
+    #expect(progress(resumed, up: 0) < 11.5 / 12.0)
+    #expect(progress(resumed, up: 2) == 1)
     // A running dwell read after its end is full.
-    #expect(CorrectionLearnedPillView.railProgress(for: running, at: now.addingTimeInterval(13)) == 1)
+    #expect(progress(running, up: 13) == 1)
   }
 
   @Test(

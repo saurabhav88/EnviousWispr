@@ -58,10 +58,19 @@ struct OverlayDwellWindow: Equatable, Sendable {
   let totalSeconds: Double
   /// Non-nil while the countdown is frozen by a hover: the time that was left.
   let pausedRemaining: Double?
+  /// The steady-clock (`systemUptime`) reading at `startedAt`, set by `PillExpiryClock` for a
+  /// running window. The clock measures on that clock, so a drawing that reads it too cannot
+  /// disagree with the deadline when the wall clock jumps. `nil` for a paused window (it needs no
+  /// anchor) and for any window built without one, which then reads `Date`.
+  let startedUptime: TimeInterval?
 
   /// A running dwell. `totalSeconds` defaults to `seconds`, the never-paused case.
-  init(id: PresentationID, startedAt: Date, seconds: Double, totalSeconds: Double? = nil) {
+  init(
+    id: PresentationID, startedAt: Date, seconds: Double, totalSeconds: Double? = nil,
+    startedUptime: TimeInterval? = nil
+  ) {
     self.id = id
+    self.startedUptime = startedUptime
     self.startedAt = startedAt
     self.seconds = seconds
     self.totalSeconds = totalSeconds ?? seconds
@@ -75,6 +84,7 @@ struct OverlayDwellWindow: Equatable, Sendable {
     self.seconds = remaining
     self.totalSeconds = totalSeconds
     self.pausedRemaining = remaining
+    self.startedUptime = nil
   }
 
   var isPaused: Bool { pausedRemaining != nil }
@@ -91,5 +101,14 @@ struct OverlayDwellWindow: Equatable, Sendable {
   func remaining(at now: Date) -> Double {
     if let pausedRemaining { return max(0, pausedRemaining) }
     return max(0, seconds - now.timeIntervalSince(startedAt))
+  }
+
+  /// As `elapsedFraction(at:)`, measured on the steady clock when this window carries an anchor:
+  /// `date` is read only for a window without one.
+  func elapsedFraction(atUptime uptime: TimeInterval, orDate date: Date) -> Double {
+    guard let startedUptime, !isPaused else { return elapsedFraction(at: date) }
+    guard totalSeconds > 0 else { return 1 }
+    let remaining = max(0, seconds - (uptime - startedUptime))
+    return min(1, max(0, (totalSeconds - remaining) / totalSeconds))
   }
 }

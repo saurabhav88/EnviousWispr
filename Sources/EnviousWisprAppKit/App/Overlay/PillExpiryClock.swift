@@ -224,7 +224,8 @@ final class PillExpiryClock {
     // no other way to know it.
     publishDwell(
       OverlayDwellWindow(
-        id: dwell.id, startedAt: startedAt, seconds: dwell.seconds, totalSeconds: dwell.total))
+        id: dwell.id, startedAt: startedAt, seconds: dwell.seconds, totalSeconds: dwell.total,
+        startedUptime: startedUptime))
     let armID = UUID()
     activeArmID = armID
     running = (dwell, startedUptime + dwell.seconds)

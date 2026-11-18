@@ -358,7 +358,8 @@ struct CorrectionLearnedPillView: View {
     TimelineView(.animation(minimumInterval: nil, paused: dwell?.isPaused ?? true)) { context in
       CorrectionLearnedPillFace(
         line: CorrectionLearnedPillCopy.line(for: model),
-        progress: Self.railProgress(for: dwell, at: context.date),
+        progress: Self.railProgress(
+          for: dwell, atUptime: ProcessInfo.processInfo.systemUptime, orDate: context.date),
         palette: PillPalette.forScheme(colorScheme),
         showsBloom: RailMotion.showsBloom(reduceMotion: reduceMotion),
         onUndo: onUndo,
@@ -370,8 +371,14 @@ struct CorrectionLearnedPillView: View {
   /// The share of the original dwell that has run by `now`: a paused window is its frozen share
   /// whatever the instant, a running one grows with time, a window past its end is full, and no
   /// window yet is empty. Pure, so a test can read each case.
-  static func railProgress(for dwell: OverlayDwellWindow?, at now: Date) -> Double {
-    dwell?.elapsedFraction(at: now) ?? 0
+  ///
+  /// Measured on the steady clock the dwell's own deadline uses (`uptime`), so a wall-clock jump
+  /// cannot move the line while the Undo deadline stays put; `date` is read only for a window
+  /// without a steady anchor.
+  static func railProgress(for dwell: OverlayDwellWindow?, atUptime uptime: TimeInterval, orDate date: Date)
+    -> Double
+  {
+    dwell?.elapsedFraction(atUptime: uptime, orDate: date) ?? 0
   }
 }
 
