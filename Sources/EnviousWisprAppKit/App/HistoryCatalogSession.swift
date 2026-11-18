@@ -533,10 +533,15 @@ final class HistoryCatalogSession {
     } else if pass.changedRows {
       passCommittedRows = true
     }
-    syncShowsUpdating()
-    guard pass.changed || next != status || newCertificate else { return }
+    guard pass.changed || next != status || newCertificate else {
+      syncShowsUpdating()
+      return
+    }
     let now = ContinuousClock.now
-    if !finished, next == status, let publishedAt, now - publishedAt < Self.publishInterval { return }
+    if !finished, next == status, let publishedAt, now - publishedAt < Self.publishInterval {
+      syncShowsUpdating()
+      return
+    }
     status = next
     syncShowsUpdating()
     if let certified { publishedCertifiedSource = certified }

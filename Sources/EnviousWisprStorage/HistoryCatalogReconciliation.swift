@@ -232,10 +232,15 @@ package actor HistoryCatalogReconciliation {
     let verified = pending.filter { update in
       (try? update.entry.versions.allSatisfy { try $0.stillMatches() }) == true
     }
+    let changedProjection = verified.contains { update in
+      guard update.projection != nil else { return false }
+      let previous = progress.entries[update.entry.path]
+      return previous?.key != update.entry.key || previous?.versions != update.entry.versions
+    }
     let removed = progress.record(verified.map(\.entry))
     let projections = verified.compactMap(\.projection)
     try await catalog.apply(projections, removing: removed, recording: verified.map(\.entry))
-    return (verified.count, !projections.isEmpty || !removed.isEmpty)
+    return (verified.count, changedProjection || !removed.isEmpty)
   }
 }
 

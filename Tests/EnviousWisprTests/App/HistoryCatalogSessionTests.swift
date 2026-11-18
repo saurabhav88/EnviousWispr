@@ -193,14 +193,10 @@ struct HistoryCatalogSessionTests {
     return (session.status, trace)
   }
 
-  /// Every sync at `.updating` shows the label, except the one a certifying publish makes just
-  /// before it sets `.ready` (the same main-actor turn, so never drawn).
+  /// Every sync at `.updating` shows the label: a certifying publish sets `.ready` before it clears
+  /// the label, so no sync sees `.updating` with the label already off.
   private static func shownUntilCertified(_ trace: [(status: HistoryCatalogSession.Status, shows: Bool)]) -> Bool {
-    trace.indices.allSatisfy { index in
-      let entry = trace[index]
-      if entry.status != .updating || entry.shows { return true }
-      return index + 1 < trace.count && trace[index + 1].status == .ready
-    }
+    trace.allSatisfy { $0.status != .updating || $0.shows }
   }
 
   private func root() -> URL {
@@ -255,7 +251,9 @@ struct HistoryCatalogSessionTests {
     #expect(launch.trace.last.map { $0.status == .ready && $0.shows == false } == true)
   }
 
-  @Test("A new dictation saved after launch that certifies in one publish never shows the label")
+  @Test(
+    "A new dictation saved after launch that certifies in one publish never shows the label",
+    .timeLimit(.minutes(1)))
   func backgroundRefreshStaysQuiet() async throws {
     let root = root()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -272,16 +270,71 @@ struct HistoryCatalogSessionTests {
     var trace: [(status: HistoryCatalogSession.Status, shows: Bool)] = []
     session.updatingStateForTesting = { trace.append(($0, $1)) }
     defer { session.updatingStateForTesting = nil }
-    let notices = session.noticeCount
     let revision = session.revision
     try save(1, into: store, from: 20_000)
-    // Wait for the change notice to reach the session (it queues the pass), then for the pass.
-    await session.waitForChange(revision: revision, notices: notices)
+    // Wait for a content publish (the admitted notice can wake a notice wait before the settled
+    // one queues the pass), then for the pass to end.
+    while session.revision == revision, !Task.isCancelled {
+      await session.waitForChange(revision: revision, notices: session.noticeCount)
+    }
+    try #require(!Task.isCancelled, "the background refresh did not publish")
     await session.waitForIndexingForTesting()
     let count = try await session.itemCount(now: Date())
     #expect(count?.count == 6, "the new dictation reached the catalog")
     #expect(session.status == .ready)
     #expect(trace.isEmpty == false, "the background pass published")
+    #expect(trace.allSatisfy { $0.shows == false }, "the label never showed: \(trace.map(\.shows))")
+  }
+
+  @Test(
+    "An outside notice for a dictation that did not change never shows the label",
+    .timeLimit(.minutes(1)))
+  func unchangedNoticeStaysQuiet() async throws {
+    let created = root()
+    defer { try? FileManager.default.removeItem(at: created) }
+    // Resolve the temporary folder's symlinked /var first: a scoped refresh names a file by the
+    // path the notice carries, and its saved proof is keyed by the path the scan found.
+    try FileManager.default.createDirectory(at: created, withIntermediateDirectories: true)
+    // `resolvingSymlinksInPath` maps /private/var back to /var, so ask the system for the real path.
+    let resolved = try #require(realpath(created.path, nil))
+    defer { free(resolved) }
+    let root = URL(fileURLWithPath: String(cString: resolved), isDirectory: true)
+    let (changes, store, meetings) = sources(root)
+    try save(5, into: store)
+    let known = Transcript(
+      text: "known row", processingTime: 0, backendType: .parakeet,
+      createdAt: Date(timeIntervalSinceReferenceDate: 751_000_000))
+    try store.save(known)
+    // Files written moments ago are re-read until they age (their proofs change while they are
+    // fresh), which is real row work. Age every saved file so this notice names an unchanged one.
+    let transcripts = root.appendingPathComponent("transcripts")
+    let files = try FileManager.default.contentsOfDirectory(at: transcripts, includingPropertiesForKeys: nil)
+    for file in files {
+      try FileManager.default.setAttributes(
+        [.modificationDate: Date(timeIntervalSinceNow: -86_400)], ofItemAtPath: file.path)
+    }
+    let session = HistoryCatalogSession(
+      changes: changes, sources: store.historyCatalogSources(meetings: meetings),
+      directory: root.appendingPathComponent("catalog"))
+    let coordinator = TranscriptCoordinator(store: store)
+    coordinator.catalogSession = session
+    coordinator.startHistoryCatalog()
+    await session.waitForIndexingForTesting()
+    #expect(session.status == .ready)
+    var trace: [(status: HistoryCatalogSession.Status, shows: Bool)] = []
+    session.updatingStateForTesting = { trace.append(($0, $1)) }
+    defer { session.updatingStateForTesting = nil }
+    let notices = session.noticeCount
+    // Another process "touched" the dictation without changing what History shows: it names the
+    // row, but the scoped refresh finds the same key and the same source proof.
+    changes.externalChange(.transcript(known.id))
+    while session.noticeCount == notices, !Task.isCancelled {
+      await session.waitForChange(revision: session.revision, notices: notices)
+    }
+    try #require(!Task.isCancelled, "the notice did not reach the session")
+    await session.waitForIndexingForTesting()
+    #expect(session.status == .ready)
+    #expect(trace.isEmpty == false, "the scoped refresh ran and reported")
     #expect(trace.allSatisfy { $0.shows == false }, "the label never showed: \(trace.map(\.shows))")
   }
 
