@@ -14,7 +14,7 @@ The caller must hold the dev-app lock (claimed in a separate tool call).
 
 Usage: python3 containment_pilot.py <pinned EnviousWispr.app> <expected sha256> <seed dir> <new run dir>
          [--calibrate] [--run <cases.json> <samples> [--capture-compare] [--busy]] [--scroll [scroll options...]]
-         [--card [--repeats N]] [--open missing|existing|missing,existing <samples> [--busy] [--control drop-row]]
+         [--card [--repeats N]] [--open missing|existing|missing,existing <samples> (or existing:3,missing:1; --warmups N) [--busy] [--control drop-row]]
          [--scroll-early] [--hold]
   --open     after the contained session (which builds full coverage), run m5-speed-open.py on the same
              subject and home; it launches and stops the subject itself, once per sample
@@ -96,6 +96,11 @@ def window_listed(pid):
     sys.path.insert(0, str(HERE.parent))
     import ui_helpers as ui
     return bool(ui.get_attr(ui.get_ax_app(pid), "AXWindows"))
+
+
+def parse_open_spec(spec, default_samples):
+    """"missing,existing" with a shared sample count, or "existing:3,missing:1": a list of (mode, samples)."""
+    return [(item.partition(":")[0], item.partition(":")[2] or default_samples) for item in spec.split(",")]
 
 
 def main():
@@ -207,13 +212,16 @@ def main():
     if "--open" in OWN:
         import subprocess
         at = OWN.index("--open")
+        open_plan = parse_open_spec(OWN[at + 1], OWN[at + 2] if len(OWN) > at + 2 else None)
         extra = [a for a in ("--busy", "--storage-warning") if a in OWN]
+        if "--warmups" in OWN:
+            extra += ["--warmups", OWN[OWN.index("--warmups") + 1]]
         if "--control" in OWN:
             extra += ["--control", OWN[OWN.index("--control") + 1]]
         report["open_runs"] = {}
-        for mode in OWN[at + 1].split(","):   # e.g. "missing,existing"
+        for mode, count in open_plan:
             result = subprocess.run([sys.executable, "-B", str(HERE / "m5-speed-open.py"), str(subject), str(home),
-                                     str(run / f"open-{mode}"), "--mode", mode, "--samples", OWN[at + 2]] + extra,
+                                     str(run / f"open-{mode}"), "--mode", mode, "--samples", count] + extra,
                                     capture_output=True, text=True, timeout=7200)
             report["open_runs"][mode] = {"exit": result.returncode, "stdout_tail": result.stdout[-3000:],
                                          "stderr_tail": result.stderr[-1500:]}
@@ -221,8 +229,7 @@ def main():
     expected = {"search": run_cases is not None, "card": "--card" in OWN, "scroll": "--scroll" in sys.argv[5:]}
     missing = [name for name, wanted in expected.items() if wanted and not (run / name / "report.json").is_file()]
     if "--open" in OWN:
-        missing += [f"open-{m}" for m in OWN[OWN.index("--open") + 1].split(",")
-                    if not (run / f"open-{m}" / "report.json").is_file()]
+        missing += [f"open-{m}" for m, _ in open_plan if not (run / f"open-{m}" / "report.json").is_file()]
     report["missing_reports"] = missing
     (run / "pilot.json").write_text(json.dumps(report, indent=1))
     print(json.dumps({k: v for k, v in report.items() if k != "fixture_writes"}, indent=1))

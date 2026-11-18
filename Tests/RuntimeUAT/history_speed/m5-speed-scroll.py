@@ -30,10 +30,11 @@ tail stays full) or wheel clicks, so travel must FAIL.
 Every run records machine conditions (load, peer builds) at start and end.
 
 Usage: python3 m5-speed-scroll.py <pid> <subject .app> <new out dir> [--tabs Dictations,Transcripts,Meetings]
-                                  [--inputs trackpad,wheel] [--repeats N] [--start-pt N] [--idle] [--busy]
+                                  [--inputs trackpad,wheel] [--repeats N] [--start-pt N] [--idle [--idle-seconds N]] [--busy]
                                   [--deep] [--control short-return]
   --trace-repeats N records xctrace only on the first N repeats of each tab x input (later repeats
   reuse that hitch number and add travel and row-height readings)
+  --trace-repeats 0 skips xctrace entirely: hitch is null (not measured), never 0
   --deep adds one trackpad run on Dictations from 40000 pt down (many loaded pages)
 The caller holds the dev-app lock and runs the subject inside fixture.ContainedSession
 (containment_pilot.py --scroll does both).
@@ -338,10 +339,15 @@ def main():
             reached = now
         return reached
 
-    def go_to_start(table, area, frame, point, target, run):
+    def go_to_start(table, area, frame, point, target, run, probe_end=False):
         """Go to `target` points down; a short list (Meetings) that ends first backs off two gestures
-        so a down gesture fits, for the hitch pass and the layout pass alike."""
+        so a down gesture fits, for the hitch pass and the layout pass alike. `probe_end` (no hitch pass
+        ran, `--trace-repeats 0`): the last gesture may have stopped just short of the end, leaving no room
+        for the measured down gesture, so one more gesture finds the end first (found to clamp Meetings)."""
         reached = go_to(table, frame, point, target)
+        if probe_end and not at_bottom(table, area):
+            gesture("trackpad", point, -1)
+            reached = scrolled(table, frame)
         if at_bottom(table, area):
             for _ in range(2):
                 gesture("trackpad", point, +1)
@@ -453,7 +459,7 @@ def main():
                     run["hitch"] = {"ms_per_s": None, "not_traced": True}
                 # Layout pass, again in fresh rows when the list is long enough: AX reads of the
                 # visible rows during the gestures AND while the list settles.
-                ya_pt = go_to_start(table, area, frame, point, position, run)
+                ya_pt = go_to_start(table, area, frame, point, position, run, probe_end=trace_repeats == 0)
                 run["layout_pass_at_pt"], run["layout_pass_fresh"] = ya_pt, ya_pt >= deepest
                 start = settled(table)
                 samples = [visible_rows(table)]
@@ -480,9 +486,10 @@ def main():
     report["busy"] = busy
     if "--idle" in argv:
         # Idle on History: no input for IDLE_S; CPU seconds and peak memory of the subject.
+        idle_s = int(option(argv, "--idle-seconds", str(IDLE_S)))
         with load_tools.ResourceSampler(pid) as idle:
-            time.sleep(IDLE_S)  # settle: the idle phase IS this quiet interval
-        report["resources_idle"] = idle.result() | {"seconds": IDLE_S}
+            time.sleep(idle_s)  # settle: the idle phase IS this quiet interval
+        report["resources_idle"] = idle.result() | {"seconds": idle_s}
     load = load_tools.BusyLoad() if busy else None
     if load:
         load.__enter__()
