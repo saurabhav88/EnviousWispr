@@ -149,7 +149,7 @@ final class PillExpiryClock {
       let prepared = preparedArm
       preparedArm = nil
       if let running {
-        let remaining = max(0, running.deadline.timeIntervalSince(now()))
+        let remaining = remainder(of: running)
         invalidateRunning()
         freeze(running.dwell, remaining: remaining)
       } else if let prepared {
@@ -182,7 +182,7 @@ final class PillExpiryClock {
       // as it is: nothing about this Undo may arm, cancel or re-time it.
       let held: (dwell: Dwell, remaining: Double)
       if let running, running.dwell.id == id {
-        held = (running.dwell, max(0, running.deadline.timeIntervalSince(now())))
+        held = (running.dwell, remainder(of: running))
       } else if let paused, paused.dwell.id == id {
         held = (paused.dwell, paused.remaining)
       } else {
@@ -227,6 +227,16 @@ final class PillExpiryClock {
       self.running = nil
       onExpiry(dwell.id, dwell.target)
     }
+  }
+
+  /// Seconds left on a running dwell, kept inside 0...total.
+  ///
+  /// The deadline is a wall-clock `Date` while the timer itself runs on
+  /// `DispatchTime`. If the wall clock jumps backward during a pill (a clock
+  /// correction or the user changing the time), `deadline - now()` can exceed the
+  /// dwell's original total, so it is clamped rather than trusted.
+  private func remainder(of running: (dwell: Dwell, deadline: Date)) -> Double {
+    min(max(0, running.deadline.timeIntervalSince(now())), running.dwell.total)
   }
 
   /// Stop the armed callback without touching prepared or frozen state.

@@ -1086,6 +1086,9 @@ def case_expiry_under_hover(path):
     # remainder here is well above it, and the unit tests cover the floor.)
     expected_remaining = max(UNPAUSED_DWELL_S - pre_hover_s, RESUME_FLOOR_S)
     bound = expected_remaining + RESUME_TOLERANCE_S
+    # A pill that always resumes at the 2 s floor must not pass: the dismissal has to land
+    # near the remainder that was frozen, not merely after the floor.
+    lower_bound = max(expected_remaining - RESUME_TOLERANCE_S, RESUME_FLOOR_S)
     while time.monotonic() - exit_at < bound:
         present = undo_present_or_abort(label, expected_pid)
         elapsed = time.monotonic() - exit_at
@@ -1098,7 +1101,7 @@ def case_expiry_under_hover(path):
     persisted = wait_for("the word still in custom-words.json", lambda: learned_alias(pair, heard), deadline=2.0)
     undone = has(mark, "learn_undone")
     ok = (present_through_hold and gone_after is not None and survived_minimum
-          and gone_after <= bound and not undone and bool(persisted))
+          and lower_bound <= gone_after <= bound and not undone and bool(persisted))
     return check(label, ok,
                  f"heard={heard!r} hovered={hovered} pre_hover_s={pre_hover_s:.2f} "
                  f"hover_hold_s={hold_s:.2f} "

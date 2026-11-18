@@ -249,6 +249,30 @@ struct PillExpiryClockTests {
     #expect(rig.dispatches.isEmpty, "a paused dwell still expired")
   }
 
+  @Test("a wall clock that jumps backward cannot freeze more than the original total")
+  func pauseClampsTheRemainderWhenTheWallClockJumpsBack() throws {
+    let rig = Rig()
+    let pill = Self.id()
+    let onExpiry: (PresentationID, OverlayExpiryTarget) -> Void = { rig.recordFired($0, $1) }
+    rig.clock.prepare(.arm(id: pill, seconds: 12, target: .presentation), onExpiry: onExpiry)()
+    // The deadline sits 12 s ahead of the start. Moving `now` 54 s BACK makes the unclamped
+    // remainder 12 + 54 = 66 s, so removing the clamp fails the 12 s assertions below.
+    rig.advance(by: -54)
+
+    _ = rig.clock.prepare(.pause, onExpiry: onExpiry)
+
+    let frozen = try Self.latest(rig)
+    #expect(frozen.isPaused)
+    #expect(frozen.pausedRemaining == 12, "a backward wall-clock jump inflated the frozen remainder")
+    #expect(frozen.totalSeconds == 12)
+
+    let start = rig.clock.prepare(.resume(id: pill, floorSeconds: 2), onExpiry: onExpiry)
+    start()
+    let resumed = try #require(rig.scheduledSeconds.last)
+    #expect(resumed <= 12, "the resumed countdown outlasted the original dwell")
+    #expect(try Self.latest(rig).seconds <= 12)
+  }
+
   @Test("an invalidated callback does not fire after a pause, even when called directly")
   func pausedCallbackDispatchesNothing() throws {
     var bodies: [() -> Void] = []
