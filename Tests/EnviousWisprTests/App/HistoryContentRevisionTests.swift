@@ -87,12 +87,71 @@ import Testing
       #expect(f.session.revision != before)
     }
 
-    /// What the ordering test observes, all on the main actor.
+    /// What the ordering tests observe, all on the main actor: the events in order, and the gate
+    /// that holds one page read before its catalog call.
     @MainActor
     private final class ReadOrder {
-      var readHeld = false
-      var passSawReadHeld: Bool?
-      var release: CheckedContinuation<Void, Never>?
+      var events: [String] = []
+      private var gate: CheckedContinuation<Void, Never>?
+      private(set) var holding = false
+
+      /// Holds the calling read until `release()` or until its task is cancelled.
+      func hold() async {
+        holding = true
+        await withTaskCancellationHandler {
+          await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            if Task.isCancelled { continuation.resume() } else { gate = continuation }
+          }
+        } onCancel: {
+          Task { @MainActor in self.release() }
+        }
+      }
+
+      func release() {
+        gate?.resume()
+        gate = nil
+      }
+
+      /// Waits until `event` was recorded; throws on test cancellation (its time limit).
+      func until(_ event: String) async throws {
+        while events.contains(event) == false {
+          try Task.checkCancellation()
+          await Task.yield()
+        }
+      }
+
+      func untilHolding() async throws {
+        while holding == false {
+          try Task.checkCancellation()
+          await Task.yield()
+        }
+      }
+    }
+
+    /// Holds a page read before its catalog call, then asks for a full re-check whose backend
+    /// hook runs `whenPassOpens`. Records "catalog read" when the read's catalog call returned
+    /// (the post-catalog hook) and "reconcile" the FIRST time a full pass reaches `reconcile`.
+    private func holdReadThenRequestPass(
+      _ f: Fixture, _ order: ReadOrder, whenPassOpens: @escaping @MainActor (Task<HistoryCatalog.Page?, Never>) -> Void
+    ) async throws -> Task<HistoryCatalog.Page?, Never> {
+      f.session.beforePageCatalogForTesting = { await order.hold() }
+      f.session.beforePageFenceForTesting = { order.events.append("catalog read") }
+      let read = Task { try? await f.session.page(.init(tab: .dictations)) }
+      try await order.untilHolding()
+      f.session.beforePageCatalogForTesting = nil
+      f.session.afterPassOpenForTesting = { whenPassOpens(read) }
+      f.session.beforeReconcileForTesting = {
+        if order.events.contains("reconcile") == false { order.events.append("reconcile") }
+      }
+      f.changes.externalChange()
+      return read
+    }
+
+    private func clearHooks(_ f: Fixture) {
+      f.session.beforePageCatalogForTesting = nil
+      f.session.beforePageFenceForTesting = nil
+      f.session.afterPassOpenForTesting = nil
+      f.session.beforeReconcileForTesting = nil
     }
 
     @Test("A page read already waiting when a full re-check starts reaches the catalog first")
@@ -100,36 +159,37 @@ import Testing
       let f = try await fixture(rows: 3)
       defer { try? FileManager.default.removeItem(at: f.root) }
       let order = ReadOrder()
-      // The read is held after the backend is open and before its catalog call.
-      f.session.beforePageCatalogForTesting = {
-        order.readHeld = true
-        await withCheckedContinuation { order.release = $0 }
-        order.readHeld = false
+      defer { clearHooks(f) }
+      // The held read is let go only once the pass has its backend; a pass that does not wait
+      // reaches `reconcile` before the read's catalog call returns.
+      let read = try await holdReadThenRequestPass(f, order) { _ in
+        Task { @MainActor in order.release() }
       }
-      let read = Task { try? await f.session.page(.init(tab: .dictations)) }
-      defer { read.cancel() }
-      while order.release == nil {
-        try Task.checkCancellation()
-        await Task.yield()
+      defer {
+        read.cancel()
+        order.release()
       }
-      f.session.beforePageCatalogForTesting = nil
-      // The held read is let go only once the pass has its backend; a pass that goes first
-      // reaches `reconcile` before that happens.
-      f.session.afterPassOpenForTesting = {
-        Task { @MainActor in
-          order.release?.resume()
-          order.release = nil
-        }
-      }
-      f.session.beforeReconcileForTesting = { order.passSawReadHeld = order.readHeld }
-      f.changes.externalChange()
-      await f.session.waitForIndexingForTesting()
-      f.session.afterPassOpenForTesting = nil
-      f.session.beforeReconcileForTesting = nil
-      #expect(order.passSawReadHeld == false)
+      try await order.until("reconcile")
+      try await order.until("catalog read")
+      #expect(order.events.firstIndex(of: "catalog read")! < order.events.firstIndex(of: "reconcile")!)
       // The read finishes either way; the outside change it overlapped may refuse it (a valid
       // source-change refusal), which this ordering test does not judge.
       _ = await read.value
+      await f.session.waitForIndexingForTesting()
+    }
+
+    @Test("A waiting page read that is cancelled lets the re-check go on")
+    func cancelledReadReleasesPass() async throws {
+      let f = try await fixture(rows: 3)
+      defer { try? FileManager.default.removeItem(at: f.root) }
+      let order = ReadOrder()
+      defer { clearHooks(f) }
+      // The view leaves: its read is cancelled while held, exits, and the pass proceeds.
+      let read = try await holdReadThenRequestPass(f, order) { read in read.cancel() }
+      defer { order.release() }
+      try await order.until("reconcile")
+      #expect(await read.value == nil)
+      await f.session.waitForIndexingForTesting()
     }
 
     @Test("A page read across a content publish is kept, shown and not yet current")

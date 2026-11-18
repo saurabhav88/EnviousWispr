@@ -362,7 +362,7 @@ final class HistoryCatalogSession {
           }
           let backend = try await open()
           #if DEBUG
-            await afterPassOpenForTesting?()
+            afterPassOpenForTesting?()
           #endif
           let pass: HistoryCatalogReconciliation.Pass?
           if delta.scopes.contains(.all) {
@@ -376,7 +376,7 @@ final class HistoryCatalogSession {
             }
             try Task.checkCancellation()
             #if DEBUG
-              await beforeReconcileForTesting?()
+              beforeReconcileForTesting?()
             #endif
             pass = try await backend.worker.reconcile { [weak self] pass in
               await self?.publishProgress(pass)
@@ -482,10 +482,12 @@ final class HistoryCatalogSession {
     @ObservationIgnored var beforePageFenceForTesting: (@MainActor () async -> Void)?
     /// Runs inside `page` after the backend is open and before any catalog call (#4586 package I).
     @ObservationIgnored var beforePageCatalogForTesting: (@MainActor () async -> Void)?
-    /// Runs in the indexing loop right after the backend is open (#4586 package I).
-    @ObservationIgnored var afterPassOpenForTesting: (@MainActor () async -> Void)?
-    /// Runs right before a full pass calls `reconcile` (#4586 package I).
-    @ObservationIgnored var beforeReconcileForTesting: (@MainActor () async -> Void)?
+    /// Runs in the indexing loop right after the backend is open (#4586 package I). Synchronous,
+    /// so observing adds no suspension before the read snapshot.
+    @ObservationIgnored var afterPassOpenForTesting: (@MainActor () -> Void)?
+    /// Runs right before a full pass calls `reconcile` (#4586 package I). Synchronous, so it adds
+    /// no suspension after the cancellation check.
+    @ObservationIgnored var beforeReconcileForTesting: (@MainActor () -> Void)?
     /// A content publish with no indexing pass behind it (#4586 H1 tests).
     func advanceContentForTesting() { advanceContent() }
     var changeWaiterCountForTesting: Int { changeWaiters.count }

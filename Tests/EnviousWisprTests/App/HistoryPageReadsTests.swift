@@ -50,7 +50,8 @@ import Testing
       defer { pass.cancel() }
       try await waitUntilRegistered(reads)
       reads.end(second)
-      await Task.yield()
+      // Still registered right after the earlier-finishing read ended: no early wake.
+      #expect(reads.waiterCountForTesting == 1)
       #expect(done.value == false)
       reads.end(first)
       try await waitUntil(done)
