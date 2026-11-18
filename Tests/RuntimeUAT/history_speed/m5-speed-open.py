@@ -35,10 +35,10 @@ passes the app's own setting `recordingStorageWarningThreshold=none` in its laun
 preference is written): otherwise the warning banner appears 2.4-3.9 s after launch and pushes the
 page down about 65 pt. `--storage-warning` launches WITHOUT that argument and reports the banner
 (`banner_jump`: when it appeared and how far the list moved): a labelled check of a real
-user-visible jump, not a timing run.
+user-visible jump, not a timing run. `--watch-banner` runs the same watch with the warning off.
 
 Usage: python3 m5-speed-open.py <subject .app> <fixture home> <new out dir> --mode missing|existing
-                                [--samples 20] [--warmups 2] [--busy] [--control drop-row] [--storage-warning]
+                                [--samples 20] [--warmups 2] [--busy] [--control drop-row] [--storage-warning] [--watch-banner]
 The caller holds the dev-app lock; no other instance of the subject may run.
 """
 import importlib.util
@@ -96,6 +96,7 @@ def main():
     warmups = max(1, int(option(argv, "--warmups", "2")))
     control = option(argv, "--control")
     storage_warning = "--storage-warning" in argv
+    watch = "--watch-banner" in argv   # watch for the banner with the warning OFF (proof it stays off)
     if control not in (None, "drop-row"):
         print(f"unknown control {control}", file=sys.stderr)
         return 2
@@ -155,11 +156,11 @@ def main():
             raise RuntimeError(f"capture invalid: stopped by {header.get('stopped_by')}, error {header.get('stop_error')}")
         return header, frames
 
-    def watch_banner(window, area, spawned):
-        """Labelled jump check (`--storage-warning`): until BANNER_WATCH_S after the spawn, watch for the
-        recordings storage-warning banner and how far it pushes the list down. Accessibility reads,
+    def watch_banner(window, area, spawned, start_y):
+        """Labelled jump check (`--storage-warning`, or `--watch-banner` with the warning off): until
+        BANNER_WATCH_S after the spawn, watch for the recordings storage-warning banner and how far the
+        list moved from where it was when the page was first confirmed (`start_y`). Accessibility reads,
         outside the list only (history_reader.find_outside_list)."""
-        start_y = (ui.element_frame(area) or {}).get("y")
         seen_at, moved_to = None, start_y
         while ms(libc.mach_absolute_time() - spawned) < BANNER_WATCH_S * 1000:
             if seen_at is None and hr.find_outside_list(window, lambda e, r: r == "AXStaticText" and str(
@@ -221,6 +222,7 @@ def main():
                                                       f"(last read {last_verdict})")
                 return sample
             sample["ax_confirm_ms"] = round(ms(confirmed - spawned), 1)
+            y_at_page = (ui.element_frame(area) or {}).get("y")   # the jump check starts here
             hold_end = time.monotonic() + HOLD_MS / 1000
             held = True
             while time.monotonic() < hold_end:
@@ -228,8 +230,8 @@ def main():
                     held = False
                 time.sleep(0.03)  # deadline-fallback: paced AX read inside the hold
             held_until = libc.mach_absolute_time()
-            if storage_warning:
-                sample["banner"] = watch_banner(window, area, spawned)
+            if storage_warning or watch:
+                sample["banner"] = watch_banner(window, area, spawned, y_at_page)
             a, w = ui.element_frame(area), ui.element_frame(window)
             sample["list_rect"] = f"{int(a['x'])},{int(a['y'])},{int(a['width'] - SCROLL_BAR)},{int(a['height'])}"
             sample["window_frame"] = w
@@ -339,7 +341,7 @@ def main():
     report["window_to_page_ms"] = percentiles([s["window_to_page_ms"] for s in measured if s["result"] == "timed"])
     report["window_ms"] = percentiles([s["window_ms"] for s in measured if "window_ms" in s])
     report["capture_late"] = sum(1 for s in measured if s.get("capture_late"))
-    if storage_warning:   # the labelled jump check: banner seen and how far it moved the page
+    if storage_warning or watch:   # the labelled jump check: banner seen and how far it moved the page
         banners = [s["banner"] for s in measured if s.get("banner")]
         report["banner_jump"] = {"samples": len(banners),
                                  "seen": sum(1 for b in banners if b["seen_at_ms"] is not None),

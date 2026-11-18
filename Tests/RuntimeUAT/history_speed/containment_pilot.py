@@ -204,7 +204,7 @@ def main():
     if "--open" in OWN:
         import subprocess
         at = OWN.index("--open")
-        extra = [a for a in ("--busy", "--storage-warning") if a in OWN]
+        extra = [a for a in ("--busy", "--storage-warning", "--watch-banner") if a in OWN]
         if "--control" in OWN:
             extra += ["--control", OWN[OWN.index("--control") + 1]]
         report["open_runs"] = {}
