@@ -9,8 +9,7 @@ BANNER_IDENTIFIER = "history.recordingStorage.openSettings"
 
 def find_banner(history_reader, ui, window):
     """True when the banner button is present outside the list (the list is never descended); False
-    only when the same scan also reached the History page's own controls (a button outside the list, or
-    the list table), so "absent" is a read of a loaded page; None when the scan reached neither (window
+    only when the same scan also reached the History list table (sidebar buttons do not count), so "absent" is a read of a loaded page; None when the scan reached neither (window
     unreadable or page not built): that read proves nothing and is never "banner absent"."""
     roles = set()
 
@@ -20,7 +19,7 @@ def find_banner(history_reader, ui, window):
 
     if history_reader.find_outside_list(window, match):
         return True
-    return False if roles & {"AXButton", "AXTable"} else None
+    return False if "AXTable" in roles else None
 
 
 def watch(read_banner, now_ms, pause, deadline_ms):

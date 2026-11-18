@@ -39,11 +39,12 @@ class FindBannerTest(unittest.TestCase):
         self.assertIs(self.find([("history.recordingStorage.openSettings", "AXButton")]), True)
 
     def test_absent_on_a_loaded_page(self):
-        self.assertIs(self.find([("x", "AXButton"), ("y", "AXGroup")]), False)
+        self.assertIs(self.find([("x", "AXButton"), ("y", "AXTable")]), False)
 
     def test_nothing_readable_is_unknown_not_absent(self):
         self.assertIsNone(self.find([]))
         self.assertIsNone(self.find([("x", "AXGroup")]))
+        self.assertIsNone(self.find([("sidebar", "AXButton")]))   # a button alone is not the History page
 
 
 class WatchTest(unittest.TestCase):
