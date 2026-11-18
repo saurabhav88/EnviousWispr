@@ -10,6 +10,9 @@ package actor HistoryCatalogReconciliation {
     /// Rows or source proofs changed in the catalog during this pass (#4598): the session
     /// publishes only real changes, so an unchanged re-check does not reload every view.
     package var changed = false
+    /// A projected row or a removal changed (as opposed to source proofs only): the screen shows
+    /// "Updating History…" only for this (#4586).
+    package var changedRows = false
     /// The source revision this pass certified, captured with the worker's certificate. A new
     /// certificate for the same source revision is not a change worth publishing.
     package var certifiedSource: UInt64?
@@ -90,6 +93,7 @@ package actor HistoryCatalogReconciliation {
     var pending: [Update] = []
     var unavailable = 0
     var changed = false
+    var changedRows = false
     for url in ordered {
       try Task.checkCancellation()
       let before = progress.entries[url.path]
@@ -108,15 +112,18 @@ package actor HistoryCatalogReconciliation {
         // unverified, and a later pass can still remove it if the file disappears.
       }
       if pending.count == Self.batchSize {
-        let saved = try await commit(pending, tracking: &progress)
+        let batch = try await commit(pending, tracking: &progress)
         pending.removeAll(keepingCapacity: true)
-        if saved > 0 {
+        if batch.saved > 0 {
           changed = true
-          await onProgress(Pass(revision: nil, changed: true))
+          changedRows = changedRows || batch.changedRows
+          await onProgress(Pass(revision: nil, changed: true, changedRows: batch.changedRows))
         }
       }
     }
-    if try await commit(pending, tracking: &progress) > 0 { changed = true }
+    let tail = try await commit(pending, tracking: &progress)
+    changed = changed || tail.saved > 0
+    changedRows = changedRows || tail.changedRows
 
     try Task.checkCancellation()
     let currentPaths = Set(try sources.paths(requireMeetings: requireMeetings).map(\.path))
@@ -142,6 +149,7 @@ package actor HistoryCatalogReconciliation {
     lastCertificate = currentRevision.flatMap { value in beganAt.map { (value, $0) } }
     let result = Pass(
       revision: currentRevision, unavailable: unavailable, changed: changed,
+      changedRows: changedRows || !removed.isEmpty,
       certifiedSource: lastCertificate?.source)
     // The caller publishes the returned final pass; `onProgress` carries only mid-pass batches.
     return result
@@ -188,13 +196,13 @@ package actor HistoryCatalogReconciliation {
         unresolved = true
       }
     }
-    let saved = try await commit(updates, tracking: &progress)
+    let batch = try await commit(updates, tracking: &progress)
     let removedKeys = Set(disappeared.compactMap { progress.remove($0)?.key })
       .filter { progress.isUnreferenced($0) }
     let certified: Bool
     if let previous, let beganAt, beganAt == sourceRevision() {
       certified = delta.spans(after: previous.source, through: beganAt)
-        && !unresolved && saved == updates.count
+        && !unresolved && batch.saved == updates.count
     } else {
       certified = false
     }
@@ -206,7 +214,8 @@ package actor HistoryCatalogReconciliation {
     lastCertificate = current.flatMap { value in beganAt.map { (value, $0) } }
     return Pass(
       revision: current, unavailable: unresolved ? 1 : 0,
-      changed: saved > 0 || !removedKeys.isEmpty || !disappeared.isEmpty,
+      changed: batch.saved > 0 || !removedKeys.isEmpty || !disappeared.isEmpty,
+      changedRows: batch.changedRows || !removedKeys.isEmpty,
       certifiedSource: lastCertificate?.source)
   }
 
@@ -217,15 +226,16 @@ package actor HistoryCatalogReconciliation {
 
   private func commit(
     _ pending: [Update], tracking progress: inout KeyedProgress
-  ) async throws -> Int {
+  ) async throws -> (saved: Int, changedRows: Bool) {
     try Task.checkCancellation()
-    guard !pending.isEmpty else { return 0 }
+    guard !pending.isEmpty else { return (0, false) }
     let verified = pending.filter { update in
       (try? update.entry.versions.allSatisfy { try $0.stillMatches() }) == true
     }
     let removed = progress.record(verified.map(\.entry))
-    try await catalog.apply(verified.compactMap(\.projection), removing: removed, recording: verified.map(\.entry))
-    return verified.count
+    let projections = verified.compactMap(\.projection)
+    try await catalog.apply(projections, removing: removed, recording: verified.map(\.entry))
+    return (verified.count, !projections.isEmpty || !removed.isEmpty)
   }
 }
 

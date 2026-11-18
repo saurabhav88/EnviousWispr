@@ -174,7 +174,7 @@ struct HistoryCatalogSessionTests {
   }
 
   /// A later launch over the same folders; returns the label's whole history through the launch
-  /// re-check, from the session's own trace.
+  /// re-check, from the session's opt-in observer. Every source write comes before `start()`.
   private func laterLaunch(
     _ root: URL, addRows: Int = 0
   ) async throws -> (status: HistoryCatalogSession.Status, trace: [(status: HistoryCatalogSession.Status, shows: Bool)]) {
@@ -185,13 +185,22 @@ struct HistoryCatalogSessionTests {
       directory: root.appendingPathComponent("catalog"))
     let coordinator = TranscriptCoordinator(store: store)
     coordinator.catalogSession = session
-    var seen: [(status: HistoryCatalogSession.Status, shows: Bool)] = []
-    session.didUpdate = { seen.append((session.status, session.showsUpdating)) }
+    var trace: [(status: HistoryCatalogSession.Status, shows: Bool)] = []
+    session.updatingStateForTesting = { trace.append(($0, $1)) }
+    defer { session.updatingStateForTesting = nil }
     coordinator.startHistoryCatalog()
     await session.waitForIndexingForTesting()
-    // Every publish the screen got agrees with the trace's last value for its status.
-    #expect(seen.allSatisfy { $0.shows == false || $0.status == .updating })
-    return (session.status, session.showsUpdatingTraceForTesting)
+    return (session.status, trace)
+  }
+
+  /// Every sync at `.updating` shows the label, except the one a certifying publish makes just
+  /// before it sets `.ready` (the same main-actor turn, so never drawn).
+  private static func shownUntilCertified(_ trace: [(status: HistoryCatalogSession.Status, shows: Bool)]) -> Bool {
+    trace.indices.allSatisfy { index in
+      let entry = trace[index]
+      if entry.status != .updating || entry.shows { return true }
+      return index + 1 < trace.count && trace[index + 1].status == .ready
+    }
   }
 
   private func root() -> URL {
@@ -212,8 +221,42 @@ struct HistoryCatalogSessionTests {
     #expect(launch.trace.last?.status == .ready)
   }
 
-  @Test("A missing catalog shows the label from the first publish until certified")
+  @Test("A missing catalog shows the label once detected until certified")
   func missingCatalogShows() async throws {
+    let root = root()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let (changes, store, meetings) = sources(root)
+    try save(5, into: store)
+    let session = HistoryCatalogSession(
+      changes: changes, sources: store.historyCatalogSources(meetings: meetings),
+      directory: root.appendingPathComponent("catalog"))
+    let coordinator = TranscriptCoordinator(store: store)
+    coordinator.catalogSession = session
+    var trace: [(status: HistoryCatalogSession.Status, shows: Bool)] = []
+    session.updatingStateForTesting = { trace.append(($0, $1)) }
+    defer { session.updatingStateForTesting = nil }
+    coordinator.startHistoryCatalog()
+    await session.waitForIndexingForTesting()
+    #expect(session.status == .ready)
+    #expect(trace.first.map { $0.status == .updating && $0.shows } == true, "\(trace.map(\.shows))")
+    #expect(Self.shownUntilCertified(trace), "shown until certified: \(trace.map(\.shows))")
+    #expect(trace.last.map { $0.status == .ready && $0.shows == false } == true)
+    #expect(session.showsUpdating == false)
+  }
+
+  @Test("Rows changed since the last launch show the label while they apply, then clear it")
+  func changedRowsShow() async throws {
+    let root = root()
+    defer { try? FileManager.default.removeItem(at: root) }
+    try await firstLaunch(root, rows: 5)
+    let launch = try await laterLaunch(root, addRows: 33)
+    #expect(launch.status == .ready)
+    #expect(launch.trace.contains { $0.status == .updating && $0.shows }, "shown while rows apply: \(launch.trace.map(\.shows))")
+    #expect(launch.trace.last.map { $0.status == .ready && $0.shows == false } == true)
+  }
+
+  @Test("A new dictation saved after launch that certifies in one publish never shows the label")
+  func backgroundRefreshStaysQuiet() async throws {
     let root = root()
     defer { try? FileManager.default.removeItem(at: root) }
     let (changes, store, meetings) = sources(root)
@@ -225,23 +268,21 @@ struct HistoryCatalogSessionTests {
     coordinator.catalogSession = session
     coordinator.startHistoryCatalog()
     await session.waitForIndexingForTesting()
-    let trace = session.showsUpdatingTraceForTesting
     #expect(session.status == .ready)
-    #expect(trace.first.map { $0.status == .updating && $0.shows } == true, "\(trace.map(\.shows))")
-    #expect(trace.filter { $0.status == .updating }.allSatisfy { $0.shows }, "shown until certified")
-    #expect(trace.last.map { $0.status == .ready && $0.shows == false } == true)
-    #expect(session.showsUpdating == false)
-  }
-
-  @Test("Rows changed since the last launch show the label while they apply, then clear it")
-  func changedRowsShow() async throws {
-    let root = root()
-    defer { try? FileManager.default.removeItem(at: root) }
-    try await firstLaunch(root, rows: 5)
-    let launch = try await laterLaunch(root, addRows: 400)
-    #expect(launch.status == .ready)
-    #expect(launch.trace.contains { $0.status == .updating && $0.shows }, "shown while rows apply: \(launch.trace.map(\.shows))")
-    #expect(launch.trace.last.map { $0.status == .ready && $0.shows == false } == true)
+    var trace: [(status: HistoryCatalogSession.Status, shows: Bool)] = []
+    session.updatingStateForTesting = { trace.append(($0, $1)) }
+    defer { session.updatingStateForTesting = nil }
+    let notices = session.noticeCount
+    let revision = session.revision
+    try save(1, into: store, from: 20_000)
+    // Wait for the change notice to reach the session (it queues the pass), then for the pass.
+    await session.waitForChange(revision: revision, notices: notices)
+    await session.waitForIndexingForTesting()
+    let count = try await session.itemCount(now: Date())
+    #expect(count?.count == 6, "the new dictation reached the catalog")
+    #expect(session.status == .ready)
+    #expect(trace.isEmpty == false, "the background pass published")
+    #expect(trace.allSatisfy { $0.shows == false }, "the label never showed: \(trace.map(\.shows))")
   }
 
   @Test("A damaged catalog is rebuilt with the label shown until certified")
@@ -257,7 +298,7 @@ struct HistoryCatalogSessionTests {
     let launch = try await laterLaunch(root)
     #expect(launch.status == .ready)
     #expect(launch.trace.first.map { $0.status == .updating && $0.shows } == true, "\(launch.trace.map(\.shows))")
-    #expect(launch.trace.filter { $0.status == .updating }.allSatisfy { $0.shows }, "shown until certified")
+    #expect(Self.shownUntilCertified(launch.trace), "shown until certified: \(launch.trace.map(\.shows))")
     #expect(launch.trace.last.map { $0.status == .ready && $0.shows == false } == true)
   }
 }

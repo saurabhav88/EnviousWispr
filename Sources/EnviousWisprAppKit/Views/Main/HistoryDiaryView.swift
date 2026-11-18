@@ -60,10 +60,11 @@ struct HistoryDiaryView<
     let catalogStatus = coordinator.catalogSession?.status
     let showsUpdating = coordinator.catalogSession?.showsUpdating == true
     let openID = state.openItemID
-    let canOpen = openID != nil
+    let showsDetail = openID != nil && tab != .dictations
+    let listShowsUpdating = showsUpdating && !showsDetail
 
     VStack(spacing: 0) {
-      if let openID, tab != .dictations, canOpen {
+      if let openID, showsDetail {
         destination(for: openID)
           .frame(maxWidth: .infinity, maxHeight: .infinity)
           .environment(\.historyHighlightQuery, state.query)
@@ -90,7 +91,7 @@ struct HistoryDiaryView<
           if tab == .meetings, isSelecting == false {
             HistoryMeetingsBar()
           }
-          if showsUpdating {
+          if listShowsUpdating {
             Label("Updating History…", systemImage: "clock.arrow.circlepath")
               .font(.stHelper)
               .foregroundStyle(.stTextSecondary)
@@ -125,9 +126,10 @@ struct HistoryDiaryView<
     .task(id: RefreshKey(request: key.request, grouping: groupingRevision)) {
       await refresh(tab: tab)
     }
-    .onChange(of: showsUpdating) { previous, current in
-      // Only a label the person actually saw is followed by the "up to date" announcement.
-      if previous, !current, catalogStatus == .ready {
+    .onChange(of: listShowsUpdating) { previous, current in
+      // Only a label the list actually presented is followed by the "up to date" announcement;
+      // opening a detail hides the label without completing anything.
+      if previous, !current, !showsUpdating, catalogStatus == .ready {
         AccessibilityNotification.Announcement(
           String(
             localized: "History is up to date.",

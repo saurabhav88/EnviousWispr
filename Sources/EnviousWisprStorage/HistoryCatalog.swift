@@ -241,10 +241,11 @@ package actor HistoryCatalog {
     }.first
     guard storedContext == projectionContext else { throw Failure.projectionContextChanged }
     hasTrigram = try Self.prepareSearch(using: connection)
+    // Best effort: a presentation hint must not add a reason for open to fail.
     wasCertifiedAtOpen =
-      try connection.rows("SELECT revision IS NOT NULL FROM coverage WHERE id = 0") {
+      (try? connection.rows("SELECT revision IS NOT NULL FROM coverage WHERE id = 0") {
         sqlite3_column_int($0, 0) != 0
-      }.first ?? false
+      }.first) ?? false
     self.connection = connection
   }
 
