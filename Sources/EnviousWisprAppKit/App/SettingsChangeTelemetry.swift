@@ -474,7 +474,7 @@ enum SettingsProjection {
     }
   }
 
-  /// Already low-cardinality (0.5–3.0, stepped by 0.25); emit the stepped value.
+  /// The saved value, formatted to two decimals (the slider only offers quarter-second stops).
   private static func silenceTimeout(_ v: Double) -> String {
     String(format: "%.2f", v)
   }
