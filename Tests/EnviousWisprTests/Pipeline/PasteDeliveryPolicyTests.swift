@@ -158,13 +158,16 @@ struct PasteDeliveryPolicyTests {
     #expect(dispositionForAXDirect(declined, writerPolicy: .axOneWriter) == .continueCascade)
     }
 
-    @Test("V2 still allows the fallback when the setter was called and FAILED")
-    func axOneWriterAllowsFallbackAfterFailedWrite() {
-    // A failed setter mutated nothing, so refusing the fallback here would drop the
-    // user's dictation for no safety gain. `.failed` exists as its own state precisely
-    // so this case cannot be folded into either neighbour.
-    let failed = PasteService.AXInsertResult.writeCallFailed(
-        attemptedText: "hello", settability: nil)
+    @Test("V2 allows the fallback when read-back proves no mutation after a setter error")
+    func axOneWriterAllowsFallbackAfterProvenNoMutation() {
+    // A setter error alone no longer means nothing landed (Telegram applies the write and
+    // returns an error, #4664). When the read-back proves the whole field untouched, the
+    // outcome is `.noMutation` and refusing the fallback would drop the dictation for no
+    // safety gain. `.failed` stays its own state so this case cannot fold into either
+    // neighbour.
+    let failed = PasteService.AXInsertResult(
+        outcome: .noMutation, submitted: .legacy, writeCall: .failed(attemptedText: "hello"),
+        declineReason: .setFailed, settability: nil)
     #expect(failed.writeCall == .failed(attemptedText: "hello"))
     #expect(dispositionForAXDirect(failed, writerPolicy: .axOneWriter) == .continueCascade)
     }

@@ -775,7 +775,9 @@ public enum PasteService {
   package enum AXWriteCall: Equatable, Sendable {
     /// The setter was never called. Nothing was mutated; fallback is safe.
     case notAttempted
-    /// The setter was called and returned an error. Nothing was mutated.
+    /// The setter was called and returned an error. The write MAY still have landed:
+    /// Telegram returns `kAXErrorFailure` and applies it (#4664). What the field proves is
+    /// `AXInsertResult.outcome`; this case only records what the setter answered.
     case failed(attemptedText: String)
     /// The setter returned success. The mutation MAY be in the document.
     case succeeded(attemptedText: String)
@@ -814,9 +816,10 @@ public enum PasteService {
     /// that reached the setter.
     ///
     /// Review finding, 2026-09-04: attaching it to the success path alone discarded it on the
-    /// two paths where the observation is MOST useful. A Tier 1 write that returned an error,
-    /// and a decline after the reads, both hand delivery to the fallback — and that fallback
-    /// delivery is measurable, with a before-image already in hand. Reporting those as
+    /// two paths where the observation is MOST useful. A Tier 1 write that returned an error
+    /// (which, since #4664, may also have landed and be verified), and a decline after the
+    /// reads, can both hand delivery to the fallback — and that fallback delivery is
+    /// measurable, with a before-image already in hand. Reporting those as
     /// `no_before_image` would have excluded exactly the uncertain cases the instrument exists
     /// for. **Whether the SETTER ran is a separate question, answered by `writeCall`.**
     package var copiesBeforeImage: CopiesBeforeImage?
@@ -848,22 +851,6 @@ public enum PasteService {
       result.copiesBeforeImage = beforeImage
       return result
     }
-
-    /// The setter RAN and returned an error. Distinct from `declined` on purpose: this
-    /// factory is the only way to spell a failed write call, so no pre-write decline can
-    /// accidentally claim one, and no failed call can accidentally claim it never ran.
-    /// Nothing was mutated either way, so the cascade's retry rules are unchanged.
-    static func writeCallFailed(
-      attemptedText: String, settability: AXSettability?,
-      beforeImage: CopiesBeforeImage? = nil
-    ) -> AXInsertResult {
-      var result = AXInsertResult(
-        outcome: .noMutation, submitted: nil,
-        writeCall: .failed(attemptedText: attemptedText), declineReason: .setFailed,
-        settability: settability)
-      result.copiesBeforeImage = beforeImage
-      return result
-    }
   }
 
   /// Outcome of a Tier 1 Accessibility insertion attempt.
@@ -874,11 +861,14 @@ public enum PasteService {
   public enum AXInsertOutcome: Equatable, Sendable {
     /// The requested mutation is positively verified. Stop the cascade.
     case verified
-    /// No mutation landed: the write was refused, failed, or provably left the
-    /// field untouched. Continuing to Tier 2 is safe.
+    /// Continuing to Tier 2 is allowed: the write was declined before the setter ran,
+    /// the whole field provably stayed untouched (whatever the setter answered), or the
+    /// setter REFUSED the write (an error other than `.failure` / `.cannotComplete`) and
+    /// the field could not prove either way, which keeps the pre-#4664 key paste for
+    /// refusals (`finishAccessibilityWrite`).
     case noMutation
-    /// The write reported success but the result cannot be proven. The mutation
-    /// MAY already be in the document, so the cascade must NOT paste again.
+    /// The setter ran (success or error) but the result cannot be proven. The
+    /// mutation MAY already be in the document, so the cascade must NOT paste again.
     case unverifiable
   }
 
@@ -928,8 +918,9 @@ public enum PasteService {
     guard !overflowed else { return .unverifiable }
 
     guard let after = probe.countAfter else {
-      // The write reported success and the result is entirely unreadable. It
-      // may already be in the document, so retrying risks duplicating it.
+      // The setter ran (success, or an error from an app that applies the write
+      // anyway, #4664) and the result is entirely unreadable. It may already be in
+      // the document, so retrying risks duplicating it.
       return .unverifiable
     }
 
@@ -953,6 +944,79 @@ public enum PasteService {
     }
 
     return .unverifiable
+  }
+
+  /// Turn one Tier 1 setter call into its result, whatever the setter answered (#4664).
+  ///
+  /// The setter's return code is not evidence of what landed. Telegram returns
+  /// `kAXErrorFailure` (-25200) from `AXSelectedText` and applies the write anyway (#4664),
+  /// and Chrome acts on an `AXEnhancedUserInterface` set that returns `kAXErrorNotImplemented`
+  /// (accessibility-macos.md, #3286). So the FIELD decides: every answer that leaves the
+  /// element addressable reads it back and goes through the same two-sided evidence rule as
+  /// a success (`classifyInsertOutcome`). The return code only breaks a tie, when the field
+  /// cannot prove either way:
+  ///
+  /// - `.success` / `.failure` (the app's own generic "did not succeed", Telegram's answer):
+  ///   an unprovable result stays `.unverifiable`, which never pastes again.
+  /// - Any other refusal (`.attributeUnsupported`, `.notImplemented`, `.illegalArgument`,
+  ///   `.apiDisabled`, ... and any value a future SDK adds): an unprovable result is
+  ///   `.noMutation`, so the key paste and its window gate (#3961) decide, as before #4664.
+  /// - Two answers skip the read entirely, and `readProbe` is a closure so they provably do:
+  ///   `.cannotComplete` (the destination did not reply in time; more AX calls would hold the
+  ///   main thread against the same stalled app, and a timed-out write may still land) is
+  ///   `.unverifiable`; `.invalidUIElement` (the element was already gone, an app that rebuilt
+  ///   its text box; the write had nowhere to land and the dead element cannot be read) is
+  ///   `.noMutation`.
+  ///
+  /// Known limit, shared with the success path: dictating exactly the text that is already
+  /// selected leaves the field byte-identical whether or not the write landed, so it reads
+  /// `.verified` and the key paste does not run. The visible text is the dictated text either
+  /// way; only the caret differs (the selection may stay). Telling the two apart needs an
+  /// after-read of the selection range. Reopen if a report shows it.
+  internal static func finishAccessibilityWrite(
+    setterError: AXError,
+    attemptedText: String,
+    payloadKind: PastePayloadKind,
+    settability: AXSettability?,
+    beforeImage: CopiesBeforeImage,
+    readProbe: () -> AXInsertProbe
+  ) -> AXInsertResult {
+    let setterSucceeded = setterError == .success
+    let outcome: AXInsertOutcome
+    switch setterError {
+    case .cannotComplete:
+      outcome = .unverifiable
+    case .invalidUIElement:
+      outcome = .noMutation
+    case .success, .failure:
+      outcome = classifyInsertOutcome(readProbe())
+    default:
+      // A refusal: the field still decides, and only an unprovable result falls back to
+      // today's key paste.
+      let proven = classifyInsertOutcome(readProbe())
+      outcome = proven == .unverifiable ? .noMutation : proven
+    }
+    let writeCall: AXWriteCall =
+      setterSucceeded
+      ? .succeeded(attemptedText: attemptedText) : .failed(attemptedText: attemptedText)
+    // `set_failed`: the setter answered an error and the cascade may paste: the field was
+    // proven untouched, or a refusal left it unprovable, or the element was gone. A recovered
+    // error (verified) carries no decline reason at all.
+    let reason: AXDeclineReason? =
+      !setterSucceeded && outcome == .noMutation ? .setFailed : declineReason(for: outcome)
+
+    // The write was attempted with this payload, whatever the verification says
+    // afterwards — including an outcome later classified `unverifiable`, where
+    // the text may already be in the document.
+    var result = AXInsertResult(
+      outcome: outcome,
+      submitted: payloadKind,
+      writeCall: writeCall,
+      declineReason: reason,
+      settability: settability
+    )
+    result.copiesBeforeImage = beforeImage
+    return result
   }
 
   // MARK: - Caret context (#1785)
@@ -2296,62 +2360,50 @@ public enum PasteService {
       kAXSelectedTextAttribute as CFString,
       text as CFTypeRef
     )
-    guard err == .success else {
-      return .writeCallFailed(
-        attemptedText: text, settability: settability,
-        beforeImage: CopiesBeforeImage(count: countBefore, selectionLength: rangeBefore.length))
-    }
+    // #4664: the setter's answer does not say whether the text landed, so both answers
+    // are classified from the field itself (`finishAccessibilityWrite`).
+    return finishAccessibilityWrite(
+      setterError: err,
+      attemptedText: text,
+      payloadKind: payload.kind,
+      settability: settability,
+      beforeImage: CopiesBeforeImage(count: countBefore, selectionLength: selectionLength)
+    ) {
+      // From here the write may have landed. An unprovable result is `unverifiable` for a
+      // `.success` / `.failure` answer and `noMutation` for a refusal; the builder decides.
+      let countAfter = characterCount(of: element)
 
-    // From here the write may have landed, so every remaining failure is
-    // `unverifiable`, never `noMutation`.
-    var charCountAfter: CFTypeRef?
-    AXUIElementCopyAttributeValue(
-      element,
-      kAXNumberOfCharactersAttribute as CFString,
-      &charCountAfter
-    )
-    let countAfter = (charCountAfter as? Int).flatMap { $0 >= 0 ? $0 : nil }
+      // Positive proof of success: our exact text sits at the insertion span. Skipped
+      // when the count is unreadable, because the classifier already answers
+      // `unverifiable` without it.
+      let readBackMatched = countAfter.flatMap { _ in
+        string(of: element, at: insertionStart, length: insertedLength)
+          .map { stringsHaveIdenticalUTF16($0, text) }
+      }
 
-    // Positive proof of success: our exact text sits at the insertion span.
-    let readBackMatched = string(of: element, at: insertionStart, length: insertedLength)
-      .map { stringsHaveIdenticalUTF16($0, text) }
+      // Positive proof of NO success: the complete field still has identical
+      // UTF-16 code units.
+      // The after-read is held to the same exact length as the before-image: a
+      // truncated read that happens to match a truncated before-image is not proof
+      // that nothing changed, and this value is what AUTHORISES a second paste.
+      let fieldUnchanged = countAfter.flatMap { after -> Bool? in
+        guard after == countBefore else { return false }
+        if after == 0 { return fieldBefore.isEmpty }
+        guard let read = string(of: element, at: 0, length: after),
+          read.utf16.count == after
+        else { return nil }
+        return stringsHaveIdenticalUTF16(read, fieldBefore)
+      }
 
-    // Positive proof of NO success: the complete field still has identical
-    // UTF-16 code units.
-    // The after-read is held to the same exact length as the before-image: a
-    // truncated read that happens to match a truncated before-image is not proof
-    // that nothing changed, and this value is what AUTHORISES a second paste.
-    let fieldUnchanged = countAfter.flatMap { after -> Bool? in
-      guard after == countBefore else { return false }
-      if after == 0 { return fieldBefore.isEmpty }
-      guard let read = string(of: element, at: 0, length: after),
-        read.utf16.count == after
-      else { return nil }
-      return stringsHaveIdenticalUTF16(read, fieldBefore)
-    }
-
-    let outcome = classifyInsertOutcome(
-      AXInsertProbe(
+      return AXInsertProbe(
         insertedUTF16Length: insertedLength,
         selectionLengthBefore: selectionLength,
         countBefore: countBefore,
         countAfter: countAfter,
         readBackMatched: readBackMatched,
         fieldUnchanged: fieldUnchanged
-      ))
-    // The write was attempted with this payload, whatever the verification says
-    // afterwards — including an outcome later classified `unverifiable`, where
-    // the text may already be in the document.
-    var result = AXInsertResult(
-      outcome: outcome,
-      submitted: payload.kind,
-      writeCall: .succeeded(attemptedText: text),
-      declineReason: Self.declineReason(for: outcome),
-      settability: settability
-    )
-    result.copiesBeforeImage = CopiesBeforeImage(
-      count: countBefore, selectionLength: rangeBefore.length)
-    return result
+      )
+    }
   }
 
   // MARK: - Tier 2: CGEvent Cmd+V
