@@ -1,3 +1,4 @@
+import ApplicationServices
 import Testing
 
 @testable import EnviousWisprServices
@@ -251,6 +252,83 @@ struct PasteAccessibilityInsertionTests {
     let outcome = PasteService.classifyInsertOutcome(
       probe(inserted: Int.max, selection: 0, before: 10, after: 12))
     #expect(outcome == .unverifiable)
+  }
+
+  // MARK: - Setter error (#4664)
+
+  // Telegram returns kAXErrorFailure from the AXSelectedText setter and applies the write
+  // anyway. Before #4664 any setter error meant "nothing landed", so the cascade pasted a
+  // second copy. The field evidence now decides, exactly as for a successful setter.
+  @Test(
+    "After a setter error, field evidence decides whether the write landed",
+    arguments: [
+      (
+        12 as Int?, true as Bool?, false as Bool?,
+        PasteService.AXInsertOutcome.verified, nil as PasteService.AXDeclineReason?
+      ),
+      (10, false, true, .noMutation, .setFailed),
+      (nil, nil, nil, .unverifiable, .unverifiable),
+      (12, false, false, .unverifiable, .unverifiable),
+    ]
+  )
+  func setterErrorUsesFieldEvidence(
+    after: Int?, readBack: Bool?, fieldUnchanged: Bool?,
+    outcome: PasteService.AXInsertOutcome, reason: PasteService.AXDeclineReason?
+  ) {
+    let beforeImage = PasteService.CopiesBeforeImage(count: 10, selectionLength: 0)
+    let result = PasteService.finishAccessibilityWrite(
+      setterError: .failure,
+      attemptedText: "ZZ",
+      payloadKind: .repaired,
+      settability: nil,
+      beforeImage: beforeImage
+    ) {
+      probe(
+        inserted: 2, before: 10, after: after, readBack: readBack,
+        fieldUnchanged: fieldUnchanged)
+    }
+
+    #expect(result.outcome == outcome)
+    #expect(result.declineReason == reason)
+    #expect(result.writeCall == .failed(attemptedText: "ZZ"))
+    #expect(result.submitted == .repaired)
+    #expect(result.copiesBeforeImage == beforeImage)
+  }
+
+  @Test("A setter messaging failure stops unverified without another AX read")
+  func setterMessagingFailureSkipsReadBack() {
+    var readCount = 0
+    let result = PasteService.finishAccessibilityWrite(
+      setterError: .cannotComplete,
+      attemptedText: "ZZ",
+      payloadKind: .legacy,
+      settability: nil,
+      beforeImage: .init(count: 10, selectionLength: 0)
+    ) {
+      readCount += 1
+      return probe(inserted: 2, before: 10, after: 10, fieldUnchanged: true)
+    }
+
+    #expect(readCount == 0)
+    #expect(result.outcome == .unverifiable)
+    #expect(result.declineReason == .unverifiable)
+  }
+
+  @Test("A successful setter keeps today's result: verified, no decline reason")
+  func setterSuccessUnchanged() {
+    let result = PasteService.finishAccessibilityWrite(
+      setterError: .success,
+      attemptedText: "ZZ",
+      payloadKind: .legacy,
+      settability: nil,
+      beforeImage: .init(count: 10, selectionLength: 0)
+    ) {
+      probe(inserted: 2, before: 10, after: 12, readBack: true)
+    }
+
+    #expect(result.outcome == .verified)
+    #expect(result.declineReason == nil)
+    #expect(result.writeCall == .succeeded(attemptedText: "ZZ"))
   }
 }
 

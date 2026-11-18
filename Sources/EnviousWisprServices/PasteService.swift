@@ -775,7 +775,9 @@ public enum PasteService {
   package enum AXWriteCall: Equatable, Sendable {
     /// The setter was never called. Nothing was mutated; fallback is safe.
     case notAttempted
-    /// The setter was called and returned an error. Nothing was mutated.
+    /// The setter was called and returned an error. The write MAY still have landed:
+    /// Telegram returns `kAXErrorFailure` and applies it (#4664). What the field proves is
+    /// `AXInsertResult.outcome`; this case only records what the setter answered.
     case failed(attemptedText: String)
     /// The setter returned success. The mutation MAY be in the document.
     case succeeded(attemptedText: String)
@@ -848,22 +850,6 @@ public enum PasteService {
       result.copiesBeforeImage = beforeImage
       return result
     }
-
-    /// The setter RAN and returned an error. Distinct from `declined` on purpose: this
-    /// factory is the only way to spell a failed write call, so no pre-write decline can
-    /// accidentally claim one, and no failed call can accidentally claim it never ran.
-    /// Nothing was mutated either way, so the cascade's retry rules are unchanged.
-    static func writeCallFailed(
-      attemptedText: String, settability: AXSettability?,
-      beforeImage: CopiesBeforeImage? = nil
-    ) -> AXInsertResult {
-      var result = AXInsertResult(
-        outcome: .noMutation, submitted: nil,
-        writeCall: .failed(attemptedText: attemptedText), declineReason: .setFailed,
-        settability: settability)
-      result.copiesBeforeImage = beforeImage
-      return result
-    }
   }
 
   /// Outcome of a Tier 1 Accessibility insertion attempt.
@@ -874,11 +860,12 @@ public enum PasteService {
   public enum AXInsertOutcome: Equatable, Sendable {
     /// The requested mutation is positively verified. Stop the cascade.
     case verified
-    /// No mutation landed: the write was refused, failed, or provably left the
-    /// field untouched. Continuing to Tier 2 is safe.
+    /// No mutation landed: the write was declined before the setter ran, or the
+    /// whole field provably stayed untouched, whatever the setter answered (#4664).
+    /// Continuing to Tier 2 is safe.
     case noMutation
-    /// The write reported success but the result cannot be proven. The mutation
-    /// MAY already be in the document, so the cascade must NOT paste again.
+    /// The setter ran (success or error) but the result cannot be proven. The
+    /// mutation MAY already be in the document, so the cascade must NOT paste again.
     case unverifiable
   }
 
@@ -928,8 +915,9 @@ public enum PasteService {
     guard !overflowed else { return .unverifiable }
 
     guard let after = probe.countAfter else {
-      // The write reported success and the result is entirely unreadable. It
-      // may already be in the document, so retrying risks duplicating it.
+      // The setter ran (success, or an error from an app that applies the write
+      // anyway, #4664) and the result is entirely unreadable. It may already be in
+      // the document, so retrying risks duplicating it.
       return .unverifiable
     }
 
@@ -953,6 +941,52 @@ public enum PasteService {
     }
 
     return .unverifiable
+  }
+
+  /// Turn one Tier 1 setter call into its result, for BOTH setter answers (#4664).
+  ///
+  /// The setter's return code is not evidence of what landed: Telegram returns
+  /// `kAXErrorFailure` (-25200) from `AXSelectedText` and applies the write anyway, and
+  /// trusting that error is what pasted every Telegram dictation a second time. So every
+  /// ordinary answer goes through the same two-sided read-back as a success
+  /// (`classifyInsertOutcome`), and `writeCall` keeps the setter's own answer only as a
+  /// record.
+  ///
+  /// `.cannotComplete` is the one answer that skips the read-back: the destination did not
+  /// reply in time, more AX calls would hold the main thread against the same stalled app,
+  /// and a write that timed out may still land. It is unverifiable, which never pastes
+  /// again. `readProbe` is a closure so that branch provably performs no read.
+  internal static func finishAccessibilityWrite(
+    setterError: AXError,
+    attemptedText: String,
+    payloadKind: PastePayloadKind,
+    settability: AXSettability?,
+    beforeImage: CopiesBeforeImage,
+    readProbe: () -> AXInsertProbe
+  ) -> AXInsertResult {
+    let setterSucceeded = setterError == .success
+    let outcome: AXInsertOutcome =
+      setterError == .cannotComplete ? .unverifiable : classifyInsertOutcome(readProbe())
+    let writeCall: AXWriteCall =
+      setterSucceeded
+      ? .succeeded(attemptedText: attemptedText) : .failed(attemptedText: attemptedText)
+    // `set_failed` keeps its meaning: the setter refused AND the whole field is proven
+    // untouched. A recovered error (verified) carries no decline reason at all.
+    let reason: AXDeclineReason? =
+      !setterSucceeded && outcome == .noMutation ? .setFailed : declineReason(for: outcome)
+
+    // The write was attempted with this payload, whatever the verification says
+    // afterwards — including an outcome later classified `unverifiable`, where
+    // the text may already be in the document.
+    var result = AXInsertResult(
+      outcome: outcome,
+      submitted: payloadKind,
+      writeCall: writeCall,
+      declineReason: reason,
+      settability: settability
+    )
+    result.copiesBeforeImage = beforeImage
+    return result
   }
 
   // MARK: - Caret context (#1785)
@@ -2296,62 +2330,50 @@ public enum PasteService {
       kAXSelectedTextAttribute as CFString,
       text as CFTypeRef
     )
-    guard err == .success else {
-      return .writeCallFailed(
-        attemptedText: text, settability: settability,
-        beforeImage: CopiesBeforeImage(count: countBefore, selectionLength: rangeBefore.length))
-    }
+    // #4664: the setter's answer does not say whether the text landed, so both answers
+    // are classified from the field itself (`finishAccessibilityWrite`).
+    return finishAccessibilityWrite(
+      setterError: err,
+      attemptedText: text,
+      payloadKind: payload.kind,
+      settability: settability,
+      beforeImage: CopiesBeforeImage(count: countBefore, selectionLength: selectionLength)
+    ) {
+      // From here the write may have landed, so every remaining failure is
+      // `unverifiable`, never `noMutation`.
+      let countAfter = characterCount(of: element)
 
-    // From here the write may have landed, so every remaining failure is
-    // `unverifiable`, never `noMutation`.
-    var charCountAfter: CFTypeRef?
-    AXUIElementCopyAttributeValue(
-      element,
-      kAXNumberOfCharactersAttribute as CFString,
-      &charCountAfter
-    )
-    let countAfter = (charCountAfter as? Int).flatMap { $0 >= 0 ? $0 : nil }
+      // Positive proof of success: our exact text sits at the insertion span. Skipped
+      // when the count is unreadable, because the classifier already answers
+      // `unverifiable` without it.
+      let readBackMatched = countAfter.flatMap { _ in
+        string(of: element, at: insertionStart, length: insertedLength)
+          .map { stringsHaveIdenticalUTF16($0, text) }
+      }
 
-    // Positive proof of success: our exact text sits at the insertion span.
-    let readBackMatched = string(of: element, at: insertionStart, length: insertedLength)
-      .map { stringsHaveIdenticalUTF16($0, text) }
+      // Positive proof of NO success: the complete field still has identical
+      // UTF-16 code units.
+      // The after-read is held to the same exact length as the before-image: a
+      // truncated read that happens to match a truncated before-image is not proof
+      // that nothing changed, and this value is what AUTHORISES a second paste.
+      let fieldUnchanged = countAfter.flatMap { after -> Bool? in
+        guard after == countBefore else { return false }
+        if after == 0 { return fieldBefore.isEmpty }
+        guard let read = string(of: element, at: 0, length: after),
+          read.utf16.count == after
+        else { return nil }
+        return stringsHaveIdenticalUTF16(read, fieldBefore)
+      }
 
-    // Positive proof of NO success: the complete field still has identical
-    // UTF-16 code units.
-    // The after-read is held to the same exact length as the before-image: a
-    // truncated read that happens to match a truncated before-image is not proof
-    // that nothing changed, and this value is what AUTHORISES a second paste.
-    let fieldUnchanged = countAfter.flatMap { after -> Bool? in
-      guard after == countBefore else { return false }
-      if after == 0 { return fieldBefore.isEmpty }
-      guard let read = string(of: element, at: 0, length: after),
-        read.utf16.count == after
-      else { return nil }
-      return stringsHaveIdenticalUTF16(read, fieldBefore)
-    }
-
-    let outcome = classifyInsertOutcome(
-      AXInsertProbe(
+      return AXInsertProbe(
         insertedUTF16Length: insertedLength,
         selectionLengthBefore: selectionLength,
         countBefore: countBefore,
         countAfter: countAfter,
         readBackMatched: readBackMatched,
         fieldUnchanged: fieldUnchanged
-      ))
-    // The write was attempted with this payload, whatever the verification says
-    // afterwards — including an outcome later classified `unverifiable`, where
-    // the text may already be in the document.
-    var result = AXInsertResult(
-      outcome: outcome,
-      submitted: payload.kind,
-      writeCall: .succeeded(attemptedText: text),
-      declineReason: Self.declineReason(for: outcome),
-      settability: settability
-    )
-    result.copiesBeforeImage = CopiesBeforeImage(
-      count: countBefore, selectionLength: rangeBefore.length)
-    return result
+      )
+    }
   }
 
   // MARK: - Tier 2: CGEvent Cmd+V
