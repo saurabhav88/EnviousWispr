@@ -1,6 +1,6 @@
 ---
 title: "How Match Strictness Works in Your Dictionary"
-description: "What Loose, Default and Strict do in the EnviousWispr dictionary, with real examples, so you can fix a word that gets missed or swapped by mistake."
+description: "See what Loose, Default, and Strict do in EnviousWispr's dictionary, with real examples to help you fix words that get missed or swapped by mistake."
 topic: tips-troubleshooting
 pubDate: 2026-11-17
 tags: ["custom words", "dictionary", "macos", "accuracy", "dictation"]
@@ -13,40 +13,40 @@ keywords:
   - "custom words dictation"
 faqs:
   - question: "What does Match strictness do in the EnviousWispr dictionary?"
-    answer: "It sets how close a word in your text must look to a dictionary word before EnviousWispr swaps it in. Loose swaps more, Default is the balanced choice, and Strict swaps only when the two words are nearly identical."
+    answer: "It decides how close a word in your text needs to look to one of your dictionary words before EnviousWispr swaps it in. Loose catches more, Strict holds back unless the two are nearly identical, and Default sits in the middle."
   - question: "Which Match strictness setting should I use?"
-    answer: "Keep Default for most words. Choose Loose when a word keeps coming out slightly wrong and nothing swaps it. Choose Strict when a word keeps replacing a different word you meant, such as one name replacing a similar name."
+    answer: "Leave most words on Default. Switch to Loose if a word keeps coming out slightly wrong and isn't getting fixed. Switch to Strict when a saved word keeps replacing a similar name or word you meant instead."
   - question: "Why does Loose still not fix my word?"
-    answer: "Loose has a limit. If the word in your text is too different from the dictionary word, nothing swaps it, even on Loose. Add the wrong version as a mishearing of your word. That fix does not depend on how close the words look."
+    answer: "Loose still has a limit. If what EnviousWispr wrote looks too different from your word, even Loose won't swap it. Add that wrong spelling as a mishearing of your word instead, since mishearings don't depend on how close the two words look."
   - question: "Does Match strictness change every word in my dictionary?"
-    answer: "No. It is set one word at a time. A word you never changed stays on Default."
+    answer: "No, it applies one word at a time. Anything you haven't changed stays on Default."
 ---
 
-Most people never touch **Match strictness**. Then one day a name keeps coming out wrong, or the wrong name keeps getting swapped in, and this small setting is the reason.
+Most people never touch **Match strictness**, right up until a name keeps coming out wrong or the wrong name keeps getting swapped into their text. Sometimes this small setting is why.
 
-EnviousWispr is a free dictation app for Mac. It has a dictionary, called **Your Words**, where you add the names and terms you use. This post explains what that setting does, with real examples, so you know which one to pick.
+EnviousWispr is a free Mac dictation app. It includes a dictionary called **Your Words** where you save the names and terms you use. Below is how Match strictness works, with real examples so you can tell which option you need.
 
 ## The short version
 
-When you dictate, EnviousWispr checks each word in your text against your dictionary. If a word looks almost like one of yours, it swaps in your spelling. Match strictness controls how "almost" has to be.
+As you dictate, EnviousWispr checks each word against **Your Words**. When a word looks close to one you saved, it swaps your spelling in. Match strictness controls how close is close enough.
 
-- **Loose:** swaps even when the two words look fairly different. You catch more slips. You also get more swaps you did not want.
-- **Default:** a balanced choice for most words.
-- **Strict:** swaps only when the two words are nearly identical. You get fewer surprise swaps. You also miss more slips.
+- **Loose** steps in even when two words look fairly different. It catches more slips, though it's also more likely to change a word you meant to keep.
+- **Default** sits in the middle and works well for most words.
+- **Strict** holds back unless the two spellings are almost identical. You won't get many surprise swaps, though you'll miss more near-misses.
 
-You set it for one word at a time, so a name that needs special care does not change how everything else behaves.
+Because you pick this for one word at a time, tightening up a tricky name won't change how the rest of your dictionary behaves.
 
 ## What "looks close" means
 
-EnviousWispr gives each pair of words a closeness score from 0% to 100%. 100% means the same word.
+Behind the scenes, EnviousWispr gives every pair of words a closeness score from 0% to 100%, where 100% is an exact match.
 
-The score is mostly about spelling. About 40% of it counts how many letters you would have to change to turn one word into the other. Another 40% counts how many letter pairs the two words share. The last 20% is a simple sound code, which gives a bonus when two words are spelled differently but are said alike.
+Most of that score comes from spelling. About 40% counts how many letters you'd have to change to turn one word into the other, and another 40% counts how many letter pairs the two words share. The last 20% is a simple sound code that gives a bonus when two words are spelled differently but sound alike.
 
-So the app does not listen again. It compares the text your dictation produced with the word in your dictionary.
+So the app isn't going back to listen to your audio again. It's comparing the text your dictation produced against the word saved in your dictionary.
 
-## The bar each setting uses
+## Where each setting draws the line
 
-Each setting is a closeness score the pair of words has to reach.
+Each option sets the minimum score two words need to reach before a swap happens.
 
 | Setting | Closeness needed |
 |---|---|
@@ -54,13 +54,13 @@ Each setting is a closeness score the pair of words has to reach.
 | Default | About 82% for words of five letters or more, 90% for words of four letters or fewer, and 85% for a phrase of several words |
 | Strict | 92% |
 
-Default adjusts itself a little. It is slightly easier for very long words and slightly pickier when your dictionary is large. Loose and Strict do not adjust. They always use the same bar.
+Default moves around a little on its own: it's slightly easier on very long words and a bit pickier if you have a large dictionary. Loose and Strict stay put and use the exact same number every time.
 
-Short words are the reason Default asks for 90%. A short word has few letters, so one wrong letter changes a lot. If Default were looser there, it would swap everyday short words you did not mean to change.
+Why does Default ask for 90% on short words? Because when a word only has a few letters, one wrong letter changes a lot. If Default were any looser there, it'd start swapping everyday short words you didn't mean to touch.
 
 ## Real examples
 
-We ran each pair below through the same matching EnviousWispr uses. The dictionary in each test held only the one word shown. The "looks alike" number is the closeness score.
+We ran these word pairs through the exact matching EnviousWispr uses, with only the one saved word in the dictionary for each test. "Looks alike" is the closeness score.
 
 | Your dictionary word | What your text said | Looks alike | Loose | Default | Strict |
 |---|---|---|---|---|---|
@@ -75,48 +75,42 @@ We ran each pair below through the same matching EnviousWispr uses. The dictiona
 | Mark | Marc | 77% | Swaps | Leaves it | Leaves it |
 | Kubernetes | kubernetis | 87% | Swaps | Swaps | Leaves it |
 
-Here is what each row shows.
+A few things stand out from that table:
 
-**A name that keeps coming out slightly wrong (Loose helps).** "Envious" written as "enviose" scores 75%. Default needs about 82%, so it leaves the word alone. Loose needs 72%, so it fixes it.
+- **When a name keeps coming out slightly off, Loose helps.** "enviose" for "Envious" scores 75%. Default wants around 82%, so it leaves "enviose" alone, while Loose (72%) steps in and fixes it.
+- **When two people have similar names, Strict protects the other one.** Say you saved your colleague Sara in your dictionary, then dictate a sentence about a different person named Sarah. Those two score 86%. On Default, "Sarah" silently turns into "Sara", and you might not notice. Put Sara on Strict and "Sarah" stays untouched. Same story with Alan and Allan, or Alison and Allison. If both names come up for you, set the one you added to Strict.
+- **Be careful with Loose on short names.** Erik and Eric score 77% (same as Mark and Marc). Because short words need 90% on Default, neither swaps unless the spelling is already almost spot-on. Dropping to 72% is a big leap for a short word, so save Loose for short words that don't have lookalikes you care about.
+- **Strict really means strict.** Alison and Allison are only one letter apart and still score 91%, a little under Strict's 92%. If you put a word on Strict, it'll only swap when the dictation is nearly right already.
+- **Loose won't fix everything.** "sourab" for "Saurabh" scores 70%, which falls under Loose's 72% cutoff. If dictation keeps getting a word wrong the exact same way, changing Match strictness won't reach it.
 
-**Two people with similar names (Strict helps).** Say you added your colleague Sara to the dictionary. Then you dictate a sentence about Sarah, a different person. The two names score 86%. On Default, "Sarah" becomes "Sara" and you may not notice. On Strict, it stays "Sarah". The same happens with Alan and Allan, and with Alison and Allison. If two similar names both matter to you, put the one you add on Strict.
+## When none of the settings fix it
 
-**Short names (Loose is a big step).** Erik and Eric score 77%. Short words need 90% on Default, so neither Erik nor Mark swaps unless the text matches almost perfectly. Loose lowers that bar to 72%, which is a large jump for a short word. Use it only for a short word that you are sure nothing else is competing with.
+If EnviousWispr keeps producing the same wrong spelling, the most reliable fix is to save that wrong version as a **mishearing** of your word. A mishearing doesn't depend on a closeness score. Whenever that exact spelling shows up, EnviousWispr swaps it out.
 
-**Strict is very strict.** Allison and Alison differ by one letter and still score 91%, narrowly under Strict's 92%. If you choose Strict for a word, expect it to swap only when the text is nearly perfect already.
+1. **Check what it wrote.** Say the word like you normally do, then open **History** to see the exact spelling EnviousWispr produced.
+2. **Add it as a mishearing.** Go to **Settings** > **Dictionary** > **Your Words**, click **Edit** next to your word, type that wrong spelling into the mishearing box, click **Add**, and then click **Save**.
 
-**Loose has a limit.** "sourab" for "Saurabh" scores 70%. That is below even Loose, so nothing swaps it. If a word keeps coming out the same wrong way, the setting will not fix it.
-
-## When the setting does not fix it
-
-The most reliable fix for one repeated mistake is to add the wrong version as a **mishearing** of your word. A mishearing you add yourself does not depend on how close the words look. EnviousWispr swaps it whenever it sees exactly that spelling.
-
-Here is how to find the wrong version and add it.
-
-1. **Find what it wrote.** Say the word as you normally would, then open **History** to see exactly what EnviousWispr produced. That is the wrong version.
-2. **Add it as a mishearing.** Go to **Settings** > **Dictionary** > **Your Words**, click **Edit** next to your word, type the wrong version in the mishearing box, and click **Add**. Then click **Save**.
-
-The [custom word correction help page](/help/how-custom-word-correction-works/) covers this fix in more detail.
+You can read more about this on the [custom word correction help page](/help/how-custom-word-correction-works/).
 
 ## Two things that surprise people
 
-**Loose cannot force a swap when two words compete.** If your dictionary holds two words that both look close to what you said, EnviousWispr needs the better one to win by a clear margin, about 5 points. If neither wins clearly, it leaves the word alone. This holds on every setting, including Loose. It protects you from the app guessing between two of your own words.
+**Loose won't force a guess between two close words.** If two words in your dictionary both look close to what came out, one of them has to beat the other by a clear margin, about 5 points. When it's too close to call, EnviousWispr leaves the text alone rather than guessing between two of your own words. That rule applies on every setting, Loose included.
 
-**Loose and Strict replace the automatic adjustments.** A word on Default gets the small adjustments for long words and large dictionaries. A word on Loose or Strict skips them and always uses 72% or 92%.
+**Loose and Strict turn off the automatic adjustments.** Words on Default get those small nudges for very long words or large dictionaries. Put a word on Loose or Strict and it skips those adjustments completely, sticking to 72% or 92%.
 
-## Which one should you pick
+## Which one should you pick?
 
-Start with Default and change a word only when it gives you trouble.
+Leave everything on Default until a specific word gives you trouble.
 
-- **A word keeps coming out slightly wrong, and nothing swaps it:** try Loose. If it still does not swap, add the wrong version as a mishearing.
-- **A word keeps replacing a different word you meant:** use Strict.
+- **It keeps coming out slightly wrong:** switch that word to Loose. If it still misses, add the wrong spelling as a mishearing.
+- **It keeps replacing a different word you meant:** switch it to Strict.
 - **Everything else:** leave it on Default.
 
 ## How to change it
 
 1. Open **Settings** > **Dictionary** > **Your Words**.
-2. Click **Edit** next to the word.
-3. Under **Recognition behavior**, choose **Loose**, **Default** or **Strict** for **Match strictness**.
+2. Click **Edit** next to the word you want to adjust.
+3. Under **Recognition behavior**, choose **Loose**, **Default**, or **Strict** for **Match strictness**.
 4. Click **Save**.
 
-The setting applies to that one word. To learn how to add words in the first place, see [adding custom words](/help/adding-custom-words/).
+That change only applies to the word you edited. If you haven't added words yet, see [adding custom words](/help/adding-custom-words/).
