@@ -963,14 +963,27 @@ def ax_copy(element, attr):
     return AXUIElementCopyAttributeValue(element, attr, None)
 
 
-def ax_read(element, attr, label, optional):
+class StaleElement(Exception):
+    """An element below the window list vanished between being listed and being read
+    (AXError InvalidUIElement). Only the scan in `undo_present_or_abort` catches it."""
+
+
+STALE_SCAN_RETRIES = 3  # fresh AXWindows scans allowed after a stale element
+
+
+def ax_read(element, attr, label, optional, below_windows=False):
     """The attribute's value. `optional` attributes may be legitimately absent
     (no value, unsupported); any other error, and any error on a required
-    attribute, is an INSTRUMENT failure that must never read as "absent"."""
-    from ApplicationServices import kAXErrorAttributeUnsupported, kAXErrorNoValue, kAXErrorSuccess
+    attribute, is an INSTRUMENT failure that must never read as "absent".
+    With `below_windows`, InvalidUIElement (the element closed mid-scan) raises
+    `StaleElement` instead, so the caller can rescan from a fresh window list."""
+    from ApplicationServices import (kAXErrorAttributeUnsupported, kAXErrorInvalidUIElement,
+                                     kAXErrorNoValue, kAXErrorSuccess)
     err, value = ax_copy(element, attr)
     if err == kAXErrorSuccess:
         return value
+    if below_windows and err == kAXErrorInvalidUIElement:
+        raise StaleElement(attr)
     if optional and err in (kAXErrorNoValue, kAXErrorAttributeUnsupported):
         return None
     raise Aborted(f"{label}: the accessibility read of {attr} failed (AXError {err}); instrument failure")
@@ -982,26 +995,34 @@ def undo_present_or_abort(label, expected_pid, max_depth=12):
     The expected dev-app process must be the one running before and after the
     walk, the window list must be read successfully, and every element on the
     path must be readable; otherwise this raises an instrument failure instead
-    of returning False."""
-    if app_pid() != expected_pid:
-        raise Aborted(f"{label}: the dev app (pid {expected_pid}) is gone or was replaced; instrument failure")
-    app = get_ax_app(expected_pid)
-    windows = ax_read(app, "AXWindows", label, optional=False) or []
-
+    of returning False. An element that closed mid-scan (a correct dismissal
+    racing the read) restarts the scan from a fresh window list, up to
+    STALE_SCAN_RETRIES times; the pill counts as gone only after a COMPLETE scan
+    finds no button, and exhausting the retries is an instrument failure."""
     def walk(element, depth):
-        if ax_read(element, "AXRole", label, optional=True) == "AXButton":
+        if ax_read(element, "AXRole", label, optional=True, below_windows=True) == "AXButton":
             for attr in ("AXDescription", "AXTitle"):
-                if ax_read(element, attr, label, optional=True) == "Undo":
+                if ax_read(element, attr, label, optional=True, below_windows=True) == "Undo":
                     return True
         if depth >= max_depth:
             return False
         return any(walk(child, depth + 1)
-                   for child in (ax_read(element, "AXChildren", label, optional=True) or []))
+                   for child in (ax_read(element, "AXChildren", label, optional=True,
+                                         below_windows=True) or []))
 
-    found = any(walk(window, 0) for window in windows)
-    if app_pid() != expected_pid:
-        raise Aborted(f"{label}: the dev app (pid {expected_pid}) exited during the read; instrument failure")
-    return found
+    for _ in range(1 + STALE_SCAN_RETRIES):
+        if app_pid() != expected_pid:
+            raise Aborted(f"{label}: the dev app (pid {expected_pid}) is gone or was replaced; instrument failure")
+        app = get_ax_app(expected_pid)
+        windows = ax_read(app, "AXWindows", label, optional=False) or []
+        try:
+            found = any(walk(window, 0) for window in windows)
+        except StaleElement:
+            continue
+        if app_pid() != expected_pid:
+            raise Aborted(f"{label}: the dev app (pid {expected_pid}) exited during the read; instrument failure")
+        return found
+    raise Aborted(f"{label}: an accessibility element went stale on {1 + STALE_SCAN_RETRIES} consecutive scans; instrument failure")
 
 
 UNPAUSED_DWELL_S = 12.0     # the offer's dwell without hover
