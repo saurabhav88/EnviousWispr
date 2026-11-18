@@ -204,7 +204,7 @@ final class HistoryCatalogSession {
   /// after every write to `status` or either reason. Only a certifying publish ends the reasons
   /// (`publishProgress`).
   private func syncShowsUpdating() {
-    let next = repairing || rebuildRequested || (status != .unavailable && (needsFullBuild || passCommittedRows))
+    let next = repairing || (status != .unavailable && (needsFullBuild || passCommittedRows))
     if showsUpdating != next { showsUpdating = next }
     #if DEBUG
       updatingStateForTesting?(status, showsUpdating)
@@ -425,6 +425,13 @@ final class HistoryCatalogSession {
       guard let self else { return }
       defer {
         indexing = nil
+        // A drained queue or a cancelled task ends the repair label; the status is untouched.
+        if Task.isCancelled || !rebuildRequested {
+          if repairing || Task.isCancelled { needsFullBuild = false }
+          repairing = false
+          passCommittedRows = false
+          syncShowsUpdating()
+        }
         resumeTaskEndWaiters()
       }
       while !pending.scopes.isEmpty {
@@ -499,12 +506,16 @@ final class HistoryCatalogSession {
         } catch is CancellationError {
           return
         } catch {
-          // A damaged catalog starts its repair label in the same turn as the error (#4586).
-          if HistoryCatalog.needsRebuild(error) {
+          // A damaged catalog starts its repair label in the same turn as the error (#4586); a
+          // failed repair hands the line back to the error during the retry backoff.
+          let needsRebuild = HistoryCatalog.needsRebuild(error)
+          let justDetectedDamage = needsRebuild && !repairing
+          if needsRebuild {
             rebuildRequested = true
             needsFullBuild = true
-            repairing = true
           }
+          repairing = justDetectedDamage
+          passCommittedRows = false
           status = .unavailable
           syncShowsUpdating()
           // Content, not only status (#4586 H1): batches committed before the error may have
@@ -521,6 +532,12 @@ final class HistoryCatalogSession {
   /// changed, or a pass certified a different source revision; a new certificate for the same
   /// revision is not a change. While a pass is mid-way, at most every `publishInterval`.
   private func publishProgress(_ pass: HistoryCatalogReconciliation.Pass, final: Bool = false) {
+    // The detection signal is display-only: it never writes `status` or publishes content.
+    if !final, pass.revision == nil, !pass.changed, pass.changedRows {
+      passCommittedRows = true
+      syncShowsUpdating()
+      return
+    }
     let watcherFailed = diskWatch == nil && registration == nil
     let next: Status
     if pass.unavailable > 0 || watcherFailed {

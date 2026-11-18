@@ -393,6 +393,57 @@ struct HistoryCatalogSessionTests {
     #expect(session.showsUpdating == false)
   }
 
+  @Test(
+    "A repair that drains with an unreadable source does not leave the label on",
+    .timeLimit(.minutes(1)))
+  func drainedRepairDoesNotStick() async throws {
+    let root = root()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let (changes, store, meetings) = sources(root)
+    try save(5, into: store)
+    let session = HistoryCatalogSession(
+      changes: changes, sources: store.historyCatalogSources(meetings: meetings),
+      directory: root.appendingPathComponent("catalog"))
+    let coordinator = TranscriptCoordinator(store: store)
+    coordinator.catalogSession = session
+    coordinator.startHistoryCatalog()
+    await session.waitForIndexingForTesting()
+    #expect(session.status == .ready)
+    var trace: [(status: HistoryCatalogSession.Status, shows: Bool)] = []
+    session.updatingStateForTesting = { trace.append(($0, $1)) }
+    defer { session.updatingStateForTesting = nil }
+    // One source can no longer be read, so the rebuilt catalog can never certify.
+    let transcripts = root.appendingPathComponent("transcripts")
+    let unreadable = try #require(
+      try FileManager.default.contentsOfDirectory(at: transcripts, includingPropertiesForKeys: nil)
+        .first { $0.pathExtension == "json" })
+    try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: unreadable.path)
+    defer { try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: unreadable.path) }
+    let database = root.appendingPathComponent("catalog").appendingPathComponent("history.sqlite")
+    let handle = try FileHandle(forWritingTo: database)
+    try handle.write(contentsOf: Data(repeating: 0x41, count: 8_192))
+    try handle.close()
+    let revision = session.revision
+    try save(1, into: store, from: 40_000)
+    while session.revision == revision, !Task.isCancelled {
+      await session.waitForChange(revision: revision, notices: session.noticeCount)
+    }
+    // The retry runs the repair a moment later; wait until the label was shown and then cleared.
+    func clearedAfterShown() -> Bool {
+      guard let first = trace.firstIndex(where: { $0.shows }) else { return false }
+      return trace[first...].contains { !$0.shows }
+    }
+    while !clearedAfterShown(), !Task.isCancelled {
+      await session.waitForIndexingForTesting()
+      if clearedAfterShown() { break }
+      await session.waitForChange(revision: session.revision, notices: session.noticeCount)
+    }
+    try #require(!Task.isCancelled, "the label never cleared after the repair drained")
+    await session.waitForIndexingForTesting()
+    #expect(session.status == .unavailable, "the unreadable source keeps the catalog unavailable")
+    #expect(session.showsUpdating == false, "the label is not stuck: \(trace.map { "\($0.status) \($0.shows)" })")
+  }
+
   @Test("A damaged catalog is rebuilt with the label shown until certified")
   func damagedCatalogShows() async throws {
     let root = root()

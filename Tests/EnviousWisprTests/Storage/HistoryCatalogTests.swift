@@ -141,6 +141,14 @@ struct HistoryCatalogTests {
         project: project)
       let interrupted = Task {
         try await worker.reconcile { pass in
+          if pass.revision == nil, !pass.changed, pass.changedRows {
+            do {
+              let progress = try await initialCatalog.sourceProgress()
+              #expect(progress.isEmpty, "row detection precedes the first committed batch")
+            } catch {
+              Issue.record("Could not inspect catalog progress at row detection: \(error)")
+            }
+          }
           // Only a committed batch counts: a detection signal (`changed == false`) comes first.
           if pass.revision == nil, pass.changed {
             withUnsafeCurrentTask { $0?.cancel() }

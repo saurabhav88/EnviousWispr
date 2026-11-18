@@ -477,7 +477,9 @@ private struct HistoryDiaryList<DictationCard: View>: View {
     // #4001 step 2a: the recording state is read inside the modifier, not by this body.
     .recordingDimmed()
     .overlay {
-      if items.isEmpty && coordinator.catalogSession?.status == .unavailable {
+      if items.isEmpty, coordinator.catalogSession?.status == .unavailable,
+        coordinator.catalogSession?.showsUpdating != true
+      {
         HistoryEmptyMessage(
           systemImage: "exclamationmark.triangle", title: HistoryEmptyMessage.loadFailed)
       } else if items.isEmpty && coordinator.catalogSession?.status == .updating {
