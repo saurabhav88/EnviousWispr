@@ -28,6 +28,10 @@ final class OverlayDirector {
   private var reducer: OverlayReducer
   private let host: any OverlayWindowHosting
   private let mouseLocation: () -> CGPoint
+  /// Whether the pointer was last reported over the presented pill (from the hover events this
+  /// director already receives). Only a replacement's placement consults it; it is cleared whenever
+  /// the window is hidden or refused, because that view will never report the pointer leaving.
+  private var pointerInsidePill = false
   private let model: OverlayRenderModel
 
   /// The ONE dismissal clock. The director owns no timer and no dwell window of
@@ -200,13 +204,7 @@ final class OverlayDirector {
     let view = NSHostingView(
       rootView: OverlayRootView(
         model: model,
-        sendEvent: { [weak self] event in self?.handle(event, binding: .none) },
-        pointerIsOverPill: { [weak self] in
-          guard let frame = self?.host.placedFrame, let point = self?.mouseLocation() else {
-            return false
-          }
-          return frame.contains(point)
-        }))
+        sendEvent: { [weak self] event in self?.handle(event, binding: .none) }))
     #if DEBUG
       let constructEnd = OverlayFirstRenderMarkers.capture(.rootConstructEnd)
     #endif
@@ -492,6 +490,7 @@ final class OverlayDirector {
         "use presentRecording(...) — a recording's providers and its resolved design "
           + "must be installed in the same operation that presents it")
     }
+    if case .hoverChanged(_, let hovering) = event { pointerInsidePill = hovering }
     #if DEBUG
       // Supports hand checks of hover with a real mouse: shows that a pointer move reached the app
       // and which hover policy applied. DEBUG only; no text, ids only.
@@ -1174,6 +1173,7 @@ final class OverlayDirector {
       let detached = pendingFirstAcceptance?.relays ?? []
       pendingFirstAcceptance = nil
       presentedID = nil
+      pointerInsidePill = false
       host.hide()
       // **A dismissal still announces "Recording complete" and still owes
       // whatever expiry command this plan carried** — `.hidden` has no
@@ -1371,8 +1371,22 @@ final class OverlayDirector {
         return .completed
       }
     }
+    let replacedID = presentedID
     if performRender(presentation, rootView: root) {
       expiryStart?()
+      // A REPLACEMENT keeps the pointer where it was but the reducer admitted it with hover cleared
+      // and a fresh dwell. The host has now placed it, so the pointer's real position can be judged
+      // against the frame it actually has: replay the enter only if the pointer was over the pill
+      // and is inside the new frame (a narrower pill may have left it outside). Run after the
+      // dwell started, so a pause freezes it. Goes through the normal event path, so the reducer's
+      // policy gate applies. A pill appearing fresh gets no replay.
+      if let replacedID, replacedID != presentation.id {
+        if pointerInsidePill, host.placedFrame?.contains(mouseLocation()) == true {
+          handle(.hoverChanged(presentation.id, true), binding: .none)
+        } else {
+          pointerInsidePill = false
+        }
+      }
       if let announcement { announce(announcement) }
       relays.forEach { $0.resolve(true) }
     } else {
@@ -1493,6 +1507,7 @@ final class OverlayDirector {
       // leaving it would show the NEW content in the OUTGOING pill's frame.
       // Clear the claim AND take the window down.
       presentedID = nil
+      pointerInsidePill = false
       host.hide()
       return false
     }
