@@ -97,6 +97,8 @@ import Testing
       var page: HistoryCatalog.Page?
       /// The result the list loop stored, as `HistoryDiaryView.results[tab]` does.
       var stored: HistoryQueryResult?
+      /// The first completed list read: nil until one finishes, `.some(nil)` if it returned nothing.
+      var firstRead: HistoryQueryResult??
       var reconciles = 0
       private var gate: CheckedContinuation<Void, Never>?
       private(set) var holding = false
@@ -246,7 +248,9 @@ import Testing
           currentKey: { key(f) },
           storedKey: { order.stored?.key },
           read: { key in
-            if let result = await coordinator.historyResults(for: key) { order.stored = result }
+            let result = await coordinator.historyResults(for: key)
+            if order.firstRead == nil { order.firstRead = .some(result) }
+            if let result { order.stored = result }
           },
           wait: { content, notices in
             await session.waitForChange(revision: content, notices: notices)
@@ -263,11 +267,11 @@ import Testing
       #expect(order.stored == nil)
       f.session.beforeWatcherInstallForTesting = nil
       order.release()
-      while order.stored == nil {
+      while order.firstRead == nil {
         try Task.checkCancellation()
         await Task.yield()
       }
-      let result = try #require(order.stored)
+      let result = try #require(order.firstRead ?? nil)
       #expect(result.items.count == 3)
       #expect(result.catalogSourceRevision == f.session.stableSourceRevision)
       #expect(f.session.watcherIsInstalledForTesting)
