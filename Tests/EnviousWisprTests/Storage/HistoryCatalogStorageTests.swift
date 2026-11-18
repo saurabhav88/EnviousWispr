@@ -291,6 +291,28 @@ struct HistoryCatalogStorageTests {
     try await write.value
     #expect(try connection.rows("SELECT v FROM w ORDER BY v") { sqlite3_column_int64($0, 0) } == [1, 2, 3])
   }
+
+  @Test("A catalog reports whether it held a certified revision when it opened")
+  func wasCertifiedAtOpen() async throws {
+    let folder = directory()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let fresh = try HistoryCatalog(directory: folder, projectionContext: "en|en_US")
+    #expect(fresh.wasCertifiedAtOpen == false, "a new catalog")
+    // A batch without a certificate leaves it uncertified: an unfinished first build.
+    try await fresh.apply([], certifiedRevision: nil)
+    try await fresh.closeDatabase()
+    let unfinished = try HistoryCatalog(directory: folder, projectionContext: "en|en_US")
+    #expect(unfinished.wasCertifiedAtOpen == false, "a first build that never finished")
+    try await unfinished.apply([], certifiedRevision: "r1")
+    try await unfinished.closeDatabase()
+    let certified = try HistoryCatalog(directory: folder, projectionContext: "en|en_US")
+    #expect(certified.wasCertifiedAtOpen, "reopened after a certified apply")
+    try await certified.closeDatabase()
+    try HistoryCatalog.discardFiles(in: folder)
+    let rebuilt = try HistoryCatalog(directory: folder, projectionContext: "en|en_US")
+    #expect(rebuilt.wasCertifiedAtOpen == false, "rebuilt after discardFiles")
+    try await rebuilt.closeDatabase()
+  }
 }
 
 /// A fixed sequence, so every run checks the same batches.

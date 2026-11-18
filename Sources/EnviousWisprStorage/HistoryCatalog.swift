@@ -174,6 +174,12 @@ package actor HistoryCatalog {
   private static let schemaVersion: Int32 = 6
   private let connection: HistoryCatalogConnection
   private let hasTrigram: Bool
+  /// Whether the catalog file held a certified source revision when this instance opened it
+  /// (#4586). False for a new catalog, one rebuilt after `discardFiles`, and one whose first
+  /// build never finished (a batch commit withdraws the certificate until a pass certifies
+  /// again). The screen uses it only to decide whether to show "Updating History…"; it grants
+  /// no authority to read.
+  package nonisolated let wasCertifiedAtOpen: Bool
 
   /// The directory is dedicated to the catalog, outside all canonical source namespaces.
   /// `projectionContext` names the interface language and locale the stored previews were
@@ -235,6 +241,10 @@ package actor HistoryCatalog {
     }.first
     guard storedContext == projectionContext else { throw Failure.projectionContextChanged }
     hasTrigram = try Self.prepareSearch(using: connection)
+    wasCertifiedAtOpen =
+      try connection.rows("SELECT revision IS NOT NULL FROM coverage WHERE id = 0") {
+        sqlite3_column_int($0, 0) != 0
+      }.first ?? false
     self.connection = connection
   }
 

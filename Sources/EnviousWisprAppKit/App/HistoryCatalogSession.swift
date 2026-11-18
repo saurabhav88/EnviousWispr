@@ -15,6 +15,15 @@ final class HistoryCatalogSession {
   }
 
   private(set) var status: Status = .updating
+  /// Whether the screen shows "Updating History…" (#4586). Display only: `status` and every
+  /// reader of it keep their meaning. True only while `status == .updating` and the work is
+  /// visible to the person: the open catalog was missing, rebuilt or never finished
+  /// (`needsFullBuild`), or the current pass has committed changed rows. A launch re-check over
+  /// a certified catalog that finds nothing new stays false. Set only where `status` is set
+  /// (`syncShowsUpdating`), so it adds no publish of its own.
+  private(set) var showsUpdating = false
+  @ObservationIgnored private var needsFullBuild = false
+  @ObservationIgnored private var passCommittedRows = false
   /// The CONTENT revision (#4586 H1): advances only when catalog rows or source proofs changed,
   /// the catalog was replaced, indexing failed after possibly committing rows, or a pass
   /// certified a source revision. A status-only change (`updating`, `ready`, `unavailable`)
@@ -157,6 +166,7 @@ final class HistoryCatalogSession {
         // No watcher: coverage-dependent reads stay off; activation retries (sourceMayHaveChanged).
         // Status only (#4586 H1): no catalog row changed, so the list keeps its page.
         status = .unavailable
+        syncShowsUpdating()
         didUpdate?()
       }
       if rewatchRequested {
@@ -184,7 +194,22 @@ final class HistoryCatalogSession {
 
   private func invalidate() {
     status = .updating
+    syncShowsUpdating()
     advanceContent()
+  }
+
+  /// Recomputes `showsUpdating` from `status` and the two reasons to show it. Call it right
+  /// after every write to `status` or either reason. A certified status ends both reasons.
+  private func syncShowsUpdating() {
+    if status == .ready {
+      needsFullBuild = false
+      passCommittedRows = false
+    }
+    let next = status == .updating && (needsFullBuild || passCommittedRows)
+    if showsUpdating != next { showsUpdating = next }
+    #if DEBUG
+      showsUpdatingTraceForTesting.append((status: status, shows: next))
+    #endif
   }
 
   private func advanceContent() {
@@ -245,6 +270,10 @@ final class HistoryCatalogSession {
     defer { self.opening = nil }
     let opened = try await opening.value
     backend = opened
+    // A missing, rebuilt or unfinished catalog has nothing to show yet; one certified at open
+    // is only re-checked, so the screen stays quiet unless the pass changes rows.
+    if opened.catalog.wasCertifiedAtOpen == false { needsFullBuild = true }
+    syncShowsUpdating()
     return opened
   }
 
@@ -361,6 +390,7 @@ final class HistoryCatalogSession {
   private func requestRebuild() {
     guard !rebuildRequested else { return }
     rebuildRequested = true
+    needsFullBuild = true
     invalidate()
     pending.include(.unknown)
     indexIfNeeded()
@@ -396,12 +426,14 @@ final class HistoryCatalogSession {
         // even for an unchanged source revision, or that page is never re-read (#4605 review).
         publishedCertifiedSource = nil
         batchMarked = false
+        passCommittedRows = false
         do {
           // Recovery keeps precedence: a rebuild iteration never waits for page reads.
           var rebuilding = false
           if rebuildRequested {
             rebuilding = true
             rebuildRequested = false
+            needsFullBuild = true
             if let backend {
               try await backend.catalog.closeDatabase()
               self.backend = nil
@@ -458,6 +490,7 @@ final class HistoryCatalogSession {
           return
         } catch {
           status = .unavailable
+          syncShowsUpdating()
           // Content, not only status (#4586 H1): batches committed before the error may have
           // had their publishes throttled, and the error withdrew coverage.
           advanceContent()
@@ -492,6 +525,8 @@ final class HistoryCatalogSession {
     let now = ContinuousClock.now
     if !finished, next == status, let publishedAt, now - publishedAt < Self.publishInterval { return }
     status = next
+    if pass.changed { passCommittedRows = true }
+    syncShowsUpdating()
     if let certified { publishedCertifiedSource = certified }
     publishedAt = now
     if pass.changed, !batchMarked {
@@ -558,6 +593,9 @@ final class HistoryCatalogSession {
   var watcherIsInstalledForTesting: Bool { diskWatch != nil }
 
   #if DEBUG
+    /// Every value `syncShowsUpdating` computed, with the status it saw: the label's whole history
+    /// (#4586 tests). Written at the places that write `status`, so it adds no publish.
+    @ObservationIgnored private(set) var showsUpdatingTraceForTesting: [(status: Status, shows: Bool)] = []
     /// Runs inside `page` after the read and before its fence (#4586 H1 tests).
     @ObservationIgnored var beforePageFenceForTesting: (@MainActor () async -> Void)?
     /// Runs inside `page` after the backend is open and before any catalog call (#4586 package I).

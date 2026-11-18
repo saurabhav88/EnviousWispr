@@ -58,6 +58,7 @@ struct HistoryDiaryView<
     let (canPage, isFinal) = HistoryPaging.finality(result: result, key: key, source: source)
     let canSelect = result.map(coordinator.isCurrentHistoryResult) == true
     let catalogStatus = coordinator.catalogSession?.status
+    let showsUpdating = coordinator.catalogSession?.showsUpdating == true
     let openID = state.openItemID
     let canOpen = openID != nil
 
@@ -89,7 +90,7 @@ struct HistoryDiaryView<
           if tab == .meetings, isSelecting == false {
             HistoryMeetingsBar()
           }
-          if catalogStatus == .updating {
+          if showsUpdating {
             Label("Updating History…", systemImage: "clock.arrow.circlepath")
               .font(.stHelper)
               .foregroundStyle(.stTextSecondary)
@@ -124,8 +125,9 @@ struct HistoryDiaryView<
     .task(id: RefreshKey(request: key.request, grouping: groupingRevision)) {
       await refresh(tab: tab)
     }
-    .onChange(of: catalogStatus) { previous, current in
-      if previous == .updating, current == .ready {
+    .onChange(of: showsUpdating) { previous, current in
+      // Only a label the person actually saw is followed by the "up to date" announcement.
+      if previous, !current, catalogStatus == .ready {
         AccessibilityNotification.Announcement(
           String(
             localized: "History is up to date.",
