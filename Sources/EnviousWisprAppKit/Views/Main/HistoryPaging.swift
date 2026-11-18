@@ -8,6 +8,16 @@ import Foundation
 enum HistoryPaging {
   static let pageSize = HistoryTabState.pageSize
 
+  /// `canPage`: the stored page is for this request and its source is the current one (load
+  /// more, the newer row). `isFinal`: also read under a certificate, so its row set is complete
+  /// for the query (a missing restore anchor is given up, an empty list is really empty).
+  static func finality(
+    result: HistoryQueryResult?, key: TranscriptCoordinator.HistoryQueryKey, source: UInt64?
+  ) -> (canPage: Bool, isFinal: Bool) {
+    let canPage = result?.key == key && source != nil && result?.catalogSourceRevision == source
+    return (canPage, canPage && result?.catalogDayCounts != nil)
+  }
+
   /// The tab, search and filters a page was read for.
   struct Context: Equatable, Sendable {
     let tab: HistoryTab
@@ -222,6 +232,10 @@ struct HistoryQueryResult: Sendable {
 /// shown, and the loop reads once more for the newer content. A read that came back empty (a
 /// writer was active, the source moved) is tried again on the next content publish or change
 /// notice, never in a tight loop: each (key, notices, source) stamp is attempted once.
+/// A stored page whose source stamp differs from the current source is read again (the source
+/// gates authority, not display). A key change reads at once; a source-only difference reads at
+/// most once per `sourcePace`, measured from the end of the previous read and never reset by
+/// notices, so a burst gives one trailing read and sustained writes a bounded rate.
 @MainActor
 struct HistoryRefreshLoop {
   /// Runs first on every pass, before any read (#4586 N1: a kept page's rows are re-checked
@@ -243,24 +257,66 @@ struct HistoryRefreshLoop {
   let currentKey: @MainActor () -> TranscriptCoordinator.HistoryQueryKey
   /// The key of the result stored for the tab now.
   let storedKey: @MainActor () -> TranscriptCoordinator.HistoryQueryKey?
+  /// The source revision the stored result was read from.
+  let storedSource: @MainActor () -> UInt64?
   let read: @MainActor (TranscriptCoordinator.HistoryQueryKey) async -> Void
   /// Returns once either counter moved from the given values, or on cancellation.
   let wait: @MainActor (_ content: UInt64, _ notices: UInt64) async -> Void
+  /// Sleeps for the duration, or returns early on cancellation.
+  let pace: @MainActor (Duration) async -> Void
+  let now: @MainActor () -> ContinuousClock.Instant
+
+  static let sourcePace = Duration.milliseconds(250)
 
   func run() async {
     var attempted: Stamp?
+    var paceDeadline: ContinuousClock.Instant?
     while !Task.isCancelled {
-      let now = counters()
+      let sampled = counters()
       let key = currentKey()
       await beforeRead()
-      let stamp = Stamp(key: key, notices: now.notices, source: now.source)
-      if storedKey() != key, attempted != stamp {
+      let stamp = Stamp(key: key, notices: sampled.notices, source: sampled.source)
+      let needsKey = storedKey() != key
+      let needsSource = !needsKey && storedSource() != sampled.source
+      if needsKey || needsSource, attempted != stamp {
+        if needsSource, let deadline = paceDeadline, now() < deadline {
+          await pace(deadline - now())
+          continue
+        }
         attempted = stamp
         await read(key)
+        paceDeadline = now() + Self.sourcePace
       }
-      await wait(now.content, now.notices)
+      await wait(sampled.content, sampled.notices)
     }
   }
+}
+
+/// The one extension (older or newer page) read in flight for a tab, owned by a per-request
+/// token: only the task holding the current token may release the slot, so a stale task (after a
+/// tab switch away and back) cannot clear a newer request's claim.
+struct HistoryExtensionSlot {
+  private var held: (token: UUID, cursor: HistoryCatalog.Cursor)?
+
+  var isClaimed: Bool { held != nil }
+
+  /// A new token, or nil while another request holds the slot.
+  mutating func claim(_ cursor: HistoryCatalog.Cursor) -> UUID? {
+    guard held == nil else { return nil }
+    let token = UUID()
+    held = (token, cursor)
+    return token
+  }
+
+  /// Clears the slot and returns true only when `token` still owns it.
+  mutating func release(_ token: UUID) -> Bool {
+    guard held?.token == token else { return false }
+    held = nil
+    return true
+  }
+
+  /// A tab switch drops any claim.
+  mutating func clear() { held = nil }
 }
 
 /// #4586 (bug found by the History speed drivers on `acd9e956e`): where a History list opens. The

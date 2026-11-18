@@ -177,10 +177,13 @@ struct HistoryLoadLoopTests {
         },
         currentKey: key,
         storedKey: { shown.result?.key },
+        storedSource: { shown.result?.catalogSourceRevision },
         read: { key in
           if let page = await coordinator.historyResults(for: key) { shown.store(page) }
         },
-        wait: { content, notices in await session.waitForChange(revision: content, notices: notices) }
+        wait: { content, notices in await session.waitForChange(revision: content, notices: notices) },
+        pace: { try? await Task.sleep(for: $0) },
+        now: { .now }
       ).run()
     }
     defer { loop.cancel() }
@@ -191,22 +194,23 @@ struct HistoryLoadLoopTests {
       return
     }
 
-    // A writer is active (the source revision is unknown); another process changes one shown
-    // file and its notice arrives. The loop re-checks the kept page and hides only that row.
+    // A writer is active (the source revision is unknown); another process removes one shown
+    // file and its notice arrives. The list hides only that row (a display-only re-read or the
+    // kept page's re-check).
     f.changes.begin()
     var writing = true
     defer { if writing { f.changes.finish(.transcript(second.key.id)) } }
-    try appendNewline(to: first.key.id, in: f)
+    try removeShownFile(to: first.key.id, in: f)
     f.changes.externalChange(.transcript(first.key.id))
-    try await shown.until { $0.items.count == 29 }
+    try await shown.until { !$0.ids.contains(.transcript(first.key.id)) }
     #expect(shown.result?.ids.contains(.transcript(first.key.id)) == false)
     #expect(shown.result.map(coordinator.isCurrentHistoryResult) == false)
 
     // A second change in the same writer interval is hidden on its own notice.
     let checks = shown.checks
-    try appendNewline(to: second.key.id, in: f)
+    try removeShownFile(to: second.key.id, in: f)
     f.changes.externalChange(.transcript(second.key.id))
-    try await shown.until { $0.items.count == 28 }
+    try await shown.until { !$0.ids.contains(.transcript(second.key.id)) }
     #expect(shown.checks > checks)
     #expect(shown.result?.ids.contains(.transcript(second.key.id)) == false)
 
@@ -216,11 +220,11 @@ struct HistoryLoadLoopTests {
     await loop.value
   }
 
-  private func appendNewline(to id: UUID, in f: Fixture) throws {
-    let handle = try FileHandle(forWritingTo: f.transcripts.appendingPathComponent("\(id.uuidString).json"))
-    try handle.seekToEnd()
-    try handle.write(contentsOf: Data("\n".utf8))
-    try handle.close()
+  private func removeShownFile(to id: UUID, in f: Fixture) throws {
+    // Another process removes the shown file. (An appended byte no longer works: the display no
+    // longer waits for a stable source, so a re-read can show a changed row once the catalog
+    // re-indexed it.)
+    try FileManager.default.removeItem(at: f.transcripts.appendingPathComponent("\(id.uuidString).json"))
   }
 
   @Test("An outside deletion of one dictation removes that row and restores coverage")

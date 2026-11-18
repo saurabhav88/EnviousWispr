@@ -23,7 +23,7 @@ struct HistoryDiaryView<
   @State private var isSelecting = false
   @State private var results: [HistoryTab: HistoryQueryResult] = [:]
   @State private var groupingRevision = 0
-  @State private var pendingPage: HistoryCatalog.Cursor?
+  @State private var extensionSlot = HistoryExtensionSlot()
   /// Where the reader is in the list, as of its last scroll step (`HistoryDiaryList` writes it).
   @State private var liveAnchor = HistoryLiveAnchor()
 
@@ -52,7 +52,10 @@ struct HistoryDiaryView<
     // files by the refresh loop on every wake, never here while drawing.
     let result =
       saved?.catalogSourceRevision == source || saved?.key.context == key.context ? saved : nil
-    let current = result?.key == key
+    // The page may page and open only while its source is the current one; the table may give
+    // up a missing restore anchor and show a final empty state only for a page that also read
+    // under a certificate (#4586 r6.4).
+    let (canPage, isFinal) = HistoryPaging.finality(result: result, key: key, source: source)
     let canSelect = result.map(coordinator.isCurrentHistoryResult) == true
     let catalogStatus = coordinator.catalogSession?.status
     let openID = state.openItemID
@@ -63,7 +66,7 @@ struct HistoryDiaryView<
         destination(for: openID)
           .frame(maxWidth: .infinity, maxHeight: .infinity)
           .environment(\.historyHighlightQuery, state.query)
-          .task(id: NeighborKey(open: openID, loaded: result?.items.count ?? 0)) {
+          .task(id: NeighborKey(open: openID, loaded: result?.items.count ?? 0, identity: result?.identity)) {
             loadPastEnd(of: openID)
           }
       } else {
@@ -99,7 +102,7 @@ struct HistoryDiaryView<
 
         HistoryDiaryList(
           coordinator: coordinator, tab: tab, state: state, selection: selection,
-          isSelecting: isSelecting, result: result, isCurrent: current,
+          isSelecting: isSelecting, result: result, canPage: canPage, isFinal: isFinal,
           canSelect: canSelect,
           liveAnchor: liveAnchor, open: open, loadNext: loadNext, dictationCard: dictationCard
         )
@@ -128,7 +131,7 @@ struct HistoryDiaryView<
       }
     }
     .onChange(of: tab) { _, _ in
-      pendingPage = nil
+      extensionSlot.clear()
       // Selection belongs to one tab's list; a tab switch ends it.
       isSelecting = false
       selection.clear()
@@ -165,8 +168,11 @@ struct HistoryDiaryView<
       },
       currentKey: { currentKey(tab) },
       storedKey: { results[tab]?.key },
+      storedSource: { results[tab]?.catalogSourceRevision },
       read: { key in await readPage(tab: tab, key: key) },
-      wait: { content, notices in await session.waitForChange(revision: content, notices: notices) }
+      wait: { content, notices in await session.waitForChange(revision: content, notices: notices) },
+      pace: { try? await Task.sleep(for: $0) },
+      now: { .now }
     ).run()
   }
 
@@ -176,7 +182,14 @@ struct HistoryDiaryView<
 
   /// One read for `key`, then publish (the body that ran once per key before #4586).
   private func readPage(tab: HistoryTab, key: TranscriptCoordinator.HistoryQueryKey) async {
-    guard results[tab]?.key != key else { return }
+    // A stored page for this key is kept only while its source is still the current one;
+    // otherwise the read below replaces it (the source gates authority, not display).
+    if let stored = results[tab], stored.key == key,
+      let source = coordinator.catalogSession?.stableSourceRevision,
+      stored.catalogSourceRevision == source
+    {
+      return
+    }
     // A refresh with the same tab, search and filters (a catalog update, an expiry, a time
     // zone or locale change) restores around the saved anchor: save where the reader is now
     // first, so it never jumps back to the place they last left (cloud review on #4582).
@@ -246,6 +259,8 @@ struct HistoryDiaryView<
   private struct NeighborKey: Equatable {
     let open: HistoryItemID
     let loaded: Int
+    /// A same-count replacement (a re-read with a new source) re-runs `loadPastEnd`.
+    let identity: UUID?
   }
 
   /// The open item's list as the reader left it (same tab, search, filters and order, newest
@@ -315,12 +330,22 @@ struct HistoryDiaryView<
     let cursor = newer ? result.newerContinuation : result.continuation
     let current = newer ? results[tab]?.newerContinuation : results[tab]?.continuation
     // #4586: only from the stored result; the coordinator also requires the live key.
-    guard let cursor, pendingPage == nil, current == cursor, results[tab]?.identity == result.identity,
-      result.catalogSourceRevision == coordinator.catalogSession?.stableSourceRevision
+    guard let cursor, current == cursor, results[tab]?.identity == result.identity,
+      result.catalogSourceRevision == coordinator.catalogSession?.stableSourceRevision,
+      let token = extensionSlot.claim(cursor)
     else { return }
-    pendingPage = cursor
     Task {
-      defer { if pendingPage == cursor { pendingPage = nil } }
+      // Only the owner of the slot clears it, and only the owner retries below.
+      defer {
+        if extensionSlot.release(token) {
+          let tab = result.key.context.tab
+          if let now = results[tab], now.identity != result.identity,
+            let open = coordinator.requestedHistoryState(for: tab).openItemID
+          {
+            loadPastEnd(of: open)
+          }
+        }
+      }
       guard
         let next = await coordinator.historyResults(
           for: result.key, extending: result, newer: newer),
@@ -351,7 +376,8 @@ private struct HistoryDiaryList<DictationCard: View>: View {
   let selection: HistorySelection
   let isSelecting: Bool
   let result: HistoryQueryResult?
-  let isCurrent: Bool
+  let canPage: Bool
+  let isFinal: Bool
   let canSelect: Bool
   /// The item under the reader as of the last scroll step, shared with the refresh above.
   let liveAnchor: HistoryLiveAnchor
@@ -376,13 +402,13 @@ private struct HistoryDiaryList<DictationCard: View>: View {
   var body: some View {
     let items = result?.items ?? []
     let context = result?.key.context ?? HistoryPaging.Context(tab: tab, state: state)
-    let hasNext = isCurrent && result?.continuation != nil
+    let hasNext = canPage && result?.continuation != nil
     let entries = result?.entries(through: items.count) ?? []
     var lookup: [HistoryDiaryLayout.EntryID: HistoryQueryResult.Entry] = [:]
     // One flat list of day headings and items. The result preserves positions, but cards read
     // live detail: an expired recovery or a meeting being deleted is left out of the rows.
     var rows: [HistoryDiaryTable.RowID] = []
-    if isCurrent, let result, result.newerContinuation != nil { rows.append(.newer) }
+    if canPage, let result, result.newerContinuation != nil { rows.append(.newer) }
     for entry in entries {
       if case .item = entry.id, !coordinator.canRenderHistoryItem(items[entry.position]) {
         continue
@@ -405,7 +431,7 @@ private struct HistoryDiaryList<DictationCard: View>: View {
     }
 
     return HistoryDiaryTable(
-      rows: rows, restore: restore, rowsAreFinal: isCurrent && result != nil,
+      rows: rows, restore: restore, rowsAreFinal: isFinal,
       content: { row in
         AnyView(
           HistoryDiaryRowBody {
@@ -434,7 +460,7 @@ private struct HistoryDiaryList<DictationCard: View>: View {
           systemImage: "exclamationmark.triangle", title: HistoryEmptyMessage.loadFailed)
       } else if items.isEmpty && coordinator.catalogSession?.status == .updating {
         ProgressView()
-      } else if items.isEmpty && !isCurrent {
+      } else if items.isEmpty && !isFinal {
         ProgressView()
       } else if let empty = HistoryDiaryLayout.emptyState(
         tab: tab, state: state, matchingCount: items.count)

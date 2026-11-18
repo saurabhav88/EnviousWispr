@@ -65,6 +65,13 @@ package final class HistorySourceChanges: Sendable {
     state.withLock { $0.active == 0 ? $0.revision : nil }
   }
 
+  /// One atomic read of the counter and whether any writer is open. Every `finish` advances
+  /// `revision` before a stable value is exposed, so a revision sampled while unsettled never
+  /// equals a later `revision` (the stable source).
+  package var admission: (revision: UInt64, settled: Bool) {
+    state.withLock { ($0.revision, $0.active == 0) }
+  }
+
   /// A change without a reliable writer interval cannot keep the old full-scope certificate.
   /// A named scope is re-checked first; `.all` (the default) means precision was lost.
   package func externalChange(_ scope: Scope = .all) {

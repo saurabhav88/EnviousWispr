@@ -140,9 +140,10 @@ final class HistoryCatalogSession {
         changes.advanceWithoutNotice()
         diskWatch = watch
         HistorySignpost.event("HistoryWatcherReady")
-        // A page read waits for a registration in progress (`page`), so this advance only
-        // refuses a read that began before a later re-registration (a root change). Ask the
-        // screen to read again now rather than after the full pass this enqueues.
+        // A first page read across this install is shown as not current (its source differs
+        // from the one now stable) and the list reads again; an extension read across it is
+        // refused. Ask the screen to read again now rather than after the full pass this
+        // enqueues.
         advanceContent()
         didUpdate?()
         // #4586 package I: a full pass that has not reached `reconcile` yet reads the source
@@ -247,20 +248,35 @@ final class HistoryCatalogSession {
     return opened
   }
 
+  /// One atomic read of the source counter and whether a writer is open (see
+  /// `HistorySourceChanges.admission`). A first page samples it once and passes it to `page`.
+  func admission() -> (revision: UInt64, settled: Bool) { changes.admission }
+
+  /// `admitted` marks a first page (`cursor == nil`) whose caller stamps the result with the
+  /// admission it sampled: the source revision gates display no longer, only authority, so such
+  /// a read neither refuses a nil source at the start nor a moved source at the end. Coverage
+  /// is used only when the admission was settled and the watcher is installed. An extension
+  /// (`cursor != nil`) and callers without an admission keep both refusals.
   func page(
-    _ query: HistoryCatalog.Query, after cursor: HistoryCatalog.Cursor? = nil, restoring anchor: UUID? = nil, newer: Bool = false
+    _ query: HistoryCatalog.Query, after cursor: HistoryCatalog.Cursor? = nil, restoring anchor: UUID? = nil, newer: Bool = false,
+    admitted: (revision: UInt64, settled: Bool)? = nil
   ) async throws -> HistoryCatalog.Page? {
     let readID = beginPageRead()
     defer { endPageRead(readID) }
-    await waitForWatcherStart()
     guard !Task.isCancelled else { return nil }
+    let admittedFirstPage = cursor == nil ? admitted : nil
     let source = changes.revision
-    guard source != nil else { return nil }
+    if admittedFirstPage == nil { guard source != nil else { return nil } }
     let backend = try await open()
     #if DEBUG
       await beforePageCatalogForTesting?()
     #endif
-    let coverage = diskWatch == nil ? nil : backend.worker.currentCoverage()
+    let coverage: String?
+    if let admittedFirstPage {
+      coverage = admittedFirstPage.settled && diskWatch != nil ? backend.worker.currentCoverage() : nil
+    } else {
+      coverage = diskWatch == nil ? nil : backend.worker.currentCoverage()
+    }
     let boundary: HistoryCatalog.Cursor?
     if let anchor, cursor == nil {
       boundary = try await backend.catalog.cursorBefore(anchor, query: query)
@@ -279,10 +295,11 @@ final class HistoryCatalogSession {
     #if DEBUG
       await beforePageFenceForTesting?()
     #endif
-    // #4586 H1: the page fences on the source revision only. A content publish while it was
-    // read (indexing progress, a new certificate) does not throw it away; the list reads again
-    // after showing it, and a page read under an older content revision cannot authorize
-    // selection or paging (`TranscriptCoordinator.isCurrentHistoryResult`).
+    // #4586 H1: a content publish while the page was read (indexing progress, a new
+    // certificate) does not throw it away; the list reads again after showing it, and a page
+    // read under an older content revision cannot authorize selection or paging
+    // (`TranscriptCoordinator.isCurrentHistoryResult`).
+    if admittedFirstPage != nil { return Task.isCancelled ? nil : result }
     guard !Task.isCancelled, source == changes.revision else { return nil }
     return result
   }
@@ -293,19 +310,6 @@ final class HistoryCatalogSession {
   func beginPageRead() -> UInt64 { pageReads.begin() }
 
   func endPageRead(_ id: UInt64) { pageReads.end(id) }
-
-  /// Returns once no watcher registration is in progress, or on cancellation (#4586 package I).
-  /// Rows are proven by per-row file checks, and only a running watcher turns a later outside
-  /// change (another process deleting a transcript) into a source-revision move that refuses a
-  /// page. So a read never runs, and a caller never captures its source revision, while the
-  /// watcher is starting: both happen under the revision that registration set.
-  func waitForWatcherStart() async {
-    guard diskWatch == nil, registration != nil else { return }
-    HistorySignpost.event("HistoryPageWaitedForWatcher")
-    while diskWatch == nil, registration != nil, !Task.isCancelled {
-      await waitForTaskEnd { registration == nil }
-    }
-  }
 
   func matchingKeys(_ query: HistoryCatalog.Query) async throws -> [HistoryCatalog.Key]? {
     let id = revision

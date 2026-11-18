@@ -213,44 +213,58 @@ final class TranscriptCoordinator {
         }
       }
       // #4586 package I: the read is registered from here to the end, so a full pass lets the
-      // whole page (read and build) go first, and the source revision is captured only after a
-      // watcher registration in progress has ended.
+      // whole page (read and build) go first.
       let readID = catalogSession.beginPageRead()
       defer { catalogSession.endPageRead(readID) }
-      await catalogSession.waitForWatcherStart()
-      guard let source = catalogSession.stableSourceRevision,
-        previous == nil || previous?.catalogSourceRevision == source, stillWanted()
-      else { return nil }
+      // The source revision gates authority, not display. A first page samples one admission
+      // (revision plus whether a writer is open) before the read and is shown whatever the
+      // source does afterwards, stamped with that revision; it is current only while the stamp
+      // equals the current source and it has day counts. An unsettled admission can never
+      // equal a later stable source, so such a page is display-only (no counts, no paging). An
+      // extension joins only a page of the same, non-nil source.
+      let admitted = previous == nil ? catalogSession.admission() : nil
+      let source: UInt64
+      if let admitted {
+        source = admitted.revision
+        guard stillWanted() else { return nil }
+      } else {
+        guard let stable = catalogSession.stableSourceRevision,
+          previous?.catalogSourceRevision == stable, stillWanted()
+        else { return nil }
+        source = stable
+      }
       let interval = HistorySignpost.signposter.beginInterval("HistoryPage")
       let read: HistoryCatalog.Page?
       do {
         read = try await catalogSession.page(
           query, after: newer ? previous?.newerContinuation : previous?.continuation,
-          restoring: previous == nil ? anchorID : nil, newer: newer)
+          restoring: previous == nil ? anchorID : nil, newer: newer, admitted: admitted)
       } catch {
         HistorySignpost.signposter.endInterval("HistoryPage", interval, "failed")
         HistorySignpost.event("HistoryPageFailed")
         return nil
       }
-      guard let page = read, !Task.isCancelled, source == catalogSession.stableSourceRevision,
-        stillWanted()
+      guard let page = read, !Task.isCancelled,
+        admitted != nil || source == catalogSession.stableSourceRevision, stillWanted()
       else {
         HistorySignpost.signposter.endInterval("HistoryPage", interval, "superseded")
         HistorySignpost.event("HistoryPageSuperseded")
         return nil
       }
       HistorySignpost.signposter.endInterval("HistoryPage", interval, "accepted")
-      // #4586 H5: the result is built off the main actor (`@concurrent`), then the same
-      // freshness checks run again before it is returned.
+      // #4586 H5: the result is built off the main actor (`@concurrent`), then the request
+      // checks run again (and, for an extension, the source check) before it is returned.
       let built = await Self.buildResult(
-        key: key, page: page, previous: previous, newer: newer, source: source)
+        key: key, page: page, previous: previous, newer: newer, source: source,
+        displayOnly: admitted.map { !$0.settled } ?? false)
       #if DEBUG
         await afterBuildResultForTesting?()
       #endif
-      guard let built, !Task.isCancelled, source == catalogSession.stableSourceRevision, stillWanted()
+      guard let built, !Task.isCancelled,
+        admitted != nil || source == catalogSession.stableSourceRevision, stillWanted()
       else {
         // The read itself was accepted (its interval ended); the result is refused because the
-        // request or source moved while it was built.
+        // request (or, for an extension, the source) moved while it was built.
         HistorySignpost.event("HistoryPageSuperseded")
         return nil
       }
@@ -265,16 +279,18 @@ final class TranscriptCoordinator {
   /// whole again. `@concurrent` is the mechanism; `onMainThread` lets a test observe it.
   @concurrent nonisolated static func buildResult(
     key: HistoryQueryKey, page: HistoryCatalog.Page, previous: HistoryQueryResult?, newer: Bool,
-    source: UInt64, onMainThread: (@Sendable (Bool) -> Void)? = nil
+    source: UInt64, displayOnly: Bool = false, onMainThread: (@Sendable (Bool) -> Void)? = nil
   ) async -> HistoryQueryResult? {
     // `Thread.isMainThread` is unavailable in async code; the C call answers the same question.
     onMainThread?(pthread_main_np() != 0)
     let added = page.summaries.map(HistoryListItem.catalog)
-    let counts = page.dayCounts.map { (previous?.catalogDayCounts ?? [:]).merging($0) { _, new in new } }
+    let counts = displayOnly ? nil : page.dayCounts.map { (previous?.catalogDayCounts ?? [:]).merging($0) { _, new in new } }
     guard let previous else {
+      // A display-only page (read while a writer was open) shows its rows and nothing that
+      // could authorize paging or exact totals.
       return try? HistoryQueryResult(
-        key: key, items: added, continuation: page.continuation,
-        newerContinuation: page.newerContinuation, catalogSourceRevision: source,
+        key: key, items: added, continuation: displayOnly ? nil : page.continuation,
+        newerContinuation: displayOnly ? nil : page.newerContinuation, catalogSourceRevision: source,
         catalogDayCounts: counts)
     }
     if newer {
