@@ -281,17 +281,19 @@ import Testing
       #expect(r.session.watcherIsInstalledForTesting == false)
       r.session.beforeWatcherInstallForTesting = nil
       order.release()
-      // Loops because the change notice reaches the session asynchronously.
+      // Loops on the session's change signal because the change notice reaches the session asynchronously.
       var again: HistoryQueryResult
       var done: (canPage: Bool, isFinal: Bool)
       repeat {
+        let content = r.session.revision
+        let notices = r.session.noticeCount
         await r.session.waitForIndexingForTesting()
         again = try #require(await r.coordinator.historyResults(for: key(r)))
         done = HistoryPaging.finality(
           result: again, key: key(r), source: r.session.stableSourceRevision)
         if done.isFinal { break }
         try Task.checkCancellation()
-        await Task.yield()
+        await r.session.waitForChange(revision: content, notices: notices)
       } while true
       #expect(again.items.count == 4)
       #expect(done.isFinal)
@@ -366,14 +368,16 @@ import Testing
       #expect(f.coordinator.isCurrentHistoryResult(shown) == false)
       #expect(shown.catalogSourceRevision != f.session.stableSourceRevision)
       // The following read for the current request is current once indexing has settled.
-      // Loops because the change notice reaches the session asynchronously.
+      // Loops on the session's change signal because the change notice reaches the session asynchronously.
       var next: HistoryQueryResult
       repeat {
+        let content = f.session.revision
+        let notices = f.session.noticeCount
         await f.session.waitForIndexingForTesting()
         next = try #require(await f.coordinator.historyResults(for: key(f)))
         if f.coordinator.isCurrentHistoryResult(next) { break }
         try Task.checkCancellation()
-        await Task.yield()
+        await f.session.waitForChange(revision: content, notices: notices)
       } while true
       #expect(next.items.count == 5)
       #expect(f.coordinator.isCurrentHistoryResult(next))
@@ -515,17 +519,19 @@ import Testing
         try Task.checkCancellation()
         await Task.yield()
       }
-      // Loops because the change notice reaches the session asynchronously.
+      // Loops on the session's change signal because the change notice reaches the session asynchronously.
       var final: HistoryQueryResult
       var emptyDone: (canPage: Bool, isFinal: Bool)
       repeat {
+        let content = f.session.revision
+        let notices = f.session.noticeCount
         await f.session.waitForIndexingForTesting()
         final = try #require(await f.coordinator.historyResults(for: key(f)))
         emptyDone = HistoryPaging.finality(
           result: final, key: final.key, source: f.session.stableSourceRevision)
         if emptyDone.isFinal { break }
         try Task.checkCancellation()
-        await Task.yield()
+        await f.session.waitForChange(revision: content, notices: notices)
       } while true
       #expect(final.items.isEmpty)
       #expect(emptyDone.canPage)
