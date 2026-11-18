@@ -101,8 +101,8 @@ class SummarizerExclusionTest(unittest.TestCase):
     def test_timing_report_is_listed(self):
         self.assertIn("Open History, existing", self.summarize({}))
 
-    def test_both_banner_modes_are_excluded(self):
-        for extra in ({"storage_warning": True}, {"watch_banner": True}, {"diagnostic": "watch-banner"}):
+    def test_the_banner_mode_is_excluded(self):
+        for extra in ({"storage_warning": True}, {"diagnostic": "storage-warning"}):
             self.assertNotIn("Open History", self.summarize(extra), extra)
 
 

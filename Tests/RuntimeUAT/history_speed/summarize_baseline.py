@@ -39,8 +39,8 @@ def main():
     pilot = load(root / "main" / "pilot.json") or {}
     for mode in ("missing", "existing"):
         r = load(root / "main" / f"open-{mode}" / "report.json")
-        if r and (r.get("storage_warning") or r.get("watch_banner") or r.get("diagnostic")):
-            r = None   # a banner check (either mode) is not a timing run; never summarised as one
+        if r and (r.get("storage_warning") or r.get("diagnostic")):
+            r = None   # a banner check is not a timing run; never summarised as one
         if r:
             p = r["launch_to_page_ms"]
             w = r["window_to_page_ms"]

@@ -33,15 +33,15 @@ Control: `--control drop-row` removes one expected row from the answer: no sampl
 The fixture's recordings (~2.15 GB) are over the default 2 GB storage warning threshold, so every launch
 passes the app's own setting `recordingStorageWarningThreshold=none` in its launch arguments (no
 preference is written): otherwise the warning banner appears 2.4-3.9 s after launch and pushes the
-page down about 65 pt. `--storage-warning` launches WITHOUT that argument and `--watch-banner` launches
-with it; both are banner-only diagnostics (NOT A TIMING RUN): no frame recorder, no timing numbers, no
+page down about 65 pt. `--storage-warning` launches WITHOUT that argument; it is a banner-only
+diagnostic (NOT A TIMING RUN): no frame recorder, no timing numbers, no
 budget verdict, no page confirmation. Per launch they report only whether the banner (matched by its
 accessibility identifier) was seen and its first-seen time in ms after spawn. Own exit status: 0 when
-the banner was seen on every launch (`--storage-warning`) / never seen (`--watch-banner`) and every
+the banner was seen on every launch and every
 launch was read until BANNER_WATCH_S after spawn; 1 otherwise. `--samples` must be at least 1 there.
 
 Usage: python3 m5-speed-open.py <subject .app> <fixture home> <new out dir> --mode missing|existing
-                                [--samples 20] [--warmups 2] [--busy] [--control drop-row] [--storage-warning | --watch-banner]
+                                [--samples 20] [--warmups 2] [--busy] [--control drop-row] [--storage-warning]
 The caller holds the dev-app lock; no other instance of the subject may run.
 """
 import importlib.util
@@ -99,11 +99,7 @@ def main():
     warmups = max(1, int(option(argv, "--warmups", "2")))
     control = option(argv, "--control")
     storage_warning = "--storage-warning" in argv
-    watch = "--watch-banner" in argv   # watch for the banner with the warning OFF (proof it stays off)
-    banner_mode = storage_warning or watch
-    if storage_warning and watch:
-        print("--storage-warning and --watch-banner are separate checks; pick one", file=sys.stderr)
-        return 2
+    banner_mode = storage_warning
     if banner_mode and samples < 1:
         print("--samples must be at least 1 for a banner diagnostic", file=sys.stderr)
         return 2
@@ -298,19 +294,19 @@ def main():
         banners = [s["banner"] for s in measured if s.get("banner")]
         seen = sum(1 for b in banners if b["seen_at_ms"] is not None)
         full = sum(1 for b in banners if b["watched_to_deadline"])
-        check = {"expectation": "banner seen on every launch" if storage_warning else "banner never seen",
+        check = {"expectation": "banner seen on every launch",
                  "samples": len(measured), "watched": len(banners), "watched_to_deadline": full, "seen": seen,
                  "seen_at_ms": sorted(b["seen_at_ms"] for b in banners if b["seen_at_ms"] is not None),
                  "missed": [s.get("reason") for s in measured if s["result"] != "banner"]}
         holds = (len(banners) == len(measured) == samples and full == len(banners)
-                 and (seen == len(banners) if storage_warning else seen == 0))
+                 and seen == len(banners))
         check["expectation_held"] = holds
         report_diag.clear()
         report_diag.update({
             "label": "NOT A TIMING RUN", "mode": mode,
-            "diagnostic": "storage-warning" if storage_warning else "watch-banner",
+            "diagnostic": "storage-warning",
             "subject": report["subject"], "home": report["home"],
-            "storage_warning": storage_warning, "watch_banner": watch,
+            "storage_warning": storage_warning,
             "samples": [{k: s[k] for k in ("index", "result", "reason", "banner") if k in s} for s in report["samples"]],
             "banner_check": check, "conditions_start": report["conditions_start"]})
         if final:

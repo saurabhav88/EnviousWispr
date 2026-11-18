@@ -1,0 +1,28 @@
+"""Offline test: the pilot refuses --storage-warning without --open before anything launches (#4586 WP-A)."""
+import subprocess
+import sys
+import unittest
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+
+
+class PilotArgs(unittest.TestCase):
+    def run_pilot(self, *extra):
+        # Nonexistent paths: any attempt to proceed past the argument check would fail differently (not exit 2 with this message).
+        return subprocess.run([sys.executable, "-B", str(HERE / "containment_pilot.py"), "/nonexistent/App.app", "sha",
+                               "/nonexistent/seed", "/nonexistent/run", *extra], capture_output=True, text=True)
+
+    def test_storage_warning_without_open_is_refused(self):
+        r = self.run_pilot("--storage-warning")
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("--storage-warning only applies to the open driver", r.stderr)
+
+    def test_storage_warning_without_open_is_refused_even_with_scroll(self):
+        r = self.run_pilot("--storage-warning", "--scroll")
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("--open", r.stderr)
+
+
+if __name__ == "__main__":
+    unittest.main()
