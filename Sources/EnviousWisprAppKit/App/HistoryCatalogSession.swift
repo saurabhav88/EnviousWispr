@@ -233,6 +233,9 @@ final class HistoryCatalogSession {
     let source = changes.revision
     guard source != nil else { return nil }
     let backend = try await open()
+    #if DEBUG
+      await beforePageCatalogForTesting?()
+    #endif
     let coverage = diskWatch == nil ? nil : backend.worker.currentCoverage()
     let boundary: HistoryCatalog.Cursor?
     if let anchor, cursor == nil {
@@ -350,8 +353,14 @@ final class HistoryCatalogSession {
             try HistoryCatalog.discardFiles(in: directory)
           }
           let backend = try await open()
+          #if DEBUG
+            await afterPassOpenForTesting?()
+          #endif
           let pass: HistoryCatalogReconciliation.Pass?
           if delta.scopes.contains(.all) {
+            #if DEBUG
+              await beforeReconcileForTesting?()
+            #endif
             pass = try await backend.worker.reconcile { [weak self] pass in
               await self?.publishProgress(pass)
             }
@@ -454,6 +463,12 @@ final class HistoryCatalogSession {
   #if DEBUG
     /// Runs inside `page` after the read and before its fence (#4586 H1 tests).
     @ObservationIgnored var beforePageFenceForTesting: (@MainActor () async -> Void)?
+    /// Runs inside `page` after the backend is open and before any catalog call (#4586 package I).
+    @ObservationIgnored var beforePageCatalogForTesting: (@MainActor () async -> Void)?
+    /// Runs in the indexing loop right after the backend is open (#4586 package I).
+    @ObservationIgnored var afterPassOpenForTesting: (@MainActor () async -> Void)?
+    /// Runs right before a full pass calls `reconcile` (#4586 package I).
+    @ObservationIgnored var beforeReconcileForTesting: (@MainActor () async -> Void)?
     /// A content publish with no indexing pass behind it (#4586 H1 tests).
     func advanceContentForTesting() { advanceContent() }
     var changeWaiterCountForTesting: Int { changeWaiters.count }

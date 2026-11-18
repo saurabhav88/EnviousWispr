@@ -87,6 +87,51 @@ import Testing
       #expect(f.session.revision != before)
     }
 
+    /// What the ordering test observes, all on the main actor.
+    @MainActor
+    private final class ReadOrder {
+      var readHeld = false
+      var passSawReadHeld: Bool?
+      var release: CheckedContinuation<Void, Never>?
+    }
+
+    @Test("A page read already waiting when a full re-check starts reaches the catalog first")
+    func waitingReadGoesBeforeFullPass() async throws {
+      let f = try await fixture(rows: 3)
+      defer { try? FileManager.default.removeItem(at: f.root) }
+      let order = ReadOrder()
+      // The read is held after the backend is open and before its catalog call.
+      f.session.beforePageCatalogForTesting = {
+        order.readHeld = true
+        await withCheckedContinuation { order.release = $0 }
+        order.readHeld = false
+      }
+      let read = Task { try? await f.session.page(.init(tab: .dictations)) }
+      defer { read.cancel() }
+      while order.release == nil {
+        try Task.checkCancellation()
+        await Task.yield()
+      }
+      f.session.beforePageCatalogForTesting = nil
+      // The held read is let go only once the pass has its backend; a pass that goes first
+      // reaches `reconcile` before that happens.
+      f.session.afterPassOpenForTesting = {
+        Task { @MainActor in
+          order.release?.resume()
+          order.release = nil
+        }
+      }
+      f.session.beforeReconcileForTesting = { order.passSawReadHeld = order.readHeld }
+      f.changes.externalChange()
+      await f.session.waitForIndexingForTesting()
+      f.session.afterPassOpenForTesting = nil
+      f.session.beforeReconcileForTesting = nil
+      #expect(order.passSawReadHeld == false)
+      // The read finishes either way; the outside change it overlapped may refuse it (a valid
+      // source-change refusal), which this ordering test does not judge.
+      _ = await read.value
+    }
+
     @Test("A page read across a content publish is kept, shown and not yet current")
     func pageSurvivesContentPublish() async throws {
       let f = try await fixture(rows: 5)
