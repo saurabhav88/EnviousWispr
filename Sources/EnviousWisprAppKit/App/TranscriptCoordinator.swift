@@ -212,6 +212,12 @@ final class TranscriptCoordinator {
         case .transcript(let value), .meeting(let value): value
         }
       }
+      // #4586 package I: the read is registered from here to the end, so a full pass lets the
+      // whole page (read and build) go first, and the source revision is captured only after a
+      // watcher registration in progress has ended.
+      let readID = catalogSession.beginPageRead()
+      defer { catalogSession.endPageRead(readID) }
+      await catalogSession.waitForWatcherStart()
       guard let source = catalogSession.stableSourceRevision,
         previous == nil || previous?.catalogSourceRevision == source, stillWanted()
       else { return nil }
@@ -236,10 +242,12 @@ final class TranscriptCoordinator {
       HistorySignpost.signposter.endInterval("HistoryPage", interval, "accepted")
       // #4586 H5: the result is built off the main actor (`@concurrent`), then the same
       // freshness checks run again before it is returned.
-      guard
-        let built = await Self.buildResult(
-          key: key, page: page, previous: previous, newer: newer, source: source),
-        !Task.isCancelled, source == catalogSession.stableSourceRevision, stillWanted()
+      let built = await Self.buildResult(
+        key: key, page: page, previous: previous, newer: newer, source: source)
+      #if DEBUG
+        await afterBuildResultForTesting?()
+      #endif
+      guard let built, !Task.isCancelled, source == catalogSession.stableSourceRevision, stillWanted()
       else {
         // The read itself was accepted (its interval ended); the result is refused because the
         // request or source moved while it was built.
@@ -1801,6 +1809,9 @@ final class TranscriptCoordinator {
   #if DEBUG
     /// Holds a replacement's digest step so a test can cancel during it.
     @ObservationIgnored var rowDigestWillRunForTesting: (@MainActor () async -> Void)?
+    /// Runs in `historyResults` after the result is built off the main actor and before its
+    /// freshness checks (#4586 package I): a change here lands while the result was built.
+    @ObservationIgnored var afterBuildResultForTesting: (@MainActor () async -> Void)?
   #endif
 
   /// Its encoded JSON with sorted keys, hashed off the main actor.

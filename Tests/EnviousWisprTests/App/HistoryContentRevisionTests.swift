@@ -93,6 +93,7 @@ import Testing
     private final class ReadOrder {
       var events: [String] = []
       var readRefused: Bool?
+      var reconciles = 0
       private var gate: CheckedContinuation<Void, Never>?
       private(set) var holding = false
 
@@ -129,9 +130,10 @@ import Testing
       }
     }
 
-    /// Holds a page read before its catalog call, then asks for a full re-check whose backend
-    /// hook runs `whenPassOpens`. Records "catalog read" when the read's catalog call returned
-    /// (the post-catalog hook) and "reconcile" the FIRST time a full pass reaches `reconcile`.
+    /// Holds a page read before its catalog call, then asks for a full re-check (no source
+    /// change, as at launch) whose backend hook runs `whenPassOpens`. Records "catalog read" when
+    /// the read's catalog call returned (the post-catalog hook), "reconcile" the FIRST time a
+    /// full pass reaches `reconcile`, and counts every `reconcile`.
     private func holdReadThenRequestPass(
       _ f: Fixture, _ order: ReadOrder, whenPassOpens: @escaping @MainActor (Task<HistoryCatalog.Page?, Never>) -> Void
     ) async throws -> Task<HistoryCatalog.Page?, Never> {
@@ -154,9 +156,10 @@ import Testing
       f.session.beforePageCatalogForTesting = nil
       f.session.afterPassOpenForTesting = { whenPassOpens(read) }
       f.session.beforeReconcileForTesting = {
+        order.reconciles += 1
         if order.events.contains("reconcile") == false { order.events.append("reconcile") }
       }
-      f.changes.externalChange()
+      f.session.requestFullPassForTesting()
       return read
     }
 
@@ -165,6 +168,8 @@ import Testing
       f.session.beforePageFenceForTesting = nil
       f.session.afterPassOpenForTesting = nil
       f.session.beforeReconcileForTesting = nil
+      f.session.beforeWatcherInstallForTesting = nil
+      f.coordinator.afterBuildResultForTesting = nil
     }
 
     @Test("A page read already waiting when a full re-check starts reaches the catalog first")
@@ -185,9 +190,10 @@ import Testing
       try await order.until("reconcile")
       try await order.until("catalog read")
       #expect(order.events.firstIndex(of: "catalog read")! < order.events.firstIndex(of: "reconcile")!)
-      // The read finishes either way; the outside change it overlapped may refuse it (a valid
-      // source-change refusal), which this ordering test does not judge.
+      // Nothing changed the source, so the rows reach the list.
       try await order.until("read done")
+      #expect(order.readRefused == false)
+      #expect(await read.value?.summaries.count == 3)
       await f.session.waitForIndexingForTesting()
     }
 
@@ -197,13 +203,86 @@ import Testing
       defer { try? FileManager.default.removeItem(at: f.root) }
       let order = ReadOrder()
       defer { clearHooks(f) }
-      // The view leaves: its read is cancelled while held, exits, and the pass proceeds.
+      let source = f.changes.revision
+      // The view leaves: its read is cancelled while held, exits, and the pass proceeds. The
+      // source stays put, so only the cancellation can refuse the read.
       let read = try await holdReadThenRequestPass(f, order) { read in read.cancel() }
       defer { order.release() }
       try await order.until("reconcile")
       try await order.until("read done")
+      #expect(f.changes.revision == source)
       #expect(order.readRefused == true)
       await f.session.waitForIndexingForTesting()
+    }
+
+    @Test("A first page asked for while the watcher starts waits for it, then reaches the list")
+    func firstPageWaitsForWatcher() async throws {
+      let f = try await fixture(rows: 3)
+      defer { try? FileManager.default.removeItem(at: f.root) }
+      let order = ReadOrder()
+      defer { clearHooks(f) }
+      f.session.beforeWatcherInstallForTesting = { await order.hold() }
+      f.session.beforePageCatalogForTesting = { order.events.append("catalog") }
+      f.session.rewatchForTesting()
+      defer { order.release() }
+      try await order.untilHolding()
+      let read = Task { @MainActor in await f.coordinator.historyResults(for: key(f)) }
+      defer { read.cancel() }
+      // The read parks on the registration: it never reads rows the watcher does not cover.
+      while f.session.taskEndWaiterCountForTesting == 0 {
+        try Task.checkCancellation()
+        await Task.yield()
+      }
+      #expect(order.events.contains("catalog") == false)
+      f.session.beforeWatcherInstallForTesting = nil
+      order.release()
+      let result = try #require(await read.value)
+      #expect(result.items.count == 3)
+      #expect(result.catalogSourceRevision == f.session.stableSourceRevision)
+      #expect(f.session.watcherIsInstalledForTesting)
+      await f.session.waitForIndexingForTesting()
+    }
+
+    @Test("A watcher registered while a full pass waits for reads adds no second full scan")
+    func registrationDuringWaitingPassIsCoalesced() async throws {
+      let f = try await fixture(rows: 3)
+      defer { try? FileManager.default.removeItem(at: f.root) }
+      let order = ReadOrder()
+      defer { clearHooks(f) }
+      let read = try await holdReadThenRequestPass(f, order) { _ in order.events.append("pass open") }
+      defer {
+        read.cancel()
+        order.release()
+      }
+      try await order.until("pass open")
+      #expect(f.session.fullPassAwaitingStartForTesting)
+      f.session.rewatchForTesting()
+      while !f.session.watcherIsInstalledForTesting {
+        try Task.checkCancellation()
+        await Task.yield()
+      }
+      order.release()
+      try await order.until("read done")
+      await f.session.waitForIndexingForTesting()
+      #expect(order.reconciles == 1)
+      #expect(f.session.status == .ready)
+    }
+
+    @Test("A page whose source moves while its result is built is refused")
+    func pageRefusedWhenSourceMovesDuringBuild() async throws {
+      let f = try await fixture(rows: 5)
+      defer { try? FileManager.default.removeItem(at: f.root) }
+      defer { clearHooks(f) }
+      let order = ReadOrder()
+      // The hook runs only after the read was accepted, so the source moves mid-build.
+      f.coordinator.afterBuildResultForTesting = { [changes = f.changes] in
+        order.events.append("built")
+        changes.begin()
+      }
+      let refused = await f.coordinator.historyResults(for: key(f))
+      #expect(order.events == ["built"])
+      #expect(refused == nil)
+      f.changes.finish(.transcript(UUID()))
     }
 
     @Test("A page read across a content publish is kept, shown and not yet current")
