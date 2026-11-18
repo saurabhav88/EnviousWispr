@@ -1072,7 +1072,7 @@ def undo_present_or_abort(label, expected_pid, max_depth=12):
 UNPAUSED_DWELL_S = 12.0     # the offer's dwell without hover
 RESUME_TOLERANCE_S = 1.5    # AX polling tolerance on the dismissal deadline
 MAX_SIGHTING_LAG_S = 1.0    # first sighting of the button may trail learn_undo_shown by this much
-MAX_POLL_GAP_S = 1.0        # a longer gap between two AX samples cannot show when the pill left
+MAX_SCAN_S = 1.0            # a longer AX scan around the deadline cannot show when the pill left
 
 
 def case_expiry_unhovered(path):
@@ -1115,39 +1115,73 @@ def case_expiry_unhovered(path):
     if not capture_pill("expiry-unhovered-pill.png", label=label, expected_pid=expected_pid):
         raise Aborted(f"{label}: the pill capture failed, is stale, or the pill was gone right after it "
                       "(visual proof required); instrument failure")
-    # Absence is only evidence when the pill was SEEN PRESENT shortly before it: a delayed poll
-    # that first sees "gone" at 11 s says nothing about a pill that vanished at 4 s. So the pass
-    # needs a positive presence sample at or after `lower_bound`, then the first absence by
-    # `bound`. A first absence with no such sample is a FAIL when the polling was healthy (the
-    # previous sample was recent) and INSTRUMENT when the poll gap hides the answer.
+    # Interval reasoning, never a stamp taken after a scan. Each scan is timed [start, end] on the
+    # monotonic clock. A PRESENT result proves the pill existed somewhere inside the scan, so
+    # for "still there late enough" only the scan START counts. An ABSENT result proves it was
+    # gone by the scan END, so for "gone in time" only the END counts. A scan longer than
+    # MAX_SCAN_S around the deadline, or intervals that cannot decide, are INSTRUMENT
+    # (inconclusive), never PASS or FAIL.
     bound = UNPAUSED_DWELL_S + RESUME_TOLERANCE_S
     lower_bound = UNPAUSED_DWELL_S - RESUME_TOLERANCE_S
-    last_present = 0.0  # the first-seen observation itself is a presence sample
-    first_absent = None
-    while time.monotonic() - shown_at < bound:
+    last_present_start = 0.0  # the first-seen observation itself is a presence at 0
+    first_absent_end = None
+    longest_scan = 0.0
+    longest_in_window = 0.0
+
+    def scan_once():
+        nonlocal longest_scan, longest_in_window
         if frontmost_pid() != textedit_pid:
             raise Aborted(f"{label}: TextEdit lost focus during the wait; instrument failure")
+        started = time.monotonic() - shown_at
         present = undo_present_or_abort(label, expected_pid)
-        sample = time.monotonic() - shown_at
+        ended = time.monotonic() - shown_at
+        longest_scan = max(longest_scan, ended - started)
+        if ended >= lower_bound:
+            longest_in_window = max(longest_in_window, ended - started)
+        return present, started, ended
+
+    while first_absent_end is None and time.monotonic() - shown_at < bound:
+        present, started, ended = scan_once()
         if present:
-            last_present = sample
+            last_present_start = started
+            time.sleep(0.25)  # settle: poll interval between AX reads
         else:
-            first_absent = sample
-            break
-        time.sleep(0.25)  # settle: poll interval between AX reads
-    gap = None if first_absent is None else first_absent - last_present
-    if first_absent is not None and last_present < lower_bound and gap > MAX_POLL_GAP_S:
-        raise Aborted(f"{label}: the pill was last seen at {last_present:.2f}s and first missed at "
-                      f"{first_absent:.2f}s, a {gap:.2f}s polling gap that hides whether it left "
-                      f"before the {lower_bound:.1f}s lower bound; inconclusive; instrument failure")
+            first_absent_end = ended
+    if first_absent_end is None:
+        # Past the bound with no absence yet: one more scan decides between "still there" (a scan
+        # that STARTED after the bound and found it: the dwell overran) and an undecidable end.
+        present, started, ended = scan_once()
+        if present:
+            last_present_start = started
+        else:
+            first_absent_end = ended
+    detail = (f"heard={heard!r} sighting_lag_s={sighting_lag:.2f} "
+              f"last_present_start_s={last_present_start:.2f} "
+              f"first_absent_end_s={'none' if first_absent_end is None else f'{first_absent_end:.2f}'} "
+              f"longest_scan_s={longest_scan:.2f} expected_s={UNPAUSED_DWELL_S:.1f}±{RESUME_TOLERANCE_S:.1f}")
+    if longest_in_window > MAX_SCAN_S:
+        raise Aborted(f"{label}: an accessibility scan around the deadline took {longest_in_window:.2f}s "
+                      f"(limit {MAX_SCAN_S:.1f}s), so when the pill left is unknown; inconclusive; "
+                      f"instrument failure ({detail})")
+    if first_absent_end is None:
+        persisted = wait_for("the word still in custom-words.json", lambda: learned_alias(pair, heard), deadline=2.0)
+        return check(label, False, detail + f" persisted={bool(persisted)}: the pill was still there after {bound:.1f}s")
+    if first_absent_end > bound and last_present_start >= lower_bound:
+        raise Aborted(f"{label}: the pill was first proven gone at {first_absent_end:.2f}s, after the "
+                      f"{bound:.1f}s bound; it may have left in time; inconclusive; instrument failure ({detail})")
+    if first_absent_end < lower_bound:
+        decided_early = True   # proven gone before the lower bound: the pill left early
+    elif last_present_start < lower_bound:
+        raise Aborted(f"{label}: the pill was last proven present at {last_present_start:.2f}s and proven "
+                      f"gone only at {first_absent_end:.2f}s, so it may have left before the "
+                      f"{lower_bound:.1f}s lower bound; inconclusive; instrument failure ({detail})")
+    else:
+        decided_early = False
     persisted = wait_for("the word still in custom-words.json", lambda: learned_alias(pair, heard), deadline=2.0)
     undone = has(mark, "learn_undone")
-    ok = (first_absent is not None and last_present >= lower_bound and first_absent <= bound
+    ok = (not decided_early and last_present_start >= lower_bound and first_absent_end <= bound
           and not undone and bool(persisted))
-    return check(label, ok,
-                 f"heard={heard!r} sighting_lag_s={sighting_lag:.2f} last_present_s={last_present:.2f} "
-                 f"first_absent_s={'none' if first_absent is None else f'{first_absent:.2f}'} "
-                 f"expected_s={UNPAUSED_DWELL_S:.1f}±{RESUME_TOLERANCE_S:.1f} undone={undone} persisted={bool(persisted)}")
+    return check(label, ok, detail + f" undone={undone} persisted={bool(persisted)}")
 
 
 def your_words_window(app):
