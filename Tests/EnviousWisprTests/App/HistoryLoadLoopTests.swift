@@ -185,11 +185,14 @@ struct HistoryLoadLoopTests {
     }
   }
 
-  /// Once `values` is set, the verification's stamp reports these notice and source values
-  /// instead of the live ones.
+  /// Once `freeze()` runs, the verification's stamp reports the key, notice count and source
+  /// revision captured at that moment (its grouping is already constant); only the stored page
+  /// identity stays live.
   @MainActor
   private final class FrozenStamp {
-    var values: (notices: UInt64, source: UInt64?)?
+    var values: (key: TranscriptCoordinator.HistoryQueryKey, notices: UInt64, source: UInt64?)?
+    var capture: (@MainActor () -> (key: TranscriptCoordinator.HistoryQueryKey, notices: UInt64, source: UInt64?))?
+    func freeze() { values = capture?() }
   }
 
   private func startLoop(
@@ -198,11 +201,12 @@ struct HistoryLoadLoopTests {
     let coordinator = f.coordinator
     let session = f.session
     let key: @MainActor @Sendable () -> TranscriptCoordinator.HistoryQueryKey = { coordinator.historyQueryKey(for: .dictations, state: coordinator.requestedHistoryState(for: .dictations)) }
+    frozen?.capture = { (key(), session.noticeCount, session.stableSourceRevision) }
     let verification = HistoryRetainedVerification(
       stamp: {
         guard let saved = shown.result, saved.catalogSourceRevision != session.stableSourceRevision else { return nil }
         return .init(
-          key: key(), notices: frozen?.values?.notices ?? session.noticeCount,
+          key: frozen?.values?.key ?? key(), notices: frozen?.values?.notices ?? session.noticeCount,
           source: frozen?.values.map(\.source) ?? session.stableSourceRevision, grouping: 0,
           stored: saved.identity)
       },
@@ -309,11 +313,11 @@ struct HistoryLoadLoopTests {
       Issue.record("The catalog page did not return catalog rows")
       return
     }
-    // The stamp is frozen so the folder watcher's timing cannot make the verifier discard its
-    // answer (deleting files makes the real watcher deliver notices at an unpredictable moment).
-    // The discard-on-change behavior itself is covered by
-    // HistoryRefreshLoopTests.retainedVerificationDropsStaleAnswers.
-    frozen.values = (f.session.noticeCount, f.session.stableSourceRevision)
+    // The whole stamp except the stored page identity (key, notices, source, grouping) is frozen,
+    // so neither the folder watcher's notices nor indexing publishing the deletion can make the
+    // verifier discard its answer at an unpredictable moment. The discard-on-change behavior
+    // itself is covered by HistoryRefreshLoopTests.retainedVerificationDropsStaleAnswers.
+    frozen.freeze()
     gate.closed = true
     let readsBefore = shown.reads
     let checksBefore = shown.checks
