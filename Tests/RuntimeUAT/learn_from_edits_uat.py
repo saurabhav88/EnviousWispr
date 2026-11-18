@@ -1122,9 +1122,10 @@ def case_expiry_unhovered(path):
     somewhere inside it, so only its START counts; an ABSENT scan proves it gone by its END.
       PASS:  a present scan STARTED at >= first_seen + 5 s and an absent scan ENDED by
              first_seen + 20 s, no `learn_undone`, the word still in custom-words.json.
-      FAIL:  an absent scan ended before first_seen + 5 s (it closed too early), or a scan that
-             STARTED after first_seen + 20 s still found the pill (it never closes).
-      INSTRUMENT: anything the intervals cannot decide (a poll gap or stalled scan).
+      FAIL:  a scan that STARTED after first_seen + 20 s still found the pill (it never closes).
+      INSTRUMENT: an absent scan ended before first_seen + 5 s (first_seen is when this script found
+             the pill, not when it appeared, so an early close is inconclusive), and anything else
+             the intervals cannot decide (a poll gap or stalled scan).
     The pill's picture is taken once, up front, without a prompt (a diagnostic).
 
     Hover pause is NOT checked by this script. It is covered by the director and clock tests and
@@ -1194,8 +1195,11 @@ def case_expiry_unhovered(path):
         return check(label, False, detail + f" persisted={bool(persisted)}: the pill was still there "
                      f"in a scan that started after {CLOSES_BY_S:.0f}s; it never closed on its own")
     if first_absent_end < present_after:
-        return check(label, False, detail + f" persisted={bool(persisted)}: the pill was gone before "
-                     f"{STILL_PRESENT_AFTER_S:.0f}s after it was first seen; shorter than the old dwell")
+        # first_seen is when THIS SCRIPT found the pill, not when it appeared, so a close within
+        # 5 s of it says nothing certain about the dwell. The exact dwell is a unit-test claim.
+        raise Aborted(f"{label}: the pill was gone within {STILL_PRESENT_AFTER_S:.0f}s of the first "
+                      "sighting; inconclusive (the sighting may have been late); the exact dwell is "
+                      f"covered by LearnedCorrectionPillDirectorTests.undoWindow ({detail})")
     if (last_present_start is not None and last_present_start >= present_after
             and first_absent_end <= closes_by):
         return check(label, not undone and bool(persisted),

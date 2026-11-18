@@ -859,7 +859,8 @@ struct LearnedCorrectionPillDirectorTests {
   }
 
   private func director(
-    _ clock: LearnedPillClock, _ log: Log, host: any OverlayWindowHosting
+    _ clock: LearnedPillClock, _ log: Log, host: any OverlayWindowHosting,
+    mouse: @escaping () -> CGPoint = { CGPoint(x: -10_000, y: -10_000) }
   ) -> OverlayDirector {
     OverlayDirector(
       host: host,
@@ -869,7 +870,7 @@ struct LearnedCorrectionPillDirectorTests {
       grantAccessibility: {}, openMicrophoneSettings: {}, openMicrophoneHelp: {}, advisoryHint: { _ in nil },
       selections: { .shipped },
       firstRenderSchedule: { $0() },
-      now: { clock.date }, uptime: { clock.uptime })
+      now: { clock.date }, uptime: { clock.uptime }, mouseLocation: mouse)
   }
 
   private func request(
@@ -1045,6 +1046,14 @@ struct LearnedCorrectionPillDirectorTests {
   private final class HoverHost: OverlayWindowHosting {
     private let inner = WindowlessOverlayHost()
     private var root: OverlayRootView?
+    /// The frame the host reports as placed; a test sets it to stage a wider or narrower pill.
+    var frame: CGRect?
+    var placedFrame: CGRect? { frame }
+
+    /// What the root's own `pointerIsOverPill` answers for the pill now placed.
+    func pointerIsOverPill() throws -> Bool {
+      try #require(root, "nothing was presented, so no root exists").pointerIsOverPill()
+    }
 
     func present(
       _ view: NSView, width: OverlayWidth, fixedHeight: CGFloat?, isFresh: Bool,
@@ -1073,9 +1082,11 @@ struct LearnedCorrectionPillDirectorTests {
     }
   }
 
-  private func hoverDirector(_ clock: LearnedPillClock, _ log: Log) -> (OverlayDirector, HoverHost) {
+  private func hoverDirector(
+    _ clock: LearnedPillClock, _ log: Log, mouse: @escaping () -> CGPoint = { CGPoint(x: -10_000, y: -10_000) }
+  ) -> (OverlayDirector, HoverHost) {
     let host = HoverHost()
-    return (director(clock, log, host: host), host)
+    return (director(clock, log, host: host, mouse: mouse), host)
   }
 
   @Test(
@@ -1110,66 +1121,90 @@ struct LearnedCorrectionPillDirectorTests {
     #expect(log.ended == 1 && log.undos == 0, "the offer must be reported ended exactly once")
   }
 
-  @Test(
-    "a second learned word replacing a hovered offer is told the pointer is already on it, so it is paused and outlives 12 s; without that enter it counts down under the pointer"
-  )
-  func replacementUnderARestingPointerIsPaused() throws {
-    // Control: the reducer admits a replacement with hover cleared, so with no new enter the
-    // replacement expires under the pointer. This is why the root must replay the enter.
-    do {
-      let clock = LearnedPillClock()
-      let log = Log()
-      let (d, host) = hoverDirector(clock, log)
-      let first = try #require(d.present(request(LearnedPillFixture.model(canonical: "Tuist"), log)))
-      clock.advance(to: 5)
-      try host.hover(true, over: first)
-      let second = LearnedPillFixture.model(canonical: "Saurabh")
-      _ = try #require(d.present(request(second, log)))
-      clock.advance(to: 5 + 12)
-      #expect(d.renderModel.state.presentation == nil, "control: with no new enter the replacement should expire")
-    }
-    // The real sequence through the root's hover tracker.
+  /// A wide first pill hovered, then a second learned word replaces it at `newFrame` with the
+  /// pointer at `mouse`. Returns whether the replacement was still shown 100 s later and the
+  /// receipt ids, after running what the root's onChange does with the real pointer position.
+  private func replaceUnderPointer(
+    mouse: CGPoint, newFrame: CGRect, feedRootHover: Bool = true
+  ) throws -> (shownLater: Bool, paused: Bool, endedAtTwelve: Bool) {
+    let pointer = mouse
     let clock = LearnedPillClock()
     let log = Log()
-    let (d, host) = hoverDirector(clock, log)
+    let (d, host) = hoverDirector(clock, log, mouse: { pointer })
     var tracker = RootHoverTracker()
+    host.frame = CGRect(x: 0, y: 0, width: 400, height: 60)
     let first = try #require(d.present(request(LearnedPillFixture.model(canonical: "Tuist"), log)))
     clock.advance(to: 5)
     try host.send(tracker.pointerChanged(id: first.presentationID, hovering: true))
     let secondModel = LearnedPillFixture.model(canonical: "Saurabh")
+    host.frame = newFrame  // the replacement is placed here
     let second = try #require(d.present(request(secondModel, log)))
     #expect(second.presentationID != first.presentationID)
-    // What the root's onChange does when the presented id changes under a hovered pointer.
-    let owed = tracker.presentationChanged(from: first.presentationID, to: second.presentationID)
-    let replay = try #require(owed, "a replacement under a hovered pointer owes an enter")
-    try host.send(replay)
-    let frozen = try #require(d.renderModel.state.dwell)
-    #expect(frozen.pausedRemaining == 12 && frozen.isPaused, "the replacement was not paused")
+    if feedRootHover {
+      // What the root's onChange does when the presented id changes: ask the REAL pointer position.
+      let over = try host.pointerIsOverPill()
+      let owed = tracker.presentationChanged(
+        from: first.presentationID, to: second.presentationID, pointerIsOverNewPill: over)
+      if let owed { try host.send(owed) }
+    }
+    let paused = d.renderModel.state.dwell?.isPaused == true
     clock.advance(to: 5 + 100)
-    #expect(shown(d)?.id == secondModel.id, "the replacement expired under the pointer")
-    // The pointer leaving resumes the replacement's whole 12 s and then it ends.
-    try host.send(tracker.pointerChanged(id: second.presentationID, hovering: false))
-    clock.advance(to: 105 + 11.999)
-    #expect(shown(d)?.id == secondModel.id)
-    clock.advance(to: 105 + 12)
-    #expect(d.renderModel.state.presentation == nil)
+    let shownLater = shown(d)?.id == secondModel.id
+    if shownLater {
+      // The pointer leaving resumes the replacement's whole 12 s and then it ends.
+      try host.send(tracker.pointerChanged(id: second.presentationID, hovering: false))
+      clock.advance(to: 105 + 11.999)
+      #expect(shown(d)?.id == secondModel.id)
+      clock.advance(to: 105 + 12)
+    }
+    return (shownLater, paused, d.renderModel.state.presentation == nil)
   }
 
-  @Test("the hover tracker replays an enter only for a replacement under a hovered pointer; a closed presentation clears it")
+  @Test("a replacement under a resting pointer that is still inside the new frame starts paused and outlives 12 s")
+  func replacementUnderThePointerIsPaused() throws {
+    let result = try replaceUnderPointer(
+      mouse: CGPoint(x: 150, y: 30), newFrame: CGRect(x: 0, y: 0, width: 200, height: 60))
+    #expect(result.paused, "the replacement was not paused")
+    #expect(result.shownLater, "the replacement expired under the pointer")
+    #expect(result.endedAtTwelve, "after the pointer left, the replacement should end 12 s later")
+  }
+
+  @Test("a narrower replacement the pointer is no longer inside is NOT paused and expires at 12 s")
+  func narrowerReplacementOutsideThePointerIsNotPaused() throws {
+    let result = try replaceUnderPointer(
+      mouse: CGPoint(x: 300, y: 30), newFrame: CGRect(x: 0, y: 0, width: 200, height: 60))
+    #expect(!result.paused, "a hover was invented for a pill the pointer is outside")
+    #expect(!result.shownLater, "the replacement was held although the pointer is not over it")
+  }
+
+  @Test("control: with no enter replayed at all, the replacement counts down under the pointer (the reported defect)")
+  func replacementWithoutAReplayExpires() throws {
+    let result = try replaceUnderPointer(
+      mouse: CGPoint(x: 150, y: 30), newFrame: CGRect(x: 0, y: 0, width: 200, height: 60),
+      feedRootHover: false)
+    #expect(!result.paused && !result.shownLater)
+  }
+
+  @Test("the hover tracker replays an enter only for a replacement whose frame the pointer is really inside; a closed presentation clears it")
   func hoverTrackerRules() {
     let a = PresentationID()
     let b = PresentationID()
     var tracker = RootHoverTracker()
-    #expect(tracker.presentationChanged(from: a, to: b) == nil, "not hovered: nothing to replay")
+    #expect(tracker.presentationChanged(from: a, to: b, pointerIsOverNewPill: true) == nil, "not hovered: nothing to replay")
     _ = tracker.pointerChanged(id: a, hovering: true)
-    #expect(tracker.presentationChanged(from: nil, to: b) == nil, "a first presentation owes no replay")
-    #expect(tracker.presentationChanged(from: a, to: b) == .hoverChanged(b, true))
-    #expect(tracker.presentationChanged(from: b, to: nil) == nil)
+    #expect(tracker.presentationChanged(from: nil, to: b, pointerIsOverNewPill: true) == nil, "a first presentation owes no replay")
+    #expect(tracker.presentationChanged(from: a, to: b, pointerIsOverNewPill: true) == .hoverChanged(b, true))
+    // The pointer is outside the replacement: nothing is sent and the stale flag is dropped.
+    var narrower = RootHoverTracker()
+    _ = narrower.pointerChanged(id: a, hovering: true)
+    #expect(narrower.presentationChanged(from: a, to: b, pointerIsOverNewPill: false) == nil)
+    #expect(!narrower.isHovered)
+    #expect(tracker.presentationChanged(from: b, to: nil, pointerIsOverNewPill: true) == nil)
     #expect(!tracker.isHovered, "a closed presentation never reports the pointer leaving, so it is cleared")
-    #expect(tracker.presentationChanged(from: nil, to: a) == nil)
+    #expect(tracker.presentationChanged(from: nil, to: a, pointerIsOverNewPill: true) == nil)
     _ = tracker.pointerChanged(id: a, hovering: true)
     _ = tracker.pointerChanged(id: a, hovering: false)
-    #expect(tracker.presentationChanged(from: a, to: b) == nil, "the pointer left: no replay")
+    #expect(tracker.presentationChanged(from: a, to: b, pointerIsOverNewPill: true) == nil, "the pointer left: no replay")
   }
 
   @Test("a leave event with 0.5 s left resumes with the 2 s floor, and the published progress share moves back")

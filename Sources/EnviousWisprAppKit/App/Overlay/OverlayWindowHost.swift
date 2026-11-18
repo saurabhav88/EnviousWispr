@@ -64,6 +64,15 @@ protocol OverlayWindowHosting: AnyObject {
   ) -> Bool
   func resizeCurrentPresentation(to size: CGSize)
   func hide()
+  /// The on-screen frame (global AppKit coordinates) the current presentation was placed at, or
+  /// nil when nothing is on screen. Lets the root decide from the pointer's real position whether
+  /// a replacement is under it.
+  var placedFrame: CGRect? { get }
+}
+
+extension OverlayWindowHosting {
+  /// Hosts with no real window (test doubles) place nothing.
+  var placedFrame: CGRect? { nil }
 }
 
 @MainActor
@@ -77,6 +86,11 @@ final class OverlayWindowHost: OverlayWindowHosting {
   private var panel: (any OverlayPanelDriving)?
   private var placement = OverlayPlacementState()
   private let screens: () -> OverlayScreenResolver
+
+  var placedFrame: CGRect? {
+    guard let panel, panel.isVisible else { return nil }
+    return panel.frame
+  }
 
   /// Whether the CURRENT occupant was sized from its content, which the Top
   /// continuing rule needs in order to choose top-edge versus centre

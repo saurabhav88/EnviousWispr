@@ -27,6 +27,7 @@ final class OverlayDirector {
 
   private var reducer: OverlayReducer
   private let host: any OverlayWindowHosting
+  private let mouseLocation: () -> CGPoint
   private let model: OverlayRenderModel
 
   /// The ONE dismissal clock. The director owns no timer and no dwell window of
@@ -199,7 +200,13 @@ final class OverlayDirector {
     let view = NSHostingView(
       rootView: OverlayRootView(
         model: model,
-        sendEvent: { [weak self] event in self?.handle(event, binding: .none) }))
+        sendEvent: { [weak self] event in self?.handle(event, binding: .none) },
+        pointerIsOverPill: { [weak self] in
+          guard let frame = self?.host.placedFrame, let point = self?.mouseLocation() else {
+            return false
+          }
+          return frame.contains(point)
+        }))
     #if DEBUG
       let constructEnd = OverlayFirstRenderMarkers.capture(.rootConstructEnd)
     #endif
@@ -380,7 +387,10 @@ final class OverlayDirector {
     now: @escaping () -> Date = Date.init,
     // As `now`: the expiry clock's remainder math reads a steady clock, and a test
     // driving `scheduler` by hand must drive it by the same fake time.
-    uptime: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
+    uptime: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+    // Where the pointer is, in global AppKit coordinates (the panel frame's space). The root asks
+    // whether a replacement pill is really under it; a test drives it with a chosen point.
+    mouseLocation: @escaping () -> CGPoint = { NSEvent.mouseLocation }
   ) {
     self.firstRenderSchedule = firstRenderSchedule
     self.selections = selections
@@ -395,6 +405,7 @@ final class OverlayDirector {
     self.advisoryHint = advisoryHint
     self.position = position
     self.model = model
+    self.mouseLocation = mouseLocation
     self.expiryClock = PillExpiryClock(
       schedule: scheduler, now: now, uptime: uptime, publishDwell: { [weak model] in model?.markDwellStarted($0) })
     self.reducer = OverlayReducer(makeID: makeID)
