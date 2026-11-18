@@ -861,9 +861,11 @@ public enum PasteService {
   public enum AXInsertOutcome: Equatable, Sendable {
     /// The requested mutation is positively verified. Stop the cascade.
     case verified
-    /// No mutation landed: the write was declined before the setter ran, or the
-    /// whole field provably stayed untouched, whatever the setter answered (#4664).
-    /// Continuing to Tier 2 is safe.
+    /// Continuing to Tier 2 is allowed: the write was declined before the setter ran,
+    /// the whole field provably stayed untouched (whatever the setter answered), or the
+    /// setter REFUSED the write (an error other than `.failure` / `.cannotComplete`) and
+    /// the field could not prove either way, which keeps the pre-#4664 key paste for
+    /// refusals (`finishAccessibilityWrite`).
     case noMutation
     /// The setter ran (success or error) but the result cannot be proven. The
     /// mutation MAY already be in the document, so the cascade must NOT paste again.
@@ -2367,8 +2369,8 @@ public enum PasteService {
       settability: settability,
       beforeImage: CopiesBeforeImage(count: countBefore, selectionLength: selectionLength)
     ) {
-      // From here the write may have landed, so every remaining failure is
-      // `unverifiable`, never `noMutation`.
+      // From here the write may have landed. An unprovable result is `unverifiable` for a
+      // `.success` / `.failure` answer and `noMutation` for a refusal; the builder decides.
       let countAfter = characterCount(of: element)
 
       // Positive proof of success: our exact text sits at the insertion span. Skipped
