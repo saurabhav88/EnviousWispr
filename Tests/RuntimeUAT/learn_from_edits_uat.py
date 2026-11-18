@@ -696,13 +696,26 @@ def find_button_by_prefix(element, prefix, depth=0, max_depth=12):
     return None
 
 
+def fresh_artifact_ok(path, started_at):
+    """True only for a file this attempt wrote: it exists, is non-empty, and was modified at or
+    after `started_at` (wall clock). A leftover from an earlier run in a reused `--run-dir` fails."""
+    try:
+        return os.path.getsize(path) > 0 and os.path.getmtime(path) >= started_at - 0.001
+    except OSError:
+        return False
+
+
 def screenshot(name):
     path = os.path.join(run_dir, name)
+    if os.path.exists(path):
+        os.remove(path)  # never let an old picture from a reused run dir answer for this attempt
+    started_at = time.time()
     try:
         w.screenshot(path, window=False)
     except Exception as error:
         print(f"    (screenshot failed: {error})")
-    return os.path.exists(path) and os.path.getsize(path) > 0
+        return False
+    return fresh_artifact_ok(path, started_at)
 
 
 PILL_CAPTURE_PAD = (300, 24, 60, 24)  # left, top, right, bottom around the Undo button's frame
@@ -712,8 +725,10 @@ def capture_pill(name, timeout_s=10.0):
     """Visual proof of the pill that cannot prompt or move focus: `screencapture -x -R` of a
     region around the Undo button's AX frame (the pill is the capsule around it). No window
     picker and no full-screen helper, so it cannot raise the screen-capture prompt that
-    steals TextEdit's focus. Returns True only for a non-empty file; the caller treats a
-    False as an instrument failure."""
+    steals TextEdit's focus. Any old target file is deleted first, an error or non-zero exit
+    fails at once, and success needs a NEW non-empty file written after the attempt started
+    (a reused `--run-dir` cannot supply an old picture). The caller treats False as an
+    instrument failure."""
     frame = pill_frame()
     if frame is None or not (frame["width"] > 0 and frame["height"] > 0):
         return False
@@ -723,12 +738,19 @@ def capture_pill(name, timeout_s=10.0):
     width = int(frame["width"]) + left + right
     height = int(frame["height"]) + top + bottom
     path = os.path.join(run_dir, name)
+    if os.path.exists(path):
+        os.remove(path)
+    started_at = time.time()
     try:
-        subprocess.run(["/usr/sbin/screencapture", "-x", "-R", f"{x},{y},{width},{height}", path],
-                       check=True, timeout=timeout_s, capture_output=True)
+        done = subprocess.run(["/usr/sbin/screencapture", "-x", "-R", f"{x},{y},{width},{height}", path],
+                              check=False, timeout=timeout_s, capture_output=True)
     except Exception as error:
         print(f"    (pill capture failed: {error})")
-    return os.path.exists(path) and os.path.getsize(path) > 0
+        return False
+    if done.returncode != 0:
+        print(f"    (pill capture failed: screencapture exit {done.returncode})")
+        return False
+    return fresh_artifact_ok(path, started_at)
 
 
 class PillNotAdmitted(Exception):
@@ -845,8 +867,10 @@ def case_new_word_undo(path):
     if not screenshot("new-word-undone.png"):
         raise Aborted("new-word-undo: the Undone screenshot is missing or empty (visual proof required)")
     removed = wait_for("the word to leave custom-words.json", lambda: word_named(pair.correct) is None, deadline=5.0)
-    ok = bool(undone) and undone.group(1) == "added" and undone.group(2) == "undone" and bool(removed)
-    return check("new-word-undo", ok, f"undone={undone.group(0) if undone else None} removed={bool(removed)}")
+    # "removed" is an absence: it only counts when the word was SEEN saved just before the Undo.
+    ok = (bool(saved) and bool(undone) and undone.group(1) == "added"
+          and undone.group(2) == "undone" and bool(removed))
+    return check("new-word-undo", ok, f"saved_before_undo={bool(saved)} undone={undone.group(0) if undone else None} removed={bool(removed)}")
 
 
 def case_existing_word(path):
@@ -1040,6 +1064,7 @@ def undo_present_or_abort(label, expected_pid, max_depth=12):
 
 UNPAUSED_DWELL_S = 12.0     # the offer's dwell without hover
 RESUME_TOLERANCE_S = 1.5    # AX polling tolerance on the dismissal deadline
+MAX_POLL_GAP_S = 1.0        # a longer gap between two AX samples cannot show when the pill left
 
 
 def case_expiry_unhovered(path):
@@ -1071,22 +1096,38 @@ def case_expiry_unhovered(path):
         raise Aborted(f"{label}: TextEdit is not frontmost; instrument failure")
     if not capture_pill("expiry-unhovered-pill.png"):
         raise Aborted(f"{label}: the pill capture is missing or empty (visual proof required)")
+    # Absence is only evidence when the pill was SEEN PRESENT shortly before it: a delayed poll
+    # that first sees "gone" at 11 s says nothing about a pill that vanished at 4 s. So the pass
+    # needs a positive presence sample at or after `lower_bound`, then the first absence by
+    # `bound`. A first absence with no such sample is a FAIL when the polling was healthy (the
+    # previous sample was recent) and INSTRUMENT when the poll gap hides the answer.
     bound = UNPAUSED_DWELL_S + RESUME_TOLERANCE_S
     lower_bound = UNPAUSED_DWELL_S - RESUME_TOLERANCE_S
-    gone_after = None
+    last_present = 0.0  # the first-seen observation itself is a presence sample
+    first_absent = None
     while time.monotonic() - shown_at < bound:
         if frontmost_pid() != textedit_pid:
             raise Aborted(f"{label}: TextEdit lost focus during the wait; instrument failure")
-        if not undo_present_or_abort(label, expected_pid):
-            gone_after = time.monotonic() - shown_at
+        present = undo_present_or_abort(label, expected_pid)
+        sample = time.monotonic() - shown_at
+        if present:
+            last_present = sample
+        else:
+            first_absent = sample
             break
         time.sleep(0.25)  # settle: poll interval between AX reads
+    gap = None if first_absent is None else first_absent - last_present
+    if first_absent is not None and last_present < lower_bound and gap > MAX_POLL_GAP_S:
+        raise Aborted(f"{label}: the pill was last seen at {last_present:.2f}s and first missed at "
+                      f"{first_absent:.2f}s, a {gap:.2f}s polling gap that hides whether it left "
+                      f"before the {lower_bound:.1f}s lower bound; inconclusive; instrument failure")
     persisted = wait_for("the word still in custom-words.json", lambda: learned_alias(pair, heard), deadline=2.0)
     undone = has(mark, "learn_undone")
-    ok = (gone_after is not None and lower_bound <= gone_after <= bound
+    ok = (first_absent is not None and last_present >= lower_bound and first_absent <= bound
           and not undone and bool(persisted))
     return check(label, ok,
-                 f"heard={heard!r} first_seen_to_gone_s={'none' if gone_after is None else f'{gone_after:.2f}'} "
+                 f"heard={heard!r} last_present_s={last_present:.2f} "
+                 f"first_absent_s={'none' if first_absent is None else f'{first_absent:.2f}'} "
                  f"expected_s={UNPAUSED_DWELL_S:.1f}±{RESUME_TOLERANCE_S:.1f} undone={undone} persisted={bool(persisted)}")
 
 
@@ -1209,15 +1250,16 @@ def case_admission_refused(path):
     ended = wait_for("observation ended by the next dictation", lambda: re.search(r"learn_observation_ended reason=next_dictation_started settled_bursts=\d+", log_since(mark)), deadline=10.0)
     judged = wait_judged(mark, deadline=10.0)
     state = wait_added(mark, "admission-refused", expect_pill=False) if judged else None
-    wait_for("the recording to start", lambda: has(mark, "Recording started"), deadline=10.0)
+    recording = wait_for("the recording to start", lambda: has(mark, "Recording started"), deadline=10.0)
     time.sleep(1.5)  # settle: the pill's admission is decided while the recording holds the slot
     shown = has(mark, "learn_undo_shown")
     w.tap("Stop Recording")
     wait_for("the take's terminal", lambda: has(mark, "dictation_terminal") or has(mark, "Pipeline timing TOTAL"), deadline=45.0)
     saved = learned_alias(pair, heard)
-    ok = bool(started) and bool(ended) and state is not None and not shown and saved
+    # "no pill" is an absence: it counts only while a recording was really holding the slot.
+    ok = bool(started) and bool(ended) and bool(recording) and state is not None and not shown and saved
     return check("admission-refused", ok,
-                 f"started={bool(started)} ended={bool(ended)} state={state} undo_shown={shown} saved={saved}")
+                 f"started={bool(started)} ended={bool(ended)} recording_started={bool(recording)} state={state} undo_shown={shown} saved={saved}")
 
 
 def case_negative(path):
@@ -1230,7 +1272,9 @@ def case_negative(path):
         return check("negative", False, "no learn_judged after the rewrite-shaped edit")
     # The claim is an ABSENCE (no save, no pill), bounded by the observation's end.
     clear_field(path)
-    wait_for("observation end", lambda: has(mark, "learn_observation_ended"), deadline=12.0)
+    ended = wait_for("observation end", lambda: has(mark, "learn_observation_ended"), deadline=12.0)
+    if not ended:
+        raise Aborted("negative: the observation never ended, so the absence of a save or pill proves nothing")
     lines = "\n".join(learn_lines(mark))
     return check("negative", "accepted=0" in judged and "learn_added" not in lines and "learn_undo_shown" not in lines,
                  f"judged={judged} added={'learn_added' in lines} undo_shown={'learn_undo_shown' in lines}")
@@ -1382,7 +1426,11 @@ def parse_only(raw):
         notes = "".join(f"\n  {n}: {RETIRED_ARMS[n]}" for n in unknown if n in RETIRED_ARMS)
         return (f"unknown --only arm(s): {', '.join(unknown)}; valid arms: {', '.join(ARM_NAMES)}"
                 + notes)
-    return set(names)
+    chosen = set(names)
+    if "persists-in-your-words" in chosen and "expiry-unhovered" not in chosen:
+        return ("persists-in-your-words reads the word `expiry-unhovered` learns in the same launch; "
+                "add expiry-unhovered to --only")
+    return chosen
 
 def main():
     global run_dir
