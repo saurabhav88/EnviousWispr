@@ -50,6 +50,15 @@ Scroll options: `--start-pt 40000` (deep: more than ten loaded pages), `--tabs M
 `--busy`; `containment_pilot.py --scroll-early` starts the scroll before catalog coverage (scrolling
 while background indexing runs). Search: `--only <series>`, `--busy`.
 
+## Storage-warning banner
+
+The fixture's recordings (~2.15 GB) exceed the default 2 GB storage warning threshold. Every launch
+passes the app's own setting `recordingStorageWarningThreshold=none` as a launch argument (nothing is
+written to any preferences), because the banner appears 2.4-3.9 s after launch and pushes the page down
+about 65 pt, which voids open-History samples. `m5-speed-open.py --storage-warning` (or
+`containment_pilot.py --open … --storage-warning`) launches without it and reports `banner_jump`: a
+labelled check of that real user-visible jump.
+
 ## Controls (each driver shown able to fail)
 
 - Search: offline `search_test.py` (a prefix page is `incomplete`, containment is not a match, wrong

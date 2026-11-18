@@ -201,7 +201,14 @@ class LaunchTests(Temp):
         self.assertEqual(plan.env["HOME"], str(self.home))
         self.assertEqual(plan.env["CFFIXED_USER_HOME"], str(self.home))
         self.assertEqual(plan.argv, ("/usr/bin/sandbox-exec", "-f", str(self.home / "isolated-release.sb"),
-                                     self.exe, "-onboardingState", "completed"))
+                                     self.exe, "-onboardingState", "completed",
+                                     "-recordingStorageWarningThreshold", "none"))
+
+    def test_storage_warning_is_off_by_default_and_on_only_when_asked(self):
+        # The banner moves the page during open-History timing; the labelled jump check turns it on.
+        on = fixture.launch_plan(self.app, self.home, storage_warning=True)
+        self.assertNotIn("-recordingStorageWarningThreshold", on.argv)
+        self.assertEqual(on.argv[-2:], ("-onboardingState", "completed"))
 
     def test_plan_refuses_the_production_identity_on_every_route(self):
         # PR #4658 review: the CLI `launch --app /Applications/EnviousWispr.app` must never start
