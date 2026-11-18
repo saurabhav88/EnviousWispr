@@ -254,7 +254,11 @@ def _plist_identity(app: Path) -> str | None:
         return None
 
 
-def launch_plan(app: Path, home: Path, base_env: dict[str, str] | None = None) -> LaunchPlan:
+STORAGE_WARNING_KEY = "recordingStorageWarningThreshold"
+
+
+def launch_plan(app: Path, home: Path, base_env: dict[str, str] | None = None, *,
+                storage_warning: bool = False) -> LaunchPlan:
     """The exact command and child environment for one isolated launch. Pure: reads nothing but the
     given paths and never changes the caller's environment."""
     app, home = Path(os.path.abspath(app)), Path(os.path.abspath(home))
@@ -275,6 +279,13 @@ def launch_plan(app: Path, home: Path, base_env: dict[str, str] | None = None) -
     env["CFFIXED_USER_HOME"] = str(home)
     argv = ("/usr/bin/sandbox-exec", "-f", str(profile), str(executable),
             "-onboardingState", "completed")
+    if not storage_warning:
+        # The fixture holds ~2.15 GB of recordings, over the default 2 GB storage warning threshold:
+        # the "Recordings use about 2.15 GB" banner appears 2.4-3.9 s after launch and pushes the whole
+        # History page down about 65 pt, which voids open-History samples (#4586). The app's own
+        # setting (SettingsManager `recordingStorageWarningThreshold`, value `none` = never warn) is
+        # passed in the launch arguments, so it lives only for this process and writes no preference.
+        argv += (f"-{STORAGE_WARNING_KEY}", "none")
     return LaunchPlan(argv=argv, env=env, executable=str(executable))
 
 
@@ -493,10 +504,10 @@ def _mach_now() -> int:
 
 
 def launch(app: Path, home: Path, log: Path, *, owner_check=_default_owner_check,
-           instances=_default_instances, spawn=subprocess.Popen) -> int:
+           instances=_default_instances, spawn=subprocess.Popen, storage_warning: bool = False) -> int:
     """Start one isolated app and return its PID. Refuses without the dev-app lock, when the running
     instance set cannot be read, or when an instance of the same executable is already running."""
-    plan = launch_plan(app, home)
+    plan = launch_plan(app, home, storage_warning=storage_warning)
     owner_check()
     try:
         running = instances()

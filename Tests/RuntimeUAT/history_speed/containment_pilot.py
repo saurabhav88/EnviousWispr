@@ -106,6 +106,9 @@ def main():
     if len(sys.argv) < 5 or sys.argv[1] in ("-h", "--help"):
         print(__doc__)
         return 2
+    if "--storage-warning" in OWN and "--open" not in OWN:   # refuse before anything launches or is touched
+        print("--storage-warning only applies to the open driver: pass --open <modes> <samples> with it", file=sys.stderr)
+        return 2
     app, sha, seed, run = Path(sys.argv[1]), sys.argv[2], Path(sys.argv[3]), Path(sys.argv[4])
     calibrate = "--calibrate" in OWN
     run_cases = None
@@ -204,7 +207,7 @@ def main():
     if "--open" in OWN:
         import subprocess
         at = OWN.index("--open")
-        extra = [a for a in ("--busy",) if a in OWN]
+        extra = [a for a in ("--busy", "--storage-warning") if a in OWN]
         if "--control" in OWN:
             extra += ["--control", OWN[OWN.index("--control") + 1]]
         report["open_runs"] = {}
@@ -223,7 +226,9 @@ def main():
     report["missing_reports"] = missing
     (run / "pilot.json").write_text(json.dumps(report, indent=1))
     print(json.dumps({k: v for k, v in report.items() if k != "fixture_writes"}, indent=1))
-    return 1 if missing else 0
+    banner_failed = [m for m, r in report.get("open_runs", {}).items() if r["exit"] != 0] \
+        if "--storage-warning" in OWN else []
+    return 1 if missing or banner_failed else 0   # a banner diagnostic's own failing exit fails the pilot
 
 
 if __name__ == "__main__":

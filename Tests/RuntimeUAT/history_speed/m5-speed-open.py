@@ -30,8 +30,18 @@ production preferences domain is compared before and after and never restored ov
 
 Control: `--control drop-row` removes one expected row from the answer: no sample may confirm.
 
+The fixture's recordings (~2.15 GB) are over the default 2 GB storage warning threshold, so every launch
+passes the app's own setting `recordingStorageWarningThreshold=none` in its launch arguments (no
+preference is written): otherwise the warning banner appears 2.4-3.9 s after launch and pushes the
+page down about 65 pt. `--storage-warning` launches WITHOUT that argument; it is a banner-only
+diagnostic (NOT A TIMING RUN): no frame recorder, no timing numbers, no
+budget verdict, no page confirmation. Per launch they report only whether the banner (matched by its
+accessibility identifier) was seen and its first-seen time in ms after spawn. Own exit status: 0 when
+the banner was seen on every launch and every
+launch was read until BANNER_WATCH_S after spawn; 1 otherwise. `--samples` must be at least 1 there.
+
 Usage: python3 m5-speed-open.py <subject .app> <fixture home> <new out dir> --mode missing|existing
-                                [--samples 20] [--warmups 2] [--busy] [--control drop-row]
+                                [--samples 20] [--warmups 2] [--busy] [--control drop-row] [--storage-warning]
 The caller holds the dev-app lock; no other instance of the subject may run.
 """
 import importlib.util
@@ -49,6 +59,7 @@ RUNTIME_UAT = HERE.parent
 PAGE_DEADLINE_S = 60.0
 WINDOW_DEADLINE_S = 30.0
 HOLD_MS = 300
+BANNER_WATCH_S = 8.0               # the banner appeared 2.4-3.9 s after launch on the M1 (#4586)
 COVERAGE_DEADLINE_S = 900   # 2026-11-15 measured 264.7 s to full coverage on the M5 (old build); M1 rebuild ~180 s
 BUDGET_MS = 300
 SCROLL_BAR = 20
@@ -77,6 +88,7 @@ def main():
     import ui_helpers as ui
     import fixture
     import history_reader as hr
+    import banner_watch
     import load_tools
     import search_check as check
     import search_frames
@@ -86,6 +98,11 @@ def main():
     samples = int(option(argv, "--samples", "20"))
     warmups = max(1, int(option(argv, "--warmups", "2")))
     control = option(argv, "--control")
+    storage_warning = "--storage-warning" in argv
+    banner_mode = storage_warning
+    if banner_mode and samples < 1:
+        print("--samples must be at least 1 for a banner diagnostic", file=sys.stderr)
+        return 2
     if control not in (None, "drop-row"):
         print(f"unknown control {control}", file=sys.stderr)
         return 2
@@ -93,7 +110,7 @@ def main():
     truth = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(truth)
     recorder_bin = RUNTIME_UAT.parent.parent / "build" / "history_speed" / "frame_recorder"
-    if not recorder_bin.is_file():
+    if not banner_mode and not recorder_bin.is_file():
         raise SystemExit(f"build the frame recorder first: {recorder_bin}")
     if fixture.subject_identity(subject) != fixture.SUBJECT_BUNDLE_ID:
         raise SystemExit(f"{subject} is not the renamed measurement subject")
@@ -145,16 +162,24 @@ def main():
             raise RuntimeError(f"capture invalid: stopped by {header.get('stopped_by')}, error {header.get('stop_error')}")
         return header, frames
 
+    def watch_banner(window, spawned):
+        """Banner-only: read the banner (by accessibility identifier, outside the list) until the first
+        read at or after BANNER_WATCH_S after the spawn."""
+        return banner_watch.watch(lambda: banner_watch.find_banner(hr, ui, window),
+                                  lambda: ms(libc.mach_absolute_time() - spawned),
+                                  lambda: time.sleep(0.1),  # deadline-fallback: paced read inside the banner watch window
+                                  BANNER_WATCH_S * 1000)
+
     def one_launch(index, rect, measured):
         """One launch; returns a sample record. `rect` is the capture rectangle or None (warm-up)."""
         sample = {"index": index, "measured": measured, "conditions": load_tools.machine_conditions()}
         if mode == "missing":
             sample["catalog_deleted"] = fixture.reset_catalog(home)
         frames_path = out / f"open-{index}.jsonl"
-        recorder = start_recorder(frames_path, rect) if rect else None
+        recorder = start_recorder(frames_path, rect) if rect and not banner_mode else None
         pid = None
         try:
-            pid = fixture.launch(subject, home, out / "app.log")
+            pid = fixture.launch(subject, home, out / "app.log", storage_warning=storage_warning)
             spawned = fixture.LAST_SPAWN_AT
             sample["pid"] = pid
             window, window_at = None, None
@@ -169,6 +194,10 @@ def main():
                 sample.update(result="missed", reason="no window")
                 return sample
             sample["window_ms"] = round(ms(window_at - spawned), 1)
+            if banner_mode:   # banner-only: no page confirmation, no hold, no capture, no timing
+                sample["banner"] = watch_banner(window, spawned)
+                sample["result"] = "banner"
+                return sample
             first, confirmed, table, area, last_verdict = None, None, None, None, None
             verdicts = {}
             deadline = time.monotonic() + PAGE_DEADLINE_S
@@ -257,6 +286,35 @@ def main():
     report = {"mode": mode, "subject": str(subject), "home": str(home), "control": control,
               "budget_ms": BUDGET_MS, "answer_rows_checked": "newest Dictations, unfiltered",
               "conditions_start": load_tools.machine_conditions(), "samples": []}
+    report_diag = {}
+
+    def write_banner_report(final):
+        """The banner-only report: NOT A TIMING RUN, only the diagnostic's own fields."""
+        measured = [s for s in report["samples"] if s["measured"]]
+        banners = [s["banner"] for s in measured if s.get("banner")]
+        seen = sum(1 for b in banners if b["seen_at_ms"] is not None)
+        full = sum(1 for b in banners if b["watched_to_deadline"])
+        check = {"expectation": "banner seen on every launch",
+                 "samples": len(measured), "watched": len(banners), "watched_to_deadline": full, "seen": seen,
+                 "seen_at_ms": sorted(b["seen_at_ms"] for b in banners if b["seen_at_ms"] is not None),
+                 "missed": [s.get("reason") for s in measured if s["result"] != "banner"]}
+        holds = (len(banners) == len(measured) == samples and full == len(banners)
+                 and seen == len(banners))
+        check["expectation_held"] = holds
+        report_diag.clear()
+        report_diag.update({
+            "label": "NOT A TIMING RUN", "mode": mode,
+            "diagnostic": "storage-warning",
+            "subject": report["subject"], "home": report["home"],
+            "storage_warning": storage_warning,
+            "samples": [{k: s[k] for k in ("index", "result", "reason", "banner") if k in s} for s in report["samples"]],
+            "banner_check": check, "conditions_start": report["conditions_start"]})
+        if final:
+            report_diag["conditions_end"] = load_tools.machine_conditions()
+            report_diag["problems"] = problems
+        (out / "report.json").write_text(json.dumps(report_diag, indent=1))
+        return holds
+
     busy = load_tools.BusyLoad() if "--busy" in argv else None
     report["busy"] = busy.count if busy else 0
     problems = []
@@ -264,17 +322,21 @@ def main():
         if busy:
             busy.__enter__()
         rect = None
-        for index in range(warmups):
+        for index in range(0 if banner_mode else warmups):
             sample = one_launch(index, None, False)
             report["samples"].append(sample)
             rect = sample.get("list_rect", rect)
             print(json.dumps({k: sample.get(k) for k in ("index", "result", "list_rect", "ax_confirm_ms")}), flush=True)
-        if rect is None:
+        if rect is None and not banner_mode:
             raise RuntimeError("warm-up never showed the page; cannot place the capture")
         report["capture_rect"] = rect
-        for index in range(warmups, warmups + samples):
+        for index in range(0 if banner_mode else warmups, samples if banner_mode else warmups + samples):
             sample = one_launch(index, rect, True)
             report["samples"].append(sample)
+            if banner_mode:
+                print(json.dumps({k: sample.get(k) for k in ("index", "result", "reason", "banner")}), flush=True)
+                write_banner_report(False)
+                continue
             print(json.dumps({k: sample.get(k) for k in ("index", "result", "launch_to_page_ms", "window_ms",
                                                           "capture_late", "reason")}), flush=True)
             (out / "report.json").write_text(json.dumps(report, indent=1))
@@ -295,6 +357,11 @@ def main():
         except Exception as error:   # cleanup failure is a finding, reported, never hidden
             problems.append(f"cleanup: {error}")
     measured = [s for s in report["samples"] if s["measured"]]
+    if banner_mode:   # banner-only report and exit status: built from scratch, no timing fields at all
+        holds = write_banner_report(True)
+        print(json.dumps({"label": "NOT A TIMING RUN", "mode": mode, "diagnostic": report_diag["diagnostic"], "banner_check": report_diag["banner_check"],
+                          "problems": problems}))
+        return 0 if holds and not problems else 1
     timed = [s["launch_to_page_ms"] for s in measured if s["result"] == "timed"]
     counts = {}
     for s in measured:
