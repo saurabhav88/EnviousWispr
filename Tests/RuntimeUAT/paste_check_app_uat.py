@@ -23,7 +23,11 @@ not the spoken sentence, which polish or number formatting may change) appears i
 double paste. The cascade count cannot see a double that the DESTINATION produces (Telegram applies
 an accessibility write that reports an error, and the app then pastes again: 28 takes read
 `cascades=1` while every one doubled). `copies=-` means it could not be read (saved source, no
-focused field, no readable value, or no single delivered text in the take's log). The field text is read on this Mac only and never stored.
+focused field, no readable value, the focused element changed during the take, or no single
+delivered text in the take's log). In `--source tts` a valid take that reads `copies=-` makes the run
+exit 1: could-not-tell is never a pass. Whitespace runs (line breaks included) compare as one space.
+Known limits: one snapshot ~0.5 s after the cascade can miss a copy that lands later, and a copy
+inserted INSIDE an existing occurrence of the same text (`a|b` + `ab`) can read 0. The field text is read on this Mac only and never stored.
 
 `--source saved` (default) replays the founder's own saved dictations
 (`~/Library/Application Support/EnviousWispr/dictation-audio/*/raw.wav`, completed, 2 to 8 s,
@@ -73,14 +77,23 @@ KEY_TIERS = p.KEY_TIERS  # the routes that run the landing check (one owner)
 
 
 def field_text(bundle_id):
-    """The focused text field's value in `bundle_id`'s app, or None when it cannot be read."""
+    """(identity, text) of the focused text field in `bundle_id`'s app, or None when unreadable.
+
+    `identity` is the element's role, description and placeholder, so a count never compares two
+    different fields."""
     from AppKit import NSRunningApplication
     running = NSRunningApplication.runningApplicationsWithBundleIdentifier_(bundle_id)
     if len(running) != 1:
         return None
     focused = get_attr(get_ax_app(running[0].processIdentifier()), "AXFocusedUIElement")
-    value = get_attr(focused, "AXValue") if focused is not None else None
-    return str(value) if value is not None else None
+    if focused is None:
+        return None
+    value = get_attr(focused, "AXValue")
+    if not isinstance(value, str):
+        return None
+    identity = tuple(str(get_attr(focused, a)) for a in
+                     ("AXRole", "AXDescription", "AXPlaceholderValue"))
+    return identity, str(value)
 
 
 def delivered_text(take_log):
@@ -89,14 +102,20 @@ def delivered_text(take_log):
     return final_text(records[0]) if len(records) == 1 else None
 
 
+def _norm(text):
+    return " ".join(text.split()).lower()
+
+
 def copies_of(sentence, before, after):
-    """How many more times `sentence` (no final punctuation, any case) appears after the take."""
-    if sentence is None or before is None or after is None:
+    """How many more times `sentence` (no final punctuation, any case, whitespace runs as one
+    space) appears after the take. `before`/`after` are `field_text` results; None when either is
+    unreadable or they name different fields."""
+    if sentence is None or before is None or after is None or before[0] != after[0]:
         return None
-    core = sentence.strip().rstrip(".!?").strip().lower()
+    core = _norm(sentence).rstrip(".!?").strip()
     if not core:
         return None
-    return after.lower().count(core) - before.lower().count(core)
+    return _norm(after[1]).count(core) - _norm(before[1]).count(core)
 
 
 def saved_clips(seed):
@@ -179,6 +198,8 @@ def main():
     args = parser.parse_args()
     if args.takes < 1:
         parser.error("--takes must be at least 1")
+    if not args.sentence.strip():
+        parser.error("--sentence must not be empty")
     clips = saved_clips(args.seed) if args.source == "saved" else []
     if args.source == "saved" and len(clips) < args.takes:
         print(f"SETUP: only {len(clips)} usable saved dictations for {args.takes} takes")
@@ -332,7 +353,11 @@ def main():
     if run_failed or not restored:
         return 2
     doubled = [r for r in valid_rows if r[5] is not None and r[5] != 1]
-    return 0 if len(valid_rows) == len(rows) == args.takes and not doubled else 1
+    unmeasured = [r for r in valid_rows if args.source == "tts" and r[5] is None]
+    if unmeasured:
+        print(f"COPIES: could not tell on {len(unmeasured)} valid take(s); not a pass")
+    return (0 if len(valid_rows) == len(rows) == args.takes and not doubled and not unmeasured
+            else 1)
 
 if __name__ == "__main__":
     sys.exit(main())
