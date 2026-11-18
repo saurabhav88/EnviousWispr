@@ -116,8 +116,8 @@ struct HistoryLoadLoopTests {
   private final class Shown {
     var result: HistoryQueryResult?
     var checks = 0
-    /// Every result the retained verification itself stored (not a replacement read's page).
-    var verifierStores: [HistoryQueryResult] = []
+    /// Replacement reads that finished (a read held at the gate has not).
+    var reads = 0
     private var waiters: [UUID: CheckedContinuation<Void, Never>] = [:]
 
     func store(_ next: HistoryQueryResult) {
@@ -185,7 +185,16 @@ struct HistoryLoadLoopTests {
     }
   }
 
-  private func startLoop(_ f: Fixture, _ shown: Shown, gate: ReadGate? = nil) -> RunningLoop {
+  /// Once `values` is set, the verification's stamp reports these notice and source values
+  /// instead of the live ones.
+  @MainActor
+  private final class FrozenStamp {
+    var values: (notices: UInt64, source: UInt64?)?
+  }
+
+  private func startLoop(
+    _ f: Fixture, _ shown: Shown, gate: ReadGate? = nil, frozen: FrozenStamp? = nil
+  ) -> RunningLoop {
     let coordinator = f.coordinator
     let session = f.session
     let key: @MainActor @Sendable () -> TranscriptCoordinator.HistoryQueryKey = { coordinator.historyQueryKey(for: .dictations, state: coordinator.requestedHistoryState(for: .dictations)) }
@@ -193,7 +202,8 @@ struct HistoryLoadLoopTests {
       stamp: {
         guard let saved = shown.result, saved.catalogSourceRevision != session.stableSourceRevision else { return nil }
         return .init(
-          key: key(), notices: session.noticeCount, source: session.stableSourceRevision, grouping: 0,
+          key: key(), notices: frozen?.values?.notices ?? session.noticeCount,
+          source: frozen?.values.map(\.source) ?? session.stableSourceRevision, grouping: 0,
           stored: saved.identity)
       },
       stored: { shown.result },
@@ -201,10 +211,7 @@ struct HistoryLoadLoopTests {
         shown.checks += 1
         return await coordinator.retainedHistoryResult(saved)
       },
-      store: {
-        shown.verifierStores.append($0)
-        shown.store($0)
-      })
+      store: { shown.store($0) })
     final class Done { var stamp: HistoryRetainedVerification.Stamp? }
     let done = Done()
     let running = RunningLoop()
@@ -219,7 +226,10 @@ struct HistoryLoadLoopTests {
         storedSource: { shown.result?.catalogSourceRevision },
         read: { key in
           await gate?.pass()
-          if let page = await coordinator.historyResults(for: key) { shown.store(page) }
+          if let page = await coordinator.historyResults(for: key) {
+            shown.store(page)
+            shown.reads += 1
+          }
         },
         wait: { content, notices in await session.waitForChange(revision: content, notices: notices) },
         pace: { try? await Task.sleep(for: $0) },
@@ -283,10 +293,13 @@ struct HistoryLoadLoopTests {
     let shown = Shown()
     let gate = ReadGate()
     defer { gate.open() }
-    let loop = startLoop(f, shown, gate: gate)
+    let frozen = FrozenStamp()
+    let loop = startLoop(f, shown, gate: gate, frozen: frozen)
     defer { loop.task.cancel() }
     try await shown.until { $0.items.count == 30 }
-    // The loop is parked (no read in flight) before reads are held and the file is removed.
+    // The loop is parked (no read in flight) before reads are held and the files are removed, so
+    // the notices below wake it into `beforeRead`, which runs the verification BEFORE the loop
+    // reaches its (held) replacement read.
     while f.session.changeWaiterCountForTesting == 0 {
       try Task.checkCancellation()
       await Task.yield()
@@ -296,7 +309,14 @@ struct HistoryLoadLoopTests {
       Issue.record("The catalog page did not return catalog rows")
       return
     }
+    // The stamp is frozen so the folder watcher's timing cannot make the verifier discard its
+    // answer (deleting files makes the real watcher deliver notices at an unpredictable moment).
+    // The discard-on-change behavior itself is covered by
+    // HistoryRefreshLoopTests.retainedVerificationDropsStaleAnswers.
+    frozen.values = (f.session.noticeCount, f.session.stableSourceRevision)
     gate.closed = true
+    let readsBefore = shown.reads
+    let checksBefore = shown.checks
     f.changes.begin()
     var writing = true
     defer { if writing { f.changes.finish(.transcript(second.key.id)) } }
@@ -305,27 +325,22 @@ struct HistoryLoadLoopTests {
     f.changes.externalChange(.transcript(first.key.id))
     f.changes.externalChange(.transcript(second.key.id))
 
-    // The loop reached its replacement read. A change notice arriving while the verification was
-    // checking files makes it correctly discard that answer, so release the read and let the next
-    // wake verify again; the verifier's own store must then lack both removed rows, whatever the
-    // replacement reads show.
-    while !gate.holding {
-      try Task.checkCancellation()
-      await Task.yield()
-    }
-    gate.open()
+    // The read gate stays CLOSED for the whole assertion, so only the verification can have
+    // removed the rows: wait until the loop is held at its replacement read with a stored page
+    // that lacks both.
     let lacksRemoved: (HistoryQueryResult) -> Bool = {
       !$0.ids.contains(.transcript(first.key.id)) && !$0.ids.contains(.transcript(second.key.id))
     }
-    while !shown.verifierStores.contains(where: lacksRemoved) {
+    while !(gate.holding && shown.result.map(lacksRemoved) == true) {
       try Task.checkCancellation()
       await Task.yield()
     }
-    let verified = try #require(
-      shown.verifierStores.first(where: lacksRemoved))
-    #expect(verified.items.count == 28)
-    #expect(!verified.ids.contains(.transcript(first.key.id)))
-    #expect(!verified.ids.contains(.transcript(second.key.id)))
+    #expect(gate.holding)
+    #expect(shown.reads == readsBefore)
+    #expect(shown.checks > checksBefore)
+    #expect(shown.result?.items.count == 28)
+    #expect(shown.result?.ids.contains(.transcript(first.key.id)) == false)
+    #expect(shown.result?.ids.contains(.transcript(second.key.id)) == false)
 
     gate.open()
     writing = false
