@@ -1056,10 +1056,63 @@ RESUME_FLOOR_S = 2.0        # a hover exit leaves at least this much
 AX_SLACK_S = 0.5            # accessibility polling tolerance
 PRE_HOVER_RUN_S = 6.0       # countdown time before the pointer arrives
 RESUME_TOLERANCE_S = 1.5    # AX polling tolerance on the resumed deadline
+GUIDED_EDGE_WAIT_S = 5.0    # how long the guided arm waits for a logged hover entry or exit
+OPT_IN_ARMS = {"hover-guided"}  # arms that need a person and never run by default
 
 
-def case_expiry_under_hover(path):
-    """No Undo pressed. With TextEdit frontmost the countdown runs about 6 s
+def case_expiry_unhovered(path):
+    """Unattended. No hover: the Undo pill must leave on its own at its 12 s dwell, measured
+    from when the Undo button is first seen, with the word kept. Verdicts: the Undo button's
+    absence through accessibility, no `learn_undone`, and the word still in the file. The
+    pointer stays parked. The pill's picture is taken once, up front, without a prompt. The
+    hover pause is checked by the opt-in `hover-guided` arm, which needs a real pointer."""
+    label = "expiry-unhovered"
+    pair = PAIRS["expiry-under-hover"]
+    mark, _, heard = dictate(path, label, pair)
+    apply_fix(path, label, heard, pair.correct)
+    if not wait_judged(mark):
+        return check(label, False, "no learn_judged after the fix")
+    if wait_added(mark, label) is None:
+        return check(label, False, "judged but no learn_added")
+    expected_pid = app_pid()
+    if expected_pid is None:
+        raise Aborted(f"{label}: no dev app process before the wait; instrument failure")
+    if not wait_for("the Undo button", undo_button, deadline=2.0):
+        return check(label, False, "precondition failed: no Undo button after learn_added")
+    shown_at = time.monotonic()
+    textedit_pid = find_app_pid("TextEdit")
+    if textedit_pid is None or frontmost_pid() != textedit_pid:
+        raise Aborted(f"{label}: TextEdit is not frontmost; instrument failure")
+    if not capture_pill("expiry-unhovered-pill.png"):
+        raise Aborted(f"{label}: the pill capture is missing or empty (visual proof required)")
+    bound = UNPAUSED_DWELL_S + RESUME_TOLERANCE_S
+    lower_bound = UNPAUSED_DWELL_S - RESUME_TOLERANCE_S
+    gone_after = None
+    while time.monotonic() - shown_at < bound:
+        if frontmost_pid() != textedit_pid:
+            raise Aborted(f"{label}: TextEdit lost focus during the wait; instrument failure")
+        if not undo_present_or_abort(label, expected_pid):
+            gone_after = time.monotonic() - shown_at
+            break
+        time.sleep(0.25)  # settle: poll interval between AX reads
+    persisted = wait_for("the word still in custom-words.json", lambda: learned_alias(pair, heard), deadline=2.0)
+    undone = has(mark, "learn_undone")
+    ok = (gone_after is not None and lower_bound <= gone_after <= bound
+          and not undone and bool(persisted))
+    return check(label, ok,
+                 f"heard={heard!r} first_seen_to_gone_s={'none' if gone_after is None else f'{gone_after:.2f}'} "
+                 f"expected_s={UNPAUSED_DWELL_S:.1f}±{RESUME_TOLERANCE_S:.1f} undone={undone} persisted={bool(persisted)}")
+
+
+def case_hover_guided(path):
+    """OPT-IN (`--only hover-guided`), never in the default run: it needs a real pointer.
+    A person may have to move the REAL mouse onto the pill, and later off it, when the
+    synthetic move does not register (it usually does not right after this case types its
+    fix). The case waits for the app's own `hover ... hovering=true/false` log lines and times
+    from those CONFIRMED entry and exit instants, never from when the script moved the pointer;
+    no entry line within the wait is INSTRUMENT.
+
+    No Undo pressed. With TextEdit frontmost the countdown runs about 6 s
     (from when the Undo button is first seen), then the pointer is held on the
     pill PAST its unpaused 12 s deadline and the offer must still be there (the
     countdown froze). The pointer then leaves. The offer must survive the 2 s
@@ -1088,7 +1141,7 @@ def case_expiry_under_hover(path):
     (founder check). A pill that expires "while hovered" right after typing is therefore not
     proof the product ignores hover, and this case cannot tell that apart from a real
     failure; confirm with a real mouse, or let the obscured cursor state clear first."""
-    label = "expiry-under-hover"
+    label = "hover-guided"
     pair = PAIRS["expiry-under-hover"]
     mark, _, heard = dictate(path, label, pair)
     apply_fix(path, label, heard, pair.correct)
@@ -1110,7 +1163,7 @@ def case_expiry_under_hover(path):
     if textedit_pid is None or frontmost_pid() != textedit_pid:
         raise Aborted(f"{label}: TextEdit is not frontmost before hover; instrument failure")
     # The visual proof, outside the timed hover check and without a prompt (see the docstring).
-    if not capture_pill("expiry-under-hover-pill.png"):
+    if not capture_pill("hover-guided-pill.png"):
         raise Aborted(f"{label}: the pill capture is missing or empty (visual proof required)")
     if frontmost_pid() != textedit_pid:
         raise Aborted(f"{label}: TextEdit lost focus during the pill capture; instrument failure")
@@ -1123,21 +1176,28 @@ def case_expiry_under_hover(path):
             return check(label, False,
                          f"precondition failed: the offer disappeared {time.monotonic() - shown_at:.2f}s in, before the hover")
         time.sleep(0.25)  # settle: poll interval between AX reads
-    hover_at = time.monotonic()
-    pre_hover_s = hover_at - shown_at
     hover_mark = log_mark()
     hovered = hover_pill()
     if not hovered:
         return check(label, False, "precondition failed: no valid Undo button frame to hover")
-    # Prove the pointer move REACHED the app before any pause is judged: the DEBUG overlay logs
-    # one `hover ... hovering=true policy=resume` line per hover. None means the synthetic move
-    # produced no hover event (cursor obscured after synthetic typing), which is the rig.
-    if not wait_for("the app logging a hover on the pill",
-                    lambda: has(hover_mark, "hovering=true policy=resume"), deadline=1.5):
-        park_pointer()
-        raise Aborted(f"{label}: the pointer move never reached the app as a hover (no "
-                      "'hovering=true policy=resume' overlay log line within 1.5 s); the cursor is "
-                      "obscured after synthetic typing, so a real mouse must confirm; instrument failure")
+    print("    GUIDED: if the pointer did not land on the pill, move the REAL mouse onto it now "
+          f"(waiting up to {GUIDED_EDGE_WAIT_S:.0f} s for the app to log the hover).", flush=True)
+    # The entry instant is the app's own `hovering=true` log line, not our move: a synthetic move
+    # right after synthetic typing may never arrive, and the pill may simply expire meanwhile.
+    entry_deadline = time.monotonic() + GUIDED_EDGE_WAIT_S
+    while not has(hover_mark, "hovering=true policy=resume"):
+        if time.monotonic() >= entry_deadline:
+            park_pointer()
+            raise Aborted(f"{label}: no 'hovering=true policy=resume' overlay log line within "
+                          f"{GUIDED_EDGE_WAIT_S:.0f} s; the pointer never reached the app as a hover "
+                          "(cursor obscured after synthetic typing), so a real mouse must confirm; instrument failure")
+        if not undo_present_or_abort(label, expected_pid):
+            park_pointer()
+            raise Aborted(f"{label}: the offer ended before any hover was logged; the pointer never reached "
+                          "the app, so this is not a pause verdict; instrument failure")
+        time.sleep(0.25)  # settle: poll interval between log reads
+    hover_at = time.monotonic()
+    pre_hover_s = hover_at - shown_at
     # Hold past the unpaused deadline: the pill must outlive it under the pointer.
     held_until = shown_at + UNPAUSED_DWELL_S + 1.5
     present_through_hold = True
@@ -1153,8 +1213,16 @@ def case_expiry_under_hover(path):
         park_pointer()
         return check(label, False,
                      f"the offer disappeared {hold_s:.2f}s into the hover, before the unpaused {UNPAUSED_DWELL_S:.0f}s deadline plus slack: hover did not freeze it")
-    # Leave, timestamped, then watch the resumed dwell.
+    # Leave, then take the EXIT instant from the app's own `hovering=false` line.
+    exit_mark = log_mark()
     park_pointer()
+    print("    GUIDED: if the pointer is still on the pill, move the REAL mouse off it now.", flush=True)
+    exit_deadline = time.monotonic() + GUIDED_EDGE_WAIT_S
+    while not has(exit_mark, "hovering=false policy=resume"):
+        if time.monotonic() >= exit_deadline:
+            raise Aborted(f"{label}: no 'hovering=false policy=resume' overlay log line within "
+                          f"{GUIDED_EDGE_WAIT_S:.0f} s of leaving; the pointer exit is unconfirmed; instrument failure")
+        time.sleep(0.25)  # settle: poll interval between log reads
     exit_at = time.monotonic()
     survived_minimum = True
     gone_after = None
@@ -1456,7 +1524,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-dir", required=True)
     parser.add_argument("--export", required=True, help="the locked candidate's fp32 export directory")
-    parser.add_argument("--only", default="", help="comma-separated arms to run (default all)")
+    parser.add_argument("--only", default="", help="comma-separated arms to run (default: every arm except the opt-in ones, "
+                        "which need a person: hover-guided)")
     args = parser.parse_args()
     run_dir = os.path.abspath(args.run_dir)
     os.makedirs(run_dir, exist_ok=True)
@@ -1505,7 +1574,7 @@ def main():
         cases = [
             ("new-word-undo", True, None, True, case_new_word_undo),
             ("existing-word", True, "seed", True, case_existing_word),
-            ("expiry-under-hover", True, "manual", True, case_expiry_under_hover),
+            ("expiry-unhovered", True, "manual", True, case_expiry_unhovered),
             # Same launch as the case before it: the word it learned must persist.
             ("persists-in-your-words", True, None, False, case_persists_then_your_words),
             ("admission-refused", True, None, True, case_admission_refused),
@@ -1516,9 +1585,13 @@ def main():
             ("punctuated-join", True, None, True, case_punctuated_join),
             ("learned-check", True, "learned", True, case_learned_check),
             ("learned-check-door-off", True, "learned", True, case_learned_check_door_off),
+            # Opt-in only (--only hover-guided): needs a real pointer; see its docstring.
+            ("hover-guided", True, "manual", True, case_hover_guided),
         ]
         for name, toggle_on, seed, relaunch, fn in cases:
             if only and name not in only:
+                continue
+            if not only and name in OPT_IN_ARMS:
                 continue
             print(f"\n=== {name} ===", flush=True)
             case_mark = log_mark()
