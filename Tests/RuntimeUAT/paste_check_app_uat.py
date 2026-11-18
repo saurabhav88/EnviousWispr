@@ -17,12 +17,13 @@ the run stops on a setup failure or a take not proven stopped, and still writes 
 INVALID and never evidence. Whether the words really landed is the caller's screenshot.
 
 COPIES (#4664): with `--source tts` each row also reads the target app's focused text field through
-Accessibility before and after the take and counts how many more times the spoken sentence (without
-its final punctuation, case-insensitive) appears in it: `copies=1` is one delivery, `copies=2` a
+Accessibility before and after the take and counts how many more times the DELIVERED text (this take's
+final logged text from app.log, `log_verdict.final_text`, without final punctuation, case-insensitive;
+not the spoken sentence, which polish or number formatting may change) appears in it: `copies=1` is one delivery, `copies=2` a
 double paste. The cascade count cannot see a double that the DESTINATION produces (Telegram applies
 an accessibility write that reports an error, and the app then pastes again: 28 takes read
 `cascades=1` while every one doubled). `copies=-` means it could not be read (saved source, no
-focused field, or no readable value). The field text is read on this Mac only and never stored.
+focused field, no readable value, or no single delivered text in the take's log). The field text is read on this Mac only and never stored.
 
 `--source saved` (default) replays the founder's own saved dictations
 (`~/Library/Application Support/EnviousWispr/dictation-audio/*/raw.wav`, completed, 2 to 8 s,
@@ -62,6 +63,7 @@ import learn_from_edits_apps_uat as apps  # noqa: E402
 import paste_landing_uat as p  # noqa: E402
 import take_gate as tg  # noqa: E402
 import wispr_eyes as w  # noqa: E402
+from log_verdict import collect_dictations, final_text  # noqa: E402
 from ui_helpers import get_attr, get_ax_app  # noqa: E402
 from audio_rig import AppTarget, AudioRig, _wait_frontmost  # noqa: E402
 
@@ -81,9 +83,15 @@ def field_text(bundle_id):
     return str(value) if value is not None else None
 
 
+def delivered_text(take_log):
+    """This take's delivered text from its app.log slice, or None unless exactly one dictation."""
+    records = collect_dictations(take_log.splitlines())
+    return final_text(records[0]) if len(records) == 1 else None
+
+
 def copies_of(sentence, before, after):
     """How many more times `sentence` (no final punctuation, any case) appears after the take."""
-    if before is None or after is None:
+    if sentence is None or before is None or after is None:
         return None
     core = sentence.strip().rstrip(".!?").strip().lower()
     if not core:
@@ -272,8 +280,8 @@ def main():
                     "not_applicable"
                     if len(mine) == 1 and tier in known_tiers
                     and not key_route and not lines else "-")
-                copies = (copies_of(args.sentence, field_before, field_after)
-                          if args.source == "tts" else None)
+                copies = (copies_of(delivered_text(text), field_before, field_after)
+                          if args.source == "tts" and text else None)
                 rows.append((n, valid, tier, verdict, time.monotonic() - start, copies))
                 print(
                     f"ROW {n} {'VALID' if valid else 'INVALID'} "
