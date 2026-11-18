@@ -55,8 +55,9 @@ while background indexing runs). Search: `--only <series>`, `--busy`.
 - Search: offline `search_test.py` (a prefix page is `incomplete`, containment is not a match, wrong
   day totals fail); live, a case whose answer is computed for another query never times.
 - Open: `--control drop-row` (one expected row removed): no sample may confirm, verdict FAIL.
-- Scroll: offline `scroll_analysis_test.py`; live `--control short-return` (up gesture half as long)
-  must FAIL travel; the busy-Mac run shows the hitch number rising.
+- Scroll: offline `scroll_analysis_test.py`; live `--control short-return` (the up gesture's
+  finger-motion steps or wheel clicks are halved; the trackpad momentum tail stays full) must FAIL
+  travel; the busy-Mac run shows the hitch number rising.
 
 Offline tests (no app, no lock):
 
@@ -83,7 +84,12 @@ never restored over.
 ## Known limits
 
 - AX reads run on the app's main thread: the scroll hitch pass makes none while gestures run.
-- Synthetic trackpad events carry no device momentum (no fling); the founder's hand test follows.
+- Synthetic trackpad gestures end with a short fixed momentum tail, as hardware ends a flick. Package G's
+  probe (2026-11-17) showed that without the tail the next wheel gesture lost one of its 12 clicks, which
+  had read as a 9.1% wheel "asymmetry"; with the tail wheel travel is symmetric (0.0-0.12% on the M1).
+  Trackpad travel still FAILS the 2% budget on the M1: 2 of 9 runs over (Transcripts 20.3%, Meetings
+  3.7%), both with the down gesture short; the cause is NOT VERIFIED. A real trackpad lifted slowly (no
+  momentum) is not simulated; the founder's hand test covers it.
 - Screen capture misses some drawn frames: every timed number is an upper bound on the first correct
   picture, and brief stale frames between captures cannot be seen.
 - `xctrace` stops by its own time limit (a SIGINT stop hung and never saved, #4587); saving takes

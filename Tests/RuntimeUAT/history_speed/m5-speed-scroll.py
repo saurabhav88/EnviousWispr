@@ -1,7 +1,8 @@
 """History scroll UAT (#4586 WP-A): smoothness, row stability and travel symmetry on every tab.
 
 For each tab (Dictations, Transcripts, Meetings) and each input kind (trackpad: phased continuous
-pixel events; wheel: clicking-wheel line events), from a settled mid-list start, the driver posts
+pixel events ending with a momentum tail, as hardware ends a flick; wheel: clicking-wheel line
+events), from a settled mid-list start, the driver posts
 one gesture down, waits for the list to stop, then the SAME gesture up, and measures:
 
 - hitch ms per moving second (budget 5): Apple's `xctrace` Animation Hitches template attached to
@@ -16,14 +17,16 @@ one gesture down, waits for the list to stop, then the SAME gesture up, and meas
   before, between and after the two gestures; asymmetry = |down - up| / down.
 - also recorded: seconds the picture kept moving after the last event of each gesture.
 
-Known limits: synthetic trackpad events carry no device momentum phase (no fling); the pointer is
+Known limits: the trackpad momentum tail is short and fixed (a flick, not a long fling); a real
+trackpad lifted slowly (no momentum) is not simulated; the pointer is
 parked over the list and nobody may move the mouse or scroll during a run; the subject must have
 full catalog coverage (containment_pilot.py waits for it).
 
 Options: `--start-pt N` starts N points below the newest row (default 2400; "deep" runs use about
 40000, which loads more than ten pages of 30 rows); `--idle` first samples CPU and memory for 30 s
 of idle History; `--busy` runs one busy loop per performance core for the whole run (busy Mac).
-Control: `--control short-return` makes the up gesture half as long (travel must FAIL).
+Control: `--control short-return` halves the up gesture's finger-motion steps (trackpad; the momentum
+tail stays full) or wheel clicks, so travel must FAIL.
 Every run records machine conditions (load, peer builds) at start and end.
 
 Usage: python3 m5-speed-scroll.py <pid> <subject .app> <new out dir> [--tabs Dictations,Transcripts,Meetings]
@@ -52,7 +55,8 @@ MID_START_PT = 4000          # how far below the newest row the first pass start
                              # the up gesture cannot clamp at the top)
 FRESH_STEP_PT = 6000         # each later pass starts this much deeper, in rows no pass has shown yet
 TRACKPAD = {"step_px": 30, "steps": 50, "interval_s": 0.008}       # 1500 pt in 0.4 s
-WHEEL = {"clicks": 12, "interval_s": 0.05}                          # a brisk wheel flick
+WHEEL = {"clicks": 12, "interval_s": 0.05}                          # 12 line clicks of a mouse wheel
+MOMENTUM_TAIL_PX = (24, 18, 12, 8, 4)   # a short decaying momentum tail after each trackpad flick
 QUIET_S = 1.5                # hitch pass: no AX reads for this long after each gesture
 SETTLE_S = 0.6               # the table origin must hold this long to count as stopped
 SETTLE_DEADLINE_S = 15.0
@@ -87,7 +91,7 @@ def main():
     from Quartz import (CGEventCreateScrollWheelEvent, CGEventPost, CGEventSetIntegerValueField,
                         CGEventSetLocation, CGPoint, CGSize, CGWarpMouseCursorPosition, kCGHIDEventTap,
                         kCGScrollEventUnitLine, kCGScrollEventUnitPixel, kCGScrollWheelEventIsContinuous,
-                        kCGScrollWheelEventScrollPhase)
+                        kCGScrollWheelEventMomentumPhase, kCGScrollWheelEventScrollPhase)
 
     pid, subject, out = int(argv[0]), Path(argv[1]), Path(argv[2])
     tabs = option(argv, "--tabs", "Dictations,Transcripts,Meetings").split(",")
@@ -172,12 +176,14 @@ def main():
         return hr.row_heights(table, current_area["area"])
 
     # ------------------------------------------------------------------ input
-    def post_scroll(point, unit, delta, continuous, phase=None):
+    def post_scroll(point, unit, delta, continuous, phase=None, momentum=None):
         event = CGEventCreateScrollWheelEvent(None, unit, 1, int(delta))
         CGEventSetLocation(event, point)
         CGEventSetIntegerValueField(event, kCGScrollWheelEventIsContinuous, 1 if continuous else 0)
         if phase is not None:
             CGEventSetIntegerValueField(event, kCGScrollWheelEventScrollPhase, phase)
+        if momentum is not None:
+            CGEventSetIntegerValueField(event, kCGScrollWheelEventMomentumPhase, momentum)
         CGEventPost(kCGHIDEventTap, event)
 
     def gesture(kind, point, direction, scale=1.0):
@@ -191,6 +197,17 @@ def main():
                 post_scroll(point, kCGScrollEventUnitPixel, direction * TRACKPAD["step_px"], True, 2)
                 time.sleep(TRACKPAD["interval_s"])  # settle: input pacing is the gesture's own cadence
             post_scroll(point, kCGScrollEventUnitPixel, 0, True, 4)   # ended
+            # A trackpad flick ends the way hardware ends it: a momentum tail (began, continue,
+            # end) with no scroll phase. Without it AppKit keeps tracking the gesture and swallows
+            # the next scroll event: package G measured the first wheel gesture after a tail-less
+            # trackpad gesture losing one of 12 clicks (9.1% "asymmetry") and erratic trackpad
+            # travel; with the tail, wheel 0.06-0.23% and trackpad 0.06-1.3% (run folder
+            # 20261117-123554-4586-wpg-scroll-symmetry-36f9, findings.md).
+            for index, step in enumerate(MOMENTUM_TAIL_PX):
+                post_scroll(point, kCGScrollEventUnitPixel, direction * step, True, 0,
+                            1 if index == 0 else 2)
+                time.sleep(TRACKPAD["interval_s"] * 2)  # settle: momentum cadence, about one frame
+            post_scroll(point, kCGScrollEventUnitPixel, 0, True, 0, 3)   # momentum ended
         else:
             clicks = max(1, round(WHEEL["clicks"] * scale))
             for _ in range(clicks):
