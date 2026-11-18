@@ -1007,17 +1007,23 @@ def undo_present_or_abort(label, expected_pid, max_depth=12):
 UNPAUSED_DWELL_S = 12.0     # the offer's dwell without hover
 RESUME_FLOOR_S = 2.0        # a hover exit leaves at least this much
 AX_SLACK_S = 0.5            # accessibility polling tolerance
+PRE_HOVER_RUN_S = 6.0       # countdown time before the pointer arrives
+RESUME_TOLERANCE_S = 1.5    # AX polling tolerance on the resumed deadline
 
 
 def case_expiry_under_hover(path):
-    """No Undo pressed. With TextEdit frontmost the pointer is held on the pill
-    PAST its unpaused 12 s deadline and the offer must still be there (the
-    countdown froze). The pointer then leaves; the offer must survive the 2 s
-    minimum (within AX polling tolerance) and disappear within a bounded
-    resumed dwell, with no `learn_undone` and the word still in the file. The
-    app logs no "pill ended" token, so the verdicts are the Undo button's
-    presence and absence through accessibility. The rail's own freeze and
-    resume are Live UAT by eye."""
+    """No Undo pressed. With TextEdit frontmost the countdown runs about 6 s
+    (from when the Undo button is first seen), then the pointer is held on the
+    pill PAST its unpaused 12 s deadline and the offer must still be there (the
+    countdown froze). The pointer then leaves. The offer must survive the 2 s
+    minimum (within AX polling tolerance) and disappear no later than the
+    remainder frozen at the hover, max(12 - pre_hover_s, 2), plus 1.5 s of AX
+    tolerance: a pill that restarts the full 12 s on exit fails. No
+    `learn_undone`, and the word stays in the file. The app logs no "pill
+    ended" token, so the verdicts are the Undo button's presence and absence
+    through accessibility. The 2 s floor is not exercised live (the remainder
+    here is well above it; unit tests cover the floor), and the rail's own
+    freeze and resume are Live UAT by eye."""
     label = "expiry-under-hover"
     pair = PAIRS["expiry-under-hover"]
     mark, _, heard = dictate(path, label, pair)
@@ -1028,17 +1034,28 @@ def case_expiry_under_hover(path):
     state = wait_added(mark, label)
     if state is None:
         return check(label, False, "judged but no learn_added")
-    shown_at = time.monotonic()
     expected_pid = app_pid()
     if expected_pid is None:
         raise Aborted(f"{label}: no dev app process before hover; instrument failure")
     # Precondition: the button must exist before the pointer moves.
     if not wait_for("the Undo button before hover", undo_button, deadline=2.0):
         return check(label, False, "precondition failed: no Undo button before hover")
+    # The countdown is measured from the moment the button was first seen.
+    shown_at = time.monotonic()
     textedit_pid = find_app_pid("TextEdit")
     if textedit_pid is None or frontmost_pid() != textedit_pid:
         raise Aborted(f"{label}: TextEdit is not frontmost before hover; instrument failure")
+    # Let the countdown run before hovering, so a resume has a remainder that
+    # differs from a full restart. The offer must still be there when we arrive.
+    while time.monotonic() < shown_at + PRE_HOVER_RUN_S:
+        if frontmost_pid() != textedit_pid:
+            raise Aborted(f"{label}: TextEdit lost focus before the hover; instrument failure")
+        if not undo_present_or_abort(label, expected_pid):
+            return check(label, False,
+                         f"precondition failed: the offer disappeared {time.monotonic() - shown_at:.2f}s in, before the hover")
+        time.sleep(0.25)  # settle: poll interval between AX reads
     hover_at = time.monotonic()
+    pre_hover_s = hover_at - shown_at
     hovered = hover_pill()
     if not hovered:
         return check(label, False, "precondition failed: no valid Undo button frame to hover")
@@ -1064,7 +1081,11 @@ def case_expiry_under_hover(path):
     exit_at = time.monotonic()
     survived_minimum = True
     gone_after = None
-    bound = UNPAUSED_DWELL_S + 1.0
+    # The remainder frozen at the hover. Neither a full 12 s restart nor an
+    # early close may pass. (The 2 s floor itself is not tested live: the
+    # remainder here is well above it, and the unit tests cover the floor.)
+    expected_remaining = max(UNPAUSED_DWELL_S - pre_hover_s, RESUME_FLOOR_S)
+    bound = expected_remaining + RESUME_TOLERANCE_S
     while time.monotonic() - exit_at < bound:
         present = undo_present_or_abort(label, expected_pid)
         elapsed = time.monotonic() - exit_at
@@ -1077,10 +1098,12 @@ def case_expiry_under_hover(path):
     persisted = wait_for("the word still in custom-words.json", lambda: learned_alias(pair, heard), deadline=2.0)
     undone = has(mark, "learn_undone")
     ok = (present_through_hold and gone_after is not None and survived_minimum
-          and not undone and bool(persisted))
+          and gone_after <= bound and not undone and bool(persisted))
     return check(label, ok,
-                 f"heard={heard!r} hovered={hovered} hover_hold_s={hold_s:.2f} "
+                 f"heard={heard!r} hovered={hovered} pre_hover_s={pre_hover_s:.2f} "
+                 f"hover_hold_s={hold_s:.2f} "
                  f"exit_to_gone_s={'none' if gone_after is None else f'{gone_after:.2f}'} "
+                 f"expected_remaining_s={expected_remaining:.2f} "
                  f"survived_2s_minimum={survived_minimum} undone={undone} persisted={bool(persisted)}")
 
 
