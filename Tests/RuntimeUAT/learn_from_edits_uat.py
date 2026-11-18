@@ -721,14 +721,16 @@ def screenshot(name):
 PILL_CAPTURE_PAD = (300, 24, 60, 24)  # left, top, right, bottom around the Undo button's frame
 
 
-def capture_pill(name, timeout_s=10.0):
+def capture_pill(name, timeout_s=10.0, label=None, expected_pid=None):
     """Visual proof of the pill that cannot prompt or move focus: `screencapture -x -R` of a
     region around the Undo button's AX frame (the pill is the capsule around it). No window
     picker and no full-screen helper, so it cannot raise the screen-capture prompt that
     steals TextEdit's focus. Any old target file is deleted first, an error or non-zero exit
     fails at once, and success needs a NEW non-empty file written after the attempt started
-    (a reused `--run-dir` cannot supply an old picture). The caller treats False as an
-    instrument failure."""
+    (a reused `--run-dir` cannot supply an old picture). The image is a DIAGNOSTIC, never analysed:
+    when `label` and `expected_pid` are given, the strict Undo reader is re-checked right AFTER the
+    capture returns, and a pill that is gone by then makes the capture not proof. The caller
+    treats False as an instrument failure."""
     frame = pill_frame()
     if frame is None or not (frame["width"] > 0 and frame["height"] > 0):
         return False
@@ -750,7 +752,12 @@ def capture_pill(name, timeout_s=10.0):
     if done.returncode != 0:
         print(f"    (pill capture failed: screencapture exit {done.returncode})")
         return False
-    return fresh_artifact_ok(path, started_at)
+    if not fresh_artifact_ok(path, started_at):
+        return False
+    if label is not None and not undo_present_or_abort(label, expected_pid):
+        print("    (pill capture discarded: the Undo button was gone right after the capture)")
+        return False
+    return True
 
 
 class PillNotAdmitted(Exception):
@@ -1064,6 +1071,7 @@ def undo_present_or_abort(label, expected_pid, max_depth=12):
 
 UNPAUSED_DWELL_S = 12.0     # the offer's dwell without hover
 RESUME_TOLERANCE_S = 1.5    # AX polling tolerance on the dismissal deadline
+MAX_SIGHTING_LAG_S = 1.0    # first sighting of the button may trail learn_undo_shown by this much
 MAX_POLL_GAP_S = 1.0        # a longer gap between two AX samples cannot show when the pill left
 
 
@@ -1085,17 +1093,28 @@ def case_expiry_unhovered(path):
         return check(label, False, "no learn_judged after the fix")
     if wait_added(mark, label) is None:
         return check(label, False, "judged but no learn_added")
+    # `wait_added` returns as soon as it sees `learn_undo_shown` (polled every 0.25 s; app.log
+    # stamps only have 1 s resolution), so this instant is the pill's admission as observed.
+    admitted_seen_at = time.monotonic()
     expected_pid = app_pid()
     if expected_pid is None:
         raise Aborted(f"{label}: no dev app process before the wait; instrument failure")
     if not wait_for("the Undo button", undo_button, deadline=2.0):
         return check(label, False, "precondition failed: no Undo button after learn_added")
     shown_at = time.monotonic()
+    # The 12 s are counted from the first sighting of the button, so a late first sighting would
+    # make a correct dwell look short. A lag over MAX_SIGHTING_LAG_S is inconclusive, never a verdict.
+    sighting_lag = shown_at - admitted_seen_at
+    if sighting_lag > MAX_SIGHTING_LAG_S:
+        raise Aborted(f"{label}: the Undo button was first seen {sighting_lag:.2f}s after learn_undo_shown "
+                      f"was observed (limit {MAX_SIGHTING_LAG_S:.1f}s); the 12 s clock would start late; "
+                      "inconclusive; instrument failure")
     textedit_pid = find_app_pid("TextEdit")
     if textedit_pid is None or frontmost_pid() != textedit_pid:
         raise Aborted(f"{label}: TextEdit is not frontmost; instrument failure")
-    if not capture_pill("expiry-unhovered-pill.png"):
-        raise Aborted(f"{label}: the pill capture is missing or empty (visual proof required)")
+    if not capture_pill("expiry-unhovered-pill.png", label=label, expected_pid=expected_pid):
+        raise Aborted(f"{label}: the pill capture failed, is stale, or the pill was gone right after it "
+                      "(visual proof required); instrument failure")
     # Absence is only evidence when the pill was SEEN PRESENT shortly before it: a delayed poll
     # that first sees "gone" at 11 s says nothing about a pill that vanished at 4 s. So the pass
     # needs a positive presence sample at or after `lower_bound`, then the first absence by
@@ -1126,7 +1145,7 @@ def case_expiry_unhovered(path):
     ok = (first_absent is not None and last_present >= lower_bound and first_absent <= bound
           and not undone and bool(persisted))
     return check(label, ok,
-                 f"heard={heard!r} last_present_s={last_present:.2f} "
+                 f"heard={heard!r} sighting_lag_s={sighting_lag:.2f} last_present_s={last_present:.2f} "
                  f"first_absent_s={'none' if first_absent is None else f'{first_absent:.2f}'} "
                  f"expected_s={UNPAUSED_DWELL_S:.1f}±{RESUME_TOLERANCE_S:.1f} undone={undone} persisted={bool(persisted)}")
 

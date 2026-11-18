@@ -168,9 +168,9 @@ struct LearnFromEditsCompositionTests {
       .captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))
     ]
     f.registry.emit(paste(edits))
-    #expect(await waitUntil { f.observer.starts == 1 }, "a paste through the registry started a watch")
+    try #require(await waitUntil { f.observer.starts == 1 }, "a paste through the registry started a watch")
     f.observer.fire(.settled(region: "Ask Saira today"))
-    #expect(await waitUntil { f.telemetry.events.contains(.undoShown) }, "\(f.telemetry.events)")
+    try #require(await waitUntil { f.telemetry.events.contains(.undoShown) }, "\(f.telemetry.events)")
     guard case .correctionLearned(let pill)? = f.overlay.renderModel.state.presentation?.content else {
       Issue.record("the Undo pill did not reach the overlay")
       return
