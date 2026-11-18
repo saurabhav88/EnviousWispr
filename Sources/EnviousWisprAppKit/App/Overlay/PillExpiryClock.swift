@@ -19,6 +19,13 @@ import Foundation
 /// total so the rail draws the true share left, including time the floor added.
 /// No reducer, director or view computes a deadline or a remainder.
 ///
+/// **`.enterPending` replaces the remainder of a presentation that accepted Undo
+/// (#4675).** It first verifies that the running or frozen dwell belongs to the
+/// named presentation, because an Undo claimed for one pill must never re-time
+/// another; then it captures what was left, invalidates the old callback and arms
+/// `max(remaining, minimum)`. The minimum is a display policy: an Undo pressed in
+/// the last seconds stays visible long enough to show its result.
+///
 /// **Cancellation does NOT wait for that closure.** A cancel is about the
 /// OUTGOING pill, which is already gone; deferring it would leave a dead timer
 /// live across the gap between one pill and the next.
@@ -99,7 +106,7 @@ final class PillExpiryClock {
   /// Apply an expiry command, and hand back the work that must wait for the
   /// pill to be on screen.
   ///
-  /// The returned closure is a no-op for every command but `.arm` and `.resume`,
+  /// The returned closure is a no-op for every command but `.arm`, `.resume` and `.enterPending`,
   /// so a caller can invoke it unconditionally.
   ///
   /// `onExpiry` receives the id and target CAPTURED at arm time. Neither is ever
@@ -167,6 +174,35 @@ final class PillExpiryClock {
             id: id, target: frozen.dwell.target,
             seconds: max(frozen.remaining, floorSeconds), total: frozen.dwell.total),
           onExpiry: onExpiry)
+      }
+
+    case .enterPending(let id, let minimumSeconds):
+      // Only a STARTED or frozen dwell of this very presentation has a remainder to carry. A
+      // prepared start that has not begun, or another presentation's dwell, is left exactly
+      // as it is: nothing about this Undo may arm, cancel or re-time it.
+      let held: (dwell: Dwell, remaining: Double)
+      if let running, running.dwell.id == id {
+        held = (running.dwell, max(0, running.deadline.timeIntervalSince(now())))
+      } else if let paused, paused.dwell.id == id {
+        held = (paused.dwell, paused.remaining)
+      } else {
+        return {}
+      }
+      // Captured BEFORE anything is cancelled; from here the old callback cannot fire, and a
+      // prepared start for this presentation (a resume the host has not accepted) cannot begin.
+      pendingArmToken = nil
+      preparedArm = nil
+      paused = nil
+      invalidateRunning()
+      let dwell = Dwell(
+        id: id, target: held.dwell.target,
+        seconds: max(held.remaining, minimumSeconds), total: held.dwell.total)
+      let token = UUID()
+      pendingArmToken = token
+      return { [weak self] in
+        guard let self, self.pendingArmToken == token else { return }
+        self.pendingArmToken = nil
+        self.start(dwell, onExpiry: onExpiry)
       }
     }
   }

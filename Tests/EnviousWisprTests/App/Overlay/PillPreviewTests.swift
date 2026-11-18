@@ -97,7 +97,8 @@
         case .correctionLearned(let model, _, _, _):
           switch model.phase {
           case .learned: break
-          case .undone, .undoError: Issue.record("row \(entry.id) is in an excluded result phase")
+          case .undoPending, .undone, .undoError:
+            Issue.record("row \(entry.id) is in an excluded Pending or result phase")
           }
           switch model.kind {
           case .added: learnedKinds.insert("added")

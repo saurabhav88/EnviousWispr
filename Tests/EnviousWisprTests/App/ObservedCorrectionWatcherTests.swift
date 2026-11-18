@@ -1171,7 +1171,7 @@ struct ObservedCorrectionWatcherTests {
     observer.fire(.settled(region: "Ask Saira today"))
     #expect(await waitUntil { presenter.offers.count == 1 })
     let pill = try #require(presenter.offers.first)
-    await #expect(coordinator.undo(pillID: pill.id) == .undone)
+    await #expect(coordinator.undoThroughClaim(pillID: pill.id) == .undone)
     #expect(learnedSaira()?.aliases.isEmpty == true)
     observer.fire(.ended(.focusChanged))
     #expect(await waitUntil { !watcher2.isWatching })
@@ -1188,7 +1188,7 @@ struct ObservedCorrectionWatcherTests {
 
     // #3975: the second Undo blocks the pair; the next fix is not judged or saved.
     let pill2 = try #require(presenter.offers.last)
-    await #expect(coordinator.undo(pillID: pill2.id) == .undone)
+    await #expect(coordinator.undoThroughClaim(pillID: pill2.id) == .undone)
     observer.fire(.ended(.focusChanged))
     #expect(await waitUntil { !watcher3.isWatching })
     let requestsBefore = judge.requests.count

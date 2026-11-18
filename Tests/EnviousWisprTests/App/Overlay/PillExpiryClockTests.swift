@@ -396,4 +396,129 @@ struct PillExpiryClockTests {
 
     #expect(rig.scheduled.count == 1, "a superseded resume start armed a timer")
   }
+
+  // MARK: - Entering Pending (#4675)
+
+  @Test("enterPending from a running dwell with 1 s left arms the 3 s minimum and invalidates the old callback")
+  func enterPendingFromRunningRaisesToTheMinimum() throws {
+    var bodies: [() -> Void] = []
+    var dispatches: [PresentationID] = []
+    var now = Date(timeIntervalSince1970: 1_000)
+    var published: [OverlayDwellWindow?] = []
+    var seconds: [Double] = []
+    let clock = PillExpiryClock(
+      schedule: OverlayScheduler { after, body in
+        bodies.append(body)
+        seconds.append(after)
+        return OverlayScheduledWork(body: body)
+      },
+      now: { now }, publishDwell: { published.append($0) })
+    let pill = Self.id()
+    let onExpiry: (PresentationID, OverlayExpiryTarget) -> Void = { id, _ in dispatches.append(id) }
+    clock.prepare(.arm(id: pill, seconds: 12, target: .presentation), onExpiry: onExpiry)()
+    now = now.addingTimeInterval(11)
+
+    clock.prepare(.enterPending(id: pill, minimumSeconds: 3), onExpiry: onExpiry)()
+
+    #expect(seconds == [12, 3], "1 s was left, so the minimum is what arms")
+    let window = try #require(published.last ?? nil)
+    #expect(window == OverlayDwellWindow(id: pill, startedAt: now, seconds: 3, totalSeconds: 12))
+    bodies[0]()
+    #expect(dispatches.isEmpty, "the 12 s callback fired after Pending replaced it")
+    bodies[1]()
+    bodies[1]()
+    #expect(dispatches == [pill], "the Pending callback dispatches exactly once")
+  }
+
+  @Test("enterPending keeps a remainder above the minimum")
+  func enterPendingKeepsALongRemainder() {
+    let rig = Rig()
+    let pill = Self.id()
+    let onExpiry: (PresentationID, OverlayExpiryTarget) -> Void = { rig.recordFired($0, $1) }
+    rig.clock.prepare(.arm(id: pill, seconds: 12, target: .presentation), onExpiry: onExpiry)()
+    rig.advance(by: 4)
+
+    rig.clock.prepare(.enterPending(id: pill, minimumSeconds: 3), onExpiry: onExpiry)()
+
+    #expect(rig.scheduledSeconds == [12, 8], "8 s were left, which is above the 3 s minimum")
+    #expect(rig.scheduled[0].isCancelled)
+  }
+
+  @Test("enterPending from a paused dwell uses the stored remainder, not the time spent paused, and consumes it")
+  func enterPendingFromPaused() throws {
+    let rig = Rig()
+    let pill = Self.id()
+    let onExpiry: (PresentationID, OverlayExpiryTarget) -> Void = { rig.recordFired($0, $1) }
+    rig.clock.prepare(.arm(id: pill, seconds: 12, target: .presentation), onExpiry: onExpiry)()
+    rig.advance(by: 4)
+    _ = rig.clock.prepare(.pause, onExpiry: onExpiry)
+    rig.advance(by: 30)
+
+    rig.clock.prepare(.enterPending(id: pill, minimumSeconds: 3), onExpiry: onExpiry)()
+    #expect(rig.scheduledSeconds == [12, 8], "the 30 s paused were counted against the dwell")
+    let running = try Self.latest(rig)
+    #expect(!running.isPaused && running.seconds == 8 && running.totalSeconds == 12)
+
+    rig.clock.prepare(.resume(id: pill, floorSeconds: 2), onExpiry: onExpiry)()
+    #expect(rig.scheduled.count == 2, "the paused remainder came back after Pending consumed it")
+
+    // Below the minimum, from paused.
+    let low = Rig()
+    low.clock.prepare(.arm(id: pill, seconds: 12, target: .presentation), onExpiry: { low.recordFired($0, $1) })()
+    low.advance(by: 11.5)
+    _ = low.clock.prepare(.pause, onExpiry: { low.recordFired($0, $1) })
+    low.clock.prepare(.enterPending(id: pill, minimumSeconds: 3), onExpiry: { low.recordFired($0, $1) })()
+    #expect(low.scheduledSeconds == [12, 3], "0.5 s was frozen, so the minimum arms")
+    try #require(low.scheduled.last).fire()
+    #expect(low.dispatches.map(\.id) == [pill])
+  }
+
+  @Test("enterPending for another presentation, or with nothing running, changes nothing")
+  func enterPendingNeedsTheMatchingRemainder() {
+    let rig = Rig()
+    let pill = Self.id()
+    let onExpiry: (PresentationID, OverlayExpiryTarget) -> Void = { rig.recordFired($0, $1) }
+    rig.clock.prepare(.arm(id: pill, seconds: 12, target: .presentation), onExpiry: onExpiry)()
+    let armed = rig.scheduled[0]
+    let publishedBefore = rig.published.count
+
+    rig.clock.prepare(.enterPending(id: Self.id(), minimumSeconds: 3), onExpiry: onExpiry)()
+    #expect(!armed.isCancelled && rig.scheduled.count == 1, "another pill's Undo re-timed this dwell")
+    #expect(rig.published.count == publishedBefore)
+    armed.fire()
+    #expect(rig.dispatches.map(\.id) == [pill], "the untouched dwell still expires")
+
+    let empty = Rig()
+    empty.clock.prepare(.enterPending(id: pill, minimumSeconds: 3), onExpiry: { empty.recordFired($0, $1) })()
+    #expect(empty.scheduled.isEmpty && empty.published.isEmpty, "Pending armed with nothing to enter from")
+  }
+
+  @Test("enterPending does not touch a prepared start that has not begun")
+  func enterPendingLeavesAPreparedStartAlone() {
+    let rig = Rig()
+    let pill = Self.id()
+    let onExpiry: (PresentationID, OverlayExpiryTarget) -> Void = { rig.recordFired($0, $1) }
+    let start = rig.clock.prepare(.arm(id: pill, seconds: 12, target: .presentation), onExpiry: onExpiry)
+
+    rig.clock.prepare(.enterPending(id: pill, minimumSeconds: 3), onExpiry: onExpiry)()
+    #expect(rig.scheduled.isEmpty, "Pending armed a timer for a pill the host has not accepted")
+
+    start()
+    #expect(rig.scheduledSeconds == [12], "the prepared start was lost")
+  }
+
+  @Test("a start prepared by enterPending is dropped when a cancel lands before it runs")
+  func cancelBeforePendingStartDropsTheStart() {
+    let rig = Rig()
+    let pill = Self.id()
+    let onExpiry: (PresentationID, OverlayExpiryTarget) -> Void = { rig.recordFired($0, $1) }
+    rig.clock.prepare(.arm(id: pill, seconds: 12, target: .presentation), onExpiry: onExpiry)()
+    let pendingStart = rig.clock.prepare(.enterPending(id: pill, minimumSeconds: 3), onExpiry: onExpiry)
+
+    _ = rig.clock.prepare(.cancel, onExpiry: onExpiry)
+    pendingStart()
+
+    #expect(rig.scheduled.count == 1, "a superseded Pending start armed a timer")
+    #expect(rig.published.last ?? nil == nil)
+  }
 }

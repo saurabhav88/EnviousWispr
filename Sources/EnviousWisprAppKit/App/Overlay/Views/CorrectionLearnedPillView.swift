@@ -19,6 +19,10 @@ enum CorrectionLearnedPillCopy {
   static let undoneDwellSeconds = 1.5
   /// `Couldn’t undo` and `Couldn’t save “…”` show for this long.
   static let errorDwellSeconds = 3.0
+  /// The least time a pill that has accepted Undo stays up, so an Undo pressed in the last
+  /// seconds still shows its result. A display policy: how long the write takes is not known
+  /// (it can wait behind another dictionary command).
+  static let undoPendingMinimumSeconds = 3.0
   /// The sentence shrinks to half its size before SwiftUI truncates a very
   /// long word (the #3089 long-word rule). The cap gives the measured pill a
   /// finite width to shrink INTO: without one the host measures the ideal
@@ -62,6 +66,8 @@ enum CorrectionLearnedPillCopy {
   ) {
     switch model.phase {
     case .learned: return (sentence(for: model), true, false)
+    // Undo accepted, write not finished: the same card, no button (#4675).
+    case .undoPending: return (sentence(for: model), false, false)
     case .undone: return (undone, false, false)
     case .undoError: return (couldNotUndo, false, true)
     }

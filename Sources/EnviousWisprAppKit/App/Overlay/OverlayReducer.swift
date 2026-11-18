@@ -59,9 +59,9 @@ enum OverlayEvent: Equatable {
   /// it replaces); never displaces anything else. A result-phase model is
   /// refused: results are morphs of the pill on screen.
   case correctionLearned(LearnedCorrectionPillModel)
-  /// #996 auto-learn: morph the still-current learned pill for `pillID` into a
+  /// #996 auto-learn: morph the still-`.undoPending` learned pill for `pillID` into a
   /// result phase (`.undone` 1.5 s, `.undoError` 3 s), same identity, button
-  /// gone; a stale pair is a no-op.
+  /// gone; a stale pair, or a pill that is not Pending, is a no-op.
   case correctionLearnedResult(pillID: UUID, presentation: PresentationID, phase: LearnedCorrectionPillModel.Phase)
   /// #996 auto-learn: close the still-current learned pill for `pillID`
   /// without a result line; a stale id is a no-op.
@@ -108,6 +108,11 @@ enum OverlayExpiryCommand: Equatable {
   /// Start the frozen dwell again with `max(remaining, floorSeconds)` left. Like
   /// `.arm`, it begins only once the host has accepted the presentation.
   case resume(id: PresentationID, floorSeconds: Double)
+  /// Undo was accepted: replace the running or frozen remainder of THIS presentation with
+  /// `max(remaining, minimumSeconds)` (#4675, plan §3.2b.4). Unlike `.arm` and `.resume`, the
+  /// director applies it only once the host has ACCEPTED the Pending morph and the slot still
+  /// holds that morph, never at plan time.
+  case enterPending(id: PresentationID, minimumSeconds: Double)
 }
 
 /// What the director must do to make reality match the reducer's decision.
@@ -738,7 +743,8 @@ struct OverlayReducer {
   //   another feature/notice     | learned                            | refused: never displace anything else
   //   this pill, .learned        | learned, same model                | noChange: identity, binding and dwell kept
   //   ANOTHER learned pill       | learned                            | replaced: new id, fresh 12 s, one end effect for the outgoing .learned
-  //   this pill, .learned        | result(pillID, presentation)       | morph: button gone, fresh 1.5 s (undone) or 3 s (undoError)
+  //   this pill, .undoPending    | result(pillID, presentation)       | morph: fresh 1.5 s (undone) or 3 s (undoError), announced
+  //   this pill, .learned        | result(pillID, presentation)       | noChange: a result only follows an accepted Undo
   //   this pill, result          | result / learned                   | noChange: a result never goes back
   //   this pill, any phase       | close(pillID)                      | slot emptied, expiry cancelled, no end effect
   //   anything else              | close(pillID)                      | noChange
@@ -746,8 +752,10 @@ struct OverlayReducer {
   //   this pill, result          | expiry                             | slot emptied, no end effect
   //   this pill, .learned        | hover in / out                     | pause / resume with at least 2 s left
   //   this pill, result          | hover                              | noChange: the dwell is not pausable
-  //   this pill, .learned        | undo(pillID) action                | delivered once to the binding; other ids dropped
+  //   this pill, .learned        | undo(pillID) action                | morph to .undoPending (hover cleared), delivered once; other ids dropped
+  //   this pill, .undoPending    | undo action                        | dropped
   //   this pill, result          | undo action                        | dropped
+  //   this pill, .undoPending    | expiry / learned / saveError / preempt | closes or is replaced with no end effect: the Undo record is already claimed, the write continues
   //   empty or a learned pill    | saveError                          | admitted / replaces the learned pill: 3 s notice, no button
 
   /// Admit the Undo pill, or replace the learned pill already showing.
@@ -788,14 +796,17 @@ struct OverlayReducer {
       effects: effects, announcement: entry.announcement)
   }
 
-  /// Morph the still-current learned offer into `Undone` or `Couldn’t undo`:
-  /// same identity, button gone, its own fresh dwell.
+  /// Morph the still-current Pending pill into `Undone` or `Couldn’t undo`:
+  /// same identity, its own fresh dwell, and the result spoken once if the render lands.
+  ///
+  /// Gated on the matching `.undoPending` presentation, so a late result after the pill left
+  /// (expiry, a newer learn, a preempt) finds `isCurrent` false and cannot reopen the slot.
   private mutating func reduceCorrectionLearnedResult(
     pillID: UUID, presentation: PresentationID, phase: LearnedCorrectionPillModel.Phase
   ) -> OverlayPlan {
     guard isCurrent(presentation), let current = state.current,
       case .correctionLearned(let shown) = current.content, shown.id == pillID,
-      case .learned = shown.phase, phase != .learned
+      case .undoPending = shown.phase, phase == .undone || phase == .undoError
     else { return .noChange }
     let seconds =
       phase == .undone
@@ -809,7 +820,8 @@ struct OverlayReducer {
     state.set(current: updated, isHovered: false)
     return OverlayPlan(
       presentation: updated, didChange: true,
-      expiryCommand: .arm(id: current.id, seconds: seconds, target: .presentation))
+      expiryCommand: .arm(id: current.id, seconds: seconds, target: .presentation),
+      announcement: .medium(CorrectionLearnedPillCopy.announcement(for: result)))
   }
 
   /// Empty the slot if it still holds the learned pill for `pillID`. No end
@@ -972,8 +984,34 @@ struct OverlayReducer {
       guard case .correctionLearned(let shown) = current.content, shown.id == pillID,
         case .learned = shown.phase
       else { return .noChange }
+      return acceptUndo(action, shown: shown, current: current)
     }
     return OverlayPlan(presentation: current, didChange: false, deliverAction: action)
+  }
+
+  /// The ONE transition for an accepted Undo (#4675, plan §3.2b.2): the same presentation
+  /// morphs to `.undoPending` (buttons hidden, hover ignored) and the press is delivered once.
+  /// A second press finds `.undoPending` and is dropped by the phase gate in `reduceAction`.
+  /// The dwell carried on the definition is the 3 s floor value; the live remainder is
+  /// `.enterPending`, which the director applies only after the host accepts this morph.
+  private mutating func acceptUndo(
+    _ action: PillAction, shown: LearnedCorrectionPillModel, current: PillDefinition
+  ) -> OverlayPlan {
+    let pendingModel = LearnedCorrectionPillModel(
+      id: shown.id, wordID: shown.wordID, canonical: shown.canonical, kind: shown.kind,
+      phase: .undoPending)
+    let minimum = CorrectionLearnedPillCopy.undoPendingMinimumSeconds
+    let pending = PillDefinition(
+      id: current.id, content: .correctionLearned(pendingModel),
+      expiry: .after(seconds: minimum, hover: .ignore),
+      requestedWidth: current.requestedWidth, reservesFixedHeight: current.reservesFixedHeight)
+    // Hover flag cleared: a pointer that was resting on the offer must not leave a stale
+    // "hovered" state that suppresses the Pending expiry.
+    state.set(current: pending, isHovered: false)
+    return OverlayPlan(
+      presentation: pending, didChange: true,
+      expiryCommand: .enterPending(id: current.id, minimumSeconds: minimum),
+      deliverAction: action)
   }
 
   private mutating func reduceHover(_ id: PresentationID, _ hovering: Bool) -> OverlayPlan {

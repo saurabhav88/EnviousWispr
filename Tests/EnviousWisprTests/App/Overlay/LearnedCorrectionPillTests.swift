@@ -174,6 +174,11 @@ struct LearnedCorrectionPillCopyTests {
   func phaseButtonPolicy() {
     let learned = CorrectionLearnedPillCopy.line(for: LearnedPillFixture.model(phase: .learned))
     #expect(learned.showsUndo && !learned.isError && learned.text.hasPrefix("Added"))
+    let pending = CorrectionLearnedPillCopy.line(
+      for: LearnedPillFixture.model(canonical: "Tuist", phase: .undoPending))
+    #expect(
+      !pending.showsUndo && !pending.isError && pending.text.hasPrefix("Added"),
+      "Pending keeps the card and its sentence, without the button")
     let undone = CorrectionLearnedPillCopy.line(for: LearnedPillFixture.model(phase: .undone))
     #expect(!undone.showsUndo && !undone.isError && undone.text == "Undone")
     let failed = CorrectionLearnedPillCopy.line(for: LearnedPillFixture.model(phase: .undoError))
@@ -203,6 +208,14 @@ struct LearnedCorrectionPillReducerTests {
   private static func pill(_ reducer: OverlayReducer) -> LearnedCorrectionPillModel? {
     guard case .correctionLearned(let model)? = reducer.state.current?.content else { return nil }
     return model
+  }
+
+  /// The click: Undo pressed on the shown offer, which leaves the slot Pending.
+  @discardableResult
+  private static func pressUndo(
+    _ reducer: inout OverlayReducer, _ id: PresentationID, _ model: LearnedCorrectionPillModel
+  ) -> OverlayPlan {
+    reducer.reduce(.action(id, .undoLearnedCorrection(pillID: model.id)))
   }
 
   @Test(
@@ -241,6 +254,9 @@ struct LearnedCorrectionPillReducerTests {
     var r = OverlayReducer(makeID: { id })
     let model = LearnedPillFixture.model()
     _ = r.reduce(.correctionLearned(model))
+    Self.pressUndo(&r, id, model)
+    #expect(r.reduce(.hoverChanged(id, true)) == .noChange, "Pending ignores hover")
+    #expect(r.reduce(.hoverChanged(id, false)) == .noChange, "Pending ignores hover exit")
     _ = r.reduce(
       .correctionLearnedResult(pillID: model.id, presentation: id, phase: .undone))
     #expect(r.reduce(.hoverChanged(id, true)) == .noChange, "an Undone result ignores hover")
@@ -291,6 +307,9 @@ struct LearnedCorrectionPillReducerTests {
 
     var empty = OverlayReducer()
     #expect(empty.reduce(.correctionLearned(LearnedPillFixture.model(phase: .undone))) == .noChange)
+    #expect(
+      empty.reduce(.correctionLearned(LearnedPillFixture.model(phase: .undoPending))) == .noChange,
+      "a Pending model cannot create a pill either")
     #expect(empty.state.current == nil)
   }
 
@@ -323,6 +342,7 @@ struct LearnedCorrectionPillReducerTests {
     var r = OverlayReducer(makeID: { ids.removeFirst() })
     let first = LearnedPillFixture.model()
     let firstID = try #require(r.reduce(.correctionLearned(first)).presentation?.id)
+    Self.pressUndo(&r, firstID, first)
     _ = r.reduce(.correctionLearnedResult(pillID: first.id, presentation: firstID, phase: .undone))
     let plan = r.reduce(.correctionLearned(LearnedPillFixture.model(canonical: "Saira")))
     #expect(plan.didChange && plan.effects.isEmpty)
@@ -330,20 +350,49 @@ struct LearnedCorrectionPillReducerTests {
   }
 
   @Test(
-    "Undo is delivered once for the shown pill in its learned phase; another id or a result phase reaches nobody"
+    "Undo is accepted once for the shown pill in its learned phase, running or paused: the same presentation morphs to Pending with no button, hover cleared, the press delivered and the clock told to enter Pending; another id, a second press or a result phase reaches nobody"
   )
   func undoGate() throws {
     let id = PresentationID()
     var r = OverlayReducer(makeID: { id })
     let model = LearnedPillFixture.model()
     _ = r.reduce(.correctionLearned(model))
-    let press = r.reduce(.action(id, .undoLearnedCorrection(pillID: model.id)))
-    #expect(press.deliverAction == .undoLearnedCorrection(pillID: model.id))
     #expect(r.reduce(.action(id, .undoLearnedCorrection(pillID: UUID()))) == .noChange)
     #expect(
       r.reduce(.action(PresentationID(), .undoLearnedCorrection(pillID: model.id))) == .noChange)
+
+    _ = r.reduce(.hoverChanged(id, true))
+    #expect(r.state.isHovered)
+    let revisionBefore = r.state.slotRevision
+    let press = Self.pressUndo(&r, id, model)
+    #expect(press.deliverAction == .undoLearnedCorrection(pillID: model.id))
+    #expect(press.didChange && press.announcement == nil)
+    let pending = try #require(press.presentation)
+    #expect(pending.id == id, "the morph keeps the presentation identity")
+    #expect(Self.pill(r)?.phase == .undoPending && Self.pill(r)?.id == model.id)
+    #expect(CorrectionLearnedPillCopy.line(for: try #require(Self.pill(r))).showsUndo == false)
+    #expect(pending.expiry == .after(seconds: 3, hover: .ignore))
+    #expect(press.expiryCommand == .enterPending(id: id, minimumSeconds: 3))
+    #expect(!r.state.isHovered, "the hover flag is cleared")
+    #expect(r.state.slotRevision != revisionBefore)
+
+    #expect(Self.pressUndo(&r, id, model) == .noChange, "a repeat press while Pending is dropped")
     _ = r.reduce(.correctionLearnedResult(pillID: model.id, presentation: id, phase: .undone))
-    #expect(r.reduce(.action(id, .undoLearnedCorrection(pillID: model.id))) == .noChange)
+    #expect(Self.pressUndo(&r, id, model) == .noChange, "no button on a result")
+  }
+
+  @Test("a result cannot be applied to a pill that is still the unanswered offer")
+  func resultNeedsPending() {
+    let id = PresentationID()
+    var r = OverlayReducer(makeID: { id })
+    let model = LearnedPillFixture.model()
+    _ = r.reduce(.correctionLearned(model))
+    for phase in [LearnedCorrectionPillModel.Phase.undone, .undoError, .learned, .undoPending] {
+      #expect(
+        r.reduce(.correctionLearnedResult(pillID: model.id, presentation: id, phase: phase))
+          == .noChange, "phase \(phase) on a .learned offer")
+    }
+    #expect(Self.pill(r)?.phase == .learned)
   }
 
   @Test(
@@ -354,6 +403,7 @@ struct LearnedCorrectionPillReducerTests {
     var r = OverlayReducer(makeID: { id })
     let model = LearnedPillFixture.model()
     _ = r.reduce(.correctionLearned(model))
+    Self.pressUndo(&r, id, model)
     #expect(
       r.reduce(
         .correctionLearnedResult(pillID: model.id, presentation: PresentationID(), phase: .undone))
@@ -361,12 +411,16 @@ struct LearnedCorrectionPillReducerTests {
     #expect(
       r.reduce(.correctionLearnedResult(pillID: UUID(), presentation: id, phase: .undone))
         == .noChange)
-    #expect(
-      r.reduce(.correctionLearnedResult(pillID: model.id, presentation: id, phase: .learned))
-        == .noChange)
+    for phase in [LearnedCorrectionPillModel.Phase.learned, .undoPending] {
+      #expect(
+        r.reduce(.correctionLearnedResult(pillID: model.id, presentation: id, phase: phase))
+          == .noChange, "a result phase is only undone or undoError (\(phase))")
+    }
 
     let plan = r.reduce(
       .correctionLearnedResult(pillID: model.id, presentation: id, phase: .undone))
+    #expect(plan.announcement?.text == "Undone", "the result copy is announced once, with the plan")
+    #expect(plan.announcement?.isHighPriority == false)
     let shown = try #require(plan.presentation)
     #expect(shown.id == id && Self.pill(r)?.phase == .undone && Self.pill(r)?.id == model.id)
     #expect(shown.expiry == .after(seconds: 1.5, hover: .ignore))
@@ -377,10 +431,12 @@ struct LearnedCorrectionPillReducerTests {
 
     var e = OverlayReducer(makeID: { id })
     _ = e.reduce(.correctionLearned(model))
+    Self.pressUndo(&e, id, model)
     let errorPlan = e.reduce(
       .correctionLearnedResult(pillID: model.id, presentation: id, phase: .undoError))
     #expect(Self.pill(e)?.phase == .undoError)
     #expect(errorPlan.expiryCommand == .arm(id: id, seconds: 3, target: .presentation))
+    #expect(errorPlan.announcement?.text == "Couldn\u{2019}t undo")
   }
 
   @Test(
@@ -398,9 +454,24 @@ struct LearnedCorrectionPillReducerTests {
 
     var s = OverlayReducer(makeID: { id })
     _ = s.reduce(.correctionLearned(model))
+    Self.pressUndo(&s, id, model)
     _ = s.reduce(.correctionLearnedResult(pillID: model.id, presentation: id, phase: .undone))
     let resultExpired = s.reduce(.expiryFired(id))
     #expect(resultExpired.presentation == nil && resultExpired.effects.isEmpty)
+
+    var p = OverlayReducer(makeID: { id })
+    _ = p.reduce(.correctionLearned(model))
+    Self.pressUndo(&p, id, model)
+    let pendingExpired = p.reduce(.expiryFired(id))
+    #expect(
+      pendingExpired.presentation == nil && pendingExpired.expiryCommand == .cancel
+        && pendingExpired.effects.isEmpty,
+      "Pending closes silently: the record is already claimed, so no end report")
+    #expect(p.state.pipelineIntent == .hidden && p.state.current == nil)
+    #expect(
+      p.reduce(.correctionLearnedResult(pillID: model.id, presentation: id, phase: .undone))
+        == .noChange, "a late result cannot reopen the closed slot")
+    #expect(p.state.current == nil)
 
     var c = OverlayReducer(makeID: { id })
     _ = c.reduce(.correctionLearned(model))
@@ -409,6 +480,65 @@ struct LearnedCorrectionPillReducerTests {
     #expect(closed.presentation == nil && closed.expiryCommand == .cancel && closed.effects.isEmpty)
     #expect(c.state.current == nil)
     #expect(c.reduce(.correctionLearnedClose(pillID: model.id)) == .noChange)
+  }
+
+  @Test(
+    "while Pending: a new learned word, a save error, a recording and Escape Recovery take the slot with no end report; a late result then reaches nobody"
+  )
+  func pendingExits() throws {
+    let id = PresentationID()
+    let model = LearnedPillFixture.model()
+    let error = LearnedCorrectionSaveError(canonical: "Tuist", reason: .vocabularyWriteFailed)
+
+    func pending() -> OverlayReducer {
+      var ids = [id, PresentationID(), PresentationID()]
+      var r = OverlayReducer(makeID: { ids.removeFirst() })
+      _ = r.reduce(.correctionLearned(model))
+      Self.pressUndo(&r, id, model)
+      return r
+    }
+
+    var learned = pending()
+    let newer = learned.reduce(.correctionLearned(LearnedPillFixture.model(canonical: "Saira")))
+    #expect(newer.didChange && newer.effects.isEmpty, "replacing Pending reports nothing ended")
+    #expect(newer.expiryCommand != .unchanged)
+    #expect(Self.pill(learned)?.canonical == "Saira" && Self.pill(learned)?.phase == .learned)
+
+    var saveError = pending()
+    let notice = saveError.reduce(.correctionLearnedSaveError(error))
+    #expect(notice.didChange && notice.effects.isEmpty)
+    #expect(saveError.state.current?.content == .correctionLearnedSaveError(error))
+
+    var recording = pending()
+    let recordingPlan = recording.startRecordingForTests(audioLevel: 0.1)
+    #expect(
+      !recordingPlan.effects.contains(.correctionLearnedEnded(pillID: model.id, presentation: id)),
+      "a recording preempting Pending reports nothing ended")
+    guard case .recording? = recording.state.current?.content else {
+      Issue.record("the recording did not take the slot")
+      return
+    }
+
+    var escape = pending()
+    let escapePlan = escape.reduce(.pipeline(.escapeRecovery(transcriptID: UUID())))
+    #expect(escapePlan.effects.isEmpty, "Escape Recovery preempting Pending reports nothing ended")
+    let recovery = try #require(escapePlan.presentation, "Escape Recovery did not take the slot")
+    guard case .escapeRecovery = recovery.content, escape.state.current?.id == recovery.id else {
+      Issue.record("Escape Recovery is not what holds the slot after preempting Pending")
+      return
+    }
+    #expect(
+      escapePlan.expiryCommand == .arm(id: recovery.id, seconds: 3, target: .presentation),
+      "Escape Recovery arms its own 3 s, not Pending's")
+
+    var saw = [learned, saveError, recording, escape]
+    for i in saw.indices {
+      let before = saw[i].state.current
+      #expect(
+        saw[i].reduce(.correctionLearnedResult(pillID: model.id, presentation: id, phase: .undone))
+          == .noChange, "a late result must leave scenario \(i) alone")
+      #expect(saw[i].state.current == before)
+    }
   }
 
   @Test(
@@ -529,7 +659,9 @@ struct LearnedCorrectionPillDirectorTests {
     try host.sendUserActionThroughRoot(.undoLearnedCorrection(pillID: UUID()), for: receipt)
     #expect(log.undos == 0)
     try host.sendUserActionThroughRoot(.undoLearnedCorrection(pillID: model.id), for: receipt)
-    #expect(log.undos == 1)
+    #expect(log.undos == 1 && shown(d)?.phase == .undoPending)
+    try host.sendUserActionThroughRoot(.undoLearnedCorrection(pillID: model.id), for: receipt)
+    #expect(log.undos == 1, "a repeat press while Pending is dropped")
 
     d.resolveLearnedCorrection(
       pillID: model.id, presentation: receipt.presentationID, phase: .undone)
@@ -544,13 +676,14 @@ struct LearnedCorrectionPillDirectorTests {
   func resultClocks() throws {
     let clock = LearnedPillClock()
     let log = Log()
-    let (d, _) = director(clock, log)
+    let (d, host) = director(clock, log)
     let model = LearnedPillFixture.model()
     let receipt = try #require(d.present(request(model, log)))
     clock.advance(to: 0.5)
+    try host.sendUserActionThroughRoot(.undoLearnedCorrection(pillID: model.id), for: receipt)
     d.resolveLearnedCorrection(
       pillID: model.id, presentation: receipt.presentationID, phase: .undone)
-    #expect(clock.armedSeconds == [12, 1.5])
+    #expect(clock.armedSeconds == [12, 11.5, 1.5], "Pending kept the 11.5 s left, then 1.5 s")
     clock.advance(to: 1.999)
     #expect(shown(d)?.phase == .undone, "the old 12 s deadline was cancelled")
     clock.advance(to: 2.0)
@@ -559,9 +692,10 @@ struct LearnedCorrectionPillDirectorTests {
 
     let clock2 = LearnedPillClock()
     let log2 = Log()
-    let (d2, _) = director(clock2, log2)
+    let (d2, host2) = director(clock2, log2)
     let model2 = LearnedPillFixture.model()
     let receipt2 = try #require(d2.present(request(model2, log2)))
+    try host2.sendUserActionThroughRoot(.undoLearnedCorrection(pillID: model2.id), for: receipt2)
     d2.resolveLearnedCorrection(
       pillID: model2.id, presentation: receipt2.presentationID, phase: .undoError)
     clock2.advance(to: 2.999)
@@ -603,7 +737,8 @@ struct LearnedCorrectionPillDirectorTests {
     clock.advance(to: 12.999)
     #expect(shown(d)?.id == m2.id, "the second pill's own twelve seconds run from 1.0 s")
     clock.advance(to: 13.0)
-    #expect(d.renderModel.state.presentation == nil && first.ended == 1 && second.ended == 1)
+    // The second pill was answered with Undo, so it is Pending and closes without an end report.
+    #expect(d.renderModel.state.presentation == nil && first.ended == 1 && second.ended == 0)
   }
 
   @Test(
@@ -624,7 +759,18 @@ struct LearnedCorrectionPillDirectorTests {
     try host.sendUserActionThroughRoot(.undoLearnedCorrection(pillID: model.id), for: receipt)
     #expect(first.undos == 1 && second.undos == 0)
     clock.advance(to: 12)
-    #expect(first.ended == 1 && second.ended == 0)
+    #expect(first.ended == 0 && second.ended == 0, "Pending closes without an end report")
+
+    // Unanswered, the same repeat leaves the end with the FIRST owner.
+    let clock2 = LearnedPillClock()
+    let first2 = Log()
+    let second2 = Log()
+    let (d2, _) = director(clock2, first2)
+    let model2 = LearnedPillFixture.model()
+    _ = try #require(d2.present(request(model2, first2)))
+    #expect(d2.present(request(model2, second2)) == nil)
+    clock2.advance(to: 12)
+    #expect(first2.ended == 1 && second2.ended == 0)
   }
 
   // MARK: Hover pause and resume (#4675)
@@ -657,6 +803,11 @@ struct LearnedCorrectionPillDirectorTests {
     func hover(_ entering: Bool, over receipt: PillReceipt) throws {
       let hosted = try #require(root, "nothing was presented, so no root exists to hover")
       hosted.sendEvent(.hoverChanged(receipt.presentationID, entering))
+    }
+
+    func press(_ action: PillAction, over receipt: PillReceipt) throws {
+      let hosted = try #require(root, "nothing was presented, so no root exists to press")
+      hosted.sendEvent(.action(receipt.presentationID, action))
     }
   }
 
@@ -805,6 +956,134 @@ struct LearnedCorrectionPillDirectorTests {
     #expect(clock.armedSeconds == [12, 3], "Escape Recovery inherited the paused remainder")
     let dwell = try #require(d.renderModel.state.dwell)
     #expect(!dwell.isPaused && dwell.seconds == 3 && dwell.totalSeconds == 3)
+  }
+
+  // MARK: Undo pending (#4675)
+
+  @Test(
+    "Undo pressed while running enters Pending with the live remainder when it is above 3 s, or with 3 s when less; the 12 s callback is replaced and Pending closes silently"
+  )
+  func undoFromRunning() throws {
+    // 7 s left: above the minimum, so the remainder is kept and nothing is extended.
+    let clock = LearnedPillClock()
+    let log = Log()
+    let (d, host) = hoverDirector(clock, log)
+    let model = LearnedPillFixture.model()
+    let receipt = try #require(d.present(request(model, log)))
+    clock.advance(to: 5)
+    try host.press(.undoLearnedCorrection(pillID: model.id), over: receipt)
+    #expect(shown(d)?.phase == .undoPending && d.isCurrent(receipt))
+    #expect(clock.armedSeconds == [12, 7])
+    let dwell = try #require(d.renderModel.state.dwell)
+    #expect(dwell.id == receipt.presentationID && !dwell.isPaused && dwell.seconds == 7)
+    clock.advance(to: 11.999)
+    #expect(shown(d)?.phase == .undoPending)
+    clock.advance(to: 12)
+    #expect(d.renderModel.state.presentation == nil)
+    #expect(log.ended == 0 && log.undos == 1, "Pending closes with no end report")
+
+    // 1.5 s left: Pending is raised to its 3 s minimum, and the old 12 s callback does nothing.
+    let clock2 = LearnedPillClock()
+    let log2 = Log()
+    let (d2, host2) = hoverDirector(clock2, log2)
+    let model2 = LearnedPillFixture.model()
+    let receipt2 = try #require(d2.present(request(model2, log2)))
+    clock2.advance(to: 10.5)
+    try host2.press(.undoLearnedCorrection(pillID: model2.id), over: receipt2)
+    #expect(clock2.armedSeconds == [12, 3])
+    clock2.advance(to: 13.499)
+    #expect(shown(d2)?.phase == .undoPending, "the old 12 s deadline closed Pending early")
+    clock2.advance(to: 13.5)
+    #expect(d2.renderModel.state.presentation == nil && log2.ended == 0)
+  }
+
+  @Test(
+    "Undo pressed while hover has paused the offer enters Pending from the frozen remainder: 3 s when little is left, the remainder when more; hover on Pending is ignored"
+  )
+  func undoFromPaused() throws {
+    let clock = LearnedPillClock()
+    let log = Log()
+    let (d, host) = hoverDirector(clock, log)
+    let model = LearnedPillFixture.model()
+    let receipt = try #require(d.present(request(model, log)))
+    clock.advance(to: 11.5)
+    try host.hover(true, over: receipt)
+    clock.advance(to: 60)
+    try host.press(.undoLearnedCorrection(pillID: model.id), over: receipt)
+    #expect(clock.armedSeconds == [12, 3], "0.5 s were frozen, so the 3 s minimum arms")
+    #expect(shown(d)?.phase == .undoPending)
+    let pendingDwell = try #require(d.renderModel.state.dwell)
+    #expect(!pendingDwell.isPaused)
+    try host.hover(true, over: receipt)
+    try host.hover(false, over: receipt)
+    #expect(d.renderModel.state.dwell == pendingDwell, "hover changed the Pending dwell")
+    #expect(clock.armedSeconds == [12, 3], "hover re-timed Pending")
+    clock.advance(to: 62.999)
+    #expect(shown(d)?.phase == .undoPending)
+    clock.advance(to: 63)
+    #expect(d.renderModel.state.presentation == nil && log.ended == 0)
+
+    let clock2 = LearnedPillClock()
+    let log2 = Log()
+    let (d2, host2) = hoverDirector(clock2, log2)
+    let model2 = LearnedPillFixture.model()
+    let receipt2 = try #require(d2.present(request(model2, log2)))
+    clock2.advance(to: 5)
+    try host2.hover(true, over: receipt2)
+    clock2.advance(to: 60)
+    try host2.press(.undoLearnedCorrection(pillID: model2.id), over: receipt2)
+    #expect(clock2.armedSeconds == [12, 7], "7 s frozen is above the minimum")
+  }
+
+  @Test(
+    "the result announces its copy once when the morph lands; a repeated or late result adds nothing and reopens nothing"
+  )
+  func resultAnnouncedOnceAndLateResultDropped() throws {
+    let clock = LearnedPillClock()
+    let log = Log()
+    let (d, host) = director(clock, log)
+    let model = LearnedPillFixture.model()
+    let receipt = try #require(d.present(request(model, log)))
+    #expect(log.announcements.count == 1)
+    try host.sendUserActionThroughRoot(.undoLearnedCorrection(pillID: model.id), for: receipt)
+    #expect(log.announcements.count == 1, "the Pending morph announced something")
+
+    d.resolveLearnedCorrection(
+      pillID: model.id, presentation: receipt.presentationID, phase: .undone)
+    #expect(log.announcements.map(\.text).suffix(1) == ["Undone"])
+    #expect(log.announcements.count == 2 && log.announcements.last?.isHighPriority == false)
+    d.resolveLearnedCorrection(
+      pillID: model.id, presentation: receipt.presentationID, phase: .undoError)
+    #expect(log.announcements.count == 2 && shown(d)?.phase == .undone, "a result never goes back")
+
+    // Pending expired first: the late result finds the slot gone.
+    let clock2 = LearnedPillClock()
+    let log2 = Log()
+    let (d2, host2) = director(clock2, log2)
+    let model2 = LearnedPillFixture.model()
+    let receipt2 = try #require(d2.present(request(model2, log2)))
+    try host2.sendUserActionThroughRoot(.undoLearnedCorrection(pillID: model2.id), for: receipt2)
+    clock2.advance(to: 12)
+    #expect(d2.renderModel.state.presentation == nil)
+    let shownBefore = host2.presented.count
+    d2.resolveLearnedCorrection(
+      pillID: model2.id, presentation: receipt2.presentationID, phase: .undone)
+    #expect(d2.renderModel.state.presentation == nil && host2.presented.count == shownBefore)
+    #expect(log2.announcements.count == 1, "a late result was announced")
+
+    // A newer learned pill took the slot: the late result leaves it alone.
+    let clock3 = LearnedPillClock()
+    let log3 = Log()
+    let (d3, host3) = director(clock3, log3)
+    let first = LearnedPillFixture.model(canonical: "Tuist")
+    let r1 = try #require(d3.present(request(first, log3)))
+    try host3.sendUserActionThroughRoot(.undoLearnedCorrection(pillID: first.id), for: r1)
+    let second = LearnedPillFixture.model(canonical: "Saira")
+    _ = try #require(d3.present(request(second, log3)))
+    #expect(log3.ended == 0, "replacing Pending reports no end")
+    d3.resolveLearnedCorrection(
+      pillID: first.id, presentation: r1.presentationID, phase: .undone)
+    #expect(shown(d3)?.id == second.id && shown(d3)?.phase == .learned)
   }
 
   @Test(
@@ -982,7 +1261,7 @@ struct LearnedCorrectionOverlayPresenterTests {
     ended()
     #expect(g.coordinator.undoRecord == nil)
     let stalePill = try #require(g.host.requests.first)
-    await #expect(g.coordinator.undo(pillID: stalePill.id) == .stale)
+    await #expect(g.coordinator.undoThroughClaim(pillID: stalePill.id) == .stale)
     #expect(g.host.closes.count == 1, "a stale Undo closes by id")
   }
 
@@ -1007,6 +1286,50 @@ struct LearnedCorrectionOverlayPresenterTests {
     undo2()
     await g.presenter.awaitUndoForTesting()
     #expect(g.host.closes == [pill2.id] && g.host.resolved.isEmpty)
+  }
+
+  @Test(
+    "the Undo press claims the record before it returns and before the write starts, so a newer learn cannot take it; the claimed write removes its own word"
+  )
+  func undoClaimsAtTheClick() async throws {
+    let f = fixture()
+    await f.coordinator.learn(original: "twist", corrected: "Tuist", expectedTarget: .newWord)
+    let first = try #require(f.host.requests.first)
+    let undo = try #require(f.host.undos.first)
+
+    undo()
+    #expect(f.coordinator.undoRecord == nil, "the record was still unclaimed when the press returned")
+    #expect(f.library.removes.isEmpty, "the write ran inside the press instead of after the claim")
+
+    await f.coordinator.learn(original: "sara", corrected: "Saira", expectedTarget: .newWord)
+    let second = try #require(f.host.requests.last)
+    #expect(second.id != first.id && f.coordinator.undoRecord?.pillID == second.id)
+    await f.presenter.awaitUndoForTesting()
+    #expect(f.library.userWords.map(\.canonical) == ["Saira"], "the claimed word went, the newer stayed")
+    #expect(f.host.resolved.map(\.0) == [first.id], "the result names the pill that was clicked")
+    #expect(f.coordinator.undoRecord?.pillID == second.id)
+  }
+
+  @Test(
+    "a press with nothing to claim closes only its own pill, synchronously, and starts no write"
+  )
+  func nilClaimClosesOnlyThatPill() async throws {
+    let f = fixture()
+    await f.coordinator.learn(original: "twist", corrected: "Tuist", expectedTarget: .newWord)
+    let pill = try #require(f.host.requests.first)
+    let undo = try #require(f.host.undos.first)
+    let ended = try #require(f.host.endeds.first)
+    ended()  // the offer ended: the record is gone
+    #expect(f.coordinator.undoRecord == nil)
+
+    undo()
+    #expect(f.host.closes == [pill.id], "the pill was not closed by the time the press returned")
+    await f.presenter.awaitUndoForTesting()
+    #expect(f.library.removes.isEmpty && f.library.userWords.count == 1)
+    #expect(f.host.resolved.isEmpty)
+    #expect(
+      !f.telemetry.events.contains { if case .undone = $0 { true } else { false } },
+      "a nil claim counted an Undo")
   }
 
   @Test("a save refusal presents the save-error notice with the canonical")
