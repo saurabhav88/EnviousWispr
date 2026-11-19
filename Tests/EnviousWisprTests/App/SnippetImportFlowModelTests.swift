@@ -580,14 +580,14 @@ struct SnippetImportFlowModelTests {
     #expect(SnippetImportResultCopy.reviewSummary(new: 0, existing: 0, duplicates: 0) == "Nothing to review.")
   }
   // Measured ~1.6 s in Debug: constructs 50,000 maximal existing snippets and 5,000 maximal
-  // candidates to exercise the real `SnippetImportLimits.maximumCandidates` functional ceiling.
+  // candidates to exercise the real 5,000-candidate ceiling.
   @Test("5,000 maximal candidates review against 50,000 existing snippets")
   func reviewBuildsAtCeilingFunctional() async throws {
     let fixture = try SnippetImportReviewCeilingTests.makeCeilingFixture()
     fixture.model.select(.paste)
     fixture.model.begin(with: StubSource(candidates: fixture.candidates))
     try await Self.waitForStep(fixture.model, equals: .review)
-    #expect(fixture.model.rows.count == SnippetImportLimits.maximumCandidates)
+    #expect(fixture.model.rows.count == 5_000)
     #expect(fixture.model.rows.dropLast().allSatisfy { $0.status == .new })
     #expect(fixture.model.rows.last?.status == .existing(trigger: fixture.matchedTrigger))
   }
@@ -633,7 +633,7 @@ struct SnippetImportReviewCeilingTests {
   ) {
     let existing = maximal(50_000, prefix: "e").map { Snippet(trigger: $0, expansion: "x") }
     let lastExisting = try #require(existing.last)
-    var candidates = maximal(SnippetImportLimits.maximumCandidates, prefix: "n").map {
+    var candidates = maximal(5_000, prefix: "n").map {
       SnippetImportCandidate(trigger: $0, expansion: "x")
     }
     candidates[candidates.count - 1] = SnippetImportCandidate(
@@ -675,7 +675,7 @@ struct SnippetImportReviewCeilingTests {
     #expect(longestGap < .milliseconds(250), "a main-actor turn waited \(longestGap) during the build")
     print("reviewBuildsAtCeiling existing=50000 elapsed=\(elapsed)")
     #expect(model.step == .review)
-    #expect(model.rows.count == SnippetImportLimits.maximumCandidates)
+    #expect(model.rows.count == 5_000)
     #expect(model.rows.dropLast().allSatisfy { $0.status == .new })
     #expect(model.rows.last?.status == .existing(trigger: fixture.matchedTrigger))
     #expect(elapsed < .seconds(10))

@@ -79,8 +79,8 @@ struct LiveSpeakerModelDeliveryTests {
       let rig = try Rig()
       let probed = BoundedWait.Signal()
       rig.home.onSpeakerLaunchProbesFinished = { probed.fire() }
+      defer { rig.home.onSpeakerLaunchProbesFinished = nil }
       try await BoundedWait.until(probed)
-      rig.home.onSpeakerLaunchProbesFinished = nil
       return rig
     }
 
