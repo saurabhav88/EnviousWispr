@@ -3,12 +3,12 @@ import EnviousWisprPipeline
 import EnviousWisprServices
 import SwiftUI
 
-/// A summary drawn read-only from its lines (`HistoryMeetingAfterView.readableBlocks`): headings
+/// A summary drawn read-only from its lines (`readableBlocks`): headings
 /// as the structured summary draws section titles, bullets with a bullet, paragraphs as body
 /// text. Inline emphasis is kept; links are removed (`readable`).
 /// Also draws both sides of the summary comparison sheet (#4611).
 struct MeetingReadableSummary: View {
-  let blocks: [HistoryMeetingAfterView.ReadableBlock]
+  let blocks: [ReadableBlock]
 
   var body: some View {
     VStack(alignment: .leading, spacing: DesignSpacing.sm) {
@@ -37,10 +37,66 @@ struct MeetingReadableSummary: View {
   }
 
   private func lineText(_ line: String) -> some View {
-    Text(HistoryMeetingAfterView.readable(line))
+    Text(Self.readable(line))
       .font(.stCardText)
       .foregroundStyle(.stTextBody)
       .fixedSize(horizontal: false, vertical: true)
+  }
+
+  /// One line of a summary drawn read-only: a heading (`#` to `######`), a bullet (`- `, `* `,
+  /// `+ `), a paragraph line, or a gap between paragraphs (UAT: the read mode showed the raw
+  /// Markdown markers).
+  enum ReadableBlock: Equatable {
+    case heading(String)
+    case bullet(String)
+    case paragraph(String)
+    case gap
+  }
+
+  /// The summary's lines as headings, bullets and paragraphs, markers removed, in order. Runs of
+  /// blank lines become one gap; leading and trailing gaps are dropped.
+  static func readableBlocks(_ markdown: String) -> [ReadableBlock] {
+    var blocks: [ReadableBlock] = []
+    for raw in markdown.split(separator: "\n", omittingEmptySubsequences: false) {
+      let line = raw.trimmingCharacters(in: .whitespaces)
+      let block: ReadableBlock
+      if line.isEmpty {
+        block = .gap
+      } else if let heading = headingText(line) {
+        block = .heading(heading)
+      } else if let marker = ["- ", "* ", "+ "].first(where: line.hasPrefix) {
+        block = .bullet(String(line.dropFirst(marker.count)))
+      } else {
+        block = .paragraph(line)
+      }
+      if block == .gap, blocks.last == .gap || blocks.isEmpty { continue }
+      blocks.append(block)
+    }
+    if blocks.last == .gap { blocks.removeLast() }
+    return blocks
+  }
+
+  /// The text of a Markdown heading line (one to six `#`, then a space), or nil.
+  private static func headingText(_ line: String) -> String? {
+    let hashes = line.prefix { $0 == "#" }.count
+    guard (1...6).contains(hashes) else { return nil }
+    let rest = line.dropFirst(hashes)
+    guard rest.first == " " else { return nil }
+    return rest.trimmingCharacters(in: .whitespaces)
+  }
+
+  /// The summary's Markdown with inline emphasis kept and its lines as written; plain text when
+  /// it does not parse. No run carries its own font, so the 14 pt body size holds.
+  /// Links are removed: only View source, after validation, may lead anywhere.
+  static func readable(_ markdown: String) -> AttributedString {
+    var text =
+      (try? AttributedString(
+        markdown: markdown,
+        options: AttributedString.MarkdownParsingOptions(
+          interpretedSyntax: .inlineOnlyPreservingWhitespace)))
+      ?? AttributedString(markdown)
+    text.link = nil
+    return text
   }
 }
 
