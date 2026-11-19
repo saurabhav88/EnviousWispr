@@ -327,3 +327,50 @@ private struct CatalogBatchGenerator: RandomNumberGenerator {
     return state
   }
 }
+
+extension HistoryCatalogStorageTests {
+  /// #4656: proofs are re-read by their stored name without building a URL per proof. The legacy
+  /// URL reader is the reference: same name bytes, same fingerprint bytes, same errors.
+  @Test("Re-reading a stored proof by name matches the URL reader on every file shape")
+  func storedNameReadMatchesTheURLReader() throws {
+    let fm = FileManager.default
+    let root = TestTemporaryDirectory.url.appendingPathComponent("proof-\(UUID().uuidString)")
+    try fm.createDirectory(at: root, withIntermediateDirectories: true)
+    defer {
+      try? fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: root.appendingPathComponent("locked").path)
+      try? fm.removeItem(at: root)
+    }
+    let file = root.appendingPathComponent("A.json")
+    try Data("x".utf8).write(to: file)
+    try fm.createSymbolicLink(at: root.appendingPathComponent("link.json"), withDestinationURL: file)
+    try fm.createDirectory(at: root.appendingPathComponent("dir.json"), withIntermediateDirectories: false)
+    let locked = root.appendingPathComponent("locked")
+    try fm.createDirectory(at: locked, withIntermediateDirectories: false)
+    try Data("y".utf8).write(to: locked.appendingPathComponent("B.json"))
+    try fm.setAttributes([.posixPermissions: 0o000], ofItemAtPath: locked.path)
+    let names = [
+      file.path, root.appendingPathComponent("missing.json").path,
+      root.appendingPathComponent("link.json").path, root.appendingPathComponent("dir.json").path,
+      locked.appendingPathComponent("B.json").path,
+      root.path + "//A.json",
+    ]
+    for name in names {
+      let reference = Result { try HistoryCatalog.SourceVersion.read(URL(fileURLWithPath: name)) }
+      let subject = Result { try HistoryCatalog.SourceVersion.read(path: name) }
+      switch (reference, subject) {
+      case (.success(let old), .success(let new)):
+        #expect(Array(new.name.utf8) == Array(old.name.utf8), "\(name)")
+        #expect(new.fingerprint == old.fingerprint, "\(name)")
+        #expect(try new.stillMatches(), "\(name)")
+      case (.failure(let old as POSIXError), .failure(let new as POSIXError)):
+        #expect(new.code == old.code, "\(name)")
+      default:
+        Issue.record("readers disagree for \(name): \(reference) vs \(subject)")
+      }
+    }
+    // The control: a file that changes after its proof no longer matches.
+    let proof = try HistoryCatalog.SourceVersion.read(path: file.path)
+    try Data("changed".utf8).write(to: file)
+    #expect(try proof.stillMatches() == false)
+  }
+}

@@ -661,3 +661,28 @@ import EnviousWisprAppKitTestSupport
       "seconds old is a live write, not litter")
   }
 }
+
+extension PendingTranscriptStoreTests {
+  /// #4656: an always-open writer fence made every launch with a `pending/` folder withdraw
+  /// History's certificate and queue a second full re-check, even when the sweep removed nothing.
+  @Test("A sweep that removes nothing tells History nothing; one that removes a row settles once")
+  func sweepOpensTheHistoryFenceOnlyToRemove() async throws {
+    let dir = TestTemporaryDirectory.url
+      .appendingPathComponent("ew-pending-\(UUID().uuidString)", isDirectory: true)
+    let changes = HistorySourceChanges()
+    let store = TranscriptStore(directory: dir, historyChanges: changes)
+    let now = Date()
+    try store.savePending(pendingRow(at: now, takeID: "TAKE-FRESH"))
+    let before = try #require(changes.revision)
+    _ = try await store.deleteExpiredPending(now: now)
+    #expect(changes.revision == before)
+
+    try store.savePending(
+      pendingRow(at: now.addingTimeInterval(-AppConstants.pendingTranscriptRetention - 1), takeID: "TAKE-STALE"))
+    let beforeRemoval = try #require(changes.revision)
+    let swept = try await store.deleteExpiredPending(now: now)
+    #expect(swept.expired.count == 1)
+    // One writer interval: begin and finish, and the fence is closed again.
+    #expect(changes.revision == beforeRemoval + 2)
+  }
+}

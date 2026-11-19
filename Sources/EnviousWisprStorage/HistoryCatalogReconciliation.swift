@@ -79,16 +79,32 @@ package actor HistoryCatalogReconciliation {
     let requireMeetings = progress.entries.values.contains { sources.isMeetingPath($0.path) }
     let discovered = try sources.paths(requireMeetings: requireMeetings)
     let paths = Set(discovered.map(\.path))
-    let ordered = Dictionary(discovered.map { url in
-      (url.path, (url, (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate))
-    }, uniquingKeysWith: { first, _ in first }).values.sorted { lhs, rhs in
+    // Full-pass source discovery is done (#4586 instruments): content-free, read in Instruments.
+    Self.signposter.emitEvent("HistoryDiscoveryDone")
+    // #4656: the cheap proof check runs over every source first, in any order, and only the
+    // sources that fail it are dated and sorted newest first (the first build fails it for all of
+    // them, so it still fills newest first). Reading a modification date for every file only to
+    // sort a list that then skipped them cost 585 ms of a 1,468 ms unchanged launch pass on the
+    // M5 fixture. The first URL discovered for a path wins, as before.
+    var seen = Set<String>()
+    var candidates: [URL] = []
+    for url in discovered {
+      try Task.checkCancellation()
+      guard seen.insert(url.path).inserted else { continue }
+      if let before = progress.entries[url.path], (try? before.versions.allSatisfy { try $0.stillMatches() }) == true {
+        continue
+      }
+      candidates.append(url)
+    }
+    let ordered = candidates.map { url in
+      (url, (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate)
+    }.sorted { lhs, rhs in
       let left = lhs.1 ?? .distantPast
       let right = rhs.1 ?? .distantPast
       if left != right { return left > right }
       return lhs.0.path < rhs.0.path
     }.map(\.0)
-    // Full-pass source discovery is done (#4586 instruments): content-free, read in Instruments.
-    Self.signposter.emitEvent("HistoryDiscoveryDone")
+    Self.signposter.emitEvent("HistoryPassChecked")
 
     var pending: [Update] = []
     var unavailable = 0
@@ -161,6 +177,7 @@ package actor HistoryCatalogReconciliation {
       revision: currentRevision, unavailable: unavailable, changed: changed,
       changedRows: changedRows || !removed.isEmpty,
       certifiedSource: lastCertificate?.source)
+    Self.signposter.emitEvent("HistoryPassDone")
     // The caller publishes the returned final pass; `onProgress` carries only mid-pass batches.
     return result
   }

@@ -446,11 +446,20 @@ public final class TranscriptStore {
         // from "the winner finished first anyway".
         await gate?()
       #endif
-      historyChanges?.begin()
-      defer { historyChanges?.finish(.all) }
+      // #4656: the History writer fence opens only right before the first removal attempt. The
+      // walk itself only reads, and an always-open fence made every launch with a `pending/`
+      // folder withdraw History's certificate and queue a second full re-check of every source
+      // even when nothing was removed. Any attempt, failed or not, still settles as `.all`.
+      var opened = false
+      defer { if opened { historyChanges?.finish(.all) } }
       return Self.sweepExpired(
         in: dir, permanentDir: root, now: now, retention: retention,
-        spoolIDs: readSpoolIDs())
+        spoolIDs: readSpoolIDs(),
+        beforeRemoval: {
+          guard !opened else { return }
+          opened = true
+          historyChanges?.begin()
+        })
     }
     sweepGeneration &+= 1
     let generation = sweepGeneration
@@ -544,7 +553,7 @@ public final class TranscriptStore {
 
   private nonisolated static func sweepExpired(
     in dir: URL, permanentDir: URL, now: Date, retention: TimeInterval,
-    spoolIDs: Set<String>?
+    spoolIDs: Set<String>?, beforeRemoval: () -> Void = {}
   ) -> PendingSweepResult {
     let fm = FileManager.default
     var reported: [ExpiredPendingRow] = []
@@ -596,6 +605,7 @@ public final class TranscriptStore {
         sweepCandidates.append(candidate)
         continue
       }
+      beforeRemoval()
       try? fm.removeItem(at: candidate.url)
       if fm.fileExists(atPath: candidate.url.path) {
         unremovable += 1
@@ -638,6 +648,7 @@ public final class TranscriptStore {
       // (see the flag in `deleteExpiredPending`). Without that guarantee this is
       // NOT a winner election: "the file is now absent" cannot distinguish "I
       // removed it" from "the other sweep did", and two sweeps both report.
+      beforeRemoval()
       try? fm.removeItem(at: candidate.url)
       let id = UUID(uuidString: candidate.url.deletingPathExtension().lastPathComponent)
       // Report only once the file is confirmed gone, so a failed removal is
@@ -686,6 +697,7 @@ public final class TranscriptStore {
         // No readable date means no evidence it is stale, so it is left alone:
         // deleting a file that might be a write in flight is the worse error.
         guard let modified, now.timeIntervalSince(modified) >= retention else { continue }
+        beforeRemoval()
         try? fm.removeItem(at: stray)
         if fm.fileExists(atPath: stray.path) { unremovable += 1 }
       }
