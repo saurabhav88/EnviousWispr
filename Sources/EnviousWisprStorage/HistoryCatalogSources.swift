@@ -6,8 +6,15 @@ import Foundation
 /// inputs are recorded explicitly, so a newly created notes or context file invalidates old text.
 extension HistoryCatalog.SourceVersion {
   package static func read(_ url: URL) throws -> Self {
+    try read(path: url.path)
+  }
+
+  /// #4656: re-reading a stored proof by its saved name. `URL(fileURLWithPath:)` without a
+  /// directory hint stats the path itself to decide whether it is a folder, so building a URL per
+  /// proof doubled every check (Instruments, M5 fixture: 502 ms of a 1,468 ms launch pass).
+  /// Producers still pass a URL; the name they store is that URL's `path`, read back here as is.
+  static func read(path: String) throws -> Self {
     var info = stat()
-    let path = url.path
     if lstat(path, &info) != 0 {
       guard errno == ENOENT else {
         throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
@@ -24,7 +31,7 @@ extension HistoryCatalog.SourceVersion {
   }
 
   package func stillMatches() throws -> Bool {
-    try Self.read(URL(fileURLWithPath: name)) == self
+    try Self.read(path: name) == self
   }
 }
 
@@ -134,8 +141,7 @@ package struct HistoryCatalogSources: Sendable {
   private func files(in directory: URL, allowMissing: Bool) throws -> [URL] {
     do {
       return try FileManager.default.contentsOfDirectory(
-        at: directory, includingPropertiesForKeys: [.contentModificationDateKey],
-        options: [.skipsHiddenFiles])
+        at: directory, includingPropertiesForKeys: [], options: [.skipsHiddenFiles])
     } catch let error as CocoaError where allowMissing && (error.code == .fileReadNoSuchFile || error.code == .fileNoSuchFile) {
       return []
     }

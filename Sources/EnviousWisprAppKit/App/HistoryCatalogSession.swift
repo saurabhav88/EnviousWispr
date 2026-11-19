@@ -60,6 +60,9 @@ final class HistoryCatalogSession {
   /// runs off the main actor; a second request while one runs is folded into `rewatchRequested`.
   @ObservationIgnored private var registration: Task<Void, Never>?
   @ObservationIgnored private var rewatchRequested = false
+  /// An activation asked for a re-check while no watcher was installed (#4656).
+  @ObservationIgnored private var recheckIfInstallFails = false
+  @ObservationIgnored private var recheckDeadline: Task<Void, Never>?
   /// Registrations started this session; one per start plus one per real root change (#4598).
   @ObservationIgnored private(set) var watcherRegistrations = 0
   /// What the screen last saw (#4598): publish only when rows, availability or the certified
@@ -94,6 +97,7 @@ final class HistoryCatalogSession {
     indexing?.cancel()
     retry?.cancel()
     opening?.cancel()
+    recheckDeadline?.cancel()
   }
 
   func start() {
@@ -148,6 +152,9 @@ final class HistoryCatalogSession {
       registration = nil
       defer { resumeTaskEndWaiters() }
       if let watch {
+        recheckIfInstallFails = false
+        recheckDeadline?.cancel()
+        recheckDeadline = nil
         changes.advanceWithoutNotice()
         diskWatch = watch
         HistorySignpost.event("HistoryWatcherReady")
@@ -171,6 +178,12 @@ final class HistoryCatalogSession {
         syncShowsUpdating()
         didUpdate?()
       }
+      if watch == nil, recheckIfInstallFails {
+        recheckIfInstallFails = false
+        recheckDeadline?.cancel()
+        recheckDeadline = nil
+        if !fullPassAwaitingStart { changes.externalChange() }
+      }
       if rewatchRequested {
         rewatchRequested = false
         rootChanged()
@@ -185,8 +198,30 @@ final class HistoryCatalogSession {
   }
 
   func sourceMayHaveChanged() {
-    if diskWatch == nil, registration == nil { registerWatcher() }
-    guard diskWatch == nil || status == .unavailable else { return }
+    if diskWatch == nil {
+      // #4656: with no watcher, the registration is the coverage boundary: a successful install
+      // advances the source and queues a full re-check (or lets a waiting one start after it).
+      // An activation before the install, as at every launch with History open, queued a second
+      // full re-check of every source on top. Only a failed install falls back to the re-check
+      // the activation asked for.
+      if registration == nil { registerWatcher() }
+      guard !recheckIfInstallFails else { return }
+      recheckIfInstallFails = true
+      // A registration that never finishes must not hold the asked-for re-check forever: past
+      // the same hang guard as the launch pass, the activation's re-check runs as it used to.
+      recheckDeadline?.cancel()
+      let budget = watcherWaitBudget
+      recheckDeadline = Task { @MainActor [weak self] in
+        try? await Task.sleep(for: budget)
+        guard !Task.isCancelled, let self, recheckIfInstallFails, diskWatch == nil else { return }
+        recheckIfInstallFails = false
+        recheckDeadline = nil
+        // A full pass waiting to start covers it, and a late install still aligns with that pass.
+        if !fullPassAwaitingStart { changes.externalChange() }
+      }
+      return
+    }
+    guard status == .unavailable else { return }
     changes.externalChange()
   }
 
@@ -405,6 +440,38 @@ final class HistoryCatalogSession {
     invalidate()
     pending.include(.unknown)
     indexIfNeeded()
+    // A pass waiting for the watcher (#4656) gives way to the repair at once.
+    resumeTaskEndWaiters()
+  }
+
+  /// How long a launch re-check waits for the watcher install (#4656). A hang guard, not a
+  /// latency bound: past it the pass runs as it did before the wait existed. A normal install
+  /// took about 0.3 s on the M5.
+  private var watcherWaitBudget: Duration {
+    #if DEBUG
+      if let budget = watcherWaitBudgetForTesting { return budget }
+    #endif
+    return .seconds(5)
+  }
+
+  /// Waits while a watcher registration is in flight, until it ends, a repair is requested,
+  /// `deadline` passes or the task is cancelled. Returns whether it waited at all. The wait
+  /// never depends on `indexing` ending: the caller runs inside it.
+  private func waitForWatcher(until deadline: ContinuousClock.Instant) async -> Bool {
+    guard registration != nil, !rebuildRequested, ContinuousClock.now < deadline else { return false }
+    #if DEBUG
+      beforeWatcherWaitForTesting?(deadline)
+    #endif
+    let timer = Task { @MainActor [weak self] in
+      try? await Task.sleep(until: deadline, clock: .continuous)
+      guard !Task.isCancelled else { return }
+      self?.resumeTaskEndWaiters()
+    }
+    defer { timer.cancel() }
+    while registration != nil, !rebuildRequested, !Task.isCancelled, ContinuousClock.now < deadline {
+      await waitForTaskEnd { registration == nil || rebuildRequested || ContinuousClock.now >= deadline }
+    }
+    return true
   }
 
   private func scheduleRetry() {
@@ -467,14 +534,32 @@ final class HistoryCatalogSession {
           #endif
           let pass: HistoryCatalogReconciliation.Pass?
           if delta.scopes.contains(.all) {
+            // #4656: a re-check of a catalog that opened certified waits for the watcher being
+            // installed. A pass whose start predates the install cannot certify, so the install
+            // queued a second full re-check of every source on every launch (measured on the M5
+            // fixture: two passes 1.3 s apart). While this pass waits, `fullPassAwaitingStart`
+            // stays true, so the install queues nothing and this pass starts after it. First
+            // builds and repairs do not wait; a repair request ends the wait. The deadline is a
+            // hang guard: past it the pass runs exactly as before, display-only until a late
+            // install queues its own follow-up.
+            let watcherDeadline = ContinuousClock.now + watcherWaitBudget
+            let waitsForWatcher = !rebuilding && backend.catalog.wasCertifiedAtOpen
+            if waitsForWatcher, await waitForWatcher(until: watcherDeadline) {
+              HistorySignpost.event("HistoryPassWaitedForWatcher")
+            }
+            #if DEBUG
+              afterWatcherWaitForTesting?()
+            #endif
             // #4586 package I: the pass and the first page read resume together from `open()`
             // and compete for the catalog actor, which is not FIFO; the pass's first steps
             // (every source's progress) then held the first page for 130-240 ms on the M5. The
             // reads already waiting now go first; later reads never join this snapshot. This
             // bounds who is waited for, not how long. Scoped refreshes do not wait.
-            if !rebuilding, await pageReads.waitForActive() {
+            if !rebuilding, !rebuildRequested, await pageReads.waitForActive() {
               HistorySignpost.event("HistoryPassWaitedForReads")
             }
+            // A rewatch can start a new registration while the reads finish.
+            if waitsForWatcher { _ = await waitForWatcher(until: watcherDeadline) }
             try Task.checkCancellation()
             // A read that waited may have found the catalog damaged and asked for a rebuild:
             // recovery keeps precedence, so this pass becomes the rebuild iteration instead.
@@ -658,6 +743,13 @@ final class HistoryCatalogSession {
     /// Runs in the watcher registration after the stream is built and before it is installed
     /// (#4586 package I), so a test can hold a registration in progress.
     @ObservationIgnored var beforeWatcherInstallForTesting: (@MainActor () async -> Void)?
+    /// Runs when a launch re-check starts waiting for the watcher install (#4656).
+    @ObservationIgnored var beforeWatcherWaitForTesting: (@MainActor (ContinuousClock.Instant) -> Void)?
+    /// Runs after a full pass's first watcher wait, before its page-read wait (#4656 tests).
+    /// Synchronous, so the pass reaches the page-read wait before a test can act.
+    @ObservationIgnored var afterWatcherWaitForTesting: (@MainActor () -> Void)?
+    /// Replaces the watcher wait's 5 s hang guard (#4656 tests).
+    @ObservationIgnored var watcherWaitBudgetForTesting: Duration?
     /// A content publish with no indexing pass behind it (#4586 H1 tests).
     func advanceContentForTesting() { advanceContent() }
     /// A full re-check with no source change, as the launch pass and the retry ask for one.

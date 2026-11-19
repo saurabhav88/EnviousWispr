@@ -327,3 +327,69 @@ private struct CatalogBatchGenerator: RandomNumberGenerator {
     return state
   }
 }
+
+extension HistoryCatalogStorageTests {
+  /// The proof reader as it was before #4656: a URL per read, its `path`, then `lstat`. Kept here
+  /// as the independent reference for the stored-name reader.
+  private static func legacyRead(_ name: String) throws -> HistoryCatalog.SourceVersion {
+    var info = stat()
+    let path = URL(fileURLWithPath: name).path
+    if lstat(path, &info) != 0 {
+      guard errno == ENOENT else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+      return .init(name: path, fingerprint: Data())
+    }
+    guard info.st_mode & S_IFMT == S_IFREG else { throw POSIXError(.EINVAL) }
+    let words = [
+      Int64(info.st_dev), Int64(info.st_ino), info.st_size,
+      Int64(info.st_mtimespec.tv_sec), Int64(info.st_mtimespec.tv_nsec),
+      Int64(info.st_ctimespec.tv_sec), Int64(info.st_ctimespec.tv_nsec),
+    ].map(\.littleEndian)
+    return .init(name: path, fingerprint: words.withUnsafeBytes { Data($0) })
+  }
+
+  /// #4656: proofs are re-read by their stored name without building a URL per proof. Names come
+  /// from the URL producer, as in the app; the legacy reader above is the reference.
+  @Test("Re-reading a stored proof by name matches the legacy URL reader on every file shape")
+  func storedNameReadMatchesTheURLReader() throws {
+    let fm = FileManager.default
+    let root = TestTemporaryDirectory.url.appendingPathComponent("proof-\(UUID().uuidString)")
+    try fm.createDirectory(at: root, withIntermediateDirectories: true)
+    let locked = root.appendingPathComponent("locked")
+    defer {
+      try? fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: locked.path)
+      try? fm.removeItem(at: root)
+    }
+    let file = root.appendingPathComponent("A.json")
+    try Data("x".utf8).write(to: file)
+    try fm.createSymbolicLink(at: root.appendingPathComponent("link.json"), withDestinationURL: file)
+    try fm.createDirectory(at: root.appendingPathComponent("dir.json"), withIntermediateDirectories: false)
+    try fm.createDirectory(at: locked, withIntermediateDirectories: false)
+    try Data("y".utf8).write(to: locked.appendingPathComponent("B.json"))
+    try fm.setAttributes([.posixPermissions: 0o000], ofItemAtPath: locked.path)
+
+    // Files that read: the stored name is what the URL producer wrote.
+    for url in [file, root.appendingPathComponent("missing.json"), URL(fileURLWithPath: root.path + "//A.json")] {
+      let stored = try HistoryCatalog.SourceVersion.read(url)
+      let reference = try Self.legacyRead(stored.name)
+      let subject = try HistoryCatalog.SourceVersion.read(path: stored.name)
+      #expect(Array(subject.name.utf8) == Array(reference.name.utf8), "\(url.path)")
+      #expect(subject.fingerprint == reference.fingerprint, "\(url.path)")
+      #expect(subject == stored)
+      #expect(try stored.stillMatches(), "\(url.path)")
+    }
+    // Shapes that refuse, with the same error as the legacy reader.
+    let refusals: [(String, POSIXErrorCode)] = [
+      (root.appendingPathComponent("link.json").path, .EINVAL),
+      (root.appendingPathComponent("dir.json").path, .EINVAL),
+      (locked.appendingPathComponent("B.json").path, .EACCES),
+    ]
+    for (name, code) in refusals {
+      #expect(throws: POSIXError(code)) { try Self.legacyRead(name) }
+      #expect(throws: POSIXError(code)) { try HistoryCatalog.SourceVersion.read(path: name) }
+    }
+    // The control: a file that changes after its proof no longer matches.
+    let proof = try HistoryCatalog.SourceVersion.read(file)
+    try Data("changed".utf8).write(to: file)
+    #expect(try proof.stillMatches() == false)
+  }
+}

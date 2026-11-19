@@ -371,3 +371,53 @@ struct HistoryCatalogTests {
       searchableFields: [text])
   }
 }
+
+extension HistoryCatalogTests {
+  /// #4656: only sources that fail the proof check are dated and sorted. A first build fails it
+  /// for every source and still fills newest file first; an unchanged reopen projects nothing.
+  @MainActor
+  @Test("A first build projects newest files first; an unchanged reopen projects nothing and certifies")
+  func firstBuildOrderAndQuietReopen() async throws {
+    let fm = FileManager.default
+    let root = TestTemporaryDirectory.url.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    defer { try? fm.removeItem(at: root) }
+    let store = TranscriptStore(directory: root.appendingPathComponent("transcripts"))
+    let meetings = MeetingStore(root: root.appendingPathComponent("Meetings"))
+    let base = Date(timeIntervalSinceReferenceDate: 750_000_000)
+    // Created oldest first, but file dates run the other way, so the order can only come from the
+    // file dates.
+    let rows = (0..<5).map { index in
+      Transcript(text: "row \(index)", processingTime: 0, backendType: .parakeet, createdAt: base.addingTimeInterval(Double(index)))
+    }
+    for (index, row) in rows.enumerated() {
+      try store.save(row)
+      let file = root.appendingPathComponent("transcripts").appendingPathComponent("\(row.id.uuidString).json")
+      try fm.setAttributes([.modificationDate: base.addingTimeInterval(Double(100 - index))], ofItemAtPath: file.path)
+    }
+    let projected = OSAllocatedUnfairLock(initialState: [UUID]())
+    let project: @Sendable (HistoryCatalogSources.Saved) -> HistoryCatalog.Projection? = { source in
+      guard let row = source.transcript else { return nil }
+      projected.withLock { $0.append(row.id) }
+      return .init(
+        summary: .init(key: .init(tab: .dictations, id: row.id), date: row.createdAt, preview: row.text, sources: source.versions),
+        searchableFields: [row.text])
+    }
+    let folder = root.appendingPathComponent("catalog")
+    let sources = store.historyCatalogSources(meetings: meetings)
+    do {
+      let catalog = try HistoryCatalog(directory: folder, projectionContext: "en|en_US")
+      let worker = HistoryCatalogReconciliation(catalog: catalog, sources: sources, sourceRevision: { 0 }, project: project)
+      let pass = try #require(try await worker.reconcile())
+      #expect(pass.revision != nil)
+      #expect(projected.withLock { $0 } == rows.map(\.id))
+    }
+    projected.withLock { $0.removeAll() }
+    let reopened = try HistoryCatalog(directory: folder, projectionContext: "en|en_US")
+    #expect(reopened.wasCertifiedAtOpen)
+    let worker = HistoryCatalogReconciliation(catalog: reopened, sources: sources, sourceRevision: { 0 }, project: project)
+    let pass = try #require(try await worker.reconcile())
+    #expect(pass.revision != nil)
+    #expect(pass.changed == false)
+    #expect(projected.withLock { $0 }.isEmpty)
+  }
+}

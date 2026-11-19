@@ -494,6 +494,7 @@ def _comm(pid: int) -> str | None:
 
 
 LAST_SPAWN_AT = None   # mach_absolute_time() taken immediately before the last launch's spawn
+LAST_SPAWN_MONOTONIC = None   # time.monotonic() at the same moment, for drivers that wait in seconds (#4656)
 
 
 def _mach_now() -> int:
@@ -520,8 +521,9 @@ def launch(app: Path, home: Path, log: Path, *, owner_check=_default_owner_check
         raise FixtureError(f"{plan.executable} already running as {clashes}")
     with open(log, "ab") as sink:
         # Every check is done: the spawn timestamp sits immediately beside the spawn (#4586 WP-A).
-        global LAST_SPAWN_AT
+        global LAST_SPAWN_AT, LAST_SPAWN_MONOTONIC
         LAST_SPAWN_AT = _mach_now()
+        LAST_SPAWN_MONOTONIC = time.monotonic()
         process = spawn(list(plan.argv), env=plan.env, stdout=sink, stderr=sink,
                         stdin=subprocess.DEVNULL, start_new_session=True)
     return process.pid

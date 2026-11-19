@@ -14,6 +14,10 @@ def load(path):
         return None
 
 
+def secs(value):
+    return "n/a" if value is None else f"{value:.1f} s"
+
+
 def fmt(value, unit="ms"):
     return "n/a" if value is None else f"{value:.0f} {unit}" if isinstance(value, (int, float)) else str(value)
 
@@ -49,6 +53,13 @@ def main():
                          f"timed-only p50 {fmt(p.get('p50'))}, p95 {fmt(p.get('p95'))} (window → page p95 {fmt(w.get('p95'))}; results {r['results']}, "
                          f"capture late {r['capture_late']}) | {r.get('attempts', p.get('n', 0))} | 300 ms p95 | {r['budget_verdict']} | "
                          f"{conditions(r)} |")
+    lc = load(root / "main" / "launch-cost" / "report.json")
+    if lc:
+        cpu = lc.get("cpu_at_10s_s", {})
+        lines.append(f"| Launch, existing catalog: process CPU at 10 s; full History passes per launch | "
+                     f"CPU {secs(cpu.get('min'))} to {secs(cpu.get('max'))}; passes {lc.get('full_passes')}"
+                     f"{'; unmeasured ' + str(lc['unmeasured']) if lc.get('unmeasured') else ''} | {cpu.get('n', 0)} | "
+                     f"1 pass | {'PASS' if lc.get('full_passes') == [1] and not lc.get('unmeasured') else 'FAIL'} | |")
     s = load(root / "main" / "search" / "report.json")
     if s:
         o = s.get("overall", {})
