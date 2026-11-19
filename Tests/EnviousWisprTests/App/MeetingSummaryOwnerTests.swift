@@ -1464,16 +1464,29 @@ struct MeetingSummaryOwnerTests {
   @Test("a queued meeting the queue cannot run never holds summaries back")
   func unrunnableQueueDoesNotBlock() async throws {
     let harness = try MeetingCoordinatorTests.Harness()
+    let rig = try Rig()
+    rig.world.execution = .local
     var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
     try harness.store.create(record)
     record.state = .queued
     try harness.store.save(record)
+    var ready = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    try harness.store.create(ready)
+    ready.state = .ready
+    try harness.store.save(ready)
+    _ = try harness.store.setSummaryPending(true, meeting: ready.id)
     // Too little disk: the queue stops and leaves the meeting queued.
     harness.freeBytes = 10_000_000
     let coordinator = harness.coordinator
+    rig.world.localTurnCheck = { !coordinator.hasFinalPassWork }
+    coordinator.summaries = rig.makeOwner(documents: coordinator.documents)
     coordinator.launch()
     await Self.eventually("listed") { coordinator.record(id: record.id) != nil }
-    await Self.eventually("queue stopped") { !coordinator.hasFinalPassWork }
+    await Self.eventually("queue stopped") {
+      coordinator.queueWaitsForSpace && !coordinator.hasFinalPassWork
+    }
+    await Self.eventually("summary written") { rig.world.finished.count == 1 }
+    #expect(rig.world.finished == [Self.row(.written, .local)])
     #expect(coordinator.record(id: record.id)?.state == .queued)
   }
 

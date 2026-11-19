@@ -579,19 +579,47 @@ struct SnippetImportFlowModelTests {
     #expect(SnippetImportResultCopy.reviewSummary(new: 2, existing: 1, duplicates: 0) == "2 new snippets, 1 you already have.")
     #expect(SnippetImportResultCopy.reviewSummary(new: 0, existing: 0, duplicates: 0) == "Nothing to review.")
   }
+  // Measured ~1.6 s in Debug: constructs 50,000 maximal existing snippets and 5,000 maximal
+  // candidates to exercise the real 5,000-candidate ceiling.
+  @Test("5,000 maximal candidates review against 50,000 existing snippets")
+  func reviewBuildsAtCeilingFunctional() async throws {
+    let fixture = try SnippetImportReviewCeilingTests.makeCeilingFixture()
+    fixture.model.select(.paste)
+    fixture.model.begin(with: StubSource(candidates: fixture.candidates))
+    try await Self.waitForStep(fixture.model, equals: .review)
+    #expect(fixture.model.rows.count == 5_000)
+    #expect(fixture.model.rows.dropLast().allSatisfy { $0.status == .new })
+    #expect(fixture.model.rows.last?.status == .existing(trigger: fixture.matchedTrigger))
+  }
+
+  private static func waitForStep(
+    _ model: Model, equals target: Model.Step,
+    sourceLocation: SourceLocation = #_sourceLocation
+  ) async throws {
+    let signal = BoundedWait.Signal()
+    let observer = Task { @MainActor in
+      await MeetingWorkAdmission.waitUntil { model.step == target }
+      signal.fire()
+    }
+    defer { observer.cancel() }
+    try await BoundedWait.until(signal, deadline: .seconds(20), sourceLocation: sourceLocation)
+  }
 }
 
 /// Plan §3a: the review build at the ceiling, from the PRODUCTION entry point on the main
-/// actor, with a main-actor ping required to complete while it runs. Dev machine only; the
-/// bound is for THIS Mac.
+/// actor, with a main-actor ping required to complete while it runs. Millisecond wall-clock
+/// bounds are decided by load on this Mac, so this runs in `--real-boundary` (#4659).
 @MainActor
-@Suite("Snippet import review at the ceiling (#2997)", .tags(.harnessContract))
+@Suite(
+  "Snippet import review at the ceiling (#2997)",
+  .tags(.harnessContract, .realBoundary, .audioDeviceFree),
+  .realBoundaryRun)
 struct SnippetImportReviewCeilingTests {
   nonisolated static var runsOnThisMachine: Bool {
     (ProcessInfo.processInfo.environment["CI"] ?? "").isEmpty
   }
 
-  private static func maximal(_ count: Int, prefix: String) -> [String] {
+  static func maximal(_ count: Int, prefix: String) -> [String] {
     (0..<count).map {
       let head = "\(prefix)\(String(format: "%06d", $0)) "
       return head
@@ -600,21 +628,32 @@ struct SnippetImportReviewCeilingTests {
     }
   }
 
-  @Test(
-    "5,000 maximal candidates review against 50,000 existing snippets without blocking the main actor",
-    .enabled(if: SnippetImportReviewCeilingTests.runsOnThisMachine))
-  func reviewBuildsAtCeiling() async {
-    let existing = Self.maximal(50_000, prefix: "e").map { Snippet(trigger: $0, expansion: "x") }
-    let candidates = Self.maximal(SnippetImportLimits.maximumCandidates, prefix: "n").map {
+  static func makeCeilingFixture() throws -> (
+    model: SnippetImportFlowModel, candidates: [SnippetImportCandidate], matchedTrigger: String
+  ) {
+    let existing = maximal(50_000, prefix: "e").map { Snippet(trigger: $0, expansion: "x") }
+    let lastExisting = try #require(existing.last)
+    var candidates = maximal(5_000, prefix: "n").map {
       SnippetImportCandidate(trigger: $0, expansion: "x")
     }
+    candidates[candidates.count - 1] = SnippetImportCandidate(
+      trigger: lastExisting.trigger, expansion: "x")
     let model = SnippetImportFlowModel(
       dependencies: .init(
         existingSnippets: { existing }, commit: { _ in .stale },
         report: { _, _ in }, fileReviewCommitMismatch: { _, _ in }))
+    return (model, candidates, lastExisting.trigger)
+  }
+
+  @Test(
+    "5,000 maximal candidates review against 50,000 existing snippets without blocking the main actor",
+    .enabled(if: SnippetImportReviewCeilingTests.runsOnThisMachine))
+  func reviewBuildsAtCeiling() async throws {
+    let fixture = try Self.makeCeilingFixture()
+    let model = fixture.model
     model.select(.paste)
     let started = ContinuousClock.now
-    model.begin(with: SnippetImportFlowModelTests.StubSource(candidates: candidates))
+    model.begin(with: SnippetImportFlowModelTests.StubSource(candidates: fixture.candidates))
 
     // Main-actor pings must keep completing WHILE the build runs off it: each poll below is
     // itself a main-actor turn, and the longest gap between two of them is the longest the
@@ -635,8 +674,10 @@ struct SnippetImportReviewCeilingTests {
     #expect(turns >= 10, "the build must have run long enough for the pings to mean anything (\(turns) turns)")
     #expect(longestGap < .milliseconds(250), "a main-actor turn waited \(longestGap) during the build")
     print("reviewBuildsAtCeiling existing=50000 elapsed=\(elapsed)")
-    #expect(model.rows.count == SnippetImportLimits.maximumCandidates)
-    #expect(model.rows.allSatisfy { $0.status == .new })
+    #expect(model.step == .review)
+    #expect(model.rows.count == 5_000)
+    #expect(model.rows.dropLast().allSatisfy { $0.status == .new })
+    #expect(model.rows.last?.status == .existing(trigger: fixture.matchedTrigger))
     #expect(elapsed < .seconds(10))
   }
 }

@@ -163,7 +163,7 @@ struct DictationRecordingsTests {
   private func savedRow(_ rig: Rig, _ text: String = "hello") throws -> Transcript {
     let row = Transcript(text: text, createdAt: Date())
     try rig.store.save(row)
-    rig.coordinator.load()
+    rig.coordinator.append(row)
     return row
   }
 

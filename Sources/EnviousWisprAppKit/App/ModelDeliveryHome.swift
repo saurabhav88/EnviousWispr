@@ -5,6 +5,7 @@ import EnviousWisprPipeline
 import EnviousWisprServices
 @preconcurrency import FluidAudio
 import Foundation
+import os
 
 /// App-owned home for the model-delivery layer (#1348 Phase 2): owns the
 /// single `ModelDeliveryController`, the Parakeet registration built from the
@@ -570,6 +571,9 @@ final class ModelDeliveryHome {
     // Moving the Whisper pair onto the resolver is #2695's PR 2. This only
     // stops them registering when storage is already known to be unusable.
     guard !storage.isUnavailable else {
+      speakerLiveLaunchProbeTaskDone = true
+      speakerFinalLaunchProbeTaskDone = true
+      maybeFinishSpeakerLaunchProbesForTests()
       Task {
         await AppLogger.shared.log(
           "Model delivery: storage is unavailable, so Parakeet and both Whisper "
@@ -802,17 +806,20 @@ final class ModelDeliveryHome {
       let registration = try Self.speakerLiveDeliveryRegistration(
         manifestBundle: manifestBundle, appSupport: appSupportRoot)
       speakerLiveRegistration = registration
-      Task { await controller.sweepSupersededStaging(registration) }
       speakerLiveHandle = DeliveredModelHandle(
         controller: controller, registration: registration, defaults: deliveryFlagDefaults)
       let speakerHome = self
       let speakerIdentity = registration.manifest.identity
       Task {
+        defer { speakerHome.markSpeakerLiveLaunchProbeDoneForTests() }
+        await speakerHome.controller.sweepSupersededStaging(registration)
         await speakerHome.attachSpeakerLiveObserver(identity: speakerIdentity)
         await speakerHome.recordFirstRunBaseline(for: registration)
         _ = await speakerHome.controller.admitIfComplete(registration)
       }
     } catch {
+      speakerLiveLaunchProbeTaskDone = true
+      maybeFinishSpeakerLaunchProbesForTests()
       Task {
         await AppLogger.shared.log(
           "Speaker labels model manifest unavailable: live speaker labels stay off and no "
@@ -831,12 +838,15 @@ final class ModelDeliveryHome {
       speakerFinalHandle = DeliveredModelHandle(
         controller: controller, registration: registration, defaults: deliveryFlagDefaults)
       Task {
+        defer { self.markSpeakerFinalLaunchProbeDoneForTests() }
         await controller.sweepSupersededStaging(registration)
         await self.attachSpeakerLiveObserver(identity: registration.manifest.identity, finished: true)
         await self.recordFirstRunBaseline(for: registration)
         _ = await controller.admitIfComplete(registration)
       }
     } catch {
+      speakerFinalLaunchProbeTaskDone = true
+      maybeFinishSpeakerLaunchProbesForTests()
       Task {
         await AppLogger.shared.log(
           "Finished-call speaker model manifest unavailable; existing speaker analysis remains available",
@@ -1641,8 +1651,37 @@ final class ModelDeliveryHome {
   /// `lastAppliedPreviewStateSeq` gives.
   private(set) var speakerLiveState: DeliveryState = .notReady
   private var lastAppliedSpeakerLiveStateSeq: UInt64 = 0
+  private let publishedSpeakerLiveSeq = OSAllocatedUnfairLock<UInt64>(initialState: 0)
   private(set) var speakerFinalState: DeliveryState = .notReady
   private var lastAppliedSpeakerFinalStateSeq: UInt64 = 0
+  private let publishedSpeakerFinalSeq = OSAllocatedUnfairLock<UInt64>(initialState: 0)
+  private var speakerLiveLaunchProbeTaskDone = false
+  private var speakerFinalLaunchProbeTaskDone = false
+  package private(set) var speakerLaunchProbesDidFinishForTests = false
+  var onSpeakerLaunchProbesFinished: (@MainActor () -> Void)? {
+    didSet { if speakerLaunchProbesDidFinishForTests { onSpeakerLaunchProbesFinished?() } }
+  }
+
+  private func markSpeakerLiveLaunchProbeDoneForTests() {
+    speakerLiveLaunchProbeTaskDone = true
+    maybeFinishSpeakerLaunchProbesForTests()
+  }
+
+  private func markSpeakerFinalLaunchProbeDoneForTests() {
+    speakerFinalLaunchProbeTaskDone = true
+    maybeFinishSpeakerLaunchProbesForTests()
+  }
+
+  private func maybeFinishSpeakerLaunchProbesForTests() {
+    guard !speakerLaunchProbesDidFinishForTests,
+      speakerLiveLaunchProbeTaskDone,
+      speakerFinalLaunchProbeTaskDone,
+      lastAppliedSpeakerLiveStateSeq >= publishedSpeakerLiveSeq.withLock({ $0 }),
+      lastAppliedSpeakerFinalStateSeq >= publishedSpeakerFinalSeq.withLock({ $0 })
+    else { return }
+    speakerLaunchProbesDidFinishForTests = true
+    onSpeakerLaunchProbesFinished?()
+  }
 
   /// The download size the card shows, from the bundled manifest.
   var speakerLiveDownloadBytes: Int64? {
@@ -1662,16 +1701,23 @@ final class ModelDeliveryHome {
     await controller.addStateObserver { observedIdentity, state in
       guard observedIdentity == identity else { return }
       let seq = sequencer.next()
+      if finished {
+        home.publishedSpeakerFinalSeq.withLock { $0 = max($0, seq) }
+      } else {
+        home.publishedSpeakerLiveSeq.withLock { $0 = max($0, seq) }
+      }
       Task { @MainActor in
         if finished {
           guard seq > home.lastAppliedSpeakerFinalStateSeq else { return }
           home.lastAppliedSpeakerFinalStateSeq = seq
           home.applySpeakerFinalState(state)
+          home.maybeFinishSpeakerLaunchProbesForTests()
           return
         }
         guard seq > home.lastAppliedSpeakerLiveStateSeq else { return }
         home.lastAppliedSpeakerLiveStateSeq = seq
         home.applySpeakerLiveState(state)
+        home.maybeFinishSpeakerLaunchProbesForTests()
       }
     }
   }

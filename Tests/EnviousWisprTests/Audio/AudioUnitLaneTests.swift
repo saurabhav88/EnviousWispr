@@ -87,9 +87,27 @@ struct AudioUnitLaneTests {
 
   /// Hook and work recorder.
   final class Log: Sendable {
-    private let entries = OSAllocatedUnfairLock(initialState: [String]())
-    func add(_ entry: String) { entries.withLock { $0.append(entry) } }
-    var all: [String] { entries.withLock { $0 } }
+    private let state = OSAllocatedUnfairLock(
+      initialState: (entries: [String](), waiters: [(String, Signal)]()))
+    func add(_ entry: String) {
+      let ready = state.withLock { state -> [Signal] in
+        state.entries.append(entry)
+        let matched = state.waiters.filter { $0.0 == entry }.map(\.1)
+        state.waiters.removeAll { $0.0 == entry }
+        return matched
+      }
+      for signal in ready { signal.fire() }
+    }
+    func waitFor(_ entry: String) async -> Bool {
+      let signal = Signal()
+      let already = state.withLock { state -> Bool in
+        if state.entries.contains(entry) { return true }
+        state.waiters.append((entry, signal))
+        return false
+      }
+      return already ? true : await signal.wait()
+    }
+    var all: [String] { state.withLock { $0.entries } }
     func count(_ prefix: String) -> Int { all.filter { $0.hasPrefix(prefix) }.count }
   }
 
@@ -174,6 +192,8 @@ struct AudioUnitLaneTests {
       Issue.record("both healthy jobs must return values")
       return
     }
+    #expect(await log.waitFor("completed:probe"))
+    #expect(await log.waitFor("completed:route"))
     #expect(two == 2)
     #expect(
       log.all.filter { $0.hasPrefix("completed:") } == ["completed:probe", "completed:route"])
