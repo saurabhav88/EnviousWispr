@@ -614,6 +614,7 @@ final class CallSourceDiscovery {
     case .unknown:
       switch value.startEvidence {
       case .call(let family, let room), .microphoneOnly(let family, let room): call = (family, room)
+      case .inconclusiveTeamsPreview(let room): call = (.teams, room)
       case .none, .unknown: return nil
       }
     }
@@ -937,7 +938,7 @@ final class CallSourceDiscovery {
       case .browser:
         switch frame.values[holder.pid] {
         case .call(let pageFamily, _)?: family = pageFamily
-        case .unknown?, nil:
+        case .unknown?, .inconclusiveTeamsPreview?, nil:
           undecided = true
           continue
         case .none?, .microphoneOnly?: continue

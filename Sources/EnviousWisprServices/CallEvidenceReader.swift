@@ -15,6 +15,8 @@ public enum CallEvidenceReader {
     case call(family: CallAppFamily, room: String)
     /// Calling-app microphone activity without independent call proof; eligible only for Ask.
     case microphoneOnly(family: CallAppFamily, room: String)
+    /// A readable focused Teams guest preview whose other window reads remain inconclusive.
+    case inconclusiveTeamsPreview(room: String)
     case none
     case unknown
   }
@@ -208,6 +210,8 @@ public enum CallEvidenceReader {
         if requiresJoinedTeamsGuest(rule: rule, family: family, room: room) {
           return .init(startEvidence: .unknown)
         }
+      case .inconclusiveTeamsPreview:
+        return .init(startEvidence: .unknown)
       case .none, .unknown: break
       }
       return .init(startEvidence: value.startEvidence)
@@ -929,6 +933,9 @@ public enum CallEvidenceReader {
     if case .call = focused.startEvidence { return focused }
 
     let joined = teamsGuestWindowEvidence(app, rule: rule, until: deadline, access: access)
+    if joined == .unknown, case .microphoneOnly(.teams, let room) = focused.startEvidence {
+      return .init(startEvidence: .inconclusiveTeamsPreview(room: room))
+    }
     return joined == .none ? focused : .init(startEvidence: joined)
   }
 
@@ -953,11 +960,11 @@ public enum CallEvidenceReader {
     guard let address else { return .init(startEvidence: walk.complete ? .none : .unknown) }
     guard let match = CallMeetingURL.classify(address) else { return .init(startEvidence: .none) }
     if let rule, requiresJoinedTeamsGuest(rule: rule, family: match.family, room: match.room) {
-      // The focused page can identify an Ask. The same window checks proves every automatic
-      // Teams guest start, including one found in the focused window.
-      guard let page = walk.webArea, sameRoom(page, match: match, until: deadline, access: access)
-      else { return .init(startEvidence: .unknown) }
-      return .init(startEvidence: .microphoneOnly(family: match.family, room: match.room))
+      // A focused preview can offer Ask. The complete window check proves automatic starts.
+      guard let page = walk.webArea else { return .init(startEvidence: .unknown) }
+      let evidence = teamsGuestEvidence(in: page, match: match, until: deadline, access: access)
+      guard case .microphoneOnly = evidence else { return .init(startEvidence: .unknown) }
+      return .init(startEvidence: evidence)
     }
     let start = Evidence.call(family: match.family, room: match.room)
     // A document fallback has no web-area scope, so it cannot authorize a window-wide state scan.

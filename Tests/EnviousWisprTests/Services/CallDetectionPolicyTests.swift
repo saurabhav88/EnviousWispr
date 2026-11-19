@@ -2552,6 +2552,11 @@ struct CallDetectionPolicyTests {
     story.read([first, helper, inconclusive])
     #expect(story.lastStart == nil)
 
+    let preview = Policy.Holder(pid: second.pid, rule: second.rule, input: .active,
+      evidence: .inconclusiveTeamsPreview(room: "teams.live.com/light-meetings/launch?p=second"))
+    story.read([first, helper, preview])
+    #expect(story.lastStart == nil)
+
     story.read([first, helper])
     _ = try #require(story.lastStart)
     story.meeting = .busy

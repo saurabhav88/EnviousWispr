@@ -549,9 +549,11 @@ final class CallDetectionCoordinator {
   }
 
   /// Asked by the meeting start after each of its waits (review r4 F1, r12 F1).
-  func detectedStartStillWanted() -> Bool {
-    let current = context()
-    return policy.isStartWanted(current)
+  func detectedStartStillWanted() async -> Bool {
+    guard policy.isStartWanted(context()) else { return false }
+    guard let target = policy.automaticGuestStartRefreshTarget() else { return true }
+    await refreshNow(refreshRequest(target))
+    return policy.isCurrent(target) && policy.isStartWanted(context())
   }
 
   // MARK: - Panel

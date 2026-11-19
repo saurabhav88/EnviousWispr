@@ -567,8 +567,23 @@ public struct CallDetectionPolicy: Sendable {
   }
 
   package func refreshTarget(operation: Int) -> RefreshTarget? {
-    guard case .switchTo(let episode, _, _) = operations[operation] else { return nil }
-    return refreshTarget(episode: episode, reference: .operation(operation))
+    switch operations[operation] {
+    case .switchTo(let episode, _, _):
+      return refreshTarget(episode: episode, reference: .operation(operation))
+    case .start(let episode, _, true) where startingOperation == operation:
+      guard let target = refreshTarget(episode: episode, reference: .operation(operation)),
+        CallEvidenceReader.requiresJoinedTeamsGuest(
+          rule: target.rule, family: target.family, room: target.room)
+      else { return nil }
+      return target
+    default: return nil
+    }
+  }
+
+  package func automaticGuestStartRefreshTarget() -> RefreshTarget? {
+    guard let operation = startingOperation, case .start(_, _, true) = operations[operation]
+    else { return nil }
+    return refreshTarget(operation: operation)
   }
 
   package func isCurrent(_ target: RefreshTarget) -> Bool {
@@ -1078,6 +1093,7 @@ public struct CallDetectionPolicy: Sendable {
     switch evidence {
     case .call(let family, let room): return (family, room)
     case .microphoneOnly(let family, let room): return mode == .ask ? (family, room) : nil
+    case .inconclusiveTeamsPreview(let room): return mode == .ask ? (.teams, room) : nil
     case .none, .unknown: return nil
     }
   }
@@ -1123,11 +1139,14 @@ public struct CallDetectionPolicy: Sendable {
     return reading.holders.allSatisfy { holder in
       guard holder.input == .active, CallEvidenceReader.readsTeamsGuestJoin(in: holder.rule)
       else { return true }
-      guard let evidence = holder.evidence, evidence != .unknown else { return false }
-      guard case .call(let family, let room) = evidence,
-        CallEvidenceReader.requiresJoinedTeamsGuest(rule: holder.rule, family: family, room: room)
-      else { return true }
-      return room == episode.room && attribution(for: holder, c).1?.owner == owner
+      switch holder.evidence {
+      case nil, .unknown?, .inconclusiveTeamsPreview?: return false
+      case .call(let family, let room)?:
+        guard CallEvidenceReader.requiresJoinedTeamsGuest(rule: holder.rule, family: family, room: room)
+        else { return true }
+        return room == episode.room && attribution(for: holder, c).1?.owner == owner
+      case .none?, .microphoneOnly?: return true
+      }
     }
   }
 

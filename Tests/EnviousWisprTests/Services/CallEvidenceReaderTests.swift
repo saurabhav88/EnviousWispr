@@ -547,6 +547,23 @@ struct CallEvidenceReaderTests {
     #expect(joined.owner?.pid == fixture.pid)
   }
 
+  @Test("A readable focused Teams preview can offer Ask while another window is inconclusive",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4094"))
+  func teamsPreviewCanAskDespiteInconclusiveSibling() {
+    let fixture = Fixture()
+    let unreadable = AXUIElementCreateApplication(71_121)
+    fixture.ownerBundle = "com.brave.Browser"
+    fixture.pageURL = "https://teams.live.com/light-meetings/launch?p=fixture-room"
+    fixture.windows = [fixture.window, unreadable]
+    fixture.response = { _, node, attribute in
+      CFEqual(node, unreadable) && attribute == "AXRole" ? .failed : nil
+    }
+
+    let preview = Reader.snapshot(for: .browser(.brave), holderPID: fixture.pid, access: fixture.access)
+    #expect(preview.startEvidence == .inconclusiveTeamsPreview(
+      room: "teams.live.com/light-meetings/launch?p=fixture-room"))
+  }
+
   @Test("A Chrome Teams guest read loses start proof when the browser run changes",
     .bug("https://github.com/saurabhav88/EnviousWispr/issues/4094"))
   func teamsGuestJoinedEvidenceRejectsReplacedOwner() {
