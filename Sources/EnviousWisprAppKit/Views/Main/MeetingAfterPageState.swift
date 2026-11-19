@@ -11,9 +11,9 @@ import Observation
 
 @MainActor @Observable
 final class MeetingPagePlayer {
-  var player: MeetingPlaybackController?
-  var source: MeetingPlaybackSource?
-  var retainedRate: Float = 1
+  private(set) var player: MeetingPlaybackController?
+  private var source: MeetingPlaybackSource?
+  private var retainedRate: Float = 1
 
   /// Keeps a player only for the meeting's current playable source: the same source keeps it
   /// (and its place), a changed inventory or length replaces it, and no source drops it.
@@ -135,4 +135,65 @@ final class MeetingPageCommands {
   var actionInFlight = false
   var saveError: String?
   var notice: Notice?
+
+  /// Delete recording, keep text or Delete meeting for the page's meeting. `isCurrent` is the
+  /// page's generation check: a result that arrives after the page moved on writes nothing.
+  func delete(
+    _ kind: HistoryMeetingAfterView.Confirmation, meetingID: UUID, meetings: MeetingCoordinator,
+    transcripts: TranscriptCoordinator, player: MeetingPagePlayer,
+    isCurrent: @escaping @MainActor () -> Bool
+  ) {
+    confirming = nil
+    // A meeting whose folder is gone deletes from `MeetingOrphanPage`.
+    guard !actionInFlight, meetings.record(id: meetingID) != nil else { return }
+    // Playback stops before any file of this meeting is touched.
+    player.drop()
+    actionInFlight = true
+    notice = nil
+    let scope: HistoryDeleteKind = kind == .deleteAudio ? .recordingsOnly : .textAndRecordings
+    Task {
+      let outcome = await transcripts.deleteHistoryItem(id: .meeting(meetingID), kind: scope)
+      guard isCurrent() else { return }
+      actionInFlight = false
+      // A refused or unsaved deletion leaves the audio: bring its player back.
+      player.reconcile(
+        to: meetings.playbackSource(meetingID: meetingID), meetingID: meetingID,
+        arbiter: { meetings.playbackArbiter })
+      if HistoryDictationPresentation.deletionFailed(outcome) {
+        notice = Notice(
+          text: kind == .deleteAudio
+            ? String(
+              localized: "The recording couldn't be deleted. Try again.",
+              comment: "History meeting: Delete recording, keep text failed.")
+            : String(
+              localized: "The meeting couldn't be deleted. Try again.",
+              comment: "History meeting: Delete meeting failed."),
+          isError: true, retry: kind)
+      }
+    }
+  }
+
+  /// Transcribe again with the chosen engine; `isCurrent` as for `delete`.
+  func transcribeAgain(
+    _ engine: MeetingEngineChoice, meetingID: UUID, meetings: MeetingCoordinator,
+    isCurrent: @escaping @MainActor () -> Bool
+  ) {
+    guard !actionInFlight, meetings.record(id: meetingID) != nil else { return }
+    actionInFlight = true
+    notice = nil
+    let coordinator = meetings
+    let id = meetingID
+    Task {
+      let started = await coordinator.transcribeAgain(meetingID: id, engine: engine)
+      guard isCurrent() else { return }
+      actionInFlight = false
+      if !started {
+        notice = Notice(
+          text: String(
+            localized: "Transcribe again couldn't start. Try again in a moment.",
+            comment: "History meeting: Transcribe again with was refused."),
+          isError: true)
+      }
+    }
+  }
 }

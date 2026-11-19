@@ -1055,76 +1055,23 @@ struct HistoryMeetingAfterView: View {
   private func deliveryText(
     mode: FileImportCoordinator.DocumentView? = nil, includeTimes: Bool? = nil
   ) -> String? {
-    guard let row = deliveryRow() else { return nil }
-    return MeetingHistoryPresentation.deliveryText(
-      row, projection: transcripts.meetingPresenter.meetingProjection(of: row),
-      timesOn: includeTimes ?? timesOn, mode: mode ?? transcriptMode)
-  }
-
-  /// The row whose words are delivered now: the committed row of a meeting EnviousMeet holds
-  /// (nothing while it is being deleted), else the row of a meeting whose folder is gone.
-  private func deliveryRow() -> Transcript? {
-    if let record = meetings.record(id: meetingID) {
-      guard !record.deletionRequested, record.committedTranscriptGeneration != nil else {
-        return nil
-      }
-      return transcripts.verifiedRowForDelivery(id: record.transcriptID)
-    }
-    guard let orphanRow else { return nil }
-    return transcripts.verifiedRowForDelivery(id: orphanRow.id)
+    MeetingExport.deliveryText(
+      meetingID: meetingID, meetings: meetings, transcripts: transcripts,
+      orphanRow: { orphanRow }, timesOn: { includeTimes ?? timesOn },
+      mode: { mode ?? transcriptMode })
   }
 
   private func perform(_ kind: Confirmation) {
-    commands.confirming = nil
-    // A meeting whose folder is gone deletes from `MeetingOrphanPage`.
-    guard !commands.actionInFlight, meetings.record(id: meetingID) != nil else { return }
-    // Playback stops before any file of this meeting is touched.
-    pagePlayer.drop()
-    commands.actionInFlight = true
-    commands.notice = nil
-    let scope: HistoryDeleteKind = kind == .deleteAudio ? .recordingsOnly : .textAndRecordings
     let shown = presentation
-    Task {
-      let outcome = await transcripts.deleteHistoryItem(id: .meeting(meetingID), kind: scope)
-      guard shown == presentation else { return }
-      commands.actionInFlight = false
-      // A refused or unsaved deletion leaves the audio: bring its player back.
-      pagePlayer.reconcile(
-        to: meetings.playbackSource(meetingID: meetingID), meetingID: meetingID,
-        arbiter: { meetings.playbackArbiter })
-      if HistoryDictationPresentation.deletionFailed(outcome) {
-        commands.notice = MeetingPageCommands.Notice(
-          text: kind == .deleteAudio
-            ? String(
-              localized: "The recording couldn't be deleted. Try again.",
-              comment: "History meeting: Delete recording, keep text failed.")
-            : String(
-              localized: "The meeting couldn't be deleted. Try again.",
-              comment: "History meeting: Delete meeting failed."),
-          isError: true, retry: kind)
-      }
-    }
+    commands.delete(
+      kind, meetingID: meetingID, meetings: meetings, transcripts: transcripts,
+      player: pagePlayer, isCurrent: { shown == presentation })
   }
 
   private func transcribeAgain(_ engine: MeetingEngineChoice) {
-    guard !commands.actionInFlight, meetings.record(id: meetingID) != nil else { return }
-    commands.actionInFlight = true
-    commands.notice = nil
-    let coordinator = meetings
-    let id = meetingID
     let shown = presentation
-    Task {
-      let started = await coordinator.transcribeAgain(meetingID: id, engine: engine)
-      guard shown == presentation else { return }
-      commands.actionInFlight = false
-      if !started {
-        commands.notice = MeetingPageCommands.Notice(
-          text: String(
-            localized: "Transcribe again couldn't start. Try again in a moment.",
-            comment: "History meeting: Transcribe again with was refused."),
-          isError: true)
-      }
-    }
+    commands.transcribeAgain(
+      engine, meetingID: meetingID, meetings: meetings, isCurrent: { shown == presentation })
   }
 
   private func pasteTapped() {
@@ -1149,27 +1096,18 @@ struct HistoryMeetingAfterView: View {
 
   /// The document is read AFTER the panel closes, so a meeting deleted meanwhile saves nothing.
   private func save(defaultName: String) {
-    guard let row = deliveryRow() else { return }
+    guard
+      let row = MeetingExport.deliveryRow(
+        meetingID: meetingID, meetings: meetings, transcripts: transcripts,
+        orphanRow: { orphanRow })
+    else { return }
     let rowID = row.id
     HistoryDelivery.save(
       defaultName: defaultName,
       document: {
-        switch await MeetingExport.document(
+        await MeetingExport.saveDocument(
           meetingID: meetingID, rowID: rowID, documents: meetings.documents,
           transcripts: transcripts, mode: transcriptMode, timesOn: timesOn)
-        {
-        case .document(let document):
-          return .text(document)
-        case .notesUnreadable:
-          return .refused(
-            String(
-              localized: "Your notes could not be read, so nothing was saved. Try again.",
-              comment:
-                "History, a meeting: Save stopped because the meeting's notes file could not be read."
-            ))
-        case .nothingToDeliver:
-          return .nothing
-        }
       },
       onError: { commands.saveError = $0 })
   }
