@@ -7,7 +7,7 @@ import Observation
 
 /// Manages transcript history state, search, and persistence.
 @MainActor @Observable
-final class TranscriptCoordinator {
+final class TranscriptCoordinator: HistoryExpiryPulseWriter {
   /// The unfiltered store, PRIVATE (#2087).
   ///
   /// Read-time expiry only works if consumers honour it, and every consumer
@@ -75,7 +75,7 @@ final class TranscriptCoordinator {
     guard !removedRowIDs.contains(id) else { return nil }
     let row = try await transactionExecutor.readHistoryRow(id: id, now: clock())
     try Task.checkCancellation()
-    guard !removedRowIDs.contains(id), let row, Self.isVisible(row, at: clock()) else { return nil }
+    guard !removedRowIDs.contains(id), let row, HistoryRowVisibility.isVisible(row, at: clock()) else { return nil }
     return row
   }
 
@@ -94,7 +94,7 @@ final class TranscriptCoordinator {
     }
     let payload = await reader.value
     detailCache.finishRead(id, revision: revision, reader)
-    guard !Task.isCancelled, let payload, Self.isVisible(payload.row, at: clock()),
+    guard !Task.isCancelled, let payload, HistoryRowVisibility.isVisible(payload.row, at: clock()),
       !removedRowIDs.contains(id), stillCurrent(id, proof: payload.versions)
     else { return nil }
     detailCache.store(id, row: payload.row, proof: payload.versions, version: source)
@@ -438,7 +438,7 @@ final class TranscriptCoordinator {
   func canRenderHistoryItem(_ item: HistoryListItem) -> Bool {
     switch item {
     case .transcript(let row):
-      return Self.isVisible(row, at: clock())
+      return HistoryRowVisibility.isVisible(row, at: clock())
     case .meeting(let meeting):
       if let record = historyMeetingRecord(meeting.meetingID) {
         return !record.deletionRequested
@@ -482,17 +482,9 @@ final class TranscriptCoordinator {
     return []
   }
 
-  /// Re-render pulse for pending Escape Recovery rows (#2087).
-  ///
-  /// This type has no clock, and Observation redraws on a STATE change — a
-  /// remaining-time computed from `Date()` is not one. Without a pulse a row
-  /// would keep showing whatever it said when something else last mutated
-  /// state, and an expired row would stay on screen until an unrelated edit
-  /// happened to refresh it. Reading this in a view is what subscribes it.
-  ///
-  /// Only runs while a live pending row exists, so the ordinary case — feature
-  /// off, or no recovery held — has no timer at all.
-  private(set) var expiryPulse: Int = 0
+  /// The Escape Recovery redraw pulse and its follow-up sweep (#2087), its own owner since
+  /// #4586 N6.
+  @ObservationIgnored let expiry: HistoryExpiryPulse
 
   @ObservationIgnored private let transactionExecutor: HistoryTransactionExecutor
   /// #3147: saved dictation recordings, changed only through this coordinator's command queue.
@@ -507,8 +499,6 @@ final class TranscriptCoordinator {
   #endif
 
   var diskReconcilerForTesting: HistoryDiskReconciler { diskReconciler }
-  private let pendingPulseInterval: Duration
-  private let pendingPulseSleep: @Sendable (Duration) async -> Void
 
   /// Escape Recovery telemetry emitters, injected (#2087).
   ///
@@ -572,7 +562,6 @@ final class TranscriptCoordinator {
   private(set) var historyReadFinished = false
   enum HistoryReadAvailability { case loading, ready, unavailable }
   private(set) var historyReadAvailability: HistoryReadAvailability = .loading
-  private var pulseTask: Task<Void, Never>?
 
   /// Rows that are still OFFERED, at read time (#2087).
   ///
@@ -589,9 +578,9 @@ final class TranscriptCoordinator {
     // every consumer of this list a subscriber to the pulse automatically,
     // instead of relying on each view to remember to read a counter whose
     // relevance is not obvious from its name.
-    _ = expiryPulse
+    _ = expiry.expiryPulse
     let now = clock()
-    return transcripts.filter { Self.isVisible($0, at: now) }
+    return transcripts.filter { HistoryRowVisibility.isVisible($0, at: now) }
   }
 
   /// The time the list, its counts and row visibility are judged at; tests set it to step
@@ -641,7 +630,7 @@ final class TranscriptCoordinator {
   /// The key `tab`'s list is read under now: the request plus the catalog content revision.
   func historyQueryKey(for tab: HistoryTab, state: HistoryTabState) -> HistoryQueryKey {
     HistoryQueryKey(
-      revision: Int(truncatingIfNeeded: catalogSession?.revision ?? 0), pulse: expiryPulse,
+      revision: Int(truncatingIfNeeded: catalogSession?.revision ?? 0), pulse: expiry.expiryPulse,
       context: HistoryPaging.Context(tab: tab, state: state),
       echoShown: tab == .meetings ? echoShownRowIDs : [], locale: Locale.current.identifier,
       localizations: Bundle.main.preferredLocalizations, calendar: .current,
@@ -722,11 +711,11 @@ final class TranscriptCoordinator {
   /// How many dictations exist: every completed row that is not an import, whatever the
   /// filter shows. Onboarding's success detector reads this one.
   var dictationCount: Int {
-    _ = expiryPulse
+    _ = expiry.expiryPulse
     let now = Date()
     // #3972 R5: a meeting finishing during a practice take is not something the user dictated.
     return transcripts.filter {
-      Self.isVisible($0, at: now) && $0.escapeRecoveredAt == nil && !$0.isImported
+      HistoryRowVisibility.isVisible($0, at: now) && $0.escapeRecoveredAt == nil && !$0.isImported
         && !$0.isMeeting
     }.count
   }
@@ -744,12 +733,12 @@ final class TranscriptCoordinator {
     // #4001: the view reads this on every redraw (the Delete All button and its confirmation
     // text), so it reads the row index instead of scanning every row: every row is visible
     // except the held rows whose time has run out.
-    _ = expiryPulse
+    _ = expiry.expiryPulse
     let now = clock()
     let index = rowIndex
     var visibleCount = transcripts.count
     var meetingRowCounts = index.meetingRowCounts
-    for i in index.pending where !Self.isVisible(transcripts[i], at: now) {
+    for i in index.pending where !HistoryRowVisibility.isVisible(transcripts[i], at: now) {
       visibleCount -= 1
       if let meetingID = transcripts[i].meetingID { meetingRowCounts[meetingID]? -= 1 }
     }
@@ -830,28 +819,13 @@ final class TranscriptCoordinator {
 
   private func countPending(at now: Date, visible: Bool) -> Int {
     if let index = rowIndexCache, index.revision == transcriptsRevision {
-      return index.pending.count(where: { Self.isVisible(transcripts[$0], at: now) == visible })
+      return index.pending.count(where: { HistoryRowVisibility.isVisible(transcripts[$0], at: now) == visible })
     }
     return transcripts.count(where: {
-      $0.escapeRecoveredAt != nil && Self.isVisible($0, at: now) == visible
+      $0.escapeRecoveredAt != nil && HistoryRowVisibility.isVisible($0, at: now) == visible
     })
   }
 
-
-  /// A held row is visible only while `PendingAdmission` calls it live.
-  /// Permanent rows carry no stamp and are always visible.
-  ///
-  /// Asked through the shared authority rather than re-derived, for the reason
-  /// that type's own documentation gives: two copies of the retention
-  /// comparison diverge the moment one side gains a condition the other lacks.
-  /// An earlier version of this method compared elapsed time directly and so
-  /// omitted future-skew rejection — a clock-skewed stamp would have stayed
-  /// visible in History indefinitely while the store refused to return it,
-  /// recreating precisely the divergence chunk 5 existed to remove.
-  private nonisolated static func isVisible(_ transcript: Transcript, at now: Date) -> Bool {
-    guard let stamped = transcript.escapeRecoveredAt else { return true }
-    return PendingAdmission.verdict(stampedAt: stamped, now: now) == .live
-  }
 
   /// - Parameters:
   ///   - pendingPulseInterval: how often a held row's countdown and expiry are
@@ -897,8 +871,9 @@ final class TranscriptCoordinator {
     }
     self.diskReconciler = HistoryDiskReconciler(
       store: store, transactionExecutor: transactionExecutor)
-    self.pendingPulseInterval = pendingPulseInterval
-    self.pendingPulseSleep = pendingPulseSleep ?? { try? await Task.sleep(for: $0) }
+    self.expiry = HistoryExpiryPulse(
+      pendingPulseInterval: pendingPulseInterval,
+      pendingPulseSleep: pendingPulseSleep ?? { try? await Task.sleep(for: $0) })
     self.emitEscapeRecoveryKept =
       emitEscapeRecoveryKept
       ?? { ageMs, takeID in
@@ -921,6 +896,7 @@ final class TranscriptCoordinator {
     // Held payloads and the latest dictation (Paste Last) stay past the cache limit.
     detailCache.keeps = { [weak self] id in id == self?.catalogSession?.latestDictation }
     detailCache.payloadsDropped = { [weak self] in self?.pruneMeetingDocuments(force: true) }
+    expiry.writer = self
   }
 
   /// Report that a HELD recovery was pasted from History (#2087).
@@ -938,7 +914,7 @@ final class TranscriptCoordinator {
     guard
       let stampedAt = transcript.escapeRecoveredAt,
       let takeID = transcript.escapeRecoveryTakeID,
-      Self.isVisible(transcript, at: Date())
+      HistoryRowVisibility.isVisible(transcript, at: Date())
     else { return }
     emitEscapeRecoveryRestoredFromHistory(
       Int(Date().timeIntervalSince(stampedAt) * 1000), takeID)
@@ -998,7 +974,7 @@ final class TranscriptCoordinator {
       // line, and it would be evicted on the strength of a disagreement between
       // two clocks rather than a fact about the disk.
       if swept.walkComplete, swept.unremovable == 0 {
-        transcripts.removeAll { $0.escapeRecoveredAt != nil && !Self.isVisible($0, at: now) }
+        transcripts.removeAll { $0.escapeRecoveredAt != nil && !HistoryRowVisibility.isVisible($0, at: now) }
       }
       for row in swept.expired {
         guard let takeID = row.takeID else { continue }
@@ -1013,7 +989,7 @@ final class TranscriptCoordinator {
       // any other way could learn that a file resisted removal — or that it
       // could not look at all — and then have nothing scheduled to try again.
       // Idempotent: from inside the pulse's own loop the task already exists.
-      startPulseIfNeeded()
+      expiry.startPulseIfNeeded()
     } catch {
       // A sweep that THREW measured nothing, so it must not read as a finished
       // one — same reasoning as an unreadable directory, one layer out.
@@ -1022,7 +998,7 @@ final class TranscriptCoordinator {
       // after a newer walk succeeded would mark the directory unread when it had
       // just been read. `startPulseIfNeeded` below is unconditional, so a genuine
       // failure still leaves a retry armed either way.
-      startPulseIfNeeded()
+      expiry.startPulseIfNeeded()
       // History is a limb, not the heart. A failed sweep leaves rows the
       // read-time filter already hides.
       Task {
@@ -1033,11 +1009,6 @@ final class TranscriptCoordinator {
       }
     }
   }
-
-  // No `deinit` teardown: `deinit` is nonisolated and cannot touch main-actor
-  // state, and none is needed — the loop holds `self` weakly, so once this
-  // object goes away the next wake finds nothing and returns. Nothing is
-  // retained in the meantime.
 
   func loadIfNeeded() {
     diskReconciler.loadIfNeeded(effects: readEffects)
@@ -1054,7 +1025,7 @@ final class TranscriptCoordinator {
         removedRowIDs.formUnion(removedIDs)
         transcripts = rows
       },
-      didApplyRead: { [self] in startPulseIfNeeded() },
+      didApplyRead: { [self] in expiry.startPulseIfNeeded() },
       sweepBeforeRead: { [self] in await sweepExpiredPending() },
       didStartRead: { [self] in
         if historyReadAvailability == .unavailable { historyReadAvailability = .loading }
@@ -1081,7 +1052,7 @@ final class TranscriptCoordinator {
     // this the pulse would only ever start at launch, so a recovery held during
     // a session would show a countdown frozen at the value it had when the row
     // appeared. No-op for an ordinary dictation, which carries no stamp.
-    startPulseIfNeeded()
+    expiry.startPulseIfNeeded()
   }
 
 
@@ -1126,7 +1097,7 @@ final class TranscriptCoordinator {
       insertByDate(transcript)
     }
     publishedImportProofs[transcript.id] = proof
-    startPulseIfNeeded()
+    expiry.startPulseIfNeeded()
     return true
   }
 
@@ -1207,7 +1178,7 @@ final class TranscriptCoordinator {
     } else {
       insertByDate(transcript)
     }
-    startPulseIfNeeded()
+    expiry.startPulseIfNeeded()
     return pending?.committed(.written)
   }
 
@@ -1360,15 +1331,15 @@ final class TranscriptCoordinator {
     }
     guard let catalogSession else { return live }
     _ = catalogSession.revision
-    _ = expiryPulse
+    _ = expiry.expiryPulse
     guard !removedRowIDs.contains(id) else { return nil }
     let source = catalogSession.stableSourceRevision
-    if let live, Self.isVisible(live, at: clock()),
+    if let live, HistoryRowVisibility.isVisible(live, at: clock()),
       (source != nil && liveRowVersions[id] == source) || stillCurrent(id, proof: publishedImportProofs[id])
     { return live }
     // Reading the entry's row subscribes a view to this row's entry only (#4586 H2).
     let entry = detailCache.entry(id)
-    guard let detail = entry.row, Self.isVisible(detail, at: clock()),
+    guard let detail = entry.row, HistoryRowVisibility.isVisible(detail, at: clock()),
       (source != nil && entry.version == source) || stillCurrent(id, proof: entry.proof)
     else { return nil }
     return detail
@@ -1387,7 +1358,7 @@ final class TranscriptCoordinator {
       expected.contains(where: { !$0.fingerprint.isEmpty }) else { return nil }
     let entry = detailCache.entry(id)
     if entry.proof == expected, let row = entry.row,
-      Self.isVisible(row, at: clock()) { return row }
+      HistoryRowVisibility.isVisible(row, at: clock()) { return row }
     guard fetchIfNeeded else { return nil }
     return try? readSavedHistoryRow(id, clock())
   }
@@ -1562,7 +1533,7 @@ final class TranscriptCoordinator {
   /// Imports, meetings and held Escape-recovery rows have no preference.
   private func acceptsHistoryPreference(_ row: Transcript) -> Bool {
     !row.isImported && !row.isMeeting && row.escapeRecoveredAt == nil
-      && Self.isVisible(row, at: clock())
+      && HistoryRowVisibility.isVisible(row, at: clock())
   }
 
   /// Sets which text History shows and delivers for dictation `rowID` (Restore original text,
@@ -1897,7 +1868,7 @@ final class TranscriptCoordinator {
   /// (#4609): read from disk when no payload is cached, so an older card never needs a hydrated
   /// detail. Nil when the row is gone, changed out from under History, or not visible.
   func liveHistoryRow(id: UUID) -> Transcript? {
-    guard let row = verifiedRowForDelivery(id: id, fetchIfNeeded: true), Self.isVisible(row, at: clock())
+    guard let row = verifiedRowForDelivery(id: id, fetchIfNeeded: true), HistoryRowVisibility.isVisible(row, at: clock())
     else { return nil }
     return row
   }
@@ -1923,7 +1894,7 @@ final class TranscriptCoordinator {
     // hiding the app, and an import's cleanup or a deletion can land in that wait.
     if let current = verifiedRowForDelivery(id: transcript.id) {
       // #3147 §3.4: History delivers the row's preferred text (original or polished).
-      return Self.isVisible(current, at: Date()) ? current.historyText : nil
+      return HistoryRowVisibility.isVisible(current, at: Date()) ? current.historyText : nil
     }
     // Not in History. A held recovery that is gone has lapsed, and a row History held and
     // removed was deleted: both are refused. A dictation History never held (the live pane's
@@ -2001,7 +1972,7 @@ final class TranscriptCoordinator {
   /// - Whitespace-only text would paste nothing visible. Checked, never trimmed: the text that
   ///   is reused is exactly the text that was delivered.
   static func isReusableDictation(_ row: Transcript, at now: Date) -> Bool {
-    isVisible(row, at: now)
+    HistoryRowVisibility.isVisible(row, at: now)
       && !isImportedForReuse(row)
       // #3972 R5: a meeting is never the last dictation to paste again.
       && !row.isMeeting
@@ -2053,7 +2024,7 @@ final class TranscriptCoordinator {
     guard
       let row = verifiedRowForDelivery(id: id, fetchIfNeeded: true),
       let stampedAt = row.escapeRecoveredAt,
-      Self.isVisible(row, at: now)
+      HistoryRowVisibility.isVisible(row, at: now)
     else { return nil }
     return (row.displayText, stampedAt, row.escapeRecoveryTakeID)
   }
@@ -2130,7 +2101,7 @@ final class TranscriptCoordinator {
       diskReconciler.noteWritten(id)
       recordPublishedVersion(id)
       transcripts[index] = result.promoted
-      refreshDiskStateThenStopIfIdle()
+      expiry.refreshDiskStateThenStopIfIdle()
     } catch {
       actionFailure = .keep
       Task {
@@ -2299,7 +2270,7 @@ final class TranscriptCoordinator {
     detailCache.clear(id)
     removedRowIDs.insert(id)
     echoShownRowIDs.remove(id)
-    refreshDiskStateThenStopIfIdle()
+    expiry.refreshDiskStateThenStopIfIdle()
     return (.removed, recordingCleanupFailed)
   }
 
@@ -2370,7 +2341,7 @@ final class TranscriptCoordinator {
       // The same announcement `delete(_:)` makes, per row, after the list is already empty
       // (found by cloud review, round 3: this route bypassed it).
       for id in removedIDs { onRowDeleted?(id) }
-      refreshDiskStateThenStopIfIdle()
+      expiry.refreshDiskStateThenStopIfIdle()
     } catch {
       actionFailure = .deleteAll
       Task {
@@ -2404,102 +2375,20 @@ final class TranscriptCoordinator {
   // MARK: - Escape Recovery expiry pulse (#2087)
 
 
-  private func startPulseIfNeeded() {
-    guard pulseTask == nil,
-      diskReconciler.pendingPulseHasWork(liveInMemory: livePendingCount)
-    else { return }
-    pulseTask = Task { [weak self, pendingPulseInterval, pendingPulseSleep] in
-      while !Task.isCancelled {
-        await pendingPulseSleep(pendingPulseInterval)
-        guard let self, !Task.isCancelled else { return }
-        // Bumped BEFORE the stop check, so the pulse that carries the last row
-        // past its deadline is itself delivered — otherwise the final expiry
-        // would stop the timer and never redraw, leaving the expired row on
-        // screen until something unrelated moved.
-        self.expiryPulse &+= 1
-        // #2087: the pulse is where an expiry is DETECTED, so it is where the
-        // file must go and the event must fire. Sweeping only on `load()` left
-        // cleanup and telemetry waiting for the user to reopen History — which
-        // for a row that aged out while they watched could be days, or never.
-        //
-        // Asks "can I see a lapsed row" rather than comparing the live count
-        // before and after. The comparison version could never fire: both reads
-        // happen after the wait, so they are always equal, and it only appeared
-        // to work because the row sometimes expired BETWEEN them. A test that
-        // removed the wall clock is what exposed it.
-        if self.diskReconciler.pendingSweepIsDue(
-          lapsedInMemory: self.lapsedPendingCount, now: Date())
-        {
-          await self.sweepExpiredPending()
-        }
-        // AFTER the sweep above, never before: this asks whether a countdown is
-        // running or a file resisted removal, and the sweep is what settles the
-        // second half. Stopping on the live count alone is what stranded a
-        // failed removal, because the retry it was promised never came.
-        if !self.diskReconciler.pendingPulseHasWork(liveInMemory: self.livePendingCount) {
-          self.pulseTask = nil
-          return
-        }
-      }
-    }
+  /// `HistoryExpiryPulseWriter`: what the pulse reads and runs on this writer's held rows.
+  func pendingPulseHasWork() -> Bool {
+    diskReconciler.pendingPulseHasWork(liveInMemory: livePendingCount)
   }
 
-  private func stopPulseIfIdle() {
-    guard !diskReconciler.pendingPulseHasWork(liveInMemory: livePendingCount) else { return }
-    pulseTask?.cancel()
-    pulseTask = nil
+  func pendingSweepIsDue() -> Bool {
+    diskReconciler.pendingSweepIsDue(lapsedInMemory: lapsedPendingCount, now: Date())
   }
 
-  /// #2186: after an action that REMOVES pending files, re-read disk truth
-  /// before deciding the pulse is idle.
-  ///
-  /// `liveOnDiskPendingCount` is a CACHE of the last sweep, and Keep, Delete and
-  /// Delete All all change the directory it describes. Calling `stopPulseIfIdle`
-  /// on the stale value means `pendingPulseHasWork` still sees the removed row,
-  /// so the pulse never stops — a directory walk every minute for the life of
-  /// the app, which is precisely the stranded-retry this file's own comments
-  /// warn about, reintroduced through a cache those comments predate.
-  ///
-  /// A sweep rather than zeroing the count: zeroing is wrong whenever ANOTHER
-  /// pending row is still counting down, and it would stop that row's timer.
-  /// Only the directory knows. The sweep re-arms if work remains, so the stop
-  /// below can then be trusted. Cloud review, P2.
-  private func refreshDiskStateThenStopIfIdle() {
-    // SYNCHRONOUS first, and that is a contract rather than an optimisation:
-    // `Keep stops the pulse once the last held row is gone` asserts the pulse is
-    // gone the instant Keep returns. Making this purely async broke it — the
-    // full lane caught it, this suite did not, because the new tests await the
-    // refresh and the old one does not.
-    //
-    // The cache is INVALIDATED rather than trusted or preserved. It describes a
-    // directory this removal just changed, so keeping it blocks the stop (the
-    // round-2 P2), and believing its old value is what made it stale. Zeroing
-    // can only stop the pulse EARLY; the refresh below re-arms within moments if
-    // another row is still counting down, and only the directory can say.
+  func invalidateDiskState() {
     diskReconciler.invalidateDiskState()
-    stopPulseIfIdle()
-    refreshTask = Task { [weak self] in
-      await self?.sweepExpiredPending()
-      self?.stopPulseIfIdle()
-    }
   }
-
-
-  /// Held so a test can await the refresh rather than guess at a duration —
-  /// a signal the subject itself fires, never a sleep or a yield count.
-  private var refreshTask: Task<Void, Never>?
 
   #if DEBUG
-    // periphery:ignore - test seam
-    var hasPendingPulseForTesting: Bool { pulseTask != nil }
-
-    /// Bumps the pulse the way the loop does, so a test can assert that reading
-    /// the visible list actually subscribes to it — without driving the loop.
-    // periphery:ignore - test seam
-    func bumpExpiryPulseForTesting() {
-      expiryPulse &+= 1
-    }
-
     /// The unfiltered rows. Only for assertions about state the read-time
     /// filter deliberately HIDES — an expired row that must keep its stamp, for
     /// instance. Anything a user would see is asserted through
@@ -2511,36 +2400,6 @@ final class TranscriptCoordinator {
     /// after a sweep rather than keeping the directory walk alive.
     // periphery:ignore - test seam
     var lapsedPendingCountForTesting: Int { lapsedPendingCount }
-
-
-    /// Awaits the post-removal disk refresh. Captured before awaiting because
-    /// the task clears nothing but may be replaced by a later removal.
-    // periphery:ignore - test seam
-    func waitForRefreshForTesting() async {
-      let running = refreshTask
-      await running?.value
-    }
-
-    /// Awaits the pulse loop's own completion — a real signal, so a test never
-    /// guesses how long the loop needs. Captured before awaiting because the
-    /// loop nils the handle as it exits.
-    // periphery:ignore - test seam
-    func waitForPulseForTesting() async {
-      let running = pulseTask
-      await running?.value
-    }
-
-    /// The deadline behind `waitForPulseForTesting`. A loop that stopped
-    /// honouring its own exit condition would otherwise spin forever and HANG
-    /// the suite — no test name, no assertion, just a wedged run — which is
-    /// worse than having no test. A test bounds its iterations and calls this,
-    /// so the regression fails loudly instead.
-    // periphery:ignore - test seam
-    func cancelPulseForTesting() {
-      pulseTask?.cancel()
-      pulseTask = nil
-    }
-
   #endif
 
   /// Bulk fixture seam, available in BOTH configurations (#3013). It used to sit
@@ -2554,7 +2413,7 @@ final class TranscriptCoordinator {
   func setTranscriptsForTesting(_ rows: [Transcript]) {
     transcripts = rows
     diskReconciler.invalidateReadCache()
-    startPulseIfNeeded()
+    expiry.startPulseIfNeeded()
   }
 }
 

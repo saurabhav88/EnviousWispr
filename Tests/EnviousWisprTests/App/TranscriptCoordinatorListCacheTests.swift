@@ -124,13 +124,13 @@
       let time = TestClock(stamp)
       let rig = try await Self.catalogRig(pending: [held], clock: time)
       defer { rig.remove() }
-      let pulse = rig.coordinator.expiryPulse
+      let pulse = rig.coordinator.expiry.expiryPulse
       let expiry = stamp.addingTimeInterval(AppConstants.pendingTranscriptRetention)
       time.now = expiry.addingTimeInterval(-0.001)
       #expect(await rig.listedRowIDs(.dictations) == [held.id], "just before")
       time.now = expiry
       #expect(await rig.listedRowIDs(.dictations).isEmpty, "at expiry")
-      #expect(rig.coordinator.expiryPulse == pulse, "no pulse ran")
+      #expect(rig.coordinator.expiry.expiryPulse == pulse, "no pulse ran")
     }
 
     // #4586 C: the old "appears once the clock is within the skew tolerance" half cannot be

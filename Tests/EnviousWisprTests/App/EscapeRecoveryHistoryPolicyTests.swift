@@ -498,7 +498,7 @@ struct EscapeRecoveryHistoryPolicyTests {
       #expect(coordinator.visibleTranscripts.isEmpty, "beyond tolerance is corrupt, not fresh")
       #expect(coordinator.visibleNonHeldCount == 0)
       #expect(
-        coordinator.hasPendingPulseForTesting == false,
+        coordinator.expiry.hasPendingPulseForTesting == false,
         "and nothing counts down toward a deadline that has not begun")
     }
 
@@ -568,12 +568,12 @@ struct EscapeRecoveryHistoryPolicyTests {
     func appendingAHeldRowStartsThePulse() {
       let (store, _) = makeStore()
       let coordinator = TranscriptCoordinator(store: store)
-      #expect(coordinator.hasPendingPulseForTesting == false, "control: nothing running")
+      #expect(coordinator.expiry.hasPendingPulseForTesting == false, "control: nothing running")
 
       coordinator.append(held("held mid-session", age: 5))
 
       #expect(
-        coordinator.hasPendingPulseForTesting,
+        coordinator.expiry.hasPendingPulseForTesting,
         "the production route appends at runtime; without this the countdown would never advance")
     }
 
@@ -584,7 +584,7 @@ struct EscapeRecoveryHistoryPolicyTests {
 
       coordinator.append(permanent("ordinary"))
 
-      #expect(coordinator.hasPendingPulseForTesting == false)
+      #expect(coordinator.expiry.hasPendingPulseForTesting == false)
     }
 
     /// The pulse only matters if reading the list SUBSCRIBES to it. Observation
@@ -607,7 +607,7 @@ struct EscapeRecoveryHistoryPolicyTests {
         invalidated.fired = true
       }
 
-      coordinator.bumpExpiryPulseForTesting()
+      coordinator.expiry.bumpExpiryPulseForTesting()
 
       #expect(
         invalidated.fired,
@@ -635,11 +635,11 @@ struct EscapeRecoveryHistoryPolicyTests {
 
       coordinator.setTranscriptsForTesting([permanent("ordinary")])
       #expect(
-        coordinator.hasPendingPulseForTesting == false,
+        coordinator.expiry.hasPendingPulseForTesting == false,
         "the ordinary case — feature off, or nothing held — pays for no timer")
 
       coordinator.setTranscriptsForTesting([held("held", age: 60)])
-      #expect(coordinator.hasPendingPulseForTesting)
+      #expect(coordinator.expiry.hasPendingPulseForTesting)
     }
 
     @Test("an already-expired row does not start a pulse")
@@ -650,7 +650,7 @@ struct EscapeRecoveryHistoryPolicyTests {
       coordinator.setTranscriptsForTesting([held("aged out", age: window + 1)])
 
       #expect(
-        coordinator.hasPendingPulseForTesting == false, "there is nothing left to count down")
+        coordinator.expiry.hasPendingPulseForTesting == false, "there is nothing left to count down")
     }
 
     @Test("Keep stops the pulse once the last held row is gone")
@@ -660,11 +660,11 @@ struct EscapeRecoveryHistoryPolicyTests {
       let stamped = held("last one", age: 60)
       try store.savePending(stamped)
       coordinator.setTranscriptsForTesting([stamped])
-      #expect(coordinator.hasPendingPulseForTesting, "control: it was running")
+      #expect(coordinator.expiry.hasPendingPulseForTesting, "control: it was running")
 
       await coordinator.keep(stamped)
 
-      #expect(coordinator.hasPendingPulseForTesting == false)
+      #expect(coordinator.expiry.hasPendingPulseForTesting == false)
     }
 
     /// Driven entirely by a signal: the injected wait is where the test decides
@@ -686,22 +686,22 @@ struct EscapeRecoveryHistoryPolicyTests {
           // Deadline. Reached only if the loop stopped honouring its own exit
           // condition; without this the suite would HANG instead of failing,
           // which is worse than having no test.
-          coordinator.cancelPulseForTesting()
+          coordinator.expiry.cancelPulseForTesting()
         }
       }
 
       coordinator.setTranscriptsForTesting([held("brief", age: 60)])
-      #expect(coordinator.hasPendingPulseForTesting, "control: the pulse started")
+      #expect(coordinator.expiry.hasPendingPulseForTesting, "control: the pulse started")
 
-      await coordinator.waitForPulseForTesting()
+      await coordinator.expiry.waitForPulseForTesting()
 
       #expect(
         box.iterations < PulseBox.limit,
         "the loop stopped on its own condition rather than being cut off at the deadline")
       #expect(
-        coordinator.expiryPulse >= 1, "the redraw that carries the row past its deadline fires")
+        coordinator.expiry.expiryPulse >= 1, "the redraw that carries the row past its deadline fires")
       #expect(
-        coordinator.hasPendingPulseForTesting == false,
+        coordinator.expiry.hasPendingPulseForTesting == false,
         "and nothing keeps waking for a row nobody can see")
     }
 

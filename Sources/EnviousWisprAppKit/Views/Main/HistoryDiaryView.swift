@@ -1370,7 +1370,7 @@ struct EscapeRecoveryBadge: View {
   /// it, so without this touch the badge would show the remaining time it had when
   /// something else last changed state.
   private var escapeRecoveryClock: Date {
-    _ = transcriptCoordinator.expiryPulse
+    _ = transcriptCoordinator.expiry.expiryPulse
     return Date()
   }
 
