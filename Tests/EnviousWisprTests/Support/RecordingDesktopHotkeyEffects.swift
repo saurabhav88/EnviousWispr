@@ -71,7 +71,7 @@ final class RecordingDesktopHotkeyEffects: DesktopHotkeyEffects {
   /// The sink the service handed over. `@Sendable`, so a test can call it from a worker thread
   /// as the listener's own thread would. Nil once its token is removed, or after a failed install.
   private(set) var keyboardListenerSink: (@Sendable (KeyEventValue) -> Void)?
-  /// Make the next listener installs return nil, as a tap creation without Accessibility does.
+  /// Make the next listener installs fail at tap creation.
   var failKeyboardListenerInstall = false
   /// What the Accessibility trust read answers (#3848). Trusted by default, so a failed install
   /// takes the registration-failure route unless a test says the grant is missing.
@@ -88,9 +88,9 @@ final class RecordingDesktopHotkeyEffects: DesktopHotkeyEffects {
 
   func installKeyboardListener(
     _ sink: @escaping @Sendable (KeyEventValue) -> KeyboardEventDisposition
-  ) -> DesktopEffectToken? {
+  ) -> Result<DesktopEffectToken, KeyboardListenerStartFailure> {
     keyboardListenerInstalls += 1
-    guard !failKeyboardListenerInstall else { return nil }
+    guard !failKeyboardListenerInstall else { return .failure(.tapCreationFailed) }
     let token = DesktopEffectToken()
     keyboardListenerToken = token
     // Most tests deliver events and ignore the answer; the answer stays reachable for the ones
@@ -99,7 +99,7 @@ final class RecordingDesktopHotkeyEffects: DesktopHotkeyEffects {
     keyboardListenerSink = ignoringAnswer
     keyboardListenerDispositionSink = sink
     beforeKeyboardListenerInstallReturns?(ignoringAnswer)
-    return token
+    return .success(token)
   }
 
   /// What `keyboardListenerHealth` answers for the installed listener's token.

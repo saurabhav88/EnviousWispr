@@ -90,7 +90,7 @@ struct HotkeyQuickAddShortcutTests {
     let service = HotkeyService(
       effects: effects,
       telemetry: HotkeyTelemetrySink(
-        registrationFailed: { _, _, _, _ in },
+        registrationFailed: { _, _, _, _, _ in },
         pressed: { trigger, _, keyShape, _, action, _ in
           sink.presses.append((trigger, keyShape, action))
         }))

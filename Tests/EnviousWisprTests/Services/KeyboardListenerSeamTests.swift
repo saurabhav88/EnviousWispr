@@ -32,11 +32,11 @@ struct KeyboardListenerSeamTests {
   func workerDeliveryRunsTheSinkOffMain() async throws {
     let effects = RecordingDesktopHotkeyEffects()
     let seen = OSAllocatedUnfairLock<[KeyEventValue]>(initialState: [])
-    let token = effects.installKeyboardListener { event in
+    let install = effects.installKeyboardListener { event in
       seen.withLock { $0.append(event) }
       return .pass
     }
-    #expect(token != nil)
+    #expect((try? install.get()) != nil)
     let sink = try #require(effects.keyboardListenerDispositionSink)
 
     let firstOnMain = await deliverFromWorker(sink, press)
@@ -69,10 +69,10 @@ struct KeyboardListenerSeamTests {
   @Test("removing the listener's token stops delivery")
   func removalDropsTheSink() throws {
     let effects = RecordingDesktopHotkeyEffects()
-    let token = effects.installKeyboardListener { _ in .pass }
+    let token = try effects.installKeyboardListener { _ in .pass }.get()
     #expect(effects.keyboardListenerSink != nil)
 
-    #expect(effects.remove(try #require(token)) == true)
+    #expect(effects.remove(token) == true)
 
     #expect(effects.keyboardListenerSink == nil)
     #expect(effects.keyboardListenerToken == nil)
@@ -82,18 +82,18 @@ struct KeyboardListenerSeamTests {
   func refusedRemovalKeepsOwnership() throws {
     let effects = RecordingDesktopHotkeyEffects()
     effects.refuseRemovals = true
-    let token = effects.installKeyboardListener { _ in .pass }
+    let token = try effects.installKeyboardListener { _ in .pass }.get()
 
-    #expect(effects.remove(try #require(token)) == false)
+    #expect(effects.remove(token) == false)
 
     #expect(effects.keyboardListenerToken == token)
     #expect(effects.keyboardListenerSink != nil)
   }
 
   @Test("removing another token leaves the listener installed")
-  func unrelatedRemovalKeepsTheListener() {
+  func unrelatedRemovalKeepsTheListener() throws {
     let effects = RecordingDesktopHotkeyEffects()
-    let token = effects.installKeyboardListener { _ in .pass }
+    let token = try effects.installKeyboardListener { _ in .pass }.get()
 
     #expect(effects.remove(DesktopEffectToken()) == true)
 
@@ -106,9 +106,9 @@ struct KeyboardListenerSeamTests {
     let effects = RecordingDesktopHotkeyEffects()
     effects.failKeyboardListenerInstall = true
 
-    let token = effects.installKeyboardListener { _ in .pass }
+    let install = effects.installKeyboardListener { _ in .pass }
 
-    #expect(token == nil)
+    #expect((try? install.get()) == nil)
     #expect(effects.keyboardListenerInstalls == 1)
     #expect(effects.keyboardListenerSink == nil)
     #expect(effects.keyboardListenerToken == nil)

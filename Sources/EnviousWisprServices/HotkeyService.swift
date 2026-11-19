@@ -1414,7 +1414,8 @@ public final class HotkeyService {
     // Admission opens before the adapter call: the tap can deliver a press before the call
     // returns, and the engine must own that press or its hold records nothing.
     engine.openListenerAdmission(installation: generation)
-    if let token = effects.installKeyboardListener(sink) {
+    switch effects.installKeyboardListener(sink) {
+    case .success(let token):
       keyboardListenerToken = token
       listenerFailureReported = false
       listenerAccessibilityWaitReported = false
@@ -1429,17 +1430,18 @@ public final class HotkeyService {
         reportListenerHealth(
           terminal: "none", reason: "installed_after_failures", disableEpisodes: 0, reenables: 0)
       }
-      return
+    case .failure(let failure):
+      engine.closeListenerAdmission()
+      ingress.close()
+      listenerInstallFailures += 1
+      listenerFailuresSinceInstall += 1
+      reportListenerInstallFailure(
+        kind: ShortcutRole.record.telemetryKind,
+        keyShape: recordBinding.isBareModifier ? "modifier_only" : "chord",
+        failure: failure)
+      scheduleListenerRetry(generation)
+      armOrphanedHoldCheck()
     }
-    engine.closeListenerAdmission()
-    ingress.close()
-    listenerInstallFailures += 1
-    listenerFailuresSinceInstall += 1
-    reportListenerInstallFailure(
-      kind: ShortcutRole.record.telemetryKind,
-      keyShape: recordBinding.isBareModifier ? "modifier_only" : "chord")
-    scheduleListenerRetry(generation)
-    armOrphanedHoldCheck()
   }
 
   /// Route one failed listener install (#3848). A missing Accessibility grant is an OS permission
@@ -1447,13 +1449,15 @@ public final class HotkeyService {
   /// `listenerAwaitingAccessibility`. With the grant, the failure may be ours and
   /// is reported once as `registrationFailed`, after one attempt of grace when the previous
   /// failure lacked the grant. The grant is read here, at each failure, never cached.
-  private func reportListenerInstallFailure(kind: String, keyShape: String) {
+  private func reportListenerInstallFailure(
+    kind: String, keyShape: String, failure: KeyboardListenerStartFailure
+  ) {
     if effects.isAccessibilityTrusted {
       if listenerLastFailureUntrusted {
         listenerLastFailureUntrusted = false
       } else if !listenerFailureReported {
         listenerFailureReported = true
-        telemetry.registrationFailed("event_tap", kind, nil, keyShape)
+        telemetry.registrationFailed("event_tap", kind, nil, keyShape, failure.sentryValue)
       }
     } else {
       listenerLastFailureUntrusted = true
@@ -1940,7 +1944,7 @@ public final class HotkeyService {
       // a role is called — one owner, `ShortcutRole.telemetryKind`.
       let kind = role.telemetryKind
       let keyShape = ModifierKeyCodes.isModifierOnly(keyCode) ? "modifier_only" : "chord"
-      telemetry.registrationFailed("carbon", kind, status, keyShape)
+      telemetry.registrationFailed("carbon", kind, status, keyShape, nil)
       // #3273: only `eventHotKeyExistsErr` means "already in use" — a different status has a
       // different, unattributed cause and must not carry that specific claim to the user. AND a
       // chord this process holds itself (live token in any role, or possibly retained) is not

@@ -103,7 +103,7 @@ import Testing
 
     var sink: HotkeyTelemetrySink {
       HotkeyTelemetrySink(
-        registrationFailed: { _, _, _, _ in },
+        registrationFailed: { _, _, _, _, _ in },
         pressed: { [weak self] _, _, _, identity, action, _ in
           self?.actions.append(action)
           self?.identities.append(identity)

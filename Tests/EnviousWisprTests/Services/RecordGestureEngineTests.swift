@@ -336,7 +336,7 @@ struct RecordGestureEngineTests {
       service = HotkeyService(
         effects: RecordingDesktopHotkeyEffects(),
         telemetry: HotkeyTelemetrySink(
-          registrationFailed: { _, _, _, _ in },
+          registrationFailed: { _, _, _, _, _ in },
           pressed: { _, _, _, _, action, _ in box.rig?.actions.append(action) }),
         uptime: clock.uptime, scheduler: timers.scheduler)
       box.rig = self

@@ -60,7 +60,7 @@ final class LiveKeyboardListener: @unchecked Sendable {
     var stopRequested = false
     /// False once cleanup begins, so no event reaches the sink after removal starts.
     var delivering = false
-    var started: Bool?
+    var startupResult: Result<Void, KeyboardListenerStartFailure>?
     var cleanedUp = false
     var terminalReason: TerminalReason?
     var runLoop: CFRunLoop?
@@ -96,10 +96,9 @@ final class LiveKeyboardListener: @unchecked Sendable {
 
   // MARK: - Lifecycle
 
-  /// Start the worker and wait for it to install and enable the tap. False when the tap could not
-  /// be created (no Accessibility) or the worker did not answer in time; in the second case the
-  /// worker finds the stop latched when it does run, and cleans up instead of activating.
-  func start() -> Bool {
+  /// Wait for the worker to install, enable and publish the tap. If the wait expires, latch stop so
+  /// a late worker cleans up instead of activating.
+  func start() -> Result<Void, KeyboardListenerStartFailure> {
     #if DEBUG
       // Calibrate the recording cost now, not lazily during a report.
       _ = Self.recordingNanoseconds
@@ -115,9 +114,9 @@ final class LiveKeyboardListener: @unchecked Sendable {
       }
       // Wake a worker that published after the wait gave up, so it does not run unowned.
       _ = stop()
-      return false
+      return .failure(.startupTimedOut)
     }
-    return state.withLock { $0.started == true }
+    return state.withLock { $0.startupResult ?? .failure(.unclassified) }
   }
 
   /// Stop for good and wait for the worker to finish cleanup. False when cleanup did not finish in
@@ -162,7 +161,7 @@ final class LiveKeyboardListener: @unchecked Sendable {
     else {
       context.release()
       state.withLock { s in
-        s.started = false
+        s.startupResult = .failure(.tapCreationFailed)
         s.terminalReason = s.terminalReason ?? .startFailed
         s.cleanedUp = true
       }
@@ -188,14 +187,14 @@ final class LiveKeyboardListener: @unchecked Sendable {
     // Every explicit enable happens under the lifecycle lock with the stop latch checked in the
     // same critical section, so a removal or start timeout can never be followed by an enable.
     // `withLockUnchecked`: `CFMachPort` is not `Sendable`; it is used only on this thread.
-    let enabled = state.withLockUnchecked { s -> Bool in
-      guard !s.stopRequested else { return false }
+    let enableFailure = state.withLockUnchecked { s -> KeyboardListenerStartFailure? in
+      guard !s.stopRequested else { return .unclassified }
       CGEvent.tapEnable(tap: tap, enable: true)
-      return CGEvent.tapIsEnabled(tap: tap)
+      return CGEvent.tapIsEnabled(tap: tap) ? nil : .tapEnableFailed
     }
-    guard enabled else {
+    if let enableFailure {
       state.withLock { s in
-        s.started = false
+        s.startupResult = .failure(enableFailure)
         s.terminalReason = s.terminalReason ?? .startFailed
       }
       cleanUp(runLoop: runLoop)
@@ -208,7 +207,7 @@ final class LiveKeyboardListener: @unchecked Sendable {
       guard !s.stopRequested else { return false }
       s.runLoop = runLoop
       s.delivering = true
-      s.started = true
+      s.startupResult = .success(())
       return true
     }
     startedSignal.signal()

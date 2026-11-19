@@ -64,7 +64,7 @@ struct LastDictationHotkeyTests {
     let spy = Spy()
     let (service, effects) = makeHotkeyService(
       telemetry: HotkeyTelemetrySink(
-        registrationFailed: { _, _, _, _ in },
+        registrationFailed: { _, _, _, _, _ in },
         pressed: { trigger, _, keyShape, _, action, _ in
           spy.presses.append((trigger, keyShape, action))
         }))
