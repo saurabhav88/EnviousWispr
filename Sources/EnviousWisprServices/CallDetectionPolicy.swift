@@ -1111,8 +1111,8 @@ public struct CallDetectionPolicy: Sendable {
   }
 
   /// Automatic Teams guest capture needs exactly one joined room and run. Multiple audio
-  /// helpers can carry the same proof. An active browser awaiting its first read can still
-  /// yield a competing call, so wait for that read on the existing cycle.
+  /// helpers can carry the same proof. An unread or inconclusive active browser leaves
+  /// open the possibility of a competing call.
   private func allowsAutomaticStart(_ episode: Episode, _ c: Context) -> Bool {
     guard CallEvidenceReader.requiresJoinedTeamsGuest(
       rule: episode.rule, family: episode.family, room: episode.room)
@@ -1123,7 +1123,7 @@ public struct CallDetectionPolicy: Sendable {
     return reading.holders.allSatisfy { holder in
       guard holder.input == .active, CallEvidenceReader.readsTeamsGuestJoin(in: holder.rule)
       else { return true }
-      guard let evidence = holder.evidence else { return false }
+      guard let evidence = holder.evidence, evidence != .unknown else { return false }
       guard case .call(let family, let room) = evidence,
         CallEvidenceReader.requiresJoinedTeamsGuest(rule: holder.rule, family: family, room: room)
       else { return true }

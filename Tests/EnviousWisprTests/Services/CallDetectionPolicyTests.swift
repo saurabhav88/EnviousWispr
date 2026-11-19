@@ -2548,10 +2548,17 @@ struct CallDetectionPolicyTests {
     story.read([first, helper, unread])
     #expect(story.lastStart == nil)
 
+    let inconclusive = Policy.Holder(pid: second.pid, rule: second.rule, input: .active, evidence: .unknown)
+    story.read([first, helper, inconclusive])
+    #expect(story.lastStart == nil)
+
     story.read([first, helper])
     _ = try #require(story.lastStart)
     story.meeting = .busy
     #expect(story.policy.isStartWanted(story.context))
+
+    story.read([first, helper, inconclusive])
+    #expect(story.policy.isStartWanted(story.context) == false)
 
     story.read([first, helper, second])
     #expect(story.policy.isStartWanted(story.context) == false)

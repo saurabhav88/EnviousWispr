@@ -584,8 +584,9 @@ struct CallEvidenceReaderTests {
     fixture.pageURL = "https://" + room
     fixture.leaveTitle = "Leave"
     fixture.windows = [blank, fixture.window]
+    var focusedCall = false
     fixture.response = { f, node, attribute in
-      if attribute == "AXFocusedWindow" { return .value(blank) }
+      if attribute == "AXFocusedWindow" { return .value(focusedCall ? f.window : blank) }
       if attribute == "AXDOMIdentifier",
         CFEqual(node, f.leave) || CFEqual(node, otherLeave)
       { return .value("hangup-button" as CFString) }
@@ -611,11 +612,15 @@ struct CallEvidenceReaderTests {
     fixture.windows.append(otherWindow)
     let ambiguous = Reader.snapshot(for: .browser(.brave), holderPID: fixture.pid, access: fixture.access)
     #expect(ambiguous.startEvidence == .unknown)
+
+    focusedCall = true
+    let focusedButAmbiguous = Reader.snapshot(for: .browser(.brave), holderPID: fixture.pid, access: fixture.access)
+    #expect(focusedButAmbiguous.startEvidence == .unknown)
   }
 
-  @Test("Recovery refuses a tab change even while the formerly selected Teams page still reads as joined",
-    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4094"))
-  func teamsGuestRecoveryRechecksSelectedDocument() {
+  @Test("Teams guest proof follows the selected tab when an old page still reads as joined",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4094"), arguments: [false, true])
+  func teamsGuestRecoveryRechecksSelectedDocument(focused: Bool) {
     let fixture = Fixture()
     let blank = AXUIElementCreateApplication(71_111)
     let laterPage = AXUIElementCreateApplication(71_112)
@@ -624,10 +629,13 @@ struct CallEvidenceReaderTests {
     fixture.leaveTitle = "Leave"
     fixture.windows = [blank, fixture.window]
     var windowsReads = 0
+    var readLeaveControl = false
     fixture.response = { f, node, attribute in
-      if attribute == "AXFocusedWindow" { return .value(blank) }
+      if attribute == "AXFocusedWindow" { return .value(focused ? f.window : blank) }
       if attribute == "AXWindows" { windowsReads += 1 }
-      if windowsReads > 1, CFEqual(node, f.window), attribute == "AXChildren" {
+      if windowsReads > 1 || (focused && readLeaveControl),
+        CFEqual(node, f.window), attribute == "AXChildren"
+      {
         return .value([laterPage] as CFArray)
       }
       if CFEqual(node, laterPage) {
@@ -638,13 +646,14 @@ struct CallEvidenceReaderTests {
         }
       }
       if CFEqual(node, f.leave), attribute == "AXDOMIdentifier" {
+        readLeaveControl = true
         return .value("hangup-button" as CFString)
       }
       return nil
     }
 
     let snapshot = Reader.snapshot(for: .browser(.brave), holderPID: fixture.pid, access: fixture.access)
-    #expect(windowsReads >= 2, "the tab changed after the first window scan")
+    #expect(readLeaveControl, "the old page exposed a joined control before the tab change")
     #expect(snapshot.startEvidence == .unknown)
   }
 

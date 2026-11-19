@@ -928,11 +928,8 @@ public enum CallEvidenceReader {
     }
     if case .call = focused.startEvidence { return focused }
 
-    let recovered = teamsGuestWindowEvidence(app, rule: rule, until: deadline, access: access)
-    if recovered == .none { return focused }
-    // A readable focused preview may still offer Ask when recovery lacks proof.
-    if recovered == .unknown, case .microphoneOnly = focused.startEvidence { return focused }
-    return .init(startEvidence: recovered)
+    let joined = teamsGuestWindowEvidence(app, rule: rule, until: deadline, access: access)
+    return joined == .none ? focused : .init(startEvidence: joined)
   }
 
   private static func focusedBrowserSnapshot(
@@ -956,9 +953,11 @@ public enum CallEvidenceReader {
     guard let address else { return .init(startEvidence: walk.complete ? .none : .unknown) }
     guard let match = CallMeetingURL.classify(address) else { return .init(startEvidence: .none) }
     if let rule, requiresJoinedTeamsGuest(rule: rule, family: match.family, room: match.room) {
-      guard let page = walk.webArea else { return .init(startEvidence: .unknown) }
-      return .init(startEvidence: teamsGuestEvidence(in: page, match: match,
-        until: deadline, access: access))
+      // The focused page can identify an Ask. The same window checks proves every automatic
+      // Teams guest start, including one found in the focused window.
+      guard let page = walk.webArea, sameRoom(page, match: match, until: deadline, access: access)
+      else { return .init(startEvidence: .unknown) }
+      return .init(startEvidence: .microphoneOnly(family: match.family, room: match.room))
     }
     let start = Evidence.call(family: match.family, room: match.room)
     // A document fallback has no web-area scope, so it cannot authorize a window-wide state scan.
