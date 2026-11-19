@@ -194,7 +194,6 @@ package actor HistoryCatalogReconciliation {
     let previous = lastCertificate
     lastCertificate = nil
     let beganAt = sourceRevision()
-    var progress = KeyedProgress(try await catalog.sourceProgress())
     var updates: [Update] = []
     var disappeared: [String] = []
     var unresolved = false
@@ -222,9 +221,25 @@ package actor HistoryCatalogReconciliation {
         unresolved = true
       }
     }
-    let batch = try await commit(updates, tracking: &progress)
+    // #4586 N2: only the sources this refresh touched, and the keys they had or get. Reading and
+    // decoding every source's proofs cost ~110 ms per save on the M5 fixture for one to three.
+    let touched = Set(updates.map(\.entry.path) + disappeared)
+    let proposed = Set(updates.compactMap(\.entry.key))
+    let stored = try await catalog.scopedProgress(paths: touched, proposedKeys: proposed)
+    let keys = Set(stored.entries.values.compactMap(\.key)).union(proposed)
+    var progress = KeyedProgress(partial: stored.entries, references: stored.references)
+    // A key without a loaded count is never guessed at: no write, and the session runs a full
+    // pass with every source (old progress untouched, so that pass still sees every key).
+    guard keys.allSatisfy(progress.isKnown) else { return Self.coverageGap }
+    let batch: (saved: Int, changedRows: Bool)
+    do {
+      batch = try await commit(updates, tracking: &progress)
+    } catch is KeyedProgress.CoverageGap {
+      return Self.coverageGap
+    }
     let removedKeys = Set(disappeared.compactMap { progress.remove($0)?.key })
       .filter { progress.isUnreferenced($0) }
+    guard !progress.incomplete else { return Self.coverageGap }
     let certified: Bool
     if let previous, let beganAt, beganAt == sourceRevision() {
       certified = delta.spans(after: previous.source, through: beganAt)
@@ -250,6 +265,10 @@ package actor HistoryCatalogReconciliation {
     let projection: HistoryCatalog.Projection?
   }
 
+  /// A scoped refresh that could not count a key it touches (#4586 N2): uncertified, with no
+  /// unavailable source, so the session queues a full pass.
+  private static let coverageGap = Pass(revision: nil, unavailable: 0)
+
   private func commit(
     _ pending: [Update], tracking progress: inout KeyedProgress
   ) async throws -> (saved: Int, changedRows: Bool) {
@@ -264,6 +283,8 @@ package actor HistoryCatalogReconciliation {
       return previous?.key != update.entry.key || previous?.versions != update.entry.versions
     }
     let removed = progress.record(verified.map(\.entry))
+    // A partial map that met a key it has no count for must not write (#4586 N2).
+    if progress.incomplete { throw KeyedProgress.CoverageGap() }
     let projections = verified.compactMap(\.projection)
     try await catalog.apply(projections, removing: removed, recording: verified.map(\.entry))
     return (verified.count, changedProjection || !removed.isEmpty)
@@ -276,13 +297,32 @@ extension HistoryCatalogReconciliation {
   struct KeyedProgress {
     private(set) var entries: [String: HistoryCatalog.SourceProgress]
     private var references: [HistoryCatalog.Key: Int] = [:]
+    /// Partial mode only (#4586 N2): the keys whose whole-table count was loaded, zero included.
+    /// Nil for a map built from every source, where an absent key simply has no references.
+    private let known: Set<HistoryCatalog.Key>?
+    /// A partial map was asked about, or changed, a key it has no count for.
+    private(set) var incomplete = false
+
+    struct CoverageGap: Error {}
 
     init(_ entries: [String: HistoryCatalog.SourceProgress]) {
       self.entries = entries
+      known = nil
       for key in entries.values.compactMap(\.key) { references[key, default: 0] += 1 }
     }
 
-    func isUnreferenced(_ key: HistoryCatalog.Key) -> Bool { references[key] == nil }
+    /// Some sources' entries with each listed key's count across ALL sources (#4586 N2).
+    init(partial entries: [String: HistoryCatalog.SourceProgress], references counts: [HistoryCatalog.Key: Int]) {
+      self.entries = entries
+      known = Set(counts.keys)
+      references = counts.filter { $0.value > 0 }
+    }
+
+    func isKnown(_ key: HistoryCatalog.Key) -> Bool { known?.contains(key) ?? true }
+
+    /// An unknown key in a partial map is never reported unreferenced (its row is kept); the
+    /// caller sees `incomplete` through `record` and `remove` before it writes.
+    func isUnreferenced(_ key: HistoryCatalog.Key) -> Bool { isKnown(key) && references[key] == nil }
 
     /// Stores a verified batch. Returns the keys its paths named before the batch that no source
     /// names now: the rows to delete. A key that appears and leaves within the batch is not one.
@@ -294,7 +334,10 @@ extension HistoryCatalogReconciliation {
 
     mutating func set(_ entry: HistoryCatalog.SourceProgress) {
       release(entries.updateValue(entry, forKey: entry.path)?.key)
-      if let key = entry.key { references[key, default: 0] += 1 }
+      if let key = entry.key {
+        if !isKnown(key) { incomplete = true }
+        references[key, default: 0] += 1
+      }
     }
 
     @discardableResult
@@ -305,7 +348,9 @@ extension HistoryCatalogReconciliation {
     }
 
     private mutating func release(_ key: HistoryCatalog.Key?) {
-      guard let key, let count = references[key] else { return }
+      guard let key else { return }
+      if !isKnown(key) { incomplete = true }
+      guard let count = references[key] else { return }
       references[key] = count > 1 ? count - 1 : nil
     }
   }

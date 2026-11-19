@@ -393,3 +393,33 @@ extension HistoryCatalogStorageTests {
     #expect(try proof.stillMatches() == false)
   }
 }
+
+extension HistoryCatalogStorageTests {
+  /// #4586 N2: a partial progress map never guesses about a key it has no count for. It keeps
+  /// that key's row and flags itself, so the refresh writes nothing and a full pass runs.
+  @Test("A partial progress map flags any key it has no count for and never deletes it")
+  func partialProgressRefusesUnknownKeys() {
+    let known = HistoryCatalog.Key(tab: .dictations, id: UUID())
+    let unknown = HistoryCatalog.Key(tab: .dictations, id: UUID())
+    let other = HistoryCatalog.Key(tab: .dictations, id: UUID())
+    func entry(_ path: String, _ key: HistoryCatalog.Key?) -> HistoryCatalog.SourceProgress {
+      .init(path: path, versions: [], key: key)
+    }
+    // A loaded zero is a real count: releasing the last reference reports the key unreferenced.
+    var counted = HistoryCatalogReconciliation.KeyedProgress(
+      partial: ["/a": entry("/a", known)], references: [known: 1, other: 0])
+    #expect(counted.record([entry("/a", other)]) == [known])
+    #expect(counted.incomplete == false)
+    // A disappearance whose stored key was never counted: flagged, never reported unreferenced.
+    var gap = HistoryCatalogReconciliation.KeyedProgress(
+      partial: ["/a": entry("/a", known), "/b": entry("/b", unknown)], references: [known: 2])
+    #expect(gap.remove("/b")?.key == unknown)
+    #expect(gap.isUnreferenced(unknown) == false)
+    #expect(gap.incomplete)
+    // A proposed key that was never counted is flagged too.
+    var proposed = HistoryCatalogReconciliation.KeyedProgress(
+      partial: ["/a": entry("/a", known)], references: [known: 1])
+    _ = proposed.record([entry("/a", unknown)])
+    #expect(proposed.incomplete)
+  }
+}

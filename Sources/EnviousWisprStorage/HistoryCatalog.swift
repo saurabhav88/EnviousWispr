@@ -442,23 +442,88 @@ package actor HistoryCatalog {
   }
 
   func sourceProgress() throws -> [String: SourceProgress] {
+    #if DEBUG
+      fullProgressReadsForTesting += 1
+    #endif
     let decoder = JSONDecoder()
     let rows = try connection.rows("SELECT path, versions, tab, id FROM source_progress") { row in
-      let path = HistoryCatalogConnection.text(row, 0)
-      guard let bytes = sqlite3_column_blob(row, 1) else { throw Failure.incompatibleSchema }
-      let data = Data(bytes: bytes, count: Int(sqlite3_column_bytes(row, 1)))
-      let versions = try decoder.decode([SourceVersion].self, from: data)
-      let key: Key?
-      if let tab = HistoryTab(rawValue: HistoryCatalogConnection.text(row, 2)),
-        let id = UUID(uuidString: HistoryCatalogConnection.text(row, 3))
-      {
-        key = Key(tab: tab, id: id)
-      } else {
-        key = nil
-      }
-      return (path, SourceProgress(path: path, versions: versions, key: key))
+      try Self.decodeProgress(row, decoder)
     }
     return Dictionary(uniqueKeysWithValues: rows)
+  }
+
+  #if DEBUG
+    /// How many times the whole progress table was read (#4586 N2 tests).
+    private(set) var fullProgressReadsForTesting = 0
+  #endif
+
+  /// Bound values per statement: under SQLite's historical 999-variable floor, whatever the
+  /// build's own limit is (#4586 N2).
+  private static let bindChunk = 900
+
+  /// The stored progress of `paths` only, plus how many progress rows name each of their stored
+  /// keys and each of `proposedKeys` (zero included) across the whole table, read in one
+  /// transaction (#4586 N2). A save touches
+  /// one to three sources; reading and decoding every source's proofs to look at those cost
+  /// ~110 ms per save on the M5 fixture (29,663 rows). Counts compare the tab exactly and the id
+  /// without letter case, as the full reader's `UUID(uuidString:)` does; a NULL key counts for
+  /// nothing. A proof outside `paths` is not decoded here, so an unreadable one surfaces on the
+  /// next full pass instead.
+  func scopedProgress(
+    paths: Set<String>, proposedKeys: Set<Key>
+  ) throws -> (entries: [String: SourceProgress], references: [Key: Int]) {
+    guard !paths.isEmpty || !proposedKeys.isEmpty else { return ([:], [:]) }
+    return try connection.transaction {
+      let decoder = JSONDecoder()
+      var entries: [String: SourceProgress] = [:]
+      for chunk in Array(paths).chunked(into: Self.bindChunk) {
+        let marks = Array(repeating: "?", count: chunk.count).joined(separator: ",")
+        let rows = try connection.rows(
+          "SELECT path, versions, tab, id FROM source_progress WHERE path IN (\(marks))",
+          chunk.map { .text($0) }
+        ) { row in try Self.decodeProgress(row, decoder) }
+        for (path, progress) in rows { entries[path] = progress }
+      }
+      let keys = Set(entries.values.compactMap(\.key)).union(proposedKeys)
+      var references: [Key: Int] = [:]
+      for key in keys { references[key] = 0 }
+      for chunk in Array(keys).chunked(into: Self.bindChunk / 2) {
+        let values = Array(repeating: "(?, ?)", count: chunk.count).joined(separator: ",")
+        let rows = try connection.rows(
+          """
+          WITH wanted(tab, id) AS (VALUES \(values))
+          SELECT wanted.tab, wanted.id, count(p.path) FROM wanted
+          LEFT JOIN source_progress AS p ON p.tab = wanted.tab AND p.id = wanted.id COLLATE NOCASE
+          GROUP BY wanted.tab, wanted.id
+          """, chunk.flatMap(\.parameters)
+        ) { row -> (Key, Int)? in
+          guard let tab = HistoryTab(rawValue: HistoryCatalogConnection.text(row, 0)),
+            let id = UUID(uuidString: HistoryCatalogConnection.text(row, 1))
+          else { return nil }
+          return (Key(tab: tab, id: id), Int(sqlite3_column_int64(row, 2)))
+        }
+        for case let (key, count)? in rows { references[key] = count }
+      }
+      return (entries, references)
+    }
+  }
+
+  private static func decodeProgress(
+    _ row: OpaquePointer, _ decoder: JSONDecoder
+  ) throws -> (String, SourceProgress) {
+    let path = HistoryCatalogConnection.text(row, 0)
+    guard let bytes = sqlite3_column_blob(row, 1) else { throw Failure.incompatibleSchema }
+    let data = Data(bytes: bytes, count: Int(sqlite3_column_bytes(row, 1)))
+    let versions = try decoder.decode([SourceVersion].self, from: data)
+    let key: Key?
+    if let tab = HistoryTab(rawValue: HistoryCatalogConnection.text(row, 2)),
+      let id = UUID(uuidString: HistoryCatalogConnection.text(row, 3))
+    {
+      key = Key(tab: tab, id: id)
+    } else {
+      key = nil
+    }
+    return (path, SourceProgress(path: path, versions: versions, key: key))
   }
 
   package func appCounts(now: Date, sourceRevision: String) throws -> [(String?, Int)] {
@@ -603,4 +668,11 @@ package actor HistoryCatalog {
 
 extension HistoryCatalog.Key {
   fileprivate var parameters: [HistoryCatalogConnection.Value] { [.text(tab.rawValue), .text(id.uuidString)] }
+}
+
+extension Array {
+  /// Consecutive slices of at most `size` elements (#4586 N2 bound-value chunks).
+  fileprivate func chunked(into size: Int) -> [[Element]] {
+    stride(from: 0, to: count, by: size).map { Array(self[$0..<Swift.min($0 + size, count)]) }
+  }
 }

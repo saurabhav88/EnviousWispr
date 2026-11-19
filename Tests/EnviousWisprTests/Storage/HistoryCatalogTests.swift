@@ -421,3 +421,66 @@ extension HistoryCatalogTests {
     #expect(projected.withLock { $0 }.isEmpty)
   }
 }
+
+extension HistoryCatalogTests {
+  /// #4586 N2: a save's refresh reads only the sources it touched. Two sources project the same
+  /// key here, so the row must survive the first one leaving and go with the second.
+  @MainActor
+  @Test("A save refresh reads only touched sources and keeps a key another source still names")
+  func scopedRefreshKeepsSharedKeys() async throws {
+    // The real folder: the temporary folder sits behind the /var -> /private/var link, and a
+    // source reached through a link is filed under two path strings (#4689). Foundation's
+    // `resolvingSymlinksInPath` keeps the /var spelling, so ask `realpath`.
+    let real = try #require(realpath(TestTemporaryDirectory.url.path, nil))
+    defer { free(real) }
+    let root = URL(fileURLWithPath: String(cString: real), isDirectory: true)
+      .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let changes = HistorySourceChanges()
+    let stores = TranscriptStore(directory: root.appendingPathComponent("transcripts"), historyChanges: changes)
+    let sources = stores.historyCatalogSources(meetings: MeetingStore(root: root.appendingPathComponent("Meetings")))
+    let catalog = try HistoryCatalog(directory: root.appendingPathComponent("catalog"), projectionContext: "en|en_US")
+    let shared = UUID()
+    let worker = HistoryCatalogReconciliation(catalog: catalog, sources: sources, sourceRevision: { changes.revision }) {
+      guard let row = $0.transcript else { return nil }
+      let id = row.text.hasPrefix("shared") ? shared : row.id
+      return .init(
+        summary: .init(key: .init(tab: .dictations, id: id), date: row.createdAt, preview: row.text, sources: $0.versions),
+        searchableFields: [row.text])
+    }
+    let a = Transcript(text: "shared a", processingTime: 0, backendType: .parakeet)
+    let b = Transcript(text: "shared b", processingTime: 0, backendType: .parakeet)
+    let c = Transcript(text: "own c", processingTime: 0, backendType: .parakeet)
+    for row in [a, b, c] { try stores.save(row) }
+    var notifications = changes.changes.makeAsyncIterator()
+    for _ in 0..<6 { _ = await notifications.next() }
+    _ = try #require(try await worker.reconcile()?.revision)
+    let fullReads = await catalog.fullProgressReadsForTesting
+
+    let movedOn = Transcript(id: c.id, text: "shared c", processingTime: 0, backendType: .parakeet)
+    let movedOff = Transcript(id: c.id, text: "own again", processingTime: 0, backendType: .parakeet)
+    let steps: [(change: () throws -> Void, expected: Set<UUID>)] = [
+      // A leaves; B still names the shared key.
+      ({ try stores.delete(id: a.id) }, [shared, c.id]),
+      // B leaves too: the shared row goes.
+      ({ try stores.delete(id: b.id) }, [c.id]),
+      // C moves onto the shared key, then back off it, by rewriting its own file.
+      ({ try stores.save(movedOn) }, [shared]),
+      ({ try stores.save(movedOff) }, [c.id]),
+    ]
+    for step in steps {
+      try step.change()
+      var delta = HistorySourceChanges.Delta()
+      for _ in 0..<2 {
+        let event = await notifications.next()
+        delta.include(try #require(event))
+      }
+      let revision = try #require(try await worker.refresh(delta)?.revision)
+      let ids = try await catalog.matchingKeys(.init(tab: .dictations), sourceRevision: revision)
+      #expect(Set(ids.map(\.id)) == step.expected)
+    }
+    // None of the four refreshes read every source's progress.
+    #expect(await catalog.fullProgressReadsForTesting == fullReads)
+  }
+}
