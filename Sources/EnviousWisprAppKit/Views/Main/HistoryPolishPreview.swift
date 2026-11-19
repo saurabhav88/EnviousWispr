@@ -341,7 +341,7 @@ private struct HistoryPolishComparisonSheet: View {
       ScrollView {
         Group {
           if formatted {
-            MeetingReadableSummary(blocks: HistoryMeetingAfterView.readableBlocks(text))
+            MeetingReadableSummary(blocks: MeetingReadableSummary.readableBlocks(text))
           } else {
             Text(verbatim: text)
               .font(.stCardText)

@@ -63,12 +63,12 @@ struct HistoryMeetingAfterViewTests {
   func readableBlocks() {
     let markdown = "\n## Overview\nThe report went out.\n\n\n## Key points\n- Budget *needs* review\n* Hiring plan\n#hashtag stays text\n  + Agenda today  \n\n"
     #expect(
-      HistoryMeetingAfterView.readableBlocks(markdown) == [
+      MeetingReadableSummary.readableBlocks(markdown) == [
         .heading("Overview"), .paragraph("The report went out."), .gap,
         .heading("Key points"), .bullet("Budget *needs* review"), .bullet("Hiring plan"),
         .paragraph("#hashtag stays text"), .bullet("Agenda today"),
       ])
-    #expect(HistoryMeetingAfterView.readableBlocks("") == [])
+    #expect(MeetingReadableSummary.readableBlocks("") == [])
   }
 
   /// #4611 D10: the player is one card; it keeps one height whether it plays or says why nothing
@@ -131,7 +131,7 @@ struct HistoryMeetingAfterViewTests {
 
   @Test("a summary shown without validated sources carries no link, whatever its Markdown says")
   func readableSummaryHasNoLinks() {
-    let text = HistoryMeetingAfterView.readable(
+    let text = MeetingReadableSummary.readable(
       "Ship it. [View source](https://example.com) and **bold**\nNext line")
     #expect(text.runs.allSatisfy { $0.link == nil })
     #expect(String(text.characters) == "Ship it. View source and bold\nNext line")
