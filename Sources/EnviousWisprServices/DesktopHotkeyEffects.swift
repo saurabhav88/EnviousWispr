@@ -188,6 +188,21 @@ package enum HotkeyRegistration: Sendable {
   case acceptedWithoutToken
 }
 
+/// Why a keyboard listener did not finish starting. An unclassified failure has no wire value.
+package enum KeyboardListenerStartFailure: String, Error, Sendable {
+  case tapCreationFailed = "tap_creation_failed"
+  case enableConfirmationFailed = "tap_enable_failed"
+  case startupTimedOut = "startup_timed_out"
+  case unclassified
+
+  var sentryValue: String? {
+    switch self {
+    case .tapCreationFailed, .enableConfirmationFailed, .startupTimedOut: rawValue
+    case .unclassified: nil
+    }
+  }
+}
+
 /// The OS calls hotkey policy needs, and nothing else.
 @MainActor
 package protocol DesktopHotkeyEffects: AnyObject {
@@ -209,11 +224,10 @@ package protocol DesktopHotkeyEffects: AnyObject {
   /// NOT: it runs synchronously on the listener's thread while the OS holds the event, so it must
   /// never wait on main. The event continues unchanged unless the sink returns `.consume`, which
   /// the policy does only for a Space that locked a held take (#3517); Carbon owns registered
-  /// chords (#3544 P5 D5). Nil when the tap
-  /// could not be created (for example without Accessibility); the caller reports that.
+  /// chords (#3544 P5 D5). A failed start carries its reason. The caller owns reporting policy.
   func installKeyboardListener(
     _ sink: @escaping @Sendable (KeyEventValue) -> KeyboardEventDisposition
-  ) -> DesktopEffectToken?
+  ) -> Result<DesktopEffectToken, KeyboardListenerStartFailure>
 
   /// Whether this process holds the Accessibility grant an active event tap needs (#3848). Read
   /// live on every access, never cached here: the caller reads it right after a failed listener

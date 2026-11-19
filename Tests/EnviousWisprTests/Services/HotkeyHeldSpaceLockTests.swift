@@ -50,7 +50,7 @@ struct HotkeyHeldSpaceLockTests {
       service = HotkeyService(
         effects: effects,
         telemetry: HotkeyTelemetrySink(
-          registrationFailed: { _, _, _, _ in },
+          registrationFailed: { _, _, _, _, _ in },
           pressed: { trigger, mode, shape, identity, action, timing in
             box.rig?.rows.append(
               PressRow(

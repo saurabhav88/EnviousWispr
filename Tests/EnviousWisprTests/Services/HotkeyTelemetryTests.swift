@@ -46,7 +46,7 @@ import Testing
 
     var sink: HotkeyTelemetrySink {
       HotkeyTelemetrySink(
-        registrationFailed: { [weak self] mechanism, kind, status, shape in
+        registrationFailed: { [weak self] mechanism, kind, status, shape, _ in
           self?.registrations.append(
             Registration(mechanism: mechanism, hotkeyKind: kind, osStatus: status, keyShape: shape))
         },
@@ -188,7 +188,7 @@ import Testing
     let box = Box()
     let clock = HotkeyTestClock(100)
     let sink = HotkeyTelemetrySink(
-      registrationFailed: { _, _, _, _ in },
+      registrationFailed: { _, _, _, _, _ in },
       pressed: { _, _, _, _, action, _ in
         if action == "ignored_cooldown" { box.heldAtEmit.append(box.service?.isModifierHeld ?? false) }
       })
@@ -437,34 +437,40 @@ import Testing
       private var storedEvents: [CapturedTelemetryEvent] = []
       private var storedErrors: [SentryBreadcrumb.ErrorCategory] = []
       private var storedCrumbs: [Crumb] = []
+      private var storedTags: [[String: String]] = []
 
       func add(_ event: CapturedTelemetryEvent) { lock.withLock { storedEvents.append(event) } }
       func add(_ category: SentryBreadcrumb.ErrorCategory) {
         lock.withLock { storedErrors.append(category) }
       }
       func add(_ crumb: Crumb) { lock.withLock { storedCrumbs.append(crumb) } }
+      func add(_ tags: [String: String]) { lock.withLock { storedTags.append(tags) } }
       var events: [CapturedTelemetryEvent] { lock.withLock { storedEvents } }
       var errors: [SentryBreadcrumb.ErrorCategory] { lock.withLock { storedErrors } }
       var crumbs: [Crumb] { lock.withLock { storedCrumbs } }
+      var tags: [[String: String]] { lock.withLock { storedTags } }
     }
 
-    /// Run `body` with the PostHog test hook and both Sentry delegates pointed at one capture,
-    /// restoring all three afterwards. Synchronous: nothing crosses an `await`.
+    /// Run `body` with the vendor test hooks pointed at one capture and restore them afterwards.
+    /// Synchronous: nothing crosses an `await`.
     func capturingVendors(_ body: () -> Void) -> VendorCapture {
       let capture = VendorCapture()
       let previousHook = TelemetryService.shared.testEventHook
       let previousError = SentryBreadcrumb.captureErrorDelegate
+      let previousTags = SentryBreadcrumb.captureErrorTagsDelegate
       let previousCrumb = SentryBreadcrumb.breadcrumbDelegate
       TelemetryService.shared.testEventHook = { event in
         if event.name == "hotkey.registration" { capture.add(event) }
       }
       SentryBreadcrumb.captureErrorDelegate = { _, category, _, _ in capture.add(category) }
+      SentryBreadcrumb.captureErrorTagsDelegate = { tags in capture.add(tags) }
       SentryBreadcrumb.breadcrumbDelegate = { stage, message, level, data in
         capture.add(VendorCapture.Crumb(stage: stage, message: message, level: level, data: data))
       }
       defer {
         TelemetryService.shared.testEventHook = previousHook
         SentryBreadcrumb.captureErrorDelegate = previousError
+        SentryBreadcrumb.captureErrorTagsDelegate = previousTags
         SentryBreadcrumb.breadcrumbDelegate = previousCrumb
       }
       body()
@@ -478,7 +484,8 @@ import Testing
     @Test("a listener waiting for Accessibility keeps the PostHog row and files no Sentry error (#3848)")
     func awaitingAccessibilityRoutesToBreadcrumb() throws {
       let control = capturingVendors {
-        HotkeyTelemetrySink.live.registrationFailed("event_tap", "toggle", nil, "modifier_only")
+        HotkeyTelemetrySink.live.registrationFailed(
+          "event_tap", "toggle", nil, "modifier_only", "tap_creation_failed")
       }
       let awaiting = capturingVendors {
         HotkeyTelemetrySink.live.listenerAwaitingAccessibility("toggle", "modifier_only")
@@ -486,6 +493,8 @@ import Testing
 
       #expect(control.errors == [.hotkeyRegistrationFailed])
       #expect(awaiting.errors.isEmpty)
+      #expect(control.tags.map { $0["hotkey.listener_start_failure"] } == ["tap_creation_failed"])
+      #expect(awaiting.tags.isEmpty)
 
       let expected = CapturedTelemetryEvent(
         name: "hotkey.registration",

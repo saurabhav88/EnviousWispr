@@ -34,7 +34,7 @@ import EnviousWisprServices
 
     var sink: HotkeyTelemetrySink {
       HotkeyTelemetrySink(
-        registrationFailed: { _, _, _, _ in },
+        registrationFailed: { _, _, _, _, _ in },
         pressed: { [weak self] _, _, _, _, action, _ in self?.presses.append(action) },
         lockResolved: { [weak self] committed, reason in
           self?.lockDecisions.append((committed, reason))
