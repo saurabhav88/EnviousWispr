@@ -190,7 +190,7 @@ final class LiveKeyboardListener: @unchecked Sendable {
     let enableFailure = state.withLockUnchecked { s -> KeyboardListenerStartFailure? in
       guard !s.stopRequested else { return .unclassified }
       CGEvent.tapEnable(tap: tap, enable: true)
-      return CGEvent.tapIsEnabled(tap: tap) ? nil : .tapEnableFailed
+      return CGEvent.tapIsEnabled(tap: tap) ? nil : .enableConfirmationFailed
     }
     if let enableFailure {
       state.withLock { s in

@@ -191,13 +191,13 @@ package enum HotkeyRegistration: Sendable {
 /// Why a keyboard listener did not finish starting. An unclassified failure has no wire value.
 package enum KeyboardListenerStartFailure: String, Error, Sendable {
   case tapCreationFailed = "tap_creation_failed"
-  case tapEnableFailed = "tap_enable_failed"
+  case enableConfirmationFailed = "tap_enable_failed"
   case startupTimedOut = "startup_timed_out"
   case unclassified
 
   var sentryValue: String? {
     switch self {
-    case .tapCreationFailed, .tapEnableFailed, .startupTimedOut: rawValue
+    case .tapCreationFailed, .enableConfirmationFailed, .startupTimedOut: rawValue
     case .unclassified: nil
     }
   }
