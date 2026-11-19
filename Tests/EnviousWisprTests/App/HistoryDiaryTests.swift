@@ -279,22 +279,22 @@ struct HistoryDiaryTests {
     let lastWeek = calendar.date(byAdding: .day, value: -7, to: calendar.startOfDay(for: Date()))!
     filtered.dateInterval = DateInterval(start: lastWeek, duration: 86_400)
     #expect(
-      coordinator.isListedMeeting(record.id, under: HistoryTabState()),
+      coordinator.browser.isListedMeeting(record.id, under: HistoryTabState()),
       "precondition: unfiltered, the live meeting is listed")
     #expect(
-      coordinator.isListedMeeting(record.id, under: filtered) == false,
+      coordinator.browser.isListedMeeting(record.id, under: filtered) == false,
       "precondition: the date filter hides today's meeting")
     filtered.query = "budget"
-    coordinator.setHistoryState(filtered, for: .meetings)
-    let listed = coordinator.isListedMeeting(
-      record.id, under: coordinator.requestedHistoryState(for: .meetings))
+    coordinator.browser.setHistoryState(filtered, for: .meetings)
+    let listed = coordinator.browser.isListedMeeting(
+      record.id, under: coordinator.browser.requestedHistoryState(for: .meetings))
     #expect(listed == false, "precondition: the filter and search hide today's meeting")
 
     let opened = HistoryDiaryLayout.opening(
-      id, in: coordinator.requestedHistoryState(for: .meetings), isListed: listed)
-    coordinator.setHistoryState(opened, for: .meetings)
-    #expect(coordinator.requestedHistoryState(for: .meetings).openItemID == id)
-    #expect(coordinator.requestedHistoryState(for: .meetings).dateInterval == nil)
+      id, in: coordinator.browser.requestedHistoryState(for: .meetings), isListed: listed)
+    coordinator.browser.setHistoryState(opened, for: .meetings)
+    #expect(coordinator.browser.requestedHistoryState(for: .meetings).openItemID == id)
+    #expect(coordinator.browser.requestedHistoryState(for: .meetings).dateInterval == nil)
 
     var kept = HistoryTabState()
     kept.query = "standup"
@@ -313,13 +313,13 @@ struct HistoryDiaryTests {
     let dictation = Transcript(text: "a dictation")
     coordinator.setTranscriptsForTesting([transcript, dictation])
 
-    var state = coordinator.requestedHistoryState(for: .transcripts)
+    var state = coordinator.browser.requestedHistoryState(for: .transcripts)
     state.openItemID = .transcript(transcript.id)
-    coordinator.setHistoryState(state, for: .transcripts)
-    coordinator.selectHistoryTab(.dictations)
-    coordinator.selectHistoryTab(.transcripts)
+    coordinator.browser.setHistoryState(state, for: .transcripts)
+    coordinator.browser.selectHistoryTab(.dictations)
+    coordinator.browser.selectHistoryTab(.transcripts)
 
-    #expect(coordinator.requestedHistoryState(for: .transcripts).openItemID == .transcript(transcript.id))
-    #expect(coordinator.requestedHistoryState(for: .dictations).openItemID == nil)
+    #expect(coordinator.browser.requestedHistoryState(for: .transcripts).openItemID == .transcript(transcript.id))
+    #expect(coordinator.browser.requestedHistoryState(for: .dictations).openItemID == nil)
   }
 }

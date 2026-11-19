@@ -131,8 +131,8 @@ struct MeetingHistoryPresentationTests {
     defer { rig.remove() }
     #expect(await rig.listedIDs(.meetings) == [.meeting(record.id)])
     #expect(await rig.listedRowIDs(.meetings).isEmpty)
-    rig.coordinator.openHistoryItem(.meeting(record.id), in: .meetings)
-    #expect(rig.coordinator.openHistoryItemID(in: .meetings) == .meeting(record.id))
+    rig.coordinator.browser.openHistoryItem(.meeting(record.id), in: .meetings)
+    #expect(rig.coordinator.browser.openHistoryItemID(in: .meetings) == .meeting(record.id))
 
     // The ready record is saved before the row (the catalog pairs a row only with a committed
     // generation), then its row lands under the same meeting id: still one item, still open.
@@ -143,7 +143,7 @@ struct MeetingHistoryPresentationTests {
       id: record.transcriptID, meetingID: record.id)
     try await rig.applying { try await rig.coordinator.saveAndShowDurably(row) }
     #expect(await rig.listedIDs(.meetings) == [.meeting(record.id)])
-    #expect(rig.coordinator.openHistoryItemID(in: .meetings) == .meeting(record.id))
+    #expect(rig.coordinator.browser.openHistoryItemID(in: .meetings) == .meeting(record.id))
     #expect(await rig.listedRowIDs(.meetings) == [record.transcriptID])
 
     // Dictations never list it.
@@ -168,9 +168,9 @@ struct MeetingHistoryPresentationTests {
 
     // Search covers finished meetings only (R35): one still recording never matches, even by
     // its title.
-    rig.coordinator.setHistoryQuery("stand", in: .meetings)
+    rig.coordinator.browser.setHistoryQuery("stand", in: .meetings)
     #expect(await rig.listedIDs(.meetings).isEmpty)
-    rig.coordinator.setHistoryQuery("", in: .meetings)
+    rig.coordinator.browser.setHistoryQuery("", in: .meetings)
 
     let confirmation = try #require(await rig.coordinator.deleteAllConfirmation())
     await rig.coordinator.deleteAll(confirmedSource: confirmation.source)
@@ -195,11 +195,11 @@ struct MeetingHistoryPresentationTests {
     let rig = Rig()
     let record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
     rig.records = [record]
-    rig.coordinator.setHistoryQuery("nothing matches", in: .meetings)
-    rig.coordinator.showMeetings(meetingID: record.id)
-    #expect(rig.coordinator.historyTab == .meetings)
-    #expect(rig.coordinator.requestedHistoryState(for: .meetings).query.isEmpty)
-    #expect(rig.coordinator.openHistoryItemID(in: .meetings) == .meeting(record.id))
+    rig.coordinator.browser.setHistoryQuery("nothing matches", in: .meetings)
+    rig.coordinator.browser.showMeetings(meetingID: record.id)
+    #expect(rig.coordinator.browser.historyTab == .meetings)
+    #expect(rig.coordinator.browser.requestedHistoryState(for: .meetings).query.isEmpty)
+    #expect(rig.coordinator.browser.openHistoryItemID(in: .meetings) == .meeting(record.id))
   }
 
   @Test("a meeting marked for deletion is never listed, not even as its History row")
@@ -224,7 +224,7 @@ struct MeetingHistoryPresentationTests {
     let rig = try await Self.catalogRig(records: [record], rows: [row], live: live)
     defer { rig.remove() }
     let word = try #require(row.text.split(separator: " ").first.map(String.init))
-    rig.coordinator.setHistoryQuery(word, in: .meetings)
+    rig.coordinator.browser.setHistoryQuery(word, in: .meetings)
     #expect(await rig.listedIDs(.meetings) == [.meeting(record.id)])
     record.state = .processing  // Transcribe again keeps the old row
     live.records = [record]
@@ -309,11 +309,11 @@ struct MeetingHistoryPresentationTests {
     let rig = try await Self.catalogRig(records: [record], rows: [row])
     defer { rig.remove() }
 
-    rig.coordinator.setHistoryQuery("agree", in: .meetings)
+    rig.coordinator.browser.setHistoryQuery("agree", in: .meetings)
     #expect(await rig.listedRowIDs(.meetings) == [row.id])
-    rig.coordinator.setHistoryQuery("Board", in: .meetings)
+    rig.coordinator.browser.setHistoryQuery("Board", in: .meetings)
     #expect(await rig.listedRowIDs(.meetings) == [row.id])
-    rig.coordinator.setHistoryQuery("Secret", in: .meetings)
+    rig.coordinator.browser.setHistoryQuery("Secret", in: .meetings)
     #expect(await rig.listedRowIDs(.meetings).isEmpty)
     rig.coordinator.meetingPresenter.setShowEcho(true, rowID: row.id)
     #expect(await rig.listedRowIDs(.meetings) == [row.id])
@@ -615,7 +615,7 @@ struct MeetingHistoryPresentationTests {
         to: store.notesURL(for: record.id), options: .atomic)
     }
     defer { rig.remove() }
-    rig.coordinator.setHistoryQuery("priya", in: .meetings)
+    rig.coordinator.browser.setHistoryQuery("priya", in: .meetings)
     #expect(await rig.listedIDs(.meetings) == [.meeting(record.id)])
     record.state = .processing
     live.records = [record]
@@ -658,10 +658,10 @@ struct MeetingHistoryPresentationTests {
     }
     defer { rig.remove() }
     for query in ["dana lee", "DANA@ACME.COM", "acme.com", "kim"] {
-      rig.coordinator.setHistoryQuery(query, in: .meetings)
+      rig.coordinator.browser.setHistoryQuery(query, in: .meetings)
       #expect(await rig.listedRowIDs(.meetings) == [finishedRow.id], "query: \(query)")
     }
-    rig.coordinator.setHistoryQuery("globex", in: .meetings)
+    rig.coordinator.browser.setHistoryQuery("globex", in: .meetings)
     #expect(await rig.listedRowIDs(.meetings).isEmpty, "a term nobody was invited by")
     // The other-generation and the failed meeting carry the same invited people yet never match:
     // only the finished meeting with its own generation's facts is listed above.

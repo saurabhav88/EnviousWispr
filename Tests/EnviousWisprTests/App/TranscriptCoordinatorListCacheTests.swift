@@ -49,8 +49,8 @@
           sources.infoOverride[id]
             ?? sources.records.first { $0.id == id }.flatMap { MeetingHistoryInfo.paired(with: $0) }
         }
-        c.meetingNotes = { [unowned self] in sources.notes[$0] }
-        c.meetingInvited = { [unowned self] in sources.invited[$0] ?? [] }
+        c.browser.meetingNotes = { [unowned self] in sources.notes[$0] }
+        c.browser.meetingInvited = { [unowned self] in sources.invited[$0] ?? [] }
       }
 
       func setRows(_ rows: [Transcript]) { cached.setTranscriptsForTesting(rows) }
@@ -192,7 +192,7 @@
         records: [record],
         rows: [Self.meetingRow(record.id, rowID: record.transcriptID, words: "standup", at: at)])
       defer { rig.remove() }
-      rig.coordinator.setHistoryQuery("zebra", in: .meetings)
+      rig.coordinator.browser.setHistoryQuery("zebra", in: .meetings)
       #expect(await rig.listedIDs(.meetings).isEmpty)
       try await rig.applying {
         try Data("ask about zebra".utf8).write(
@@ -214,14 +214,14 @@
         records: [record],
         rows: [Self.meetingRow(record.id, rowID: record.transcriptID, words: "standup", at: at)])
       defer { rig.remove() }
-      rig.coordinator.setHistoryQuery("ACME", in: .meetings)
+      rig.coordinator.browser.setHistoryQuery("ACME", in: .meetings)
       #expect(await rig.listedIDs(.meetings).isEmpty)
       try await rig.applying {
         try rig.meetings.appendFacts(
           [Self.attendee("Dana Lee", "dana@acme.com", at: at)], meeting: record.id)
       }
       #expect(await rig.listedIDs(.meetings) == [.meeting(record.id)], "case-insensitive substring")
-      rig.coordinator.setHistoryQuery("li wu", in: .meetings)
+      rig.coordinator.browser.setHistoryQuery("li wu", in: .meetings)
       #expect(await rig.listedIDs(.meetings).isEmpty)
       try await rig.applying {
         try rig.meetings.appendFacts(
@@ -253,7 +253,7 @@
         sources.records = [processing, marked, control]
       }
       defer { rig.remove() }
-      rig.coordinator.setHistoryQuery("acme", in: .meetings)
+      rig.coordinator.browser.setHistoryQuery("acme", in: .meetings)
       let listed = await rig.listedIDs(.meetings)
       #expect(listed == [.meeting(control.id)], "only the finished, unmarked meeting matches")
     }

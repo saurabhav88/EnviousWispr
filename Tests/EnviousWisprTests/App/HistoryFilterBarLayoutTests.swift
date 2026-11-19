@@ -328,7 +328,7 @@ struct HistoryFilterBarLayoutTests {
       let _ = results.byTab[tab]
       let _ = counts.parentBuilds += 1
       HistoryFiltersView(
-        coordinator: coordinator, tab: tab, state: coordinator.requestedHistoryState(for: tab),
+        coordinator: coordinator, tab: tab, state: coordinator.browser.requestedHistoryState(for: tab),
         isSelecting: modes.isSelecting, toggleSelecting: {}
       ) {
         if modes.isSelecting == false { CountingLeading(counts: counts, width: leadingWidth) }
@@ -361,9 +361,9 @@ struct HistoryFilterBarLayoutTests {
   }
 
   private func query(_ text: String, _ coordinator: TranscriptCoordinator, _ tab: HistoryTab) {
-    var state = coordinator.requestedHistoryState(for: tab)
+    var state = coordinator.browser.requestedHistoryState(for: tab)
     state.query = text
-    coordinator.setHistoryState(state, for: tab)
+    coordinator.browser.setHistoryState(state, for: tab)
   }
 
   private func window(hosting view: NSView, width: CGFloat = 900) -> NSWindow {
@@ -443,7 +443,7 @@ struct HistoryFilterBarLayoutTests {
       let field = try #require(textField(in: view), "the search field is in the bar")
       try #require(probe.rowBodies > 0, "the controls row was built")
       try #require(counts.measurements > 0, "the controls were measured")
-      try #require(coordinator.requestedHistoryState(for: tab).query.isEmpty)
+      try #require(coordinator.browser.requestedHistoryState(for: tab).query.isEmpty)
       let rig = Rig(
         coordinator: coordinator, counts: counts, modes: modes, results: results, probe: probe,
         view: view, window: window, field: field)
@@ -496,7 +496,7 @@ struct HistoryFilterBarLayoutTests {
         // field. Row rebuilds are not asserted here (focus may cost some); the assertions below
         // cover the layout and the search frame only.
         #expect(
-          rig.coordinator.requestedHistoryState(for: .dictations).query == "a",
+          rig.coordinator.browser.requestedHistoryState(for: .dictations).query == "a",
           "the first character reached the query")
         #expect(rig.field.stringValue == "a")
         let first = cost(rig, searchFrame: searchFrame, fieldFrame: fieldFrame)
@@ -549,7 +549,7 @@ struct HistoryFilterBarLayoutTests {
           reset(rig)
         }
         #expect(
-          rig.coordinator.requestedHistoryState(for: .dictations).query == typed,
+          rig.coordinator.browser.requestedHistoryState(for: .dictations).query == typed,
           "the characters reached the query through the field's binding")
         #expect(rig.field.stringValue == typed)
         // Every character, the first included, costs the controls and the layout nothing.
@@ -576,9 +576,9 @@ struct HistoryFilterBarLayoutTests {
 
         // Positive control 2: a filter change rebuilds the row.
         reset(rig)
-        var filtered = rig.coordinator.requestedHistoryState(for: .dictations)
+        var filtered = rig.coordinator.browser.requestedHistoryState(for: .dictations)
         filtered.app = .unknown
-        rig.coordinator.setHistoryState(filtered, for: .dictations)
+        rig.coordinator.browser.setHistoryState(filtered, for: .dictations)
         pump(rig.view)
         #expect(rig.probe.rowBodies > 0, "a filter change rebuilds the controls row")
 
@@ -614,7 +614,7 @@ struct HistoryFilterBarLayoutTests {
         }
         #expect(
           rig.probe.rowBodies == 0 && rig.counts.measurements == 0, "then the row stays still")
-        #expect(rig.coordinator.requestedHistoryState(for: .dictations).query == "abcdefgh")
+        #expect(rig.coordinator.browser.requestedHistoryState(for: .dictations).query == "abcdefgh")
       }
     }
 

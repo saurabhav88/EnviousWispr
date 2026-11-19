@@ -56,9 +56,9 @@ struct HistoryLoadLoopTests {
     #expect(f.session.watcherRegistrations == 1)
     #expect(f.session.watcherIsInstalledForTesting)
     #expect(f.session.status == .ready)
-    let key = f.coordinator.historyQueryKey(
-      for: .dictations, state: f.coordinator.requestedHistoryState(for: .dictations))
-    let shown = try #require(await f.coordinator.historyResults(for: key))
+    let key = f.coordinator.browser.historyQueryKey(
+      for: .dictations, state: f.coordinator.browser.requestedHistoryState(for: .dictations))
+    let shown = try #require(await f.coordinator.browser.historyResults(for: key))
     #expect(shown.items.count == 30)
 
     // Another process rewrites one shown dictation, then a storm of notices arrives.
@@ -76,16 +76,16 @@ struct HistoryLoadLoopTests {
 
     // Before any newer page arrives, the screen keeps every unaffected row and hides only the
     // row whose file changed; the kept page cannot page or authorize selection.
-    let kept = try #require(await f.coordinator.retainedHistoryResult(shown))
+    let kept = try #require(await f.coordinator.browser.retainedHistoryResult(shown))
     #expect(kept.items.count == 29)
     #expect(!kept.ids.contains(.transcript(edited.key.id)))
     #expect(kept.continuation == nil && kept.catalogDayCounts == nil)
-    #expect(!f.coordinator.isCurrentHistoryResult(kept))
+    #expect(!f.coordinator.browser.isCurrentHistoryResult(kept))
 
     // During an in-process write the source revision is unknown; a second shown row changed
     // in that interval is still hidden on the next render (Codex code review r1).
     f.changes.begin()
-    _ = try #require(await f.coordinator.retainedHistoryResult(shown))
+    _ = try #require(await f.coordinator.browser.retainedHistoryResult(shown))
     guard case .catalog(let second) = shown.items[1] else {
       Issue.record("The catalog page did not return catalog rows")
       return
@@ -95,7 +95,7 @@ struct HistoryLoadLoopTests {
     try secondHandle.seekToEnd()
     try secondHandle.write(contentsOf: Data("\n".utf8))
     try secondHandle.close()
-    let keptAgain = try #require(await f.coordinator.retainedHistoryResult(shown))
+    let keptAgain = try #require(await f.coordinator.browser.retainedHistoryResult(shown))
     #expect(keptAgain.items.count == 28)
     #expect(!keptAgain.ids.contains(.transcript(second.key.id)))
     f.changes.finish(.transcript(second.key.id))
@@ -104,9 +104,9 @@ struct HistoryLoadLoopTests {
     #expect(f.session.watcherRegistrations == 1)
     #expect(f.session.status == .ready)
     let fresh = try #require(
-      await f.coordinator.historyResults(
-        for: f.coordinator.historyQueryKey(
-          for: .dictations, state: f.coordinator.requestedHistoryState(for: .dictations))))
+      await f.coordinator.browser.historyResults(
+        for: f.coordinator.browser.historyQueryKey(
+          for: .dictations, state: f.coordinator.browser.requestedHistoryState(for: .dictations))))
     #expect(fresh.items.count == 30)
   }
 
@@ -190,8 +190,8 @@ struct HistoryLoadLoopTests {
   /// identity stays live.
   @MainActor
   private final class FrozenStamp {
-    var values: (key: TranscriptCoordinator.HistoryQueryKey, notices: UInt64, source: UInt64?)?
-    var capture: (@MainActor () -> (key: TranscriptCoordinator.HistoryQueryKey, notices: UInt64, source: UInt64?))?
+    var values: (key: HistoryBrowser.HistoryQueryKey, notices: UInt64, source: UInt64?)?
+    var capture: (@MainActor () -> (key: HistoryBrowser.HistoryQueryKey, notices: UInt64, source: UInt64?))?
     func freeze() { values = capture?() }
   }
 
@@ -200,7 +200,7 @@ struct HistoryLoadLoopTests {
   ) -> RunningLoop {
     let coordinator = f.coordinator
     let session = f.session
-    let key: @MainActor @Sendable () -> TranscriptCoordinator.HistoryQueryKey = { coordinator.historyQueryKey(for: .dictations, state: coordinator.requestedHistoryState(for: .dictations)) }
+    let key: @MainActor @Sendable () -> HistoryBrowser.HistoryQueryKey = { coordinator.browser.historyQueryKey(for: .dictations, state: coordinator.browser.requestedHistoryState(for: .dictations)) }
     frozen?.capture = { (key(), session.noticeCount, session.stableSourceRevision) }
     let verification = HistoryRetainedVerification(
       stamp: {
@@ -213,7 +213,7 @@ struct HistoryLoadLoopTests {
       stored: { shown.result },
       verify: { saved in
         shown.checks += 1
-        return await coordinator.retainedHistoryResult(saved)
+        return await coordinator.browser.retainedHistoryResult(saved)
       },
       store: { shown.store($0) })
     final class Done { var stamp: HistoryRetainedVerification.Stamp? }
@@ -230,7 +230,7 @@ struct HistoryLoadLoopTests {
         storedSource: { shown.result?.catalogSourceRevision },
         read: { key in
           await gate?.pass()
-          if let page = await coordinator.historyResults(for: key) {
+          if let page = await coordinator.browser.historyResults(for: key) {
             shown.store(page)
             shown.reads += 1
           }
@@ -273,7 +273,7 @@ struct HistoryLoadLoopTests {
     f.changes.externalChange(.transcript(first.key.id))
     try await shown.until { !$0.ids.contains(.transcript(first.key.id)) }
     #expect(shown.result?.ids.contains(.transcript(first.key.id)) == false)
-    #expect(shown.result.map(coordinator.isCurrentHistoryResult) == false)
+    #expect(shown.result.map(coordinator.browser.isCurrentHistoryResult) == false)
 
     // A second change in the same writer interval is hidden on its own notice.
     let checks = shown.checks
@@ -363,9 +363,9 @@ struct HistoryLoadLoopTests {
   func scopedDeletion() async throws {
     let f = try await fixture(rows: 5)
     defer { try? FileManager.default.removeItem(at: f.root) }
-    let key = f.coordinator.historyQueryKey(
-      for: .dictations, state: f.coordinator.requestedHistoryState(for: .dictations))
-    let before = try #require(await f.coordinator.historyResults(for: key))
+    let key = f.coordinator.browser.historyQueryKey(
+      for: .dictations, state: f.coordinator.browser.requestedHistoryState(for: .dictations))
+    let before = try #require(await f.coordinator.browser.historyResults(for: key))
     guard case .catalog(let gone) = try #require(before.items.last) else {
       Issue.record("The catalog page did not return catalog rows")
       return
@@ -375,9 +375,9 @@ struct HistoryLoadLoopTests {
     f.changes.externalChange(.transcript(gone.key.id))
     await f.session.waitForIndexingForTesting()
     let after = try #require(
-      await f.coordinator.historyResults(
-        for: f.coordinator.historyQueryKey(
-          for: .dictations, state: f.coordinator.requestedHistoryState(for: .dictations))))
+      await f.coordinator.browser.historyResults(
+        for: f.coordinator.browser.historyQueryKey(
+          for: .dictations, state: f.coordinator.browser.requestedHistoryState(for: .dictations))))
     #expect(after.items.count == 4)
     #expect(!after.ids.contains(.transcript(gone.key.id)))
     #expect(try await f.session.itemCount(now: Date())?.count == 4)

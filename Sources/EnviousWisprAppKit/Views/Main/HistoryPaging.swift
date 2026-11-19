@@ -14,7 +14,7 @@ enum HistoryPaging {
   /// `isFinal` also needs day counts (certification): only then is the row set complete for the
   /// query (a missing restore anchor is given up, an empty list is really empty).
   static func finality(
-    result: HistoryQueryResult?, key: TranscriptCoordinator.HistoryQueryKey, source: UInt64?
+    result: HistoryQueryResult?, key: HistoryBrowser.HistoryQueryKey, source: UInt64?
   ) -> (canPage: Bool, isFinal: Bool) {
     let canPage =
       result?.key == key && source != nil && result?.catalogSourceRevision == source
@@ -24,7 +24,7 @@ enum HistoryPaging {
 
   /// Whether a stored page may open an item: the `canPage` rule.
   static func mayOpen(
-    result: HistoryQueryResult?, key: TranscriptCoordinator.HistoryQueryKey, source: UInt64?
+    result: HistoryQueryResult?, key: HistoryBrowser.HistoryQueryKey, source: UInt64?
   ) -> Bool {
     finality(result: result, key: key, source: source).canPage
   }
@@ -33,7 +33,7 @@ enum HistoryPaging {
   /// that is not display-only. Day counts are not required: an uncertified list must still make
   /// progress, or "Load more" would retry the same cursor forever.
   static func extensionMayStore(
-    _ next: HistoryQueryResult, liveKey: TranscriptCoordinator.HistoryQueryKey, source: UInt64?
+    _ next: HistoryQueryResult, liveKey: HistoryBrowser.HistoryQueryKey, source: UInt64?
   ) -> Bool {
     next.key == liveKey && source != nil && next.catalogSourceRevision == source
       && !next.displayOnly
@@ -66,7 +66,7 @@ struct HistoryQueryResult: Sendable {
     let dayCount: Int?
   }
 
-  let key: TranscriptCoordinator.HistoryQueryKey
+  let key: HistoryBrowser.HistoryQueryKey
   /// New for every constructed result (#4586): a later step that started from one stored result
   /// publishes only while that same result is still stored, whatever else changed.
   let identity = UUID()
@@ -86,7 +86,7 @@ struct HistoryQueryResult: Sendable {
   private let dayEntries: [Int]
 
   init(
-    key: TranscriptCoordinator.HistoryQueryKey, items: [HistoryListItem],
+    key: HistoryBrowser.HistoryQueryKey, items: [HistoryListItem],
     continuation: HistoryCatalog.Cursor? = nil, newerContinuation: HistoryCatalog.Cursor? = nil,
     catalogSourceRevision: UInt64? = nil,
     catalogDayCounts: [Date: Int]? = nil, displayOnly: Bool = false
@@ -103,7 +103,7 @@ struct HistoryQueryResult: Sendable {
   }
 
   private init(
-    key: TranscriptCoordinator.HistoryQueryKey, items: [HistoryListItem], layout: Layout,
+    key: HistoryBrowser.HistoryQueryKey, items: [HistoryListItem], layout: Layout,
     ids: Set<HistoryItemID>, continuation: HistoryCatalog.Cursor?,
     newerContinuation: HistoryCatalog.Cursor?, catalogSourceRevision: UInt64?,
     catalogDayCounts: [Date: Int]?, displayOnly: Bool
@@ -187,7 +187,7 @@ struct HistoryQueryResult: Sendable {
 
   /// This page under `key` (the content revision a newer read of the same page carried), with a
   /// new identity and the same arrays, so recording its freshness rebuilds nothing.
-  func restamped(key: TranscriptCoordinator.HistoryQueryKey) -> HistoryQueryResult {
+  func restamped(key: HistoryBrowser.HistoryQueryKey) -> HistoryQueryResult {
     HistoryQueryResult(
       key: key, items: items,
       layout: Layout(
@@ -277,18 +277,18 @@ struct HistoryRefreshLoop {
   }
 
   private struct Stamp: Equatable {
-    let key: TranscriptCoordinator.HistoryQueryKey
+    let key: HistoryBrowser.HistoryQueryKey
     let notices: UInt64
     let source: UInt64?
   }
 
   let counters: @MainActor () -> Counters
-  let currentKey: @MainActor () -> TranscriptCoordinator.HistoryQueryKey
+  let currentKey: @MainActor () -> HistoryBrowser.HistoryQueryKey
   /// The key of the result stored for the tab now.
-  let storedKey: @MainActor () -> TranscriptCoordinator.HistoryQueryKey?
+  let storedKey: @MainActor () -> HistoryBrowser.HistoryQueryKey?
   /// The source revision the stored result was read from.
   let storedSource: @MainActor () -> UInt64?
-  let read: @MainActor (TranscriptCoordinator.HistoryQueryKey) async -> Void
+  let read: @MainActor (HistoryBrowser.HistoryQueryKey) async -> Void
   /// Returns once either counter moved from the given values, or on cancellation.
   let wait: @MainActor (_ content: UInt64, _ notices: UInt64) async -> Void
   /// Sleeps for the duration, or returns early on cancellation.
@@ -384,7 +384,7 @@ struct HistoryListPlace {
 @MainActor
 struct HistoryRetainedVerification {
   struct Stamp: Equatable {
-    let key: TranscriptCoordinator.HistoryQueryKey
+    let key: HistoryBrowser.HistoryQueryKey
     let notices: UInt64
     let source: UInt64?
     let grouping: Int

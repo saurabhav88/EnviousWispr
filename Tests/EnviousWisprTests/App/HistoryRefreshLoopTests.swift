@@ -19,7 +19,7 @@ struct HistoryRefreshLoopTests {
     var content: UInt64 = 0
     var notices: UInt64 = 0
     var source: UInt64? = 1
-    var stored: TranscriptCoordinator.HistoryQueryKey?
+    var stored: HistoryBrowser.HistoryQueryKey?
     /// The source the stored page was read from: the source when its read started, or
     /// `storedSourceOverride` when a test needs a page that never matches.
     var storedSource: UInt64?
@@ -28,13 +28,13 @@ struct HistoryRefreshLoopTests {
     let origin = ContinuousClock.now
     var elapsed = Duration.zero
     var paces: [Duration] = []
-    var reads: [TranscriptCoordinator.HistoryQueryKey] = []
+    var reads: [HistoryBrowser.HistoryQueryKey] = []
     var pendingRead: CheckedContinuation<Bool, Never>?
     var pendingWait: CheckedContinuation<Void, Never>?
     var waits = 0
     var beforeReads = 0
 
-    func key() -> TranscriptCoordinator.HistoryQueryKey {
+    func key() -> HistoryBrowser.HistoryQueryKey {
       .init(
         revision: Int(content), pulse: 0,
         context: .init(tab: .dictations, query: "", filter: .none), echoShown: [], locale: "",

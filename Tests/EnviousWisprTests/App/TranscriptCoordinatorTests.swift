@@ -87,12 +87,12 @@ struct TranscriptCoordinatorTests {
     let rig = try await HistoryCatalogRig.make(rows: [imported, dictated])
     defer { rig.remove() }
 
-    rig.coordinator.setHistoryQuery("marketing", in: .transcripts)
+    rig.coordinator.browser.setHistoryQuery("marketing", in: .transcripts)
     #expect(await rig.listedRowIDs(.transcripts) == [imported.id])
     // The words still work, and a name nobody has does not match anything.
-    rig.coordinator.setHistoryQuery("quarter", in: .transcripts)
+    rig.coordinator.browser.setHistoryQuery("quarter", in: .transcripts)
     #expect(await rig.listedRowIDs(.transcripts) == [imported.id])
-    rig.coordinator.setHistoryQuery("budget", in: .transcripts)
+    rig.coordinator.browser.setHistoryQuery("budget", in: .transcripts)
     #expect(await rig.listedRowIDs(.transcripts).isEmpty)
   }
 
@@ -339,7 +339,7 @@ struct TranscriptCoordinatorTests {
     #expect(coordinator.actionFailure == nil)
 
     // #4075 S1: the presentation the failed removal must not touch.
-    coordinator.openHistoryItem(.transcript(row.id), in: .dictations)
+    coordinator.browser.openHistoryItem(.transcript(row.id), in: .dictations)
     coordinator.meetingPresenter.setShowEcho(true, rowID: row.id)
     var announced: [UUID] = []
     coordinator.onRowDeleted = { announced.append($0) }
@@ -350,7 +350,7 @@ struct TranscriptCoordinatorTests {
     #expect(coordinator.actionFailure == .delete)
     #expect(coordinator.visibleTranscripts.map(\.id) == [row.id])
     #expect(
-      coordinator.openHistoryItemID(in: .dictations) == .transcript(row.id),
+      coordinator.browser.openHistoryItemID(in: .dictations) == .transcript(row.id),
       "a failed delete closed the open item")
     #expect(coordinator.meetingPresenter.isShowingEcho(rowID: row.id), "a failed delete cleared the echo choice")
     #expect(announced.isEmpty, "a failed delete was announced")
@@ -1494,16 +1494,16 @@ struct TranscriptCoordinatorMeetingTests {
       let edited = Transcript(id: first.id, text: "first zebra edited", backendType: .parakeet, createdAt: first.createdAt)
       let write = Task { @MainActor in try await coordinator.updateExistingRow(edited) }
       try #require(await gate.waitForStart(), "the write never reached the worker")
-      coordinator.openHistoryItem(.transcript(second.id), in: .dictations)
-      coordinator.setHistoryQuery("zebra", in: .dictations)
-      coordinator.selectHistoryTab(.transcripts)
+      coordinator.browser.openHistoryItem(.transcript(second.id), in: .dictations)
+      coordinator.browser.setHistoryQuery("zebra", in: .dictations)
+      coordinator.browser.selectHistoryTab(.transcripts)
       gate.releaseOne()
       #expect(try await write.value)
       #expect(
-        coordinator.openHistoryItemID(in: .dictations) == .transcript(second.id),
+        coordinator.browser.openHistoryItemID(in: .dictations) == .transcript(second.id),
         "the write restored an old open item")
-      #expect(coordinator.requestedHistoryState(for: .dictations).query == "zebra")
-      #expect(coordinator.historyTab == .transcripts)
+      #expect(coordinator.browser.requestedHistoryState(for: .dictations).query == "zebra")
+      #expect(coordinator.browser.historyTab == .transcripts)
       #expect(coordinator.currentRow(id: first.id)?.text == "first zebra edited")
       #expect(gate.anyTimedOut == false, "a held write was released by its timeout")
     }

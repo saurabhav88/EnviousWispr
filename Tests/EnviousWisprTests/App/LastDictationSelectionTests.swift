@@ -76,11 +76,11 @@ struct LastDictationSelectionTests {
     let target = dictation("reply to the thread", ageSeconds: 10)
     coordinator.setTranscriptsForTesting([target, imported("a file transcript", ageSeconds: 20)])
 
-    coordinator.selectHistoryTab(.transcripts)
-    for tab in HistoryTab.allCases { coordinator.setHistoryQuery("no row contains this", in: tab) }
+    coordinator.browser.selectHistoryTab(.transcripts)
+    for tab in HistoryTab.allCases { coordinator.browser.setHistoryQuery("no row contains this", in: tab) }
     for tab in HistoryTab.allCases {
       #expect(
-        coordinator.requestedHistoryState(for: tab).query == "no row contains this",
+        coordinator.browser.requestedHistoryState(for: tab).query == "no row contains this",
         "precondition: every tab carries a search that matches no row")
     }
 

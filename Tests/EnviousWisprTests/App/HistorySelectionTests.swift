@@ -282,19 +282,19 @@ struct HistorySelectionTests {
     defer { rig.remove() }
     let coordinator = rig.coordinator
 
-    let key = coordinator.historyQueryKey(for: .dictations, state: HistoryTabState())
-    let page = try #require(await coordinator.historyResults(for: key))
+    let key = coordinator.browser.historyQueryKey(for: .dictations, state: HistoryTabState())
+    let page = try #require(await coordinator.browser.historyResults(for: key))
     #expect(page.items.count == HistoryPaging.pageSize, "the diary draws one page of 30")
     #expect(page.continuation != nil, "the other 45 are not drawn yet")
 
     let yesterday = HistorySelection()
     let yesterdayIDs = try #require(
-      await coordinator.matchingIDs(
+      await coordinator.browser.matchingIDs(
         for: page, day: calendar.date(byAdding: .day, value: -1, to: today)!))
     yesterday.select(Set(yesterdayIDs))
     #expect(yesterday.selectedIDs.count == 35, "every one of yesterday's items is past page 1")
 
-    let matching = try #require(await coordinator.matchingIDs(for: page))
+    let matching = try #require(await coordinator.browser.matchingIDs(for: page))
     let all = HistorySelection()
     all.select(Set(matching))
     #expect(all.selectedIDs.count == 75)

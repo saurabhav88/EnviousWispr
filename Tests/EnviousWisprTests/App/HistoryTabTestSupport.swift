@@ -8,7 +8,7 @@ import Testing
 
 /// Test shorthands over the History tab API (#3147 PR2), so tests that used the retired single
 /// search, filter and selection say the same thing through one tab's state.
-extension TranscriptCoordinator {
+extension HistoryBrowser {
   /// Sets `tab`'s search, leaving its other state alone.
   func setHistoryQuery(_ query: String, in tab: HistoryTab) {
     var state = requestedHistoryState(for: tab)
@@ -81,26 +81,26 @@ struct HistoryCatalogRig {
   /// diary draws them (items the screen hides at render time are left out). A refused or failed
   /// read of any page is recorded as a test failure, never returned as an empty or short list.
   func listed(_ tab: HistoryTab, sourceLocation: SourceLocation = #_sourceLocation) async -> [HistoryListItem] {
-    let key = coordinator.historyQueryKey(for: tab, state: coordinator.requestedHistoryState(for: tab))
-    guard var result = await coordinator.historyResults(for: key) else {
+    let key = coordinator.browser.historyQueryKey(for: tab, state: coordinator.browser.requestedHistoryState(for: tab))
+    guard var result = await coordinator.browser.historyResults(for: key) else {
       Issue.record("History refused or failed the first page of \(tab)", sourceLocation: sourceLocation)
       return []
     }
     while result.newerContinuation != nil {
-      guard let next = await coordinator.historyResults(for: key, extending: result, newer: true) else {
+      guard let next = await coordinator.browser.historyResults(for: key, extending: result, newer: true) else {
         Issue.record("History refused or failed a newer page of \(tab)", sourceLocation: sourceLocation)
         return []
       }
       result = next
     }
     while result.continuation != nil {
-      guard let next = await coordinator.historyResults(for: key, extending: result) else {
+      guard let next = await coordinator.browser.historyResults(for: key, extending: result) else {
         Issue.record("History refused or failed an older page of \(tab)", sourceLocation: sourceLocation)
         return []
       }
       result = next
     }
-    return result.items.filter { coordinator.canRenderHistoryItem($0) }
+    return result.items.filter { coordinator.browser.canRenderHistoryItem($0) }
   }
 
   /// The identities `tab` lists now, all pages.

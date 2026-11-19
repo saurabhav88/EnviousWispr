@@ -34,13 +34,13 @@ struct HistoryCatalogSessionTests {
     let count = try await session.itemCount(now: Date())
     #expect(count?.count == 40)
 
-    let key = coordinator.historyQueryKey(for: .dictations, state: coordinator.requestedHistoryState(for: .dictations))
-    let first = try #require(await coordinator.historyResults(for: key))
+    let key = coordinator.browser.historyQueryKey(for: .dictations, state: coordinator.browser.requestedHistoryState(for: .dictations))
+    let first = try #require(await coordinator.browser.historyResults(for: key))
     #expect(first.items.count == 30)
     #expect(first.catalogDayCounts?.values.first == 40)
-    let next = try #require(await coordinator.historyResults(for: key, extending: first))
+    let next = try #require(await coordinator.browser.historyResults(for: key, extending: first))
     #expect(next.items.count == 40)
-    let matching = try #require(await coordinator.matchingIDs(for: first))
+    let matching = try #require(await coordinator.browser.matchingIDs(for: first))
     #expect(Set(matching).count == 40)
     let rowID: UUID
     switch try #require(first.items.first?.id) {
@@ -51,15 +51,15 @@ struct HistoryCatalogSessionTests {
     }
     let loaded = try #require(await coordinator.loadCatalogDetail(rowID))
     #expect(loaded.text == "budget notes")
-    var state = coordinator.requestedHistoryState(for: .dictations)
+    var state = coordinator.browser.requestedHistoryState(for: .dictations)
     let deep = try #require(next.items.last?.id)
     state.scrollAnchorID = deep
-    coordinator.setHistoryState(state, for: .dictations)
-    let deepKey = coordinator.historyQueryKey(for: .dictations, state: state)
-    let restored = try #require(await coordinator.historyResults(for: deepKey))
+    coordinator.browser.setHistoryState(state, for: .dictations)
+    let deepKey = coordinator.browser.historyQueryKey(for: .dictations, state: state)
+    let restored = try #require(await coordinator.browser.historyResults(for: deepKey))
     #expect(restored.items.first?.id == deep)
     #expect(restored.newerContinuation != nil)
-    let upward = try #require(await coordinator.historyResults(for: deepKey, extending: restored, newer: true))
+    let upward = try #require(await coordinator.browser.historyResults(for: deepKey, extending: restored, newer: true))
     #expect(upward.items.count == 31)
     #expect(upward.items.last?.id == deep)
 

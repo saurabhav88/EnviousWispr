@@ -34,7 +34,7 @@ struct HistoryQueryResultAppendTests {
     return calendar
   }()
 
-  private static func key() -> TranscriptCoordinator.HistoryQueryKey {
+  private static func key() -> HistoryBrowser.HistoryQueryKey {
     .init(
       revision: 1, pulse: 0, context: .init(tab: .dictations, query: "", filter: .none),
       echoShown: [], locale: "en_US", localizations: ["en"], calendar: calendar)
@@ -131,7 +131,7 @@ struct HistoryQueryResultAppendTests {
       let continuation = end < all.count ? Self.cursor(after: summaries.last ?? all[max(from - 1, 0)]) : nil
       let page = HistoryCatalog.Page(
         summaries: summaries, continuation: continuation, newerContinuation: nil, dayCounts: pageCounts)
-      result = await TranscriptCoordinator.buildResult(
+      result = await HistoryBrowser.buildResult(
         key: Self.key(), page: page, previous: result, newer: false, source: 7, onMainThread: probe)
       pages += 1
       for summary in summaries where expectedItems.contains(where: { $0.key == summary.key }) == false {
@@ -163,7 +163,7 @@ struct HistoryQueryResultAppendTests {
     let second = (3..<6).map { Self.summary(at: day.addingTimeInterval(Double(-60 * $0))) }
     func firstPage(counts: [Date: Int]?) async throws -> HistoryQueryResult {
       try #require(
-        await TranscriptCoordinator.buildResult(
+        await HistoryBrowser.buildResult(
           key: Self.key(),
           page: .init(
             summaries: first, continuation: Self.cursor(after: first.last), newerContinuation: nil,
@@ -172,7 +172,7 @@ struct HistoryQueryResultAppendTests {
     }
     func extend(_ previous: HistoryQueryResult) async throws -> HistoryQueryResult {
       try #require(
-        await TranscriptCoordinator.buildResult(
+        await HistoryBrowser.buildResult(
           key: Self.key(),
           page: .init(
             summaries: second, continuation: nil, newerContinuation: nil,
@@ -192,14 +192,14 @@ struct HistoryQueryResultAppendTests {
     let first = (0..<3).map { Self.summary(at: day.addingTimeInterval(Double(-60 * $0))) }
     let second = (3..<6).map { Self.summary(at: day.addingTimeInterval(Double(-60 * $0))) }
     let one = try #require(
-      await TranscriptCoordinator.buildResult(
+      await HistoryBrowser.buildResult(
         key: Self.key(),
         page: .init(
           summaries: first, continuation: Self.cursor(after: first.last), newerContinuation: nil,
           dayCounts: Self.counts(first + second)),
         previous: nil, newer: false, source: 7))
     let two = try #require(
-      await TranscriptCoordinator.buildResult(
+      await HistoryBrowser.buildResult(
         key: Self.key(),
         page: .init(
           summaries: second, continuation: nil, newerContinuation: nil,

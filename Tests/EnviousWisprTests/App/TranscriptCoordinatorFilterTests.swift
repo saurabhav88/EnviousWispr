@@ -75,8 +75,8 @@ struct TranscriptCoordinatorFilterTests {
     let rig = try await HistoryCatalogRig.make(rows: [d, t])
     defer { rig.remove() }
 
-    rig.coordinator.setHistoryQuery("marketing", in: .dictations)
-    rig.coordinator.setHistoryQuery("marketing", in: .transcripts)
+    rig.coordinator.browser.setHistoryQuery("marketing", in: .dictations)
+    rig.coordinator.browser.setHistoryQuery("marketing", in: .transcripts)
     #expect(await rig.listedRowIDs(.dictations) == [d.id], "the import is outside the tab")
     #expect(await rig.listedRowIDs(.transcripts) == [t.id], "found by its file name")
   }
@@ -96,15 +96,15 @@ struct TranscriptCoordinatorFilterTests {
     defer { rig.remove() }
     let coordinator = rig.coordinator
 
-    coordinator.setHistoryQuery("Zach", in: .transcripts)
+    coordinator.browser.setHistoryQuery("Zach", in: .transcripts)
     #expect(
       await rig.listedRowIDs(.transcripts) == [labeled.id],
       "a speaker's own name must be searchable even though it never enters displayText")
 
-    coordinator.setHistoryQuery("Ariana", in: .transcripts)
+    coordinator.browser.setHistoryQuery("Ariana", in: .transcripts)
     #expect(await rig.listedRowIDs(.transcripts) == [labeled.id], "every speaker name, not just one")
 
-    coordinator.setHistoryQuery("nobody named this", in: .transcripts)
+    coordinator.browser.setHistoryQuery("nobody named this", in: .transcripts)
     #expect(await rig.listedRowIDs(.transcripts).isEmpty)
   }
 
@@ -129,7 +129,7 @@ struct TranscriptCoordinatorFilterTests {
 
     #expect(await rig.listedRowIDs(.dictations) == [heldRow.id], "listed with no search")
     for tab in HistoryTab.allCases {
-      rig.coordinator.setHistoryQuery("cancelled", in: tab)
+      rig.coordinator.browser.setHistoryQuery("cancelled", in: tab)
       #expect(
         await rig.listedRowIDs(tab).contains(heldRow.id) == false,
         "an accidental Escape must not pollute search results under \(tab)")
@@ -152,7 +152,7 @@ struct TranscriptCoordinatorFilterTests {
       coordinator.visibleTranscripts.filter { $0.escapeRecoveredAt == nil }.count == 3,
       "three completed rows, the held offer is not one")
     #expect(coordinator.dictationCount == 2)
-    coordinator.setHistoryQuery("two", in: .dictations)
+    coordinator.browser.setHistoryQuery("two", in: .dictations)
     #expect(coordinator.dictationCount == 2, "onboarding's count does not follow a tab's search")
   }
 
@@ -166,9 +166,9 @@ struct TranscriptCoordinatorFilterTests {
     try await coordinator.saveAndShow(t1)
     try await coordinator.saveAndShow(t2)
 
-    coordinator.openHistoryItem(.transcript(t1.id), in: .transcripts)
+    coordinator.browser.openHistoryItem(.transcript(t1.id), in: .transcripts)
     await coordinator.delete(t2)
-    #expect(coordinator.openHistoryItemID(in: .transcripts) == .transcript(t1.id))
+    #expect(coordinator.browser.openHistoryItemID(in: .transcripts) == .transcript(t1.id))
   }
 
   @Test("Delete All empties every tab")

@@ -212,9 +212,9 @@ struct HistoryFiltersView<Leading: View>: View {
 
   /// Applies `change` to the tab's live state; a picker choice also closes its popover.
   private func update(_ change: (inout HistoryTabState) -> Void) {
-    var live = coordinator.requestedHistoryState(for: tab)
+    var live = coordinator.browser.requestedHistoryState(for: tab)
     change(&live)
-    coordinator.setHistoryState(live, for: tab)
+    coordinator.browser.setHistoryState(live, for: tab)
     if openPicker != nil { openPicker = nil }
   }
 }
@@ -276,11 +276,11 @@ private struct HistorySearchField: View {
   var body: some View {
     HistorySearchFieldFrame(
       text: Binding(
-        get: { coordinator.requestedHistoryState(for: tab).query },
+        get: { coordinator.browser.requestedHistoryState(for: tab).query },
         set: { value in
-          var live = coordinator.requestedHistoryState(for: tab)
+          var live = coordinator.browser.requestedHistoryState(for: tab)
           live.query = value
-          coordinator.setHistoryState(live, for: tab)
+          coordinator.browser.setHistoryState(live, for: tab)
           dismissPicker()
         }),
       focused: $focused)
@@ -725,7 +725,7 @@ private struct HistoryAppPicker: View {
       }
     }
     .task(id: coordinator.catalogSession?.revision ?? UInt64(coordinator.transcriptsRevision)) {
-      let result = await coordinator.historyAppOptions()
+      let result = await coordinator.browser.historyAppOptions()
       if !Task.isCancelled { options = result }
     }
   }
@@ -950,16 +950,16 @@ private struct HistoryDatePicker: View {
     }
     .frame(width: 280)
     .task(id: activityKey) {
-      let result = await coordinator.historyActivity(in: tab, calendar: calendar)
+      let result = await coordinator.browser.historyActivity(in: tab, calendar: calendar)
       if !Task.isCancelled { activity = result }
     }
     .onAppear { if let current { month = current.start } }
   }
 
-  private var activityKey: TranscriptCoordinator.HistoryQueryKey {
-    var state = coordinator.requestedHistoryState(for: tab)
+  private var activityKey: HistoryBrowser.HistoryQueryKey {
+    var state = coordinator.browser.requestedHistoryState(for: tab)
     state.dateInterval = nil
-    return coordinator.historyQueryKey(for: tab, state: state)
+    return coordinator.browser.historyQueryKey(for: tab, state: state)
   }
 
   private var monthHeader: some View {

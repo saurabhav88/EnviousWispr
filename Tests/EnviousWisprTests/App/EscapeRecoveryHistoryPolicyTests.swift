@@ -417,12 +417,12 @@ struct EscapeRecoveryHistoryPolicyTests {
     let rig = try await HistoryCatalogRig.make(rows: [kept], pending: [heldRow])
     defer { rig.remove() }
 
-    rig.coordinator.setHistoryQuery("quarterly", in: .dictations)
+    rig.coordinator.browser.setHistoryQuery("quarterly", in: .dictations)
     #expect(
       await rig.listedRowIDs(.dictations) == [kept.id],
       "an accidental Escape must not pollute results for 24 hours")
 
-    rig.coordinator.setHistoryQuery("", in: .dictations)
+    rig.coordinator.browser.setHistoryQuery("", in: .dictations)
     #expect(
       Set(await rig.listedRowIDs(.dictations)) == [kept.id, heldRow.id],
       "but it stays reachable by scrolling History, which is where the user left it")

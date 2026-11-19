@@ -487,8 +487,8 @@ package final class WisprBootstrapper {
       changes: historySourceChanges, sources: transcriptStore.historyCatalogSources(meetings: meetingStore),
       directory: AppConstants.appSupportURL.appendingPathComponent("HistoryCatalog", isDirectory: true))
     // #3147 §3.3: History opens on the tab the user left it on.
-    transcriptCoordinator.restoreHistoryTab(settings.lastHistoryTab)
-    transcriptCoordinator.onHistoryTabSelected = { [weak settings] tab in
+    transcriptCoordinator.browser.restoreHistoryTab(settings.lastHistoryTab)
+    transcriptCoordinator.browser.onHistoryTabSelected = { [weak settings] tab in
       settings?.lastHistoryTab = tab
     }
     // #3147: interrupted encodes and orphaned recordings are cleaned once, before any new
@@ -2170,7 +2170,7 @@ package final class WisprBootstrapper {
             waitingOnSummary: coordinator.passWaitsOnSummary)
         },
         showMeeting: { [weak transcriptCoordinator] meetingID in
-          transcriptCoordinator?.showMeetings(meetingID: meetingID)
+          transcriptCoordinator?.browser.showMeetings(meetingID: meetingID)
           navigationCoordinator.request(.history)
           appWindowCoordinator.showWindow()
         },
@@ -3466,7 +3466,7 @@ package final class WisprBootstrapper {
             ?? .ended
         },
         showMeeting: { [weak transcriptCoordinator] meetingID in
-          transcriptCoordinator?.showMeetings(meetingID: meetingID)
+          transcriptCoordinator?.browser.showMeetings(meetingID: meetingID)
           navigationCoordinator.request(.history)
           appWindowCoordinator.showWindow()
         },

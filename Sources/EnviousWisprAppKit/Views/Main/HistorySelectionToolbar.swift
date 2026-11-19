@@ -39,7 +39,7 @@ struct HistorySelectionToolbar: View {
       Button {
         guard let result else { return }
         Task {
-          guard let matching = await coordinator.matchingIDs(for: result) else { return }
+          guard let matching = await coordinator.browser.matchingIDs(for: result) else { return }
           let ids = Set(matching)
           allMatchingIDs = ids
           if !ids.isEmpty && ids.isSubset(of: selection.selectedIDs) {
@@ -126,9 +126,9 @@ struct HistorySelectionToolbar: View {
 
   private func delete(_ kind: HistoryDeleteKind) {
     pendingKind = nil
-    guard let result, coordinator.isCurrentHistoryResult(result) else { return }
+    guard let result, coordinator.browser.isCurrentHistoryResult(result) else { return }
     Task {
-      guard let matching = await coordinator.matchingIDs(for: result) else { return }
+      guard let matching = await coordinator.browser.matchingIDs(for: result) else { return }
       selection.retain(Set(matching))
       await selection.deleteSelected(kind: kind, coordinator: coordinator)
     }

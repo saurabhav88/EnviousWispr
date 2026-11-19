@@ -566,7 +566,7 @@ struct MeetingWiringTests {
     coordinator.launch()
     rig.transcripts.startHistoryCatalog()
     await session.waitForIndexingForTesting()
-    rig.transcripts.setHistoryQuery("acme.com", in: .meetings)
+    rig.transcripts.browser.setHistoryQuery("acme.com", in: .meetings)
     #expect(await history.listedRowIDs(.meetings) == [row.id])
     await MeetingCoordinatorTests.eventually("invited people loaded by the launch read") {
       coordinator.documents.invitedSearchTerms(record.id).contains("acme.com")
