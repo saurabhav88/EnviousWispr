@@ -586,11 +586,14 @@ struct SnippetImportFlowModelTests {
     let existing = SnippetImportReviewCeilingTests.maximal(50_000, prefix: "e").map {
       Snippet(trigger: $0, expansion: "x")
     }
-    let candidates = SnippetImportReviewCeilingTests.maximal(
+    let lastExisting = try #require(existing.last)
+    var candidates = SnippetImportReviewCeilingTests.maximal(
       SnippetImportLimits.maximumCandidates, prefix: "n"
     ).map {
       SnippetImportCandidate(trigger: $0, expansion: "x")
     }
+    candidates[candidates.count - 1] = SnippetImportCandidate(
+      trigger: lastExisting.trigger, expansion: "x")
     let model = SnippetImportFlowModel(
       dependencies: .init(
         existingSnippets: { existing }, commit: { _ in .stale },
@@ -599,7 +602,8 @@ struct SnippetImportFlowModelTests {
     model.begin(with: StubSource(candidates: candidates))
     try await Self.waitForStep(model, equals: .review)
     #expect(model.rows.count == SnippetImportLimits.maximumCandidates)
-    #expect(model.rows.allSatisfy { $0.status == .new })
+    #expect(model.rows.dropLast().allSatisfy { $0.status == .new })
+    #expect(model.rows.last?.status == .existing(trigger: lastExisting.trigger))
   }
 
   private static func waitForStep(

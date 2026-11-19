@@ -571,6 +571,9 @@ final class ModelDeliveryHome {
     // Moving the Whisper pair onto the resolver is #2695's PR 2. This only
     // stops them registering when storage is already known to be unusable.
     guard !storage.isUnavailable else {
+      speakerLiveLaunchProbeTaskDone = true
+      speakerFinalLaunchProbeTaskDone = true
+      maybeFinishSpeakerLaunchProbesForTests()
       Task {
         await AppLogger.shared.log(
           "Model delivery: storage is unavailable, so Parakeet and both Whisper "
