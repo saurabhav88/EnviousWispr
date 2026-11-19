@@ -456,23 +456,24 @@ extension HistoryCatalogTests {
     var notifications = changes.changes.makeAsyncIterator()
     for _ in 0..<6 { _ = await notifications.next() }
     _ = try #require(try await worker.reconcile()?.revision)
-    let fullReads = await catalog.fullProgressReadsForTesting
+    #if DEBUG
+      let fullReads = await catalog.fullProgressReadsForTesting
+    #endif
 
     let movedOn = Transcript(id: c.id, text: "shared c", processingTime: 0, backendType: .parakeet)
     let movedOff = Transcript(id: c.id, text: "own again", processingTime: 0, backendType: .parakeet)
-    let steps: [(change: () throws -> Void, expected: Set<UUID>)] = [
+    let steps: [(changes: [() throws -> Void], expected: Set<UUID>)] = [
       // A leaves; B still names the shared key.
-      ({ try stores.delete(id: a.id) }, [shared, c.id]),
-      // B leaves too: the shared row goes.
-      ({ try stores.delete(id: b.id) }, [c.id]),
-      // C moves onto the shared key, then back off it, by rewriting its own file.
-      ({ try stores.save(movedOn) }, [shared]),
-      ({ try stores.save(movedOff) }, [c.id]),
+      ([{ try stores.delete(id: a.id) }], [shared, c.id]),
+      // In ONE refresh B leaves and C moves onto the shared key: the row survives with C.
+      ([{ try stores.delete(id: b.id) }, { try stores.save(movedOn) }], [shared]),
+      // C moves off again: the last reference is gone, so the shared row goes.
+      ([{ try stores.save(movedOff) }], [c.id]),
     ]
     for step in steps {
-      try step.change()
+      for change in step.changes { try change() }
       var delta = HistorySourceChanges.Delta()
-      for _ in 0..<2 {
+      for _ in 0..<(2 * step.changes.count) {
         let event = await notifications.next()
         delta.include(try #require(event))
       }
@@ -480,7 +481,58 @@ extension HistoryCatalogTests {
       let ids = try await catalog.matchingKeys(.init(tab: .dictations), sourceRevision: revision)
       #expect(Set(ids.map(\.id)) == step.expected)
     }
-    // None of the four refreshes read every source's progress.
-    #expect(await catalog.fullProgressReadsForTesting == fullReads)
+    #if DEBUG
+      // None of the refreshes read every source's progress.
+      #expect(await catalog.fullProgressReadsForTesting == fullReads)
+    #endif
   }
+
+  #if DEBUG
+    /// #4586 N2: a refresh missing one count writes nothing and asks for a full pass, even when
+    /// another source in the same refresh is a valid new row.
+    @MainActor
+    @Test("A save refresh that lacks a count writes nothing and asks for a full pass")
+    func scopedRefreshWithoutACountWritesNothing() async throws {
+      let real = try #require(realpath(TestTemporaryDirectory.url.path, nil))
+      defer { free(real) }
+      let root = URL(fileURLWithPath: String(cString: real), isDirectory: true)
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+      try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+      defer { try? FileManager.default.removeItem(at: root) }
+      let changes = HistorySourceChanges()
+      let stores = TranscriptStore(directory: root.appendingPathComponent("transcripts"), historyChanges: changes)
+      let sources = stores.historyCatalogSources(meetings: MeetingStore(root: root.appendingPathComponent("Meetings")))
+      let catalog = try HistoryCatalog(directory: root.appendingPathComponent("catalog"), projectionContext: "en|en_US")
+      let worker = HistoryCatalogReconciliation(catalog: catalog, sources: sources, sourceRevision: { changes.revision }) {
+        guard let row = $0.transcript else { return nil }
+        return .init(
+          summary: .init(key: .init(tab: .dictations, id: row.id), date: row.createdAt, preview: row.text, sources: $0.versions),
+          searchableFields: [row.text])
+      }
+      let a = Transcript(text: "first", processingTime: 0, backendType: .parakeet)
+      let b = Transcript(text: "second", processingTime: 0, backendType: .parakeet)
+      for row in [a, b] { try stores.save(row) }
+      var notifications = changes.changes.makeAsyncIterator()
+      for _ in 0..<4 { _ = await notifications.next() }
+      let established = try #require(try await worker.reconcile()?.revision)
+      // The disappearing source's key gets no count; a new valid source joins the same refresh.
+      await catalog.withholdCountsForTesting([.init(tab: .dictations, id: a.id)])
+      let added = Transcript(text: "third", processingTime: 0, backendType: .parakeet)
+      try stores.delete(id: a.id)
+      try stores.save(added)
+      var delta = HistorySourceChanges.Delta()
+      for _ in 0..<4 {
+        let event = await notifications.next()
+        delta.include(try #require(event))
+      }
+      let pass = try #require(try await worker.refresh(delta))
+      #expect(pass.revision == nil)
+      #expect(pass.unavailable == 0)
+      // Nothing was written: the stored certificate, rows and progress are as before.
+      let ids = try await catalog.matchingKeys(.init(tab: .dictations), sourceRevision: established)
+      #expect(Set(ids.map(\.id)) == [a.id, b.id])
+      let progress = try await catalog.sourceProgress()
+      #expect(Set(progress.values.compactMap(\.key?.id)) == [a.id, b.id])
+    }
+  #endif
 }

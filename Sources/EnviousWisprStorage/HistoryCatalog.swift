@@ -455,6 +455,10 @@ package actor HistoryCatalog {
   #if DEBUG
     /// How many times the whole progress table was read (#4586 N2 tests).
     private(set) var fullProgressReadsForTesting = 0
+    /// Keys whose counts `scopedProgress` leaves out, as if SQLite had not answered for them
+    /// (#4586 N2 tests of the refresh fallback).
+    var withheldCountsForTesting: Set<Key> = []
+    func withholdCountsForTesting(_ keys: Set<Key>) { withheldCountsForTesting = keys }
   #endif
 
   /// Bound values per statement: under SQLite's historical 999-variable floor, whatever the
@@ -485,8 +489,9 @@ package actor HistoryCatalog {
         for (path, progress) in rows { entries[path] = progress }
       }
       let keys = Set(entries.values.compactMap(\.key)).union(proposedKeys)
+      // Only what SQLite answered: the LEFT JOIN returns zero for an unmatched key, so a key with
+      // no result row stays unknown and the refresh falls back instead of reading it as zero.
       var references: [Key: Int] = [:]
-      for key in keys { references[key] = 0 }
       for chunk in Array(keys).chunked(into: Self.bindChunk / 2) {
         let values = Array(repeating: "(?, ?)", count: chunk.count).joined(separator: ",")
         let rows = try connection.rows(
@@ -504,6 +509,9 @@ package actor HistoryCatalog {
         }
         for case let (key, count)? in rows { references[key] = count }
       }
+      #if DEBUG
+        for key in withheldCountsForTesting { references[key] = nil }
+      #endif
       return (entries, references)
     }
   }
