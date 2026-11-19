@@ -3023,7 +3023,7 @@ package final class WisprBootstrapper {
       keychain: keychainManager,
       cloudModelList: { [cloudModelList] in cloudModelList.snapshot?.list },
       detectedStartWanted: { [meetingBox] in
-        meetingBox.callDetection?.detectedStartStillWanted() ?? false
+        await meetingBox.callDetection?.detectedStartStillWanted() ?? false
       })
     meetingInputs.liveWords = meetingLiveWords
     meetingInputs.neuralSpeakersAvailable = { [modelDelivery] in
