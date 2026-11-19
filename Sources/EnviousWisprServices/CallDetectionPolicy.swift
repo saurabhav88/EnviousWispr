@@ -989,20 +989,26 @@ public struct CallDetectionPolicy: Sendable {
     return out + step(c)
   }
 
-  /// Asked by the meeting start after each of its waits: the running detected Start is still
-  /// wanted (its call was not confirmed over, and detection and its app are still on).
-  /// Uncertainty never withdraws a Start the user or the rules already chose.
+  /// Asked by the meeting start after each of its waits. Teams guest automatic starts also
+  /// need current proof of the same joined call. Other starts keep their established rules.
   public func isStartWanted(_ c: Context) -> Bool {
     guard c.setUp, c.mode != .off, let id = startingOperation, let operation = operations[id]
     else { return false }
     let episodeID: Int
+    let automatic: Bool
     switch operation {
-    case .start(let e, _, _), .switchTo(let e, _, _): episodeID = e
+    case .start(let e, _, let byItself):
+      episodeID = e
+      automatic = byItself
+    case .switchTo(let e, _, _):
+      episodeID = e
+      automatic = false
     case .stopForEnd, .stopAfterConfirmation, .userStart, .stopForSilence: return false
     }
-    guard let episode = episodes.first(where: { $0.id == episodeID }), !episode.endedWhileStarting
+    guard let episode = episodes.first(where: { $0.id == episodeID }), !episode.endedWhileStarting,
+      !c.appsOff.contains(CallAppCatalog.switchID(for: episode.rule))
     else { return false }
-    return !c.appsOff.contains(CallAppCatalog.switchID(for: episode.rule))
+    return !automatic || allowsAutomaticStart(episode, c)
   }
 
   // MARK: - Rules
@@ -1101,6 +1107,27 @@ public struct CallDetectionPolicy: Sendable {
         return false
       }
       return true
+    }
+  }
+
+  /// Automatic Teams guest capture needs exactly one joined room and run. Multiple audio
+  /// helpers can carry the same proof. An active browser awaiting its first read can still
+  /// yield a competing call, so wait for that read on the existing cycle.
+  private func allowsAutomaticStart(_ episode: Episode, _ c: Context) -> Bool {
+    guard CallEvidenceReader.requiresJoinedTeamsGuest(
+      rule: episode.rule, family: episode.family, room: episode.room)
+    else { return true }
+    guard c.mode == .startByItself, let owner = episode.owner,
+      isKnownLive(episode, c), let reading
+    else { return false }
+    return reading.holders.allSatisfy { holder in
+      guard holder.input == .active, CallEvidenceReader.readsTeamsGuestJoin(in: holder.rule)
+      else { return true }
+      guard let evidence = holder.evidence else { return false }
+      guard case .call(let family, let room) = evidence,
+        CallEvidenceReader.requiresJoinedTeamsGuest(rule: holder.rule, family: family, room: room)
+      else { return true }
+      return room == episode.room && attribution(for: holder, c).1?.owner == owner
     }
   }
 
@@ -1778,6 +1805,7 @@ public struct CallDetectionPolicy: Sendable {
         // Never over a dictation: the prompt waits until it ends (§3.4).
         guard !c.dictationActive else { return }
         if c.mode == .startByItself {
+          guard allowsAutomaticStart(episode, c) else { continue }
           let id = newID()
           operations[id] = .start(episode: episode.id, family: episode.family, byItself: true)
           episodes[index].phase = .starting(operation: id)

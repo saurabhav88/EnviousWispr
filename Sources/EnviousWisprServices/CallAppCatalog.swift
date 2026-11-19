@@ -152,6 +152,15 @@ public enum CallMeetingURL {
     public let room: String
   }
 
+  private static let personalTeamsHost = "teams.live.com"
+  private static let teamsGuestLaunchPath = "/light-meetings/launch"
+  private static let teamsGuestCodeKey = "p"
+
+  /// Use the classifier's room key to identify the verified Teams guest route.
+  static func isTeamsGuestLaunchRoom(_ room: String) -> Bool {
+    room.lowercased().hasPrefix(personalTeamsHost + teamsGuestLaunchPath + "?" + teamsGuestCodeKey + "=")
+  }
+
   /// Every Teams web host, exact (#4436): personal (`teams.live.com`), commercial and GCC
   /// (`teams.microsoft.com`, and `teams.cloud.microsoft`, the domain Microsoft is moving company
   /// Teams to, Message Center MC1465764), GCC High (`gov.teams.microsoft.us`) and DoD
@@ -160,7 +169,7 @@ public enum CallMeetingURL {
   /// `CallSpeakerSurfaceChoice.keepsPage` keeps the Teams app's own pages on it. China
   /// (`teams.microsoftonline.cn`) is not included.
   package static let teamsHosts: Set<String> = [
-    "teams.live.com", "teams.microsoft.com", "teams.cloud.microsoft", "gov.teams.microsoft.us",
+    personalTeamsHost, "teams.microsoft.com", "teams.cloud.microsoft", "gov.teams.microsoft.us",
     "dod.teams.microsoft.us",
   ]
 
@@ -212,10 +221,11 @@ public enum CallMeetingURL {
       // #4162: a teams.live.com meeting link hands the browser on to
       // /light-meetings/launch?p=<code>, the page that holds the call. Only that path with a
       // code counts, and only on teams.live.com, where it was seen; the code is the room.
-      if host == "teams.live.com", lower == "/light-meetings/launch",
-        let code = components.queryItems?.first(where: { $0.name == "p" })?.value, !code.isEmpty
+      if host == personalTeamsHost, lower == teamsGuestLaunchPath,
+        let code = components.queryItems?.first(where: { $0.name == teamsGuestCodeKey })?.value,
+        !code.isEmpty
       {
-        return Match(family: .teams, room: host + path + "?p=" + code)
+        return Match(family: .teams, room: host + path + "?" + teamsGuestCodeKey + "=" + code)
       }
       return nil
     }
