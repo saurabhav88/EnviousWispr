@@ -58,12 +58,13 @@ def watcher_ready_before_first_pass(lines: list[str], pid: int) -> bool:
     that ran while the install stalled can certify and still be followed by the install's pass."""
     ready = re.compile(rf"\[{pid}:[0-9a-fx]+\].*\bHistoryWatcherReady\b")
     done = re.compile(rf"\[{pid}:[0-9a-fx]+\].*\bHistoryDiscoveryDone\b")
+    seen_ready = False
     for line in lines:
         if ready.search(line):
-            return True
-        if done.search(line):
-            return False
-    return False
+            seen_ready = True
+        elif done.search(line):
+            return seen_ready
+    return False   # no full pass at all: never a measured sample
 
 
 def catalog_certified(home: Path) -> bool:

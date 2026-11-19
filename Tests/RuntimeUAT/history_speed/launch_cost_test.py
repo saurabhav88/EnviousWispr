@@ -25,6 +25,7 @@ class LaunchCostParsing(unittest.TestCase):
         self.assertTrue(watcher_ready_before_first_pass(LINES, 52491))
         self.assertFalse(watcher_ready_before_first_pass(LINES, 30182))   # a pass with no ready before it
         self.assertFalse(watcher_ready_before_first_pass(LINES[2:], 52491))   # ready never logged
+        self.assertFalse(watcher_ready_before_first_pass(LINES[:2], 52491))   # ready but no pass at all
 
     def test_cpu_time_shapes(self):
         self.assertAlmostEqual(parse_cpu_time("0:05.93\n"), 5.93)

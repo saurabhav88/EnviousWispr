@@ -408,11 +408,13 @@ import Testing
       #expect(r.session.watcherIsInstalledForTesting == false)
       let before = r.changes.admission.revision
       r.session.sourceMayHaveChanged()
+      #expect(r.changes.admission.revision == before)
       // No full pass awaits its start now, so past the guard the activation's re-check is sent.
       while r.changes.admission.revision == before {
         try Task.checkCancellation()
         await Task.yield()
       }
+      #expect(r.changes.admission.revision == before &+ 1)
       r.session.beforeWatcherInstallForTesting = nil
       order.release()
       await r.session.waitForIndexingForTesting()
