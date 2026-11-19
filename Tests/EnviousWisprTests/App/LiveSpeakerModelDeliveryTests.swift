@@ -63,7 +63,7 @@ struct LiveSpeakerModelDeliveryTests {
     let flags: UserDefaults
     let gate = FetchGate()
 
-    @MainActor init() throws {
+    @MainActor private init() throws {
       flags = try #require(TestDefaults.suite("ew.tests.4355.speaker-live.\(UUID().uuidString)"))
       home = ModelDeliveryHome(
         engineMutationScope: .live(
@@ -75,6 +75,15 @@ struct LiveSpeakerModelDeliveryTests {
       home.speakerLiveFetchOverrideForTests = { await gate.fetch() }
     }
 
+    @MainActor static func make() async throws -> Rig {
+      let rig = try Rig()
+      let probed = BoundedWait.Signal()
+      rig.home.onSpeakerLaunchProbesFinished = { probed.fire() }
+      try await BoundedWait.until(probed)
+      rig.home.onSpeakerLaunchProbesFinished = nil
+      return rig
+    }
+
     @MainActor func finishDownload() async throws {
       let task = try #require(home.speakerLiveDownloadTaskForTests)
       _ = try await BoundedWait.result(of: task)
@@ -82,8 +91,8 @@ struct LiveSpeakerModelDeliveryTests {
   }
 
   @Test("the bundled manifest registers into its own folder with the manifest's size")
-  func registration() throws {
-    let rig = try Rig()
+  func registration() async throws {
+    let rig = try await Rig.make()
     let registration = try #require(rig.home.speakerLiveRegistration)
     #expect(registration.manifest.identity.family == .speakerLive)
     #expect(registration.installDirectory.path.hasSuffix("EnviousWispr/Models/speaker-live"))
@@ -93,7 +102,7 @@ struct LiveSpeakerModelDeliveryTests {
 
   @Test("a low-only install remains usable while one joined request obtains the final model")
   func lowOnlyCanDownloadFinal() async throws {
-    let rig = try Rig()
+    let rig = try await Rig.make()
     rig.home.applySpeakerLiveStateForTests(.admitted)
     rig.home.speakerLiveAdmittedOverrideForTests = { true }
     let final = FetchGate()
@@ -112,7 +121,7 @@ struct LiveSpeakerModelDeliveryTests {
 
   @Test("Cancel between the component transfers prevents the final transfer")
   func cancelAtPairHandoff() async throws {
-    let rig = try Rig()
+    let rig = try await Rig.make()
     let final = FetchGate()
     rig.home.speakerFinalFetchOverrideForTests = { await final.fetch() }
     rig.gate.holdNext()
@@ -126,7 +135,7 @@ struct LiveSpeakerModelDeliveryTests {
 
   @Test("disabling delivery during low prevents a new final attempt without withdrawing low")
   func flagRecheckedAtFinalHandoff() async throws {
-    let rig = try Rig()
+    let rig = try await Rig.make()
     let final = FetchGate()
     rig.gate.holdNext()
     rig.home.speakerLiveAdmittedOverrideForTests = { true }
@@ -147,7 +156,7 @@ struct LiveSpeakerModelDeliveryTests {
 
   @Test("a final-transfer failure preserves the working live install")
   func finalFailureKeepsLive() async throws {
-    let rig = try Rig()
+    let rig = try await Rig.make()
     rig.home.speakerLiveAdmittedOverrideForTests = { true }
     rig.home.speakerLiveFetchOverrideForTests = { [home = rig.home] in
       home.applySpeakerLiveStateForTests(.admitted)
@@ -164,7 +173,7 @@ struct LiveSpeakerModelDeliveryTests {
 
   @Test("the shared Remove door deletes both owned speaker directories")
   func removesBothComponents() async throws {
-    let rig = try Rig()
+    let rig = try await Rig.make()
     let live = try #require(rig.home.speakerLiveRegistration)
     let final = try #require(rig.home.speakerFinalRegistration)
     #expect(live.installDirectory != final.installDirectory)
@@ -186,7 +195,7 @@ struct LiveSpeakerModelDeliveryTests {
 
   @Test("repeated requests join one download")
   func requestsJoinOneDownload() async throws {
-    let rig = try Rig()
+    let rig = try await Rig.make()
     rig.gate.holdNext()
     #expect(rig.home.requestLiveSpeakerModel(meetingActive: false) == .started)
     try await BoundedWait.until(rig.gate.started)
@@ -200,7 +209,7 @@ struct LiveSpeakerModelDeliveryTests {
 
   @Test("a request during a meeting waits; the meeting's end starts it once")
   func meetingQueuesTheRequest() async throws {
-    let rig = try Rig()
+    let rig = try await Rig.make()
     #expect(rig.home.requestLiveSpeakerModel(meetingActive: true) == .queuedUntilMeetingEnds)
     #expect(rig.home.speakerLiveDownloadQueued)
     #expect(rig.home.speakerLiveDownloadTaskForTests == nil)
@@ -212,8 +221,8 @@ struct LiveSpeakerModelDeliveryTests {
   }
 
   @Test("Cancel clears a queued request, so the meeting's end starts nothing")
-  func cancelPreventsReplay() throws {
-    let rig = try Rig()
+  func cancelPreventsReplay() async throws {
+    let rig = try await Rig.make()
     rig.home.requestLiveSpeakerModel(meetingActive: true)
     rig.home.cancelLiveSpeakerModelDownload()
     rig.home.meetingBecameIdle()
@@ -223,7 +232,7 @@ struct LiveSpeakerModelDeliveryTests {
 
   @Test("Cancel right after Download stops it before it fetches")
   func cancelBeatsAScheduledDownload() async throws {
-    let rig = try Rig()
+    let rig = try await Rig.make()
     rig.home.requestLiveSpeakerModel(meetingActive: false)
     rig.home.cancelLiveSpeakerModelDownload()
     try await rig.finishDownload()
@@ -231,8 +240,8 @@ struct LiveSpeakerModelDeliveryTests {
   }
 
   @Test("the delivery kill switch refuses the download before any work")
-  func killSwitchRefuses() throws {
-    let rig = try Rig()
+  func killSwitchRefuses() async throws {
+    let rig = try await Rig.make()
     rig.flags.set(false, forKey: DeliveryFlags.key("enabled", family: .speakerLive))
     #expect(rig.home.requestLiveSpeakerModel(meetingActive: false) == .refused)
     #expect(rig.home.speakerLiveDownloadRefused)
@@ -240,8 +249,8 @@ struct LiveSpeakerModelDeliveryTests {
   }
 
   @Test("Remove is refused during a meeting before anything is drained or deleted")
-  func removeRefusedDuringAMeeting() throws {
-    let rig = try Rig()
+  func removeRefusedDuringAMeeting() async throws {
+    let rig = try await Rig.make()
     rig.home.isMeetingActive = { true }
     var drained = false
     rig.home.drainLiveSpeakerHoldersBeforeRemoval = { drained = true }
@@ -253,7 +262,7 @@ struct LiveSpeakerModelDeliveryTests {
   @Test(
     "Remove waits for the check to release the model, then deletes, and clears a queued request")
   func removeDrainsBeforeDeleting() async throws {
-    let rig = try Rig()
+    let rig = try await Rig.make()
     rig.home.requestLiveSpeakerModel(meetingActive: true)
     let drainEntered = BoundedWait.Signal()
     let latch = MeetingSpeakerLabelsModelTests.Latch()
@@ -278,7 +287,7 @@ struct LiveSpeakerModelDeliveryTests {
 
   @Test("a download accepted before a meeting finishes during it")
   func acceptedDownloadContinuesThroughAMeeting() async throws {
-    let rig = try Rig()
+    let rig = try await Rig.make()
     rig.gate.holdNext()
     rig.home.requestLiveSpeakerModel(meetingActive: false)
     try await BoundedWait.until(rig.gate.started)
@@ -292,7 +301,7 @@ struct LiveSpeakerModelDeliveryTests {
 
   @Test("a Cancel before the controller took the download still stops it; Download after Cancel goes on")
   func cancelCoversTheHandoff() async throws {
-    let rig = try Rig()
+    let rig = try await Rig.make()
     rig.home.speakerLiveCancelOverrideForTests = {}
     rig.gate.holdNext()
     rig.home.requestLiveSpeakerModel(meetingActive: false)
@@ -326,7 +335,7 @@ struct LiveSpeakerModelDeliveryTests {
   /// `.preparing`.
   @Test("a non-transfer observer update does not re-cancel an already cancelled stale attempt")
   func nonTransferObserverStateDoesNotRecancelStaleAttempt() async throws {
-    let rig = try Rig()
+    let rig = try await Rig.make()
     rig.home.speakerLiveCancelOverrideForTests = {}
     rig.gate.holdNext()
     rig.home.requestLiveSpeakerModel(meetingActive: false)
@@ -347,7 +356,7 @@ struct LiveSpeakerModelDeliveryTests {
 
   @Test("during a removal no check gets the model folder, even one asked for after the drain")
   func removalBlocksNewChecks() async throws {
-    let rig = try Rig()
+    let rig = try await Rig.make()
     rig.home.speakerLiveAdmittedOverrideForTests = { true }
     let checks = MeetingSpeakerLabelsModelTests.FakeCheck()
     let model = MeetingSpeakerLabelsModel(
@@ -381,7 +390,7 @@ struct LiveSpeakerModelDeliveryTests {
 
   @Test("Download pressed while the old Cancel is still on its way starts only after that Cancel")
   func retryWaitsForThePendingCancel() async throws {
-    let rig = try Rig()
+    let rig = try await Rig.make()
     let order = OSAllocatedUnfairLock(initialState: [String]())
     let cancelLatch = MeetingSpeakerLabelsModelTests.Latch()
     rig.home.speakerLiveCancelOverrideForTests = {

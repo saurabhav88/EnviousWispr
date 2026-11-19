@@ -1473,7 +1473,9 @@ struct MeetingSummaryOwnerTests {
     let coordinator = harness.coordinator
     coordinator.launch()
     await Self.eventually("listed") { coordinator.record(id: record.id) != nil }
-    await Self.eventually("queue stopped") { !coordinator.hasFinalPassWork }
+    await Self.eventually("queue stopped") {
+      coordinator.queueWaitsForSpace && !coordinator.hasFinalPassWork
+    }
     #expect(coordinator.record(id: record.id)?.state == .queued)
   }
 

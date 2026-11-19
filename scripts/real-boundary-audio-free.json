@@ -5,6 +5,10 @@
     {
       "suite": "EnviousWisprASRTests/SpeechAudioCodecRealBoundaryTests",
       "file": "Tests/EnviousWisprASRTests/SpeechAudioCodecRealBoundaryTests.swift"
+    },
+    {
+      "suite": "EnviousWisprTests/SnippetImportReviewCeilingTests",
+      "file": "Tests/EnviousWisprTests/App/SnippetImportFlowModelTests.swift"
     }
   ]
 }

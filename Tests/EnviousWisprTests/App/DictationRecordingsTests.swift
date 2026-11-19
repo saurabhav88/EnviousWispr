@@ -160,10 +160,11 @@ struct DictationRecordingsTests {
   }
 
   /// A saved dictation row, listed in History.
-  private func savedRow(_ rig: Rig, _ text: String = "hello") throws -> Transcript {
+  private func savedRow(_ rig: Rig, _ text: String = "hello") async throws -> Transcript {
     let row = Transcript(text: text, createdAt: Date())
     try rig.store.save(row)
     rig.coordinator.load()
+    await rig.coordinator.diskReconcilerForTesting.waitForLoadForTesting()
     return row
   }
 
@@ -177,7 +178,7 @@ struct DictationRecordingsTests {
   func publishes() async throws {
     let rig = rig()
     defer { rig.gate.releaseAll() }
-    let row = try savedRow(rig)
+    let row = try await savedRow(rig)
     rig.gate.release(1)
 
     #expect(
@@ -191,7 +192,7 @@ struct DictationRecordingsTests {
   func audioDeletionWins() async throws {
     let rig = rig()
     defer { rig.gate.releaseAll() }
-    let row = try savedRow(rig)
+    let row = try await savedRow(rig)
     let pending = Task {
       await rig.recordings.record(rowID: row.id, samples: [0, 0, 0], timing: nil)
     }
@@ -210,7 +211,7 @@ struct DictationRecordingsTests {
   func rowDeletionWins() async throws {
     let rig = rig()
     defer { rig.gate.releaseAll() }
-    let row = try savedRow(rig)
+    let row = try await savedRow(rig)
     let pending = Task {
       await rig.recordings.record(rowID: row.id, samples: [0, 0, 0], timing: nil)
     }
@@ -229,11 +230,11 @@ struct DictationRecordingsTests {
   func deleteAllWins() async throws {
     let rig = rig()
     defer { rig.gate.releaseAll() }
-    let kept = try savedRow(rig, "kept")
+    let kept = try await savedRow(rig, "kept")
     rig.gate.release(1)
     #expect(await rig.recordings.record(rowID: kept.id, samples: [0], timing: nil) == .stored)
     try await rig.recordings.pin(rowID: kept.id)
-    let row = try savedRow(rig, "encoding")
+    let row = try await savedRow(rig, "encoding")
     let pending = Task { await rig.recordings.record(rowID: row.id, samples: [0, 0], timing: nil) }
     try await rig.gate.waitUntilStarted(2)
 
@@ -250,7 +251,7 @@ struct DictationRecordingsTests {
   func newerTakeSurvives() async throws {
     let rig = rig()
     defer { rig.gate.releaseAll() }
-    let row = try savedRow(rig)
+    let row = try await savedRow(rig)
     let older = Task { await rig.recordings.record(rowID: row.id, samples: [0], timing: nil) }
     try await rig.gate.waitUntilStarted(1)
     let newer = Task {
@@ -271,7 +272,7 @@ struct DictationRecordingsTests {
   func failedEncodeIsRecorded() async throws {
     let rig = rig()
     defer { rig.gate.releaseAll() }
-    let row = try savedRow(rig)
+    let row = try await savedRow(rig)
     rig.gate.fails = true
     rig.gate.release(1)
 
@@ -294,7 +295,7 @@ struct DictationRecordingsTests {
   func pinAndUnpin() async throws {
     let rig = rig()
     defer { rig.gate.releaseAll() }
-    let row = try savedRow(rig)
+    let row = try await savedRow(rig)
     rig.gate.release(1)
     await rig.recordings.record(rowID: row.id, samples: [0], timing: nil)
 
@@ -308,8 +309,8 @@ struct DictationRecordingsTests {
   func rowDeletionRemovesRecording() async throws {
     let rig = rig()
     defer { rig.gate.releaseAll() }
-    let row = try savedRow(rig)
-    let other = try savedRow(rig, "other")
+    let row = try await savedRow(rig)
+    let other = try await savedRow(rig, "other")
     for (number, id) in [row.id, other.id].enumerated() {
       rig.gate.release(number + 1)
       await rig.recordings.record(rowID: id, samples: [0], timing: nil)
@@ -361,7 +362,7 @@ struct DictationRecordingsTests {
   func newerSubmissionDuringOlderPublication() async throws {
     let rig = rig()
     defer { rig.gate.releaseAll() }
-    let row = try savedRow(rig)
+    let row = try await savedRow(rig)
     // The older take encodes and starts publishing; its row check is held.
     let rowCheck = RowCheckGate()
     rig.recordings.rowCheckWillRunForTesting = { await rowCheck.hold() }
@@ -384,7 +385,7 @@ struct DictationRecordingsTests {
   func sidecarKeepsASRText() async throws {
     let rig = rig()
     defer { rig.gate.releaseAll() }
-    let row = try savedRow(rig)
+    let row = try await savedRow(rig)
     rig.gate.release(1)
 
     rig.recordings.submit(Self.request(row.id, samples: [0], on: true))
@@ -401,7 +402,7 @@ struct DictationRecordingsTests {
   func sidecarStoresVerifiedAnchors() async throws {
     let rig = rig()
     defer { rig.gate.releaseAll() }
-    let row = try savedRow(rig)
+    let row = try await savedRow(rig)
     rig.gate.release(1)
     let text = "Hi there. Bye now!"
     let asr = DictationASREvidence(
@@ -438,7 +439,7 @@ struct DictationRecordingsTests {
   func historyDeleteRecordingsOnly() async throws {
     let rig = rig()
     defer { rig.gate.releaseAll() }
-    let row = try savedRow(rig)
+    let row = try await savedRow(rig)
     rig.gate.release(1)
     #expect(await rig.recordings.record(rowID: row.id, samples: [0], timing: nil) == .stored)
 
@@ -456,7 +457,7 @@ struct DictationRecordingsTests {
   func historyDeleteRecordingsOnlyWhileEncoding() async throws {
     let rig = rig()
     defer { rig.gate.releaseAll() }
-    let row = try savedRow(rig)
+    let row = try await savedRow(rig)
     let pending = Task {
       await rig.recordings.record(rowID: row.id, samples: [0, 0, 0], timing: nil)
     }
@@ -477,7 +478,7 @@ struct DictationRecordingsTests {
   func historyDeleteReportsLeftoverRecording() async throws {
     let rig = rig()
     defer { rig.gate.releaseAll() }
-    let row = try savedRow(rig)
+    let row = try await savedRow(rig)
     rig.gate.release(1)
     #expect(await rig.recordings.record(rowID: row.id, samples: [0], timing: nil) == .stored)
     let pins = rig.archive.directory.appendingPathComponent("pins.json")
@@ -500,7 +501,7 @@ struct DictationRecordingsTests {
   func selectionRetriesLeftoverRecording() async throws {
     let rig = rig()
     defer { rig.gate.releaseAll() }
-    let row = try savedRow(rig)
+    let row = try await savedRow(rig)
     rig.gate.release(1)
     #expect(await rig.recordings.record(rowID: row.id, samples: [0], timing: nil) == .stored)
     let pins = rig.archive.directory.appendingPathComponent("pins.json")
@@ -525,7 +526,7 @@ struct DictationRecordingsTests {
   func submitDoesNotWait() async throws {
     let rig = rig()
     defer { rig.gate.releaseAll() }
-    let row = try savedRow(rig)
+    let row = try await savedRow(rig)
 
     // The encode is held, yet the hand-off has already returned (paste is never delayed).
     rig.recordings.submit(Self.request(row.id, samples: [0, 0], on: true))
@@ -541,7 +542,7 @@ struct DictationRecordingsTests {
   func deletionRightAfterHandOffWins() async throws {
     let rig = rig()
     defer { rig.gate.releaseAll() }
-    let row = try savedRow(rig)
+    let row = try await savedRow(rig)
     rig.gate.release(1)
 
     rig.recordings.submit(Self.request(row.id, samples: [0], on: true))
@@ -556,7 +557,7 @@ struct DictationRecordingsTests {
   func recordingsOffKeepsReason() async throws {
     let rig = rig()
     defer { rig.gate.releaseAll() }
-    let row = try savedRow(rig)
+    let row = try await savedRow(rig)
 
     rig.recordings.submit(Self.request(row.id, samples: [0], on: false))
     await rig.recordings.waitForSubmissions()
@@ -570,7 +571,7 @@ struct DictationRecordingsTests {
   func staleOffDoesNotOverwrite() async throws {
     let rig = rig()
     defer { rig.gate.releaseAll() }
-    let row = try savedRow(rig)
+    let row = try await savedRow(rig)
 
     rig.recordings.submit(Self.request(row.id, samples: [0], on: false))
     try await rig.recordings.deleteRecording(rowID: row.id, reason: .deleted)
@@ -591,7 +592,7 @@ struct DictationRecordingsTests {
   func statusForHistory() async throws {
     let rig = rig()
     defer { rig.gate.releaseAll() }
-    let row = try savedRow(rig)
+    let row = try await savedRow(rig)
     try await storeRealRecording(rig, rowID: row.id, seconds: 1)
     try await rig.recordings.pin(rowID: row.id)
 
@@ -636,9 +637,9 @@ struct DictationRecordingsTests {
       player.play()
       return (player, { fileAtStop })
     }
-    let audioOnly = try savedRow(rig, "audio only")
-    let wholeRow = try savedRow(rig, "whole row")
-    let lastRow = try savedRow(rig, "last row")
+    let audioOnly = try await savedRow(rig, "audio only")
+    let wholeRow = try await savedRow(rig, "whole row")
+    let lastRow = try await savedRow(rig, "last row")
     for row in [audioOnly, wholeRow, lastRow] { try await storeRealRecording(rig, rowID: row.id) }
 
     let (first, firstSaw) = try await playingPlayer(audioOnly.id)
@@ -666,7 +667,7 @@ struct DictationRecordingsTests {
     defer { rig.gate.releaseAll() }
     let arbiter = PlaybackArbiter()
     rig.recordings.arbiter = arbiter
-    let row = try savedRow(rig)
+    let row = try await savedRow(rig)
     try await storeRealRecording(rig, rowID: row.id)
     let file = try #require(await rig.archive.url(for: row.id))
     let player = MeetingPlaybackController(
@@ -704,10 +705,10 @@ struct DictationRecordingsTests {
   func deleteAllRecordingsKeepsText() async throws {
     let rig = rig()
     defer { rig.gate.releaseAll() }
-    let kept = try savedRow(rig, "kept")
-    let plain = try savedRow(rig, "plain")
-    let encoding = try savedRow(rig, "encoding")
-    let off = try savedRow(rig, "off")
+    let kept = try await savedRow(rig, "kept")
+    let plain = try await savedRow(rig, "plain")
+    let encoding = try await savedRow(rig, "encoding")
+    let off = try await savedRow(rig, "off")
     for row in [kept, plain] { try await storeRealRecording(rig, rowID: row.id) }
     try await rig.recordings.pin(rowID: kept.id)
     try await rig.archive.recordAbsence(.recordingsOff, for: off.id)
@@ -751,7 +752,7 @@ struct DictationRecordingsTests {
   func deleteAllRecordingsReportsFailure() async throws {
     let rig = rig()
     defer { rig.gate.releaseAll() }
-    let rows = [try savedRow(rig, "a"), try savedRow(rig, "b"), try savedRow(rig, "c")]
+    let rows = [try await savedRow(rig, "a"), try await savedRow(rig, "b"), try await savedRow(rig, "c")]
     for row in rows { try await storeRealRecording(rig, rowID: row.id) }
     let locked = try #require(await rig.archive.url(for: rows[1].id))
     try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: locked.path)
@@ -770,7 +771,7 @@ struct DictationRecordingsTests {
   func deleteAllRecordingsReportsMetadataFailure() async throws {
     let rig = rig()
     defer { rig.gate.releaseAll() }
-    let row = try savedRow(rig)
+    let row = try await savedRow(rig)
     try await storeRealRecording(rig, rowID: row.id)
     // A reason file that exists and cannot be replaced: the audio goes, the reasons cannot be
     // written.
@@ -790,7 +791,7 @@ struct DictationRecordingsTests {
   func launchCleanup() async throws {
     let rig = rig()
     defer { rig.gate.releaseAll() }
-    let row = try savedRow(rig)
+    let row = try await savedRow(rig)
     rig.gate.release(1)
     await rig.recordings.record(rowID: row.id, samples: [0], timing: nil)
     // An orphan: a recording whose text row file is gone.

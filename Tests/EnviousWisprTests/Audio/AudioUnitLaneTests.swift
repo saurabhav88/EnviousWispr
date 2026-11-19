@@ -174,6 +174,7 @@ struct AudioUnitLaneTests {
       Issue.record("both healthy jobs must return values")
       return
     }
+    await lane.drainForTesting()
     #expect(two == 2)
     #expect(
       log.all.filter { $0.hasPrefix("completed:") } == ["completed:probe", "completed:route"])
