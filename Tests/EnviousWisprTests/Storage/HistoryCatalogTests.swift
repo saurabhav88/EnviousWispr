@@ -480,6 +480,13 @@ extension HistoryCatalogTests {
       let revision = try #require(try await worker.refresh(delta)?.revision)
       let ids = try await catalog.matchingKeys(.init(tab: .dictations), sourceRevision: revision)
       #expect(Set(ids.map(\.id)) == step.expected)
+      if step.expected == [shared] {
+        // The surviving row is C's, not a leftover of deleted B.
+        let page = try await catalog.page(.init(tab: .dictations), sourceRevision: revision) {
+          try $0.sourcesStillMatch()
+        }
+        #expect(page.summaries.map(\.preview) == ["shared c"])
+      }
     }
     #if DEBUG
       // None of the refreshes read every source's progress.
