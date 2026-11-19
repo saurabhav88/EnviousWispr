@@ -45,7 +45,7 @@
         let c = cached
         c.clock = { [unowned self] in time }
         c.meetingRecords = { [unowned self] in sources.records }
-        c.meetingInfo = { [unowned self] id in
+        c.meetingPresenter.meetingInfo = { [unowned self] id in
           sources.infoOverride[id]
             ?? sources.records.first { $0.id == id }.flatMap { MeetingHistoryInfo.paired(with: $0) }
         }
@@ -82,7 +82,7 @@
         if let clock { coordinator.clock = { clock.now } }
         coordinator.meetingRecords = { sources.records }
         coordinator.meetingRecord = { id in sources.records.first { $0.id == id } }
-        coordinator.meetingInfo = { id in
+        coordinator.meetingPresenter.meetingInfo = { id in
           sources.records.first { $0.id == id }.flatMap { MeetingHistoryInfo.paired(with: $0) }
         }
       }
@@ -288,11 +288,11 @@
       }
       return MeetingHistoryPresentation.previewText(
         MeetingHistoryPresentation.project(
-          row, info: c.meetingInfo?(meetingID), showEcho: c.isShowingEcho(rowID: row.id)))
+          row, info: c.meetingPresenter.meetingInfo?(meetingID), showEcho: c.meetingPresenter.isShowingEcho(rowID: row.id)))
     }
 
     static func expectPreviewAgrees(_ w: World, _ row: Transcript, _ step: String) {
-      #expect(w.cached.meetingPreviewText(of: row) == projectedPreview(w.cached, row), "\(step)")
+      #expect(w.cached.meetingPresenter.meetingPreviewText(of: row) == projectedPreview(w.cached, row), "\(step)")
     }
 
     @Test("a meeting preview is the projection's preview for every kind of meeting")
@@ -318,15 +318,15 @@
       ]
       w.setRows(rows)
       for (i, row) in rows.enumerated() { Self.expectPreviewAgrees(w, row, "kind \(i)") }
-      #expect(w.cached.meetingPreviewText(of: rows[0]).contains("Ship it Friday."))
-      #expect(!w.cached.meetingPreviewText(of: rows[1]).contains("Ship it Friday."))
+      #expect(w.cached.meetingPresenter.meetingPreviewText(of: rows[0]).contains("Ship it Friday."))
+      #expect(!w.cached.meetingPresenter.meetingPreviewText(of: rows[1]).contains("Ship it Friday."))
       #expect(
-        w.cached.meetingPreviewText(of: rows[2])
+        w.cached.meetingPresenter.meetingPreviewText(of: rows[2])
           == MeetingHistoryPresentation.everythingHiddenMessage)
       #expect(
-        w.cached.meetingPreviewText(of: rows[3]) == MeetingHistoryPresentation.unavailableMessage)
+        w.cached.meetingPresenter.meetingPreviewText(of: rows[3]) == MeetingHistoryPresentation.unavailableMessage)
       #expect(
-        w.cached.meetingPreviewText(of: rows[6]) == MeetingHistoryPresentation.unavailableMessage)
+        w.cached.meetingPresenter.meetingPreviewText(of: rows[6]) == MeetingHistoryPresentation.unavailableMessage)
     }
 
     @Test("the meeting detail shares kept text and preserves the direct projection (#4075)")
@@ -342,10 +342,10 @@
       w.setRows([row])
 
       func check(_ row: Transcript) {
-        let info = row.meetingID.flatMap { c.meetingInfo?($0) }
+        let info = row.meetingID.flatMap { c.meetingPresenter.meetingInfo?($0) }
         let expected = MeetingHistoryPresentation.project(
-          row, info: info, showEcho: c.isShowingEcho(rowID: row.id))
-        let actual = c.meetingProjection(of: row)
+          row, info: info, showEcho: c.meetingPresenter.isShowingEcho(rowID: row.id))
+        let actual = c.meetingPresenter.meetingProjection(of: row)
         #expect(actual == expected)
         if case .visible(_, let actualText) = actual,
           case .visible(_, let expectedText) = expected
@@ -356,13 +356,13 @@
 
       // A cold detail must populate the shared cache. The old direct call
       // leaves this counter unchanged and fails this assertion.
-      let before = c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting
+      let before = c.meetingPresenter.meetingDocumentCacheForTesting.meetingTextBuildsForTesting
       check(row)
-      #expect(c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting == before + 1)
-      let built = c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting
-      _ = c.meetingPreviewText(of: row)
+      #expect(c.meetingPresenter.meetingDocumentCacheForTesting.meetingTextBuildsForTesting == before + 1)
+      let built = c.meetingPresenter.meetingDocumentCacheForTesting.meetingTextBuildsForTesting
+      _ = c.meetingPresenter.meetingPreviewText(of: row)
       check(row)
-      #expect(c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting == built)
+      #expect(c.meetingPresenter.meetingDocumentCacheForTesting.meetingTextBuildsForTesting == built)
 
       record.echoTurnIDs = ["t0"]
       w.sources.records = [record]
@@ -372,9 +372,9 @@
       w.sources.records = [record]
       check(row)
 
-      c.setShowEcho(true, rowID: row.id)
+      c.meetingPresenter.setShowEcho(true, rowID: row.id)
       check(row)
-      c.setShowEcho(false, rowID: row.id)
+      c.meetingPresenter.setShowEcho(false, rowID: row.id)
       check(row)
 
       let empty = Transcript(
@@ -406,16 +406,16 @@
 
       let first = named("Ren\u{00E9}e")
       w.setRows([first])
-      _ = c.meetingProjection(of: first)
-      let built = c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting
+      _ = c.meetingPresenter.meetingProjection(of: first)
+      let built = c.meetingPresenter.meetingDocumentCacheForTesting.meetingTextBuildsForTesting
 
       let replaced = named("Rene\u{0301}e")
       #expect(first.speakerNames == replaced.speakerNames)
       w.setRows([replaced])
-      let actual = c.meetingProjection(of: replaced)
+      let actual = c.meetingPresenter.meetingProjection(of: replaced)
       let expected = MeetingHistoryPresentation.project(
-        replaced, info: c.meetingInfo?(record.id), showEcho: false)
-      #expect(c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting == built + 1)
+        replaced, info: c.meetingPresenter.meetingInfo?(record.id), showEcho: false)
+      #expect(c.meetingPresenter.meetingDocumentCacheForTesting.meetingTextBuildsForTesting == built + 1)
       if case .visible(_, let actualText) = actual,
         case .visible(_, let expectedText) = expected
       {
@@ -433,7 +433,7 @@
       var row = Self.twoTurnRow(record.id, at: w.time)
       w.setRows([row])
       Self.expectPreviewAgrees(w, row, "start")
-      let first = w.cached.meetingPreviewText(of: row)
+      let first = w.cached.meetingPresenter.meetingPreviewText(of: row)
       // Raw text, with the same id.
       row = Self.twoTurnRow(record.id, at: w.time, first: "Ship it Monday.")
       row = Transcript(
@@ -442,7 +442,7 @@
         meetingID: record.id)
       w.setRows([row])
       Self.expectPreviewAgrees(w, row, "raw text")
-      #expect(w.cached.meetingPreviewText(of: row) != first)
+      #expect(w.cached.meetingPresenter.meetingPreviewText(of: row) != first)
       // Turn ranges: t0 now covers less of the text.
       let ranged = Transcript(
         id: row.id, text: row.text, backendType: .parakeet, createdAt: row.createdAt,
@@ -460,19 +460,19 @@
         turns: ranged.turns, meetingID: record.id)
       w.setRows([renamed])
       Self.expectPreviewAgrees(w, renamed, "speaker names")
-      #expect(w.cached.meetingPreviewText(of: renamed).contains("Zach"))
+      #expect(w.cached.meetingPresenter.meetingPreviewText(of: renamed).contains("Zach"))
       // Echo IDs from the record, then the echo choice shows them again.
       record.echoTurnIDs = ["t0"]
       w.sources.records = [record]
       Self.expectPreviewAgrees(w, renamed, "echo IDs")
-      w.cached.setShowEcho(true, rowID: renamed.id)
+      w.cached.meetingPresenter.setShowEcho(true, rowID: renamed.id)
       Self.expectPreviewAgrees(w, renamed, "echo shown")
       // Info availability: the meeting stops being ready.
       record.state = .processing
       w.sources.records = [record]
       Self.expectPreviewAgrees(w, renamed, "info unavailable")
       #expect(
-        w.cached.meetingPreviewText(of: renamed) == MeetingHistoryPresentation.unavailableMessage)
+        w.cached.meetingPresenter.meetingPreviewText(of: renamed) == MeetingHistoryPresentation.unavailableMessage)
     }
 
     @Test("a kept preview still tells its reader about the echo choice and the meeting info")
@@ -484,21 +484,21 @@
       let row = Self.twoTurnRow(record.id, at: w.time)
       w.setRows([row])
       func expectToldAbout(_ name: String, change: () -> Void) {
-        _ = c.meetingPreviewText(of: row)
-        let built = c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting
+        _ = c.meetingPresenter.meetingPreviewText(of: row)
+        let built = c.meetingPresenter.meetingDocumentCacheForTesting.meetingTextBuildsForTesting
         let fired = Flag()
         withObservationTracking {
-          _ = c.meetingPreviewText(of: row)
+          _ = c.meetingPresenter.meetingPreviewText(of: row)
         } onChange: {
           fired.value = true
         }
         #expect(
-          c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting == built,
+          c.meetingPresenter.meetingDocumentCacheForTesting.meetingTextBuildsForTesting == built,
           "\(name): the tracked read was a kept one")
         change()
         #expect(fired.value, "\(name) did not reach a reader of a kept preview")
       }
-      expectToldAbout("the echo choice") { c.setShowEcho(true, rowID: row.id) }
+      expectToldAbout("the echo choice") { c.meetingPresenter.setShowEcho(true, rowID: row.id) }
       expectToldAbout("the meeting record") {
         record.echoTurnIDs = ["t1"]
         w.sources.records = [record]
@@ -513,7 +513,7 @@
     static func directSummaryText(_ c: TranscriptCoordinator, _ row: Transcript) -> String? {
       guard let id = row.meetingID,
         case .visible(_, let text) = MeetingHistoryPresentation.project(
-          row, info: c.meetingInfo?(id), showEcho: false), !text.isEmpty
+          row, info: c.meetingPresenter.meetingInfo?(id), showEcho: false), !text.isEmpty
       else { return nil }
       return text
     }
@@ -534,16 +534,16 @@
       ]
       w.setRows(rows)
       for show in [false, true] {
-        for row in rows { w.cached.setShowEcho(show, rowID: row.id) }
+        for row in rows { w.cached.meetingPresenter.setShowEcho(show, rowID: row.id) }
         for (i, row) in rows.enumerated() {
-          let info = row.meetingID.flatMap { w.cached.meetingInfo?($0) }
+          let info = row.meetingID.flatMap { w.cached.meetingPresenter.meetingInfo?($0) }
           let expected = Self.directSummaryText(w.cached, row)
           #expect(
-            w.cached.summaryVisibleText(of: row, info: info) == expected, "row \(i) show \(show)")
+            w.cached.meetingPresenter.summaryVisibleText(of: row, info: info) == expected, "row \(i) show \(show)")
         }
       }
       #expect(
-        w.cached.summaryVisibleText(of: rows[0], info: w.cached.meetingInfo?(visible.id))?
+        w.cached.meetingPresenter.summaryVisibleText(of: rows[0], info: w.cached.meetingPresenter.meetingInfo?(visible.id))?
           .contains("Ship it Friday.") == false, "echo stays hidden for the summary")
     }
 
@@ -560,12 +560,12 @@
         (empty, nil, false),
       ]
       let c = w.cached
-      let counter = { c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting }
+      let counter = { c.meetingPresenter.meetingDocumentCacheForTesting.meetingTextBuildsForTesting }
       for (i, (r, info, noWords)) in cases.enumerated() {
-        #expect(c.summaryHasNoWords(of: r, info: info) == noWords, "case \(i)")
+        #expect(c.meetingPresenter.summaryHasNoWords(of: r, info: info) == noWords, "case \(i)")
         let built = counter()
         // The same inputs again: answered from the kept text.
-        #expect(c.summaryHasNoWords(of: r, info: info) == noWords, "case \(i) again")
+        #expect(c.meetingPresenter.summaryHasNoWords(of: r, info: info) == noWords, "case \(i) again")
         #expect(counter() == built, "case \(i) reuse")
       }
     }
@@ -588,19 +588,19 @@
       let id = UUID()
       let first = row(named: "Ren\u{00E9}e", id: id)
       w.setRows([first])
-      let info = c.meetingInfo?(record.id)
-      let a = c.summaryVisibleText(of: first, info: info)
-      let built = c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting
-      _ = c.summaryVisibleText(of: first, info: info)
+      let info = c.meetingPresenter.meetingInfo?(record.id)
+      let a = c.meetingPresenter.summaryVisibleText(of: first, info: info)
+      let built = c.meetingPresenter.meetingDocumentCacheForTesting.meetingTextBuildsForTesting
+      _ = c.meetingPresenter.summaryVisibleText(of: first, info: info)
       #expect(
-        c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting == built,
+        c.meetingPresenter.meetingDocumentCacheForTesting.meetingTextBuildsForTesting == built,
         "the same bytes reuse the kept text")
       let replaced = row(named: "Rene\u{0301}e", id: id)
       #expect(replaced.speakerNames == first.speakerNames, "equal to ==")
       w.setRows([replaced])
-      let b = c.summaryVisibleText(of: replaced, info: info)
+      let b = c.meetingPresenter.summaryVisibleText(of: replaced, info: info)
       #expect(
-        c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting == built + 1,
+        c.meetingPresenter.meetingDocumentCacheForTesting.meetingTextBuildsForTesting == built + 1,
         "different bytes are projected again")
       #expect(a == b, "they look the same to ==")
       #expect(
@@ -618,19 +618,19 @@
         w.sources.records = [record]
         let row = Self.twoTurnRow(record.id, at: w.time)
         w.setRows([row])
-        let info = c.meetingInfo?(record.id)
-        _ = c.summaryVisibleText(of: row, info: info)
-        _ = c.meetingPreviewText(of: row)
-        let built = c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting
+        let info = c.meetingPresenter.meetingInfo?(record.id)
+        _ = c.meetingPresenter.summaryVisibleText(of: row, info: info)
+        _ = c.meetingPresenter.meetingPreviewText(of: row)
+        let built = c.meetingPresenter.meetingDocumentCacheForTesting.meetingTextBuildsForTesting
         w.setRows(replacement)  // the row leaves the live list: the pruning trigger
         w.setRows([row])
-        _ = c.summaryVisibleText(of: row, info: info)
+        _ = c.meetingPresenter.summaryVisibleText(of: row, info: info)
         #expect(
-          c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting == built + 1,
+          c.meetingPresenter.meetingDocumentCacheForTesting.meetingTextBuildsForTesting == built + 1,
           "the removed row's kept summary text was dropped (replacement of \(replacement.count))")
-        _ = c.meetingPreviewText(of: row)
+        _ = c.meetingPresenter.meetingPreviewText(of: row)
         #expect(
-          c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting == built + 2,
+          c.meetingPresenter.meetingDocumentCacheForTesting.meetingTextBuildsForTesting == built + 2,
           "the removed row's kept preview text was dropped (replacement of \(replacement.count))")
       }
     }
@@ -649,23 +649,23 @@
       let info = MeetingHistoryInfo(echoTurnIDs: [])
       let hydratedA = try #require(await c.loadCatalogDetail(a.id, authoritative: true))
       let hydratedB = try #require(await c.loadCatalogDetail(b.id, authoritative: true))
-      for row in [hydratedA, hydratedB, neither] { _ = c.summaryVisibleText(of: row, info: info) }
-      let built = c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting
+      for row in [hydratedA, hydratedB, neither] { _ = c.meetingPresenter.summaryVisibleText(of: row, info: info) }
+      let built = c.meetingPresenter.meetingDocumentCacheForTesting.meetingTextBuildsForTesting
       #expect(built == 3)
 
       // A's payload is evicted by its removal (`detailCache.clear`), which prunes the text.
       try await c.removeRow(id: a.id)
-      _ = c.summaryVisibleText(of: hydratedB, info: info)
+      _ = c.meetingPresenter.summaryVisibleText(of: hydratedB, info: info)
       #expect(
-        c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting == built,
+        c.meetingPresenter.meetingDocumentCacheForTesting.meetingTextBuildsForTesting == built,
         "a row whose payload is still held keeps its text")
-      _ = c.summaryVisibleText(of: hydratedA, info: info)
+      _ = c.meetingPresenter.summaryVisibleText(of: hydratedA, info: info)
       #expect(
-        c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting == built + 1,
+        c.meetingPresenter.meetingDocumentCacheForTesting.meetingTextBuildsForTesting == built + 1,
         "the evicted payload's text was dropped")
-      _ = c.summaryVisibleText(of: neither, info: info)
+      _ = c.meetingPresenter.summaryVisibleText(of: neither, info: info)
       #expect(
-        c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting == built + 2,
+        c.meetingPresenter.meetingDocumentCacheForTesting.meetingTextBuildsForTesting == built + 2,
         "a row that is neither live nor hydrated keeps no text")
     }
   }

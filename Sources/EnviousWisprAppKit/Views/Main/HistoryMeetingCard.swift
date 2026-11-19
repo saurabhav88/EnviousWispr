@@ -11,7 +11,7 @@ import SwiftUI
 /// **It keeps every state of the legacy `MeetingRowView`**: recording, saving, waiting (and
 /// waiting for disk space), interrupted, transcribing, needs attention with its failure reason,
 /// notes only, ready, and a row whose meeting folder is gone. The preview is
-/// `TranscriptCoordinator.meetingPreviewText`, so hidden echo never reaches it (R19), and a
+/// `HistoryMeetingPresenter.meetingPreviewText`, so hidden echo never reaches it (R19), and a
 /// committed transcript keeps its preview while Transcribe again runs, waits or fails.
 ///
 /// **Open and the title's rename controls are sibling buttons**, never one inside the other, so
@@ -82,7 +82,7 @@ struct HistoryMeetingCard: View {
   /// echo-aware text instead (Codex whole-diff r5), as search already does.
   private var echoRowID: UUID? {
     guard let summary, summary.hasMeetingSummary != true, let id = summary.rowID,
-      transcripts.isShowingEcho(rowID: id)
+      transcripts.meetingPresenter.isShowingEcho(rowID: id)
     else { return nil }
     return id
   }
@@ -118,9 +118,9 @@ struct HistoryMeetingCard: View {
 
   private func previewText(row: Transcript?) -> String? {
     if let id = echoRowID, let echoRow = transcripts.currentRow(id: id) {
-      return transcripts.meetingPreviewText(of: echoRow)
+      return transcripts.meetingPresenter.meetingPreviewText(of: echoRow)
     }
-    return summary?.preview ?? row.map(transcripts.meetingPreviewText(of:))
+    return summary?.preview ?? row.map(transcripts.meetingPresenter.meetingPreviewText(of:))
   }
 
   private func card(_ card: P.Card, record: MeetingRecord?)
@@ -346,7 +346,7 @@ struct HistoryMeetingCard: View {
   private func deliveryText() -> String? {
     guard let row = deliveryRow() else { return nil }
     return MeetingHistoryPresentation.deliveryText(
-      row, projection: transcripts.meetingProjection(of: row), timesOn: true, mode: .cleaned)
+      row, projection: transcripts.meetingPresenter.meetingProjection(of: row), timesOn: true, mode: .cleaned)
   }
 
   private func deliveryRow() -> Transcript? {

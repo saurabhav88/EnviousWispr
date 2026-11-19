@@ -187,7 +187,7 @@ final class TranscriptCoordinator: HistoryExpiryPulseWriter {
   /// owner; it ran only inside the in-memory browse before). `force` after hydrated rows left.
   private func pruneMeetingDocuments(force: Bool = false) {
     guard force || prunedRevision != transcriptsRevision else { return }
-    meetingDocuments.prune(keeping: transcripts + detailCache.payloadRows)
+    meetingPresenter.prune(keeping: transcripts + detailCache.payloadRows)
     prunedRevision = transcriptsRevision
   }
 
@@ -364,7 +364,7 @@ final class TranscriptCoordinator: HistoryExpiryPulseWriter {
     for (id, pair) in records {
       let (record, row) = pair
       guard !record.deletionRequested else { continue }
-      let info = meetingInfo?(id)
+      let info = meetingPresenter.meetingInfo?(id)
       let projection = MeetingHistoryPresentation.project(row, info: info, showEcho: key.echoShown.contains(row.id))
       let text: String
       if case .visible(_, let visible) = projection { text = visible } else { text = "" }
@@ -485,17 +485,18 @@ final class TranscriptCoordinator: HistoryExpiryPulseWriter {
   /// The Escape Recovery redraw pulse and its follow-up sweep (#2087), its own owner since
   /// #4586 N6.
   @ObservationIgnored let expiry: HistoryExpiryPulse
+  /// How meeting rows read on screen: echo choices, projections, previews, summaries and the
+  /// meeting-text cache (#4586 N6).
+  @ObservationIgnored let meetingPresenter = HistoryMeetingPresenter()
 
   @ObservationIgnored private let transactionExecutor: HistoryTransactionExecutor
   /// #3147: saved dictation recordings, changed only through this coordinator's command queue.
   /// Nil when no archive was given (tests that do not exercise recordings).
   @ObservationIgnored let recordings: DictationRecordings?
   @ObservationIgnored private let diskReconciler: HistoryDiskReconciler
-  @ObservationIgnored private let meetingDocuments = HistoryMeetingDocumentCache()
 
   #if DEBUG
     var transactionExecutorForTesting: HistoryTransactionExecutor { transactionExecutor }
-    var meetingDocumentCacheForTesting: HistoryMeetingDocumentCache { meetingDocuments }
   #endif
 
   var diskReconcilerForTesting: HistoryDiskReconciler { diskReconciler }
@@ -548,14 +549,6 @@ final class TranscriptCoordinator: HistoryExpiryPulseWriter {
   /// removal, so no meeting is left with audio but no row and no mark to finish its deletion.
   /// Async (#4102): the marks are awaited, not waited for on the main actor.
   @ObservationIgnored var meetingsWillBeDeletedWithAll: (@MainActor ([UUID]) async -> Bool)?
-  /// #3972 R5/R19: a meeting's History facts (echo turns, title, speaker outcomes), by meeting
-  /// id, from EnviousMeet's in-memory durable copy. Observable on that side, so a view that
-  /// reads it redraws when the meeting changes. Nil (tests, or before wiring) and an unknown
-  /// meeting both fail closed: the row shows nothing.
-  @ObservationIgnored var meetingInfo: (@MainActor (UUID) -> MeetingHistoryInfo?)?
-  /// Rows whose probable echo is shown (#3972 R19). Per row and in memory only: one row's
-  /// choice never reaches another, and every row starts hidden.
-  private(set) var echoShownRowIDs: Set<UUID> = []
   /// #4001 H12: a History read that was still the current one has ended at least once this
   /// launch, successfully or not. It says an attempt finished, never that the rows are complete
   /// or that a given row is there. Never reset: later reads refresh rows in place.
@@ -632,7 +625,7 @@ final class TranscriptCoordinator: HistoryExpiryPulseWriter {
     HistoryQueryKey(
       revision: Int(truncatingIfNeeded: catalogSession?.revision ?? 0), pulse: expiry.expiryPulse,
       context: HistoryPaging.Context(tab: tab, state: state),
-      echoShown: tab == .meetings ? echoShownRowIDs : [], locale: Locale.current.identifier,
+      echoShown: tab == .meetings ? meetingPresenter.echoShownRowIDs : [], locale: Locale.current.identifier,
       localizations: Bundle.main.preferredLocalizations, calendar: .current,
       draftNotes: tab == .meetings && !state.query.isEmpty ? (meetingHistoryDrafts?() ?? [:]) : [:])
   }
@@ -1238,7 +1231,7 @@ final class TranscriptCoordinator: HistoryExpiryPulseWriter {
         if let meetingID = current.meetingID {
           // The completed view can temporarily show the prior attempt while its replacement
           // publishes. Only the generation the meeting has committed can accept Keep new.
-          guard let info = meetingInfo?(meetingID),
+          guard let info = meetingPresenter.meetingInfo?(meetingID),
             info.generation == current.meetingTranscriptGeneration
           else { return false }
         }
@@ -1888,7 +1881,7 @@ final class TranscriptCoordinator: HistoryExpiryPulseWriter {
       // its meeting facts are unknown, or every line is hidden.
       guard let current = verifiedRowForDelivery(id: transcript.id) else { return nil }
       return MeetingHistoryPresentation.deliveryText(
-        current, projection: meetingProjection(of: current), timesOn: false)
+        current, projection: meetingPresenter.meetingProjection(of: current), timesOn: false)
     }
     // #4075 R5: the row as it is now, never the caller's copy. History Paste reads this after
     // hiding the app, and an import's cleanup or a deletion can land in that wait.
@@ -2139,89 +2132,6 @@ final class TranscriptCoordinator: HistoryExpiryPulseWriter {
     }
   }
 
-  // MARK: - Meeting rows (#3972 R5, R19)
-
-  func isShowingEcho(rowID: UUID) -> Bool { echoShownRowIDs.contains(rowID) }
-
-  /// The document-scoped "Show probable echo" choice; C5 gives it a control.
-  func setShowEcho(_ show: Bool, rowID: UUID) {
-    if show { echoShownRowIDs.insert(rowID) } else { echoShownRowIDs.remove(rowID) }
-  }
-
-  /// #3973 C2: the probable-echo turn IDs of `row`'s own transcript generation, or nil when
-  /// its facts are not known.
-  func meetingEchoTurnIDs(of row: Transcript) -> Set<String>? {
-    guard let meetingID = row.meetingID else { return nil }
-    return meetingInfo?(meetingID)?.matching(row)?.echoTurnIDs
-  }
-
-  /// #3973 C2: whether `row`'s own transcript generation has probable-echo lines, the facts
-  /// "Show probable echo" acts on. False for a row whose facts are not known.
-  func meetingHasProbableEcho(_ row: Transcript) -> Bool {
-    meetingEchoTurnIDs(of: row)?.isEmpty == false
-  }
-
-  /// What a meeting row shows; `.unavailable` for a row that is not a meeting.
-  func meetingProjection(of row: Transcript) -> MeetingHistoryPresentation.Projection {
-    guard let meetingID = row.meetingID else { return .unavailable }
-    // #3973 C2: only the facts of this row's own transcript generation.
-    let info = meetingInfo?(meetingID)?.matching(row)
-    let showEcho = isShowingEcho(rowID: row.id)
-    // #4075 R6: the plain text comes from the kept meeting text (the same projection search and
-    // the preview read), so a detail redraw does not rebuild the whole meeting's text. Only the
-    // visible turns, a filter, are computed here.
-    let text = meetingDocuments.text(
-      of: row, info: info, showEcho: showEcho, locale: Locale.current.identifier,
-      localizations: Bundle.main.preferredLocalizations, bypass: false)
-    switch text.kind {
-    case .unavailable: return .unavailable
-    case .everythingHidden: return .everythingHidden
-    case .visible:
-      guard let info else { return .unavailable }
-      let visible = MeetingTranscriptProjection.visible(
-        turns: row.turns ?? [], echoTurnIDs: info.echoTurnIDs, showEcho: showEcho)
-      return .visible(turns: visible.turns, plainText: text.plain)
-    }
-  }
-
-  /// A meeting row's two-line list preview, the same text `meetingProjection` gives, read from
-  /// the kept meeting text (#4001 step 2a) so a row body does not project the whole meeting.
-  /// The meeting info and echo choice are read on every call, so the row stays subscribed.
-  func meetingPreviewText(of row: Transcript) -> String {
-    guard let meetingID = row.meetingID else {
-      return MeetingHistoryPresentation.unavailableMessage
-    }
-    let text = meetingDocuments.text(
-      of: row, info: meetingInfo?(meetingID), showEcho: isShowingEcho(rowID: row.id),
-      locale: Locale.current.identifier, localizations: Bundle.main.preferredLocalizations,
-      bypass: false)
-    switch text.kind {
-    case .visible: return text.plain
-    case .everythingHidden: return MeetingHistoryPresentation.everythingHiddenMessage
-    case .unavailable: return MeetingHistoryPresentation.unavailableMessage
-    }
-  }
-
-  /// A meeting summary's source text: the visible text, echo always hidden, nil when nothing is
-  /// visible (`HistoryMeetingDocumentCache.summaryText`). The caller reads the row and the
-  /// meeting facts live, before this lookup.
-  func summaryVisibleText(of row: Transcript, info: MeetingHistoryInfo?) -> String? {
-    summaryText(of: row, info: info).visibleText
-  }
-
-  /// #4148: true when the same projection is known and has no visible transcript text.
-  func summaryHasNoWords(of row: Transcript, info: MeetingHistoryInfo?) -> Bool {
-    summaryText(of: row, info: info).hasNoWords
-  }
-
-  private func summaryText(
-    of row: Transcript, info: MeetingHistoryInfo?
-  ) -> HistoryMeetingDocumentCache.MeetingText {
-    meetingDocuments.summaryText(
-      of: row, info: info, locale: Locale.current.identifier,
-      localizations: Bundle.main.preferredLocalizations, bypass: false)
-  }
-
   /// Removes one row from disk and from the list (#2807). Announces nothing: `delete(_:)`
   /// announces for History's own deletes, and EnviousMeet calls this as the deletion authority
   /// of a meeting's row (#3972 R12), so it must not call back. Throws when the file is still
@@ -2269,7 +2179,7 @@ final class TranscriptCoordinator: HistoryExpiryPulseWriter {
     publishedImportProofs[id] = nil
     detailCache.clear(id)
     removedRowIDs.insert(id)
-    echoShownRowIDs.remove(id)
+    meetingPresenter.setShowEcho(false, rowID: id)
     expiry.refreshDiskStateThenStopIfIdle()
     return (.removed, recordingCleanupFailed)
   }
@@ -2337,7 +2247,7 @@ final class TranscriptCoordinator: HistoryExpiryPulseWriter {
       publishedImportProofs.removeAll()
       detailCache.clearAll()
       removedRowIDs.formUnion(removedIDs)
-      echoShownRowIDs.removeAll()
+      meetingPresenter.clearEcho()
       // The same announcement `delete(_:)` makes, per row, after the list is already empty
       // (found by cloud review, round 3: this route bypassed it).
       for id in removedIDs { onRowDeleted?(id) }

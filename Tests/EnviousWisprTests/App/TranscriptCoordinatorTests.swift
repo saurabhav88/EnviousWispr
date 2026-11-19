@@ -340,7 +340,7 @@ struct TranscriptCoordinatorTests {
 
     // #4075 S1: the presentation the failed removal must not touch.
     coordinator.openHistoryItem(.transcript(row.id), in: .dictations)
-    coordinator.setShowEcho(true, rowID: row.id)
+    coordinator.meetingPresenter.setShowEcho(true, rowID: row.id)
     var announced: [UUID] = []
     coordinator.onRowDeleted = { announced.append($0) }
 
@@ -352,7 +352,7 @@ struct TranscriptCoordinatorTests {
     #expect(
       coordinator.openHistoryItemID(in: .dictations) == .transcript(row.id),
       "a failed delete closed the open item")
-    #expect(coordinator.isShowingEcho(rowID: row.id), "a failed delete cleared the echo choice")
+    #expect(coordinator.meetingPresenter.isShowingEcho(rowID: row.id), "a failed delete cleared the echo choice")
     #expect(announced.isEmpty, "a failed delete was announced")
 
     coordinator.dismissActionFailure()
@@ -1469,9 +1469,9 @@ struct TranscriptCoordinatorMeetingTests {
       try await rig.applying { try await coordinator.saveAndShow(older) }
       try await rig.applying { try await coordinator.saveAndShow(newer) }
       #expect(await rig.listedRowIDs(.dictations) == [newer.id, older.id], "control: both are listed")
-      coordinator.setShowEcho(true, rowID: newer.id)
+      coordinator.meetingPresenter.setShowEcho(true, rowID: newer.id)
       try await rig.applying { await coordinator.delete(newer) }
-      #expect(coordinator.isShowingEcho(rowID: newer.id) == false)
+      #expect(coordinator.meetingPresenter.isShowingEcho(rowID: newer.id) == false)
       #expect(await rig.listedRowIDs(.dictations) == [older.id])
       // A second delete of the gone row is a no-op.
       await coordinator.delete(newer)

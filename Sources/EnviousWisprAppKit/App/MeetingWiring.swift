@@ -335,7 +335,7 @@ enum MeetingWiring {
     inputs.transcriptCoordinator.meetingInvited = { [weak coordinator] meetingID in
       coordinator?.documents.invitedSearchTerms(meetingID) ?? []
     }
-    inputs.transcriptCoordinator.meetingInfo = { [weak coordinator] meetingID in
+    inputs.transcriptCoordinator.meetingPresenter.meetingInfo = { [weak coordinator] meetingID in
       historyInfo(coordinator, meetingID: meetingID)
     }
     inputs.transcriptCoordinator.meetingsWillBeDeletedWithAll = { [weak coordinator] ids in
@@ -380,7 +380,7 @@ enum MeetingWiring {
           guard let record = coordinator?.record(id: meetingID),
             let row = transcriptCoordinator.verifiedRowForDelivery(id: record.transcriptID, fetchIfNeeded: true),
             isCommittedRow(row, of: record),
-            let text = transcriptCoordinator.summaryVisibleText(
+            let text = transcriptCoordinator.meetingPresenter.summaryVisibleText(
               of: row, info: historyInfo(coordinator, meetingID: meetingID))
           else { return nil }
           return .init(
@@ -394,7 +394,7 @@ enum MeetingWiring {
             let row = transcriptCoordinator.verifiedRowForDelivery(id: record.transcriptID, fetchIfNeeded: true),
             isCommittedRow(row, of: record)
           else { return false }
-          return transcriptCoordinator.summaryHasNoWords(
+          return transcriptCoordinator.meetingPresenter.summaryHasNoWords(
             of: row, info: historyInfo(coordinator, meetingID: meetingID))
         },
         promptFacts: { [weak coordinator] meetingID in
