@@ -744,7 +744,7 @@
       defer { try? FileManager.default.removeItem(at: directory) }
       let store = TranscriptStore(directory: directory)
       let coordinator = TranscriptCoordinator(store: store)
-      defer { coordinator.cancelPulseForTesting() }
+      defer { coordinator.expiry.cancelPulseForTesting() }
 
       let window = AppConstants.pendingTranscriptRetention
       let permanent = Transcript(text: "kept row")

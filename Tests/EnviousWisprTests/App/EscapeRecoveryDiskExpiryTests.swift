@@ -144,7 +144,7 @@ struct EscapeRecoveryDiskExpiryTests {
           escapeRecoveryTakeID: "take-carried-over"))
 
       #expect(
-        !coordinator.hasPendingPulseForTesting,
+        !coordinator.expiry.hasPendingPulseForTesting,
         "control: nothing is watching before a sweep — the row is not in memory")
 
       await coordinator.sweepExpiredPending()
@@ -155,7 +155,7 @@ struct EscapeRecoveryDiskExpiryTests {
         coordinator.diskReconcilerForTesting.liveOnDiskPendingCountForTesting == 1,
         "the sweep must report what is still counting down ON DISK")
       #expect(
-        coordinator.hasPendingPulseForTesting,
+        coordinator.expiry.hasPendingPulseForTesting,
         """
         #2186: a dictation held from a previous session left the countdown unarmed, so nothing \
         was watching its deadline for the whole session. It would survive its moment and wait \
@@ -177,7 +177,7 @@ struct EscapeRecoveryDiskExpiryTests {
       try store.savePending(row)
       coordinator.setTranscriptsForTesting([row])
       await coordinator.sweepExpiredPending()
-      #expect(coordinator.hasPendingPulseForTesting, "control: the countdown is running")
+      #expect(coordinator.expiry.hasPendingPulseForTesting, "control: the countdown is running")
       #expect(coordinator.diskReconcilerForTesting.liveOnDiskPendingCountForTesting == 1, "control: disk truth cached")
 
       // The user removes it. `liveOnDiskPendingCount` is a CACHE of the last
@@ -186,13 +186,13 @@ struct EscapeRecoveryDiskExpiryTests {
       // every minute for the life of the app, which is the stranded retry this
       // file's own comments warn about. Cloud review, P2.
       await coordinator.delete(row)
-      await coordinator.waitForRefreshForTesting()
+      await coordinator.expiry.waitForRefreshForTesting()
 
       #expect(
         coordinator.diskReconcilerForTesting.liveOnDiskPendingCountForTesting == 0,
         "the cache must be re-read from disk after a removal, not trusted")
       #expect(
-        !coordinator.hasPendingPulseForTesting,
+        !coordinator.expiry.hasPendingPulseForTesting,
         """
         #2186: nothing is pending after the user removed the only held row, yet the countdown is \
         still running. It will walk the pending directory every minute for the life of the app.
@@ -318,7 +318,7 @@ struct EscapeRecoveryDiskExpiryTests {
       #expect(coordinator.diskReconcilerForTesting.liveOnDiskPendingCountForTesting == 2, "control: both rows counted")
 
       await coordinator.delete(removed)
-      await coordinator.waitForRefreshForTesting()
+      await coordinator.expiry.waitForRefreshForTesting()
 
       // Zeroing the cache is what lets the pulse stop, and it is only ever
       // provisional — the directory decides. A removal that zeroed and never
@@ -332,7 +332,7 @@ struct EscapeRecoveryDiskExpiryTests {
         watching its deadline any more.
         """)
       #expect(
-        coordinator.hasPendingPulseForTesting,
+        coordinator.expiry.hasPendingPulseForTesting,
         "and the countdown that row needs has stopped, so it survives to the next launch")
     }
 
@@ -408,7 +408,7 @@ struct EscapeRecoveryDiskExpiryTests {
           escapeRecoveredAt: Date().addingTimeInterval(-60),
           escapeRecoveryTakeID: "take-carried-over"))
       await coordinator.sweepExpiredPending()
-      #expect(coordinator.hasPendingPulseForTesting, "control: the countdown is running")
+      #expect(coordinator.expiry.hasPendingPulseForTesting, "control: the countdown is running")
 
       // The row crosses its deadline while the app runs. Driven by SIGNAL, not by
       // a wall clock: the SAME row is rewritten already past its window and the
@@ -439,12 +439,12 @@ struct EscapeRecoveryDiskExpiryTests {
         }
         if iteration >= 20 {
           capFired = true
-          coordinator.cancelPulseForTesting()
+          coordinator.expiry.cancelPulseForTesting()
         }
       }
       // The handler is installed; only now may the pulse's first step run (#4108).
       gate.releaseFirstStep()
-      await coordinator.waitForPulseForTesting()
+      await coordinator.expiry.waitForPulseForTesting()
 
       #expect(
         !capFired,
@@ -507,7 +507,7 @@ struct EscapeRecoveryDiskExpiryTests {
     // cannot see.
     #if DEBUG
       #expect(
-        coordinator.hasPendingPulseForTesting,
+        coordinator.expiry.hasPendingPulseForTesting,
         "and the retry must stay armed, or the row waits for a relaunch after recovery clears it")
     #endif
   }
@@ -645,7 +645,7 @@ struct EscapeRecoveryDiskExpiryTests {
     #if DEBUG
       #expect(coordinator.diskReconcilerForTesting.liveOnDiskPendingCountForTesting == 0)
       #expect(
-        !coordinator.hasPendingPulseForTesting,
+        !coordinator.expiry.hasPendingPulseForTesting,
         "nothing is counting down, so nothing should be watching")
     #endif
   }

@@ -42,9 +42,9 @@ struct HistoryDiaryView<
   }
 
   var body: some View {
-    let tab = coordinator.historyTab
-    let state = coordinator.requestedHistoryState(for: tab)
-    let key = coordinator.historyQueryKey(for: tab, state: state)
+    let tab = coordinator.browser.historyTab
+    let state = coordinator.browser.requestedHistoryState(for: tab)
+    let key = coordinator.browser.historyQueryKey(for: tab, state: state)
     let saved = results[tab]
     let source = coordinator.catalogSession?.stableSourceRevision
     // #4598: a page for the same tab, search and filters stays on screen while a newer one is
@@ -56,7 +56,7 @@ struct HistoryDiaryView<
     // up a missing restore anchor and show a final empty state only for a page that also read
     // under a certificate (#4586 r6.4).
     let (canPage, isFinal) = HistoryPaging.finality(result: result, key: key, source: source)
-    let canSelect = result.map(coordinator.isCurrentHistoryResult) == true
+    let canSelect = result.map(coordinator.browser.isCurrentHistoryResult) == true
     let catalogStatus = coordinator.catalogSession?.status
     let showsUpdating = coordinator.catalogSession?.showsUpdating == true
     let openID = state.openItemID
@@ -146,7 +146,7 @@ struct HistoryDiaryView<
   }
 
   private struct RefreshKey: Equatable {
-    let request: TranscriptCoordinator.HistoryQueryKey.Request
+    let request: HistoryBrowser.HistoryQueryKey.Request
     let grouping: Int
   }
 
@@ -166,7 +166,7 @@ struct HistoryDiaryView<
           grouping: groupingRevision, stored: saved.identity)
       },
       stored: { results[tab] },
-      verify: { saved in await coordinator.retainedHistoryResult(saved) },
+      verify: { saved in await coordinator.browser.retainedHistoryResult(saved) },
       store: { results[tab] = $0 })
     await HistoryRefreshLoop(
       beforeRead: { retained.stamp = await verification.run(done: retained.stamp) },
@@ -186,12 +186,12 @@ struct HistoryDiaryView<
     ).run()
   }
 
-  private func currentKey(_ tab: HistoryTab) -> TranscriptCoordinator.HistoryQueryKey {
-    coordinator.historyQueryKey(for: tab, state: coordinator.requestedHistoryState(for: tab))
+  private func currentKey(_ tab: HistoryTab) -> HistoryBrowser.HistoryQueryKey {
+    coordinator.browser.historyQueryKey(for: tab, state: coordinator.browser.requestedHistoryState(for: tab))
   }
 
   /// One read for `key`, then publish (the body that ran once per key before #4586).
-  private func readPage(tab: HistoryTab, key: TranscriptCoordinator.HistoryQueryKey) async {
+  private func readPage(tab: HistoryTab, key: HistoryBrowser.HistoryQueryKey) async {
     // A stored page for this key is kept only while its source is still the current one;
     // otherwise the read below replaces it (the source gates authority, not display).
     if let stored = results[tab], stored.key == key,
@@ -203,13 +203,13 @@ struct HistoryDiaryView<
     // A refresh with the same tab, search and filters (a catalog update, an expiry, a time
     // zone or locale change) restores around the saved anchor: save where the reader is now
     // first, so it never jumps back to the place they last left (cloud review on #4582).
-    var live = coordinator.requestedHistoryState(for: tab)
+    var live = coordinator.browser.requestedHistoryState(for: tab)
     if live.openItemID == nil, let context = liveAnchor.context, context == key.context,
       context == HistoryPaging.Context(tab: tab, state: live),
       live.scrollAnchorID != liveAnchor.id
     {
       live.scrollAnchorID = liveAnchor.id
-      coordinator.setHistoryState(live, for: tab)
+      coordinator.browser.setHistoryState(live, for: tab)
     }
     // With a page open, restore around the item on screen: after the arrows stepped past the
     // loaded page, a restore around the item first opened lost the open one, and both arrows
@@ -218,10 +218,10 @@ struct HistoryDiaryView<
       live.scrollAnchorID != open
     {
       live.scrollAnchorID = open
-      coordinator.setHistoryState(live, for: tab)
+      coordinator.browser.setHistoryState(live, for: tab)
     }
-    guard let read = await coordinator.historyResults(for: key), !Task.isCancelled,
-      coordinator.historyTab == tab
+    guard let read = await coordinator.browser.historyResults(for: key), !Task.isCancelled,
+      coordinator.browser.historyTab == tab
     else { return }
     // #4586 N1: the same page again is not re-published; a newer content revision is recorded
     // on the stored page without rebuilding it.
@@ -245,8 +245,8 @@ struct HistoryDiaryView<
     #endif
     results[tab] = result
     HistoryFirstPage.accepted(tab)
-    if isSelecting, coordinator.historyTab == tab {
-      if let matching = await coordinator.matchingIDs(for: result), isSelecting {
+    if isSelecting, coordinator.browser.historyTab == tab {
+      if let matching = await coordinator.browser.matchingIDs(for: result), isSelecting {
         selection.retain(Set(matching))
       }
     }
@@ -254,8 +254,8 @@ struct HistoryDiaryView<
 
   private var tabBinding: Binding<HistoryTab> {
     Binding(
-      get: { coordinator.historyTab },
-      set: { coordinator.selectHistoryTab($0) })
+      get: { coordinator.browser.historyTab },
+      set: { coordinator.browser.selectHistoryTab($0) })
   }
 
   @ViewBuilder private func destination(for id: HistoryItemID) -> some View {
@@ -276,14 +276,14 @@ struct HistoryDiaryView<
   /// The open item's list as the reader left it (same tab, search, filters and order, newest
   /// first), keeping only the items the list draws.
   private func openList() -> [HistoryListItem]? {
-    let tab = coordinator.historyTab
-    let state = coordinator.requestedHistoryState(for: tab)
+    let tab = coordinator.browser.historyTab
+    let state = coordinator.browser.requestedHistoryState(for: tab)
     // The same list while a refresh reads (only its revision differs) still steps, so the
     // arrows do not blink off on every background update.
     guard let result = results[tab],
-      result.key.context == coordinator.historyQueryKey(for: tab, state: state).context
+      result.key.context == coordinator.browser.historyQueryKey(for: tab, state: state).context
     else { return nil }
-    return result.items.filter { coordinator.canRenderHistoryItem($0) }
+    return result.items.filter { coordinator.browser.canRenderHistoryItem($0) }
   }
 
   /// #4611 (founder: "like an email inbox"): the items above and below the open one.
@@ -304,16 +304,16 @@ struct HistoryDiaryView<
   /// anchors the loaded page, and moving it reloaded the list from the new item, which lost
   /// Previous. Back still returns to the new item (`closeOpenItem`).
   private func step(to id: HistoryItemID) {
-    var state = coordinator.requestedHistoryState(for: coordinator.historyTab)
+    var state = coordinator.browser.requestedHistoryState(for: coordinator.browser.historyTab)
     guard state.openItemID != nil else { return }
     state.openItemID = id
-    coordinator.setHistoryState(state, for: coordinator.historyTab)
+    coordinator.browser.setHistoryState(state, for: coordinator.browser.historyTab)
   }
 
   /// At the last (or first) loaded item, reads the next page so Next (or Previous) has a
   /// neighbour when the list holds more.
   private func loadPastEnd(of id: HistoryItemID) {
-    let tab = coordinator.historyTab
+    let tab = coordinator.browser.historyTab
     guard let result = results[tab], let items = openList(),
       let index = items.firstIndex(where: { $0.id == id })
     else { return }
@@ -325,15 +325,15 @@ struct HistoryDiaryView<
   }
 
   private func open(_ id: HistoryItemID) {
-    let tab = coordinator.historyTab
-    var state = coordinator.requestedHistoryState(for: tab)
-    guard let stored = results[tab], stored.key == coordinator.historyQueryKey(for: tab, state: state),
+    let tab = coordinator.browser.historyTab
+    var state = coordinator.browser.requestedHistoryState(for: tab)
+    guard let stored = results[tab], stored.key == coordinator.browser.historyQueryKey(for: tab, state: state),
       stored.ids.contains(id),
       HistoryPaging.mayOpen(
         result: stored, key: stored.key, source: coordinator.catalogSession?.stableSourceRevision)
     else { return }
     state.openItemID = id
-    coordinator.setHistoryState(state, for: coordinator.historyTab)
+    coordinator.browser.setHistoryState(state, for: coordinator.browser.historyTab)
   }
 
   private func loadNext(_ result: HistoryQueryResult, newer: Bool) {
@@ -355,17 +355,17 @@ struct HistoryDiaryView<
         if extensionSlot.release(token), !published {
           let tab = result.key.context.tab
           if let now = results[tab], now.identity != result.identity,
-            let open = coordinator.requestedHistoryState(for: tab).openItemID
+            let open = coordinator.browser.requestedHistoryState(for: tab).openItemID
           {
             loadPastEnd(of: open)
           }
         }
       }
       guard
-        let next = await coordinator.historyResults(
+        let next = await coordinator.browser.historyResults(
           for: result.key, extending: result, newer: newer),
         extensionSlot.owns(token),
-        coordinator.historyTab == tab, results[tab]?.identity == result.identity
+        coordinator.browser.historyTab == tab, results[tab]?.identity == result.identity
       else { return }
       // No suspension between the ownership check above and this store.
       guard
@@ -378,10 +378,10 @@ struct HistoryDiaryView<
   }
 
   private func closeOpenItem() {
-    var state = coordinator.requestedHistoryState(for: coordinator.historyTab)
+    var state = coordinator.browser.requestedHistoryState(for: coordinator.browser.historyTab)
     state.scrollAnchorID = state.openItemID
     state.openItemID = nil
-    coordinator.setHistoryState(state, for: coordinator.historyTab)
+    coordinator.browser.setHistoryState(state, for: coordinator.browser.historyTab)
   }
 
   private func toggleSelecting() {
@@ -432,7 +432,7 @@ private struct HistoryDiaryList<DictationCard: View>: View {
     var rows: [HistoryDiaryTable.RowID] = []
     if canPage, let result, result.newerContinuation != nil { rows.append(.newer) }
     for entry in entries {
-      if case .item = entry.id, !coordinator.canRenderHistoryItem(items[entry.position]) {
+      if case .item = entry.id, !coordinator.browser.canRenderHistoryItem(items[entry.position]) {
         continue
       }
       lookup[entry.id] = entry
@@ -561,14 +561,14 @@ private struct HistoryDiaryList<DictationCard: View>: View {
         selectDay: {
           guard let result else { return }
           Task {
-            if let matching = await coordinator.matchingIDs(for: result, day: start) {
+            if let matching = await coordinator.browser.matchingIDs(for: result, day: start) {
               selection.select(Set(matching))
             }
           }
         })
     case .entry(.item(let id)):
       if let entry = lookup[.item(id)], items.indices.contains(entry.position),
-        coordinator.canRenderHistoryItem(items[entry.position])
+        coordinator.browser.canRenderHistoryItem(items[entry.position])
       {
         let item = items[entry.position]
         self.row(for: item, items: items, query: query)
@@ -689,19 +689,19 @@ private struct HistoryDiaryList<DictationCard: View>: View {
   }
 
   private func saveAnchor(_ anchor: HistoryItemID?, context: HistoryPaging.Context) {
-    var live = coordinator.requestedHistoryState(for: tab)
+    var live = coordinator.browser.requestedHistoryState(for: tab)
     guard context == HistoryPaging.Context(tab: tab, state: live) else { return }
     guard live.scrollAnchorID != anchor else { return }
     live.scrollAnchorID = anchor
-    coordinator.setHistoryState(live, for: tab)
+    coordinator.browser.setHistoryState(live, for: tab)
   }
 
   /// One tick from a tick box or a card: Shift extends the range from the last ticked item.
   private func tick(_ id: HistoryItemID, extending: Bool, items: [HistoryListItem]) {
-    guard let result, coordinator.isCurrentHistoryResult(result) else { return }
+    guard let result, coordinator.browser.isCurrentHistoryResult(result) else { return }
     if extending {
       Task {
-        if let matching = await coordinator.matchingIDs(for: result) {
+        if let matching = await coordinator.browser.matchingIDs(for: result) {
           selection.extend(to: id, in: matching)
         }
       }
@@ -1013,10 +1013,10 @@ private struct HistoryMeetingRecordButton: View {
 
   private func openMeeting(_ meetingID: UUID) {
     let id = HistoryItemID.meeting(meetingID)
-    let current = coordinator.requestedHistoryState(for: .meetings)
+    let current = coordinator.browser.requestedHistoryState(for: .meetings)
     let state = HistoryDiaryLayout.opening(
-      id, in: current, isListed: coordinator.isListedMeeting(meetingID, under: current))
-    coordinator.setHistoryState(state, for: .meetings)
+      id, in: current, isListed: coordinator.browser.isListedMeeting(meetingID, under: current))
+    coordinator.browser.setHistoryState(state, for: .meetings)
   }
 }
 
@@ -1370,7 +1370,7 @@ struct EscapeRecoveryBadge: View {
   /// it, so without this touch the badge would show the remaining time it had when
   /// something else last changed state.
   private var escapeRecoveryClock: Date {
-    _ = transcriptCoordinator.expiryPulse
+    _ = transcriptCoordinator.expiry.expiryPulse
     return Date()
   }
 

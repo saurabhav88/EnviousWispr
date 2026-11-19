@@ -67,7 +67,7 @@ enum MeetingAfterPresentation {
     /// `MeetingCoordinator.processing?.meetingID`.
     var processingID: UUID?
     var queueWaitsForSpace = false
-    /// `TranscriptCoordinator.meetingPreviewText(of:)` for `row`: the projection's text.
+    /// `HistoryMeetingPresenter.meetingPreviewText(of:)` for `row`: the projection's text.
     var previewText: String?
     /// The meeting's current summary text, when it has one.
     var summary: String?

@@ -227,7 +227,7 @@ struct EscapeRecoveryTelemetryTests {
       ])
 
       #expect(log.expired.isEmpty, "control: nothing swept before a pulse runs")
-      #expect(coordinator.hasPendingPulseForTesting, "control: the pulse is running")
+      #expect(coordinator.expiry.hasPendingPulseForTesting, "control: the pulse is running")
 
       gate.onWait = { [weak coordinator] iteration in
         guard iteration == 1 else { return }
@@ -239,7 +239,7 @@ struct EscapeRecoveryTelemetryTests {
             escapeRecoveryTakeID: takeID)
         ])
       }
-      await coordinator.waitForPulseForTesting()
+      await coordinator.expiry.waitForPulseForTesting()
 
       #expect(
         log.expired.map(\.takeID) == ["take-live-expiry"],
@@ -311,7 +311,7 @@ struct EscapeRecoveryTelemetryTests {
         // the permissions are restored, which is a different fact.
         if iteration >= 2, !seen.recorded, let coordinator {
           seen.recorded = true
-          seen.stillArmed = coordinator.hasPendingPulseForTesting
+          seen.stillArmed = coordinator.expiry.hasPendingPulseForTesting
           seen.fileSurvived = FileManager.default.fileExists(atPath: file.path)
           try? FileManager.default.setAttributes(unsealed, ofItemAtPath: pending.path)
         }
@@ -322,7 +322,7 @@ struct EscapeRecoveryTelemetryTests {
         // names the defect. The healthy path never reaches this.
         if iteration > 20 {
           seen.overran = true
-          coordinator?.cancelPulseForTesting()
+          coordinator?.expiry.cancelPulseForTesting()
         }
       }
 
@@ -337,7 +337,7 @@ struct EscapeRecoveryTelemetryTests {
         coordinator.rawTranscriptsForTesting.isEmpty,
         "control: nothing in memory, so this cannot be a memory-driven arm")
 
-      await coordinator.waitForPulseForTesting()
+      await coordinator.expiry.waitForPulseForTesting()
 
       #expect(seen.overran == false, "the pulse must reach its own exit, not the test's backstop")
       #expect(seen.recorded, "control: the pulse ran far enough to observe the failed removal")
@@ -348,7 +348,7 @@ struct EscapeRecoveryTelemetryTests {
         "reported exactly once, by the pass that actually removed the file")
       #expect(try await store.loadPending().isEmpty, "the retry cleared it")
       #expect(
-        coordinator.hasPendingPulseForTesting == false,
+        coordinator.expiry.hasPendingPulseForTesting == false,
         "and only then does the pulse stop, with nothing left to do")
     }
 
@@ -389,7 +389,7 @@ struct EscapeRecoveryTelemetryTests {
           escapeRecoveryTakeID: "take-stale"),
       ])
 
-      #expect(coordinator.hasPendingPulseForTesting, "control: the live row arms the pulse")
+      #expect(coordinator.expiry.hasPendingPulseForTesting, "control: the live row arms the pulse")
       #expect(
         coordinator.lapsedPendingCountForTesting == 1,
         "control: the stale row is genuinely lapsed before any sweep")
@@ -406,7 +406,7 @@ struct EscapeRecoveryTelemetryTests {
         // loop whose exit condition can never be met.
         if iteration >= 3 { coordinator.setTranscriptsForTesting([]) }
       }
-      await coordinator.waitForPulseForTesting()
+      await coordinator.expiry.waitForPulseForTesting()
 
       #expect(
         seen.lapsedAfterOneSweep == 0,
@@ -481,13 +481,13 @@ struct EscapeRecoveryTelemetryTests {
         // sibling above; the alternative hangs instead of failing.
         if iteration > 20 {
           seen.overran = true
-          coordinator.cancelPulseForTesting()
+          coordinator.expiry.cancelPulseForTesting()
         }
       }
 
       coordinator.load()
       await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
-      await coordinator.waitForPulseForTesting()
+      await coordinator.expiry.waitForPulseForTesting()
 
       #expect(seen.overran == false, "the pulse must reach its own exit, not the test's backstop")
       #expect(
@@ -502,7 +502,7 @@ struct EscapeRecoveryTelemetryTests {
       #expect(
         coordinator.lapsedPendingCountForTesting == 0, "the row leaves memory with its file")
       #expect(
-        coordinator.hasPendingPulseForTesting == false, "then the pulse stops, with nothing left")
+        coordinator.expiry.hasPendingPulseForTesting == false, "then the pulse stops, with nothing left")
     }
 
     /// The incomplete-walk flag ALONE must keep the sweep coming back.
@@ -556,13 +556,13 @@ struct EscapeRecoveryTelemetryTests {
         // failure names the defect. The healthy path never reaches this.
         if iteration > 20 {
           seen.overran = true
-          coordinator.cancelPulseForTesting()
+          coordinator.expiry.cancelPulseForTesting()
         }
       }
 
       coordinator.load()
       await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
-      await coordinator.waitForPulseForTesting()
+      await coordinator.expiry.waitForPulseForTesting()
 
       #expect(seen.overran == false, "the pulse must reach its own exit, not the test's backstop")
       #expect(
@@ -573,7 +573,7 @@ struct EscapeRecoveryTelemetryTests {
         "the flag alone brought the pulse back, and it reported the row once")
       #expect(try await store.loadPending().isEmpty, "and cleared the file")
       #expect(
-        coordinator.hasPendingPulseForTesting == false, "then stopped, with nothing left")
+        coordinator.expiry.hasPendingPulseForTesting == false, "then stopped, with nothing left")
     }
 
     /// What the second wait observed. A reference so the gate's closure can

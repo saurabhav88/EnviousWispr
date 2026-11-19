@@ -249,10 +249,10 @@
           .tooLarge, "the stored text is \(textBytes) bytes; page the turns instead")
       }
       // #3973 C2: the row's own generation's echo lines (a kept row while a rerun runs).
-      let echo = transcripts.meetingEchoTurnIDs(of: row) ?? []
+      let echo = transcripts.meetingPresenter.meetingEchoTurnIDs(of: row) ?? []
       let turns = row.turns ?? []
       let page = turns.dropFirst(offset).prefix(limit)
-      let projection = transcripts.meetingProjection(of: row)
+      let projection = transcripts.meetingPresenter.meetingProjection(of: row)
       var projected: [String: Any]
       switch projection {
       case .visible(let visible, _):

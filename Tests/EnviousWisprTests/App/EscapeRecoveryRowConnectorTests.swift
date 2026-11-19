@@ -50,7 +50,7 @@ struct EscapeRecoveryRowConnectorTests {
       source.contains("EscapeRecoveryRowPresentation.accessibilityLabel("),
       "the spoken form must come from the policy, not be re-derived in the view")
     #expect(
-      source.contains("transcriptCoordinator.expiryPulse"),
+      source.contains("transcriptCoordinator.expiry.expiryPulse"),
       "reading the pulse is what re-renders the countdown; without it the row freezes")
   }
 

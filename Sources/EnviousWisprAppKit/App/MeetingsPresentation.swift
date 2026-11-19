@@ -820,7 +820,7 @@ enum MeetingExport {
     }
     guard let live = transcripts.currentRow(id: rowID),
       let text = MeetingHistoryPresentation.deliveryText(
-        live, projection: transcripts.meetingProjection(of: live), timesOn: timesOn, mode: mode)
+        live, projection: transcripts.meetingPresenter.meetingProjection(of: live), timesOn: timesOn, mode: mode)
     else { return .nothingToDeliver }
     let notes = documents.notes(meetingID).trimmingCharacters(in: .whitespacesAndNewlines)
     return .document(MeetingsPresentation.exportDocument(transcript: text, notes: notes))

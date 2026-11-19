@@ -53,9 +53,9 @@ import Testing
         coordinator: coordinator)
     }
 
-    private func key(_ f: Fixture) -> TranscriptCoordinator.HistoryQueryKey {
-      f.coordinator.historyQueryKey(
-        for: .dictations, state: f.coordinator.requestedHistoryState(for: .dictations))
+    private func key(_ f: Fixture) -> HistoryBrowser.HistoryQueryKey {
+      f.coordinator.browser.historyQueryKey(
+        for: .dictations, state: f.coordinator.browser.requestedHistoryState(for: .dictations))
     }
 
     @Test(
@@ -188,7 +188,7 @@ import Testing
       f.session.afterPassOpenForTesting = nil
       f.session.beforeReconcileForTesting = nil
       f.session.beforeWatcherInstallForTesting = nil
-      f.coordinator.afterBuildResultForTesting = nil
+      f.coordinator.browser.afterBuildResultForTesting = nil
     }
 
     @Test("A page read already waiting when a full re-check starts reaches the catalog first")
@@ -272,7 +272,7 @@ import Testing
     func firstPageWhileWatcherInstallHeld() async throws {
       let f = try await fixture(rows: 5)
       defer { try? FileManager.default.removeItem(at: f.root) }
-      let seen = try #require(await f.coordinator.historyResults(for: key(f)))
+      let seen = try #require(await f.coordinator.browser.historyResults(for: key(f)))
       guard case .transcript(let gone) = seen.items[0].id else {
         Issue.record("expected a transcript row")
         return
@@ -286,7 +286,7 @@ import Testing
         r.session.beforeReconcileForTesting = nil
         order.release()
       }
-      let page = try #require(await r.coordinator.historyResults(for: key(r)))
+      let page = try #require(await r.coordinator.browser.historyResults(for: key(r)))
       #expect(page.items.count == 4)
       #expect(page.ids.contains(.transcript(gone)) == false)
       #expect(page.catalogDayCounts == nil)
@@ -307,7 +307,7 @@ import Testing
         let content = r.session.revision
         let notices = r.session.noticeCount
         await r.session.waitForIndexingForTesting()
-        again = try #require(await r.coordinator.historyResults(for: key(r)))
+        again = try #require(await r.coordinator.browser.historyResults(for: key(r)))
         done = HistoryPaging.finality(
           result: again, key: key(r), source: r.session.stableSourceRevision)
         if done.isFinal { break }
@@ -536,12 +536,12 @@ import Testing
       let hook: @MainActor () async -> Void = { await moveSource(f, mover, order) }
       switch moment {
       case .duringRead: f.session.beforePageFenceForTesting = hook
-      case .afterBuild: f.coordinator.afterBuildResultForTesting = hook
+      case .afterBuild: f.coordinator.browser.afterBuildResultForTesting = hook
       }
-      let shown = try #require(await f.coordinator.historyResults(for: key(f)))
+      let shown = try #require(await f.coordinator.browser.historyResults(for: key(f)))
       clearHooks(f)
       #expect(shown.items.count == 5)
-      #expect(f.coordinator.isCurrentHistoryResult(shown) == false)
+      #expect(f.coordinator.browser.isCurrentHistoryResult(shown) == false)
       #expect(shown.catalogSourceRevision != f.session.stableSourceRevision)
       // The following read for the current request is current once indexing has settled.
       // Loops on the session's change signal because the change notice reaches the session asynchronously.
@@ -550,13 +550,13 @@ import Testing
         let content = f.session.revision
         let notices = f.session.noticeCount
         await f.session.waitForIndexingForTesting()
-        next = try #require(await f.coordinator.historyResults(for: key(f)))
-        if f.coordinator.isCurrentHistoryResult(next) { break }
+        next = try #require(await f.coordinator.browser.historyResults(for: key(f)))
+        if f.coordinator.browser.isCurrentHistoryResult(next) { break }
         try Task.checkCancellation()
         await f.session.waitForChange(revision: content, notices: notices)
       } while true
       #expect(next.items.count == 5)
-      #expect(f.coordinator.isCurrentHistoryResult(next))
+      #expect(f.coordinator.browser.isCurrentHistoryResult(next))
     }
 
     @Test("A real search change inside the page hook or the build drops the first page")
@@ -566,15 +566,15 @@ import Testing
         defer { try? FileManager.default.removeItem(at: f.root) }
         defer { clearHooks(f) }
         let hook: @MainActor () async -> Void = { [coordinator = f.coordinator] in
-          var state = coordinator.requestedHistoryState(for: .dictations)
+          var state = coordinator.browser.requestedHistoryState(for: .dictations)
           state.query = "row 1"
-          coordinator.setHistoryState(state, for: .dictations)
+          coordinator.browser.setHistoryState(state, for: .dictations)
         }
         switch moment {
         case .duringRead: f.session.beforePageFenceForTesting = hook
-        case .afterBuild: f.coordinator.afterBuildResultForTesting = hook
+        case .afterBuild: f.coordinator.browser.afterBuildResultForTesting = hook
         }
-        let result = await f.coordinator.historyResults(for: key(f))
+        let result = await f.coordinator.browser.historyResults(for: key(f))
         #expect(result == nil)
       }
     }
@@ -586,16 +586,16 @@ import Testing
       f.session.beforePageFenceForTesting = { [session = f.session] in
         session.advanceContentForTesting()
       }
-      let kept = try #require(await f.coordinator.historyResults(for: before))
+      let kept = try #require(await f.coordinator.browser.historyResults(for: before))
       f.session.beforePageFenceForTesting = nil
       #expect(kept.items.count == 5)
       #expect(kept.key == before)
       #expect(key(f) != before)
       #expect(key(f).request == before.request)
       // It may display, but an overtaken page authorizes nothing until the next read.
-      #expect(f.coordinator.isCurrentHistoryResult(kept) == false)
-      let fresh = try #require(await f.coordinator.historyResults(for: key(f)))
-      #expect(f.coordinator.isCurrentHistoryResult(fresh))
+      #expect(f.coordinator.browser.isCurrentHistoryResult(kept) == false)
+      let fresh = try #require(await f.coordinator.browser.historyResults(for: key(f)))
+      #expect(f.coordinator.browser.isCurrentHistoryResult(fresh))
     }
 
     @Test("A save that opens during the read leaves the page display-only")
@@ -607,12 +607,12 @@ import Testing
         f.session.beforePageFenceForTesting = nil
         f.changes.finish(.transcript(UUID()))
       }
-      let shown = try #require(await f.coordinator.historyResults(for: key(f)))
+      let shown = try #require(await f.coordinator.browser.historyResults(for: key(f)))
       #expect(shown.items.count == 30)
       #expect(shown.catalogDayCounts == nil)
       #expect(shown.continuation == nil)
       #expect(shown.newerContinuation == nil)
-      #expect(f.coordinator.isCurrentHistoryResult(shown) == false)
+      #expect(f.coordinator.browser.isCurrentHistoryResult(shown) == false)
     }
 
     @Test("A page read while a writer is open shows its rows as display-only until the writer finishes")
@@ -622,23 +622,23 @@ import Testing
       var writing = true
       f.changes.begin()
       defer { if writing { f.changes.finish(.transcript(UUID())) } }
-      let shown = try #require(await f.coordinator.historyResults(for: key(f)))
+      let shown = try #require(await f.coordinator.browser.historyResults(for: key(f)))
       #expect(shown.items.count == 30)
       // 40 rows: the read itself saw a continuation, which a display-only page must not keep.
       #expect(shown.catalogDayCounts == nil)
       #expect(shown.continuation == nil)
       #expect(shown.newerContinuation == nil)
-      #expect(f.coordinator.isCurrentHistoryResult(shown) == false)
+      #expect(f.coordinator.browser.isCurrentHistoryResult(shown) == false)
       let held = HistoryPaging.finality(
         result: shown, key: shown.key, source: f.session.stableSourceRevision)
       #expect(held.canPage == false)
       #expect(held.isFinal == false)
 
       // A search that matches nothing is not a final empty state while the writer is open.
-      var state = f.coordinator.requestedHistoryState(for: .dictations)
+      var state = f.coordinator.browser.requestedHistoryState(for: .dictations)
       state.query = "nothing matches this"
-      f.coordinator.setHistoryState(state, for: .dictations)
-      let empty = try #require(await f.coordinator.historyResults(for: key(f)))
+      f.coordinator.browser.setHistoryState(state, for: .dictations)
+      let empty = try #require(await f.coordinator.browser.historyResults(for: key(f)))
       #expect(empty.items.isEmpty)
       let emptyHeld = HistoryPaging.finality(
         result: empty, key: empty.key, source: f.session.stableSourceRevision)
@@ -649,9 +649,9 @@ import Testing
       let box = LoopBox()
       let coordinator = f.coordinator
       let session = f.session
-      let queryKey: @MainActor @Sendable () -> TranscriptCoordinator.HistoryQueryKey = {
-        coordinator.historyQueryKey(
-          for: .dictations, state: coordinator.requestedHistoryState(for: .dictations))
+      let queryKey: @MainActor @Sendable () -> HistoryBrowser.HistoryQueryKey = {
+        coordinator.browser.historyQueryKey(
+          for: .dictations, state: coordinator.browser.requestedHistoryState(for: .dictations))
       }
       let loop = Task { @MainActor in
         await HistoryRefreshLoop(
@@ -665,7 +665,7 @@ import Testing
           storedKey: { box.result?.key },
           storedSource: { box.result?.catalogSourceRevision },
           read: { key in
-            if let page = await coordinator.historyResults(for: key) { box.result = page }
+            if let page = await coordinator.browser.historyResults(for: key) { box.result = page }
             box.reads += 1
           },
           wait: { content, notices in
@@ -682,7 +682,7 @@ import Testing
         await Task.yield()
       }
       let parked = try #require(box.result)
-      #expect(coordinator.isCurrentHistoryResult(parked) == false)
+      #expect(coordinator.browser.isCurrentHistoryResult(parked) == false)
       let readsWhileOpen = box.reads
       writing = false
       f.changes.finish(.transcript(UUID()))
@@ -702,7 +702,7 @@ import Testing
         let content = f.session.revision
         let notices = f.session.noticeCount
         await f.session.waitForIndexingForTesting()
-        final = try #require(await f.coordinator.historyResults(for: key(f)))
+        final = try #require(await f.coordinator.browser.historyResults(for: key(f)))
         emptyDone = HistoryPaging.finality(
           result: final, key: final.key, source: f.session.stableSourceRevision)
         if emptyDone.isFinal { break }
@@ -714,10 +714,10 @@ import Testing
       #expect(emptyDone.isFinal)
 
       state.query = ""
-      f.coordinator.setHistoryState(state, for: .dictations)
-      let rows = try #require(await f.coordinator.historyResults(for: key(f)))
+      f.coordinator.browser.setHistoryState(state, for: .dictations)
+      let rows = try #require(await f.coordinator.browser.historyResults(for: key(f)))
       #expect(rows.items.count == 30)
-      #expect(f.coordinator.isCurrentHistoryResult(rows))
+      #expect(f.coordinator.browser.isCurrentHistoryResult(rows))
       let done = HistoryPaging.finality(
         result: rows, key: rows.key, source: f.session.stableSourceRevision)
       #expect(done.isFinal)
@@ -734,14 +734,14 @@ import Testing
       f.changes.externalChange(.transcript(bad))
       await f.session.waitForIndexingForTesting()
       #expect(f.session.status == .unavailable)
-      let first = try #require(await f.coordinator.historyResults(for: key(f)))
+      let first = try #require(await f.coordinator.browser.historyResults(for: key(f)))
       let source = f.session.stableSourceRevision
       #expect(first.items.isEmpty == false)
       #expect(first.catalogDayCounts == nil)
       #expect(first.displayOnly == false)
       #expect(HistoryPaging.finality(result: first, key: first.key, source: source).canPage)
       #expect(HistoryPaging.mayOpen(result: first, key: first.key, source: source))
-      #expect(f.coordinator.isCurrentHistoryResult(first) == false)
+      #expect(f.coordinator.browser.isCurrentHistoryResult(first) == false)
       var current = first
       var steps = 0
       while current.continuation != nil {
@@ -749,7 +749,7 @@ import Testing
         steps += 1
         #expect(steps <= 10)
         if steps > 10 { break }
-        let next = try #require(await f.coordinator.historyResults(for: first.key, extending: current))
+        let next = try #require(await f.coordinator.browser.historyResults(for: first.key, extending: current))
         #expect(
           HistoryPaging.extensionMayStore(
             next, liveKey: key(f), source: f.session.stableSourceRevision))
@@ -774,7 +774,7 @@ import Testing
         f.session.beforePageFenceForTesting = nil
         for _ in 0..<opened { f.changes.finish(.transcript(UUID())) }
       }
-      let shown = try #require(await f.coordinator.historyResults(for: key(f)))
+      let shown = try #require(await f.coordinator.browser.historyResults(for: key(f)))
       f.session.beforePageFenceForTesting = nil
       let source = f.session.stableSourceRevision
       #expect(shown.displayOnly)
@@ -788,8 +788,8 @@ import Testing
         let content = f.session.revision
         let notices = f.session.noticeCount
         await f.session.waitForIndexingForTesting()
-        page = try #require(await f.coordinator.historyResults(for: key(f)))
-        if f.coordinator.isCurrentHistoryResult(page) { break }
+        page = try #require(await f.coordinator.browser.historyResults(for: key(f)))
+        if f.coordinator.browser.isCurrentHistoryResult(page) { break }
         try Task.checkCancellation()
         await f.session.waitForChange(revision: content, notices: notices)
       } while true
@@ -802,10 +802,10 @@ import Testing
       let f = try await fixture(rows: 40)
       defer { try? FileManager.default.removeItem(at: f.root) }
       defer { clearHooks(f) }
-      let first = try #require(await f.coordinator.historyResults(for: key(f)))
+      let first = try #require(await f.coordinator.browser.historyResults(for: key(f)))
       #expect(first.continuation != nil)
       f.session.beforePageFenceForTesting = { [changes = f.changes] in changes.externalChange() }
-      let joined = await f.coordinator.historyResults(for: first.key, extending: first)
+      let joined = await f.coordinator.browser.historyResults(for: first.key, extending: first)
       #expect(joined == nil)
     }
 
@@ -815,7 +815,7 @@ import Testing
     func deletedFileAfterPublish() async throws {
       let f = try await fixture(rows: 3)
       defer { try? FileManager.default.removeItem(at: f.root) }
-      let page = try #require(await f.coordinator.historyResults(for: key(f)))
+      let page = try #require(await f.coordinator.browser.historyResults(for: key(f)))
       guard case .transcript(let id) = page.items[0].id else {
         Issue.record("expected a transcript row")
         return
@@ -824,22 +824,22 @@ import Testing
       #expect(f.coordinator.verifiedRowForDelivery(id: id) != nil)
       try FileManager.default.removeItem(
         at: f.root.appendingPathComponent("transcripts").appendingPathComponent("\(id.uuidString).json"))
-      let kept = try #require(await f.coordinator.retainedHistoryResult(page))
+      let kept = try #require(await f.coordinator.browser.retainedHistoryResult(page))
       #expect(kept.ids.contains(.transcript(id)) == false)
       #expect(kept.items.count == 2)
       #expect(f.coordinator.verifiedRowForDelivery(id: id) == nil)
       #expect(await f.coordinator.loadCatalogDetail(id, authoritative: true) == nil)
-      let fresh = try #require(await f.coordinator.historyResults(for: key(f)))
+      let fresh = try #require(await f.coordinator.browser.historyResults(for: key(f)))
       #expect(fresh.ids.contains(.transcript(id)) == false)
     }
     @Test("A page extension never joins two content generations")
     func extensionRefusedAcrossContentPublish() async throws {
       let f = try await fixture(rows: 40)
       defer { try? FileManager.default.removeItem(at: f.root) }
-      let first = try #require(await f.coordinator.historyResults(for: key(f)))
+      let first = try #require(await f.coordinator.browser.historyResults(for: key(f)))
       #expect(first.continuation != nil)
       f.session.advanceContentForTesting()
-      let joined = await f.coordinator.historyResults(for: first.key, extending: first)
+      let joined = await f.coordinator.browser.historyResults(for: first.key, extending: first)
       #expect(joined == nil)
     }
 

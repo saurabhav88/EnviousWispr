@@ -7,7 +7,7 @@ import Observation
 
 /// Manages transcript history state, search, and persistence.
 @MainActor @Observable
-final class TranscriptCoordinator {
+final class TranscriptCoordinator: HistoryExpiryPulseWriter, HistoryBrowserWriter {
   /// The unfiltered store, PRIVATE (#2087).
   ///
   /// Read-time expiry only works if consumers honour it, and every consumer
@@ -75,7 +75,7 @@ final class TranscriptCoordinator {
     guard !removedRowIDs.contains(id) else { return nil }
     let row = try await transactionExecutor.readHistoryRow(id: id, now: clock())
     try Task.checkCancellation()
-    guard !removedRowIDs.contains(id), let row, Self.isVisible(row, at: clock()) else { return nil }
+    guard !removedRowIDs.contains(id), let row, HistoryRowVisibility.isVisible(row, at: clock()) else { return nil }
     return row
   }
 
@@ -94,7 +94,7 @@ final class TranscriptCoordinator {
     }
     let payload = await reader.value
     detailCache.finishRead(id, revision: revision, reader)
-    guard !Task.isCancelled, let payload, Self.isVisible(payload.row, at: clock()),
+    guard !Task.isCancelled, let payload, HistoryRowVisibility.isVisible(payload.row, at: clock()),
       !removedRowIDs.contains(id), stillCurrent(id, proof: payload.versions)
     else { return nil }
     detailCache.store(id, row: payload.row, proof: payload.versions, version: source)
@@ -138,48 +138,6 @@ final class TranscriptCoordinator {
   /// before wiring) lists meeting rows only.
   @ObservationIgnored var meetingRecords: (@MainActor () -> [MeetingRecord])?
   @ObservationIgnored var meetingRecord: (@MainActor (UUID) -> MeetingRecord?)?
-  /// #3972 R38: a meeting's notes as EnviousMeet holds them (`MeetingDocumentsOwner`,
-  /// observable there), searched with its finished transcript. Nil searches no notes.
-  @ObservationIgnored var meetingHistoryDrafts: (@MainActor () -> [UUID: String])?
-  @ObservationIgnored var meetingNotes: (@MainActor (UUID) -> String?)?
-  /// #4286: a meeting's invited people as search terms (each name, email and email domain), as
-  /// EnviousMeet holds them (`MeetingDocumentsOwner`, observable there). Nil searches none.
-  @ObservationIgnored var meetingInvited: (@MainActor (UUID) -> [String])?
-
-  // MARK: - History tabs (#3147 §3.3)
-
-  /// The History tab on screen. Set through `selectHistoryTab(_:)`, which also remembers it.
-  private(set) var historyTab: HistoryTab = .dictations
-  /// Each tab's own search, filters, open item and paging; a tab never resets another.
-  private var historyTabStates: [HistoryTab: HistoryTabState] = [:]
-  /// Remembers the chosen tab across launches (`SettingsManager.lastHistoryTab`). Nil in tests.
-  @ObservationIgnored var onHistoryTabSelected: (@MainActor (HistoryTab) -> Void)?
-
-  /// Opens History on `tab` at launch without saving it again.
-  func restoreHistoryTab(_ tab: HistoryTab) {
-    historyTab = tab
-  }
-
-  /// Switches History to `tab` and remembers the choice.
-  func selectHistoryTab(_ tab: HistoryTab) {
-    guard historyTab != tab else { return }
-    historyTab = tab
-    onHistoryTabSelected?(tab)
-  }
-
-  func requestedHistoryState(for tab: HistoryTab) -> HistoryTabState {
-    historyTabStates[tab] ?? HistoryTabState()
-  }
-
-  /// Replaces `tab`'s state. A changed search or filter starts again at the top.
-  func setHistoryState(_ state: HistoryTabState, for tab: HistoryTab) {
-    var next = state
-    let previous = historyTabStates[tab] ?? HistoryTabState()
-    if previous.query != next.query || previous.listFilter != next.listFilter {
-      next.scrollAnchorID = nil
-    }
-    historyTabStates[tab] = next
-  }
 
   @ObservationIgnored private var prunedRevision = -1
 
@@ -187,328 +145,35 @@ final class TranscriptCoordinator {
   /// owner; it ran only inside the in-memory browse before). `force` after hydrated rows left.
   private func pruneMeetingDocuments(force: Bool = false) {
     guard force || prunedRevision != transcriptsRevision else { return }
-    meetingDocuments.prune(keeping: transcripts + detailCache.payloadRows)
+    meetingPresenter.prune(keeping: transcripts + detailCache.payloadRows)
     prunedRevision = transcriptsRevision
   }
 
-  /// One page of `key`'s list from the catalog, or `previous` extended by the next one.
-  func historyResults(
-    for key: HistoryQueryKey, extending previous: HistoryQueryResult? = nil, newer: Bool = false
-  ) async -> HistoryQueryResult? {
-    if let catalogSession {
-      let tab = key.context.tab
-      // #4586 H1: a replacement read survives a content publish (same request, same source); an
-      // extension must still match the live key exactly, so pages from two content
-      // generations are never joined.
-      let stillWanted = { [self] () -> Bool in
-        let live = historyQueryKey(for: tab, state: requestedHistoryState(for: tab))
-        return previous == nil ? live.request == key.request : (live == key && previous?.key == key)
-      }
-      guard stillWanted() else { return nil }
-      let query = await catalogQuery(for: key)
-      let anchor = requestedHistoryState(for: tab).scrollAnchorID
-      let anchorID = anchor.map { id in
-        switch id {
-        case .transcript(let value), .meeting(let value): value
-        }
-      }
-      // #4586 package I: the read is registered from here to the end, so a full pass lets the
-      // whole page (read and build) go first.
-      let readID = catalogSession.beginPageRead()
-      defer { catalogSession.endPageRead(readID) }
-      // The source revision gates authority, not display. A first page samples one admission
-      // (revision plus whether a writer is open) before the read and is shown whatever the
-      // source does afterwards, stamped with that revision; it is current only while the stamp
-      // equals the current source and it has day counts. An unsettled admission can never
-      // equal a later stable source, so such a page is display-only (no counts, no paging). An
-      // extension joins only a page of the same, non-nil source.
-      let admitted = previous == nil ? catalogSession.admission() : nil
-      let source: UInt64
-      if let admitted {
-        source = admitted.revision
-        guard stillWanted() else { return nil }
-      } else {
-        guard let stable = catalogSession.stableSourceRevision,
-          previous?.catalogSourceRevision == stable, stillWanted()
-        else { return nil }
-        source = stable
-      }
-      let interval = HistorySignpost.signposter.beginInterval("HistoryPage")
-      let read: HistoryCatalog.Page?
-      do {
-        read = try await catalogSession.page(
-          query, after: newer ? previous?.newerContinuation : previous?.continuation,
-          restoring: previous == nil ? anchorID : nil, newer: newer, admitted: admitted)
-      } catch {
-        HistorySignpost.signposter.endInterval("HistoryPage", interval, "failed")
-        HistorySignpost.event("HistoryPageFailed")
-        return nil
-      }
-      guard let page = read, !Task.isCancelled,
-        admitted != nil || source == catalogSession.stableSourceRevision, stillWanted()
-      else {
-        HistorySignpost.signposter.endInterval("HistoryPage", interval, "superseded")
-        HistorySignpost.event("HistoryPageSuperseded")
-        return nil
-      }
-      HistorySignpost.signposter.endInterval("HistoryPage", interval, "accepted")
-      // A save that opened (or any source move) after admission can overlap the read, so the
-      // page is display-only unless admission was settled and the source did not move since.
-      let after = catalogSession.admission()
-      let displayOnly = admitted.map { !$0.settled || after.revision != $0.revision } ?? false
-      // #4586 H5: the result is built off the main actor (`@concurrent`), then the request
-      // checks run again (and, for an extension, the source check) before it is returned.
-      let built = await Self.buildResult(
-        key: key, page: page, previous: previous, newer: newer, source: source,
-        displayOnly: displayOnly)
-      #if DEBUG
-        await afterBuildResultForTesting?()
-      #endif
-      guard let built, !Task.isCancelled,
-        admitted != nil || source == catalogSession.stableSourceRevision, stillWanted()
-      else {
-        // The read itself was accepted (its interval ended); the result is refused because the
-        // request (or, for an extension, the source) moved while it was built.
-        HistorySignpost.event("HistoryPageSuperseded")
-        return nil
-      }
-      return built
-    }
-    // Production always has a catalog session (`WisprBootstrapper`); without one nothing is listed.
-    return nil
-  }
-
-  /// Builds the result for one page off the main actor (#4586 H5): the first page laid out
-  /// whole, an older page appended incrementally, a newer page (rare: restoring upward) laid out
-  /// whole again. `@concurrent` is the mechanism; `onMainThread` lets a test observe it.
-  @concurrent nonisolated static func buildResult(
-    key: HistoryQueryKey, page: HistoryCatalog.Page, previous: HistoryQueryResult?, newer: Bool,
-    source: UInt64, displayOnly: Bool = false, onMainThread: (@Sendable (Bool) -> Void)? = nil
-  ) async -> HistoryQueryResult? {
-    // `Thread.isMainThread` is unavailable in async code; the C call answers the same question.
-    onMainThread?(pthread_main_np() != 0)
-    let added = page.summaries.map(HistoryListItem.catalog)
-    // An extension joins the stored list, so its counts are certified only when BOTH the stored
-    // list and the new page carry counts; one uncertified part leaves the whole list uncertified.
-    let counts: [Date: Int]?
-    if displayOnly {
-      counts = nil
-    } else if let previous {
-      counts = previous.catalogDayCounts.flatMap { stored in
-        page.dayCounts.map { stored.merging($0) { _, new in new } }
-      }
-    } else {
-      counts = page.dayCounts
-    }
-    guard let previous else {
-      // A display-only page (read while a writer was open) shows its rows and nothing that
-      // could authorize paging or exact totals.
-      return try? HistoryQueryResult(
-        key: key, items: added, continuation: displayOnly ? nil : page.continuation,
-        newerContinuation: displayOnly ? nil : page.newerContinuation, catalogSourceRevision: source,
-        catalogDayCounts: counts, displayOnly: displayOnly)
-    }
-    if newer {
-      var ids = previous.ids
-      let fresh = added.filter { ids.insert($0.id).inserted }
-      return try? HistoryQueryResult(
-        key: key, items: fresh + previous.items, continuation: previous.continuation,
-        newerContinuation: page.newerContinuation, catalogSourceRevision: source,
-        catalogDayCounts: counts, displayOnly: displayOnly)
-    }
-    return try? previous.appending(
-      added, continuation: page.continuation, catalogDayCounts: counts, displayOnly: displayOnly)
-  }
-
-  private func catalogQuery(for context: HistoryPaging.Context, calendar: Calendar = .current) -> HistoryCatalog.Query {
-    let app: String?
-    switch context.tab {
-    case .dictations:
-      switch context.filter.app {
-      case .all: app = nil
-      case .unknown: app = ""
-      case .named(let name): app = name
-      }
-    case .transcripts: app = nil
-    case .meetings: app = context.filter.callApp?.rawValue
-    }
-    return .init(tab: context.tab, search: context.query, dates: context.filter.dateInterval,
-      app: app, calendar: calendar, now: clock())
-  }
-
-  /// Only open drafts and opted-in echo rows are examined. They replace the corresponding
-  /// saved value for the search predicate, and never enter the persisted index.
-  private func catalogQuery(
-    for key: HistoryQueryKey, context: HistoryPaging.Context? = nil, calendar: Calendar = .current
-  ) async -> HistoryCatalog.Query {
-    let context = context ?? key.context
-    let base = catalogQuery(for: context, calendar: calendar)
-    guard context.tab == .meetings, !context.query.isEmpty,
-      !key.draftNotes.isEmpty || !key.echoShown.isEmpty else { return base }
-    var records: [UUID: (MeetingRecord, Transcript)] = [:]
-    for id in key.draftNotes.keys {
-      if let record = historyMeetingRecord(id), record.state == .ready,
-        let row = await loadCatalogDetail(record.transcriptID)
-      {
-        records[id] = (record, row)
-      }
-    }
-    for rowID in key.echoShown {
-      if let row = await loadCatalogDetail(rowID), let id = row.meetingID,
-        let record = historyMeetingRecord(id), record.state == .ready
-      {
-        records[id] = (record, row)
-      }
-    }
-    var matches: [UUID: Bool] = [:]
-    for (id, pair) in records {
-      let (record, row) = pair
-      guard !record.deletionRequested else { continue }
-      let info = meetingInfo?(id)
-      let projection = MeetingHistoryPresentation.project(row, info: info, showEcho: key.echoShown.contains(row.id))
-      let text: String
-      if case .visible(_, let visible) = projection { text = visible } else { text = "" }
-      let notes = key.draftNotes[id] ?? meetingNotes?(id)
-      matches[id] = Self.matchesSearch(row, query: context.query, text: text, info: info)
-        || notes?.localizedCaseInsensitiveContains(context.query) == true
-        || (info?.matching(row) != nil
-          && (meetingInvited?(id) ?? []).contains { $0.localizedCaseInsensitiveContains(context.query) })
-    }
-    return .init(tab: base.tab, search: base.search, dates: base.dates, app: base.app,
-      calendar: calendar, now: base.now, meetingSearchOverrides: matches)
-  }
-
-  func matchingIDs(for result: HistoryQueryResult, day: Date? = nil) async -> [HistoryItemID]? {
-    guard isCurrentHistoryResult(result), let catalogSession else { return nil }
-    var context = result.key.context
-    if let day, let range = result.calendar.dateInterval(of: .day, for: day) {
-      var filter = context.filter
-      if let existing = filter.dateInterval {
-        guard let clipped = existing.intersection(with: range) else { return [] }
-        filter.dateInterval = clipped
-      } else {
-        filter.dateInterval = range
-      }
-      context = .init(tab: context.tab, query: context.query, filter: filter)
-    }
-    let query = await catalogQuery(for: result.key, context: context)
-    guard let keys = try? await catalogSession.matchingKeys(query),
-      isCurrentHistoryResult(result) else { return nil }
-    return keys.map { $0.tab == .meetings ? .meeting($0.id) : .transcript($0.id) }
-  }
-
-  /// #4598: an older page kept on screen while the current one is read. Each catalog row must
-  /// still match its source files (a changed or deleted recording is hidden on its own row), and
-  /// the page carries no day totals or continuations, so it cannot page or authorize selection
-  /// (`isCurrentHistoryResult` also requires the current source revision).
-  /// #4586 N1: the file checks run off the main actor (`@concurrent`), once per change the list
-  /// wakes for, never while drawing; the list drops the answer if anything moved meanwhile.
-  func retainedHistoryResult(_ saved: HistoryQueryResult) async -> HistoryQueryResult? {
-    await Self.verifyRetained(saved)
-  }
-
-  @concurrent private nonisolated static func verifyRetained(_ saved: HistoryQueryResult) async -> HistoryQueryResult? {
-    var items: [HistoryListItem] = []
-    for item in saved.items {
-      guard !Task.isCancelled else { return nil }
-      guard case .catalog(let summary) = item else {
-        items.append(item)
-        continue
-      }
-      if (try? summary.sourcesStillMatch()) == true { items.append(item) }
-    }
-    return try? HistoryQueryResult(key: saved.key, items: items, catalogSourceRevision: saved.catalogSourceRevision, displayOnly: saved.displayOnly)
-  }
-
-  func isCurrentHistoryResult(_ result: HistoryQueryResult) -> Bool {
-    guard let catalogSession else { return false }
-    let ready = result.catalogDayCounts != nil && result.catalogSourceRevision == catalogSession.stableSourceRevision
-    return ready && result.key.context.tab == historyTab
-      && result.key == historyQueryKey(for: historyTab, state: requestedHistoryState(for: historyTab))
-  }
-
-  func isListedMeeting(_ id: UUID, under state: HistoryTabState) -> Bool {
-    guard let record = historyMeetingRecord(id),
-      !record.deletionRequested, state.query.isEmpty
-    else { return false }
-    return Self.matchesFilter(
-      state.listFilter, .meeting(HistoryMeetingItem(meetingID: id, record: record, row: nil)))
-  }
-
-  func canRenderHistoryItem(_ item: HistoryListItem) -> Bool {
-    switch item {
-    case .transcript(let row):
-      return Self.isVisible(row, at: clock())
-    case .meeting(let meeting):
-      if let record = historyMeetingRecord(meeting.meetingID) {
-        return !record.deletionRequested
-      }
-      return meeting.record == nil
-    case .catalog(let summary):
-      if let expiry = summary.expiresAt, expiry <= clock() { return false }
-      if summary.key.tab == .meetings, historyMeetingRecord(summary.key.id)?.deletionRequested == true {
-        return false
-      }
-      return true
-    }
-  }
-
-  private func historyMeetingRecord(_ id: UUID) -> MeetingRecord? {
+  func historyMeetingRecord(_ id: UUID) -> MeetingRecord? {
     if let meetingRecord { return meetingRecord(id) }
     return meetingRecords?().first(where: { $0.id == id })
   }
 
-  /// The calendar uses the same query, with its date range omitted.
-  func historyActivity(in tab: HistoryTab, calendar: Calendar) async -> [Date: Int] {
-    var state = requestedHistoryState(for: tab)
-    state.dateInterval = nil
-    if let catalogSession {
-      let key = historyQueryKey(for: tab, state: state)
-      let query = await catalogQuery(for: key, calendar: calendar)
-      let counts = try? await catalogSession.activity(query)
-      var current = requestedHistoryState(for: tab)
-      current.dateInterval = nil
-      guard !Task.isCancelled, key == historyQueryKey(for: tab, state: current) else { return [:] }
-      return counts ?? [:]
-    }
-    return [:]
-  }
-
-  func historyAppOptions() async -> [HistoryFilterLabels.AppOption] {
-    if let catalogSession {
-      let counts = (try? await catalogSession.appCounts(now: clock())) ?? []
-      return HistoryFilterLabels.appOptions(counts: counts)
-    }
-    return []
-  }
-
-  /// Re-render pulse for pending Escape Recovery rows (#2087).
-  ///
-  /// This type has no clock, and Observation redraws on a STATE change — a
-  /// remaining-time computed from `Date()` is not one. Without a pulse a row
-  /// would keep showing whatever it said when something else last mutated
-  /// state, and an expired row would stay on screen until an unrelated edit
-  /// happened to refresh it. Reading this in a view is what subscribes it.
-  ///
-  /// Only runs while a live pending row exists, so the ordinary case — feature
-  /// off, or no recovery held — has no timer at all.
-  private(set) var expiryPulse: Int = 0
+  /// The Escape Recovery redraw pulse and its follow-up sweep (#2087), its own owner since
+  /// #4586 N6.
+  @ObservationIgnored let expiry: HistoryExpiryPulse
+  /// How meeting rows read on screen: echo choices, projections, previews, summaries and the
+  /// meeting-text cache (#4586 N6).
+  @ObservationIgnored let meetingPresenter: HistoryMeetingPresenter
+  /// What each History tab shows and whether a shown result is current (#4586 N6).
+  @ObservationIgnored let browser: HistoryBrowser
 
   @ObservationIgnored private let transactionExecutor: HistoryTransactionExecutor
   /// #3147: saved dictation recordings, changed only through this coordinator's command queue.
   /// Nil when no archive was given (tests that do not exercise recordings).
   @ObservationIgnored let recordings: DictationRecordings?
   @ObservationIgnored private let diskReconciler: HistoryDiskReconciler
-  @ObservationIgnored private let meetingDocuments = HistoryMeetingDocumentCache()
 
   #if DEBUG
     var transactionExecutorForTesting: HistoryTransactionExecutor { transactionExecutor }
-    var meetingDocumentCacheForTesting: HistoryMeetingDocumentCache { meetingDocuments }
   #endif
 
   var diskReconcilerForTesting: HistoryDiskReconciler { diskReconciler }
-  private let pendingPulseInterval: Duration
-  private let pendingPulseSleep: @Sendable (Duration) async -> Void
 
   /// Escape Recovery telemetry emitters, injected (#2087).
   ///
@@ -558,21 +223,12 @@ final class TranscriptCoordinator {
   /// removal, so no meeting is left with audio but no row and no mark to finish its deletion.
   /// Async (#4102): the marks are awaited, not waited for on the main actor.
   @ObservationIgnored var meetingsWillBeDeletedWithAll: (@MainActor ([UUID]) async -> Bool)?
-  /// #3972 R5/R19: a meeting's History facts (echo turns, title, speaker outcomes), by meeting
-  /// id, from EnviousMeet's in-memory durable copy. Observable on that side, so a view that
-  /// reads it redraws when the meeting changes. Nil (tests, or before wiring) and an unknown
-  /// meeting both fail closed: the row shows nothing.
-  @ObservationIgnored var meetingInfo: (@MainActor (UUID) -> MeetingHistoryInfo?)?
-  /// Rows whose probable echo is shown (#3972 R19). Per row and in memory only: one row's
-  /// choice never reaches another, and every row starts hidden.
-  private(set) var echoShownRowIDs: Set<UUID> = []
   /// #4001 H12: a History read that was still the current one has ended at least once this
   /// launch, successfully or not. It says an attempt finished, never that the rows are complete
   /// or that a given row is there. Never reset: later reads refresh rows in place.
   private(set) var historyReadFinished = false
   enum HistoryReadAvailability { case loading, ready, unavailable }
   private(set) var historyReadAvailability: HistoryReadAvailability = .loading
-  private var pulseTask: Task<Void, Never>?
 
   /// Rows that are still OFFERED, at read time (#2087).
   ///
@@ -589,64 +245,14 @@ final class TranscriptCoordinator {
     // every consumer of this list a subscriber to the pulse automatically,
     // instead of relying on each view to remember to read a counter whose
     // relevance is not obvious from its name.
-    _ = expiryPulse
+    _ = expiry.expiryPulse
     let now = clock()
-    return transcripts.filter { Self.isVisible($0, at: now) }
+    return transcripts.filter { HistoryRowVisibility.isVisible($0, at: now) }
   }
 
   /// The time the list, its counts and row visibility are judged at; tests set it to step
   /// across an expiry boundary without sleeping (#4001).
   @ObservationIgnored var clock: () -> Date = Date.init
-
-  /// Everything the query uses from the live owners.
-  ///
-  /// #4586 H1: two parts with two jobs. `request` is what the reader asked for (tab, search,
-  /// filters, echo choices, drafts, expiry pulse, locale): a change starts a new read. `revision`
-  /// is the catalog content revision the read started under: it is the freshness proof a result
-  /// carries, so a page overtaken by a content publish still displays but cannot authorize
-  /// selection, paging or open (`isCurrentHistoryResult`) until the follow-up read lands.
-  struct HistoryQueryKey: Equatable, Sendable {
-    let revision: Int
-    let request: Request
-
-    struct Request: Equatable, Sendable {
-      let pulse: Int
-      let context: HistoryPaging.Context
-      let echoShown: Set<UUID>
-      let locale: String
-      let localizations: [String]
-      let calendar: Calendar
-      let draftNotes: [UUID: String]
-    }
-
-    init(
-      revision: Int, pulse: Int, context: HistoryPaging.Context, echoShown: Set<UUID>,
-      locale: String, localizations: [String], calendar: Calendar, draftNotes: [UUID: String] = [:]
-    ) {
-      self.revision = revision
-      request = Request(
-        pulse: pulse, context: context, echoShown: echoShown, locale: locale,
-        localizations: localizations, calendar: calendar, draftNotes: draftNotes)
-    }
-
-    var pulse: Int { request.pulse }
-    var context: HistoryPaging.Context { request.context }
-    var echoShown: Set<UUID> { request.echoShown }
-    var locale: String { request.locale }
-    var localizations: [String] { request.localizations }
-    var calendar: Calendar { request.calendar }
-    var draftNotes: [UUID: String] { request.draftNotes }
-  }
-
-  /// The key `tab`'s list is read under now: the request plus the catalog content revision.
-  func historyQueryKey(for tab: HistoryTab, state: HistoryTabState) -> HistoryQueryKey {
-    HistoryQueryKey(
-      revision: Int(truncatingIfNeeded: catalogSession?.revision ?? 0), pulse: expiryPulse,
-      context: HistoryPaging.Context(tab: tab, state: state),
-      echoShown: tab == .meetings ? echoShownRowIDs : [], locale: Locale.current.identifier,
-      localizations: Bundle.main.preferredLocalizations, calendar: .current,
-      draftNotes: tab == .meetings && !state.query.isEmpty ? (meetingHistoryDrafts?() ?? [:]) : [:])
-  }
 
   /// Where the held rows sit in `transcripts` and how many rows each meeting has, rebuilt only
   /// when the rows change (#4001), so counts and row lookups do not scan every row.
@@ -681,52 +287,14 @@ final class TranscriptCoordinator {
 
   @ObservationIgnored private var rowIndexCache: RowIndex?
 
-  /// Whether `item` passes a History tab's filters (#3147 §3.3). A filter a kind does not carry
-  /// (App on a meeting, Call app on a dictation) never lets that item through once it is set.
-  private nonisolated static func matchesFilter(_ filter: HistoryListFilter, _ item: HistoryListItem) -> Bool {
-    if let interval = filter.dateInterval {
-      // Start-inclusive, end-exclusive: a day ending at the next midnight never takes the next
-      // day's first instant (`DateInterval.contains` includes its end).
-      guard item.createdAt >= interval.start, item.createdAt < interval.end else { return false }
-    }
-    switch filter.app {
-    case .all: break
-    case .unknown:
-      guard case .transcript(let row) = item, !row.isImported,
-        (row.metrics?.targetApp ?? "").isEmpty
-      else { return false }
-    case .named(let app):
-      guard case .transcript(let row) = item, !row.isImported, row.metrics?.targetApp == app
-      else { return false }
-    }
-    if let callApp = filter.callApp {
-      guard case .meeting(let meeting) = item, meeting.record?.callApp == callApp else {
-        return false
-      }
-    }
-    return true
-  }
-
-  private nonisolated static func matchesSearch(
-    _ row: Transcript, query: String, text: @autoclosure () -> String, info: MeetingHistoryInfo?
-  ) -> Bool {
-    // Held recovery rows remain browseable without appearing in search.
-    row.escapeRecoveredAt == nil
-      && (text().localizedCaseInsensitiveContains(query)
-        || (row.customTitle?.localizedCaseInsensitiveContains(query) ?? false)
-        || (row.importedFileName?.localizedCaseInsensitiveContains(query) ?? false)
-        || (info?.title?.localizedCaseInsensitiveContains(query) ?? false)
-        || (row.speakerNames?.values.contains { $0.localizedCaseInsensitiveContains(query) } ?? false))
-  }
-
   /// How many dictations exist: every completed row that is not an import, whatever the
   /// filter shows. Onboarding's success detector reads this one.
   var dictationCount: Int {
-    _ = expiryPulse
+    _ = expiry.expiryPulse
     let now = Date()
     // #3972 R5: a meeting finishing during a practice take is not something the user dictated.
     return transcripts.filter {
-      Self.isVisible($0, at: now) && $0.escapeRecoveredAt == nil && !$0.isImported
+      HistoryRowVisibility.isVisible($0, at: now) && $0.escapeRecoveredAt == nil && !$0.isImported
         && !$0.isMeeting
     }.count
   }
@@ -744,12 +312,12 @@ final class TranscriptCoordinator {
     // #4001: the view reads this on every redraw (the Delete All button and its confirmation
     // text), so it reads the row index instead of scanning every row: every row is visible
     // except the held rows whose time has run out.
-    _ = expiryPulse
+    _ = expiry.expiryPulse
     let now = clock()
     let index = rowIndex
     var visibleCount = transcripts.count
     var meetingRowCounts = index.meetingRowCounts
-    for i in index.pending where !Self.isVisible(transcripts[i], at: now) {
+    for i in index.pending where !HistoryRowVisibility.isVisible(transcripts[i], at: now) {
       visibleCount -= 1
       if let meetingID = transcripts[i].meetingID { meetingRowCounts[meetingID]? -= 1 }
     }
@@ -830,28 +398,13 @@ final class TranscriptCoordinator {
 
   private func countPending(at now: Date, visible: Bool) -> Int {
     if let index = rowIndexCache, index.revision == transcriptsRevision {
-      return index.pending.count(where: { Self.isVisible(transcripts[$0], at: now) == visible })
+      return index.pending.count(where: { HistoryRowVisibility.isVisible(transcripts[$0], at: now) == visible })
     }
     return transcripts.count(where: {
-      $0.escapeRecoveredAt != nil && Self.isVisible($0, at: now) == visible
+      $0.escapeRecoveredAt != nil && HistoryRowVisibility.isVisible($0, at: now) == visible
     })
   }
 
-
-  /// A held row is visible only while `PendingAdmission` calls it live.
-  /// Permanent rows carry no stamp and are always visible.
-  ///
-  /// Asked through the shared authority rather than re-derived, for the reason
-  /// that type's own documentation gives: two copies of the retention
-  /// comparison diverge the moment one side gains a condition the other lacks.
-  /// An earlier version of this method compared elapsed time directly and so
-  /// omitted future-skew rejection — a clock-skewed stamp would have stayed
-  /// visible in History indefinitely while the store refused to return it,
-  /// recreating precisely the divergence chunk 5 existed to remove.
-  private nonisolated static func isVisible(_ transcript: Transcript, at now: Date) -> Bool {
-    guard let stamped = transcript.escapeRecoveredAt else { return true }
-    return PendingAdmission.verdict(stampedAt: stamped, now: now) == .live
-  }
 
   /// - Parameters:
   ///   - pendingPulseInterval: how often a held row's countdown and expiry are
@@ -897,8 +450,13 @@ final class TranscriptCoordinator {
     }
     self.diskReconciler = HistoryDiskReconciler(
       store: store, transactionExecutor: transactionExecutor)
-    self.pendingPulseInterval = pendingPulseInterval
-    self.pendingPulseSleep = pendingPulseSleep ?? { try? await Task.sleep(for: $0) }
+    let expiry = HistoryExpiryPulse(
+      pendingPulseInterval: pendingPulseInterval,
+      pendingPulseSleep: pendingPulseSleep ?? { try? await Task.sleep(for: $0) })
+    self.expiry = expiry
+    let meetingPresenter = HistoryMeetingPresenter()
+    self.meetingPresenter = meetingPresenter
+    self.browser = HistoryBrowser(meetingPresenter: meetingPresenter, expiry: expiry)
     self.emitEscapeRecoveryKept =
       emitEscapeRecoveryKept
       ?? { ageMs, takeID in
@@ -921,6 +479,8 @@ final class TranscriptCoordinator {
     // Held payloads and the latest dictation (Paste Last) stay past the cache limit.
     detailCache.keeps = { [weak self] id in id == self?.catalogSession?.latestDictation }
     detailCache.payloadsDropped = { [weak self] in self?.pruneMeetingDocuments(force: true) }
+    expiry.writer = self
+    browser.writer = self
   }
 
   /// Report that a HELD recovery was pasted from History (#2087).
@@ -938,7 +498,7 @@ final class TranscriptCoordinator {
     guard
       let stampedAt = transcript.escapeRecoveredAt,
       let takeID = transcript.escapeRecoveryTakeID,
-      Self.isVisible(transcript, at: Date())
+      HistoryRowVisibility.isVisible(transcript, at: Date())
     else { return }
     emitEscapeRecoveryRestoredFromHistory(
       Int(Date().timeIntervalSince(stampedAt) * 1000), takeID)
@@ -998,7 +558,7 @@ final class TranscriptCoordinator {
       // line, and it would be evicted on the strength of a disagreement between
       // two clocks rather than a fact about the disk.
       if swept.walkComplete, swept.unremovable == 0 {
-        transcripts.removeAll { $0.escapeRecoveredAt != nil && !Self.isVisible($0, at: now) }
+        transcripts.removeAll { $0.escapeRecoveredAt != nil && !HistoryRowVisibility.isVisible($0, at: now) }
       }
       for row in swept.expired {
         guard let takeID = row.takeID else { continue }
@@ -1013,7 +573,7 @@ final class TranscriptCoordinator {
       // any other way could learn that a file resisted removal — or that it
       // could not look at all — and then have nothing scheduled to try again.
       // Idempotent: from inside the pulse's own loop the task already exists.
-      startPulseIfNeeded()
+      expiry.startPulseIfNeeded()
     } catch {
       // A sweep that THREW measured nothing, so it must not read as a finished
       // one — same reasoning as an unreadable directory, one layer out.
@@ -1022,7 +582,7 @@ final class TranscriptCoordinator {
       // after a newer walk succeeded would mark the directory unread when it had
       // just been read. `startPulseIfNeeded` below is unconditional, so a genuine
       // failure still leaves a retry armed either way.
-      startPulseIfNeeded()
+      expiry.startPulseIfNeeded()
       // History is a limb, not the heart. A failed sweep leaves rows the
       // read-time filter already hides.
       Task {
@@ -1033,11 +593,6 @@ final class TranscriptCoordinator {
       }
     }
   }
-
-  // No `deinit` teardown: `deinit` is nonisolated and cannot touch main-actor
-  // state, and none is needed — the loop holds `self` weakly, so once this
-  // object goes away the next wake finds nothing and returns. Nothing is
-  // retained in the meantime.
 
   func loadIfNeeded() {
     diskReconciler.loadIfNeeded(effects: readEffects)
@@ -1054,7 +609,7 @@ final class TranscriptCoordinator {
         removedRowIDs.formUnion(removedIDs)
         transcripts = rows
       },
-      didApplyRead: { [self] in startPulseIfNeeded() },
+      didApplyRead: { [self] in expiry.startPulseIfNeeded() },
       sweepBeforeRead: { [self] in await sweepExpiredPending() },
       didStartRead: { [self] in
         if historyReadAvailability == .unavailable { historyReadAvailability = .loading }
@@ -1081,7 +636,7 @@ final class TranscriptCoordinator {
     // this the pulse would only ever start at launch, so a recovery held during
     // a session would show a countdown frozen at the value it had when the row
     // appeared. No-op for an ordinary dictation, which carries no stamp.
-    startPulseIfNeeded()
+    expiry.startPulseIfNeeded()
   }
 
 
@@ -1126,7 +681,7 @@ final class TranscriptCoordinator {
       insertByDate(transcript)
     }
     publishedImportProofs[transcript.id] = proof
-    startPulseIfNeeded()
+    expiry.startPulseIfNeeded()
     return true
   }
 
@@ -1207,7 +762,7 @@ final class TranscriptCoordinator {
     } else {
       insertByDate(transcript)
     }
-    startPulseIfNeeded()
+    expiry.startPulseIfNeeded()
     return pending?.committed(.written)
   }
 
@@ -1267,7 +822,7 @@ final class TranscriptCoordinator {
         if let meetingID = current.meetingID {
           // The completed view can temporarily show the prior attempt while its replacement
           // publishes. Only the generation the meeting has committed can accept Keep new.
-          guard let info = meetingInfo?(meetingID),
+          guard let info = meetingPresenter.meetingInfo?(meetingID),
             info.generation == current.meetingTranscriptGeneration
           else { return false }
         }
@@ -1360,15 +915,15 @@ final class TranscriptCoordinator {
     }
     guard let catalogSession else { return live }
     _ = catalogSession.revision
-    _ = expiryPulse
+    _ = expiry.expiryPulse
     guard !removedRowIDs.contains(id) else { return nil }
     let source = catalogSession.stableSourceRevision
-    if let live, Self.isVisible(live, at: clock()),
+    if let live, HistoryRowVisibility.isVisible(live, at: clock()),
       (source != nil && liveRowVersions[id] == source) || stillCurrent(id, proof: publishedImportProofs[id])
     { return live }
     // Reading the entry's row subscribes a view to this row's entry only (#4586 H2).
     let entry = detailCache.entry(id)
-    guard let detail = entry.row, Self.isVisible(detail, at: clock()),
+    guard let detail = entry.row, HistoryRowVisibility.isVisible(detail, at: clock()),
       (source != nil && entry.version == source) || stillCurrent(id, proof: entry.proof)
     else { return nil }
     return detail
@@ -1387,7 +942,7 @@ final class TranscriptCoordinator {
       expected.contains(where: { !$0.fingerprint.isEmpty }) else { return nil }
     let entry = detailCache.entry(id)
     if entry.proof == expected, let row = entry.row,
-      Self.isVisible(row, at: clock()) { return row }
+      HistoryRowVisibility.isVisible(row, at: clock()) { return row }
     guard fetchIfNeeded else { return nil }
     return try? readSavedHistoryRow(id, clock())
   }
@@ -1472,16 +1027,6 @@ final class TranscriptCoordinator {
   }
 
 
-  /// Shows the Meetings tab with no search or filters and opens `meetingID` when given (#3972
-  /// R45, #3147 PR2): the menu's "Show Live Preview" and "Show in History", and the EnviousMeet
-  /// page's "Show recordings". The caller brings History forward.
-  func showMeetings(meetingID: UUID? = nil) {
-    var state = HistoryTabState()
-    state.openItemID = meetingID.map { .meeting($0) }
-    historyTabStates[.meetings] = state
-    selectHistoryTab(.meetings)
-  }
-
   /// The rows that name this meeting (normally one; an orphan's when its record is gone).
   func rowIDs(ofMeeting meetingID: UUID) -> [UUID] {
     transcripts.filter { $0.meetingID == meetingID }.map(\.id)
@@ -1562,7 +1107,7 @@ final class TranscriptCoordinator {
   /// Imports, meetings and held Escape-recovery rows have no preference.
   private func acceptsHistoryPreference(_ row: Transcript) -> Bool {
     !row.isImported && !row.isMeeting && row.escapeRecoveredAt == nil
-      && Self.isVisible(row, at: clock())
+      && HistoryRowVisibility.isVisible(row, at: clock())
   }
 
   /// Sets which text History shows and delivers for dictation `rowID` (Restore original text,
@@ -1841,9 +1386,6 @@ final class TranscriptCoordinator {
   #if DEBUG
     /// Holds a replacement's digest step so a test can cancel during it.
     @ObservationIgnored var rowDigestWillRunForTesting: (@MainActor () async -> Void)?
-    /// Runs in `historyResults` after the result is built off the main actor and before its
-    /// freshness checks (#4586 package I): a change here lands while the result was built.
-    @ObservationIgnored var afterBuildResultForTesting: (@MainActor () async -> Void)?
   #endif
 
   /// Its encoded JSON with sorted keys, hashed off the main actor.
@@ -1897,7 +1439,7 @@ final class TranscriptCoordinator {
   /// (#4609): read from disk when no payload is cached, so an older card never needs a hydrated
   /// detail. Nil when the row is gone, changed out from under History, or not visible.
   func liveHistoryRow(id: UUID) -> Transcript? {
-    guard let row = verifiedRowForDelivery(id: id, fetchIfNeeded: true), Self.isVisible(row, at: clock())
+    guard let row = verifiedRowForDelivery(id: id, fetchIfNeeded: true), HistoryRowVisibility.isVisible(row, at: clock())
     else { return nil }
     return row
   }
@@ -1917,13 +1459,13 @@ final class TranscriptCoordinator {
       // its meeting facts are unknown, or every line is hidden.
       guard let current = verifiedRowForDelivery(id: transcript.id) else { return nil }
       return MeetingHistoryPresentation.deliveryText(
-        current, projection: meetingProjection(of: current), timesOn: false)
+        current, projection: meetingPresenter.meetingProjection(of: current), timesOn: false)
     }
     // #4075 R5: the row as it is now, never the caller's copy. History Paste reads this after
     // hiding the app, and an import's cleanup or a deletion can land in that wait.
     if let current = verifiedRowForDelivery(id: transcript.id) {
       // #3147 §3.4: History delivers the row's preferred text (original or polished).
-      return Self.isVisible(current, at: Date()) ? current.historyText : nil
+      return HistoryRowVisibility.isVisible(current, at: Date()) ? current.historyText : nil
     }
     // Not in History. A held recovery that is gone has lapsed, and a row History held and
     // removed was deleted: both are refused. A dictation History never held (the live pane's
@@ -2001,7 +1543,7 @@ final class TranscriptCoordinator {
   /// - Whitespace-only text would paste nothing visible. Checked, never trimmed: the text that
   ///   is reused is exactly the text that was delivered.
   static func isReusableDictation(_ row: Transcript, at now: Date) -> Bool {
-    isVisible(row, at: now)
+    HistoryRowVisibility.isVisible(row, at: now)
       && !isImportedForReuse(row)
       // #3972 R5: a meeting is never the last dictation to paste again.
       && !row.isMeeting
@@ -2053,7 +1595,7 @@ final class TranscriptCoordinator {
     guard
       let row = verifiedRowForDelivery(id: id, fetchIfNeeded: true),
       let stampedAt = row.escapeRecoveredAt,
-      Self.isVisible(row, at: now)
+      HistoryRowVisibility.isVisible(row, at: now)
     else { return nil }
     return (row.displayText, stampedAt, row.escapeRecoveryTakeID)
   }
@@ -2130,7 +1672,7 @@ final class TranscriptCoordinator {
       diskReconciler.noteWritten(id)
       recordPublishedVersion(id)
       transcripts[index] = result.promoted
-      refreshDiskStateThenStopIfIdle()
+      expiry.refreshDiskStateThenStopIfIdle()
     } catch {
       actionFailure = .keep
       Task {
@@ -2166,89 +1708,6 @@ final class TranscriptCoordinator {
         level: .info, category: "EscapeRecovery"
       )
     }
-  }
-
-  // MARK: - Meeting rows (#3972 R5, R19)
-
-  func isShowingEcho(rowID: UUID) -> Bool { echoShownRowIDs.contains(rowID) }
-
-  /// The document-scoped "Show probable echo" choice; C5 gives it a control.
-  func setShowEcho(_ show: Bool, rowID: UUID) {
-    if show { echoShownRowIDs.insert(rowID) } else { echoShownRowIDs.remove(rowID) }
-  }
-
-  /// #3973 C2: the probable-echo turn IDs of `row`'s own transcript generation, or nil when
-  /// its facts are not known.
-  func meetingEchoTurnIDs(of row: Transcript) -> Set<String>? {
-    guard let meetingID = row.meetingID else { return nil }
-    return meetingInfo?(meetingID)?.matching(row)?.echoTurnIDs
-  }
-
-  /// #3973 C2: whether `row`'s own transcript generation has probable-echo lines, the facts
-  /// "Show probable echo" acts on. False for a row whose facts are not known.
-  func meetingHasProbableEcho(_ row: Transcript) -> Bool {
-    meetingEchoTurnIDs(of: row)?.isEmpty == false
-  }
-
-  /// What a meeting row shows; `.unavailable` for a row that is not a meeting.
-  func meetingProjection(of row: Transcript) -> MeetingHistoryPresentation.Projection {
-    guard let meetingID = row.meetingID else { return .unavailable }
-    // #3973 C2: only the facts of this row's own transcript generation.
-    let info = meetingInfo?(meetingID)?.matching(row)
-    let showEcho = isShowingEcho(rowID: row.id)
-    // #4075 R6: the plain text comes from the kept meeting text (the same projection search and
-    // the preview read), so a detail redraw does not rebuild the whole meeting's text. Only the
-    // visible turns, a filter, are computed here.
-    let text = meetingDocuments.text(
-      of: row, info: info, showEcho: showEcho, locale: Locale.current.identifier,
-      localizations: Bundle.main.preferredLocalizations, bypass: false)
-    switch text.kind {
-    case .unavailable: return .unavailable
-    case .everythingHidden: return .everythingHidden
-    case .visible:
-      guard let info else { return .unavailable }
-      let visible = MeetingTranscriptProjection.visible(
-        turns: row.turns ?? [], echoTurnIDs: info.echoTurnIDs, showEcho: showEcho)
-      return .visible(turns: visible.turns, plainText: text.plain)
-    }
-  }
-
-  /// A meeting row's two-line list preview, the same text `meetingProjection` gives, read from
-  /// the kept meeting text (#4001 step 2a) so a row body does not project the whole meeting.
-  /// The meeting info and echo choice are read on every call, so the row stays subscribed.
-  func meetingPreviewText(of row: Transcript) -> String {
-    guard let meetingID = row.meetingID else {
-      return MeetingHistoryPresentation.unavailableMessage
-    }
-    let text = meetingDocuments.text(
-      of: row, info: meetingInfo?(meetingID), showEcho: isShowingEcho(rowID: row.id),
-      locale: Locale.current.identifier, localizations: Bundle.main.preferredLocalizations,
-      bypass: false)
-    switch text.kind {
-    case .visible: return text.plain
-    case .everythingHidden: return MeetingHistoryPresentation.everythingHiddenMessage
-    case .unavailable: return MeetingHistoryPresentation.unavailableMessage
-    }
-  }
-
-  /// A meeting summary's source text: the visible text, echo always hidden, nil when nothing is
-  /// visible (`HistoryMeetingDocumentCache.summaryText`). The caller reads the row and the
-  /// meeting facts live, before this lookup.
-  func summaryVisibleText(of row: Transcript, info: MeetingHistoryInfo?) -> String? {
-    summaryText(of: row, info: info).visibleText
-  }
-
-  /// #4148: true when the same projection is known and has no visible transcript text.
-  func summaryHasNoWords(of row: Transcript, info: MeetingHistoryInfo?) -> Bool {
-    summaryText(of: row, info: info).hasNoWords
-  }
-
-  private func summaryText(
-    of row: Transcript, info: MeetingHistoryInfo?
-  ) -> HistoryMeetingDocumentCache.MeetingText {
-    meetingDocuments.summaryText(
-      of: row, info: info, locale: Locale.current.identifier,
-      localizations: Bundle.main.preferredLocalizations, bypass: false)
   }
 
   /// Removes one row from disk and from the list (#2807). Announces nothing: `delete(_:)`
@@ -2298,8 +1757,8 @@ final class TranscriptCoordinator {
     publishedImportProofs[id] = nil
     detailCache.clear(id)
     removedRowIDs.insert(id)
-    echoShownRowIDs.remove(id)
-    refreshDiskStateThenStopIfIdle()
+    meetingPresenter.setShowEcho(false, rowID: id)
+    expiry.refreshDiskStateThenStopIfIdle()
     return (.removed, recordingCleanupFailed)
   }
 
@@ -2366,11 +1825,11 @@ final class TranscriptCoordinator {
       publishedImportProofs.removeAll()
       detailCache.clearAll()
       removedRowIDs.formUnion(removedIDs)
-      echoShownRowIDs.removeAll()
+      meetingPresenter.clearEcho()
       // The same announcement `delete(_:)` makes, per row, after the list is already empty
       // (found by cloud review, round 3: this route bypassed it).
       for id in removedIDs { onRowDeleted?(id) }
-      refreshDiskStateThenStopIfIdle()
+      expiry.refreshDiskStateThenStopIfIdle()
     } catch {
       actionFailure = .deleteAll
       Task {
@@ -2404,102 +1863,20 @@ final class TranscriptCoordinator {
   // MARK: - Escape Recovery expiry pulse (#2087)
 
 
-  private func startPulseIfNeeded() {
-    guard pulseTask == nil,
-      diskReconciler.pendingPulseHasWork(liveInMemory: livePendingCount)
-    else { return }
-    pulseTask = Task { [weak self, pendingPulseInterval, pendingPulseSleep] in
-      while !Task.isCancelled {
-        await pendingPulseSleep(pendingPulseInterval)
-        guard let self, !Task.isCancelled else { return }
-        // Bumped BEFORE the stop check, so the pulse that carries the last row
-        // past its deadline is itself delivered — otherwise the final expiry
-        // would stop the timer and never redraw, leaving the expired row on
-        // screen until something unrelated moved.
-        self.expiryPulse &+= 1
-        // #2087: the pulse is where an expiry is DETECTED, so it is where the
-        // file must go and the event must fire. Sweeping only on `load()` left
-        // cleanup and telemetry waiting for the user to reopen History — which
-        // for a row that aged out while they watched could be days, or never.
-        //
-        // Asks "can I see a lapsed row" rather than comparing the live count
-        // before and after. The comparison version could never fire: both reads
-        // happen after the wait, so they are always equal, and it only appeared
-        // to work because the row sometimes expired BETWEEN them. A test that
-        // removed the wall clock is what exposed it.
-        if self.diskReconciler.pendingSweepIsDue(
-          lapsedInMemory: self.lapsedPendingCount, now: Date())
-        {
-          await self.sweepExpiredPending()
-        }
-        // AFTER the sweep above, never before: this asks whether a countdown is
-        // running or a file resisted removal, and the sweep is what settles the
-        // second half. Stopping on the live count alone is what stranded a
-        // failed removal, because the retry it was promised never came.
-        if !self.diskReconciler.pendingPulseHasWork(liveInMemory: self.livePendingCount) {
-          self.pulseTask = nil
-          return
-        }
-      }
-    }
+  /// `HistoryExpiryPulseWriter`: what the pulse reads and runs on this writer's held rows.
+  func pendingPulseHasWork() -> Bool {
+    diskReconciler.pendingPulseHasWork(liveInMemory: livePendingCount)
   }
 
-  private func stopPulseIfIdle() {
-    guard !diskReconciler.pendingPulseHasWork(liveInMemory: livePendingCount) else { return }
-    pulseTask?.cancel()
-    pulseTask = nil
+  func pendingSweepIsDue() -> Bool {
+    diskReconciler.pendingSweepIsDue(lapsedInMemory: lapsedPendingCount, now: Date())
   }
 
-  /// #2186: after an action that REMOVES pending files, re-read disk truth
-  /// before deciding the pulse is idle.
-  ///
-  /// `liveOnDiskPendingCount` is a CACHE of the last sweep, and Keep, Delete and
-  /// Delete All all change the directory it describes. Calling `stopPulseIfIdle`
-  /// on the stale value means `pendingPulseHasWork` still sees the removed row,
-  /// so the pulse never stops — a directory walk every minute for the life of
-  /// the app, which is precisely the stranded-retry this file's own comments
-  /// warn about, reintroduced through a cache those comments predate.
-  ///
-  /// A sweep rather than zeroing the count: zeroing is wrong whenever ANOTHER
-  /// pending row is still counting down, and it would stop that row's timer.
-  /// Only the directory knows. The sweep re-arms if work remains, so the stop
-  /// below can then be trusted. Cloud review, P2.
-  private func refreshDiskStateThenStopIfIdle() {
-    // SYNCHRONOUS first, and that is a contract rather than an optimisation:
-    // `Keep stops the pulse once the last held row is gone` asserts the pulse is
-    // gone the instant Keep returns. Making this purely async broke it — the
-    // full lane caught it, this suite did not, because the new tests await the
-    // refresh and the old one does not.
-    //
-    // The cache is INVALIDATED rather than trusted or preserved. It describes a
-    // directory this removal just changed, so keeping it blocks the stop (the
-    // round-2 P2), and believing its old value is what made it stale. Zeroing
-    // can only stop the pulse EARLY; the refresh below re-arms within moments if
-    // another row is still counting down, and only the directory can say.
+  func invalidateDiskState() {
     diskReconciler.invalidateDiskState()
-    stopPulseIfIdle()
-    refreshTask = Task { [weak self] in
-      await self?.sweepExpiredPending()
-      self?.stopPulseIfIdle()
-    }
   }
-
-
-  /// Held so a test can await the refresh rather than guess at a duration —
-  /// a signal the subject itself fires, never a sleep or a yield count.
-  private var refreshTask: Task<Void, Never>?
 
   #if DEBUG
-    // periphery:ignore - test seam
-    var hasPendingPulseForTesting: Bool { pulseTask != nil }
-
-    /// Bumps the pulse the way the loop does, so a test can assert that reading
-    /// the visible list actually subscribes to it — without driving the loop.
-    // periphery:ignore - test seam
-    func bumpExpiryPulseForTesting() {
-      expiryPulse &+= 1
-    }
-
     /// The unfiltered rows. Only for assertions about state the read-time
     /// filter deliberately HIDES — an expired row that must keep its stamp, for
     /// instance. Anything a user would see is asserted through
@@ -2511,36 +1888,6 @@ final class TranscriptCoordinator {
     /// after a sweep rather than keeping the directory walk alive.
     // periphery:ignore - test seam
     var lapsedPendingCountForTesting: Int { lapsedPendingCount }
-
-
-    /// Awaits the post-removal disk refresh. Captured before awaiting because
-    /// the task clears nothing but may be replaced by a later removal.
-    // periphery:ignore - test seam
-    func waitForRefreshForTesting() async {
-      let running = refreshTask
-      await running?.value
-    }
-
-    /// Awaits the pulse loop's own completion — a real signal, so a test never
-    /// guesses how long the loop needs. Captured before awaiting because the
-    /// loop nils the handle as it exits.
-    // periphery:ignore - test seam
-    func waitForPulseForTesting() async {
-      let running = pulseTask
-      await running?.value
-    }
-
-    /// The deadline behind `waitForPulseForTesting`. A loop that stopped
-    /// honouring its own exit condition would otherwise spin forever and HANG
-    /// the suite — no test name, no assertion, just a wedged run — which is
-    /// worse than having no test. A test bounds its iterations and calls this,
-    /// so the regression fails loudly instead.
-    // periphery:ignore - test seam
-    func cancelPulseForTesting() {
-      pulseTask?.cancel()
-      pulseTask = nil
-    }
-
   #endif
 
   /// Bulk fixture seam, available in BOTH configurations (#3013). It used to sit
@@ -2554,7 +1901,7 @@ final class TranscriptCoordinator {
   func setTranscriptsForTesting(_ rows: [Transcript]) {
     transcripts = rows
     diskReconciler.invalidateReadCache()
-    startPulseIfNeeded()
+    expiry.startPulseIfNeeded()
   }
 }
 

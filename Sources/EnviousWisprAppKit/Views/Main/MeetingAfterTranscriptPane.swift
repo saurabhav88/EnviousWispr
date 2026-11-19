@@ -67,7 +67,7 @@ struct MeetingAfterTranscriptPane: View {
     VStack(alignment: .leading, spacing: DesignSpacing.lg) {
       transcriptState(record, row: row)
       if let row, let projection {
-        if transcripts.meetingHasProbableEcho(row) { transcriptToolbar(row) }
+        if transcripts.meetingPresenter.meetingHasProbableEcho(row) { transcriptToolbar(row) }
         if rosterRead?.permissionMissing(for: rosterKey) == true {
           speakerNamesPermissionNote
         }
@@ -162,11 +162,11 @@ struct MeetingAfterTranscriptPane: View {
   private func transcriptToolbar(_ row: Transcript) -> some View {
     WrappingHStack(spacing: DesignSpacing.lg) {
       // #3973 C2: the shown row's own generation decides.
-      if transcripts.meetingHasProbableEcho(row) {
+      if transcripts.meetingPresenter.meetingHasProbableEcho(row) {
         Toggle(
           isOn: Binding(
-            get: { transcripts.isShowingEcho(rowID: row.id) },
-            set: { transcripts.setShowEcho($0, rowID: row.id) })
+            get: { transcripts.meetingPresenter.isShowingEcho(rowID: row.id) },
+            set: { transcripts.meetingPresenter.setShowEcho($0, rowID: row.id) })
         ) {
           Text(
             "Show probable echo",

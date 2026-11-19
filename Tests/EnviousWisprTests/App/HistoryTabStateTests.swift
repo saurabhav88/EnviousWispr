@@ -62,34 +62,34 @@ struct HistoryTabStateTests {
     defer { rig.remove() }
     let coordinator = rig.coordinator
 
-    var dictations = coordinator.requestedHistoryState(for: .dictations)
+    var dictations = coordinator.browser.requestedHistoryState(for: .dictations)
     dictations.query = "pear"
-    coordinator.setHistoryState(dictations, for: .dictations)
-    var transcripts = coordinator.requestedHistoryState(for: .transcripts)
+    coordinator.browser.setHistoryState(dictations, for: .dictations)
+    var transcripts = coordinator.browser.requestedHistoryState(for: .transcripts)
     transcripts.query = "orchard"
-    coordinator.setHistoryState(transcripts, for: .transcripts)
-    coordinator.selectHistoryTab(.transcripts)
-    coordinator.selectHistoryTab(.dictations)
+    coordinator.browser.setHistoryState(transcripts, for: .transcripts)
+    coordinator.browser.selectHistoryTab(.transcripts)
+    coordinator.browser.selectHistoryTab(.dictations)
 
-    #expect(coordinator.requestedHistoryState(for: .dictations).query == "pear")
+    #expect(coordinator.browser.requestedHistoryState(for: .dictations).query == "pear")
     #expect(await rig.listedRowIDs(.dictations) == [pear.id])
     #expect(await rig.listedRowIDs(.transcripts) == [talk.id])
-    #expect(coordinator.requestedHistoryState(for: .meetings) == HistoryTabState())
+    #expect(coordinator.browser.requestedHistoryState(for: .meetings) == HistoryTabState())
   }
 
   @Test("choosing a tab remembers it once; reopening at launch remembers nothing")
   func tabChoiceIsRemembered() {
     let coordinator = makeCoordinator()
     var remembered: [HistoryTab] = []
-    coordinator.onHistoryTabSelected = { remembered.append($0) }
+    coordinator.browser.onHistoryTabSelected = { remembered.append($0) }
 
-    coordinator.restoreHistoryTab(.meetings)
-    #expect(coordinator.historyTab == .meetings)
+    coordinator.browser.restoreHistoryTab(.meetings)
+    #expect(coordinator.browser.historyTab == .meetings)
     #expect(remembered.isEmpty)
 
-    coordinator.selectHistoryTab(.transcripts)
-    coordinator.selectHistoryTab(.transcripts)
-    #expect(coordinator.historyTab == .transcripts)
+    coordinator.browser.selectHistoryTab(.transcripts)
+    coordinator.browser.selectHistoryTab(.transcripts)
+    #expect(coordinator.browser.historyTab == .transcripts)
     #expect(remembered == [.transcripts])
   }
 
@@ -103,11 +103,11 @@ struct HistoryTabStateTests {
 
     var state = HistoryTabState()
     state.app = .named("Slack")
-    rig.coordinator.setHistoryState(state, for: .dictations)
+    rig.coordinator.browser.setHistoryState(state, for: .dictations)
     #expect(await rig.listedRowIDs(.dictations) == [slack.id])
 
     state.app = .unknown
-    rig.coordinator.setHistoryState(state, for: .dictations)
+    rig.coordinator.browser.setHistoryState(state, for: .dictations)
     #expect(await rig.listedRowIDs(.dictations) == [none.id])
   }
 
@@ -123,7 +123,7 @@ struct HistoryTabStateTests {
 
     var state = HistoryTabState()
     state.dateInterval = DateInterval(start: start, end: end)
-    rig.coordinator.setHistoryState(state, for: .dictations)
+    rig.coordinator.browser.setHistoryState(state, for: .dictations)
     #expect(Set(await rig.listedRowIDs(.dictations)) == [atStart.id, beforeEnd.id])
   }
 
@@ -136,7 +136,7 @@ struct HistoryTabStateTests {
 
     var state = HistoryTabState()
     state.dateInterval = DateInterval(start: Date().addingTimeInterval(-86_400), end: Date())
-    rig.coordinator.setHistoryState(state, for: .dictations)
+    rig.coordinator.browser.setHistoryState(state, for: .dictations)
     #expect(await rig.listedRowIDs(.dictations) == [recent.id])
   }
 
@@ -153,23 +153,23 @@ struct HistoryTabStateTests {
     var state = HistoryTabState()
     state.scrollAnchorID = apple
     state.openItemID = apple
-    coordinator.setHistoryState(state, for: .dictations)
-    #expect(coordinator.requestedHistoryState(for: .dictations).scrollAnchorID == apple)
-    #expect(coordinator.requestedHistoryState(for: .dictations).openItemID == apple)
+    coordinator.browser.setHistoryState(state, for: .dictations)
+    #expect(coordinator.browser.requestedHistoryState(for: .dictations).scrollAnchorID == apple)
+    #expect(coordinator.browser.requestedHistoryState(for: .dictations).openItemID == apple)
 
     // Same search and filters (an open item changed): the place is kept.
     state.openItemID = nil
-    coordinator.setHistoryState(state, for: .dictations)
-    #expect(coordinator.requestedHistoryState(for: .dictations).scrollAnchorID == apple)
+    coordinator.browser.setHistoryState(state, for: .dictations)
+    #expect(coordinator.browser.requestedHistoryState(for: .dictations).scrollAnchorID == apple)
 
     state.query = "banana"
-    coordinator.setHistoryState(state, for: .dictations)
-    #expect(coordinator.requestedHistoryState(for: .dictations).scrollAnchorID == nil)
+    coordinator.browser.setHistoryState(state, for: .dictations)
+    #expect(coordinator.browser.requestedHistoryState(for: .dictations).scrollAnchorID == nil)
 
     state.scrollAnchorID = apple
     state.app = .named("Slack")
-    coordinator.setHistoryState(state, for: .dictations)
-    #expect(coordinator.requestedHistoryState(for: .dictations).scrollAnchorID == nil)
+    coordinator.browser.setHistoryState(state, for: .dictations)
+    #expect(coordinator.browser.requestedHistoryState(for: .dictations).scrollAnchorID == nil)
   }
 
   @Test("History search reads each dictation's preferred text")
@@ -181,17 +181,17 @@ struct HistoryTabStateTests {
 
     var state = HistoryTabState()
     state.query = "raw"
-    coordinator.setHistoryState(state, for: .dictations)
-    let rawKey = coordinator.historyQueryKey(for: .dictations, state: state)
-    let rawResult = await coordinator.historyResults(for: rawKey)
+    coordinator.browser.setHistoryState(state, for: .dictations)
+    let rawKey = coordinator.browser.historyQueryKey(for: .dictations, state: state)
+    let rawResult = await coordinator.browser.historyResults(for: rawKey)
     #expect(rawResult?.ids == [.transcript(row.id)])
 
     state.query = "Clean"
-    coordinator.setHistoryState(state, for: .dictations)
+    coordinator.browser.setHistoryState(state, for: .dictations)
     #expect(await rig.listedIDs(.dictations).isEmpty)
-    #expect(await coordinator.historyResults(for: rawKey) == nil)
-    let cleanKey = coordinator.historyQueryKey(for: .dictations, state: state)
-    #expect(await coordinator.historyResults(for: cleanKey)?.ids.isEmpty == true)
+    #expect(await coordinator.browser.historyResults(for: rawKey) == nil)
+    let cleanKey = coordinator.browser.historyQueryKey(for: .dictations, state: state)
+    #expect(await coordinator.browser.historyResults(for: cleanKey)?.ids.isEmpty == true)
   }
 
   @Test("activity counts one entry per day under the tab's other filters")
@@ -205,9 +205,9 @@ struct HistoryTabStateTests {
     defer { rig.remove() }
     var state = HistoryTabState()
     state.dateInterval = DateInterval(start: now.addingTimeInterval(-60), end: now)
-    rig.coordinator.setHistoryState(state, for: .dictations)
+    rig.coordinator.browser.setHistoryState(state, for: .dictations)
 
-    let counts = await rig.coordinator.historyActivity(in: .dictations, calendar: calendar)
+    let counts = await rig.coordinator.browser.historyActivity(in: .dictations, calendar: calendar)
     let byDay = Dictionary(grouping: rows.map(\.createdAt)) { calendar.startOfDay(for: $0) }
       .mapValues(\.count)
     #expect(counts == byDay)

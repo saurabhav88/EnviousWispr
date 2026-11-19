@@ -20,7 +20,7 @@ import UniformTypeIdentifiers
 ///   progress), stopping and recording states are shown truthfully, never a blank pane.
 /// - Notes-only meetings open on Your notes and say nothing was recorded. A row whose meeting
 ///   folder is gone shows its transcript and deletes only when the folder is confirmed absent.
-/// - The transcript is `TranscriptCoordinator.meetingProjection` (hidden echo, the Show
+/// - The transcript is `HistoryMeetingPresenter.meetingProjection` (hidden echo, the Show
 ///   probable echo toggle, the all-hidden and unavailable explanations), its speaker rename and
 ///   roster suggestions and the missing-Accessibility note.
 /// - One shared player per playable source (`MeetingCoordinator.playbackSource`), known to the
@@ -349,7 +349,7 @@ struct HistoryMeetingAfterView: View {
 
   private func content(_ record: MeetingRecord) -> some View {
     let row = committedRow(record)
-    let projection = row.map(transcripts.meetingProjection(of:))
+    let projection = row.map(transcripts.meetingPresenter.meetingProjection(of:))
     let visibleTurns: [Turn] = {
       if case .visible(let turns, _)? = projection { return turns }
       return []
@@ -1082,7 +1082,7 @@ struct HistoryMeetingAfterView: View {
   ) -> String? {
     guard let row = deliveryRow() else { return nil }
     return MeetingHistoryPresentation.deliveryText(
-      row, projection: transcripts.meetingProjection(of: row),
+      row, projection: transcripts.meetingPresenter.meetingProjection(of: row),
       timesOn: includeTimes ?? timesOn, mode: mode ?? transcriptMode)
   }
 
@@ -1563,7 +1563,7 @@ extension HistoryMeetingAfterView {
       return snapshot.document.blocks.first { $0.id == id }?.startedAtMs
     case .turn(let id):
       guard let row = committedRow(record),
-        case .visible(let turns, _) = transcripts.meetingProjection(of: row)
+        case .visible(let turns, _) = transcripts.meetingPresenter.meetingProjection(of: row)
       else { return nil }
       return turns.first { $0.id == id }?.startMs
     }

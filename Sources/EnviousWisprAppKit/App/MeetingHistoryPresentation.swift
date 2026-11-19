@@ -3,7 +3,7 @@ import EnviousWisprStorage
 import Foundation
 
 /// The meeting facts History needs beside a meeting's row (#3972 R5, R19), read from
-/// EnviousMeet's in-memory durable copy through `TranscriptCoordinator.meetingInfo`, never
+/// EnviousMeet's in-memory durable copy through `HistoryMeetingPresenter.meetingInfo`, never
 /// from the meeting's files while rendering, searching or exporting.
 struct MeetingHistoryInfo: Equatable, Sendable {
   /// #3973 C2: the transcript generation (attempt) these facts belong to. A History row is

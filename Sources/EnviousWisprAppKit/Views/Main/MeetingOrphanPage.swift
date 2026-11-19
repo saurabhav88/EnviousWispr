@@ -53,7 +53,7 @@ struct MeetingOrphanPage: View {
 
   /// The shared page header and the transcript.
   private var page: some View {
-    let projection = transcripts.meetingProjection(of: row)
+    let projection = transcripts.meetingPresenter.meetingProjection(of: row)
     let canDeliver: Bool = {
       if case .visible = projection { return true }
       return false
