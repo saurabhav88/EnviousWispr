@@ -825,4 +825,60 @@ enum MeetingExport {
     let notes = documents.notes(meetingID).trimmingCharacters(in: .whitespacesAndNewlines)
     return .document(MeetingsPresentation.exportDocument(transcript: text, notes: notes))
   }
+
+  /// The row whose words are delivered now: the committed row of a meeting EnviousMeet holds
+  /// (nothing while it is being deleted), else the row of a meeting whose folder is gone.
+  /// `orphanRow` is read only when no meeting record exists.
+  static func deliveryRow(
+    meetingID: UUID, meetings: MeetingCoordinator, transcripts: TranscriptCoordinator,
+    orphanRow: () -> Transcript?
+  ) -> Transcript? {
+    if let record = meetings.record(id: meetingID) {
+      guard !record.deletionRequested, record.committedTranscriptGeneration != nil else {
+        return nil
+      }
+      return transcripts.verifiedRowForDelivery(id: record.transcriptID)
+    }
+    guard let orphanRow = orphanRow() else { return nil }
+    return transcripts.verifiedRowForDelivery(id: orphanRow.id)
+  }
+
+  /// The visible words of the meeting's current delivery row. The row and its projection are
+  /// resolved before `timesOn` and `mode` are read, so the caller's settings apply at that point.
+  static func deliveryText(
+    meetingID: UUID, meetings: MeetingCoordinator, transcripts: TranscriptCoordinator,
+    orphanRow: () -> Transcript?, timesOn: () -> Bool,
+    mode: () -> FileImportCoordinator.DocumentView
+  ) -> String? {
+    guard
+      let row = deliveryRow(
+        meetingID: meetingID, meetings: meetings, transcripts: transcripts, orphanRow: orphanRow)
+    else { return nil }
+    return MeetingHistoryPresentation.deliveryText(
+      row, projection: transcripts.meetingPresenter.meetingProjection(of: row),
+      timesOn: timesOn(), mode: mode())
+  }
+
+  /// What the page's Save as… writes, built after the panel closes from the row chosen before it.
+  static func saveDocument(
+    meetingID: UUID, rowID: UUID, documents: MeetingDocumentsOwner,
+    transcripts: TranscriptCoordinator, mode: FileImportCoordinator.DocumentView, timesOn: Bool
+  ) async -> HistoryDelivery.Document {
+    switch await document(
+      meetingID: meetingID, rowID: rowID, documents: documents,
+      transcripts: transcripts, mode: mode, timesOn: timesOn)
+    {
+    case .document(let document):
+      return .text(document)
+    case .notesUnreadable:
+      return .refused(
+        String(
+          localized: "Your notes could not be read, so nothing was saved. Try again.",
+          comment:
+            "History, a meeting: Save stopped because the meeting's notes file could not be read."
+        ))
+    case .nothingToDeliver:
+      return .nothing
+    }
+  }
 }
