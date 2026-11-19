@@ -260,26 +260,10 @@
     /// Why a `transcribe` would be refused right now, or nil to accept. Asked by `discover`
     /// too, so a caller can see a busy door before it posts work.
     ///
-    /// A separate policy from the coordinator's own gates, on purpose: `canGo` governs
-    /// navigation and `hasDocument` would refuse a FINISHED document, which is exactly the
-    /// case `choose(url:)` replaces cleanly. What this refuses is a user's file in hand
-    /// (`.reading`, `.ready`) that a second `choose` would silently supersede.
+    /// The door's own reservation is separate from the shared import admission.
     func acceptance(ignoringReservation: Bool = false) -> String? {
       if !ignoringReservation, inFlight != nil { return "requestInFlight" }
-      if coordinator.isRunning { return "running" }
-      if coordinator.isSettlingTurns { return "settling" }
-      // `isReadyToRun` is `.ready` OR a refusal about the ENGINE with the audio still in
-      // hand (`canRetry`: the screen offers Try again). Both are a user's file the door
-      // must not replace. A refusal about the FILE or the polisher leaves nothing the
-      // door would take away, and `choose(url:)` clears it as the picker would (cloud
-      // review, PR #2887).
-      if coordinator.isReadyToRun { return "fileInHand" }
-      if case .reading = coordinator.state { return "fileInHand" }
-      // A finished document whose words are not in History (the raw write failed) exists
-      // only on screen; `choose(url:)` clears the transcript, so the door would discard the
-      // user's only copy. A saved document is replaceable exactly as the picker treats it.
-      if coordinator.hasDocument, !coordinator.isSavedToHistory { return "unsavedDocument" }
-      return nil
+      return coordinator.externalImportBlock?.rawValue
     }
 
     // MARK: - The walk

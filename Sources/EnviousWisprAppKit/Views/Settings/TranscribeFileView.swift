@@ -1322,6 +1322,11 @@ struct TranscribeFileView: View {
                   localized: "Audio found",
                   comment: "Transcribe a File: a check under the chosen file."))
               check(coordinator.readyInText(backend: settings.selectedBackend))
+              if file.isSharedMediaCopy {
+                Text("History keeps the transcript. To play the recording there, locate the original.")
+                  .font(.stHelper)
+                  .foregroundStyle(Color.stTextSecondary)
+              }
             }
           }
           .padding(.horizontal, SettingsLayout.rowPaddingH)

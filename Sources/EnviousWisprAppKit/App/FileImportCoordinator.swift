@@ -103,6 +103,7 @@ final class FileImportCoordinator {
     /// either could not be read: the import still saves, as a row with no trusted link.
     var sourceBookmark: Data? = nil
     var sourceFingerprint: String? = nil
+    var isSharedMediaCopy = false
 
     /// "1 hr 12 min · 68.4 MB · AAC · 44.1 kHz · mono"
     var detailLine: String {
@@ -980,9 +981,48 @@ final class FileImportCoordinator {
 
   // MARK: - The user's four actions
 
-  /// The user picked a file. Reads it far enough to say whether it can be
-  /// transcribed at all, before anything touches an engine.
+  enum ExternalImportBlock: String {
+    case running
+    case settling
+    case fileInHand
+    case unsavedDocument
+  }
+
+  /// An outside request cannot replace a user's current import or unsaved words.
+  /// The explicit picker and drag/drop still let the user replace their own file.
+  var externalImportBlock: ExternalImportBlock? {
+    if isRunning { return .running }
+    if isEngineHeld || isSettlingTurns || hasPendingSettlement || isSettlingRunPersistence
+      || restorationPending
+    { return .settling }
+    if isReadyToRun { return .fileInHand }
+    if case .reading = state { return .fileInHand }
+    guard hasDocument else { return nil }
+    guard savedHistoryRow != nil, let historyID, historyRowExists(historyID),
+      let row = currentHistoryRow(historyID), row.text == rawTranscript,
+      unsavedRestoredTurns == nil
+    else { return .unsavedDocument }
+    // A stopped labeled import intentionally shows its saved raw turns, even
+    // when its earlier cleanup parts are still in memory.
+    if state == .stopped, row.turns != nil, !showsRestoredCleanup { return nil }
+    // Use the cleanup writer's save check for every finished or materialized
+    // version. Equal words alone cannot prove that History saved its credit.
+    guard state == .finished || showsRestoredCleanup || !parts.isEmpty else { return nil }
+    return historyHoldsDocument ? nil : .unsavedDocument
+  }
+
+  func chooseSharedMedia(_ claim: SharedMediaTransfer.Claim) -> Bool {
+    guard externalImportBlock == nil else { return false }
+    choose(url: claim.url, sharedMedia: claim)
+    return true
+  }
+
+  /// Reads the selected file far enough to confirm it can be transcribed.
   func choose(url: URL) {
+    choose(url: url, sharedMedia: nil)
+  }
+
+  private func choose(url: URL, sharedMedia: SharedMediaTransfer.Claim?) {
     guard !isRunning else { return }
     parts = []
     retainedCleanup = nil
@@ -1010,7 +1050,7 @@ final class FileImportCoordinator {
     // is a no-op.
     runTask?.cancel()
     resetSpeakerResult()
-    let name = url.lastPathComponent
+    let name = sharedMedia?.displayName ?? url.lastPathComponent
     // Bumped HERE too, not only when a run starts. Picking a second file while
     // the first is still decoding is an ordinary thing to do, and without this
     // both decodes carry the same generation, so whichever finishes last wins —
@@ -1047,17 +1087,21 @@ final class FileImportCoordinator {
     // already checks cancellation inside its read loop, so this stops it in the
     // middle rather than at the end. Found by Codex.
     decodeTask?.cancel()
-    decodeTask = Task { [weak self] in
+    decodeTask = Task { [weak self, sharedMedia] in
+      // Cancelling a task does not interrupt an in-flight file read.
+      // Retire a staged copy only after every read has unwound.
+      defer { withExtendedLifetime(sharedMedia) {} }
       guard let self else { return }
+      let keepBookmark = sharedMedia == nil
       do {
         // #3147 PR3 (Codex r2): the file is identified before AND after the decode; a link is
         // kept only when both agree, so a file replaced mid-decode never gets a trusted link
         // to audio other than the text's. The import itself always proceeds.
-        let before = await Self.readSource(url)
+        let before = await Self.readSource(url, keepBookmark: keepBookmark)
         guard generationAtStart == generation else { return }
         let decoded = try await decode(url)
         guard generationAtStart == generation else { return }
-        let after = await Self.readSource(url)
+        let after = await Self.readSource(url, keepBookmark: keepBookmark)
         guard generationAtStart == generation else { return }
         let source: (bookmark: Data?, fingerprint: String?) =
           before.fingerprint != nil && before.fingerprint == after.fingerprint
@@ -1066,7 +1110,7 @@ final class FileImportCoordinator {
           name: name, seconds: decoded.seconds, byteCount: decoded.byteCount,
           codec: decoded.codec, sampleRate: decoded.sampleRate,
           channelCount: decoded.channelCount, sourceBookmark: source.bookmark,
-          sourceFingerprint: source.fingerprint)
+          sourceFingerprint: source.fingerprint, isSharedMediaCopy: !keepBookmark)
         state = .ready(fileName: name, seconds: decoded.seconds)
         decodedSamples = decoded.samples
       } catch is CancellationError {
@@ -1081,9 +1125,15 @@ final class FileImportCoordinator {
   /// The chosen file's bookmark and `ImportedSourceIdentity` fingerprint (#3147 PR3), read off
   /// the main actor. Either is nil when it could not be read; a bookmark without an identity
   /// is not kept, so a row never claims a link nothing can verify.
-  nonisolated private static func readSource(_ url: URL) async -> (bookmark: Data?, fingerprint: String?) {
-    guard let identity = try? await ImportedSourceFingerprint.read(url: url),
-      let bookmark = try? url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
+  nonisolated private static func readSource(
+    _ url: URL, keepBookmark: Bool
+  ) async -> (bookmark: Data?, fingerprint: String?) {
+    guard let identity = try? await ImportedSourceFingerprint.read(url: url) else {
+      return (nil, nil)
+    }
+    guard keepBookmark else { return (nil, identity.fingerprint) }
+    guard let bookmark = try? url.bookmarkData(
+      options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
     else { return (nil, nil) }
     return (bookmark, identity.fingerprint)
   }

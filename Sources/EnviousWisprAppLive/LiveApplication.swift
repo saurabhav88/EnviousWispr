@@ -134,7 +134,30 @@ package final class LiveApplication {
     // #3252: only a bad-location launch has a driver. It offers the move on a later run-loop
     // turn, after this callback has returned, so the app can become active first.
     offerDriver?.didFinishLaunching()
+    Task { await Self.retireAbandonedShareFiles() }
   }
+
+  @concurrent
+  private static func retireAbandonedShareFiles() async {
+    SharedMediaTransfer.live()?.retireExpired()
+  }
+
+  package func applicationOpenFiles(_ urls: [URL]) {
+    guard let transfer = SharedMediaTransfer.live(),
+      urls.count == 1, let url = urls.first, transfer.recognizes(url)
+    else { return }
+    guard let claim = transfer.claim(url) else {
+      // The original URL is gone after a cancellation or another delivery claimed it.
+      if FileManager.default.fileExists(atPath: url.path) { SharedMediaNotice.unavailable.present() }
+      return
+    }
+    guard sequencer.phase == .started, let target = sequencer.target else {
+      SharedMediaNotice.moveToApplications.present()
+      return
+    }
+    target.openSharedMedia(claim)
+  }
+
   package func applicationShouldHandleReopen() -> Bool {
     sequencer.applicationShouldHandleReopen()
   }

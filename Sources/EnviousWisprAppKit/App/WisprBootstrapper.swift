@@ -3966,6 +3966,21 @@ package final class WisprBootstrapper {
     TranscribeCppProcessExit.releaseBeforeExit()
   }
 
+  package func openSharedMedia(_ claim: SharedMediaTransfer.Claim) {
+    guard settings.onboardingState == .completed else {
+      SharedMediaNotice.finishSetup.present()
+      appWindowCoordinator.openOnboardingWindow()
+      return
+    }
+    guard fileImportCoordinator.externalImportBlock == nil,
+      navigationCoordinator.requestSharedMedia(claim)
+    else {
+      SharedMediaNotice.importInUse.present()
+      return
+    }
+    appWindowCoordinator.showWindow()
+  }
+
   // MARK: - Window titles (so the shell needs no EnviousWisprCore dependency)
 
   package var mainWindowTitle: String { LaunchWindowIdentity.mainTitle }
