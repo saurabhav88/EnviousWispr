@@ -3,7 +3,7 @@ import Foundation
 
 /// History's memoized meeting document text (#4102 S2): the display/search text and the
 /// summary text, each kept per row while what it is made from is unchanged. Owned by one
-/// `TranscriptCoordinator`, which reads every live input (rows, meeting facts, echo choice,
+/// `HistoryMeetingPresenter`, which reads every live input (rows, meeting facts, echo choice,
 /// locale) before it asks; this type reads no observable state itself.
 @MainActor final class HistoryMeetingDocumentCache {
   /// #4001: a meeting's visible text and which projection it came from, kept per row while what

@@ -372,7 +372,7 @@ final class HistoryCatalogSession {
     // #4586 H1: a content publish while the page was read (indexing progress, a new
     // certificate) does not throw it away; the list reads again after showing it, and a page
     // read under an older content revision cannot authorize selection or paging
-    // (`TranscriptCoordinator.isCurrentHistoryResult`).
+    // (`HistoryBrowser.isCurrentHistoryResult`).
     if admittedFirstPage != nil { return Task.isCancelled ? nil : result }
     guard !Task.isCancelled, source == changes.revision else { return nil }
     return result
