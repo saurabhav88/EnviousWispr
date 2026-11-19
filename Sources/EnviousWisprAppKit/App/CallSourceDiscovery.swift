@@ -407,7 +407,7 @@ final class CallSourceDiscovery {
         let age = projectionTime.timeIntervalSince(cached.beganAt)
         return age >= 0 && age <= CallDetectionPolicy.staleAfter ? cached.value : nil
       }
-      return .init(pid: holder.pid, rule: rule, input: input, evidence: read)
+      return .init(pid: holder.pid, rule: rule, input: input, evidence: read, ownerPID: holder.ownerPID)
     }
     return .init(
         sequence: sequence, takenAt: takenAt, complete: complete && eligible, holders: eligible ? mapped : [],

@@ -29,17 +29,21 @@ public struct CallDetectionPolicy: Sendable {
     public let pid: Int32
     public let rule: CallAppCatalog.Rule
     public let input: Input
+    /// The owner resolved by the current microphone reading.
+    public let ownerPID: Int32?
     /// The last evidence read for this process, or nil when none was read yet. A URL or window
     /// is START evidence only (R4).
     public let evidence: CallEvidenceReader.Evidence?
 
     public init(
-      pid: Int32, rule: CallAppCatalog.Rule, input: Input, evidence: CallEvidenceReader.Evidence?
+      pid: Int32, rule: CallAppCatalog.Rule, input: Input, evidence: CallEvidenceReader.Evidence?,
+      ownerPID: Int32? = nil
     ) {
       self.pid = pid
       self.rule = rule
       self.input = input
       self.evidence = evidence
+      self.ownerPID = ownerPID
     }
   }
 
@@ -1140,7 +1144,13 @@ public struct CallDetectionPolicy: Sendable {
       guard holder.input == .active, CallEvidenceReader.readsTeamsGuestJoin(in: holder.rule)
       else { return true }
       switch holder.evidence {
-      case nil, .unknown?, .inconclusiveTeamsPreview?: return false
+      case nil:
+        // Refresh can clear another helper's cached read. The active holder can share the
+        // same joined proof when the new mic poll and this episode still name its exact run.
+        let (source, observation) = attribution(for: holder, c)
+        guard let source, episode.sources.contains(source) else { return false }
+        return holder.ownerPID == owner.pid && observation?.owner == owner
+      case .unknown?, .inconclusiveTeamsPreview?: return false
       case .call(let family, let room)?:
         guard CallEvidenceReader.requiresJoinedTeamsGuest(rule: holder.rule, family: family, room: room)
         else { return true }

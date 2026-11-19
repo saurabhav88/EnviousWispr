@@ -2507,6 +2507,36 @@
       #expect(wanted == false)
     }
 
+    @Test("A fresh Teams guest check shares proof only when both helpers still belong to the same run",
+      .bug("https://github.com/saurabhav88/EnviousWispr/issues/4094"), arguments: [false, true])
+    func automaticTeamsStartReusesProofForSameBrowserRun(ownerChanged: Bool) async throws {
+      let rig = try Rig()
+      defer { rig.coordinator.shutDown() }
+      rig.settings.meetingCallDetection = "start_by_itself"
+      let rule = CallAppCatalog.Rule.browser(.brave)
+      let ownerPID: Int32 = 900_100
+      rig.snapshotAnswer.withLock {
+        $0 = Rig.snapshotValue(rule: rule, pid: ownerPID,
+          evidence: .call(family: .teams, room: "teams.live.com/light-meetings/launch?p=call"))
+      }
+      rig.polledHolders = [
+        .init(pid: 900_010, bundleID: "com.brave.Browser.helper", input: .active, ownerPID: ownerPID),
+        .init(pid: 900_011, bundleID: "com.brave.Browser.helper", input: .active, ownerPID: ownerPID),
+      ]
+      var wanted: Bool?
+      rig.duringStart = {
+        if ownerChanged {
+          rig.polledHolders[1] = .init(pid: 900_011, bundleID: "com.brave.Browser.helper",
+            input: .active, ownerPID: ownerPID + 1)
+        }
+        wanted = await rig.coordinator.detectedStartStillWanted()
+      }
+      rig.coordinator.deliverWatcherReading(rig.polledHolders)
+
+      #expect(await settleUntilObserved { wanted != nil })
+      #expect(wanted == (ownerChanged == false))
+    }
+
     @Test("an unknown reading during a detected Start keeps it wanted: it is never dropped")
     func unknownDuringStartStaysWanted() async throws {
       let rig = try Rig()
