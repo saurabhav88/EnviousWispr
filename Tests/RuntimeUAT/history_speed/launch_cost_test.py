@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from launch_cost import count_full_passes, parse_cpu_time  # noqa: E402
+from launch_cost import count_full_passes, parse_cpu_time, watcher_ready_before_first_pass  # noqa: E402
 
 LINES = [
     "Filtering the log data using \"subsystem == ...\"",
@@ -20,6 +20,11 @@ class LaunchCostParsing(unittest.TestCase):
         self.assertEqual(count_full_passes(LINES, 52491), 2)
         self.assertEqual(count_full_passes(LINES, 30182), 1)
         self.assertEqual(count_full_passes(LINES, 524), 0)   # a pid prefix is not the pid
+
+    def test_watcher_must_be_ready_before_the_first_pass(self):
+        self.assertTrue(watcher_ready_before_first_pass(LINES, 52491))
+        self.assertFalse(watcher_ready_before_first_pass(LINES, 30182))   # a pass with no ready before it
+        self.assertFalse(watcher_ready_before_first_pass(LINES[2:], 52491))   # ready never logged
 
     def test_cpu_time_shapes(self):
         self.assertAlmostEqual(parse_cpu_time("0:05.93\n"), 5.93)

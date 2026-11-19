@@ -236,7 +236,9 @@ import Testing
 
     /// A second session and coordinator over the fixture's existing catalog (an app relaunch),
     /// with the watcher install held before it can finish.
-    private func relaunch(_ f: Fixture, _ order: ReadOrder, freshChanges: Bool = false) async throws -> Fixture {
+    private func relaunch(
+      _ f: Fixture, _ order: ReadOrder, freshChanges: Bool = false, watcherBudget: Duration = .seconds(60)
+    ) async throws -> Fixture {
       // A fresh feed and stores model a new process: the first session cannot see its notices.
       let changes = freshChanges ? HistorySourceChanges() : f.changes
       let store =
@@ -249,7 +251,7 @@ import Testing
         directory: f.root.appendingPathComponent("catalog"))
       let coordinator = TranscriptCoordinator(store: store)
       coordinator.catalogSession = session
-      session.watcherWaitBudgetForTesting = .seconds(60)
+      session.watcherWaitBudgetForTesting = watcherBudget
       session.beforeWatcherInstallForTesting = { await order.hold() }
       session.beforeWatcherWaitForTesting = { deadline in
         order.watcherDeadlines.append(deadline)
@@ -387,6 +389,34 @@ import Testing
       await r.session.waitForIndexingForTesting()
       #expect(r.session.watcherIsInstalledForTesting)
       #expect(order.reconciles == 1)
+      #expect(r.session.status == .ready)
+    }
+
+    @Test("An activation whose watcher install stalls past the hang guard still gets its re-check")
+    func stalledInstallReleasesTheActivationRecheck() async throws {
+      let f = try await fixture(rows: 3)
+      defer { try? FileManager.default.removeItem(at: f.root) }
+      let order = ReadOrder()
+      let r = try await relaunch(f, order, freshChanges: true, watcherBudget: .milliseconds(100))
+      defer {
+        r.session.beforeWatcherInstallForTesting = nil
+        r.session.beforeReconcileForTesting = nil
+        order.release()
+      }
+      // The launch pass waits out its own guard and runs display-only; the install stays held.
+      try await order.until("reconcile")
+      #expect(r.session.watcherIsInstalledForTesting == false)
+      let before = r.changes.admission.revision
+      r.session.sourceMayHaveChanged()
+      // No full pass awaits its start now, so past the guard the activation's re-check is sent.
+      while r.changes.admission.revision == before {
+        try Task.checkCancellation()
+        await Task.yield()
+      }
+      r.session.beforeWatcherInstallForTesting = nil
+      order.release()
+      await r.session.waitForIndexingForTesting()
+      #expect(r.session.watcherIsInstalledForTesting)
       #expect(r.session.status == .ready)
     }
 

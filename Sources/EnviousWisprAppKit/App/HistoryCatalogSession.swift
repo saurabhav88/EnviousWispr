@@ -182,7 +182,7 @@ final class HistoryCatalogSession {
         recheckIfInstallFails = false
         recheckDeadline?.cancel()
         recheckDeadline = nil
-        changes.externalChange()
+        if !fullPassAwaitingStart { changes.externalChange() }
       }
       if rewatchRequested {
         rewatchRequested = false
@@ -215,7 +215,9 @@ final class HistoryCatalogSession {
         try? await Task.sleep(for: budget)
         guard !Task.isCancelled, let self, recheckIfInstallFails, diskWatch == nil else { return }
         recheckIfInstallFails = false
-        changes.externalChange()
+        recheckDeadline = nil
+        // A full pass waiting to start covers it, and a late install still aligns with that pass.
+        if !fullPassAwaitingStart { changes.externalChange() }
       }
       return
     }
