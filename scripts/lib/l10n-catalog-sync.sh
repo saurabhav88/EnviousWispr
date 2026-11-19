@@ -88,6 +88,10 @@ NON_PRODUCTION = {
     "EnviousWisprDesktopEffectsTests",
     "EnviousWisprCriticalTests",  # #4243: the cloud PR gut-check bundle
 }
+# The Share extension uses its own en/de resources. Its keys must not be
+# reconciled into the containing app's String Catalog.
+SEPARATE_LOCALIZATION_TARGETS = {"EnviousWisprShare"}
+
 # Tuist-generated resource-bundle targets: recognized so they are not "unknown", never
 # read (they hold resources, not compiled Swift).
 GENERATED_RESOURCE_TARGETS = {
@@ -195,7 +199,8 @@ def collect_inputs(derived, configuration):
     if not base.is_dir():
         raise Refused(f"no build intermediates at {base}")
     present = {p.name[: -len(".build")] for p in base.glob("*.build") if p.is_dir()}
-    unknown = sorted(present - set(PRODUCTION_TARGETS) - NON_PRODUCTION - GENERATED_RESOURCE_TARGETS)
+    unknown = sorted(present - set(PRODUCTION_TARGETS) - NON_PRODUCTION
+                     - SEPARATE_LOCALIZATION_TARGETS - GENERATED_RESOURCE_TARGETS)
     for name in [u for u in unknown if u in RETIRED_METADATA_ONLY_TARGETS]:
         found = sorted((base / f"{name}.build").rglob("*.stringsdata"))
         if found and all(p.name == "ExtractedAppShortcutsMetadata.stringsdata" for p in found):

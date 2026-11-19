@@ -77,6 +77,9 @@ struct UnifiedWindowView: View {
           search.reset(endedBy: .windowClose)
           navigationState.endWindowSession()
           historyPaste.windowClosed()
+          navigationCoordinator.cancelSharedMedia()
+          if case .sharedMedia = pendingLeave?.intent { pendingLeave = nil }
+          if case .sharedMedia = pendingSpeechLeave?.intent { pendingSpeechLeave = nil }
         })
       // #3482 §3.4: a direct tab change drops an arrival meant for another tab.
       .onChange(of: navigationState.dictationTab) { _, _ in navigationState.noteTabChange() }
@@ -110,6 +113,9 @@ struct UnifiedWindowView: View {
         navigate(.destination(destination))
       }
     }
+    .onChange(of: navigationCoordinator.pendingSharedMedia?.url, initial: true) { _, url in
+      if let url { navigate(.sharedMedia(url)) }
+    }
     // #4353 D4: a control the page on screen asked to bring into view and ring. The same
     // arrival a search result uses (scrolls only when the control is not fully visible), applied
     // to the window's state directly: it is not a search, so no search attempt is finished or
@@ -138,6 +144,7 @@ struct UnifiedWindowView: View {
                 respondToSpeechLeave(action, to: question.id)
               } else if pendingLeaveID == question.id {
                 // Escape: stay on the tab, nothing downloads.
+                cancelSharedMedia(for: pendingSpeechLeave?.intent)
                 pendingSpeechLeave = nil
               }
             } else {
@@ -149,6 +156,7 @@ struct UnifiedWindowView: View {
           },
           onClose: {
             guard pendingLeaveID == question.id else { return }
+            cancelSharedMedia(for: pendingLeave?.intent ?? pendingSpeechLeave?.intent)
             pendingLeave = nil
             pendingSpeechLeave = nil
           })
@@ -179,8 +187,18 @@ struct UnifiedWindowView: View {
   /// (#4321), while its chosen engine is not set up asks first; while that question is open, the
   /// latest request replaces the pending one.
   private func navigate(_ intent: SettingsNavigationIntent) {
+    if case .sharedMedia(let url) = intent {
+      guard navigationCoordinator.pendingSharedMedia?.url == url else { return }
+    } else {
+      navigationCoordinator.cancelSharedMedia()
+    }
     guard !askedBeforeLeaving(for: intent) else { return }
     commit(intent)
+  }
+
+  private func cancelSharedMedia(for intent: SettingsNavigationIntent?) {
+    guard case .sharedMedia(let url) = intent else { return }
+    _ = navigationCoordinator.takeSharedMedia(matching: url)
   }
 
   /// Whether `intent` is held by a leave question: an open one (the latest request replaces its
@@ -265,6 +283,7 @@ struct UnifiedWindowView: View {
   private func respondToSpeechLeave(_ action: PolishSetupLeaveAction, to id: UInt64) {
     guard id == pendingLeaveID, let request = pendingSpeechLeave else { return }
     pendingSpeechLeave = nil
+    defer { cancelSharedMedia(for: request.intent) }
     switch SpeechSetupLeaveGuard.resolve(
       action, request: request, facts: speechFacts,
       previous: speechEngineWhenVisitBegan(request.scope))
@@ -384,6 +403,13 @@ struct UnifiedWindowView: View {
   }
 
   private func commit(_ intent: SettingsNavigationIntent) {
+    if case .sharedMedia(let url) = intent {
+      guard let claim = navigationCoordinator.takeSharedMedia(matching: url) else { return }
+      guard fileImportCoordinator.chooseSharedMedia(claim) else {
+        SharedMediaNotice.importInUse.present()
+        return
+      }
+    }
     let stateBefore = navigationState
     let pageBefore = navigationState.selectedPage
     navigationState.perform(intent)
@@ -398,7 +424,7 @@ struct UnifiedWindowView: View {
     case .sidebar(let page):
       search.finish(
         endedBy: .sidebar, sidebarPage: page.rawValue, sidebarTab: openTab(on: page))
-    case .destination:
+    case .destination, .sharedMedia:
       search.finish(endedBy: .externalDestination)
     }
     search.reset()
@@ -413,6 +439,7 @@ struct UnifiedWindowView: View {
   ) {
     guard id == pendingLeaveID, let request = pendingLeave else { return }
     pendingLeave = nil
+    defer { cancelSharedMedia(for: request.intent) }
     // Reported as pressed (Escape as `closed`), before the guard judges it against the live
     // state.
     reportPrompt(reported, for: request)

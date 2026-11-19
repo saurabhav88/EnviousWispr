@@ -10755,6 +10755,16 @@
         }
       }
     },
+    "EnviousWispr couldn’t open this recording. Try sharing it again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr konnte diese Aufnahme nicht öffnen. Teile sie erneut."
+          }
+        }
+      }
+    },
     "EnviousWispr didn’t hear any speech.\nPick another microphone, or hold %@ and speak." : {
       "localizations" : {
         "de" : {
@@ -11605,6 +11615,16 @@
         }
       }
     },
+    "Finish or clear the current import, then share the file again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schließe den aktuellen Import ab oder verwirf ihn. Teile die Datei dann erneut."
+          }
+        }
+      }
+    },
     "Finish setting this one up, or pick another." : {
       "comment" : "Transcribe a File, Polish step: the note beside Continue when it is blocked.",
       "localizations" : {
@@ -11634,6 +11654,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Einrichtung von EnviousWispr abschließen"
+          }
+        }
+      }
+    },
+    "Finish setting up EnviousWispr, then share the file again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schließe die Einrichtung von EnviousWispr ab und teile die Datei erneut."
           }
         }
       }
@@ -12974,6 +13004,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Der Verlauf ist auf dem neuesten Stand."
+          }
+        }
+      }
+    },
+    "History keeps the transcript. To play the recording there, locate the original." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Transkript bleibt im Verlauf. Um die Aufnahme dort abzuspielen, klicke auf „Original suchen“."
           }
         }
       }
@@ -19041,6 +19081,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Öffne EnviousMeet, um den Grund zu erfahren."
+          }
+        }
+      }
+    },
+    "Open EnviousWispr from Applications, then share the file again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öffne EnviousWispr aus dem Ordner „Programme“ und teile die Datei erneut."
           }
         }
       }

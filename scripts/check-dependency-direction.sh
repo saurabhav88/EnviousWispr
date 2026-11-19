@@ -6,6 +6,7 @@
 # Edit `permitted_imports_for` below when Package.swift changes (and update the
 # Bible if the new edge represents an architectural decision):
 #   EnviousWispr           -> AppLive (thin launchable shell; #919/#2455 C1). Imports ONLY AppLive.
+#   EnviousWisprShare      -> (no first-party imports; native media handoff only, #4696).
 #   EnviousDecodeHelper    -> EnviousDecodeKit (the EnviousDecode helper executable, embedded at
 #                             Contents/MacOS/envious-decode; no app module; #4473 P2)
 #   EnviousDecodeKit       -> (no first-party deps; the EnviousDecode engine code on MLX; #4473 P2).
@@ -93,6 +94,7 @@ permitted_imports_for() {
     EnviousWisprDesktopEffects)    echo "EnviousWisprAppKit EnviousWisprServices" ;;
     EnviousWisprAppLive)           echo "EnviousWisprAppKit EnviousWisprDesktopEffects" ;;
     EnviousWispr)                  echo "EnviousWisprAppLive" ;;
+    EnviousWisprShare)             echo "" ;;
     # #4473 P2: the EnviousDecode helper executable. A separate process: it imports the kit and
     # no app module, so no app policy or app state can reach it by import. Keep it at the kit.
     EnviousDecodeHelper)           echo "EnviousDecodeKit" ;;

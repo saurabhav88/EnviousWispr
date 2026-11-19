@@ -1,3 +1,4 @@
+import Foundation
 import Observation
 
 /// Owns the "open this settings tab next" signal that menu actions and
@@ -9,11 +10,32 @@ final class NavigationCoordinator {
   private(set) var pendingDestination: SettingsDestination?
 
   func request(_ destination: SettingsDestination) {
+    pendingSharedMedia = nil
     pendingDestination = destination
   }
 
   func consume() {
     pendingDestination = nil
+  }
+
+  private(set) var pendingSharedMedia: SharedMediaTransfer.Claim?
+
+  func requestSharedMedia(_ claim: SharedMediaTransfer.Claim) -> Bool {
+    guard pendingSharedMedia == nil else { return false }
+    pendingDestination = nil
+    pendingSharedMedia = claim
+    return true
+  }
+
+  func takeSharedMedia(matching url: URL) -> SharedMediaTransfer.Claim? {
+    guard pendingSharedMedia?.url == url else { return nil }
+    let selected = pendingSharedMedia
+    pendingSharedMedia = nil
+    return selected
+  }
+
+  func cancelSharedMedia() {
+    pendingSharedMedia = nil
   }
 
   /// #4353 D4: the model menu a screen should open when its card next appears or is already

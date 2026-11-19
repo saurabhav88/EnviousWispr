@@ -13,12 +13,14 @@ import SwiftUI
 enum SettingsNavigationIntent: Equatable {
   case sidebar(SettingsPage)
   case destination(SettingsDestination)
+  case sharedMedia(URL)
   case search(SettingsSearchRequest)
 
   var page: SettingsPage {
     switch self {
     case .sidebar(let page): page
     case .destination(let destination): destination.page
+    case .sharedMedia: .transcribeFile
     case .search(let request): request.destination.page
     }
   }
@@ -29,6 +31,7 @@ extension SettingsNavigationState {
     switch intent {
     case .sidebar(let page): selectSidebar(page)
     case .destination(let destination): apply(destination)
+    case .sharedMedia: apply(.transcribeFile)
     case .search(let request): apply(request)
     }
   }
