@@ -62,6 +62,7 @@ final class HistoryCatalogSession {
   @ObservationIgnored private var rewatchRequested = false
   /// An activation asked for a re-check while no watcher was installed (#4656).
   @ObservationIgnored private var recheckIfInstallFails = false
+  @ObservationIgnored private var recheckDeadline: Task<Void, Never>?
   /// Registrations started this session; one per start plus one per real root change (#4598).
   @ObservationIgnored private(set) var watcherRegistrations = 0
   /// What the screen last saw (#4598): publish only when rows, availability or the certified
@@ -96,6 +97,7 @@ final class HistoryCatalogSession {
     indexing?.cancel()
     retry?.cancel()
     opening?.cancel()
+    recheckDeadline?.cancel()
   }
 
   func start() {
@@ -151,6 +153,8 @@ final class HistoryCatalogSession {
       defer { resumeTaskEndWaiters() }
       if let watch {
         recheckIfInstallFails = false
+        recheckDeadline?.cancel()
+        recheckDeadline = nil
         changes.advanceWithoutNotice()
         diskWatch = watch
         HistorySignpost.event("HistoryWatcherReady")
@@ -176,6 +180,8 @@ final class HistoryCatalogSession {
       }
       if watch == nil, recheckIfInstallFails {
         recheckIfInstallFails = false
+        recheckDeadline?.cancel()
+        recheckDeadline = nil
         changes.externalChange()
       }
       if rewatchRequested {
@@ -199,7 +205,18 @@ final class HistoryCatalogSession {
       // full re-check of every source on top. Only a failed install falls back to the re-check
       // the activation asked for.
       if registration == nil { registerWatcher() }
+      guard !recheckIfInstallFails else { return }
       recheckIfInstallFails = true
+      // A registration that never finishes must not hold the asked-for re-check forever: past
+      // the same hang guard as the launch pass, the activation's re-check runs as it used to.
+      recheckDeadline?.cancel()
+      let budget = watcherWaitBudget
+      recheckDeadline = Task { @MainActor [weak self] in
+        try? await Task.sleep(for: budget)
+        guard !Task.isCancelled, let self, recheckIfInstallFails, diskWatch == nil else { return }
+        recheckIfInstallFails = false
+        changes.externalChange()
+      }
       return
     }
     guard status == .unavailable else { return }
@@ -441,7 +458,7 @@ final class HistoryCatalogSession {
   private func waitForWatcher(until deadline: ContinuousClock.Instant) async -> Bool {
     guard registration != nil, !rebuildRequested, ContinuousClock.now < deadline else { return false }
     #if DEBUG
-      beforeWatcherWaitForTesting?()
+      beforeWatcherWaitForTesting?(deadline)
     #endif
     let timer = Task { @MainActor [weak self] in
       try? await Task.sleep(until: deadline, clock: .continuous)
@@ -528,6 +545,9 @@ final class HistoryCatalogSession {
             if waitsForWatcher, await waitForWatcher(until: watcherDeadline) {
               HistorySignpost.event("HistoryPassWaitedForWatcher")
             }
+            #if DEBUG
+              afterWatcherWaitForTesting?()
+            #endif
             // #4586 package I: the pass and the first page read resume together from `open()`
             // and compete for the catalog actor, which is not FIFO; the pass's first steps
             // (every source's progress) then held the first page for 130-240 ms on the M5. The
@@ -722,7 +742,10 @@ final class HistoryCatalogSession {
     /// (#4586 package I), so a test can hold a registration in progress.
     @ObservationIgnored var beforeWatcherInstallForTesting: (@MainActor () async -> Void)?
     /// Runs when a launch re-check starts waiting for the watcher install (#4656).
-    @ObservationIgnored var beforeWatcherWaitForTesting: (@MainActor () -> Void)?
+    @ObservationIgnored var beforeWatcherWaitForTesting: (@MainActor (ContinuousClock.Instant) -> Void)?
+    /// Runs after a full pass's first watcher wait, before its page-read wait (#4656 tests).
+    /// Synchronous, so the pass reaches the page-read wait before a test can act.
+    @ObservationIgnored var afterWatcherWaitForTesting: (@MainActor () -> Void)?
     /// Replaces the watcher wait's 5 s hang guard (#4656 tests).
     @ObservationIgnored var watcherWaitBudgetForTesting: Duration?
     /// A content publish with no indexing pass behind it (#4586 H1 tests).

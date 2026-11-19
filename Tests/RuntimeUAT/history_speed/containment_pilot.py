@@ -21,7 +21,7 @@ Usage: python3 containment_pilot.py <pinned EnviousWispr.app> <expected sha256> 
   --scroll-early  do not wait for catalog coverage (scroll while background indexing runs)
   --scroll   run m5-speed-scroll.py on the contained subject; every argument after it is passed through,
              so it goes last. Order inside one session: search, card, scroll; --open runs after it.
-  --launch-cost  after the session (and --open), relaunch on the same home N times: process CPU at 10 s
+  --launch-cost  after the session and before --open, relaunch on the same home N times: process CPU at 10 s
              and full History passes per launch (launch_cost.py, #4656)
   --hold     keep the subject running for hand probing until a file named `stop` appears in the run dir
 """
@@ -211,6 +211,15 @@ def main():
     report["real_home_changes"] = changed
     report["fixture_writes"] = sorted(str(p.relative_to(home)) for p in home.rglob("*")
                                       if p.is_file() and p.stat().st_mtime >= started)[:200]
+    # Before --open: its missing-catalog samples delete the certified catalog (#4656 review).
+    if "--launch-cost" in OWN:
+        import subprocess
+        samples = OWN[OWN.index("--launch-cost") + 1]
+        result = subprocess.run([sys.executable, "-B", str(HERE / "launch_cost.py"), str(subject), str(home),
+                                 str(run / "launch-cost"), "--samples", samples],
+                                capture_output=True, text=True, timeout=600)
+        report["launch_cost"] = {"exit": result.returncode, "stdout_tail": result.stdout[-2000:],
+                                 "stderr_tail": result.stderr[-1000:]}
     if "--open" in OWN:
         import subprocess
         at = OWN.index("--open")
@@ -227,14 +236,6 @@ def main():
                                     capture_output=True, text=True, timeout=7200)
             report["open_runs"][mode] = {"exit": result.returncode, "stdout_tail": result.stdout[-3000:],
                                          "stderr_tail": result.stderr[-1500:]}
-    if "--launch-cost" in OWN:
-        import subprocess
-        samples = OWN[OWN.index("--launch-cost") + 1]
-        result = subprocess.run([sys.executable, "-B", str(HERE / "launch_cost.py"), str(subject), str(home),
-                                 str(run / "launch-cost"), "--samples", samples],
-                                capture_output=True, text=True, timeout=600)
-        report["launch_cost"] = {"exit": result.returncode, "stdout_tail": result.stdout[-2000:],
-                                 "stderr_tail": result.stderr[-1000:]}
     # Every requested driver must have left a report; a missing one fails the runner.
     expected = {"search": run_cases is not None, "card": "--card" in OWN, "scroll": "--scroll" in sys.argv[5:]}
     missing = [name for name, wanted in expected.items() if wanted and not (run / name / "report.json").is_file()]

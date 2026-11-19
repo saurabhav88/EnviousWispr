@@ -110,6 +110,8 @@ import Testing
       /// The page the held read returned, stored by the read itself.
       var page: HistoryCatalog.Page?
       var reconciles = 0
+      /// The deadline each watcher wait was given (#4656).
+      var watcherDeadlines: [ContinuousClock.Instant] = []
       private var gate: CheckedContinuation<Void, Never>?
       private(set) var holding = false
 
@@ -234,15 +236,23 @@ import Testing
 
     /// A second session and coordinator over the fixture's existing catalog (an app relaunch),
     /// with the watcher install held before it can finish.
-    private func relaunch(_ f: Fixture, _ order: ReadOrder) async throws -> Fixture {
+    private func relaunch(_ f: Fixture, _ order: ReadOrder, freshChanges: Bool = false) async throws -> Fixture {
+      // A fresh feed and stores model a new process: the first session cannot see its notices.
+      let changes = freshChanges ? HistorySourceChanges() : f.changes
+      let store =
+        freshChanges
+        ? TranscriptStore(directory: f.root.appendingPathComponent("transcripts"), historyChanges: changes) : f.store
+      let meetings =
+        freshChanges ? MeetingStore(root: f.root.appendingPathComponent("Meetings"), historyChanges: changes) : f.meetings
       let session = HistoryCatalogSession(
-        changes: f.changes, sources: f.store.historyCatalogSources(meetings: f.meetings),
+        changes: changes, sources: store.historyCatalogSources(meetings: meetings),
         directory: f.root.appendingPathComponent("catalog"))
-      let coordinator = TranscriptCoordinator(store: f.store)
+      let coordinator = TranscriptCoordinator(store: store)
       coordinator.catalogSession = session
       session.watcherWaitBudgetForTesting = .seconds(60)
       session.beforeWatcherInstallForTesting = { await order.hold() }
-      session.beforeWatcherWaitForTesting = {
+      session.beforeWatcherWaitForTesting = { deadline in
+        order.watcherDeadlines.append(deadline)
         if order.events.contains("watcher wait") == false { order.events.append("watcher wait") }
       }
       session.beforeReconcileForTesting = {
@@ -252,7 +262,7 @@ import Testing
       coordinator.startHistoryCatalog()
       try await order.untilHolding()
       return Fixture(
-        root: f.root, changes: f.changes, store: f.store, meetings: f.meetings, session: session,
+        root: f.root, changes: changes, store: store, meetings: meetings, session: session,
         coordinator: coordinator)
     }
 
@@ -320,11 +330,10 @@ import Testing
       coordinator.catalogSession = session
       let budget = Duration.milliseconds(200)
       session.watcherWaitBudgetForTesting = budget
-      var waitedAt: ContinuousClock.Instant?
       var reconciledAt: ContinuousClock.Instant?
       session.beforeWatcherInstallForTesting = { await order.hold() }
-      session.beforeWatcherWaitForTesting = {
-        waitedAt = .now
+      session.beforeWatcherWaitForTesting = { deadline in
+        order.watcherDeadlines.append(deadline)
         order.events.append("watcher wait")
       }
       session.beforeReconcileForTesting = {
@@ -343,10 +352,10 @@ import Testing
       try await order.until("reconcile")
       #expect(order.events.first == "watcher wait")
       #expect(session.watcherIsInstalledForTesting == false)
-      // It waited out the budget rather than starting at once.
-      let waited = try #require(waitedAt)
+      // It waited out its deadline rather than starting at once.
+      let deadline = try #require(order.watcherDeadlines.first)
       let reconciled = try #require(reconciledAt)
-      #expect(waited.duration(to: reconciled) >= budget)
+      #expect(reconciled >= deadline)
       // A late install keeps its follow-up full pass, which can certify.
       session.beforeWatcherInstallForTesting = nil
       order.release()
@@ -361,15 +370,18 @@ import Testing
       let f = try await fixture(rows: 3)
       defer { try? FileManager.default.removeItem(at: f.root) }
       let order = ReadOrder()
-      let r = try await relaunch(f, order)
+      let r = try await relaunch(f, order, freshChanges: true)
       defer {
         r.session.beforeWatcherInstallForTesting = nil
         r.session.beforeReconcileForTesting = nil
         order.release()
       }
       try await order.until("watcher wait")
-      // #4656: the app becoming active with History open, before the install finished.
+      // #4656: the app becoming active with History open, before the install finished. It must
+      // not move the source (that queued a second full pass).
+      let before = r.changes.admission.revision
       r.session.sourceMayHaveChanged()
+      #expect(r.changes.admission.revision == before)
       r.session.beforeWatcherInstallForTesting = nil
       order.release()
       await r.session.waitForIndexingForTesting()
@@ -389,6 +401,7 @@ import Testing
       defer {
         r.session.beforeWatcherInstallForTesting = nil
         r.session.beforePageCatalogForTesting = nil
+        r.session.afterWatcherWaitForTesting = nil
         r.session.beforeReconcileForTesting = nil
         order.release()
         read.release()
@@ -405,20 +418,24 @@ import Testing
       try await read.untilHolding()
       r.session.beforePageCatalogForTesting = nil
       r.session.beforeWatcherInstallForTesting = { await replacement.hold() }
+      r.session.afterWatcherWaitForTesting = { order.events.append("watcher wait done") }
       order.release()
-      while !r.session.watcherIsInstalledForTesting {
-        try Task.checkCancellation()
-        await Task.yield()
-      }
+      // The pass left its first wait and now waits for the held read.
+      try await order.until("watcher wait done")
+      #expect(r.session.watcherIsInstalledForTesting)
       // The replacement registration starts while the pass waits for the read; it is held.
       r.session.rewatchForTesting()
       try await replacement.untilHolding()
       read.release()
-      try await read.until("read done")
-      // An absence check: with a 60 s budget nothing but the held registration can delay the
-      // pass, and a pass that skipped the second check starts within a few scheduler turns.
-      try await Task.sleep(for: .milliseconds(200))
+      // The pass either waits again (the fix) or reconciles (a missing second check).
+      while order.watcherDeadlines.count < 2, order.reconciles == 0 {
+        try Task.checkCancellation()
+        await Task.yield()
+      }
       #expect(order.reconciles == 0)
+      #expect(order.watcherDeadlines.count == 2)
+      // One deadline for the whole pass: the replacement does not restart the hang guard.
+      #expect(order.watcherDeadlines.first == order.watcherDeadlines.last)
       r.session.beforeWatcherInstallForTesting = nil
       replacement.release()
       await r.session.waitForIndexingForTesting()

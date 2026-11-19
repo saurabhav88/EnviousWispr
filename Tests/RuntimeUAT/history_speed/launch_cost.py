@@ -4,7 +4,9 @@ Per sample: start a signpost stream for the app's HistorySpeed track and wait fo
 the subject on the fixture home (`fixture.ContainedSession`: lock, renamed subject, production
 preference compare, throwaway cleanup), read the subject's user plus system CPU at CPU_AT_S seconds
 after the spawn, stop it, then count `HistoryDiscoveryDone` events from that pid (one per full
-re-check of every source). An unchanged relaunch should show one full pass.
+re-check of every source). An unchanged relaunch should show one full pass. The catalog must be
+certified before each sample and again after it (a catalog the launch could not certify within
+CPU_AT_S is `unmeasured`), so a missing-catalog rebuild is never reported as a relaunch.
 
 The CPU number is the whole launch, not only History: compare it with the same driver on the old
 app on the same Mac. A sample whose CPU cannot be read, or whose stream never printed its header,
@@ -50,7 +52,25 @@ def count_full_passes(lines: list[str], pid: int) -> int:
     return sum(1 for line in lines if marker.search(line))
 
 
+def catalog_certified(home: Path) -> bool:
+    """Whether the fixture's catalog holds a certified source revision (an unchanged relaunch)."""
+    import sqlite3
+    db = home / fixture.APP_SUPPORT / "HistoryCatalog" / "history.sqlite"
+    if not db.is_file():
+        return False
+    try:
+        with sqlite3.connect(f"file:{db}?mode=ro", uri=True) as con:
+            row = con.execute("SELECT revision FROM coverage WHERE id = 0").fetchone()
+    except sqlite3.Error:
+        return False
+    return bool(row and row[0])
+
+
 def sample(subject: Path, home: Path, out: Path, index: int) -> dict:
+    if not catalog_certified(home):
+        # Not an unchanged relaunch: a missing or uncertified catalog would be measured as a rebuild.
+        return {"index": index, "result": "unmeasured", "reason": "catalog not certified before launch",
+                "cpu_at_10s_s": None, "full_passes": None, "pid": None, "stream_header": None}
     stream_path = out / f"signposts-{index}.txt"
     with open(stream_path, "w") as sink:
         stream = subprocess.Popen([LOG, "stream", "--signpost", "--style", "compact", "--predicate", PREDICATE],
@@ -64,9 +84,9 @@ def sample(subject: Path, home: Path, out: Path, index: int) -> dict:
         header = HEADER in stream_path.read_text()
         with fixture.ContainedSession(subject, home, out / f"app-{index}.log") as session:
             pid = session.pid
-            spawned = fixture.LAST_SPAWN_AT or time.time()
+            spawned = fixture.LAST_SPAWN_MONOTONIC or time.monotonic()
             # settle: the measurement IS "CPU at 10 s after the spawn"; a fixed instant by definition
-            time.sleep(max(0.0, spawned + CPU_AT_S - time.time()))
+            time.sleep(max(0.0, spawned + CPU_AT_S - time.monotonic()))
             reading = subprocess.run(["ps", "-o", "time=", "-p", str(pid)], capture_output=True, text=True).stdout
             cpu = parse_cpu_time(reading) if reading.strip() else None
         time.sleep(1.0)   # settle: `log stream` delivers in batches; give the last events from the stopped pid time to land
@@ -74,9 +94,10 @@ def sample(subject: Path, home: Path, out: Path, index: int) -> dict:
         stream.terminate()
         stream.wait(timeout=10)   # deadline-fallback: process exit is the signal; 10 s cap
     passes = count_full_passes(stream_path.read_text().splitlines(), pid) if header and pid else None
-    result = "timed" if cpu is not None and passes is not None else "unmeasured"
+    certified_after = catalog_certified(home)
+    result = "timed" if cpu is not None and passes is not None and certified_after else "unmeasured"
     return {"index": index, "result": result, "cpu_at_10s_s": cpu, "full_passes": passes, "pid": pid,
-            "stream_header": header}
+            "stream_header": header, "certified_after": certified_after}
 
 
 def main() -> int:
