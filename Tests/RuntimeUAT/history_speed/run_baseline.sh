@@ -11,7 +11,8 @@
 # --busy keeps one busy loop per performance core running during every measured phase.
 # --quick: one pilot session, at most 5 minutes wall time INCLUDING fixture copy, catalog wait and cleanup
 #   (not an exact science). Search: 3 series x 3 attempts. Open: existing x3, missing x1. Scroll: 3 tabs x
-#   trackpad + wheel x 1, no xctrace (hitch NOT MEASURED), no deep run. Idle CPU 10 s. No indexing session,
+#   trackpad + wheel x 1, no xctrace (hitch NOT MEASURED), no deep run. Idle CPU 10 s. Launch cost x2 (CPU at 10 s,
+#   full History passes per launch; full mode x3). No indexing session,
 #   no Show edits / Play. Writes wall-time.txt and puts the total in summary.md (a WARNING line over 300 s; never a failing exit).
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -35,11 +36,11 @@ python3 -B "$HERE/fixture.py" verify --seed "$SEED" > "$OUT/seed-verify.json"
 if [ -n "$QUICK" ]; then
   python3 -B "$HERE/containment_pilot.py" "$APP" "$SHA" "$SEED" "$OUT/main" \
     --run "$HERE/search_cases.json" 3 --only "dictations-common-typed,dictations-accented-typed,dictations-devanagari-typed" $BUSY \
-    --open existing:3,missing:1 --warmups 1 \
+    --open existing:3,missing:1 --warmups 1 --launch-cost 2 \
     --scroll --idle --idle-seconds 10 --repeats 1 --trace-repeats 0 $BUSY > "$OUT/main.log" 2>&1 || { echo "main session exit $?" >> "$OUT/main.log"; FAILED=1; }
 else
   python3 -B "$HERE/containment_pilot.py" "$APP" "$SHA" "$SEED" "$OUT/main" \
-    --run "$HERE/search_cases.json" 6 --only "$SERIES" $BUSY --card --repeats 10 --open missing,existing 15 \
+    --run "$HERE/search_cases.json" 6 --only "$SERIES" $BUSY --card --repeats 10 --open missing,existing 15 --launch-cost 3 \
     --scroll --idle --repeats 3 --trace-repeats 1 --deep $BUSY > "$OUT/main.log" 2>&1 || { echo "main session exit $?" >> "$OUT/main.log"; FAILED=1; }
   python3 -B "$HERE/containment_pilot.py" "$APP" "$SHA" "$SEED" "$OUT/indexing" --scroll-early \
     --scroll --tabs Dictations --inputs trackpad --repeats 1 $BUSY > "$OUT/indexing.log" 2>&1 \

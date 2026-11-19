@@ -60,6 +60,8 @@ final class HistoryCatalogSession {
   /// runs off the main actor; a second request while one runs is folded into `rewatchRequested`.
   @ObservationIgnored private var registration: Task<Void, Never>?
   @ObservationIgnored private var rewatchRequested = false
+  /// An activation asked for a re-check while no watcher was installed (#4656).
+  @ObservationIgnored private var recheckIfInstallFails = false
   /// Registrations started this session; one per start plus one per real root change (#4598).
   @ObservationIgnored private(set) var watcherRegistrations = 0
   /// What the screen last saw (#4598): publish only when rows, availability or the certified
@@ -148,6 +150,7 @@ final class HistoryCatalogSession {
       registration = nil
       defer { resumeTaskEndWaiters() }
       if let watch {
+        recheckIfInstallFails = false
         changes.advanceWithoutNotice()
         diskWatch = watch
         HistorySignpost.event("HistoryWatcherReady")
@@ -171,6 +174,10 @@ final class HistoryCatalogSession {
         syncShowsUpdating()
         didUpdate?()
       }
+      if watch == nil, recheckIfInstallFails {
+        recheckIfInstallFails = false
+        changes.externalChange()
+      }
       if rewatchRequested {
         rewatchRequested = false
         rootChanged()
@@ -185,8 +192,17 @@ final class HistoryCatalogSession {
   }
 
   func sourceMayHaveChanged() {
-    if diskWatch == nil, registration == nil { registerWatcher() }
-    guard diskWatch == nil || status == .unavailable else { return }
+    if diskWatch == nil {
+      // #4656: with no watcher, the registration is the coverage boundary: a successful install
+      // advances the source and queues a full re-check (or lets a waiting one start after it).
+      // An activation before the install, as at every launch with History open, queued a second
+      // full re-check of every source on top. Only a failed install falls back to the re-check
+      // the activation asked for.
+      if registration == nil { registerWatcher() }
+      recheckIfInstallFails = true
+      return
+    }
+    guard status == .unavailable else { return }
     changes.externalChange()
   }
 
@@ -517,7 +533,7 @@ final class HistoryCatalogSession {
             // (every source's progress) then held the first page for 130-240 ms on the M5. The
             // reads already waiting now go first; later reads never join this snapshot. This
             // bounds who is waited for, not how long. Scoped refreshes do not wait.
-            if !rebuilding, await pageReads.waitForActive() {
+            if !rebuilding, !rebuildRequested, await pageReads.waitForActive() {
               HistorySignpost.event("HistoryPassWaitedForReads")
             }
             // A rewatch can start a new registration while the reads finish.

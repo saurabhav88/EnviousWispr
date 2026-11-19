@@ -240,6 +240,7 @@ import Testing
         directory: f.root.appendingPathComponent("catalog"))
       let coordinator = TranscriptCoordinator(store: f.store)
       coordinator.catalogSession = session
+      session.watcherWaitBudgetForTesting = .seconds(60)
       session.beforeWatcherInstallForTesting = { await order.hold() }
       session.beforeWatcherWaitForTesting = {
         if order.events.contains("watcher wait") == false { order.events.append("watcher wait") }
@@ -317,11 +318,18 @@ import Testing
         directory: f.root.appendingPathComponent("catalog"))
       let coordinator = TranscriptCoordinator(store: f.store)
       coordinator.catalogSession = session
-      session.watcherWaitBudgetForTesting = .milliseconds(20)
+      let budget = Duration.milliseconds(200)
+      session.watcherWaitBudgetForTesting = budget
+      var waitedAt: ContinuousClock.Instant?
+      var reconciledAt: ContinuousClock.Instant?
       session.beforeWatcherInstallForTesting = { await order.hold() }
-      session.beforeWatcherWaitForTesting = { order.events.append("watcher wait") }
+      session.beforeWatcherWaitForTesting = {
+        waitedAt = .now
+        order.events.append("watcher wait")
+      }
       session.beforeReconcileForTesting = {
         order.reconciles += 1
+        if reconciledAt == nil { reconciledAt = .now }
         order.events.append("reconcile")
       }
       defer {
@@ -335,6 +343,10 @@ import Testing
       try await order.until("reconcile")
       #expect(order.events.first == "watcher wait")
       #expect(session.watcherIsInstalledForTesting == false)
+      // It waited out the budget rather than starting at once.
+      let waited = try #require(waitedAt)
+      let reconciled = try #require(reconciledAt)
+      #expect(waited.duration(to: reconciled) >= budget)
       // A late install keeps its follow-up full pass, which can certify.
       session.beforeWatcherInstallForTesting = nil
       order.release()
@@ -344,6 +356,75 @@ import Testing
       #expect(session.status == .ready)
     }
 
+    @Test("An activation before the watcher install adds no second full pass at launch")
+    func activationBeforeInstallAddsNoPass() async throws {
+      let f = try await fixture(rows: 3)
+      defer { try? FileManager.default.removeItem(at: f.root) }
+      let order = ReadOrder()
+      let r = try await relaunch(f, order)
+      defer {
+        r.session.beforeWatcherInstallForTesting = nil
+        r.session.beforeReconcileForTesting = nil
+        order.release()
+      }
+      try await order.until("watcher wait")
+      // #4656: the app becoming active with History open, before the install finished.
+      r.session.sourceMayHaveChanged()
+      r.session.beforeWatcherInstallForTesting = nil
+      order.release()
+      await r.session.waitForIndexingForTesting()
+      #expect(r.session.watcherIsInstalledForTesting)
+      #expect(order.reconciles == 1)
+      #expect(r.session.status == .ready)
+    }
+
+    @Test("A rewatch that starts while the launch re-check waits for reads is waited for too")
+    func replacementRegistrationDuringReadsIsAwaited() async throws {
+      let f = try await fixture(rows: 3)
+      defer { try? FileManager.default.removeItem(at: f.root) }
+      let order = ReadOrder()
+      let read = ReadOrder()
+      let replacement = ReadOrder()
+      let r = try await relaunch(f, order)
+      defer {
+        r.session.beforeWatcherInstallForTesting = nil
+        r.session.beforePageCatalogForTesting = nil
+        r.session.beforeReconcileForTesting = nil
+        order.release()
+        read.release()
+        replacement.release()
+      }
+      try await order.until("watcher wait")
+      // A page read active across the first install, so the pass then waits for it.
+      r.session.beforePageCatalogForTesting = { await read.hold() }
+      let page = Task { @MainActor in
+        _ = try? await r.session.page(.init(tab: .dictations))
+        read.events.append("read done")
+      }
+      defer { page.cancel() }
+      try await read.untilHolding()
+      r.session.beforePageCatalogForTesting = nil
+      r.session.beforeWatcherInstallForTesting = { await replacement.hold() }
+      order.release()
+      while !r.session.watcherIsInstalledForTesting {
+        try Task.checkCancellation()
+        await Task.yield()
+      }
+      // The replacement registration starts while the pass waits for the read; it is held.
+      r.session.rewatchForTesting()
+      try await replacement.untilHolding()
+      read.release()
+      try await read.until("read done")
+      // An absence check: with a 60 s budget nothing but the held registration can delay the
+      // pass, and a pass that skipped the second check starts within a few scheduler turns.
+      try await Task.sleep(for: .milliseconds(200))
+      #expect(order.reconciles == 0)
+      r.session.beforeWatcherInstallForTesting = nil
+      replacement.release()
+      await r.session.waitForIndexingForTesting()
+      #expect(order.reconciles == 1)
+      #expect(r.session.status == .ready)
+    }
     @Test("A watcher registered while a full pass waits for reads adds no second full scan")
     func registrationDuringWaitingPassIsCoalesced() async throws {
       let f = try await fixture(rows: 3)

@@ -72,6 +72,8 @@ package actor HistoryCatalogReconciliation {
     inFlight = true
     lastCertificate = nil
     defer { inFlight = false }
+    // End of every full pass, certified, refused or thrown (#4656 instruments).
+    defer { Self.signposter.emitEvent("HistoryPassDone") }
 
     let beganAt = sourceRevision()
     var progress = KeyedProgress(try await catalog.sourceProgress())
@@ -96,6 +98,7 @@ package actor HistoryCatalogReconciliation {
       }
       candidates.append(url)
     }
+    Self.signposter.emitEvent("HistoryPassChecked")
     let ordered = candidates.map { url in
       (url, (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate)
     }.sorted { lhs, rhs in
@@ -104,7 +107,6 @@ package actor HistoryCatalogReconciliation {
       if left != right { return left > right }
       return lhs.0.path < rhs.0.path
     }.map(\.0)
-    Self.signposter.emitEvent("HistoryPassChecked")
 
     var pending: [Update] = []
     var unavailable = 0
@@ -115,10 +117,8 @@ package actor HistoryCatalogReconciliation {
     var detectedRows = false
     for url in ordered {
       try Task.checkCancellation()
+      // Every source here failed the proof check above, so it is read without a second check.
       let before = progress.entries[url.path]
-      if let before, (try? before.versions.allSatisfy { try $0.stillMatches() }) == true {
-        continue
-      }
       do {
         let snapshot = try sources.snapshot(of: url, at: now)
         let projection = snapshot.saved.flatMap(project)
@@ -177,7 +177,6 @@ package actor HistoryCatalogReconciliation {
       revision: currentRevision, unavailable: unavailable, changed: changed,
       changedRows: changedRows || !removed.isEmpty,
       certifiedSource: lastCertificate?.source)
-    Self.signposter.emitEvent("HistoryPassDone")
     // The caller publishes the returned final pass; `onProgress` carries only mid-pass batches.
     return result
   }

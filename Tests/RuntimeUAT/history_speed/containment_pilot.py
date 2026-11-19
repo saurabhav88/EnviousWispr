@@ -15,12 +15,14 @@ The caller must hold the dev-app lock (claimed in a separate tool call).
 Usage: python3 containment_pilot.py <pinned EnviousWispr.app> <expected sha256> <seed dir> <new run dir>
          [--calibrate] [--run <cases.json> <samples> [--capture-compare] [--busy]] [--scroll [scroll options...]]
          [--card [--repeats N]] [--open missing|existing|missing,existing <samples> (or existing:3,missing:1; --warmups N) [--busy] [--control drop-row]]
-         [--scroll-early] [--hold]
+         [--scroll-early] [--hold] [--launch-cost <samples>]
   --open     after the contained session (which builds full coverage), run m5-speed-open.py on the same
              subject and home; it launches and stops the subject itself, once per sample
   --scroll-early  do not wait for catalog coverage (scroll while background indexing runs)
   --scroll   run m5-speed-scroll.py on the contained subject; every argument after it is passed through,
              so it goes last. Order inside one session: search, card, scroll; --open runs after it.
+  --launch-cost  after the session (and --open), relaunch on the same home N times: process CPU at 10 s
+             and full History passes per launch (launch_cost.py, #4656)
   --hold     keep the subject running for hand probing until a file named `stop` appears in the run dir
 """
 import json
@@ -225,11 +227,21 @@ def main():
                                     capture_output=True, text=True, timeout=7200)
             report["open_runs"][mode] = {"exit": result.returncode, "stdout_tail": result.stdout[-3000:],
                                          "stderr_tail": result.stderr[-1500:]}
+    if "--launch-cost" in OWN:
+        import subprocess
+        samples = OWN[OWN.index("--launch-cost") + 1]
+        result = subprocess.run([sys.executable, "-B", str(HERE / "launch_cost.py"), str(subject), str(home),
+                                 str(run / "launch-cost"), "--samples", samples],
+                                capture_output=True, text=True, timeout=600)
+        report["launch_cost"] = {"exit": result.returncode, "stdout_tail": result.stdout[-2000:],
+                                 "stderr_tail": result.stderr[-1000:]}
     # Every requested driver must have left a report; a missing one fails the runner.
     expected = {"search": run_cases is not None, "card": "--card" in OWN, "scroll": "--scroll" in sys.argv[5:]}
     missing = [name for name, wanted in expected.items() if wanted and not (run / name / "report.json").is_file()]
     if "--open" in OWN:
         missing += [f"open-{m}" for m, _ in open_plan if not (run / f"open-{m}" / "report.json").is_file()]
+    if "--launch-cost" in OWN and not (run / "launch-cost" / "report.json").is_file():
+        missing.append("launch-cost")
     report["missing_reports"] = missing
     (run / "pilot.json").write_text(json.dumps(report, indent=1))
     print(json.dumps({k: v for k, v in report.items() if k != "fixture_writes"}, indent=1))
