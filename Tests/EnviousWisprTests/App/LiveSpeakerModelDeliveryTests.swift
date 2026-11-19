@@ -42,10 +42,17 @@ struct LiveSpeakerModelDeliveryTests {
         s.starts += 1
         return (s.hold, s.starts - 1)
       }
-      started(index).fire()
-      guard hold else { return }
+      guard hold else {
+        started(index).fire()
+        return
+      }
       await withCheckedContinuation { continuation in
-        state.withLock { $0.held.append(continuation) }
+        let signal = state.withLock { s -> BoundedWait.Signal in
+          s.held.append(continuation)
+          while s.startSignals.count <= index { s.startSignals.append(BoundedWait.Signal()) }
+          return s.startSignals[index]
+        }
+        signal.fire()
       }
     }
 
@@ -79,7 +86,10 @@ struct LiveSpeakerModelDeliveryTests {
       let rig = try Rig()
       let probed = BoundedWait.Signal()
       rig.home.onSpeakerLaunchProbesFinished = { probed.fire() }
-      defer { rig.home.onSpeakerLaunchProbesFinished = nil }
+      defer {
+        rig.home.onSpeakerLaunchProbesFinished = nil
+        probed.fire()
+      }
       try await BoundedWait.until(probed)
       return rig
     }
