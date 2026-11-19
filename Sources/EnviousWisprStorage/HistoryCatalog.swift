@@ -489,24 +489,28 @@ package actor HistoryCatalog {
         for (path, progress) in rows { entries[path] = progress }
       }
       let keys = Set(entries.values.compactMap(\.key)).union(proposedKeys)
-      // Only what SQLite answered: the LEFT JOIN returns zero for an unmatched key, so a key with
-      // no result row stays unknown and the refresh falls back instead of reading it as zero.
+      // One pass over the table per chunk (cloud review on #4695): a join driven by the wanted
+      // keys scanned every source once per key, so a bulk delete of 450 rows took about 1.5 s,
+      // worse than the full read it replaced. `IN (VALUES ...)` builds the key list once and scans
+      // `source_progress` once. Ids compare upper-cased, as the full reader's `UUID(uuidString:)`
+      // accepts any letter case; NULL keys never match. A key absent from a chunk's answer has
+      // count zero only because that chunk's query succeeded.
       var references: [Key: Int] = [:]
       for chunk in Array(keys).chunked(into: Self.bindChunk / 2) {
         let values = Array(repeating: "(?, ?)", count: chunk.count).joined(separator: ",")
         let rows = try connection.rows(
           """
-          WITH wanted(tab, id) AS (VALUES \(values))
-          SELECT wanted.tab, wanted.id, count(p.path) FROM wanted
-          LEFT JOIN source_progress AS p ON p.tab = wanted.tab AND p.id = wanted.id COLLATE NOCASE
-          GROUP BY wanted.tab, wanted.id
-          """, chunk.flatMap(\.parameters)
+          SELECT tab, upper(id), count(*) FROM source_progress
+          WHERE (tab, upper(id)) IN (VALUES \(values))
+          GROUP BY tab, upper(id)
+          """, chunk.flatMap { [.text($0.tab.rawValue), .text($0.id.uuidString.uppercased())] }
         ) { row -> (Key, Int)? in
           guard let tab = HistoryTab(rawValue: HistoryCatalogConnection.text(row, 0)),
             let id = UUID(uuidString: HistoryCatalogConnection.text(row, 1))
           else { return nil }
           return (Key(tab: tab, id: id), Int(sqlite3_column_int64(row, 2)))
         }
+        for key in chunk { references[key] = 0 }
         for case let (key, count)? in rows { references[key] = count }
       }
       #if DEBUG
