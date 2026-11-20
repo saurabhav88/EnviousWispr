@@ -157,7 +157,7 @@ def run(host_name, start, args):
         # 2. Ship, verify, fetch, stage the run's own supervisor.
         bootstrap = (f"set -e; C={q(remote.checkout)}; R={q(run_dir)}; "
                      f"[ -d \"$C/.git\" ] || git clone -q {q(host['repo_url'])} \"$C\"; cd \"$C\"; "
-                     "git bundle verify -q \"$R/transfer.bundle\" >/dev/null 2>&1 || exit 47; "
+                     + remote_ship.verify_bundle_script('"$R/transfer.bundle"', host["repo_url"]) + "; "
                      f"git fetch -q \"$R/transfer.bundle\" {q(ref + ':' + ref)}; "
                      f"[ \"$(git rev-parse {q(commit + '^{tree}')})\" = {q(tree)} ] || exit 48; "
                      "mkdir \"$R/supervisor\"; "
