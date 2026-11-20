@@ -459,6 +459,10 @@ struct MeetingSummaryOwnerTests {
     await Self.eventually("wrong-candidate Keep settled") { !page.isKeeping(kept) }
     #expect(page.keepFailed(kept))
     #expect(!page.keepFailed(refused), "another meeting never shows this meeting's refusal")
+    // No preview on this meeting, so the owner refuses before the gate.
+    page.keep(candidateID: UUID(), meetingID: refused, summaries: rig.owner)
+    await Self.eventually("other meeting's refused Keep settled") { !page.isKeeping(refused) }
+    #expect(page.keepFailed(refused))
 
     page.keep(candidateID: candidate.id, meetingID: kept, summaries: rig.owner)
     await Self.eventually("Keep parked after its write") { gate.waiting == 1 }
@@ -469,6 +473,7 @@ struct MeetingSummaryOwnerTests {
     await Self.eventually("Keep settled") { !page.isKeeping(kept) }
     #expect(!page.keepFailed(kept), "a successful Keep clears that meeting's refusal")
     #expect(rig.summaryOnDisk(kept) == candidate.text)
+    #expect(page.keepFailed(refused), "a Keep on one meeting leaves another meeting's refusal")
 
     page.beginPreview(choice, meetingID: refused, summaries: rig.owner)
     let stale = try await rig.preview(refused)
