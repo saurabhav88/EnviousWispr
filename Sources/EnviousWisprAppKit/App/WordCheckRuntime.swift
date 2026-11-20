@@ -63,6 +63,7 @@ final class WordCheckRuntime {
   private var activeSelections = 0
   /// The revision a load failed for; retried only after the admitted bytes change.
   private var failedLoadRevision: String?
+  private var mlxUnavailableThisSession = false
   private var idleUnloadTask: Task<Void, Never>?
   /// The app, not the user, cancelled a download because nothing needed it any more. The fetch
   /// policy holds a user's cancel until they ask again; this one must resume on its own once the
@@ -78,6 +79,9 @@ final class WordCheckRuntime {
   package private(set) var fetchDecisionsForTests: [WordCheckFetchPolicy.Decision] = []
   /// Load tasks created, counted where one is created (#3289): the residency tests' observable.
   package private(set) var loadAttemptsForTests = 0
+  package var wordCheckRevisionForTests: String {
+    delivery.wordCheckRegistration?.manifest.identity.revision ?? ""
+  }
   /// The off-main cleanup `releaseForTermination` handed off, for tests to await (#3853).
   package private(set) var terminationCleanupForTests: Task<Void, Never>?
   /// Fires when the quit cleanup's detached task finishes: the subject's own completion signal, so
@@ -231,7 +235,7 @@ final class WordCheckRuntime {
   }
 
   private func startLoadIfNeeded() {
-    guard !terminated, loaded == nil, loadTask == nil, isAdmitted,
+    guard !terminated, !mlxUnavailableThisSession, loaded == nil, loadTask == nil, isAdmitted,
       let registration = delivery.wordCheckRegistration,
       failedLoadRevision != registration.manifest.identity.revision
     else { return }
@@ -245,7 +249,8 @@ final class WordCheckRuntime {
       for predecessor in predecessors { await predecessor.value }
       // This task runs on the main actor (created there), so the bookkeeping is ordered with it.
       defer { self?.runningLoads[generation] = nil }
-      guard let current = self?.loadGeneration, current == generation, !Task.isCancelled else {
+      guard let current = self?.loadGeneration, current == generation,
+        self?.mlxUnavailableThisSession == false, !Task.isCancelled else {
         return
       }
       let started = ContinuousClock.now
@@ -278,6 +283,9 @@ final class WordCheckRuntime {
               category: "WordCheck")
           }
         #endif
+        if error is KevWordCheckModel.ScoringError {
+          self?.recordMLXFailure(revision: revision)
+        }
         guard let self, self.loadGeneration == generation else { return }
         self.loadTask = nil
         self.failedLoadRevision = revision
@@ -464,11 +472,24 @@ final class WordCheckRuntime {
   /// a failed load stay blocked so a model that cannot load does not loop.
   func retryDownload() {
     if isAdmitted {
+      guard !mlxUnavailableThisSession else { return }
       failedLoadRevision = nil
       load(for: .userRetry)
       onStatusChange()
     } else {
       refresh(trigger: .userRetry, userInitiated: true)
+    }
+  }
+
+  package func recordMLXFailure(revision: String) {
+    guard !terminated, !mlxUnavailableThisSession,
+      delivery.wordCheckRegistration?.manifest.identity.revision == revision
+    else { return }
+    mlxUnavailableThisSession = true
+    unload(reason: "mlx_scoring_failed")
+    onStatusChange()
+    Task {
+      await AppLogger.shared.log("word check scoring failed revision=\(revision)", category: "WordCheck")
     }
   }
 
@@ -487,8 +508,13 @@ final class WordCheckRuntime {
     }
     guard let loaded else { return Self.absent(.serverUnavailable) }
     scheduleIdleUnload()
+    let revision = loaded.contract.revision
     return LearnedWordCheckerSelection(
-      checker: KevLearnedWordChecker(model: loaded.model, contract: loaded.contract),
+      checker: KevLearnedWordChecker(
+        model: loaded.model, contract: loaded.contract,
+        onMLXFailure: { [weak self] in
+          await self?.recordMLXFailure(revision: revision)
+        }),
       identity: loaded.contract.revision, judge: Self.judge)
   }
 
@@ -519,6 +545,7 @@ final class WordCheckRuntime {
     else { return Self.absent(.adapterDeliveryFailed) }
     switch deliveryState {
     case .admitted:
+      if mlxUnavailableThisSession { return Self.absent(.serverUnavailable) }
       if failedLoadRevision == registration.manifest.identity.revision {
         return Self.absent(.serverUnavailable, retry: true)
       }

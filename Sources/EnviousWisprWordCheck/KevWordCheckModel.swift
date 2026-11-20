@@ -31,6 +31,7 @@ public actor KevWordCheckModel {
   private let tokenizer: ArgmaxKevTokenizer
   private let temperature: Float
   private let padID: Int
+  private var scoringFailed = false
   /// Called from deinit after the cache is cleared, with MLX's active bytes before the weights were
   /// dropped and active and cache bytes after. Production passes nil; tests watch the release.
   private let onRelease: (@Sendable (_ activeBefore: Int, _ activeAfter: Int, _ cacheAfter: Int) -> Void)?
@@ -65,6 +66,10 @@ public actor KevWordCheckModel {
   /// wait ran out; the process then exits as it did before this drain.
   public static func drainForTermination(timeout: TimeInterval) -> Bool {
     gate.drain(timeout: timeout)
+  }
+
+  public enum ScoringError: Error, Equatable {
+    case mlxEvaluation
   }
 
   public enum LoadError: Error, Equatable {
@@ -191,12 +196,27 @@ public actor KevWordCheckModel {
     ])
   }
 
+  static func checkedRead(_ makeProbabilities: () -> MLXArray) throws -> [Float] {
+    do {
+      return try withError { error in
+        let probabilities = makeProbabilities()
+        try error.check()
+        eval(probabilities)
+        try error.check()
+        return probabilities.asArray(Float.self)
+      }
+    } catch is MLXError {
+      throw ScoringError.mlxEvaluation
+    }
+  }
+
   /// p(the speaker said the listed word) for each state, in order. One right-padded batch: pads
   /// sit after every real token and both layer kinds are causal, so no real token sees a pad.
   public func probabilities(forStates states: [String]) throws -> [Double] {
     guard !states.isEmpty else { return [] }
     guard Self.gate.enter() else { throw LoadError.terminating }
     defer { Self.gate.leave() }
+    guard !scoringFailed else { throw ScoringError.mlxEvaluation }
     guard let weights else { throw LoadError.released }
     let model = weights.model
     let head = weights.head
@@ -219,7 +239,13 @@ public actor KevWordCheckModel {
       let q = matmul(decide, head.qWeight.T) + head.qBias
       let k = matmul(options, head.kWeight.T) + head.kBias
       let logits = matmul(k, q) * scale / temperature
-      let p = softmax(logits).asArray(Float.self)
+      let p: [Float]
+      do {
+        p = try Self.checkedRead { softmax(logits) }
+      } catch let error as ScoringError {
+        scoringFailed = true
+        throw error
+      }
       result.append(Double(p[1]))  // options are [no, yes]
     }
     return result

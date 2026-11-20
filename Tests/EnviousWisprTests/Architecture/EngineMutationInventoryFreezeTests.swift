@@ -877,6 +877,10 @@ import EnviousWisprAppKitTestSupport
       file: "Sources/EnviousWisprAppKit/App/WordCheckRuntime.swift", matcher: "unload",
       text: "unload(reason: \"delivery_\\(state)\")", classification: .unrelatedDomain),
 
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/WordCheckRuntime.swift", matcher: "unload",
+      text: "unload(reason: \"mlx_scoring_failed\")", classification: .unrelatedDomain),
+
     // MARK: TranscribeCppPreviewRuntime (#3735 chunk 9) — the Universal Live Preview's own
     // whisper-small model on the executor's PREVIEW lane, never the dictation engine: it holds
     // no adapter, never touches `VendorDecodeOccupancy` or the heart's model scope, and the

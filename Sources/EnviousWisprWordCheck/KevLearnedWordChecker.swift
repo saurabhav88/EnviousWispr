@@ -10,11 +10,16 @@ public struct KevLearnedWordChecker: LearnedWordChecking {
   private let model: KevWordCheckModel
   private let threshold: Double
   private let revision: String
+  private let onMLXFailure: (@Sendable () async -> Void)?
 
-  public init(model: KevWordCheckModel, contract: KevContract) {
+  public init(
+    model: KevWordCheckModel, contract: KevContract,
+    onMLXFailure: (@Sendable () async -> Void)? = nil
+  ) {
     self.model = model
     threshold = contract.threshold
     revision = contract.revision
+    self.onMLXFailure = onMLXFailure
   }
 
   public var armName: String { "kev:\(revision)" }
@@ -33,7 +38,13 @@ public struct KevLearnedWordChecker: LearnedWordChecking {
     -> [LearnedWordCheckDecision]
   {
     try Task.checkCancellation()
-    let probabilities = try await model.probabilities(forStates: questions.map(Self.state(for:)))
+    let probabilities: [Double]
+    do {
+      probabilities = try await model.probabilities(forStates: questions.map(Self.state(for:)))
+    } catch let error as KevWordCheckModel.ScoringError {
+      await onMLXFailure?()
+      throw error
+    }
     try Task.checkCancellation()
     return zip(questions, probabilities).map { question, p in
       LearnedWordCheckDecision(questionID: question.id, approved: p >= threshold, score: p)
