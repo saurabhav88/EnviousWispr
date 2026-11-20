@@ -13,6 +13,8 @@ Keep the **Fast** engine, which uses Parakeet. Switch to the **All Languages** e
 
 Both engines run entirely on your Mac. Neither sends your audio anywhere, and neither needs an internet connection once its model has been downloaded.
 
+You can keep one engine or both. To free disk space, remove the one you do not use: [Model Downloads and Management](/help/model-downloads-and-management/) shows how. If the engine picked for meetings is not downloaded, EnviousMeet uses your other downloaded engine; with no engine downloaded, a meeting is not recorded.
+
 ### Parakeet or Whisper: which should I use?
 
 The **Engine** tab of **Dictation Settings** names the engines **Fast** and **All Languages**. This article uses those names with the model in brackets.

@@ -4,19 +4,20 @@ description: "Turn a voice memo, lecture, meeting or video you already have into
 category: "features"
 section: "Transcribe a File"
 order: 8
-keywords: ["transcribe a file", "import audio", "voice memo", "meeting recording", "lecture", "podcast", "mp3", "m4a", "video to text", "transcript", "file transcription", "audio to text", "file won't open", "no speech found", "no sound in file", "drag a file", "how long will it take"]
+keywords: ["transcribe a file", "share menu", "transcribe with enviouswispr", "import audio", "voice memo", "meeting recording", "lecture", "podcast", "mp3", "m4a", "video to text", "transcript", "file transcription", "audio to text", "file won't open", "no speech found", "no sound in file", "drag a file", "how long will it take"]
 related: ["transcribe-a-file-speaker-labels", "transcript-history", "choosing-a-speech-engine-parakeet-vs-whisperkit", "choosing-an-ai-provider-none-apple-intelligence-ollama-openai-gemini", "ai-polish-and-cloud-data"]
-updated: 2026-11-05
+updated: 2026-11-20
 deflection: "can_resolve"
 ---
 Your recording never leaves your Mac. When it has more than one voice and the app can tell them apart, the transcript comes back as speaker turns; see [speaker labels](/help/transcribe-a-file-speaker-labels/).
 
 ### Open Transcribe a File
 
-There are two ways in.
+There are three ways in.
 
 - **From the sidebar.** Click the EnviousWispr icon in your menu bar, choose **Open EnviousWispr**, and click **Transcribe a File** in the sidebar.
 - **From the menu bar.** Click the EnviousWispr icon and choose **Transcribe a File...**. It sits right under **Start Recording**, the other way to get words in.
+- **From the Share menu.** In Finder, Voice Memos, QuickTime or another app that can share a file, select one audio or video file, open **Share** and choose **Transcribe with EnviousWispr**. Transcribe a File opens with the file ready; check your speech engine and polisher, then click **Start transcription**. Your original file is not changed. The first time, turn the action on in Finder: **Share** > **Edit Extensions**. It works once you have finished setting up EnviousWispr. If EnviousWispr says an import is already in use, finish or clear it and share again; for other refusals, follow the message shown. To play a shared recording later in History, choose **Locate original…** on its transcript.
 
 ### Which files can I transcribe?
 
@@ -54,14 +55,14 @@ An engine that is not downloaded yet says so; set it up in **Dictation Settings*
 
 The polisher rewrites the text for punctuation, capitalisation and flow, and lays out lists. The Polish step shows six cards:
 
-| Polisher | Where it runs | What the card says |
+| Polisher | Where it runs | What to know |
 |---|---|---|
-| **EG-1** | On this Mac | Our best model for cleanup and list-making. On an imported recording it removes about four times more filler than Apple Intelligence. |
+| **EG-1** | On this Mac | Our own model for cleanup and list-making. It uses the EG-1 size you chose on the AI Polish page. |
 | **Apple Intelligence** | On this Mac | Apple's on-device model. Needs macOS 26 or later. |
 | **Ollama** | Depends on the model | Any model you run in Ollama. A model downloaded to your Mac sends nothing; a model that runs on Ollama's servers receives the text. The page says which kind your pick is when Ollama reports it. |
-| **OpenAI** | Their servers, under your own key | Only the text is sent, never the audio. |
-| **Gemini** | Their servers, under your own key | Only the text is sent, never the audio. |
-| **Claude** | Their servers, under your own key | Only the text is sent, never the audio. |
+| **OpenAI** | Their servers, under your own key | The transcript, cleanup instructions and any custom words it needs are sent; the audio never is. |
+| **Gemini** | Their servers, under your own key | The transcript, cleanup instructions and any custom words it needs are sent; the audio never is. |
+| **Claude** | Their servers, under your own key | The transcript, cleanup instructions and any custom words it needs are sent; the audio never is. |
 
 There is no card for None or S1-mini. Until you click a card, files use the same polish choice as your dictation, including S1-mini or no polish. Once you click a card, the polisher for files is separate from the one your dictation uses, so you can clean files with one and dictations with another. A link on the step, **Use dictation's polish settings**, makes files follow your dictation choice again.
 
@@ -113,7 +114,7 @@ Below the chips you can:
 
 A finished transcript is saved in [History](/help/transcript-history/); the **Saved to History** chip on the Done step confirms it was kept. If the save did not go through, the Done step says **This version is not saved** instead, and Copy, Save and Share still work on the text in front of you.
 
-In History, the row shows the first words of the transcript, the date it was made, and a tag with the name of the file it came from, so you can search for the recording by its file name. History labels each row as a **Dictation** (made with your keybind) or a **Transcript** (made here), and the **A**, **D**, **T** and **M** tabs mean **All**, **Dictations**, **Transcripts** and **Meetings**. Choose **T** to see imported transcripts, or point at a tab to see its full name. You can search, copy, paste, rename speakers and delete from there.
+In History, a transcript's card takes the name of the file it came from as its title until you rename it, so you can search for the recording by its file name. Imported transcripts are on the **Transcripts** tab of History. Click **Open** to read, play, transcribe again or delete one. For a shared file, choose **Locate original…** first to play it or transcribe it again. See [History](/help/transcript-history/).
 
 ### Does my recording leave my Mac?
 

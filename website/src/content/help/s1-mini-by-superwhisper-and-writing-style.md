@@ -9,13 +9,13 @@ related: ["choosing-an-ai-provider-none-apple-intelligence-ollama-openai-gemini"
 updated: 2026-11-05
 deflection: "can_resolve"
 ---
-S1-mini is a small AI model, made by Superwhisper, that tidies up dictated text. It is the smaller of the two downloadable polish models, next to EG-1. It runs entirely on your Mac, it is free, and there is no API key to manage. To use it, open **Settings** > **AI Polish** and pick **S1-mini**.
+S1-mini is a small AI model, made by Superwhisper, that tidies up dictated text. It is the smallest of the built-in downloadable polish models, next to the three EG-1 sizes. It runs entirely on your Mac, it is free, and there is no API key to manage. To use it, open **Settings** > **AI Polish** and pick **S1-mini**.
 
 ### Should I pick S1-mini or EG-1?
 
-EG-1 stays the recommended choice. Pick S1-mini if you dictate in English and want the lightest on-device option, or if EG-1 is more than your Mac has room for.
+EG-1 stays the recommended choice, and its smallest size, EG-1 Micro, suits a Mac with little room to spare. Pick S1-mini if you dictate in English and want the smallest built-in download.
 
-- **Small download.** S1-mini is a 484 MB download, about a sixth the size of EG-1. It starts faster and uses far less memory. It needs around 1 GB of free disk space while it installs.
+- **Small download.** S1-mini is a 484 MB download, about a tenth the size of EG-1 and smaller than EG-1 Micro's 805 MB. It needs around 1 GB of free disk space while it installs.
 - **English first.** It cleans up other languages without translating them, but it may miss a mid-sentence correction you make in those languages.
 
 ### Why was my long dictation not polished?

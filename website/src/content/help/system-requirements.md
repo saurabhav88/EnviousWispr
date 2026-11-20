@@ -20,7 +20,7 @@ You need three things:
 
 ### How much disk space does EnviousWispr need?
 
-The application file is small. The first time you run it, it downloads the Parakeet Ultra speech model, about 632 MB.
+The application file is small. During setup it downloads the speech engine you choose; Setup recommends one for your language, such as the Parakeet Ultra model, about 632 MB. If you use only Whisper, you can remove Parakeet later to free that space.
 
 After setup, EnviousWispr can download two more small models for the [Self-Learning Dictionary](/help/self-learning-dictionary/):
 
@@ -34,7 +34,7 @@ The optional AI polish models are extra. To free up space by removing models you
 AI polish is an optional feature that removes filler words and corrects grammar. Dictation works without it, so these requirements only apply if you turn it on. Each polish option asks for something different:
 
 - **Apple Intelligence** requires macOS 26 or later, running on a Mac model that supports Apple Intelligence.
-- **EG-1**, the model built by Envious Labs, requires a one-time 2.9 GB download and around 6 GB of free disk space while it installs. It runs on macOS 14 or later, the same as the app. It works on a Mac with 8 GB of memory, but may run slower there.
-- **S1-mini**, the small model made by Superwhisper, requires a one-time 484 MB download and around 1 GB of free disk space while it installs. It runs on macOS 14 or later too, uses about a sixth of the memory EG-1 does, and is at its best in English.
+- **EG-1**, the model built by Envious Labs, comes in three sizes, each a one-time download: **EG-1** is 4.7 GB (around 10.4 GB of free disk space while it installs), **EG-1 Mini** is 2.1 GB (around 4.6 GB) and **EG-1 Micro** is 805 MB (around 1.8 GB). All three run on macOS 14 or later, the same as the app. The AI Polish page marks the size that suits your Mac's memory as **Best for this Mac**; on a Mac with 8 GB of memory that is EG-1 Micro, or EG-1 Mini if you set a fixed language other than English.
+- **S1-mini**, the small model made by Superwhisper, requires a one-time 484 MB download and around 1 GB of free disk space while it installs. It runs on macOS 14 or later too, is the smallest download of the built-in on-device models, and is at its best in English.
 - **Ollama** running on your Mac requires enough free memory to load the model you choose. Ollama also offers models hosted on its own servers, which need an internet connection instead.
 - **OpenAI, Gemini, or Claude** require an internet connection and your own API key from that provider.

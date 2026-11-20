@@ -98,11 +98,11 @@ The check depends on the polish choice you use:
 
 | Polish choice | Word check |
 |---|---|
-| EG-1 | EG-1's own word check |
+| EG-1, EG-1 Mini or EG-1 Micro | That size's own word check |
 | S1-mini | S1-mini's own word check |
 | Apple Intelligence, a cloud provider, Ollama, or no polish | Envious Word Check |
 
-The word check is a separate download from the correction model: about 500 MB for Envious Word Check, 66 MB for EG-1's and 81 MB for S1-mini's. Envious Word Check downloads only while **Enable Dictionary** is on and a polish choice you use for dictation or Transcribe a File needs it.
+The word check is a separate download from the correction model: about 500 MB for Envious Word Check, 122 MB for EG-1's, 63 MB for EG-1 Mini's, 41 MB for EG-1 Micro's and 81 MB for S1-mini's. Envious Word Check downloads only while **Enable Dictionary** is on and a polish choice you use for dictation or Transcribe a File needs it.
 
 It loads into memory only when something needs it: a dictation, a file you start in Transcribe a File (**Start** or **Clean it again**), a recording EnviousWispr recovered after an unexpected quit or a cancel with [Escape Recovery](/help/escape-recovery/), or you press **Try again**. Starting EnviousWispr or changing a setting does not load it. Finishing its download loads it only if a dictation, a file transcription or a recording recovery already running needs it. It normally leaves memory after about 10 minutes without use. Work still using it can keep it longer, and turning off **Enable Dictionary** or choosing polish options with their own word check can release it sooner.
 

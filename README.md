@@ -151,7 +151,7 @@ Transcription gets your words down. AI polish cleans them up: it drops filler, f
 
 | Polish engine | What it is | Runs on | Extra download |
 |---|---|---|---|
-| **EG-1** (recommended) | Our own model, custom fine-tuned for dictation cleanup | On-device, macOS 14+ | ~2.9 GB (optional) |
+| **EG-1** (recommended) | Our own model, custom fine-tuned for dictation cleanup, in three sizes (EG-1, EG-1 Mini, EG-1 Micro) | On-device, macOS 14+ | 805 MB to 4.7 GB (optional) |
 | **S1-mini** by Superwhisper | A small open model for dictation cleanup, happiest in English, with Tone, Structure, and Context writing style settings | On-device, macOS 14+ | ~484 MB (optional) |
 | **Apple Intelligence** | Apple's on-device model, no extra download | On-device, macOS 26+ | none |
 | **Ollama** | Use a model on your Mac or one hosted by Ollama | On-device or Ollama's servers | varies for local models; none for hosted |
