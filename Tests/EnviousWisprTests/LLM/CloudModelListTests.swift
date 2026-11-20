@@ -139,11 +139,14 @@ struct CloudModelListTests {
       case .thinkingBetweenTools: "thinkingBetweenTools"
       case .effortLow: "effortLow"
       }
-    return [thinking, c.temperaturePolicy == .include ? "include" : "omit",
-      String(c.supportsChatCompletions), shape].joined(separator: "\t")
+    return [
+      thinking, c.temperaturePolicy == .include ? "include" : "omit",
+      String(c.supportsChatCompletions), shape,
+    ].joined(separator: "\t")
   }
 
-  @Test("the list-driven resolver reproduces the deleted compiled tables, with three accepted changes")
+  @Test(
+    "the list-driven resolver reproduces the deleted compiled tables, with three accepted changes")
   func resolverMatchesFrozenBaseline() throws {
     let seed = try Self.seed()
     let rows = try Self.baseline()
@@ -167,12 +170,15 @@ struct CloudModelListTests {
     // The three accepted classes, and only them: compact-dated OpenAI copies of `none` rows
     // (the old effort lookup stripped dashed dates only), dated Claude copies of shaped rows
     // and dated Gemini copies of rows with a thinking value (both were exact-match only).
-    let openAINone = seed.models.filter { $0.request == .openAI(effort: .none, temperature: .omit) }
-    let claudeShaped = seed.models.filter {
+    // Only rows the frozen baseline knows can be judged against it: the weekly routine adds
+    // rows (#4353 PR 5), and a new row has no old-table value to reproduce.
+    let frozen = seed.models.filter { byID["\($0.provider.rawValue)/\($0.id)"] != nil }
+    let openAINone = frozen.filter { $0.request == .openAI(effort: .none, temperature: .omit) }
+    let claudeShaped = frozen.filter {
       if case .claude(let shape) = $0.request { return shape != .thinkingDisabled }
       return false
     }
-    let geminiThinking = seed.models.filter {
+    let geminiThinking = frozen.filter {
       if case .gemini(let thinking) = $0.request { return thinking != .none }
       return false
     }
@@ -196,7 +202,8 @@ struct CloudModelListTests {
       LLMProvider.claude.modelCapabilities(model: "claude-sonnet-5-5", list: nil)
         .claudeRequestShape == .thinkingDisabled)
     #expect(LLMProvider.openAI.allowsFileBatch(model: "gpt-4o-mini-2024-07-18", list: nil) == false)
-    #expect(LLMProvider.claude.allowsFileBatch(model: "claude-haiku-4-5-latest", list: nil) == false)
+    #expect(
+      LLMProvider.claude.allowsFileBatch(model: "claude-haiku-4-5-latest", list: nil) == false)
     #expect(LLMProvider.openAI.allowsFileBatch(model: "gpt-4o", list: nil))
   }
 
@@ -211,7 +218,8 @@ struct CloudModelListTests {
     let gpt6 = LLMProvider.openAI.modelCapabilities(model: "gpt-6-new", list: list)
     #expect(gpt6.thinkingControl == .unsupported, "listed omit beats the gpt-6 family rule")
     #expect(gpt6.temperaturePolicy == .include)
-    #expect(gpt6.supportsChatCompletions == false, "a listed false never becomes the heuristic true")
+    #expect(
+      gpt6.supportsChatCompletions == false, "a listed false never becomes the heuristic true")
     #expect(LLMProvider.openAI.allowsFileBatch(model: "gpt-6-new", list: list) == false)
     let mini = LLMProvider.openAI.modelCapabilities(model: "gpt-4o-mini-2024-07-18", list: list)
     #expect(mini.thinkingControl == .effort("minimal"), "a dated id inherits its listed base")
