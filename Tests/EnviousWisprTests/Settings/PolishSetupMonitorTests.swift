@@ -487,12 +487,17 @@ extension PolishSetupMonitorTests {
   @MainActor
   private final class KeyLog {
     var reads: [(LLMProvider, SavedKeyState)] = []
+    /// #4721: each take's answer about its key, as handed to the key verdict store.
+    var keyOutcomes: [(provider: LLMProvider, revision: UInt64, rejected: Bool)] = []
   }
 
   private static func takeMonitor(_ world: World, keys: KeyLog) -> PolishSetupMonitor {
     let monitor = PolishSetupMonitor(
       readInputs: { world.inputs },
-      recordKeyEvidence: { provider, state, _ in keys.reads.append((provider, state)) })
+      recordKeyEvidence: { provider, state, _ in keys.reads.append((provider, state)) },
+      recordCloudKeyOutcome: { provider, revision, rejected, _ in
+        keys.keyOutcomes.append((provider, revision, rejected))
+      })
     world.onTransition = { [weak monitor] in monitor?.configurationOrEligibilityChanged() }
     return monitor
   }
@@ -725,12 +730,17 @@ extension PolishSetupMonitorTests {
         observedAt: start.advanced(by: .seconds(1))))
     #expect(monitor.eligibleProblem == nil)
     #expect(keys.reads.isEmpty, "no key read was stamped, so no presence is published")
+    // #4721: each newer answer about the key reached the shared verdict store; the late older
+    // success did not.
+    #expect(keys.keyOutcomes.map(\.rejected) == [true, false])
+    #expect(keys.keyOutcomes.allSatisfy { $0.provider == .openAI && $0.revision == 1 })
     // Rejected again later: the warning returns.
     monitor.ingest(
       Self.outcome(
         monitor.freezeTakeContext(), id: "take-3", evidence: .cloudKeyRejected,
         tag: .cloudKeyRejected, at: start.advanced(by: .seconds(2))))
     #expect(monitor.eligibleProblem == .cloudKeyRejected(.openAI))
+    #expect(keys.keyOutcomes.map(\.rejected) == [true, false, true])
     // A new key starts clean (the saved key's revision moves in the facts and the
     // configuration together, as `SavedKeyPresence` moves both in the app).
     world.facts = Self.facts(openAIKeySaved: true, openAIRevision: 2)

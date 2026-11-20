@@ -542,6 +542,25 @@ final class LLMModelDiscoveryCoordinator {
       definitive: result == .inconclusive ? lastDefinitive(provider, revision: revision) : nil)
   }
 
+  /// #4721: a dictation's own answer about the saved key (the provider refused it, or a polish
+  /// with it worked), at the moment it arrived. Newest answer wins for the same key, so the
+  /// Settings chip, the summary engine's monitor and dictation's warnings agree. A check still
+  /// running owns the provider and publishes its own answer; this one then waits.
+  func recordTakeKeyOutcome(
+    provider: LLMProvider, credentialRevision revision: UInt64, rejected: Bool,
+    observedAt: ContinuousClock.Instant
+  ) {
+    guard PolishSetupMonitor.usesCloudKey(provider), credentialRevision(for: provider) == revision,
+      pendingVerdicts[provider] == nil
+    else { return }
+    if let known = lastDefinitive(provider, revision: revision), known.decidedAt >= observedAt {
+      return
+    }
+    writeCompletedVerdict(
+      rejected ? .rejected : .accepted, provider: provider, revision: revision,
+      decidedAt: observedAt)
+  }
+
   // MARK: - Launch key check ownership (#4721)
 
   /// Per provider: moves at every foreground entry (Save or Clear admission, a finished
@@ -613,6 +632,13 @@ final class LLMModelDiscoveryCoordinator {
       launchAdmissionIsCurrent(admission, settings: settings),
       credentialRevision(for: provider) == revision
     else { return }
+    // A dictation's newer answer about this key (`recordTakeKeyOutcome`) is never replaced by an
+    // older list answer.
+    if let decidedAt, let known = lastDefinitive(provider, revision: revision),
+      known.decidedAt > decidedAt
+    {
+      return
+    }
     switch outcome {
     case .accepted(let models):
       guard let decidedAt else { return }

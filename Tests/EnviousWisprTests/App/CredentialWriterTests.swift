@@ -747,6 +747,44 @@ extension CredentialWriterTests {
     #expect(fx.discovery.beginLaunchCheck(provider: .openAI, settings: fx.settings) != nil)
   }
 
+  @Test("#4721: a dictation's newer answer about the key replaces the launch answer, never the reverse")
+  func takeKeyOutcomeNewestWins() throws {
+    let fx = Self.launchFixture()
+    let revision = try #require(fx.presence.revision(for: .openAI))
+    let listAnswer = ContinuousClock.now
+    let admission = try #require(fx.discovery.beginLaunchCheck(provider: .openAI, settings: fx.settings))
+    fx.discovery.recordLaunchCheck(
+      admission: admission, credentialRevision: revision, decidedAt: listAnswer,
+      outcome: .accepted([]), settings: fx.settings)
+
+    // The key is revoked; a dictation's request is refused after the launch check.
+    fx.discovery.recordTakeKeyOutcome(
+      provider: .openAI, credentialRevision: revision, rejected: true,
+      observedAt: listAnswer.advanced(by: .seconds(5)))
+    #expect(fx.discovery.cloudVerdicts[.openAI]?.result == .rejected)
+
+    // An older dictation answer arriving late changes nothing.
+    fx.discovery.recordTakeKeyOutcome(
+      provider: .openAI, credentialRevision: revision, rejected: false,
+      observedAt: listAnswer.advanced(by: .seconds(1)))
+    #expect(fx.discovery.cloudVerdicts[.openAI]?.result == .rejected)
+
+    // A launch retry whose list answered before the refusal does not bring back "valid".
+    let retry = try #require(fx.discovery.beginLaunchCheck(provider: .openAI, settings: fx.settings))
+    fx.discovery.recordLaunchCheck(
+      admission: retry, credentialRevision: revision, decidedAt: listAnswer.advanced(by: .seconds(2)),
+      outcome: .accepted([]), settings: fx.settings)
+    #expect(fx.discovery.cloudVerdicts[.openAI]?.result == .rejected)
+
+    // A dictation answer about a replaced key is ignored.
+    fx.presence.recordSaved(.openAI)
+    fx.discovery.recordTakeKeyOutcome(
+      provider: .openAI, credentialRevision: revision, rejected: false,
+      observedAt: listAnswer.advanced(by: .seconds(9)))
+    #expect(fx.discovery.cloudVerdicts[.openAI]?.credentialRevision == revision)
+    #expect(fx.discovery.cloudVerdicts[.openAI]?.result == .rejected)
+  }
+
   @Test("a launch check with no answer keeps the last definitive answer about the key")
   func inconclusiveWithoutTimeKeepsDefinitive() throws {
     let fx = Self.launchFixture()

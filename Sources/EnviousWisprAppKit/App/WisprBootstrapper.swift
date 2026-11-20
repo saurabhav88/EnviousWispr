@@ -3579,11 +3579,18 @@ package final class WisprBootstrapper {
         llmDiscovery?.recordCloudModelObservation(
           provider: provider, model: model, observation: observation)
       },
+      // #4721: and its answer about the key joins the key verdict store, newest wins.
+      recordCloudKeyOutcome: { [weak llmDiscovery] provider, revision, rejected, observedAt in
+        llmDiscovery?.recordTakeKeyOutcome(
+          provider: provider, credentialRevision: revision, rejected: rejected,
+          observedAt: observedAt)
+      },
       // #3988: the notice history lives in THIS build's own defaults domain, never the unified
       // settings suite, so the dev build and the shipped app never share a day or a quiet.
       noticeStore: OutsideStopNoticeStore(defaults: .standard))
-    // #4321: the summary engine's own monitor. No refresh hooks (dictation's monitor owns the
-    // Ollama and Apple refreshes, and both read the same facts), no take ingestion, no card.
+    // #4321: the summary engine's own monitor. No Apple refresh (dictation's monitor owns it),
+    // no take ingestion, no card. #4721: it asks for the same shared off-page Ollama refresh on
+    // activation, since its warnings now show outside Settings; the refresh is single-flight.
     let summarySetupMonitor = PolishSetupMonitor(
       readInputs: {
         [settings, localPolishRuntimes, aiAvailability, setup, llmDiscovery, savedKeyPresence] in
@@ -3591,7 +3598,10 @@ package final class WisprBootstrapper {
           settings: settings, localPolishRuntimes: localPolishRuntimes,
           aiAvailability: aiAvailability, setup: setup, llmDiscovery: llmDiscovery,
           savedKeyPresence: savedKeyPresence, scope: .meetingSummary)
-      })
+      },
+      ollamaRefresh: OllamaOffPageRefresh(
+        requestOnce: { [weak setup] in setup?.requestOffPageOllamaRefresh() },
+        cancel: { [weak setup] in setup?.cancelOffPageOllamaRefresh() }))
     polishSetupMonitorHolder.monitor = polishSetupMonitor
     polishSetupMonitorHolder.summaryMonitor = summarySetupMonitor
     menuBarControllerHolder.controller = menuBarController
@@ -3920,6 +3930,7 @@ package final class WisprBootstrapper {
     setupSession.components?.runtime.appDidBecomeActive()
     // #3438: after the pane-scoped probe above, so a visible watch is never doubled.
     polishSetup.monitor.applicationDidBecomeActive()
+    polishSetup.summary.monitor.applicationDidBecomeActive()
     // #958: proactive foreground check (post-sleep freshness), strict >=3600 gated.
     sparkleUpdateController.updateCoordinator?.checkForUpdatesProactively(trigger: "foreground")
   }

@@ -366,6 +366,8 @@ final class PolishSetupMonitor {
   @ObservationIgnored private let appleRefresh: (@MainActor () -> Void)?
   /// Where `polish_setup.prompt` rows go. Production sends them; tests collect them.
   @ObservationIgnored private let reportPrompt: @MainActor (PolishSetupPromptEvent) -> Void
+  @ObservationIgnored private let recordCloudKeyOutcome:
+    @MainActor (LLMProvider, UInt64, Bool, ContinuousClock.Instant) -> Void
   /// Where a take's own key read goes (`SavedKeyPresence.recordRead` in production): a take
   /// that found no key is confirmed evidence the key is absent, with no second read.
   /// #4353: where a dictation's answer about its cloud model goes (the discovery coordinator).
@@ -424,9 +426,15 @@ final class PolishSetupMonitor {
       -> Void = { _, _, _ in },
     recordCloudModelOutcome: @escaping @MainActor (LLMProvider, String, CloudModelObservation)
       -> Void = { _, _, _ in },
+    // #4721: a dictation's answer about its cloud key (refused or worked), shared with the key
+    // verdict store so the Settings chip and the summary engine read the same newest answer.
+    recordCloudKeyOutcome: @escaping @MainActor (
+      LLMProvider, UInt64, Bool, ContinuousClock.Instant
+    ) -> Void = { _, _, _, _ in },
     noticeStore: OutsideStopNoticeStore = OutsideStopNoticeStore(defaults: nil),
     wallNow: @escaping @MainActor () -> Date = { Date() }
   ) {
+    self.recordCloudKeyOutcome = recordCloudKeyOutcome
     self.readInputs = readInputs
     self.ollamaRefresh = ollamaRefresh
     self.appleRefresh = appleRefresh
@@ -842,6 +850,7 @@ final class PolishSetupMonitor {
       return
     }
     cloudKeyTakeObservations[configuration.provider] = (credentialRevision, rejected, observedAt)
+    recordCloudKeyOutcome(configuration.provider, credentialRevision, rejected, observedAt)
     reconcile()
   }
 
@@ -1047,8 +1056,9 @@ final class PolishSetupMonitor {
     ollamaRefresh?.cancel()
   }
 
-  /// App activation: one off-page Ollama refresh when dictation's chosen model is Ollama and
-  /// no Settings page is watching it.
+  /// App activation: one off-page Ollama refresh when this monitor's chosen engine is Ollama and
+  /// no Settings page is watching it. #4721: both monitors ask; the shared refresh runs one
+  /// probe at a time (`SetupCoordinator.requestOffPageOllamaRefresh`).
   func applicationDidBecomeActive() {
     let inputs = readInputs()
     guard observing, inputs.onboardingComplete, inputs.configuration.provider == .ollama
