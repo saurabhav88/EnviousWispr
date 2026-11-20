@@ -30,7 +30,9 @@ struct ProviderStatusMappingTests {
     validationProvider: LLMProvider? = nil,
     cloudValidation: LLMModelDiscoveryCoordinator.KeyValidationState = .valid,
     cloudKeySaved: Bool? = true,
-    ollamaSetup: OllamaSetupState = .ready
+    ollamaSetup: OllamaSetupState = .ready,
+    credentialRevisions: [LLMProvider: UInt64] = [:],
+    cloudVerdicts: [LLMProvider: PolishCloudVerdict] = [:]
   ) -> ProviderStatus? {
     ProviderStatusMapping.status(
       for: provider,
@@ -40,7 +42,8 @@ struct ProviderStatusMappingTests {
         s1MiniInstall: s1MiniInstall, s1MiniHealth: s1MiniHealth,
         appleStatus: appleStatus, appleFailureReasons: [], appleIsChecking: appleIsChecking,
         validationProvider: validationProvider ?? provider,
-        cloudValidation: cloudValidation, credentialRevisions: [:], cloudVerdicts: [:],
+        cloudValidation: cloudValidation, credentialRevisions: credentialRevisions,
+        cloudVerdicts: cloudVerdicts,
         openAIKeySaved: cloudKeySaved, geminiKeySaved: cloudKeySaved,
         claudeKeySaved: cloudKeySaved,
         ollamaSetup: ollamaSetup, ollamaModel: .installed))
@@ -364,6 +367,75 @@ struct ProviderStatusMappingTests {
     #expect(
       status(for: .openAI, validationProvider: .gemini, cloudValidation: .invalid("x"))?.label
         == "Key saved")
+  }
+
+  // MARK: - #4721: the stored answer when no live check is about this provider
+
+  private static func verdict(
+    _ result: PolishCloudVerdict.Result, revision: UInt64 = 3,
+    definitive: PolishCloudVerdict.Definitive? = nil
+  ) -> [LLMProvider: PolishCloudVerdict] {
+    [.claude: PolishCloudVerdict(
+      provider: .claude, credentialRevision: revision, result: result, definitive: definitive)]
+  }
+
+  /// The chip for a chosen Claude key with saved revision 3 and `verdicts`, while the live
+  /// check state is idle and about Claude (`own`) or about another provider.
+  private func storedChip(
+    _ verdicts: [LLMProvider: PolishCloudVerdict], own: Bool = true,
+    live: LLMModelDiscoveryCoordinator.KeyValidationState = .idle
+  ) -> String? {
+    status(
+      for: .claude, validationProvider: own ? .claude : .gemini, cloudValidation: live,
+      credentialRevisions: [.claude: 3], cloudVerdicts: verdicts)?.label
+  }
+
+  @Test("after a restart the stored answer about the saved key labels the chip")
+  func storedVerdictLabelsTheChip() {
+    #expect(storedChip(Self.verdict(.accepted)) == "Key valid")
+    #expect(storedChip(Self.verdict(.rejected)) == "Check failed")
+    #expect(storedChip(Self.verdict(.checking)) == "Checking")
+    // Could not tell, nothing known before: unchanged "Not checked".
+    #expect(storedChip(Self.verdict(.inconclusive)) == "Not checked")
+    // Could not tell, but an earlier answer about this key stands.
+    let earlierValid = PolishCloudVerdict.Definitive(rejected: false, decidedAt: .now)
+    let earlierRefused = PolishCloudVerdict.Definitive(rejected: true, decidedAt: .now)
+    #expect(storedChip(Self.verdict(.inconclusive, definitive: earlierValid)) == "Key valid")
+    #expect(storedChip(Self.verdict(.inconclusive, definitive: earlierRefused)) == "Check failed")
+    // The tones are the existing ones.
+    let valid = status(
+      for: .claude, cloudValidation: .idle, credentialRevisions: [.claude: 3],
+      cloudVerdicts: Self.verdict(.accepted))
+    #expect(valid?.tone == .ready)
+  }
+
+  @Test("a stored answer about a replaced key says nothing")
+  func staleVerdictIgnored() {
+    #expect(storedChip(Self.verdict(.accepted, revision: 2)) == "Not checked")
+    #expect(storedChip(Self.verdict(.rejected, revision: 2), own: false) == "Key saved")
+  }
+
+  @Test("with another provider's check on screen, the stored answer about this key still labels it")
+  func storedVerdictWhenLiveStateIsAnotherProvider() {
+    #expect(storedChip(Self.verdict(.accepted), own: false, live: .valid) == "Key valid")
+    #expect(storedChip(Self.verdict(.rejected), own: false, live: .invalid("x")) == "Check failed")
+    // No stored answer: the existing "Key saved".
+    #expect(storedChip([:], own: false, live: .valid) == "Key saved")
+  }
+
+  @Test("a check this page is running or just finished wins over the stored answer")
+  func liveStateWinsOverStoredVerdict() {
+    #expect(storedChip(Self.verdict(.rejected), live: .validating) == "Checking")
+    #expect(storedChip(Self.verdict(.rejected), live: .valid) == "Key valid")
+    #expect(storedChip(Self.verdict(.accepted), live: .invalid("offline")) == "Check failed")
+  }
+
+  @Test("an unselected provider still says only Key saved, whatever is stored")
+  func unselectedIgnoresStoredVerdict() {
+    let s = status(
+      for: .claude, selected: false, cloudValidation: .idle, credentialRevisions: [.claude: 3],
+      cloudVerdicts: Self.verdict(.accepted))
+    #expect(s?.label == "Key saved")
   }
 
   // MARK: - Ollama

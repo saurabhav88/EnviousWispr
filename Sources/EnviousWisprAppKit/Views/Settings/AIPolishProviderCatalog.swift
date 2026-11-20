@@ -226,32 +226,49 @@ enum ProviderStatusMapping {
         label: String(localized: "Key needed", comment: "AI Polish provider status chip."),
         tone: .unavailable)
     }
-    guard selected, facts.validationProvider == provider else {
-      return ProviderStatus(
-        label: String(
-          localized: "Key saved",
-          comment: "AI Polish provider status chip: an API key is saved but was not checked here."),
-        tone: .unavailable)
+    let keySaved = ProviderStatus(
+      label: String(
+        localized: "Key saved",
+        comment: "AI Polish provider status chip: an API key is saved but was not checked here."),
+      tone: .unavailable)
+    let notChecked = ProviderStatus(
+      label: String(localized: "Not checked", comment: "AI Polish provider status chip."),
+      tone: .unavailable)
+    let checking = ProviderStatus(
+      label: String(localized: "Checking", comment: "AI Polish provider status chip."),
+      tone: .needsSetup)
+    let keyValid = ProviderStatus(
+      label: String(localized: "Key valid", comment: "AI Polish provider status chip."),
+      tone: .ready)
+    let checkFailed = ProviderStatus(
+      label: String(
+        localized: "Check failed",
+        comment: "AI Polish provider status chip: checking the saved API key did not succeed."),
+      tone: .error)
+    guard selected else { return keySaved }
+    // A check this page's provider is running or just finished wins.
+    let live = facts.validationProvider == provider ? facts.cloudValidation : nil
+    switch live {
+    case .validating: return checking
+    case .valid: return keyValid
+    case .invalid: return checkFailed
+    case .idle, nil: break
     }
-    switch facts.cloudValidation {
-    case .idle:
-      return ProviderStatus(
-        label: String(localized: "Not checked", comment: "AI Polish provider status chip."),
-        tone: .unavailable)
-    case .validating:
-      return ProviderStatus(
-        label: String(localized: "Checking", comment: "AI Polish provider status chip."),
-        tone: .needsSetup)
-    case .valid:
-      return ProviderStatus(
-        label: String(localized: "Key valid", comment: "AI Polish provider status chip."),
-        tone: .ready)
-    case .invalid:
-      return ProviderStatus(
-        label: String(
-          localized: "Check failed",
-          comment: "AI Polish provider status chip: checking the saved API key did not succeed."),
-        tone: .error)
+    // #4721: otherwise the stored answer about the key saved NOW (the launch check's, or an
+    // earlier one this run), so a restart reads "Key valid" without a Save. Without one, the
+    // labels are unchanged: "Not checked" when the live state is about this provider and idle,
+    // "Key saved" when it is about another provider.
+    guard let verdict = facts.cloudVerdicts[provider], verdict.provider == provider,
+      facts.credentialRevisions[provider] == verdict.credentialRevision
+    else { return live == nil ? keySaved : notChecked }
+    switch verdict.result {
+    case .checking: return checking
+    case .accepted: return keyValid
+    case .rejected: return checkFailed
+    case .inconclusive:
+      // A check that could not tell keeps the last definitive answer about this key.
+      guard let known = verdict.definitive else { return notChecked }
+      return known.rejected ? checkFailed : keyValid
     }
   }
 }
