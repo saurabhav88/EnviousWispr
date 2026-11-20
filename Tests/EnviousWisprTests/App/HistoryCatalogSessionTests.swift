@@ -140,6 +140,7 @@ struct HistoryCatalogSessionTests {
     #expect(coordinator.currentRow(id: open) == nil)
   }
 
+  #if DEBUG
   // MARK: - "Updating History…" stays quiet when nothing changed (#4586)
 
   private func sources(_ root: URL) -> (HistorySourceChanges, TranscriptStore, MeetingStore) {
@@ -460,4 +461,5 @@ struct HistoryCatalogSessionTests {
     #expect(Self.shownUntilCertified(launch.trace), "shown until certified: \(launch.trace.map(\.shows))")
     #expect(launch.trace.last.map { $0.status == .ready && $0.shows == false } == true)
   }
+  #endif
 }
