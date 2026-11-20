@@ -186,11 +186,14 @@ class VerifyStep(unittest.TestCase):
 
     @staticmethod
     def pid_alive(pid):
+        """Running, not merely unreaped: a stopped helper orphaned to a PID 1 that does
+        not reap (some Linux containers) stays a zombie and still answers kill(0)."""
         try:
             os.kill(pid, 0)
         except ProcessLookupError:
             return False
-        return True
+        stat = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True).stdout
+        return bool(stat.strip()) and not stat.strip().startswith("Z")
 
 
 if __name__ == "__main__":
