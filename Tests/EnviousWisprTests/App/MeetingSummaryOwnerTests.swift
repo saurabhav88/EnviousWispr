@@ -235,7 +235,8 @@ struct MeetingSummaryOwnerTests {
 
     func preview(_ id: UUID) async throws -> MeetingSummaryOwner.Candidate {
       await MeetingSummaryOwnerTests.eventually("preview ready") {
-        if case .comparing = self.owner.previews[id] { return true }
+        // The attempt also ends, so a Keep right after is not refused as still writing.
+        if case .comparing = self.owner.previews[id] { return !self.owner.isWriting(id) }
         return false
       }
       guard case .comparing(let candidate) = owner.previews[id] else {
@@ -439,11 +440,35 @@ struct MeetingSummaryOwnerTests {
   /// "The saved summary changed.", or keeps that warning after a successful Keep or a new preview.
   @Test("the meeting page's Keep busy and refusal belong to the meeting they happened on")
   func pageKeepStateIsPerMeeting() async throws {
-    let rig = try Rig()
-    let refused = try rig.readyMeeting()
+    let base = try Rig()
+    // Parks a Keep's save after its store write, so a page reset lands while it is in flight.
+    // Once opened it stays open, so the parked Keep runs first.
+    let gate = MeetingDocumentsOwnerTests.DebounceGate()
+    defer { gate.open() }
+    let rig = try Rig(
+      sharing: base,
+      documents: Rig.documents(base.store, afterGeneratedWrite: { await gate.wait() }))
     let kept = try rig.readyMeeting()
+    let refused = try rig.readyMeeting()
     let choice = HistoryPolishChoice(provider: .claude, model: "claude-test", sendsTextOffMac: true)
     let page = MeetingSummaryEditState()
+
+    page.beginPreview(choice, meetingID: kept, summaries: rig.owner)
+    let candidate = try await rig.preview(kept)
+    page.keep(candidateID: UUID(), meetingID: kept, summaries: rig.owner)
+    await Self.eventually("wrong-candidate Keep settled") { !page.isKeeping(kept) }
+    #expect(page.keepFailed(kept))
+    #expect(!page.keepFailed(refused), "another meeting never shows this meeting's refusal")
+
+    page.keep(candidateID: candidate.id, meetingID: kept, summaries: rig.owner)
+    await Self.eventually("Keep parked after its write") { gate.waiting == 1 }
+    page.reset()
+    #expect(page.isKeeping(kept), "a page reset keeps the saving meeting's Saving…")
+    #expect(!page.isKeeping(refused), "another meeting never shows this meeting's Saving…")
+    gate.open()
+    await Self.eventually("Keep settled") { !page.isKeeping(kept) }
+    #expect(!page.keepFailed(kept), "a successful Keep clears that meeting's refusal")
+    #expect(rig.summaryOnDisk(kept) == candidate.text)
 
     page.beginPreview(choice, meetingID: refused, summaries: rig.owner)
     let stale = try await rig.preview(refused)
@@ -451,18 +476,10 @@ struct MeetingSummaryOwnerTests {
       "A newer summary.", origin: .userEdited, inputs: nil, meeting: refused)
     page.keep(candidateID: stale.id, meetingID: refused, summaries: rig.owner)
     #expect(page.isKeeping(refused))
-    #expect(!page.isKeeping(kept), "another meeting never shows this meeting's Saving…")
+    #expect(!page.isKeeping(kept))
     await Self.eventually("refused Keep settled") { !page.isKeeping(refused) }
     #expect(page.keepFailed(refused))
-    #expect(!page.keepFailed(kept), "another meeting never shows this meeting's refusal")
-
-    page.beginPreview(choice, meetingID: kept, summaries: rig.owner)
-    let candidate = try await rig.preview(kept)
-    page.keep(candidateID: candidate.id, meetingID: kept, summaries: rig.owner)
-    await Self.eventually("Keep settled") { !page.isKeeping(kept) }
     #expect(!page.keepFailed(kept))
-    #expect(rig.summaryOnDisk(kept) == candidate.text)
-    #expect(page.keepFailed(refused), "the first meeting's refusal stays until dismissed")
 
     page.beginPreview(choice, meetingID: refused, summaries: rig.owner)
     #expect(!page.keepFailed(refused), "a new preview clears the refusal")
