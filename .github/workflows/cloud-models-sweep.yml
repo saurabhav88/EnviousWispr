@@ -90,7 +90,7 @@ jobs:
           work="$RUNNER_TEMP/routine"
           mkdir -p "$work"
           export TEST_RUNNER_EW_ROUTINE_RECEIPT_OUT="$work/receipt.json"
-          if scripts/xcode-test.sh --configuration Debug --real-boundary \
+          if scripts/xcode-test.sh --configuration Release --release-gut-check --real-boundary \
             --filter EnviousWisprTests/CloudModelRoutineSweepTests > "$work/sweep.log" 2>&1; then
             status=0
           else
@@ -158,7 +158,7 @@ jobs:
 
       - name: Run the keyless sweep fixtures
         run: |
-          scripts/xcode-test.sh --configuration Debug --real-boundary \
+          scripts/xcode-test.sh --configuration Release --release-gut-check --real-boundary \
             --filter EnviousWisprTests/CloudModelRoutineHarnessTests
 
   publish:

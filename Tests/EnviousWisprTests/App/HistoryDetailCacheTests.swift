@@ -93,7 +93,9 @@ struct HistoryDetailCacheTests {
     #expect(flag.fired)
     #expect(cache.entry(ids[0]) === first)
     #expect(first.row == nil)
+    #if DEBUG
     #expect(cache.payloadCountForTesting() == 2)
+    #endif
   }
 
   @Test("Held and kept rows survive eviction; clearing keeps the hold")

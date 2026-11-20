@@ -10,6 +10,7 @@
 # Usage:
 #   build-for-testing-release.sh --profile <gut-check|full> --project <path> \
 #     --scheme <name> --derived-data <path> --log <path> --result-bundle <path>
+#   build-for-testing-release.sh --print-profile-settings <gut-check|full>
 #   build-for-testing-release.sh --self-test
 #
 # #4243 profiles. `gut-check` (pr-check.yml and cache-warm.yml, scheme
@@ -64,7 +65,22 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 
 usage() {
   echo "usage: $0 --profile <gut-check|full> --project <path> --scheme <name> --derived-data <path> --log <path> --result-bundle <path>" >&2
+  echo "       $0 --print-profile-settings <gut-check|full>" >&2
   echo "       $0 --self-test" >&2
+}
+
+print_profile_settings() {
+  local -a optimization=()
+  case "$1" in
+    gut-check) optimization=(SWIFT_OPTIMIZATION_LEVEL=-Onone SWIFT_COMPILATION_MODE=singlefile ENABLE_DEBUG_DYLIB=NO) ;;
+    full) ;;
+    *)
+      echo "build-for-testing-release: --profile must be gut-check or full, got: $1" >&2
+      usage
+      return 2
+      ;;
+  esac
+  printf '%s\n' ENABLE_TESTABILITY=YES DEBUG_INFORMATION_FORMAT=dwarf "${optimization[@]+"${optimization[@]}"}"
 }
 
 run_build() {
@@ -103,16 +119,12 @@ run_build() {
     fi
   done
 
-  local -a profile_settings
-  case "$profile" in
-    gut-check) profile_settings=(SWIFT_OPTIMIZATION_LEVEL=-Onone SWIFT_COMPILATION_MODE=singlefile ENABLE_DEBUG_DYLIB=NO) ;;
-    full) profile_settings=() ;;
-    *)
-      echo "build-for-testing-release: --profile must be gut-check or full, got: $profile" >&2
-      usage
-      return 2
-      ;;
-  esac
+  local profile_output setting
+  local -a profile_settings=()
+  profile_output="$(print_profile_settings "$profile")" || return $?
+  while IFS= read -r setting; do
+    profile_settings+=("$setting")
+  done <<< "$profile_output"
   # shellcheck source=scripts/lib/ci-phase.sh
   . "$HERE/../lib/ci-phase.sh"
   ew_phase build_for_testing_release "$log" -- xcodebuild build-for-testing \
@@ -125,9 +137,7 @@ run_build() {
     ARCHS=arm64 \
     ONLY_ACTIVE_ARCH=YES \
     VALID_ARCHS=arm64 \
-    ENABLE_TESTABILITY=YES \
-    DEBUG_INFORMATION_FORMAT=dwarf \
-    ${profile_settings[@]+"${profile_settings[@]}"}
+    "${profile_settings[@]}"
 }
 
 # Drives the REAL entrypoint (this file, as a new process) with a stub
@@ -252,6 +262,8 @@ STUB
 
 if [ "${1:-}" = "--self-test" ] && [ "$#" -eq 1 ]; then
   self_test
+elif [ "${1:-}" = "--print-profile-settings" ] && [ "$#" -eq 2 ]; then
+  print_profile_settings "$2"
 else
   run_build "$@"
 fi

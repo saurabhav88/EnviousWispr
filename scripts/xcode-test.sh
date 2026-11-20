@@ -138,6 +138,7 @@ DEST='platform=macOS,arch=arm64'
 TEST_ARGS=()
 CONFIGURATION="Debug"
 CONFIGURATION_SELECTED=0
+RELEASE_GUT_CHECK=0
 RESULT_BUNDLE_PATH=""
 HOST_SELECTION="auto"
 FORWARD_ARGS=()
@@ -191,8 +192,10 @@ while [ "$#" -gt 0 ]; do
         Debug|Release|both) ;;
         *) echo "ERROR: configuration must be Debug, Release or both" >&2; exit 2 ;;
       esac ;;
+    --release-gut-check) RELEASE_GUT_CHECK=1; shift ;;
     --help|-h)
-      echo "usage: scripts/xcode-test.sh [--filter TARGET/SUITE ...] [--configuration Debug|Release|both | --release] [--serial | --grouped] [--real-boundary] [--log-dir DIR] [--result-bundle-path PATH] [--host auto|local|NAME]"
+      echo "usage: scripts/xcode-test.sh [--filter TARGET/SUITE ...] [--configuration Debug|Release|both | --release] [--release-gut-check] [--serial | --grouped] [--real-boundary] [--log-dir DIR] [--result-bundle-path PATH] [--host auto|local|NAME]"
+      echo "--release-gut-check: reuse the hosted gut-check build profile with --configuration Release."
       echo "--host: auto (default) runs here, or on a backup Mac from ~/.config/enviouswispr/mac-hosts.json when this Mac's slot is taken; a remote setup failure exits 4, never a test result."
       echo "Default: one Debug run with up to four measured-cost worker groups (EW_LOCAL_TEST_WORKERS=1-4 sets this Mac's budget). --serial restores the previous order. Batch related suites with repeated --filter. Release is for release-cut validation; --release retains legacy both-config behavior. --real-boundary also runs real-world tests (real models, microphone, GPU, live OS state), which the everyday lane skips: use it when validating a feature and before a release."
       exit 0 ;;
@@ -209,9 +212,14 @@ while [ "$#" -gt 0 ]; do
     # one. A caller running many lanes (a mutation battery, a matrix) needs its
     # own path per row or its counts are not its own.
     --log-dir) option_value "$1" "${2:-}"; LOG_DIR="$2"; shift 2 ;;
-    *) echo "usage: scripts/xcode-test.sh [--filter TARGET/SUITE ...] [--configuration Debug|Release|both | --release] [--serial | --grouped] [--real-boundary] [--log-dir DIR] [--result-bundle-path PATH] [--host auto|local|NAME]" >&2; exit 2 ;;
+    *) echo "usage: scripts/xcode-test.sh [--filter TARGET/SUITE ...] [--configuration Debug|Release|both | --release] [--release-gut-check] [--serial | --grouped] [--real-boundary] [--log-dir DIR] [--result-bundle-path PATH] [--host auto|local|NAME]" >&2; exit 2 ;;
   esac
 done
+
+if [ "$RELEASE_GUT_CHECK" = 1 ] && [ "$CONFIGURATION" != Release ]; then
+  echo "ERROR: --release-gut-check requires --configuration Release" >&2
+  exit 2
+fi
 
 if [ -n "$RESULT_BUNDLE_PATH" ] && [ "$CONFIGURATION" = "both" ]; then
   echo "ERROR: --result-bundle-path requires a single configuration" >&2
@@ -763,8 +771,16 @@ if [ "$CONFIGURATION" != "Release" ]; then
   DEBUG_BUNDLES="${EW_LANE_JUDGED_BUNDLES:-}"
 fi
 if [ "$CONFIGURATION" != "Debug" ]; then
+  release_settings=(ENABLE_TESTABILITY=YES)
+  if [ "$RELEASE_GUT_CHECK" = 1 ]; then
+    profile_settings="$("$PROJECT_ROOT/scripts/ci/build-for-testing-release.sh" --print-profile-settings gut-check)"
+    release_settings=()
+    while IFS= read -r setting; do
+      release_settings+=("$setting")
+    done <<< "$profile_settings"
+  fi
   run_lane "$RELEASE_SCHEME" Release Release "$DERIVED_DATA" \
-    "$LOG_DIR/xcode-test-release.log" "$RELEASE_RESULT_BUNDLE" ENABLE_TESTABILITY=YES
+    "$LOG_DIR/xcode-test-release.log" "$RELEASE_RESULT_BUNDLE" "${release_settings[@]}"
 fi
 # A retained package tree may predate the current lockfile; the seed resolver
 # only runs for a freshly consumed snapshot. Publish after the selected test

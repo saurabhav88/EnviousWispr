@@ -159,6 +159,8 @@ struct HistoryCatalogSessionTests {
     }
   }
 
+  #if DEBUG
+  // These cases read the label's complete trace through updatingStateForTesting.
   /// A first launch that certifies the catalog, then ends (its session is released).
   private func firstLaunch(_ root: URL, rows: Int) async throws {
     let (changes, store, meetings) = sources(root)
@@ -460,4 +462,5 @@ struct HistoryCatalogSessionTests {
     #expect(Self.shownUntilCertified(launch.trace), "shown until certified: \(launch.trace.map(\.shows))")
     #expect(launch.trace.last.map { $0.status == .ready && $0.shows == false } == true)
   }
+  #endif
 }
