@@ -24,7 +24,7 @@
 # per_take row is +1 event per take (+11%). Owner of the numbers: analytics-operations.md.
 ai_diagnostics.run_completed	per_launch	keep	analytics-operations.md FACT: app-posthog-events (founder post-release Apple Intelligence availability repair review, grouped by version, trigger and status: does app_active / polished_take / download_wait clear disabled and model_not_ready reports, #3897); one row per launch check (plus the first-launch delayed re-check), per manual re-check, per settings_open / provider_switch, and at most two automatic app_active + polished_take + download_wait rows per recovery epoch (AppleAvailabilityRepair.maxAutomaticStartsPerEpoch), only for installs whose dictation provider is Apple Intelligence or whose onboarding is open	#3897
 api_key.changed	ungraded	ungraded	-	pre-#2987
-api_key.validation_completed	ungraded	ungraded	-	pre-#2987
+api_key.validation_completed	per_launch	keep	analytics-operations.md FACT: app-posthog-events (key-check results by source x result x provider: source=launch is the automatic check of each cloud provider the AI polish and EnviousMeet summary engines use, about one row per such provider per launch plus at most one activation retry; save and model_discovery stay person-driven Settings checks; read in the first release review after #4721 as attempts and the rejected share of launch attempts)	#4721
 app.launched	ungraded	ungraded	-	pre-#2987
 app.idle_memory	per_launch	keep	median idle footprint_mb by app version and word_check_wanted, at the first weekly release review	#3289
 asr.retry_deadline_observed	ungraded	ungraded	-	pre-#2987

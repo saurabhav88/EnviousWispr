@@ -561,3 +561,207 @@ final class CredentialTestSignal: @unchecked Sendable {
     c?.resume(returning: value)
   }
 }
+
+// MARK: - #4721 launch key check ownership
+
+/// When this fails, the user sees a launch check's old answer about a key replace the answer of
+/// a Save, Clear or Refresh they just made, or a warning that never clears.
+extension CredentialWriterTests {
+  private static func launchFixture(storage: (any LegacyKeyFileStorage)? = nil) -> Fixture {
+    let fx = Self.fixture(storage: storage)
+    fx.settings.onboardingState = .completed
+    fx.settings.llmProvider = .openAI
+    fx.presence.recordSaved(.openAI)
+    return fx
+  }
+
+  private static func probed(_ id: String, _ availability: LLMModelAvailability) -> LLMModelInfo {
+    LLMModelInfo(
+      id: id, displayName: id, provider: .openAI, availability: availability, isRemote: false,
+      availabilityObservedAt: .now)
+  }
+
+  @Test("a launch answer writes only the verdict and the chosen models' observations")
+  func launchAcceptedWritesOnlyVerdictAndObservations() throws {
+    let fx = Self.launchFixture()
+    let modelBefore = fx.settings.llmModel
+    let admission = try #require(fx.discovery.beginLaunchCheck(provider: .openAI, settings: fx.settings))
+    let revision = try #require(fx.presence.revision(for: .openAI))
+    let answeredAt = ContinuousClock.now
+
+    fx.discovery.recordLaunchCheck(
+      admission: admission, credentialRevision: revision, decidedAt: answeredAt,
+      outcome: .accepted([Self.probed("gpt-9-zeta", .available), Self.probed("gpt-9-mini", .confirmedUnavailable)]),
+      settings: fx.settings)
+
+    let verdict = try #require(fx.discovery.cloudVerdicts[.openAI])
+    #expect(verdict.result == .accepted)
+    #expect(verdict.credentialRevision == revision)
+    // Stamped when the list answered, not when it was written, so a dictation's newer answer
+    // about the key stays newer.
+    #expect(verdict.decidedAt == answeredAt)
+    #expect(fx.discovery.cloudModelObservations[.openAI]?["gpt-9-zeta"]?.works == true)
+    #expect(fx.discovery.cloudModelObservations[.openAI]?["gpt-9-mini"]?.works == false)
+    #expect(fx.discovery.stateProvider == nil)
+    #expect(fx.discovery.keyValidationState == .idle)
+    #expect(fx.discovery.discoveredModels.isEmpty)
+    #expect(fx.settings.llmModel == modelBefore)
+    #expect(fx.log.asked.isEmpty)
+  }
+
+  @Test("a launch rejection publishes a rejected verdict")
+  func launchRejectedPublishes() throws {
+    let fx = Self.launchFixture()
+    let admission = try #require(fx.discovery.beginLaunchCheck(provider: .openAI, settings: fx.settings))
+    fx.discovery.recordLaunchCheck(
+      admission: admission, credentialRevision: try #require(fx.presence.revision(for: .openAI)),
+      decidedAt: .now, outcome: .rejected, settings: fx.settings)
+    #expect(fx.discovery.cloudVerdicts[.openAI]?.result == .rejected)
+  }
+
+  @Test("a launch answer about a key that was replaced since is dropped")
+  func launchDroppedOnRevisionChange() throws {
+    let fx = Self.launchFixture()
+    let admission = try #require(fx.discovery.beginLaunchCheck(provider: .openAI, settings: fx.settings))
+    let revision = try #require(fx.presence.revision(for: .openAI))
+    fx.presence.recordSaved(.openAI)
+    fx.discovery.recordLaunchCheck(
+      admission: admission, credentialRevision: revision, decidedAt: .now, outcome: .rejected,
+      settings: fx.settings)
+    #expect(fx.discovery.cloudVerdicts[.openAI] == nil)
+  }
+
+  @Test("a Save or Clear admitted after the launch claim wins", arguments: [false, true])
+  func launchDroppedAfterMutation(finished: Bool) throws {
+    let fx = Self.launchFixture()
+    let admission = try #require(fx.discovery.beginLaunchCheck(provider: .openAI, settings: fx.settings))
+    let revision = try #require(fx.presence.revision(for: .openAI))
+    let mutation = fx.discovery.admitCredentialMutation(
+      provider: .openAI, settings: fx.settings, surface: .dictation)
+    if finished { fx.discovery.finishCredentialMutation(mutation, cleared: false, settings: fx.settings) }
+    fx.discovery.recordLaunchCheck(
+      admission: admission, credentialRevision: revision, decidedAt: .now, outcome: .rejected,
+      settings: fx.settings)
+    #expect(fx.discovery.cloudVerdicts[.openAI] == nil)
+    #expect(fx.discovery.launchAdmissionIsCurrent(admission, settings: fx.settings) == false)
+  }
+
+  @Test("a Refresh queued on the credential lane, with no verdict yet, refuses the launch claim")
+  func launchRefusedWhileRefreshQueued() async throws {
+    let storage = ThreadRecordingCredentialStore()
+    try storage.seed("openai-key", key: KeychainManager.openAIKeyID)
+    let fx = Self.launchFixture(storage: storage)
+    let queued = CredentialTestSignal()
+    fx.writer.access.onQueuedForTesting = { queued.open() }
+    // Hold the lane, so the Refresh waits in its queue before it reads the key or marks
+    // anything as checking.
+    let gate = CredentialTestSignal()
+    let turn = fx.writer.access.reserve()
+    let holder = Task { await fx.writer.access.run(turn: turn) { _ = await gate.wait(deadlineMs: 5000) } }
+    let refreshing = Task {
+      await fx.discovery.validateKeyAndDiscoverModels(provider: .openAI, settings: fx.settings)
+    }
+    try #require(await queued.wait())
+    #expect(fx.discovery.cloudVerdicts[.openAI] == nil, "the Refresh already wrote a verdict")
+    #expect(fx.discovery.beginLaunchCheck(provider: .openAI, settings: fx.settings) == nil)
+    gate.open()
+    await holder.value
+    await refreshing.value
+    #expect(fx.discovery.cloudVerdicts[.openAI]?.result == .accepted)
+    #expect(fx.discovery.beginLaunchCheck(provider: .openAI, settings: fx.settings) != nil)
+  }
+
+  @Test("a Refresh that finished after the launch claim keeps its answer")
+  func launchDroppedAfterCompletedRefresh() async throws {
+    let storage = ThreadRecordingCredentialStore()
+    try storage.seed("openai-key", key: KeychainManager.openAIKeyID)
+    let fx = Self.launchFixture(storage: storage)
+    let admission = try #require(fx.discovery.beginLaunchCheck(provider: .openAI, settings: fx.settings))
+    let revision = try #require(fx.presence.revision(for: .openAI))
+    await fx.discovery.validateKeyAndDiscoverModels(provider: .openAI, settings: fx.settings)
+    #expect(fx.discovery.cloudVerdicts[.openAI]?.result == .accepted)
+
+    fx.discovery.recordLaunchCheck(
+      admission: admission, credentialRevision: revision, decidedAt: .now, outcome: .rejected,
+      settings: fx.settings)
+
+    #expect(fx.discovery.cloudVerdicts[.openAI]?.result == .accepted)
+    #expect(fx.discovery.launchAdmissionIsCurrent(admission, settings: fx.settings) == false)
+  }
+
+  @Test("a pending Save, or setup not finished, refuses the launch claim")
+  func launchRefusedForPendingMutationOrOnboarding() {
+    let fx = Self.launchFixture()
+    let id = fx.presence.beginMutation(for: .openAI)
+    #expect(fx.discovery.beginLaunchCheck(provider: .openAI, settings: fx.settings) == nil)
+    fx.presence.endMutation(id)
+    fx.settings.onboardingState = .notStarted
+    #expect(fx.discovery.beginLaunchCheck(provider: .openAI, settings: fx.settings) == nil)
+  }
+
+  @Test("setup restarted after the launch claim drops the answer")
+  func launchDroppedWhenSetupRestarts() throws {
+    let fx = Self.launchFixture()
+    let admission = try #require(fx.discovery.beginLaunchCheck(provider: .openAI, settings: fx.settings))
+    fx.settings.onboardingState = .notStarted
+    fx.discovery.recordLaunchCheck(
+      admission: admission, credentialRevision: try #require(fx.presence.revision(for: .openAI)),
+      decidedAt: .now, outcome: .rejected, settings: fx.settings)
+    #expect(fx.discovery.cloudVerdicts[.openAI] == nil)
+  }
+
+  /// The superseded Refresh returns through the generation guard, where the existing
+  /// generation-guarded `defer` does not run; the in-flight count has its own unconditional
+  /// `defer`. The stale saved-key returns inside `validateKeyAndDiscoverModels` (the admission
+  /// and revision guards before its first `await`) cannot be staged: `validateSavedCredential`
+  /// checks the same two conditions synchronously just before, with no suspension between, so
+  /// they rely on that same unconditional `defer` by construction.
+  @Test("a Refresh superseded while it waits releases the provider when both return")
+  func supersededRefreshReleasesProvider() async throws {
+    let storage = ThreadRecordingCredentialStore()
+    try storage.seed("openai-key", key: KeychainManager.openAIKeyID)
+    let fx = Self.launchFixture(storage: storage)
+    let gate = CredentialTestSignal()
+    let turn = fx.writer.access.reserve()
+    let holder = Task { await fx.writer.access.run(turn: turn) { _ = await gate.wait(deadlineMs: 5000) } }
+    var queuedCount = 0
+    let bothQueued = CredentialTestSignal()
+    fx.writer.access.onQueuedForTesting = {
+      queuedCount += 1
+      if queuedCount == 2 { bothQueued.open() }
+    }
+    let first = Task {
+      await fx.discovery.validateKeyAndDiscoverModels(provider: .openAI, settings: fx.settings)
+    }
+    let second = Task {
+      await fx.discovery.validateKeyAndDiscoverModels(provider: .openAI, settings: fx.settings)
+    }
+    try #require(await bothQueued.wait())
+    #expect(fx.discovery.beginLaunchCheck(provider: .openAI, settings: fx.settings) == nil)
+    gate.open()
+    await holder.value
+    await first.value
+    await second.value
+    // Only the newer Refresh reached the key: the first one was dismissed while it waited.
+    #expect(fx.log.asked == [.openAI])
+    #expect(fx.discovery.beginLaunchCheck(provider: .openAI, settings: fx.settings) != nil)
+  }
+
+  @Test("a launch check with no answer keeps the last definitive answer about the key")
+  func inconclusiveWithoutTimeKeepsDefinitive() throws {
+    let fx = Self.launchFixture()
+    let revision = try #require(fx.presence.revision(for: .openAI))
+    let first = try #require(fx.discovery.beginLaunchCheck(provider: .openAI, settings: fx.settings))
+    let acceptedAt = ContinuousClock.now
+    fx.discovery.recordLaunchCheck(
+      admission: first, credentialRevision: revision, decidedAt: acceptedAt, outcome: .accepted([]),
+      settings: fx.settings)
+    let second = try #require(fx.discovery.beginLaunchCheck(provider: .openAI, settings: fx.settings))
+    fx.discovery.recordLaunchCheck(
+      admission: second, credentialRevision: revision, decidedAt: nil, outcome: .inconclusive,
+      settings: fx.settings)
+    let verdict = try #require(fx.discovery.cloudVerdicts[.openAI])
+    #expect(verdict.result == .inconclusive)
+    #expect(verdict.lastDefinitive == PolishCloudVerdict.Definitive(rejected: false, decidedAt: acceptedAt))
+  }
+}
