@@ -711,6 +711,7 @@ struct UnifiedWindowView: View {
   @ViewBuilder
   private func page(_ drawn: SettingsPage, @ViewBuilder content: () -> some View) -> some View {
     content()
+      .environment(\.enviousButtonShape, .roundedRect)
       // #3545: every control on the page carries the page it was drawn in; a tabbed page overrides
       // this around the tab it draws, so the tab strip and fixed headings keep the page-only tag.
       .environment(\.settingsArrivalContent, SettingsArrivalContent(page: drawn))

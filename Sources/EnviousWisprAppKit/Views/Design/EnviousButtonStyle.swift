@@ -209,16 +209,16 @@ struct EnviousButtonFace: ViewModifier {
   /// #2772 finding 9: `quiet` is the SECONDARY of the approved Transcribe a File prototype
   /// — a hairline border in the divider tone, no fill, and the ordinary body colour for the
   /// label. Founder: "Secondary (Back): rounded RECTANGLE ... hairline border, no fill,
-  /// plain white label. NOT a pill, NO purple border." `outlined` is the purple-bordered
-  /// pill that description rejects, and it stays exactly as it is because every other
-  /// settings page ships it.
+  /// plain white label. NOT a pill, NO purple border." `outlined` keeps the purple border.
   enum Emphasis { case outlined, filled, destructive, quiet }
 
-  /// The outline this button is cut from. Capsule everywhere in Settings; the file-import
-  /// wizard uses the prototype's 9pt rounded rectangle (#2772 finding 9), and so does every
-  /// History button (founder #4611, 2026-11-17), set once for the screen through
-  /// `EnvironmentValues.enviousButtonShape`.
+  /// Settings and History set their shape through `EnvironmentValues.enviousButtonShape`.
+  /// The file-import wizard uses the prototype's rounded rectangle (#2772 finding 9).
   enum Shape { case capsule, roundedRect }
+
+  static var roundedRectangle: RoundedRectangle {
+    RoundedRectangle(cornerRadius: 9, style: .continuous)
+  }
 
   /// How big. `regular` is every pre-#2772 call site, byte for byte. The other two are the
   /// prototype's `.btn` (14px, 8x14) and `.btn.big` (15px, 10x22), which the founder called
@@ -272,7 +272,7 @@ struct EnviousButtonFace: ViewModifier {
   func body(content: Content) -> some View {
     switch shape ?? screenShape {
     case .capsule: painted(content, in: Capsule())
-    case .roundedRect: painted(content, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+    case .roundedRect: painted(content, in: Self.roundedRectangle)
     }
   }
 

@@ -68,7 +68,7 @@ struct PermissionsSettingsView: View {
     }
   }
 
-  /// The mockup's green "Allowed" pill (founder, 2026-10-03). VoiceOver keeps main's
+  /// The green "Allowed" badge (founder, 2026-10-03). VoiceOver keeps the
   /// full sentence, `text`, so the spoken status still names the permission.
   private func grantedStatus(_ text: LocalizedStringResource) -> some View {
     HStack(spacing: 6) {
@@ -79,7 +79,7 @@ struct PermissionsSettingsView: View {
     .foregroundStyle(.stSuccess)
     .padding(.horizontal, 10)
     .padding(.vertical, 4)
-    .background(Capsule().fill(Color.stSuccess.opacity(0.14)))
+    .background(Color.stSuccess.opacity(0.14), in: EnviousButtonFace.roundedRectangle)
     .fixedSize()
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(Text(text))

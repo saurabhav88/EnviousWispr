@@ -179,6 +179,7 @@ struct DesignRenderHarness {
       openMicrophoneSettings: { _ in })
     let root =
       content
+      .environment(\.enviousButtonShape, .roundedRect)
       .environment(permissions)
       .environment(settings)
       .environment(pill)
