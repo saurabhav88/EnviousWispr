@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "updated": "2026-11-05",
+  "updated": "2026-11-16",
   "models": [
     {
       "provider": "openAI",
@@ -826,6 +826,42 @@
       "supportsChatCompletions": false,
       "allowsFileBatch": true,
       "medianPolishMs": 2807
+    },
+    {
+      "provider": "claude",
+      "id": "claude-fable-5-2",
+      "released": "2026-11-09",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "claudeShape": "effortLow"
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true,
+      "medianPolishMs": 956
+    },
+    {
+      "provider": "gemini",
+      "id": "gemini-4-hydrogen",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "geminiThinking": "none"
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true,
+      "medianPolishMs": 2260
+    },
+    {
+      "provider": "gemini",
+      "id": "gemini-4-carbon",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "geminiThinking": "none"
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true
     }
   ]
 }
