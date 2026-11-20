@@ -1034,6 +1034,39 @@ let project = Project(
       ],
       settings: sourceAnalysisTestSettings
     ),
+    // #4732: compile the weekly sweep and its keyless fixtures without the app test suite.
+    .target(
+      name: "EnviousWisprCloudModelRoutineTests",
+      destinations: .macOS,
+      product: .unitTests,
+      bundleId: "com.enviouswispr.cloud-model-routine-tests",
+      deploymentTargets: deploymentTargets,
+      infoPlist: .default,
+      sources: [
+        "Tests/EnviousWisprTests/Architecture/RepoRoot.swift",
+        "Tests/EnviousWisprTests/LLM/CloudModelRoutineCallAccounting.swift",
+        "Tests/EnviousWisprTests/LLM/CloudModelRoutineHarness.swift",
+        "Tests/EnviousWisprTests/LLM/CloudModelRoutineHarnessTests.swift",
+        "Tests/EnviousWisprTests/LLM/CloudModelRoutineReceipt.swift",
+        "Tests/EnviousWisprTests/LLM/CloudModelRoutineSearch.swift",
+        "Tests/EnviousWisprTests/LLM/CloudModelRoutineSupport.swift",
+        "Tests/EnviousWisprTests/LLM/CloudModelRoutineSweepTests.swift",
+        "Tests/EnviousWisprTests/LLM/LiveSweepSupport.swift",
+        "Tests/EnviousWisprTests/Support/CloudModelListSeed.swift",
+        "Tests/EnviousWisprTests/Support/TestClassTags.swift",
+      ],
+      dependencies: [
+        .target(name: "EnviousWisprCore"),
+        .target(name: "EnviousWisprLLM"),
+        .target(name: "EnviousWisprPipeline"),
+        // Xcode needs direct declarations for the C modules used below Pipeline.
+        .package(product: "CTranscribe"),
+        .package(product: "CWebRTCAEC"),
+        .package(product: "FluidAudio"),
+        .package(product: "PostHog"),
+      ],
+      settings: testTargetSettings
+    ),
     // #4243: the cloud PR gut check compiles only criticalTestSources.
     // Dependencies cover its imports and required static-link dependencies; no parser libraries.
     .target(
@@ -1146,6 +1179,18 @@ let project = Project(
       // RULE: a-flaky-suite-earns-no-new-cases-until-its-wait-seam-is-fixed).
       testAction: .targets(
         ["EnviousWisprTests", "EnviousWisprDesktopEffectsTests", "EnviousWisprASRTests"],
+        configuration: "Release"
+      )
+    ),
+    .scheme(
+      name: "EnviousWispr-CloudModelRoutine",
+      shared: true,
+      buildAction: .buildAction(
+        targets: ["EnviousWisprCloudModelRoutineTests"],
+        findImplicitDependencies: true
+      ),
+      testAction: .targets(
+        ["EnviousWisprCloudModelRoutineTests"],
         configuration: "Release"
       )
     ),

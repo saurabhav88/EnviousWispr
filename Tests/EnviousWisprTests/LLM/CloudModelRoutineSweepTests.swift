@@ -9,7 +9,7 @@ import Testing
 /// PAID and networked: it reads the three providers' catalogs and polishes three real
 /// dictations per new model with the routine's own keys. It runs only in the scheduled
 /// maintenance workflow:
-/// `TEST_RUNNER_EW_CLOUD_ROUTINE=1 scripts/xcode-test.sh --real-boundary --filter EnviousWisprTests/CloudModelRoutineSweepTests`
+/// `TEST_RUNNER_EW_CLOUD_ROUTINE=1 scripts/xcode-test.sh --configuration Release --release-gut-check --cloud-model-routine --real-boundary --filter EnviousWisprCloudModelRoutineTests/CloudModelRoutineSweepTests`
 /// with `TEST_RUNNER_EW_ROUTINE_{OPENAI,CLAUDE,GEMINI}_KEY` set. The output is a file,
 /// `EW_ROUTINE_RECEIPT_OUT` (required). The receipt is written only after a secret scan;
 /// nothing here prints a key, prompt or reply.
