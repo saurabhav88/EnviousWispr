@@ -380,7 +380,7 @@ final class MeetingSummaryOwner {
       if first { return }
       discardPreview(meetingID)
     case .comparing(let candidate)? where candidate.replacesNoSummary:
-      // Written, and about to be kept once the attempt finishes ending.
+      // A first summary being kept.
       return
     default:
       discardPreview(meetingID)
@@ -390,6 +390,8 @@ final class MeetingSummaryOwner {
   /// #4719: preview attempt -> whether it writes the meeting's first summary, known once `write`
   /// has read the saved summary.
   private var firstAttempts: [UUID: Bool] = [:]
+  /// #4722: preview attempt -> its written summary, held until the attempt has ended.
+  private var pendingCandidates: [UUID: Candidate] = [:]
 
   func keepPreview(_ meetingID: UUID, candidateID: UUID) async -> Bool {
     guard !terminating, currentAttempt[meetingID] == nil, !requesting.contains(meetingID),
@@ -493,14 +495,30 @@ final class MeetingSummaryOwner {
       busy.remove(attempt)
       attempts[attempt] = nil
       firstAttempts[attempt] = nil
+      pendingCandidates[attempt] = nil
     }
     if preview != nil {
+      let written = pendingCandidates.removeValue(forKey: attempt)
       guard currentAttempt[meetingID] == attempt else { return }
       currentAttempt[meetingID] = nil
       activity[meetingID] = nil
       if case .generating(let id) = previews[meetingID], id == attempt {
-        previews[meetingID] = Task.isCancelled || terminating ? nil : .failed
-      } else if case .comparing(let candidate)? = previews[meetingID], candidate.id == attempt,
+        if let written, ending.end == .preview, !Task.isCancelled, !terminating {
+          // The checks `write` made, again: the meeting may have changed during cleanup. A
+          // changed meeting ends as a stale write does.
+          let selection = (provider: written.choice.provider, model: written.choice.model)
+          let unchanged =
+            documents.manifest(meetingID)?.summary == written.base
+            && !documents.hasUnsavedSummary(meetingID)
+            && currentInputs(
+              meetingID, selection: selection, override: written.choice, withSources: true)
+              == written.inputs
+          previews[meetingID] = unchanged ? .comparing(written) : .failed
+        } else {
+          previews[meetingID] = Task.isCancelled || terminating ? nil : .failed
+        }
+      }
+      if case .comparing(let candidate)? = previews[meetingID], candidate.id == attempt,
         candidate.replacesNoSummary, !terminating
       {
         // #4719: a first summary has nothing to compare with, so it is kept now, after the
@@ -787,10 +805,11 @@ final class MeetingSummaryOwner {
       guard case .generating(let id) = previews[meetingID], id == attempt,
         documents.manifest(meetingID)?.summary == baseSummary, !documents.hasUnsavedSummary(meetingID)
       else { return Ending(end: .stale) }
-      previews[meetingID] = .comparing(
-        Candidate(
-          id: attempt, current: currentSummary, text: text, choice: preview,
-          base: baseSummary, inputs: inputs, answer: answer))
+      // #4722: shown by `run` once the attempt has ended, so Keep new is never refused as
+      // still writing while the model cleans up.
+      pendingCandidates[attempt] = Candidate(
+        id: attempt, current: currentSummary, text: text, choice: preview,
+        base: baseSummary, inputs: inputs, answer: answer)
       return Ending(end: .preview)
     }
     // Every answer of the checked save also ends the owed mark. The save holds a relaunch.

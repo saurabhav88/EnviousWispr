@@ -532,6 +532,46 @@ struct MeetingSummaryOwnerTests {
     }
   }
 
+  /// #4722: when this fails, Keep new clicked while the model still cleans up closes the
+  /// comparison and saves nothing.
+  @Test("the comparison opens once the attempt has ended, so Keep new is never refused as writing")
+  func comparisonWaitsForCleanup() async throws {
+    let rig = try Rig()
+    let id = try rig.readyMeeting()
+    _ = try rig.store.saveSummary("My own summary.", origin: .userEdited, inputs: nil, meeting: id)
+    let choice = HistoryPolishChoice(provider: .claude, model: "claude-test", sendsTextOffMac: true)
+    rig.world.holdFinish = true
+    defer {
+      rig.world.holdFinish = false
+      rig.world.releaseFinish()
+    }
+    rig.owner.startPreview(id, with: choice)
+    await Self.eventually("cleaning up") { rig.world.finishWaiting }
+    guard case .generating? = rig.owner.previews[id] else {
+      Issue.record("the comparison must not open while the attempt is still ending")
+      return
+    }
+    rig.world.holdFinish = false
+    rig.world.releaseFinish()
+    let candidate = try await rig.preview(id)
+    #expect(await rig.owner.keepPreview(id, candidateID: candidate.id))
+    #expect(rig.summaryOnDisk(id) == candidate.text)
+
+    // The meeting changes during cleanup: no comparison of a stale summary opens.
+    rig.world.holdFinish = true
+    rig.owner.startPreview(id, with: choice)
+    await Self.eventually("cleaning up again") { rig.world.finishWaiting }
+    rig.world.speakerNames = ["mic:you": "Priya"]
+    rig.world.holdFinish = false
+    rig.world.releaseFinish()
+    await Self.eventually("stale attempt ended") { !rig.owner.isWriting(id) }
+    guard case .failed? = rig.owner.previews[id] else {
+      Issue.record("a meeting changed during cleanup must not open a comparison")
+      return
+    }
+    #expect(rig.summaryOnDisk(id) == candidate.text)
+  }
+
   /// #4719: when this fails, clicking Back while a first summary is written loses it, or closing
   /// the page keeps a replacement summary nobody chose.
   @Test("closing the page keeps writing a first summary and drops a replacement")
