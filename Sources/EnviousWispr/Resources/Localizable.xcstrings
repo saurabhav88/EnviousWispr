@@ -33515,6 +33515,17 @@
         }
       }
     },
+    "It shows here when it's ready." : {
+      "comment" : "History meeting: under Writing a summary, for a meeting with no summary yet.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sie erscheint hier, sobald sie fertig ist."
+          }
+        }
+      }
+    },
     "keyName.command" : {
       "comment" : "Keyboard key name shown in keybind labels. The Command key; keep the symbol.",
       "extractionState" : "extracted_with_value",
@@ -43137,6 +43148,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wenn etwas schiefgeht, sind die Hinweise jetzt verständlicher. Bei einem teilweisen Fehler erhältst du eine andere Warnung als bei einem vollständigen Ausfall."
+          }
+        }
+      }
+    },
+    "Write summary with %@" : {
+      "comment" : "History, a meeting with no summary: writes it with the named AI model, e.g. \"Write summary with claude-sonnet-5-5\".",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zusammenfassung erstellen mit %@"
+          }
+        }
+      }
+    },
+    "Writing a summary…" : {
+      "comment" : "History meeting: the first summary of a meeting is being written.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zusammenfassung wird erstellt …"
           }
         }
       }

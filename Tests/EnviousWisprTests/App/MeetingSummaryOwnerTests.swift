@@ -420,18 +420,20 @@ struct MeetingSummaryOwnerTests {
     #expect(rig.world.titles.isEmpty)
   }
 
-  @Test("a newer summary on disk wins against a preview of an empty summary, keeping the owed mark")
+  @Test("a newer summary on disk wins against a first summary still being written, keeping the owed mark")
   func manualSummaryRefusesANewerSave() async throws {
     let rig = try Rig()
     let id = try rig.readyMeeting()
     let choice = HistoryPolishChoice(provider: .claude, model: "claude-test", sendsTextOffMac: true)
+    rig.world.holdCalls = true
     rig.owner.startPreview(id, with: choice)
-    let preview = try await rig.preview(id)
-    #expect(preview.current == nil)
+    await Self.eventually("calling") { rig.world.callsWaiting == 1 }
     _ = try rig.store.saveSummary("A newer summary.", origin: .userEdited, inputs: nil, meeting: id)
+    await rig.documents.load(id)
     _ = try rig.store.setSummaryPending(true, meeting: id)
+    rig.world.releaseCall()
+    await Self.eventually("attempt ended") { !rig.owner.isWriting(id) }
 
-    #expect(await rig.owner.keepPreview(id, candidateID: preview.id) == false)
     #expect(rig.summaryOnDisk(id) == "A newer summary.")
     #expect(try rig.manifest(id).summaryPending == true)
   }
@@ -452,6 +454,11 @@ struct MeetingSummaryOwnerTests {
     let refused = try rig.readyMeeting()
     let choice = HistoryPolishChoice(provider: .claude, model: "claude-test", sendsTextOffMac: true)
     let page = MeetingSummaryEditState()
+    // #4719: with no saved summary a new one is kept at once; these test the comparison's Keep.
+    for id in [kept, refused] {
+      _ = try rig.store.saveSummary("Saved before.", origin: .userEdited, inputs: nil, meeting: id)
+      await rig.documents.load(id)
+    }
 
     page.beginPreview(choice, meetingID: kept, summaries: rig.owner)
     let candidate = try await rig.preview(kept)
@@ -490,6 +497,114 @@ struct MeetingSummaryOwnerTests {
     #expect(!page.keepFailed(refused), "a new preview clears the refusal")
     page.discardPreview(refused, summaries: rig.owner)
     #expect(rig.owner.previews[refused] == nil)
+  }
+
+  /// #4719: when this fails, writing a meeting's first summary opens a comparison against "No
+  /// summary yet", or a summary is saved over an existing one (even one the user emptied)
+  /// without Keep new.
+  @Test("a first summary is kept at once; a summary that replaces one waits for Keep new")
+  func firstSummaryIsKeptWithoutComparing() async throws {
+    let rig = try Rig()
+    let first = try rig.readyMeeting()
+    let replaced = try rig.readyMeeting()
+    let emptied = try rig.readyMeeting()
+    _ = try rig.store.saveSummary("My own summary.", origin: .userEdited, inputs: nil, meeting: replaced)
+    _ = try rig.store.saveSummary("", origin: .userEdited, inputs: nil, meeting: emptied)
+    let choice = HistoryPolishChoice(provider: .claude, model: "claude-test", sendsTextOffMac: true)
+
+    rig.owner.startPreview(first, with: choice)
+    // `eventually` re-checks on observable changes, so it waits on the owner, then reads disk.
+    await Self.eventually("first summary kept") {
+      rig.owner.previews[first] == nil && !rig.owner.savingFirst.contains(first)
+        && !rig.owner.isWriting(first)
+    }
+    #expect(rig.summaryOnDisk(first) == "## Overview\nShip Friday.")
+    #expect(try rig.manifest(first).summary?.inputs?.modelOverride?.model == choice.model)
+    #expect(!rig.owner.firstSaveRefused.contains(first))
+
+    for id in [replaced, emptied] {
+      let before = rig.summaryOnDisk(id)
+      rig.owner.startPreview(id, with: choice)
+      let candidate = try await rig.preview(id)
+      #expect(!candidate.replacesNoSummary)
+      #expect(rig.summaryOnDisk(id) == before, "a saved summary is replaced only by Keep new")
+      #expect(!rig.owner.savingFirst.contains(id))
+    }
+  }
+
+  /// #4719: when this fails, clicking Back while a first summary is written loses it, or closing
+  /// the page keeps a replacement summary nobody chose.
+  @Test("closing the page keeps writing a first summary and drops a replacement")
+  func closingThePageKeepsAFirstSummary() async throws {
+    let rig = try Rig()
+    let first = try rig.readyMeeting()
+    let replaced = try rig.readyMeeting()
+    _ = try rig.store.saveSummary("My own summary.", origin: .userEdited, inputs: nil, meeting: replaced)
+    await rig.documents.load(replaced)
+    let choice = HistoryPolishChoice(provider: .claude, model: "claude-test", sendsTextOffMac: true)
+    rig.world.holdCalls = true
+
+    rig.owner.startPreview(first, with: choice)
+    await Self.eventually("first calling") { rig.world.callsWaiting == 1 }
+    rig.owner.closePreview(first)
+    rig.world.releaseCall()
+    await Self.eventually("first summary kept after the page closed") {
+      rig.owner.previews[first] == nil && !rig.owner.savingFirst.contains(first)
+        && !rig.owner.isWriting(first)
+    }
+    #expect(rig.summaryOnDisk(first) == "## Overview\nShip Friday.")
+
+    rig.owner.startPreview(replaced, with: choice)
+    await Self.eventually("replacement calling") { rig.world.callsWaiting == 1 }
+    rig.owner.closePreview(replaced)
+    #expect(rig.owner.previews[replaced] == nil)
+    rig.world.releaseCall()
+    await Self.eventually("replacement ended") { !rig.owner.isWriting(replaced) }
+    #expect(rig.summaryOnDisk(replaced) == "My own summary.")
+    rig.world.holdCalls = false
+
+    // Closed after the summary was written, while the attempt still cleans up: still kept.
+    let late = try rig.readyMeeting()
+    rig.world.holdFinish = true
+    rig.owner.startPreview(late, with: choice)
+    await Self.eventually("cleaning up") { rig.world.finishWaiting }
+    rig.owner.closePreview(late)
+    rig.world.holdFinish = false
+    rig.world.releaseFinish()
+    await Self.eventually("late first summary kept") {
+      rig.owner.previews[late] == nil && !rig.owner.savingFirst.contains(late)
+        && !rig.owner.isWriting(late)
+    }
+    #expect(rig.summaryOnDisk(late) == "## Overview\nShip Friday.")
+
+    // Closed before the meeting's documents were read: nothing says it is a first summary, so
+    // the new summary is dropped as Cancel does, and no failure waits on the page.
+    let unread = try rig.readyMeeting()
+    rig.world.holdPrepare = true
+    rig.owner.startPreview(unread, with: choice)
+    await Self.eventually("preparing") { rig.world.preparing }
+    rig.owner.closePreview(unread)
+    #expect(rig.owner.previews[unread] == nil)
+    rig.world.holdPrepare = false
+    rig.world.releasePrepare()
+    await Self.eventually("unread attempt ended") { !rig.owner.isWriting(unread) }
+    #expect(rig.owner.previews[unread] == nil)
+    #expect(rig.summaryOnDisk(unread) == nil)
+
+    // Documents read and no summary: a first summary closed before its model starts is kept.
+    let read = try rig.readyMeeting()
+    await rig.documents.load(read)
+    rig.world.holdPrepare = true
+    rig.owner.startPreview(read, with: choice)
+    await Self.eventually("preparing the read meeting") { rig.world.preparing }
+    rig.owner.closePreview(read)
+    rig.world.holdPrepare = false
+    rig.world.releasePrepare()
+    await Self.eventually("read first summary kept") {
+      rig.owner.previews[read] == nil && !rig.owner.savingFirst.contains(read)
+        && !rig.owner.isWriting(read)
+    }
+    #expect(rig.summaryOnDisk(read) == "## Overview\nShip Friday.")
   }
 
   @Test("a meeting that changes while its summary is written keeps no stale answer")

@@ -156,16 +156,31 @@ struct MeetingSummaryView: View {
       // ("Write summary again with") and in the out-of-date notice, and copying in the page
       // header; edit mode has no buttons under the text.
       if documents.summary(meetingID) == nil {
+        // The model that will write it is on the button, so it is known before the first summary
+        // (founder 2026-11-19). A long model name is shortened in the middle; hover shows it whole.
         Button {
           if let previewChoice { writePreview(previewChoice) }
         } label: {
-          EnviousButtonLabel(
-            LocalizedStringResource(
-              "Write summary", comment: "History, a meeting: writes its summary."),
-            size: .medium)
+          if let previewChoice {
+            EnviousButtonLabel(
+              verbatim: String(
+                localized: "Write summary with \(previewChoice.title)",
+                comment:
+                  "History, a meeting with no summary: writes it with the named AI model, e.g. \"Write summary with claude-sonnet-5-5\"."
+              ),
+              size: .large)
+          } else {
+            EnviousButtonLabel(
+              LocalizedStringResource(
+                "Write summary", comment: "History, a meeting: writes its summary."),
+              size: .large)
+          }
         }
+        .lineLimit(1)
+        .truncationMode(.middle)
+        .help(previewChoice?.title ?? "")
         .settingsButton(
-          .outlined, size: .medium,
+          .filled, size: .large,
           isEnabled:
             !(writing || requesting || configurationProblem != nil || nothingToSummarize
             || previewChoice == nil)

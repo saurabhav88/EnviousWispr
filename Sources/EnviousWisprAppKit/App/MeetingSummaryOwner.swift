@@ -328,12 +328,25 @@ final class MeetingSummaryOwner {
     fileprivate let base: MeetingDocumentsManifest.Summary?
     fileprivate let inputs: Inputs
     fileprivate let answer: MeetingSummary.Written
+
+    /// The meeting had no saved summary when this one was written, so there is nothing to
+    /// compare it with: it is kept at once instead of opening the comparison (founder
+    /// 2026-11-19, #4719). A saved summary the user emptied still has a base and is compared.
+    var replacesNoSummary: Bool { base == nil }
   }
+
+  /// #4719: meetings whose first summary is being kept (the page shows Saving…), and meetings
+  /// whose first summary could not be kept (the page shows "The saved summary changed.").
+  private(set) var savingFirst: Set<UUID> = []
+  private(set) var firstSaveRefused: Set<UUID> = []
+
+  func dismissFirstSaveRefusal(_ meetingID: UUID) { firstSaveRefused.remove(meetingID) }
 
   func startPreview(_ meetingID: UUID, with choice: HistoryPolishChoice) {
     guard currentAttempt[meetingID] == nil, !requesting.contains(meetingID), !terminating,
       choice.provider != .none, choice.provider != .s1Mini
     else { return }
+    firstSaveRefused.remove(meetingID)
     start(meetingID, approvedUserEdit: nil, owedAlready: false, preview: choice)
   }
 
@@ -351,6 +364,32 @@ final class MeetingSummaryOwner {
     if case .generating(let id) = previews[meetingID] { attempts[id]?.task.cancel() }
     previews[meetingID] = nil
   }
+
+  /// The meeting page closed. A first summary still being written keeps going and is kept when
+  /// it is ready (#4719): nothing would be compared, so leaving the page must not lose it. Any
+  /// other new summary is dropped, as Cancel does.
+  func closePreview(_ meetingID: UUID) {
+    switch previews[meetingID] {
+    case .generating(let id)?:
+      // A first summary: known from the attempt once it read the saved summary, else from the
+      // meeting's documents when they are read. Unread documents (the page closed within the
+      // read) give no answer, so the new summary is dropped as Cancel does.
+      let first =
+        firstAttempts[id]
+        ?? (documents.loadState(meetingID) == .loaded && documents.manifest(meetingID)?.summary == nil)
+      if first { return }
+      discardPreview(meetingID)
+    case .comparing(let candidate)? where candidate.replacesNoSummary:
+      // Written, and about to be kept once the attempt finishes ending.
+      return
+    default:
+      discardPreview(meetingID)
+    }
+  }
+
+  /// #4719: preview attempt -> whether it writes the meeting's first summary, known once `write`
+  /// has read the saved summary.
+  private var firstAttempts: [UUID: Bool] = [:]
 
   func keepPreview(_ meetingID: UUID, candidateID: UUID) async -> Bool {
     guard !terminating, currentAttempt[meetingID] == nil, !requesting.contains(meetingID),
@@ -453,6 +492,7 @@ final class MeetingSummaryOwner {
     defer {
       busy.remove(attempt)
       attempts[attempt] = nil
+      firstAttempts[attempt] = nil
     }
     if preview != nil {
       guard currentAttempt[meetingID] == attempt else { return }
@@ -460,6 +500,15 @@ final class MeetingSummaryOwner {
       activity[meetingID] = nil
       if case .generating(let id) = previews[meetingID], id == attempt {
         previews[meetingID] = Task.isCancelled || terminating ? nil : .failed
+      } else if case .comparing(let candidate)? = previews[meetingID], candidate.id == attempt,
+        candidate.replacesNoSummary, !terminating
+      {
+        // #4719: a first summary has nothing to compare with, so it is kept now, after the
+        // attempt has ended, with Keep new's checks.
+        savingFirst.insert(meetingID)
+        let kept = await keepPreview(meetingID, candidateID: attempt)
+        savingFirst.remove(meetingID)
+        if !kept, !terminating { firstSaveRefused.insert(meetingID) }
       }
       return
     }
@@ -630,6 +679,7 @@ final class MeetingSummaryOwner {
       if Task.isCancelled { return Ending(end: .cancelled) }
     }
     let baseSummary = preview == nil ? nil : documents.manifest(meetingID)?.summary
+    if preview != nil { firstAttempts[attempt] = baseSummary == nil }
     let currentSummary = preview == nil ? nil : documents.summary(meetingID)
     // Nil inputs are a cancel (gone, not ready) unless the meeting is known and wordless (#4148).
     guard
