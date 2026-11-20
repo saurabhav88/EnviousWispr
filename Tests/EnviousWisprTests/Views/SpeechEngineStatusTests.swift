@@ -25,7 +25,7 @@ struct SpeechEngineStatusTests {
     #expect(S.parakeet(installed: nil, removing: false, leftovers: false, row: nil).install == .checking)
     let removing = S.parakeet(
       installed: true, removing: true, leftovers: false,
-      row: Row(title: "t", detail: nil, showsCancel: true, action: nil, owner: .foreground))
+      row: Row(title: "t", detail: nil, fraction: nil, showsCancel: true, action: nil, owner: .foreground))
     #expect(removing == S(install: .removing, operation: nil), "nothing else while removing")
   }
 
@@ -33,17 +33,19 @@ struct SpeechEngineStatusTests {
   func parakeetOperations() {
     let upgrade = S.parakeet(
       installed: true, removing: false, leftovers: false,
-      row: Row(title: "Downloading", detail: "1 of 2", showsCancel: true, action: nil,
+      row: Row(title: "Downloading", detail: "1 of 2", fraction: 0.5, showsCancel: true, action: nil,
         owner: .backgroundUpgrade))
     #expect(upgrade.offersRemove, "the installed copy stays removable")
-    #expect(upgrade.operation == .working(title: "Downloading", detail: "1 of 2", fraction: nil, cancel: .parakeetUpgrade))
+    #expect(upgrade.operation == .working(title: "Downloading", detail: "1 of 2", fraction: 0.5, cancel: .parakeetUpgrade))
     let paused = S.parakeet(
       installed: false, removing: false, leftovers: false,
-      row: Row(title: "Paused", detail: nil, showsCancel: false, action: .fastModelResume,
+      row: Row(title: "Paused", detail: nil, fraction: nil, showsCancel: false, action: .fastModelResume,
         owner: .foreground))
     #expect(paused.operation == .paused(title: "Paused", resume: .parakeetForeground, cancel: .parakeetForeground))
     #expect(!paused.offersSetUp, "Resume, not a second install")
-    let retry = Row(title: "Couldn't load", detail: nil, showsCancel: false, action: .fastModelTryAgain, owner: .retry)
+    let retry = Row(
+      title: "Couldn't load", detail: nil, fraction: nil, showsCancel: false,
+      action: .fastModelTryAgain, owner: .retry)
     #expect(
       S.parakeet(installed: true, removing: false, leftovers: false, row: retry).operation
         == .failed(title: "Couldn't load", detail: nil, retry: .parakeetRetry))
@@ -51,7 +53,7 @@ struct SpeechEngineStatusTests {
     #expect(removedRetry.operation == nil && removedRetry.offersSetUp, "nothing to load: Set up model")
     let pausedUpgrade = S.parakeet(
       installed: true, removing: false, leftovers: false,
-      row: Row(title: "Paused", detail: nil, showsCancel: false, action: .fastModelResume,
+      row: Row(title: "Paused", detail: nil, fraction: nil, showsCancel: false, action: .fastModelResume,
         owner: .backgroundUpgrade))
     #expect(pausedUpgrade.operation == .paused(title: "Paused", resume: .parakeetUpgrade, cancel: .parakeetUpgrade))
   }
@@ -59,9 +61,12 @@ struct SpeechEngineStatusTests {
   @Test("Parakeet after a recorded removal: a failed or interrupted removal offers Set up model and the leftover removal, never Resume or Retry")
   func parakeetAfterRemovalRecorded() {
     for row in [
-      Row(title: "Couldn't download", detail: nil, showsCancel: false, action: .fastModelTryAgain, owner: .foreground),
-      Row(title: "Paused", detail: nil, showsCancel: false, action: .fastModelResume, owner: .foreground),
-      Row(title: "Couldn't load", detail: nil, showsCancel: false, action: .fastModelTryAgain, owner: .retry),
+      Row(title: "Couldn't download", detail: nil, fraction: nil, showsCancel: false,
+        action: .fastModelTryAgain, owner: .foreground),
+      Row(title: "Paused", detail: nil, fraction: nil, showsCancel: false,
+        action: .fastModelResume, owner: .foreground),
+      Row(title: "Couldn't load", detail: nil, fraction: nil, showsCancel: false,
+        action: .fastModelTryAgain, owner: .retry),
     ] {
       let status = S.parakeet(installed: false, removing: false, leftovers: true, installWanted: false, row: row)
       #expect(status.operation == nil, "\(row.title): the refused action is not offered")
@@ -69,7 +74,8 @@ struct SpeechEngineStatusTests {
     }
     let wanted = S.parakeet(
       installed: false, removing: false, leftovers: false, installWanted: true,
-      row: Row(title: "Couldn't download", detail: nil, showsCancel: false, action: .fastModelTryAgain, owner: .foreground))
+      row: Row(title: "Couldn't download", detail: nil, fraction: nil, showsCancel: false,
+        action: .fastModelTryAgain, owner: .foreground))
     #expect(wanted.operation == .failed(title: "Couldn't download", detail: nil, retry: .parakeetForeground), "a wanted download keeps its Retry")
   }
 
@@ -83,9 +89,12 @@ struct SpeechEngineStatusTests {
     }
     let leftovers = S.whisper(.notDownloaded, removing: false, leftovers: true)
     #expect(leftovers.offersSetUp && leftovers.offersLeftoverRemoval, "a failed removal's bytes can be removed")
+    let downloading = S.whisper(.downloading(progress: 0.4, status: "40%"), removing: false, leftovers: true)
     #expect(
-      S.whisper(.downloading(progress: 0.4, status: "40%"), removing: false).operation
+      downloading.operation
         == .working(title: SpeechEngineStatusCopy.downloading, detail: "40%", fraction: 0.4, cancel: .whisper))
+    #expect(downloading.showsInstallLine == false)
+    #expect(downloading.offersLeftoverRemoval == false)
     #expect(S.whisper(.paused, removing: false).operation == .paused(title: SpeechEngineStatusCopy.paused, resume: .whisper, cancel: .whisper))
     let failed = S.whisper(.error("disk"), removing: false)
     #expect(failed.operation == .failed(title: SpeechEngineStatusCopy.somethingWentWrong, detail: "disk", retry: .whisperDetect))
