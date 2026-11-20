@@ -894,6 +894,8 @@ extension ParakeetUpgradeCoordinator {
       // X: the budget is spent on these bytes.
       do {
         if !state.refetchSpent {
+          // Keep the only admitted Parakeet install available for an explicit retry.
+          guard v3Accepted else { throw rowT() }
           state.refetchSpent = true
           try target.store.write(state)  // refetch intent BEFORE deleting
           emit(.refetchStarted)
