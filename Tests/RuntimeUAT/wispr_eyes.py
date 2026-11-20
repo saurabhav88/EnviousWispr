@@ -6,6 +6,7 @@ import json, os, platform, sys, subprocess, time
 import datetime as _dt
 import pathlib
 sys.path.insert(0, os.path.dirname(__file__))
+import log_verdict
 from ui_helpers import (find_app_pid, get_ax_app, get_attr, set_attr, perform_action,
     find_element, find_all_elements, find_control_for_label, wait_for_condition,
     get_process_memory_mb, get_clipboard_text, validate_app_ready, element_frame,
@@ -1867,13 +1868,16 @@ def _snapshot_log_size():
     return _snapshot_log_state()
 
 
-def _wait_for_pipeline_completion(log_state_before, clip_before, timeout):
+def _wait_for_pipeline_completion(log_state_before, clip_before, timeout, *, require_terminal=False):
     """Block until the pipeline emits a completion marker in app.log, or
     timeout. Handles rotation/truncation mid-test. Falls back to clipboard
     polling if app.log isn't actually growing (Debug mode off but a stale
     file exists from a previous session). Captures the transient clipboard
     value AT detection time so a 'restore clipboard after paste' cycle
     doesn't wipe it before extract.
+
+    PTT uses the app's asynchronously logged terminal row as its completion
+    signal, using the same cursor and deadline.
 
     Returns: (completed, signal, completion_line, states_seen, clip_seen, lines_accumulated)
         signal in {"log", "clipboard", None}
@@ -1882,9 +1886,10 @@ def _wait_for_pipeline_completion(log_state_before, clip_before, timeout):
             content across mid-test rotation)
     """
     states_seen = []
-    t_stop = time.time()
+    t_stop = time.monotonic()
     completion_line = None
     signal = None
+    completed = False
     clip_seen = None
     lines_accumulated = []
 
@@ -1892,29 +1897,44 @@ def _wait_for_pipeline_completion(log_state_before, clip_before, timeout):
     log_has_grown = False
     log_stale_warned = False
 
-    mode = "log" if log_state is not None else "clipboard fallback — enable Debug mode in Settings -> Diagnostics"
+    mode = "take terminal" if require_terminal else (
+        "log" if log_state is not None else "clipboard fallback — enable Debug mode in Settings -> Diagnostics"
+    )
     print(f"Watching pipeline ({mode})...")
 
-    while time.time() - t_stop < timeout:
+    while time.monotonic() - t_stop < timeout:
         for label in ("Transcribing", "Loading model", "Polishing", "Starting"):
             if _text_visible(label) and label not in states_seen:
                 states_seen.append(label)
-                print(f"  [{time.time() - t_stop:.1f}s] {label}...")
+                print(f"  [{time.monotonic() - t_stop:.1f}s] {label}...")
 
         # Log path: read any new lines, accumulate them so extraction has them
         # even if rotation later wipes the file.
         if log_state is not None:
             new_lines, log_state = _read_new_log_lines(log_state)
+            if require_terminal and time.monotonic() - t_stop >= timeout:
+                break
             if new_lines:
                 log_has_grown = True
                 lines_accumulated.extend(new_lines)
                 for line in new_lines:
-                    if any(m in line for m in _COMPLETION_MARKERS):
-                        completion_line = line.strip()
-                        signal = "log"
-                        break
+                    if require_terminal:
+                        entry = log_verdict.LINE.match(line)
+                        if not entry or entry.group("cat") != "Telemetry":
+                            continue
+                        terminal = log_verdict.TERMINAL.match(entry.group("msg"))
+                        if not terminal:
+                            continue
+                        completed = terminal.group("result") == "completed"
+                    elif any(marker in line for marker in _COMPLETION_MARKERS):
+                        completed = True
+                    else:
+                        continue
+                    completion_line = line.strip()
+                    signal = "log"
+                    break
                 if signal == "log":
-                    print(f"  [{time.time() - t_stop:.1f}s] Pipeline complete (log)")
+                    print(f"  [{time.monotonic() - t_stop:.1f}s] Pipeline ended (log)")
                     break
 
             # Stale-log fallback: a pre-existing app.log from a prior debug
@@ -1923,28 +1943,31 @@ def _wait_for_pipeline_completion(log_state_before, clip_before, timeout):
             # labels, because a fast pipeline can finish before AX state
             # reads catch a label.
             if (
-                not log_has_grown
-                and (time.time() - t_stop) > 1.5
+                not require_terminal
+                and not log_has_grown
+                and (time.monotonic() - t_stop) > 1.5
                 and not log_stale_warned
             ):
-                print(f"  [{time.time() - t_stop:.1f}s] app.log not growing — falling back to clipboard. Toggle Debug mode in Settings -> Diagnostics to fix.")
+                print(f"  [{time.monotonic() - t_stop:.1f}s] app.log not growing — falling back to clipboard. Toggle Debug mode in Settings -> Diagnostics to fix.")
                 log_stale_warned = True
 
         # Clipboard path: primary when no log file at all; fallback when log
         # exists but isn't being written to.
-        if log_state is None or log_stale_warned:
+        if not require_terminal and (log_state is None or log_stale_warned):
             clip_now = get_clipboard_text() or ""
             if clip_now != clip_before:
                 signal = "clipboard"
                 clip_seen = clip_now  # capture before restore-after-paste reverts
-                print(f"  [{time.time() - t_stop:.1f}s] Clipboard updated!")
+                print(f"  [{time.monotonic() - t_stop:.1f}s] Clipboard updated!")
+                completed = True
                 break
 
         time.sleep(0.2)
-    else:
-        print(f"  [{time.time() - t_stop:.1f}s] TIMEOUT — pipeline did not complete")
+    if signal is None:
+        detail = "missing take terminal" if require_terminal else "pipeline did not complete"
+        print(f"  [{time.monotonic() - t_stop:.1f}s] TIMEOUT — {detail}")
 
-    return (signal is not None, signal, completion_line, states_seen, clip_seen, lines_accumulated)
+    return completed, signal, completion_line, states_seen, clip_seen, lines_accumulated
 
 
 def _extract_transcript_text(signal, log_state_before, clip_seen=None, lines_accumulated=None):
@@ -3169,7 +3192,7 @@ def test_hands_free(audio=None, sentence=None, hold=4.0, expect=None, timeout=30
     return overall_pass
 
 
-def test_ptt(key=None, audio=None, sentence=None, expect=None, timeout=10.0):
+def test_ptt(key=None, audio=None, sentence=None, expect=None, timeout=30.0):
     """End-to-end PTT (push-to-talk) recording test via key hold.
 
     #1707 Phase 3 crash-safety-net Live UAT recipe (bounded-wait + refuse-
@@ -3202,7 +3225,7 @@ def test_ptt(key=None, audio=None, sentence=None, expect=None, timeout=10.0):
     3. Play audio through speakers
     4. Wait for audio to finish + buffer
     5. Release key (recording stops, pipeline runs)
-    6. Monitor pipeline via state polling + clipboard delta
+    6. Observe the take's terminal in the log
 
     Args:
         key:      Key to hold. None (default) auto-detects from EnviousWispr's
@@ -3256,7 +3279,6 @@ def test_ptt(key=None, audio=None, sentence=None, expect=None, timeout=10.0):
 
     log_size_before = _snapshot_log_size()
     take_started = _dt.datetime.now().astimezone()  # #3764: the take gate reads from here
-    clip_before = get_clipboard_text() or ""
 
     # Phase 1: Key down (recording starts)
     import simulate_input as _si
@@ -3305,13 +3327,13 @@ def test_ptt(key=None, audio=None, sentence=None, expect=None, timeout=10.0):
     _key_up()
     _tg.take_stopped()
 
-    # Phase 5: Wait for completion (log-based with clipboard fallback)
+    # Phase 5: Wait for the current take's terminal in the log.
     t_stop = time.time()
-    completed, signal, completion_line, states_seen, clip_seen, log_lines = _wait_for_pipeline_completion(
-        log_size_before, clip_before, timeout
+    completed, signal, completion_line, states_seen, _, log_lines = _wait_for_pipeline_completion(
+        log_size_before, None, timeout, require_terminal=True
     )
     pipeline_time = time.time() - t_stop
-    transcription = _extract_transcript_text(signal, log_size_before, clip_seen, log_lines)
+    transcription = _extract_transcript_text(signal, log_size_before, lines_accumulated=log_lines)
 
     # Phase 6: Report
     print(f"\n{'=' * 60}")
@@ -3325,18 +3347,19 @@ def test_ptt(key=None, audio=None, sentence=None, expect=None, timeout=10.0):
     if completion_line:
         print(f"Log line:       {completion_line}")
 
+    if signal is None and not states_seen:
+        _ptt_binding_diagnostic(key)
+    end_test()
+    _tg.check_player(*player)
+    if signal is None:
+        _tg.check_after_take("\n".join(log_lines))
+        raise _tg.CouldNotTell(f"no take terminal observed within {timeout:g}s after key release")
+    _tg.check_after_take(_take_lines(take_started))
+
     # PTT always uses audio (we played a file), so non-completion is FAIL
     # regardless of "audio was empty" semantics.
     overall_pass = _report_result(completed, audio, expect, transcription)
-    # Nothing happened at all: print what the instrument believed, so a reader
-    # can tell a real product failure from a key the app was never listening
-    # for. Gated on the silent shape so a passing run gains no noise.
-    if not completed and not states_seen:
-        _ptt_binding_diagnostic(key)
     print(f"{'=' * 60}")
-    end_test()
-    _tg.check_player(*player)
-    _tg.check_after_take(_take_lines(take_started))
     return overall_pass
 
 
@@ -4519,8 +4542,28 @@ def _self_test():
         else:
             print(f"  ok      {why}")
 
+    # #4648: the timing marker and final result are written separately.
+    from unittest.mock import Mock, patch
+    cursor = (1, 0, 0)
+    after_timing = (1, 80, 0)
+    timing = "[2026-01-01T12:00:00-05:00] [INFO] [Pipeline] Pipeline timing TOTAL: 11.0s"
+    terminal = ("[2026-01-01T12:00:01-05:00] [INFO] [Telemetry] "
+                "dictation_terminal result=completed reason=nil take=abc backend=parakeet")
+    clock = Mock()
+    clock.monotonic.side_effect = [0, 11, 11, 12, 12, 12]
+    read = Mock(side_effect=[([timing], after_timing), ([terminal], (1, 200, 0))])
+    with patch.multiple(sys.modules[__name__], time=clock, _read_new_log_lines=read,
+                        _text_visible=lambda _label: False):
+        completed, signal, _, _, _, lines = _wait_for_pipeline_completion(
+            cursor, "", 30, require_terminal=True
+        )
+    if (completed, signal, lines, [args[0] for args, _ in read.call_args_list]) != (
+        True, "log", [timing, terminal], [cursor, after_timing]
+    ):
+        failures.append("#4648: PTT failed to await the terminal on the existing log cursor")
+
     total = (len(pr3_rows) + guard_rows + len(banner_cases) + banner_rows_extra + file_rows
-             + len(window_cases) + entry_rows + find_rows + wrap_rows_total)
+             + len(window_cases) + entry_rows + find_rows + wrap_rows_total + 1)
     if failures:
         for f in failures:
             print(f"  FAIL    {f}")
