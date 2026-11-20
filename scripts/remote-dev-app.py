@@ -200,7 +200,7 @@ def build(host):
             fetch_script = (f"set -e; C={q(co)}; B={q(b)}; "
                             f"[ -d \"$C/.git\" ] || git clone -q {q(host['repo_url'])} \"$C\"; cd \"$C\"; "
                             "rm -f .ew-uat-tree; "
-                            "git bundle verify -q \"$B\" >/dev/null 2>&1 || { rm -f \"$B\"; exit 47; }; "
+                            + remote_ship.verify_bundle_script('"$B"', host["repo_url"], 'rm -f "$B";') + "; "
                             f"git fetch -q \"$B\" {q(ref + ':' + ref)}; rm -f \"$B\"; "
                             f"git checkout -q --detach {q(commit)}; git update-ref -d {q(ref)}; "
                             "git clean -q -ffdx -e .derivedData -e build")

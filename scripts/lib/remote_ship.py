@@ -15,11 +15,15 @@ the supervisor runs the copy shipped inside the run, never an older one.
   targets as text) of every tracked file of `tree` under the compiled roots, read
   from the working files. Equal on both Macs = the compiled bytes are the same.
 - make_bundle(root, tree, run_id): a commit of `tree` under a unique temporary ref
-  refs/ew-remote/<run_id>, bundled against origin/main when that is an ancestor.
+  refs/ew-remote/<run_id>, bundled against the commit it shares with origin/main.
+- verify_bundle_script(bundle, repo_url, cleanup): the remote shell step that verifies
+  the bundle and, when its base is missing there, fetches main from GitHub once and
+  verifies again (#4712); exit 47 asks the caller for a full bundle.
 """
 
 import hashlib
 import os
+import shlex
 from pathlib import Path
 import shutil
 import subprocess
@@ -100,10 +104,42 @@ def make_bundle(root, tree, run_id, out_path):
     commit = git(root, "commit-tree", tree, "-p", head, "-m", f"ew remote run {run_id}")
     ref = f"refs/ew-remote/{run_id}"
     git(root, "update-ref", ref, commit)
-    base = subprocess.run(["git", "-C", str(root), "merge-base", "--is-ancestor", "origin/main", commit],
-                          capture_output=True).returncode == 0
-    git(root, "bundle", "create", str(out_path), ref, *(["^origin/main"] if base else []))
-    return commit, ref, base
+    # Thin against the commit this branch shares with main, not main's tip: a branch
+    # that main has since moved past would otherwise ship its whole history (#4712).
+    # That shared commit is on GitHub main, so verify_bundle_script can fetch it.
+    shared = subprocess.run(["git", "-C", str(root), "merge-base", "origin/main", commit],
+                            capture_output=True, text=True)
+    base = shared.stdout.strip() if shared.returncode == 0 else ""
+    git(root, "bundle", "create", str(out_path), ref, *([f"^{base}"] if base else []))
+    return commit, ref, bool(base)
+
+
+FETCH_MAIN_SECONDS = 90  # well under both callers' 600 s SSH timeout
+# perl <seconds> <command...>: run the command in a new process group; on the
+# deadline TERM then KILL that group. Exit status is the command's, 124 on deadline.
+_GROUP_DEADLINE_PERL = (
+    '$s = shift; setpgrp(0, 0); my $p = fork; die "fork" unless defined $p; '
+    'if ($p == 0) { exec @ARGV; exit 127 } '
+    '$SIG{ALRM} = sub { $SIG{TERM} = "IGNORE"; kill "TERM", -$$; sleep 1; kill "KILL", -$$; exit 124 }; '
+    'alarm $s; waitpid($p, 0); exit($? >> 8)')
+
+
+def verify_bundle_script(bundle, repo_url, cleanup="", fetch_seconds=FETCH_MAIN_SECONDS):
+    """Remote shell step: verify `bundle` (a shell word, may name a variable).
+
+    A missing base usually means that Mac's clone is behind main. It fetches main
+    from `repo_url` itself, which is faster than this Mac re-sending the whole
+    history (#4712: ~600 MB over a ~4.7 MB/s link), then verifies again. The fetch
+    is optional: a failed, slow or stalled one is stopped after `fetch_seconds`
+    and changes nothing. macOS has no `timeout`, so perl runs git in its own
+    process group and stops the WHOLE group (git and its network helpers), so no
+    abandoned transfer overlaps the full-bundle fallback. Still missing: run
+    `cleanup`, exit 47, and the caller sends full_bundle as before. Safe under `set -e`.
+    """
+    verify = f"git bundle verify -q {bundle} >/dev/null 2>&1"
+    fetch = (f"/usr/bin/perl -e {shlex.quote(_GROUP_DEADLINE_PERL)} {int(fetch_seconds)} git fetch -q "
+             f"{shlex.quote(repo_url)} +refs/heads/main:refs/remotes/origin/main >/dev/null 2>&1 || true")
+    return f"{{ {verify} || {{ {fetch}; {verify}; }}; }} || {{ {cleanup} exit 47; }}"
 
 
 def full_bundle(root, ref, out_path):
