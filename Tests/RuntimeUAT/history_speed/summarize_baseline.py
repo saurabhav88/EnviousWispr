@@ -79,7 +79,8 @@ def main():
             continue
         if sc.get("resources_idle"):
             idle = sc["resources_idle"]
-            lines.append(f"| Resources idle on History ({idle.get('seconds')} s) | CPU {fmt(idle.get('cpu_s'), 's')}, "
+            load_label = ", synthetic load requested" if sc.get("busy") else ""
+            lines.append(f"| Resources idle on History ({idle.get('seconds')} s{load_label}) | CPU {fmt(idle.get('cpu_s'), 's')}, "
                          f"peak {fmt(idle.get('peak_rss_mb'), 'MB')} | | none | | {conditions(sc)} |")
         groups = {}
         for run in sc.get("runs", []):
