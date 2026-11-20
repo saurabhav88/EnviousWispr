@@ -78,6 +78,14 @@ final class MeetingFollowState {
 
 // MARK: - Notes and panes
 
+/// #4724: the Your notes / AI summary tab the user last chose, for the whole app run, so the
+/// next meeting page opens on it (founder 2026-11-19: most people read the AI summary).
+@MainActor
+final class RememberedMeetingPane {
+  static let shared = RememberedMeetingPane()
+  var pane: MeetingAfterPresentation.LeftPane = .notes
+}
+
 @MainActor @Observable
 final class MeetingNotesPaneState {
   struct NoteRequest: Equatable {
@@ -85,7 +93,24 @@ final class MeetingNotesPaneState {
     let nonce = UUID()
   }
 
-  var leftPane: MeetingAfterPresentation.LeftPane = .notes
+  var leftPane: MeetingAfterPresentation.LeftPane
+  @ObservationIgnored private let remembered: RememberedMeetingPane
+
+  init(remembered: RememberedMeetingPane = .shared) {
+    self.remembered = remembered
+    leftPane = remembered.pane
+  }
+
+  /// The user picked a tab: shown now and remembered for the next meeting.
+  func chooseLeftPane(_ pane: MeetingAfterPresentation.LeftPane) {
+    leftPane = pane
+    remembered.pane = pane
+  }
+
+  /// Another meeting opens on the tab the user last chose; a notes-only meeting has no summary.
+  func openMeeting(notesOnly: Bool) {
+    leftPane = notesOnly ? .notes : remembered.pane
+  }
   /// #4611: Your notes' edit mode, owned here so Edit notes sits on the tab row. Nil until the
   /// person chooses: the pane then starts in its default mode.
   var editingNotes: Bool?

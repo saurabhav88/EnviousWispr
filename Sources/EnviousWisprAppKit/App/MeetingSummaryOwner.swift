@@ -202,6 +202,18 @@ final class MeetingSummaryOwner {
     return attempts[attempt]?.provider
   }
 
+  /// #4724: the meeting's summary entered the queue for a model on this Mac and still waits
+  /// for its turn (dictation or other meeting work). Set by the same execution decision that
+  /// queues it, so a hosted model (Ollama included) that is only preparing never reads waiting.
+  func waitsForLocalTurn(_ meetingID: UUID) -> Bool {
+    guard activity[meetingID] == .waiting, let attempt = currentAttempt[meetingID] else {
+      return false
+    }
+    return localQueued.contains(attempt)
+  }
+  /// #4724: attempts that entered the local queue.
+  private var localQueued: Set<UUID> = []
+
   /// A local summary waits for its turn or calls (previews give way to it).
   var localSummaryActive: Bool { lane.summaryActive }
   /// A local summary call runs (a final pass unit waits for it).
@@ -496,6 +508,7 @@ final class MeetingSummaryOwner {
       attempts[attempt] = nil
       firstAttempts[attempt] = nil
       pendingCandidates[attempt] = nil
+      localQueued.remove(attempt)
     }
     if preview != nil {
       let written = pendingCandidates.removeValue(forKey: attempt)
@@ -604,6 +617,7 @@ final class MeetingSummaryOwner {
       return ending
     }
     lane.summaryQueued()
+    localQueued.insert(attempt)
     defer { lane.summaryFinished() }
     // This attempt's whole write runs after the previous local attempt's whole write. A
     // cancelled attempt stops waiting at once (a final pass may be waiting for it to settle,

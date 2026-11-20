@@ -532,6 +532,43 @@ struct MeetingSummaryOwnerTests {
     }
   }
 
+  /// #4724: when this fails, the new-summary notice says it waits for dictation while a hosted
+  /// model only prepares, or says it writes while a model on this Mac waits its turn.
+  @Test("only an attempt queued for a model on this Mac reads as waiting its turn")
+  func waitingMeansQueuedLocally() async throws {
+    let rig = try Rig()
+    let hosted = try rig.readyMeeting()
+    let choice = HistoryPolishChoice(provider: .claude, model: "claude-test", sendsTextOffMac: true)
+    rig.world.holdPrepare = true
+    defer {
+      rig.world.holdPrepare = false
+      rig.world.releasePrepare()
+    }
+    rig.owner.startPreview(hosted, with: choice)
+    await Self.eventually("preparing") { rig.world.preparing }
+    #expect(rig.owner.activity[hosted] == .waiting)
+    #expect(!rig.owner.waitsForLocalTurn(hosted), "preparing is not waiting for a turn")
+    rig.world.holdPrepare = false
+    rig.world.releasePrepare()
+    await Self.eventually("hosted ended") { !rig.owner.isWriting(hosted) }
+
+    let first = try rig.readyMeeting()
+    let second = try rig.readyMeeting()
+    rig.world.execution = .local
+    rig.world.borrowAnswers = []
+    rig.world.holdCalls = true
+    defer {
+      rig.world.holdCalls = false
+      rig.world.releaseCall()
+      rig.world.releaseCall()
+    }
+    rig.owner.startPreview(first, with: choice)
+    await Self.eventually("first calling") { rig.world.callsWaiting == 1 }
+    rig.owner.startPreview(second, with: choice)
+    await Self.eventually("second queued") { rig.owner.waitsForLocalTurn(second) }
+    #expect(!rig.owner.waitsForLocalTurn(first), "the call that runs is not waiting")
+  }
+
   /// #4722: when this fails, Keep new clicked while the model still cleans up closes the
   /// comparison and saves nothing.
   @Test("the comparison opens once the attempt has ended, so Keep new is never refused as writing")
