@@ -116,6 +116,9 @@ import Testing
           "leave_dialog", "card", "banner", "menu",
           // #4321 (plan §17 F6, approved at Gate 2): the Summaries tab's leave dialog.
           "summary_leave_dialog",
+          // #4721 (plan §3.6, approved at Gate 2): the History banner and menu line about the
+          // summary engine.
+          "summary_banner", "summary_menu",
         ])
       #expect(
         Set(PolishSetupPromptEvent.Action.allCases.map(\.rawValue)) == [

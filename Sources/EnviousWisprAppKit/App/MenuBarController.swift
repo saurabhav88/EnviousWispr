@@ -654,19 +654,23 @@ final class MenuBarController: NSObject {
 
     // #3438: the chosen AI polish model is not set up. A reminder, not an error: dictation still
     // works (basic cleanup only), so the icon does not change and the line has no dismissal.
-    if state.onboardingComplete, let subject = state.polishSetupWarning {
+    // #4721: one line, about AI polish, the EnviousMeet summary engine, or both.
+    if state.onboardingComplete, let subjects = state.polishSetupWarning {
       let polishItem = NSMenuItem(
-        title: PolishSetupSurfaceCopy.menuLine,
+        title: PolishSetupSurfaceCopy.menuLine(subjects),
         action: #selector(openAIPolishAction),
         keyEquivalent: "")
       polishItem.image = NSImage(
         systemSymbolName: "sparkles",
-        accessibilityDescription: String(
-          localized: "AI polish needs setup",
-          comment: "Menu bar menu, VoiceOver: the icon beside the AI polish setup line."))
+        accessibilityDescription: subjects.summary == nil
+          ? String(
+            localized: "AI polish needs setup",
+            comment: "Menu bar menu, VoiceOver: the icon beside the AI polish setup line.")
+          // The line's own words, so VoiceOver names the engine the line is about.
+          : PolishSetupSurfaceCopy.menuLine(subjects))
       polishItem.target = self
       // What the line was about when the menu was built; the click reports this.
-      polishItem.representedObject = subject
+      polishItem.representedObject = subjects
       polishItem.identifier = MenuBarItemID.polishSetup
       menu.addItem(polishItem)
     }
@@ -1000,10 +1004,11 @@ final class MenuBarController: NSObject {
   }
 
   /// #3438: the AI polish setup line opens Settings on AI Polish, reporting what the line
-  /// showed when the menu was built (even if the setup was finished since).
+  /// showed when the menu was built (even if the setup was finished since). #4721: a line about
+  /// the summary engine alone opens the Summaries tab.
   @objc private func openAIPolishAction(_ sender: NSMenuItem) {
-    guard let subject = sender.representedObject as? PolishSetupPromptSubject else { return }
-    actions.openAIPolish(subject)
+    guard let subjects = sender.representedObject as? PolishSetupWarningSubjects else { return }
+    actions.openAIPolish(subjects)
   }
 
   /// #1047: set the window-appearance preference from the Appearance submenu.
@@ -1165,8 +1170,10 @@ struct MenuBarActions: Sendable {
   /// #3438: what the AI polish setup line is about, or nil when it does not show, evaluated live
   /// by the warning monitor at the moment the menu is built; and what clicking it does (open
   /// Settings on AI Polish), given what the line showed.
-  let polishSetupWarning: @MainActor () -> PolishSetupPromptSubject?
-  let openAIPolish: @MainActor (PolishSetupPromptSubject) -> Void
+  /// #4721: about dictation's engine, the summary engine or both; opens AI Polish while
+  /// dictation's engine needs it, otherwise the Summaries tab.
+  let polishSetupWarning: @MainActor () -> PolishSetupWarningSubjects?
+  let openAIPolish: @MainActor (PolishSetupWarningSubjects) -> Void
   let toggleRecording: @MainActor () async -> Void
   /// #3972: EnviousMeet's phase now, or nil before it exists.
   let meetingPhase: @MainActor () -> MeetingCoordinator.Phase?
@@ -1314,7 +1321,7 @@ struct MenuBarViewState: Equatable {
   var pasteLastShortcut: String? = nil
   /// #3438: what the chosen AI polish model's unfinished setup is (monitor's menu surface), or
   /// nil. Display only; deliberately not read by `iconState`.
-  var polishSetupWarning: PolishSetupPromptSubject? = nil
+  var polishSetupWarning: PolishSetupWarningSubjects? = nil
   /// #3106: the Paste Last row's content, or nil when nothing may be reused (row disabled).
   var lastDictation: LastDictationMenuState? = nil
   /// #3454: the Microphone submenu's inputs (Auto is added by `renderMenu`).

@@ -2344,6 +2344,17 @@
         }
       }
     },
+    "AI polish and meeting summaries both need attention." : {
+      "comment" : "History page banner: both the AI polish engine and the EnviousMeet summary engine are not set up.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-Nachbearbeitung und Meeting-Zusammenfassungen müssen beide überprüft werden."
+          }
+        }
+      }
+    },
     "AI polish did not start" : {
       "comment" : "Setup Getting ready title: the polish model failed to load.",
       "localizations" : {
@@ -7360,7 +7371,7 @@
       }
     },
     "Close" : {
-      "comment" : "Dictation language picker: VoiceOver name of the close button.\nEnviousMeet: closes the call panel.\nLive Preview settings: catalog close label.\nSpoken punctuation window: spoken name of the close button.",
+      "comment" : "Dictation language picker: VoiceOver name of the close button.\nEnviousMeet: closes the call panel.\nHistory page banner, VoiceOver and tooltip: closes the setup notice about meeting summaries.\nLive Preview settings: catalog close label.\nSpoken punctuation window: spoken name of the close button.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -11647,6 +11658,17 @@
         }
       }
     },
+    "Finish setting up AI polish and meeting summaries" : {
+      "comment" : "Menu bar menu: both AI polish and the EnviousMeet summary engine are not set up; opens AI Polish first.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-Nachbearbeitung und Meeting-Zusammenfassungen fertig einrichten"
+          }
+        }
+      }
+    },
     "Finish setting up EnviousWispr" : {
       "comment" : "Move to Applications prompt: the heading. EnviousWispr is the app name; keep it.",
       "localizations" : {
@@ -11664,6 +11686,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Schließe die Einrichtung von EnviousWispr ab und teile die Datei erneut."
+          }
+        }
+      }
+    },
+    "Finish setting up meeting summaries" : {
+      "comment" : "Menu bar menu: opens Settings on EnviousMeet Summaries, whose chosen engine is not set up.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meeting-Zusammenfassungen fertig einrichten"
           }
         }
       }
@@ -13793,6 +13826,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Aufnahme läuft auf deinem Mac, also sieht niemand einen Notiz-Bot beitreten."
+          }
+        }
+      }
+    },
+    "It shows here when it's ready." : {
+      "comment" : "History meeting: under Writing a summary, for a meeting with no summary yet.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sie erscheint hier, sobald sie fertig ist."
           }
         }
       }
@@ -16101,6 +16145,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Meeting aufgenommen"
+          }
+        }
+      }
+    },
+    "Meeting summaries aren't set up: %@." : {
+      "comment" : "History page banner about the EnviousMeet summary engine. %@ is a short reason without a full stop, such as Claude did not accept your API key.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meeting-Zusammenfassungen sind nicht eingerichtet: %@."
           }
         }
       }
@@ -30974,6 +31029,17 @@
         }
       }
     },
+    "Write summary with %@" : {
+      "comment" : "History, a meeting with no summary: writes it with the named AI model, e.g. \"Write summary with claude-sonnet-5-5\".",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zusammenfassung erstellen mit %@"
+          }
+        }
+      }
+    },
     "Writes down what was said." : {
       "comment" : "Transcribe a File, Review step: the transcription engine's card in the processing path.",
       "localizations" : {
@@ -30992,6 +31058,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Neue Zusammenfassung wird erstellt …"
+          }
+        }
+      }
+    },
+    "Writing a summary…" : {
+      "comment" : "History meeting: the first summary of a meeting is being written.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zusammenfassung wird erstellt …"
           }
         }
       }
@@ -33511,17 +33588,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "ist eingerichtet. Der Build ist grün."
-          }
-        }
-      }
-    },
-    "It shows here when it's ready." : {
-      "comment" : "History meeting: under Writing a summary, for a meeting with no summary yet.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sie erscheint hier, sobald sie fertig ist."
           }
         }
       }
@@ -43148,28 +43214,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wenn etwas schiefgeht, sind die Hinweise jetzt verständlicher. Bei einem teilweisen Fehler erhältst du eine andere Warnung als bei einem vollständigen Ausfall."
-          }
-        }
-      }
-    },
-    "Write summary with %@" : {
-      "comment" : "History, a meeting with no summary: writes it with the named AI model, e.g. \"Write summary with claude-sonnet-5-5\".",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Zusammenfassung erstellen mit %@"
-          }
-        }
-      }
-    },
-    "Writing a summary…" : {
-      "comment" : "History meeting: the first summary of a meeting is being written.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Zusammenfassung wird erstellt …"
           }
         }
       }

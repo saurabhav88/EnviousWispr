@@ -2156,15 +2156,24 @@ package final class WisprBootstrapper {
         // #3438: evaluated live as the menu is built (the monitor is bound later; until it is,
         // nothing shows).
         polishSetupWarning: { [polishSetupMonitorHolder] in
-          guard let monitor = polishSetupMonitorHolder.monitor else { return nil }
-          _ = monitor.currentContext()
-          return monitor.shows(.menu) ? monitor.promptSubject : nil
+          // #4721: each monitor answers for its own engine; the line names one or both.
+          @MainActor func shown(_ monitor: PolishSetupMonitor?) -> PolishSetupPromptSubject? {
+            guard let monitor else { return nil }
+            _ = monitor.currentContext()
+            return monitor.shows(.menu) ? monitor.promptSubject : nil
+          }
+          return PolishSetupWarningSubjects(
+            dictation: shown(polishSetupMonitorHolder.monitor),
+            summary: shown(polishSetupMonitorHolder.summaryMonitor))
         },
-        openAIPolish: { [polishSetupMonitorHolder] subject in
-          // The menu line is the only way here; report what it showed when it was built.
-          polishSetupMonitorHolder.monitor?.recordPrompt(.menu, .finishSetup, subject: subject)
-          navigationCoordinator.request(.aiPolish)
-          appWindowCoordinator.showWindow()
+        openAIPolish: { [polishSetupMonitorHolder] subjects in
+          // The menu line is the only way here; report what it showed when it was built, one
+          // row per engine it named.
+          subjects.finishSetup(
+            dictationMonitor: polishSetupMonitorHolder.monitor,
+            summaryMonitor: polishSetupMonitorHolder.summaryMonitor, on: .menu,
+            request: { navigationCoordinator.request($0) },
+            showWindow: { appWindowCoordinator.showWindow() })
         },
         toggleRecording: { await dictationRuntime.toggleRecording(source: .menuBar) },
         meetingPhase: { [meetingBox] in meetingBox.coordinator?.phase },
