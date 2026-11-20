@@ -1,0 +1,9 @@
+# release-probes v2.6.1: one exact on-screen string per new feature (each absent at v2.6.0).
+# Dictation playback (#4546): Settings > App Settings > Recordings toggle.
+Save dictation recordings
+# Rebuilt History (#4555): the dictation card's audio-only delete.
+Delete recording, keep text
+# Three EG-1 sizes (#4527): the size card's memory warning.
+Won't fit right now. Close some apps or pick a smaller size.
+# Remove Parakeet (#4584): the engine row's cleanup control.
+Remove leftover files

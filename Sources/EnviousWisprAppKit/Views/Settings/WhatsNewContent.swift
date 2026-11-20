@@ -56,53 +56,68 @@ enum WhatsNewContent {
   static let entries: [Entry] = [
     // MARK: - v2.6.1
 
-    // Draft group, 2026-11-12 (#3147 PR1, plan §16 C9): 2.6.0 has shipped, so this opens the next
-    // group (whats-new-protocol.md FACT: whats-new-grouping). Not founder copy yet: the release
-    // checklist puts it before the founder, whose text then ships verbatim. Claims checked against
-    // code: saved dictations only (KernelFinalizationWiring permanentSaveRowID; failed, cancelled
-    // and Escape Recovery takes get none); stored on this Mac (RecordingArchive under Application
-    // Support, nothing uploaded); default keep period forever (SettingsDefaultValues
-    // .dictationRecordingRetention); Save dictation recordings in App Settings > Recordings
-    // affects new dictations only; Delete recording in History and Delete all dictation
-    // recordings remove audio and keep the text.
+    // Founder-approved group, 2026-11-20 (Claude Doc "EnviousWispr 2.6.1 Release Notes"). The
+    // founder wrote or edited this copy; it ships verbatim (whats-new-protocol.md). Declared repairs:
+    // "Transcriptions" -> "Transcripts" (the tab's name), "big" -> "bug", "11+ international
+    // languages" -> "10 more languages" (the sealed exam's ten non-English languages). Codex verified
+    // the claims (run 20261120-101140-release-v2-6-1-notes-verify-11b0). Evidence kept here for the
+    // claim sweep: "about twice as fast" = EG-1 1.3 on EnviousDecode p50 122 ms vs EG-1 1.2 p50
+    // 260 ms (scripts/eval/runs/intl-sealed-2026-11/scorecard/SCORECARD.md section 10, different
+    // timing harnesses); "more accurately" = pass+minor 96.8% vs 93.4% English, 86.1% vs 74.6% in
+    // ten languages on the same sealed exam. Playback: saved dictations only (KernelFinalizationWiring
+    // permanentSaveRowID); "Delete recording, keep text" is the History control. Replaces the
+    // unreleased draft entries remove-either-speech-engine and calmer-self-learning-pill.
+    Entry(
+      id: "brand-new-history-tab-experience",
+      icon: "clock.arrow.circlepath",
+      title: "A Brand New History Tab Experience",
+      description:
+        "The UX has been redesigned to make engaging with your Dictations, Transcripts and Meetings more natural and enjoyable. We added a bunch of new functionality as well for power users.",
+      version: "2.6.1"
+    ),
     Entry(
       id: "play-back-your-dictations",
       icon: "waveform",
       title: "Play back your dictations",
       description:
-        "EnviousWispr now keeps a recording of each saved dictation on your Mac, so you can play it back in History. Recordings stay until you delete them, or for a keep period you choose in Settings > App Settings > Recordings.",
+        "Introducing dictation playback. EnviousWispr now keeps a recording of your dictations on your Mac, so you can play it back in History. Recordings stay until you delete them, or for a keep period you choose in Settings > App Settings > Recordings.",
       bullets: [
         "Turn off Save dictation recordings on that page to stop saving new recordings. Recordings you already have are not deleted.",
-        "Delete a recording in History, or all of them with Delete all dictation recordings. The text always stays.",
+        "Choose Delete recording, keep text in History, or all of them with Delete all dictation recordings. The text always stays.",
       ],
       version: "2.6.1"
     ),
-    // Draft entry (#4578), not founder copy yet: the release checklist puts it before the founder.
-    // Claims checked against code: Remove on every downloaded engine's status row, picked or not
-    // (SpeechEngineStatus.offersRemove); a removed engine never downloads on its own and Set up
-    // model is the explicit install (ParakeetInstallIntentStore, Whisper's recorded decline);
-    // meetings use the other downloaded engine (SpeechJobAdmission, #4578 C3).
     Entry(
-      id: "remove-either-speech-engine",
-      icon: "internaldrive",
-      title: "Remove either speech engine",
+      id: "brand-new-eg1-twice-as-fast",
+      icon: "cpu",
+      title: "Brand new EG-1: about twice as fast",
       description:
-        "You can now remove Parakeet or Whisper from your Mac to free up space, in Dictation Settings > Engine or EnviousMeet > Models. A removed engine never downloads again on its own. Choose Set up model when you want it back, and meetings use your other downloaded engine meanwhile.",
+        "Brand new EG-1 models polish about twice as fast as before, and more accurately, in English and 10 more languages. Pick the size that fits your Mac in Settings > AI Polish: EG-1, EG-1 Mini or EG-1 Micro. If you turned polishing off because it felt slow, give it another try.",
       version: "2.6.1"
     ),
-    // Draft entry (#4675), not founder copy yet: the release checklist puts it before the founder.
-    // Claims checked against code: 12 s dwell (CorrectionLearnedPillCopy.learnedDwellSeconds);
-    // the countdown freezes while the pointer rests on the pill and resumes on leave
-    // (PillExpiryClock, HoverPolicy.resume); Undo reverses the dictionary change; x closes the
-    // pill and keeps the word (CorrectionLearnedPillCopy.closeLabel); learned words are managed
-    // in Your Words. Runtime behavior is for Live UAT. Supersedes the dated
-    // longer-undo-for-learned-words entry (2.5.2) going forward; that entry stays as history.
     Entry(
-      id: "calmer-self-learning-pill",
-      icon: "timer",
-      title: "A calmer Self-Learning pill",
+      id: "enviouswispr-in-the-share-menu",
+      icon: "square.and.arrow.up",
+      title: "EnviousWispr is now in the Share menu",
       description:
-        "The Self-Learning pill now stays for 12 seconds when it appears, and waits while your pointer rests on it. Click Undo to reverse the dictionary change, or click × to close the pill and keep the word. You can always change learned words in Your Words.",
+        "Share an audio or video file from a Mac app with Transcribe with EnviousWispr to get a transcript. Turn it on once in the macOS Share menu, check your settings, then press Start transcription.",
+      version: "2.6.1"
+    ),
+    Entry(
+      id: "latest-cloud-models-and-smaller-fixes",
+      icon: "sparkles",
+      title: "The latest cloud AI models, plus smaller fixes",
+      description: "EnviousWispr has been updated to support the latest cloud AI models.",
+      bullets: [
+        "Parakeet can now be uninstalled if you prefer using Whisper.",
+        "More time to undo a self-learned word.",
+        "Stop recording on silence can now wait up to 5 seconds of silence before it stops.",
+        "Fixed a bug where Caps Lock could mess with push-to-talk.",
+        "Pasting into Telegram is more reliable.",
+        "Music resumes more reliably after you dictate.",
+        "Fixed a bug where numbers were being added when dictated back to back.",
+        "EnviousMeet catches more Teams guest calls in Brave and Chrome.",
+      ],
       version: "2.6.1"
     ),
 
