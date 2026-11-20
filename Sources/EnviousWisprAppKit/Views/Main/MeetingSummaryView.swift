@@ -63,15 +63,26 @@ struct MeetingSummaryView: View {
     let nothingToSummarize =
       documents.loadState(meetingID) == .loaded && documents.summary(meetingID) == nil
       && summaries?.hasNothingToSummarize(meetingID) == true
+    // #4724: while a new summary is written for this tab, its own notice (with Cancel) is the
+    // one progress line; the attempt's activity line would repeat it.
+    let previewing: Bool = {
+      if summaries?.savingFirst.contains(meetingID) == true { return true }
+      switch summaries?.previews[meetingID] {
+      case .generating?, .comparing?: return true
+      case .failed?, nil: return false
+      }
+    }()
     VStack(alignment: .leading, spacing: 10) {
-      if !nothingToSummarize {
+      if !nothingToSummarize, !previewing {
         switch activity {
-        case .waiting:
+        // #4724: the dictation wait is said only when the summary really waits its turn for a
+        // model on this Mac; a hosted model preparing reads as writing.
+        case .waiting where summaries?.waitsForLocalTurn(meetingID) == true:
           busy(
             String(
               localized: "Waiting for your dictation and other meeting work to finish.",
               comment: "History, a meeting: the summary waits before a model on this Mac is used."))
-        case .writing:
+        case .waiting, .writing:
           busy(
             String(
               localized: "Writing the summary.",

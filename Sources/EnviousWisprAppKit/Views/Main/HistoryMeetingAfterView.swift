@@ -137,6 +137,9 @@ struct HistoryMeetingAfterView: View {
           .task(id: meetingID) { _ = await notes.flush(meetingID) }
           .onChange(of: isRecordingThisMeeting, initial: true) { _, recording in
             if recording { openedDuringRecording = meetingID }
+            // #4724: the tab picker is hidden while recording, so live notes must show; the
+            // remembered choice is kept for finished meetings.
+            if recording { notesPane.leftPane = .notes }
           }
           .task(id: meetings.playbackSource(meetingID: meetingID)) {
             pagePlayer.reconcile(
@@ -188,7 +191,8 @@ struct HistoryMeetingAfterView: View {
       presentation += 1
       commands.actionInFlight = false
       pagePlayer.drop()
-      notesPane.leftPane = .notes
+      notesPane.openMeeting(
+        notesOnly: meetings.record(id: meetingID)?.state == .notesOnly || isRecordingThisMeeting)
       notesPane.narrowPane = .notes
       summaryEdit.reset()
       notesPane.editingNotes = nil
@@ -374,7 +378,7 @@ struct HistoryMeetingAfterView: View {
       }
     }
     .onAppear {
-      if record.state == .notesOnly { notesPane.leftPane = .notes }
+      notesPane.openMeeting(notesOnly: record.state == .notesOnly || isRecordingThisMeeting)
     }
   }
 
@@ -668,7 +672,9 @@ struct HistoryMeetingAfterView: View {
         || meetings.summaries?.savingFirst.contains(meetingID) == true
       let state = P.strip(
         record: record, processing: false, queueWaitsForSpace: meetings.queueWaitsForSpace,
-        writingSummary: !previewing && (meetings.summaries?.isWriting(meetingID) ?? false),
+        // #4724: on the AI summary tab the summary's own line shows the progress.
+        writingSummary: !previewing && notesPane.leftPane != .summary
+          && (meetings.summaries?.isWriting(meetingID) ?? false),
         hasSummary: meetings.documents.summary(meetingID) != nil)
       let writingProvider = meetings.summaries?.writingProvider(for: meetingID)
       let statusLine: String? =
@@ -917,8 +923,14 @@ struct HistoryMeetingAfterView: View {
         case .generating:
           // #4719: a first summary is saved when it is ready, with no choice to make.
           let first = meetings.documents.summary(meetingID) == nil
+          // #4724: the one progress line, so a model waiting its turn says so.
+          let waiting = summaries.waitsForLocalTurn(meetingID)
           InsetNotice(
-            verbatim: first
+            verbatim: waiting
+              ? String(
+                localized: "Waiting for your dictation and other meeting work to finish.",
+                comment: "History, a meeting: the summary waits before a model on this Mac is used.")
+              : first
               ? String(
                 localized: "It shows here when it's ready.",
                 comment: "History meeting: under Writing a summary, for a meeting with no summary yet."
@@ -926,7 +938,9 @@ struct HistoryMeetingAfterView: View {
               : String(
                 localized: "Your current summary stays until you pick.",
                 comment: "History meeting: under Writing a new summary; nothing is replaced yet."),
-            title: first
+            title: waiting
+              ? nil
+              : first
               ? String(
                 localized: "Writing a summary…",
                 comment: "History meeting: the first summary of a meeting is being written.")
@@ -1195,7 +1209,9 @@ extension HistoryMeetingAfterView {
               nil, P.LeftPane.summary
             ),
           ],
-          selection: $notesPane.leftPane,
+          // #4724: a tab the user picks is remembered for the next meeting.
+          selection: Binding(
+            get: { notesPane.leftPane }, set: { notesPane.chooseLeftPane($0) }),
           hint: { pane in
             switch pane {
             case .notes:
