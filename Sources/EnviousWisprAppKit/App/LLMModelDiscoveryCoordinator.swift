@@ -545,20 +545,14 @@ final class LLMModelDiscoveryCoordinator {
   /// #4721: a dictation's own answer about the saved key (the provider refused it, or a polish
   /// with it worked), at the moment it arrived. Newest answer wins for the same key, so the
   /// Settings chip, the summary engine's monitor and dictation's warnings agree. A check still
-  /// running owns the provider and publishes its own answer; this one then waits.
+  /// running keeps showing as checking; this answer sits beneath it as the last known one.
   func recordTakeKeyOutcome(
     provider: LLMProvider, credentialRevision revision: UInt64, rejected: Bool,
     observedAt: ContinuousClock.Instant
   ) {
-    guard PolishSetupMonitor.usesCloudKey(provider), credentialRevision(for: provider) == revision,
-      pendingVerdicts[provider] == nil
+    guard PolishSetupMonitor.usesCloudKey(provider), credentialRevision(for: provider) == revision
     else { return }
-    if let known = lastDefinitive(provider, revision: revision), known.decidedAt >= observedAt {
-      return
-    }
-    writeCompletedVerdict(
-      rejected ? .rejected : .accepted, provider: provider, revision: revision,
-      decidedAt: observedAt)
+    mergeDefinitive(rejected: rejected, provider: provider, revision: revision, decidedAt: observedAt)
   }
 
   // MARK: - Launch key check ownership (#4721)
@@ -632,17 +626,12 @@ final class LLMModelDiscoveryCoordinator {
       launchAdmissionIsCurrent(admission, settings: settings),
       credentialRevision(for: provider) == revision
     else { return }
-    // A dictation's newer answer about this key (`recordTakeKeyOutcome`) is never replaced by an
-    // older list answer.
-    if let decidedAt, let known = lastDefinitive(provider, revision: revision),
-      known.decidedAt > decidedAt
-    {
-      return
-    }
     switch outcome {
     case .accepted(let models):
       guard let decidedAt else { return }
-      writeCompletedVerdict(.accepted, provider: provider, revision: revision, decidedAt: decidedAt)
+      mergeDefinitive(rejected: false, provider: provider, revision: revision, decidedAt: decidedAt)
+      // Each model's answer keeps its own probe time; the per-model merge decides which is
+      // newest, whatever happened to the key verdict.
       for model in models {
         guard let observation = Self.observation(of: model, credentialRevision: revision)
         else { continue }
@@ -652,13 +641,29 @@ final class LLMModelDiscoveryCoordinator {
         provider: provider, result: "valid", source: .launch, modelCount: models.count)
     case .rejected:
       guard let decidedAt else { return }
-      writeCompletedVerdict(.rejected, provider: provider, revision: revision, decidedAt: decidedAt)
+      mergeDefinitive(rejected: true, provider: provider, revision: revision, decidedAt: decidedAt)
       emitValidationCompleted(provider: provider, result: "invalid", source: .launch)
     case .inconclusive:
-      writeCompletedVerdict(
-        .inconclusive, provider: provider, revision: revision, decidedAt: decidedAt ?? .now)
+      // A check that could not tell writes nothing: it neither creates an "unknown" for a key
+      // nobody judged (which would hide History actions) nor touches a known answer.
       emitValidationCompleted(provider: provider, result: "error", source: .launch)
     }
+  }
+
+  /// The one write of a background DEFINITIVE answer (a launch check's list, a dictation's own
+  /// request) about `provider`'s key at `revision`: kept only when no answer about the same key
+  /// is newer. Written beneath any check still running, so that check's own answer, or its
+  /// inconclusive carry-forward, starts from it. The foreground check (`publishVerdict`) is
+  /// "now" and writes directly.
+  private func mergeDefinitive(
+    rejected: Bool, provider: LLMProvider, revision: UInt64, decidedAt: ContinuousClock.Instant
+  ) {
+    if let known = lastDefinitive(provider, revision: revision), known.decidedAt >= decidedAt {
+      return
+    }
+    writeCompletedVerdict(
+      rejected ? .rejected : .accepted, provider: provider, revision: revision,
+      decidedAt: decidedAt)
   }
 
   /// The last accepted or rejected answer about `provider`'s key at `revision`, if any.

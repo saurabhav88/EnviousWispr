@@ -248,15 +248,16 @@ struct CloudKeyLaunchCheckTests {
   func offlineRetriesOnceOnLaterActivation() async throws {
     let fx = try Self.fixture(keys: [KeychainManager.claudeKeyID: "claude-k"])
     fx.settings.llmProvider = .claude
+    fx.settings.llmModel = "claude-opus-9"
     fx.script.answers = [.claude: [Self.offline, Self.rejected]]
 
     fx.runner.start()
     // An activation while the launch run is still going does nothing.
     #expect(fx.runner.appBecameActive() == false)
     #expect(await fx.script.waitForLines(1))
-    // A check that could not tell, with no earlier answer about this key: unknown, which
-    // shows no warning (only a confirmed problem does).
-    #expect(Self.readiness(fx, scope: .dictation) == .unknown)
+    // A check that could not tell writes nothing: no warning, and nothing hidden.
+    #expect(fx.discovery.cloudVerdicts[.claude] == nil)
+    #expect(Self.readiness(fx, scope: .dictation) == .noProblem)
 
     #expect(fx.runner.appBecameActive())
     #expect(await fx.script.waitForLines(2))

@@ -246,29 +246,38 @@ enum ProviderStatusMapping {
         comment: "AI Polish provider status chip: checking the saved API key did not succeed."),
       tone: .error)
     guard selected else { return keySaved }
-    // A check this page's provider is running or just finished wins.
     let live = facts.validationProvider == provider ? facts.cloudValidation : nil
-    switch live {
-    case .validating: return checking
-    case .valid: return keyValid
-    case .invalid: return checkFailed
-    case .idle, nil: break
+    // A check this page started and still running shows as checking.
+    if case .validating = live { return checking }
+    // #4721: the stored answer about the key saved NOW. A definitive one (accepted or refused)
+    // is the newest thing known about this key: the check that just finished wrote it at the
+    // same moment as the live state, and a later dictation or launch answer replaces it. So it
+    // wins over a finished live state, which never carries its own age.
+    let verdict = facts.cloudVerdicts[provider].flatMap { verdict in
+      verdict.provider == provider && facts.credentialRevisions[provider] == verdict.credentialRevision
+        ? verdict : nil
     }
-    // #4721: otherwise the stored answer about the key saved NOW (the launch check's, or an
-    // earlier one this run), so a restart reads "Key valid" without a Save. Without one, the
-    // labels are unchanged: "Not checked" when the live state is about this provider and idle,
-    // "Key saved" when it is about another provider.
-    guard let verdict = facts.cloudVerdicts[provider], verdict.provider == provider,
-      facts.credentialRevisions[provider] == verdict.credentialRevision
-    else { return live == nil ? keySaved : notChecked }
-    switch verdict.result {
-    case .checking: return checking
+    switch verdict?.result {
     case .accepted: return keyValid
     case .rejected: return checkFailed
+    case .checking, .inconclusive, nil: break
+    }
+    // Otherwise a finished check this page ran says what it found (a check that could not
+    // tell reads "Check failed", with the reason in the row).
+    switch live {
+    case .valid: return keyValid
+    case .invalid: return checkFailed
+    case .validating, .idle, nil: break
+    }
+    guard let verdict else { return live == nil ? keySaved : notChecked }
+    switch verdict.result {
+    case .checking: return checking
     case .inconclusive:
       // A check that could not tell keeps the last definitive answer about this key.
       guard let known = verdict.definitive else { return notChecked }
       return known.rejected ? checkFailed : keyValid
+    case .accepted: return keyValid
+    case .rejected: return checkFailed
     }
   }
 }

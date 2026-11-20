@@ -423,11 +423,16 @@ struct ProviderStatusMappingTests {
     #expect(storedChip([:], own: false, live: .valid) == "Key saved")
   }
 
-  @Test("a check this page is running or just finished wins over the stored answer")
-  func liveStateWinsOverStoredVerdict() {
+  @Test("a running check shows Checking; otherwise the newest answer about the key wins")
+  func newestAnswerWins() {
     #expect(storedChip(Self.verdict(.rejected), live: .validating) == "Checking")
-    #expect(storedChip(Self.verdict(.rejected), live: .valid) == "Key valid")
-    #expect(storedChip(Self.verdict(.accepted), live: .invalid("offline")) == "Check failed")
+    // The check passed, then a dictation found the key refused: the stored refusal is newer.
+    #expect(storedChip(Self.verdict(.rejected), live: .valid) == "Check failed")
+    // The check could not tell, then a dictation polished with the key: it works.
+    #expect(storedChip(Self.verdict(.accepted), live: .invalid("offline")) == "Key valid")
+    // The check could not tell and nothing newer is known: what the check found.
+    #expect(storedChip(Self.verdict(.inconclusive), live: .invalid("offline")) == "Check failed")
+    #expect(storedChip(Self.verdict(.inconclusive), live: .valid) == "Key valid")
   }
 
   @Test("an unselected provider still says only Key saved, whatever is stored")

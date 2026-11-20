@@ -775,6 +775,13 @@ extension CredentialWriterTests {
       admission: retry, credentialRevision: revision, decidedAt: listAnswer.advanced(by: .seconds(2)),
       outcome: .accepted([]), settings: fx.settings)
     #expect(fx.discovery.cloudVerdicts[.openAI]?.result == .rejected)
+    // Its model answers still count, by their own probe times.
+    let third = try #require(fx.discovery.beginLaunchCheck(provider: .openAI, settings: fx.settings))
+    fx.discovery.recordLaunchCheck(
+      admission: third, credentialRevision: revision, decidedAt: listAnswer.advanced(by: .seconds(3)),
+      outcome: .accepted([Self.probed("gpt-9-mini", .confirmedUnavailable)]), settings: fx.settings)
+    #expect(fx.discovery.cloudVerdicts[.openAI]?.result == .rejected)
+    #expect(fx.discovery.cloudModelObservations[.openAI]?["gpt-9-mini"]?.works == false)
 
     // A dictation answer about a replaced key is ignored.
     fx.presence.recordSaved(.openAI)
@@ -798,8 +805,40 @@ extension CredentialWriterTests {
     fx.discovery.recordLaunchCheck(
       admission: second, credentialRevision: revision, decidedAt: nil, outcome: .inconclusive,
       settings: fx.settings)
+    // A launch check that could not tell writes nothing: the known answer stands as it was.
+    let verdict = try #require(fx.discovery.cloudVerdicts[.openAI])
+    #expect(verdict.result == .accepted)
+    #expect(verdict.lastDefinitive == PolishCloudVerdict.Definitive(rejected: false, decidedAt: acceptedAt))
+  }
+
+  @Test("#4721: a dictation's refusal during a running Refresh survives the Refresh failing")
+  func takeAnswerKeptUnderRunningRefresh() async throws {
+    let storage = ThreadRecordingCredentialStore()
+    try storage.seed("openai-key", key: KeychainManager.openAIKeyID)
+    struct Offline: Error {}
+    let fx = Self.fixture(storage: storage, discover: { _, _ in throw Offline() })
+    fx.settings.onboardingState = .completed
+    fx.settings.llmProvider = .openAI
+    fx.presence.recordSaved(.openAI)
+    let revision = try #require(fx.presence.revision(for: .openAI))
+    let queued = CredentialTestSignal()
+    fx.writer.access.onQueuedForTesting = { queued.open() }
+    let gate = CredentialTestSignal()
+    let turn = fx.writer.access.reserve()
+    let holder = Task { await fx.writer.access.run(turn: turn) { _ = await gate.wait(deadlineMs: 5000) } }
+    let refreshing = Task {
+      await fx.discovery.validateKeyAndDiscoverModels(provider: .openAI, settings: fx.settings)
+    }
+    try #require(await queued.wait())
+
+    fx.discovery.recordTakeKeyOutcome(
+      provider: .openAI, credentialRevision: revision, rejected: true, observedAt: .now)
+    gate.open()
+    await holder.value
+    await refreshing.value
+
     let verdict = try #require(fx.discovery.cloudVerdicts[.openAI])
     #expect(verdict.result == .inconclusive)
-    #expect(verdict.lastDefinitive == PolishCloudVerdict.Definitive(rejected: false, decidedAt: acceptedAt))
+    #expect(verdict.lastDefinitive?.rejected == true, "the dictation's refusal was dropped")
   }
 }
