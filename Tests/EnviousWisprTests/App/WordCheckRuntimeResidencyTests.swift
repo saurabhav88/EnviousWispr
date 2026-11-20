@@ -77,6 +77,18 @@ struct WordCheckRuntimeResidencyTests {
     #expect(inputs.statusChanges > before, "an admitted refresh still updates the Dictionary row")
   }
 
+  @Test("a scoring failure blocks later warm-ups for this session")
+  func mlxFailureStaysUnavailable() throws {
+    let (runtime, inputs) = try admittedIdle()
+    let statusChanges = inputs.statusChanges
+    runtime.recordMLXFailure(revision: runtime.wordCheckRevisionForTests)
+    #expect(inputs.statusChanges == statusChanges + 1)
+    runtime.recordingStarted(needsWordCheckForRecording: true)
+    runtime.retryDownload()
+    #expect(runtime.loadAttemptsForTests == 0)
+    #expect(runtime.settingsStatus().canRetry == false)
+  }
+
   @Test("the model finishing its download while wanted loads nothing when no work needs it")
   func admissionLoadsNothing() throws {
     let (runtime, _) = try makeRuntime()
