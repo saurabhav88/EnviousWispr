@@ -20,12 +20,17 @@ struct CloudKeyLaunchCheckTests {
     var asked: [(provider: LLMProvider, key: String, models: [String])] = []
     var answers: [LLMProvider: [Result<LLMModelDiscovery.SavedKeyCheck, any Error>]] = [:]
     var lines: [String] = []
+    /// `api_key.validation_completed` results the coordinator emitted.
+    var emitted: [String] = []
+    /// Runs inside a check, as if something happened while its request was out.
+    var duringCheck: (@MainActor () -> Void)?
     var lineSignal: (count: Int, signal: CredentialTestSignal)?
 
     func answer(
       _ provider: LLMProvider, key: String, models: [String]
     ) throws -> LLMModelDiscovery.SavedKeyCheck {
       asked.append((provider, key, models))
+      duringCheck?()
       guard var queue = answers[provider], !queue.isEmpty else {
         throw LLMModelDiscovery.SavedKeyCheckFailure(
           error: URLError(.notConnectedToInternet), listAnsweredAt: nil)
@@ -71,13 +76,14 @@ struct CloudKeyLaunchCheckTests {
       defaults: try #require(TestDefaults.suite("ew.tests.launch-key-check.\(UUID().uuidString)")))
     settings.onboardingState = onboarded ? .completed : .notStarted
     settings.meetingOnboardingComplete = true
+    let script = Script()
     let discovery = LLMModelDiscoveryCoordinator(
       keychainManager: keychain,
       cacheDefaults: try #require(
         TestDefaults.suite("ew.tests.launch-key-check.cache.\(UUID().uuidString)")),
-      savedKeyPresence: presence, credentialAccess: access, validationEmitter: { _, _, _, _, _ in },
+      savedKeyPresence: presence, credentialAccess: access,
+      validationEmitter: { _, result, _, _, _ in script.emitted.append(result) },
       discoverModels: { _, _ in [] })
-    let script = Script()
     let runner = CloudKeyLaunchCheck(
       settings: settings, savedKeyPresence: presence, keychain: keychain,
       credentialAccess: access, discovery: discovery,
@@ -314,6 +320,22 @@ struct CloudKeyLaunchCheckTests {
 
     #expect(fx.script.asked.count == 1, "the retry contacted a provider no engine uses any more")
     #expect(fx.script.lines.last == "provider=claude outcome=skipped retry=true")
+  }
+
+  @Test("a launch answer dropped because a Save arrived meanwhile is still counted")
+  func droppedAnswerStillCounted() async throws {
+    let fx = try Self.fixture(keys: [KeychainManager.claudeKeyID: "claude-k"])
+    fx.settings.llmProvider = .claude
+    fx.script.answers = [.claude: [Self.accepted()]]
+    fx.script.duringCheck = {
+      let admission = fx.discovery.admitCredentialMutation(
+        provider: .claude, settings: fx.settings, surface: .dictation)
+      fx.discovery.finishCredentialMutation(admission, cleared: false, settings: fx.settings)
+    }
+    fx.runner.start()
+    #expect(await fx.script.waitForLines(1))
+    #expect(fx.discovery.cloudVerdicts[.claude] == nil, "a launch answer beat the Save")
+    #expect(fx.script.emitted == ["valid"], "the sent request was not counted")
   }
 
   @Test("a model probe that could not tell is not retried")

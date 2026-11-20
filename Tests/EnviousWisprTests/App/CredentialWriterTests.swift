@@ -792,6 +792,25 @@ extension CredentialWriterTests {
     #expect(fx.discovery.cloudVerdicts[.openAI]?.result == .rejected)
   }
 
+  @Test("#4721: a Refresh that cannot read the key, after an earlier valid answer, is recorded as could-not-tell")
+  func failedReadAfterValidAnswer() async throws {
+    let storage = ThreadRecordingCredentialStore()  // nothing stored: the read finds no key
+    let fx = Self.launchFixture(storage: storage)
+    let revision = try #require(fx.presence.revision(for: .openAI))
+    let admission = try #require(fx.discovery.beginLaunchCheck(provider: .openAI, settings: fx.settings))
+    fx.discovery.recordLaunchCheck(
+      admission: admission, credentialRevision: revision, decidedAt: .now, outcome: .accepted([]),
+      settings: fx.settings)
+
+    await fx.discovery.validateKeyAndDiscoverModels(provider: .openAI, settings: fx.settings)
+
+    let verdict = try #require(fx.discovery.cloudVerdicts[.openAI])
+    #expect(verdict.result == .inconclusive, "the chip would still read the older Key valid")
+    #expect(verdict.lastDefinitive?.rejected == false, "the earlier answer was lost")
+    #expect(fx.discovery.keyValidationState == .invalid(LLMModelDiscoveryCoordinator.noKeyMessage))
+    #expect(fx.log.asked.isEmpty)
+  }
+
   @Test("a launch check with no answer keeps the last definitive answer about the key")
   func inconclusiveWithoutTimeKeepsDefinitive() throws {
     let fx = Self.launchFixture()

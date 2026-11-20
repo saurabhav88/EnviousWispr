@@ -418,9 +418,15 @@ final class LLMModelDiscoveryCoordinator {
         // presence fact (`SavedKeyPresence`), never a typed rejection.
         keyValidationState = .invalid(Self.noKeyMessage)
         // No key could be read (absent, or a Keychain that did not answer): the check asked
-        // nothing, so it ends without touching the last completed answer, which is about a
-        // credential revision and stops counting by itself when the key changes.
-        pendingVerdicts[provider] = nil
+        // nothing, so it ends without a new answer about the key. #4721: where an earlier
+        // answer about this key is known, the check is recorded as one that could not tell,
+        // keeping that answer beneath it, so the chip shows this check's own failure rather
+        // than the older "Key valid". With nothing known, nothing is written.
+        if let revisionAtStart, lastDefinitive(provider, revision: revisionAtStart) != nil {
+          publishVerdict(.inconclusive, provider: provider, revision: revisionAtStart)
+        } else {
+          pendingVerdicts[provider] = nil
+        }
         return
       }
       apiKey = key
@@ -622,8 +628,19 @@ final class LLMModelDiscoveryCoordinator {
     decidedAt: ContinuousClock.Instant?, outcome: LaunchCheckOutcome, settings: SettingsManager
   ) {
     let provider = admission.provider
-    guard PolishSetupMonitor.usesCloudKey(provider),
-      launchAdmissionIsCurrent(admission, settings: settings),
+    guard PolishSetupMonitor.usesCloudKey(provider) else { return }
+    // The request was sent whatever happens next: every attempt is counted, even one whose
+    // answer is dropped below because a Save, Clear or Refresh owns the provider now.
+    switch outcome {
+    case .accepted(let models):
+      emitValidationCompleted(
+        provider: provider, result: "valid", source: .launch, modelCount: models.count)
+    case .rejected:
+      emitValidationCompleted(provider: provider, result: "invalid", source: .launch)
+    case .inconclusive:
+      emitValidationCompleted(provider: provider, result: "error", source: .launch)
+    }
+    guard launchAdmissionIsCurrent(admission, settings: settings),
       credentialRevision(for: provider) == revision
     else { return }
     switch outcome {
@@ -637,16 +654,13 @@ final class LLMModelDiscoveryCoordinator {
         else { continue }
         recordCloudModelObservation(provider: provider, model: model.id, observation: observation)
       }
-      emitValidationCompleted(
-        provider: provider, result: "valid", source: .launch, modelCount: models.count)
     case .rejected:
       guard let decidedAt else { return }
       mergeDefinitive(rejected: true, provider: provider, revision: revision, decidedAt: decidedAt)
-      emitValidationCompleted(provider: provider, result: "invalid", source: .launch)
     case .inconclusive:
       // A check that could not tell writes nothing: it neither creates an "unknown" for a key
       // nobody judged (which would hide History actions) nor touches a known answer.
-      emitValidationCompleted(provider: provider, result: "error", source: .launch)
+      break
     }
   }
 
