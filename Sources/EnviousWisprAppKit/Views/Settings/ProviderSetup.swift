@@ -2199,7 +2199,7 @@ private var ollamaBrowseModelsCard: some View {
       .foregroundStyle(Color.white)
       .padding(.horizontal, 14)
       .padding(.vertical, 6)
-      .background(Capsule().fill(Color.stAccentSolid))
+      .background(Color.stAccentSolid, in: EnviousButtonFace.roundedRectangle)
     }
   .settingsArrivalFocusControl()
   .settingsMapRegistration(.ollamaBrowseModels)

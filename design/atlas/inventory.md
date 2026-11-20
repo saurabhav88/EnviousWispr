@@ -45,7 +45,7 @@ Each picture is the whole page, top to bottom, at the 820pt window (a 578pt page
 - **Parts:** SettingsTabStrip, SettingsSectionHeading, BrandedSection, SettingsRow, SettingsRowIcon, SettingsInfoButton.
 
 ## page-appSettings-licenseReader
-**App Settings > Licenses > View license.** The license text in a reader: bold title "GPL-3.0 License", the full license in monospaced text in a scrolling area, and an outlined "Done" capsule button at the bottom right. `LicenseDocumentReader` (`Views/Settings/LicenseDocumentReader.swift`).
+**App Settings > Licenses > View license.** The license text in a reader: bold title "GPL-3.0 License", the full license in monospaced text in a scrolling area, and an outlined "Done" button with rounded corners at the bottom right. `LicenseDocumentReader` (`Views/Settings/LicenseDocumentReader.swift`).
 
 ## page-appSettings-noticesReader
 **App Settings > Licenses > View notices.** The same reader with the title "Third-Party Notices" and the notices text (component name, version, license, source, then the license text). `LicenseDocumentReader`.
@@ -53,7 +53,7 @@ Each picture is the whole page, top to bottom, at the 820pt window (a 578pt page
 ## page-appSettings-permissions
 **App Settings > Permissions.** Shows whether the app may use the microphone and Accessibility.
 - **Top to bottom:** tab strip (Permissions selected), PERMISSIONS.
-- **Controls:** Microphone ("Needed to record your voice.") and Accessibility ("Needed to paste text into other apps."), each with a green "Allowed" status chip.
+- **Controls:** Microphone ("Needed to record your voice.") and Accessibility ("Needed to paste text into other apps."), each with a green "Allowed" badge with rounded corners.
 - **Buttons:** none besides the ? help buttons.
 - **Parts:** SettingsTabStrip, SettingsSectionHeading, BrandedSection, SettingsRow, SettingsRowIcon, SettingsInfoButton.
 - **Fixture state:** both permissions allowed.
@@ -344,7 +344,7 @@ Every approved part on one sheet, from `DesignPartsSheets` (`Tests/EnviousWisprT
 **Cards, rows, headings.** Section heading with icon; titled card (BrandedSection) with a settings row (icon, title, "?" help, short grey line, switch), a row with icon and help button, help text and a "Read the help article" link; a panel (BrandedPanel) with an inset notice; status chips Ready, Needs setup, Not available, Error and a headline chip; a row with the hover modifier at rest.
 
 ## parts-controls
-**Tabs, choices, switches, fields, buttons.** Tab strip (Engine selected, underline), choice bars (Casual, Neutral, Formal; Always, Continue), drop-downs (a square outlined `SettingsMenuPicker` button "Until I delete them" with an up-down chevron; two `SettingsDropdownRow` menu rows "Auto / Follows macOS" with a check and "MacBook Pro Microphone / Built-in"), switches on, off, self-disabled and parent-disabled, a slider with value badge and Low/High labels, a text field and a focused field (2pt accent border); buttons filled "Download", outlined "Test", quiet "Back", destructive "Delete", each enabled, self-disabled and parent-disabled; wizard pair "Back" and large "Continue →"; outlined "Preview" with a play glyph; decorative button; close X; onboarding "Onboarding continue". Known: outlined capsule buttons show slightly flattened side edges (open founder item, #4506 plan §14).
+**Tabs, choices, switches, fields, buttons.** Tab strip (Engine selected, underline), choice bars (Casual, Neutral, Formal; Always, Continue), drop-downs (a square outlined `SettingsMenuPicker` button "Until I delete them" with an up-down chevron; two `SettingsDropdownRow` menu rows "Auto / Follows macOS" with a check and "MacBook Pro Microphone / Built-in"), switches on, off, self-disabled and parent-disabled, a slider with value badge and Low/High labels, a text field and a focused field (2pt accent border); buttons filled "Download", outlined "Test", quiet "Back", destructive "Delete", each enabled, self-disabled and parent-disabled; wizard pair "Back" and large "Continue →"; outlined "Preview" with a play glyph; decorative button; close X; onboarding "Onboarding continue". Settings buttons use the rounded rectangle shown in the wizard pair.
 
 ## parts-cards
 **Summary and engine cards.** A summary card (bolt icon tile, "Fast Parakeet v3", description, "Change" button, "Ready" status) and two engine cards: "Fast" selected (accent border, check badge) and "All Languages" not selected, each with Model and Runs on facts. Below them, labelled "CorrectionLearnedPillFace", the learned-word pill at rest (`CorrectionLearnedPillFace`): a round book icon, "Tuist" with "Added to dictionary" under it, a filled "Undo" button, a quiet ×, and the brand countdown line along the bottom edge, drawn 40% of the way.

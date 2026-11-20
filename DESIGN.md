@@ -384,9 +384,9 @@ Approved radii today, with their one owner each:
 | 14 | `SettingsLayout.sectionRadius` | Settings cards |
 | 10 | `BrandedSegmentedPicker` track | Choice bars |
 | 9 | `SettingsHover.rowRadius` | Hover and selection pill on rows |
-| 9 | `EnviousButtonFace` rounded rectangle | Wizard buttons |
+| 9 | `EnviousButtonFace.roundedRectangle` | Settings and History buttons, wizard buttons, App Settings Allowed badges |
 | 7 | `BrandedSegmentedPicker` segment | Selected choice segment |
-| capsule | `EnviousButtonFace`, status chips | Buttons and badges |
+| capsule | `EnviousButtonFace`, status chips | Button faces outside the Settings and History page contexts, status chips |
 
 For any other surface use the `DesignRadius` scale (4, 6, 8, 10, 12, 16) in the values block. Other radii in the code are hand-typed and are being moved onto these owners (#4506 Phase 2). Do not add a new radius.
 

@@ -95,7 +95,7 @@
     },
     "Sources\/EnviousWisprAppKit\/Views\/Settings\/CustomTermsSection.swift" : {
       "fontSize" : 3,
-      "radius" : 3
+      "radius" : 2
     },
     "Sources\/EnviousWisprAppKit\/Views\/Settings\/CustomWordEditSheet.swift" : {
       "fontSize" : 2,

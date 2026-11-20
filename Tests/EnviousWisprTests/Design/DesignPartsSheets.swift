@@ -281,6 +281,7 @@ enum DesignPartsSheets {
             }
           }, footer: { EmptyView() })
       }
+      .environment(\.enviousButtonShape, .roundedRect)
     }
   }
 

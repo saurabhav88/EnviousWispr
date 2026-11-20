@@ -99,6 +99,7 @@ enum DesignPageCaptures {
       wrap: { view in
         AnyView(
           view.environment(\.locale, Locale(identifier: "en_US"))
+            .environment(\.enviousButtonShape, .roundedRect)
             .environment(\.holdsAnimatedMarksStill, true)
             .transaction { $0.disablesAnimations = true })
       },
