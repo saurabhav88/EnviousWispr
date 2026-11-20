@@ -688,8 +688,12 @@ final class PolishSetupMonitor {
         recordKeyEvidence(take.provider, .unknown, outcome.observedAt)
       case .cloudKeyRejected?, .cloudKeyRejectedClassified?:
         if outcome.setupProblem == .cloudKeyRejected {
+          // #4721: only the provider's own refusal is shared as a new answer about the key. A
+          // classified answer (Gemini text that only mentions an invalid key) can renew this
+          // monitor's warning, but is not evidence of a refusal at this moment.
           recordCloudKeyTakeObservation(
-            rejected: true, configuration: configuration, observedAt: outcome.observedAt)
+            rejected: true, configuration: configuration, observedAt: outcome.observedAt,
+            shareWithStore: outcome.evidence == .cloudKeyRejected)
         }
       case .cloudModelUnavailable?:
         if outcome.setupProblem == .cloudModelUnavailable {
@@ -841,7 +845,8 @@ final class PolishSetupMonitor {
 
   /// Newer wins, for the same saved key only; a different key replaces it outright.
   private func recordCloudKeyTakeObservation(
-    rejected: Bool, configuration: PolishSetupConfiguration, observedAt: ContinuousClock.Instant
+    rejected: Bool, configuration: PolishSetupConfiguration, observedAt: ContinuousClock.Instant,
+    shareWithStore: Bool = true
   ) {
     guard let credentialRevision = configuration.credentialRevision else { return }
     if let current = cloudKeyTakeObservations[configuration.provider],
@@ -850,7 +855,9 @@ final class PolishSetupMonitor {
       return
     }
     cloudKeyTakeObservations[configuration.provider] = (credentialRevision, rejected, observedAt)
-    recordCloudKeyOutcome(configuration.provider, credentialRevision, rejected, observedAt)
+    if shareWithStore {
+      recordCloudKeyOutcome(configuration.provider, credentialRevision, rejected, observedAt)
+    }
     reconcile()
   }
 

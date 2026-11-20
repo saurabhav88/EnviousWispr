@@ -741,6 +741,14 @@ extension PolishSetupMonitorTests {
         tag: .cloudKeyRejected, at: start.advanced(by: .seconds(2))))
     #expect(monitor.eligibleProblem == .cloudKeyRejected(.openAI))
     #expect(keys.keyOutcomes.map(\.rejected) == [true, false, true])
+    // A refusal known only from body text renews this monitor's warning but is not shared as
+    // a new answer about the key.
+    monitor.ingest(
+      Self.outcome(
+        monitor.freezeTakeContext(), id: "take-4", evidence: .cloudKeyRejectedClassified,
+        tag: .cloudKeyRejected, at: start.advanced(by: .seconds(3))))
+    #expect(monitor.eligibleProblem == .cloudKeyRejected(.openAI))
+    #expect(keys.keyOutcomes.map(\.rejected) == [true, false, true])
     // A new key starts clean (the saved key's revision moves in the facts and the
     // configuration together, as `SavedKeyPresence` moves both in the app).
     world.facts = Self.facts(openAIKeySaved: true, openAIRevision: 2)
