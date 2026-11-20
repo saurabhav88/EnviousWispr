@@ -205,7 +205,11 @@ struct MeetingSummaryReferenceQualificationTests {
     text.components(separatedBy: "\n").flatMap { MeetingSummaryReferences.strip($0).tags }
   }
 
-  @Test("each made-up meeting: no tag text for the reader, its shape kept, real tags only")
+  @Test(
+    "each made-up meeting: no tag text for the reader, its shape kept, real tags only",
+    .enabled(
+      if: MeetingSummaryReferenceQualificationTests.canRun,
+      "Requires TEST_RUNNER_EW_SUMMARY_REFS_ROUTE and TEST_RUNNER_EW_SUMMARY_REFS_OUT"))
   func qualify() async throws {
     let route = try #require(Self.route)
     let outFile = try #require(Self.outFile)

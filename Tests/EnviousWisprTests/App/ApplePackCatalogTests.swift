@@ -341,19 +341,31 @@ struct ApplePackCatalogTests {
     // a factory branch wired to the other module fails here (second-pass review #4105).
     let meetingAvailable = SpeechTranscriber.isAvailable
 
+    // Display order is independent of SDK order. Supported tags still produce one row each,
+    // while installed tags are used only for membership.
+    let meetingSupported = await meeting.supportedTags()
+    let sdkMeetingSupported = meetingAvailable ? tags(await SpeechTranscriber.supportedLocales) : []
     #expect(
-      await meeting.supportedTags()
-        == (meetingAvailable ? tags(await SpeechTranscriber.supportedLocales) : []))
+      meetingSupported.sorted() == sdkMeetingSupported.sorted(),
+      "Meeting supported tags: actual \(meetingSupported), expected \(sdkMeetingSupported)")
+
+    let meetingInstalled = await meeting.installedTags()
+    let sdkMeetingInstalled = meetingAvailable ? tags(await SpeechTranscriber.installedLocales) : []
     #expect(
-      await meeting.installedTags()
-        == (meetingAvailable ? tags(await SpeechTranscriber.installedLocales) : []))
-    #expect(await dictation.supportedTags() == tags(await DictationTranscriber.supportedLocales))
-    #expect(await dictation.installedTags() == tags(await DictationTranscriber.installedLocales))
-    // The two modules really are different sets on this OS (measured 2026-10-25: 45 vs 54), so a
-    // catalogue wired to the wrong module cannot pass by accident.
-    if meetingAvailable {
-      #expect(Set(await meeting.supportedTags()) != Set(await dictation.supportedTags()))
-    }
+      Set(meetingInstalled) == Set(sdkMeetingInstalled),
+      "Meeting installed tags: actual \(meetingInstalled), expected \(sdkMeetingInstalled)")
+
+    let dictationSupported = await dictation.supportedTags()
+    let sdkDictationSupported = tags(await DictationTranscriber.supportedLocales)
+    #expect(
+      dictationSupported.sorted() == sdkDictationSupported.sorted(),
+      "Dictation supported tags: actual \(dictationSupported), expected \(sdkDictationSupported)")
+
+    let dictationInstalled = await dictation.installedTags()
+    let sdkDictationInstalled = tags(await DictationTranscriber.installedLocales)
+    #expect(
+      Set(dictationInstalled) == Set(sdkDictationInstalled),
+      "Dictation installed tags: actual \(dictationInstalled), expected \(sdkDictationInstalled)")
   }
 
 
