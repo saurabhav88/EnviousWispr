@@ -484,17 +484,17 @@ def main():
 
     report["conditions_start"] = load_tools.machine_conditions()
     report["busy"] = busy
-    if "--idle" in argv:
-        # Idle on History: no input for IDLE_S; CPU seconds and peak memory of the subject.
-        idle_s = int(option(argv, "--idle-seconds", str(IDLE_S)))
-        with load_tools.ResourceSampler(pid) as idle:
-            time.sleep(idle_s)  # settle: the idle phase IS this quiet interval
-        report["resources_idle"] = idle.result() | {"seconds": idle_s}
     load = load_tools.BusyLoad() if busy else None
     if load:
         load.__enter__()
         report["busy_processes"] = load.count
     try:
+        if "--idle" in argv:
+            # Measure the app without input, under the same host load as scrolling.
+            idle_s = int(option(argv, "--idle-seconds", str(IDLE_S)))
+            with load_tools.ResourceSampler(pid) as idle:
+                time.sleep(idle_s)
+            report["resources_idle"] = idle.result() | {"seconds": idle_s}
         run_tabs(tabs, inputs, repeats, start_pt, "mid")
         if "--deep" in argv:
             # Many loaded pages: Dictations from DEEP_START_PT below the newest row, trackpad only.
