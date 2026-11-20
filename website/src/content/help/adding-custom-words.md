@@ -18,7 +18,7 @@ When EnviousWispr keeps misspelling a name or a specialised word, add it to your
 
 EnviousWispr then looks for matching mishearings and applies your spelling. For example, adding "ChatGPT" helps it correct "Chat G P T". If it still misses your word, add the exact wrong version as a mishearing; a custom word cannot catch every recognition mistake.
 
-If a word you added still comes out wrong, see [How Custom Word Correction Works](/help/how-custom-word-correction-works/).
+If a word you added still comes out wrong, see [How Custom Word Correction Works](/help/how-custom-word-correction-works/). To make one word match more or fewer slips, change its **Match strictness**, explained in [How Match Strictness Works in Your Dictionary](/blog/how-match-strictness-works-in-your-dictionary/).
 
 ### Which words to add
 

@@ -36,7 +36,7 @@
           "Apple Intelligence",
           "On your Mac. Requires macOS 26+ with Apple Intelligence enabled and available."
         ],
-        ["EG-1", "Our dictation model for punctuation and natural cleanup. About 2.9 GB."],
+        ["EG-1", "Our dictation model for punctuation and natural cleanup, in three sizes from 805 MB to 4.7 GB."],
         ["S1-mini", "Compact English-language polish by Superwhisper. About 484 MB."],
         ["Local Ollama", "Offline cleanup with a compatible model installed through Ollama."]
       ]

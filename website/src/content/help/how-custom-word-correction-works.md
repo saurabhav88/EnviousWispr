@@ -21,6 +21,8 @@ The fix is to add the wrong version as a mishearing of your word. Then EnviousWi
 
 Very short words are harder to match. Matching them broadly enough to catch every slip would also change common words you did not mean to touch. For a short word, adding the exact wrong version is the most reliable fix.
 
+Each word also has a **Match strictness** setting in its **Edit** window: **Loose** catches more slips, **Strict** changes fewer nearby words, and **Default** sits in between. [How Match Strictness Works in Your Dictionary](/blog/how-match-strictness-works-in-your-dictionary/) shows each setting with real examples.
+
 If nothing is corrected at all, check that **Enable Dictionary** is on at the top of **Settings** > **Dictionary**.
 
 ### What kinds of mistake does it catch?

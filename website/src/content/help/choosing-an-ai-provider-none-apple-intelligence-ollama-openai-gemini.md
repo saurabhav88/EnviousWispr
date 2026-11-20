@@ -13,9 +13,9 @@ AI Polish tidies up your dictation after transcription, and you choose which pro
 
 ### Which AI Polish option should I pick?
 
-- **macOS 26 or later, on a Mac that supports Apple Intelligence:** leave it on Apple Intelligence. It is the default and it is free. The on-device model must be available. Check its status in **Settings** > **AI Polish**. Read [_Apple Intelligence Setup_](/help/apple-intelligence-setup/) for the steps for your macOS version.
+- **macOS 26 or later, on a Mac that supports Apple Intelligence:** Apple Intelligence is a free option built into macOS. The on-device model must be available. Check its status in **Settings** > **AI Polish**. Read [_Apple Intelligence Setup_](/help/apple-intelligence-setup/) for the steps for your macOS version.
 - **macOS 14 or 15, or a Mac that does not support Apple Intelligence:** choose EG-1. Apple Intelligence polish needs macOS 26, so on an older macOS the AI step is skipped and you get the cleaned-up text without AI polish.
-- **A Mac with little free space:** choose S1-mini if EG-1 is too big for your Mac.
+- **A Mac with little free space or memory:** choose EG-1 Micro, the smallest EG-1 size, or S1-mini, the smallest built-in download.
 
 ### How do I turn AI Polish off?
 
@@ -23,9 +23,9 @@ Turn off **Enable AI Polish** at the top of **Settings** > **AI Polish**. There 
 
 ### Which options keep my text on my Mac?
 
-- **Apple Intelligence.** Free. The on-device model must be available. Check its status in **Settings** > **AI Polish**, or read [_Apple Intelligence Setup_](/help/apple-intelligence-setup/). It needs macOS 26 or later on a Mac that supports Apple Intelligence. It is the default when you install the app.
-- **EG-1.** The model Envious Labs built for dictation, marked **Recommended** on the AI Polish page. It is free. Download it from the AI Polish page. It takes about 2.9 GB of storage.
-- **S1-mini.** A small model made by Superwhisper, and the lightest on-device option. It is free. Download it from the AI Polish page. It takes about 484 MB and has three writing style settings. See [_S1-mini by Superwhisper and Its Writing Style Settings_](/help/s1-mini-by-superwhisper-and-writing-style/).
+- **Apple Intelligence.** Free. The on-device model must be available. Check its status in **Settings** > **AI Polish**, or read [_Apple Intelligence Setup_](/help/apple-intelligence-setup/). It needs macOS 26 or later on a Mac that supports Apple Intelligence.
+- **EG-1.** The model Envious Labs built for dictation, marked **Recommended** on the AI Polish page. It is free and comes in three sizes: EG-1 (a 4.7 GB download), EG-1 Mini (2.1 GB) and EG-1 Micro (805 MB). Download the size you want from the AI Polish page; one size is marked **Best for this Mac**, and the cards show how much memory each size needs and warn when one may strain your Mac.
+- **S1-mini.** A small model made by Superwhisper, and the smallest built-in on-device download. It is free. Download it from the AI Polish page. It takes about 484 MB and has three writing style settings. See [_S1-mini by Superwhisper and Its Writing Style Settings_](/help/s1-mini-by-superwhisper-and-writing-style/).
 
 ### How do I use Ollama?
 
@@ -42,7 +42,7 @@ With OpenAI and Gemini, EnviousWispr also asks them not to keep a copy of your r
 | Option | Where your text goes | Cost | Needs |
 |---|---|---|---|
 | Apple Intelligence | Stays on your Mac | Free | macOS 26 or later |
-| EG-1 | Stays on your Mac | Free | A 2.9 GB download |
+| EG-1 | Stays on your Mac | Free | Three sizes, an 805 MB to 4.7 GB download |
 | S1-mini | Stays on your Mac | Free | A 484 MB download |
 | Ollama | Your Mac, or Ollama's servers if you pick a hosted model | Free on your Mac; a hosted model may need a paid Ollama plan | Ollama installed and running |
 | OpenAI | To OpenAI | You pay OpenAI | An API key |

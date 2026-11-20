@@ -37,7 +37,7 @@ If polish is unavailable, runs too slowly, or returns something unusable, Enviou
 
 Every option is listed under **Settings** > **AI Polish**, in three groups.
 
-- **On this Mac.** EG-1, our own model tuned for dictation, which is marked **Recommended**. Apple Intelligence, built into macOS 26. S1-mini by Superwhisper, a small model that is a 484 MB download. These options polish your dictation text on your Mac.
+- **On this Mac.** EG-1, our own model tuned for dictation, which is marked **Recommended** and comes in three sizes, one marked **Best for this Mac**. Apple Intelligence, built into macOS 26. S1-mini by Superwhisper, a small model that is a 484 MB download. These options polish your dictation text on your Mac.
 - **Your own setup.** Ollama, a free app that runs AI models you choose, on your Mac or hosted on Ollama's servers.
 - **Cloud.** OpenAI, Google Gemini, or Claude, with your own API key. These receive your transcribed text, never your audio.
 

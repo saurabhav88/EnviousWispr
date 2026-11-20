@@ -41,11 +41,11 @@ It is set to **Never** by default, so the model stays loaded. The other choices 
 
 You can remove local models you no longer need and download them again later.
 
-- **Remove the Whisper model.** Open **Dictation Settings** > **Engine** and click **Remove Model**.
+- **Remove a speech engine.** Open **Dictation Settings** > **Engine**, click **Change**, and click **Remove** on the Parakeet or Whisper card. The same **Remove** is on **EnviousMeet** > **Models**. You can remove either engine, including the one you use; removing the engine you dictate or record meetings with asks you first. A removed engine never downloads again on its own: click **Set up model** on its card to bring it back. If a removal stops part-way, the card offers **Remove leftover files**.
 - **Remove the Universal preview model.** Open **Dictation Settings** > **Live Preview**, click **Change**, and click **Remove** on the Universal card. Choosing Universal again downloads it again.
 - **Remove an older WhisperKit copy.** Some older versions left a copy of the old All Languages model in a folder other apps share. [Uninstalling EnviousWispr](/help/uninstalling-enviouswispr/) shows how to find and remove it.
-- **Remove EG-1.** EG-1 is the polish model EnviousWispr built. Open **AI Polish** and use the remove button there. The button appears once EG-1 is installed and ready. If a newer EG-1 is waiting to install, that row offers the upgrade instead, and the remove button comes back once the upgrade finishes.
-- **Remove S1-mini.** S1-mini is the small polish model made by Superwhisper. It has the same card on the **AI Polish** page as EG-1, with the same remove button once it is installed and ready.
+- **Remove an EG-1 size.** EG-1 is the polish model EnviousWispr built, in three sizes: EG-1, EG-1 Mini and EG-1 Micro. Open **AI Polish**, and click **Remove** on the card of the size you want to remove. Each installed size has its own **Remove**, so you can keep one size and remove another. If an upgrade of EG-1 was paused, its card shows **Resume upgrade** or **Finish upgrade** instead.
+- **Remove S1-mini.** S1-mini is the small polish model made by Superwhisper. Its card on the **AI Polish** page has a **Remove** button once it is installed and ready.
 - **Remove Ollama models.** Local Ollama models are removed from the same **AI Polish** page. Hosted Ollama models cannot be removed, because there is nothing on your Mac to remove.
 
 ### Dictation is slow to start
