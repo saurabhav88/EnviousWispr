@@ -81,6 +81,7 @@ struct HistoryDetailCacheTests {
     #expect(coordinator.currentRow(id: a.id)?.text == "row a")
   }
 
+  #if DEBUG
   @Test("Eviction empties the oldest unheld row, keeps its entry and tells its readers")
   func evictionKeepsIdentity() {
     let cache = HistoryDetailCache(limit: 2, keeps: { _ in false })
@@ -95,6 +96,7 @@ struct HistoryDetailCacheTests {
     #expect(first.row == nil)
     #expect(cache.payloadCountForTesting() == 2)
   }
+  #endif
 
   @Test("Held and kept rows survive eviction; clearing keeps the hold")
   func heldAndKeptRowsStay() {

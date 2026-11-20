@@ -288,6 +288,7 @@ struct HistoryLoadLoopTests {
     try await loop.untilEnded()
   }
 
+  #if DEBUG
   @Test(
     "The loop publishes the kept page's removal before any replacement read",
     .timeLimit(.minutes(1)))
@@ -351,6 +352,7 @@ struct HistoryLoadLoopTests {
     f.changes.finish(.transcript(second.key.id))
     try await loop.untilEnded()
   }
+  #endif
 
   private func removeShownFile(to id: UUID, in f: Fixture) throws {
     // Another process removes the shown file. (An appended byte no longer works: the display no
