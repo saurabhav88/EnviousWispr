@@ -1165,6 +1165,9 @@ final class PolishSetupMonitorHolder {
       monitor?.configurationOrEligibilityChanged()
     case .meetingSummaryLLMProvider, .meetingSummaryLLMModel, .meetingSummaryOllamaModel:
       summaryMonitor?.configurationOrEligibilityChanged()
+    case .meetingOnboardingComplete:
+      // #4721: finishing EnviousMeet setup makes the summary engine's warnings eligible.
+      summaryMonitor?.configurationOrEligibilityChanged()
     case .onboardingState, .egOneSize:
       // #4473: one size preference serves both engines' EG-1 (plan §3.1.1 S3).
       monitor?.configurationOrEligibilityChanged()
@@ -1209,7 +1212,7 @@ extension PolishSetupInputs {
     let validation = engine.validation(
       stateProvider: llmDiscovery.stateProvider, state: llmDiscovery.keyValidationState)
     return PolishSetupInputs(
-      onboardingComplete: settings.onboardingState == .completed,
+      onboardingComplete: setupComplete(settings: settings, scope: scope),
       configuration: PolishSetupConfiguration(
         provider: provider, model: engine.model, credentialRevision: revision,
         egOneSize: settings.preferredEGOneSize),
@@ -1229,6 +1232,19 @@ extension PolishSetupInputs {
         cloudModelEvidence: llmDiscovery.cloudModelObservations),
       ollamaLastCommitAt: setup.ollamaSetup.lastCommitAt,
       rememberedCloudModels: Self.rememberedCloudModels(settings: settings, scope: scope))
+  }
+
+  /// Whether `scope`'s warnings may show at all. #4721: the summary engine's also wait for
+  /// EnviousMeet's own setup. Its engine is copied from dictation's for everyone at first launch,
+  /// and until that setup is done the Summaries tab is not reachable, so a warning would send the
+  /// person to the setup screen instead.
+  @MainActor
+  static func setupComplete(settings: SettingsManager, scope: PolishSetupScope) -> Bool {
+    guard settings.onboardingState == .completed else { return false }
+    switch scope {
+    case .dictation: return true
+    case .meetingSummary: return settings.meetingOnboardingComplete
+    }
   }
 
   /// #4353: the scope's remembered cloud model per provider (dictation's or the summary

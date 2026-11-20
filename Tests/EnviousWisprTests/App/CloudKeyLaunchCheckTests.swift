@@ -70,6 +70,7 @@ struct CloudKeyLaunchCheckTests {
     let settings = SettingsManager(
       defaults: try #require(TestDefaults.suite("ew.tests.launch-key-check.\(UUID().uuidString)")))
     settings.onboardingState = onboarded ? .completed : .notStarted
+    settings.meetingOnboardingComplete = true
     let discovery = LLMModelDiscoveryCoordinator(
       keychainManager: keychain,
       cacheDefaults: try #require(
@@ -131,10 +132,21 @@ struct CloudKeyLaunchCheckTests {
   func notOnboardedChecksNothing() async throws {
     let fx = try Self.fixture(keys: [KeychainManager.claudeKeyID: "c"], onboarded: false)
     fx.settings.llmProvider = .claude
+    // With no targets, `start()` returns before starting any work, so this is decided here.
     fx.runner.start()
-    await Task.yield()
     #expect(fx.script.asked.isEmpty)
     #expect(fx.script.lines.isEmpty)
+  }
+
+  @Test("before EnviousMeet setup, the summary engine is not checked")
+  func summaryEngineWaitsForMeetingSetup() throws {
+    let fx = try Self.fixture()
+    fx.settings.llmProvider = .claude
+    fx.settings.meetingSummaryLLMProvider = .gemini
+    fx.settings.meetingOnboardingComplete = false
+    #expect(CloudKeyLaunchCheck.targets(settings: fx.settings).map(\.provider) == [.claude])
+    fx.settings.meetingOnboardingComplete = true
+    #expect(CloudKeyLaunchCheck.targets(settings: fx.settings).map(\.provider) == [.claude, .gemini])
   }
 
   @Test("local engines are never checked")
@@ -240,16 +252,16 @@ struct CloudKeyLaunchCheckTests {
 
     fx.runner.start()
     // An activation while the launch run is still going does nothing.
-    fx.runner.appBecameActive()
+    #expect(fx.runner.appBecameActive() == false)
     #expect(await fx.script.waitForLines(1))
     // A check that could not tell, with no earlier answer about this key: unknown, which
     // shows no warning (only a confirmed problem does).
     #expect(Self.readiness(fx, scope: .dictation) == .unknown)
 
-    fx.runner.appBecameActive()
+    #expect(fx.runner.appBecameActive())
     #expect(await fx.script.waitForLines(2))
-    fx.runner.appBecameActive()
-    await Task.yield()
+    // The one retry is spent: a later return starts nothing.
+    #expect(fx.runner.appBecameActive() == false)
 
     #expect(fx.script.asked.count == 2)
     #expect(
@@ -271,7 +283,7 @@ struct CloudKeyLaunchCheckTests {
     let admission = fx.discovery.admitCredentialMutation(
       provider: .claude, settings: fx.settings, surface: .dictation)
     fx.discovery.finishCredentialMutation(admission, cleared: false, settings: fx.settings)
-    fx.runner.appBecameActive()
+    #expect(fx.runner.appBecameActive())
     #expect(await fx.script.waitForLines(2))
 
     #expect(fx.script.asked.count == 1)
@@ -292,7 +304,7 @@ struct CloudKeyLaunchCheckTests {
     let gate = CredentialTestSignal()
     let turn = fx.access.reserve()
     let holder = Task { await fx.access.run(turn: turn) { _ = await gate.wait(deadlineMs: 5000) } }
-    fx.runner.appBecameActive()
+    #expect(fx.runner.appBecameActive())
     try #require(await queued.wait())
     fx.settings.llmProvider = .egOne
     gate.open()
@@ -312,8 +324,8 @@ struct CloudKeyLaunchCheckTests {
     ]
     fx.runner.start()
     #expect(await fx.script.waitForLines(1))
-    fx.runner.appBecameActive()
-    await Task.yield()
+    // Only a list answer that could not tell earns a retry; a probe's never does.
+    #expect(fx.runner.appBecameActive() == false)
     #expect(fx.script.asked.count == 1)
   }
 }

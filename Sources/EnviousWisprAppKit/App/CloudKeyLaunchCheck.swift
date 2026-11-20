@@ -72,8 +72,10 @@ final class CloudKeyLaunchCheck {
   /// Every activation. Retries once per launch, after the launch run ended, for providers still
   /// chosen whose list answer could not tell and whose claim still stands. An activation during
   /// the launch run does nothing: the person is already here, and their next return retries.
-  func appBecameActive() {
-    guard started, !running, !retried, !inconclusive.isEmpty else { return }
+  /// Returns whether a retry was started (for tests; production ignores it).
+  @discardableResult
+  func appBecameActive() -> Bool {
+    guard started, !running, !retried, !inconclusive.isEmpty else { return false }
     retried = true
     let chosen = Self.targets(settings: settings)
     let claims = chosen.compactMap {
@@ -82,9 +84,10 @@ final class CloudKeyLaunchCheck {
       return (target, claim)
     }
     inconclusive = [:]
-    guard !claims.isEmpty else { return }
+    guard !claims.isEmpty else { return false }
     running = true
     Task { await self.run(claims, retry: true) }
+    return true
   }
 
   // MARK: - Targets
@@ -101,7 +104,11 @@ final class CloudKeyLaunchCheck {
     guard settings.onboardingState == .completed else { return [] }
     var order: [LLMProvider] = []
     var models: [LLMProvider: [String]] = [:]
-    for scope in [PolishSetupScope.dictation, .meetingSummary] {
+    // #4721: the summary engine counts only once EnviousMeet setup is done (its engine is copied
+    // from dictation's for everyone, and its warnings wait for that setup too).
+    let scopes: [PolishSetupScope] =
+      settings.meetingOnboardingComplete ? [.dictation, .meetingSummary] : [.dictation]
+    for scope in scopes {
       let engine = PolishSetupEngineSelection(settings: settings, scope: scope)
       guard PolishSetupMonitor.usesCloudKey(engine.provider) else { continue }
       if models[engine.provider] == nil {
