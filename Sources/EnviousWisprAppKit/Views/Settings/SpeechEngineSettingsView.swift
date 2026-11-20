@@ -599,6 +599,7 @@ struct SpeechEngineSettingsView: View {
   struct ParakeetRow: Equatable {
     let title: String
     let detail: String?
+    let fraction: Double?
     let showsCancel: Bool
     let action: SettingsMapID?
     let owner: ParakeetRowOwner
@@ -632,18 +633,19 @@ struct SpeechEngineSettingsView: View {
           comment:
             "Speech engine settings, speech model: the downloaded model could not be loaded after several tries; Try again starts another attempt."
         ),
-        detail: nil, showsCancel: false, action: .fastModelTryAgain, owner: .retry)
+        detail: nil, fraction: nil, showsCancel: false, action: .fastModelTryAgain, owner: .retry)
     }
     if rowIsBackgroundUpgrade {
       switch background {
-      case .downloading(_, let bytesWritten, let totalBytes):
+      case .downloading(let fraction, let bytesWritten, let totalBytes):
         let row = Self.downloadingRow(bytesWritten: bytesWritten, totalBytes: totalBytes)
         return ParakeetRow(
-          title: row.title, detail: row.detail, showsCancel: true, action: nil,
+          title: row.title, detail: row.detail, fraction: fraction, showsCancel: true, action: nil,
           owner: .backgroundUpgrade)
       case .declined:
         return ParakeetRow(
-          title: Self.pausedTitle, detail: nil, showsCancel: false, action: .fastModelResume,
+          title: Self.pausedTitle, detail: nil, fraction: nil, showsCancel: false,
+          action: .fastModelResume,
           owner: .backgroundUpgrade)
       case .idle, .deferredDisk, .failed:
         return nil
@@ -651,8 +653,8 @@ struct SpeechEngineSettingsView: View {
     }
     return parakeetDeliveryRow(foreground).map {
       ParakeetRow(
-        title: $0.title, detail: $0.detail, showsCancel: $0.showsCancel, action: $0.action,
-        owner: .foreground)
+        title: $0.title, detail: $0.detail, fraction: $0.fraction, showsCancel: $0.showsCancel,
+        action: $0.action, owner: .foreground)
     }
   }
 
@@ -680,7 +682,7 @@ struct SpeechEngineSettingsView: View {
   }
 
   private static func parakeetDeliveryRow(_ state: DeliveryState) -> (
-    title: String, detail: String?, showsCancel: Bool, action: SettingsMapID?
+    title: String, detail: String?, fraction: Double?, showsCancel: Bool, action: SettingsMapID?
   )? {
     switch state {
     case .notReady, .admitted:
@@ -695,22 +697,22 @@ struct SpeechEngineSettingsView: View {
           : String(
             localized: "Preparing download...",
             comment: "Speech engine settings, speech model download: about to start."),
-        nil, false, nil
+        nil, nil, false, nil
       )
-    case .downloading(_, let bytesWritten, let totalBytes):
+    case .downloading(let fraction, let bytesWritten, let totalBytes):
       let row = Self.downloadingRow(bytesWritten: bytesWritten, totalBytes: totalBytes)
-      return (row.title, row.detail, true, nil)
+      return (row.title, row.detail, fraction, true, nil)
     case .verifying:
       return (
         String(
           localized: "Verifying download...",
           comment: "Speech engine settings, speech model download: checking the downloaded files."),
-        nil, false, nil
+        nil, nil, false, nil
       )
     case .cancelled:
       return (
         Self.pausedTitle,
-        nil, false,
+        nil, nil, false,
         .fastModelResume
       )
     case .failed(let failure):
@@ -719,7 +721,7 @@ struct SpeechEngineSettingsView: View {
           localized: "Speech model download failed.",
           comment: "Speech engine settings, speech model download: failed."),
         ModelDeliveryCopy.message(reason: failure.reason, detail: failure.detail),
-        false,
+        nil, false,
         .fastModelTryAgain
       )
     }

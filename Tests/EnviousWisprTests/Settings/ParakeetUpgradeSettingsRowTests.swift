@@ -33,12 +33,18 @@ struct ParakeetUpgradeSettingsRowTests {
     let row = try #require(
       Self.row(
         background: true,
-        upgrade: .downloading(fraction: 0.1, bytesWritten: 1_048_576, totalBytes: 632_314_500)))
+        upgrade: .downloading(fraction: 0.1, bytesWritten: 63_231_450, totalBytes: 632_314_500)))
     #expect(row.title == "Downloading speech model...")
-    #expect(row.detail == "1 MB of 603 MB")
+    #expect(row.detail == "60 MB of 603 MB")
     #expect(row.showsCancel)
     #expect(row.action == nil)
     #expect(row.owner == .backgroundUpgrade)
+    let status = SpeechEngineStatus.parakeet(
+      installed: true, removing: false, leftovers: false, row: row)
+    #expect(status.operation == .working(
+      title: "Downloading speech model...", detail: "60 MB of 603 MB",
+      fraction: 0.1, cancel: .parakeetUpgrade))
+    #expect(status.showsInstallLine)
   }
 
   @Test("a declined upgrade shows Resume for the upgrade, also after relaunch")
@@ -65,10 +71,17 @@ struct ParakeetUpgradeSettingsRowTests {
       Self.row(
         background: false,
         foreground: .downloading(
-          fractionCompleted: 0.5, bytesWritten: 2_097_152, totalBytes: 632_314_500)))
+          fractionCompleted: 0.5, bytesWritten: 316_157_250, totalBytes: 632_314_500)))
     #expect(row.title == "Downloading speech model...")
-    #expect(row.detail == "2 MB of 603 MB")
+    #expect(row.detail == "301 MB of 603 MB")
     #expect(row.owner == .foreground)
+    let status = SpeechEngineStatus.parakeet(
+      installed: false, removing: false, leftovers: true, row: row)
+    #expect(status.operation == .working(
+      title: "Downloading speech model...", detail: "301 MB of 603 MB",
+      fraction: 0.5, cancel: .parakeetForeground))
+    #expect(status.showsInstallLine == false)
+    #expect(status.offersLeftoverRemoval == false)
     #expect(Self.row(background: false, foreground: .admitted) == nil)
     let paused = try #require(Self.row(background: false, foreground: .cancelled(resumable: true)))
     #expect(paused.action == .fastModelResume)

@@ -43,7 +43,13 @@ struct SpeechEngineStatus: Equatable {
     if case .notInstalled = install, operation == nil { return true }
     return false
   }
-  var offersLeftoverRemoval: Bool { install == .notInstalled(leftovers: true) }
+  var offersLeftoverRemoval: Bool { showsInstallLine && install == .notInstalled(leftovers: true) }
+  /// An operation's own status replaces the missing-model status while work is underway.
+  /// A ready model can still be used during a background upgrade.
+  var showsInstallLine: Bool {
+    if case .working = operation { return install == .ready }
+    return true
+  }
   var isPaused: Bool {
     if case .paused = operation { return true }
     return false
@@ -79,7 +85,7 @@ struct SpeechEngineStatus: Equatable {
     }
     let operation: Operation =
       if row.showsCancel {
-        .working(title: row.title, detail: row.detail, fraction: nil, cancel: owner)
+        .working(title: row.title, detail: row.detail, fraction: row.fraction, cancel: owner)
       } else if row.action == .fastModelResume {
         .paused(title: row.title, resume: owner, cancel: owner)
       } else if row.action == .fastModelTryAgain {
@@ -192,19 +198,18 @@ struct SpeechEngineStatusRow: View {
 
   var body: some View {
     let status = status
+    // Keep the existing re-check destinations even when an operation replaces the install line.
+    let showsRecheck = registers && status.install != .removing
+      && (engine == .parakeet || status.operation == nil || status.isPaused)
     VStack(alignment: .leading, spacing: 6) {
-      HStack(spacing: 8) {
-        installLine(status.install)
-        Spacer(minLength: 8)
-        if status.offersRemove { removeButton }
-        if status.offersSetUp { setUpButton }
-        if status.offersLeftoverRemoval { leftoverButton }
-        // The re-check where it was before (#3385): always beside Parakeet's line; beside
-        // Whisper's only when settled or paused.
-        if status.install != .removing,
-          engine == .parakeet || status.operation == nil || status.isPaused
-        {
-          recheckButton
+      if status.showsInstallLine || showsRecheck {
+        HStack(spacing: 8) {
+          if status.showsInstallLine { installLine(status.install) }
+          Spacer(minLength: 8)
+          if status.offersRemove { removeButton }
+          if status.offersSetUp { setUpButton }
+          if status.offersLeftoverRemoval { leftoverButton }
+          if showsRecheck { recheckButton }
         }
       }
       if let operation = status.operation { operationView(operation) }
@@ -300,7 +305,10 @@ struct SpeechEngineStatusRow: View {
       VStack(alignment: .leading, spacing: 4) {
         Text(title).settingsRowLabel()
         if let fraction {
-          ProgressView(value: fraction).progressViewStyle(.linear).frame(maxWidth: 260)
+          ProgressView(value: fraction)
+            .progressViewStyle(.linear)
+            .accessibilityLabel(Text(verbatim: title))
+            .frame(maxWidth: 260)
         }
         HStack(alignment: .firstTextBaseline, spacing: 8) {
           if let detail { Text(detail).settingsReadingCopy().lineLimit(2) }
@@ -372,16 +380,14 @@ struct SpeechEngineStatusRow: View {
     .mapRegistration(nil)
   }
 
-  @ViewBuilder private var recheckButton: some View {
-    if place == .dictationSummary {
-      Button(action: recheck) {
-        Image(systemName: "arrow.clockwise").settingsHoverQuiet()
-      }
-      .buttonStyle(.borderless)
-      .help(Text(recheckLabel))
-      .accessibilityLabel(Text(recheckLabel))
-      .mapRegistration(engine == .whisper ? .whisperModelRecheck : .transcriptionEngineRecheckFast)
+  private var recheckButton: some View {
+    Button(action: recheck) {
+      Image(systemName: "arrow.clockwise").settingsHoverQuiet()
     }
+    .buttonStyle(.borderless)
+    .help(Text(recheckLabel))
+    .accessibilityLabel(Text(recheckLabel))
+    .mapRegistration(engine == .whisper ? .whisperModelRecheck : .transcriptionEngineRecheckFast)
   }
 
   private var recheckLabel: LocalizedStringResource {
