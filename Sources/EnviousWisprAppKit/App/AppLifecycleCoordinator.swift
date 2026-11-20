@@ -109,6 +109,8 @@ final class AppLifecycleCoordinator {
   /// event requests one; the Bluetooth card is re-judged after that snapshot is applied, never
   /// on facts that may be stale.
   private let requestDeviceRefresh: @MainActor () -> Void
+  /// #4721: told of every activation; the launch key check owns whether it retries.
+  private let onBecameActive: @MainActor () -> Void
   /// #4021: DEBUG `force_core_audio_stall` target, forwarded into `DebugFaultEndpoint`; nil in
   /// Release.
   private let coreAudioStall: ((Duration) -> Void)?
@@ -144,6 +146,7 @@ final class AppLifecycleCoordinator {
     batchDecodeFaultController: BatchDecodeFaultController? = nil,
     whisperMemoryPressure: (@MainActor () async -> Bool)? = nil,
     requestDeviceRefresh: @escaping @MainActor () -> Void,
+    onBecameActive: @escaping @MainActor () -> Void,
     coreAudioStall: ((Duration) -> Void)? = nil,
     audioUnitStall: ((AudioUnitLane.Operation, Duration) -> Void)? = nil,
     // Required and non-defaulted (review r1): a composition that forgets it
@@ -152,6 +155,7 @@ final class AppLifecycleCoordinator {
   ) {
     self.onRecordingStarted = onRecordingStarted
     self.requestDeviceRefresh = requestDeviceRefresh
+    self.onBecameActive = onBecameActive
     self.coreAudioStall = coreAudioStall
     self.audioUnitStall = audioUnitStall
     self.wheelScrollSmoother = wheelScrollSmoother
@@ -473,6 +477,7 @@ final class AppLifecycleCoordinator {
     // changed while the app was away (the user fixed it in System Settings). Every activation
     // is forwarded; the coordinator owns eligibility and the retry budget.
     aiAvailability.applicationDidBecomeActive()
+    onBecameActive()
   }
 
   func runWillTerminate() {
