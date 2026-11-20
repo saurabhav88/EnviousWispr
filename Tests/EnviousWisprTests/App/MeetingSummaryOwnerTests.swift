@@ -435,6 +435,41 @@ struct MeetingSummaryOwnerTests {
     #expect(try rig.manifest(id).summaryPending == true)
   }
 
+  /// #4703 M1: when this fails, a History meeting page shows another meeting's "Saving…" or
+  /// "The saved summary changed.", or keeps that warning after a successful Keep or a new preview.
+  @Test("the meeting page's Keep busy and refusal belong to the meeting they happened on")
+  func pageKeepStateIsPerMeeting() async throws {
+    let rig = try Rig()
+    let refused = try rig.readyMeeting()
+    let kept = try rig.readyMeeting()
+    let choice = HistoryPolishChoice(provider: .claude, model: "claude-test", sendsTextOffMac: true)
+    let page = MeetingSummaryEditState()
+
+    page.beginPreview(choice, meetingID: refused, summaries: rig.owner)
+    let stale = try await rig.preview(refused)
+    _ = try rig.store.saveSummary(
+      "A newer summary.", origin: .userEdited, inputs: nil, meeting: refused)
+    page.keep(candidateID: stale.id, meetingID: refused, summaries: rig.owner)
+    #expect(page.isKeeping(refused))
+    #expect(!page.isKeeping(kept), "another meeting never shows this meeting's Saving…")
+    await Self.eventually("refused Keep settled") { !page.isKeeping(refused) }
+    #expect(page.keepFailed(refused))
+    #expect(!page.keepFailed(kept), "another meeting never shows this meeting's refusal")
+
+    page.beginPreview(choice, meetingID: kept, summaries: rig.owner)
+    let candidate = try await rig.preview(kept)
+    page.keep(candidateID: candidate.id, meetingID: kept, summaries: rig.owner)
+    await Self.eventually("Keep settled") { !page.isKeeping(kept) }
+    #expect(!page.keepFailed(kept))
+    #expect(rig.summaryOnDisk(kept) == candidate.text)
+    #expect(page.keepFailed(refused), "the first meeting's refusal stays until dismissed")
+
+    page.beginPreview(choice, meetingID: refused, summaries: rig.owner)
+    #expect(!page.keepFailed(refused), "a new preview clears the refusal")
+    page.discardPreview(refused, summaries: rig.owner)
+    #expect(rig.owner.previews[refused] == nil)
+  }
+
   @Test("a meeting that changes while its summary is written keeps no stale answer")
   func staleAnswer() async throws {
     let rig = try Rig()
