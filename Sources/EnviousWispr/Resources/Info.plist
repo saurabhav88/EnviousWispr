@@ -6,12 +6,6 @@
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
 	<string>EnviousWispr</string>
-	<key>CFBundleExecutable</key>
-	<string>EnviousWispr</string>
-	<key>CFBundleIconFile</key>
-	<string>AppIcon</string>
-	<key>EWSharedMediaGroup</key>
-	<string>$(EW_SHARED_MEDIA_GROUP)</string>
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
@@ -28,6 +22,10 @@
 			</array>
 		</dict>
 	</array>
+	<key>CFBundleExecutable</key>
+	<string>EnviousWispr</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleName</key>
@@ -35,9 +33,11 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>2.6.0</string>
+	<string>2.6.1</string>
 	<key>CFBundleVersion</key>
-	<string>2.6.0</string>
+	<string>2.6.1</string>
+	<key>EWSharedMediaGroup</key>
+	<string>$(EW_SHARED_MEDIA_GROUP)</string>
 	<key>LSArchitecturePriority</key>
 	<array>
 		<string>arm64</string>

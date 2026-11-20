@@ -34992,6 +34992,42 @@
         }
       }
     },
+    "whatsNew.brand-new-history-tab-experience.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry brand-new-history-tab-experience).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A Brand New History Tab Experience"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Verlaufs-Tab: ein ganz neues Erlebnis"
+          }
+        }
+      }
+    },
+    "whatsNew.brand-new-history-tab-experience.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry brand-new-history-tab-experience).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The UX has been redesigned to make engaging with your Dictations, Transcripts and Meetings more natural and enjoyable. We added a bunch of new functionality as well for power users."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wir haben die Oberfläche neu gestaltet, damit der Umgang mit deinen Diktaten, Transkripten und Meetings natürlicher und angenehmer wird. Außerdem gibt es viele neue Funktionen für Power-User."
+          }
+        }
+      }
+    },
     "whatsNew.play-back-your-dictations.title" : {
       "comment" : "Settings > What's New: the title of one feature announcement (entry play-back-your-dictations).",
       "extractionState" : "manual",
@@ -35017,13 +35053,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "EnviousWispr now keeps a recording of each saved dictation on your Mac, so you can play it back in History. Recordings stay until you delete them, or for a keep period you choose in Settings > App Settings > Recordings."
+            "value" : "Introducing dictation playback. EnviousWispr now keeps a recording of your dictations on your Mac, so you can play it back in History. Recordings stay until you delete them, or for a keep period you choose in Settings > App Settings > Recordings."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "EnviousWispr speichert jetzt zu jedem gespeicherten Diktat eine Aufnahme auf deinem Mac, damit du sie im Verlauf abspielen kannst. Aufnahmen bleiben, bis du sie löschst, oder für eine Aufbewahrungsdauer, die du unter Einstellungen > App-Einstellungen > Aufnahmen wählst."
+            "value" : "Neu: Diktate abspielen. EnviousWispr speichert jetzt Aufnahmen deiner Diktate auf deinem Mac, damit du sie im Verlauf abspielen kannst. Aufnahmen bleiben gespeichert, bis du sie löschst, oder für die Aufbewahrungsdauer, die du unter Einstellungen > App-Einstellungen > Aufnahmen wählst."
           }
         }
       }
@@ -35053,85 +35089,265 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Delete a recording in History, or all of them with Delete all dictation recordings. The text always stays."
+            "value" : "Choose Delete recording, keep text in History, or all of them with Delete all dictation recordings. The text always stays."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Lösche eine Aufnahme im Verlauf oder alle mit „Alle Diktataufnahmen löschen“. Der Text bleibt immer erhalten."
+            "value" : "Wähle im Verlauf „Aufnahme löschen, Text behalten“ oder lösche alle mit „Alle Diktataufnahmen löschen“. Der Text bleibt immer erhalten."
           }
         }
       }
     },
-    "whatsNew.remove-either-speech-engine.title" : {
-      "comment" : "Settings > What's New: the title of one feature announcement (entry remove-either-speech-engine).",
+    "whatsNew.brand-new-faster-eg1.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry brand-new-faster-eg1).",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Remove either speech engine"
+            "value" : "Brand new, faster EG-1"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Entferne eine der beiden Transkriptions-Engines"
+            "value" : "Das brandneue, schnellere EG-1"
           }
         }
       }
     },
-    "whatsNew.remove-either-speech-engine.description" : {
-      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry remove-either-speech-engine).",
+    "whatsNew.brand-new-faster-eg1.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry brand-new-faster-eg1).",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "You can now remove Parakeet or Whisper from your Mac to free up space, in Dictation Settings > Engine or EnviousMeet > Models. A removed engine never downloads again on its own. Choose Set up model when you want it back, and meetings use your other downloaded engine meanwhile."
+            "value" : "Brand new EG-1 models are faster, and the full-size EG-1 is more accurate, in English and 10 more languages. Pick the size that fits your Mac in Settings > AI Polish: EG-1, EG-1 Mini or EG-1 Micro. If you turned polishing off because it felt slow, give it another try."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Du kannst jetzt unter Diktateinstellungen > Engine oder EnviousMeet > Modelle Parakeet oder Whisper von deinem Mac entfernen, um Speicherplatz freizugeben. Eine entfernte Transkriptions-Engine wird nie wieder von selbst heruntergeladen. Wähle „Modell einrichten“, wenn du sie zurückhaben möchtest. Für Meetings wird bis dahin deine andere heruntergeladene Transkriptions-Engine verwendet."
+            "value" : "Auf Englisch und in 10 weiteren Sprachen sind die brandneuen EG-1-Modelle schneller, und das größte Modell (EG-1) arbeitet genauer. Wähle unter Einstellungen > KI-Nachbearbeitung die Größe, die zu deinem Mac passt: EG-1, EG-1 Mini oder EG-1 Micro. Falls du die Nachbearbeitung abgeschaltet hast, weil sie dir zu langsam war, probier sie noch einmal aus."
           }
         }
       }
     },
-    "whatsNew.calmer-self-learning-pill.title" : {
-      "comment" : "Settings > What's New: the title of one feature announcement (entry calmer-self-learning-pill).",
+    "whatsNew.enviouswispr-in-the-share-menu.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry enviouswispr-in-the-share-menu).",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "A calmer Self-Learning pill"
+            "value" : "EnviousWispr is now in the Share menu"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ein ruhigerer Selbstlern-Hinweis"
+            "value" : "EnviousWispr ist jetzt im Teilen-Menü"
           }
         }
       }
     },
-    "whatsNew.calmer-self-learning-pill.description" : {
-      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry calmer-self-learning-pill).",
+    "whatsNew.enviouswispr-in-the-share-menu.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry enviouswispr-in-the-share-menu).",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "The Self-Learning pill now stays for 12 seconds when it appears, and waits while your pointer rests on it. Click Undo to reverse the dictionary change, or click × to close the pill and keep the word. You can always change learned words in Your Words."
+            "value" : "Share an audio or video file from a Mac app with Transcribe with EnviousWispr to get a transcript. Turn it on once in the macOS Share menu, check your settings, then press Start transcription."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wenn der Hinweis des Selbstlernenden Wörterbuchs erscheint, bleibt er jetzt 12 Sekunden lang sichtbar. Solange dein Mauszeiger über dem Hinweis steht, läuft die Zeit nicht weiter. Klicke auf „Rückgängig“, um die Änderung am Wörterbuch zurückzunehmen, oder auf ×, um den Hinweis zu schließen und das Wort zu behalten. Gelernte Wörter kannst du jederzeit unter „Deine Wörter“ ändern."
+            "value" : "Teile eine Audio- oder Videodatei aus einer Mac-App über „Mit EnviousWispr transkribieren“, um ein Transkript zu erhalten. Aktiviere die Funktion einmalig im Teilen-Menü von macOS, prüfe deine Einstellungen und klicke dann auf „Transkription starten“."
+          }
+        }
+      }
+    },
+    "whatsNew.latest-cloud-models-and-smaller-fixes.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry latest-cloud-models-and-smaller-fixes).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The latest cloud AI models, plus smaller fixes"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die neuesten Cloud-KI-Modelle und kleinere Fehlerbehebungen"
+          }
+        }
+      }
+    },
+    "whatsNew.latest-cloud-models-and-smaller-fixes.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry latest-cloud-models-and-smaller-fixes).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr has been updated to support the latest cloud AI models."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr unterstützt jetzt die neuesten Cloud-KI-Modelle."
+          }
+        }
+      }
+    },
+    "whatsNew.latest-cloud-models-and-smaller-fixes.bullet.0" : {
+      "comment" : "Settings > What's New: point 1 of the list under one feature announcement (entry latest-cloud-models-and-smaller-fixes).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Parakeet can now be uninstalled if you prefer using Whisper."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Parakeet lässt sich jetzt deinstallieren, wenn du lieber Whisper nutzt."
+          }
+        }
+      }
+    },
+    "whatsNew.latest-cloud-models-and-smaller-fixes.bullet.1" : {
+      "comment" : "Settings > What's New: point 2 of the list under one feature announcement (entry latest-cloud-models-and-smaller-fixes).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "More time to undo a self-learned word."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mehr Zeit, um das automatische Lernen eines Wortes rückgängig zu machen."
+          }
+        }
+      }
+    },
+    "whatsNew.latest-cloud-models-and-smaller-fixes.bullet.2" : {
+      "comment" : "Settings > What's New: point 3 of the list under one feature announcement (entry latest-cloud-models-and-smaller-fixes).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stop recording on silence can now wait up to 5 seconds of silence before it stops."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„Aufnahme bei Stille stoppen“ kann jetzt bis zu 5 Sekunden Stille abwarten, bevor die Aufnahme endet."
+          }
+        }
+      }
+    },
+    "whatsNew.latest-cloud-models-and-smaller-fixes.bullet.3" : {
+      "comment" : "Settings > What's New: point 4 of the list under one feature announcement (entry latest-cloud-models-and-smaller-fixes).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fixed a bug where Caps Lock could mess with push-to-talk."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Fehler wurde behoben, bei dem die Feststelltaste Push-to-Talk stören konnte."
+          }
+        }
+      }
+    },
+    "whatsNew.latest-cloud-models-and-smaller-fixes.bullet.4" : {
+      "comment" : "Settings > What's New: point 5 of the list under one feature announcement (entry latest-cloud-models-and-smaller-fixes).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pasting into Telegram is more reliable."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einfügen in Telegram funktioniert zuverlässiger."
+          }
+        }
+      }
+    },
+    "whatsNew.latest-cloud-models-and-smaller-fixes.bullet.5" : {
+      "comment" : "Settings > What's New: point 6 of the list under one feature announcement (entry latest-cloud-models-and-smaller-fixes).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Music resumes more reliably after you dictate."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nach dem Diktieren läuft die Musik zuverlässiger weiter."
+          }
+        }
+      }
+    },
+    "whatsNew.latest-cloud-models-and-smaller-fixes.bullet.6" : {
+      "comment" : "Settings > What's New: point 7 of the list under one feature announcement (entry latest-cloud-models-and-smaller-fixes).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fixed a bug where numbers were being added when dictated back to back."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Fehler wurde behoben, bei dem direkt nacheinander diktierte Zahlen addiert wurden."
+          }
+        }
+      }
+    },
+    "whatsNew.latest-cloud-models-and-smaller-fixes.bullet.7" : {
+      "comment" : "Settings > What's New: point 8 of the list under one feature announcement (entry latest-cloud-models-and-smaller-fixes).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousMeet catches more Teams guest calls in Brave and Chrome."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousMeet erkennt in Brave und Chrome mehr Teams-Anrufe, an denen du als Gast teilnimmst."
           }
         }
       }
