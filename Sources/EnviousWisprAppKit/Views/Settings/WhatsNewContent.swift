@@ -61,10 +61,12 @@ enum WhatsNewContent {
     // "Transcriptions" -> "Transcripts" (the tab's name), "big" -> "bug", "11+ international
     // languages" -> "10 more languages" (the sealed exam's ten non-English languages). Codex verified
     // the claims (run 20261120-101140-release-v2-6-1-notes-verify-11b0). Evidence kept here for the
-    // claim sweep: "about twice as fast" = EG-1 1.3 on EnviousDecode p50 122 ms vs EG-1 1.2 p50
-    // 260 ms (scripts/eval/runs/intl-sealed-2026-11/scorecard/SCORECARD.md section 10, different
-    // timing harnesses); "more accurately" = pass+minor 96.8% vs 93.4% English, 86.1% vs 74.6% in
-    // ten languages on the same sealed exam. Playback: saved dictations only (KernelFinalizationWiring
+    // claim sweep: "faster" = size cards p50 101 / 55 / 35 ms (eg1-size-facts.json) against
+    // EG-1 1.2 p50 260 ms (SCORECARD.md section 10; different harnesses, so no multiplier is
+    // claimed; founder chose this wording 2026-11-20 over re-measuring). "The full-size EG-1 is
+    // more accurate" = pass+minor 96.8% vs 93.4% English, 86.1% vs 74.6% in ten languages, same
+    // sealed exam; Micro scores below 1.2, so the claim names full size only. Playback: saved
+    // dictations only (KernelFinalizationWiring
     // permanentSaveRowID); "Delete recording, keep text" is the History control. Replaces the
     // unreleased draft entries remove-either-speech-engine and calmer-self-learning-pill.
     Entry(
@@ -88,11 +90,11 @@ enum WhatsNewContent {
       version: "2.6.1"
     ),
     Entry(
-      id: "brand-new-eg1-twice-as-fast",
+      id: "brand-new-faster-eg1",
       icon: "cpu",
-      title: "Brand new EG-1: about twice as fast",
+      title: "Brand new, faster EG-1",
       description:
-        "Brand new EG-1 models polish about twice as fast as before, and more accurately, in English and 10 more languages. Pick the size that fits your Mac in Settings > AI Polish: EG-1, EG-1 Mini or EG-1 Micro. If you turned polishing off because it felt slow, give it another try.",
+        "Brand new EG-1 models are faster, and the full-size EG-1 is more accurate, in English and 10 more languages. Pick the size that fits your Mac in Settings > AI Polish: EG-1, EG-1 Mini or EG-1 Micro. If you turned polishing off because it felt slow, give it another try.",
       version: "2.6.1"
     ),
     Entry(

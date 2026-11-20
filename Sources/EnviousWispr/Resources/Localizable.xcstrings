@@ -35100,38 +35100,38 @@
         }
       }
     },
-    "whatsNew.brand-new-eg1-twice-as-fast.title" : {
-      "comment" : "Settings > What's New: the title of one feature announcement (entry brand-new-eg1-twice-as-fast).",
+    "whatsNew.brand-new-faster-eg1.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry brand-new-faster-eg1).",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Brand new EG-1: about twice as fast"
+            "value" : "Brand new, faster EG-1"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Das brandneue EG-1: etwa doppelt so schnell"
+            "value" : "Das brandneue, schnellere EG-1"
           }
         }
       }
     },
-    "whatsNew.brand-new-eg1-twice-as-fast.description" : {
-      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry brand-new-eg1-twice-as-fast).",
+    "whatsNew.brand-new-faster-eg1.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry brand-new-faster-eg1).",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Brand new EG-1 models polish about twice as fast as before, and more accurately, in English and 10 more languages. Pick the size that fits your Mac in Settings > AI Polish: EG-1, EG-1 Mini or EG-1 Micro. If you turned polishing off because it felt slow, give it another try."
+            "value" : "Brand new EG-1 models are faster, and the full-size EG-1 is more accurate, in English and 10 more languages. Pick the size that fits your Mac in Settings > AI Polish: EG-1, EG-1 Mini or EG-1 Micro. If you turned polishing off because it felt slow, give it another try."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Die brandneuen EG-1-Modelle bearbeiten Texte auf Englisch und in 10 weiteren Sprachen etwa doppelt so schnell wie bisher und mit höherer Genauigkeit. Wähle unter Einstellungen > KI-Nachbearbeitung die Größe, die zu deinem Mac passt: EG-1, EG-1 Mini oder EG-1 Micro. Falls du die Nachbearbeitung abgeschaltet hast, weil sie dir zu langsam war, probier sie noch einmal aus."
+            "value" : "Auf Englisch und in 10 weiteren Sprachen sind die brandneuen EG-1-Modelle schneller, und das größte Modell (EG-1) arbeitet genauer. Wähle unter Einstellungen > KI-Nachbearbeitung die Größe, die zu deinem Mac passt: EG-1, EG-1 Mini oder EG-1 Micro. Falls du die Nachbearbeitung abgeschaltet hast, weil sie dir zu langsam war, probier sie noch einmal aus."
           }
         }
       }
