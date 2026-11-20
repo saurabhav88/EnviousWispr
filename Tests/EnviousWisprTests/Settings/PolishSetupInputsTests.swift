@@ -144,6 +144,32 @@ struct PolishSetupInputsTests {
     #expect(quietSummary.currentEpisode == nil)
   }
 
+  @Test("#4721: the summary engine's warnings wait for EnviousMeet setup; dictation's do not")
+  func summaryWarningsWaitForMeetingSetup() throws {
+    let settings = try Self.settings()
+    settings.onboardingState = .completed
+    settings.meetingOnboardingComplete = false
+    #expect(PolishSetupInputs.setupComplete(settings: settings, scope: .dictation))
+    #expect(PolishSetupInputs.setupComplete(settings: settings, scope: .meetingSummary) == false)
+    settings.meetingOnboardingComplete = true
+    #expect(PolishSetupInputs.setupComplete(settings: settings, scope: .meetingSummary))
+    settings.onboardingState = .notStarted
+    #expect(PolishSetupInputs.setupComplete(settings: settings, scope: .meetingSummary) == false)
+    #expect(PolishSetupInputs.setupComplete(settings: settings, scope: .dictation) == false)
+  }
+
+  @Test("#4721: finishing EnviousMeet setup reaches only the summary monitor")
+  func meetingSetupReachesSummaryMonitor() {
+    let holder = PolishSetupMonitorHolder()
+    let dictation = Self.monitor(World())
+    let summary = Self.monitor(World())
+    holder.monitor = dictation
+    holder.summaryMonitor = summary
+    holder.settingChanged(.meetingOnboardingComplete)
+    #expect(summary.currentEpisode != nil, "the summary monitor missed EnviousMeet setup finishing")
+    #expect(dictation.currentEpisode == nil)
+  }
+
   // A user who picks another EG-1 size would see warnings for the old size until something else changed.
   @Test("an EG-1 size change reaches both monitors")
   func egOneSizeReachesBoth() {

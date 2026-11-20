@@ -226,32 +226,58 @@ enum ProviderStatusMapping {
         label: String(localized: "Key needed", comment: "AI Polish provider status chip."),
         tone: .unavailable)
     }
-    guard selected, facts.validationProvider == provider else {
-      return ProviderStatus(
-        label: String(
-          localized: "Key saved",
-          comment: "AI Polish provider status chip: an API key is saved but was not checked here."),
-        tone: .unavailable)
+    let keySaved = ProviderStatus(
+      label: String(
+        localized: "Key saved",
+        comment: "AI Polish provider status chip: an API key is saved but was not checked here."),
+      tone: .unavailable)
+    let notChecked = ProviderStatus(
+      label: String(localized: "Not checked", comment: "AI Polish provider status chip."),
+      tone: .unavailable)
+    let checking = ProviderStatus(
+      label: String(localized: "Checking", comment: "AI Polish provider status chip."),
+      tone: .needsSetup)
+    let keyValid = ProviderStatus(
+      label: String(localized: "Key valid", comment: "AI Polish provider status chip."),
+      tone: .ready)
+    let checkFailed = ProviderStatus(
+      label: String(
+        localized: "Check failed",
+        comment: "AI Polish provider status chip: checking the saved API key did not succeed."),
+      tone: .error)
+    guard selected else { return keySaved }
+    let live = facts.validationProvider == provider ? facts.cloudValidation : nil
+    // A check this page started and still running shows as checking.
+    if case .validating = live { return checking }
+    // #4721: the stored answer about the key saved NOW. A definitive one (accepted or refused)
+    // is the newest thing known about this key: the check that just finished wrote it at the
+    // same moment as the live state, and a later dictation or launch answer replaces it. So it
+    // wins over a finished live state, which never carries its own age.
+    let verdict = facts.cloudVerdicts[provider].flatMap { verdict in
+      verdict.provider == provider && facts.credentialRevisions[provider] == verdict.credentialRevision
+        ? verdict : nil
     }
-    switch facts.cloudValidation {
-    case .idle:
-      return ProviderStatus(
-        label: String(localized: "Not checked", comment: "AI Polish provider status chip."),
-        tone: .unavailable)
-    case .validating:
-      return ProviderStatus(
-        label: String(localized: "Checking", comment: "AI Polish provider status chip."),
-        tone: .needsSetup)
-    case .valid:
-      return ProviderStatus(
-        label: String(localized: "Key valid", comment: "AI Polish provider status chip."),
-        tone: .ready)
-    case .invalid:
-      return ProviderStatus(
-        label: String(
-          localized: "Check failed",
-          comment: "AI Polish provider status chip: checking the saved API key did not succeed."),
-        tone: .error)
+    switch verdict?.result {
+    case .accepted: return keyValid
+    case .rejected: return checkFailed
+    case .checking, .inconclusive, nil: break
+    }
+    // Otherwise a finished check this page ran says what it found (a check that could not
+    // tell reads "Check failed", with the reason in the row).
+    switch live {
+    case .valid: return keyValid
+    case .invalid: return checkFailed
+    case .validating, .idle, nil: break
+    }
+    guard let verdict else { return live == nil ? keySaved : notChecked }
+    switch verdict.result {
+    case .checking: return checking
+    case .inconclusive:
+      // A check that could not tell keeps the last definitive answer about this key.
+      guard let known = verdict.definitive else { return notChecked }
+      return known.rejected ? checkFailed : keyValid
+    case .accepted: return keyValid
+    case .rejected: return checkFailed
     }
   }
 }

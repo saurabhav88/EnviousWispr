@@ -399,8 +399,11 @@ struct MenuBarControllerTests {
 
   // MARK: - AI polish setup line (#3438)
 
-  private static let openAIKeyMissing = PolishSetupPromptSubject(
-    problem: .cloudKeyMissing(.openAI), provider: .openAI)
+  private static let openAIKeyMissing = PolishSetupWarningSubjects(
+    dictation: PolishSetupPromptSubject(problem: .cloudKeyMissing(.openAI), provider: .openAI),
+    summary: nil)!
+  private static let claudeRefused = PolishSetupPromptSubject(
+    problem: .cloudKeyRejected(.claude), provider: .claude)
 
   @Test("an unfinished AI polish setup adds one enabled line that opens AI Polish")
   func polishSetupLine() {
@@ -447,6 +450,37 @@ struct MenuBarControllerTests {
     spy.polishSetupWarning = nil
     perform(line)
     #expect(spy.openedAIPolishFor == [Self.openAIKeyMissing])
+  }
+
+  @Test("#4721: one line names meeting summaries, or both engines, and reports what it showed")
+  func summaryAndBothLines() throws {
+    let spy = ActionSpy()
+    let controller = makeController(spy: spy)
+    let menu = NSMenu()
+    let summaryOnly = try #require(
+      PolishSetupWarningSubjects(dictation: nil, summary: Self.claudeRefused))
+    let both = try #require(
+      PolishSetupWarningSubjects(dictation: Self.openAIKeyMissing.dictation, summary: Self.claudeRefused))
+
+    controller.renderMenu(into: menu, state: fixture(pipelineState: .idle, polishSetupWarning: summaryOnly))
+    var lines = menu.items.filter { $0.identifier == MenuBarItemID.polishSetup }
+    #expect(lines.count == 1)
+    #expect(lines.first?.title == "Finish setting up meeting summaries")
+    #expect(lines.first?.image?.accessibilityDescription == "Finish setting up meeting summaries")
+    perform(lines.first)
+    #expect(spy.openedAIPolishFor == [summaryOnly])
+    #expect(summaryOnly.destination == .meetings(.summaries))
+
+    controller.renderMenu(into: menu, state: fixture(pipelineState: .idle, polishSetupWarning: both))
+    lines = menu.items.filter { $0.identifier == MenuBarItemID.polishSetup }
+    #expect(lines.count == 1)
+    #expect(lines.first?.title == "Finish setting up AI polish and meeting summaries")
+    perform(lines.first)
+    #expect(spy.openedAIPolishFor == [summaryOnly, both])
+    #expect(both.destination == .aiPolish)
+    // Dictation alone keeps today's words, icon description and destination.
+    #expect(Self.openAIKeyMissing.destination == .aiPolish)
+    #expect(PolishSetupWarningSubjects(dictation: nil, summary: nil) == nil)
   }
 
   @Test("the AI polish setup line never changes the menu bar icon")
@@ -1282,7 +1316,7 @@ struct MenuBarControllerTests {
     quickAddContext: SelectionReader.AcquisitionContext = .init(
       pid: 501, bundleIdentifier: "com.apple.TextEdit", focusedSubrole: nil),
     quickAddFallbackEnabled: Bool = true,
-    polishSetupWarning: PolishSetupPromptSubject? = nil,
+    polishSetupWarning: PolishSetupWarningSubjects? = nil,
     microphoneChoices: [MicrophoneMenuChoice] = [],
     microphoneSelection: String = ""
   ) -> MenuBarViewState {
@@ -1599,6 +1633,6 @@ final class ActionSpy {
   /// #3106: what `lastDictation` answers; nil means History has nothing to reuse.
   var lastDictation: (id: UUID, text: String)?
   /// #3438: what `polishSetupWarning` answers, and what each AI Polish open was told.
-  var polishSetupWarning: PolishSetupPromptSubject?
-  var openedAIPolishFor: [PolishSetupPromptSubject] = []
+  var polishSetupWarning: PolishSetupWarningSubjects?
+  var openedAIPolishFor: [PolishSetupWarningSubjects] = []
 }

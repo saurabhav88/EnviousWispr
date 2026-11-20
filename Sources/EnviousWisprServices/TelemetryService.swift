@@ -69,6 +69,8 @@ extension Dictionary where Key == String, Value == Any {
 public enum ApiKeyValidationSource: String, Sendable {
   case save
   case modelDiscovery = "model_discovery"
+  /// #4721: the automatic check of a saved key when the app starts, never a person's action.
+  case launch
 }
 
 /// #1464 — the root cause behind one crash-recovery attempt's `recovery.completed`

@@ -103,6 +103,8 @@ import EnviousWisprAppKitTestSupport
     func validationSourceRawValues() {
       #expect(ApiKeyValidationSource.save.rawValue == "save")
       #expect(ApiKeyValidationSource.modelDiscovery.rawValue == "model_discovery")
+      // #4721: the automatic launch check, never a person's action.
+      #expect(ApiKeyValidationSource.launch.rawValue == "launch")
     }
 
     @Test("Comprehensive snapshot includes the projected config block")

@@ -47,6 +47,96 @@ struct PolishSetupSurfaceTests {
     return monitor
   }
 
+  @MainActor
+  final class PromptLog {
+    var events: [PolishSetupPromptEvent] = []
+  }
+
+  private static func monitor(_ world: World, log: PromptLog) -> PolishSetupMonitor {
+    let monitor = PolishSetupMonitor(
+      readInputs: { world.inputs }, reportPrompt: { log.events.append($0) })
+    world.onTransition = { [weak monitor] in monitor?.configurationOrEligibilityChanged() }
+    monitor.start()
+    return monitor
+  }
+
+  /// A new episode for the same configuration: repaired, then broken again.
+  private static func newEpisode(_ world: World, _ monitor: PolishSetupMonitor) {
+    world.openAIKeySaved = true
+    _ = monitor.currentContext()
+    world.openAIKeySaved = false
+    _ = monitor.currentContext()
+  }
+
+  @Test("#4721: Close answers only the episodes the banner showed, each on its own monitor")
+  func closeAnswersCapturedEpisodes() throws {
+    let log = PromptLog()
+    let dictationWorld = World()
+    let summaryWorld = World()
+    let dictation = Self.monitor(dictationWorld, log: log)
+    let summary = Self.monitor(summaryWorld, log: log)
+    defer { dictation.stop(); summary.stop() }
+    // Distinct tokens across the two monitors, so a crossed acknowledgement cannot pass.
+    Self.newEpisode(summaryWorld, summary)
+    let shownDictation = try #require(PolishSetupBanner.shown(dictation))
+    let shownSummary = try #require(PolishSetupBanner.shown(summary))
+    try #require(shownDictation.episode != shownSummary.episode)
+
+    // Dictation's problem is repaired and returns before the click: a newer episode.
+    Self.newEpisode(dictationWorld, dictation)
+    try #require(dictation.currentEpisode != shownDictation.episode)
+
+    PolishSetupBanner.close(
+      dictation: shownDictation, summary: shownSummary, dictationMonitor: dictation,
+      summaryMonitor: summary)
+
+    #expect(summary.shows(.banner) == false, "the summary banner the person closed is still up")
+    #expect(dictation.shows(.banner), "an old close answered dictation's newer problem")
+    #expect(log.events.map(\.surface) == [.banner, .summaryBanner])
+    #expect(log.events.map(\.action) == [.closed, .closed])
+  }
+
+  @Test("#4721: Finish setup reports each named engine and goes where the warning says")
+  func finishSetupRoutesAndReports() throws {
+    let log = PromptLog()
+    let dictation = Self.monitor(World(), log: log)
+    let summary = Self.monitor(World(), log: log)
+    defer { dictation.stop(); summary.stop() }
+    let openAI = PolishSetupPromptSubject(problem: .cloudKeyMissing(.openAI), provider: .openAI)
+    let claude = PolishSetupPromptSubject(problem: .cloudKeyRejected(.claude), provider: .claude)
+    var requested: [SettingsDestination] = []
+    var windowOpened = 0
+
+    // Summary only, from the History banner: Summaries, no window request.
+    let summaryOnly = try #require(PolishSetupWarningSubjects(dictation: nil, summary: claude))
+    summaryOnly.finishSetup(
+      dictationMonitor: dictation, summaryMonitor: summary, on: .banner,
+      request: { requested.append($0) })
+    #expect(requested == [.meetings(.summaries)])
+    #expect(log.events.map(\.surface) == [.summaryBanner])
+
+    // Summary only, from the menu: Summaries, and the window opens.
+    log.events = []
+    summaryOnly.finishSetup(
+      dictationMonitor: dictation, summaryMonitor: summary, on: .menu,
+      request: { requested.append($0) }, showWindow: { windowOpened += 1 })
+    #expect(requested.last == .meetings(.summaries))
+    #expect(windowOpened == 1)
+    #expect(log.events.map(\.surface) == [.summaryMenu])
+
+    // Both, from the menu: AI Polish first, one row per engine.
+    log.events = []
+    let both = try #require(PolishSetupWarningSubjects(dictation: openAI, summary: claude))
+    both.finishSetup(
+      dictationMonitor: dictation, summaryMonitor: summary, on: .menu,
+      request: { requested.append($0) }, showWindow: { windowOpened += 1 })
+    #expect(requested.last == .aiPolish)
+    #expect(windowOpened == 2)
+    #expect(log.events.map(\.surface) == [.menu, .summaryMenu])
+    #expect(log.events.map(\.action) == [.finishSetup, .finishSetup])
+    #expect(log.events.map(\.subject) == [openAI, claude])
+  }
+
   @Test("a confirmed problem shows all three; off, onboarding, unknown and ready show none")
   func whenTheyShow() {
     let world = World()
@@ -149,6 +239,29 @@ struct PolishSetupSurfaceCopyTests {
       #expect(text == reason, "\(problem)")
       #expect(text.hasSuffix(".") == false, "a short reason carries its own full stop")
     }
+  }
+
+  @Test("#4721: the banner and menu line name meeting summaries, or both engines")
+  func summaryAndBothWords() throws {
+    let openAI = PolishSetupPromptSubject(problem: .cloudKeyMissing(.openAI), provider: .openAI)
+    let claude = PolishSetupPromptSubject(problem: .cloudKeyRejected(.claude), provider: .claude)
+    let dictationOnly = try #require(PolishSetupWarningSubjects(dictation: openAI, summary: nil))
+    let summaryOnly = try #require(PolishSetupWarningSubjects(dictation: nil, summary: claude))
+    let both = try #require(PolishSetupWarningSubjects(dictation: openAI, summary: claude))
+
+    #expect(PolishSetupSurfaceCopy.banner(dictationOnly) == "AI polish isn't set up: OpenAI needs an API key.")
+    #expect(
+      PolishSetupSurfaceCopy.banner(summaryOnly)
+        == "Meeting summaries aren't set up: Claude did not accept your API key.")
+    #expect(PolishSetupSurfaceCopy.banner(both) == "AI polish and meeting summaries both need attention.")
+
+    #expect(PolishSetupSurfaceCopy.menuLine(dictationOnly) == "Finish setting up AI polish")
+    #expect(PolishSetupSurfaceCopy.menuLine(summaryOnly) == "Finish setting up meeting summaries")
+    #expect(PolishSetupSurfaceCopy.menuLine(both) == "Finish setting up AI polish and meeting summaries")
+
+    #expect(PolishSetupBanner.closeLabel(dictationOnly) == "Close the AI polish setup notice")
+    #expect(PolishSetupBanner.closeLabel(summaryOnly) == "Close")
+    #expect(PolishSetupBanner.closeLabel(both) == "Close")
   }
 
   // #4473: setup messages name the EG-1 size.

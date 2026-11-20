@@ -1,31 +1,49 @@
 import SwiftUI
 
-/// History banner for an unfinished AI polish setup (#3438, plan §17 C5). Shown while the
-/// warning monitor says the banner may show; Finish setup opens AI Polish through the window's
-/// navigation request, and the close button answers only the episode this banner was showing.
+/// History banner for an unfinished AI polish setup (#3438, plan §17 C5), and since #4721 for the
+/// EnviousMeet summary engine too: one banner, about dictation's engine, the summary engine, or
+/// both. Shown while either warning monitor says its banner may show; Finish setup opens AI
+/// Polish while dictation's engine needs it, otherwise the Summaries tab, through the window's
+/// navigation request; the close button answers only the episodes this banner was showing.
 struct PolishSetupBanner: View {
   @Environment(PolishSetupMonitor.self) private var monitor
+  @Environment(SummarySetupMonitorHolder.self) private var summary
   @Environment(NavigationCoordinator.self) private var navigationCoordinator
 
-  var body: some View {
-    if monitor.shows(.banner), let subject = monitor.promptSubject,
+  /// One monitor's part of the banner, captured when drawn.
+  struct Shown: Equatable {
+    let subject: PolishSetupPromptSubject
+    let episode: PolishSetupEpisodeToken
+  }
+
+  static func shown(_ monitor: PolishSetupMonitor) -> Shown? {
+    guard monitor.shows(.banner), let subject = monitor.promptSubject,
       let episode = monitor.currentEpisode
+    else { return nil }
+    return Shown(subject: subject, episode: episode)
+  }
+
+  var body: some View {
+    let dictation = Self.shown(monitor)
+    let summaryShown = Self.shown(summary.monitor)
+    if let subjects = PolishSetupWarningSubjects(
+      dictation: dictation?.subject, summary: summaryShown?.subject)
     {
-      content(subject: subject, episode: episode)
+      content(subjects: subjects, dictation: dictation, summary: summaryShown)
     }
   }
 
-  /// `subject` and `episode` are what this banner was drawn with; both buttons answer about
+  /// `subjects` and the episodes are what this banner was drawn with; both buttons answer about
   /// them, never about whatever is true when the button is pressed.
-  private func content(subject: PolishSetupPromptSubject, episode: PolishSetupEpisodeToken)
-    -> some View
-  {
+  private func content(
+    subjects: PolishSetupWarningSubjects, dictation: Shown?, summary summaryShown: Shown?
+  ) -> some View {
     HStack(alignment: .firstTextBaseline, spacing: DesignSpacing.lg) {
       Image(systemName: "sparkles")
         .foregroundStyle(.stWarning)
         .accessibilityHidden(true)
 
-      Text(PolishSetupSurfaceCopy.banner(reason: PolishSetupSurfaceCopy.shortReason(subject.problem, egOneSize: subject.egOneSize)))
+      Text(PolishSetupSurfaceCopy.banner(subjects))
         .font(.stBody)
         .foregroundStyle(.stTextPrimary)
         .fixedSize(horizontal: false, vertical: true)
@@ -35,24 +53,24 @@ struct PolishSetupBanner: View {
       Button {
         // Through the window's request path, which the leave guard also covers. Not an
         // answer: the banner stays until the setup is finished or it is closed.
-        monitor.recordPrompt(.banner, .finishSetup, subject: subject)
-        navigationCoordinator.request(.aiPolish)
+        subjects.finishSetup(
+          dictationMonitor: monitor, summaryMonitor: summary.monitor, on: .banner,
+          request: { navigationCoordinator.request($0) })
       } label: {
         EnviousButtonLabel(verbatim: PolishSetupLeaveDialogContent.Copy.finishSetup, size: .medium)
       }
       .settingsButton(.outlined, size: .medium, isEnabled: true)
 
       Button {
-        // The episode captured when this banner was drawn; an old close never answers a newer
-        // problem.
-        monitor.recordPrompt(.banner, .closed, subject: subject)
-        monitor.acknowledge(.banner, in: episode)
+        Self.close(
+          dictation: dictation, summary: summaryShown, dictationMonitor: monitor,
+          summaryMonitor: summary.monitor)
       } label: {
         EnviousCloseGlyph()
       }
       .buttonStyle(.plain)
-      .help(PolishSetupSurfaceCopy.bannerClose)
-      .accessibilityLabel(PolishSetupSurfaceCopy.bannerClose)
+      .help(Self.closeLabel(subjects))
+      .accessibilityLabel(Self.closeLabel(subjects))
     }
     .padding(DesignSpacing.xl)
     .background(
@@ -61,5 +79,31 @@ struct PolishSetupBanner: View {
     .accessibilityElement(children: .contain)
     .padding(.horizontal, DesignSpacing.xl)
     .padding(.top, DesignSpacing.md)
+  }
+
+  /// The close button: each monitor answers only the episode this banner showed for it, so an
+  /// old close never answers a newer problem, and each monitor keeps its own answer.
+  static func close(
+    dictation: Shown?, summary: Shown?, dictationMonitor: PolishSetupMonitor,
+    summaryMonitor: PolishSetupMonitor
+  ) {
+    if let dictation {
+      dictationMonitor.recordPrompt(.banner, .closed, subject: dictation.subject)
+      dictationMonitor.acknowledge(.banner, in: dictation.episode)
+    }
+    if let summary {
+      summaryMonitor.recordPrompt(.summaryBanner, .closed, subject: summary.subject)
+      summaryMonitor.acknowledge(.banner, in: summary.episode)
+    }
+  }
+
+  /// Dictation alone keeps its own close label; a banner about the summary engine says "Close",
+  /// never a name that would misstate what it is about.
+  static func closeLabel(_ subjects: PolishSetupWarningSubjects) -> String {
+    subjects.dictation != nil && subjects.summary == nil
+      ? PolishSetupSurfaceCopy.bannerClose
+      : String(
+        localized: "Close",
+        comment: "History page banner, VoiceOver and tooltip: closes the setup notice about meeting summaries.")
   }
 }

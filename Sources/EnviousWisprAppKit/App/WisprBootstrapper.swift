@@ -160,6 +160,8 @@ package final class WisprBootstrapper {
   let llmDiscovery: LLMModelDiscoveryCoordinator
   /// #4353 D6: the cloud model list (website, last good copy, bundled copy). Started at launch.
   let cloudModelList: CloudModelListHolder
+  /// #4721: the once-per-launch check of the saved cloud keys both AI engines use.
+  let cloudKeyLaunchCheck: CloudKeyLaunchCheck
   /// #3438: the AI polish setup warnings as ONE slot (the `learnFromEdits` shape): which cloud
   /// keys are saved, and which warnings may show.
   let polishSetup: PolishSetupWiring
@@ -465,6 +467,14 @@ package final class WisprBootstrapper {
         // One read per discovery run: the probes and filters of this run share one list.
         try await LLMModelDiscovery(cloudModelList: cloudModelList.snapshot?.list)
           .discoverModels(provider: provider, apiKey: apiKey)
+      })
+    // #4721: started after the setup monitors (below), retried once on a later activation.
+    let cloudKeyLaunchCheck = CloudKeyLaunchCheck(
+      settings: settings, savedKeyPresence: savedKeyPresence, keychain: keychainManager,
+      credentialAccess: .live, discovery: llmDiscovery,
+      check: { [cloudModelList] provider, apiKey, models in
+        try await LLMModelDiscovery(cloudModelList: cloudModelList.snapshot?.list)
+          .checkSavedKey(provider: provider, apiKey: apiKey, chosenModels: models)
       })
 
     let historySourceChanges = HistorySourceChanges()
@@ -2146,15 +2156,24 @@ package final class WisprBootstrapper {
         // #3438: evaluated live as the menu is built (the monitor is bound later; until it is,
         // nothing shows).
         polishSetupWarning: { [polishSetupMonitorHolder] in
-          guard let monitor = polishSetupMonitorHolder.monitor else { return nil }
-          _ = monitor.currentContext()
-          return monitor.shows(.menu) ? monitor.promptSubject : nil
+          // #4721: each monitor answers for its own engine; the line names one or both.
+          @MainActor func shown(_ monitor: PolishSetupMonitor?) -> PolishSetupPromptSubject? {
+            guard let monitor else { return nil }
+            _ = monitor.currentContext()
+            return monitor.shows(.menu) ? monitor.promptSubject : nil
+          }
+          return PolishSetupWarningSubjects(
+            dictation: shown(polishSetupMonitorHolder.monitor),
+            summary: shown(polishSetupMonitorHolder.summaryMonitor))
         },
-        openAIPolish: { [polishSetupMonitorHolder] subject in
-          // The menu line is the only way here; report what it showed when it was built.
-          polishSetupMonitorHolder.monitor?.recordPrompt(.menu, .finishSetup, subject: subject)
-          navigationCoordinator.request(.aiPolish)
-          appWindowCoordinator.showWindow()
+        openAIPolish: { [polishSetupMonitorHolder] subjects in
+          // The menu line is the only way here; report what it showed when it was built, one
+          // row per engine it named.
+          subjects.finishSetup(
+            dictationMonitor: polishSetupMonitorHolder.monitor,
+            summaryMonitor: polishSetupMonitorHolder.summaryMonitor, on: .menu,
+            request: { navigationCoordinator.request($0) },
+            showWindow: { appWindowCoordinator.showWindow() })
         },
         toggleRecording: { await dictationRuntime.toggleRecording(source: .menuBar) },
         meetingPhase: { [meetingBox] in meetingBox.coordinator?.phase },
@@ -2284,6 +2303,8 @@ package final class WisprBootstrapper {
       batchDecodeFaultController: batchDecodeFaultController,
       whisperMemoryPressure: whisperMemoryPressure,
       requestDeviceRefresh: { [weak audioDeviceList] in audioDeviceList?.requestRefresh() },
+      // #4721: one retry of a launch key check that could not tell, on a later return.
+      onBecameActive: { [cloudKeyLaunchCheck] in cloudKeyLaunchCheck.appBecameActive() },
       coreAudioStall: debugCoreAudioStall(lane: audioDeviceList.lane),
       audioUnitStall: debugAudioUnitStall(lane: .shared),
       // #996: each real transition into `.recording` cancels a live edit watch.
@@ -3536,6 +3557,7 @@ package final class WisprBootstrapper {
     self.keychainManager = keychainManager
     self.llmDiscovery = llmDiscovery
     self.cloudModelList = cloudModelList
+    self.cloudKeyLaunchCheck = cloudKeyLaunchCheck
     let polishSetupMonitor = PolishSetupMonitor(
       readInputs: {
         [settings, localPolishRuntimes, aiAvailability, setup, llmDiscovery, savedKeyPresence] in
@@ -3557,11 +3579,18 @@ package final class WisprBootstrapper {
         llmDiscovery?.recordCloudModelObservation(
           provider: provider, model: model, observation: observation)
       },
+      // #4721: and its answer about the key joins the key verdict store, newest wins.
+      recordCloudKeyOutcome: { [weak llmDiscovery] provider, revision, rejected, observedAt in
+        llmDiscovery?.recordTakeKeyOutcome(
+          provider: provider, credentialRevision: revision, rejected: rejected,
+          observedAt: observedAt)
+      },
       // #3988: the notice history lives in THIS build's own defaults domain, never the unified
       // settings suite, so the dev build and the shipped app never share a day or a quiet.
       noticeStore: OutsideStopNoticeStore(defaults: .standard))
-    // #4321: the summary engine's own monitor. No refresh hooks (dictation's monitor owns the
-    // Ollama and Apple refreshes, and both read the same facts), no take ingestion, no card.
+    // #4321: the summary engine's own monitor. No Apple refresh (dictation's monitor owns it),
+    // no take ingestion, no card. #4721: it asks for the same shared off-page Ollama refresh on
+    // activation, since its warnings now show outside Settings; the refresh is single-flight.
     let summarySetupMonitor = PolishSetupMonitor(
       readInputs: {
         [settings, localPolishRuntimes, aiAvailability, setup, llmDiscovery, savedKeyPresence] in
@@ -3569,7 +3598,10 @@ package final class WisprBootstrapper {
           settings: settings, localPolishRuntimes: localPolishRuntimes,
           aiAvailability: aiAvailability, setup: setup, llmDiscovery: llmDiscovery,
           savedKeyPresence: savedKeyPresence, scope: .meetingSummary)
-      })
+      },
+      ollamaRefresh: OllamaOffPageRefresh(
+        requestOnce: { [weak setup] in setup?.requestOffPageOllamaRefresh() },
+        cancel: { [weak setup] in setup?.cancelOffPageOllamaRefresh() }))
     polishSetupMonitorHolder.monitor = polishSetupMonitor
     polishSetupMonitorHolder.summaryMonitor = summarySetupMonitor
     menuBarControllerHolder.controller = menuBarController
@@ -3851,6 +3883,9 @@ package final class WisprBootstrapper {
     // #3438: the setup warnings watch dictation's chosen model from launch, Settings open or not;
     // #4321: the summary engine's monitor watches its own.
     polishSetup.start()
+    // #4721: the saved cloud keys both AI engines use are checked once, without a Settings
+    // visit; returns at once.
+    cloudKeyLaunchCheck.start()
     // #4353 D6: the launch fetch of the cloud model list; returns at once.
     cloudModelList.start()
     // #1063 PR2: recover orphan crash-recovery spools behind the blocking
@@ -3895,6 +3930,7 @@ package final class WisprBootstrapper {
     setupSession.components?.runtime.appDidBecomeActive()
     // #3438: after the pane-scoped probe above, so a visible watch is never doubled.
     polishSetup.monitor.applicationDidBecomeActive()
+    polishSetup.summary.monitor.applicationDidBecomeActive()
     // #958: proactive foreground check (post-sleep freshness), strict >=3600 gated.
     sparkleUpdateController.updateCoordinator?.checkForUpdatesProactively(trigger: "foreground")
   }

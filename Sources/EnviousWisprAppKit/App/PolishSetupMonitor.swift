@@ -366,6 +366,8 @@ final class PolishSetupMonitor {
   @ObservationIgnored private let appleRefresh: (@MainActor () -> Void)?
   /// Where `polish_setup.prompt` rows go. Production sends them; tests collect them.
   @ObservationIgnored private let reportPrompt: @MainActor (PolishSetupPromptEvent) -> Void
+  @ObservationIgnored private let recordCloudKeyOutcome:
+    @MainActor (LLMProvider, UInt64, Bool, ContinuousClock.Instant) -> Void
   /// Where a take's own key read goes (`SavedKeyPresence.recordRead` in production): a take
   /// that found no key is confirmed evidence the key is absent, with no second read.
   /// #4353: where a dictation's answer about its cloud model goes (the discovery coordinator).
@@ -424,9 +426,15 @@ final class PolishSetupMonitor {
       -> Void = { _, _, _ in },
     recordCloudModelOutcome: @escaping @MainActor (LLMProvider, String, CloudModelObservation)
       -> Void = { _, _, _ in },
+    // #4721: a dictation's answer about its cloud key (refused or worked), shared with the key
+    // verdict store so the Settings chip and the summary engine read the same newest answer.
+    recordCloudKeyOutcome: @escaping @MainActor (
+      LLMProvider, UInt64, Bool, ContinuousClock.Instant
+    ) -> Void = { _, _, _, _ in },
     noticeStore: OutsideStopNoticeStore = OutsideStopNoticeStore(defaults: nil),
     wallNow: @escaping @MainActor () -> Date = { Date() }
   ) {
+    self.recordCloudKeyOutcome = recordCloudKeyOutcome
     self.readInputs = readInputs
     self.ollamaRefresh = ollamaRefresh
     self.appleRefresh = appleRefresh
@@ -680,8 +688,12 @@ final class PolishSetupMonitor {
         recordKeyEvidence(take.provider, .unknown, outcome.observedAt)
       case .cloudKeyRejected?, .cloudKeyRejectedClassified?:
         if outcome.setupProblem == .cloudKeyRejected {
+          // #4721: only the provider's own refusal is shared as a new answer about the key. A
+          // classified answer (Gemini text that only mentions an invalid key) can renew this
+          // monitor's warning, but is not evidence of a refusal at this moment.
           recordCloudKeyTakeObservation(
-            rejected: true, configuration: configuration, observedAt: outcome.observedAt)
+            rejected: true, configuration: configuration, observedAt: outcome.observedAt,
+            shareWithStore: outcome.evidence == .cloudKeyRejected)
         }
       case .cloudModelUnavailable?:
         if outcome.setupProblem == .cloudModelUnavailable {
@@ -833,7 +845,8 @@ final class PolishSetupMonitor {
 
   /// Newer wins, for the same saved key only; a different key replaces it outright.
   private func recordCloudKeyTakeObservation(
-    rejected: Bool, configuration: PolishSetupConfiguration, observedAt: ContinuousClock.Instant
+    rejected: Bool, configuration: PolishSetupConfiguration, observedAt: ContinuousClock.Instant,
+    shareWithStore: Bool = true
   ) {
     guard let credentialRevision = configuration.credentialRevision else { return }
     if let current = cloudKeyTakeObservations[configuration.provider],
@@ -842,6 +855,9 @@ final class PolishSetupMonitor {
       return
     }
     cloudKeyTakeObservations[configuration.provider] = (credentialRevision, rejected, observedAt)
+    if shareWithStore {
+      recordCloudKeyOutcome(configuration.provider, credentialRevision, rejected, observedAt)
+    }
     reconcile()
   }
 
@@ -1047,8 +1063,9 @@ final class PolishSetupMonitor {
     ollamaRefresh?.cancel()
   }
 
-  /// App activation: one off-page Ollama refresh when dictation's chosen model is Ollama and
-  /// no Settings page is watching it.
+  /// App activation: one off-page Ollama refresh when this monitor's chosen engine is Ollama and
+  /// no Settings page is watching it. #4721: both monitors ask; the shared refresh runs one
+  /// probe at a time (`SetupCoordinator.requestOffPageOllamaRefresh`).
   func applicationDidBecomeActive() {
     let inputs = readInputs()
     guard observing, inputs.onboardingComplete, inputs.configuration.provider == .ollama
@@ -1165,6 +1182,9 @@ final class PolishSetupMonitorHolder {
       monitor?.configurationOrEligibilityChanged()
     case .meetingSummaryLLMProvider, .meetingSummaryLLMModel, .meetingSummaryOllamaModel:
       summaryMonitor?.configurationOrEligibilityChanged()
+    case .meetingOnboardingComplete:
+      // #4721: finishing EnviousMeet setup makes the summary engine's warnings eligible.
+      summaryMonitor?.configurationOrEligibilityChanged()
     case .onboardingState, .egOneSize:
       // #4473: one size preference serves both engines' EG-1 (plan §3.1.1 S3).
       monitor?.configurationOrEligibilityChanged()
@@ -1209,7 +1229,7 @@ extension PolishSetupInputs {
     let validation = engine.validation(
       stateProvider: llmDiscovery.stateProvider, state: llmDiscovery.keyValidationState)
     return PolishSetupInputs(
-      onboardingComplete: settings.onboardingState == .completed,
+      onboardingComplete: setupComplete(settings: settings, scope: scope),
       configuration: PolishSetupConfiguration(
         provider: provider, model: engine.model, credentialRevision: revision,
         egOneSize: settings.preferredEGOneSize),
@@ -1229,6 +1249,19 @@ extension PolishSetupInputs {
         cloudModelEvidence: llmDiscovery.cloudModelObservations),
       ollamaLastCommitAt: setup.ollamaSetup.lastCommitAt,
       rememberedCloudModels: Self.rememberedCloudModels(settings: settings, scope: scope))
+  }
+
+  /// Whether `scope`'s warnings may show at all. #4721: the summary engine's also wait for
+  /// EnviousMeet's own setup. Its engine is copied from dictation's for everyone at first launch,
+  /// and until that setup is done the Summaries tab is not reachable, so a warning would send the
+  /// person to the setup screen instead.
+  @MainActor
+  static func setupComplete(settings: SettingsManager, scope: PolishSetupScope) -> Bool {
+    guard settings.onboardingState == .completed else { return false }
+    switch scope {
+    case .dictation: return true
+    case .meetingSummary: return settings.meetingOnboardingComplete
+    }
   }
 
   /// #4353: the scope's remembered cloud model per provider (dictation's or the summary
