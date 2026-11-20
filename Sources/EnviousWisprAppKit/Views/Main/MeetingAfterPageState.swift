@@ -111,9 +111,49 @@ final class MeetingNotesPaneState {
 
 @MainActor @Observable
 final class MeetingSummaryEditState {
-  var summaryPolishNotice = false
-  var keepingSummary = false
   var editingSummary = false
+  /// Meeting -> the Keep in flight for it. Per meeting, so one meeting's "Saving…" never shows
+  /// on another; a result for a Keep that is no longer the meeting's own writes nothing.
+  private var keepsInFlight: [UUID: UUID] = [:]
+  /// Meetings whose last Keep was refused ("The saved summary changed.").
+  private var failedKeeps: Set<UUID> = []
+
+  func isKeeping(_ meetingID: UUID) -> Bool { keepsInFlight[meetingID] != nil }
+  func keepFailed(_ meetingID: UUID) -> Bool { failedKeeps.contains(meetingID) }
+
+  /// Write a new summary with `choice` to compare with the current one.
+  func beginPreview(
+    _ choice: HistoryPolishChoice, meetingID: UUID, summaries: MeetingSummaryOwner?
+  ) {
+    failedKeeps.remove(meetingID)
+    summaries?.startPreview(meetingID, with: choice)
+  }
+
+  /// Drop the new summary (Cancel while writing, Dismiss after a failure, Discard, page closed).
+  func discardPreview(_ meetingID: UUID, summaries: MeetingSummaryOwner?) {
+    summaries?.discardPreview(meetingID)
+  }
+
+  func dismissKeepFailure(_ meetingID: UUID) { failedKeeps.remove(meetingID) }
+
+  /// Keep the compared new summary. The save runs on `MeetingSummaryOwner`.
+  func keep(candidateID: UUID, meetingID: UUID, summaries: MeetingSummaryOwner) {
+    let id = UUID()
+    keepsInFlight[meetingID] = id
+    Task {
+      let kept = await summaries.keepPreview(meetingID, candidateID: candidateID)
+      guard keepsInFlight[meetingID] == id else { return }
+      if kept {
+        failedKeeps.remove(meetingID)
+      } else {
+        failedKeeps.insert(meetingID)
+      }
+      keepsInFlight[meetingID] = nil
+    }
+  }
+
+  /// A reused page never carries one meeting's summary editing into another.
+  func reset() { editingSummary = false }
 }
 
 // MARK: - Commands

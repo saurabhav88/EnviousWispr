@@ -179,7 +179,7 @@ struct HistoryMeetingAfterView: View {
     .onDisappear {
       presentation += 1
       commands.transcriptPolish.cancel()
-      meetings.summaries?.discardPreview(meetingID)
+      summaryEdit.discardPreview(meetingID, summaries: meetings.summaries)
       pagePlayer.drop()
     }
     .onChange(of: meetingID) {
@@ -189,7 +189,7 @@ struct HistoryMeetingAfterView: View {
       pagePlayer.drop()
       notesPane.leftPane = .notes
       notesPane.narrowPane = .notes
-      summaryEdit.editingSummary = false
+      summaryEdit.reset()
       notesPane.editingNotes = nil
       followState.follow = .following
       timesOn = true
@@ -662,7 +662,8 @@ struct HistoryMeetingAfterView: View {
       MeetingProcessingPanel(processing: processing)
     } else {
       // #4611 D14: a new version written for comparison shows in the summary pane, not here.
-      let previewing = summaryEdit.keepingSummary || meetings.summaries?.previews[meetingID] != nil
+      let previewing =
+        summaryEdit.isKeeping(meetingID) || meetings.summaries?.previews[meetingID] != nil
       let state = P.strip(
         record: record, processing: false, queueWaitsForSpace: meetings.queueWaitsForSpace,
         writingSummary: !previewing && (meetings.summaries?.isWriting(meetingID) ?? false),
@@ -734,7 +735,7 @@ struct HistoryMeetingAfterView: View {
       currentProvider: savedSummary?.providerID,
       currentModel: savedSummary?.modelOverride?.model,
       currentSize: savedSummary?.modelOverride?.egOneSize,
-      isEnabled: available && !summaryEdit.keepingSummary
+      isEnabled: available && !summaryEdit.isKeeping(meetingID)
         && meetings.summaries?.isWriting(meetingID) != true,
       select: { choice in beginSummaryPreview(choice) },
       setUp: {
@@ -887,8 +888,7 @@ struct HistoryMeetingAfterView: View {
     return items
   }
   private func beginSummaryPreview(_ choice: HistoryPolishChoice) {
-    summaryEdit.summaryPolishNotice = false
-    meetings.summaries?.startPreview(meetingID, with: choice)
+    summaryEdit.beginPreview(choice, meetingID: meetingID, summaries: meetings.summaries)
   }
 
   /// #4611 D14: a new summary's progress, its save and its failure, inside the summary pane where
@@ -897,7 +897,7 @@ struct HistoryMeetingAfterView: View {
     refreshItems: @escaping () -> [HistoryMenuItem]
   ) -> some View {
     if let summaries = meetings.summaries {
-      if summaryEdit.keepingSummary {
+      if summaryEdit.isKeeping(meetingID) {
         InsetNotice(
           verbatim: String(
             localized: "Saving…", comment: "History meeting: the kept new summary is being saved."),
@@ -916,7 +916,7 @@ struct HistoryMeetingAfterView: View {
             busy: true
           ) {
             Button {
-              summaries.discardPreview(meetingID)
+              summaryEdit.discardPreview(meetingID, summaries: summaries)
             } label: {
               EnviousButtonLabel(
                 LocalizedStringResource(
@@ -935,9 +935,9 @@ struct HistoryMeetingAfterView: View {
               localized: "Couldn't write a new summary.",
               comment: "History meeting: writing a new summary for comparison failed."),
             refreshItems: refreshItems,
-            dismiss: { meetings.summaries?.discardPreview(meetingID) })
+            dismiss: { summaryEdit.discardPreview(meetingID, summaries: meetings.summaries) })
         }
-      } else if summaryEdit.summaryPolishNotice {
+      } else if summaryEdit.keepFailed(meetingID) {
         summaryProblemNotice(
           title: String(
             localized: "The saved summary changed.",
@@ -945,7 +945,7 @@ struct HistoryMeetingAfterView: View {
               "History meeting: the summary changed while a new one was being kept, so it was not saved."
           ),
           refreshItems: refreshItems,
-          dismiss: { summaryEdit.summaryPolishNotice = false })
+          dismiss: { summaryEdit.dismissKeepFailure(meetingID) })
       }
     }
   }
@@ -983,7 +983,7 @@ struct HistoryMeetingAfterView: View {
 
   /// #4611 D8: the new summary beside the current one, in a sheet over the page, from either tab.
   @ViewBuilder private var summaryComparisonSheet: some View {
-    if let summaries = meetings.summaries, !summaryEdit.keepingSummary,
+    if let summaries = meetings.summaries, !summaryEdit.isKeeping(meetingID),
       case .comparing(let candidate)? = summaries.previews[meetingID]
     {
       HistoryPolishComparison(
@@ -994,14 +994,9 @@ struct HistoryMeetingAfterView: View {
           comment: "History meeting: the sheet comparing the current and the new summary."),
         formatted: true,
         keep: {
-          summaryEdit.keepingSummary = true
-          Task {
-            summaryEdit.summaryPolishNotice =
-              !(await summaries.keepPreview(meetingID, candidateID: candidate.id))
-            summaryEdit.keepingSummary = false
-          }
+          summaryEdit.keep(candidateID: candidate.id, meetingID: meetingID, summaries: summaries)
         },
-        discard: { summaries.discardPreview(meetingID) }
+        discard: { summaryEdit.discardPreview(meetingID, summaries: summaries) }
       )
       .id(candidate.id)
     }
@@ -1152,7 +1147,7 @@ extension HistoryMeetingAfterView {
   /// the summary is edited, a full-width row under it carries the save status and Done editing.
   fileprivate func leftHeader(snapshot: MeetingNotesSnapshot) -> some View {
     let summaryBusy =
-      summaryEdit.keepingSummary || meetings.summaries?.isWriting(meetingID) == true
+      summaryEdit.isKeeping(meetingID) || meetings.summaries?.isWriting(meetingID) == true
       || {
         if case .generating? = meetings.summaries?.previews[meetingID] {
           return true
