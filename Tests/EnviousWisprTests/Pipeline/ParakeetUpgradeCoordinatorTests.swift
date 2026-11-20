@@ -1128,6 +1128,46 @@ struct ParakeetUpgradePolicyTests {
       FileManager.default.fileExists(atPath: rig.ultraRegistration.installDirectory.path) == false)
   }
 
+  @Test(
+    "Two interrupted loads preserve the only admitted Parakeet model",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4698"),
+    arguments: [false, true])
+  func interruptedLoadsKeepAdmittedUltra(cleanCancellation: Bool) async throws {
+    // No space to fetch a replacement, so deletion is observable without a download.
+    var rig = try await Self.rig(v3: false, ultra: true, diskBytes: 0)
+    try #require(await rig.ultra.isAdmitted())
+    for _ in 0..<2 {
+      let prepared = try await rig.coordinator.prepareLoad()
+      try #require(prepared.selection?.model == .ultra)
+      try #require(Self.physicalLoad(rig, succeeds: false) == .loaded)
+      if cleanCancellation {
+        #expect(
+          await rig.coordinator.handleLoadFailure(prepared, error: CancellationError()) == .fail)
+      }
+      rig = Self.relaunch(rig)
+    }
+    try #require(await rig.ultra.isAdmitted())
+
+    await #expect(throws: ParakeetUpgradeUnavailableError(reason: "exhausted")) {
+      _ = try await rig.coordinator.prepareLoad()
+    }
+    #expect(await rig.ultra.isAdmitted(), "The only verified engine must stay installed")
+    #expect(Self.state(rig) == .init(
+      attempts: 2, refetchSpent: false, exhausted: false, declined: false))
+    #expect(rig.selection.current == nil)
+    #expect(rig.coordinator.needsExplicitRetry)
+
+    try rig.coordinator.retry()
+    let retried = try await rig.coordinator.prepareLoad()
+    let selection = try #require(retried.selection)
+    #expect(selection.model == .ultra)
+    #expect(selection.directory == rig.ultraRegistration.installDirectory)
+    #expect(selection.cacheOnly)
+    #expect(Self.physicalLoad(rig) == .loaded)
+    #expect(rig.coordinator.needsExplicitRetry == false)
+    #expect(Self.ultraRequests(rig) == 0)
+  }
+
   @Test("X then exhaustion with v3: exhausted is persisted, v3 serves, Ultra bytes go")
   func rowXExhaustsWithV3() async throws {
     let rig = try await Self.rig(
@@ -1713,33 +1753,19 @@ struct ParakeetUpgradePolicyTests {
   }
 
   @Test(
-    "X: bytes that cannot be removed exhaust the target; attempts never reset, no row C",
+    "X: bytes that cannot be removed exhaust Ultra while accepted v3 serves",
     arguments: Residue.allCases)
-  func failedRefetchCleanupExhausts(residue: Residue) async throws {
-    let rig = try await Self.rig(
-      v3: false, ultra: true,
-      state: .init(attempts: 2, refetchSpent: false, exhausted: false, declined: false))
-    let locked = try Self.lock(residue, rig)
-    defer { try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: locked.path) }
-    await #expect(throws: ParakeetUpgradeUnavailableError(reason: "exhausted")) {
-      _ = try await rig.coordinator.prepareLoad()
-    }
-    #expect(
-      Self.state(rig) == .init(attempts: 2, refetchSpent: true, exhausted: true, declined: false))
-    #expect(Self.ultraRequests(rig) == 0, "no foreground fetch")
-  }
-
-  @Test("X: failed cleanup with accepted v3 serves v3")
-  func failedRefetchCleanupServesV3() async throws {
+  func failedRefetchCleanupServesV3(residue: Residue) async throws {
     let rig = try await Self.rig(
       v3: true, ultra: true,
       state: .init(attempts: 2, refetchSpent: false, exhausted: false, declined: false))
-    let locked = try Self.lock(.install, rig)
+    let locked = try Self.lock(residue, rig)
     defer { try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: locked.path) }
     let prepared = try await rig.coordinator.prepareLoad()
     #expect(prepared.selection?.model == .v3)
-    #expect(Self.state(rig)?.exhausted == true)
-    #expect(Self.state(rig)?.attempts == 2)
+    #expect(
+      Self.state(rig) == .init(attempts: 2, refetchSpent: true, exhausted: true, declined: false))
+    #expect(Self.ultraRequests(rig) == 0, "no foreground fetch")
   }
 
   @Test("X: a refetch-intent write that fails between fields deletes nothing; v3 serves")
@@ -1756,18 +1782,18 @@ struct ParakeetUpgradePolicyTests {
   @Test("X: a reset that fails between fields after deletion never starts a fetch")
   func refetchResetFailsBetweenFields() async throws {
     var rig = try await Self.rig(
-      v3: false, ultra: true,
+      v3: true, ultra: true,
       state: .init(attempts: 2, refetchSpent: false, exhausted: false, declined: false))
     rig.writes.failCall(5)  // the refetch intent (4 fields) lands; the reset's first field fails
-    await #expect(throws: ParakeetUpgradeStoreWriteError(field: "attempts")) {
-      _ = try await rig.coordinator.prepareLoad()
-    }
+    let prepared = try await rig.coordinator.prepareLoad()
+    #expect(prepared.selection?.model == .v3)
+    #expect(await rig.ultra.isAdmitted() == false)
     #expect(Self.state(rig)?.attempts == 2)
     #expect(Self.state(rig)?.refetchSpent == true)
     rig = Self.relaunch(rig)
-    await #expect(throws: ParakeetUpgradeUnavailableError(reason: "budget_spent")) {
-      _ = try await rig.coordinator.prepareLoad()
-    }
+    let relaunched = try await rig.coordinator.prepareLoad()
+    #expect(relaunched.selection?.model == .v3)
+    #expect(rig.coordinator.needsExplicitRetry)
     #expect(Self.ultraRequests(rig) == 0)
   }
 
