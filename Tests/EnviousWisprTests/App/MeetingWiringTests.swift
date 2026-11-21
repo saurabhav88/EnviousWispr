@@ -9,6 +9,7 @@ import os
 @testable import EnviousWisprCore
 @testable import EnviousWisprLLM
 @testable import EnviousWisprPipeline
+@testable import EnviousWisprPostProcessing
 @testable import EnviousWisprServices
 @testable import EnviousWisprStorage
 import EnviousWisprAppKitTestSupport
@@ -648,6 +649,78 @@ struct MeetingWiringTests {
     #expect(try rig.store.segmentFiles(meeting: record.id).count == 1)
     #expect(try rig.store.load(id: record.id).deletionRequested == false)
     #expect(coordinator.meetings.count == 1)
+  }
+
+  @Test("meeting correction preserves source ranges and writes only to an unchanged saved row")
+  func correctedMeetingRow() async throws {
+    let rig = try Rig()
+    let ordinarySpeech =
+      " brought the notes that we wrote during the planning meeting on Monday morning. "
+      + "The team reviewed the questions from the notes and decided to bring them back again "
+      + "at the very next meeting on Friday afternoon."
+    let first = "Sunny" + ordinarySpeech
+    let gap = "Sunny said [Could not transcribe 1:00 to 1:30]"
+    let raw = first + "\n\n" + gap
+    let turns = [
+      Turn(id: "spoken", speakerId: "mic:you", startMs: 0, endMs: 1000,
+        originalTextRange: 0..<first.utf16.count, wasPolished: true, granularity: .word),
+      Turn(id: "gap", speakerId: "sys:guest", startMs: 1000, endMs: 2000,
+        originalTextRange: (first.utf16.count + 2)..<raw.utf16.count,
+        wasPolished: true, granularity: .word),
+    ]
+    let meetingID = UUID()
+    let rowID = UUID()
+    let previous = Transcript(
+      id: rowID, text: raw, speakerAnalysis: .labeled(count: 2),
+      speakerNames: ["mic:you": "Diana"], turns: turns,
+      speakerNameSources: ["mic:you": .manual], meetingID: meetingID, meetingTranscriptAttemptID: UUID())
+    try await rig.transcripts.saveAndShowDurably(previous)
+    let plain = Transcript(
+      id: rowID, text: raw, speakerAnalysis: .labeled(count: 2), turns: turns,
+      meetingID: meetingID, meetingTranscriptAttemptID: UUID())
+    var published: Transcript?
+    try await rig.transcripts.saveAndShowDurably(plain, didPublish: { published = $0 })
+    let base = try #require(published)
+    #expect(base.speakerNames?["mic:you"] == "Diana")
+    let lookups = WordCorrector.buildLookups(
+      words: [CustomWord(canonical: "Sunee-Lee", aliases: ["Sunny"])])
+    let started = ContinuousClock.now
+    let deadline = started.advanced(by: .seconds(1))
+    var admitted = 0
+    let expired = await MeetingWiring.correctedTurns(
+      turns, rawText: raw, lookups: lookups, deadline: deadline,
+      isAdmitted: { admitted += 1; return true },
+      wakes: rig.wakes, canWrite: { true }, setWaiting: { _ in },
+      now: { admitted < 2 ? started : deadline })
+    // The preparation and first matcher unit were admitted, but the second piece wasn't.
+    #expect(admitted == 2)
+    #expect(expired == nil)
+    #expect(try await rig.transcripts.durableRow(id: base.id)?.processedText == nil)
+    let output = try #require(await MeetingWiring.correctedTurns(
+      turns, rawText: raw, lookups: lookups, deadline: .now.advanced(by: .seconds(10)),
+      isAdmitted: { true }, wakes: rig.wakes, canWrite: { true }, setWaiting: { _ in }))
+    #expect(output.text == "Sunee-Lee" + ordinarySpeech + "\n\n" + gap)
+    #expect(output.turns[0].originalTextRange == turns[0].originalTextRange)
+    #expect(output.turns[0].startMs == turns[0].startMs)
+    #expect(output.turns[1] == turns[1])
+    #expect(try await rig.transcripts.applyMeetingWordCorrections(
+      to: base, text: output.text, turns: output.turns, canWrite: { true }))
+    let stored = try #require(await rig.transcripts.durableRow(id: base.id))
+    #expect(stored.text == raw)
+    #expect(stored.displayText == output.text)
+    #expect(stored.speakerNames?["mic:you"] == "Diana")
+    #expect(stored.polishedText == nil)
+    // An intervening edit leaves a different saved base, even with the same generation.
+    try await rig.transcripts.saveAndShowDurably(base)
+    #expect(await rig.transcripts.renameSpeaker(
+      id: base.id, speakerId: "mic:you", name: "Priya", isMeeting: true) == nil)
+    #expect(try await rig.transcripts.durableRow(id: base.id)?.speakerNames?["mic:you"] == "Priya")
+    #expect(try await rig.transcripts.applyMeetingWordCorrections(
+      to: base, text: output.text, turns: output.turns, canWrite: { true }) == false)
+    try await rig.transcripts.removeRow(id: base.id)
+    #expect(try await rig.transcripts.applyMeetingWordCorrections(
+      to: base, text: output.text, turns: output.turns, canWrite: { true }) == false)
+    #expect(try await rig.transcripts.durableRow(id: base.id) == nil)
   }
 
   @Test("the lane's order: dictation first, then a final pass over a local summary (R50)")

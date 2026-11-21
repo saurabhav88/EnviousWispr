@@ -13,6 +13,10 @@ struct MeetingSummaryView: View {
   @Environment(SettingsManager.self) private var settings
   @Environment(HistoryRepolishRunner.self) private var historyRepolish
 
+  private var isProcessingTranscript: Bool {
+    meetings.processing?.meetingID == meetingID
+  }
+
   var body: some View {
     if let record = meetings.record(id: meetingID) {
       // #3973 C2: a committed transcript keeps its summary shown while Transcribe again runs,
@@ -170,7 +174,7 @@ struct MeetingSummaryView: View {
         // The model that will write it is on the button, so it is known before the first summary
         // (founder 2026-11-19). A long model name is shortened in the middle; hover shows it whole.
         Button {
-          if let previewChoice { writePreview(previewChoice) }
+          if !isProcessingTranscript, let previewChoice { writePreview(previewChoice) }
         } label: {
           if let previewChoice {
             EnviousButtonLabel(
@@ -193,7 +197,7 @@ struct MeetingSummaryView: View {
         .settingsButton(
           .filled, size: .large,
           isEnabled:
-            !(writing || requesting || configurationProblem != nil || nothingToSummarize
+            !(isProcessingTranscript || writing || requesting || configurationProblem != nil || nothingToSummarize
             || previewChoice == nil)
         )
         .accessibilityIdentifier("history.meeting.writeSummary")

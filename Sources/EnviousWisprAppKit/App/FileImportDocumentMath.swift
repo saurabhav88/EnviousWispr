@@ -10,8 +10,8 @@ import Foundation
 /// read. Every causal comment travels with its code verbatim (workflow-process RULE:
 /// move-recorded-reasons-before-simplifying); nothing here is simplified in the move.
 ///
-/// `@MainActor` because these were statics of a `@MainActor` class and the port keeps their
-/// isolation exactly; lifting it is a later change with its own review, not this move.
+/// Import coordination stays on the main actor. The pure cleanup cutter also serves the
+/// finished-meeting correction pass off the main actor.
 @MainActor
 enum FileImportDocumentMath {
   /// The document as the parts make it: a blank line between parts (one paragraph per
@@ -154,7 +154,7 @@ enum FileImportDocumentMath {
   /// `maximumWords` is the part ceiling for this run's polisher: `TranscriptSplitter.
   /// maximumWordsPerLocalPart` for an on-device polisher, whose time grows with the words,
   /// `maximumWordsPerPart` for a cloud one, whose cost grows with the calls.
-  static func cleanupPieces(
+  nonisolated static func cleanupPieces(
     turns: [Turn]?, rawText: String, maximumWords: Int = TranscriptSplitter.maximumWordsPerPart
   ) -> Pieces {
     guard let turns, !turns.isEmpty else {

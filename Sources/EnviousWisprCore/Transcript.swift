@@ -709,6 +709,13 @@ public struct Transcript: Codable, Identifiable, Sendable {
     return copy
   }
 
+  package func withMeetingWordCorrections(_ text: String, turns: [Turn]) -> Transcript {
+    var copy = self
+    copy.processedText = text
+    copy.turns = turns
+    return copy
+  }
+
   /// Applies a successful History polish to an existing row. The new derived turns come
   /// from the same original ranges as the current turns. Speaker names and original words
   /// remain on this row, so independent changes such as a rename or a relink are preserved.

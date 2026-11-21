@@ -522,7 +522,7 @@ struct MeetingHistoryPresentationTests {
     var deps = harness.dependencies()
     // The real History owner and store, so a second save replaces the row, never adds one.
     deps.saveTranscript = { row, naming in
-      try await history.coordinator.saveAndShowDurably(row, naming: naming)
+      (row, try await history.coordinator.saveAndShowDurably(row, naming: naming))
     }
     let coordinator = MeetingCoordinator(dependencies: deps)
     history.coordinator.meetingRecords = { coordinator.meetings }
