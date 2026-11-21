@@ -192,6 +192,7 @@ struct SettingsMapRegistrationTests {
     ([.apiKeyOpenAI, .apiKeyGemini, .apiKeyClaude], "ProviderSetup.swift", "map: .id(mapID)"),
     ([.transcriptionEngineChange, .transcriptionEngineKeepCurrent], "SpeechEngineSettingsView.swift", "keepCurrent: .transcriptionEngineKeepCurrent"),
     ([.previewEngineChange, .previewEngineKeepCurrent], "LivePreviewSettingsView.swift", "keepCurrent: .previewEngineKeepCurrent"),
+    ([.meetingSummaryEngineChange], "MeetingSummariesTab.swift", "change: .meetingSummaryEngineChange"),
     ([.localModelResumeUpgrade, .localModelFinishUpgrade], "LocalEngineStatusCard.swift", ".settingsMapRegistration(action.id)"),
     // #4578: the shared engine status row registers its controls only on the Dictation summary,
     // through one computed place per button (`SpeechEngineStatusRow.mapID`, `removeButton`, ...).
