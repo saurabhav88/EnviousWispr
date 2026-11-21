@@ -23,11 +23,9 @@ struct LanguageLockSheet: View {
   /// Codes this engine may be locked to, or nil for "no restriction" (the
   /// multilingual engine's full catalogue).
   ///
-  /// #1678: the fast engine claims 25 European languages, so the sheet must not
-  /// offer the rest. A code outside the engine's set is a SILENT failure — it
-  /// maps to no vendor language, the decoder falls back to auto-detect, and the
-  /// user sees a lock they set and are not getting. Filtering the list is what
-  /// makes the setting mean what it says.
+  /// #1678: the fast engine claims 25 European languages. A lock outside that set
+  /// silently falls back to auto-detect. The sheet only applies supported locks.
+  /// The Hindi offer proposes a switch and does not apply the lock.
   let lockableCodes: Set<String>?
 
   /// One line of caller context under the title, or nil for none (#2436).
@@ -51,14 +49,17 @@ struct LanguageLockSheet: View {
 
   /// nil for the dictation window.
   private let customContent: ContentBuilder?
+  private let offerHindiOnWhisper: (@MainActor () -> Void)?
 
   init(
-    lockableCodes: Set<String>? = nil, contextSubtitle: String? = nil, offersEnglishUK: Bool = true
+    lockableCodes: Set<String>? = nil, contextSubtitle: String? = nil, offersEnglishUK: Bool = true,
+    offerHindiOnWhisper: (@MainActor () -> Void)? = nil
   ) {
     self.lockableCodes = lockableCodes
     self.contextSubtitle = contextSubtitle
     self.offersEnglishUK = offersEnglishUK
     self.customContent = nil
+    self.offerHindiOnWhisper = offerHindiOnWhisper
   }
 
   /// #4320: a window over a caller's own rows and actions.
@@ -67,23 +68,29 @@ struct LanguageLockSheet: View {
     self.contextSubtitle = nil
     self.offersEnglishUK = true
     self.customContent = content
+    self.offerHindiOnWhisper = nil
   }
 
   /// What this render shows. Resolved here, after environment injection, never frozen at init.
   private var content: LanguagePickerContent {
     let close: @MainActor () -> Void = { dismiss() }
     if let customContent { return customContent(searchText, close) }
+    let offerHindi: (@MainActor () -> Void)?
+    if let offerHindiOnWhisper {
+      offerHindi = {
+        offerHindiOnWhisper()
+        close()
+      }
+    } else {
+      offerHindi = nil
+    }
     return LanguagePickerContent.dictation(
       mode: settings.languageMode, stored: settings.englishSpelling,
       lockableCodes: lockableCodes, contextSubtitle: contextSubtitle,
-      offersEnglishUK: offersEnglishUK, query: searchText, recents: recents
+      offersEnglishUK: offersEnglishUK, query: searchText, recents: recents,
+      offerHindiOnWhisper: offerHindi
     ) { entry in
-      LanguagePickerContent.commitDictation(
-        entry, to: settings,
-        track: { from, to, reason in
-          TelemetryService.shared.trackManualLockUsed(fromLang: from, toLang: to, reason: reason)
-        },
-        dismiss: close)
+      LanguagePickerContent.commitDictation(entry, to: settings, dismiss: close)
     }
   }
 

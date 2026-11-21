@@ -13030,6 +13030,17 @@
         }
       }
     },
+    "Hindi needs the Whisper engine." : {
+      "comment" : "Dictation language picker and Settings notice: Hindi needs Whisper instead of Parakeet.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für Hindi wird die Whisper-Engine benötigt."
+          }
+        }
+      }
+    },
     "History" : {
       "comment" : "Feature name in the closing film.\nHistory: the page name.",
       "localizations" : {
@@ -25648,6 +25659,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Schalte es ein. Diese Leiste zeigt dir dann, ob noch etwas nötig ist."
+          }
+        }
+      }
+    },
+    "Switch to Whisper" : {
+      "comment" : "Dictation Settings: explicitly switch to the Whisper engine for Hindi.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zu Whisper wechseln"
           }
         }
       }

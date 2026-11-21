@@ -19,6 +19,8 @@ struct SpeechEngineSettingsView: View {
   @Environment(ModelDeliveryHome.self) private var modelDelivery: ModelDeliveryHome?
 
   @State private var showLanguageLockSheet: Bool = false
+  @State private var pendingHindiChoice = false
+  private static let hindiWhisperOfferScrollID = "hindi-whisper-offer"
   /// #4216: the Spoken punctuation window (start word and the English period switch).
   @State private var showSpokenPunctuationSheet = false
   /// #3385: whether the two engine cards are open under the summary.
@@ -99,9 +101,25 @@ struct SpeechEngineSettingsView: View {
   }
 
   var body: some View {
+    ScrollViewReader { reader in
+      settingsContent
+        .sheet(isPresented: $showLanguageLockSheet, onDismiss: {
+          if pendingHindiChoice, showsHindiWhisperOffer {
+            reader.scrollTo(Self.hindiWhisperOfferScrollID, anchor: .center)
+          }
+        }) {
+          LanguageLockSheet(lockableCodes: lockableLanguageCodes) {
+            showEngineChoices = false
+            pendingHindiChoice = true
+          }
+        }
+    }
+  }
+
+  private var settingsContent: some View {
     @Bindable var settings = settings
 
-    SettingsContentView {
+    return SettingsContentView {
       // ── Transcription Engine (summary + Change) ─────────────────────
       // #3385: the engine is a summary with Change; the two cards open in
       // place. The note beside this heading replaces the page-level banner:
@@ -207,6 +225,7 @@ struct SpeechEngineSettingsView: View {
                   resolvedHelp: String(localized: Copy.lockedLanguageHelp)
                 ) {
                   Button {
+                    pendingHindiChoice = false
                     showLanguageLockSheet = true
                   } label: {
                     EnviousButtonLabel(SettingsItemCopy.Engine.lockedLanguageChange)
@@ -223,15 +242,8 @@ struct SpeechEngineSettingsView: View {
                 // different language or clearing their choice, because either
                 // would be us deciding something they did not ask for. The
                 // stored code is preserved, so switching back restores it.
-                if !isLockHonouredByActiveEngine(code) {
-                  Text(
-                    String(
-                      localized:
-                        "The fast engine can't lock to this language, so it's detecting automatically. Choose one of its 25 European languages, or switch to the multilingual engine.",
-                      comment:
-                        "Speech engine settings: the locked language is not one the fast engine supports."
-                    )
-                  )
+                if code != LanguagePickerContent.hindiCode, !isLockHonouredByActiveEngine(code) {
+                  Text(unsupportedLanguageLockWarning)
                   .font(.stHelper)
                   .foregroundStyle(.stWarning)
                   .fixedSize(horizontal: false, vertical: true)
@@ -241,6 +253,10 @@ struct SpeechEngineSettingsView: View {
             }
           }
 
+          if showsHindiWhisperOffer {
+            BrandedRow { hindiWhisperOffer }
+              .id(Self.hindiWhisperOfferScrollID)
+          }
         }
 
         // ── Section 4: Transcription Mode ────────────────────────────────
@@ -443,13 +459,13 @@ struct SpeechEngineSettingsView: View {
       }
     }
     .onChange(of: settings.selectedBackend) { _, newBackend in
+      pendingHindiChoice = false
       if newBackend == .whisper {
         Task { await setup.whisperSetup.detectState() }
       }
     }
-    .sheet(isPresented: $showLanguageLockSheet) {
-      LanguageLockSheet(lockableCodes: lockableLanguageCodes)
-    }
+    .onChange(of: settings.languageMode) { _, _ in pendingHindiChoice = false }
+    .onDisappear { pendingHindiChoice = false }
     .sheet(isPresented: $showSpokenPunctuationSheet) {
       SpokenPunctuationConfigureSheet(settings: settings)
     }
@@ -520,6 +536,69 @@ struct SpeechEngineSettingsView: View {
 
 
   // MARK: - Language section (#1678)
+
+  private var unsupportedLanguageLockWarning: String {
+    String(
+      localized:
+        "The fast engine can't lock to this language, so it's detecting automatically. Choose one of its 25 European languages, or switch to the multilingual engine.",
+      comment: "Speech engine settings: the locked language is not one the fast engine supports.")
+  }
+
+  private var hindiIsLocked: Bool {
+    settings.languageMode == .locked(LanguagePickerContent.hindiCode)
+  }
+
+  private var showsHindiWhisperOffer: Bool {
+    (pendingHindiChoice || hindiIsLocked)
+      && !isLockHonouredByActiveEngine(LanguagePickerContent.hindiCode)
+  }
+
+  private var whisperIsAvailableForHindi: Bool {
+    guard case .ready = setup.whisperSetup.setupState else { return false }
+    return !setup.whisperSetup.isRemoving
+  }
+
+  private var hindiWhisperOffer: some View {
+    InsetNotice(
+      verbatim: hindiIsLocked
+        ? unsupportedLanguageLockWarning : LanguagePickerContent.hindiNeedsWhisper,
+      title: hindiIsLocked ? LanguagePickerContent.hindiNeedsWhisper : nil
+    ) {
+      if whisperIsAvailableForHindi {
+        Button(action: switchToWhisperForHindi) {
+          EnviousButtonLabel(
+            LocalizedStringResource(
+              "Switch to Whisper",
+              comment: "Dictation Settings: explicitly switch to the Whisper engine for Hindi."))
+        }
+        .settingsButton(isEnabled: true)
+        .settingsArrivalWithoutInheritedPlace()
+      } else if !showEngineChoices {
+        SpeechEngineStatusRow(engine: .whisper, place: .dictationCard)
+      }
+    }
+    .task {
+      // Refresh install status when offering Whisper. Keep download progress,
+      // a paused download, or a failure available to the existing controls.
+      guard !setup.whisperSetup.isRemoving else { return }
+      switch setup.whisperSetup.setupState {
+      case .checking, .notDownloaded, .ready:
+        await setup.whisperSetup.detectState()
+      case .downloading, .paused, .error:
+        break
+      }
+    }
+  }
+
+  private func switchToWhisperForHindi() {
+    guard showsHindiWhisperOffer, whisperIsAvailableForHindi else { return }
+    settings.selectedBackend = .whisper
+    if !hindiIsLocked {
+      let hindi = LanguageCatalog.entry(for: LanguagePickerContent.hindiCode)
+      LanguagePickerContent.commitDictation(hindi, to: settings)
+    }
+    pendingHindiChoice = false
+  }
 
   /// Whisper's list is only meaningful once its model is ready. Parakeet's
   /// lock is a stored preference applied at decode time, so it has no such gate.
