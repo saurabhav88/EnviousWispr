@@ -255,6 +255,18 @@ struct SelectionAcquisitionTests {
     #expect(!SelectionAcquisition.isKeystrokeForwarding("com.apple"))
   }
 
+  @Test(
+    "RustDesk and Splashtop's viewer forward keystrokes, so the synthetic Copy is refused there (#1070)",
+    arguments: ["com.carriez.rustdesk", "com.splashtop.stb.macosx"])
+  func addedRemoteClientsRefuseTheCopy(_ bundle: String) {
+    #expect(SelectionAcquisition.isKeystrokeForwarding(bundle))
+    #expect(
+      SelectionAcquisition.mayAttempt(
+        secureInputActive: false, focusedElementIsSecure: false, postingAuthorised: true,
+        targetStillPresent: true, fallbackEnabled: true, context: context(bundleIdentifier: bundle))
+        == .copyFallbackDisabled)
+  }
+
   // MARK: Which read outcomes the fallback may act on
 
   /// The three shapes an app takes when it HAS a selection on screen and publishes nothing usable:

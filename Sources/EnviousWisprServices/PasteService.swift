@@ -716,6 +716,9 @@ public enum PasteService {
     case accessibilityDenied = "not_attempted_accessibility_denied"
     case focusMissing = "not_attempted_focus_missing"
     case focusNonText = "not_attempted_focus_non_text"
+    /// #1070: a remote-desktop window; the field is inside the session, so only a key paste can
+    /// reach it.
+    case focusRemoteSession = "not_attempted_focus_remote_session"
     case roleUnreadable = "role_unreadable"
     case roleNotText = "role_not_text"
     case selectedTextNotSettable = "selected_text_not_settable"

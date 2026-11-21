@@ -1061,11 +1061,13 @@ struct ClipboardIsolationFreezeTests {
       "the one manual clipboard fallback must stay explicit and use the executor's board")
     // #3528: a temporary write is marked so clipboard managers skip it. The three automatic routes
     // mark exactly when the restore will run; the manual fallback keeps its text, so it never marks.
+    // #1070: the two key routes (Cmd+V, AppleScript) take the kind from the per-focus key policy,
+    // which equals the request's own kind except in a remote session, where nothing is restored
+    // and the write is kept; the menu route (non-text only) still reads the request directly.
     #expect(
       visitor.automaticRouteWrites.map(\.kind)
-        == Array(
-          repeating: "request . pasteWriteKind", count: 3),
-      "each automatic paste route takes its write kind from the request, which is temporary only when the restore will run and the user asked (#3672)")
+        == ["keyClipboard . kind", "keyClipboard . kind", "request . pasteWriteKind"],
+      "each automatic paste route takes its write kind from the request's policy, which is temporary only when the restore will run and the user asked (#3672, #1070)")
     #expect(
       visitor.restoreMarkerArguments
         == Array(repeating: "request . keepDictationsOutOfClipboardHistory", count: 3),
