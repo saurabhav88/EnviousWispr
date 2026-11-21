@@ -100,6 +100,7 @@ final class KernelFinalizationOutcome {
   /// from the chain's context right after the runner returns; threaded onto
   /// `dictation.completed`. Metadata only (`telemetry-privacy-boundary`).
   var cleanupLanguage: String?
+  var acceptedTranslationTarget: DictationTranslationTarget?
   var cleanupLanguageSource: String?
   var cleanupLanguageBucket: String?
   /// #996: the resolver-owned language for the learn-from-edits gate
@@ -560,6 +561,7 @@ struct KernelFinalizationWiring {
       // `languageResolutionSource` clear in `deliver`; cleared to nil, never to
       // a placeholder.
       outcome.cleanupLanguage = nil
+      outcome.acceptedTranslationTarget = nil
       outcome.cleanupLanguageSource = nil
       outcome.cleanupLanguageBucket = nil
       outcome.learnLanguage = nil
@@ -601,6 +603,7 @@ struct KernelFinalizationWiring {
           takeID: telemetryState.takeID, context: context.polishSetupContext,
           hooks: context.polishSetupHooks),
         claimsPaste: context.config?.copyOnlyByPreference != true,
+        translationTarget: context.config?.translationTarget,
         // #1846: the LIVE in-flight take, not the concluded one. Polish runs before
         // the session terminal, and starting a session CLEARS `kernel.lastTakeID`,
         // so it is nil here — substituting it would emit no take key at all. Same
@@ -619,6 +622,9 @@ struct KernelFinalizationWiring {
       // after this line, and any of them seeing a raw sentinel is the failure this whole
       // design exists to make impossible. A no-op when no snippet fired.
       SnippetFinalizer.finalize(&ctx)
+      if ctx.polishedText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
+        ctx.acceptedTranslationTarget = nil
+      }
       context.snippetExpansionFired = !ctx.protectedExpansions.isEmpty
       // #145: thread the ITN run outcome onto `dictation.completed` (metadata
       // only — `telemetry-privacy-boundary`). Read on the same actor right after
@@ -673,6 +679,7 @@ struct KernelFinalizationWiring {
       outcome.spellingSwaps = ctx.englishSpellingSwaps
       outcome.rawText = ctx.text
       outcome.polishedText = ctx.polishedText
+      outcome.acceptedTranslationTarget = ctx.acceptedTranslationTarget
       outcome.llmProvider = ctx.llmProvider
       outcome.llmModel = ctx.llmModel
       outcome.polishMetadata = ctx.polishMetadata
@@ -686,6 +693,19 @@ struct KernelFinalizationWiring {
       outcome.afmPrewarmOutcome = ctx.afmPrewarmOutcome
       outcome.afmPrewarmTakeID = ctx.afmPrewarmOutcome == nil ? nil : ctx.takeID
       outcome.polishNotice = result.polishNotice
+      if let target = ctx.requestedTranslationTarget,
+        target.rawValue != LanguageNormalizer.baseCode(ctx.language)
+      {
+        if let notice = result.polishNotice, notice.leadIn == .failed {
+          outcome.polishNotice = PolishNotice(
+            leadIn: notice.leadIn, text: notice.text, isTranslationFailure: true)
+        } else if result.polishNotice == nil, ctx.acceptedTranslationTarget == nil,
+          ctx.polishValidatorGuard != nil || ctx.polishFallbackReason == SnippetFinalizer.sentinelLossReason
+        {
+          outcome.polishNotice = PolishNotice(
+            leadIn: .failed, text: PolishNotice.translationFailureText, isTranslationFailure: true)
+        }
+      }
       outcome.polishTakeOutcome = result.polishTakeOutcome
       // #3988: the first live take to meet an outside stop is its recovery take. Its stop and
       // its own polish result ride on its terminal row (zero new rows), written here because the
@@ -896,7 +916,8 @@ struct KernelFinalizationWiring {
             // operation, which cannot reach a `@MainActor` seam.
             return InsertionTakeFacts(
               snippetFired: context.snippetExpansionFired,
-              lockedLanguageCode: context.config?.lockedLanguageCode,
+              lockedLanguageCode: outcome.acceptedTranslationTarget?.rawValue
+                ?? context.config?.lockedLanguageCode,
               engineDetectsLanguage: adapter.capabilities.supportsLanguageDetection,
               engineReportedLanguage: adapter.lastResult?.language,
               protectedSpellings: context.protectedSpellings)

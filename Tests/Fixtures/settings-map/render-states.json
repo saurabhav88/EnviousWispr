@@ -8,6 +8,7 @@
    "aiPolishProvider",
    "appleIntelligence.recheck",
    "appleIntelligence.status",
+   "dictationOutputLanguage",
    "enableAIPolish",
    "section.aiPolishModel"
   ]
@@ -22,6 +23,7 @@
    "apiKey.claude",
    "apiKey.getKeyLink",
    "apiKey.save",
+   "dictationOutputLanguage",
    "enableAIPolish",
    "polishModel",
    "polishModel.refresh",
@@ -36,6 +38,7 @@
    "aiPolish.providerSection",
    "aiPolish.whyUse.egOne",
    "aiPolishProvider",
+   "dictationOutputLanguage",
    "enableAIPolish",
    "localModel.download",
    "section.aiPolishModel"
@@ -49,6 +52,7 @@
    "aiPolish.providerSection",
    "aiPolish.whyUse.egOne",
    "aiPolishProvider",
+   "dictationOutputLanguage",
    "enableAIPolish",
    "localModel.cancel",
    "section.aiPolishModel"
@@ -62,6 +66,7 @@
    "aiPolish.providerSection",
    "aiPolish.whyUse.egOne",
    "aiPolishProvider",
+   "dictationOutputLanguage",
    "enableAIPolish",
    "localModel.tryAgain",
    "section.aiPolishModel"
@@ -76,6 +81,7 @@
    "aiPolish.providerSection",
    "aiPolish.whyUse.egOne",
    "aiPolishProvider",
+   "dictationOutputLanguage",
    "enableAIPolish",
    "localModel.testLive",
    "section.aiPolishModel"
@@ -89,6 +95,7 @@
    "aiPolish.providerSection",
    "aiPolish.whyUse.egOne",
    "aiPolishProvider",
+   "dictationOutputLanguage",
    "enableAIPolish",
    "localModel.resume",
    "section.aiPolishModel"
@@ -104,6 +111,7 @@
    "apiKey.gemini",
    "apiKey.getKeyLink",
    "apiKey.save",
+   "dictationOutputLanguage",
    "enableAIPolish",
    "polishModel",
    "polishModel.refresh",
@@ -113,6 +121,7 @@
  "aiPolish.off": {
   "exempt": {},
   "mapped": [
+   "dictationOutputLanguage",
    "enableAIPolish"
   ]
  },
@@ -125,6 +134,7 @@
    "aiPolish.providerSection",
    "aiPolish.whyUse.ollama",
    "aiPolishProvider",
+   "dictationOutputLanguage",
    "enableAIPolish",
    "ollama.tryAgain",
    "section.aiPolishModel"
@@ -139,6 +149,7 @@
    "aiPolish.providerSection",
    "aiPolish.whyUse.ollama",
    "aiPolishProvider",
+   "dictationOutputLanguage",
    "enableAIPolish",
    "ollama.browseModels",
    "ollama.downloadModel",
@@ -155,6 +166,7 @@
    "aiPolish.providerSection",
    "aiPolish.whyUse.ollama",
    "aiPolishProvider",
+   "dictationOutputLanguage",
    "enableAIPolish",
    "ollama.downloadOllama",
    "ollama.recheck",
@@ -170,6 +182,7 @@
    "aiPolish.providerSection",
    "aiPolish.whyUse.ollama",
    "aiPolishProvider",
+   "dictationOutputLanguage",
    "enableAIPolish",
    "ollama.recheck",
    "ollama.start",
@@ -185,6 +198,7 @@
    "aiPolish.providerSection",
    "aiPolish.whyUse.ollama",
    "aiPolishProvider",
+   "dictationOutputLanguage",
    "enableAIPolish",
    "ollama.browseModels",
    "ollama.cancelPull",
@@ -198,6 +212,7 @@
    "aiPolish.providerSection",
    "aiPolish.whyUse.ollama",
    "aiPolishProvider",
+   "dictationOutputLanguage",
    "enableAIPolish",
    "ollama.browseModels",
    "ollama.prepareModel",
@@ -217,6 +232,7 @@
    "apiKey.getKeyLink",
    "apiKey.openAI",
    "apiKey.save",
+   "dictationOutputLanguage",
    "enableAIPolish",
    "polishModel",
    "polishModel.refresh",
@@ -234,6 +250,7 @@
    "apiKey.openAI",
    "apiKey.reveal",
    "apiKey.save",
+   "dictationOutputLanguage",
    "enableAIPolish",
    "polishModel",
    "polishModel.refresh",
@@ -252,6 +269,7 @@
    "apiKey.openAI",
    "apiKey.reveal",
    "apiKey.save",
+   "dictationOutputLanguage",
    "enableAIPolish",
    "polishModel",
    "polishModel.refresh",
@@ -266,6 +284,7 @@
    "aiPolish.providerSection",
    "aiPolish.whyUse.s1Mini",
    "aiPolishProvider",
+   "dictationOutputLanguage",
    "enableAIPolish",
    "localModel.download",
    "s1Context",

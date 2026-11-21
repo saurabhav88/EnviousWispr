@@ -827,6 +827,12 @@ enum SettingsMap {
       parent: .sectionAiPolishModel, destination: .aiPolish, dictionaryTab: nil,
       visibility: .aiPolishEnabled, target: .aiPolishProvider, fallbacks: [.enableAIPolish]),
     SettingsMapNode(
+      id: .dictationOutputLanguage, structure: .item, item: .setting,
+      title: .resource(SettingsItemCopy.AIPolish.translationTitle),
+      description: .runtime,
+      parent: .pageAiPolish, destination: .aiPolish, dictionaryTab: nil,
+      visibility: .always, target: .dictationOutputLanguage, fallbacks: []),
+    SettingsMapNode(
       id: .aiPolishProviderSection, structure: .item, item: .feature,
       title: .dynamic(.providerSection),
       description: nil,

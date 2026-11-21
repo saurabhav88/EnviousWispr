@@ -81,6 +81,9 @@ public struct PromptBuildInput: Sendable {
   /// into it, so nil is the safe default and every other producer passes nil.
   public let namedLanguage: String?
 
+  /// Written output language admitted by the live dictation polish step.
+  public let translationTarget: DictationTranslationTarget?
+
   public init(
     transcript: String,
     provider: LLMProvider,
@@ -94,7 +97,8 @@ public struct PromptBuildInput: Sendable {
     backend: ASRBackendType? = nil,
     ollamaIsRemote: Bool? = nil,
     s1Control: S1ControlSettings = .default,
-    namedLanguage: String? = nil
+    namedLanguage: String? = nil,
+    translationTarget: DictationTranslationTarget? = nil
   ) {
     self.transcript = transcript
     self.provider = provider
@@ -112,6 +116,7 @@ public struct PromptBuildInput: Sendable {
     self.ollamaIsRemote = ollamaIsRemote
     self.s1Control = s1Control
     self.namedLanguage = namedLanguage
+    self.translationTarget = translationTarget
   }
 
   /// Returns a copy of this input with `polishVocabulary` replaced. Used by
@@ -135,7 +140,8 @@ public struct PromptBuildInput: Sendable {
       backend: backend,
       ollamaIsRemote: ollamaIsRemote,
       s1Control: s1Control,
-      namedLanguage: namedLanguage
+      namedLanguage: namedLanguage,
+      translationTarget: translationTarget
     )
   }
 }

@@ -195,6 +195,7 @@ enum SettingsMapID: String, CaseIterable, Hashable, Sendable {
   case meetingCallApps = "meetingCallApps"
   case enableAIPolish = "enableAIPolish"
   case aiPolishProvider = "aiPolishProvider"
+  case dictationOutputLanguage = "dictationOutputLanguage"
   case aiPolishProviderEgOne = "aiPolishProvider.egOne"
   case aiPolishProviderS1Mini = "aiPolishProvider.s1Mini"
   case aiPolishProviderAppleIntelligence = "aiPolishProvider.appleIntelligence"

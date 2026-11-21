@@ -106,6 +106,20 @@ struct CasualEndingStepTests {
     #expect(try await step.process(spoken).text == "See you at 5.")
   }
 
+  @Test("Casual Ending preserves a translated German ordinal without changing the spoken route")
+  func translatedGermanOrdinalKeepsDot() async throws {
+    let step = CasualEndingStep()
+    step.casualModeEnabled = true
+    var input = context("Send it on the third.", polished: "Schick es am 3.")
+    input.cleanupRoute = .english
+    input.acceptedTranslationTarget = .german
+
+    let result = try await step.process(input)
+
+    #expect(result.text == "Send it on the third")
+    #expect(result.polishedText == "Schick es am 3.")
+  }
+
   @Test("Casual Ending is the last step of the dictation chain")
   func lastInChain() {
     let steps = LimbSteps(

@@ -12,9 +12,9 @@ Generated from the compiled Settings Map and the validated search vocabulary. Do
 
 The interface ships in English and German. The other 30 languages (ar, bg, cs, da, el, es, et, fi, fr, hi, hr, hu, it, ja, ko, lt, lv, mt, nl, pl, pt, ro, ru, sk, sl, sv, tr, uk, vi, zh) are search metadata only: words and titles people may type, matched against the same places. Titles below read English / German.
 
-326 nodes, 297 searchable, 9504 vocabulary blocks.
+327 nodes, 298 searchable, 9536 vocabulary blocks.
 
-Fingerprints: mapSHA256 `37123b897fb0897f42ec3f7e6634cb220cdfe8c96174f7f62f308b15994973fd`, uiCatalogSHA256 `d87ce4ba465dd23b065e7456e3eb396c3c2f437a12febf425b26768e71a62d58`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `f27d623c318325d7367f855d330f83ba73699b4880eab0e5a099978d419fd4e6`
+Fingerprints: mapSHA256 `867e6bdd6da3b08db188c356e3a749c9c334c35e4bd4216b3d655867b4f84b30`, uiCatalogSHA256 `cf227175b096c9365299cbcf0d3b3c5f227a91a002f3f843854a3854dd5fcd2c`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `a1f3564189c4977d2af54bacbd4931f022eb117b096bcbb1ab4b9e7158fe394d`
 
 ## Structure
 
@@ -82,6 +82,7 @@ Fingerprints: mapSHA256 `37123b897fb0897f42ec3f7e6634cb220cdfe8c96174f7f62f308b1
           - [Why use Claude / Warum Claude verwenden?](#node-aiPolish-whyUse-claude) `aiPolish.whyUse.claude` (feature)
             - [Claude API rate limits / Claude-API-Ratenlimits](#node-aiPolish-link-claudeRateLimits) `aiPolish.link.claudeRateLimits` (action)
     - [Enable AI Polish / KI-Nachbearbeitung aktivieren](#node-enableAIPolish) `enableAIPolish` (setting)
+    - [Dictation output language / Ausgabesprache für Diktate](#node-dictationOutputLanguage) `dictationOutputLanguage` (setting)
   - [App Settings / App-Einstellungen](#node-page-appSettings) `page.appSettings` (page)
     - [Appearance / Erscheinungsbild](#node-appSettings-tab-appearance) `appSettings.tab.appearance` (feature)
       - [APPEARANCE / ERSCHEINUNGSBILD](#node-section-appearance) `section.appearance` (section)
@@ -3059,6 +3060,27 @@ Fingerprints: mapSHA256 `37123b897fb0897f42ec3f7e6634cb220cdfe8c96174f7f62f308b1
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: choose the model that cleans up my dictation; switch the AI provider for my dictated text |
 | Search (de) | phrases: wähle das Modell für die Nachbearbeitung meiner Diktate; wechsle den KI-Anbieter für meinen diktierten Text |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-dictationOutputLanguage"></a>
+
+### Dictation output language / Ausgabesprache für Diktate (`dictationOutputLanguage`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | setting |
+| Parent | [`page.aiPolish`](#node-page-aiPolish) |
+| Title source | catalog key `Dictation output language` |
+| Description | composed at display time from live state (not exported) |
+| Destination | `aiPolish` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`dictationOutputLanguage`](#node-dictationOutputLanguage) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | words: target language, final text language<br>phrases: change the language of my dictated text; get my dictation in another language |
+| Search (de) | words: Zielsprache<br>phrases: Ausgabesprache für Diktate; Diktate in die gewählte Zielsprache übersetzen |
 | Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-aiPolish-providerSection"></a>

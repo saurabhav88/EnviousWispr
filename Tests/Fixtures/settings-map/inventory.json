@@ -3109,6 +3109,22 @@
    }
   },
   {
+   "id": "dictationOutputLanguage",
+   "kind": "setting",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "page.aiPolish",
+   "target": "dictationOutputLanguage",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "runtime"
+   }
+  },
+  {
    "id": "aiPolishProvider",
    "kind": "setting",
    "destination": {

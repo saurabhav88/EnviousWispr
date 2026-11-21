@@ -88,7 +88,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     let plan = promptPlan(
       context: context, provider: llmProvider, model: llmModel, ollamaRemote: nil,
       s1Control: s1Control, vocabularySnapshot: PromptVocabulary.fromLegacy(polishVocabulary.terms),
-      namedLanguage: nil)
+      namedLanguage: nil, translationTarget: nil)
     guard plan.family == .cloudFixed, plan.envelope.messages.count == 2,
       let pair = plan.envelope.asSingleTurn()
     else { return nil }
@@ -798,6 +798,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // same shape from outside.
     ctx.polishWasBypassed = true
     ctx.polishedText = nil
+    ctx.acceptedTranslationTarget = nil
     ctx.llmProvider = nil
     ctx.llmModel = nil
     // #1914: nothing polished, so there is no completed remoteness fact to carry.
@@ -885,8 +886,6 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     var outsideStopRecovery: OutsideStopContext?
   }
   private(set) var setupObservation = SetupObservation()
-  /// The providers whose model the user picks from a key-backed catalog (#4353).
-  static let cloudProviders: Set<LLMProvider> = [.openAI, .gemini, .claude]
   /// #3988: the wall clock an outside-stop miss is stamped with. A seam for tests.
   var wallNow: @MainActor () -> Date = { Date() }
 
@@ -915,6 +914,12 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     let provider = llmProvider
     let model = llmModel
     let localModel = polishModelID
+    let usesDirectCloud = CloudModelMemory.cloudProviders.contains(provider)
+    let translationTarget: DictationTranslationTarget? = context.requestedTranslationTarget.flatMap { target in
+      provider.supportsDictationTranslation
+        && target.rawValue != LanguageNormalizer.baseCode(context.language)
+        ? target : nil
+    }
     // #4353 D6: the operation's cloud model list, read with provider and model; every request
     // policy below (thinking, connector body, chat preflight) comes from this local.
     let cloudModelList = cloudModelList
@@ -944,7 +949,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // the short-text bypass (a too-short take stays a quiet bypass, as for every provider)
     // and BEFORE any key read, connector or request. A surfaced skip: the runner keeps the
     // deterministic text and shows the skipped notice.
-    if Self.cloudProviders.contains(provider), model.isEmpty {
+    if usesDirectCloud, model.isEmpty {
       setupObservation.cloudModelCheckedAt = .now
       throw LLMError.cloudModelNotSelected(provider)
     }
@@ -1233,7 +1238,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     let plan = promptPlan(
       context: context, provider: provider, model: model, ollamaRemote: ollamaRemote,
       s1Control: s1Control, vocabularySnapshot: vocabularySnapshot,
-      namedLanguage: egOneDecision?.namedLanguage)
+      namedLanguage: egOneDecision?.namedLanguage, translationTarget: translationTarget)
     let envelope: PromptEnvelope
     if let batch = fileBatchInput {
       guard provider == batch.members[0].provider, model == batch.members[0].model,
@@ -1303,7 +1308,11 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     }
     // This source-owning boundary replaces connector chatter stripping. Native
     // cleaned-empty skips still precede completion breadcrumbs and warmth stamps.
-    let result = try response.removingModelChatter(dictation: context.text, provider: provider)
+    // An opening translated into another language won't match the source words.
+    let result =
+      translationTarget == nil
+      ? try response.removingModelChatter(dictation: context.text, provider: provider)
+      : response
     let llmEnd = CFAbsoluteTimeGetCurrent()
 
     logPolishCompletion(
@@ -1346,13 +1355,13 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
 
     return finishCleanedResult(
       result, context: context, mode: plan.mode, provider: provider, model: model,
-      ollamaRemote: ollamaRemote, family: plan.family)
+      ollamaRemote: ollamaRemote, family: plan.family, translationTarget: translationTarget)
   }
 
   private func promptPlan(
     context: TextProcessingContext, provider: LLMProvider, model: String,
     ollamaRemote: Bool?, s1Control: S1ControlSettings, vocabularySnapshot: PromptVocabulary,
-    namedLanguage: String?
+    namedLanguage: String?, translationTarget: DictationTranslationTarget?
   ) -> PolishPlan {
     let input = PromptBuildInput(
       transcript: context.text,
@@ -1380,7 +1389,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       s1Control: s1Control,
       // #3111: native EG-1 only, and only when the raw text itself names a measured
       // language that no lock or engine answer contradicts. Nil sends today's prompt.
-      namedLanguage: namedLanguage
+      namedLanguage: namedLanguage,
+      translationTarget: translationTarget
     )
     return promptPlanner.plan(input: input)
 
@@ -1463,7 +1473,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   private func finishCleanedResult(
     _ result: LLMResult, context: TextProcessingContext, mode: PolishMode,
     provider: LLMProvider, model: String, ollamaRemote: Bool?, family: PromptFamily,
-    policy: ResultPolicy = .ordinary
+    policy: ResultPolicy = .ordinary, translationTarget: DictationTranslationTarget? = nil
   ) -> TextProcessingContext {
     if policy == .batchPiece,
       result.polishedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -1479,16 +1489,23 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       ctx.symbolTokens = nil
       return ctx
     }
+    let crossLanguageSource = translationTarget == nil
+      ? nil : LanguageNormalizer.baseCode(context.language)
     let validation = validatePolishOutput(
       polished: result.polishedText,
       original: context.text,
       mode: mode,
-      provider: provider, model: model, policy: policy
+      provider: provider, model: model, policy: policy,
+      crossLanguageSource: crossLanguageSource
     )
     let validatedText = validation.text
 
     var ctx = context
-    ctx.polishedText = validatedText
+    let rejectedTranslation = translationTarget != nil && (
+      validation.guardName != nil || result.polishMetadata?.filterFellBackToRaw == true
+        || validatedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+    ctx.polishedText = rejectedTranslation ? nil : validatedText
+    ctx.acceptedTranslationTarget = rejectedTranslation ? nil : translationTarget
     ctx.polishValidatorGuard = validation.guardName
     ctx.symbolTokens = validation.symbolTokens
     ctx.llmProvider = provider.rawValue
@@ -1560,8 +1577,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   // MARK: - Output Validation
 
   /// What `validatePolishOutput` decided (#3038). `text` is what the pipeline delivers;
-  /// `guardName` names the guard that discarded the model's output (`expansion`,
-  /// `content_drop`, `question_flip`, `symbol_drop`) or is nil when the output stood;
+  /// `guardName` names the guard that discarded the model's output (`translation_echo`,
+  /// `expansion`, `content_drop`, `question_flip`, `symbol_drop`) or is nil when the output stood;
   /// `symbolTokens` is the number of `/word` and `\word` occurrences the ORIGINAL carried when
   /// Guard 4 ran (zero is a measurement), nil when an earlier guard returned first. Counts
   /// and names only, never text (`telemetry-privacy-boundary`).
@@ -1608,10 +1625,15 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// slash or backslash token the deterministic text carried.
   func validatePolishOutput(
     polished: String, original: String, mode: PolishMode,
-    provider: LLMProvider, model: String, policy: ResultPolicy = .ordinary
+    provider: LLMProvider, model: String, policy: ResultPolicy = .ordinary,
+    crossLanguageSource: String? = nil
   ) -> PolishValidation {
     guard !original.isEmpty else {
       return PolishValidation(text: polished, guardName: nil, symbolTokens: nil)
+    }
+
+    if crossLanguageSource != nil, polished.utf8.elementsEqual(original.utf8) {
+      return PolishValidation(text: original, guardName: "translation_echo", symbolTokens: nil)
     }
 
     if policy == .ordinary {
@@ -1643,8 +1665,10 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
         contentDropFraction = (1, 3)
       }
 
-      // Guard 1: Expansion hallucination
-      if polished.count > expansionThreshold {
+      // A character ratio cannot compare unsegmented source text with translated words.
+      // Claude still caps generation and rejects a truncated reply.
+      let unsegmentedTranslation = crossLanguageSource.map(LanguageTypes.isUnsegmentedScript) ?? false
+      if !unsegmentedTranslation && polished.count > expansionThreshold {
         Task {
           await AppLogger.shared.log(
             "LLM polish validator: expansion \(polished.count)/\(original.count) chars "
@@ -1675,8 +1699,11 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
 
     }
 
-    // Guard 3: Question-to-answer conversion (unchanged across modes)
-    if looksLikeQuestion(original) && !looksLikeQuestion(polished) {
+    // An English opening like "Do not" does not identify a question across languages.
+    let inferFromOpening = crossLanguageSource == nil
+    if looksLikeQuestion(original, inferFromOpening: inferFromOpening)
+      && !looksLikeQuestion(polished, inferFromOpening: inferFromOpening)
+    {
       Task {
         await AppLogger.shared.log(
           "LLM polish validator: question-to-answer conversion detected — "
@@ -1718,8 +1745,9 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// Conservative question detection using strong signals only.
   /// Returns true if the text contains `?` or full-width `？`, or starts with an interrogative pattern.
   /// Leading fillers and common preambles are stripped before checking.
-  private func looksLikeQuestion(_ text: String) -> Bool {
+  private func looksLikeQuestion(_ text: String, inferFromOpening: Bool) -> Bool {
     if text.contains("?") || text.contains("\u{FF1F}") { return true }
+    guard inferFromOpening else { return false }
 
     // Strip leading fillers to find the real sentence start.
     let fillers: Set<String> = ["um", "uh", "so", "like", "well", "okay", "ok"]

@@ -702,19 +702,26 @@ import os
   // now runs against the live wiring, where a regression in the real delivery
   // path actually fails.
 
-  @Test("a limb failure preserves the raw ASR text and still saves exactly once")
-  func limbFailurePreservesRawTextAndSavesOnce() async throws {
+  @Test("A provider failure preserves the source text and details",
+        arguments: [nil, .english, .german] as [DictationTranslationTarget?])
+  func limbFailurePreservesRawTextAndSavesOnce(target: DictationTranslationTarget?) async throws {
     // A polish throw is the realistic limb failure; the chain surfaces it and
     // the heart path still delivers the raw words.
     let outcome = KernelFinalizationOutcome()
     let saves = SaveCountBox()
+    let context = KernelSessionContext()
     let polish = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
-    polish.setPolish(provider: .openAI)
+    let provider: LLMProvider = target == nil ? .openAI : .claude
+    polish.setPolish(provider: provider)
     // #4353 D2: the step has no implicit model; a cloud step without one is a bypass.
-    polish.llmModel = "gpt-4o-mini"
+    polish.llmModel = target == nil ? "gpt-4o-mini" : "claude-haiku-4-5"
+    if let target {
+      context.config = .testDefault(languageMode: .locked("en"), translationTarget: target)
+    }
     polish.makePolisher = { _, _, _, _ in ThrowingPolisher() }
     let wiring = makeWiring(
       outcome: outcome,
+      context: context,
       steps: makeSteps(polish: polish),
       save: { transcript, _ in
         saves.count += 1
@@ -729,9 +736,53 @@ import os
 
     #expect(text == "hello world this is a test", "raw ASR text survives a limb failure")
     #expect(outcome.polishedText == nil)
-    #expect(outcome.polishError != nil, "polish surfaces its error")
+    let notice = try #require(outcome.polishNotice)
+    #expect(notice.isTranslationFailure == (target == .german))
+    #expect(notice.text.isEmpty == false)
+    #expect(notice.text != PolishNotice.translationFailureText, "Provider details stay available")
     #expect(saves.count == 1)
     #expect(saves.last?.text == "hello world this is a test")
+  }
+
+  @Test("A translation that drops a snippet delivers the prepared source exactly once")
+  func translationThatDropsSnippetKeepsSource() async throws {
+    let outcome = KernelFinalizationOutcome()
+    let requests = PasteRequestRecorder()
+    let context = KernelSessionContext()
+    context.config = .testDefault(
+      autoPasteToActiveApp: true, languageMode: .locked("en"), llmProvider: .claude,
+      llmModel: "claude-haiku-4-5", translationTarget: .german)
+    let polish = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
+    polish.setPolish(provider: .claude)
+    polish.llmModel = "claude-haiku-4-5"
+    polish.makePolisher = { _, _, _, _ in
+      CannedPolisher(
+        output: "Der Code lautet 203, und du kannst ihn heute per E-Mail schicken.",
+        expectedInstruction: "Translate this dictation into German.")
+    }
+    let steps = makeSteps(polish: polish)
+    steps.snippetExpansion.snippetVocabulary = SnippetVocabulary(
+      snippets: [Snippet(trigger: "my email address", expansion: "sam@example.com")],
+      keyword: SnippetVocabulary.defaultKeyword, generation: 1)
+    let wiring = makeWiring(
+      outcome: outcome, context: context, steps: steps,
+      deliverPaste: { request in
+        requests.record(request.legacyText)
+        return Self.deliveredResult
+      })
+
+    let text = try await wiring.processText(
+      "the code is two zero three and you can email it to backslash my email address today") {}
+    try await wiring.store(text, UUID(), .ordinary)
+    let delivery = await wiring.deliver(text, .ordinary)
+
+    let original = "the code is 203 and you can email it to sam@example.com today"
+    #expect(outcome.polishFallbackReason == SnippetFinalizer.sentinelLossReason)
+    #expect(outcome.polishNotice?.text == "Couldn’t translate. Your original-language text was kept.")
+    #expect(outcome.transcript?.text == original)
+    #expect(outcome.transcript?.polishedText == nil)
+    #expect(delivery == .pasted)
+    #expect(requests.legacyTexts == [original + " "])
   }
 
   // MARK: #1914 remoteness carrier, through the real wiring
@@ -1383,6 +1434,46 @@ import os
       "the contextual candidate must reach delivery, not be recomputed there")
     // The evidence the candidate was computed FROM travels with it.
     #expect(request.caretContext == Self.midSentenceCaret)
+  }
+
+  @Test("Paste spacing follows an accepted translation and falls back to the spoken language",
+        arguments: [true, false])
+  func translatedContinuationUsesWrittenSpacing(accepted: Bool) async throws {
+    let captured = DeliveryRequestBox()
+    let context = KernelSessionContext()
+    context.config = .testDefault(
+      autoPasteToActiveApp: true, smartInsertion: true, languageMode: .locked("ja"),
+      llmProvider: .claude, llmModel: "claude-haiku-4-5", translationTarget: .english)
+    context.targetElement = Self.stubCaretElement()
+    let polish = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
+    polish.setPolish(provider: .claude)
+    polish.llmModel = "claude-haiku-4-5"
+    let translated = "bring the papers tomorrow morning"
+    polish.makePolisher = { _, _, _, _ in
+      CannedPolisher(
+        output: accepted ? translated : "",
+        expectedInstruction: "Translate this dictation into English.")
+    }
+    let caret = PasteService.CaretContext(
+      leftWindow: "Please", rightWindow: "", selectionLocation: 6, selectionLength: 0,
+      leftReachesDocumentStart: true)
+    let wiring = makeWiring(
+      context: context, steps: makeSteps(polish: polish),
+      deliverPaste: { request in
+        captured.requests.append(request)
+        return Self.deliveredResult
+      },
+      readCaretContext: { _, _, _ in caret },
+      seamCasingOracle: { _ in Self.testOracle })
+
+    let source = "明日の朝その書類を持ってきてください"
+    let processed = try await wiring.processText(source) {}
+    _ = await wiring.deliver(processed, .ordinary)
+
+    #expect(captured.requests.count == 1)
+    let request = try #require(captured.requests.first)
+    let text = request.repairedText ?? request.legacyText
+    #expect(text == (accepted ? " " + translated + " " : source))
   }
 
   // The language the repair acts on is RESOLVED, not read off the engine's
@@ -3590,13 +3681,19 @@ private final class CapturedRequest {
 /// come from the too-short gate. If the gate ever let the short input through,
 /// the test would see "canned polish output" persisted instead of nil.
 private struct CannedPolisher: TranscriptPolisher {
+  var output = "canned polish output"
+  var expectedInstruction: String? = nil
+
   func polish(
     text: String,
     instructions: PolishInstructions,
     config: LLMProviderConfig,
     onToken: (@Sendable (String) -> Void)?
   ) async throws -> LLMResult {
-    LLMResult(polishedText: "canned polish output")
+    if let expectedInstruction {
+      #expect(instructions.systemPrompt.contains(expectedInstruction))
+    }
+    return LLMResult(polishedText: output)
   }
 }
 

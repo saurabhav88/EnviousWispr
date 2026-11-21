@@ -22,6 +22,23 @@ struct SettingsDefaultsRoutingTests {
 
   // MARK: - Canonical defaults (piece 0)
 
+  @Test("Translation target round-trips through unified defaults and clears to Same as spoken")
+  func dictationTranslationTargetRoundTrips() {
+    let defaults = Self.freshSuite()
+    let key = "dictationTranslationTarget"
+    #expect(SettingsManager.unifiedDefaultsKeys.contains(key))
+    #expect(SettingsManager(defaults: defaults).dictationTranslationTarget == nil)
+    defaults.set("unknown", forKey: key)
+    let settings = SettingsManager(defaults: defaults)
+    #expect(settings.dictationTranslationTarget == nil)
+
+    settings.dictationTranslationTarget = .hindi
+    let reloaded = SettingsManager(defaults: defaults)
+    #expect(reloaded.dictationTranslationTarget == .hindi)
+    reloaded.dictationTranslationTarget = nil
+    #expect(defaults.object(forKey: key) == nil)
+  }
+
   @Test("fresh install yields the founder-ratified canonical defaults")
   func canonicalDefaults() {
     let defaults = Self.freshSuite()

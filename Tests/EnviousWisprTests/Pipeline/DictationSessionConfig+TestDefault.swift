@@ -35,7 +35,8 @@ extension DictationSessionConfig {
     escapeRecoveryEnabled: Bool = false,
     recoverySessionID: String? = nil,
     s1Control: S1ControlSettings = .default,
-    englishSpelling: EnglishSpelling = .american
+    englishSpelling: EnglishSpelling = .american,
+    translationTarget: DictationTranslationTarget? = nil
   ) -> DictationSessionConfig {
     DictationSessionConfig(
       autoCopyToClipboard: autoCopyToClipboard,
@@ -62,7 +63,8 @@ extension DictationSessionConfig {
       preferredInputDeviceIDOverride: preferredInputDeviceIDOverride,
       recoverySessionID: recoverySessionID,
       escapeRecoveryEnabled: escapeRecoveryEnabled,
-      s1Control: s1Control
+      s1Control: s1Control,
+      translationTarget: translationTarget
     )
   }
 }

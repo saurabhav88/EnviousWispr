@@ -186,7 +186,7 @@ public final class SettingsManager {
     "spokenPunctuationStartWords", "spokenPunctuationEnglishPeriodWord", "casualModeEnabled",
     "crashRecoveryEnabled", "shareUsageMetrics", "sendCrashReports", "contactsSyncOnLaunchEnabled",
     "isDebugModeEnabled", "debugLogLevel",
-    "egOneSize", "whisperKitLanguage", "languageMode", "englishSpelling",
+    "egOneSize", "whisperKitLanguage", "languageMode", "englishSpelling", "dictationTranslationTarget",
     "selectedInputDeviceUID", "preferredInputDeviceIDOverride", "inputChannelByDeviceUID",
     "useStreamingASR", "livePreviewEnabled", "livePreviewEngine",
     "warmEnginePolicy", "appearancePreference",
@@ -1820,6 +1820,13 @@ public final class SettingsManager {
     }
   }
 
+  /// Next take's written language preference. Provider switches leave the choice intact.
+  package var dictationTranslationTarget: DictationTranslationTarget? {
+    didSet {
+      defaults.set(dictationTranslationTarget?.rawValue, forKey: "dictationTranslationTarget")
+    }
+  }
+
   /// #4473 (plan §3.1.1 S3 to S5): the EG-1 size the user prefers, for future work on every
   /// surface. nil only between the start of the app and `resolveEGOneSizeIfNeeded`, which runs
   /// once at launch before anything reads a size. After that it changes only when the user
@@ -2355,6 +2362,10 @@ public final class SettingsManager {
     englishSpelling =
       EnglishSpelling(rawValue: defaults.string(forKey: "englishSpelling") ?? "")
       ?? SettingsDefaultValues.englishSpelling
+    dictationTranslationTarget =
+      defaults.string(forKey: "dictationTranslationTarget")
+      .flatMap(DictationTranslationTarget.init(rawValue:))
+      ?? SettingsDefaultValues.dictationTranslationTarget
     // #4473: no default here. Absent, and a value this build does not know, both load as nil
     // and are told apart at first resolution.
     egOneSize = defaults.string(forKey: Self.egOneSizeKey).flatMap(EGOneSize.init(rawValue:))

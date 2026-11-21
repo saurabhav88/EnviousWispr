@@ -106,6 +106,7 @@ public struct DictationSessionConfig: Sendable {
   /// races inside `SettingsManager`.
   public let llmModel: String
   public let polishInstructions: PolishInstructions
+  public let translationTarget: DictationTranslationTarget?
   /// #2649: the S1-mini control-line picks this recording polishes under.
   /// Frozen here for the same reason as provider and model: a pick changed
   /// mid-dictation governs the NEXT recording, never the one in flight. Read
@@ -190,7 +191,8 @@ public struct DictationSessionConfig: Sendable {
     recoverySessionID: String? = nil,
     recoveryPayload: Data? = nil,
     escapeRecoveryEnabled: Bool = false,
-    s1Control: S1ControlSettings = .default
+    s1Control: S1ControlSettings = .default,
+    translationTarget: DictationTranslationTarget? = nil
   ) {
     self.autoCopyToClipboard = autoCopyToClipboard
     self.inputMode = inputMode
@@ -213,6 +215,7 @@ public struct DictationSessionConfig: Sendable {
     self.polishModelID = polishModelID
     self.llmModel = llmModel
     self.polishInstructions = polishInstructions
+    self.translationTarget = translationTarget
     self.selectedInputDeviceUID = selectedInputDeviceUID
     self.preferredInputDeviceIDOverride = preferredInputDeviceIDOverride
     self.recoverySessionID = recoverySessionID

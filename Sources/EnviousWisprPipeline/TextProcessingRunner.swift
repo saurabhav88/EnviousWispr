@@ -240,15 +240,17 @@ internal final class TextProcessingRunner {
     /// callers: they classify and record nothing.
     polishSetup: PolishSetupTakeProbe? = nil,
     claimsPaste: Bool = true,
+    translationTarget: DictationTranslationTarget? = nil,
     /// #1846: the live in-flight take. Frozen into the context below so every
     /// emission in this chain names the same dictation even if the session state
     /// moves on mid-chain.
     takeID: String? = nil
   ) async throws -> TextProcessingRunResult {
-    let context = await makeContext(
+    var context = await makeContext(
       rawText: rawText, evidence: evidence, targetAppName: targetAppName, steps: steps,
       frozenCorrectorVocabulary: frozenCorrectorVocabulary, fixLearnedWords: fixLearnedWords,
       takeID: takeID)
+    context.requestedTranslationTarget = translationTarget
     return try await run(
       context: context, steps: steps, polishSetup: polishSetup, claimsPaste: claimsPaste)
   }

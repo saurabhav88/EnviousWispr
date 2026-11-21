@@ -1,5 +1,6 @@
 #if DEBUG
   import EnviousWisprCore
+  import EnviousWisprLLM
   import EnviousWisprPipeline
   import EnviousWisprServices
   import Foundation
@@ -159,6 +160,7 @@
       case .modelNotDownloaded: return "modelNotDownloaded"
       case .modelRequiresExplicitRetry: return "modelRequiresExplicitRetry"
       case .polishFailed: return "polishFailed"
+      case .translationFailed: return "translationFailed"
       case .clipboardPolishFailed: return "clipboardPolishFailed"
       case .historySaveFailed: return "historySaveFailed"
       case .escapeRecoveryUnavailable: return "escapeRecoveryUnavailable"
@@ -172,7 +174,7 @@
     /// Every warning case name a complete table must cover.
     static let allWarningCaseNames: Set<String> = [
       "modelNotDownloaded", "modelRequiresExplicitRetry", "polishFailed", "historySaveFailed",
-      "clipboardPolishFailed", "escapeRecoveryUnavailable",
+      "clipboardPolishFailed", "translationFailed", "escapeRecoveryUnavailable",
       "salvagedBeginning", "interruptedTail", "sharedEngineBusy", "dictationOffDuringMeeting",
     ]
 
@@ -182,6 +184,7 @@
       + [.modelRequiresExplicitRetry(engineLabel: ASRBackendType.parakeet.displayName), .polishFailed]
       + historyClasses.map { .historySaveFailed(reason: $0.userMessage) }
       + [
+        .translationFailed(message: PolishNotice.translationFailureText),
         .clipboardPolishFailed(copied: true, reason: "The model did not answer in time."),
         .escapeRecoveryUnavailable,
         .salvagedBeginning,

@@ -147,12 +147,16 @@ public final class PipelineStateChangeHandler {
       clipboardCopy: clipboardCopy,
       clipboardPolishReason: clipboardPolishReason
     )
+    let translationWarning: RecordingWarningReason? =
+      lastPolishNotice?.isTranslationFailure == true
+      ? .translationFailed(message: PolishNotice.translationFailureText)
+      : nil
     for effect in plan.effects {
       switch effect {
       case .cancelPendingWarning:
         cancelPendingWarning()
       case .schedulePolishFailedWarning:
-        schedulePolishFailedWarning(.polishFailed)
+        schedulePolishFailedWarning(translationWarning ?? .polishFailed)
       case .scheduleClipboardPolishWarning(let copied, let reason):
         schedulePolishFailedWarning(.clipboardPolishFailed(copied: copied, reason: reason))
       case .showOverlay(let intent):

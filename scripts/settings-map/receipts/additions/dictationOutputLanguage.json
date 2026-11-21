@@ -1,0 +1,335 @@
+{
+ "id": "dictationOutputLanguage",
+ "blocks": {
+  "ar": {
+   "title": "لغة النص الناتج من الإملاء",
+   "words": [
+    "لغة الإخراج"
+   ],
+   "phrases": [
+    "أريد النص المملى بلغة ثانية",
+    "كيف أغيّر لغة النص بعد الإملاء"
+   ]
+  },
+  "bg": {
+   "title": "език на текста след диктовка",
+   "words": [
+    "целеви език"
+   ],
+   "phrases": [
+    "смяна на езика на продиктувания текст",
+    "на какъв език да излиза диктовката"
+   ]
+  },
+  "cs": {
+   "title": "výstupní jazyk diktátu",
+   "words": [
+    "jazyk výsledného textu"
+   ],
+   "phrases": [
+    "jak změnit jazyk textu po diktování",
+    "chci mít nadiktovaný text v jiném jazyce"
+   ]
+  },
+  "da": {
+   "title": "sprog for dikteret tekst",
+   "words": [
+    "outputsprog"
+   ],
+   "phrases": [
+    "skift sproget på teksten efter diktering",
+    "jeg vil have min dikterede tekst på et andet sprog"
+   ]
+  },
+  "de": {
+   "words": [
+    "Zielsprache"
+   ],
+   "phrases": [
+    "Ausgabesprache für Diktate",
+    "Diktate in die gewählte Zielsprache übersetzen"
+   ]
+  },
+  "el": {
+   "title": "γλώσσα του κειμένου μετά την υπαγόρευση",
+   "words": [
+    "γλώσσα εξόδου"
+   ],
+   "phrases": [
+    "πώς αλλάζω τη γλώσσα του κειμένου μετά την υπαγόρευση",
+    "θέλω το κείμενο της υπαγόρευσης σε άλλη γλώσσα"
+   ]
+  },
+  "en": {
+   "words": [
+    "target language",
+    "final text language"
+   ],
+   "phrases": [
+    "change the language of my dictated text",
+    "get my dictation in another language"
+   ]
+  },
+  "es": {
+   "title": "idioma del texto dictado",
+   "words": [
+    "idioma de salida",
+    "lengua de destino"
+   ],
+   "phrases": [
+    "cambiar el idioma del texto después de dictar",
+    "quiero que el dictado salga en otro idioma"
+   ]
+  },
+  "et": {
+   "title": "dikteeritud teksti keel",
+   "words": [
+    "väljundkeel"
+   ],
+   "phrases": [
+    "kuidas muuta pärast dikteerimist teksti keelt",
+    "tahan dikteeritud teksti teises keeles"
+   ]
+  },
+  "fi": {
+   "title": "sanellun tekstin kieli",
+   "words": [
+    "kohdekieli"
+   ],
+   "phrases": [
+    "vaihda tekstin kieli sanelun jälkeen",
+    "haluan sanellun tekstin toisella kielellä"
+   ]
+  },
+  "fr": {
+   "title": "langue du texte dicté",
+   "words": [
+    "langue de sortie",
+    "langue cible"
+   ],
+   "phrases": [
+    "changer la langue du texte après la dictée",
+    "je veux le texte de ma dictée dans une autre langue"
+   ]
+  },
+  "hi": {
+   "title": "डिक्टेशन से बने टेक्स्ट की भाषा",
+   "words": [
+    "आउटपुट भाषा"
+   ],
+   "phrases": [
+    "बोलने के बाद जो टेक्स्ट आता है उसकी भाषा कैसे बदलें",
+    "डिक्टेशन का टेक्स्ट दूसरी भाषा में चाहिए"
+   ]
+  },
+  "hr": {
+   "title": "jezik diktiranog teksta",
+   "words": [
+    "izlazni jezik"
+   ],
+   "phrases": [
+    "kako promijeniti jezik teksta nakon diktiranja",
+    "želim da diktirani tekst bude na drugom jeziku"
+   ]
+  },
+  "hu": {
+   "title": "a diktált szöveg nyelve",
+   "words": [
+    "kimeneti nyelv",
+    "célnyelv"
+   ],
+   "phrases": [
+    "hogyan változtathatom meg a diktált szöveg nyelvét",
+    "más nyelven kérem a lediktált szöveget"
+   ]
+  },
+  "it": {
+   "title": "lingua del testo dettato",
+   "words": [
+    "lingua di output",
+    "lingua di destinazione"
+   ],
+   "phrases": [
+    "cambiare la lingua del testo dopo la dettatura",
+    "voglio che il testo dettato esca in un'altra lingua"
+   ]
+  },
+  "ja": {
+   "title": "音声入力の出力言語",
+   "words": [
+    "文章の言語"
+   ],
+   "phrases": [
+    "音声入力でできた文章の言語を変えたい",
+    "話した内容を別の言語で出したい"
+   ]
+  },
+  "ko": {
+   "title": "받아쓰기 출력 언어",
+   "words": [
+    "결과 언어"
+   ],
+   "phrases": [
+    "받아쓰기한 글의 언어 바꾸기",
+    "말한 내용을 다른 언어로 출력하고 싶어"
+   ]
+  },
+  "lt": {
+   "title": "padiktuoto teksto kalba",
+   "words": [
+    "išvesties kalba"
+   ],
+   "phrases": [
+    "kaip pakeisti teksto kalbą po diktavimo",
+    "noriu padiktuoto teksto kita kalba"
+   ]
+  },
+  "lv": {
+   "title": "diktētā teksta valoda",
+   "words": [
+    "izvades valoda"
+   ],
+   "phrases": [
+    "kā mainīt teksta valodu pēc diktēšanas",
+    "gribu diktēto tekstu citā valodā"
+   ]
+  },
+  "mt": {
+   "title": "lingwa tat-test iddettat",
+   "words": [
+    "lingwa tal-output"
+   ],
+   "phrases": [
+    "kif nibdel il-lingwa tat-test wara li niddetta",
+    "irrid it-test li ddettajt b’lingwa oħra"
+   ]
+  },
+  "nl": {
+   "title": "taal van gedicteerde tekst",
+   "words": [
+    "uitvoertaal",
+    "doeltaal"
+   ],
+   "phrases": [
+    "taal van de tekst wijzigen na het dicteren",
+    "ik wil mijn gedicteerde tekst in een andere taal"
+   ]
+  },
+  "pl": {
+   "title": "język dyktowanego tekstu",
+   "words": [
+    "język docelowy"
+   ],
+   "phrases": [
+    "jak zmienić język tekstu po dyktowaniu",
+    "chcę mieć podyktowany tekst w innym języku"
+   ]
+  },
+  "pt": {
+   "title": "idioma do texto ditado",
+   "words": [
+    "idioma de saída",
+    "língua de destino"
+   ],
+   "phrases": [
+    "como mudar o idioma do texto depois de ditar",
+    "quero que o texto ditado saia em outro idioma"
+   ]
+  },
+  "ro": {
+   "title": "limba textului dictat",
+   "words": [
+    "limba de ieșire",
+    "limba țintă"
+   ],
+   "phrases": [
+    "cum schimb limba textului după dictare",
+    "vreau ca textul dictat să apară în altă limbă"
+   ]
+  },
+  "ru": {
+   "title": "язык продиктованного текста",
+   "words": [
+    "язык вывода",
+    "целевой язык"
+   ],
+   "phrases": [
+    "как поменять язык текста после диктовки",
+    "хочу получить продиктованный текст на другом языке"
+   ]
+  },
+  "sk": {
+   "title": "jazyk nadiktovaného textu",
+   "words": [
+    "výstupný jazyk"
+   ],
+   "phrases": [
+    "ako zmeniť jazyk textu po diktovaní",
+    "chcem mať nadiktovaný text v inom jazyku"
+   ]
+  },
+  "sl": {
+   "title": "jezik narekovanega besedila",
+   "words": [
+    "izhodni jezik"
+   ],
+   "phrases": [
+    "kako spremenim jezik besedila po narekovanju",
+    "želim narekovano besedilo v drugem jeziku"
+   ]
+  },
+  "sv": {
+   "title": "språk för dikterad text",
+   "words": [
+    "utmatningsspråk",
+    "målspråk"
+   ],
+   "phrases": [
+    "byt språk på texten efter diktering",
+    "jag vill få den dikterade texten på ett annat språk"
+   ]
+  },
+  "tr": {
+   "title": "dikte edilen metnin dili",
+   "words": [
+    "hedef dil",
+    "çıktı dili"
+   ],
+   "phrases": [
+    "dikteden sonra metnin dilini nasıl değiştiririm",
+    "dikte ettiğim metin başka bir dilde çıksın"
+   ]
+  },
+  "uk": {
+   "title": "мова надиктованого тексту",
+   "words": [
+    "мова виведення",
+    "цільова мова"
+   ],
+   "phrases": [
+    "як змінити мову тексту після диктування",
+    "хочу отримати надиктований текст іншою мовою"
+   ]
+  },
+  "vi": {
+   "title": "ngôn ngữ văn bản sau khi nhập bằng giọng nói",
+   "words": [
+    "ngôn ngữ đầu ra"
+   ],
+   "phrases": [
+    "đổi ngôn ngữ văn bản sau khi nhập bằng giọng nói",
+    "muốn nói một thứ tiếng mà máy gõ ra tiếng khác"
+   ]
+  },
+  "zh": {
+   "title": "听写输出语言",
+   "words": [
+    "目标语言"
+   ],
+   "phrases": [
+    "怎么让听写生成另一种语言的文字",
+    "想让听写结果用另一种语言显示"
+   ]
+  }
+ }
+}

@@ -19,6 +19,7 @@ enum DictationSessionConfigFactory {
     settings: SettingsManager,
     polishModel: LocalPolishModelID,
     polishWireModel: String,
+    translationTarget: DictationTranslationTarget? = nil,
     fixLearnedWords: Bool,
     triggerSource: TriggerSource,
     recoverySessionID: String? = nil,
@@ -80,7 +81,8 @@ enum DictationSessionConfigFactory {
       escapeRecoveryEnabled: settings.escapeRecoveryEnabled,
       // #2649: frozen here like provider and model, so a pick changed
       // mid-dictation applies to the next recording.
-      s1Control: settings.s1Control
+      s1Control: settings.s1Control,
+      translationTarget: translationTarget
     )
   }
 }

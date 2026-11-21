@@ -21,7 +21,12 @@ struct LLMPolishStepShortCircuitTests {
   /// returns is race-free (the polish call completes before process returns).
   private actor InvocationCounter {
     private(set) var count = 0
-    func increment() { count += 1 }
+    private(set) var systemPrompt: String?
+
+    func record(systemPrompt: String) {
+      count += 1
+      self.systemPrompt = systemPrompt
+    }
   }
 
   /// Deterministic polisher: records the call, returns a fixed result.
@@ -37,18 +42,19 @@ struct LLMPolishStepShortCircuitTests {
       config: LLMProviderConfig,
       onToken: (@Sendable (String) -> Void)?
     ) async throws -> LLMResult {
-      await counter.increment()
+      await counter.record(systemPrompt: instructions.systemPrompt)
       return LLMResult(polishedText: result)
     }
   }
 
   private func makeStep(
     counter: InvocationCounter,
-    result: String = "unused"
+    result: String = "unused",
+    provider: LLMProvider = .openAI
   ) -> LLMPolishStep {
     let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
-    step.setPolish(provider: .openAI)
-    step.llmModel = "gpt-4o-mini"
+    step.setPolish(provider: provider)
+    step.llmModel = provider == .claude ? "claude-haiku-4-5" : "gpt-4o-mini"
     step.makePolisher = { _, _, _, _ in SpyPolisher(counter: counter, result: result) }
     return step
   }
@@ -133,6 +139,173 @@ struct LLMPolishStepShortCircuitTests {
     let ctx = try await step.process(TextProcessingContext(text: "สวัสดี", language: "th"))
     expectBypass(ctx)
     #expect(await counter.count == 0)
+  }
+
+  @Test(
+    "Translation keeps the existing word and character cutoffs",
+    arguments: [
+      ("please call today", "en", false),
+      ("please call me today", "en", true),
+      ("こんにちは元気です", "ja", false),
+      ("こんにちは元気ですか", "ja", true),
+    ])
+  func translationKeepsCutoff(text: String, language: String, expectsCall: Bool) async throws {
+    let counter = InvocationCounter()
+    let step = makeStep(counter: counter, result: "Ruf mich bitte heute an.", provider: .claude)
+    var input = TextProcessingContext(text: text, language: language)
+    input.requestedTranslationTarget = .german
+
+    let result = try await step.process(input)
+
+    #expect(await counter.count == (expectsCall ? 1 : 0))
+    #expect(result.acceptedTranslationTarget == (expectsCall ? .german : nil))
+    #expect(result.text == text)
+  }
+
+  @Test("A valid translated opening survives the existing provider call")
+  func translationKeepsOpening() async throws {
+    let counter = InvocationCounter()
+    let reply = "Sure, I’ll bring the key."
+    let step = makeStep(counter: counter, result: reply, provider: .claude)
+    var input = TextProcessingContext(text: "Klar, ich bringe den Schlüssel mit.", language: "de")
+    input.requestedTranslationTarget = .english
+
+    let result = try await step.process(input)
+
+    #expect(await counter.count == 1)
+    let systemPrompt = try #require(await counter.systemPrompt)
+    #expect(systemPrompt.contains("Translate this dictation into English."))
+    #expect(result.polishedText == reply)
+    #expect(result.acceptedTranslationTarget == .english)
+  }
+
+  @Test("A translated command survives, but the existing same-language question check still applies")
+  func translationDoesNotTreatCommandsAsQuestions() async throws {
+    let source = "Do not send that email until Friday."
+    let command = "Schick diese E-Mail erst am Freitag."
+    let translated = makeStep(counter: InvocationCounter(), result: command, provider: .claude)
+    var input = TextProcessingContext(text: source, language: "en")
+    input.requestedTranslationTarget = .german
+    let translatedResult = try await translated.process(input)
+    #expect(translatedResult.polishedText == command)
+    #expect(translatedResult.acceptedTranslationTarget == .german)
+
+    let question = "Can you send that email by Friday?"
+    input.text = question
+    let rejectedAnswer = try await translated.process(input)
+    #expect(rejectedAnswer.polishedText == nil)
+    #expect(rejectedAnswer.text == question)
+    #expect(rejectedAnswer.polishValidatorGuard == "question_flip")
+
+    let english = makeStep(
+      counter: InvocationCounter(), result: "Wait until Friday to send that email.",
+      provider: .claude)
+    input.text = source
+    input.requestedTranslationTarget = nil
+    let ordinary = try await english.process(input)
+    input.requestedTranslationTarget = .english
+    let sameLanguage = try await english.process(input)
+    #expect(ordinary.polishValidatorGuard == "question_flip")
+    #expect(sameLanguage.polishValidatorGuard == ordinary.polishValidatorGuard)
+    #expect((sameLanguage.polishedText ?? sameLanguage.text).utf8.elementsEqual(
+      (ordinary.polishedText ?? ordinary.text).utf8))
+  }
+
+  @Test("Only translation from a recognized unsegmented source can exceed the usual length ceiling")
+  func unsegmentedTranslationKeepsNaturalExpansion() async throws {
+    let source = "明早九点在北门集合。带护照、雨衣、水和车票。下雨就去车站咖啡馆等。别忘了告诉李娜改到周五。"
+    let reply = "Meet at the north gate at nine tomorrow morning. Bring your passport, a raincoat, "
+      + "some water, and your train ticket. If it rains, wait at the café inside the train station. "
+      + "Remember to tell Li Na that we moved it to Friday."
+    #expect(reply.count > max(3 * source.count, 200))
+    let step = makeStep(counter: InvocationCounter(), result: reply, provider: .claude)
+    var input = TextProcessingContext(text: source, language: "zh")
+    input.requestedTranslationTarget = .english
+
+    let translated = try await step.process(input)
+    #expect(translated.polishedText == reply)
+    #expect(translated.acceptedTranslationTarget == .english)
+
+    input.requestedTranslationTarget = nil
+    let ordinaryChinese = try await step.process(input)
+    #expect(ordinaryChinese.polishValidatorGuard == "expansion")
+    #expect(ordinaryChinese.polishedText?.utf8.elementsEqual(source.utf8) == true)
+
+    let englishSource = "Meet at the north gate tomorrow morning."
+    input = TextProcessingContext(text: englishSource, language: "en")
+    let ordinaryEnglish = try await step.process(input)
+    input.requestedTranslationTarget = .english
+    let sameLanguage = try await step.process(input)
+    #expect(ordinaryEnglish.polishValidatorGuard == "expansion")
+    #expect(sameLanguage.polishValidatorGuard == ordinaryEnglish.polishValidatorGuard)
+    #expect((sameLanguage.polishedText ?? sameLanguage.text).utf8.elementsEqual(
+      (ordinaryEnglish.polishedText ?? ordinaryEnglish.text).utf8))
+  }
+
+  @Test("A known matching target keeps ordinary Polish and removes undictated chatter")
+  func matchingTargetUsesOrdinaryPolish() async throws {
+    let counter = InvocationCounter()
+    let cleaned = "Leave the spare key at reception."
+    let step = makeStep(
+      counter: counter, result: "Here is the corrected text:\n\n" + cleaned, provider: .claude)
+    var input = TextProcessingContext(text: "leave the spare key at reception", language: "en-GB")
+    input.requestedTranslationTarget = .english
+
+    let result = try await step.process(input)
+
+    let systemPrompt = try #require(await counter.systemPrompt)
+    #expect(systemPrompt.contains("Never translate it"))
+    #expect(result.polishedText == cleaned)
+    #expect(result.acceptedTranslationTarget == nil)
+  }
+
+  @Test("Other cloud providers keep ordinary polish with a saved translation target")
+  func translationTargetDoesNotApplyToOpenAI() async throws {
+    let counter = InvocationCounter()
+    let reply = "Mira bringt heute den Schlüssel."
+    let step = makeStep(counter: counter, result: reply)
+    var input = TextProcessingContext(text: "Mira bringt heute den Schlüssel", language: "de")
+    input.requestedTranslationTarget = .english
+
+    let result = try await step.process(input)
+
+    let systemPrompt = try #require(await counter.systemPrompt)
+    #expect(systemPrompt.contains("Never translate it"))
+    #expect(result.polishedText == reply)
+    #expect(result.acceptedTranslationTarget == nil)
+  }
+
+  @Test("An exact source-language echo is rejected when Hindi is requested")
+  func translationEchoPreservesSourceAndReportsRejection() async throws {
+    let source = "Please keep this message in English exactly as I said it. Do not translate it. "
+      + "We are meeting Emma and Sam at the north entrance on Friday."
+    let step = makeStep(counter: InvocationCounter(), result: source, provider: .claude)
+    var input = TextProcessingContext(text: source, language: "en")
+    input.requestedTranslationTarget = .hindi
+
+    let result = try await step.process(input)
+
+    #expect(result.text == source)
+    #expect(result.polishedText == nil)
+    #expect(result.acceptedTranslationTarget == nil)
+    #expect(result.polishValidatorGuard == "translation_echo")
+  }
+
+  @Test("A discarded translation leaves the entire prepared source for delivery")
+  func translationRejectionKeepsSource() async throws {
+    let source = "Bitte bring mir am Freitag um 15 Uhr die drei Schlüssel mit."
+    let counter = InvocationCounter()
+    let step = makeStep(counter: counter, result: "The keys.", provider: .claude)
+    var input = TextProcessingContext(text: source, language: "de")
+    input.requestedTranslationTarget = .english
+
+    let result = try await step.process(input)
+
+    #expect(await counter.count == 1)
+    #expect(result.polishedText == nil)
+    #expect(result.text == source)
+    #expect(result.polishValidatorGuard == "content_drop")
+    #expect(result.acceptedTranslationTarget == nil)
   }
 
   // MARK: Stale-field defense

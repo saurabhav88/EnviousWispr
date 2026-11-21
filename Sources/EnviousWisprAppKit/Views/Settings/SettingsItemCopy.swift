@@ -6,6 +6,14 @@ import Foundation
 /// key, default value and comment unchanged.
 enum SettingsItemCopy {
   enum AIPolish {
+    static let translationTitle = LocalizedStringResource("Dictation output language")
+    static let translationSameAsSpoken = LocalizedStringResource("Same as spoken")
+    static let translationSummary = LocalizedStringResource(
+      "When Claude is selected, translate new dictations across apps into the chosen language after recording.")
+    static let translationUnavailable = LocalizedStringResource(
+      "Dictation translation requires Claude in AI Polish.")
+    static let translationHelp = LocalizedStringResource(
+      "Very short dictations stay in the language you spoke. After cleanup, that means three words or fewer, or fewer than ten non-space characters for languages the app counts by characters.")
     static let aboutAppleIntelligence = LocalizedStringResource("About Apple Intelligence", comment: "AI Polish: link to Apple's Apple Intelligence support page.")
     static let appleRecheck = LocalizedStringResource("Check Apple Intelligence availability", comment: "AI Polish, Apple Intelligence: re-checks availability.")
     static let claudeKey = LocalizedStringResource("Claude API Key", comment: "AI Polish: label and VoiceOver name of the API key field.")

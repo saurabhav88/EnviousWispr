@@ -1717,7 +1717,8 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
           // nothing guarantees still describes this take by the time Undo is pressed.
           takeFacts: InsertionTakeFacts(
             snippetFired: context.snippetExpansionFired,
-            lockedLanguageCode: context.config?.lockedLanguageCode,
+            lockedLanguageCode: outcome.acceptedTranslationTarget?.rawValue
+              ?? context.config?.lockedLanguageCode,
             engineDetectsLanguage: adapter.capabilities.supportsLanguageDetection,
             engineReportedLanguage: transcript.language,
             protectedSpellings: context.protectedSpellings))))
