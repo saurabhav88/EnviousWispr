@@ -298,6 +298,11 @@ struct SettingsSearchMatchingTests {
     #expect(theme.entryID == "theme")
     // English stays an active language under a French interface.
     #expect(try #require(french.results(for: "theme").first).entryID == "theme")
+    // "Thème" folds to the English "Theme", so it cannot tell the catalogs apart; "retouche" can:
+    // only the French title "Activer la retouche IA" carries it, and English search lacks it.
+    let polish = try #require(french.results(for: "retouche").first)
+    #expect(polish.entryID == "enableAIPolish")
+    #expect(try Self.english.get().results(for: "retouche").contains { $0.entryID == "enableAIPolish" } == false)
   }
 
   /// #3142 French slice: a place named only at run time has no catalog title and, now that French
