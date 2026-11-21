@@ -179,14 +179,18 @@ struct SettingsSearchPanel: View {
   }
 }
 
-/// Calls `onClose` when the window holding this view closes. The main window can stay retained
-/// after closing (AppWindowCoordinator), so its search must be reset explicitly (#3482 §3.4).
+/// Observes the actual hosting window. AppKit can retain it after close, so the view cannot use
+/// onAppear and onDisappear to identify visits or reset its search (#3482 §3.4).
 struct SettingsWindowCloseObserver: NSViewRepresentable {
+  let onKey: @MainActor (NSWindow) -> Void
+  let onResign: @MainActor () -> Void
   let onClose: @MainActor () -> Void
 
   func makeNSView(context: Context) -> NSView { NSView() }
 
   func updateNSView(_ nsView: NSView, context: Context) {
+    context.coordinator.onKey = onKey
+    context.coordinator.onResign = onResign
     context.coordinator.onClose = onClose
     DispatchQueue.main.async { context.coordinator.observe(nsView.window) }
   }
@@ -194,24 +198,40 @@ struct SettingsWindowCloseObserver: NSViewRepresentable {
   func makeCoordinator() -> Coordinator { Coordinator() }
 
   @MainActor final class Coordinator {
+    var onKey: @MainActor (NSWindow) -> Void = { _ in }
+    var onResign: @MainActor () -> Void = {}
     var onClose: @MainActor () -> Void = {}
     private weak var window: NSWindow?
-    // Written only on the main actor; read once more by deinit to remove the observer.
-    nonisolated(unsafe) private var token: NSObjectProtocol?
+    // Written only on the main actor; read once more by deinit to remove the observers.
+    nonisolated(unsafe) private var tokens: [NSObjectProtocol] = []
 
     func observe(_ window: NSWindow?) {
       guard let window, window !== self.window else { return }
-      if let token { NotificationCenter.default.removeObserver(token) }
+      let center = NotificationCenter.default
+      tokens.forEach { center.removeObserver($0) }
       self.window = window
-      token = NotificationCenter.default.addObserver(
-        forName: NSWindow.willCloseNotification, object: window, queue: .main
-      ) { [weak self] _ in
-        MainActor.assumeIsolated { self?.onClose() }
-      }
+      tokens = [
+        center.addObserver(forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main) {
+          [weak self] _ in
+          MainActor.assumeIsolated {
+            guard let self, let window = self.window else { return }
+            self.onKey(window)
+          }
+        },
+        center.addObserver(forName: NSWindow.didResignKeyNotification, object: window, queue: .main) {
+          [weak self] _ in
+          MainActor.assumeIsolated { self?.onResign() }
+        },
+        center.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) {
+          [weak self] _ in
+          MainActor.assumeIsolated { self?.onClose() }
+        },
+      ]
+      if window.isKeyWindow { onKey(window) }
     }
 
     deinit {
-      if let token { NotificationCenter.default.removeObserver(token) }
+      tokens.forEach { NotificationCenter.default.removeObserver($0) }
     }
   }
 }

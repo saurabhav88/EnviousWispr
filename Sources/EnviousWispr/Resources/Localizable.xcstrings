@@ -9608,6 +9608,16 @@
         }
       }
     },
+    "Dictation recordings" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktataufnahmen"
+          }
+        }
+      }
+    },
     "Dictation recordings: about %@" : {
       "comment" : "App Settings, Recordings: disk used by dictation recordings. %@ is a size.",
       "localizations" : {
@@ -12827,6 +12837,16 @@
         }
       }
     },
+    "Go back to the list if needed, then choose Dictations." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geh bei Bedarf zurück zur Liste und wähle „Diktate“."
+          }
+        }
+      }
+    },
     "Good meetings start with a heads-up." : {
       "comment" : "EnviousMeet setup: the consent screen's title.",
       "localizations" : {
@@ -13504,6 +13524,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wenn du ein Hotel- oder öffentliches WLAN nutzt, melde dich zuerst dort an und versuche es erneut."
+          }
+        }
+      }
+    },
+    "If you don’t see a recording, clear search or filters." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn du eine Aufnahme nicht findest, lösche den Suchbegriff oder setze die Filter zurück."
           }
         }
       }
@@ -15989,6 +16019,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Maltesisch"
+          }
+        }
+      }
+    },
+    "Manage recordings" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahmen verwalten"
           }
         }
       }
@@ -19306,6 +19346,16 @@
         }
       }
     },
+    "Open History" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verlauf öffnen"
+          }
+        }
+      }
+    },
     "Open More actions and choose a model to try again." : {
       "comment" : "History: under a failed polish; says how to try polishing again.",
       "localizations" : {
@@ -20497,6 +20547,16 @@
         }
       }
     },
+    "Play or delete a recording" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahme abspielen oder löschen"
+          }
+        }
+      }
+    },
     "Play recording chimes" : {
       "comment" : "Chimes settings: switch that plays a short sound when recording starts and stops.",
       "localizations" : {
@@ -20841,6 +20901,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Drücke %@ oder öffne das EnviousWispr-Menü und wähle den Eintrag, der mit „hinzufügen“ endet."
+          }
+        }
+      }
+    },
+    "Press Play to listen. To remove just the audio and keep the text, open More actions and choose Delete recording, keep text." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klicke auf „Abspielen“, um die Aufnahme anzuhören. Wenn du nur die Audioaufnahme löschen und den Text behalten möchtest, öffne „Weitere Aktionen“ und wähle „Aufnahme löschen, Text behalten“."
           }
         }
       }
@@ -25219,6 +25289,16 @@
         }
       }
     },
+    "Start tour" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tour starten"
+          }
+        }
+      }
+    },
     "Start transcription" : {
       "comment" : "Transcribe a File, Review step: button that starts the run.",
       "localizations" : {
@@ -29211,6 +29291,16 @@
         }
       }
     },
+    "Turn off Save dictation recordings to stop saving new audio. Choose how long to keep recordings, or delete them all. Your text stays either way." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deaktiviere „Diktataufnahmen speichern“, damit bei neuen Diktaten kein Audio gespeichert wird. Wähle, wie lange du Aufnahmen behalten möchtest, oder lösche sie alle. Dein Text bleibt in beiden Fällen erhalten."
+          }
+        }
+      }
+    },
     "Turn off an app to never be asked about its calls." : {
       "comment" : "EnviousMeet page: the short line under Notice calls in.",
       "localizations" : {
@@ -31951,6 +32041,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dein Diktat bleibt genauso schnell. Schalte „Schnellere Transkription“ aus, um die Vorschau zu sehen."
+          }
+        }
+      }
+    },
+    "Your dictation recordings are saved on this Mac. Take a quick look at where to play and manage them." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Diktataufnahmen werden auf diesem Mac gespeichert. Sieh dir kurz an, wo du sie abspielen und verwalten kannst."
           }
         }
       }

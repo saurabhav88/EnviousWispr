@@ -25,6 +25,10 @@ struct UnifiedWindowView: View {
   /// monitor.
   @Environment(SummarySetupMonitorHolder.self) private var summarySetup
   @Environment(SettingsManager.self) private var settings
+  @Environment(AppWindowCoordinator.self) private var appWindow
+  @Environment(TranscriptCoordinator.self) private var transcripts
+  @State private var recordingsTour: RecordingsTourCard.Stop?
+  @State private var recordingsTourCheck: Task<Void, Never>?
   /// The question on screen and its identity; a dismissal clears only the one it belongs to.
   @State private var pendingLeave: PolishSetupLeaveRequest?
   /// #4578: the speech-engine leave question, when that one is open (never both at once).
@@ -73,7 +77,11 @@ struct UnifiedWindowView: View {
         searchDropdown(anchor)
       }
       .background(
-        SettingsWindowCloseObserver {
+        SettingsWindowCloseObserver(
+          onKey: checkForRecordingsTour, onResign: endRecordingsTourVisit
+        ) {
+          endRecordingsTourVisit()
+          recordingsTour = nil
           search.reset(endedBy: .windowClose)
           navigationState.endWindowSession()
           historyPaste.windowClosed()
@@ -591,16 +599,80 @@ struct UnifiedWindowView: View {
   /// (same radius, border, and inset) so the window reads as two balanced,
   /// equally-inset panels on the canvas.
   private var detailCard: some View {
-    detailContent
-      .searchPanelBlocksBackground(search.showsPanel)
-      .frame(maxWidth: .infinity, maxHeight: .infinity)
-      .clipShape(
-        RoundedRectangle(cornerRadius: SettingsLayout.windowCardRadius, style: .continuous)
-      )
-      .overlay(
-        RoundedRectangle(cornerRadius: SettingsLayout.windowCardRadius, style: .continuous)
-          .strokeBorder(Color.stDivider, lineWidth: 1)
-      )
+    VStack(spacing: 0) {
+      if let recordingsTour, recordingsTour != .offer || canShowRecordingsTourOffer {
+        recordingsTourCard(recordingsTour)
+          .padding(DesignSpacing.lg)
+          .onAppear {
+            if recordingsTour == .offer && canShowRecordingsTourOffer {
+              settings.acknowledgeRecordingDisclosure()
+            }
+          }
+      }
+      detailContent
+    }
+    .searchPanelBlocksBackground(search.showsPanel)
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .clipShape(
+      RoundedRectangle(cornerRadius: SettingsLayout.windowCardRadius, style: .continuous)
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: SettingsLayout.windowCardRadius, style: .continuous)
+        .strokeBorder(Color.stDivider, lineWidth: 1)
+    )
+  }
+
+  private var canOfferRecordingsTour: Bool {
+    settings.onboardingState == .completed && !appWindow.mainWindowVisitIsSetupHandoff
+      && !settings.isRecordingDisclosureUpgrade && !settings.recordingDisclosureAcknowledged
+      && settings.saveDictationRecordings
+  }
+
+  private var canShowRecordingsTourOffer: Bool {
+    settings.saveDictationRecordings && !search.showsPanel
+      && pendingLeave == nil && pendingSpeechLeave == nil
+  }
+
+  private func checkForRecordingsTour(in window: NSWindow) {
+    recordingsTourCheck?.cancel()
+    guard canOfferRecordingsTour, let recordings = transcripts.recordings else { return }
+    recordingsTourCheck = Task { [weak window] in
+      guard !Task.isCancelled, await recordings.hasSavedRecording(),
+        !Task.isCancelled, window?.isKeyWindow == true, canOfferRecordingsTour
+      else { return }
+      recordingsTour = .offer
+    }
+  }
+
+  private func endRecordingsTourVisit() {
+    recordingsTourCheck?.cancel()
+    recordingsTourCheck = nil
+    if recordingsTour == .offer && !settings.recordingDisclosureAcknowledged {
+      recordingsTour = nil
+    }
+    appWindow.endMainWindowVisit()
+  }
+
+  private func recordingsTourCard(_ stop: RecordingsTourCard.Stop) -> some View {
+    let showingHistory = navigationState.selectedPage == .history
+    let showingDictations = showingHistory && transcripts.browser.historyTab == .dictations
+    let showingRecordings = navigationState.isShowing(.appSettings(.recordings), dictionaryTab: nil)
+    let dictations = transcripts.browser.requestedHistoryState(for: .dictations)
+    return RecordingsTourCard(
+      stop: stop, showingHistory: showingHistory, showingDictations: showingDictations,
+      showingRecordings: showingRecordings,
+      dictationsFiltered: !dictations.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        || dictations.listFilter != .none,
+      start: {
+        recordingsTour = .history
+        navigate(.destination(.history))
+      },
+      openHistory: { navigate(.destination(.history)) },
+      openRecordings: {
+        recordingsTour = .recordings
+        navigate(.destination(.appSettings(.recordings)))
+      },
+      dismiss: { recordingsTour = nil })
   }
 
   @ViewBuilder

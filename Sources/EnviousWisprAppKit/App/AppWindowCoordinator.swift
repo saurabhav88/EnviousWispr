@@ -12,6 +12,7 @@ final class AppWindowCoordinator: UpdateDialogPresenting {
   var setupSession: SetupSession?
   private var openMainWindowAction: (() -> Void)?
   private var pendingMainHandoff = false
+  private(set) var mainWindowVisitIsSetupHandoff = false
   private var handledInitialSetup = false
 
   /// #2455 C3: required and non-defaulted. Every activation and Dock-policy call
@@ -313,9 +314,14 @@ final class AppWindowCoordinator: UpdateDialogPresenting {
     openOnboardingWindow()
   }
 
+  func endMainWindowVisit() {
+    mainWindowVisitIsSetupHandoff = false
+  }
+
   /// The Setup session has already marked the visit complete and dismissed its window.
   /// Prefer the existing main window so Dock policy can be reconciled synchronously.
   func finishSetup() {
+    mainWindowVisitIsSetupHandoff = true
     if let window = NSApp.windows.first(where: isMainWindow) {
       window.makeKeyAndOrderFront(nil)
       application.setPolicy(.regular)
