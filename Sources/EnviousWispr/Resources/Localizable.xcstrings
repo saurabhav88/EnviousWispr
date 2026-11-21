@@ -35378,6 +35378,30 @@
         }
       }
     },
+    "whatsNew.enviouswispr-in-french.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry enviouswispr-in-french).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Now available in French"
+          }
+        }
+      }
+    },
+    "whatsNew.enviouswispr-in-french.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry enviouswispr-in-french).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose Français in Settings > Appearance > Language, then relaunch to apply. System default follows your Mac's language."
+          }
+        }
+      }
+    },
     "whatsNew.brand-new-history-tab-experience.title" : {
       "comment" : "Settings > What's New: the title of one feature announcement (entry brand-new-history-tab-experience).",
       "extractionState" : "manual",
