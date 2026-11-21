@@ -63,5 +63,15 @@
     "description": "Jordan Wirth recommends EnviousWispr in SlashGear’s roundup of 14 free Mac apps.",
     "url": "https://www.slashgear.com/2307518/free-apps-add-helpful-features-to-mac/",
     "link": "Read the original article"
+  },
+  {
+    "key": "arthur-brs",
+    "name": "Arthur Brs",
+    "category": "YouTube video",
+    "date": "21 November 2026",
+    "headline": "15 Mac Apps I Can’t Live Without",
+    "description": "Arthur Brs opens his list of favorite Mac apps with EnviousWispr.",
+    "url": "https://www.youtube.com/watch?v=NiPDCmpLn-k&t=34s",
+    "link": "Watch the EnviousWispr segment"
   }
 ]

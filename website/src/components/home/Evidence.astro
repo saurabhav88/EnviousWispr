@@ -4,6 +4,15 @@ import frame from '../../assets/home/review-frame.webp';
 import proof from '../../data/home/proof.json';
 const evidence = [
   {
+    index: 6,
+    name: 'Arthur Brs',
+    kind: 'YouTube video',
+    mark: '▶',
+    video: true,
+    title: '“15 Mac Apps I Can’t Live Without”',
+    note: 'Opens with EnviousWispr · November 21, 2026',
+  },
+  {
     index: 5,
     name: 'SlashGear',
     kind: 'Mac app review',
@@ -93,7 +102,10 @@ const evidence = [
           <article class="proof-card">
             <div class="source-line">
               <>
-                <span class:list={['source-mark', { reddit: item.quote }]} aria-hidden="true">
+                <span
+                  class:list={['source-mark', { reddit: item.quote, youtube: item.video }]}
+                  aria-hidden="true"
+                >
                   {item.mark}
                 </span>
                 <div>
@@ -111,7 +123,12 @@ const evidence = [
               </Fragment>
             )}
             <a class="text-link" href={proof[item.index].url} target="_blank" rel="noopener">
-              {item.quote ? 'Read the conversation' : 'Read the original article'} ↗
+              {item.video
+                ? 'Watch the EnviousWispr segment'
+                : item.quote
+                  ? 'Read the conversation'
+                  : 'Read the original article'}{' '}
+              ↗
             </a>
           </article>
         ))
