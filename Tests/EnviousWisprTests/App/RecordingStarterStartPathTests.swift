@@ -447,6 +447,29 @@ import Testing
       "the honest cold-boot pill, naming the engine, is what the user must see")
   }
 
+  @Test("an installed engine waiting for Retry warns before warming", arguments: [false, true])
+  func explicitRetryShowsGuidance(toggle: Bool) async {
+    let fx = Self.makeFixture()
+    fx.asr.activeBackendType = .parakeet
+    fx.asr.isModelLoaded = false
+    fx.starter.selectedEngineRequiresRetry = { $0 == .parakeet }
+
+    if toggle {
+      await fx.starter.toggle(source: .toggleHotkey)
+    } else {
+      _ = await fx.starter.start()
+    }
+
+    guard case .notice(let notice)? = fx.overlay.renderModel.state.presentation?.content else {
+      Issue.record("Expected the engine retry warning")
+      return
+    }
+    #expect(notice.kind == .notification)
+    #expect(
+      notice.text == "Parakeet couldn't load. Choose Try Again in Settings > Dictation Settings > Engine.")
+    #expect(fx.kernelDriver.state == .idle)
+  }
+
   // #1063 PR2 — the recovery hold. A press (PTT or toggle) while the crash-recovery
   // limb backfills behind the blocking pill mints NO session and shows the
   // "recovering" pill instead, mirroring the cold-press contract.

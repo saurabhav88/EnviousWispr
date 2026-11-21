@@ -80,6 +80,10 @@ final class DictationRuntime {
     isEngineSwitching: @escaping @MainActor () -> Bool = { false },
     beginMinting: @escaping @MainActor () -> Void = {},
     isSelectedModelInstalled: @escaping @MainActor () async -> Bool = { true },
+    selectedEngineRequiresRetry: @escaping @MainActor (ASRBackendType) -> Bool = { _ in false },
+    confirmSelectedEngineRequiresRetry: @escaping @MainActor (ASRBackendType) async -> Bool = {
+      _ in false
+    },
     endMinting: @escaping @MainActor () -> Void = {},
     // #3546 A3: a press during the in-session Ultra activation; nil for legacy/tests.
     isActivatingParakeetUpgrade: (@MainActor () -> Bool)? = nil,
@@ -160,6 +164,8 @@ final class DictationRuntime {
       endMinting: endMinting
     )
     starter.isSelectedModelInstalled = isSelectedModelInstalled
+    starter.selectedEngineRequiresRetry = selectedEngineRequiresRetry
+    starter.confirmSelectedEngineRequiresRetry = confirmSelectedEngineRequiresRetry
     starter.isActivatingParakeetUpgrade = isActivatingParakeetUpgrade
     starter.isDictationOffForMeeting = isDictationOffForMeeting
     self.starter = starter

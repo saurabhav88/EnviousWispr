@@ -43,7 +43,7 @@ enum FileImportDocumentMath {
   /// which on a long recording is the slowest part. Found by Codex.
   static func isAboutTheEngine(_ reason: FileImportCoordinator.FileImportRejection) -> Bool {
     switch reason {
-    case .engineBusy, .engineNotInstalled, .engineNotReady: return true
+    case .engineBusy, .engineNotInstalled, .engineNotReady, .engineRequiresExplicitRetry: return true
     // About the POLISHER, not the transcription engine: nothing needs reading again, so
     // Try again (which re-transcribes) is the wrong offer. The document is in hand, the
     // refusal renders beside it on Done, and Review's Clean it again is the retry.

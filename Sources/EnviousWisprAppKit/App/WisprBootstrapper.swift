@@ -1803,6 +1803,12 @@ package final class WisprBootstrapper {
         isInstallationKnown: { [weak speechModels] backend in
           speechModels?.installedSnapshot(backend) != nil
         },
+        automaticLoadStopPoint: { [weak modelDelivery] backend in
+          backend == .parakeet ? modelDelivery?.parakeetAutomaticLoadStopPoint : nil
+        },
+        awaitInstallation: { [weak speechModels] backend in
+          _ = await speechModels?.freshInstalled(backend)
+        },
         stateLabel: { [kernelDriver, whisperKernelDriver] backend in
           (backend == .whisper ? whisperKernelDriver : kernelDriver).state.telemetryLabel
         },
@@ -2064,6 +2070,12 @@ package final class WisprBootstrapper {
         // #4578: one decision over fresh facts. A model mid-removal reads not installed
         // (`installedSnapshot`), as before.
         return await speechModels.admits(.dictation, requested: engineCoordinator.status.selected)
+      },
+      selectedEngineRequiresRetry: { [weak engineCoordinator] backend in
+        engineCoordinator?.selectedEngineRequiresRetry(backend) ?? false
+      },
+      confirmSelectedEngineRequiresRetry: { [weak engineCoordinator] backend in
+        await engineCoordinator?.confirmSelectedEngineRequiresRetry(backend) ?? false
       },
       endMinting: { [weak engineCoordinator] in engineCoordinator?.endMinting() },
       // #3546 A3: a press during the in-session Ultra activation gets the upgrade pills.
@@ -2411,15 +2423,26 @@ package final class WisprBootstrapper {
     // — reachable through the ordinary memory-saving unload setting. Found by
     // Codex. `load()`'s postcondition is readiness, not merely that the call
     // returned, so a warm that fails still refuses.
-    let ensureSelectedEngineReady: @MainActor () async -> FileImportCoordinator.EngineReadiness = {
-      [weak engineCoordinator, activeEngine] in
+    let ensureSelectedEngineReady:
+      @MainActor (ASRBackendType?) async -> FileImportCoordinator.EngineReadiness = {
+      [weak engineCoordinator, activeEngine, settings, asrManager] fileBackend in
       guard let engineCoordinator else { return .notReady }
       switch await engineCoordinator.ensureSelectedReadyForPress() {
       case .ready: return .ready
       case .notInstalled: return .notInstalled
       case .notReady:
-        guard (try? await activeEngine.load()) != nil else { return .notReady }
-        return await activeEngine.isLoaded() ? .ready : .notReady
+        if let fileBackend {
+          let needsRetry = await engineCoordinator.confirmSelectedEngineRequiresRetry(fileBackend)
+          // Convergence can give up while a different engine is still busy.
+          guard settings.selectedBackend == fileBackend, asrManager.activeBackendType == fileBackend
+          else { return .notReady }
+          if needsRetry { return .requiresExplicitRetry }
+        }
+        if (try? await activeEngine.load()) != nil, await activeEngine.isLoaded() { return .ready }
+        if let fileBackend, await engineCoordinator.confirmSelectedEngineRequiresRetry(fileBackend) {
+          return .requiresExplicitRetry
+        }
+        return .notReady
       }
     }
     // **The disarm/re-arm pair, handed over as a pair.** A dictation minutes
@@ -2552,11 +2575,21 @@ package final class WisprBootstrapper {
       },
       // #4578: Transcribe a File asks the one decision first (fresh facts), then the shared
       // readiness drive; a missing engine is refused before any load, so nothing downloads.
-      ensureEngineReady: { [weak engineCoordinator, weak speechModels] in
+      ensureEngineReady: { [weak engineCoordinator, weak speechModels, settings, asrManager] in
         guard let engineCoordinator, let speechModels else { return .notReady }
-        guard await speechModels.admits(.fileImport, requested: engineCoordinator.status.selected)
-        else { return .notInstalled }
-        return await ensureSelectedEngineReady()
+        let selected = settings.selectedBackend
+        let installed = await speechModels.admits(.fileImport, requested: selected)
+        guard settings.selectedBackend == selected else { return .notReady }
+        guard installed else { return .notInstalled }
+
+        let needsRetry = await engineCoordinator.confirmSelectedEngineRequiresRetry(selected)
+        guard settings.selectedBackend == selected else { return .notReady }
+        if needsRetry { return .requiresExplicitRetry }
+
+        let readiness = await ensureSelectedEngineReady(selected)
+        guard settings.selectedBackend == selected else { return .notReady }
+        if readiness == .notInstalled { return .notInstalled }
+        return asrManager.activeBackendType == selected ? readiness : .notReady
       },
       // The same three retries a finished dictation fires
       // (`DictationLifecycleCoordinator` on its terminal), because an import
@@ -3003,10 +3036,10 @@ package final class WisprBootstrapper {
               return status.selected != status.active && !status.selectedInstalled
             },
             ensureSelected: {
-              switch await ensureSelectedEngineReady() {
+              switch await ensureSelectedEngineReady(nil) {
               case .ready: .ready
               case .notInstalled: .notInstalled
-              case .notReady: .notReady
+              case .notReady, .requiresExplicitRetry: .notReady
               }
             },
             readyRunning: {

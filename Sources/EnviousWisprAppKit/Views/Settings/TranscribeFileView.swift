@@ -426,10 +426,12 @@ struct TranscribeFileView: View {
         .padding(.horizontal, SettingsLayout.rowPaddingH)
         .padding(.vertical, SettingsLayout.rowPaddingV)
       }
-    case .rejected(let reason):
-      InsetNotice(
-        verbatim: Self.sentence(for: reason), systemImage: "exclamationmark.triangle", tint: .orange
-      )
+    case .rejected:
+      if let reason = visibleRejection {
+        InsetNotice(
+          verbatim: Self.sentence(for: reason), systemImage: "exclamationmark.triangle", tint: .orange
+        )
+      }
       dropZone
     case .idle:
       dropZone
@@ -1295,11 +1297,20 @@ struct TranscribeFileView: View {
 
   // MARK: - 4. Review
 
+  private var visibleRejection: FileImportCoordinator.FileImportRejection? {
+    guard case .rejected(let reason) = coordinator.state else { return nil }
+    if reason == .engineRequiresExplicitRetry {
+      guard settings.selectedBackend == .parakeet else { return nil }
+      if let modelDelivery, modelDelivery.parakeetAutomaticLoadStopPoint == nil { return nil }
+    }
+    return reason
+  }
+
   @ViewBuilder
   private var reviewStep: some View {
     stepHeading(
       String(localized: "Review and start", comment: "Transcribe a File, Review step: heading."))
-    if case .rejected(let reason) = coordinator.state {
+    if let reason = visibleRejection {
       InsetNotice(
         verbatim: Self.sentence(for: reason), systemImage: "exclamationmark.triangle", tint: .orange
       )
@@ -1369,6 +1380,7 @@ struct TranscribeFileView: View {
                   localized: "Already transcribed. Only the cleanup runs again.",
                   comment: "Transcribe a File, Review step: the note beside Clean it again."))),
           forwardTitle: coordinator.canRetry
+            && coordinator.state != .rejected(.engineRequiresExplicitRetry)
             ? String(
               localized: "Try again",
               comment: "Transcribe a File, Review step: button that retries after a refusal.")
@@ -1722,7 +1734,7 @@ struct TranscribeFileView: View {
     // A refusal raised while a document exists lands HERE rather than on Upload,
     // because Upload's only offer is choosing another file, which clears it. The
     // sentence sits above the words it did not touch.
-    if case .rejected(let reason) = coordinator.state {
+    if let reason = visibleRejection {
       InsetNotice(
         verbatim: Self.sentence(for: reason), systemImage: "exclamationmark.triangle", tint: .orange
       )
@@ -2337,6 +2349,9 @@ struct TranscribeFileView: View {
       return String(
         localized: "The transcription engine didn't start. Try again.",
         comment: "Transcribe a File: why the file was refused.")
+    case .engineRequiresExplicitRetry:
+      return DictationNarrator.copy(
+        for: .modelRequiresExplicitRetry(engineLabel: ASRBackendType.parakeet.displayName))
     case .polisherNotReady:
       return String(
         localized: "The cleanup engine didn't start. Your words are here. Clean it again to retry.",

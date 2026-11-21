@@ -237,6 +237,12 @@ enum DictationNarrator {
       return String(
         localized: "\(engineLabel) isn't downloaded yet. Open Settings to download it.",
         comment: "Pill: the chosen speech engine is not downloaded. %@ is the engine's name.")
+    case .modelRequiresExplicitRetry(let engineLabel):
+      return String(
+        localized:
+          "\(engineLabel) couldn't load. Choose Try Again in Settings > Dictation Settings > Engine.",
+        comment:
+          "Dictation warning and file import notice when the installed speech engine needs a manual retry. %@ is the engine name. Try Again and the settings path are app labels.")
     case .polishFailed:
       return String(
         localized: "Pasted without AI polish.",

@@ -25,6 +25,8 @@ struct TranscribeFileCopyTests {
       (.engineNotInstalled,
        "That transcription engine isn't downloaded yet. Get it under Settings > Dictation Settings > Engine."),
       (.engineNotReady, "The transcription engine didn't start. Try again."),
+      (.engineRequiresExplicitRetry,
+       "Parakeet couldn't load. Choose Try Again in Settings > Dictation Settings > Engine."),
       (.polisherNotReady,
        "The cleanup engine didn't start. Your words are here. Clean it again to retry."),
       (.engineBusy(.fileImport), "Another file is being transcribed right now."),

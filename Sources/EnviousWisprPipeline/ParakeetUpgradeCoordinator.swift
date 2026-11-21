@@ -196,12 +196,39 @@ package final class ParakeetUpgradeCoordinator {
   /// or frozen model, the background download, or whether an explicit Retry is
   /// needed. Observers re-read; it carries no state.
   package var onPresentationChanged: (@MainActor () -> Void)?
-  /// True after the policy refused Ultra for its budget, exhaustion or an
-  /// unreadable store (row T and the load-time refusals), until a ready
-  /// publish, a new selection or a successful Retry. Settings shows the
-  /// explicit Retry only from this, never from the persisted flags alone.
-  package private(set) var needsExplicitRetry = false {
-    didSet { if needsExplicitRetry != oldValue { onPresentationChanged?() } }
+  private enum RetryReason: Equatable {
+    case setupOrUpgrade
+    case automaticLoadStopped(selectionPoint: UInt64)
+  }
+
+  private var retryReason: RetryReason? {
+    didSet { if retryReason != oldValue { onPresentationChanged?() } }
+  }
+
+  /// Settings also offers Retry for a blocked Ultra upgrade while v3 can still serve.
+  package var needsExplicitRetry: Bool { retryReason != nil }
+
+  /// The current selection's confirmed load stop. A retry for setup or a background
+  /// upgrade does not stop dictation, and an older selection cannot speak for a new one.
+  package var automaticLoadStopPoint: UInt64? {
+    guard case .automaticLoadStopped(let point) = retryReason,
+      point == selectionPointsMarked, isInstallWanted, !hasReadyServingRequest()
+    else { return nil }
+    return point
+  }
+
+  private func requireAutomaticLoadRetry(selectionPoint: UInt64) {
+    guard selectionPoint == selectionPointsMarked, isInstallWanted, !Task.isCancelled else {
+      return
+    }
+    retryReason = .automaticLoadStopped(selectionPoint: selectionPoint)
+  }
+
+  private func requireSetupOrUpgradeRetry() {
+    if case .automaticLoadStopped(let point) = retryReason, point == selectionPointsMarked {
+      return
+    }
+    retryReason = .setupOrUpgrade
   }
 
   package private(set) var backgroundUpgrade: BackgroundUpgradeState = .idle
@@ -389,6 +416,9 @@ package final class ParakeetUpgradeCoordinator {
         selectionPointsConsumed = marked
         result = .success(prepared)
       } catch {
+        if error is ParakeetUpgradeUnavailableError {
+          requireAutomaticLoadRetry(selectionPoint: marked)
+        }
         result = .failure(error)
       }
 
@@ -650,12 +680,12 @@ extension ParakeetUpgradeCoordinator {
     guard request.model == .ultra, let target else { return }
     switch target.store.read() {
     case .unreadable(let reason):
-      needsExplicitRetry = true
+      requireAutomaticLoadRetry(selectionPoint: frozenSelectionPoint)
       emit(.storeUnavailable(reason))
       throw ParakeetUpgradeUnavailableError(reason: "state_unreadable")
     case .state(var state):
       guard !state.exhausted, state.attempts < Self.attemptBudget else {
-        needsExplicitRetry = true
+        requireAutomaticLoadRetry(selectionPoint: frozenSelectionPoint)
         throw ParakeetUpgradeUnavailableError(reason: "budget_spent")
       }
       state.attempts += 1
@@ -691,7 +721,7 @@ extension ParakeetUpgradeCoordinator {
     servingRequest = request
     // Only a loaded Ultra settles Ultra's Try again; v3 serving while Ultra's budget is
     // spent keeps it (nothing else fetches or loads Ultra until the explicit Retry).
-    if request.model == .ultra { needsExplicitRetry = false }
+    if request.model == .ultra { retryReason = nil }
     guard request.model == .ultra, let target else {
       onUsabilityMayHaveChanged?()
       // A3: an admission that landed before this v3 load published is owed now.
@@ -780,7 +810,7 @@ extension ParakeetUpgradeCoordinator {
       // The last permitted load failed: nothing loads again without the explicit
       // Retry, so Settings offers it now rather than after a refused press.
       if case .state(let state) = target.store.read(), state.attempts >= Self.attemptBudget {
-        needsExplicitRetry = true
+        requireAutomaticLoadRetry(selectionPoint: frozenSelectionPoint)
       }
       return .fail
     case .v3:
@@ -789,6 +819,7 @@ extension ParakeetUpgradeCoordinator {
       v3RejectedThisLaunch = true
       v3Accepted = false
       guard prepared.isSelectionLoad else { return .fail }
+      let failedPoint = frozenSelectionPoint
       do {
         guard try await chooseUltraWithoutV3(target, replacing: request) != nil else {
           return .fail
@@ -796,6 +827,9 @@ extension ParakeetUpgradeCoordinator {
         return .reload
       } catch let failure as ParakeetDeliveryError {
         return .deliveryFailed(failure)
+      } catch is ParakeetUpgradeUnavailableError {
+        requireAutomaticLoadRetry(selectionPoint: failedPoint)
+        return .fail
       } catch is CancellationError where Task.isCancelled {
         // Only the caller's own cancellation is a cancel. A fetch cancelled by the
         // background Cancel it joined (E12) leaves this caller with v3's failure.
@@ -824,7 +858,7 @@ extension ParakeetUpgradeCoordinator {
     // A queued removal of the target's bytes belongs to the cycle this grant replaces; on
     // the background branch below no selection point cancels it, so cancel it here.
     cancelCleanupTasks()
-    needsExplicitRetry = false
+    retryReason = nil
     emit(.retryGranted)
     if servingRequest?.model == .v3, frozen?.model == .v3, !hasPendingSelectionPoint,
       hasReadyServingRequest()
@@ -989,7 +1023,6 @@ extension ParakeetUpgradeCoordinator {
     guard case .state(let state) = target.store.read(),
       !state.exhausted, state.attempts < Self.attemptBudget
     else {
-      needsExplicitRetry = true
       throw ParakeetUpgradeUnavailableError(reason: "budget_spent")
     }
     // #4578: no suspension between this check and the fetch.
@@ -1064,7 +1097,7 @@ extension ParakeetUpgradeCoordinator {
   }
 
   private func selected(_ request: ParakeetModelSelection, row: String) -> PreparedLoad {
-    needsExplicitRetry = false
+    retryReason = nil
     if frozen != request { cancelCleanupTasks() }
     frozenSelectionPoint = selectionPointsMarked
     frozenTrigger = markedTrigger
@@ -1074,7 +1107,6 @@ extension ParakeetUpgradeCoordinator {
   }
 
   private func rowT() -> ParakeetUpgradeUnavailableError {
-    needsExplicitRetry = true
     emit(.exhausted)
     parakeetSelection.clear()
     frozen = nil
@@ -1272,7 +1304,7 @@ extension ParakeetUpgradeCoordinator {
       try target.store.write(state)
     }
     cancelCleanupTasks()
-    needsExplicitRetry = false
+    retryReason = nil
     markSelectionPoint()
     return await resumeDownloadInForeground()
   }
@@ -1392,7 +1424,7 @@ extension ParakeetUpgradeCoordinator {
       guard case .state(let state) = target.store.read(),
         !state.exhausted, state.attempts < Self.attemptBudget
       else {
-        needsExplicitRetry = true
+        requireSetupOrUpgradeRetry()
         return false
       }
       return true
@@ -1458,7 +1490,7 @@ extension ParakeetUpgradeCoordinator {
     if let target, case .state(let state) = target.store.read(), !state.declined,
       !state.exhausted, state.attempts >= Self.attemptBudget
     {
-      needsExplicitRetry = true
+      requireSetupOrUpgradeRetry()
     }
     guard let target, backgroundFetch == nil, backgroundEligible(target) else { return }
     backgroundGeneration &+= 1

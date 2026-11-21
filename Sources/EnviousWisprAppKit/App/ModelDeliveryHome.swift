@@ -73,6 +73,12 @@ final class ModelDeliveryHome {
   /// Bumped on every coordinator presentation signal, so Settings re-reads
   /// "Model ready" when the policy changed but no mirrored value did.
   private(set) var parakeetPresentationRevision: UInt64 = 0
+
+  var parakeetAutomaticLoadStopPoint: UInt64? {
+    // The coordinator is not observable; its existing presentation revision invalidates this read.
+    _ = parakeetPresentationRevision
+    return parakeetUpgrade?.automaticLoadStopPoint
+  }
   /// Before any selection: accepted v3 when the retired v3 is admitted on disk,
   /// otherwise the new Ultra default. Read once at construction.
   private(set) var parakeetFallbackModel: ParakeetModel = .ultra

@@ -258,6 +258,8 @@ final class FileImportCoordinator {
     case engineNotInstalled
     /// It is installed but did not come up. The next Start retries.
     case engineNotReady
+    /// Installed, but automatic loads stopped and Engine Settings must grant Try Again.
+    case engineRequiresExplicitRetry
     /// The bundled cleanup engine is installed but did not start. The words are already
     /// transcribed and saved; only the cleanup is refused, and Clean it again retries it.
     case polisherNotReady
@@ -591,6 +593,7 @@ final class FileImportCoordinator {
     case ready
     case notInstalled
     case notReady
+    case requiresExplicitRetry
   }
 
   /// Called once, on the main actor, after a run has physically released the
@@ -2144,6 +2147,9 @@ final class FileImportCoordinator {
       case .notReady:
         showRejection(.engineNotReady)
         return
+      case .requiresExplicitRetry:
+        showRejection(.engineRequiresExplicitRetry)
+        return
       case .ready: break
       }
 
@@ -2196,11 +2202,7 @@ final class FileImportCoordinator {
         showRejection(.engineNotReady)
         return
       }
-      guard await ensureEngineReady() == .ready else {
-        guard generationAtStart == generation else { return }
-        showRejection(.engineNotReady)
-        return
-      }
+      let claimedReadiness = await ensureEngineReady()
       guard generationAtStart == generation else { return }
       // And again after it: the user can change engines while the drive waits (for example
       // during an in-session Ultra activation). The engine owner then stops waiting for a
@@ -2208,6 +2210,11 @@ final class FileImportCoordinator {
       // would record one engine and transcribe on another.
       guard engineSelectionSettled() else {
         showRejection(.engineNotReady)
+        return
+      }
+      guard claimedReadiness == .ready else {
+        showRejection(
+          claimedReadiness == .requiresExplicitRetry ? .engineRequiresExplicitRetry : .engineNotReady)
         return
       }
 
