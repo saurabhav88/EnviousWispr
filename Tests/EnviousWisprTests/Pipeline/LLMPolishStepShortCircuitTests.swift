@@ -242,6 +242,23 @@ struct LLMPolishStepShortCircuitTests {
       (ordinaryEnglish.polishedText ?? ordinaryEnglish.text).utf8))
   }
 
+  @Test("A known matching target keeps ordinary Polish and removes undictated chatter")
+  func matchingTargetUsesOrdinaryPolish() async throws {
+    let counter = InvocationCounter()
+    let cleaned = "Leave the spare key at reception."
+    let step = makeStep(
+      counter: counter, result: "Here is the corrected text:\n\n" + cleaned, provider: .claude)
+    var input = TextProcessingContext(text: "leave the spare key at reception", language: "en-GB")
+    input.requestedTranslationTarget = .english
+
+    let result = try await step.process(input)
+
+    let systemPrompt = try #require(await counter.systemPrompt)
+    #expect(systemPrompt.contains("Never translate it"))
+    #expect(result.polishedText == cleaned)
+    #expect(result.acceptedTranslationTarget == nil)
+  }
+
   @Test("Other cloud providers keep ordinary polish with a saved translation target")
   func translationTargetDoesNotApplyToOpenAI() async throws {
     let counter = InvocationCounter()

@@ -915,8 +915,11 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     let model = llmModel
     let localModel = polishModelID
     let usesDirectCloud = CloudModelMemory.cloudProviders.contains(provider)
-    let translationTarget = provider.supportsDictationTranslation
-      ? context.requestedTranslationTarget : nil
+    let translationTarget: DictationTranslationTarget? = context.requestedTranslationTarget.flatMap { target in
+      provider.supportsDictationTranslation
+        && target.rawValue != LanguageNormalizer.baseCode(context.language)
+        ? target : nil
+    }
     // #4353 D6: the operation's cloud model list, read with provider and model; every request
     // policy below (thinking, connector body, chat preflight) comes from this local.
     let cloudModelList = cloudModelList
@@ -1486,10 +1489,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       ctx.symbolTokens = nil
       return ctx
     }
-    let sourceLanguage = LanguageNormalizer.baseCode(languageDetection?.lang ?? context.language)
-    let crossLanguageSource =
-      translationTarget != nil && translationTarget?.rawValue != sourceLanguage
-      ? sourceLanguage : nil
+    let crossLanguageSource = translationTarget == nil
+      ? nil : LanguageNormalizer.baseCode(context.language)
     let validation = validatePolishOutput(
       polished: result.polishedText,
       original: context.text,

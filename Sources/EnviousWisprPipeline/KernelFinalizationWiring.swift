@@ -100,6 +100,7 @@ final class KernelFinalizationOutcome {
   /// from the chain's context right after the runner returns; threaded onto
   /// `dictation.completed`. Metadata only (`telemetry-privacy-boundary`).
   var cleanupLanguage: String?
+  var acceptedTranslationTarget: DictationTranslationTarget?
   var cleanupLanguageSource: String?
   var cleanupLanguageBucket: String?
   /// #996: the resolver-owned language for the learn-from-edits gate
@@ -560,6 +561,7 @@ struct KernelFinalizationWiring {
       // `languageResolutionSource` clear in `deliver`; cleared to nil, never to
       // a placeholder.
       outcome.cleanupLanguage = nil
+      outcome.acceptedTranslationTarget = nil
       outcome.cleanupLanguageSource = nil
       outcome.cleanupLanguageBucket = nil
       outcome.learnLanguage = nil
@@ -677,6 +679,7 @@ struct KernelFinalizationWiring {
       outcome.spellingSwaps = ctx.englishSpellingSwaps
       outcome.rawText = ctx.text
       outcome.polishedText = ctx.polishedText
+      outcome.acceptedTranslationTarget = ctx.acceptedTranslationTarget
       outcome.llmProvider = ctx.llmProvider
       outcome.llmModel = ctx.llmModel
       outcome.polishMetadata = ctx.polishMetadata
@@ -690,7 +693,9 @@ struct KernelFinalizationWiring {
       outcome.afmPrewarmOutcome = ctx.afmPrewarmOutcome
       outcome.afmPrewarmTakeID = ctx.afmPrewarmOutcome == nil ? nil : ctx.takeID
       outcome.polishNotice = result.polishNotice
-      if ctx.requestedTranslationTarget != nil {
+      if let target = ctx.requestedTranslationTarget,
+        target.rawValue != LanguageNormalizer.baseCode(ctx.language)
+      {
         if let notice = result.polishNotice, notice.leadIn == .failed {
           outcome.polishNotice = PolishNotice(
             leadIn: notice.leadIn, text: notice.text, isTranslationFailure: true)
@@ -911,7 +916,8 @@ struct KernelFinalizationWiring {
             // operation, which cannot reach a `@MainActor` seam.
             return InsertionTakeFacts(
               snippetFired: context.snippetExpansionFired,
-              lockedLanguageCode: context.config?.lockedLanguageCode,
+              lockedLanguageCode: outcome.acceptedTranslationTarget?.rawValue
+                ?? context.config?.lockedLanguageCode,
               engineDetectsLanguage: adapter.capabilities.supportsLanguageDetection,
               engineReportedLanguage: adapter.lastResult?.language,
               protectedSpellings: context.protectedSpellings)
