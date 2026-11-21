@@ -27,9 +27,12 @@ on:
 
 permissions: {}
 
-# One sweep at a time; a queued run never cancels a paid sweep in progress.
+env:
+  DERIVED_DATA_PATH: .derivedData/CI
+
+# Branch validation has its own group and cannot hold up a paid sweep.
 concurrency:
-  group: cloud-model-routine
+  group: ${{ github.ref == 'refs/heads/main' && 'cloud-model-routine' || format('cloud-model-routine-validation-{0}', github.ref) }}
   cancel-in-progress: false
 
 jobs:
@@ -62,7 +65,7 @@ jobs:
         id: setup
         uses: ./.github/actions/xcode-ci-setup
         with:
-          derived-data-path: .derivedData/CI
+          derived-data-path: ${{ env.DERIVED_DATA_PATH }}
           configuration: release-onone
 
       # The only step with the provider keys. The test process gets them through Xcode's
@@ -87,7 +90,8 @@ jobs:
           work="$RUNNER_TEMP/routine"
           mkdir -p "$work"
           export TEST_RUNNER_EW_ROUTINE_RECEIPT_OUT="$work/receipt.json"
-          if scripts/xcode-test.sh --real-boundary --filter EnviousWisprTests/CloudModelRoutineSweepTests > "$work/sweep.log" 2>&1; then
+          if scripts/xcode-test.sh --configuration Release --release-gut-check --cloud-model-routine --real-boundary \
+            --filter EnviousWisprCloudModelRoutineTests/CloudModelRoutineSweepTests > "$work/sweep.log" 2>&1; then
             status=0
           else
             status=$?
@@ -127,6 +131,35 @@ jobs:
           elif [ "$SETUP" != success ] || [ "$SWEEP" != success ]; then echo "stage=sweep" >> "$GITHUB_OUTPUT"
           else echo "stage=receipt" >> "$GITHUB_OUTPUT"
           fi
+
+  validate-sweep:
+    name: validate-sweep
+    if: >-
+      github.repository == 'saurabhav88/EnviousWispr' &&
+      github.event_name == 'workflow_dispatch' &&
+      startsWith(github.ref, 'refs/heads/') &&
+      github.ref != 'refs/heads/main'
+    runs-on: xcode-27
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout the triggering commit
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Xcode CI setup
+        uses: ./.github/actions/xcode-ci-setup
+        with:
+          derived-data-path: ${{ env.DERIVED_DATA_PATH }}
+          configuration: release-onone
+
+      - name: Run the keyless sweep fixtures
+        run: |
+          scripts/xcode-test.sh --configuration Release --release-gut-check --cloud-model-routine --real-boundary \
+            --filter EnviousWisprCloudModelRoutineTests/CloudModelRoutineHarnessTests
 
   publish:
     name: publish

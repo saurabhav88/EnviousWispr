@@ -86,6 +86,7 @@ PRODUCTION_TARGETS = [
 NON_PRODUCTION = {
     "EnviousWisprAppKitTestSupport", "EnviousWisprTests", "EnviousWisprASRTests",
     "EnviousWisprDesktopEffectsTests",
+    "EnviousWisprCloudModelRoutineTests",
     "EnviousWisprCriticalTests",  # #4243: the cloud PR gut-check bundle
 }
 # The Share extension uses its own en/de resources. Its keys must not be
