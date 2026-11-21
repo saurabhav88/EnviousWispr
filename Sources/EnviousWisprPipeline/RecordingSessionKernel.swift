@@ -4653,12 +4653,6 @@ final class RecordingSessionKernel {
         // `SessionID` but leaves `captureLifecycle` at `.stopping`, so this
         // task completes its own bookkeeping rather than being orphaned
         // (Codex P2-round6).
-        //
-        // #1579 NOTE: the pre-stop lifecycle gate that belongs here was split out
-        // to its own issue. Two review rounds each found a hole in it, both in the
-        // direction of refusing a legitimate stop (which loses a dictation), and
-        // the correct shape needs an explicit capture handoff in the forward path
-        // rather than a refusal here.
         guard self.captureLifecycle == .stopping else { return }
         self.captureLifecycle = .stopped
         self.resourcesReleased = true

@@ -176,13 +176,11 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   /// Fired by `resolveSource()` — initial resolution + changed-only afterwards.
   public var onRouteResolved: ((CaptureRouteDecision, _ sourceTypeChanged: Bool) -> Void)?
 
-  /// Monotonic, APP-LIFETIME session id, incremented once per capture session in
-  /// `beginCapturePhase`. Manager-owned (NOT delegated to the active source's
-  /// `captureGeneration`, which resets to 1 on every new `HALDeviceInputSource`
-  /// — a warm teardown or route change would then repeat ids and collide the
-  /// pipeline's per-session dedup, #1543 Codex review P2). This restores the
-  /// app-lifetime uniqueness the deleted proxy's counter provided. Returns 0
-  /// before the first session; never persisted; not meaningful across launches.
+  /// Manager-owned capture ID claimed before a start or prewarm can take over
+  /// the source (#1854). A prewarm or retry may consume an ID without arming.
+  /// The ID survives source replacement: HAL's per-source `captureGeneration`
+  /// resets on a new source and would collide in per-session dedup (#1543).
+  /// Zero before the first claim. Never persisted or compared across launches.
   public var currentCaptureSessionID: UInt64 { captureSessionCounter }
   private var captureSessionCounter: UInt64 = 0
 
@@ -829,9 +827,6 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     let stream = try await source.startCapture()
     onLifecycleSignal?("manager_start_capture_completed")
     isCapturing = true
-    // App-lifetime session id (#1543): one increment per live capture session,
-    // read by the dead-air ctx, correlation extras, dedup, and the stall filter.
-    captureSessionCounter &+= 1
     captureSessionSource = source  // heartpath 5b: retain the object that owns this session
     // #4601: the dead-air diagnostic's default input UID, read on the lane now so the verdict
     // never waits for it; stored only while this capture session is still current.
@@ -883,13 +878,13 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   }
 
   public func stopCapture(sessionID: UInt64) async -> CaptureResult {
-    // #1579 layer 2: ARMED-session identity fence. MUST precede every existing
-    // stop-path read and mutation — a stale stop that got this far would clear a
-    // newer take's samples and deactivate its source. A mismatch returns empty and
-    // changes nothing; both production callers discard a stale result. `0` stays
-    // valid: it is the id of a prepared-but-never-armed engine, whose cleanup must
-    // be allowed through or the engine leaks. This guard cannot identify that
-    // prepared interval; callers must separately gate it using lifecycle ownership.
+    stopCaptureNow(sessionID: sessionID)
+  }
+
+  private func stopCaptureNow(sessionID: UInt64) -> CaptureResult {
+    // #1579/#1854: check ownership before touching samples or the source.
+    // Preparation claims the ID before arming, so a prepared take can stop
+    // its own source and a stale stop cannot deactivate it.
     guard sessionID == captureSessionCounter else {
       Self.btRouteLog("Stop skipped: stale capture session")
       return CaptureResult(samples: [])
@@ -1479,9 +1474,6 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   private func resolveSource(deadline: ContinuousClock.Instant) async throws -> (
     source: any AudioInputSource, reusedWarm: Bool, request: UInt64
   ) {
-    // Cancel idle teardown — we're about to record
-    warmEngineTeardownTask?.cancel()
-    warmEngineTeardownTask = nil
     resolveRequestID &+= 1
     let request = resolveRequestID
     #if DEBUG
@@ -1494,6 +1486,20 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     let priorRouteDecision = lastRouteDecision
     let decision = try await laneRouteDecision(
       preferred: preferred, deadline: deadline, request: request)
+
+    // #1854: the route read can overlap the outgoing stop, while the old source
+    // is still its own. Finish any work it left before the new attempt claims
+    // the source. Keep cleanup and the ID change in the same synchronous turn.
+    if isCapturing || activeSource?.isCapturing == true || !capturedSamples.isEmpty
+      || recoverySpoolWriter != nil
+    {
+      retirePredecessorRecoverySpool()
+      _ = stopCaptureNow(sessionID: captureSessionCounter)
+    }
+    captureSessionCounter &+= 1
+    // An outgoing stop can schedule idle teardown during the route read or handoff.
+    warmEngineTeardownTask?.cancel()
+    warmEngineTeardownTask = nil
 
     // If a source is already running (warm engine), check route compatibility
     if let existing = activeSource {

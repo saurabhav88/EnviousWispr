@@ -680,13 +680,9 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   func finalize(batchSamples: [Float]) async -> ASREngineOutcome {
     _ = batchSamples  // intentionally ignored — see coordinate-space note
     lastFailureError = nil
-    // PR-5 Rung 4.5 (#827): capture `currentCaptureSessionID` at finalize
-    // entry, NOT at `beginSession`. Codex code-diff review caught this:
-    // kernel calls `adapter.beginSession()` BEFORE `audioCapture.beginCapturePhase()`,
-    // but `currentCaptureSessionID` only increments inside the capture-phase
-    // call. By finalize entry, the capture phase has completed (kernel's
-    // `runForwardPath` flow guarantees this), so the source returns the
-    // active session's id.
+    // PR-5 Rung 4.5 (#827): take the capture ID at finalize entry, after the
+    // kernel's prepare and arm steps have finished. #1854 moved the manager's
+    // ID claim into preparation, where stabilization can retry.
     //
     // `sessionIDForLog` is a function-local immutable snapshot — every
     // signpost emitted in this finalize call passes it explicitly. A
