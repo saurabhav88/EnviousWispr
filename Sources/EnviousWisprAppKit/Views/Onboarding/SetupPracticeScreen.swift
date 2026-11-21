@@ -75,7 +75,7 @@ enum SetupPracticeState: Equatable {
     case .noSpeech:
       "EnviousWispr didn’t hear any speech.\nPick another microphone, or hold \(key) and speak."
     case .missedBox(copiedToClipboard: true):
-      "This take is on your clipboard. If automatic paste is off, turn it on in Dictation > Clipboard to practice, or skip."
+      "Click the box and try again. If automatic paste is off, turn it on in Dictation > Clipboard first, or skip."
     case .missedBox(copiedToClipboard: false):
       "EnviousWispr types where your cursor is.\nClick here and try again."
     case .pipelineFailed: "That one was on us, not you.\nHold \(key) and say it again."

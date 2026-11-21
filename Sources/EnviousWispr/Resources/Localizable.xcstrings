@@ -7443,6 +7443,16 @@
         }
       }
     },
+    "Click the box and try again. If automatic paste is off, turn it on in Dictation > Clipboard first, or skip." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klicke ins Textfeld und versuche es erneut. Wenn das automatische Einfügen aus ist, schalte es zuerst unter Diktat > Zwischenablage ein oder überspringe die Übung."
+          }
+        }
+      }
+    },
     "Click the box, then talk" : {
       "localizations" : {
         "de" : {
@@ -28216,16 +28226,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Diese Zusammenfassung wurde mit einer älteren Zusammenfassungs-Einstellung erstellt."
-          }
-        }
-      }
-    },
-    "This take is on your clipboard. If automatic paste is off, turn it on in Dictation > Clipboard to practice, or skip." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dieses Diktat liegt in deiner Zwischenablage. Wenn das automatische Einfügen aus ist, schalte es zum Üben unter Diktat > Zwischenablage ein oder überspringe die Übung."
           }
         }
       }
