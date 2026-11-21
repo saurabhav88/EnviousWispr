@@ -111,7 +111,7 @@ struct SettingsMapRegistrationTests {
     ".aiPolishProvider", ".aiPolishProviderSection", ".apiKeyClear", ".apiKeyGetKeyLink",
     ".apiKeyReveal", ".apiKeySave", ".appLanguageRelaunch", ".appleIntelligenceRecheck",
     ".autoDetectLanguageResetSuggestions", ".bluetoothGuideLearnMore", ".contactsSyncOnLaunch",
-    ".enableAIPolish", ".enableDictionary", ".importContacts",
+    ".enableAIPolish", ".enableDictionary", ".fixLearnedWords", ".importContacts",
     ".learnFrom", ".licenseGplView", ".licenseNoticesView", ".livePreviewBrowseDownloads",
     ".livePreviewLanguage", ".localModelCancel", ".localModelDownload", ".localModelResume",
     ".localModelTestLive", ".localModelTryAgain", ".lockedLanguageChange",
