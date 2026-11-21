@@ -371,6 +371,14 @@ final class SettingsSearchModel {
     cancelAnnouncement()
   }
 
+  /// Keyboard focus left the search field. A dropdown still waiting for the title-only index is
+  /// closed, keeping the search for Cmd+F, so it never appears later over the control the person
+  /// moved to (#4772). A dropdown that is showing keeps its own rule: focus stays in it (§3.4).
+  func searchFocusLeft() {
+    guard isPanelPresented, answeringIndex == nil else { return }
+    dismissPanel()
+  }
+
   /// Typing or Cmd+F with a retained non-empty search shows it again.
   func reopenPanel() {
     guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }

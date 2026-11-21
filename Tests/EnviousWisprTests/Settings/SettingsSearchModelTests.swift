@@ -323,6 +323,27 @@ struct SettingsSearchModelTests {
     #expect(await Self.ready(model))
   }
 
+  @Test("leaving the search before its index exists closes the waiting dropdown and keeps the search")
+  func focusLeavingClosesAWaitingDropdown() async {
+    let titles = HeldTitleBuild(Self.fixture([(.theme, "alpha")]))
+    let fullGate = AsyncGate()
+    let model = Self.heldModel(titles, fullGate: fullGate, full: nil)
+    model.setQuery("alpha")
+    model.searchFocusLeft()
+    #expect(model.isPanelPresented == false)
+    titles.release()
+    #expect(await Self.waitUntil { model.results.map(\.entryID) == ["theme"] })
+    #expect(model.showsPanel == false, "the dropdown appeared after focus had moved on")
+    #expect(model.query == "alpha")
+    model.reopenPanel()
+    #expect(model.showsPanel, "Cmd+F did not bring the kept search back")
+    // A showing dropdown keeps focus in the search: leaving focus does not close it.
+    model.searchFocusLeft()
+    #expect(model.showsPanel)
+    await fullGate.open()
+    #expect(await Self.ready(model))
+  }
+
   @Test("opening the window without searching never loads the full index")
   func openingWithoutSearchingLoadsOnlyTitles() async {
     let loads = LoadCounter()

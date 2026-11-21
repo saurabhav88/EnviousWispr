@@ -90,6 +90,8 @@ struct UnifiedWindowView: View {
         search.prepareIndex()
       }
       .onChange(of: settings.shareUsageMetrics) { _, isOn in search.usageMetricsChanged(isOn: isOn) }
+      // #4772: a dropdown still waiting for its index closes when focus leaves the search.
+      .onChange(of: searchFocused) { _, focused in if !focused { search.searchFocusLeft() } }
       .onChange(of: navigationState.appSettingsTab) { _, _ in navigationState.noteTabChange() }
       .onChange(of: navigationState.dictionaryTab) { _, _ in navigationState.noteTabChange() }
       .onChange(of: navigationState.meetingsTab) { _, _ in navigationState.noteTabChange() }
