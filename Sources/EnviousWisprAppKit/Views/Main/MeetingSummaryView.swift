@@ -72,8 +72,8 @@ struct MeetingSummaryView: View {
     let previewing: Bool = {
       if summaries?.savingFirst.contains(meetingID) == true { return true }
       switch summaries?.previews[meetingID] {
-      case .generating?, .comparing?, .modelLimit?: return true
-      case .failed?, nil: return false
+      case .generating?, .comparing?: return true
+      case .failed?, .modelLimit?, nil: return false
       }
     }()
     VStack(alignment: .leading, spacing: 10) {

@@ -1757,7 +1757,7 @@ extension OverlayDirector: OverlayPresenting {
           deliver: { [weak self] action in
             guard case .chooseMeetingSummaryEngine = action else { return }
             self?.dismissSilently()
-            if isStillWanted() { onChooseEngine() }
+            onChooseEngine()
           },
           onExpire: nil, isStillWanted: isStillWanted),
         relay: relay)
