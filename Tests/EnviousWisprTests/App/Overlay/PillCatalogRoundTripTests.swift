@@ -66,10 +66,11 @@ struct PillCatalogRoundTripTests {
     }
   }
 
-  @Test("the three feature-only requests have no matching intent; every pipeline-derived one keeps its intent")
+  @Test("feature-only requests have no matching intent; every pipeline-derived one keeps its intent")
   func featureOnlyRequestsHaveNoMatchingIntent() {
     let featureOnly: [PillCatalogRequest] = [
       .importStatus(message: "x"),
+      .meetingSummaryLimit(.egOne),
       // #996 auto-learn: the Undo pill and its save error are feature routes
       // with no pipeline intent.
       .correctionLearned(LearnedPillFixture.model()),

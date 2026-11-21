@@ -45,6 +45,7 @@ enum PillAction: Equatable, Sendable {
   /// help section (`DictationNarrator.microphoneNotRespondingHelpURL`); never the permission
   /// settings `openMicrophoneSettings` opens.
   case openMicrophoneHelp
+  case chooseMeetingSummaryEngine
   /// discardRecoveryHandler.
   case discardRecovery
   /// onEscapeRecoveryPaste, which takes the `CancelUndoPayload`.
@@ -177,6 +178,10 @@ enum PillRequest {
   case importStatus(message: String)
 
   // Feature-owned: raised by a feature that owns the buttons it draws.
+  case meetingSummaryLimit(
+    provider: LLMProvider, isStillWanted: @MainActor () -> Bool,
+    onChooseEngine: @MainActor () -> Void
+  )
   case accessibilityNotice
   case recoveryNotice(onDiscard: () -> Void)
   case languageChip(

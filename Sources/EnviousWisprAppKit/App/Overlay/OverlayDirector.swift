@@ -1750,6 +1750,17 @@ extension OverlayDirector: OverlayPresenting {
           },
           onExpire: nil),
         relay: relay)
+    case .meetingSummaryLimit(let provider, let isStillWanted, let onChooseEngine):
+      handle(
+        .meetingSummaryLimit(provider),
+        binding: .install(
+          deliver: { [weak self] action in
+            guard case .chooseMeetingSummaryEngine = action else { return }
+            self?.dismissSilently()
+            onChooseEngine()
+          },
+          onExpire: nil, isStillWanted: isStillWanted),
+        relay: relay)
     case .polishSetupCard(let model, let onFinishSetup, let onNotNow):
       // #3438: the Bluetooth card's admission transaction, unchanged.
       guard featureSlotIsAvailable else { return nil }

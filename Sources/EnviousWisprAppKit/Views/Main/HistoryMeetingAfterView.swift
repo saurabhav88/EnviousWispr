@@ -961,6 +961,11 @@ struct HistoryMeetingAfterView: View {
           }
         case .comparing:
           EmptyView()
+        case .modelLimit(let limit):
+          summaryProblemNotice(
+            title: MeetingSummaryLimitCopy.message(limit.provider), refreshItems: refreshItems,
+            highlightEngineChoice: true,
+            dismiss: { summaryEdit.discardPreview(meetingID, summaries: meetings.summaries) })
         case .failed:
           // Founder 2026-11-17: the failure read like part of the summary; it is a warning box
           // with the way to try again.
@@ -991,22 +996,27 @@ struct HistoryMeetingAfterView: View {
   /// a different model): a warning saying so, Try another model (the same list as the More
   /// menu's "Write summary again with") and Dismiss.
   private func summaryProblemNotice(
-    title: String, refreshItems: @escaping () -> [HistoryMenuItem], dismiss: @escaping () -> Void
+    title: String, refreshItems: @escaping () -> [HistoryMenuItem],
+    highlightEngineChoice: Bool = false, dismiss: @escaping () -> Void
   ) -> some View {
     InsetNotice(
-      verbatim: String(
+      verbatim: highlightEngineChoice ? title : String(
         localized: "Try writing it with a different model.",
         comment:
           "History meeting: under a failed new summary; nudges the user to pick another AI model."),
-      title: title, systemImage: "exclamationmark.triangle", tint: .stWarning
+      title: highlightEngineChoice ? nil : title, systemImage: "exclamationmark.triangle", tint: .stWarning
     ) {
-      MeetingSummaryModelMenuButton(
-        title: LocalizedStringResource(
-          "Try another model",
-          comment:
-            "History meeting: after a failed new summary, opens the list of AI models to try again."
-        ),
-        items: refreshItems)
+      if highlightEngineChoice {
+        MeetingSummarySettingsLink(highlightEngineChoice: true)
+      } else {
+        MeetingSummaryModelMenuButton(
+          title: LocalizedStringResource(
+            "Try another model",
+            comment:
+              "History meeting: after a failed new summary, opens the list of AI models to try again."
+          ),
+          items: refreshItems)
+      }
       Button(action: dismiss) {
         EnviousButtonLabel(
           LocalizedStringResource(
@@ -1435,6 +1445,13 @@ extension HistoryMeetingAfterView {
   ) -> some View {
     let refreshItems = { summaryModelItems(record, canDeliver: canDeliver) }
     summaryPreviewInPane(refreshItems: refreshItems)
+    if !summaryEdit.editingSummary, meetings.documents.summary(meetingID) != nil,
+      let summaries = meetings.summaries, summaries.previews[meetingID] == nil,
+      case .modelLimit(let limit)? = MeetingSummaryView.shownProblem(
+        activity: summaries.activity[meetingID], configuration: summaries.configurationProblem())
+    {
+      MeetingSummaryView.problemView(.modelLimit(limit))
+    }
     if !summaryEdit.editingSummary, let document = references.document(for: meetingID) {
       MeetingAfterSummarySections(
         meetingID: meetingID, document: document, references: references,

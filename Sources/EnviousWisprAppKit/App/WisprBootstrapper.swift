@@ -3140,6 +3140,16 @@ package final class WisprBootstrapper {
       restoreSelection: { [weak settingsSync, settings] in
         settingsSync?.retryDeferredEGOneDeactivation(settings: settings, forceReconciliation: true)
       })
+    meetingInputs.presentSummaryLimit = {
+      [weak recordingOverlay, weak navigationCoordinator, weak appWindowCoordinator] failure, isCurrent in
+      recordingOverlay?.present(.meetingSummaryLimit(
+        provider: failure.provider, isStillWanted: isCurrent,
+        onChooseEngine: {
+          guard let navigationCoordinator, let appWindowCoordinator else { return }
+          MeetingSummarySettingsLink.highlightChoice(navigationCoordinator)
+          appWindowCoordinator.showWindow()
+        }))
+    }
     let refreshRules: @Sendable () -> Void = {
       Task.detached(priority: .utility) {
         // Independent stores: one document's failure never delays the other.

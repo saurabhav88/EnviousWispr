@@ -78,8 +78,8 @@ struct UnifiedWindowView: View {
           navigationState.endWindowSession()
           historyPaste.windowClosed()
           navigationCoordinator.cancelSharedMedia()
-          if case .sharedMedia = pendingLeave?.intent { pendingLeave = nil }
-          if case .sharedMedia = pendingSpeechLeave?.intent { pendingSpeechLeave = nil }
+          if pendingLeave?.intent.requiresOpenWindow == true { pendingLeave = nil }
+          if pendingSpeechLeave?.intent.requiresOpenWindow == true { pendingSpeechLeave = nil }
         })
       // #3482 §3.4: a direct tab change drops an arrival meant for another tab.
       .onChange(of: navigationState.dictationTab) { _, _ in navigationState.noteTabChange() }
@@ -129,9 +129,12 @@ struct UnifiedWindowView: View {
     .onChange(of: navigationCoordinator.pendingReveal, initial: true) { _, id in
       guard let id else { return }
       navigationCoordinator.consumeReveal()
-      guard let request = SettingsSearchRequest(entryID: id.rawValue),
-        request.destination.page == navigationState.selectedPage
-      else { return }
+      guard let request = SettingsSearchRequest(entryID: id.rawValue) else { return }
+      if id == .meetingSummaryEngineChange {
+        navigate(.externalReveal(request))
+        return
+      }
+      guard request.destination.page == navigationState.selectedPage else { return }
       navigationState.apply(request)
     }
     .onPreferenceChange(PolishSetupUnsavedKeyDraftKey.self) { hasUnsavedKeyDraft = $0 }
@@ -430,7 +433,7 @@ struct UnifiedWindowView: View {
     case .sidebar(let page):
       search.finish(
         endedBy: .sidebar, sidebarPage: page.rawValue, sidebarTab: openTab(on: page))
-    case .destination, .sharedMedia:
+    case .destination, .sharedMedia, .externalReveal:
       search.finish(endedBy: .externalDestination)
     }
     search.reset()
@@ -488,8 +491,10 @@ struct UnifiedWindowView: View {
   private func leave(to intent: SettingsNavigationIntent) {
     commit(intent)
     // #3482 §3.4: a search arrival owns focus (the reveal moves it to the chosen control).
-    if case .search = intent { return }
-    focusedSidebarPage = intent.page
+    switch intent {
+    case .search, .externalReveal: break
+    case .sidebar, .destination, .sharedMedia: focusedSidebarPage = intent.page
+    }
   }
 
   /// The left navigation, rendered as a self-contained rounded card that floats

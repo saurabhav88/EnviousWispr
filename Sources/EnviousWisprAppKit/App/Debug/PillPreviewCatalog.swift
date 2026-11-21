@@ -77,7 +77,7 @@
       case .processing: return .processing
       case .clipboardFallback: return .clipboardFallback
       case .warning: return .warning
-      case .error: return .error
+      case .error, .meetingSummaryLimit: return .error
       case .advisory: return .advisory
       case .interruption: return .interruption
       case .cachingModel: return .cachingModel

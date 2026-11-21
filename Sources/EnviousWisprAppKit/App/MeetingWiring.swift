@@ -63,6 +63,8 @@ enum MeetingWiring {
     var importPinnedLocalProvider: @MainActor () -> LLMProvider? = { nil }
     /// #4319: lends the bundled EG-1 server to a summary attempt; nil leaves EG-1 refused.
     var egOneSummaryEngine: EGOneSummaryEngine?
+    var presentSummaryLimit:
+      @MainActor (MeetingSummaryOwner.LimitFailure, @escaping @MainActor () -> Bool) -> Void = { _, _ in }
     /// The `meeting.ended` emitter (`TelemetryService.trackMeetingEnded` in production).
     var emitMeetingEnded: @MainActor (MeetingEndedTelemetry) -> Void = {
       TelemetryService.shared.trackMeetingEnded($0)
@@ -427,6 +429,7 @@ enum MeetingWiring {
         wakes: inputs.dictationWakes,
         emitFinished: inputs.emitSummaryFinished,
         log: inputs.log,
+        presentLimit: inputs.presentSummaryLimit,
         assignTitle: { [weak coordinator] meetingID, title in
           await coordinator?.assignAITitle(meetingID: meetingID, title: title)
         },

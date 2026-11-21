@@ -2364,8 +2364,8 @@
    },
    "disposition": "mapped",
    "parent": "meetingSummaryEngine",
-   "target": "meetingSummaryEngine",
-   "fallbacks": [],
+   "target": "meetingSummaryEngine.change",
+   "fallbacks": ["meetingSummaryEngine"],
    "dynamicTitle": false,
    "seedParent": "meetingSummaryEngine"
   },
