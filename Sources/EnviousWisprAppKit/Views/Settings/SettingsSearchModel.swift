@@ -10,11 +10,17 @@ import Observation
 @MainActor
 @Observable
 final class SettingsSearchModel {
-  /// The index search answers from (#3545 plan §3.5). The first non-empty query builds a
-  /// title-only index synchronously and answers from it while the full index (with the bundled
-  /// vocabulary) loads; the full index then replaces it and the current query runs again.
+  /// The index search answers from (#3545 plan §3.5). Opening the window (or the first non-empty
+  /// query) builds a title-only index off the main actor (#4772); it answers while the full index
+  /// (with the bundled vocabulary) loads, and the full index then replaces it and the current
+  /// query runs again.
   enum IndexState {
     case notLoaded
+    /// The title-only index is being built off the main actor; nothing answers yet, so the panel
+    /// shows no rows and never "No settings match" (#4772). On a Mac that lists German, each
+    /// German lookup re-reads the whole strings table, so this build took 1.6 s on an M5 Max and
+    /// froze the window when it ran on the first keystroke (ENVIOUSWISPR-92).
+    case preparingTitles
     /// Answering from the title-only index while the full index loads.
     case loading(titleOnly: SettingsSearchIndex)
     case ready(SettingsSearchIndex)
@@ -22,10 +28,10 @@ final class SettingsSearchModel {
     case titleOnly(SettingsSearchIndex)
   }
 
-  /// The index answering now, nil before the first non-empty query.
+  /// The index answering now, nil until the title-only index has been built.
   var answeringIndex: SettingsSearchIndex? {
     switch indexState {
-    case .notLoaded: nil
+    case .notLoaded, .preparingTitles: nil
     case .loading(let index), .ready(let index), .titleOnly(let index): index
     }
   }
@@ -80,8 +86,9 @@ final class SettingsSearchModel {
   private var selectionMovedByUser = false
   private var announcement: Task<Void, Never>?
   private let loadIndex: @Sendable () async -> SettingsSearchIndex?
-  /// Builds the title-only index on the main actor, before the full index exists.
-  private let titleIndex: @MainActor () -> SettingsSearchIndex
+  /// Builds the title-only index, before the full index exists. Always called off the main
+  /// actor (`buildTitles`, #4772).
+  private let titleIndex: @Sendable () -> SettingsSearchIndex
   /// The meaning pass (plan §3.7a): nil means words only. Skipped for the rest of the window
   /// session after any skip the worker reports.
   private let meaningWorker: SettingsSearchMeaningWorker?
@@ -129,7 +136,7 @@ final class SettingsSearchModel {
   /// be used. `announce` speaks the result count after typing pauses.
   init(
     loadIndex: @escaping @Sendable () async -> SettingsSearchIndex?,
-    titleIndex: @escaping @MainActor () -> SettingsSearchIndex = SettingsSearchModel
+    titleIndex: @escaping @Sendable () -> SettingsSearchIndex = SettingsSearchModel
       .windowTitleIndex,
     meaningWorker: SettingsSearchMeaningWorker? = nil,
     meaningDeadlineElapses: @escaping @Sendable () async -> Void = {
@@ -152,7 +159,7 @@ final class SettingsSearchModel {
   }
 
   /// The title-only index for this app's languages: the same inputs as the full index.
-  static func windowTitleIndex() -> SettingsSearchIndex {
+  nonisolated static func windowTitleIndex() -> SettingsSearchIndex {
     SettingsSearchIndex.titleOnly(
       appLanguage: Bundle.main.preferredLocalizations.first ?? "en",
       preferredLanguages: Locale.preferredLanguages)
@@ -235,17 +242,47 @@ final class SettingsSearchModel {
     recordSnapshot()
   }
 
-  private func refresh() {
-    if case .notLoaded = indexState {
-      // Answers now from titles; the full index loads once, off the main actor.
-      indexState = .loading(titleOnly: titleIndex())
-      let load = loadIndex
-      Task { [weak self] in
-        let index = await load()
-        self?.indexLoaded(index)
-      }
+  /// Starts building the title-only index off the main actor, once per model (#4772). The window
+  /// calls it when it appears, so the index is usually ready before the first keystroke; the first
+  /// query calls it too.
+  func prepareIndex() {
+    guard case .notLoaded = indexState else { return }
+    indexState = .preparingTitles
+    let build = titleIndex
+    Task { [weak self] in
+      let titles = await Self.buildTitles(build)
+      self?.titlesBuilt(titles)
     }
-    if let index = answeringIndex { deliver(index.results(for: query), for: generation) }
+  }
+
+  /// Runs the title-only build on the concurrent pool, never on the main actor (#4772).
+  @concurrent
+  private static func buildTitles(
+    _ build: @Sendable () -> SettingsSearchIndex
+  ) async -> SettingsSearchIndex {
+    build()
+  }
+
+  /// The title-only index exists: it answers the query on screen now (the live query and
+  /// generation, not the one typed when the build started), and the full index loads once, off
+  /// the main actor.
+  private func titlesBuilt(_ titles: SettingsSearchIndex) {
+    guard case .preparingTitles = indexState else { return }
+    indexState = .loading(titleOnly: titles)
+    let load = loadIndex
+    Task { [weak self] in
+      let index = await load()
+      self?.indexLoaded(index)
+    }
+    refresh()
+  }
+
+  private func refresh() {
+    prepareIndex()
+    guard let index = answeringIndex,
+      !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    else { return }
+    deliver(index.results(for: query), for: generation)
   }
 
   /// The full index arrived (or could not be built): it replaces the title-only answers by running
@@ -349,7 +386,7 @@ final class SettingsSearchModel {
     // final either way: it is recorded as pending, as before.
     switch indexState {
     case .ready, .titleOnly: current.meaningPending = meaningPass == .pending
-    case .notLoaded, .loading: current.meaningPending = true
+    case .notLoaded, .preparingTitles, .loading: current.meaningPending = true
     }
     current.meaningElapsedMilliseconds =
       meaningPass == .completed ? meaningElapsedMilliseconds : nil

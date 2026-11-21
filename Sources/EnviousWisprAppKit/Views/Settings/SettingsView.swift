@@ -84,7 +84,11 @@ struct UnifiedWindowView: View {
       // #3482 §3.4: a direct tab change drops an arrival meant for another tab.
       .onChange(of: navigationState.dictationTab) { _, _ in navigationState.noteTabChange() }
       // #3482 §8.1: the failed-search row follows "Share usage metrics", read at every terminal.
-      .onAppear { search.usageMetricsOn = { settings.shareUsageMetrics } }
+      .onAppear {
+        search.usageMetricsOn = { settings.shareUsageMetrics }
+        // #4772: build the title-only index now, off the main actor, so typing never waits.
+        search.prepareIndex()
+      }
       .onChange(of: settings.shareUsageMetrics) { _, isOn in search.usageMetricsChanged(isOn: isOn) }
       .onChange(of: navigationState.appSettingsTab) { _, _ in navigationState.noteTabChange() }
       .onChange(of: navigationState.dictionaryTab) { _, _ in navigationState.noteTabChange() }

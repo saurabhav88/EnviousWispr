@@ -2,6 +2,7 @@ import EnviousWisprServices
 import Foundation
 import Observation
 import Testing
+import os
 
 @testable import EnviousWisprAppKit
 import EnviousWisprAppKitTestSupport
@@ -68,6 +69,18 @@ struct SettingsSearchModelTests {
       if case .titleOnly = model.indexState { return true }
       return false
     }
+  }
+
+  /// The title-only index has been built (#4772): it answers, or the full index replaced it.
+  static func titlesReady(_ model: SettingsSearchModel) async -> Bool {
+    await waitUntil { model.answeringIndex != nil }
+  }
+
+  /// Opens the window's search as the window does, then waits for the title-only index, so a
+  /// following search answers before `setQuery` returns (#3545 T8 behaviour once prepared).
+  static func prepared(_ model: SettingsSearchModel) async -> Bool {
+    model.prepareIndex()
+    return await titlesReady(model)
   }
 
   @Test("the waiter gives up at its deadline when nothing changes")
@@ -181,6 +194,7 @@ struct SettingsSearchModelTests {
       gate, loads: loads,
       titles: Self.fixture([(.theme, "alpha"), (.inputDevice, "beta")]),
       full: Self.fixture([(.showInDock, "beta")]))
+    #expect(await Self.prepared(model))
     model.setQuery("alpha")
     // Before setQuery returned: visible, selected, choosable, from titles.
     #expect(model.isPanelPresented)
@@ -206,6 +220,107 @@ struct SettingsSearchModelTests {
     #expect(model.results.isEmpty)
   }
 
+  /// A model whose title-only build `titles` holds open and whose full index waits for `fullGate`.
+  static func heldModel(
+    _ titles: HeldTitleBuild, fullGate: AsyncGate, full: SettingsSearchIndex?,
+    usageMetricsOn: @escaping @MainActor () -> Bool = { false },
+    emitFinished: @escaping @MainActor (SettingsSearchFinished) -> Void = { _ in }
+  ) -> SettingsSearchModel {
+    SettingsSearchModel(
+      loadIndex: {
+        await fullGate.wait()
+        return full
+      }, titleIndex: titles.builder, usageMetricsOn: usageMetricsOn, emitFinished: emitFinished,
+      announce: { _ in }, announcementDelay: .milliseconds(20))
+  }
+
+  // #4772: on a Mac that lists German, building the title index on the first keystroke froze the
+  // Settings window for 1.6 s (2 s or more in production, ENVIOUSWISPR-92).
+  @Test("the first keystroke never waits for the title index, which is built off the main thread")
+  func firstKeystrokeNeverBuildsOnMain() async {
+    let titles = HeldTitleBuild(Self.fixture([(.theme, "alpha")]))
+    let fullGate = AsyncGate()
+    let model = Self.heldModel(titles, fullGate: fullGate, full: nil)
+    model.setQuery("alpha")
+    // setQuery returned without an answer: the panel is open, empty, and never says "no match".
+    #expect(model.isPanelPresented)
+    #expect(model.results.isEmpty, "the title index was built inside the keystroke")
+    #expect(model.showsNoResults == false)
+    #expect(model.submit() == nil)
+    titles.release()
+    #expect(await Self.waitUntil { model.results.map(\.entryID) == ["theme"] })
+    #expect(titles.calls == [false], "title builds by thread (true = main): \(titles.calls)")
+    await fullGate.open()
+    #expect(await Self.ready(model))
+  }
+
+  @Test("the title index answers the search on screen when it arrives, and a cleared one stays cleared")
+  func titlesAnswerTheLiveQuery() async {
+    let titles = HeldTitleBuild(Self.fixture([(.theme, "alpha"), (.inputDevice, "beta")]))
+    let fullGate = AsyncGate()
+    let model = Self.heldModel(titles, fullGate: fullGate, full: nil)
+    model.setQuery("alpha")
+    model.setQuery("beta")
+    titles.release()
+    #expect(await Self.waitUntil { !model.results.isEmpty })
+    #expect(model.results.map(\.entryID) == ["inputDevice"])
+    await fullGate.open()
+    #expect(await Self.ready(model))
+
+    let clearedTitles = HeldTitleBuild(Self.fixture([(.theme, "alpha")]))
+    let clearedGate = AsyncGate()
+    let cleared = Self.heldModel(clearedTitles, fullGate: clearedGate, full: nil)
+    cleared.setQuery("alpha")
+    cleared.setQuery("   ")
+    clearedTitles.release()
+    #expect(await Self.titlesReady(cleared))
+    if case .loading = cleared.indexState {
+    } else {
+      Issue.record("expected the title index answering while the full index waits: \(cleared.indexState)")
+    }
+    #expect(cleared.results.isEmpty, "a cleared search was answered: \(cleared.results)")
+    #expect(cleared.isPanelPresented == false)
+    await clearedGate.open()
+    #expect(await Self.ready(cleared))
+  }
+
+  @Test("a search that ends before any answer is abandoned, without its text, never zero results")
+  func searchEndedBeforeAnyAnswerIsAbandoned() async {
+    let titles = HeldTitleBuild(Self.fixture([(.theme, "alpha")]))
+    let fullGate = AsyncGate()
+    let finished = FinishedLog()
+    let model = Self.heldModel(
+      titles, fullGate: fullGate, full: nil, usageMetricsOn: { true },
+      emitFinished: { finished.rows.append($0) })
+    model.setQuery("zzqx")
+    model.reset(endedBy: .escape)
+    #expect(finished.rows.map(\.outcome) == [.abandoned])
+    #expect(finished.rows.first?.query == nil, "an unanswered search sent its text")
+    titles.release()
+    await fullGate.open()
+    #expect(await Self.ready(model))
+  }
+
+  @Test("opening the window builds the title index before typing, so the first search answers at once")
+  func preparedWindowAnswersAtOnce() async {
+    let titles = HeldTitleBuild(Self.fixture([(.theme, "alpha")]))
+    let fullGate = AsyncGate()
+    let model = Self.heldModel(titles, fullGate: fullGate, full: nil)
+    model.prepareIndex()
+    model.prepareIndex()
+    titles.release()
+    #expect(await Self.titlesReady(model))
+    if case .loading = model.indexState {
+    } else {
+      Issue.record("expected the title index answering while the full index waits: \(model.indexState)")
+    }
+    model.setQuery("alpha")
+    #expect(model.results.map(\.entryID) == ["theme"], "a prepared window waited")
+    #expect(titles.calls == [false], "the title index was built more than once or on main")
+    await fullGate.open()
+    #expect(await Self.ready(model))
+  }
+
   @Test("the full index keeps a selection the person moved, and never reopens or revives a search")
   func swapKeepsThePersonsState() async throws {
     // Titles answer A then B; the person moves to B. The full index puts C first; B survives.
@@ -213,6 +328,7 @@ struct SettingsSearchModelTests {
     let model = Self.gatedModel(
       gate, titles: Self.fixture([(.theme, "gamma"), (.inputDevice, "gamma")]),
       full: Self.fixture([(.showInDock, "gamma"), (.theme, "gamma"), (.inputDevice, "gamma")]))
+    #expect(await Self.prepared(model))
     model.setQuery("gamma")
     #expect(model.results.map(\.entryID) == ["theme", "inputDevice"])
     model.moveSelection(by: 1)
@@ -227,6 +343,7 @@ struct SettingsSearchModelTests {
     let closed = Self.gatedModel(
       closedGate, titles: Self.fixture([(.theme, "beta")]),
       full: Self.fixture([(.showInDock, "beta")]))
+    #expect(await Self.prepared(closed))
     closed.setQuery("beta")
     closed.dismissPanel()
     await closedGate.open()
@@ -239,6 +356,7 @@ struct SettingsSearchModelTests {
     let reset = Self.gatedModel(
       resetGate, titles: Self.fixture([(.theme, "beta")]),
       full: Self.fixture([(.showInDock, "beta")]))
+    #expect(await Self.prepared(reset))
     reset.setQuery("beta")
     reset.reset()
     await resetGate.open()
@@ -277,6 +395,8 @@ struct SettingsSearchModelTests {
 
     let finished = FinishedLog()
     let gate = AsyncGate()
+    // Bound here: the title build runs off the main actor (#4772) and cannot read the suite.
+    let copy = Self.builtCatalogWithLabels
     let model = SettingsSearchModel(
       loadIndex: {
         await gate.wait()
@@ -286,10 +406,11 @@ struct SettingsSearchModelTests {
       },
       titleIndex: {
         SettingsSearchIndex.titleOnly(
-          appLanguage: "en", preferredLanguages: ["en-US"], copy: Self.builtCatalogWithLabels)
+          appLanguage: "en", preferredLanguages: ["en-US"], copy: copy)
       },
       usageMetricsOn: { true }, emitFinished: { finished.rows.append($0) }, announce: { _ in },
       announcementDelay: .milliseconds(20))
+    #expect(await Self.prepared(model))
     model.setQuery("zzqx")
     #expect(model.attempt?.meaningPending == true, "titles answer while the full index loads")
     await gate.open()
@@ -379,6 +500,7 @@ struct SettingsSearchModelTests {
     let gate = AsyncGate()
     let model = Self.gatedModel(
       gate, titles: Self.fixture([(.theme, "alpha")]), full: Self.fixture([(.showInDock, "delta")]))
+    #expect(await Self.prepared(model))
     model.setQuery("delta")
     #expect(model.results.isEmpty)
     #expect(model.submit() == nil, "Return opened a result nobody could see")
@@ -433,17 +555,21 @@ struct SettingsSearchModelTests {
   }
 
   /// A model on a small full index with `worker`, whose pass deadline passes only when `clock`
-  /// fires. It reports every return of meaning work to `returns`.
+  /// fires. It reports every return of meaning work to `returns`. Returned with its index ready,
+  /// as an open window has it (#4772): the initial `meaningPass` is `.completed`, so a search typed
+  /// before any index answers would satisfy a "pass completed" wait without running a pass.
   static func meaningModel(
     _ worker: SettingsSearchMeaningWorker, clock: DeadlineClock, spoken: SpokenLog = SpokenLog(),
     returns: ReturnLog = ReturnLog()
-  ) -> SettingsSearchModel {
+  ) async -> SettingsSearchModel {
     let full = fixture([(.theme, "alpha")])
     let model = SettingsSearchModel(
       loadIndex: { full }, titleIndex: { full }, meaningWorker: worker,
       meaningDeadlineElapses: { await clock.wait() }, announce: { spoken.lines.append($0) },
       announcementDelay: .milliseconds(20))
     model.meaningWorkReturned = { returns.values.append($0) }
+    model.prepareIndex()
+    #expect(await ready(model), "the meaning test model's index never became ready")
     return model
   }
 
@@ -475,7 +601,7 @@ struct SettingsSearchModelTests {
       await load.wait()
       return Self.loaded()
     }
-    let model = Self.meaningModel(worker, clock: clock, spoken: spoken)
+    let model = await Self.meaningModel(worker, clock: clock, spoken: spoken)
     model.setQuery("zzqx")
     #expect(await Self.ready(model))
     #expect(await started.wait(), "the load never started")
@@ -515,7 +641,7 @@ struct SettingsSearchModelTests {
         encoder: SettingsSearchMeaningWorkerTests.ScriptedEncoder(log: .init(initialState: [])),
         placeVectors: places, selfTest: SettingsSearchMeaningWorkerTests.selfTest)
     }
-    let model = Self.meaningModel(worker, clock: clock, returns: returns)
+    let model = await Self.meaningModel(worker, clock: clock, returns: returns)
     model.setQuery("alpha")
     #expect(await Self.waitUntil { model.meaningPass == .completed })
     #expect(model.results.contains { $0.entryID == "showInDock" && $0.coverage == 0 })
@@ -554,7 +680,7 @@ struct SettingsSearchModelTests {
     let encoder = BlockingEncoder()
     let returns = ReturnLog()
     let worker = SettingsSearchMeaningWorker { Self.loaded(encoder) }
-    let model = Self.meaningModel(worker, clock: clock, returns: returns)
+    let model = await Self.meaningModel(worker, clock: clock, returns: returns)
     #expect(await Self.typeWithPassRunning(model, "alpha", clock: clock))
     #expect(await encoder.blocked.wait(), "the encoder never started")
     let words = model.results.map(\.entryID)
@@ -585,7 +711,7 @@ struct SettingsSearchModelTests {
     let worker = SettingsSearchMeaningWorker {
       throw SettingsSearchMeaningWorker.LoadFailure(reason: .loadFailed)
     }
-    let model = Self.meaningModel(worker, clock: clock)
+    let model = await Self.meaningModel(worker, clock: clock)
     model.setQuery("alpha")
     #expect(await Self.ready(model))
     #expect(model.meaningPass == .skipped)
@@ -603,7 +729,7 @@ struct SettingsSearchModelTests {
       if await calls.value == 1 { throw SettingsSearchMeaningWorker.LoadFailure(reason: .loadFailed) }
       return Self.loaded()
     }
-    let model = Self.meaningModel(worker, clock: clock)
+    let model = await Self.meaningModel(worker, clock: clock)
     model.setQuery("alpha")
     #expect(await Self.ready(model))
     #expect(await Self.waitUntil { model.meaningModel == .notLoaded }, "the failed load never ended")
@@ -626,7 +752,7 @@ struct SettingsSearchModelTests {
       await calls.count()
       throw SettingsSearchMeaningWorker.LoadFailure(reason: .assetsMissing)
     }
-    let model = Self.meaningModel(worker, clock: clock)
+    let model = await Self.meaningModel(worker, clock: clock)
     model.setQuery("alpha")
     #expect(await Self.ready(model))
     #expect(await Self.waitUntil { model.meaningModel == .notLoaded }, "the load never ended")
@@ -655,7 +781,7 @@ struct SettingsSearchModelTests {
       await secondLoad.wait()
       return Self.loaded()
     }
-    let model = Self.meaningModel(worker, clock: clock)
+    let model = await Self.meaningModel(worker, clock: clock)
     model.setQuery("alpha")
     #expect(await Self.waitUntil { model.meaningModel == .ready && model.meaningPass == .skipped },
             "the encoding failure did not end the pass: \(model.meaningPass)")
@@ -681,7 +807,7 @@ struct SettingsSearchModelTests {
       await calls.count()
       return Self.loaded()
     }
-    let model = Self.meaningModel(worker, clock: clock)
+    let model = await Self.meaningModel(worker, clock: clock)
     model.setQuery("alpha")
     #expect(await Self.waitUntil { model.meaningPass == .completed }, "\(model.meaningPass)")
     model.reset(endedBy: .windowClose)
@@ -703,7 +829,7 @@ struct SettingsSearchModelTests {
       await load.wait()
       return Self.loaded()
     }
-    let model = Self.meaningModel(worker, clock: clock)
+    let model = await Self.meaningModel(worker, clock: clock)
     model.setQuery("alpha")
     #expect(await Self.ready(model))
     #expect(await started.wait(), "the load never started")
@@ -833,6 +959,29 @@ struct BlockingEncoder: SettingsSearchQueryEncoding, Sendable {
   }
 
   func release() { gate.signal() }
+}
+
+/// A title-only build the test holds open (#4772). Off the main thread it waits, bounded, for
+/// `release()`; on the main thread it returns at once, so code that builds on main fails the
+/// test's assertions instead of deadlocking. `calls` records, per build, whether it ran on main.
+final class HeldTitleBuild: Sendable {
+  private let released = DispatchSemaphore(value: 0)
+  private let mainThreadCalls = OSAllocatedUnfairLock(initialState: [Bool]())
+  private let index: SettingsSearchIndex
+
+  init(_ index: SettingsSearchIndex) { self.index = index }
+
+  var builder: @Sendable () -> SettingsSearchIndex {
+    { [self] in
+      let onMain = Thread.isMainThread
+      mainThreadCalls.withLock { $0.append(onMain) }
+      if !onMain { _ = released.wait(timeout: .now() + 5) }
+      return index
+    }
+  }
+
+  func release() { released.signal() }
+  var calls: [Bool] { mainThreadCalls.withLock { $0 } }
 }
 
 /// Resumes a continuation once, whichever of the change or the deadline comes first.
