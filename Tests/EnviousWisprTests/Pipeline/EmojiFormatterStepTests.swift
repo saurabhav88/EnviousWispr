@@ -22,6 +22,38 @@ struct EmojiFormatterStepTests {
       ], enablePhonetic: false)
   }
 
+  // MARK: - Shared dictionary (#4783)
+
+  @Test("Production steps share one dictionary: same output as a fresh load, separate enable flags")
+  func productionStepsMatchFreshDictionary() async throws {
+    // The Parakeet and Whisper drivers each build `EmojiFormatterStep()`; both must convert alike.
+    let first = EmojiFormatterStep()
+    let second = EmojiFormatterStep()
+    first.emojiFormatterEnabled = true
+    #expect(second.isEnabled == false)
+    second.emojiFormatterEnabled = true
+
+    try #require(first.isEnabled, "The first production step requires the bundled dictionary")
+    try #require(second.isEnabled, "The second production step requires the bundled dictionary")
+
+    let fresh = EmojiFormatterStep(formatter: try EmojiFormatter.load())
+    fresh.emojiFormatterEnabled = true
+
+    for (input, expected) in [
+      ("thumbs up emoji", "👍"),
+      ("thumb up emoji", "👍"),
+      ("thumbs up", "thumbs up"),
+    ] {
+      let context = Self.makeContext(text: input)
+      let firstOutput = try await first.process(context)
+      let secondOutput = try await second.process(context)
+      let freshOutput = try await fresh.process(context)
+      #expect(firstOutput.text == expected)
+      #expect(secondOutput.text == firstOutput.text)
+      #expect(freshOutput.text == firstOutput.text)
+    }
+  }
+
   // MARK: - Enable gate
 
   @Test("Disabled toggle: isEnabled is false — runner skips step entirely")
