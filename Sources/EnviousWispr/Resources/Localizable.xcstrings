@@ -7962,6 +7962,23 @@
         }
       }
     },
+    "Available interface languages" : {
+      "comment" : "Settings search result: the languages the app itself can be shown in.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verfügbare Oberflächensprachen"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Langues d’interface disponibles"
+          }
+        }
+      }
+    },
     "Available with %@" : {
       "comment" : "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.",
       "localizations" : {
@@ -16461,23 +16478,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Anglais (R.-U.)"
-          }
-        }
-      }
-    },
-    "English or German" : {
-      "comment" : "Settings search result: the languages the app itself can be shown in.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Englisch oder Deutsch"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Anglais ou allemand"
           }
         }
       }

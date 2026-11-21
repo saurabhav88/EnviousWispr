@@ -14,7 +14,7 @@ The interface ships in English, German and French. The other 29 languages (ar, b
 
 327 nodes, 298 searchable, 9536 vocabulary blocks.
 
-Fingerprints: mapSHA256 `2ca8c4078c0dc26bc644b330f24be53883f2ec66c78af0b40c28dd0796ecd4ad`, uiCatalogSHA256 `9eed0cee8eae4160339439edda86346aefd8b3d593be06d8f7c3fec19a977c68`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `e3699c870128d2d978cb3844ab77161c7b3d1c7165701147dd6b93b5931df1f9`
+Fingerprints: mapSHA256 `2ca8c4078c0dc26bc644b330f24be53883f2ec66c78af0b40c28dd0796ecd4ad`, uiCatalogSHA256 `94644de0156bde62ef866558d553031076f4e3a1d5ffd348c463eeb1ed93f1e1`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `10b03f9424f1daa453e4e854ec7ae6325489c86a5f8c7c9b257ed234106a7d31`
 
 ## Structure
 
@@ -5184,9 +5184,9 @@ Fingerprints: mapSHA256 `2ca8c4078c0dc26bc644b330f24be53883f2ec66c78af0b40c28dd0
 | Arrival target | [`appLanguage`](#node-appLanguage) |
 | Fallbacks, in order | none |
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
-| Search (en) | words: English, German, Deutsch<br>phrases: show the app menus in English; show the app menus in German |
-| Search (de) | words: Deutsch, Englisch, English<br>phrases: die Appmenüs auf Deutsch anzeigen; die Appmenüs auf Englisch anzeigen |
-| Search (fr) | words: menus anglais, menus allemands, English, Deutsch<br>phrases: afficher les menus de l’application en anglais; afficher les menus de l’application en allemand |
+| Search (en) | words: English, German, Deutsch, French, interface languages<br>phrases: show the app menus in English; show the app menus in German; show the app menus in French |
+| Search (de) | words: Deutsch, Englisch, English, Französisch, Oberflächensprachen<br>phrases: die Appmenüs auf Deutsch anzeigen; die Appmenüs auf Englisch anzeigen; die Appmenüs auf Französisch anzeigen |
+| Search (fr) | words: menus anglais, menus allemands, English, Deutsch, menus français, langues d’interface<br>phrases: afficher les menus de l’application en anglais; afficher les menus de l’application en allemand; afficher les menus de l’application en français |
 | Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-appLanguage-relaunch"></a>

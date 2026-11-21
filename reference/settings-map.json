@@ -6,9 +6,9 @@
   },
   "fingerprints" : {
     "mapSHA256" : "2ca8c4078c0dc26bc644b330f24be53883f2ec66c78af0b40c28dd0796ecd4ad",
-    "uiCatalogSHA256" : "9eed0cee8eae4160339439edda86346aefd8b3d593be06d8f7c3fec19a977c68",
+    "uiCatalogSHA256" : "94644de0156bde62ef866558d553031076f4e3a1d5ffd348c463eeb1ed93f1e1",
     "vocabularyCanonicalization" : "length-prefixed-v1",
-    "vocabularySHA256" : "e3699c870128d2d978cb3844ab77161c7b3d1c7165701147dd6b93b5931df1f9"
+    "vocabularySHA256" : "10b03f9424f1daa453e4e854ec7ae6325489c86a5f8c7c9b257ed234106a7d31"
   },
   "interfaceLanguages" : [
     "en",
@@ -77461,406 +77461,473 @@
         "ar" : {
           "phrases" : [
             "اعرض قوائم التطبيق بالإنجليزية",
-            "اعرض قوائم التطبيق بالألمانية"
+            "اعرض قوائم التطبيق بالألمانية",
+            "اعرض قوائم التطبيق بالفرنسية"
           ],
           "title" : "الإنجليزية / الألمانية",
           "words" : [
             "واجهة إنجليزية",
             "واجهة ألمانية",
-            "قوائم Deutsch"
+            "قوائم Deutsch",
+            "واجهة فرنسية"
           ]
         },
         "bg" : {
           "phrases" : [
             "показвай менютата на английски",
-            "показвай менютата на немски"
+            "показвай менютата на немски",
+            "показвай менютата на френски"
           ],
           "title" : "Английски / Немски",
           "words" : [
             "английско меню",
             "немско меню",
             "English меню",
-            "Deutsch меню"
+            "Deutsch меню",
+            "френско меню"
           ]
         },
         "cs" : {
           "phrases" : [
             "zobrazit nabídky aplikace anglicky",
-            "zobrazit nabídky aplikace německy"
+            "zobrazit nabídky aplikace německy",
+            "zobrazit nabídky aplikace francouzsky"
           ],
           "title" : "Dostupné jazyky aplikace",
           "words" : [
             "anglické menu",
             "německé menu",
             "English menu",
-            "Deutsch menu"
+            "Deutsch menu",
+            "francouzské menu"
           ]
         },
         "da" : {
           "phrases" : [
             "vis appens menuer på engelsk",
-            "vis appens menuer på tysk"
+            "vis appens menuer på tysk",
+            "vis appens menuer på fransk"
           ],
           "title" : "Engelsk / tysk",
           "words" : [
             "engelske menuer",
             "tyske menuer",
-            "Deutsch appsprog"
+            "Deutsch appsprog",
+            "franske menuer"
           ]
         },
         "de" : {
           "phrases" : [
             "die Appmenüs auf Deutsch anzeigen",
-            "die Appmenüs auf Englisch anzeigen"
+            "die Appmenüs auf Englisch anzeigen",
+            "die Appmenüs auf Französisch anzeigen"
           ],
           "words" : [
             "Deutsch",
             "Englisch",
-            "English"
+            "English",
+            "Französisch",
+            "Oberflächensprachen"
           ]
         },
         "el" : {
           "phrases" : [
             "δείξε τα μενού της εφαρμογής στα αγγλικά",
-            "δείξε τα μενού της εφαρμογής στα γερμανικά"
+            "δείξε τα μενού της εφαρμογής στα γερμανικά",
+            "δείξε τα μενού της εφαρμογής στα γαλλικά"
           ],
           "title" : "Αγγλικά / Γερμανικά",
           "words" : [
             "αγγλικά μενού",
             "γερμανικά μενού",
             "English μενού",
-            "Deutsch μενού"
+            "Deutsch μενού",
+            "γαλλικά μενού"
           ]
         },
         "en" : {
           "phrases" : [
             "show the app menus in English",
-            "show the app menus in German"
+            "show the app menus in German",
+            "show the app menus in French"
           ],
           "words" : [
             "English",
             "German",
-            "Deutsch"
+            "Deutsch",
+            "French",
+            "interface languages"
           ]
         },
         "es" : {
           "phrases" : [
             "poner los menús de la app en inglés",
-            "poner los menús de la app en alemán"
+            "poner los menús de la app en alemán",
+            "poner los menús de la app en francés"
           ],
           "title" : "Idiomas disponibles para la interfaz",
           "words" : [
             "menús en inglés",
             "menús en alemán",
             "English interfaz",
-            "Deutsch interfaz"
+            "Deutsch interfaz",
+            "menús en francés"
           ]
         },
         "et" : {
           "phrases" : [
             "näita rakenduse menüüsid inglise keeles",
-            "näita rakenduse menüüsid saksa keeles"
+            "näita rakenduse menüüsid saksa keeles",
+            "näita rakenduse menüüsid prantsuse keeles"
           ],
           "title" : "Inglise / saksa",
           "words" : [
             "ingliskeelsed menüüd",
             "saksakeelsed menüüd",
             "English menüüd",
-            "Deutsch menüüd"
+            "Deutsch menüüd",
+            "prantsuskeelsed menüüd"
           ]
         },
         "fi" : {
           "phrases" : [
             "näytä sovelluksen valikot englanniksi",
-            "näytä sovelluksen valikot saksaksi"
+            "näytä sovelluksen valikot saksaksi",
+            "näytä sovelluksen valikot ranskaksi"
           ],
           "title" : "Sovelluksen kielivaihtoehdot",
           "words" : [
             "englanninkieliset valikot",
             "saksankieliset valikot",
             "Deutsch-valikot",
-            "English-valikot"
+            "English-valikot",
+            "ranskankieliset valikot"
           ]
         },
         "fr" : {
           "phrases" : [
             "afficher les menus de l’application en anglais",
-            "afficher les menus de l’application en allemand"
+            "afficher les menus de l’application en allemand",
+            "afficher les menus de l’application en français"
           ],
           "words" : [
             "menus anglais",
             "menus allemands",
             "English",
-            "Deutsch"
+            "Deutsch",
+            "menus français",
+            "langues d’interface"
           ]
         },
         "hi" : {
           "phrases" : [
             "ऐप के मेन्यू अंग्रेज़ी में दिखाओ",
-            "ऐप के मेन्यू जर्मन में दिखाओ"
+            "ऐप के मेन्यू जर्मन में दिखाओ",
+            "ऐप के मेन्यू फ्रेंच में दिखाओ"
           ],
           "title" : "उपलब्ध ऐप भाषाएँ",
           "words" : [
             "अंग्रेज़ी मेन्यू",
             "इंग्लिश मेन्यू",
             "जर्मन मेन्यू",
-            "Deutsch मेन्यू"
+            "Deutsch मेन्यू",
+            "फ्रेंच मेन्यू"
           ]
         },
         "hr" : {
           "phrases" : [
             "prikaži izbornike aplikacije na engleskom",
-            "prikaži izbornike aplikacije na njemačkom"
+            "prikaži izbornike aplikacije na njemačkom",
+            "prikaži izbornike aplikacije na francuskom"
           ],
           "title" : "Engleski / Njemački",
           "words" : [
             "engleski izbornici",
             "njemački izbornici",
             "English sučelje",
-            "Deutsch sučelje"
+            "Deutsch sučelje",
+            "francuski izbornici"
           ]
         },
         "hu" : {
           "phrases" : [
             "angolul szeretném látni az app menüit",
-            "németül szeretném látni az app menüit"
+            "németül szeretném látni az app menüit",
+            "franciául szeretném látni az app menüit"
           ],
           "title" : "Angol / Német",
           "words" : [
             "angol menük",
             "német menük",
             "English felület",
-            "Deutsch felület"
+            "Deutsch felület",
+            "francia menük"
           ]
         },
         "it" : {
           "phrases" : [
             "mostra i menu dell'app in inglese",
-            "mostra i menu dell'app in tedesco"
+            "mostra i menu dell'app in tedesco",
+            "mostra i menu dell'app in francese"
           ],
           "title" : "Lingue disponibili per l'interfaccia",
           "words" : [
             "menu inglese",
             "menu tedesco",
             "interfaccia English",
-            "interfaccia Deutsch"
+            "interfaccia Deutsch",
+            "menu francese"
           ]
         },
         "ja" : {
           "phrases" : [
             "アプリのメニューを英語にする",
-            "アプリのメニューをドイツ語にする"
+            "アプリのメニューをドイツ語にする",
+            "アプリのメニューをフランス語にする"
           ],
           "title" : "アプリの表示に使う言語",
           "words" : [
             "英語メニュー",
             "ドイツ語メニュー",
             "English表示",
-            "Deutsch表示"
+            "Deutsch表示",
+            "フランス語メニュー"
           ]
         },
         "ko" : {
           "phrases" : [
             "앱 메뉴를 영어로 보기",
-            "앱 메뉴를 독일어로 보기"
+            "앱 메뉴를 독일어로 보기",
+            "앱 메뉴를 프랑스어로 보기"
           ],
           "title" : "영어 / 독일어",
           "words" : [
             "영어 메뉴",
             "독일어 메뉴",
             "영문 인터페이스",
-            "Deutsch 메뉴"
+            "Deutsch 메뉴",
+            "프랑스어 메뉴"
           ]
         },
         "lt" : {
           "phrases" : [
             "rodyti programos meniu anglų kalba",
-            "rodyti programos meniu vokiečių kalba"
+            "rodyti programos meniu vokiečių kalba",
+            "rodyti programos meniu prancūzų kalba"
           ],
           "title" : "Anglų / vokiečių",
           "words" : [
             "angliški meniu",
             "vokiški meniu",
             "English sąsaja",
-            "Deutsch sąsaja"
+            "Deutsch sąsaja",
+            "prancūziški meniu"
           ]
         },
         "lv" : {
           "phrases" : [
             "rādīt lietotnes izvēlnes angļu valodā",
-            "rādīt lietotnes izvēlnes vācu valodā"
+            "rādīt lietotnes izvēlnes vācu valodā",
+            "rādīt lietotnes izvēlnes franču valodā"
           ],
           "title" : "Angļu / vācu",
           "words" : [
             "izvēlnes angliski",
             "izvēlnes vāciski",
             "English saskarne",
-            "Deutsch saskarne"
+            "Deutsch saskarne",
+            "izvēlnes franciski"
           ]
         },
         "mt" : {
           "phrases" : [
             "uri l-menus tal-app bl-Ingliż",
-            "uri l-menus tal-app bil-Ġermaniż"
+            "uri l-menus tal-app bil-Ġermaniż",
+            "uri l-menus tal-app bil-Franċiż"
           ],
           "title" : "Lingwi disponibbli tal-app",
           "words" : [
             "menus Ingliżi",
             "menus Ġermaniżi",
-            "interface Deutsch"
+            "interface Deutsch",
+            "menus Franċiżi"
           ]
         },
         "nl" : {
           "phrases" : [
             "toon de appmenu's in het Engels",
-            "toon de appmenu's in het Duits"
+            "toon de appmenu's in het Duits",
+            "toon de appmenu's in het Frans"
           ],
           "title" : "Beschikbare app-talen",
           "words" : [
             "Engelse menu's",
             "Duitse menu's",
-            "Deutsch menu's"
+            "Deutsch menu's",
+            "Franse menu's"
           ]
         },
         "pl" : {
           "phrases" : [
             "pokaż menu aplikacji po angielsku",
-            "pokaż menu aplikacji po niemiecku"
+            "pokaż menu aplikacji po niemiecku",
+            "pokaż menu aplikacji po francusku"
           ],
           "title" : "Dostępne języki interfejsu",
           "words" : [
             "angielskie menu",
             "niemieckie menu",
             "English menu",
-            "Deutsch menu"
+            "Deutsch menu",
+            "francuskie menu"
           ]
         },
         "pt" : {
           "phrases" : [
             "mostrar os menus do app em inglês",
-            "mostrar os menus do app em alemão"
+            "mostrar os menus do app em alemão",
+            "mostrar os menus do app em francês"
           ],
           "title" : "Idioma disponível para os menus",
           "words" : [
             "menus em inglês",
             "menus em alemão",
-            "menus em Deutsch"
+            "menus em Deutsch",
+            "menus em francês"
           ]
         },
         "ro" : {
           "phrases" : [
             "arată meniurile aplicației în engleză",
-            "arată meniurile aplicației în germană"
+            "arată meniurile aplicației în germană",
+            "arată meniurile aplicației în franceză"
           ],
           "title" : "Engleză / Germană",
           "words" : [
             "meniuri engleză",
             "meniuri germană",
-            "interfață Deutsch"
+            "interfață Deutsch",
+            "meniuri în franceză"
           ]
         },
         "ru" : {
           "phrases" : [
             "показывать меню приложения на английском",
-            "переключить интерфейс приложения на немецкий"
+            "переключить интерфейс приложения на немецкий",
+            "показывать меню приложения на французском"
           ],
           "title" : "Английский или немецкий интерфейс",
           "words" : [
             "английское меню",
             "немецкое меню",
             "English интерфейс",
-            "Deutsch интерфейс"
+            "Deutsch интерфейс",
+            "французское меню"
           ]
         },
         "sk" : {
           "phrases" : [
             "zobraz menu aplikácie v angličtine",
-            "zobraz menu aplikácie v nemčine"
+            "zobraz menu aplikácie v nemčine",
+            "zobraz menu aplikácie vo francúzštine"
           ],
           "title" : "Angličtina / Nemčina",
           "words" : [
             "anglické menu",
             "nemecké menu",
             "English rozhranie",
-            "Deutsch rozhranie"
+            "Deutsch rozhranie",
+            "francúzske menu"
           ]
         },
         "sl" : {
           "phrases" : [
             "pokaži menije aplikacije v angleščini",
-            "pokaži menije aplikacije v nemščini"
+            "pokaži menije aplikacije v nemščini",
+            "pokaži menije aplikacije v francoščini"
           ],
           "title" : "Izbrani jezik vmesnika",
           "words" : [
             "angleški meniji",
             "nemški meniji",
             "English vmesnik",
-            "Deutsch vmesnik"
+            "Deutsch vmesnik",
+            "francoski meniji"
           ]
         },
         "sv" : {
           "phrases" : [
             "visa appens menyer på engelska",
-            "visa appens menyer på tyska"
+            "visa appens menyer på tyska",
+            "visa appens menyer på franska"
           ],
           "title" : "Engelska eller tyska",
           "words" : [
             "engelska menyer",
             "tyska menyer",
             "English menyer",
-            "Deutsch menyer"
+            "Deutsch menyer",
+            "franska menyer"
           ]
         },
         "tr" : {
           "phrases" : [
             "uygulamanın menüleri İngilizce olsun",
-            "uygulamanın menüleri Almanca olsun"
+            "uygulamanın menüleri Almanca olsun",
+            "uygulamanın menüleri Fransızca olsun"
           ],
           "title" : "İngilizce / Almanca",
           "words" : [
             "İngilizce menüler",
             "Almanca menüler",
             "English arayüz",
-            "Deutsch arayüz"
+            "Deutsch arayüz",
+            "Fransızca menüler"
           ]
         },
         "uk" : {
           "phrases" : [
             "показувати меню програми англійською",
-            "показувати меню програми німецькою"
+            "показувати меню програми німецькою",
+            "показувати меню програми французькою"
           ],
           "title" : "Англійська / Німецька",
           "words" : [
             "англійські меню",
             "німецькі меню",
             "English інтерфейс",
-            "Deutsch інтерфейс"
+            "Deutsch інтерфейс",
+            "французькі меню"
           ]
         },
         "vi" : {
           "phrases" : [
             "hiện menu ứng dụng bằng tiếng Anh",
-            "hiện menu ứng dụng bằng tiếng Đức"
+            "hiện menu ứng dụng bằng tiếng Đức",
+            "hiện menu ứng dụng bằng tiếng Pháp"
           ],
           "title" : "Ngôn ngữ giao diện có sẵn",
           "words" : [
             "menu tiếng Anh",
             "menu tiếng Đức",
             "giao diện English",
-            "giao diện Deutsch"
+            "giao diện Deutsch",
+            "menu tiếng Pháp"
           ]
         },
         "zh" : {
           "phrases" : [
             "把应用菜单显示成英语",
-            "把应用菜单显示成德语"
+            "把应用菜单显示成德语",
+            "把应用菜单显示成法语"
           ],
           "title" : "英语或德语界面",
           "words" : [
             "英文界面",
             "德文界面",
             "English界面",
-            "Deutsch界面"
+            "Deutsch界面",
+            "法文界面"
           ]
         }
       }
