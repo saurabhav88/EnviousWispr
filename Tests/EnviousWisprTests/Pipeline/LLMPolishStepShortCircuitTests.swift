@@ -275,6 +275,22 @@ struct LLMPolishStepShortCircuitTests {
     #expect(result.acceptedTranslationTarget == nil)
   }
 
+  @Test("An exact source-language echo is rejected when Hindi is requested")
+  func translationEchoPreservesSourceAndReportsRejection() async throws {
+    let source = "Please keep this message in English exactly as I said it. Do not translate it. "
+      + "We are meeting Emma and Sam at the north entrance on Friday."
+    let step = makeStep(counter: InvocationCounter(), result: source, provider: .claude)
+    var input = TextProcessingContext(text: source, language: "en")
+    input.requestedTranslationTarget = .hindi
+
+    let result = try await step.process(input)
+
+    #expect(result.text == source)
+    #expect(result.polishedText == nil)
+    #expect(result.acceptedTranslationTarget == nil)
+    #expect(result.polishValidatorGuard == "translation_echo")
+  }
+
   @Test("A discarded translation leaves the entire prepared source for delivery")
   func translationRejectionKeepsSource() async throws {
     let source = "Bitte bring mir am Freitag um 15 Uhr die drei Schlüssel mit."

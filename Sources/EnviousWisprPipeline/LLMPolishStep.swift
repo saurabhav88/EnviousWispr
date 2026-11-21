@@ -1577,8 +1577,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   // MARK: - Output Validation
 
   /// What `validatePolishOutput` decided (#3038). `text` is what the pipeline delivers;
-  /// `guardName` names the guard that discarded the model's output (`expansion`,
-  /// `content_drop`, `question_flip`, `symbol_drop`) or is nil when the output stood;
+  /// `guardName` names the guard that discarded the model's output (`translation_echo`,
+  /// `expansion`, `content_drop`, `question_flip`, `symbol_drop`) or is nil when the output stood;
   /// `symbolTokens` is the number of `/word` and `\word` occurrences the ORIGINAL carried when
   /// Guard 4 ran (zero is a measurement), nil when an earlier guard returned first. Counts
   /// and names only, never text (`telemetry-privacy-boundary`).
@@ -1630,6 +1630,10 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   ) -> PolishValidation {
     guard !original.isEmpty else {
       return PolishValidation(text: polished, guardName: nil, symbolTokens: nil)
+    }
+
+    if crossLanguageSource != nil, polished.utf8.elementsEqual(original.utf8) {
+      return PolishValidation(text: original, guardName: "translation_echo", symbolTokens: nil)
     }
 
     if policy == .ordinary {
