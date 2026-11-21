@@ -12,9 +12,9 @@ Generated from the compiled Settings Map and the validated search vocabulary. Do
 
 The interface ships in English and German. The other 30 languages (ar, bg, cs, da, el, es, et, fi, fr, hi, hr, hu, it, ja, ko, lt, lv, mt, nl, pl, pt, ro, ru, sk, sl, sv, tr, uk, vi, zh) are search metadata only: words and titles people may type, matched against the same places. Titles below read English / German.
 
-325 nodes, 296 searchable, 9472 vocabulary blocks.
+326 nodes, 297 searchable, 9504 vocabulary blocks.
 
-Fingerprints: mapSHA256 `6c2420ddd1ab11cc6239d8b097ac18c0e3ec1bfc62deea6849c3e77ad772d767`, uiCatalogSHA256 `36f8fbf6d4834b0bfdcd4dcaad5e8b34fffe0a224a35ab60c2a206bd36317c77`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `69186cd226bfb54ce66cc90148130ba842b55eca1f94a8ef33d2b26d99e25aac`
+Fingerprints: mapSHA256 `37123b897fb0897f42ec3f7e6634cb220cdfe8c96174f7f62f308b15994973fd`, uiCatalogSHA256 `72def59678c65a5971941a0a1895ee3c52377ba7f1b8e09702a7146f9d6a036c`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `f27d623c318325d7367f855d330f83ba73699b4880eab0e5a099978d419fd4e6`
 
 ## Structure
 
@@ -242,6 +242,7 @@ Fingerprints: mapSHA256 `6c2420ddd1ab11cc6239d8b097ac18c0e3ec1bfc62deea6849c3e77
           - [Air Glint / Luftfunkeln](#node-recordingChime-airGlint) `recordingChime.airGlint` (choice)
     - [Clipboard / Zwischenablage](#node-dictation-tab-clipboard) `dictation.tab.clipboard` (feature)
       - [Clipboard / Zwischenablage](#node-section-clipboard) `section.clipboard` (section)
+        - [Paste dictations automatically / Diktate automatisch einfügen](#node-automaticDictationPaste) `automaticDictationPaste` (setting)
         - [Auto-copy to clipboard / Automatisch in die Zwischenablage kopieren](#node-autoCopyToClipboard) `autoCopyToClipboard` (setting)
         - [Restore clipboard after paste / Zwischenablage nach dem Einfügen wiederherstellen](#node-restoreClipboard) `restoreClipboard` (setting)
         - [Hide dictations from clipboard manager apps / Diktate vor Zwischenablage-Managern verbergen](#node-keepOutOfClipboardHistory) `keepOutOfClipboardHistory` (setting)
@@ -2254,6 +2255,28 @@ Fingerprints: mapSHA256 `6c2420ddd1ab11cc6239d8b097ac18c0e3ec1bfc62deea6849c3e77
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: listen, hear<br>phrases: play this chime for me; let me hear this sound |
 | Search (de) | words: anhören, probehören<br>phrases: spiel mir diesen Ton vor; lass mich den Klang anhören |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-automaticDictationPaste"></a>
+
+### Paste dictations automatically / Diktate automatisch einfügen (`automaticDictationPaste`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | setting |
+| Parent | [`section.clipboard`](#node-section-clipboard) |
+| Title source | catalog key `Paste dictations automatically` |
+| Description | Turn this off to keep your latest dictation on the clipboard for manual paste. / Wenn du das ausschaltest, bleibt dein letztes Diktat zum manuellen Einfügen in der Zwischenablage. |
+| Description source | catalog key `Turn this off to keep your latest dictation on the clipboard for manual paste.` |
+| Destination | `dictation` › `clipboard` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`automaticDictationPaste`](#node-automaticDictationPaste) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | words: auto-paste, automatic pasting, manual paste, clipboard only<br>phrases: paste my dictation automatically; stop pasting my dictation automatically; copy every dictation to the clipboard so I can paste it myself |
+| Search (de) | words: Diktat manuell einfügen<br>phrases: automatisches Einfügen nach dem Diktieren ausschalten; letztes Diktat in der Zwischenablage behalten und selbst einfügen |
 | Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-autoCopyToClipboard"></a>

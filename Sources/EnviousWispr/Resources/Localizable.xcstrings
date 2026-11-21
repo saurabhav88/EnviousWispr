@@ -2442,6 +2442,16 @@
         }
       }
     },
+    "AI polish failed: %@ blocked this text." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-Nachbearbeitung fehlgeschlagen: %@ hat diesen Text blockiert."
+          }
+        }
+      }
+    },
     "AI polish failed: %@ blocked this text. Pasted without AI polish." : {
       "comment" : "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is.",
       "localizations" : {
@@ -2471,6 +2481,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "KI-Nachbearbeitung fehlgeschlagen: %@ hat die Antwort vor Abschluss der Nachbearbeitung beendet. Ohne KI-Nachbearbeitung eingefügt. Falls das wiederholt passiert, wähle ein anderes Modell oder diktiere kürzer."
+          }
+        }
+      }
+    },
+    "AI polish failed: %@ ended the response before AI polish finished. Try a shorter dictation or another model." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-Nachbearbeitung fehlgeschlagen: %@ hat die Antwort vorzeitig beendet. Versuche es mit einem kürzeren Diktat oder einem anderen Modell."
           }
         }
       }
@@ -2558,6 +2578,16 @@
         }
       }
     },
+    "AI polish failed: a configuration problem stopped it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-Nachbearbeitung wegen eines Konfigurationsproblems fehlgeschlagen."
+          }
+        }
+      }
+    },
     "AI polish failed: a configuration problem stopped it. Pasted without AI polish." : {
       "comment" : "Dictation notice: AI polish failed and the original text was used.",
       "localizations" : {
@@ -2565,6 +2595,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "KI-Nachbearbeitung wegen eines Konfigurationsproblems fehlgeschlagen. Ohne KI-Nachbearbeitung eingefügt."
+          }
+        }
+      }
+    },
+    "AI polish failed: an unexpected error stopped it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-Nachbearbeitung wegen eines unerwarteten Fehlers fehlgeschlagen."
           }
         }
       }
@@ -2696,6 +2736,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "KI-Nachbearbeitung übersprungen"
+          }
+        }
+      }
+    },
+    "AI polish skipped: %@ did not answer in time." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-Nachbearbeitung übersprungen: %@ hat nicht rechtzeitig geantwortet."
           }
         }
       }
@@ -7821,6 +7871,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Kopiert"
+          }
+        }
+      }
+    },
+    "Copied without AI polish. %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ohne KI-Nachbearbeitung kopiert. %@"
           }
         }
       }
@@ -19888,6 +19948,17 @@
         }
       }
     },
+    "Paste dictations automatically" : {
+      "comment" : "Clipboard settings: automatic paste switch title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktate automatisch einfügen"
+          }
+        }
+      }
+    },
     "Paste disabled — Accessibility required" : {
       "comment" : "Menu bar menu: paste needs the Accessibility permission.",
       "localizations" : {
@@ -29159,6 +29230,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Mikrofon einschalten"
+          }
+        }
+      }
+    },
+    "Turn this off to keep your latest dictation on the clipboard for manual paste." : {
+      "comment" : "Clipboard settings: explains what happens when automatic paste is off.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn du das ausschaltest, bleibt dein letztes Diktat zum manuellen Einfügen in der Zwischenablage."
           }
         }
       }

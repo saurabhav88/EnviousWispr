@@ -537,7 +537,7 @@ struct KernelFinalizationWiring {
     // cost of defaulting it is a silent regression nobody can grep for. Two
     // tests already reached the real clipboard exactly this way and neither
     // mentions a clipboard anywhere.
-    copyToClipboard: @escaping @MainActor (String) -> Void
+    copyToClipboard: @escaping @MainActor (String) -> Bool
   ) {
     // processText — run the limb chain, write the polish side-channel, return
     // the final display text. `onPolishStarted` is wired into
@@ -605,7 +605,8 @@ struct KernelFinalizationWiring {
         // so it is nil here — substituting it would emit no take key at all. Same
         // key as the completion events, read at a different point; swapping the two
         // reads would silently blank one family.
-        takeID: telemetryState.takeID)
+        takeID: telemetryState.takeID,
+        claimsPaste: context.config?.copyOnlyByPreference != true)
       var ctx = result.context
       // #2614: which language the chain cleaned under, and on what evidence.
       // Source and bucket only, never the score (`telemetry-privacy-boundary`).
@@ -828,6 +829,7 @@ struct KernelFinalizationWiring {
     deliver = { text, disposition in
       let pasteStart = CFAbsoluteTimeGetCurrent()
       let config = context.config
+      let copyOnlyByPreference = config?.copyOnlyByPreference == true
       var pasteResult: PasteDeliveryResult?
       let deliveryOutcome: KernelDeliveryOutcome
       // #1921: cleared BEFORE the auto-paste branch below, because `outcome` is
@@ -860,7 +862,7 @@ struct KernelFinalizationWiring {
         // silently breaks latency reporting — a metric regression invisible
         // until someone queries it and finds a hole shaped like this feature.
         deliveryOutcome = .suppressed
-      } else if config?.autoPasteToActiveApp == true {
+      } else if config?.autoPasteToActiveApp == true, !copyOnlyByPreference {
         // #1980: if the record-start capture failed, retry once here, scoped
         // directly to the app the user was dictating into (`context.targetApp`'s
         // pid) — never the earlier system-wide query, which can answer for a
@@ -1102,13 +1104,13 @@ struct KernelFinalizationWiring {
         if let arrivalCapture = result.arrivalCapture {
           Task { @MainActor in await arrivalCapture.terminated() }
         }
-      } else if config?.autoCopyToClipboard == true {
+      } else if copyOnlyByPreference || config?.autoCopyToClipboard == true {
         // #2465: auto-copy never enters `PasteCascadeExecutor`, so it reaches the board without
         // passing any of the claim sites there. Same ownership failure as Tier 3, one layer up.
         ClipboardCleanup.deliveryClaimsBoard()
-        copyToClipboard(text)
-        outcome.practiceCopiedToClipboard = true
-        deliveryOutcome = .clipboardOnly
+        let copied = copyToClipboard(text)
+        outcome.practiceCopiedToClipboard = copied
+        deliveryOutcome = copyOnlyByPreference ? .intentionalClipboard(copied: copied) : .clipboardOnly
       } else {
         deliveryOutcome = .clipboardOnly
       }
@@ -1118,7 +1120,8 @@ struct KernelFinalizationWiring {
       outcome.pasteResult = pasteResult
       outcome.pasteDurationSeconds = pipelineEnd - pasteStart
       Self.updateTranscriptMetrics(
-        outcome: outcome, context: context, telemetryState: telemetryState)
+        outcome: outcome, context: context, telemetryState: telemetryState,
+        deliveryOutcome: deliveryOutcome)
       Self.logPipelineTimingTotal(outcome: outcome)
       // PR-5 Rung 4.5 (#827): LID perf signpost `t_clipboard_write` —
       // gated on engine LID capability (NOT paste outcome). OLD pipeline
@@ -1730,7 +1733,8 @@ struct KernelFinalizationWiring {
   private static func updateTranscriptMetrics(
     outcome: KernelFinalizationOutcome,
     context: KernelSessionContext,
-    telemetryState: KernelTelemetryState
+    telemetryState: KernelTelemetryState,
+    deliveryOutcome: KernelDeliveryOutcome
   ) {
     guard var transcript = outcome.transcript else { return }
     let asrLatency =
@@ -1768,6 +1772,8 @@ struct KernelFinalizationWiring {
       asrLatencySeconds: asrLatency,
       llmLatencySeconds: outcome.polishDurationSeconds,
       pasteTier: outcome.pasteResult?.pasteTierLabel,
+      deliveryOutcome: deliveryOutcome == .intentionalClipboard(copied: true)
+        ? ExecutionMetrics.automaticPasteDisabledDelivery : nil,
       pasteLatencyMs: outcome.pasteResult?.durationMs,
       // #1785: why this dictation was or was not repaired, and which payload the
       // writing route submitted. `pastePayloadKind` stays nil when no route

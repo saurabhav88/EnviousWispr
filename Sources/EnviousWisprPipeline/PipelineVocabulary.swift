@@ -82,6 +82,7 @@ public enum RecordingWarningReason: Equatable, Sendable {
   case modelRequiresExplicitRetry(engineLabel: String)
   /// AI polish failed; the raw transcript was pasted instead.
   case polishFailed
+  case clipboardPolishFailed(copied: Bool, reason: String)
   /// The dictation was pasted but the history write threw. Carries the reason.
   case historySaveFailed(reason: String)
   /// #2087: Escape Recovery was on and the take could NOT be kept, so the

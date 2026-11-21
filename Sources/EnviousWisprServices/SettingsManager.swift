@@ -26,6 +26,7 @@ public final class SettingsManager {
     case s1MiniStyling
     case s1MiniStructure
     case s1MiniContext
+    case automaticDictationPasteEnabled
     case autoCopyToClipboard
     /// #3972: whether EnviousMeet records the call sound, remembered for the next meeting. Shown
     /// inverted as "Record only my voice" (#4058).
@@ -170,6 +171,7 @@ public final class SettingsManager {
     SettingsManager.dictationCloudModelMemoryKey, SettingsManager.fileImportCloudModelMemoryKey,
     SettingsManager.meetingSummaryCloudModelMemoryKey,
     "s1MiniStyling", "s1MiniStructure", "s1MiniContext",
+    "automaticDictationPasteEnabled",
     "autoCopyToClipboard", "meetingCaptureCallSound", "meetingCallSoundExplained", "meetingWriteSummary", "meetingTurnsOffDictation", "meetingFollowsCallMute", "meetingOnboardingComplete", "meetingUseCalendarForNames", "meetingCallDetection", "meetingCallAppsOff", "meetingCallNoCounts", "meetingCallFirstTipShown", "meetingLanguageMode", "meetingTranscriptEngine", "meetingLiveWordsEngine", "meetingLiveWordsLanguage", "hotkeyEnabled", "vadAutoStop", "vadSilenceTimeout",
     "vadSensitivity", "vadEnergyGate", "onboardingState", "hasCompletedOnboarding",
     SettingsManager.onboardingCheckpointKey,
@@ -867,6 +869,13 @@ public final class SettingsManager {
   /// write the three stored properties above directly.
   public var s1Control: S1ControlSettings {
     S1ControlSettings(styling: s1MiniStyling, structure: s1MiniStructure, context: s1MiniContext)
+  }
+
+  public var automaticDictationPasteEnabled: Bool {
+    didSet {
+      defaults.set(automaticDictationPasteEnabled, forKey: "automaticDictationPasteEnabled")
+      onChange?(.automaticDictationPasteEnabled)
+    }
   }
 
   public var autoCopyToClipboard: Bool {
@@ -2103,6 +2112,9 @@ public final class SettingsManager {
       defaults.string(forKey: "meetingSummaryLLMModel") ?? ""
     meetingSummaryOllamaModel =
       defaults.string(forKey: "meetingSummaryOllamaModel") ?? SettingsDefaultValues.ollamaModel
+    automaticDictationPasteEnabled =
+      defaults.object(forKey: "automaticDictationPasteEnabled") as? Bool
+      ?? SettingsDefaultValues.automaticDictationPasteEnabled
     autoCopyToClipboard =
       defaults.object(forKey: "autoCopyToClipboard") as? Bool
       ?? SettingsDefaultValues.autoCopyToClipboard

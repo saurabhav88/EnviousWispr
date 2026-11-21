@@ -141,6 +141,7 @@ enum SettingsMapID: String, CaseIterable, Hashable, Sendable {
   case recordingChimeSatinShift = "recordingChime.satinShift"
   case recordingChimeAirGlint = "recordingChime.airGlint"
   case recordingChimePreview = "recordingChime.preview"
+  case automaticDictationPaste = "automaticDictationPaste"
   case autoCopyToClipboard = "autoCopyToClipboard"
   case restoreClipboard = "restoreClipboard"
   case keepOutOfClipboardHistory = "keepOutOfClipboardHistory"

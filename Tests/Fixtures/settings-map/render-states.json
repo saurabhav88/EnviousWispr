@@ -420,6 +420,7 @@
   "exempt": {},
   "mapped": [
    "autoCopyToClipboard",
+   "automaticDictationPaste",
    "dictation.tab.chimes",
    "dictation.tab.clipboard",
    "dictation.tab.engine",

@@ -10,6 +10,7 @@ extension DictationSessionConfig {
     inputMode: RecordingMode = .pushToTalk,
     triggerSource: TriggerSource = .programmatic,
     autoPasteToActiveApp: Bool = false,
+    copyOnlyByPreference: Bool = false,
     restoreClipboardAfterPaste: Bool = false,
     keepDictationsOutOfClipboardHistory: Bool = false,
     // Defaults OFF here while production defaults ON: every existing suite keeps
@@ -41,6 +42,7 @@ extension DictationSessionConfig {
       inputMode: inputMode,
       triggerSource: triggerSource,
       autoPasteToActiveApp: autoPasteToActiveApp,
+      copyOnlyByPreference: copyOnlyByPreference,
       restoreClipboardAfterPaste: restoreClipboardAfterPaste,
       keepDictationsOutOfClipboardHistory: keepDictationsOutOfClipboardHistory,
       smartInsertion: smartInsertion,

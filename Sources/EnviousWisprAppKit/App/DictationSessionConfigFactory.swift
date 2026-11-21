@@ -38,7 +38,8 @@ enum DictationSessionConfigFactory {
     // educational `.accessibilityToast` overlay. The legacy gate bypassed
     // the cascade entirely (the wiring's direct copyToClipboard branch),
     // depriving AX-denied users of both the diagnostic and the toast.
-    let autoPaste = activePipelineIdle
+    let copyOnlyByPreference = !settings.automaticDictationPasteEnabled
+    let autoPaste = activePipelineIdle && !copyOnlyByPreference
     // #1173 / #4473: the effective model name the caller captured with `polishModel`
     // (`SettingsManager.effectiveLLMModel`), never a second settings read here.
     let resolvedModel = polishWireModel
@@ -50,6 +51,7 @@ enum DictationSessionConfigFactory {
       inputMode: settings.recordingMode,
       triggerSource: triggerSource,
       autoPasteToActiveApp: autoPaste,
+      copyOnlyByPreference: copyOnlyByPreference,
       restoreClipboardAfterPaste: settings.restoreClipboardAfterPaste,
       keepDictationsOutOfClipboardHistory: settings.keepDictationsOutOfClipboardHistory,
       smartInsertion: settings.smartInsertion,

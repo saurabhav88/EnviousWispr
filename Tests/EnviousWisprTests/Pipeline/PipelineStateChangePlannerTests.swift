@@ -623,7 +623,8 @@ struct PipelineStateChangePlannerTests {
         let pills = plan.effects.filter { effect in
           switch effect {
           case .scheduleHistorySaveFailedWarning, .scheduleInterruptionWarning,
-            .scheduleSalvagedLeadWarning, .schedulePolishFailedWarning:
+            .scheduleSalvagedLeadWarning, .schedulePolishFailedWarning,
+            .scheduleClipboardPolishWarning:
             true
           default:
             false

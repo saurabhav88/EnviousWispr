@@ -12,6 +12,8 @@ package enum HeldTextDeliveryOutcome: Equatable, Sendable {
   case clipboardOnly
   /// The text is on the clipboard because Accessibility is not granted.
   case accessibilityDenied
+  /// An intentional direct copy could not be confirmed.
+  case copyFailed
 }
 
 /// The outcome plus the change count of this delivery's own clipboard write, the receipt a later
@@ -97,6 +99,9 @@ package enum HeldTextDelivery {
       ClipboardCleanup.deliveryClaimsBoard()
       let receipt = PasteService.copyToClipboardReturningChangeCount(
         text, to: pasteboard, kind: .kept)
+      guard ClipboardCleanup.boardHolds(text, pasteboard) else {
+        return HeldTextDeliveryResult(outcome: .copyFailed, fallbackClipboardChangeCount: nil)
+      }
       return HeldTextDeliveryResult(outcome: .clipboardOnly, fallbackClipboardChangeCount: receipt)
     }
 

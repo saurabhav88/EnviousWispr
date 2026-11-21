@@ -577,6 +577,12 @@ enum SettingsMap {
       parent: .recordingChime, destination: .dictation(.chimes), dictionaryTab: nil,
       visibility: .always, target: .recordingChime, fallbacks: []),
     SettingsMapNode(
+      id: .automaticDictationPaste, structure: .item, item: .setting,
+      title: .resource(DictationSettingsCopy.Clipboard.automaticPasteTitle),
+      description: .resource(DictationSettingsCopy.Clipboard.automaticPasteShort),
+      parent: .sectionClipboard, destination: .dictation(.clipboard), dictionaryTab: nil,
+      visibility: .always, target: .automaticDictationPaste, fallbacks: []),
+    SettingsMapNode(
       id: .autoCopyToClipboard, structure: .item, item: .setting,
       title: .resource(DictationSettingsCopy.Clipboard.autoCopyTitle),
       description: .resource(DictationSettingsCopy.Clipboard.autoCopyShort),

@@ -494,6 +494,37 @@ import os
     #expect(recorder.copies == ["hello"], "clipboardOnly must mean it actually copied")
   }
 
+  @Test("intentional clipboard delivery writes once without attempting paste", arguments: [true, false])
+  func intentionalClipboardDelivery(copied: Bool) async {
+    let text = "The final dictated words."
+    let context = KernelSessionContext()
+    context.config = .testDefault(
+      autoCopyToClipboard: false, autoPasteToActiveApp: false, copyOnlyByPreference: true)
+    let outcome = KernelFinalizationOutcome()
+    outcome.transcript = Transcript(text: text, processingTime: 0, backendType: .parakeet)
+    let recorder = ClipboardRecorder()
+    let wiring = makeWiring(
+      outcome: outcome,
+      context: context,
+      deliverPaste: { _ in
+        Issue.record("intentional clipboard delivery must not call paste")
+        return Self.deliveredResult
+      },
+      copyToClipboard: { written in
+        _ = recorder.record(written)
+        return copied
+      })
+
+    let result = await wiring.deliver(text, .ordinary)
+
+    #expect(result == .intentionalClipboard(copied: copied))
+    #expect(recorder.copies == [text])
+    #expect(outcome.transcript?.metrics?.pasteTier == nil)
+    #expect(outcome.transcript?.metrics?.pasteLatencyMs == nil)
+    #expect(
+      outcome.transcript?.metrics?.deliveryOutcome == (copied ? "automatic_paste_disabled" : nil))
+  }
+
   /// #2639. A multi-line snippet is DELIVERED, not diverted to the clipboard.
   ///
   /// The removed #628 guard sent any snippet-bearing payload containing a newline straight to
@@ -567,7 +598,7 @@ import os
         requests.record(request.legacyText)
         return Self.deliveredResult
       },
-      copyToClipboard: { _ in })
+      copyToClipboard: { _ in true })
 
     let outcome = await wiring.deliver("今日は晴れです。", .ordinary)
 
@@ -647,7 +678,7 @@ import os
     // it must be absorbed rather than reach the developer's real clipboard.
     let wiring = makeWiring(
       outcome: outcome, context: context, deliverPaste: { _ in Self.deliveredResult },
-      copyToClipboard: { _ in })
+      copyToClipboard: { _ in true })
 
     _ = await wiring.deliver("hello", .ordinary)
 
@@ -2356,8 +2387,9 @@ import os
     //
     // A test that WANTS to observe the copy passes a recorder. A test that copies
     // without meaning to now fails here instead of silently damaging the machine.
-    copyToClipboard: @escaping @MainActor (String) -> Void = { text in
+    copyToClipboard: @escaping @MainActor (String) -> Bool = { text in
       Issue.record("unexpected clipboard copy: \(text)")
+      return false
     },
     // #996: a runner whose executor runs BETWEEN the wiring's entry and its
     // language stamp, so a test can observe `processText`'s mid-chain state.
@@ -2407,7 +2439,10 @@ import os
   @MainActor
   private final class ClipboardRecorder {
     private(set) var copies: [String] = []
-    func record(_ text: String) { copies.append(text) }
+    func record(_ text: String) -> Bool {
+      copies.append(text)
+      return true
+    }
   }
 
   /// #2639. What the cascade was actually handed. Records the legacy payload rather than a
@@ -2920,6 +2955,7 @@ import os
         pasteCompletionRegistry: nil,
         copyToClipboard: { text in
           Issue.record("unexpected clipboard copy: \(text)")
+          return false
         })
 
       _ = await wiring.deliver("Review this before the meeting", .ordinary)
@@ -3071,6 +3107,7 @@ import os
         pasteCompletionRegistry: nil,
         copyToClipboard: { text in
           Issue.record("unexpected clipboard copy: \(text)")
+          return false
         })
 
       let callerStarted = ContinuousClock.now
@@ -3226,6 +3263,7 @@ import os
         pasteCompletionRegistry: nil,
         copyToClipboard: { text in
           Issue.record("unexpected clipboard copy: \(text)")
+          return false
         })
 
       _ = await wiring.deliver("Review this before the meeting", .ordinary)
@@ -3379,6 +3417,7 @@ import os
         pasteCompletionRegistry: nil,
         copyToClipboard: { text in
           Issue.record("unexpected clipboard copy: \(text)")
+          return false
         })
 
       _ = await wiring.deliver("Review this before the meeting", .ordinary)

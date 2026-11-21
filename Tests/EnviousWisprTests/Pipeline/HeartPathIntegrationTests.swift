@@ -375,7 +375,7 @@ private final class HeartPathHarness {
       telemetryState: KernelTelemetryState(),
       // #2146: absorbed, never the real clipboard. Required argument, so this
       // cannot be forgotten back into inheriting the production write.
-      copyToClipboard: { _ in })
+      copyToClipboard: { _ in true })
 
     // The live order the kernel uses: process, then store, then deliver.
     let displayText = try await wiring.processText(asrResult.text) {}

@@ -65,7 +65,7 @@ struct KernelInterruptedTranscriptTests {
       pasteCompletionRegistry: nil,
       telemetryState: telemetryState,
       // #2146: absorbed, never the real clipboard.
-      copyToClipboard: { _ in })
+      copyToClipboard: { _ in true })
   }
 
   @Test("a salvaged completion saves a transcript flagged interrupted")

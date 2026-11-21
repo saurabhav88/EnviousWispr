@@ -256,13 +256,18 @@
    "id": "fixLearnedWords",
    "review": "additions/fixLearnedWords.json",
    "reviewSHA256": "0a0ab81c6e17dd3efbf7794b073a3fc1ba13281b878e9fda74442cfe9b9de2b1"
+  },
+  {
+   "id": "automaticDictationPaste",
+   "review": "additions/automaticDictationPaste.json",
+   "reviewSHA256": "f6024586d111edcbac384983717e07ef5331493b859af6808bd864a298a16708"
   }
  ],
  "retiredIDs": [],
  "resource": {
   "path": "Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json",
-  "sha256": "69186cd226bfb54ce66cc90148130ba842b55eca1f94a8ef33d2b26d99e25aac",
-  "bytes": 1892971
+  "sha256": "f27d623c318325d7367f855d330f83ba73699b4880eab0e5a099978d419fd4e6",
+  "bytes": 1904171
  },
  "sources": [
   {
@@ -546,7 +551,7 @@
  "languages": [
   {
    "language": "ar",
-   "contentSHA256": "1e4d82509aac7b675b7d5507e8314486eb44fb1b568b8adaffa6590cdf7c6250",
+   "contentSHA256": "64fefb75682e4138c2155599f037e0319d4929754c3f3fc30ace3964ae80f4ea",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1724,13 +1729,24 @@
      "date": "2026-11-21",
      "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/ar/accepted.json",
      "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-ar.txt",
+      "sha256": "e3354e417cc75e42acce56880b6820cb69327798fa1679cf227479e9455669a5"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "bg",
-   "contentSHA256": "e76009002689fce4add05c96bf475e44b3858a6859cf0eff1db19c515aa241a6",
+   "contentSHA256": "6c7736b97cf11b473e188a444b834f90dc1660e26b55ace5662c7f4de52ec734",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2899,13 +2915,24 @@
      "date": "2026-11-21",
      "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/bg/accepted.json",
      "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-bg.txt",
+      "sha256": "5187b40caf6aff1d1d4975d92b973ee922d0321fe16c12476d394a18273fadaf"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "cs",
-   "contentSHA256": "6a2e244871d158fd7c756291872c0ed9608e90136009e4e6e0725f892518c656",
+   "contentSHA256": "61d8076a80629407d4c40b886567623a59a067f66ccab4cac771f9bd8ed9b15f",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4074,13 +4101,24 @@
      "date": "2026-11-21",
      "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/cs/accepted.json",
      "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-cs.txt",
+      "sha256": "0ac8d798b71586570a5d1a44aeaee6cf8f38160e1104159b2329f13b186db17b"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "da",
-   "contentSHA256": "d8670aeb22e04aa4ca774a54cffe2b7f2d9cc2c37e298c1c442eaea014926d55",
+   "contentSHA256": "d0a06103480c02d08d84d2583b2d54580bf62629fa8553d1d42435c6561d164a",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -5249,13 +5287,24 @@
      "date": "2026-11-21",
      "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/da/accepted.json",
      "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-da.txt",
+      "sha256": "3132ef2cab62c2bb71b24fe183424def921a18bbe8c2f36d5fa45f4ce2e777f7"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "de",
-   "contentSHA256": "6d58b72ee76bf4f4fdc118504f573d53e30acf2e084aea2e2f1152d3fbd55642",
+   "contentSHA256": "4754025472e27cc08b9c9bf0cc5f839d6f77599da97322f1e9797dd219779d79",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -6646,13 +6695,35 @@
      "date": "2026-11-21",
      "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/de/accepted.json",
      "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-de.txt",
+      "sha256": "0a3f634572e3f4ee3babeb3e19265d6aa0383da7200bf5d45f166704d9cd54be"
+     },
+     "disposition": "Adopted after bilingual council review for German."
+    },
+    {
+     "kind": "german-council",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "GPT and Gemini reviewed German search terms.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/german-search-review-digest.md",
+      "sha256": "c9e1e38f0c922bb8e283f616fa6e078df14c7e4c0ce1dd0576efe48e205c5eb9"
+     },
+     "disposition": "Adopted two dictation-specific queries and one term."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "el",
-   "contentSHA256": "32aaaca30790f8cd3e4b25c4ce9d89a2aff62df5151ca798fa0ec01597c635dd",
+   "contentSHA256": "3925514eb18b7de0c7aebad81a4b8891a220b5d6dd57eac60135f082bf669204",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -7830,13 +7901,24 @@
      "date": "2026-11-21",
      "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/el/accepted.json",
      "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-el.txt",
+      "sha256": "c4979d4b1cd640e50ec983e32dd1efe7c93b1a39393c880cab682bc64a4291bc"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "en",
-   "contentSHA256": "1486bd4c2b4ef41f3746185eeaf5162ab985e162e9f3af569ebfcfdb5d2a05fb",
+   "contentSHA256": "e70e81a31c629ca9a9c99a2ed50c37c5ae821ab35a7986f3b31ba24e9f128fdf",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -8986,13 +9068,24 @@
      "date": "2026-11-21",
      "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/en/accepted.json",
      "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-en.txt",
+      "sha256": "39c7251bfd62c217bdeb0f4cd176c72b61b759c4bba7762c48f06d7596e95049"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "es",
-   "contentSHA256": "f26a46351f1108c33c13a7515aca4fe1ed54b9c4f780c1debe5427b7c055bc02",
+   "contentSHA256": "14b3f827c882e0d97fed02c3f7e8771968ab07dcd4af049888f61490207430db",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -10170,13 +10263,24 @@
      "date": "2026-11-21",
      "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/es/accepted.json",
      "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-es.txt",
+      "sha256": "2b2cb367e9450f9a6b8d7fcb4029bb7e5c847f7dc09b550f1eb813067e5dd803"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "et",
-   "contentSHA256": "9c04154560d15d3f41cf484e9fe63aba0e619dd42c74011c4867daba659ccc3c",
+   "contentSHA256": "74420267efdba9351a18764a17370389ce68762fb2f436943315a6a25cbf7a85",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -11345,13 +11449,24 @@
      "date": "2026-11-21",
      "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/et/accepted.json",
      "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-et.txt",
+      "sha256": "e1b526570ffd752d33953a362377927fcd14b16a460a07ba78a4373a6137efad"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fi",
-   "contentSHA256": "e52acf20fec45e51ac7754b943ae3251e3977c1c2b45ed01ee829643d4d6ed9b",
+   "contentSHA256": "74c072bfb5dacc72adc26a49eaa27637c524fddf12bf168327b067131fdaa8ef",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -12520,13 +12635,24 @@
      "date": "2026-11-21",
      "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/fi/accepted.json",
      "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-fi.txt",
+      "sha256": "416308579145069ff9beb8fd689678009299cbb376892e7d36b3bf653a146238"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fr",
-   "contentSHA256": "be604d5970d3b193d5b746055b1bad46fea238d445a509950045e4594aaf617b",
+   "contentSHA256": "352fb75698daffc322177a3c3d581ed54ed9ffe301a2ea4ef2bf69ccb7c12c36",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -13695,13 +13821,24 @@
      "date": "2026-11-21",
      "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/fr/accepted.json",
      "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-fr.txt",
+      "sha256": "9088f3410fa8a13824987eba6aeba28a9ca6a73e5984ca30b6f8ac6e35c12375"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hi",
-   "contentSHA256": "91219978d5f11f26797a14fd0251923ef9f72c5fd8acd901825a85dd0b64864e",
+   "contentSHA256": "bef7910fd0545f0108388679a67bd0eb050c000322bb643cb46204194ccfd81f",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -14870,13 +15007,24 @@
      "date": "2026-11-21",
      "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/hi/accepted.json",
      "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-hi.txt",
+      "sha256": "8b32f2e6a82b36cc3d4784bb22cc61f6397c0e3aa780d4355f17f59a273baeb4"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hr",
-   "contentSHA256": "0aa25b8e59ec586a9c54a288ae8b208cdd1c07da0b80ccb1f2886f7d3e82c1fd",
+   "contentSHA256": "05062096c6f602e2e7122cf48855958e770a7c0f3c497cf2ab2dbb615a212dd9",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -16045,13 +16193,24 @@
      "date": "2026-11-21",
      "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/hr/accepted.json",
      "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-hr.txt",
+      "sha256": "92835edb20970b43d83e86780a6a77ac0424367adebd59ec751cada55a11fa0b"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hu",
-   "contentSHA256": "ed1f91d9e3d57feb659dd5b7b214c0a418746e0e75d9c845b8edccca3b24ae36",
+   "contentSHA256": "9807a443579a48a785a0126b9efead525c66a6248ce82f053ea6b45fb393aa8a",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -17220,13 +17379,24 @@
      "date": "2026-11-21",
      "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/hu/accepted.json",
      "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-hu.txt",
+      "sha256": "55a2db4432768a66733ffd7c9e69fde98bfe14330f52837ab53c39e5567e8d2b"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "it",
-   "contentSHA256": "c36cba05c9d090b413756f57302272a1c88d0fc3e121c9efdba7242e57a7562a",
+   "contentSHA256": "938a61db24ce07b26827689d438fc37003bcb8526bd2c83b1b7d401b4589d5a9",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -18404,13 +18574,24 @@
      "date": "2026-11-21",
      "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/it/accepted.json",
      "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-it.txt",
+      "sha256": "56bc09cb52023309e53520423516bb941158f405ec0c759d7f4e728692c18950"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ja",
-   "contentSHA256": "6b362a6bd1959f30cf64d900c61082c2d529afd72eed09f96439c4e7e6537ea5",
+   "contentSHA256": "f638f91a9b9311f7951b8624ff099fe7cba7a55b196a1de270c7ef3f8bf378ab",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -19579,13 +19760,24 @@
      "date": "2026-11-21",
      "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/ja/accepted.json",
      "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-ja.txt",
+      "sha256": "3c39636b39b54bedaec74060d6aa5dc6bee0f117f91542017eade9c5008be0c1"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ko",
-   "contentSHA256": "7d44dc142d0737ae479149ed699eb368edcc5f1c6b84f5c66f80d0fbdfa13513",
+   "contentSHA256": "a0b5762457605eff9a5fe07fcb9b0e4de7b948d7bc204d61a3b6bb76174c7d59",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -20754,13 +20946,24 @@
      "date": "2026-11-21",
      "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/ko/accepted.json",
      "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-ko.txt",
+      "sha256": "61882f0120b0e74c85814e3e7753b9dc612176f78076e923110f40503cde64a7"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lt",
-   "contentSHA256": "1292af7dd214feb92122e1b4e327c2db9a8c52897d0c2655f37001ba04446217",
+   "contentSHA256": "5f53483498384a2ce9fb207156f51cb042e550b378d4760443e877953b09ed01",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -21938,13 +22141,24 @@
      "date": "2026-11-21",
      "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/lt/accepted.json",
      "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-lt.txt",
+      "sha256": "922f2a7456914d1326311a1255b6fd492334130592491f876c597d5fd39bf6c0"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lv",
-   "contentSHA256": "cd50b5fd72acfe298b40b7b631fcbc48fec50c03cdade0a5dfe7fa5c8370bd58",
+   "contentSHA256": "b7c1860a719619d733c006f65cdf5947034f14520bf5a03cca4c1307245dcbe9",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -23113,13 +23327,24 @@
      "date": "2026-11-21",
      "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/lv/accepted.json",
      "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-lv.txt",
+      "sha256": "69dbaa1b24ab3ad02360babf03e41f70b120182084cfde37d7715c909b0d808e"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "mt",
-   "contentSHA256": "d7473a303a082b451b6724cb24e6f615ba8782d6d4d4d9798c2bc6cb71f24948",
+   "contentSHA256": "0e7d6eecd3b770c3ccc30b4dece23b17f42efdcf5e942aa6fc346fe154586b67",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -24297,13 +24522,24 @@
      "date": "2026-11-21",
      "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/mt/accepted.json",
      "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-mt.txt",
+      "sha256": "443af1f4995d750d6f0699a57324242ab728614af02e59fb47ae0d8cd0443616"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "nl",
-   "contentSHA256": "c4510b6b683b135245b99ede8ad1e21fe28f29e0168c14f88019ff1d43f9adfd",
+   "contentSHA256": "90b437e542c1bbf68b86db86ecbefc0fe610ec06c3443ed4b97185fcffb7a561",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -25472,13 +25708,24 @@
      "date": "2026-11-21",
      "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/nl/accepted.json",
      "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-nl.txt",
+      "sha256": "126c22f1b3759371a08e5af439f3045d0f96e1355730f82003b6cb6f00e2c35a"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pl",
-   "contentSHA256": "cc807519cf2f21f7c9a8c5581267e64690e6986b9cb1cb838bf0403b6efb68e1",
+   "contentSHA256": "c5c10d4efc4511577520365b3ecafcdba561b666a862b2bfaf734879bea816ed",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -26647,13 +26894,24 @@
      "date": "2026-11-21",
      "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/pl/accepted.json",
      "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-pl.txt",
+      "sha256": "88e8a6d2f7e455019b7eb1962bffba9577a3c9ea7a8964c2be9cab260ae14f6f"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pt",
-   "contentSHA256": "61caae8606ffd2538b96570a830bf44dd60194918b54ba59b1f93a8c03667ca4",
+   "contentSHA256": "a15a7b4232fc46f5694c1f90d67924edc0d10f0dc10088bf499f68e191b46e02",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -27830,13 +28088,24 @@
      "date": "2026-11-21",
      "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/pt/accepted.json",
      "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-pt.txt",
+      "sha256": "79f3b0c4f57509b2ae98c172684251786a088102f3f48e1d981e3dc1b285cde6"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ro",
-   "contentSHA256": "50fc06ff586e8c5d0c0f7274ef44f2ef0676b2880a512cbe13eed1c90f2a74cf",
+   "contentSHA256": "72811ab6fb88c70c39779df2c81a58b2a7adf1dbf4e3f9e67b3fdfd60d5ac616",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -29005,13 +29274,24 @@
      "date": "2026-11-21",
      "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/ro/accepted.json",
      "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-ro.txt",
+      "sha256": "4fcc600aefdcce38b2d8c86a6e48fdbc015d73f2b94a7c65bb384abeb5190fa1"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ru",
-   "contentSHA256": "5f13498b6e999d27008c2106c5713fddd88a4c216d19ff159cc42e2769d6c465",
+   "contentSHA256": "8221cfe688f23076f320feebc8cbe305a89621412450155bda66adaddc2ebba0",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -30180,13 +30460,24 @@
      "date": "2026-11-21",
      "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/ru/accepted.json",
      "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-ru.txt",
+      "sha256": "676e60304c1028f8ce147d1340573990c0cdbf3ed268dd4fee100e577dadb5da"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sk",
-   "contentSHA256": "8952ad825cec89a1c639919a12740d7fd0c320de506ecad6ce5024b05cedac07",
+   "contentSHA256": "a3cce6f78bed6901982fcbae44471a9333eb1f0cf8f000ce5dfed68cc221a08a",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -31355,13 +31646,24 @@
      "date": "2026-11-21",
      "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/sk/accepted.json",
      "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-sk.txt",
+      "sha256": "40af10a76acb810b2261dbec57ef64aacea421a784a5f56436a673358744ea96"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sl",
-   "contentSHA256": "bcf0f2bcce80a5ff7d5c06731bc616c6c70299df09b64635052aa68f8d67b348",
+   "contentSHA256": "e36db8118134ba701c2659b1b453253821a7c4bf61eb7b048c6a604adfa3a4d7",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -32539,13 +32841,24 @@
      "date": "2026-11-21",
      "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/sl/accepted.json",
      "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-sl.txt",
+      "sha256": "31fc3fefeefb35bc1d4c7201142e31b6e76682c410fbb1c266fb8d132227de0a"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sv",
-   "contentSHA256": "f9fb80339f4d277daaefd2ab1182a2d038045b616978e50b350b0de5bc706292",
+   "contentSHA256": "534631972fd1f4f58e2017c61d8ed3d96a1fb82e5f55ae884872637d0240a323",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -33714,13 +34027,24 @@
      "date": "2026-11-21",
      "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/sv/accepted.json",
      "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-sv.txt",
+      "sha256": "293fe0ecf5cfb92b4cddf4e64c37beec0602dbc81c82d20cdf81077095678b5c"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "tr",
-   "contentSHA256": "59a38e8b2953532f8a7117ca74b56059b84f42efad87a0e4976d3265fdddb216",
+   "contentSHA256": "1b4309ecd021876a40a77d7f27c5b4883ef9cd42ca51dd51881b30ee4e18b4c1",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -34889,13 +35213,24 @@
      "date": "2026-11-21",
      "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/tr/accepted.json",
      "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-tr.txt",
+      "sha256": "04b477f1129728ee5ee49d96a1d937f1ad972eda79e698921065b0f4144e562b"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "uk",
-   "contentSHA256": "c40f6acffc5b246ef5c2dc4a705fd2a0efc2626f15206fa3d26389c8e21c74d0",
+   "contentSHA256": "1f5e19bd6bdc5ab9b1683cdfba7d9e24c780345acf88e7950354f860592d3602",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -36073,13 +36408,24 @@
      "date": "2026-11-21",
      "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/uk/accepted.json",
      "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-uk.txt",
+      "sha256": "6a53329248c8a3055c2973f2820b0c628cf348a71858d8580d86e75c9820a376"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "vi",
-   "contentSHA256": "c67072efbdddbc638d621099e238fb60efc86f043ec5914fcb78c56c46df38de",
+   "contentSHA256": "a1441c1020aa27dee036a30f0840353129f17f88574d472598263b5903634619",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -37248,13 +37594,24 @@
      "date": "2026-11-21",
      "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/vi/accepted.json",
      "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-vi.txt",
+      "sha256": "bb98470e32bc775f36d9913692b15fd4a65add61dc0bee1964ea500e0f705d33"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "zh",
-   "contentSHA256": "4a0647f82b5b75712f06d60a36ad5510a8170c909b19283bd10d61aed8cfdc8b",
+   "contentSHA256": "253743bf443f212d709990d0365cb1b0655a9980161ae8357ccb52d69669160d",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -38423,6 +38780,17 @@
      "date": "2026-11-21",
      "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/zh/accepted.json",
      "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-zh.txt",
+      "sha256": "9ebdedda0357b784e4686203e0361022580b6a72e0d47919361c102edfb4bd3f"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
@@ -38724,7 +39092,8 @@
   "recordingStorageWarningThreshold": "e2876cc89fcd3a19a4e00d19487f4e52686af550015b92a4b6f2f89fe0a562a7",
   "recordingThresholdBehavior": "bac4c37e3af597722bd55e5ba70d1becf7e718a9e97d8f3e3a9ffdcd9e6afc9b",
   "saveDictationRecordings": "fb9f5d70b2b05c69625cab3cb03ef8bdf678aa90f6b6e6e2f813390fe8ea0b3d",
-  "fixLearnedWords": "974b844c17efb198324180a5e5fd890282108fbeaa0512d9077fa73694a9c0e3"
+  "fixLearnedWords": "974b844c17efb198324180a5e5fd890282108fbeaa0512d9077fa73694a9c0e3",
+  "automaticDictationPaste": "b672f5f91a9715f212c55a07f5770fe119fcda154813dd9746e2abc04389e1c6"
  },
  "reviewedSourceNote": "Per searchable id, the SHA-256 of the English title and description its translations were reviewed against (reference/settings-map.json; SettingsSearchVocabularyTests.sourceFingerprint). First recorded 2026-10-07 at be0086b6 from the export the Phase 0 and council reviews covered. When a test names an id here, re-review that id's translated blocks, then record the hash the test prints. Limit: dynamic titles are bound by resolver name, not template wording."
 }

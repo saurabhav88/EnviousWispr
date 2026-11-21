@@ -241,7 +241,7 @@ struct EscapeRecoveryPlanRoutingTests {
     PipelineStateChangeHandler(
       showOverlay: { _ in },
       cancelPendingWarning: {},
-      schedulePolishFailedWarning: {},
+      schedulePolishFailedWarning: { _ in },
       appendCompletedTranscript: { r.completedAppends.append($0) },
       reportDictationCompleted: { _ in },
       reportPipelineFailed: { _ in },

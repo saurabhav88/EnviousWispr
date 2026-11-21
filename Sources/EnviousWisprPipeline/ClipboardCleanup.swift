@@ -833,7 +833,7 @@ public enum ClipboardCleanup {
   }
 
   /// Whether the board's string is exactly `text`, compared in UTF-16 code units.
-  private static func boardHolds(_ text: String, _ board: NSPasteboard) -> Bool {
+  static func boardHolds(_ text: String, _ board: NSPasteboard) -> Bool {
     board.string(forType: .string).map { $0.utf16.elementsEqual(text.utf16) } ?? false
   }
 

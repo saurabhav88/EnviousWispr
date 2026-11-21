@@ -24,7 +24,8 @@ struct SettingsDefaultsRoutingTests {
 
   @Test("fresh install yields the founder-ratified canonical defaults")
   func canonicalDefaults() {
-    let settings = SettingsManager(defaults: Self.freshSuite())
+    let defaults = Self.freshSuite()
+    let settings = SettingsManager(defaults: defaults)
     // The two #923 corrections:
     #expect(settings.emojiFormatterEnabled == true)
     // #1794: the ONE Text-cleanup toggle that ships OFF.
@@ -41,6 +42,8 @@ struct SettingsDefaultsRoutingTests {
     #expect(settings.selectedBackend == .parakeet)
     #expect(settings.wordCorrectionEnabled == true)
     #expect(settings.fillerRemovalEnabled == true)
+    #expect(settings.automaticDictationPasteEnabled == true)
+    #expect(defaults.object(forKey: "automaticDictationPasteEnabled") == nil)
     #expect(settings.autoCopyToClipboard == true)
     #expect(settings.meetingCaptureCallSound == true)
     #expect(settings.meetingCallSoundExplained == false)

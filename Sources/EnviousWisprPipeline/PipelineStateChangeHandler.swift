@@ -31,7 +31,7 @@ public final class PipelineStateChangeHandler {
 
   private let showOverlay: ShowOverlay
   private let cancelPendingWarning: @MainActor () -> Void
-  private let schedulePolishFailedWarning: @MainActor () -> Void
+  private let schedulePolishFailedWarning: @MainActor (RecordingWarningReason) -> Void
   private let appendCompletedTranscript: @MainActor (Transcript) -> Void
   private let reportDictationCompleted: @MainActor (Transcript) -> Void
   private let reportPipelineFailed: @MainActor (String) -> Void
@@ -66,7 +66,7 @@ public final class PipelineStateChangeHandler {
   public init(
     showOverlay: @escaping ShowOverlay,
     cancelPendingWarning: @escaping @MainActor () -> Void,
-    schedulePolishFailedWarning: @escaping @MainActor () -> Void,
+    schedulePolishFailedWarning: @escaping @MainActor (RecordingWarningReason) -> Void,
     appendCompletedTranscript: @escaping @MainActor (Transcript) -> Void,
     reportDictationCompleted: @escaping @MainActor (Transcript) -> Void,
     reportPipelineFailed: @escaping @MainActor (String) -> Void,
@@ -125,13 +125,16 @@ public final class PipelineStateChangeHandler {
     // and conflating the two is how a dormant path gets read as a live one.
     escapeRecoveryCompletion: EscapeRecoveryCompletion? = nil,
     // #3438: the concluded take's polish met a confirmed unfinished setup; see the planner.
-    polishSetupBlocked: Bool = false
+    polishSetupBlocked: Bool = false,
+    clipboardCopy: Bool? = nil,
+    clipboardPolishReason: String? = nil
   ) -> Bool {
     let plan = PipelineStateChangePlanner.plan(
       to: newState,
       pipelineOverlayIntent: pipelineOverlayIntent,
       isClipboardFallback: currentTranscript?.metrics?.pasteTier == "clipboard_only"
-        || currentTranscript?.metrics?.pasteTier == "clipboard_only_ax_denied",
+        || currentTranscript?.metrics?.pasteTier == "clipboard_only_ax_denied"
+        || currentTranscript?.metrics?.deliveryOutcome == ExecutionMetrics.automaticPasteDisabledDelivery,
       isAccessibilityToast: currentTranscript?.metrics?.pasteTier == "clipboard_only_ax_denied",
       lastPolishNotice: lastPolishNotice,
       hasCurrentTranscript: currentTranscript != nil,
@@ -140,14 +143,18 @@ public final class PipelineStateChangeHandler {
       salvagedLead: salvagedLead,
       interruptionDisclosure: interruptionDisclosure,
       escapeRecoveryOutcome: escapeRecoveryCompletion?.outcome,
-      polishSetupBlocked: polishSetupBlocked
+      polishSetupBlocked: polishSetupBlocked,
+      clipboardCopy: clipboardCopy,
+      clipboardPolishReason: clipboardPolishReason
     )
     for effect in plan.effects {
       switch effect {
       case .cancelPendingWarning:
         cancelPendingWarning()
       case .schedulePolishFailedWarning:
-        schedulePolishFailedWarning()
+        schedulePolishFailedWarning(.polishFailed)
+      case .scheduleClipboardPolishWarning(let copied, let reason):
+        schedulePolishFailedWarning(.clipboardPolishFailed(copied: copied, reason: reason))
       case .showOverlay(let intent):
         showOverlay(intent)
       case .appendCompletedTranscript:

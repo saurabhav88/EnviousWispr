@@ -163,6 +163,7 @@ enum SettingsProjection {
     case .meetingSummaryLLMProvider: return [.meetingSummaryLLMProvider]
     // #4287: provider kind only; model ids never become a summary delta.
     case .meetingSummaryLLMModel, .meetingSummaryOllamaModel: return []
+    case .automaticDictationPasteEnabled: return []
     case .autoCopyToClipboard: return [.autoCopy]
     // #3972: no settings delta. `meeting.ended` carries the call-sound track status of every
     // meeting, which is the question this choice answers.

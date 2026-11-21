@@ -57,7 +57,7 @@ import Testing
       },
       pasteCompletionRegistry: nil,
       // #2146: absorbed, never the real clipboard.
-      copyToClipboard: { _ in })
+      copyToClipboard: { _ in true })
 
     // #1230 — the kernel mints the id and threads it in so the saved History
     // entry's id equals the debug audio-archive folder name. Assert the closure

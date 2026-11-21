@@ -130,13 +130,25 @@ struct ClipboardSettingsWiringTests {
       sectionNote: quickAdd ? "" : note)
   }
 
-  @Test("five rows, each with its own copy, icon, setting and an unlabeled fixed-size switch")
-  func fiveRowsWiredToTheirOwnSettings() throws {
+  @Test("six rows, each with its own copy, icon, setting and an unlabeled fixed-size switch")
+  func sixRowsWiredToTheirOwnSettings() throws {
     let rows = Self.rows(in: try Self.tree())
     let expected = [
-      Self.expectedRow(
-        "doc.on.clipboard", "autoCopy", map: "autoCopyToClipboard",
-        binding: "$settings.autoCopyToClipboard"),
+      {
+        var row = Self.expectedRow(
+          "clipboard", "automaticPaste", map: "automaticDictationPaste",
+          binding: "$settings.automaticDictationPasteEnabled")
+        row.help = "Copy.automaticPasteShort"
+        return row
+      }(),
+      {
+        var row = Self.expectedRow(
+          "doc.on.clipboard", "autoCopy", map: "autoCopyToClipboard",
+          binding: "settings.automaticDictationPasteEnabled ? $settings.autoCopyToClipboard : .constant(true)")
+        row.modifiers.insert("disabled", at: 3)
+        row.modifierArguments.insert(["!settings.automaticDictationPasteEnabled"], at: 3)
+        return row
+      }(),
       Self.expectedRow(
         "arrow.uturn.backward", "restore", map: "restoreClipboard",
         binding: "$settings.restoreClipboardAfterPaste"),
@@ -167,6 +179,7 @@ struct ClipboardSettingsWiringTests {
   @Test("each row's short line is its own copy, read from its Settings Map node")
   func shortLinesFromTheMap() {
     let expected: [(SettingsMapID, LocalizedStringResource)] = [
+      (.automaticDictationPaste, DictationSettingsCopy.Clipboard.automaticPasteShort),
       (.autoCopyToClipboard, DictationSettingsCopy.Clipboard.autoCopyShort),
       (.restoreClipboard, DictationSettingsCopy.Clipboard.restoreShort),
       (.keepOutOfClipboardHistory, DictationSettingsCopy.Clipboard.keepOutOfHistoryShort),

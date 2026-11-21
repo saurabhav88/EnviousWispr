@@ -1,3 +1,4 @@
+import AppKit
 import EnviousWisprASR
 import EnviousWisprAudio
 import EnviousWisprCore
@@ -751,7 +752,11 @@ public enum KernelDictationDriverFactory {
       // #2146 — the ONE place the real clipboard is written from the delivery
       // path. Required rather than defaulted so a test can never inherit it by
       // omission; this is the production wiring, so here it is passed explicitly.
-      copyToClipboard: { PasteService.copyToClipboard($0, kind: .kept) }
+      copyToClipboard: { text in
+        let board = NSPasteboard.general
+        PasteService.copyToClipboard(text, to: board, kind: .kept)
+        return ClipboardCleanup.boardHolds(text, board)
+      }
     )
 
     // 7. Kernel.
