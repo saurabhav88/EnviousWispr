@@ -755,22 +755,40 @@ struct PasteTargetWindowGateWiringTests {
   @Test("The remote-session focus check reaches Tier 2 activation and the Tier 2 and 2b gates only")
   func remoteSessionFlagWiring() throws {
     let (calls, tree) = try Self.parse()
-    let source = tree.description
-    #expect(source.contains("let requireCapturedFocus = classification == .remoteSession"))
+    // The flag's one declaration, read from the syntax tree so a comment cannot satisfy it.
+    final class Bindings: SyntaxVisitor {
+      var initializers: [String] = []
+      init() { super.init(viewMode: .sourceAccurate) }
+      override func visit(_ node: PatternBindingSyntax) -> SyntaxVisitorContinueKind {
+        if node.pattern.trimmedDescription == "requireCapturedFocus",
+          let value = node.initializer?.value.trimmedDescription
+        {
+          initializers.append(value)
+        }
+        return .visitChildren
+      }
+    }
+    let bindings = Bindings()
+    bindings.walk(tree)
+    #expect(bindings.initializers == ["classification == .remoteSession"])
     func forwards(_ call: FunctionCallExprSyntax) -> Bool {
       call.arguments.contains {
         $0.label?.text == "requireCapturedFocus"
           && $0.expression.trimmedDescription == "requireCapturedFocus"
       }
     }
+    /// Tier 2c relies on the `false` default: it names no flag at all.
+    func namesNoFlag(_ call: FunctionCallExprSyntax) -> Bool {
+      !call.arguments.contains { $0.label?.text == "requireCapturedFocus" }
+    }
     let activations = calls.found.filter { $0.callee == "activate" }.map(\.node)
     try #require(activations.count == 2)
     #expect(activations.filter(forwards).count == 1, "Tier 2 forwards, Tier 2c does not")
-    #expect(!forwards(activations.max { $0.position < $1.position }!), "Tier 2c is the later call")
+    #expect(namesNoFlag(activations.max { $0.position < $1.position }!), "Tier 2c is the later call")
     let gates = calls.found.filter { $0.callee == "dispatchGate" }.map(\.node)
     try #require(gates.count == 3)
     #expect(gates.filter(forwards).count == 2, "Tier 2 and 2b forward, Tier 2c does not")
-    #expect(!forwards(gates.max { $0.position < $1.position }!), "Tier 2c is the last gate")
+    #expect(namesNoFlag(gates.max { $0.position < $1.position }!), "Tier 2c is the last gate")
     let poll = calls.found.filter { $0.callee == "PasteTargetWindowGate.refusal" }.map(\.node)
     try #require(poll.count == 1)
     #expect(forwards(poll[0]), "the activation poll uses the same strict check")
