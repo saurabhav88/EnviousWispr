@@ -170,31 +170,28 @@ final class OverlayWindowHost: OverlayWindowHosting {
     // sized must not create or move a window: a zero-sized panel is an invisible
     // pill that reports success, and the earlier fallback only covered ONE of
     // `fittingSize` and the frame being zero. Both zero still produced it.
-    guard let screen = screens().current(),
+    let resolver = screens()
+    let continuingFrame = isFresh ? nil : panel.flatMap { $0.isVisible ? $0.frame : nil }
+    let target = if let continuingFrame {
+      resolver.containing(continuingFrame) ?? resolver.current()
+    } else {
+      resolver.fresh()
+    }
+    guard let screen = target,
       let size = resolvedSize(for: view, width: width, fixedHeight: fixedHeight)
     else { return false }
     let panel = ensurePanel()
 
     let continuity: OverlayContinuity
-    // **The screen whose rules apply, which is NOT always the one resolved
-    // above.** A fresh presentation belongs where the pointer is, which is the
-    // shipped target resolution. A CONTINUING one is already somewhere, and its
-    // inherited frame is in that display's coordinate space -- so the clamp and
-    // the anchor have to read the same display the frame came from.
-    let environment: ScreenGeometry
-    if isFresh || !panel.isVisible {
+    if let continuingFrame {
+      // The inherited frame and clamp must use the same display. If that
+      // display disappeared, use the pointer fallback to keep a live target.
+      continuity = .continuing(
+        currentFrame: continuingFrame, anchoredScreen: screen.id,
+        outgoingWasContentSized: currentWasContentSized)
+    } else {
       placement.beginFresh(at: position, screen: screen)
       continuity = .fresh(position: position, screen: screen.id)
-      environment = screen
-    } else {
-      // Falls back to the pointer's screen when nothing contains the panel,
-      // which is what a just-disconnected display looks like: re-home the pill
-      // onto a screen that exists rather than clamp it against one that does not.
-      let anchored = screens().containing(panel.frame) ?? screen
-      continuity = .continuing(
-        currentFrame: panel.frame, anchoredScreen: anchored.id,
-        outgoingWasContentSized: currentWasContentSized)
-      environment = anchored
     }
 
     // **Keys on HEIGHT, not width.** The Top continuing rule re-anchors a
@@ -217,7 +214,7 @@ final class OverlayWindowHost: OverlayWindowHosting {
     // Ordered this way there is one placement and one draw. `display: false`
     // because nothing is on screen yet for a fresh presentation, and a
     // continuation is already showing the OUTGOING content until the view lands.
-    let frame = placement.frame(for: size, continuity: continuity, environment: environment)
+    let frame = placement.frame(for: size, continuity: continuity, environment: screen)
     withProgrammaticMove { panel.setFrame(frame, display: false) }
 
     // **The view FOLLOWS the window; it must not drive it.** An `NSHostingView`
@@ -445,85 +442,113 @@ final class OverlayWindowHost: OverlayWindowHosting {
 /// are exercisable against invented displays — a full-screen space, a second
 /// monitor — none of which can be arranged from a unit test.
 struct OverlayScreenResolver {
+  /// Pointer, then AppKit main, then the first attached display.
   let current: () -> ScreenGeometry?
 
-  /// The screen a given rect actually sits on, or `nil` if that cannot be
-  /// answered (#2292, C10).
-  ///
-  /// **`current` answers "where is the POINTER", which is the wrong question for
-  /// a pill already on screen.** A recording-to-processing transition inherits
-  /// the live panel's frame, and the frame is in the coordinate space of the
-  /// display the panel is on. Resolving the environment from the pointer instead
-  /// mixes two spaces: the Y clamp then measures an inherited Y against a
-  /// DIFFERENT display's `visibleFrame`, and moves the pill on its own display
-  /// for no reason the user can see. Vertically arranged or differently sized
-  /// monitors expose it; identical side-by-side ones hide it completely.
-  ///
-  /// DERIVED, not remembered. A cached "screen we last presented on" goes stale
-  /// on a drag, a Space change or a display being unplugged, and stale geometry
-  /// is how a pill ends up off-screen. Reading it from the frame is always
-  /// current by construction.
-  ///
-  /// The default answers `nil` so every existing construction keeps compiling
-  /// and behaving exactly as before; callers fall back to `current`, which is
-  /// also the right degradation when the pill's display has just been
-  /// disconnected and there is genuinely no screen containing it.
+  /// Placement for a new pill, including the foreground window on multiple displays.
+  let fresh: () -> ScreenGeometry?
+
+  /// The display already holding the panel. Read it from the frame so a drag
+  /// or display change cannot leave a cached display attached to the panel.
   let containing: (CGRect) -> ScreenGeometry?
 
   init(
     containing: @escaping (CGRect) -> ScreenGeometry? = { _ in nil },
+    fresh: (() -> ScreenGeometry?)? = nil,
     current: @escaping () -> ScreenGeometry?
   ) {
     self.current = current
+    self.fresh = fresh ?? current
     self.containing = containing
   }
 
-  /// Mirrors the shipped target-screen resolution
-  /// (`05411427:Sources/EnviousWisprAppKit/App/RecordingOverlayPanel.swift`): the screen under the pointer,
-  /// then main, then the first attached.
   @MainActor
   static let live = OverlayScreenResolver(
     containing: { rect in
-      // **Centre first, greatest overlap second.** A pill straddling a boundary
-      // belongs to whichever display shows most of it, and the centre answers
-      // that for every case where one display fully contains it — which is all
-      // of them, in practice, because the placement rules never straddle.
-      let centre = CGPoint(x: rect.midX, y: rect.midY)
-      if let onCentre = NSScreen.screens.first(where: { $0.frame.contains(centre) }) {
-        return OverlayScreenResolver.geometry(onCentre)
+      let displays = NSScreen.screens
+      return displayIndex(containing: rect, in: displays.map(\.frame)).map {
+        geometry(displays[$0])
       }
-      // `intersection` returns `.null` for disjoint rects, whose width and
-      // height are not meaningful — so overlap is measured only where the rects
-      // actually meet, and a straddling pill with no containing centre falls to
-      // whichever display shows most of it.
-      let overlaps = NSScreen.screens.compactMap { screen -> (NSScreen, CGFloat)? in
-        let hit = screen.frame.intersection(rect)
-        guard !hit.isNull, !hit.isEmpty else { return nil }
-        return (screen, hit.width * hit.height)
-      }
-      return overlaps.max(by: { $0.1 < $1.1 }).map { OverlayScreenResolver.geometry($0.0) }
     },
-    current: {
-      let target =
-        NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) })
-        ?? NSScreen.main ?? NSScreen.screens.first
-      // A closure rather than a bare function reference: passing
-      // `geometry` as a value strips its `@MainActor` isolation and does not
-      // compile. Calling it keeps the isolation this closure already has.
-      return target.map { OverlayScreenResolver.geometry($0) }
-    })
+    fresh: { targetDisplay(preferForegroundWindow: true) },
+    current: { targetDisplay(preferForegroundWindow: false) })
 
-  /// One construction of a `ScreenGeometry` from an `NSScreen`, shared by both
-  /// lookups. Two copies drifting apart is how one resolver would start
-  /// reporting a different full-screen answer than the other for the same
-  /// display.
   @MainActor
-  private static func geometry(_ screen: NSScreen) -> ScreenGeometry {
+  private static func targetDisplay(preferForegroundWindow: Bool) -> ScreenGeometry? {
+    let displays = NSScreen.screens
+    let pointer = NSEvent.mouseLocation
+    guard
+      let fallback = displays.firstIndex(where: { $0.frame.contains(pointer) })
+        ?? NSScreen.main.flatMap({ displays.firstIndex(of: $0) }) ?? displays.indices.first
+    else { return nil }
+
+    if preferForegroundWindow, displays.count > 1 {
+      let target = freshDisplayIndex(
+        windowBounds: foregroundWindowBounds(), displayFrames: displays.map(\.frame),
+        fallback: fallback)
+      // Query fullscreen only where the pointer-first path already would.
+      // A different display uses the Dock-safe baseline for its first draw.
+      if target != fallback {
+        return geometry(displays[target])
+      }
+    }
+
+    let display = displays[fallback]
+    return geometry(display, hasFullScreenSpace: isFrontmostAppFullScreen(on: display))
+  }
+
+  @MainActor
+  private static func foregroundWindowBounds() -> CGRect? {
+    guard let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier,
+      let windows = CGWindowListCopyWindowInfo(
+        [.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]],
+      // WindowServer lists these front to back. A normal window is the best
+      // available target without making a new synchronous call into the app.
+      let window = windows.first(where: {
+        ($0[kCGWindowOwnerPID as String] as? pid_t) == pid
+          && ($0[kCGWindowLayer as String] as? Int) == 0
+      }),
+      let bounds = window[kCGWindowBounds as String] as? NSDictionary
+    else { return nil }
+    return CGRect(dictionaryRepresentation: bounds as CFDictionary)
+  }
+
+  static func freshDisplayIndex(windowBounds: CGRect?, displayFrames: [CGRect], fallback: Int)
+    -> Int
+  {
+    guard let windowBounds, !windowBounds.isEmpty, let primary = displayFrames.first else {
+      return fallback
+    }
+    // Quartz starts at the primary display's top-left; AppKit's Y grows up.
+    let frame = CGRect(
+      x: windowBounds.minX, y: primary.maxY - windowBounds.maxY,
+      width: windowBounds.width, height: windowBounds.height)
+    return displayIndex(containing: frame, in: displayFrames) ?? fallback
+  }
+
+  private static func displayIndex(containing rect: CGRect, in frames: [CGRect]) -> Int? {
+    // Centre first, greatest overlap second when the centre falls between displays.
+    let centre = CGPoint(x: rect.midX, y: rect.midY)
+    if let onCentre = frames.firstIndex(where: { $0.contains(centre) }) {
+      return onCentre
+    }
+    let overlaps = frames.enumerated().compactMap { index, frame -> (Int, CGFloat)? in
+      let hit = frame.intersection(rect)
+      guard !hit.isNull, !hit.isEmpty else { return nil }
+      return (index, hit.width * hit.height)
+    }
+    return overlaps.max(by: { $0.1 < $1.1 })?.0
+  }
+
+  @MainActor
+  private static func geometry(_ screen: NSScreen, hasFullScreenSpace: Bool = false)
+    -> ScreenGeometry
+  {
     ScreenGeometry(
       id: ScreenID(rawValue: screen.deviceDescription[.init("NSScreenNumber")] as? Int ?? 0),
       frame: screen.frame,
       visibleFrame: screen.visibleFrame,
-      hasFullScreenSpace: OverlayScreenResolver.isFrontmostAppFullScreen(on: screen))
+      hasFullScreenSpace: hasFullScreenSpace)
   }
 
   /// #1341: `NSScreen.visibleFrame` does NOT shrink when a DIFFERENT app is in
