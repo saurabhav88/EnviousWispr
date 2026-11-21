@@ -187,6 +187,18 @@ struct DictationRecordingsTests {
     #expect(try await rig.archive.usage().temporaryBytes == 0)
   }
 
+  @Test("the tour requires a finished recording in addition to saved text")
+  func tourRequiresSavedRecording() async throws {
+    let rig = rig()
+    defer { rig.gate.releaseAll() }
+    let row = try savedRow(rig)
+    #expect(await rig.recordings.hasSavedRecording() == false)
+
+    rig.gate.release(1)
+    try #require(await rig.recordings.record(rowID: row.id, samples: [0], timing: nil) == .stored)
+    #expect(await rig.recordings.hasSavedRecording())
+  }
+
   @Test("deleting the recording while it encodes: the late encode cannot bring it back")
   func audioDeletionWins() async throws {
     let rig = rig()
