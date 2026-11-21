@@ -389,11 +389,16 @@ def keyed(parsed, kind):
         entries = parsed.get("words", parsed) if isinstance(parsed, dict) else parsed
         if isinstance(entries, dict):
             return entries
-        return {e.get("id", i): e for i, e in enumerate(entries)}
+        if isinstance(entries, list) and all(isinstance(entry, dict) for entry in entries):
+            try:
+                return {entry.get("id", i): entry for i, entry in enumerate(entries)}
+            except TypeError:
+                pass
+        return parsed  # Preserve exact bytes even when the saved content has an unfamiliar shape.
     return parsed
 
 
-def verify_restore(path, snap, kind):
+def verify_restore(path, snap, kind, *, verify_mode=False):
     after = file_snapshot(path)
     if snap["exists"] != after["exists"]:
         return False, "existence differs"
@@ -401,6 +406,8 @@ def verify_restore(path, snap, kind):
         return True, "absent before and after"
     if snap["sha256"] != after["sha256"]:
         return False, "bytes differ"
+    if verify_mode and snap["mode"] != after["mode"]:
+        return False, "file mode differs"
     if keyed(snap["parsed"], kind) != keyed(after["parsed"], kind):
         return False, "parsed per-key content differs"
     return True, "bytes and per-key content equal"
@@ -645,7 +652,7 @@ def parse_judged(line):
             "candidates": int(match.group(3)), "accepted": int(match.group(4))}
 
 
-def finish_restore(snaps, initially_running, app_stopped, audio_restored):
+def finish_restore(snaps, initially_running, app_stopped, audio_restored, *, words_restored=None):
     """The one restore receipt both drills print: files, defaults, launchctl,
     audio route, and the app's initial running state (relaunched AND seen
     running, never an unchecked `open`). Returns (restored, receipt)."""
@@ -656,15 +663,23 @@ def finish_restore(snaps, initially_running, app_stopped, audio_restored):
     except Exception as error:
         env_restored = False
         print(f"LAUNCHCTL RESTORE FAILED: {error}")
+    ok_w, why_w = False, "not restored: the app did not stop"
     if app_stopped:
+        if "words" not in snaps:
+            ok_w, why_w = True, "dictionary was not changed"
+        else:
+            try:
+                file_restore(WORDS, snaps["words"])
+                ok_w, why_w = verify_restore(WORDS, snaps["words"], "words",
+                                             verify_mode=words_restored is not None)
+                if ok_w and words_restored is not None:
+                    words_restored()
+            except (OSError, ValueError) as error:
+                ok_w, why_w = False, f"word-list restore could not finish ({error})"
         try:
-            file_restore(WORDS, snaps["words"])
             defaults_restore(snaps["defaults"])
         except Exception as error:
-            print(f"FILE RESTORE FAILED: {error}")
-        ok_w, why_w = verify_restore(WORDS, snaps["words"], "words")
-    else:
-        ok_w, why_w = False, "not restored: the app did not stop"
+            print(f"DEFAULTS RESTORE FAILED: {error}")
     ok_d = defaults_snapshot() == snaps["defaults"]
     try:
         ok_e = env_restored and launchctl_get() == snaps["launchctl"]
