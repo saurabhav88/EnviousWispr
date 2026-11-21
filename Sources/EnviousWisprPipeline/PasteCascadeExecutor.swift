@@ -230,7 +230,7 @@ internal func clipboardUntouchedSinceSubmit(submitted: Int?, current: Int) -> Bo
   return submitted == current
 }
 
-/// Three-way classification of the focused AX element at paste time.
+/// Classification of the focused AX element at paste time.
 internal enum PasteFocusClassification: Equatable {
   /// Element present with a known text-input role. Full cascade applies.
   case textField
@@ -240,6 +240,11 @@ internal enum PasteFocusClassification: Equatable {
   /// Element present but role not in textRoles. Skip Tier 1 and Tier 2 —
   /// firing Cmd+V would go nowhere. Falls through to clipboard-only overlay.
   case nonText
+  /// #1070: the captured focus is the standard window of a known remote-desktop or virtual-machine
+  /// client (`SelectionAcquisition.isKeystrokeForwarding`). The session behind it is one opaque
+  /// view, so Tier 1 has no field to write, but a key paste reaches the field inside the session.
+  /// Its landing cannot be observed, so the dictation stays on the clipboard.
+  case remoteSession
 }
 
 /// Pure classification helper. Extracted for unit testing — the live cascade
@@ -252,13 +257,28 @@ internal enum PasteFocusClassification: Equatable {
 /// contenteditable accepts CGEvent paste — same shape as the Chromium /
 /// Electron lazy-AX case. Native Mac apps with a focused non-text element
 /// (button, image, page body) continue to fall through to clipboard-only.
+///
+/// #1070: a non-text focus that is the standard window of a known remote-desktop client
+/// classifies `.remoteSession`. Both halves are required: the bundle alone would include the
+/// client's local dialogs and controls, and the window alone would include every local app
+/// (Emacs, Safari, the macOS password dialog `com.apple.SecurityAgent` all report
+/// `AXWindow` / `AXStandardWindow`). Screen Sharing's surface reports `AXSharedScreen`, so it
+/// stays `.nonText`. Founder decision 2026-11-21 (answer A): this shared remote-client list
+/// supersedes the 2026-09-09 "deliberately not an allowlist" ruling, for remote clients only.
 internal func classifyPasteFocus(
   elementPresent: Bool,
   roleIsTextField: Bool,
-  targetBundleID: String? = nil
+  targetBundleID: String? = nil,
+  focusRole: String? = nil,
+  focusSubrole: String? = nil
 ) -> PasteFocusClassification {
   guard elementPresent else { return .missing }
   if roleIsTextField { return .textField }
+  if focusRole == "AXWindow", focusSubrole == "AXStandardWindow",
+    SelectionAcquisition.isKeystrokeForwarding(targetBundleID)
+  {
+    return .remoteSession
+  }
   if isKnownWebWrapperBundle(targetBundleID) { return .missing }  // #729
   return .nonText
 }
@@ -350,10 +370,10 @@ internal func dispositionForAXDirect(
 
 extension PasteFocusClassification {
   /// Whether a key-based paste (Tier 2 Cmd+V / Tier 2b AppleScript) should be
-  /// attempted. True for `.textField` and `.missing`; false for `.nonText`.
+  /// attempted. True for `.textField`, `.missing` and `.remoteSession`; false for `.nonText`.
   var canAttemptKeyPaste: Bool {
     switch self {
-    case .textField, .missing: return true
+    case .textField, .missing, .remoteSession: return true
     case .nonText: return false
     }
   }
@@ -384,6 +404,7 @@ internal func tier1DeclineReason(
     }
   case .missing: return .focusMissing
   case .nonText: return .focusNonText
+  case .remoteSession: return .focusRemoteSession
   }
 }
 
@@ -434,6 +455,9 @@ enum PasteTargetWindowGate {
     case windowUnreadableFocusMismatch = "window_unreadable_focus_mismatch"
     /// The budget refused a read, so the gate could not tell. Fails closed.
     case budget = "budget"
+    /// #1070: a remote-session paste requires the captured window itself to be the app's keyboard
+    /// focus; the focus was another element (a field in a local popup, for example) or unreadable.
+    case capturedFocusMismatch = "captured_focus_mismatch"
   }
 
   /// Why the gate passed (#3304), logged so a support read or the Live UAT can tell a proven window
@@ -478,11 +502,13 @@ enum PasteTargetWindowGate {
   /// Nil when the key paste would reach the captured field's window; the refusal otherwise.
   static func refusal(
     target: PasteTargetWindow, element: AXUIElement?, pid: pid_t,
-    ax: any PastedRegionAXOperations, admit: (AXUIElement) -> Bool
+    ax: any PastedRegionAXOperations, admit: (AXUIElement) -> Bool,
+    requireCapturedFocus: Bool = false
   ) -> Refusal? {
     guard
       case .refuse(let refusal) = decide(
-        target: target, element: element, pid: pid, ax: ax, admit: admit)
+        target: target, element: element, pid: pid, ax: ax, admit: admit,
+        requireCapturedFocus: requireCapturedFocus)
     else { return nil }
     return refusal
   }
@@ -496,10 +522,26 @@ enum PasteTargetWindowGate {
   /// or over-budget read passes, because with no field there is no other proof to wait for and a
   /// refusal would turn a working paste into Copied-only.
   /// Comparison is `CFEqual`, the identity test `PasteArrivalCapture.targetWindow` uses.
+  /// `requireCapturedFocus` (#1070, remote sessions only): the captured element itself must be the
+  /// app's focused element, read once; the same focused window is not enough, and no replacement
+  /// field is admitted. A budget spent by that read refuses, as the replacement-field read does.
   static func decide(
     target: PasteTargetWindow, element: AXUIElement?, pid: pid_t,
-    ax: any PastedRegionAXOperations, admit: (AXUIElement) -> Bool
+    ax: any PastedRegionAXOperations, admit: (AXUIElement) -> Bool,
+    requireCapturedFocus: Bool = false
   ) -> Decision {
+    if requireCapturedFocus {
+      guard let element else { return .refuse(.capturedFocusMismatch) }
+      let application = ax.applicationElement(pid: pid)
+      guard admit(application) else { return .refuse(.budget) }
+      let focused = ax.focusedElement(ofApplication: application)
+      // The read may have spent the budget; an answer that arrived after it is not trusted.
+      guard admit(application) else { return .refuse(.budget) }
+      guard case .element(let current) = focused, CFEqual(current, element) else {
+        return .refuse(.capturedFocusMismatch)
+      }
+      return .pass(.fieldFocused)
+    }
     let mismatch: Refusal
     switch target {
     case .none:
@@ -835,7 +877,7 @@ internal final class PasteCascadeExecutor {
     // #3437: the receipt of the Tier 3 write, if it ran.
     var fallbackClipboardChangeCount: Int? = nil
 
-    // Three-way classification of the focused element (PR #220 design intent,
+    // Classification of the focused element (PR #220 design intent,
     // restored for Chromium/Electron contenteditable inputs — see #277).
     //
     // - textField: element present with a known text input role. Run full cascade.
@@ -847,6 +889,9 @@ internal final class PasteCascadeExecutor {
     // - nonText:   element present but role not in textRoles (button, page body).
     //              Cmd+V would fire into a void; fall straight to clipboard-only
     //              with the "Copied. Press Cmd+V" overlay (PR #220's protection).
+    // - remoteSession (#1070): a remote-desktop client's own standard window. Skip Tier 1 (the
+    //              field is inside the session), attempt the key paste, keep the dictation on
+    //              the clipboard.
     // If Accessibility is not trusted, CGEvent Cmd+V can't paste anyway
     // (see gotchas.md § CGEvent Paste Requires Accessibility). Fall back
     // to clipboard-only + overlay so the user can press Cmd+V themselves,
@@ -868,13 +913,16 @@ internal final class PasteCascadeExecutor {
         elementPresent: true, roleIsTextField: false, targetBundleID: nil)
       targetDiagnostics = .unavailable
     } else if let element = request.targetElement {
+      // Role/subrole are read at paste time from the captured AXUIElement handle, before the
+      // classification, which reads them for the #1070 remote-session rule.
+      targetDiagnostics = PasteService.capturedElementDiagnostics(element)
       classification = classifyPasteFocus(
         elementPresent: true,
         roleIsTextField: PasteService.isTextFieldRole(element),
-        targetBundleID: targetBundleID
+        targetBundleID: targetBundleID,
+        focusRole: targetDiagnostics.role,
+        focusSubrole: targetDiagnostics.subrole
       )
-      // Role/subrole are read at paste time from the captured AXUIElement handle.
-      targetDiagnostics = PasteService.capturedElementDiagnostics(element)
     } else {
       classification = classifyPasteFocus(
         elementPresent: false, roleIsTextField: false, targetBundleID: targetBundleID)
@@ -1056,6 +1104,8 @@ internal final class PasteCascadeExecutor {
       systemPasteCanReachOurText,
       let app = request.targetApp, !app.isTerminated
     {
+      // #1070: a remote session's key paste goes only to the captured window itself.
+      let requireCapturedFocus = classification == .remoteSession
       let tier2ActivationStart = CFAbsoluteTimeGetCurrent()
       logPasteTimingStart(
         step: "tier2_activate", startedAt: tier2ActivationStart, bundleId: bundleId)
@@ -1064,7 +1114,8 @@ internal final class PasteCascadeExecutor {
       var activation = await activate(
         app, element: request.targetElement, recordedWindow: request.recordedWindow,
         startFieldWindow: request.capturedFieldWindow,
-        target: targetWindow, tier1BoundTheTarget: tier1BoundTheTarget)
+        target: targetWindow, tier1BoundTheTarget: tier1BoundTheTarget,
+        requireCapturedFocus: requireCapturedFocus)
       targetWindow = activation.target
       #if DEBUG
         // #3106 PR B gate G6 (Live UAT only): Tier 2b runs only after this activation times out,
@@ -1124,7 +1175,7 @@ internal final class PasteCascadeExecutor {
         let gate = dispatchGate(
           app: app, target: activation.target, element: request.targetElement,
           tier1BoundTheTarget: tier1BoundTheTarget, takeID: request.takeID, bundleId: bundleId,
-          origin: request.origin)
+          origin: request.origin, requireCapturedFocus: requireCapturedFocus)
         // Cloud review rounds 2 and 4 (PR #2451): both activation AND
         // `payloadAtCommitBoundary`'s own AX re-reads above can move focus off
         // the omnibox before the CGEvent fires. Checking after activation but
@@ -1269,7 +1320,7 @@ internal final class PasteCascadeExecutor {
         let gate = dispatchGate(
           app: app, target: activation.target, element: request.targetElement,
           tier1BoundTheTarget: tier1BoundTheTarget, takeID: request.takeID, bundleId: bundleId,
-          origin: request.origin)
+          origin: request.origin, requireCapturedFocus: requireCapturedFocus)
         // #2297 cloud review round 3: Tier 2b never consulted the omnibox-focus
         // decision at all — the force-activate and settle sleep above can move
         // focus exactly as `activate(app)` does for Tier 2, and a blind
@@ -1733,7 +1784,8 @@ internal final class PasteCascadeExecutor {
   func activate(
     _ app: NSRunningApplication, element: AXUIElement?, recordedWindow: AXUIElement?,
     startFieldWindow: AXUIElement? = nil,
-    target known: PasteTargetWindow?, tier1BoundTheTarget: Bool
+    target known: PasteTargetWindow?, tier1BoundTheTarget: Bool,
+    requireCapturedFocus: Bool = false
   ) async -> Activation {
     let timeoutMs = TimingConstants.activationTimeoutMs
     let startMs = landingScheduler.nowMs
@@ -1780,7 +1832,8 @@ internal final class PasteCascadeExecutor {
           pid: pid, capturedElement: element, mode: .frontOnly, budget: nil) == .frontApp
       if appFront {
         let latest = PasteTargetWindowGate.refusal(
-          target: target, element: element, pid: pid, ax: landingAX, admit: stepBudget().admit)
+          target: target, element: element, pid: pid, ax: landingAX, admit: stepBudget().admit,
+          requireCapturedFocus: requireCapturedFocus)
         if latest == nil {
           refusal = nil
           break
@@ -1859,7 +1912,7 @@ internal final class PasteCascadeExecutor {
   func dispatchGate(
     app: NSRunningApplication, target: PasteTargetWindow, element: AXUIElement?,
     tier1BoundTheTarget: Bool, takeID: String?, bundleId: String,
-    origin: PasteDeliveryOrigin = .dictation
+    origin: PasteDeliveryOrigin = .dictation, requireCapturedFocus: Bool = false
   ) -> DispatchGate {
     let budget = PasteLandingPrepareBudget(scheduler: landingScheduler, ax: landingAX)
     defer { restoreCapturedTimeout(element, tier1BoundTheTarget: tier1BoundTheTarget) }
@@ -1872,7 +1925,7 @@ internal final class PasteCascadeExecutor {
     }
     let decision = PasteTargetWindowGate.decide(
       target: target, element: element, pid: app.processIdentifier, ax: landingAX,
-      admit: budget.admit)
+      admit: budget.admit, requireCapturedFocus: requireCapturedFocus)
     logGateDecision(decision, target: target, takeID: takeID, bundleId: bundleId, origin: origin)
     let refusal: PasteTargetWindowGate.Refusal?
     if case .refuse(let reason) = decision { refusal = reason } else { refusal = nil }
@@ -2249,6 +2302,7 @@ extension PasteFocusClassification {
     case .textField: return "text_field"
     case .missing: return "missing"
     case .nonText: return "non_text"
+    case .remoteSession: return "remote_session"
     }
   }
 }

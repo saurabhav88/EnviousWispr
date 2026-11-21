@@ -101,6 +101,7 @@ struct PasteDeclineReasonTests {
       (.accessibilityDenied, "not_attempted_accessibility_denied"),
       (.focusMissing, "not_attempted_focus_missing"),
       (.focusNonText, "not_attempted_focus_non_text"),
+      (.focusRemoteSession, "not_attempted_focus_remote_session"),
       (.roleUnreadable, "role_unreadable"),
       (.roleNotText, "role_not_text"),
       (.selectedTextNotSettable, "selected_text_not_settable"),
@@ -120,7 +121,7 @@ struct PasteDeclineReasonTests {
     for (reason, rawValue) in expected {
       #expect(reason.rawValue == rawValue, "raw value drifted for \(reason)")
     }
-    #expect(expected.count == 18)
+    #expect(expected.count == 19)
   }
 
 }

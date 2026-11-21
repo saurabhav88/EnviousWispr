@@ -954,7 +954,13 @@ public enum SelectionAcquisition {
   ///
   /// The hazard it covers is specific: in these apps a synthetic Copy is delivered to somebody
   /// else's session, where it means whatever it means there.
-  static let keystrokeForwardingBundleIdentifiers: Set<String> = [
+  ///
+  /// #1070: the paste cascade reads the same list. A captured standard window of one of these apps
+  /// is a remote session (`classifyPasteFocus` returns `.remoteSession`), where a key paste can
+  /// reach the field inside. RustDesk and Splashtop's viewer were added from production telemetry
+  /// (2026-11-21: 8 and 1 clipboard-only takes in 30 days).
+  /// `nonisolated`: an immutable `Set<String>` read by the nonisolated paste classifier.
+  nonisolated static let keystrokeForwardingBundleIdentifiers: Set<String> = [
     "com.apple.ScreenSharing",
     "com.microsoft.rdc.macos",
     "com.teamviewer.TeamViewer",
@@ -968,6 +974,8 @@ public enum SelectionAcquisition {
     "com.vmware.fusion",
     "com.utmapp.UTM",
     "org.virtualbox.app.VirtualBox",
+    "com.carriez.rustdesk",
+    "com.splashtop.stb.macosx",
   ]
 
   /// **Nil FAILS OPEN, deliberately, and the reason is that the alternative buys nothing.** An
@@ -975,7 +983,7 @@ public enum SelectionAcquisition {
   /// fallback in every unbundled binary in exchange for no protection at all: every remote-desktop
   /// and virtual-machine client ships bundled. Stated rather than left to a reader to notice,
   /// because "nil means not forwarding" is exactly the collapse the type doc enumerates.
-  static func isKeystrokeForwarding(_ bundleIdentifier: String?) -> Bool {
+  nonisolated static func isKeystrokeForwarding(_ bundleIdentifier: String?) -> Bool {
     guard let bundleIdentifier else { return false }
     return keystrokeForwardingBundleIdentifiers.contains(bundleIdentifier)
   }
