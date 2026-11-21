@@ -96,6 +96,8 @@ final class EngineCoordinator {
     /// neither switches to nor warms that engine (a warm of a missing Parakeet downloads it);
     /// the installation owner pokes when the fact settles. Defaults settled for tests.
     var isInstallationKnown: @MainActor (ASRBackendType) -> Bool = { _ in true }
+    var automaticLoadStopPoint: @MainActor (ASRBackendType) -> UInt64? = { _ in nil }
+    var awaitInstallation: @MainActor (ASRBackendType) async -> Void = { _ in }
     /// A telemetry label for the given engine's pipeline state.
     let stateLabel: @MainActor (ASRBackendType) -> String
     /// The mechanical, nonthrowing backend switch (`asrManager.switchBackend`).
@@ -282,6 +284,29 @@ final class EngineCoordinator {
     /// Switched but not ready (a failed warm, or an unexpected block) → the next
     /// press retries via the cold-press path.
     case notReady
+  }
+
+  private func selectedLoadStopPoint(for backend: ASRBackendType) -> UInt64? {
+    // A selection not yet switched to Parakeet can still find a usable fallback.
+    guard deps.selectedBackend() == backend, deps.activeBackend() == backend,
+      deps.readiness(backend) != .ready
+    else { return nil }
+    return deps.automaticLoadStopPoint(backend)
+  }
+
+  func selectedEngineRequiresRetry(_ backend: ASRBackendType) -> Bool {
+    selectedLoadStopPoint(for: backend) != nil
+      && deps.isInstallationKnown(backend) && deps.isInstalled(backend)
+  }
+
+  func confirmSelectedEngineRequiresRetry(_ backend: ASRBackendType) async -> Bool {
+    guard let point = selectedLoadStopPoint(for: backend) else { return false }
+    // Publishing the stop can invalidate the cached install read in the same turn.
+    if !deps.isInstallationKnown(backend) {
+      await deps.awaitInstallation(backend)
+    }
+    return !Task.isCancelled && selectedLoadStopPoint(for: backend) == point
+      && deps.isInstallationKnown(backend) && deps.isInstalled(backend)
   }
 
   /// Awaitable record-start path: ensure the SELECTED engine is switched-to and

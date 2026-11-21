@@ -21,6 +21,28 @@ import EnviousWisprAppKitTestSupport
 @Suite("EngineCoordinator (#1171)", .serialized, .tags(.localParallel))
 struct EngineCoordinatorTests {
 
+  @Test("a late install read cannot confirm a stopped selection that was replaced")
+  func retryNoticeRequiresCurrentInstalledSelection() async {
+    let fake = FakeEngineDeps(
+      selected: .parakeet, active: .parakeet, parakeetReadiness: .notReady)
+    fake.unknownInstall = [.parakeet]
+    var stopPoint: UInt64 = 1
+    var dependencies = fake.makeDependencies()
+    dependencies.automaticLoadStopPoint = { $0 == .parakeet ? stopPoint : nil }
+    dependencies.awaitInstallation = { backend in
+      fake.unknownInstall.remove(backend)
+      stopPoint = 2
+    }
+    let coordinator = EngineCoordinator(dependencies: dependencies)
+
+    #expect(coordinator.selectedEngineRequiresRetry(.parakeet) == false)
+    #expect(await coordinator.confirmSelectedEngineRequiresRetry(.parakeet) == false)
+    #expect(coordinator.selectedEngineRequiresRetry(.parakeet))
+
+    fake.selected = .whisper
+    #expect(coordinator.selectedEngineRequiresRetry(.parakeet) == false)
+  }
+
   // MARK: - Latest-wins / single-flight
 
   @Test("idle switch applies and warms the now-active engine")

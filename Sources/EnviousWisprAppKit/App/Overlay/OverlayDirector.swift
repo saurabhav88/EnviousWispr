@@ -1929,4 +1929,10 @@ extension OverlayDirector: OverlayPresenting {
   func isCurrent(_ receipt: PillReceipt) -> Bool {
     reducer.state.current?.id == receipt.presentationID
   }
+
+  /// A completed startup can report after its spinner's dwell, provided nothing took over.
+  func canFollowUp(_ receipt: PillReceipt) -> Bool {
+    isCurrent(receipt)
+      || (reducer.state.current == nil && reducer.state.lastNaturalExpiry == receipt.presentationID)
+  }
 }

@@ -118,7 +118,7 @@ import Testing
   // MARK: - Post-completion + advisory warnings (E3, #1567)
 
   /// Every `RecordingWarningReason` maps to its founder-locked sentence. The
-  /// four interrupted-tail cells and the two interpolated reasons are pinned
+  /// four interrupted-tail cells and the interpolated reasons are pinned
   /// byte-exact; the two cleanups (model-not-downloaded, polish-failed) are the
   /// only strings that changed from today.
   @Test("warning reasons map to their exact founder-locked sentences")
@@ -126,6 +126,9 @@ import Testing
     #expect(
       DictationNarrator.copy(for: .modelNotDownloaded(engineLabel: "Parakeet"))
         == "Parakeet isn't downloaded yet. Open Settings to download it.")
+    #expect(
+      DictationNarrator.copy(for: .modelRequiresExplicitRetry(engineLabel: "Parakeet"))
+        == "Parakeet couldn't load. Choose Try Again in Settings > Dictation Settings > Engine.")
     #expect(DictationNarrator.copy(for: .polishFailed) == "Pasted without AI polish.")
     #expect(
       DictationNarrator.copy(

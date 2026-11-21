@@ -182,6 +182,24 @@ struct OverlayReducerTests {
     #expect(r.state.current == nil)
   }
 
+  @Test("natural expiry keeps its receipt until the slot is replaced or explicitly hidden")
+  func naturalExpiryKeepsFollowUpOwnership() throws {
+    var reducer = Self.makeReducer()
+    _ = reducer.reduce(.pipeline(.cachingModel(engineLabel: "Parakeet")))
+    let warming = try #require(reducer.state.current?.id)
+    _ = reducer.reduce(.expiryFired(warming))
+    #expect(reducer.state.lastNaturalExpiry == warming)
+
+    _ = reducer.reduce(.pipeline(.engineReady))
+    let ready = try #require(reducer.state.current?.id)
+    #expect(reducer.state.lastNaturalExpiry == nil)
+    _ = reducer.reduce(.expiryFired(ready))
+    #expect(reducer.state.lastNaturalExpiry == ready)
+
+    _ = reducer.reduce(.pipeline(.hidden))
+    #expect(reducer.state.lastNaturalExpiry == nil)
+  }
+
   @Test("a stale action is dropped")
   func staleActionIsDropped() {
     var r = Self.makeReducer()

@@ -427,7 +427,7 @@
       case .noSpeechFound: return "noSpeechFound"
       case .engineBusy: return "engineBusy"
       case .engineNotInstalled: return "engineNotInstalled"
-      case .engineNotReady: return "engineNotReady"
+      case .engineNotReady, .engineRequiresExplicitRetry: return "engineNotReady"
       case .polisherNotReady: return "polisherNotReady"
       case .failed(let message): return "failed:\(message)"
       }

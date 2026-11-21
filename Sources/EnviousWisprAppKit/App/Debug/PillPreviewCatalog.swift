@@ -157,6 +157,7 @@
     static func warningCaseName(_ reason: RecordingWarningReason) -> String {
       switch reason {
       case .modelNotDownloaded: return "modelNotDownloaded"
+      case .modelRequiresExplicitRetry: return "modelRequiresExplicitRetry"
       case .polishFailed: return "polishFailed"
       case .historySaveFailed: return "historySaveFailed"
       case .escapeRecoveryUnavailable: return "escapeRecoveryUnavailable"
@@ -169,14 +170,15 @@
 
     /// Every warning case name a complete table must cover.
     static let allWarningCaseNames: Set<String> = [
-      "modelNotDownloaded", "polishFailed", "historySaveFailed", "escapeRecoveryUnavailable",
+      "modelNotDownloaded", "modelRequiresExplicitRetry", "polishFailed", "historySaveFailed",
+      "escapeRecoveryUnavailable",
       "salvagedBeginning", "interruptedTail", "sharedEngineBusy", "dictationOffDuringMeeting",
     ]
 
     /// Sample warning reasons. Fake data only.
     private static let warningSamples: [RecordingWarningReason] =
       backends.map { .modelNotDownloaded(engineLabel: $0.displayName) }
-      + [.polishFailed]
+      + [.modelRequiresExplicitRetry(engineLabel: ASRBackendType.parakeet.displayName), .polishFailed]
       + historyClasses.map { .historySaveFailed(reason: $0.userMessage) }
       + [
         .escapeRecoveryUnavailable,

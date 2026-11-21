@@ -1486,8 +1486,8 @@ struct FileImportCoordinatorTests {
     #expect(count.value == 2)
   }
 
-  @Test("a rejection after the claim fires the hook once")
-  func releaseHookOnPostClaimRejection() async {
+  @Test("a rejection after the claim fires the hook once", arguments: [false, true])
+  func releaseHookOnPostClaimRejection(requiresRetry: Bool) async {
     let count = ReleaseCount()
     let readinessCalls = Counter()
     let coordinator = await readyCoordinator(
@@ -1495,12 +1495,28 @@ struct FileImportCoordinatorTests {
       // Ready at the first check, and not ready again by the time the claim is taken.
       ensureEngineReady: {
         await readinessCalls.bump()
-        return await readinessCalls.count == 1 ? .ready : .notReady
+        if await readinessCalls.count == 1 { return .ready }
+        return requiresRetry ? .requiresExplicitRetry : .notReady
       })
     coordinator.start()
     _ = await settleUntil { count.value >= 1 }
-    #expect(coordinator.state == .rejected(.engineNotReady))
+    #expect(
+      coordinator.state == .rejected(requiresRetry ? .engineRequiresExplicitRetry : .engineNotReady))
     #expect(count.value == 1)
+  }
+
+  @Test("an installed engine requiring Retry refuses before the file claims it")
+  func explicitRetryRefusesBeforeClaim() async {
+    let count = ReleaseCount()
+    let lease = EngineLease()
+    let coordinator = await readyCoordinator(
+      lease: lease, count: count, ensureEngineReady: { .requiresExplicitRetry })
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .rejected(.engineRequiresExplicitRetry) }
+    #expect(coordinator.state == .rejected(.engineRequiresExplicitRetry))
+    #expect(coordinator.file != nil)
+    #expect(lease.isBusy == false)
+    #expect(count.value == 0)
   }
 
   /// #3546 Chunk 12 whole-PR review r4: the user changed engines while the first readiness

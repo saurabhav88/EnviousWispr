@@ -181,6 +181,8 @@ struct OverlayPlan: Equatable {
 struct OverlayState: Equatable {
   /// What occupies the slot, or nil.
   private(set) var current: PillDefinition?
+  /// The last presentation to leave by its own timer, until another presentation or hide.
+  private(set) var lastNaturalExpiry: PresentationID?
   /// The last pipeline intent seen. A feature may take the slot only while this
   /// is `.hidden`, which is the arbitration rule the shipped code spells out
   /// separately at every feature.
@@ -249,11 +251,22 @@ struct OverlayState: Equatable {
     // and silently undo the narrowing above.
     if current != self.current || (pipelineIntent != nil && pipelineIntent != self.pipelineIntent) {
       slotRevision &+= 1
+      lastNaturalExpiry = nil
     }
     self.current = current
     if let pipelineIntent { self.pipelineIntent = pipelineIntent }
     if let isHovered { self.isHovered = isHovered }
     if let isLocked { self.isLocked = isLocked }
+  }
+
+  fileprivate mutating func hide() {
+    set(current: nil, pipelineIntent: .hidden, isHovered: false)
+    lastNaturalExpiry = nil
+  }
+
+  fileprivate mutating func expire(_ id: PresentationID) {
+    hide()
+    lastNaturalExpiry = id
   }
 }
 
@@ -534,7 +547,11 @@ struct OverlayReducer {
       let wasOccupied = state.current != nil
       let wasRecording = Self.isRecording(state.current)
       let preempted = Self.learnedPillPreempted(by: nil, replacing: state.current)
-      state.set(current: nil, pipelineIntent: intent, isHovered: false)
+      if intent == .hidden {
+        state.hide()
+      } else {
+        state.set(current: nil, pipelineIntent: intent, isHovered: false)
+      }
       return OverlayPlan(
         presentation: nil, didChange: wasOccupied,
         expiryCommand: wasOccupied ? .cancel : .unchanged,
@@ -1111,7 +1128,7 @@ struct OverlayReducer {
     // `.warning` forever and EVERY feature pill was blocked for the rest of the
     // session — the arbitration rule this reducer exists to state, failing open
     // in the direction nothing would ever report.
-    state.set(current: nil, pipelineIntent: .hidden, isHovered: false)
+    state.expire(id)
     return OverlayPlan(
       presentation: nil, didChange: true, expiryCommand: .cancel, effects: effects)
   }

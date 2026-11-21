@@ -78,6 +78,8 @@ public enum SharedEngineHolder: String, Sendable, Equatable, CaseIterable {
 public enum RecordingWarningReason: Equatable, Sendable {
   /// The SELECTED ASR engine isn't downloaded yet. Carries its display name.
   case modelNotDownloaded(engineLabel: String)
+  /// The selected engine is installed but its automatic load stopped pending Try Again.
+  case modelRequiresExplicitRetry(engineLabel: String)
   /// AI polish failed; the raw transcript was pasted instead.
   case polishFailed
   /// The dictation was pasted but the history write threw. Carries the reason.

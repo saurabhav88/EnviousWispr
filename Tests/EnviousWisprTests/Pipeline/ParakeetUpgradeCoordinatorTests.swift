@@ -1156,8 +1156,10 @@ struct ParakeetUpgradePolicyTests {
       attempts: 2, refetchSpent: false, exhausted: false, declined: false))
     #expect(rig.selection.current == nil)
     #expect(rig.coordinator.needsExplicitRetry)
+    #expect(rig.coordinator.automaticLoadStopPoint != nil)
 
     try rig.coordinator.retry()
+    #expect(rig.coordinator.automaticLoadStopPoint == nil)
     let retried = try await rig.coordinator.prepareLoad()
     let selection = try #require(retried.selection)
     #expect(selection.model == .ultra)
@@ -2223,6 +2225,7 @@ struct ParakeetUpgradePolicyTests {
     #expect(prepared.selection?.model == .v3)
     #expect(rig.coordinator.hasBackgroundFetchForTesting == false, "no download nothing may load")
     #expect(rig.coordinator.needsExplicitRetry, "Settings offers Try again")
+    #expect(rig.coordinator.automaticLoadStopPoint == nil, "v3 can still warm")
     #expect(Self.physicalLoad(rig) == .loaded)
     #expect(rig.coordinator.needsExplicitRetry, "v3 readiness must keep Ultra's Retry")
     #expect(rig.coordinator.hasBackgroundFetchForTesting == false)

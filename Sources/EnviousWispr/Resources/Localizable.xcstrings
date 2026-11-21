@@ -258,6 +258,17 @@
         }
       }
     },
+    "%@ couldn't load. Choose Try Again in Settings > Dictation Settings > Engine." : {
+      "comment" : "Dictation warning and file import notice when the installed speech engine needs a manual retry. %@ is the engine name. Try Again and the settings path are app labels.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ konnte nicht geladen werden. Wähle unter Einstellungen > Diktateinstellungen > Engine „Erneut versuchen“."
+          }
+        }
+      }
+    },
     "%@ dictations" : {
       "comment" : "History day heading: how many dictations that day. Never 1.",
       "localizations" : {

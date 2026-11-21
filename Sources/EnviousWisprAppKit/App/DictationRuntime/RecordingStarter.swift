@@ -158,6 +158,8 @@ final class RecordingStarter {
   /// fact is still unknown (never guessing "missing"). Defaults open (true) — a missing
   /// authority must not block dictation.
   var isSelectedModelInstalled: @MainActor () async -> Bool = { true }
+  var selectedEngineRequiresRetry: @MainActor (ASRBackendType) -> Bool = { _ in false }
+  var confirmSelectedEngineRequiresRetry: @MainActor (ASRBackendType) async -> Bool = { _ in false }
   /// #4069: "Turn off dictation during meetings" is on and a meeting is capturing
   /// (`MeetingCoordinator.isCapturing`). Read once per START press, before any await. Defaults
   /// open (false): a missing authority must not block dictation.
@@ -501,7 +503,10 @@ final class RecordingStarter {
     if readinessAtEntry != .ready {
       ColdPressGuard.handle(
         overlay: recordingOverlay, active: active,
-        backendTag: backend.rawValue, readiness: readinessAtEntry)
+        backendTag: backend.rawValue, readiness: readinessAtEntry,
+        confirmExplicitRetry: { [confirmSelectedEngineRequiresRetry] in
+          await confirmSelectedEngineRequiresRetry(backend)
+        })
       return .noRecording
     }
     // #1171 — committed to minting on `active` (selected == active confirmed above,
@@ -829,7 +834,10 @@ final class RecordingStarter {
         // #879 — same cold-boot press safety as the PTT path.
         ColdPressGuard.handle(
           overlay: recordingOverlay, active: active,
-          backendTag: backend.rawValue, readiness: active.engineReadiness)
+          backendTag: backend.rawValue, readiness: active.engineReadiness,
+          confirmExplicitRetry: { [confirmSelectedEngineRequiresRetry] in
+            await confirmSelectedEngineRequiresRetry(backend)
+          })
         return
       }
     }
@@ -922,6 +930,14 @@ final class RecordingStarter {
   /// when it handled the mismatch/in-flight switch (the caller must `return`).
   private func reconcileSelectedBackendIfNeeded() -> Bool {
     let selected = settings.selectedBackend
+    let selectedDriver = selected == .whisper ? whisperKernelDriver : kernelDriver
+    if selectedEngineRequiresRetry(selected) {
+      ColdPressGuard.presentExplicitRetry(
+        overlay: recordingOverlay, engineLabel: selected.displayName)
+      ColdPressGuard.recordBlockedPress(
+        active: selectedDriver, backendTag: selected.rawValue, readiness: selectedDriver.engineReadiness)
+      return true
+    }
     guard asrManager.activeBackendType != selected || isEngineSwitching() else { return false }
     if selected == .parakeet, let isActivating = isActivatingParakeetUpgrade, isActivating() {
       ColdPressGuard.reconcileParakeetUpgrade(
@@ -932,8 +948,11 @@ final class RecordingStarter {
     }
     ColdPressGuard.reconcileSelectedBackend(
       overlay: recordingOverlay,
-      selectedDriver: selected == .whisper ? whisperKernelDriver : kernelDriver,
-      ensureSelectedReady: ensureSelectedReadyForPress)
+      selectedDriver: selectedDriver,
+      ensureSelectedReady: ensureSelectedReadyForPress,
+      confirmExplicitRetry: { [confirmSelectedEngineRequiresRetry] in
+        await confirmSelectedEngineRequiresRetry(selected)
+      })
     return true
   }
 
