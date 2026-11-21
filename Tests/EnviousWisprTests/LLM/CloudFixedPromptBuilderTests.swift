@@ -75,8 +75,8 @@ struct CloudFixedPromptBuilderTests {
   func translationKeepsTargetAndVocabulary() {
     let input = PromptBuildInput(
       transcript: "Mira can send the key.",
-      provider: .openAI,
-      modelID: "gpt-4o",
+      provider: .claude,
+      modelID: "claude-haiku-4-5",
       appName: nil,
       language: nil,
       polishVocabulary: PolishVocabulary(terms: [CustomWord(canonical: "Mira")], generation: 0),

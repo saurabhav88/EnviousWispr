@@ -49,11 +49,12 @@ struct LLMPolishStepShortCircuitTests {
 
   private func makeStep(
     counter: InvocationCounter,
-    result: String = "unused"
+    result: String = "unused",
+    provider: LLMProvider = .openAI
   ) -> LLMPolishStep {
     let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
-    step.setPolish(provider: .openAI)
-    step.llmModel = "gpt-4o-mini"
+    step.setPolish(provider: provider)
+    step.llmModel = provider == .claude ? "claude-haiku-4-5" : "gpt-4o-mini"
     step.makePolisher = { _, _, _, _ in SpyPolisher(counter: counter, result: result) }
     return step
   }
@@ -150,7 +151,7 @@ struct LLMPolishStepShortCircuitTests {
     ])
   func translationKeepsCutoff(text: String, language: String, expectsCall: Bool) async throws {
     let counter = InvocationCounter()
-    let step = makeStep(counter: counter, result: "Ruf mich bitte heute an.")
+    let step = makeStep(counter: counter, result: "Ruf mich bitte heute an.", provider: .claude)
     var input = TextProcessingContext(text: text, language: language)
     input.requestedTranslationTarget = .german
 
@@ -165,7 +166,7 @@ struct LLMPolishStepShortCircuitTests {
   func translationKeepsOpening() async throws {
     let counter = InvocationCounter()
     let reply = "Sure, I’ll bring the key."
-    let step = makeStep(counter: counter, result: reply)
+    let step = makeStep(counter: counter, result: reply, provider: .claude)
     var input = TextProcessingContext(text: "Klar, ich bringe den Schlüssel mit.", language: "de")
     input.requestedTranslationTarget = .english
 
@@ -178,11 +179,27 @@ struct LLMPolishStepShortCircuitTests {
     #expect(result.acceptedTranslationTarget == .english)
   }
 
+  @Test("Other cloud providers keep ordinary polish with a saved translation target")
+  func translationTargetDoesNotApplyToOpenAI() async throws {
+    let counter = InvocationCounter()
+    let reply = "Mira bringt heute den Schlüssel."
+    let step = makeStep(counter: counter, result: reply)
+    var input = TextProcessingContext(text: "Mira bringt heute den Schlüssel", language: "de")
+    input.requestedTranslationTarget = .english
+
+    let result = try await step.process(input)
+
+    let systemPrompt = try #require(await counter.systemPrompt)
+    #expect(systemPrompt.contains("Never translate it"))
+    #expect(result.polishedText == reply)
+    #expect(result.acceptedTranslationTarget == nil)
+  }
+
   @Test("A discarded translation leaves the entire prepared source for delivery")
   func translationRejectionKeepsSource() async throws {
     let source = "Bitte bring mir am Freitag um 15 Uhr die drei Schlüssel mit."
     let counter = InvocationCounter()
-    let step = makeStep(counter: counter, result: "The keys.")
+    let step = makeStep(counter: counter, result: "The keys.", provider: .claude)
     var input = TextProcessingContext(text: source, language: "de")
     input.requestedTranslationTarget = .english
 

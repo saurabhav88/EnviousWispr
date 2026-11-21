@@ -76,6 +76,11 @@ public enum DictationTranslationTarget: String, CaseIterable, Sendable {
   }
 }
 
+extension LLMProvider {
+  /// Translation availability is narrower than ordinary cloud polish.
+  package var supportsDictationTranslation: Bool { self == .claude }
+}
+
 /// Persisted user setting: auto-detect or locked to a specific ISO 639-1 code.
 public enum LanguageMode: Codable, Sendable, Equatable {
   case auto

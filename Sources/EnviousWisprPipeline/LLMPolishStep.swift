@@ -915,7 +915,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     let model = llmModel
     let localModel = polishModelID
     let usesDirectCloud = CloudModelMemory.cloudProviders.contains(provider)
-    let translationTarget = usesDirectCloud ? context.requestedTranslationTarget : nil
+    let translationTarget = provider.supportsDictationTranslation
+      ? context.requestedTranslationTarget : nil
     // #4353 D6: the operation's cloud model list, read with provider and model; every request
     // policy below (thinking, connector body, chat preflight) comes from this local.
     let cloudModelList = cloudModelList
