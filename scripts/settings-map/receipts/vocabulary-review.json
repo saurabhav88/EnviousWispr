@@ -271,8 +271,8 @@
  "retiredIDs": [],
  "resource": {
   "path": "Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json",
-  "sha256": "a1f3564189c4977d2af54bacbd4931f022eb117b096bcbb1ab4b9e7158fe394d",
-  "bytes": 1911112
+  "sha256": "10b03f9424f1daa453e4e854ec7ae6325489c86a5f8c7c9b257ed234106a7d31",
+  "bytes": 1902866
  },
  "sources": [
   {
@@ -556,7 +556,7 @@
  "languages": [
   {
    "language": "ar",
-   "contentSHA256": "d7138d703498b2405cdb0872097d7439f492caa8a1610fb7ba49215f3700d125",
+   "contentSHA256": "5c0f6c60ffac6099bdea44ca20846f9e7512b170827bdc249fb9cfa571db4f17",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1756,13 +1756,23 @@
       "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
      },
      "disposition": "ar: The title and queries clearly refer to the written result."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "bg",
-   "contentSHA256": "9ae5ea44a3767ca6e93d789706b2072d0a4a59039a8306b440245d2bacec1fae",
+   "contentSHA256": "f27b074d4a275b3ba2a66b5aac89a79c17eb25a7be4f46099f54138c845702b9",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2953,13 +2963,23 @@
       "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
      },
      "disposition": "bg: „Изходен език“ can mean the source language in translation."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "cs",
-   "contentSHA256": "e0e4a4ab01d529339f0a9af931f414910c00a40fb4877e9aae5ed1b076cbcf84",
+   "contentSHA256": "126f5829f17d594944dc4b811028877d2fcfd159062746bef971d8e6d892aef5",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4150,13 +4170,23 @@
       "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
      },
      "disposition": "cs: The output title and both text-focused queries are natural."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "da",
-   "contentSHA256": "0e13c0c1666d78c72d10ecffbf0dbbb01ef9a0e68d54b896a6758b8ba2bf8a61",
+   "contentSHA256": "6f8a08066db0031f3934996bcda39d778ab3ffb48ea5b24e4f6acbed71667406",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -5347,13 +5377,23 @@
       "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
      },
      "disposition": "da: The wording clearly asks for dictated text in another language."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "de",
-   "contentSHA256": "fde9caae722c6e0591812d3b90393fa8157920f47591a9014a315e7c0de061ae",
+   "contentSHA256": "68b687be3543803c8f29be05870327dd9c1115036b622467f8fb03de0deff3b3",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -6788,13 +6828,23 @@
       "sha256": "af0f5041c1b418e493d10121f1777751e8169f07c12ac6d1b71e17bbfc239986"
      },
      "disposition": "Reused the reviewed output-language title and target-language wording."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "el",
-   "contentSHA256": "a36604bc6415b8c343cdfd2157ec917a7fad59a302994e924287be63e4a0cad6",
+   "contentSHA256": "fe432524c6fe3f1019e0414e070fd61df4e89c0e13049117677218199e237e1e",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -7994,13 +8044,23 @@
       "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
      },
      "disposition": "el: The title’s stacked nouns sound unnatural."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "en",
-   "contentSHA256": "cbab6bbc3a9bb94d6573b2bab7feba6a4d2fa65c81dc0a1bfea0f2a035373d11",
+   "contentSHA256": "1dd03c083ede7e9b1d94d4f989e8428a19dced1bf5fb456800718ec13552982f",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -9172,13 +9232,23 @@
       "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
      },
      "disposition": "en: The compiled title and both queries point to the final text."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "es",
-   "contentSHA256": "39b69ffa7548cdbdf9ce71b6e5f389ae95fe9890c69338e1ce465bf2a6494839",
+   "contentSHA256": "79ce3780398156e8e2ae600c1717c3374810b518c7215e6cbac9874b5bf237fe",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -10378,13 +10448,23 @@
       "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
      },
      "disposition": "es: «Que el dictado salga» naturally signals the desired result."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "et",
-   "contentSHA256": "77ae53f8c784653fc0453e5cd1e558b0ed00252d5a21ebd3e31a0780f53a8bf0",
+   "contentSHA256": "f41c23cd6cb9fbc281e1f2129e18f59964ad17b10c8bc48d6a26ba79ef7b6b2c",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -11575,13 +11655,23 @@
       "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
      },
      "disposition": "et: The output term and both queries clearly refer to the resulting text."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fi",
-   "contentSHA256": "571cb71be00bfa32687b3816d2621ba6df7c91c7a4c99d838727c62bda0403b6",
+   "contentSHA256": "4ae7e2fc8b3b73a14a140f0d674f45cd58df0834ba15e3603c7755f2f02268ee",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -12772,13 +12862,23 @@
       "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
      },
      "disposition": "fi: The title names the text and «kohdekieli» identifies the target language."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fr",
-   "contentSHA256": "bf1a8f01b8619e92c426453217615b10f3d5f9197291146f01ff9d4f24b5ac2d",
+   "contentSHA256": "a1e3c509eebace34f53508a6d1e2c0e39c7748eb461262026aa576f28b405202",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -13969,13 +14069,33 @@
       "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
      },
      "disposition": "fr: The queries naturally distinguish the written text from the act of dictating."
+    },
+    {
+     "kind": "french-interface-migration",
+     "method": "#3142 French slice: French titles moved to the String Catalog; three runtime-named places' words reviewed by the GPT + Gemini council (session fr-vocab-x2-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-2026-11-21.md",
+      "sha256": "f646b7d6d32be26e8ec3d54b47978ec950bce11ffcf3cfe4fa7117c40e9e31a7"
+     },
+     "disposition": "French titles removed from shipped blocks; words and phrases kept; three word edits adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hi",
-   "contentSHA256": "cfd6f4aaa55a59a4dc610cd06ca16169548d107cb3ed7c4cdfd41309a2c99079",
+   "contentSHA256": "b24f936acfdc27d1e60c3f86ce2adb1e7e712fea190166797ef6f787405995ee",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -15166,13 +15286,23 @@
       "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
      },
      "disposition": "hi: The everyday Hindi and familiar loanwords clearly describe the text produced."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hr",
-   "contentSHA256": "d0b58038314ad581e43337cb5db6ef8e5d1710a5cf2e7c275cf94d8c7a1bde3a",
+   "contentSHA256": "5bcbb15c1f300b941cf762977c0beb42e67e4503e7d797d87e614ec005cd26ec",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -16363,13 +16493,23 @@
       "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
      },
      "disposition": "hr: Both queries naturally describe changing the language of the dictated text."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hu",
-   "contentSHA256": "a17e98ec46e1eabd89424a88b61bff5c9ae8f4c60ff4b8242ea3f3294458291e",
+   "contentSHA256": "2367552e72af55c6292b4fd577b3c9f8cd5ac640663402fca34d0b21ab54f314",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -17560,13 +17700,23 @@
       "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
      },
      "disposition": "hu: «Nyelvet a diktált szövegnél» sounds awkward."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "it",
-   "contentSHA256": "906794a6e8e9f7cee89d5bf878f575b4ccc732916758299a8216fdc37dc5c398",
+   "contentSHA256": "7b2eac9dd121743959e8e7c1feb122055559ca2f8e2cabc2fcda006d72239e17",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -18766,13 +18916,23 @@
       "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
      },
      "disposition": "it: The target-language terms and conversational queries fit the written result."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ja",
-   "contentSHA256": "78c475f17d384ca5c7b92444a4dd3809daa8431aed5b1017e77e8df26e4fccfc",
+   "contentSHA256": "9ee89379dd48406cf355035369adf20da43e239c749c01a313f32f6315716102",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -19963,13 +20123,23 @@
       "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
      },
      "disposition": "ja: 「出力言語」 and the queries clearly point to what gets written."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ko",
-   "contentSHA256": "1d4f16c137543432d4ea9c33aa8ce27660ea5018d9eb0e30c0b74ff5a31440a0",
+   "contentSHA256": "8a766cb8f26eb66a12c36742d1fa94bbc90a9f542c8833954e2f33aa1fd44a27",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -21160,13 +21330,23 @@
       "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
      },
      "disposition": "ko: The output title and both queries clearly describe the resulting text."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lt",
-   "contentSHA256": "419be2e7e6d26b72be98168f9d9e6e9812cfe475235fb30ae099b32053dbb8bc",
+   "contentSHA256": "6399bf3ef5d69c9aeb8376bcf642ffb6059e75207ae303451e80db3608cc48bd",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -22366,13 +22546,23 @@
       "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
      },
      "disposition": "lt: The title and queries naturally refer to the text after dictation."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lv",
-   "contentSHA256": "e82d12de7d2efc612528f8606307a9ccdf3ffb93682607611f0241d21ef44243",
+   "contentSHA256": "c52b64407abc70503d6b7f0c64a0189af371f778362f6f9d2fd97a3d3cf02fc8",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -23563,13 +23753,23 @@
       "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
      },
      "disposition": "lv: «Izvades valoda» and the queries clearly point to written output."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "mt",
-   "contentSHA256": "71a206d629467e89a20713573ed5a91317ff1865e3dc86848ee2f31b02374888",
+   "contentSHA256": "dfaf4d60e731b0d1d6ab141f5223067b84af5adfb07fc7ef624066fc9d9bc9a2",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -24769,13 +24969,23 @@
       "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
      },
      "disposition": "mt: The familiar output loanword and both queries fit the dictated text."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "nl",
-   "contentSHA256": "bcde87b56a08ca2ea5f4861be753b74045e042366eae6ee5d3093a18fd623795",
+   "contentSHA256": "746c74cdd9810e271fe29e42bba64bfe9c6f92e002145b45d759784b864d4cad",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -25966,13 +26176,23 @@
       "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
      },
      "disposition": "nl: «Uitvoertaal» and «doeltaal» reinforce the text-focused queries."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pl",
-   "contentSHA256": "b3e571c9f4598cfff7d6420f38a038d7ed9876826f07044d392e9df57bfeaec6",
+   "contentSHA256": "a63640040a93da4ac1c83a535f73bc9be8a0a9c87f0e38be84ce4fffdda2e7e5",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -27163,13 +27383,23 @@
       "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
      },
      "disposition": "pl: «Język wyjściowy» can mean the source language in translation."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pt",
-   "contentSHA256": "d98fb64cd2e5117cc75c206b68001503c7688df91bb8007e3054ed3c5f50f7d4",
+   "contentSHA256": "b8c091f0c94c226e28b664dec89a30d9a70611bebd8c0f0371c5821f4e671447",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -28368,13 +28598,23 @@
       "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
      },
      "disposition": "pt: The queries read naturally in Brazilian Portuguese and describe the written result."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ro",
-   "contentSHA256": "1be5f9b79c255e9a7908494a004cc8946af760fdc5c7bc142b84e76d083ff225",
+   "contentSHA256": "fb36fb54f7848d5241c6eb10d26a8a041627eb997bdb146cc296f1a9d4545a64",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -29565,13 +29805,23 @@
       "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
      },
      "disposition": "ro: The target-language term and both queries clearly describe the resulting text."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ru",
-   "contentSHA256": "8e1db79dd2ea804ac2d49067803aaf8925334856f085347a850c6ad269fe9642",
+   "contentSHA256": "5c729805b9e982d99546673ded546ca779f398b8b8513583e2617bdbb720e243",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -30762,13 +31012,23 @@
       "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
      },
      "disposition": "ru: The output terms and both queries clearly ask for written text in another language."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sk",
-   "contentSHA256": "91c0c211758d71fcc0b760bb4d3faabc1ff5be4332156554f52c9bf23faafe4b",
+   "contentSHA256": "4fb2bffbac658c93c67115f8aeccebe9b0427116c5417b2dbc2b88aced33b3f5",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -31959,13 +32219,23 @@
       "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
      },
      "disposition": "sk: The title and queries naturally distinguish the written result from speech."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sl",
-   "contentSHA256": "d17117a82f8901c51fe3640ec92e218f9de64ad378a24e774e0a9dfb39e8b2b0",
+   "contentSHA256": "51c94abdfe33da607e962459dc442ff7fea58225e229fecfb8cad7715a4baf15",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -33165,13 +33435,23 @@
       "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
      },
      "disposition": "sl: «Izhodni jezik» and both queries point to the resulting text."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sv",
-   "contentSHA256": "a192eb3a025833b1918f0a5ffc54c3611057758baeb6858ab8883eaecac9b65d",
+   "contentSHA256": "85532e500624428d2a48af196aff311d30889df252f97da28795b11795689c2c",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -34362,13 +34642,23 @@
       "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
      },
      "disposition": "sv: «Målspråk» and the everyday queries clearly describe the desired text language."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "tr",
-   "contentSHA256": "389d5bca46337355fde5d9f7c4c7a51f9f08378aef6d3bc9ecc35f14ad34486b",
+   "contentSHA256": "fc1a46334a922922668dc46ef58674b964bcead31c01b3498b7287bf78d221bb",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -35559,13 +35849,23 @@
       "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
      },
      "disposition": "tr: «Dikte çıktı dili» and «sonuç dili» sound unnatural."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "uk",
-   "contentSHA256": "334bbc0365f1985dfee82a7734ca05b24816ef4dc031a8a33fa380d9e0b536e9",
+   "contentSHA256": "eda64b303ac4b9254e315984183656faaad5da73be388a61e92902db654e616e",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -36765,13 +37065,23 @@
       "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
      },
      "disposition": "uk: The target-language term and natural queries clearly describe the written result."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "vi",
-   "contentSHA256": "0b2ffc451b037d282478eb7aa890cbcf9a269d99f52551f6ee3766fe7ea4880d",
+   "contentSHA256": "8e3d5c980359ff3f5c91155aacbfdb94c4a4c8300486c440d003d66ffd32d6ef",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -37962,13 +38272,23 @@
       "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
      },
      "disposition": "vi: «Đọc chính tả» suggests a spelling exercise."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "zh",
-   "contentSHA256": "732705ab6329f5fd09772fb1251d40d339aa728b5b00e8906990837488b25403",
+   "contentSHA256": "00e51d27681cf5d4b750aa217a4279054d4868589e216d5a7dbbd671abcba418",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -39159,6 +39479,16 @@
       "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
      },
      "disposition": "zh: 「文字语言」 reads awkwardly as an alias and in the first query."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
     }
    ],
    "phraseExemptions": []

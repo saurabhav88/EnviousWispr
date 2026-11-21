@@ -244,7 +244,8 @@ struct SettingsSearchIndex: Sendable {
 
   let places: [Place]
   let languages: [String]
-  /// The interface language the index was built for ("en" or "de").
+  /// The interface language the index was built for, one of
+  /// `SettingsSearchVocabulary.interfaceLanguages`.
   let appLanguage: String
   let stop: Set<String>
   let markers: Set<String>

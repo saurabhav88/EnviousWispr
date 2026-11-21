@@ -23,7 +23,7 @@ The Codex session runs from an empty folder outside every repository, with a pri
 
 1. Review the draft: accuracy against the real control (Codex, with repo access), naturalness per language (a fresh Codex session per language; German also through the GPT and Gemini council (Azure spend under global GR-NO-CLOUD-SPEND)). Save the reviewed result as `scripts/settings-map/receipts/additions/<id>.json` in the shape `{"id": "<id>", "blocks": {"<language>": {"title"?, "words", "phrases"}, ...}}` with all 32 languages, next to the review transcript.
 2. Record it in `scripts/settings-map/receipts/reviewed-edits.json`. The builder reconciles every id into exactly one group and stops on anything else:
-   - a retained id (in the Phase 0 source and still mapped): reviewed word, phrase or translated-title changes go under `blocks.<id>.<language>` (English and German titles come from the interface and are not edited here);
+   - a retained id (in the Phase 0 source and still mapped): reviewed word, phrase or translated-title changes go under `blocks.<id>.<language>` (English, German and French titles come from the interface and are not edited here);
    - an added id (mapped, not in the Phase 0 source): `added.<id>` with `blocks` for all 32 languages, `review` (the path of that JSON under `receipts/`) and `reviewSHA256` (its SHA-256). The verifier and the tests require the file to stay under `receipts/`, match the hash, name the id and hold exactly the adopted blocks;
    - a retired id (in the Phase 0 source, no longer mapped or exempt): `retired.<id>` with a nonblank reason;
    - a renamed id is a retirement plus an addition; its new blocks need their own review.
@@ -38,7 +38,7 @@ The Codex session runs from an empty folder outside every repository, with a pri
 
 ## Export and reference
 
-`reference/settings-map.json` is the full export (every node in map order, its owned copy in English and German, runtime resolvers named, the validated vocabulary and fingerprints of the map metadata, the interface catalog and the vocabulary). `reference/settings-map.md` is rendered from it by `render-reference.py`. Both are generated:
+`reference/settings-map.json` is the full export (every node in map order, its owned copy in English, German and French, runtime resolvers named, the validated vocabulary and fingerprints of the map metadata, the interface catalog and the vocabulary). `reference/settings-map.md` is rendered from it by `render-reference.py`. Both are generated:
 
 - `scripts/settings-map/export.sh` extracts afresh through `SettingsMapExportTests` (it builds the test target), renders, and replaces both files.
 - `scripts/settings-map/export.sh --check` does the same into a staging folder and fails if either committed file is missing or stale; it never writes them.

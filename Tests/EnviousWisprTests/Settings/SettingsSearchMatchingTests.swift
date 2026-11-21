@@ -41,6 +41,7 @@ struct SettingsSearchMatchingTests {
 
   static let english = Result { try index("en", preferred: ["en-US"]) }
   static let german = Result { try index("de", preferred: ["de-DE", "en-US"]) }
+  static let french = Result { try index("fr", preferred: ["fr-FR", "en-US"]) }
 
   static func search(_ query: String, _ language: String) throws -> [SettingsSearchResult] {
     try (language == "de" ? german : english).get().results(for: query)
@@ -285,6 +286,51 @@ struct SettingsSearchMatchingTests {
     let french = try Self.index("en", preferred: ["fr-FR"])
     #expect(try Self.english.get().tokens("le thème") == ["le", "theme"])
     #expect(french.tokens("le thème") == ["theme"])
+  }
+
+  /// #3142 French slice: French is an interface language, so its titles come from the French
+  /// catalog (the vocabulary's French blocks carry words and phrases only).
+  @Test("a French interface finds a place by its French catalog title")
+  func frenchInterfaceTitle() throws {
+    let french = try Self.french.get()
+    #expect(french.appLanguage == "fr")
+    let theme = try #require(french.results(for: "thème").first)
+    #expect(theme.entryID == "theme")
+    // English stays an active language under a French interface.
+    #expect(try #require(french.results(for: "theme").first).entryID == "theme")
+    // "Thème" folds to the English "Theme", so it cannot tell the catalogs apart; "retouche" can:
+    // only the French title "Activer la retouche IA" carries it, and English search lacks it.
+    let polish = try #require(french.results(for: "retouche").first)
+    #expect(polish.entryID == "enableAIPolish")
+    #expect(try Self.english.get().results(for: "retouche").contains { $0.entryID == "enableAIPolish" } == false)
+  }
+
+  /// #3142 French slice: a place named only at run time has no catalog title and, now that French
+  /// is an interface language, no French vocabulary title either; its reviewed French label must
+  /// still find it from the reviewed French words and phrases.
+  @Test("a French interface finds every runtime-named place by its French label")
+  func frenchRuntimeNamedLabels() throws {
+    let french = try Self.french.get()
+    var checked = 0
+    var missed: [String] = []
+    for entry in SettingsSearchCatalog.entries {
+      guard case .dynamic = entry.node.title else { continue }
+      let id = entry.node.id
+      let label: String
+      if let resource = SettingsSearchPresentation.dynamicTitleResource(of: id) {
+        label = try SettingsMapExportTests.resolve(resource, "fr")
+      } else {
+        label = SettingsSearchPresentation.dynamicTitle(of: id, language: "fr")
+      }
+      checked += 1
+      let ids = french.results(for: label).map(\.entryID)
+      if !ids.prefix(5).contains(id.rawValue) {
+        let rank = ids.firstIndex(of: id.rawValue).map { "rank \($0 + 1)" } ?? "absent"
+        missed.append("\(id.rawValue) «\(label)» \(rank); top \(ids.prefix(5))")
+      }
+    }
+    #expect(checked == 21, "runtime-named searchable places: \(checked)")
+    #expect(missed.isEmpty, "runtime-named places a French label does not find: \(missed)")
   }
 
   @Test("Chinese, Japanese and Thai searches are split into words; Hindi marks stay in the word")

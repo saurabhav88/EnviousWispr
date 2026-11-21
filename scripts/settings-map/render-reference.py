@@ -42,10 +42,23 @@ def code(text):
     return f"`{text}`"
 
 
-def title_text(title):
+# English names of the interface languages a reference may list.
+LANGUAGE_NAMES = {"en": "English", "de": "German", "fr": "French"}
+
+
+def resource_text(resource, languages):
+    """A resource's text in each declared interface language, in the export's order; a resource
+    missing any declared language fails rather than rendering fewer values than the header says."""
+    missing = [c for c in languages if c not in resource]
+    if missing:
+        fail(f"resource {resource.get('key')!r} lacks interface language(s) {missing}")
+    return " / ".join(escape(resource[c]) for c in languages)
+
+
+def title_text(title, languages):
     source = title["source"]
     if source == "resource":
-        return f"{escape(title['en'])} / {escape(title['de'])}"
+        return resource_text(title, languages)
     if source == "verbatim":
         return escape(title["text"])
     if source == "dynamic":
@@ -53,11 +66,11 @@ def title_text(title):
     fail(f"unknown title source {source!r}")
 
 
-def description_text(description):
+def description_text(description, languages):
     if description is None:
         return "none"
     if description["source"] == "resource":
-        return f"{escape(description['en'])} / {escape(description['de'])}"
+        return resource_text(description, languages)
     if description["source"] == "runtime":
         return "composed at display time from live state (not exported)"
     fail(f"unknown description source {description['source']!r}")
@@ -113,6 +126,12 @@ def render(document):
         children.setdefault(n["parent"], []).append(n["id"])
     sources, fingerprints, counts = document["sources"], document["fingerprints"], document["counts"]
     other = [c for c in document["languages"] if c not in document["interfaceLanguages"]]
+    unknown = [c for c in document["interfaceLanguages"] if c not in LANGUAGE_NAMES]
+    if unknown:
+        fail(f"no English name for interface language(s) {unknown}")
+    interface = document["interfaceLanguages"]
+    names = [LANGUAGE_NAMES[c] for c in interface]
+    spoken = names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
 
     out = [
         "# Settings Map",
@@ -122,12 +141,12 @@ def render(document):
         "- Regenerate: `scripts/settings-map/export.sh`",
         "- Check: `scripts/settings-map/export.sh --check` (CI runs the same comparison)",
         f"- Map: [{sources['map']}]({LINK_ROOT}{sources['map']}); runtime titles: [{sources['titleResolver']}]({LINK_ROOT}{sources['titleResolver']})",
-        f"- Interface text: [{sources['uiCatalog']}]({LINK_ROOT}{sources['uiCatalog']}) (English and German)",
+        f"- Interface text: [{sources['uiCatalog']}]({LINK_ROOT}{sources['uiCatalog']}) ({spoken})",
         f"- Search vocabulary: [{sources['vocabulary']}]({LINK_ROOT}{sources['vocabulary']})",
         "- Machine-readable export with every field and all vocabulary: [settings-map.json](settings-map.json)",
         "- Authoring and review: [scripts/settings-map/README.md](../scripts/settings-map/README.md)",
         "",
-        f"The interface ships in English and German. The other {len(other)} languages ({', '.join(other)}) are search metadata only: words and titles people may type, matched against the same places. Titles below read English / German.",
+        f"The interface ships in {spoken}. The other {len(other)} languages ({', '.join(other)}) are search metadata only: words and titles people may type, matched against the same places. Titles below read {' / '.join(names)}.",
         "",
         f"{counts['nodes']} nodes, {counts['searchable']} searchable, {counts['vocabularyBlocks']} vocabulary blocks.",
         "",
@@ -141,7 +160,7 @@ def render(document):
         for child in children.get(parent, []):
             n = by_id[child]
             kind = n["kind"] or n["structure"]
-            out.append(f"{'  ' * depth}- [{title_text(n['title'])}](#{anchor(child)}) {code(child)} ({escape(kind)})")
+            out.append(f"{'  ' * depth}- [{title_text(n['title'], interface)}](#{anchor(child)}) {code(child)} ({escape(kind)})")
             tree(child, depth + 1)
 
     tree(None, 0)
@@ -150,7 +169,7 @@ def render(document):
     for n in nodes:
         out.append(f'<a id="{anchor(n["id"])}"></a>')
         out.append("")
-        out.append(f"### {title_text(n['title'])} ({code(n['id'])})")
+        out.append(f"### {title_text(n['title'], interface)} ({code(n['id'])})")
         out.append("")
         out.append("| Field | Value |")
         out.append("|---|---|")
@@ -159,7 +178,7 @@ def render(document):
             ("Kind", escape(n["kind"]) if n["kind"] else "structure only, not searchable"),
             ("Parent", node_link(n["parent"], by_id) if n["parent"] else "none"),
             ("Title source", source_cell(n["title"])),
-            ("Description", description_text(n["description"])),
+            ("Description", description_text(n["description"], interface)),
             ("Destination", destination_text(n["destination"])),
             ("Dictionary tab", code(n["dictionaryTab"]) if n["dictionaryTab"] else "none"),
             ("Shown when", code(n["visibility"])),
@@ -218,16 +237,18 @@ def self_test():
                 "id": node_id, "structure": "item", "kind": "setting", "searchable": True,
                 "parent": None, "context": [], "declaredIn": "S.swift", "visibility": "always",
                 "title": {"source": "resource", "key": "k|", "table": "Localizable",
-                          "catalog": "C", "en": f"T{i} <x>", "de": "D|"},
+                          "catalog": "C", "en": f"T{i} <x>", "de": "D|", "fr": "F «é»"},
                 "description": None, "destination": {"page": "dictation", "tab": "engine"},
                 "dictionaryTab": None, "target": node_id, "fallbacks": [],
                 "vocabulary": {"en": {"words": ["a|b"], "phrases": ["p\nq"]},
-                               "de": {"words": [], "phrases": ["x"]}},
+                               "de": {"words": [], "phrases": ["x"]},
+                               "fr": {"words": [], "phrases": ["y"]}},
             })
-        return {"schema": "settings-map-export", "version": 2, "interfaceLanguages": ["en", "de"],
-                "languages": ["en", "de"], "sources": {"map": "M", "titleResolver": "R",
+        return {"schema": "settings-map-export", "version": 2,
+                "interfaceLanguages": ["en", "de", "fr"],
+                "languages": ["en", "de", "fr"], "sources": {"map": "M", "titleResolver": "R",
                 "uiCatalog": "C", "vocabulary": "V"}, "fingerprints": {"x": "1"},
-                "counts": {"nodes": len(ids), "searchable": len(ids), "vocabularyBlocks": 2 * len(ids)},
+                "counts": {"nodes": len(ids), "searchable": len(ids), "vocabularyBlocks": 3 * len(ids)},
                 "languageData": [{"language": "en", "stop": ["the"], "markers": ["not"]}],
                 "nodes": nodes}
 
@@ -235,6 +256,9 @@ def self_test():
     check("deterministic", render(doc(["a.b"])), first)
     check("cell escaping applied", "a\\|b" in first and "p<br>q" in first and "T0 &lt;x&gt;" in first, True)
     check("no raw pipe inside a cell", "| words: a|b" in first, False)
+    check("every interface language rendered in order", "T0 &lt;x&gt; / D\\| / F «é»" in first, True)
+    check("header names the three interface languages",
+          "The interface ships in English, German and French." in first, True)
     for name, ids in (("duplicate id", ["a.b", "a.b"]), ("anchor collision", ["a.b", "a-b"])):
         cases += 1
         try:
@@ -243,6 +267,15 @@ def self_test():
             print(f"FAIL {name}: rendered")
         except SystemExit:
             pass
+    no_french = doc(["a.b"])
+    no_french["nodes"][0]["title"].pop("fr")
+    cases += 1
+    try:
+        render(no_french)
+        failures += 1
+        print("FAIL a title missing a declared interface language: rendered")
+    except SystemExit:
+        pass
     incomplete = doc(["a.b"])
     incomplete["nodes"][0]["vocabulary"].pop("de")
     cases += 1

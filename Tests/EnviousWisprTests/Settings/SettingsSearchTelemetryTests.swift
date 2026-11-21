@@ -354,4 +354,21 @@ struct SettingsSearchTelemetryTests {
     #expect(sent.rows.map(\.outcome) == [.resultChosen])
     #expect(sent.rows.first?.query == nil)
   }
+
+  /// #3142 French slice: the row reports each shipped interface language as itself and anything
+  /// else as English, so French searches are measured apart from English ones.
+  @Test("the row keeps a shipped interface language and reports any other as en")
+  func appLanguageAllowList() {
+    func row(_ language: String) -> String {
+      SettingsSearchFinished(
+        outcome: .zeroResults, endedBy: .escape, resultCount: 0, appLanguage: language,
+        typedQuery: nil
+      ).appLanguage
+    }
+    #expect(row("fr") == "fr")
+    #expect(row("de") == "de")
+    #expect(row("en") == "en")
+    #expect(row("es") == "en")
+    #expect(row("") == "en")
+  }
 }

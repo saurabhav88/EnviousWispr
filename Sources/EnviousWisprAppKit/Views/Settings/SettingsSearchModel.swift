@@ -176,7 +176,7 @@ final class SettingsSearchModel {
     SettingsSearchModel(
       loadIndex: {
         // The interface language the app launched in (interface-localization.md FACT:
-        // app-language-drives-locale-current): "en" or "de".
+        // app-language-drives-locale-current), one of `SettingsSearchVocabulary.interfaceLanguages`.
         let appLanguage = Bundle.main.preferredLocalizations.first ?? "en"
         switch SettingsSearchIndex.load(
           appLanguage: appLanguage, preferredLanguages: Locale.preferredLanguages)
@@ -445,7 +445,8 @@ final class SettingsSearchModel {
 
   private var appLanguageCode: String {
     if let index = answeringIndex { return index.appLanguage }
-    return Bundle.main.preferredLocalizations.first == "de" ? "de" : "en"
+    let launched = Bundle.main.preferredLocalizations.first ?? "en"
+    return SettingsSearchVocabulary.interfaceLanguages.contains(launched) ? launched : "en"
   }
 
   // MARK: - Meaning pass

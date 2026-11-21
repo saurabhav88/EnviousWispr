@@ -152,11 +152,12 @@ node = {"id": "a.b", "structure": "item", "kind": "setting", "searchable": True,
         "context": [], "declaredIn": "S.swift", "visibility": "always",
         "title": {"source": "verbatim", "text": "T", "note": "n"}, "description": None,
         "destination": None, "dictionaryTab": None, "target": "a.b", "fallbacks": [],
-        "vocabulary": {"en": {"words": [], "phrases": ["p"]}, "de": {"words": [], "phrases": ["q"]}}}
-json.dump({"schema": "settings-map-export", "version": 2, "interfaceLanguages": ["en", "de"],
-           "languages": ["en", "de"], "sources": {"map": "M", "titleResolver": "R", "uiCatalog": "C",
+        "vocabulary": {"en": {"words": [], "phrases": ["p"]}, "de": {"words": [], "phrases": ["q"]},
+                       "fr": {"words": [], "phrases": ["r"]}}}
+json.dump({"schema": "settings-map-export", "version": 2, "interfaceLanguages": ["en", "de", "fr"],
+           "languages": ["en", "de", "fr"], "sources": {"map": "M", "titleResolver": "R", "uiCatalog": "C",
            "vocabulary": "V"}, "fingerprints": {"x": "1"},
-           "counts": {"nodes": 1, "searchable": 1, "vocabularyBlocks": 2},
+           "counts": {"nodes": 1, "searchable": 1, "vocabularyBlocks": 3},
            "languageData": [{"language": "en", "stop": ["the"], "markers": ["not"]}],
            "nodes": [node]}, open(sys.argv[1], "w"), sort_keys=True, indent=2)
 PY

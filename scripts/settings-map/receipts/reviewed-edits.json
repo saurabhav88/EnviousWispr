@@ -7554,7 +7554,6 @@
     ]
    },
    "fr": {
-    "title": "Apprendre de nouveaux mots",
     "words": [
      "apprentissage de nouveaux mots"
     ],
@@ -7761,6 +7760,478 @@
      "停止从我对听写结果的修改中学习新词"
     ]
    }
+  },
+  "recordingChime.preview": {
+   "fr": {
+    "words": [
+     "écouter",
+     "écouter le son"
+    ]
+   }
+  },
+  "localModel.testLive": {
+   "fr": {
+    "words": [
+     "tester EG-1",
+     "tester S1-mini",
+     "tester le modèle",
+     "vérifier que le modèle est actif"
+    ]
+   }
+  },
+  "livePreview.language": {
+   "fr": {
+    "words": [
+     "changer la langue d’aperçu",
+     "langue de dictée",
+     "modifier la langue de dictée"
+    ]
+   }
+  },
+  "appLanguage.shipped": {
+   "ar": {
+    "words": [
+     "واجهة إنجليزية",
+     "واجهة ألمانية",
+     "قوائم Deutsch",
+     "واجهة فرنسية"
+    ],
+    "phrases": [
+     "اعرض قوائم التطبيق بالإنجليزية",
+     "اعرض قوائم التطبيق بالألمانية",
+     "اعرض قوائم التطبيق بالفرنسية"
+    ]
+   },
+   "bg": {
+    "words": [
+     "английско меню",
+     "немско меню",
+     "English меню",
+     "Deutsch меню",
+     "френско меню"
+    ],
+    "phrases": [
+     "показвай менютата на английски",
+     "показвай менютата на немски",
+     "показвай менютата на френски"
+    ]
+   },
+   "cs": {
+    "words": [
+     "anglické menu",
+     "německé menu",
+     "English menu",
+     "Deutsch menu",
+     "francouzské menu"
+    ],
+    "phrases": [
+     "zobrazit nabídky aplikace anglicky",
+     "zobrazit nabídky aplikace německy",
+     "zobrazit nabídky aplikace francouzsky"
+    ]
+   },
+   "da": {
+    "words": [
+     "engelske menuer",
+     "tyske menuer",
+     "Deutsch appsprog",
+     "franske menuer"
+    ],
+    "phrases": [
+     "vis appens menuer på engelsk",
+     "vis appens menuer på tysk",
+     "vis appens menuer på fransk"
+    ]
+   },
+   "de": {
+    "words": [
+     "Deutsch",
+     "Englisch",
+     "English",
+     "Französisch",
+     "Oberflächensprachen"
+    ],
+    "phrases": [
+     "die Appmenüs auf Deutsch anzeigen",
+     "die Appmenüs auf Englisch anzeigen",
+     "die Appmenüs auf Französisch anzeigen"
+    ]
+   },
+   "el": {
+    "words": [
+     "αγγλικά μενού",
+     "γερμανικά μενού",
+     "English μενού",
+     "Deutsch μενού",
+     "γαλλικά μενού"
+    ],
+    "phrases": [
+     "δείξε τα μενού της εφαρμογής στα αγγλικά",
+     "δείξε τα μενού της εφαρμογής στα γερμανικά",
+     "δείξε τα μενού της εφαρμογής στα γαλλικά"
+    ]
+   },
+   "en": {
+    "words": [
+     "English",
+     "German",
+     "Deutsch",
+     "French",
+     "interface languages"
+    ],
+    "phrases": [
+     "show the app menus in English",
+     "show the app menus in German",
+     "show the app menus in French"
+    ]
+   },
+   "es": {
+    "words": [
+     "menús en inglés",
+     "menús en alemán",
+     "English interfaz",
+     "Deutsch interfaz",
+     "menús en francés"
+    ],
+    "phrases": [
+     "poner los menús de la app en inglés",
+     "poner los menús de la app en alemán",
+     "poner los menús de la app en francés"
+    ]
+   },
+   "et": {
+    "words": [
+     "ingliskeelsed menüüd",
+     "saksakeelsed menüüd",
+     "English menüüd",
+     "Deutsch menüüd",
+     "prantsuskeelsed menüüd"
+    ],
+    "phrases": [
+     "näita rakenduse menüüsid inglise keeles",
+     "näita rakenduse menüüsid saksa keeles",
+     "näita rakenduse menüüsid prantsuse keeles"
+    ]
+   },
+   "fi": {
+    "words": [
+     "englanninkieliset valikot",
+     "saksankieliset valikot",
+     "Deutsch-valikot",
+     "English-valikot",
+     "ranskankieliset valikot"
+    ],
+    "phrases": [
+     "näytä sovelluksen valikot englanniksi",
+     "näytä sovelluksen valikot saksaksi",
+     "näytä sovelluksen valikot ranskaksi"
+    ]
+   },
+   "fr": {
+    "words": [
+     "menus anglais",
+     "menus allemands",
+     "English",
+     "Deutsch",
+     "menus français",
+     "langues d’interface"
+    ],
+    "phrases": [
+     "afficher les menus de l’application en anglais",
+     "afficher les menus de l’application en allemand",
+     "afficher les menus de l’application en français"
+    ]
+   },
+   "hi": {
+    "words": [
+     "अंग्रेज़ी मेन्यू",
+     "इंग्लिश मेन्यू",
+     "जर्मन मेन्यू",
+     "Deutsch मेन्यू",
+     "फ्रेंच मेन्यू"
+    ],
+    "phrases": [
+     "ऐप के मेन्यू अंग्रेज़ी में दिखाओ",
+     "ऐप के मेन्यू जर्मन में दिखाओ",
+     "ऐप के मेन्यू फ्रेंच में दिखाओ"
+    ]
+   },
+   "hr": {
+    "words": [
+     "engleski izbornici",
+     "njemački izbornici",
+     "English sučelje",
+     "Deutsch sučelje",
+     "francuski izbornici"
+    ],
+    "phrases": [
+     "prikaži izbornike aplikacije na engleskom",
+     "prikaži izbornike aplikacije na njemačkom",
+     "prikaži izbornike aplikacije na francuskom"
+    ]
+   },
+   "hu": {
+    "words": [
+     "angol menük",
+     "német menük",
+     "English felület",
+     "Deutsch felület",
+     "francia menük"
+    ],
+    "phrases": [
+     "angolul szeretném látni az app menüit",
+     "németül szeretném látni az app menüit",
+     "franciául szeretném látni az app menüit"
+    ]
+   },
+   "it": {
+    "words": [
+     "menu inglese",
+     "menu tedesco",
+     "interfaccia English",
+     "interfaccia Deutsch",
+     "menu francese"
+    ],
+    "phrases": [
+     "mostra i menu dell'app in inglese",
+     "mostra i menu dell'app in tedesco",
+     "mostra i menu dell'app in francese"
+    ]
+   },
+   "ja": {
+    "words": [
+     "英語メニュー",
+     "ドイツ語メニュー",
+     "English表示",
+     "Deutsch表示",
+     "フランス語メニュー"
+    ],
+    "phrases": [
+     "アプリのメニューを英語にする",
+     "アプリのメニューをドイツ語にする",
+     "アプリのメニューをフランス語にする"
+    ]
+   },
+   "ko": {
+    "words": [
+     "영어 메뉴",
+     "독일어 메뉴",
+     "영문 인터페이스",
+     "Deutsch 메뉴",
+     "프랑스어 메뉴"
+    ],
+    "phrases": [
+     "앱 메뉴를 영어로 보기",
+     "앱 메뉴를 독일어로 보기",
+     "앱 메뉴를 프랑스어로 보기"
+    ]
+   },
+   "lt": {
+    "words": [
+     "angliški meniu",
+     "vokiški meniu",
+     "English sąsaja",
+     "Deutsch sąsaja",
+     "prancūziški meniu"
+    ],
+    "phrases": [
+     "rodyti programos meniu anglų kalba",
+     "rodyti programos meniu vokiečių kalba",
+     "rodyti programos meniu prancūzų kalba"
+    ]
+   },
+   "lv": {
+    "words": [
+     "izvēlnes angliski",
+     "izvēlnes vāciski",
+     "English saskarne",
+     "Deutsch saskarne",
+     "izvēlnes franciski"
+    ],
+    "phrases": [
+     "rādīt lietotnes izvēlnes angļu valodā",
+     "rādīt lietotnes izvēlnes vācu valodā",
+     "rādīt lietotnes izvēlnes franču valodā"
+    ]
+   },
+   "mt": {
+    "words": [
+     "menus Ingliżi",
+     "menus Ġermaniżi",
+     "interface Deutsch",
+     "menus Franċiżi"
+    ],
+    "phrases": [
+     "uri l-menus tal-app bl-Ingliż",
+     "uri l-menus tal-app bil-Ġermaniż",
+     "uri l-menus tal-app bil-Franċiż"
+    ]
+   },
+   "nl": {
+    "words": [
+     "Engelse menu's",
+     "Duitse menu's",
+     "Deutsch menu's",
+     "Franse menu's"
+    ],
+    "phrases": [
+     "toon de appmenu's in het Engels",
+     "toon de appmenu's in het Duits",
+     "toon de appmenu's in het Frans"
+    ]
+   },
+   "pl": {
+    "words": [
+     "angielskie menu",
+     "niemieckie menu",
+     "English menu",
+     "Deutsch menu",
+     "francuskie menu"
+    ],
+    "phrases": [
+     "pokaż menu aplikacji po angielsku",
+     "pokaż menu aplikacji po niemiecku",
+     "pokaż menu aplikacji po francusku"
+    ]
+   },
+   "pt": {
+    "words": [
+     "menus em inglês",
+     "menus em alemão",
+     "menus em Deutsch",
+     "menus em francês"
+    ],
+    "phrases": [
+     "mostrar os menus do app em inglês",
+     "mostrar os menus do app em alemão",
+     "mostrar os menus do app em francês"
+    ]
+   },
+   "ro": {
+    "words": [
+     "meniuri engleză",
+     "meniuri germană",
+     "interfață Deutsch",
+     "meniuri în franceză"
+    ],
+    "phrases": [
+     "arată meniurile aplicației în engleză",
+     "arată meniurile aplicației în germană",
+     "arată meniurile aplicației în franceză"
+    ]
+   },
+   "ru": {
+    "words": [
+     "английское меню",
+     "немецкое меню",
+     "English интерфейс",
+     "Deutsch интерфейс",
+     "французское меню"
+    ],
+    "phrases": [
+     "показывать меню приложения на английском",
+     "переключить интерфейс приложения на немецкий",
+     "показывать меню приложения на французском"
+    ]
+   },
+   "sk": {
+    "words": [
+     "anglické menu",
+     "nemecké menu",
+     "English rozhranie",
+     "Deutsch rozhranie",
+     "francúzske menu"
+    ],
+    "phrases": [
+     "zobraz menu aplikácie v angličtine",
+     "zobraz menu aplikácie v nemčine",
+     "zobraz menu aplikácie vo francúzštine"
+    ]
+   },
+   "sl": {
+    "words": [
+     "angleški meniji",
+     "nemški meniji",
+     "English vmesnik",
+     "Deutsch vmesnik",
+     "francoski meniji"
+    ],
+    "phrases": [
+     "pokaži menije aplikacije v angleščini",
+     "pokaži menije aplikacije v nemščini",
+     "pokaži menije aplikacije v francoščini"
+    ]
+   },
+   "sv": {
+    "words": [
+     "engelska menyer",
+     "tyska menyer",
+     "English menyer",
+     "Deutsch menyer",
+     "franska menyer"
+    ],
+    "phrases": [
+     "visa appens menyer på engelska",
+     "visa appens menyer på tyska",
+     "visa appens menyer på franska"
+    ]
+   },
+   "tr": {
+    "words": [
+     "İngilizce menüler",
+     "Almanca menüler",
+     "English arayüz",
+     "Deutsch arayüz",
+     "Fransızca menüler"
+    ],
+    "phrases": [
+     "uygulamanın menüleri İngilizce olsun",
+     "uygulamanın menüleri Almanca olsun",
+     "uygulamanın menüleri Fransızca olsun"
+    ]
+   },
+   "uk": {
+    "words": [
+     "англійські меню",
+     "німецькі меню",
+     "English інтерфейс",
+     "Deutsch інтерфейс",
+     "французькі меню"
+    ],
+    "phrases": [
+     "показувати меню програми англійською",
+     "показувати меню програми німецькою",
+     "показувати меню програми французькою"
+    ]
+   },
+   "vi": {
+    "words": [
+     "menu tiếng Anh",
+     "menu tiếng Đức",
+     "giao diện English",
+     "giao diện Deutsch",
+     "menu tiếng Pháp"
+    ],
+    "phrases": [
+     "hiện menu ứng dụng bằng tiếng Anh",
+     "hiện menu ứng dụng bằng tiếng Đức",
+     "hiện menu ứng dụng bằng tiếng Pháp"
+    ]
+   },
+   "zh": {
+    "words": [
+     "英文界面",
+     "德文界面",
+     "English界面",
+     "Deutsch界面",
+     "法文界面"
+    ],
+    "phrases": [
+     "把应用菜单显示成英语",
+     "把应用菜单显示成德语",
+     "把应用菜单显示成法语"
+    ]
+   }
   }
  },
  "added": {
@@ -7887,7 +8358,6 @@
      ]
     },
     "fr": {
-     "title": "masquer les dictées aux gestionnaires de presse-papiers",
      "words": [
       "Raycast",
       "Maccy",
@@ -8154,7 +8624,7 @@
     }
    },
    "review": "additions/keepOutOfClipboardHistory.json",
-   "reviewSHA256": "4c40a74b6c91d8e5d1be0099514e791398934b39051b401f49e72b897f6f9dc7"
+   "reviewSHA256": "d8b39e38c57efb31737e45b5baa4c26686a3fd7851a9654a0940abef3851bf50"
   },
   "casualMode": {
    "blocks": {
@@ -8261,7 +8731,6 @@
      ]
     },
     "fr": {
-     "title": "sans point final",
      "words": [
       "point final"
      ],
@@ -8485,7 +8954,7 @@
     }
    },
    "review": "additions/casualMode.json",
-   "reviewSHA256": "a0c11e26f3b0d9950644078b0bf80ffc252177077711958cc3ec0a87715610d7"
+   "reviewSHA256": "8f129277d6e69abe243714c0a13bfe81bba144f6207249d78de3435fa8c6ad37"
   },
   "meetingCaptureCallSound": {
    "blocks": {
@@ -8570,7 +9039,6 @@
      ]
     },
     "fr": {
-     "title": "enregistrer uniquement ma voix",
      "words": [],
      "phrases": [
       "ne pas enregistrer le son de l'ordinateur",
@@ -8754,7 +9222,7 @@
     }
    },
    "review": "additions/meetingCaptureCallSound.json",
-   "reviewSHA256": "f9e5262f9468bbc2e7fd641369591915f06139e972d7c4342bceed8c84577460"
+   "reviewSHA256": "4699a718ad558e3b8c4e18c09752b8153215cbd026a9ea319d1e263d1a9643aa"
   },
   "meetingWriteSummary": {
    "blocks": {
@@ -8844,7 +9312,6 @@
      ]
     },
     "fr": {
-     "title": "créer un résumé à la fin de la réunion",
      "words": [],
      "phrases": [
       "résumer la réunion une fois terminée",
@@ -9042,7 +9509,7 @@
     }
    },
    "review": "additions/meetingWriteSummary.json",
-   "reviewSHA256": "c79b21eb689557973b65db43df9249f31c55b4d64a25293afcc21cbf5e40c064"
+   "reviewSHA256": "59bb76f19236c6384cf8de25bae0f81f99f8bc240a0b36c237652d791f1f142d"
   },
   "selfLearningDictionary.forgetMemory": {
    "blocks": {
@@ -9170,7 +9637,6 @@
      ]
     },
     "fr": {
-     "title": "effacer la mémoire d’apprentissage",
      "words": [
       "oublier",
       "mémoire",
@@ -9435,7 +9901,7 @@
     }
    },
    "review": "additions/selfLearningDictionary.forgetMemory.json",
-   "reviewSHA256": "68da6c005df7611c8afff987422337699397665f0be3392385fec780d49cb70c"
+   "reviewSHA256": "37bad9a2bc3ca8ba598d98b85f998339e1ef92469204877136feb1f2524dabc7"
   },
   "meetingUseCalendarForNames": {
    "blocks": {
@@ -9545,7 +10011,6 @@
      ]
     },
     "fr": {
-     "title": "nommer les réunions d’après mon calendrier",
      "words": [
       "calendrier",
       "titre de l’événement"
@@ -9777,7 +10242,7 @@
     }
    },
    "review": "additions/meetingUseCalendarForNames.json",
-   "reviewSHA256": "d99b129400d41f1b69b8bef4f47a536f5d5e98cc4ad8f8c4ec183f18e822fc2b"
+   "reviewSHA256": "d6ee083a25889d322995c2d000c3aa8cb9b4ef48e53eac313a655bad95ddb6d8"
   },
   "meetingCallDetection": {
    "blocks": {
@@ -9894,7 +10359,6 @@
      ]
     },
     "fr": {
-     "title": "au début d’un appel",
      "words": [
       "détection des appels",
       "enregistrement automatique"
@@ -10152,7 +10616,7 @@
     }
    },
    "review": "additions/meetingCallDetection.json",
-   "reviewSHA256": "17ebb2aee2b9eb5b0362dd7f0a6326c5a6e8f604c9c9cadcc3aec9b660242789"
+   "reviewSHA256": "4a94c388b3caa145c3c7f46fb9c67c22d217800027dd842703ee6e11e395e550"
   },
   "meetingCallApps": {
    "blocks": {
@@ -10240,7 +10704,6 @@
      ]
     },
     "fr": {
-     "title": "détecter les appels dans les applications",
      "words": [],
      "phrases": [
       "choisir les applis où détecter les appels",
@@ -10431,7 +10894,7 @@
     }
    },
    "review": "additions/meetingCallApps.json",
-   "reviewSHA256": "d8eb612922a833d46d945a3333e03c297f601e114b695152e1bd9f2ad24524bd"
+   "reviewSHA256": "9c5db645f012c6dfa138158250ec6b54d870b56fd6bf5d50bf67b7c015527958"
   },
   "meetings.tab.general": {
    "blocks": {
@@ -10504,7 +10967,6 @@
      ]
     },
     "fr": {
-     "title": "général",
      "words": [],
      "phrases": [
       "ouvrir l’onglet général d’EnviousMeet"
@@ -10660,7 +11122,7 @@
     }
    },
    "review": "additions/meetings.tab.general.json",
-   "reviewSHA256": "3939844bf45c57b74a7a51bdd1bc80de1a991e90b1324550426d80924fbf2ee7"
+   "reviewSHA256": "4332e606efac6253d9e2baf0459859bf2c512641754a5b64c76b5258f436bc9d"
   },
   "meetings.tab.callApps": {
    "blocks": {
@@ -10780,7 +11242,6 @@
      ]
     },
     "fr": {
-     "title": "applications d’appel",
      "words": [
       "applis d’appel"
      ],
@@ -11054,7 +11515,7 @@
     }
    },
    "review": "additions/meetings.tab.callApps.json",
-   "reviewSHA256": "036937a878c8db29efe2dcab893a488423a157f05744c6cc3b1baa02a5ec2fff"
+   "reviewSHA256": "7e3bcf73fe77396b4959e198693e634b39cc76850614beebb43826e258d702bb"
   },
   "meetings.tab.permissions": {
    "blocks": {
@@ -11153,7 +11614,6 @@
      ]
     },
     "fr": {
-     "title": "autorisations",
      "words": [
       "permissions EnviousMeet"
      ],
@@ -11366,7 +11826,7 @@
     }
    },
    "review": "additions/meetings.tab.permissions.json",
-   "reviewSHA256": "18a28e61403cedff995b02d0cda95d98162e4d460caa2afe94e078d6be6cdc7a"
+   "reviewSHA256": "1f849d8cab49570fa39930f456363972c08a75cf1fee63861d2ba9d7ed35e8e8"
   },
   "meetingTurnsOffDictation": {
    "blocks": {
@@ -11452,7 +11912,6 @@
      ]
     },
     "fr": {
-     "title": "désactiver la dictée pendant les réunions",
      "words": [],
      "phrases": [
       "bloquer la dictée pendant l’enregistrement d’une réunion",
@@ -11629,7 +12088,7 @@
     }
    },
    "review": "additions/meetingTurnsOffDictation.json",
-   "reviewSHA256": "c49019bc63a1b7e9e54eee650a0ed982914e498038d4ba107d82d7ef76109fb7"
+   "reviewSHA256": "351b8e438aceef0ecd32effa8477ffacc5a7e64cf2de4f7cda0042ebb3d0fa83"
   },
   "meetingLiveWords": {
    "blocks": {
@@ -11732,7 +12191,6 @@
      ]
     },
     "fr": {
-     "title": "aperçu en direct des réunions dans EnviousMeet",
      "words": [],
      "phrases": [
       "choisir le moteur de l’aperçu en direct des réunions dans EnviousMeet",
@@ -11944,7 +12402,7 @@
     }
    },
    "review": "additions/meetingLiveWords.json",
-   "reviewSHA256": "7c75a0712cb75a58cd70b54adfb212e1194f55b5a6fc9aca81a1de7c043b264b"
+   "reviewSHA256": "e245b0294dcff07f138e17c4cf443f273d28a1ab4452fb2cb7229dec75de8a3b"
   },
   "meetingLiveWords.apple": {
    "blocks": {
@@ -12019,7 +12477,6 @@
      ]
     },
     "fr": {
-     "title": "Apple",
      "words": [],
      "phrases": [
       "utiliser Apple pour transcrire la réunion en direct"
@@ -12174,7 +12631,7 @@
     }
    },
    "review": "additions/meetingLiveWords.apple.json",
-   "reviewSHA256": "52e51a044831e74ee100a4d21e75f3626ed7e48951380327a9154c8d8884eb90"
+   "reviewSHA256": "153281ffc5ac6f1ec64cdeb099e7f4b8f70cd237ace27d13418a0cb6a2267704"
   },
   "meetingLiveWords.universal": {
    "blocks": {
@@ -12249,7 +12706,6 @@
      ]
     },
     "fr": {
-     "title": "Universal",
      "words": [],
      "phrases": [
       "choisir Universal pour la transcription en direct de la réunion"
@@ -12404,7 +12860,7 @@
     }
    },
    "review": "additions/meetingLiveWords.universal.json",
-   "reviewSHA256": "c29277ca5751451f111e20c5a17de463c18eb3341c46544aba5632986c03ffef"
+   "reviewSHA256": "68d638944243d5a22204991d2c44577d425e18241050aa6a9d785ae16d31cd88"
   },
   "meetingTranscriptLanguage": {
    "blocks": {
@@ -12492,7 +12948,6 @@
      ]
     },
     "fr": {
-     "title": "langue de la transcription",
      "words": [],
      "phrases": [
       "choisir la langue de la transcription complète des prochaines réunions",
@@ -12686,7 +13141,7 @@
     }
    },
    "review": "additions/meetingTranscriptLanguage.json",
-   "reviewSHA256": "552a802f865a7e728c7d130b5c98616d712bc2de283f52692b53f68ffe87312e"
+   "reviewSHA256": "cdb69eda5e1d51781b3b9ba3b847e9a3c0a2c7f9f329ec2b8c8324c5aafa551d"
   },
   "meetings.tab.models": {
    "blocks": {
@@ -12761,7 +13216,6 @@
      ]
     },
     "fr": {
-     "title": "modèles",
      "words": [],
      "phrases": [
       "modèles pour les réunions"
@@ -12916,7 +13370,7 @@
     }
    },
    "review": "additions/meetings.tab.models.json",
-   "reviewSHA256": "c7597f37284c34d0f94680dafb69363ee63c5959bcff3f5e430c3f5a421f977e"
+   "reviewSHA256": "3058edbcf92822d0b518737f3ef1ac4db55bb7a4a00783880723f1104c331c30"
   },
   "meetingTranscriptEngine": {
    "blocks": {
@@ -13003,7 +13457,6 @@
      ]
     },
     "fr": {
-     "title": "moteur de transcription des réunions",
      "words": [],
      "phrases": [
       "choisir le moteur qui transcrit toute la réunion une fois terminée",
@@ -13193,7 +13646,7 @@
     }
    },
    "review": "additions/meetingTranscriptEngine.json",
-   "reviewSHA256": "f4b97dc702c188f6aaaf6988501c95a5928356e23b7d0c570b1f999c5e76a051"
+   "reviewSHA256": "f9e2dc8e2ed18c68a66a9654230bb0cb40a676fbf48dccac3f714c0487650d41"
   },
   "meetingTranscriptEngine.parakeet": {
    "blocks": {
@@ -13266,7 +13719,6 @@
      ]
     },
     "fr": {
-     "title": "Parakeet",
      "words": [],
      "phrases": [
       "utiliser Parakeet pour transcrire les réunions"
@@ -13421,7 +13873,7 @@
     }
    },
    "review": "additions/meetingTranscriptEngine.parakeet.json",
-   "reviewSHA256": "2d34fbbcb75046a678c9f78a0c84e2dd1a2a2f5e405d2af52e288331c11ac54e"
+   "reviewSHA256": "32dc95564078ea0b8c6c3d8d3b30bf94a72ee776acb3f7bdc1917fc1a454cec9"
   },
   "meetingTranscriptEngine.whisper": {
    "blocks": {
@@ -13494,7 +13946,6 @@
      ]
     },
     "fr": {
-     "title": "Whisper Large v3 Turbo",
      "words": [],
      "phrases": [
       "utiliser Whisper pour transcrire les réunions"
@@ -13649,7 +14100,7 @@
     }
    },
    "review": "additions/meetingTranscriptEngine.whisper.json",
-   "reviewSHA256": "4759f4cac521d81f9fab22be80a17335761bbfd6fe3a2b331fec311736bf9e8c"
+   "reviewSHA256": "34020ff8d0ad18d67602bfc7d1acbef14cd4a6e4c891a86a0446032efae4bf15"
   },
   "meetingSummaryEngine": {
    "blocks": {
@@ -13748,7 +14199,6 @@
      ]
     },
     "fr": {
-     "title": "moteur de résumé",
      "words": [
       "moteur de résumé des réunions"
      ],
@@ -13963,7 +14413,7 @@
     }
    },
    "review": "additions/meetingSummaryEngine.json",
-   "reviewSHA256": "4527917bff6a1d8a9b52976442b42af5b6ab16a6e471cd6eda3ead200da57bcc"
+   "reviewSHA256": "6512b889c2fbec0a27860cab565d07693bed80363d1bdc90be528ca591d94417"
   },
   "meetingSummaryEngine.change": {
    "blocks": {
@@ -14038,7 +14488,6 @@
      ]
     },
     "fr": {
-     "title": "modifier",
      "words": [],
      "phrases": [
       "changer l’ia pour les résumés de réunion"
@@ -14203,7 +14652,7 @@
     }
    },
    "review": "additions/meetingSummaryEngine.change.json",
-   "reviewSHA256": "d94c233f30c8b7617b1824959642c7da02822085f1e234cc03422b69c81e79a1"
+   "reviewSHA256": "db07f3e2aeb37f41b75119ced5aa60dfd1f1b609b86ec05ab16c1f801e25f2e0"
   },
   "meetingSummaryEngine.keepCurrent": {
    "blocks": {
@@ -14279,7 +14728,6 @@
      ]
     },
     "fr": {
-     "title": "conserver le moteur de résumé actuel",
      "words": [],
      "phrases": [
       "garder la même ia pour les résumés de réunion"
@@ -14448,7 +14896,7 @@
     }
    },
    "review": "additions/meetingSummaryEngine.keepCurrent.json",
-   "reviewSHA256": "85b63ba92780739acc0d346dc69b7a4f69506c22f02dee17c3387187b7ed93fc"
+   "reviewSHA256": "7eceadfc0feed86ddbe4cd0a22579cbad35b805d50b234871da0fd1ba06fada0"
   },
   "meetingSummaryEngine.appleIntelligence": {
    "blocks": {
@@ -14521,7 +14969,6 @@
      ]
     },
     "fr": {
-     "title": "Apple Intelligence",
      "words": [],
      "phrases": [
       "utiliser Apple Intelligence pour résumer les réunions"
@@ -14676,7 +15123,7 @@
     }
    },
    "review": "additions/meetingSummaryEngine.appleIntelligence.json",
-   "reviewSHA256": "bcd3684c253e9f1be6bc02087cb693326dfcb9e959fda3021624a062c892daa4"
+   "reviewSHA256": "c5e00221db12b3d64e738c63c8fbb80dd39ef5e86f1ec4189f2709836a1500b7"
   },
   "meetingSummaryEngine.egOne": {
    "blocks": {
@@ -14749,7 +15196,6 @@
      ]
     },
     "fr": {
-     "title": "EG-1",
      "words": [],
      "phrases": [
       "utiliser EG-1 pour résumer les réunions"
@@ -14904,7 +15350,7 @@
     }
    },
    "review": "additions/meetingSummaryEngine.egOne-4319.json",
-   "reviewSHA256": "af7a48095b617ac1885a6099d19f54150ba3ebe463fffde6545a8d707ad82903"
+   "reviewSHA256": "2dc3aa441285d6ef153f92ce762a5745b7f503119caead9b2938693288990ac8"
   },
   "meetingSummaryEngine.ollama": {
    "blocks": {
@@ -14977,7 +15423,6 @@
      ]
     },
     "fr": {
-     "title": "Ollama",
      "words": [],
      "phrases": [
       "utiliser Ollama pour résumer les réunions"
@@ -15132,7 +15577,7 @@
     }
    },
    "review": "additions/meetingSummaryEngine.ollama.json",
-   "reviewSHA256": "65b67717f5095211f0a41b38090dcaf853a49556bb7673e9a2a56909ff6a37c6"
+   "reviewSHA256": "cf643f95153f9ab6634beb46023baae6e1b7e2598b76e9d4b8e91d10ff3a1535"
   },
   "meetingSummaryEngine.openAI": {
    "blocks": {
@@ -15205,7 +15650,6 @@
      ]
     },
     "fr": {
-     "title": "OpenAI",
      "words": [],
      "phrases": [
       "utiliser OpenAI pour résumer les réunions"
@@ -15360,7 +15804,7 @@
     }
    },
    "review": "additions/meetingSummaryEngine.openAI.json",
-   "reviewSHA256": "5bd0aad4366e1e2420666e4dd5a9306c9e109de18dd8f2494813fe18852ea9ec"
+   "reviewSHA256": "0c14d975418b58920751718d528fd695a08393c846fbff15519a95184c91d05b"
   },
   "meetingSummaryEngine.gemini": {
    "blocks": {
@@ -15433,7 +15877,6 @@
      ]
     },
     "fr": {
-     "title": "Google Gemini",
      "words": [],
      "phrases": [
       "utiliser Google Gemini pour résumer les réunions"
@@ -15588,7 +16031,7 @@
     }
    },
    "review": "additions/meetingSummaryEngine.gemini.json",
-   "reviewSHA256": "95abe6107755672cfc0de0ec4f08faaf3a0f160ffb655880564a925a040dfca5"
+   "reviewSHA256": "338159ecdf905be8369b6ccf91c9d1654a9901bcd3cc097ba7ce9e49fdf7866e"
   },
   "meetingSummaryEngine.claude": {
    "blocks": {
@@ -15661,7 +16104,6 @@
      ]
     },
     "fr": {
-     "title": "Claude",
      "words": [],
      "phrases": [
       "utiliser Claude pour résumer les réunions"
@@ -15816,7 +16258,7 @@
     }
    },
    "review": "additions/meetingSummaryEngine.claude.json",
-   "reviewSHA256": "f748c7263324e0648b10487f8e4e1935919b5b4fd3670c4120cbb85212d34650"
+   "reviewSHA256": "73c96f43cd17d090cfa3ee522e59d9ce2bfc546e83097d48cf2a9f3456216d1b"
   },
   "meetings.tab.summaries": {
    "blocks": {
@@ -15899,7 +16341,6 @@
      ]
     },
     "fr": {
-     "title": "résumés",
      "words": [],
      "phrases": [
       "ouvrir l’onglet résumés d’EnviousMeet",
@@ -16077,7 +16518,7 @@
     }
    },
    "review": "additions/meetings.tab.summaries.json",
-   "reviewSHA256": "03dd0d59a70ad448b9658040ba74173fe7aa21565d94129d196ed3b3cb1122b9"
+   "reviewSHA256": "38f643e3d48397f63ed9b07048a4940cc950d181a3c75c74e3eee84fa57394ce"
   },
   "meetingLiveWords.change": {
    "blocks": {
@@ -16151,7 +16592,6 @@
      ]
     },
     "fr": {
-     "title": "modifier",
      "words": [],
      "phrases": [
       "afficher les moteurs disponibles pour la transcription en direct des réunions dans EnviousMeet"
@@ -16308,7 +16748,7 @@
     }
    },
    "review": "additions/meetingLiveWords.change.json",
-   "reviewSHA256": "3a3a6f255eb435c8c54ac3cdf8a2ee0c89cc444403c9fbd0190e1306800c900c"
+   "reviewSHA256": "c6081a6bb52e46137a5757bc761395be34cce61d59219ae072f535a99dd47d41"
   },
   "meetingLiveWords.keepCurrent": {
    "blocks": {
@@ -16386,7 +16826,6 @@
      ]
     },
     "fr": {
-     "title": "conserver le moteur actuel de l’aperçu en direct dans EnviousMeet",
      "words": [],
      "phrases": [
       "fermer le choix des moteurs sans changer le moteur de l’aperçu en direct des réunions dans EnviousMeet"
@@ -16549,7 +16988,7 @@
     }
    },
    "review": "additions/meetingLiveWords.keepCurrent.json",
-   "reviewSHA256": "76591a90510b8db879966d4517c10b77aac124c2dd884637024cf079757e400c"
+   "reviewSHA256": "65209c0609c39db5f9f591aaba649a4323081240ccd7d7f0dace406177eb2a92"
   },
   "meetingTranscriptEngine.change": {
    "blocks": {
@@ -16622,7 +17061,6 @@
      ]
     },
     "fr": {
-     "title": "modifier",
      "words": [],
      "phrases": [
       "afficher les moteurs disponibles pour transcrire toute la réunion après l’enregistrement dans EnviousMeet"
@@ -16777,7 +17215,7 @@
     }
    },
    "review": "additions/meetingTranscriptEngine.change.json",
-   "reviewSHA256": "62b8780fe3bae7b28a65186e303df9116d857098027c751703c4b524c58b3fc9"
+   "reviewSHA256": "5030bd7b56e374c0c7e4d8ef301532ce358cf51b2831bd62f75a0e38ea16ed90"
   },
   "meetingTranscriptEngine.keepCurrent": {
    "blocks": {
@@ -16855,7 +17293,6 @@
      ]
     },
     "fr": {
-     "title": "conserver le moteur de transcription actuel",
      "words": [],
      "phrases": [
       "fermer le choix des moteurs sans changer celui qui transcrit toute la réunion après l’enregistrement dans EnviousMeet"
@@ -17016,7 +17453,7 @@
     }
    },
    "review": "additions/meetingTranscriptEngine.keepCurrent.json",
-   "reviewSHA256": "f6de59a0b1cd937f531e7fa12e24eda0b3e576f677aa8fdbf34148043e789bf0"
+   "reviewSHA256": "d45362a0ab14a3de5f0adfa25524f5feb9b50693ece9ced65ec8622dabd274bd"
   },
   "meetingTranscriptEngine.apple": {
    "blocks": {
@@ -17093,7 +17530,6 @@
      ]
     },
     "fr": {
-     "title": "Apple",
      "words": [],
      "phrases": [
       "moteur Apple bientôt disponible pour la transcription complète des réunions dans EnviousMeet"
@@ -17256,7 +17692,7 @@
     }
    },
    "review": "additions/meetingTranscriptEngine.apple.json",
-   "reviewSHA256": "940ce70c241c62ed0c3404f147b3ad76789151386de3b53fff3e2b70e4c3a50b"
+   "reviewSHA256": "39928a46de4fa426c40d3d9d4f2a34bb5ca5b170880c1778b49c32e70b1121cb"
   },
   "meetingFollowsCallMute": {
    "blocks": {
@@ -17354,7 +17790,6 @@
      ]
     },
     "fr": {
-     "title": "exclure ma voix quand je suis en sourdine",
      "words": [
       "sourdine",
       "mute"
@@ -17571,7 +18006,7 @@
     }
    },
    "review": "additions/meetingFollowsCallMute.json",
-   "reviewSHA256": "79235760e2a31a06ec47f0bb764e4ae8c1b9fa158e62ed2f84f66365df40c3cc"
+   "reviewSHA256": "1ad590b8c9bcbe397d20411d7b15b2bd537223a4a0a0aa2886a00290ad0bd738"
   },
   "meetingLiveWordsLanguage": {
    "blocks": {
@@ -17654,7 +18089,6 @@
      ]
     },
     "fr": {
-     "title": "langue de l’aperçu en direct",
      "words": [],
      "phrases": [
       "changer la langue de l’aperçu en direct d’une réunion dans EnviousMeet"
@@ -17817,7 +18251,7 @@
     }
    },
    "review": "additions/meetingLiveWordsLanguage.json",
-   "reviewSHA256": "4142b554ce55b2bec56170ca91fd0ac017fef3b69a6be00fcf0b9e920390e6c3"
+   "reviewSHA256": "2be6f6ad57e27ed2ab5978fb310da028ccfe6559e3ed6950d76fc7501f4628c0"
   },
   "meetingTranscriptAutoDetect": {
    "blocks": {
@@ -17904,7 +18338,6 @@
      ]
     },
     "fr": {
-     "title": "détecter automatiquement la langue",
      "words": [],
      "phrases": [
       "détecter automatiquement la langue pour transcrire la réunion une fois terminée",
@@ -18080,7 +18513,7 @@
     }
    },
    "review": "additions/meetingTranscriptAutoDetect.json",
-   "reviewSHA256": "d2e457687b41a4fc5b70eee30251ddc283aa1a1364e05953ac127454854a56e5"
+   "reviewSHA256": "da2d36dbd100bef88d8ad86c11118e901eafb59ea61b9033e13a548b88ae8473"
   },
   "meetingSpeakerLabels": {
    "blocks": {
@@ -18187,7 +18620,6 @@
      ]
     },
     "fr": {
-     "title": "identification des intervenants",
      "words": [
       "locuteurs",
       "distinction des voix"
@@ -18418,7 +18850,7 @@
     }
    },
    "review": "additions/meetingSpeakerLabels.json",
-   "reviewSHA256": "161b6e86a308bd8ca2cb4cff57cccbed221dbe40d218fa784f96fcb280481273"
+   "reviewSHA256": "7a966775e65da35d11db160732f989c2661b875c599c8e00302e0e665e2e0a42"
   },
   "appSettings.tab.recordings": {
    "blocks": {
@@ -18537,7 +18969,6 @@
      ]
     },
     "fr": {
-     "title": "enregistrements",
      "words": [
       "enregistrements audio",
       "audio des réunions",
@@ -18822,7 +19253,7 @@
     }
    },
    "review": "additions/appSettings.tab.recordings.json",
-   "reviewSHA256": "cc1655d1cee11f2b63c30054a2fcd20408be84b56b2eb37f6dcb47b938fb05c4"
+   "reviewSHA256": "e891d9a6063683b3ddd528a55069b847bca02dc9ffff854900751ecd63fa468d"
   },
   "deleteRecordings": {
    "blocks": {
@@ -18921,7 +19352,6 @@
      ]
     },
     "fr": {
-     "title": "supprimer les enregistrements",
      "words": [
       "fichiers audio",
       "effacer"
@@ -19137,7 +19567,7 @@
     }
    },
    "review": "additions/deleteRecordings.json",
-   "reviewSHA256": "a6c49504e4cea118ee3e6adfcd21b4066f5e0a4f9191ad2066745492bc8f9ccb"
+   "reviewSHA256": "85e96e03c6c0239d6bdf0d9e5809bba22912220333cb0924bafc8861a00e5079"
   },
   "deleteRecordings.dictations": {
    "blocks": {
@@ -19215,7 +19645,6 @@
      ]
     },
     "fr": {
-     "title": "supprimer tous les enregistrements de dictée",
      "words": [],
      "phrases": [
       "effacer tous les audios de mes dictées"
@@ -19375,7 +19804,7 @@
     }
    },
    "review": "additions/deleteRecordings.dictations.json",
-   "reviewSHA256": "8bf950dd43547dcb21fc6ca47af1fee2b3c05695fe22646d4fd2b0c47a8ce234"
+   "reviewSHA256": "aebb2e39199feedbfb63702c862a73c32bd54cd8be1a32e2d5101b9fa5934380"
   },
   "deleteRecordings.meetings": {
    "blocks": {
@@ -19452,7 +19881,6 @@
      ]
     },
     "fr": {
-     "title": "supprimer tout l’audio des réunions",
      "words": [],
      "phrases": [
       "effacer les enregistrements audio de toutes les réunions"
@@ -19607,7 +20035,7 @@
     }
    },
    "review": "additions/deleteRecordings.meetings.json",
-   "reviewSHA256": "89a29548fd7fe4c6c6fff5b78a935062665bbf8397e9765cea31958d11b5d527"
+   "reviewSHA256": "248b7665f8e899de7302dcf2407ec8e324a53925de236318e797d65d34f737cc"
   },
   "dictationRecordingRetention": {
    "blocks": {
@@ -19708,7 +20136,6 @@
      ]
     },
     "fr": {
-     "title": "durée de conservation des enregistrements de dictée",
      "words": [
       "durée de conservation"
      ],
@@ -19913,7 +20340,7 @@
     }
    },
    "review": "additions/dictationRecordingRetention.json",
-   "reviewSHA256": "40636e549802fea044fb4bfa989f8c8b8d85eef9b81c1ae2dfc591ac65a4b274"
+   "reviewSHA256": "a286037649cac2fbc1a7ed2a14f0314b269c7bab94748d2be4a69c25a7fe6a9d"
   },
   "meetingRecordingRetention": {
    "blocks": {
@@ -20030,7 +20457,6 @@
      ]
     },
     "fr": {
-     "title": "conserver l’audio des réunions",
      "words": [
       "enregistrements de réunions"
      ],
@@ -20264,7 +20690,7 @@
     }
    },
    "review": "additions/meetingRecordingRetention.json",
-   "reviewSHA256": "03bb0730e62367095ea0a26dc88b91733728bdd9ca2d371afec2c170b4c3f636"
+   "reviewSHA256": "c54dc25bf1c3306d9072e07d182f57a8cbc893fe4fdb7c873df77c8f476ff965"
   },
   "recordingStorageUsage": {
    "blocks": {
@@ -20369,7 +20795,6 @@
      ]
     },
     "fr": {
-     "title": "espace utilisé",
      "words": [
       "taille des enregistrements"
      ],
@@ -20592,7 +21017,7 @@
     }
    },
    "review": "additions/recordingStorageUsage.json",
-   "reviewSHA256": "aa510df0fce1717af9bdf8984d779474c64a2b09b118e1b28993eae7b6248e41"
+   "reviewSHA256": "56cf0698e48b976e8410ade1c838c385a9e7c8e0638bd4014b1b72ef05bb2b95"
   },
   "recordingStorageWarningThreshold": {
    "blocks": {
@@ -20708,7 +21133,6 @@
      ]
     },
     "fr": {
-     "title": "seuil d’alerte de stockage",
      "words": [
       "alerte de stockage",
       "seuil d’avertissement"
@@ -20954,7 +21378,7 @@
     }
    },
    "review": "additions/recordingStorageWarningThreshold.json",
-   "reviewSHA256": "e5949e6017976a52ec6771ec0b4752cf9261b41fd59db4b754b67f105404836d"
+   "reviewSHA256": "01b9de43bf81c6680ab2d4fbd9cc24fed05f60af3a931e3028a0f39407ac1ff0"
   },
   "recordingThresholdBehavior": {
    "blocks": {
@@ -21059,7 +21483,6 @@
      ]
     },
     "fr": {
-     "title": "en cas de dépassement du seuil",
      "words": [
       "suppression automatique"
      ],
@@ -21282,7 +21705,7 @@
     }
    },
    "review": "additions/recordingThresholdBehavior.json",
-   "reviewSHA256": "831c05ca5b90db96b6eb09e7f570100d15c4abd9d68141dc2487eb8318cdcc62"
+   "reviewSHA256": "26975f2ebde532cfabe457fee2ccb4736f83c357a657db5092c5b934b734e0b8"
   },
   "saveDictationRecordings": {
    "blocks": {
@@ -21370,7 +21793,6 @@
      ]
     },
     "fr": {
-     "title": "conserver les enregistrements des dictées",
      "words": [],
      "phrases": [
       "garder l’audio de chaque dictée",
@@ -21550,7 +21972,7 @@
     }
    },
    "review": "additions/saveDictationRecordings.json",
-   "reviewSHA256": "629a17a3f7a6274d42dbe56b0c9be706066bcea54b46dc5ee0c6a46040836bc3"
+   "reviewSHA256": "3265ebdeda5971d2c8999f207d537cd555c6b0fde63724294a75340f8a480032"
   },
   "fixLearnedWords": {
    "blocks": {
@@ -21636,7 +22058,6 @@
      ]
     },
     "fr": {
-     "title": "Appliquer les corrections apprises",
      "words": [
       "réutiliser les corrections"
      ],
@@ -21820,7 +22241,7 @@
     }
    },
    "review": "additions/fixLearnedWords.json",
-   "reviewSHA256": "0a0ab81c6e17dd3efbf7794b073a3fc1ba13281b878e9fda74442cfe9b9de2b1"
+   "reviewSHA256": "195371e502b3590924e2e2c4ea692e242e4fbf7942cb56efcb3b84bfa995dc31"
   },
   "automaticDictationPaste": {
    "blocks": {
@@ -21943,7 +22364,6 @@
      ]
     },
     "fr": {
-     "title": "Coller automatiquement le texte dicté",
      "words": [
       "collage automatique",
       "collage manuel",
@@ -22215,7 +22635,7 @@
     }
    },
    "review": "additions/automaticDictationPaste.json",
-   "reviewSHA256": "f6024586d111edcbac384983717e07ef5331493b859af6808bd864a298a16708"
+   "reviewSHA256": "0f51e9447feacc422bb272358b6150a358995829b13a22e1354cf52d232cb41d"
   },
   "dictationOutputLanguage": {
    "blocks": {
@@ -22320,7 +22740,6 @@
      ]
     },
     "fr": {
-     "title": "langue du texte dicté",
      "words": [
       "langue de sortie",
       "langue cible"
@@ -22551,7 +22970,7 @@
     }
    },
    "review": "additions/dictationOutputLanguage.json",
-   "reviewSHA256": "898926a2d29a6ae23d962b3e3e8d826925e89c82cf1579043e39c42618db4d8b"
+   "reviewSHA256": "f6c2ceaad0b91717b1bbb311b04bb7d7e33d428074f77364b6a381f38ac6e433"
   }
  }
 }

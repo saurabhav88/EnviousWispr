@@ -64,6 +64,15 @@ enum WhatsNewContent {
       version: "2.6.2"
     ),
 
+    // #3142 French slice: French joins English and German as an interface language.
+    Entry(
+      id: "enviouswispr-in-french",
+      icon: "globe",
+      title: "Now available in French",
+      description: "Choose Français in Settings > Appearance > Language, then relaunch to apply. System default follows your Mac's language.",
+      version: "2.6.2"
+    ),
+
     // MARK: - v2.6.1
 
     // Founder-approved group, 2026-11-20 (Claude Doc "EnviousWispr 2.6.1 Release Notes"). The

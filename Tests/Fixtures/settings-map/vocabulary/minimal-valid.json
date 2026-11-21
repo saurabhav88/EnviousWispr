@@ -431,7 +431,6 @@
     },
     {
      "language": "fr",
-     "title": "title 1 fr",
      "words": [
       "word1fr"
      ],
@@ -734,7 +733,6 @@
     },
     {
      "language": "fr",
-     "title": "title 2 fr",
      "words": [],
      "phrases": [
       "phrase 2 fr"
