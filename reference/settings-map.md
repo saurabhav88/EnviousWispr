@@ -5,345 +5,345 @@ Generated from the compiled Settings Map and the validated search vocabulary. Do
 - Regenerate: `scripts/settings-map/export.sh`
 - Check: `scripts/settings-map/export.sh --check` (CI runs the same comparison)
 - Map: [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift); runtime titles: [Sources/EnviousWisprAppKit/Views/Settings/SettingsMapRegistration.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMapRegistration.swift)
-- Interface text: [Sources/EnviousWispr/Resources/Localizable.xcstrings](../Sources/EnviousWispr/Resources/Localizable.xcstrings) (English and German)
+- Interface text: [Sources/EnviousWispr/Resources/Localizable.xcstrings](../Sources/EnviousWispr/Resources/Localizable.xcstrings) (English, German and French)
 - Search vocabulary: [Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json](../Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json)
 - Machine-readable export with every field and all vocabulary: [settings-map.json](settings-map.json)
 - Authoring and review: [scripts/settings-map/README.md](../scripts/settings-map/README.md)
 
-The interface ships in English and German. The other 30 languages (ar, bg, cs, da, el, es, et, fi, fr, hi, hr, hu, it, ja, ko, lt, lv, mt, nl, pl, pt, ro, ru, sk, sl, sv, tr, uk, vi, zh) are search metadata only: words and titles people may type, matched against the same places. Titles below read English / German.
+The interface ships in English, German and French. The other 29 languages (ar, bg, cs, da, el, es, et, fi, hi, hr, hu, it, ja, ko, lt, lv, mt, nl, pl, pt, ro, ru, sk, sl, sv, tr, uk, vi, zh) are search metadata only: words and titles people may type, matched against the same places. Titles below read English / German / French.
 
 327 nodes, 298 searchable, 9536 vocabulary blocks.
 
-Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8feb3f105df`, uiCatalogSHA256 `deb0980c8be7d5d32a9eaaef963bf13d89f909d47027c8f4cd104b8a39f3c247`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `a1f3564189c4977d2af54bacbd4931f022eb117b096bcbb1ab4b9e7158fe394d`
+Fingerprints: mapSHA256 `2ca8c4078c0dc26bc644b330f24be53883f2ec66c78af0b40c28dd0796ecd4ad`, uiCatalogSHA256 `9eed0cee8eae4160339439edda86346aefd8b3d593be06d8f7c3fec19a977c68`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `e3699c870128d2d978cb3844ab77161c7b3d1c7165701147dd6b93b5931df1f9`
 
 ## Structure
 
 - [EnviousWispr](#node-window-settings) `window.settings` (window)
-  - [Search settings / Einstellungen suchen](#node-window-search) `window.search` (section)
-  - [AI Polish / KI-Nachbearbeitung](#node-page-aiPolish) `page.aiPolish` (page)
-    - [Model / Modell](#node-section-aiPolishModel) `section.aiPolishModel` (section)
+  - [Search settings / Einstellungen suchen / Rechercher](#node-window-search) `window.search` (section)
+  - [AI Polish / KI-Nachbearbeitung / Retouche IA](#node-page-aiPolish) `page.aiPolish` (page)
+    - [Model / Modell / Modèle](#node-section-aiPolishModel) `section.aiPolishModel` (section)
       - [(named at runtime by `providerName`)](#node-aiPolishProvider) `aiPolishProvider` (setting)
         - [(named at runtime by `providerSection`)](#node-aiPolish-providerSection) `aiPolish.providerSection` (feature)
-          - [Download / Laden](#node-localModel-download) `localModel.download` (action)
-          - [Cancel / Abbrechen](#node-localModel-cancel) `localModel.cancel` (action)
-          - [Resume / Fortsetzen](#node-localModel-resume) `localModel.resume` (action)
-          - [Resume upgrade / Upgrade fortsetzen](#node-localModel-resumeUpgrade) `localModel.resumeUpgrade` (action)
-          - [Finish upgrade / Upgrade abschließen](#node-localModel-finishUpgrade) `localModel.finishUpgrade` (action)
-          - [Try Again / Erneut versuchen](#node-localModel-tryAgain) `localModel.tryAgain` (action)
+          - [Download / Laden / Télécharger](#node-localModel-download) `localModel.download` (action)
+          - [Cancel / Abbrechen / Annuler](#node-localModel-cancel) `localModel.cancel` (action)
+          - [Resume / Fortsetzen / Reprendre](#node-localModel-resume) `localModel.resume` (action)
+          - [Resume upgrade / Upgrade fortsetzen / Reprendre la mise à niveau](#node-localModel-resumeUpgrade) `localModel.resumeUpgrade` (action)
+          - [Finish upgrade / Upgrade abschließen / Terminer la mise à niveau](#node-localModel-finishUpgrade) `localModel.finishUpgrade` (action)
+          - [Try Again / Erneut versuchen / Réessayer](#node-localModel-tryAgain) `localModel.tryAgain` (action)
           - [(named at runtime by `localModelTest`)](#node-localModel-testLive) `localModel.testLive` (action)
-          - [Tone / Ton](#node-s1Tone) `s1Tone` (setting)
-            - [Casual / Locker](#node-s1Tone-casual) `s1Tone.casual` (choice)
-            - [Semi-casual / Eher locker](#node-s1Tone-semiCasual) `s1Tone.semiCasual` (choice)
-            - [Semi-formal / Eher förmlich](#node-s1Tone-semiFormal) `s1Tone.semiFormal` (choice)
-            - [Formal / Förmlich](#node-s1Tone-formal) `s1Tone.formal` (choice)
-          - [Structure / Struktur](#node-s1Structure) `s1Structure` (setting)
-            - [Prose / Fließtext](#node-s1Structure-prose) `s1Structure.prose` (choice)
-            - [Lists / Listen](#node-s1Structure-lists) `s1Structure.lists` (choice)
-          - [Context / Kontext](#node-s1Context) `s1Context` (setting)
-            - [General / Allgemein](#node-s1Context-general) `s1Context.general` (choice)
-            - [Email / E-Mail](#node-s1Context-email) `s1Context.email` (choice)
-          - [OpenAI API Key / OpenAI-API-Schlüssel](#node-apiKey-openAI) `apiKey.openAI` (setting)
-          - [Google Gemini API Key / Google Gemini-API-Schlüssel](#node-apiKey-gemini) `apiKey.gemini` (setting)
-          - [Claude API Key / Claude-API-Schlüssel](#node-apiKey-claude) `apiKey.claude` (setting)
-          - [Save / Sichern](#node-apiKey-save) `apiKey.save` (action)
-          - [Clear / Löschen](#node-apiKey-clear) `apiKey.clear` (action)
+          - [Tone / Ton / Ton](#node-s1Tone) `s1Tone` (setting)
+            - [Casual / Locker / Décontracté](#node-s1Tone-casual) `s1Tone.casual` (choice)
+            - [Semi-casual / Eher locker / Plutôt décontracté](#node-s1Tone-semiCasual) `s1Tone.semiCasual` (choice)
+            - [Semi-formal / Eher förmlich / Plutôt formel](#node-s1Tone-semiFormal) `s1Tone.semiFormal` (choice)
+            - [Formal / Förmlich / Formel](#node-s1Tone-formal) `s1Tone.formal` (choice)
+          - [Structure / Struktur / Structure](#node-s1Structure) `s1Structure` (setting)
+            - [Prose / Fließtext / Prose](#node-s1Structure-prose) `s1Structure.prose` (choice)
+            - [Lists / Listen / Listes](#node-s1Structure-lists) `s1Structure.lists` (choice)
+          - [Context / Kontext / Contexte](#node-s1Context) `s1Context` (setting)
+            - [General / Allgemein / Général](#node-s1Context-general) `s1Context.general` (choice)
+            - [Email / E-Mail / E-mail](#node-s1Context-email) `s1Context.email` (choice)
+          - [OpenAI API Key / OpenAI-API-Schlüssel / Clé d’API OpenAI](#node-apiKey-openAI) `apiKey.openAI` (setting)
+          - [Google Gemini API Key / Google Gemini-API-Schlüssel / Clé API Google Gemini](#node-apiKey-gemini) `apiKey.gemini` (setting)
+          - [Claude API Key / Claude-API-Schlüssel / Clé API Claude](#node-apiKey-claude) `apiKey.claude` (setting)
+          - [Save / Sichern / Enregistrer](#node-apiKey-save) `apiKey.save` (action)
+          - [Clear / Löschen / Effacer](#node-apiKey-clear) `apiKey.clear` (action)
           - [(named at runtime by `apiKeyReveal`)](#node-apiKey-reveal) `apiKey.reveal` (action)
           - [(named at runtime by `apiKeyLink`)](#node-apiKey-getKeyLink) `apiKey.getKeyLink` (action)
-          - [Model / Modell](#node-polishModel) `polishModel` (setting)
-            - [Prepare model / Modell vorbereiten](#node-ollama-prepareModel) `ollama.prepareModel` (action)
-            - [Refresh available models / Verfügbare Modelle aktualisieren](#node-polishModel-refresh) `polishModel.refresh` (action)
+          - [Model / Modell / Modèle](#node-polishModel) `polishModel` (setting)
+            - [Prepare model / Modell vorbereiten / Préparer le modèle](#node-ollama-prepareModel) `ollama.prepareModel` (action)
+            - [Refresh available models / Verfügbare Modelle aktualisieren / Actualiser les modèles disponibles](#node-polishModel-refresh) `polishModel.refresh` (action)
         - [EG-1](#node-aiPolishProvider-egOne) `aiPolishProvider.egOne` (choice)
-          - [Why use EG-1 / Warum EG-1 verwenden?](#node-aiPolish-whyUse-egOne) `aiPolish.whyUse.egOne` (feature)
+          - [Why use EG-1 / Warum EG-1 verwenden? / Pourquoi utiliser EG-1](#node-aiPolish-whyUse-egOne) `aiPolish.whyUse.egOne` (feature)
         - [S1-mini](#node-aiPolishProvider-s1Mini) `aiPolishProvider.s1Mini` (choice)
-          - [Why use S1-mini / Warum S1-mini verwenden?](#node-aiPolish-whyUse-s1Mini) `aiPolish.whyUse.s1Mini` (feature)
+          - [Why use S1-mini / Warum S1-mini verwenden? / Pourquoi utiliser S1-mini](#node-aiPolish-whyUse-s1Mini) `aiPolish.whyUse.s1Mini` (feature)
         - [Apple Intelligence](#node-aiPolishProvider-appleIntelligence) `aiPolishProvider.appleIntelligence` (choice)
-          - [Why use Apple Intelligence / Warum Apple Intelligence verwenden?](#node-aiPolish-whyUse-appleIntelligence) `aiPolish.whyUse.appleIntelligence` (feature)
-            - [About Apple Intelligence / Über Apple Intelligence](#node-aiPolish-link-aboutAppleIntelligence) `aiPolish.link.aboutAppleIntelligence` (action)
+          - [Why use Apple Intelligence / Warum Apple Intelligence verwenden? / Pourquoi utiliser Apple Intelligence](#node-aiPolish-whyUse-appleIntelligence) `aiPolish.whyUse.appleIntelligence` (feature)
+            - [About Apple Intelligence / Über Apple Intelligence / À propos d’Apple Intelligence](#node-aiPolish-link-aboutAppleIntelligence) `aiPolish.link.aboutAppleIntelligence` (action)
           - [(named at runtime by `appleIntelligenceStatus`)](#node-appleIntelligence-status) `appleIntelligence.status` (feature)
-            - [Check Apple Intelligence availability / Verfügbarkeit von Apple Intelligence prüfen](#node-appleIntelligence-recheck) `appleIntelligence.recheck` (action)
+            - [Check Apple Intelligence availability / Verfügbarkeit von Apple Intelligence prüfen / Vérifier la disponibilité d’Apple Intelligence](#node-appleIntelligence-recheck) `appleIntelligence.recheck` (action)
         - [Ollama](#node-aiPolishProvider-ollama) `aiPolishProvider.ollama` (choice)
-          - [Why use Ollama / Warum Ollama verwenden?](#node-aiPolish-whyUse-ollama) `aiPolish.whyUse.ollama` (feature)
-            - [Ollama model library / Ollama-Modellbibliothek](#node-aiPolish-link-ollamaLibrary) `aiPolish.link.ollamaLibrary` (action)
-          - [Download Ollama / Ollama herunterladen](#node-ollama-downloadOllama) `ollama.downloadOllama` (action)
-          - [Start Ollama / Ollama starten](#node-ollama-start) `ollama.start` (action)
+          - [Why use Ollama / Warum Ollama verwenden? / Pourquoi utiliser Ollama](#node-aiPolish-whyUse-ollama) `aiPolish.whyUse.ollama` (feature)
+            - [Ollama model library / Ollama-Modellbibliothek / Bibliothèque de modèles Ollama](#node-aiPolish-link-ollamaLibrary) `aiPolish.link.ollamaLibrary` (action)
+          - [Download Ollama / Ollama herunterladen / Télécharger Ollama](#node-ollama-downloadOllama) `ollama.downloadOllama` (action)
+          - [Start Ollama / Ollama starten / Démarrer Ollama](#node-ollama-start) `ollama.start` (action)
           - [(named at runtime by `ollamaModelDownload`)](#node-ollama-downloadModel) `ollama.downloadModel` (action)
-          - [Cancel / Abbrechen](#node-ollama-cancelPull) `ollama.cancelPull` (action)
-          - [Server / Server](#node-ollama-server) `ollama.server` (feature)
-          - [Re-check Ollama status / Ollama-Status erneut prüfen](#node-ollama-recheck) `ollama.recheck` (action)
-          - [Try Again / Erneut versuchen](#node-ollama-tryAgain) `ollama.tryAgain` (action)
-          - [Download more models / Weitere Modelle laden](#node-ollama-browseModels) `ollama.browseModels` (action)
+          - [Cancel / Abbrechen / Annuler](#node-ollama-cancelPull) `ollama.cancelPull` (action)
+          - [Server / Server / Serveur](#node-ollama-server) `ollama.server` (feature)
+          - [Re-check Ollama status / Ollama-Status erneut prüfen / Vérifier à nouveau l’état d’Ollama](#node-ollama-recheck) `ollama.recheck` (action)
+          - [Try Again / Erneut versuchen / Réessayer](#node-ollama-tryAgain) `ollama.tryAgain` (action)
+          - [Download more models / Weitere Modelle laden / Télécharger d’autres modèles](#node-ollama-browseModels) `ollama.browseModels` (action)
         - [OpenAI](#node-aiPolishProvider-openAI) `aiPolishProvider.openAI` (choice)
-          - [Why use OpenAI / Warum OpenAI verwenden?](#node-aiPolish-whyUse-openAI) `aiPolish.whyUse.openAI` (feature)
-            - [OpenAI rate limits by tier / OpenAI-Ratenlimits nach Stufe](#node-aiPolish-link-openAIRateLimits) `aiPolish.link.openAIRateLimits` (action)
+          - [Why use OpenAI / Warum OpenAI verwenden? / Pourquoi utiliser OpenAI](#node-aiPolish-whyUse-openAI) `aiPolish.whyUse.openAI` (feature)
+            - [OpenAI rate limits by tier / OpenAI-Ratenlimits nach Stufe / Limites de débit d’OpenAI par niveau](#node-aiPolish-link-openAIRateLimits) `aiPolish.link.openAIRateLimits` (action)
         - [Google Gemini](#node-aiPolishProvider-gemini) `aiPolishProvider.gemini` (choice)
-          - [Why use Gemini / Warum Gemini verwenden?](#node-aiPolish-whyUse-gemini) `aiPolish.whyUse.gemini` (feature)
-            - [Gemini API rate limits by tier / Ratenlimits der Gemini-API nach Nutzungsstufe](#node-aiPolish-link-geminiRateLimits) `aiPolish.link.geminiRateLimits` (action)
+          - [Why use Gemini / Warum Gemini verwenden? / Pourquoi utiliser Gemini](#node-aiPolish-whyUse-gemini) `aiPolish.whyUse.gemini` (feature)
+            - [Gemini API rate limits by tier / Ratenlimits der Gemini-API nach Nutzungsstufe / Limites de débit de l’API Gemini par niveau](#node-aiPolish-link-geminiRateLimits) `aiPolish.link.geminiRateLimits` (action)
         - [Claude](#node-aiPolishProvider-claude) `aiPolishProvider.claude` (choice)
-          - [Why use Claude / Warum Claude verwenden?](#node-aiPolish-whyUse-claude) `aiPolish.whyUse.claude` (feature)
-            - [Claude API rate limits / Claude-API-Ratenlimits](#node-aiPolish-link-claudeRateLimits) `aiPolish.link.claudeRateLimits` (action)
-    - [Enable AI Polish / KI-Nachbearbeitung aktivieren](#node-enableAIPolish) `enableAIPolish` (setting)
-    - [Dictation output language / Ausgabesprache für Diktate](#node-dictationOutputLanguage) `dictationOutputLanguage` (setting)
-  - [App Settings / App-Einstellungen](#node-page-appSettings) `page.appSettings` (page)
-    - [Appearance / Erscheinungsbild](#node-appSettings-tab-appearance) `appSettings.tab.appearance` (feature)
-      - [APPEARANCE / ERSCHEINUNGSBILD](#node-section-appearance) `section.appearance` (section)
-        - [Theme / Design](#node-theme) `theme` (setting)
-          - [System / System](#node-theme-system) `theme.system` (choice)
-          - [Light / Hell](#node-theme-light) `theme.light` (choice)
-          - [Dark / Dunkel](#node-theme-dark) `theme.dark` (choice)
-        - [Language / Sprache](#node-appLanguage) `appLanguage` (setting)
-          - [System default / Systemstandard](#node-appLanguage-systemDefault) `appLanguage.systemDefault` (choice)
+          - [Why use Claude / Warum Claude verwenden? / Pourquoi utiliser Claude](#node-aiPolish-whyUse-claude) `aiPolish.whyUse.claude` (feature)
+            - [Claude API rate limits / Claude-API-Ratenlimits / Limites de débit de l’API Claude](#node-aiPolish-link-claudeRateLimits) `aiPolish.link.claudeRateLimits` (action)
+    - [Enable AI Polish / KI-Nachbearbeitung aktivieren / Activer la retouche IA](#node-enableAIPolish) `enableAIPolish` (setting)
+    - [Dictation output language / Ausgabesprache für Diktate / Langue du texte dicté](#node-dictationOutputLanguage) `dictationOutputLanguage` (setting)
+  - [App Settings / App-Einstellungen / Réglages de l’app](#node-page-appSettings) `page.appSettings` (page)
+    - [Appearance / Erscheinungsbild / Apparence](#node-appSettings-tab-appearance) `appSettings.tab.appearance` (feature)
+      - [APPEARANCE / ERSCHEINUNGSBILD / APPARENCE](#node-section-appearance) `section.appearance` (section)
+        - [Theme / Design / Thème](#node-theme) `theme` (setting)
+          - [System / System / Système](#node-theme-system) `theme.system` (choice)
+          - [Light / Hell / Clair](#node-theme-light) `theme.light` (choice)
+          - [Dark / Dunkel / Sombre](#node-theme-dark) `theme.dark` (choice)
+        - [Language / Sprache / Langue](#node-appLanguage) `appLanguage` (setting)
+          - [System default / Systemstandard / Par défaut du système](#node-appLanguage-systemDefault) `appLanguage.systemDefault` (choice)
           - [(named at runtime by `appLanguageName`)](#node-appLanguage-shipped) `appLanguage.shipped` (choice)
-          - [Relaunch to apply / Zum Übernehmen neu starten](#node-appLanguage-relaunch) `appLanguage.relaunch` (action)
-        - [Show app in Dock / App im Dock anzeigen](#node-showInDock) `showInDock` (setting)
-        - [Update alert in menu bar / Update-Hinweis in der Menüleiste](#node-updateAlertInMenuBar) `updateAlertInMenuBar` (setting)
-    - [Permissions / Berechtigungen](#node-appSettings-tab-permissions) `appSettings.tab.permissions` (feature)
-      - [PERMISSIONS / BERECHTIGUNGEN](#node-section-permissions) `section.permissions` (section)
-        - [Microphone / Mikrofon](#node-permission-microphone) `permission.microphone` (feature)
-          - [Request Access / Zugriff anfordern](#node-permission-microphone-request) `permission.microphone.request` (action)
-        - [Accessibility / Bedienungshilfen](#node-permission-accessibility) `permission.accessibility` (feature)
-          - [Open System Settings / Systemeinstellungen öffnen](#node-permission-accessibility-openSettings) `permission.accessibility.openSettings` (action)
-    - [Privacy / Datenschutz](#node-appSettings-tab-privacy) `appSettings.tab.privacy` (feature)
-      - [PRIVACY / DATENSCHUTZ](#node-section-privacy) `section.privacy` (section)
-        - [Share usage metrics / Nutzungsstatistiken teilen](#node-shareUsageMetrics) `shareUsageMetrics` (setting)
-        - [Send crash reports / Absturzberichte senden](#node-sendCrashReports) `sendCrashReports` (setting)
-          - [Restart now / Jetzt neu starten](#node-sendCrashReports-restart) `sendCrashReports.restart` (action)
-        - [What we collect / Was wir erfassen](#node-whatWeCollect) `whatWeCollect` (feature)
-          - [See details / Details ansehen](#node-whatWeCollect-seeDetails) `whatWeCollect.seeDetails` (action)
-    - [Recordings / Aufnahmen](#node-appSettings-tab-recordings) `appSettings.tab.recordings` (feature)
-      - [Recordings / Aufnahmen](#node-section-recordings) `section.recordings` (section)
-        - [Save dictation recordings / Diktataufnahmen speichern](#node-saveDictationRecordings) `saveDictationRecordings` (setting)
-        - [Keep dictation recordings / Diktataufnahmen behalten](#node-dictationRecordingRetention) `dictationRecordingRetention` (setting)
-        - [Keep meeting audio / Meeting-Audio behalten](#node-meetingRecordingRetention) `meetingRecordingRetention` (setting)
-      - [Storage / Speicher](#node-section-recordingStorage) `section.recordingStorage` (section)
-        - [Storage used / Belegter Speicher](#node-recordingStorageUsage) `recordingStorageUsage` (feature)
-        - [Storage warning threshold / Speicherwarnschwelle](#node-recordingStorageWarningThreshold) `recordingStorageWarningThreshold` (setting)
-        - [Past the threshold / Über der Schwelle](#node-recordingThresholdBehavior) `recordingThresholdBehavior` (setting)
-        - [Delete recordings / Aufnahmen löschen](#node-deleteRecordings) `deleteRecordings` (feature)
-          - [Delete all dictation recordings / Alle Diktataufnahmen löschen](#node-deleteRecordings-dictations) `deleteRecordings.dictations` (action)
-          - [Delete all meeting audio / Gesamtes Meeting-Audio löschen](#node-deleteRecordings-meetings) `deleteRecordings.meetings` (action)
-    - [Licenses / Lizenzen](#node-appSettings-tab-licenses) `appSettings.tab.licenses` (feature)
-      - [ABOUT / INFO](#node-section-about) `section.about` (section)
-        - [EnviousWispr · GPLv3 / EnviousWispr · GPLv3](#node-license-gpl) `license.gpl` (feature)
-          - [View license / Lizenz ansehen](#node-license-gpl-view) `license.gpl.view` (action)
-        - [Third-Party Notices / Hinweise zu Drittanbietern](#node-license-notices) `license.notices` (feature)
-          - [View notices / Hinweise ansehen](#node-license-notices-view) `license.notices.view` (action)
-  - [Dictation Settings / Diktateinstellungen](#node-page-dictation) `page.dictation` (page)
-    - [Engine / Engine](#node-dictation-tab-engine) `dictation.tab.engine` (feature)
-      - [TRANSCRIPTION ENGINE / TRANSKRIPTIONS-ENGINE](#node-section-transcriptionEngine) `section.transcriptionEngine` (section)
-        - [TRANSCRIPTION ENGINE / TRANSKRIPTIONS-ENGINE](#node-transcriptionEngine) `transcriptionEngine` (setting)
-          - [Change / Ändern](#node-transcriptionEngine-change) `transcriptionEngine.change` (action)
-          - [Keep current engine / Aktuelle Engine beibehalten](#node-transcriptionEngine-keepCurrent) `transcriptionEngine.keepCurrent` (action)
-          - [Re-check Fast model status / Modellstatus von „Schnell“ erneut prüfen](#node-transcriptionEngine-recheckFast) `transcriptionEngine.recheckFast` (action)
-          - [Cancel / Abbrechen](#node-fastModel-cancelDownload) `fastModel.cancelDownload` (action)
-          - [Resume / Fortsetzen](#node-fastModel-resume) `fastModel.resume` (action)
-          - [Try Again / Erneut versuchen](#node-fastModel-tryAgain) `fastModel.tryAgain` (action)
-          - [Set up model / Modell einrichten](#node-whisperModel-setUp) `whisperModel.setUp` (action)
-          - [Cancel / Abbrechen](#node-whisperModel-cancelDownload) `whisperModel.cancelDownload` (action)
-          - [Resume / Fortsetzen](#node-whisperModel-resume) `whisperModel.resume` (action)
-          - [Remove Model / Modell entfernen](#node-whisperModel-remove) `whisperModel.remove` (action)
-          - [Re-check model status / Modellstatus erneut prüfen](#node-whisperModel-recheck) `whisperModel.recheck` (action)
-          - [Try Again / Erneut versuchen](#node-whisperModel-tryAgain) `whisperModel.tryAgain` (action)
-          - [Fast / Schnell](#node-transcriptionEngine-fast) `transcriptionEngine.fast` (choice)
-          - [All Languages / Alle Sprachen](#node-transcriptionEngine-allLanguages) `transcriptionEngine.allLanguages` (choice)
-      - [APPLIES TO BOTH ENGINES / GILT FÜR BEIDE ENGINES](#node-section-engineShared) `section.engineShared` (section)
-        - [Stop recording on silence / Aufnahme bei Stille stoppen](#node-stopOnSilence) `stopOnSilence` (setting)
-          - [Pause duration / Pausendauer](#node-pauseDuration) `pauseDuration` (setting)
-        - [Remove filler words (um, uh, hmm...) / Füllwörter entfernen (ähm, äh, hm...)](#node-fillerRemoval) `fillerRemoval` (setting)
-        - [Convert spoken emoji (e.g. "thumbs up emoji" → 👍) / Gesprochene Emojis umwandeln (z. B. „Daumen hoch Emoji“ → 👍)](#node-spokenEmoji) `spokenEmoji` (setting)
-        - [Spoken punctuation / Gesprochene Satzzeichen](#node-spokenPunctuation) `spokenPunctuation` (setting)
-          - [Start word / Startwort](#node-startWordLanguage) `startWordLanguage` (setting)
+          - [Relaunch to apply / Zum Übernehmen neu starten / Relancer pour appliquer](#node-appLanguage-relaunch) `appLanguage.relaunch` (action)
+        - [Show app in Dock / App im Dock anzeigen / Afficher l’app dans le Dock](#node-showInDock) `showInDock` (setting)
+        - [Update alert in menu bar / Update-Hinweis in der Menüleiste / Alerte de mise à jour dans la barre des menus](#node-updateAlertInMenuBar) `updateAlertInMenuBar` (setting)
+    - [Permissions / Berechtigungen / Autorisations](#node-appSettings-tab-permissions) `appSettings.tab.permissions` (feature)
+      - [PERMISSIONS / BERECHTIGUNGEN / AUTORISATIONS](#node-section-permissions) `section.permissions` (section)
+        - [Microphone / Mikrofon / Micro](#node-permission-microphone) `permission.microphone` (feature)
+          - [Request Access / Zugriff anfordern / Demander l’accès](#node-permission-microphone-request) `permission.microphone.request` (action)
+        - [Accessibility / Bedienungshilfen / Accessibilité](#node-permission-accessibility) `permission.accessibility` (feature)
+          - [Open System Settings / Systemeinstellungen öffnen / Ouvrir Réglages Système](#node-permission-accessibility-openSettings) `permission.accessibility.openSettings` (action)
+    - [Privacy / Datenschutz / Confidentialité](#node-appSettings-tab-privacy) `appSettings.tab.privacy` (feature)
+      - [PRIVACY / DATENSCHUTZ / CONFIDENTIALITÉ](#node-section-privacy) `section.privacy` (section)
+        - [Share usage metrics / Nutzungsstatistiken teilen / Partager les données d’utilisation](#node-shareUsageMetrics) `shareUsageMetrics` (setting)
+        - [Send crash reports / Absturzberichte senden / Envoyer les rapports de plantage](#node-sendCrashReports) `sendCrashReports` (setting)
+          - [Restart now / Jetzt neu starten / Redémarrer maintenant](#node-sendCrashReports-restart) `sendCrashReports.restart` (action)
+        - [What we collect / Was wir erfassen / Ce que nous recueillons](#node-whatWeCollect) `whatWeCollect` (feature)
+          - [See details / Details ansehen / Afficher les détails](#node-whatWeCollect-seeDetails) `whatWeCollect.seeDetails` (action)
+    - [Recordings / Aufnahmen / Enregistrements](#node-appSettings-tab-recordings) `appSettings.tab.recordings` (feature)
+      - [Recordings / Aufnahmen / Enregistrements](#node-section-recordings) `section.recordings` (section)
+        - [Save dictation recordings / Diktataufnahmen speichern / Enregistrer l’audio des dictées](#node-saveDictationRecordings) `saveDictationRecordings` (setting)
+        - [Keep dictation recordings / Diktataufnahmen behalten / Conserver les enregistrements de dictée](#node-dictationRecordingRetention) `dictationRecordingRetention` (setting)
+        - [Keep meeting audio / Meeting-Audio behalten / Conserver l’audio des réunions](#node-meetingRecordingRetention) `meetingRecordingRetention` (setting)
+      - [Storage / Speicher / Stockage](#node-section-recordingStorage) `section.recordingStorage` (section)
+        - [Storage used / Belegter Speicher / Stockage utilisé](#node-recordingStorageUsage) `recordingStorageUsage` (feature)
+        - [Storage warning threshold / Speicherwarnschwelle / Seuil d’avertissement du stockage](#node-recordingStorageWarningThreshold) `recordingStorageWarningThreshold` (setting)
+        - [Past the threshold / Über der Schwelle / Au-delà du seuil](#node-recordingThresholdBehavior) `recordingThresholdBehavior` (setting)
+        - [Delete recordings / Aufnahmen löschen / Supprimer les enregistrements](#node-deleteRecordings) `deleteRecordings` (feature)
+          - [Delete all dictation recordings / Alle Diktataufnahmen löschen / Supprimer tous les enregistrements de dictée](#node-deleteRecordings-dictations) `deleteRecordings.dictations` (action)
+          - [Delete all meeting audio / Gesamtes Meeting-Audio löschen / Supprimer tout l’audio des réunions](#node-deleteRecordings-meetings) `deleteRecordings.meetings` (action)
+    - [Licenses / Lizenzen / Licences](#node-appSettings-tab-licenses) `appSettings.tab.licenses` (feature)
+      - [ABOUT / INFO / À PROPOS](#node-section-about) `section.about` (section)
+        - [EnviousWispr · GPLv3 / EnviousWispr · GPLv3 / EnviousWispr · GPLv3](#node-license-gpl) `license.gpl` (feature)
+          - [View license / Lizenz ansehen / Afficher la licence](#node-license-gpl-view) `license.gpl.view` (action)
+        - [Third-Party Notices / Hinweise zu Drittanbietern / Mentions légales de tiers](#node-license-notices) `license.notices` (feature)
+          - [View notices / Hinweise ansehen / Afficher les avis](#node-license-notices-view) `license.notices.view` (action)
+  - [Dictation Settings / Diktateinstellungen / Réglages de dictée](#node-page-dictation) `page.dictation` (page)
+    - [Engine / Engine / Moteur](#node-dictation-tab-engine) `dictation.tab.engine` (feature)
+      - [TRANSCRIPTION ENGINE / TRANSKRIPTIONS-ENGINE / MOTEUR DE TRANSCRIPTION](#node-section-transcriptionEngine) `section.transcriptionEngine` (section)
+        - [TRANSCRIPTION ENGINE / TRANSKRIPTIONS-ENGINE / MOTEUR DE TRANSCRIPTION](#node-transcriptionEngine) `transcriptionEngine` (setting)
+          - [Change / Ändern / Modifier](#node-transcriptionEngine-change) `transcriptionEngine.change` (action)
+          - [Keep current engine / Aktuelle Engine beibehalten / Conserver le moteur actuel](#node-transcriptionEngine-keepCurrent) `transcriptionEngine.keepCurrent` (action)
+          - [Re-check Fast model status / Modellstatus von „Schnell“ erneut prüfen / Vérifier à nouveau l’état du modèle Fast](#node-transcriptionEngine-recheckFast) `transcriptionEngine.recheckFast` (action)
+          - [Cancel / Abbrechen / Annuler](#node-fastModel-cancelDownload) `fastModel.cancelDownload` (action)
+          - [Resume / Fortsetzen / Reprendre](#node-fastModel-resume) `fastModel.resume` (action)
+          - [Try Again / Erneut versuchen / Réessayer](#node-fastModel-tryAgain) `fastModel.tryAgain` (action)
+          - [Set up model / Modell einrichten / Configurer le modèle](#node-whisperModel-setUp) `whisperModel.setUp` (action)
+          - [Cancel / Abbrechen / Annuler](#node-whisperModel-cancelDownload) `whisperModel.cancelDownload` (action)
+          - [Resume / Fortsetzen / Reprendre](#node-whisperModel-resume) `whisperModel.resume` (action)
+          - [Remove Model / Modell entfernen / Supprimer le modèle](#node-whisperModel-remove) `whisperModel.remove` (action)
+          - [Re-check model status / Modellstatus erneut prüfen / Vérifier à nouveau l’état du modèle](#node-whisperModel-recheck) `whisperModel.recheck` (action)
+          - [Try Again / Erneut versuchen / Réessayer](#node-whisperModel-tryAgain) `whisperModel.tryAgain` (action)
+          - [Fast / Schnell / Rapide](#node-transcriptionEngine-fast) `transcriptionEngine.fast` (choice)
+          - [All Languages / Alle Sprachen / Toutes les langues](#node-transcriptionEngine-allLanguages) `transcriptionEngine.allLanguages` (choice)
+      - [APPLIES TO BOTH ENGINES / GILT FÜR BEIDE ENGINES / S’APPLIQUE AUX DEUX MOTEURS](#node-section-engineShared) `section.engineShared` (section)
+        - [Stop recording on silence / Aufnahme bei Stille stoppen / Arrêter l’enregistrement en cas de silence](#node-stopOnSilence) `stopOnSilence` (setting)
+          - [Pause duration / Pausendauer / Durée de la pause](#node-pauseDuration) `pauseDuration` (setting)
+        - [Remove filler words (um, uh, hmm...) / Füllwörter entfernen (ähm, äh, hm...) / Supprimer les mots de remplissage (euh, hum, hmm…)](#node-fillerRemoval) `fillerRemoval` (setting)
+        - [Convert spoken emoji (e.g. "thumbs up emoji" → 👍) / Gesprochene Emojis umwandeln (z. B. „Daumen hoch Emoji“ → 👍) / Convertir les émojis dictés (p. ex. « émoji pouce levé » → 👍)](#node-spokenEmoji) `spokenEmoji` (setting)
+        - [Spoken punctuation / Gesprochene Satzzeichen / Ponctuation dictée](#node-spokenPunctuation) `spokenPunctuation` (setting)
+          - [Start word / Startwort / Mot de début](#node-startWordLanguage) `startWordLanguage` (setting)
             - [(named at runtime by `startWordLanguage`)](#node-startWordLanguage-en) `startWordLanguage.en` (choice)
             - [(named at runtime by `startWordLanguage`)](#node-startWordLanguage-de) `startWordLanguage.de` (choice)
             - [(named at runtime by `startWordLanguage`)](#node-startWordLanguage-fr) `startWordLanguage.fr` (choice)
             - [(named at runtime by `startWordLanguage`)](#node-startWordLanguage-es) `startWordLanguage.es` (choice)
             - [(named at runtime by `startWordLanguage`)](#node-startWordLanguage-it) `startWordLanguage.it` (choice)
-          - [Start word for / Startwort für](#node-startWordField) `startWordField` (setting)
-            - [Save word / Wort sichern](#node-startWord-save) `startWord.save` (action)
-            - [Reset / Zurücksetzen](#node-startWord-reset) `startWord.reset` (action)
-        - [Casual mode / Lockerer Modus](#node-casualMode) `casualMode` (setting)
-        - [Unload model after / Modell entladen nach](#node-unloadModel) `unloadModel` (setting)
-          - [Never / Nie](#node-unloadModel-never) `unloadModel.never` (choice)
-          - [Immediately / Sofort](#node-unloadModel-immediately) `unloadModel.immediately` (choice)
-          - [After 2 minutes / Nach 2 Minuten](#node-unloadModel-twoMinutes) `unloadModel.twoMinutes` (choice)
-          - [After 5 minutes / Nach 5 Minuten](#node-unloadModel-fiveMinutes) `unloadModel.fiveMinutes` (choice)
-          - [After 10 minutes / Nach 10 Minuten](#node-unloadModel-tenMinutes) `unloadModel.tenMinutes` (choice)
-          - [After 15 minutes / Nach 15 Minuten](#node-unloadModel-fifteenMinutes) `unloadModel.fifteenMinutes` (choice)
-          - [After 1 hour / Nach 1 Stunde](#node-unloadModel-oneHour) `unloadModel.oneHour` (choice)
+          - [Start word for / Startwort für / Mot de début pour](#node-startWordField) `startWordField` (setting)
+            - [Save word / Wort sichern / Enregistrer le mot](#node-startWord-save) `startWord.save` (action)
+            - [Reset / Zurücksetzen / Réinitialiser](#node-startWord-reset) `startWord.reset` (action)
+        - [Casual mode / Lockerer Modus / Mode décontracté](#node-casualMode) `casualMode` (setting)
+        - [Unload model after / Modell entladen nach / Décharger le modèle après](#node-unloadModel) `unloadModel` (setting)
+          - [Never / Nie / Jamais](#node-unloadModel-never) `unloadModel.never` (choice)
+          - [Immediately / Sofort / Immédiatement](#node-unloadModel-immediately) `unloadModel.immediately` (choice)
+          - [After 2 minutes / Nach 2 Minuten / Après 2 minutes](#node-unloadModel-twoMinutes) `unloadModel.twoMinutes` (choice)
+          - [After 5 minutes / Nach 5 Minuten / Après 5 minutes](#node-unloadModel-fiveMinutes) `unloadModel.fiveMinutes` (choice)
+          - [After 10 minutes / Nach 10 Minuten / Après 10 minutes](#node-unloadModel-tenMinutes) `unloadModel.tenMinutes` (choice)
+          - [After 15 minutes / Nach 15 Minuten / Après 15 minutes](#node-unloadModel-fifteenMinutes) `unloadModel.fifteenMinutes` (choice)
+          - [After 1 hour / Nach 1 Stunde / Après 1 heure](#node-unloadModel-oneHour) `unloadModel.oneHour` (choice)
       - [(named at runtime by `currentEngineHeading`)](#node-currentEngineSection) `currentEngineSection` (feature)
-        - [Auto-detect language / Sprache automatisch erkennen](#node-autoDetectLanguage) `autoDetectLanguage` (setting)
-          - [Reset suggestions / Vorschläge zurücksetzen](#node-autoDetectLanguage-resetSuggestions) `autoDetectLanguage.resetSuggestions` (action)
+        - [Auto-detect language / Sprache automatisch erkennen / Détecter automatiquement la langue](#node-autoDetectLanguage) `autoDetectLanguage` (setting)
+          - [Reset suggestions / Vorschläge zurücksetzen / Réinitialiser les suggestions](#node-autoDetectLanguage-resetSuggestions) `autoDetectLanguage.resetSuggestions` (action)
         - [(named at runtime by `lockedLanguage`)](#node-lockedLanguage) `lockedLanguage` (setting)
-          - [Change / Ändern](#node-lockedLanguage-change) `lockedLanguage.change` (action)
-        - [Faster Transcription / Schnellere Transkription](#node-fasterTranscription) `fasterTranscription` (setting)
-    - [Microphone / Mikrofon](#node-dictation-tab-microphone) `dictation.tab.microphone` (feature)
-      - [INPUT &amp; BEHAVIOR / EINGABE &amp; VERHALTEN](#node-section-microphone) `section.microphone` (section)
-        - [Input device / Eingabegerät](#node-inputDevice) `inputDevice` (setting)
-          - [Auto / Auto](#node-inputDevice-auto) `inputDevice.auto` (choice)
+          - [Change / Ändern / Modifier](#node-lockedLanguage-change) `lockedLanguage.change` (action)
+        - [Faster Transcription / Schnellere Transkription / Transcription plus rapide](#node-fasterTranscription) `fasterTranscription` (setting)
+    - [Microphone / Mikrofon / Micro](#node-dictation-tab-microphone) `dictation.tab.microphone` (feature)
+      - [INPUT &amp; BEHAVIOR / EINGABE &amp; VERHALTEN / ENTRÉE ET COMPORTEMENT](#node-section-microphone) `section.microphone` (section)
+        - [Input device / Eingabegerät / Périphérique d’entrée](#node-inputDevice) `inputDevice` (setting)
+          - [Auto / Auto / Auto](#node-inputDevice-auto) `inputDevice.auto` (choice)
           - [(named at runtime by `inputDeviceName`)](#node-inputDevice-device) `inputDevice.device` (choice)
-          - [Mic is on / Mikrofon ist an](#node-inputSocket) `inputSocket` (setting)
+          - [Mic is on / Mikrofon ist an / Micro sur](#node-inputSocket) `inputSocket` (setting)
             - [(named at runtime by `inputSocketOption`)](#node-inputSocket-input) `inputSocket.input` (choice)
-        - [Media during dictation / Medien beim Diktieren](#node-mediaDuringDictation) `mediaDuringDictation` (setting)
-          - [Continue / Weiterlaufen lassen](#node-mediaDuringDictation-continue) `mediaDuringDictation.continue` (choice)
-          - [Lower / Leiser](#node-mediaDuringDictation-lower) `mediaDuringDictation.lower` (choice)
-          - [Mute / Stummschalten](#node-mediaDuringDictation-mute) `mediaDuringDictation.mute` (choice)
-          - [Pause / Pausieren](#node-mediaDuringDictation-pause) `mediaDuringDictation.pause` (choice)
-        - [Microphone readiness / Mikrofonbereitschaft](#node-micReadiness) `micReadiness` (setting)
-          - [Off / Aus](#node-micReadiness-off) `micReadiness.off` (choice)
-          - [10 sec / 10 Sek.](#node-micReadiness-10s) `micReadiness.10s` (choice)
-          - [30 sec / 30 Sek.](#node-micReadiness-30s) `micReadiness.30s` (choice)
-          - [60 sec / 60 Sek.](#node-micReadiness-60s) `micReadiness.60s` (choice)
-          - [Always / Immer](#node-micReadiness-always) `micReadiness.always` (choice)
-        - [Using a Bluetooth microphone? / Verwendest du ein Bluetooth-Mikrofon?](#node-bluetoothGuide) `bluetoothGuide` (feature)
-          - [Learn more / Mehr erfahren](#node-bluetoothGuide-learnMore) `bluetoothGuide.learnMore` (action)
-    - [Live Preview / Live-Vorschau](#node-dictation-tab-livePreview) `dictation.tab.livePreview` (feature)
-      - [Live Preview / Live-Vorschau](#node-section-livePreview) `section.livePreview` (section)
-        - [Show words while you speak / Wörter beim Sprechen anzeigen](#node-livePreview) `livePreview` (setting)
+        - [Media during dictation / Medien beim Diktieren / Audio pendant la dictée](#node-mediaDuringDictation) `mediaDuringDictation` (setting)
+          - [Continue / Weiterlaufen lassen / Continuer la lecture](#node-mediaDuringDictation-continue) `mediaDuringDictation.continue` (choice)
+          - [Lower / Leiser / Baisser](#node-mediaDuringDictation-lower) `mediaDuringDictation.lower` (choice)
+          - [Mute / Stummschalten / Couper le son](#node-mediaDuringDictation-mute) `mediaDuringDictation.mute` (choice)
+          - [Pause / Pausieren / Mettre en pause](#node-mediaDuringDictation-pause) `mediaDuringDictation.pause` (choice)
+        - [Microphone readiness / Mikrofonbereitschaft / Disponibilité du micro](#node-micReadiness) `micReadiness` (setting)
+          - [Off / Aus / Désactivé](#node-micReadiness-off) `micReadiness.off` (choice)
+          - [10 sec / 10 Sek. / 10 s](#node-micReadiness-10s) `micReadiness.10s` (choice)
+          - [30 sec / 30 Sek. / 30 s](#node-micReadiness-30s) `micReadiness.30s` (choice)
+          - [60 sec / 60 Sek. / 60 s](#node-micReadiness-60s) `micReadiness.60s` (choice)
+          - [Always / Immer / Toujours](#node-micReadiness-always) `micReadiness.always` (choice)
+        - [Using a Bluetooth microphone? / Verwendest du ein Bluetooth-Mikrofon? / Vous utilisez un micro Bluetooth ?](#node-bluetoothGuide) `bluetoothGuide` (feature)
+          - [Learn more / Mehr erfahren / En savoir plus](#node-bluetoothGuide-learnMore) `bluetoothGuide.learnMore` (action)
+    - [Live Preview / Live-Vorschau / Aperçu en direct](#node-dictation-tab-livePreview) `dictation.tab.livePreview` (feature)
+      - [Live Preview / Live-Vorschau / Aperçu en direct](#node-section-livePreview) `section.livePreview` (section)
+        - [Show words while you speak / Wörter beim Sprechen anzeigen / Afficher les mots pendant que vous parlez](#node-livePreview) `livePreview` (setting)
           - [(named at runtime by `previewLanguage`)](#node-livePreview-language) `livePreview.language` (action)
-          - [Browse downloads / Downloads ansehen](#node-livePreview-browseDownloads) `livePreview.browseDownloads` (action)
-      - [Preview engine / Vorschau-Engine](#node-section-previewEngine) `section.previewEngine` (section)
-        - [Preview engine / Vorschau-Engine](#node-previewEngine) `previewEngine` (setting)
-          - [Change / Ändern](#node-previewEngine-change) `previewEngine.change` (action)
-          - [Compare engines / Engines vergleichen](#node-previewEngine-compare) `previewEngine.compare` (action)
-          - [Keep current preview engine / Aktuelle Vorschau-Engine beibehalten](#node-previewEngine-keepCurrent) `previewEngine.keepCurrent` (action)
+          - [Browse downloads / Downloads ansehen / Parcourir les téléchargements](#node-livePreview-browseDownloads) `livePreview.browseDownloads` (action)
+      - [Preview engine / Vorschau-Engine / Moteur d’aperçu](#node-section-previewEngine) `section.previewEngine` (section)
+        - [Preview engine / Vorschau-Engine / Moteur d’aperçu](#node-previewEngine) `previewEngine` (setting)
+          - [Change / Ändern / Modifier](#node-previewEngine-change) `previewEngine.change` (action)
+          - [Compare engines / Engines vergleichen / Comparer les moteurs](#node-previewEngine-compare) `previewEngine.compare` (action)
+          - [Keep current preview engine / Aktuelle Vorschau-Engine beibehalten / Conserver le moteur d’aperçu actuel](#node-previewEngine-keepCurrent) `previewEngine.keepCurrent` (action)
           - [Apple](#node-previewEngine-apple) `previewEngine.apple` (choice)
-          - [Universal / Universal](#node-previewEngine-universal) `previewEngine.universal` (choice)
-            - [Download / Laden](#node-previewEngine-universal-download) `previewEngine.universal.download` (action)
-            - [Cancel / Abbrechen](#node-previewEngine-universal-cancel) `previewEngine.universal.cancel` (action)
-            - [Resume / Fortsetzen](#node-previewEngine-universal-resume) `previewEngine.universal.resume` (action)
-            - [Try Again / Erneut versuchen](#node-previewEngine-universal-retry) `previewEngine.universal.retry` (action)
-            - [Remove / Entfernen](#node-previewEngine-universal-remove) `previewEngine.universal.remove` (action)
-        - [Languages / Sprachen](#node-previewLanguages) `previewLanguages` (feature)
+          - [Universal / Universal / Universal](#node-previewEngine-universal) `previewEngine.universal` (choice)
+            - [Download / Laden / Télécharger](#node-previewEngine-universal-download) `previewEngine.universal.download` (action)
+            - [Cancel / Abbrechen / Annuler](#node-previewEngine-universal-cancel) `previewEngine.universal.cancel` (action)
+            - [Resume / Fortsetzen / Reprendre](#node-previewEngine-universal-resume) `previewEngine.universal.resume` (action)
+            - [Try Again / Erneut versuchen / Réessayer](#node-previewEngine-universal-retry) `previewEngine.universal.retry` (action)
+            - [Remove / Entfernen / Supprimer](#node-previewEngine-universal-remove) `previewEngine.universal.remove` (action)
+        - [Languages / Sprachen / Langues](#node-previewLanguages) `previewLanguages` (feature)
           - [(named at runtime by `previewLanguagesInstall`)](#node-previewLanguages-install) `previewLanguages.install` (action)
-    - [Recording Pill / Aufnahmeanzeige](#node-dictation-tab-pill) `dictation.tab.pill` (feature)
-      - [Recording Pill / Aufnahmeanzeige](#node-section-pill) `section.pill` (section)
-        - [Position on screen / Position auf dem Bildschirm](#node-pillPosition) `pillPosition` (setting)
-          - [Top / Oben](#node-pillPosition-top) `pillPosition.top` (choice)
-          - [Bottom / Unten](#node-pillPosition-bottom) `pillPosition.bottom` (choice)
-        - [Style / Stil](#node-pillStyle) `pillStyle` (setting)
-          - [Configure Live Preview / Live-Vorschau einrichten](#node-pillStyle-configureLivePreview) `pillStyle.configureLivePreview` (action)
-          - [Capsule / Kapsel](#node-pillStyle-capsule) `pillStyle.capsule` (choice)
-          - [Level Rail / Pegelanzeige](#node-pillStyle-levelRail) `pillStyle.levelRail` (choice)
-          - [Reading Well / Lesefeld](#node-pillStyle-readingWell) `pillStyle.readingWell` (choice)
-    - [Chimes / Signaltöne](#node-dictation-tab-chimes) `dictation.tab.chimes` (feature)
-      - [RECORDING CHIMES / AUFNAHMESIGNALTÖNE](#node-section-chimes) `section.chimes` (section)
-        - [Play recording chimes / Aufnahmesignaltöne abspielen](#node-recordingChimes) `recordingChimes` (setting)
-        - [RECORDING CHIMES / AUFNAHMESIGNALTÖNE](#node-recordingChime) `recordingChime` (setting)
+    - [Recording Pill / Aufnahmeanzeige / Pastille d’enregistrement](#node-dictation-tab-pill) `dictation.tab.pill` (feature)
+      - [Recording Pill / Aufnahmeanzeige / Pastille d’enregistrement](#node-section-pill) `section.pill` (section)
+        - [Position on screen / Position auf dem Bildschirm / Position à l’écran](#node-pillPosition) `pillPosition` (setting)
+          - [Top / Oben / En haut](#node-pillPosition-top) `pillPosition.top` (choice)
+          - [Bottom / Unten / En bas](#node-pillPosition-bottom) `pillPosition.bottom` (choice)
+        - [Style / Stil / Style](#node-pillStyle) `pillStyle` (setting)
+          - [Configure Live Preview / Live-Vorschau einrichten / Configurer l’Aperçu en direct](#node-pillStyle-configureLivePreview) `pillStyle.configureLivePreview` (action)
+          - [Capsule / Kapsel / Capsule](#node-pillStyle-capsule) `pillStyle.capsule` (choice)
+          - [Level Rail / Pegelanzeige / Barre de niveau](#node-pillStyle-levelRail) `pillStyle.levelRail` (choice)
+          - [Reading Well / Lesefeld / Zone de lecture](#node-pillStyle-readingWell) `pillStyle.readingWell` (choice)
+    - [Chimes / Signaltöne / Sons](#node-dictation-tab-chimes) `dictation.tab.chimes` (feature)
+      - [RECORDING CHIMES / AUFNAHMESIGNALTÖNE / SONS D’ENREGISTREMENT](#node-section-chimes) `section.chimes` (section)
+        - [Play recording chimes / Aufnahmesignaltöne abspielen / Lire les sons de début et de fin d’enregistrement](#node-recordingChimes) `recordingChimes` (setting)
+        - [RECORDING CHIMES / AUFNAHMESIGNALTÖNE / SONS D’ENREGISTREMENT](#node-recordingChime) `recordingChime` (setting)
           - [(named at runtime by `chimePreview`)](#node-recordingChime-preview) `recordingChime.preview` (action)
-          - [Dust Mote / Staubflöckchen](#node-recordingChime-dustMote) `recordingChime.dustMote` (choice)
-          - [Velvet Hush / Samtflüstern](#node-recordingChime-velvetHush) `recordingChime.velvetHush` (choice)
-          - [Muted Confirm / Leises Okay](#node-recordingChime-mutedConfirm) `recordingChime.mutedConfirm` (choice)
-          - [Whisper Tick / Flüstertick](#node-recordingChime-whisperTick) `recordingChime.whisperTick` (choice)
-          - [Round Pebble / Runder Kiesel](#node-recordingChime-roundPebble) `recordingChime.roundPebble` (choice)
-          - [Paper Tap / Papierklopfen](#node-recordingChime-paperTap) `recordingChime.paperTap` (choice)
-          - [Soft Hush / Sanftes Säuseln](#node-recordingChime-softHush) `recordingChime.softHush` (choice)
-          - [Low Nod / Tiefes Nicken](#node-recordingChime-lowNod) `recordingChime.lowNod` (choice)
-          - [Cloud Pop / Wolkenplopp](#node-recordingChime-cloudPop) `recordingChime.cloudPop` (choice)
-          - [Velvet Tap / Samttipp](#node-recordingChime-velvetTap) `recordingChime.velvetTap` (choice)
-          - [Satin Shift / Satin-Schimmer](#node-recordingChime-satinShift) `recordingChime.satinShift` (choice)
-          - [Air Glint / Luftfunkeln](#node-recordingChime-airGlint) `recordingChime.airGlint` (choice)
-    - [Clipboard / Zwischenablage](#node-dictation-tab-clipboard) `dictation.tab.clipboard` (feature)
-      - [Clipboard / Zwischenablage](#node-section-clipboard) `section.clipboard` (section)
-        - [Paste dictations automatically / Diktate automatisch einfügen](#node-automaticDictationPaste) `automaticDictationPaste` (setting)
-        - [Auto-copy to clipboard / Automatisch in die Zwischenablage kopieren](#node-autoCopyToClipboard) `autoCopyToClipboard` (setting)
-        - [Restore clipboard after paste / Zwischenablage nach dem Einfügen wiederherstellen](#node-restoreClipboard) `restoreClipboard` (setting)
-        - [Hide dictations from clipboard manager apps / Diktate vor Zwischenablage-Managern verbergen](#node-keepOutOfClipboardHistory) `keepOutOfClipboardHistory` (setting)
-        - [Smart insertion / Intelligentes Einfügen](#node-smartInsertion) `smartInsertion` (setting)
-      - [Quick Add / Schnell hinzufügen](#node-section-quickAddClipboard) `section.quickAddClipboard` (section)
-        - [Read selections through the clipboard / Auswahl über die Zwischenablage lesen](#node-quickAddClipboardFallback) `quickAddClipboardFallback` (setting)
-  - [Dictionary / Wörterbuch](#node-page-dictionary) `page.dictionary` (page)
-    - [Dictionary / Wörterbuch](#node-section-dictionary) `section.dictionary` (section)
-    - [Enable Dictionary / Wörterbuch aktivieren](#node-enableDictionary) `enableDictionary` (setting)
-    - [Your Words / Deine Wörter](#node-dictionary-tab-yourWords) `dictionary.tab.yourWords` (feature)
-      - [Add word / Wort hinzufügen](#node-yourWords-add) `yourWords.add` (action)
-      - [Import / Importieren](#node-yourWords-import) `yourWords.import` (action)
-      - [Export your words / Deine Wörter exportieren](#node-yourWords-export) `yourWords.export` (action)
-      - [Search by word, mishearing, or category / Nach Wort, Fehlerkennung oder Kategorie suchen](#node-yourWords-search) `yourWords.search` (setting)
-        - [Clear search / Suche löschen](#node-yourWords-clearSearch) `yourWords.clearSearch` (action)
-      - [All categories / Alle Kategorien](#node-yourWords-categoryFilter) `yourWords.categoryFilter` (setting)
-        - [All categories / Alle Kategorien](#node-yourWords-category-all) `yourWords.category.all` (choice)
-        - [General / Allgemein](#node-yourWords-category-general) `yourWords.category.general` (choice)
-        - [Person / Person](#node-yourWords-category-person) `yourWords.category.person` (choice)
-        - [Brand / Marke](#node-yourWords-category-brand) `yourWords.category.brand` (choice)
-        - [Acronym / Akronym](#node-yourWords-category-acronym) `yourWords.category.acronym` (choice)
-        - [Domain / Fachgebiet](#node-yourWords-category-domain) `yourWords.category.domain` (choice)
-        - [Auto-learned / Automatisch gelernt](#node-yourWords-category-autoLearned) `yourWords.category.autoLearned` (choice)
-      - [Mass edit / Mehrere auswählen](#node-yourWords-massEdit) `yourWords.massEdit` (action)
-    - [Vocabulary Packs / Wortschatzpakete](#node-dictionary-tab-vocabularyPacks) `dictionary.tab.vocabularyPacks` (feature)
-    - [Learn from... / Lernen aus...](#node-dictionary-tab-learnFrom) `dictionary.tab.learnFrom` (feature)
-      - [Learn from... / Lernen aus...](#node-learnFrom) `learnFrom` (feature)
-      - [Learn new words / Neue Wörter lernen](#node-selfLearningDictionary) `selfLearningDictionary` (setting)
-        - [Learn more / Mehr erfahren](#node-selfLearningDictionary-learnMore) `selfLearningDictionary.learnMore` (action)
-        - [Forget learning memory / Lerngedächtnis löschen](#node-selfLearningDictionary-forgetMemory) `selfLearningDictionary.forgetMemory` (action)
-      - [Fix words it learned / Gelernte Korrekturen anwenden](#node-fixLearnedWords) `fixLearnedWords` (setting)
-      - [Import from Contacts / Aus Kontakten importieren](#node-importContacts) `importContacts` (feature)
-        - [Keep in sync on launch / Beim Start synchron halten](#node-contactsSyncOnLaunch) `contactsSyncOnLaunch` (setting)
-    - [Quick Add / Schnell hinzufügen](#node-dictionary-tab-quickAdd) `dictionary.tab.quickAdd` (feature)
-      - [Highlight a word / Wort markieren](#node-quickAdd-step1) `quickAdd.step1` (feature)
-      - [Trigger Quick Add / „Schnell hinzufügen“ aufrufen](#node-quickAdd-step2) `quickAdd.step2` (feature)
-      - [Choose and save / Auswählen und sichern](#node-quickAdd-step3) `quickAdd.step3` (feature)
-      - [Keyboard shortcut / Tastenkürzel](#node-quickAdd-shortcut) `quickAdd.shortcut` (action)
-      - [Menu bar / Menüleiste](#node-quickAdd-menuBar) `quickAdd.menuBar` (feature)
-  - [Keybinds / Tastenkürzel](#node-page-keybinds) `page.keybinds` (page)
-    - [Recording / Aufnahme](#node-section-keybindsRecording) `section.keybindsRecording` (section)
-      - [Recording mode / Aufnahmemodus](#node-recordingMode) `recordingMode` (setting)
-        - [Push to Talk / Zum Sprechen drücken](#node-recordingMode-pushToTalk) `recordingMode.pushToTalk` (choice)
-        - [Toggle / Umschalten](#node-recordingMode-toggle) `recordingMode.toggle` (choice)
-      - [Start / stop recording / Aufnahme starten / stoppen](#node-recordKeybind) `recordKeybind` (setting)
-      - [Cancel recording / Aufnahme abbrechen](#node-cancelKeybind) `cancelKeybind` (setting)
-      - [Escape Recovery / Wiederherstellung bei Escape](#node-escapeRecovery) `escapeRecovery` (setting)
-      - [Reset to default / Auf Standard zurücksetzen](#node-keybind-resetToDefault) `keybind.resetToDefault` (action)
-    - [Shortcuts / Kurzbefehle](#node-section-keybindsShortcuts) `section.keybindsShortcuts` (section)
-      - [Add selected word to Dictionary / Markiertes Wort zum Wörterbuch hinzufügen](#node-quickAddKeybind) `quickAddKeybind` (setting)
-      - [Paste last dictation / Letztes Diktat einfügen](#node-pasteLastKeybind) `pasteLastKeybind` (setting)
-      - [Copy last dictation / Letztes Diktat kopieren](#node-copyLastKeybind) `copyLastKeybind` (setting)
-  - [EnviousMeet / EnviousMeet](#node-page-meetings) `page.meetings` (page)
-    - [General / Allgemein](#node-meetings-tab-general) `meetings.tab.general` (feature)
-      - [Record only my voice / Nur meine Stimme aufnehmen](#node-meetingCaptureCallSound) `meetingCaptureCallSound` (setting)
-      - [Turn off dictation during meetings / Diktieren während Meetings ausschalten](#node-meetingTurnsOffDictation) `meetingTurnsOffDictation` (setting)
-      - [Leave my voice out when I'm muted / Meine Stimme weglassen, wenn ich stummgeschaltet bin](#node-meetingFollowsCallMute) `meetingFollowsCallMute` (setting)
-      - [Name meetings from my calendar / Meetings nach meinem Kalender benennen](#node-meetingUseCalendarForNames) `meetingUseCalendarForNames` (setting)
-      - [When a call starts / Wenn ein Anruf beginnt](#node-meetingCallDetection) `meetingCallDetection` (setting)
-    - [Models / Modelle](#node-meetings-tab-models) `meetings.tab.models` (feature)
-      - [Live Preview / Live-Vorschau](#node-meetingLiveWords) `meetingLiveWords` (setting)
-        - [Change / Ändern](#node-meetingLiveWords-change) `meetingLiveWords.change` (action)
-        - [Keep current Live Preview engine / Aktuelle Live-Vorschau-Engine beibehalten](#node-meetingLiveWords-keepCurrent) `meetingLiveWords.keepCurrent` (action)
+          - [Dust Mote / Staubflöckchen / Grain de poussière](#node-recordingChime-dustMote) `recordingChime.dustMote` (choice)
+          - [Velvet Hush / Samtflüstern / Murmure velouté](#node-recordingChime-velvetHush) `recordingChime.velvetHush` (choice)
+          - [Muted Confirm / Leises Okay / Confirmation discrète](#node-recordingChime-mutedConfirm) `recordingChime.mutedConfirm` (choice)
+          - [Whisper Tick / Flüstertick / Tic Whisper](#node-recordingChime-whisperTick) `recordingChime.whisperTick` (choice)
+          - [Round Pebble / Runder Kiesel / Galet rond](#node-recordingChime-roundPebble) `recordingChime.roundPebble` (choice)
+          - [Paper Tap / Papierklopfen / Tapotement de papier](#node-recordingChime-paperTap) `recordingChime.paperTap` (choice)
+          - [Soft Hush / Sanftes Säuseln / Doux murmure](#node-recordingChime-softHush) `recordingChime.softHush` (choice)
+          - [Low Nod / Tiefes Nicken / Hochement grave](#node-recordingChime-lowNod) `recordingChime.lowNod` (choice)
+          - [Cloud Pop / Wolkenplopp / Ploc nuageux](#node-recordingChime-cloudPop) `recordingChime.cloudPop` (choice)
+          - [Velvet Tap / Samttipp / Tapotement velouté](#node-recordingChime-velvetTap) `recordingChime.velvetTap` (choice)
+          - [Satin Shift / Satin-Schimmer / Éclat satiné](#node-recordingChime-satinShift) `recordingChime.satinShift` (choice)
+          - [Air Glint / Luftfunkeln / Éclat d’air](#node-recordingChime-airGlint) `recordingChime.airGlint` (choice)
+    - [Clipboard / Zwischenablage / Presse-papiers](#node-dictation-tab-clipboard) `dictation.tab.clipboard` (feature)
+      - [Clipboard / Zwischenablage / Presse-papiers](#node-section-clipboard) `section.clipboard` (section)
+        - [Paste dictations automatically / Diktate automatisch einfügen / Coller automatiquement les dictées](#node-automaticDictationPaste) `automaticDictationPaste` (setting)
+        - [Auto-copy to clipboard / Automatisch in die Zwischenablage kopieren / Copier automatiquement dans le presse-papiers](#node-autoCopyToClipboard) `autoCopyToClipboard` (setting)
+        - [Restore clipboard after paste / Zwischenablage nach dem Einfügen wiederherstellen / Restaurer le presse-papiers après le collage](#node-restoreClipboard) `restoreClipboard` (setting)
+        - [Hide dictations from clipboard manager apps / Diktate vor Zwischenablage-Managern verbergen / Masquer les dictées aux gestionnaires de presse-papiers](#node-keepOutOfClipboardHistory) `keepOutOfClipboardHistory` (setting)
+        - [Smart insertion / Intelligentes Einfügen / Insertion intelligente](#node-smartInsertion) `smartInsertion` (setting)
+      - [Quick Add / Schnell hinzufügen / Ajout rapide](#node-section-quickAddClipboard) `section.quickAddClipboard` (section)
+        - [Read selections through the clipboard / Auswahl über die Zwischenablage lesen / Lire les sélections via le presse-papiers](#node-quickAddClipboardFallback) `quickAddClipboardFallback` (setting)
+  - [Dictionary / Wörterbuch / Dictionnaire](#node-page-dictionary) `page.dictionary` (page)
+    - [Dictionary / Wörterbuch / Dictionnaire](#node-section-dictionary) `section.dictionary` (section)
+    - [Enable Dictionary / Wörterbuch aktivieren / Activer le Dictionnaire](#node-enableDictionary) `enableDictionary` (setting)
+    - [Your Words / Deine Wörter / Vos mots](#node-dictionary-tab-yourWords) `dictionary.tab.yourWords` (feature)
+      - [Add word / Wort hinzufügen / Ajouter un mot](#node-yourWords-add) `yourWords.add` (action)
+      - [Import / Importieren / Importer](#node-yourWords-import) `yourWords.import` (action)
+      - [Export your words / Deine Wörter exportieren / Exporter vos mots](#node-yourWords-export) `yourWords.export` (action)
+      - [Search by word, mishearing, or category / Nach Wort, Fehlerkennung oder Kategorie suchen / Rechercher par mot, erreur de reconnaissance ou catégorie](#node-yourWords-search) `yourWords.search` (setting)
+        - [Clear search / Suche löschen / Effacer la recherche](#node-yourWords-clearSearch) `yourWords.clearSearch` (action)
+      - [All categories / Alle Kategorien / Toutes les catégories](#node-yourWords-categoryFilter) `yourWords.categoryFilter` (setting)
+        - [All categories / Alle Kategorien / Toutes les catégories](#node-yourWords-category-all) `yourWords.category.all` (choice)
+        - [General / Allgemein / Général](#node-yourWords-category-general) `yourWords.category.general` (choice)
+        - [Person / Person / Personne](#node-yourWords-category-person) `yourWords.category.person` (choice)
+        - [Brand / Marke / Marque](#node-yourWords-category-brand) `yourWords.category.brand` (choice)
+        - [Acronym / Akronym / Acronyme](#node-yourWords-category-acronym) `yourWords.category.acronym` (choice)
+        - [Domain / Fachgebiet / Domaine](#node-yourWords-category-domain) `yourWords.category.domain` (choice)
+        - [Auto-learned / Automatisch gelernt / Appris automatiquement](#node-yourWords-category-autoLearned) `yourWords.category.autoLearned` (choice)
+      - [Mass edit / Mehrere auswählen / Modification groupée](#node-yourWords-massEdit) `yourWords.massEdit` (action)
+    - [Vocabulary Packs / Wortschatzpakete / Lexiques](#node-dictionary-tab-vocabularyPacks) `dictionary.tab.vocabularyPacks` (feature)
+    - [Learn from... / Lernen aus... / Apprendre de…](#node-dictionary-tab-learnFrom) `dictionary.tab.learnFrom` (feature)
+      - [Learn from... / Lernen aus... / Apprendre de…](#node-learnFrom) `learnFrom` (feature)
+      - [Learn new words / Neue Wörter lernen / Apprendre de nouveaux mots](#node-selfLearningDictionary) `selfLearningDictionary` (setting)
+        - [Learn more / Mehr erfahren / En savoir plus](#node-selfLearningDictionary-learnMore) `selfLearningDictionary.learnMore` (action)
+        - [Forget learning memory / Lerngedächtnis löschen / Oublier la mémoire d’apprentissage](#node-selfLearningDictionary-forgetMemory) `selfLearningDictionary.forgetMemory` (action)
+      - [Fix words it learned / Gelernte Korrekturen anwenden / Corriger les mots appris](#node-fixLearnedWords) `fixLearnedWords` (setting)
+      - [Import from Contacts / Aus Kontakten importieren / Importer depuis Contacts](#node-importContacts) `importContacts` (feature)
+        - [Keep in sync on launch / Beim Start synchron halten / Maintenir la synchronisation au lancement](#node-contactsSyncOnLaunch) `contactsSyncOnLaunch` (setting)
+    - [Quick Add / Schnell hinzufügen / Ajout rapide](#node-dictionary-tab-quickAdd) `dictionary.tab.quickAdd` (feature)
+      - [Highlight a word / Wort markieren / Sélectionner un mot](#node-quickAdd-step1) `quickAdd.step1` (feature)
+      - [Trigger Quick Add / „Schnell hinzufügen“ aufrufen / Déclencher l’ajout rapide](#node-quickAdd-step2) `quickAdd.step2` (feature)
+      - [Choose and save / Auswählen und sichern / Choisir et enregistrer](#node-quickAdd-step3) `quickAdd.step3` (feature)
+      - [Keyboard shortcut / Tastenkürzel / Raccourci clavier](#node-quickAdd-shortcut) `quickAdd.shortcut` (action)
+      - [Menu bar / Menüleiste / Barre des menus](#node-quickAdd-menuBar) `quickAdd.menuBar` (feature)
+  - [Keybinds / Tastenkürzel / Raccourcis clavier](#node-page-keybinds) `page.keybinds` (page)
+    - [Recording / Aufnahme / ENREGISTREMENT](#node-section-keybindsRecording) `section.keybindsRecording` (section)
+      - [Recording mode / Aufnahmemodus / Mode d’enregistrement](#node-recordingMode) `recordingMode` (setting)
+        - [Push to Talk / Zum Sprechen drücken / Appuyer pour parler](#node-recordingMode-pushToTalk) `recordingMode.pushToTalk` (choice)
+        - [Toggle / Umschalten / Activer ou désactiver](#node-recordingMode-toggle) `recordingMode.toggle` (choice)
+      - [Start / stop recording / Aufnahme starten / stoppen / Démarrer/arrêter l’enregistrement](#node-recordKeybind) `recordKeybind` (setting)
+      - [Cancel recording / Aufnahme abbrechen / Annuler l’enregistrement](#node-cancelKeybind) `cancelKeybind` (setting)
+      - [Escape Recovery / Wiederherstellung bei Escape / Récupération avec Échap](#node-escapeRecovery) `escapeRecovery` (setting)
+      - [Reset to default / Auf Standard zurücksetzen / Rétablir par défaut](#node-keybind-resetToDefault) `keybind.resetToDefault` (action)
+    - [Shortcuts / Kurzbefehle / RACCOURCIS](#node-section-keybindsShortcuts) `section.keybindsShortcuts` (section)
+      - [Add selected word to Dictionary / Markiertes Wort zum Wörterbuch hinzufügen / Ajouter le mot sélectionné au Dictionnaire](#node-quickAddKeybind) `quickAddKeybind` (setting)
+      - [Paste last dictation / Letztes Diktat einfügen / Coller la dernière dictée](#node-pasteLastKeybind) `pasteLastKeybind` (setting)
+      - [Copy last dictation / Letztes Diktat kopieren / Copier la dernière dictée](#node-copyLastKeybind) `copyLastKeybind` (setting)
+  - [EnviousMeet / EnviousMeet / EnviousMeet](#node-page-meetings) `page.meetings` (page)
+    - [General / Allgemein / Général](#node-meetings-tab-general) `meetings.tab.general` (feature)
+      - [Record only my voice / Nur meine Stimme aufnehmen / Enregistrer uniquement ma voix](#node-meetingCaptureCallSound) `meetingCaptureCallSound` (setting)
+      - [Turn off dictation during meetings / Diktieren während Meetings ausschalten / Désactiver la dictée pendant les réunions](#node-meetingTurnsOffDictation) `meetingTurnsOffDictation` (setting)
+      - [Leave my voice out when I'm muted / Meine Stimme weglassen, wenn ich stummgeschaltet bin / Ne pas enregistrer ma voix quand mon micro est coupé](#node-meetingFollowsCallMute) `meetingFollowsCallMute` (setting)
+      - [Name meetings from my calendar / Meetings nach meinem Kalender benennen / Nommer les réunions d’après mon calendrier](#node-meetingUseCalendarForNames) `meetingUseCalendarForNames` (setting)
+      - [When a call starts / Wenn ein Anruf beginnt / Au début d’un appel](#node-meetingCallDetection) `meetingCallDetection` (setting)
+    - [Models / Modelle / Modèles](#node-meetings-tab-models) `meetings.tab.models` (feature)
+      - [Live Preview / Live-Vorschau / Aperçu en direct](#node-meetingLiveWords) `meetingLiveWords` (setting)
+        - [Change / Ändern / Modifier](#node-meetingLiveWords-change) `meetingLiveWords.change` (action)
+        - [Keep current Live Preview engine / Aktuelle Live-Vorschau-Engine beibehalten / Conserver le moteur actuel d’Aperçu en direct](#node-meetingLiveWords-keepCurrent) `meetingLiveWords.keepCurrent` (action)
         - [Apple](#node-meetingLiveWords-apple) `meetingLiveWords.apple` (choice)
-        - [Universal / Universal](#node-meetingLiveWords-universal) `meetingLiveWords.universal` (choice)
-      - [Live Preview language / Sprache der Live-Vorschau](#node-meetingLiveWordsLanguage) `meetingLiveWordsLanguage` (setting)
-      - [Transcript engine / Transkript-Engine](#node-meetingTranscriptEngine) `meetingTranscriptEngine` (setting)
-        - [Change / Ändern](#node-meetingTranscriptEngine-change) `meetingTranscriptEngine.change` (action)
-        - [Keep current transcript engine / Aktuelle Transkript-Engine beibehalten](#node-meetingTranscriptEngine-keepCurrent) `meetingTranscriptEngine.keepCurrent` (action)
-        - [Parakeet / Parakeet](#node-meetingTranscriptEngine-parakeet) `meetingTranscriptEngine.parakeet` (choice)
-        - [Whisper Large v3 Turbo / Whisper Large v3 Turbo](#node-meetingTranscriptEngine-whisper) `meetingTranscriptEngine.whisper` (choice)
+        - [Universal / Universal / Universal](#node-meetingLiveWords-universal) `meetingLiveWords.universal` (choice)
+      - [Live Preview language / Sprache der Live-Vorschau / Langue de l’Aperçu en direct](#node-meetingLiveWordsLanguage) `meetingLiveWordsLanguage` (setting)
+      - [Transcript engine / Transkript-Engine / Moteur de transcription](#node-meetingTranscriptEngine) `meetingTranscriptEngine` (setting)
+        - [Change / Ändern / Modifier](#node-meetingTranscriptEngine-change) `meetingTranscriptEngine.change` (action)
+        - [Keep current transcript engine / Aktuelle Transkript-Engine beibehalten / Conserver le moteur de transcription actuel](#node-meetingTranscriptEngine-keepCurrent) `meetingTranscriptEngine.keepCurrent` (action)
+        - [Parakeet / Parakeet / Parakeet](#node-meetingTranscriptEngine-parakeet) `meetingTranscriptEngine.parakeet` (choice)
+        - [Whisper Large v3 Turbo / Whisper Large v3 Turbo / Whisper Large v3 Turbo](#node-meetingTranscriptEngine-whisper) `meetingTranscriptEngine.whisper` (choice)
         - [Apple](#node-meetingTranscriptEngine-apple) `meetingTranscriptEngine.apple` (choice)
-      - [Auto-detect language / Sprache automatisch erkennen](#node-meetingTranscriptAutoDetect) `meetingTranscriptAutoDetect` (setting)
-      - [Transcript language / Transkriptsprache](#node-meetingTranscriptLanguage) `meetingTranscriptLanguage` (setting)
-      - [Speaker labels / Sprecherkennzeichnung](#node-meetingSpeakerLabels) `meetingSpeakerLabels` (feature)
-    - [Summaries / Zusammenfassungen](#node-meetings-tab-summaries) `meetings.tab.summaries` (feature)
-      - [Write a summary when a meeting ends / Zusammenfassung erstellen, wenn ein Meeting endet](#node-meetingWriteSummary) `meetingWriteSummary` (setting)
-      - [Summary engine / Zusammenfassungs-Engine](#node-meetingSummaryEngine) `meetingSummaryEngine` (setting)
-        - [Change / Ändern](#node-meetingSummaryEngine-change) `meetingSummaryEngine.change` (action)
-        - [Keep current summary engine / Aktuelle Zusammenfassungs-Engine beibehalten](#node-meetingSummaryEngine-keepCurrent) `meetingSummaryEngine.keepCurrent` (action)
+      - [Auto-detect language / Sprache automatisch erkennen / Détecter automatiquement la langue](#node-meetingTranscriptAutoDetect) `meetingTranscriptAutoDetect` (setting)
+      - [Transcript language / Transkriptsprache / Langue de transcription](#node-meetingTranscriptLanguage) `meetingTranscriptLanguage` (setting)
+      - [Speaker labels / Sprecherkennzeichnung / Libellés des intervenants](#node-meetingSpeakerLabels) `meetingSpeakerLabels` (feature)
+    - [Summaries / Zusammenfassungen / Résumés](#node-meetings-tab-summaries) `meetings.tab.summaries` (feature)
+      - [Write a summary when a meeting ends / Zusammenfassung erstellen, wenn ein Meeting endet / Rédiger un résumé à la fin d’une réunion](#node-meetingWriteSummary) `meetingWriteSummary` (setting)
+      - [Summary engine / Zusammenfassungs-Engine / Moteur de résumé](#node-meetingSummaryEngine) `meetingSummaryEngine` (setting)
+        - [Change / Ändern / Modifier](#node-meetingSummaryEngine-change) `meetingSummaryEngine.change` (action)
+        - [Keep current summary engine / Aktuelle Zusammenfassungs-Engine beibehalten / Conserver le moteur de résumé actuel](#node-meetingSummaryEngine-keepCurrent) `meetingSummaryEngine.keepCurrent` (action)
         - [EG-1](#node-meetingSummaryEngine-egOne) `meetingSummaryEngine.egOne` (choice)
         - [Apple Intelligence](#node-meetingSummaryEngine-appleIntelligence) `meetingSummaryEngine.appleIntelligence` (choice)
         - [Ollama](#node-meetingSummaryEngine-ollama) `meetingSummaryEngine.ollama` (choice)
         - [OpenAI](#node-meetingSummaryEngine-openAI) `meetingSummaryEngine.openAI` (choice)
         - [Google Gemini](#node-meetingSummaryEngine-gemini) `meetingSummaryEngine.gemini` (choice)
         - [Claude](#node-meetingSummaryEngine-claude) `meetingSummaryEngine.claude` (choice)
-    - [Call Apps / Anruf-Apps](#node-meetings-tab-callApps) `meetings.tab.callApps` (feature)
-      - [Notice calls in / Anrufe erkennen in](#node-meetingCallApps) `meetingCallApps` (setting)
-    - [Permissions / Berechtigungen](#node-meetings-tab-permissions) `meetings.tab.permissions` (feature)
-  - [Snippets / Textbausteine](#node-page-snippets) `page.snippets` (page)
-    - [Paste the text you type over and over, by voice / Füge Text, den du oft tippst, per Stimme ein](#node-snippets) `snippets` (feature)
-    - [Keyword / Schlüsselwort](#node-snippetKeyword) `snippetKeyword` (setting)
-    - [Your snippets / Deine Textbausteine](#node-yourSnippets) `yourSnippets` (feature)
-      - [Search snippets / Textbausteine durchsuchen](#node-snippets-search) `snippets.search` (setting)
-        - [Clear search / Suche löschen](#node-snippets-clearSearch) `snippets.clearSearch` (action)
-      - [Import / Importieren](#node-snippets-import) `snippets.import` (action)
-      - [Export / Exportieren](#node-snippets-export) `snippets.export` (action)
-      - [Add snippet / Textbaustein hinzufügen](#node-snippets-add) `snippets.add` (action)
-      - [Add your first snippet / Ersten Textbaustein hinzufügen](#node-snippets-addFirst) `snippets.addFirst` (action)
-  - [Transcribe a File / Datei transkribieren](#node-page-transcribeFile) `page.transcribeFile` (page)
+    - [Call Apps / Anruf-Apps / Apps d’appel](#node-meetings-tab-callApps) `meetings.tab.callApps` (feature)
+      - [Notice calls in / Anrufe erkennen in / Détecter les appels dans](#node-meetingCallApps) `meetingCallApps` (setting)
+    - [Permissions / Berechtigungen / Autorisations](#node-meetings-tab-permissions) `meetings.tab.permissions` (feature)
+  - [Snippets / Textbausteine / Extraits de texte](#node-page-snippets) `page.snippets` (page)
+    - [Paste the text you type over and over, by voice / Füge Text, den du oft tippst, per Stimme ein / Coller à la voix les textes que vous saisissez souvent](#node-snippets) `snippets` (feature)
+    - [Keyword / Schlüsselwort / Mot-clé](#node-snippetKeyword) `snippetKeyword` (setting)
+    - [Your snippets / Deine Textbausteine / Vos extraits de texte](#node-yourSnippets) `yourSnippets` (feature)
+      - [Search snippets / Textbausteine durchsuchen / Rechercher des extraits](#node-snippets-search) `snippets.search` (setting)
+        - [Clear search / Suche löschen / Effacer la recherche](#node-snippets-clearSearch) `snippets.clearSearch` (action)
+      - [Import / Importieren / Importer](#node-snippets-import) `snippets.import` (action)
+      - [Export / Exportieren / Exporter](#node-snippets-export) `snippets.export` (action)
+      - [Add snippet / Textbaustein hinzufügen / Ajouter un extrait](#node-snippets-add) `snippets.add` (action)
+      - [Add your first snippet / Ersten Textbaustein hinzufügen / Ajouter votre premier extrait](#node-snippets-addFirst) `snippets.addFirst` (action)
+  - [Transcribe a File / Datei transkribieren / Transcrire un fichier](#node-page-transcribeFile) `page.transcribeFile` (page)
     - [(named at runtime by `transcribeFileStep`)](#node-transcribeFile-steps) `transcribeFile.steps` (feature)
 
 ## Places
@@ -368,7 +368,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 
 <a id="node-window-search"></a>
 
-### Search settings / Einstellungen suchen (`window.search`)
+### Search settings / Einstellungen suchen / Rechercher (`window.search`)
 
 | Field | Value |
 |---|---|
@@ -386,7 +386,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 
 <a id="node-page-aiPolish"></a>
 
-### AI Polish / KI-Nachbearbeitung (`page.aiPolish`)
+### AI Polish / KI-Nachbearbeitung / Retouche IA (`page.aiPolish`)
 
 | Field | Value |
 |---|---|
@@ -404,7 +404,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 
 <a id="node-page-appSettings"></a>
 
-### App Settings / App-Einstellungen (`page.appSettings`)
+### App Settings / App-Einstellungen / Réglages de l’app (`page.appSettings`)
 
 | Field | Value |
 |---|---|
@@ -422,7 +422,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 
 <a id="node-page-dictation"></a>
 
-### Dictation Settings / Diktateinstellungen (`page.dictation`)
+### Dictation Settings / Diktateinstellungen / Réglages de dictée (`page.dictation`)
 
 | Field | Value |
 |---|---|
@@ -440,7 +440,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 
 <a id="node-page-dictionary"></a>
 
-### Dictionary / Wörterbuch (`page.dictionary`)
+### Dictionary / Wörterbuch / Dictionnaire (`page.dictionary`)
 
 | Field | Value |
 |---|---|
@@ -458,7 +458,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 
 <a id="node-page-keybinds"></a>
 
-### Keybinds / Tastenkürzel (`page.keybinds`)
+### Keybinds / Tastenkürzel / Raccourcis clavier (`page.keybinds`)
 
 | Field | Value |
 |---|---|
@@ -476,7 +476,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 
 <a id="node-page-meetings"></a>
 
-### EnviousMeet / EnviousMeet (`page.meetings`)
+### EnviousMeet / EnviousMeet / EnviousMeet (`page.meetings`)
 
 | Field | Value |
 |---|---|
@@ -494,7 +494,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 
 <a id="node-page-snippets"></a>
 
-### Snippets / Textbausteine (`page.snippets`)
+### Snippets / Textbausteine / Extraits de texte (`page.snippets`)
 
 | Field | Value |
 |---|---|
@@ -512,7 +512,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 
 <a id="node-page-transcribeFile"></a>
 
-### Transcribe a File / Datei transkribieren (`page.transcribeFile`)
+### Transcribe a File / Datei transkribieren / Transcrire un fichier (`page.transcribeFile`)
 
 | Field | Value |
 |---|---|
@@ -530,7 +530,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 
 <a id="node-section-transcriptionEngine"></a>
 
-### TRANSCRIPTION ENGINE / TRANSKRIPTIONS-ENGINE (`section.transcriptionEngine`)
+### TRANSCRIPTION ENGINE / TRANSKRIPTIONS-ENGINE / MOTEUR DE TRANSCRIPTION (`section.transcriptionEngine`)
 
 | Field | Value |
 |---|---|
@@ -548,7 +548,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 
 <a id="node-section-engineShared"></a>
 
-### APPLIES TO BOTH ENGINES / GILT FÜR BEIDE ENGINES (`section.engineShared`)
+### APPLIES TO BOTH ENGINES / GILT FÜR BEIDE ENGINES / S’APPLIQUE AUX DEUX MOTEURS (`section.engineShared`)
 
 | Field | Value |
 |---|---|
@@ -566,7 +566,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 
 <a id="node-section-microphone"></a>
 
-### INPUT &amp; BEHAVIOR / EINGABE &amp; VERHALTEN (`section.microphone`)
+### INPUT &amp; BEHAVIOR / EINGABE &amp; VERHALTEN / ENTRÉE ET COMPORTEMENT (`section.microphone`)
 
 | Field | Value |
 |---|---|
@@ -584,7 +584,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 
 <a id="node-section-livePreview"></a>
 
-### Live Preview / Live-Vorschau (`section.livePreview`)
+### Live Preview / Live-Vorschau / Aperçu en direct (`section.livePreview`)
 
 | Field | Value |
 |---|---|
@@ -602,7 +602,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 
 <a id="node-section-previewEngine"></a>
 
-### Preview engine / Vorschau-Engine (`section.previewEngine`)
+### Preview engine / Vorschau-Engine / Moteur d’aperçu (`section.previewEngine`)
 
 | Field | Value |
 |---|---|
@@ -620,7 +620,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 
 <a id="node-section-pill"></a>
 
-### Recording Pill / Aufnahmeanzeige (`section.pill`)
+### Recording Pill / Aufnahmeanzeige / Pastille d’enregistrement (`section.pill`)
 
 | Field | Value |
 |---|---|
@@ -638,7 +638,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 
 <a id="node-section-chimes"></a>
 
-### RECORDING CHIMES / AUFNAHMESIGNALTÖNE (`section.chimes`)
+### RECORDING CHIMES / AUFNAHMESIGNALTÖNE / SONS D’ENREGISTREMENT (`section.chimes`)
 
 | Field | Value |
 |---|---|
@@ -656,7 +656,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 
 <a id="node-section-clipboard"></a>
 
-### Clipboard / Zwischenablage (`section.clipboard`)
+### Clipboard / Zwischenablage / Presse-papiers (`section.clipboard`)
 
 | Field | Value |
 |---|---|
@@ -674,7 +674,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 
 <a id="node-section-quickAddClipboard"></a>
 
-### Quick Add / Schnell hinzufügen (`section.quickAddClipboard`)
+### Quick Add / Schnell hinzufügen / Ajout rapide (`section.quickAddClipboard`)
 
 | Field | Value |
 |---|---|
@@ -692,7 +692,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 
 <a id="node-section-keybindsRecording"></a>
 
-### Recording / Aufnahme (`section.keybindsRecording`)
+### Recording / Aufnahme / ENREGISTREMENT (`section.keybindsRecording`)
 
 | Field | Value |
 |---|---|
@@ -710,7 +710,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 
 <a id="node-section-keybindsShortcuts"></a>
 
-### Shortcuts / Kurzbefehle (`section.keybindsShortcuts`)
+### Shortcuts / Kurzbefehle / RACCOURCIS (`section.keybindsShortcuts`)
 
 | Field | Value |
 |---|---|
@@ -728,7 +728,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 
 <a id="node-section-aiPolishModel"></a>
 
-### Model / Modell (`section.aiPolishModel`)
+### Model / Modell / Modèle (`section.aiPolishModel`)
 
 | Field | Value |
 |---|---|
@@ -746,7 +746,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 
 <a id="node-section-dictionary"></a>
 
-### Dictionary / Wörterbuch (`section.dictionary`)
+### Dictionary / Wörterbuch / Dictionnaire (`section.dictionary`)
 
 | Field | Value |
 |---|---|
@@ -764,7 +764,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 
 <a id="node-section-appearance"></a>
 
-### APPEARANCE / ERSCHEINUNGSBILD (`section.appearance`)
+### APPEARANCE / ERSCHEINUNGSBILD / APPARENCE (`section.appearance`)
 
 | Field | Value |
 |---|---|
@@ -782,7 +782,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 
 <a id="node-section-permissions"></a>
 
-### PERMISSIONS / BERECHTIGUNGEN (`section.permissions`)
+### PERMISSIONS / BERECHTIGUNGEN / AUTORISATIONS (`section.permissions`)
 
 | Field | Value |
 |---|---|
@@ -800,7 +800,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 
 <a id="node-section-privacy"></a>
 
-### PRIVACY / DATENSCHUTZ (`section.privacy`)
+### PRIVACY / DATENSCHUTZ / CONFIDENTIALITÉ (`section.privacy`)
 
 | Field | Value |
 |---|---|
@@ -818,7 +818,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 
 <a id="node-section-recordings"></a>
 
-### Recordings / Aufnahmen (`section.recordings`)
+### Recordings / Aufnahmen / Enregistrements (`section.recordings`)
 
 | Field | Value |
 |---|---|
@@ -836,7 +836,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 
 <a id="node-section-recordingStorage"></a>
 
-### Storage / Speicher (`section.recordingStorage`)
+### Storage / Speicher / Stockage (`section.recordingStorage`)
 
 | Field | Value |
 |---|---|
@@ -854,7 +854,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 
 <a id="node-section-about"></a>
 
-### ABOUT / INFO (`section.about`)
+### ABOUT / INFO / À PROPOS (`section.about`)
 
 | Field | Value |
 |---|---|
@@ -872,7 +872,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 
 <a id="node-dictation-tab-engine"></a>
 
-### Engine / Engine (`dictation.tab.engine`)
+### Engine / Engine / Moteur (`dictation.tab.engine`)
 
 | Field | Value |
 |---|---|
@@ -889,11 +889,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: show me the engine settings tab; open the dictation engine page |
 | Search (de) | phrases: zeig mir den Tab mit den Engine-Einstellungen; öffne die Engine-Seite in den Diktiereinstellungen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: onglet moteur, réglages moteur<br>phrases: ouvrir l’onglet du moteur de dictée |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-dictation-tab-microphone"></a>
 
-### Microphone / Mikrofon (`dictation.tab.microphone`)
+### Microphone / Mikrofon / Micro (`dictation.tab.microphone`)
 
 | Field | Value |
 |---|---|
@@ -910,11 +911,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: open the microphone settings tab; show me the microphone settings page |
 | Search (de) | phrases: öffne den Tab mit den Mikrofoneinstellungen; zeig mir die Einstellungsseite fürs Mikrofon |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: onglet micro, réglages micro<br>phrases: ouvrir l’onglet des réglages du microphone |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-dictation-tab-livePreview"></a>
 
-### Live Preview / Live-Vorschau (`dictation.tab.livePreview`)
+### Live Preview / Live-Vorschau / Aperçu en direct (`dictation.tab.livePreview`)
 
 | Field | Value |
 |---|---|
@@ -931,11 +933,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: open the Live Preview tab; show me the Live Preview settings page |
 | Search (de) | phrases: öffne den Tab für die Live-Vorschau; zeig mir die Einstellungsseite für die Live-Vorschau |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: onglet aperçu, réglages aperçu<br>phrases: ouvrir l’onglet de l’aperçu en direct |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-dictation-tab-pill"></a>
 
-### Recording Pill / Aufnahmeanzeige (`dictation.tab.pill`)
+### Recording Pill / Aufnahmeanzeige / Pastille d’enregistrement (`dictation.tab.pill`)
 
 | Field | Value |
 |---|---|
@@ -952,11 +955,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: overlay, widget<br>phrases: open the Recording Pill settings tab; show me the floating recording indicator settings page |
 | Search (de) | words: Overlay, Widget, Aufnahmefenster<br>phrases: öffne den Tab für die Aufnahmeanzeige; zeig mir die Einstellungsseite für die schwebende Aufnahmeanzeige |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: widget, indicateur flottant, overlay<br>phrases: ouvrir les réglages de l’indicateur flottant d’enregistrement |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-dictation-tab-chimes"></a>
 
-### Chimes / Signaltöne (`dictation.tab.chimes`)
+### Chimes / Signaltöne / Sons (`dictation.tab.chimes`)
 
 | Field | Value |
 |---|---|
@@ -973,11 +977,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: open the Chimes settings tab; show me the recording sounds settings page |
 | Search (de) | phrases: öffne den Tab für die Signaltöne; zeig mir die Einstellungsseite für die Aufnahmetöne |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: onglet sons, réglages sonores<br>phrases: ouvrir l’onglet des sons d’enregistrement |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-dictation-tab-clipboard"></a>
 
-### Clipboard / Zwischenablage (`dictation.tab.clipboard`)
+### Clipboard / Zwischenablage / Presse-papiers (`dictation.tab.clipboard`)
 
 | Field | Value |
 |---|---|
@@ -994,11 +999,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: pasteboard, copy, paste, copied<br>phrases: where are the settings for copied text; show me the clipboard settings |
 | Search (de) | words: Clipboard, kopieren, einfügen, kopiert<br>phrases: wo sind die Einstellungen für kopierten Text; zeig mir die Einstellungen für die Zwischenablage |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: clipboard, copier-coller<br>phrases: ouvrir les réglages du presse-papiers |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-transcriptionEngine"></a>
 
-### TRANSCRIPTION ENGINE / TRANSKRIPTIONS-ENGINE (`transcriptionEngine`)
+### TRANSCRIPTION ENGINE / TRANSKRIPTIONS-ENGINE / MOTEUR DE TRANSCRIPTION (`transcriptionEngine`)
 
 | Field | Value |
 |---|---|
@@ -1015,11 +1021,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: transcriber<br>phrases: which model turns my dictation into the finished text; where do I choose the dictation model |
 | Search (de) | words: Diktiermodell<br>phrases: welches Modell macht aus meinem Diktat den fertigen Text; wo wähle ich das Modell fürs Diktieren aus |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: modèle de dictée, transcription finale<br>phrases: où choisir le modèle qui transforme ma dictée en texte |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-transcriptionEngine-change"></a>
 
-### Change / Ändern (`transcriptionEngine.change`)
+### Change / Ändern / Modifier (`transcriptionEngine.change`)
 
 | Field | Value |
 |---|---|
@@ -1036,11 +1043,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: switch to a different dictation model; change the speech engine for my finished dictation |
 | Search (de) | phrases: wechsle das Modell fürs Diktieren; wähle eine andere Engine für mein fertiges Diktat |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: changer de moteur<br>phrases: passer à un autre modèle pour mes dictées |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-transcriptionEngine-keepCurrent"></a>
 
-### Keep current engine / Aktuelle Engine beibehalten (`transcriptionEngine.keepCurrent`)
+### Keep current engine / Aktuelle Engine beibehalten / Conserver le moteur actuel (`transcriptionEngine.keepCurrent`)
 
 | Field | Value |
 |---|---|
@@ -1057,11 +1065,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: keep my current dictation model; leave the speech engine unchanged |
 | Search (de) | phrases: behalte mein bisheriges Diktiermodell; lass die Engine fürs Diktieren unverändert |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: garder le moteur<br>phrases: conserver mon modèle de dictée actuel |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-transcriptionEngine-recheckFast"></a>
 
-### Re-check Fast model status / Modellstatus von „Schnell“ erneut prüfen (`transcriptionEngine.recheckFast`)
+### Re-check Fast model status / Modellstatus von „Schnell“ erneut prüfen / Vérifier à nouveau l’état du modèle Fast (`transcriptionEngine.recheckFast`)
 
 | Field | Value |
 |---|---|
@@ -1078,11 +1087,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: check whether the Fast model is ready; check Parakeet model status again |
 | Search (de) | phrases: prüfe erneut, ob das schnelle Modell bereit ist; prüfe den Status von Parakeet noch einmal |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: revérifier Parakeet<br>phrases: vérifier à nouveau si le modèle Parakeet est prêt |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-fastModel-cancelDownload"></a>
 
-### Cancel / Abbrechen (`fastModel.cancelDownload`)
+### Cancel / Abbrechen / Annuler (`fastModel.cancelDownload`)
 
 | Field | Value |
 |---|---|
@@ -1099,11 +1109,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: cancel the Parakeet download; stop downloading the Fast dictation model |
 | Search (de) | phrases: brich den Download von Parakeet ab; stoppe den Download des schnellen Diktiermodells |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: annuler Parakeet<br>phrases: arrêter le téléchargement de Parakeet |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-fastModel-resume"></a>
 
-### Resume / Fortsetzen (`fastModel.resume`)
+### Resume / Fortsetzen / Reprendre (`fastModel.resume`)
 
 | Field | Value |
 |---|---|
@@ -1120,11 +1131,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: resume the paused Parakeet download; continue downloading the Fast dictation model |
 | Search (de) | phrases: setze den pausierten Parakeet-Download fort; lade das schnelle Diktiermodell weiter herunter |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: reprendre Parakeet<br>phrases: reprendre le téléchargement de Parakeet mis en pause |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-fastModel-tryAgain"></a>
 
-### Try Again / Erneut versuchen (`fastModel.tryAgain`)
+### Try Again / Erneut versuchen / Réessayer (`fastModel.tryAgain`)
 
 | Field | Value |
 |---|---|
@@ -1141,11 +1153,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: retry the failed Parakeet download; try downloading the Fast dictation model again |
 | Search (de) | phrases: versuche den fehlgeschlagenen Parakeet-Download noch einmal; lade das schnelle Diktiermodell erneut herunter |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: réessayer Parakeet<br>phrases: relancer le téléchargement de Parakeet après son échec |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-whisperModel-setUp"></a>
 
-### Set up model / Modell einrichten (`whisperModel.setUp`)
+### Set up model / Modell einrichten / Configurer le modèle (`whisperModel.setUp`)
 
 | Field | Value |
 |---|---|
@@ -1162,11 +1175,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: set up Whisper on my Mac; install the All Languages dictation model |
 | Search (de) | phrases: richte Whisper auf meinem Mac ein; installiere das Diktiermodell für alle Sprachen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: installer Whisper<br>phrases: installer Whisper sur mon Mac |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-whisperModel-cancelDownload"></a>
 
-### Cancel / Abbrechen (`whisperModel.cancelDownload`)
+### Cancel / Abbrechen / Annuler (`whisperModel.cancelDownload`)
 
 | Field | Value |
 |---|---|
@@ -1183,11 +1197,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: cancel the Whisper download; stop downloading the All Languages dictation model |
 | Search (de) | phrases: brich den Whisper-Download ab; stoppe den Download des Diktiermodells für alle Sprachen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: annuler Whisper<br>phrases: arrêter le téléchargement de Whisper |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-whisperModel-resume"></a>
 
-### Resume / Fortsetzen (`whisperModel.resume`)
+### Resume / Fortsetzen / Reprendre (`whisperModel.resume`)
 
 | Field | Value |
 |---|---|
@@ -1204,11 +1219,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: resume the paused Whisper download; continue downloading the All Languages dictation model |
 | Search (de) | phrases: setze den pausierten Whisper-Download fort; lade das Diktiermodell für alle Sprachen weiter herunter |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: reprendre Whisper<br>phrases: reprendre le téléchargement de Whisper mis en pause |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-whisperModel-remove"></a>
 
-### Remove Model / Modell entfernen (`whisperModel.remove`)
+### Remove Model / Modell entfernen / Supprimer le modèle (`whisperModel.remove`)
 
 | Field | Value |
 |---|---|
@@ -1225,11 +1241,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: delete the installed Whisper model; remove the All Languages dictation model from my Mac |
 | Search (de) | phrases: lösche das installierte Whisper-Modell; entferne das Diktiermodell für alle Sprachen von meinem Mac |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: désinstaller Whisper<br>phrases: supprimer le modèle Whisper de mon Mac |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-whisperModel-recheck"></a>
 
-### Re-check model status / Modellstatus erneut prüfen (`whisperModel.recheck`)
+### Re-check model status / Modellstatus erneut prüfen / Vérifier à nouveau l’état du modèle (`whisperModel.recheck`)
 
 | Field | Value |
 |---|---|
@@ -1246,11 +1263,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: check whether Whisper is ready; check the All Languages model status again |
 | Search (de) | phrases: prüfe, ob Whisper bereit ist; prüfe den Status des Modells für alle Sprachen erneut |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: revérifier Whisper<br>phrases: vérifier à nouveau si Whisper est prêt |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-whisperModel-tryAgain"></a>
 
-### Try Again / Erneut versuchen (`whisperModel.tryAgain`)
+### Try Again / Erneut versuchen / Réessayer (`whisperModel.tryAgain`)
 
 | Field | Value |
 |---|---|
@@ -1267,7 +1285,8 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: retry the failed Whisper setup; try setting up the All Languages dictation model again |
 | Search (de) | phrases: versuche die Einrichtung von Whisper noch einmal; richte das Diktiermodell für alle Sprachen erneut ein |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: réessayer Whisper<br>phrases: relancer l’installation de Whisper après son échec |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-currentEngineSection"></a>
 
@@ -1288,11 +1307,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: show the settings for my active dictation engine; where are the options for the dictation model I am using |
 | Search (de) | phrases: zeig mir die Einstellungen für meine aktive Diktierengine; wo sind die Optionen für das Diktiermodell, das ich gerade nutze |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: moteur actif, options actuelles<br>phrases: voir les options du moteur de dictée que j’utilise actuellement |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-autoDetectLanguage"></a>
 
-### Auto-detect language / Sprache automatisch erkennen (`autoDetectLanguage`)
+### Auto-detect language / Sprache automatisch erkennen / Détecter automatiquement la langue (`autoDetectLanguage`)
 
 | Field | Value |
 |---|---|
@@ -1309,11 +1329,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: autodetect, detection<br>phrases: detect which language I am speaking; recognize my language automatically; I do not want to choose my dictation language manually |
 | Search (de) | words: Spracherkennung, automatische Spracherkennung<br>phrases: erkenne automatisch, welche Sprache ich spreche; finde meine Diktiersprache selbst heraus; ich möchte die Diktiersprache nicht von Hand auswählen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: détection automatique, autodétection<br>phrases: reconnaître automatiquement la langue que je parle |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-autoDetectLanguage-resetSuggestions"></a>
 
-### Reset suggestions / Vorschläge zurücksetzen (`autoDetectLanguage.resetSuggestions`)
+### Reset suggestions / Vorschläge zurücksetzen / Réinitialiser les suggestions (`autoDetectLanguage.resetSuggestions`)
 
 | Field | Value |
 |---|---|
@@ -1330,7 +1351,8 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: suggest locking a detected language again; reset the suggestions to fix my dictation language |
 | Search (de) | phrases: schlage mir wieder vor, die erkannte Sprache festzulegen; setze die Vorschläge zum Festlegen der Diktiersprache zurück |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: réinitialiser les suggestions<br>phrases: me proposer à nouveau de garder la langue détectée pour mes dictées |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-lockedLanguage"></a>
 
@@ -1342,7 +1364,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`currentEngineSection`](#node-currentEngineSection) |
 | Title source | resolver `lockedLanguage` in [SettingsMap.title(of:)](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMapRegistration.swift) |
-| Description | Choose the language for dictation and preview. / Wähle die Sprache für Diktat und Vorschau. |
+| Description | Choose the language for dictation and preview. / Wähle die Sprache für Diktat und Vorschau. / Choisissez la langue de la dictée et de l’aperçu. |
 | Description source | catalog key `Choose the language for dictation and preview.` |
 | Destination | `dictation` › `engine` |
 | Dictionary tab | none |
@@ -1352,11 +1374,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: lock, fixed<br>phrases: always use the same language for dictation; set a fixed language for dictation and preview; stop guessing which language I am speaking |
 | Search (de) | words: Diktiersprache, festlegen, fest<br>phrases: verwende fürs Diktieren immer dieselbe Sprache; lege die Sprache für Diktat und Vorschau fest; erkenne meine Diktiersprache nicht automatisch |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: langue fixe, langue verrouillée<br>phrases: toujours utiliser la même langue pour la dictée et l’aperçu |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-lockedLanguage-change"></a>
 
-### Change / Ändern (`lockedLanguage.change`)
+### Change / Ändern / Modifier (`lockedLanguage.change`)
 
 | Field | Value |
 |---|---|
@@ -1373,11 +1396,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: change my fixed dictation language from the Engine tab |
 | Search (de) | phrases: ändere meine festgelegte Diktiersprache im Engine-Tab |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: changer la langue fixe<br>phrases: changer la langue de dictée depuis l’onglet Moteur |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-fasterTranscription"></a>
 
-### Faster Transcription / Schnellere Transkription (`fasterTranscription`)
+### Faster Transcription / Schnellere Transkription / Transcription plus rapide (`fasterTranscription`)
 
 | Field | Value |
 |---|---|
@@ -1394,11 +1418,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: processing, latency<br>phrases: process my dictation while I am still recording; reduce the wait for the finished transcription; start transcribing before I stop recording |
 | Search (de) | words: Verarbeitung, Wartezeit, Latenz<br>phrases: verarbeite mein Diktat schon während der Aufnahme; verkürze die Wartezeit auf den fertigen Text; beginne mit der Transkription, bevor ich die Aufnahme beende |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: latence, transcription anticipée, traitement anticipé<br>phrases: commencer à transcrire pendant l’enregistrement pour réduire l’attente à la fin |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-stopOnSilence"></a>
 
-### Stop recording on silence / Aufnahme bei Stille stoppen (`stopOnSilence`)
+### Stop recording on silence / Aufnahme bei Stille stoppen / Arrêter l’enregistrement en cas de silence (`stopOnSilence`)
 
 | Field | Value |
 |---|---|
@@ -1406,7 +1431,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`section.engineShared`](#node-section-engineShared) |
 | Title source | catalog key `Stop recording on silence` |
-| Description | Ends recording after you stop speaking. / Beendet die Aufnahme, wenn du aufhörst zu sprechen. |
+| Description | Ends recording after you stop speaking. / Beendet die Aufnahme, wenn du aufhörst zu sprechen. / Arrête l’enregistrement après que vous avez cessé de parler. |
 | Description source | catalog key `Ends recording after you stop speaking.` |
 | Destination | `dictation` › `engine` |
 | Dictionary tab | none |
@@ -1416,11 +1441,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: silence, autostop<br>phrases: stop recording when I stop talking; end my dictation automatically when I go quiet; I want recording to stop without pressing a key |
 | Search (de) | words: Stille, Autostopp, Sprechpause<br>phrases: stoppe die Aufnahme, wenn ich nicht mehr spreche; beende mein Diktat automatisch bei Stille; beende die Aufnahme, ohne dass ich eine Taste drücken muss |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: arrêt automatique, autostop, arrêt au silence<br>phrases: arrêter l’enregistrement automatiquement quand je ne parle plus |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-pauseDuration"></a>
 
-### Pause duration / Pausendauer (`pauseDuration`)
+### Pause duration / Pausendauer / Durée de la pause (`pauseDuration`)
 
 | Field | Value |
 |---|---|
@@ -1428,7 +1454,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`stopOnSilence`](#node-stopOnSilence) |
 | Title source | catalog key `Pause duration` |
-| Description | How long a pause ends the recording. / Wie lange eine Pause dauern muss, um die Aufnahme zu beenden. |
+| Description | How long a pause ends the recording. / Wie lange eine Pause dauern muss, um die Aufnahme zu beenden. / Durée de pause nécessaire pour arrêter l’enregistrement. |
 | Description source | catalog key `How long a pause ends the recording.` |
 | Destination | `dictation` › `engine` |
 | Dictionary tab | none |
@@ -1438,11 +1464,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: timeout, delay<br>phrases: how long can I stay quiet before recording stops; wait longer before stopping on silence; change the length of the pause that ends recording |
 | Search (de) | words: Zeitlimit, Verzögerung, Pausenlänge<br>phrases: wie lange darf ich still sein, bevor die Aufnahme endet; warte bei Stille länger, bevor du die Aufnahme stoppst; ändere, wie lang die Pause zum Beenden der Aufnahme sein muss |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: délai de silence, durée du silence, timeout<br>phrases: régler combien de temps je peux me taire avant que l’enregistrement s’arrête |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-fillerRemoval"></a>
 
-### Remove filler words (um, uh, hmm...) / Füllwörter entfernen (ähm, äh, hm...) (`fillerRemoval`)
+### Remove filler words (um, uh, hmm...) / Füllwörter entfernen (ähm, äh, hm...) / Supprimer les mots de remplissage (euh, hum, hmm…) (`fillerRemoval`)
 
 | Field | Value |
 |---|---|
@@ -1450,7 +1477,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`section.engineShared`](#node-section-engineShared) |
 | Title source | catalog key `Remove filler words (um, uh, hmm...)` |
-| Description | Strips common filler words from transcriptions. / Entfernt häufige Füllwörter aus Transkripten. |
+| Description | Strips common filler words from transcriptions. / Entfernt häufige Füllwörter aus Transkripten. / Supprime les mots de remplissage courants des transcriptions. |
 | Description source | catalog key `Strips common filler words from transcriptions.` |
 | Destination | `dictation` › `engine` |
 | Dictionary tab | none |
@@ -1460,11 +1487,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: um, uh, hmm, ums, hesitations, fillers<br>phrases: remove ums and uhs from my text; leave out my hesitation sounds; remove filler words from my dictation |
 | Search (de) | words: ähm, äh, hm, Ähms, Fülllaute<br>phrases: lass die Ähms aus meinem Text weg; entferne meine Füllwörter beim Diktieren; schreib meine Ähs und Ähms nicht mit |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: euh, hum, hmm, hésitations, fillers<br>phrases: enlever les euh et les sons d’hésitation de ma dictée |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-spokenEmoji"></a>
 
-### Convert spoken emoji (e.g. "thumbs up emoji" → 👍) / Gesprochene Emojis umwandeln (z. B. „Daumen hoch Emoji“ → 👍) (`spokenEmoji`)
+### Convert spoken emoji (e.g. "thumbs up emoji" → 👍) / Gesprochene Emojis umwandeln (z. B. „Daumen hoch Emoji“ → 👍) / Convertir les émojis dictés (p. ex. « émoji pouce levé » → 👍) (`spokenEmoji`)
 
 | Field | Value |
 |---|---|
@@ -1472,7 +1500,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`section.engineShared`](#node-section-engineShared) |
 | Title source | catalog key `Convert spoken emoji (e.g. "thumbs up emoji" → 👍)` |
-| Description | Say a phrase followed by emoji to get its symbol. / Sag einen Ausdruck und danach „Emoji“, um das Symbol einzufügen. |
+| Description | Say a phrase followed by emoji to get its symbol. / Sag einen Ausdruck und danach „Emoji“, um das Symbol einzufügen. / Dites une expression suivie de « emoji » pour obtenir son symbole. |
 | Description source | catalog key `Say a phrase followed by emoji to get its symbol.` |
 | Destination | `dictation` › `engine` |
 | Dictionary tab | none |
@@ -1482,11 +1510,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: smiley, smileys, 👍<br>phrases: turn spoken emoji names into symbols; insert a thumbs up when I say thumbs up emoji; let me dictate smileys by saying their name and emoji |
 | Search (de) | words: Smiley, Smileys, 👍<br>phrases: mach aus gesprochenen Emoji-Namen die passenden Symbole; füge einen Daumen hoch ein, wenn ich Daumen hoch Emoji sage; ich möchte Smileys mit ihrem Namen und dem Wort Emoji diktieren |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: emoji, émojis, smileys, émoticônes<br>phrases: insérer un émoji en disant son nom suivi du mot emoji |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-spokenPunctuation"></a>
 
-### Spoken punctuation / Gesprochene Satzzeichen (`spokenPunctuation`)
+### Spoken punctuation / Gesprochene Satzzeichen / Ponctuation dictée (`spokenPunctuation`)
 
 | Field | Value |
 |---|---|
@@ -1494,7 +1523,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`section.engineShared`](#node-section-engineShared) |
 | Title source | catalog key `Spoken punctuation` |
-| Description | Say comma or new paragraph to insert it. / Sag „comma“ oder „new paragraph“, um es einzufügen. |
+| Description | Say comma or new paragraph to insert it. / Sag „comma“ oder „new paragraph“, um es einzufügen. / Dites « comma » ou « new paragraph » pour l’insérer. |
 | Description source | catalog key `Say comma or new paragraph to insert it.` |
 | Destination | `dictation` › `engine` |
 | Dictionary tab | none |
@@ -1504,11 +1533,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: comma, period, paragraph, colon, semicolon<br>phrases: insert punctuation by speaking a command; start a new paragraph with a spoken command; let me dictate commas and periods |
 | Search (de) | words: Komma, Punkt, Absatz, Doppelpunkt, Semikolon<br>phrases: füge Satzzeichen mit einem gesprochenen Befehl ein; beginne mit einem Sprachbefehl einen neuen Absatz; ich möchte Kommas und Punkte diktieren |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: virgule, point-virgule, deux-points, nouveau paragraphe<br>phrases: insérer des virgules et des points avec des commandes vocales |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-startWordLanguage"></a>
 
-### Start word / Startwort (`startWordLanguage`)
+### Start word / Startwort / Mot de début (`startWordLanguage`)
 
 | Field | Value |
 |---|---|
@@ -1516,7 +1546,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`spokenPunctuation`](#node-spokenPunctuation) |
 | Title source | catalog key `Start word` |
-| Description | The word you say before a mark. / Das Wort, das du vor einem Zeichen sagst. |
+| Description | The word you say before a mark. / Das Wort, das du vor einem Zeichen sagst. / Le mot que vous dites avant un signe. |
 | Description source | catalog key `The word you say before a mark.` |
 | Destination | `dictation` › `engine` |
 | Dictionary tab | none |
@@ -1526,11 +1556,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: choose which language I am editing the punctuation start word for; select the language for the punctuation trigger settings |
 | Search (de) | phrases: wähle, für welche Sprache ich das Startwort für Satzzeichen bearbeite; für welche Sprache stelle ich den Satzzeichenauslöser ein |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: langue du déclencheur, langue de ponctuation<br>phrases: choisir pour quelle langue je règle le mot déclencheur de ponctuation |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-startWordField"></a>
 
-### Start word for / Startwort für (`startWordField`)
+### Start word for / Startwort für / Mot de début pour (`startWordField`)
 
 | Field | Value |
 |---|---|
@@ -1547,11 +1578,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: prefix, trigger<br>phrases: set the word I say before a punctuation mark; enter my own punctuation trigger word; change the spoken prefix for punctuation |
 | Search (de) | words: Auslösewort, Befehlswort, Signalwort<br>phrases: lege fest, welches Wort ich vor einem Satzzeichen sagen muss; gib mein eigenes Auslösewort für Satzzeichen ein; ändere das Wort vor dem Satzzeichenbefehl |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: préfixe de ponctuation, déclencheur de ponctuation<br>phrases: saisir le mot à dire avant un signe de ponctuation |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-startWord-save"></a>
 
-### Save word / Wort sichern (`startWord.save`)
+### Save word / Wort sichern / Enregistrer le mot (`startWord.save`)
 
 | Field | Value |
 |---|---|
@@ -1568,11 +1600,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: save the punctuation start word I entered; apply my new punctuation trigger |
 | Search (de) | phrases: speichere mein eingegebenes Startwort für Satzzeichen; übernimm mein neues Auslösewort für Satzzeichen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: enregistrer le déclencheur<br>phrases: enregistrer mon nouveau mot déclencheur de ponctuation |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-startWord-reset"></a>
 
-### Reset / Zurücksetzen (`startWord.reset`)
+### Reset / Zurücksetzen / Réinitialiser (`startWord.reset`)
 
 | Field | Value |
 |---|---|
@@ -1589,11 +1622,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: restore the default punctuation start word; reset my custom punctuation trigger |
 | Search (de) | phrases: stell das voreingestellte Startwort für Satzzeichen wieder her; setze mein eigenes Auslösewort für Satzzeichen zurück |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: réinitialiser le déclencheur<br>phrases: remettre le mot déclencheur de ponctuation par défaut |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-casualMode"></a>
 
-### Casual mode / Lockerer Modus (`casualMode`)
+### Casual mode / Lockerer Modus / Mode décontracté (`casualMode`)
 
 | Field | Value |
 |---|---|
@@ -1601,7 +1635,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`section.engineShared`](#node-section-engineShared) |
 | Title source | catalog key `Casual mode` |
-| Description | Leave off the full stop at the end of each dictation. / Lässt den Punkt am Ende jedes Diktats weg. |
+| Description | Leave off the full stop at the end of each dictation. / Lässt den Punkt am Ende jedes Diktats weg. / Omet le point final de chaque dictée. |
 | Description source | catalog key `Leave off the full stop at the end of each dictation.` |
 | Destination | `dictation` › `engine` |
 | Dictionary tab | none |
@@ -1611,11 +1645,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: full stop, period, trailing dot<br>phrases: no period at the end of dictation; leave off the final full stop |
 | Search (de) | words: Schlusspunkt, Satzende<br>phrases: lass den Punkt am Ende des Diktats weg; kein Punkt am Ende |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: point final<br>phrases: sans point à la fin de la dictée; enlever le point final de la dictée |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-unloadModel"></a>
 
-### Unload model after / Modell entladen nach (`unloadModel`)
+### Unload model after / Modell entladen nach / Décharger le modèle après (`unloadModel`)
 
 | Field | Value |
 |---|---|
@@ -1623,7 +1658,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`section.engineShared`](#node-section-engineShared) |
 | Title source | catalog key `Unload model after` |
-| Description | Frees memory when you are not dictating. / Gibt Speicher frei, wenn du nicht diktierst. |
+| Description | Frees memory when you are not dictating. / Gibt Speicher frei, wenn du nicht diktierst. / Libère de la mémoire quand vous ne dictez pas. |
 | Description source | catalog key `Frees memory when you are not dictating.` |
 | Destination | `dictation` › `engine` |
 | Dictionary tab | none |
@@ -1633,11 +1668,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: RAM, memory, unloading<br>phrases: free the dictation model memory when I am not using it; choose how long the speech model stays in memory; change when the dictation model is unloaded |
 | Search (de) | words: RAM, Arbeitsspeicher, Speicher, entladen<br>phrases: gib den Arbeitsspeicher frei, wenn ich nicht diktiere; wie lange soll das Diktiermodell im Speicher bleiben; ändere, wann das Diktiermodell aus dem Speicher entfernt wird |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: RAM, mémoire, déchargement<br>phrases: régler combien de temps le modèle de dictée reste en mémoire sans être utilisé |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-inputDevice"></a>
 
-### Input device / Eingabegerät (`inputDevice`)
+### Input device / Eingabegerät / Périphérique d’entrée (`inputDevice`)
 
 | Field | Value |
 |---|---|
@@ -1645,7 +1681,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`section.microphone`](#node-section-microphone) |
 | Title source | catalog key `Input device` |
-| Description | Choose the microphone used for recording. / Wähle das Mikrofon für die Aufnahme. |
+| Description | Choose the microphone used for recording. / Wähle das Mikrofon für die Aufnahme. / Choisissez le micro utilisé pour l’enregistrement. |
 | Description source | catalog key `Choose the microphone used for recording.` |
 | Destination | `dictation` › `microphone` |
 | Dictionary tab | none |
@@ -1655,11 +1691,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: mic, source<br>phrases: choose which microphone records my voice; select the microphone I dictate into; where do I choose my recording device |
 | Search (de) | words: Mikro, Mikroauswahl, Aufnahmegerät<br>phrases: wähle das Mikrofon, das meine Stimme aufnimmt; welches Mikro soll ich fürs Diktieren benutzen; wo wähle ich mein Aufnahmegerät aus |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: source audio, micro d’entrée<br>phrases: où choisir le microphone qui enregistre ma voix |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-inputDevice-auto"></a>
 
-### Auto / Auto (`inputDevice.auto`)
+### Auto / Auto / Auto (`inputDevice.auto`)
 
 | Field | Value |
 |---|---|
@@ -1667,7 +1704,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | choice |
 | Parent | [`inputDevice`](#node-inputDevice) |
 | Title source | catalog key `Auto` |
-| Description | Follows macOS / Folgt macOS |
+| Description | Follows macOS / Folgt macOS / Suit macOS |
 | Description source | catalog key `Follows macOS` |
 | Destination | `dictation` › `microphone` |
 | Dictionary tab | none |
@@ -1677,7 +1714,8 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: default, system<br>phrases: use the microphone selected in macOS; follow the Mac sound input setting |
 | Search (de) | words: Standardmikrofon, Systemmikrofon<br>phrases: nimm das Mikrofon, das in macOS ausgewählt ist; verwende die Toneingabe aus den Mac-Einstellungen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: micro système, micro par défaut<br>phrases: utiliser le microphone sélectionné dans macOS |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-inputDevice-device"></a>
 
@@ -1698,11 +1736,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: USB, headset, internal, external<br>phrases: select a specific microphone from the device list; use my USB microphone; use my headset microphone instead of the built-in mic |
 | Search (de) | words: USB, Headset, intern, extern<br>phrases: wähle ein bestimmtes Mikrofon aus der Geräteliste; nimm mein USB-Mikrofon; nimm das Mikrofon meines Headsets statt des eingebauten Mikros |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: micro USB, micro intégré, micro externe, micro-casque<br>phrases: sélectionner un microphone précis dans la liste des appareils |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-inputSocket"></a>
 
-### Mic is on / Mikrofon ist an (`inputSocket`)
+### Mic is on / Mikrofon ist an / Micro sur (`inputSocket`)
 
 | Field | Value |
 |---|---|
@@ -1710,7 +1749,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`inputDevice`](#node-inputDevice) |
 | Title source | catalog key `Mic is on` |
-| Description | Choose the socket your microphone is plugged into. / Wähle den Anschluss, an dem dein Mikrofon steckt. |
+| Description | Choose the socket your microphone is plugged into. / Wähle den Anschluss, an dem dein Mikrofon steckt. / Choisissez la prise à laquelle votre micro est branché. |
 | Description source | catalog key `Choose the socket your microphone is plugged into.` |
 | Destination | `dictation` › `microphone` |
 | Dictionary tab | none |
@@ -1720,7 +1759,8 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: socket, port, channel, interface<br>phrases: choose the socket my microphone is plugged into; select the microphone channel on my audio interface |
 | Search (de) | words: Buchse, Anschluss, Kanal, Audiointerface<br>phrases: wähle die Buchse, an der mein Mikrofon steckt; stelle den Mikrofonkanal an meinem Audiointerface ein |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: prise micro, canal micro, port micro, interface audio<br>phrases: choisir la prise de mon interface audio sur laquelle le micro est branché |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-inputSocket-input"></a>
 
@@ -1741,11 +1781,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: use input 1 for this microphone; use input 2 for this microphone; select the numbered input my microphone is connected to |
 | Search (de) | phrases: nimm Eingang 1 für dieses Mikrofon; nimm Eingang 2 für dieses Mikrofon; wähle den nummerierten Eingang, an dem mein Mikrofon steckt |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: entrée 1, entrée 2, entrée numérotée<br>phrases: sélectionner le numéro de l’entrée où mon micro est branché |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-mediaDuringDictation"></a>
 
-### Media during dictation / Medien beim Diktieren (`mediaDuringDictation`)
+### Media during dictation / Medien beim Diktieren / Audio pendant la dictée (`mediaDuringDictation`)
 
 | Field | Value |
 |---|---|
@@ -1753,7 +1794,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`section.microphone`](#node-section-microphone) |
 | Title source | catalog key `Media during dictation` |
-| Description | What music and video do while you dictate. / Was beim Diktieren mit Musik und Videos passiert. |
+| Description | What music and video do while you dictate. / Was beim Diktieren mit Musik und Videos passiert. / Ce qui arrive à la musique et aux vidéos pendant que vous dictez. |
 | Description source | catalog key `What music and video do while you dictate.` |
 | Destination | `dictation` › `microphone` |
 | Dictionary tab | none |
@@ -1763,11 +1804,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: music, video, podcast, playback, media<br>phrases: what should happen to my music while I dictate; choose how videos behave during recording; change what happens to background audio during dictation |
 | Search (de) | words: Musik, Video, Podcast, Wiedergabe, Hintergrundton<br>phrases: was soll mit meiner Musik beim Diktieren passieren; stelle ein, was Videos während der Aufnahme machen; ändere, was beim Diktieren mit dem Hintergrundton passiert |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: musique, vidéo, podcast, lecture audio<br>phrases: choisir ce qui arrive à la musique et aux vidéos pendant que je dicte |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-micReadiness"></a>
 
-### Microphone readiness / Mikrofonbereitschaft (`micReadiness`)
+### Microphone readiness / Mikrofonbereitschaft / Disponibilité du micro (`micReadiness`)
 
 | Field | Value |
 |---|---|
@@ -1775,7 +1817,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`section.microphone`](#node-section-microphone) |
 | Title source | catalog key `Microphone readiness` |
-| Description | How long the mic stays ready after recording. / Wie lange das Mikrofon nach der Aufnahme bereit bleibt. |
+| Description | How long the mic stays ready after recording. / Wie lange das Mikrofon nach der Aufnahme bereit bleibt. / Durée pendant laquelle le micro reste prêt après l’enregistrement. |
 | Description source | catalog key `How long the mic stays ready after recording.` |
 | Destination | `dictation` › `microphone` |
 | Dictionary tab | none |
@@ -1785,11 +1827,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: standby, warmup, readiness<br>phrases: choose how long the microphone stays ready after recording; keep the mic ready between recordings; change the microphone standby time |
 | Search (de) | words: Standby, Bereitschaft, warmhalten<br>phrases: wie lange soll das Mikro nach der Aufnahme bereit bleiben; halte das Mikrofon zwischen Aufnahmen bereit; ändere die Bereitschaftszeit des Mikrofons |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: micro prêt, disponibilité du micro, standby micro<br>phrases: choisir combien de temps le micro reste prêt après un enregistrement |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-bluetoothGuide"></a>
 
-### Using a Bluetooth microphone? / Verwendest du ein Bluetooth-Mikrofon? (`bluetoothGuide`)
+### Using a Bluetooth microphone? / Verwendest du ein Bluetooth-Mikrofon? / Vous utilisez un micro Bluetooth ? (`bluetoothGuide`)
 
 | Field | Value |
 |---|---|
@@ -1797,7 +1840,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | feature |
 | Parent | [`section.microphone`](#node-section-microphone) |
 | Title source | catalog key `Using a Bluetooth microphone?` |
-| Description | Keeping your mic ready reduces Bluetooth startup delay. / Ein bereites Mikrofon verkürzt die Startverzögerung bei Bluetooth. |
+| Description | Keeping your mic ready reduces Bluetooth startup delay. / Ein bereites Mikrofon verkürzt die Startverzögerung bei Bluetooth. / Maintenir votre micro prêt réduit le délai de démarrage du Bluetooth. |
 | Description source | catalog key `Keeping your mic ready reduces Bluetooth startup delay.` |
 | Destination | `dictation` › `microphone` |
 | Dictionary tab | none |
@@ -1807,11 +1850,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: Bluetooth, startup<br>phrases: why does my Bluetooth mic take so long to start; how can I reduce Bluetooth microphone startup delay; explain how keeping my Bluetooth mic ready helps |
 | Search (de) | words: Bluetooth, Startverzögerung, Anlaufzeit<br>phrases: warum braucht mein Bluetooth-Mikro so lange zum Starten; wie startet mein Bluetooth-Mikro schneller; erkläre mir, warum ein bereites Mikro bei Bluetooth hilft |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: démarrage Bluetooth, retard Bluetooth, latence Bluetooth<br>phrases: pourquoi mon micro Bluetooth met du temps à démarrer |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-bluetoothGuide-learnMore"></a>
 
-### Learn more / Mehr erfahren (`bluetoothGuide.learnMore`)
+### Learn more / Mehr erfahren / En savoir plus (`bluetoothGuide.learnMore`)
 
 | Field | Value |
 |---|---|
@@ -1828,11 +1872,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: open the Bluetooth microphone startup guide; read the help about keeping a Bluetooth mic ready |
 | Search (de) | phrases: öffne die Hilfe zur Startverzögerung von Bluetooth-Mikros; zeig mir den Ratgeber zur Bereitschaft von Bluetooth-Mikrofonen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: aide Bluetooth<br>phrases: ouvrir le guide sur le délai de démarrage des micros Bluetooth |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-livePreview"></a>
 
-### Show words while you speak / Wörter beim Sprechen anzeigen (`livePreview`)
+### Show words while you speak / Wörter beim Sprechen anzeigen / Afficher les mots pendant que vous parlez (`livePreview`)
 
 | Field | Value |
 |---|---|
@@ -1840,7 +1885,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`section.livePreview`](#node-section-livePreview) |
 | Title source | catalog key `Show words while you speak` |
-| Description | See words before you finish your dictation. / Sieh den Text schon während des Diktierens. |
+| Description | See words before you finish your dictation. / Sieh den Text schon während des Diktierens. / Voir les mots avant la fin de votre dictée. |
 | Description source | catalog key `See words before you finish your dictation.` |
 | Destination | `dictation` › `livePreview` |
 | Dictionary tab | none |
@@ -1850,7 +1895,8 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: realtime, interim, live<br>phrases: show my words before I finish dictating; let me see my text while I speak; turn the live text preview on or off |
 | Search (de) | words: Echtzeit, mitlesen, Zwischentext<br>phrases: zeig mir meinen Text, bevor ich fertig diktiert habe; ich möchte meine Wörter beim Sprechen mitlesen; schalte die Live-Vorschau ein oder aus |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: texte en direct, temps réel, affichage en direct<br>phrases: activer ou désactiver l’affichage du texte pendant que je parle |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-livePreview-language"></a>
 
@@ -1862,7 +1908,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | action |
 | Parent | [`livePreview`](#node-livePreview) |
 | Title source | resolver `previewLanguage` in [SettingsMap.title(of:)](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMapRegistration.swift) |
-| Description | This changes dictation too, not just the preview. / Das ändert auch das Diktat, nicht nur die Vorschau. |
+| Description | This changes dictation too, not just the preview. / Das ändert auch das Diktat, nicht nur die Vorschau. / Cela modifie aussi la dictée, pas seulement l’aperçu. |
 | Description source | catalog key `This changes dictation too, not just the preview.` |
 | Destination | `dictation` › `livePreview` |
 | Dictionary tab | none |
@@ -1872,11 +1918,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: change the dictation language from Live Preview settings; change the preview language and dictation language together here |
 | Search (de) | phrases: ändere die Diktiersprache in den Einstellungen der Live-Vorschau; ändere hier die Sprache für Vorschau und Diktat zusammen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: changer la langue d’aperçu, langue de dictée, modifier la langue de dictée<br>phrases: changer la langue de dictée et d’aperçu depuis l’onglet Aperçu en direct |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-livePreview-browseDownloads"></a>
 
-### Browse downloads / Downloads ansehen (`livePreview.browseDownloads`)
+### Browse downloads / Downloads ansehen / Parcourir les téléchargements (`livePreview.browseDownloads`)
 
 | Field | Value |
 |---|---|
@@ -1893,11 +1940,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: browse the downloads from Live Preview settings; open the download list for the live text preview |
 | Search (de) | phrases: öffne die Downloadliste in den Einstellungen der Live-Vorschau; zeig mir die Downloads für die laufende Textvorschau |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: téléchargements de l’aperçu<br>phrases: ouvrir la liste des téléchargements depuis les réglages de l’aperçu |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-previewEngine"></a>
 
-### Preview engine / Vorschau-Engine (`previewEngine`)
+### Preview engine / Vorschau-Engine / Moteur d’aperçu (`previewEngine`)
 
 | Field | Value |
 |---|---|
@@ -1905,7 +1953,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`section.previewEngine`](#node-section-previewEngine) |
 | Title source | catalog key `Preview engine` |
-| Description | Choose which engine shows words while you speak. / Wähle die Engine, die Wörter beim Sprechen anzeigt. |
+| Description | Choose which engine shows words while you speak. / Wähle die Engine, die Wörter beim Sprechen anzeigt. / Choisissez le moteur qui affiche les mots pendant que vous parlez. |
 | Description source | catalog key `Choose which engine shows words while you speak.` |
 | Destination | `dictation` › `livePreview` |
 | Dictionary tab | none |
@@ -1915,11 +1963,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: choose which engine recognizes the live preview text; which model powers the words shown while I speak; where do I choose the preview engine |
 | Search (de) | words: Vorschaumodell<br>phrases: wähle die Engine für die Wörter in der Live-Vorschau; welches Modell erkennt den Text, den ich beim Sprechen sehe; wo wähle ich die Vorschau-Engine aus |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: moteur d’aperçu, modèle d’aperçu<br>phrases: où choisir le moteur qui reconnaît le texte de l’aperçu en direct |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-previewEngine-change"></a>
 
-### Change / Ändern (`previewEngine.change`)
+### Change / Ändern / Modifier (`previewEngine.change`)
 
 | Field | Value |
 |---|---|
@@ -1936,11 +1985,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: switch to a different live preview engine; change the model that shows words while I speak |
 | Search (de) | phrases: wechsle die Engine für die Live-Vorschau; wähle ein anderes Modell für den Text beim Sprechen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: changer de moteur d’aperçu<br>phrases: passer à un autre moteur pour l’aperçu en direct |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-previewEngine-compare"></a>
 
-### Compare engines / Engines vergleichen (`previewEngine.compare`)
+### Compare engines / Engines vergleichen / Comparer les moteurs (`previewEngine.compare`)
 
 | Field | Value |
 |---|---|
@@ -1957,11 +2007,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: comparison, differences<br>phrases: compare Apple and Universal preview engines; show me how the live preview engines differ |
 | Search (de) | words: Vergleich, Unterschiede<br>phrases: vergleiche Apple und Universal für die Live-Vorschau; zeig mir die Unterschiede zwischen den Vorschau-Engines |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: comparatif aperçu, Apple contre Universal<br>phrases: comparer Apple et Universal pour l’aperçu en direct |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-previewEngine-keepCurrent"></a>
 
-### Keep current preview engine / Aktuelle Vorschau-Engine beibehalten (`previewEngine.keepCurrent`)
+### Keep current preview engine / Aktuelle Vorschau-Engine beibehalten / Conserver le moteur d’aperçu actuel (`previewEngine.keepCurrent`)
 
 | Field | Value |
 |---|---|
@@ -1978,11 +2029,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: keep my current live preview engine; leave the preview model unchanged |
 | Search (de) | phrases: behalte meine bisherige Vorschau-Engine; lass das Modell für die Live-Vorschau unverändert |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: garder le moteur d’aperçu<br>phrases: conserver mon moteur d’aperçu actuel |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-previewEngine-universal-download"></a>
 
-### Download / Laden (`previewEngine.universal.download`)
+### Download / Laden / Télécharger (`previewEngine.universal.download`)
 
 | Field | Value |
 |---|---|
@@ -1999,11 +2051,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: download the Universal live preview model; install Universal for the text preview |
 | Search (de) | phrases: lade das Universal-Modell für die Live-Vorschau herunter; installiere Universal für die Textvorschau |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: installer Universal<br>phrases: télécharger le modèle Universal pour l’aperçu en direct |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-previewEngine-universal-cancel"></a>
 
-### Cancel / Abbrechen (`previewEngine.universal.cancel`)
+### Cancel / Abbrechen / Annuler (`previewEngine.universal.cancel`)
 
 | Field | Value |
 |---|---|
@@ -2020,11 +2073,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: cancel the Universal preview download; stop downloading the Universal live preview model |
 | Search (de) | phrases: brich den Download des Universal-Vorschaumodells ab; stoppe den Universal-Download für die Live-Vorschau |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: annuler Universal<br>phrases: arrêter le téléchargement du modèle Universal |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-previewEngine-universal-resume"></a>
 
-### Resume / Fortsetzen (`previewEngine.universal.resume`)
+### Resume / Fortsetzen / Reprendre (`previewEngine.universal.resume`)
 
 | Field | Value |
 |---|---|
@@ -2041,11 +2095,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: resume the paused Universal preview download; continue downloading Universal where it stopped |
 | Search (de) | phrases: setze den pausierten Download des Universal-Vorschaumodells fort; lade Universal an der unterbrochenen Stelle weiter |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: reprendre Universal<br>phrases: reprendre le téléchargement d’Universal là où il s’est arrêté |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-previewEngine-universal-retry"></a>
 
-### Try Again / Erneut versuchen (`previewEngine.universal.retry`)
+### Try Again / Erneut versuchen / Réessayer (`previewEngine.universal.retry`)
 
 | Field | Value |
 |---|---|
@@ -2062,11 +2117,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: retry the failed Universal preview download; try downloading the Universal preview model again |
 | Search (de) | phrases: versuche den fehlgeschlagenen Universal-Download erneut; lade das Universal-Vorschaumodell noch einmal herunter |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: réessayer Universal<br>phrases: relancer le téléchargement d’Universal après son échec |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-previewEngine-universal-remove"></a>
 
-### Remove / Entfernen (`previewEngine.universal.remove`)
+### Remove / Entfernen / Supprimer (`previewEngine.universal.remove`)
 
 | Field | Value |
 |---|---|
@@ -2083,11 +2139,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: delete the installed Universal preview model; remove the Universal live preview download from my Mac |
 | Search (de) | phrases: lösche das installierte Universal-Vorschaumodell; entferne das heruntergeladene Universal-Modell von meinem Mac |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: désinstaller Universal<br>phrases: supprimer le modèle d’aperçu Universal de mon Mac |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-previewLanguages"></a>
 
-### Languages / Sprachen (`previewLanguages`)
+### Languages / Sprachen / Langues (`previewLanguages`)
 
 | Field | Value |
 |---|---|
@@ -2104,7 +2161,8 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: installed, inventory<br>phrases: which preview languages are installed on my Mac; show the installed language packs for live preview; how many preview languages are already installed |
 | Search (de) | words: Sprachpakete, installiert<br>phrases: welche Vorschausprachen sind auf meinem Mac installiert; zeig mir die installierten Sprachpakete für die Live-Vorschau; wie viele Sprachen sind für die Vorschau schon installiert |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: langues installées, packs installés<br>phrases: quelles langues sont déjà installées pour l’aperçu en direct |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-previewLanguages-install"></a>
 
@@ -2116,7 +2174,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | action |
 | Parent | [`previewLanguages`](#node-previewLanguages) |
 | Title source | resolver `previewLanguagesInstall` in [SettingsMap.title(of:)](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMapRegistration.swift) |
-| Description | Download a language from macOS to preview it. / Lade für die Vorschau ein Sprachpaket von macOS herunter. |
+| Description | Download a language from macOS to preview it. / Lade für die Vorschau ein Sprachpaket von macOS herunter. / Téléchargez une langue depuis macOS pour en afficher un aperçu. |
 | Description source | catalog key `Download a language from macOS to preview it.` |
 | Destination | `dictation` › `livePreview` |
 | Dictionary tab | none |
@@ -2126,11 +2184,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: download another macOS language for live preview; install a new Apple language pack for the text preview |
 | Search (de) | phrases: lade eine weitere macOS-Sprache für die Live-Vorschau herunter; installiere ein neues Apple-Sprachpaket für die Textvorschau |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: installer une langue Apple<br>phrases: télécharger une nouvelle langue macOS pour l’aperçu en direct |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-pillPosition"></a>
 
-### Position on screen / Position auf dem Bildschirm (`pillPosition`)
+### Position on screen / Position auf dem Bildschirm / Position à l’écran (`pillPosition`)
 
 | Field | Value |
 |---|---|
@@ -2138,7 +2197,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`section.pill`](#node-section-pill) |
 | Title source | catalog key `Position on screen` |
-| Description | Where the pill floats while you dictate. / Wo die Aufnahmeanzeige beim Diktieren schwebt. |
+| Description | Where the pill floats while you dictate. / Wo die Aufnahmeanzeige beim Diktieren schwebt. / Où flotte la pastille pendant que vous dictez. |
 | Description source | catalog key `Where the pill floats while you dictate.` |
 | Destination | `dictation` › `pill` |
 | Dictionary tab | none |
@@ -2148,11 +2207,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: placement, location, move<br>phrases: change where the recording pill appears on screen; move the floating recording indicator; choose the recording widget's screen position |
 | Search (de) | words: verschieben, Anzeigeort, Platzierung<br>phrases: ändere, wo die Aufnahmeanzeige auf dem Bildschirm erscheint; verschiebe die schwebende Aufnahmeanzeige; stelle die Position des Aufnahmefensters ein |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: position du widget, emplacement de l’indicateur<br>phrases: régler où l’indicateur d’enregistrement apparaît à l’écran |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-pillStyle"></a>
 
-### Style / Stil (`pillStyle`)
+### Style / Stil / Style (`pillStyle`)
 
 | Field | Value |
 |---|---|
@@ -2160,7 +2220,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`section.pill`](#node-section-pill) |
 | Title source | catalog key `Style` |
-| Description | What the floating pill shows while you record. / Was die Aufnahmeanzeige während der Aufnahme zeigt. |
+| Description | What the floating pill shows while you record. / Was die Aufnahmeanzeige während der Aufnahme zeigt. / Ce qu’affiche la pastille flottante pendant l’enregistrement. |
 | Description source | catalog key `What the floating pill shows while you record.` |
 | Destination | `dictation` › `pill` |
 | Dictionary tab | none |
@@ -2170,11 +2230,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: appearance, design, layout<br>phrases: change what the recording pill looks like; choose what the floating recording indicator displays; change the recording widget design |
 | Search (de) | words: Aussehen, Design, Layout<br>phrases: ändere das Aussehen der Aufnahmeanzeige; wähle, was die schwebende Aufnahmeanzeige zeigt; stelle das Design des Aufnahmefensters ein |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: style du widget, design de l’indicateur<br>phrases: choisir l’apparence de l’indicateur flottant d’enregistrement |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-pillStyle-configureLivePreview"></a>
 
-### Configure Live Preview / Live-Vorschau einrichten (`pillStyle.configureLivePreview`)
+### Configure Live Preview / Live-Vorschau einrichten / Configurer l’Aperçu en direct (`pillStyle.configureLivePreview`)
 
 | Field | Value |
 |---|---|
@@ -2191,11 +2252,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: open Live Preview settings from the recording pill style options |
 | Search (de) | phrases: öffne die Live-Vorschau-Einstellungen bei den Stilen der Aufnahmeanzeige |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: aperçu depuis l’indicateur<br>phrases: ouvrir les réglages de l’aperçu depuis les styles de l’indicateur |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-recordingChimes"></a>
 
-### Play recording chimes / Aufnahmesignaltöne abspielen (`recordingChimes`)
+### Play recording chimes / Aufnahmesignaltöne abspielen / Lire les sons de début et de fin d’enregistrement (`recordingChimes`)
 
 | Field | Value |
 |---|---|
@@ -2203,7 +2265,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`section.chimes`](#node-section-chimes) |
 | Title source | catalog key `Play recording chimes` |
-| Description | Plays a short chime when recording starts and stops. / Spielt beim Start und Ende der Aufnahme einen kurzen Signalton. |
+| Description | Plays a short chime when recording starts and stops. / Spielt beim Start und Ende der Aufnahme einen kurzen Signalton. / Émet un bref signal sonore au début et à la fin de l’enregistrement. |
 | Description source | catalog key `Plays a short chime when recording starts and stops.` |
 | Destination | `dictation` › `chimes` |
 | Dictionary tab | none |
@@ -2213,11 +2275,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: beep, beeps, cues, chiming<br>phrases: turn recording start and stop sounds on or off; play a sound when recording begins and ends; disable the beeps at the start and end of recording |
 | Search (de) | words: piepen, Piepton, Pieptöne, Aufnahmetöne<br>phrases: schalte die Töne für Aufnahmestart und Aufnahmeende ein oder aus; spiel einen Ton, wenn die Aufnahme beginnt und endet; schalte das Piepen beim Starten und Stoppen der Aufnahme aus |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: bips, signaux sonores, sons début-fin<br>phrases: activer ou désactiver les sons au début et à la fin de l’enregistrement |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-recordingChime"></a>
 
-### RECORDING CHIMES / AUFNAHMESIGNALTÖNE (`recordingChime`)
+### RECORDING CHIMES / AUFNAHMESIGNALTÖNE / SONS D’ENREGISTREMENT (`recordingChime`)
 
 | Field | Value |
 |---|---|
@@ -2225,7 +2288,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`section.chimes`](#node-section-chimes) |
 | Title source | catalog key `RECORDING CHIMES` |
-| Description | Hear this chime without changing your choice. / Hör dir diesen Signalton an, ohne deine Auswahl zu ändern. |
+| Description | Hear this chime without changing your choice. / Hör dir diesen Signalton an, ohne deine Auswahl zu ändern. / Écoutez cette sonnerie sans modifier votre choix. |
 | Description source | catalog key `Hear this chime without changing your choice.` |
 | Destination | `dictation` › `chimes` |
 | Dictionary tab | none |
@@ -2235,7 +2298,8 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: audition, sample, listen<br>phrases: let me hear this recording sound before choosing it; play a chime sample without changing my selection; test this recording sound |
 | Search (de) | words: probehören, Klangprobe, anhören, Tonprobe<br>phrases: spiel mir diesen Aufnahmeton zur Probe vor; lass mich den Ton hören, ohne meine Auswahl zu ändern; ich möchte diesen Ton erst einmal anhören |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: échantillon sonore, essai sans sélection<br>phrases: où tester un son d’enregistrement sans modifier mon choix |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-recordingChime-preview"></a>
 
@@ -2256,11 +2320,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: listen, hear<br>phrases: play this chime for me; let me hear this sound |
 | Search (de) | words: anhören, probehören<br>phrases: spiel mir diesen Ton vor; lass mich den Klang anhören |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: écouter, écouter le son<br>phrases: faire entendre ce son d’enregistrement |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-automaticDictationPaste"></a>
 
-### Paste dictations automatically / Diktate automatisch einfügen (`automaticDictationPaste`)
+### Paste dictations automatically / Diktate automatisch einfügen / Coller automatiquement les dictées (`automaticDictationPaste`)
 
 | Field | Value |
 |---|---|
@@ -2268,7 +2333,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`section.clipboard`](#node-section-clipboard) |
 | Title source | catalog key `Paste dictations automatically` |
-| Description | Turn this off to keep your latest dictation on the clipboard for manual paste. / Wenn du das ausschaltest, bleibt dein letztes Diktat zum manuellen Einfügen in der Zwischenablage. |
+| Description | Turn this off to keep your latest dictation on the clipboard for manual paste. / Wenn du das ausschaltest, bleibt dein letztes Diktat zum manuellen Einfügen in der Zwischenablage. / Désactivez cette option pour conserver votre dernière dictée dans le presse-papiers et la coller manuellement. |
 | Description source | catalog key `Turn this off to keep your latest dictation on the clipboard for manual paste.` |
 | Destination | `dictation` › `clipboard` |
 | Dictionary tab | none |
@@ -2278,11 +2343,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: auto-paste, automatic pasting, manual paste, clipboard only<br>phrases: paste my dictation automatically; stop pasting my dictation automatically; copy every dictation to the clipboard so I can paste it myself |
 | Search (de) | words: Diktat manuell einfügen<br>phrases: automatisches Einfügen nach dem Diktieren ausschalten; letztes Diktat in der Zwischenablage behalten und selbst einfügen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: collage automatique, collage manuel, collage auto<br>phrases: coller automatiquement le texte à la fin de chaque dictée; désactiver le collage automatique des dictées; garder chaque dictée dans le presse-papiers pour la coller moi-même |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-autoCopyToClipboard"></a>
 
-### Auto-copy to clipboard / Automatisch in die Zwischenablage kopieren (`autoCopyToClipboard`)
+### Auto-copy to clipboard / Automatisch in die Zwischenablage kopieren / Copier automatiquement dans le presse-papiers (`autoCopyToClipboard`)
 
 | Field | Value |
 |---|---|
@@ -2290,7 +2356,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`section.clipboard`](#node-section-clipboard) |
 | Title source | catalog key `Auto-copy to clipboard` |
-| Description | Copies dictation when automatic pasting is skipped. / Kopiert dein Diktat, wenn das automatische Einfügen übersprungen wird. |
+| Description | Copies dictation when automatic pasting is skipped. / Kopiert dein Diktat, wenn das automatische Einfügen übersprungen wird. / Copie votre dictée lorsque le collage automatique est ignoré. |
 | Description source | catalog key `Copies dictation when automatic pasting is skipped.` |
 | Destination | `dictation` › `clipboard` |
 | Dictionary tab | none |
@@ -2300,11 +2366,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: copy my dictation when automatic pasting is skipped; keep my dictation on the clipboard if it is not pasted |
 | Search (de) | phrases: kopiere mein Diktat, wenn es nicht automatisch eingefügt wird; leg mein Diktat in die Zwischenablage, wenn das Einfügen übersprungen wird |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: copie automatique, dictée non collée<br>phrases: copier ma dictée dans le presse-papiers quand le collage automatique est ignoré |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-restoreClipboard"></a>
 
-### Restore clipboard after paste / Zwischenablage nach dem Einfügen wiederherstellen (`restoreClipboard`)
+### Restore clipboard after paste / Zwischenablage nach dem Einfügen wiederherstellen / Restaurer le presse-papiers après le collage (`restoreClipboard`)
 
 | Field | Value |
 |---|---|
@@ -2312,7 +2379,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`section.clipboard`](#node-section-clipboard) |
 | Title source | catalog key `Restore clipboard after paste` |
-| Description | Puts back what was on your clipboard before pasting. / Stellt den vorherigen Inhalt der Zwischenablage nach dem Einfügen wieder her. |
+| Description | Puts back what was on your clipboard before pasting. / Stellt den vorherigen Inhalt der Zwischenablage nach dem Einfügen wieder her. / Restaure le contenu précédent du presse-papiers après le collage. |
 | Description source | catalog key `Puts back what was on your clipboard before pasting.` |
 | Destination | `dictation` › `clipboard` |
 | Dictionary tab | none |
@@ -2322,11 +2389,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: put my previous clipboard contents back after pasting; keep what I copied before dictating |
 | Search (de) | phrases: stell nach dem Einfügen meinen alten Zwischenablageinhalt wieder her; behalte das, was ich vor dem Diktieren kopiert habe |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: contenu précédent, restauration du presse-papiers<br>phrases: remettre ce que j’avais copié avant le collage de ma dictée |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-keepOutOfClipboardHistory"></a>
 
-### Hide dictations from clipboard manager apps / Diktate vor Zwischenablage-Managern verbergen (`keepOutOfClipboardHistory`)
+### Hide dictations from clipboard manager apps / Diktate vor Zwischenablage-Managern verbergen / Masquer les dictées aux gestionnaires de presse-papiers (`keepOutOfClipboardHistory`)
 
 | Field | Value |
 |---|---|
@@ -2334,7 +2402,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`section.clipboard`](#node-section-clipboard) |
 | Title source | catalog key `Hide dictations from clipboard manager apps` |
-| Description | For apps like Raycast and Maccy. / Für Apps wie Raycast und Maccy. |
+| Description | For apps like Raycast and Maccy. / Für Apps wie Raycast und Maccy. / Pour les apps comme Raycast et Maccy. |
 | Description source | catalog key `For apps like Raycast and Maccy.` |
 | Destination | `dictation` › `clipboard` |
 | Dictionary tab | none |
@@ -2344,11 +2412,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: Raycast, Maccy, clipboard history<br>phrases: keep dictations out of clipboard history; don't save dictated text in Maccy |
 | Search (de) | words: Raycast, Maccy, Zwischenablageverlauf, Clipboard-Manager, Clipboard-Historie<br>phrases: Diktate nicht im Zwischenablageverlauf speichern; Maccy soll Diktate nicht speichern |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: Raycast, Maccy, historique du presse-papiers<br>phrases: ne pas enregistrer mes dictées dans l’historique de Raycast; masquer mes dictées à Maccy |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-smartInsertion"></a>
 
-### Smart insertion / Intelligentes Einfügen (`smartInsertion`)
+### Smart insertion / Intelligentes Einfügen / Insertion intelligente (`smartInsertion`)
 
 | Field | Value |
 |---|---|
@@ -2356,7 +2425,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`section.clipboard`](#node-section-clipboard) |
 | Title source | catalog key `Smart insertion` |
-| Description | Fits text to the spacing and capitals around your cursor. / Passt Abstände und Großschreibung an den Text um den Cursor an. |
+| Description | Fits text to the spacing and capitals around your cursor. / Passt Abstände und Großschreibung an den Text um den Cursor an. / Adapte les espaces et les majuscules au texte autour du curseur. |
 | Description source | catalog key `Fits text to the spacing and capitals around your cursor.` |
 | Destination | `dictation` › `clipboard` |
 | Dictionary tab | none |
@@ -2366,11 +2435,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: spacing, capitalization, spaces, cursor<br>phrases: fit the spaces around my cursor; match capital letters to the surrounding text |
 | Search (de) | words: Leerzeichen, Großschreibung, Abstände, Cursor<br>phrases: pass die Leerzeichen an den Text um den Cursor an; pass die Großschreibung an den umgebenden Text an |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: espaces, majuscules, curseur, espacement<br>phrases: adapter les espaces et les majuscules au texte autour du curseur |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-quickAddClipboardFallback"></a>
 
-### Read selections through the clipboard / Auswahl über die Zwischenablage lesen (`quickAddClipboardFallback`)
+### Read selections through the clipboard / Auswahl über die Zwischenablage lesen / Lire les sélections via le presse-papiers (`quickAddClipboardFallback`)
 
 | Field | Value |
 |---|---|
@@ -2378,7 +2448,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`section.quickAddClipboard`](#node-section-quickAddClipboard) |
 | Title source | catalog key `Read selections through the clipboard` |
-| Description | Reads hidden selections and restores your clipboard. / Liest verborgene Auswahlen und stellt die Zwischenablage wieder her. |
+| Description | Reads hidden selections and restores your clipboard. / Liest verborgene Auswahlen und stellt die Zwischenablage wieder her. / Lit les sélections masquées et restaure votre presse-papiers. |
 | Description source | catalog key `Reads hidden selections and restores your clipboard.` |
 | Destination | `dictation` › `clipboard` |
 | Dictionary tab | none |
@@ -2388,11 +2458,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: use the clipboard to read a selected dictionary word; read my selected word when the app hides the selection |
 | Search (de) | phrases: lies das markierte Wort fürs Wörterbuch über die Zwischenablage; erkenne mein markiertes Wort auch dann, wenn die App die Auswahl nicht freigibt |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: sélection masquée, lecture du presse-papiers<br>phrases: utiliser le presse-papiers pour lire le mot sélectionné quand l’application masque la sélection |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-recordingMode"></a>
 
-### Recording mode / Aufnahmemodus (`recordingMode`)
+### Recording mode / Aufnahmemodus / Mode d’enregistrement (`recordingMode`)
 
 | Field | Value |
 |---|---|
@@ -2400,7 +2471,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`section.keybindsRecording`](#node-section-keybindsRecording) |
 | Title source | catalog key `Recording mode` |
-| Description | Hold to talk, or press once to start and again to stop. / Zum Sprechen gedrückt halten oder einmal zum Starten und noch einmal zum Stoppen drücken. |
+| Description | Hold to talk, or press once to start and again to stop. / Zum Sprechen gedrückt halten oder einmal zum Starten und noch einmal zum Stoppen drücken. / Maintenez la touche enfoncée pour parler, ou appuyez une fois pour démarrer et une autre fois pour arrêter. |
 | Description source | catalog key `Hold to talk, or press once to start and again to stop.` |
 | Destination | `keybinds` |
 | Dictionary tab | none |
@@ -2410,11 +2481,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: behavior, activation<br>phrases: change how the dictation key works; choose between holding the key and pressing it twice |
 | Search (de) | words: Tastenverhalten, Bedienung<br>phrases: stell ein, wie die Diktattaste funktioniert; lass mich zwischen Gedrückthalten und zweimaligem Drücken wählen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: mode d’activation, comportement de la touche<br>phrases: régler le fonctionnement de la touche de dictée |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-recordKeybind"></a>
 
-### Start / stop recording / Aufnahme starten / stoppen (`recordKeybind`)
+### Start / stop recording / Aufnahme starten / stoppen / Démarrer/arrêter l’enregistrement (`recordKeybind`)
 
 | Field | Value |
 |---|---|
@@ -2422,7 +2494,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`section.keybindsRecording`](#node-section-keybindsRecording) |
 | Title source | catalog key `Start / stop recording` |
-| Description | Click Change to choose the keys you use. / Klicke auf „Ändern“, um deine Tasten festzulegen. |
+| Description | Click Change to choose the keys you use. / Klicke auf „Ändern“, um deine Tasten festzulegen. / Cliquez sur « Modifier » pour choisir les touches que vous utilisez. |
 | Description source | catalog key `Click Change to choose the keys you use.` |
 | Destination | `keybinds` |
 | Dictionary tab | none |
@@ -2432,11 +2504,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: change my dictation shortcut; choose the keys that start and stop recording |
 | Search (de) | words: Diktattaste, Diktierkürzel<br>phrases: ändere mein Tastenkürzel fürs Diktieren; leg die Tasten zum Starten und Stoppen der Aufnahme fest |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: raccourci dictée, touche d’enregistrement<br>phrases: choisir les touches qui démarrent et arrêtent la dictée |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-cancelKeybind"></a>
 
-### Cancel recording / Aufnahme abbrechen (`cancelKeybind`)
+### Cancel recording / Aufnahme abbrechen / Annuler l’enregistrement (`cancelKeybind`)
 
 | Field | Value |
 |---|---|
@@ -2444,7 +2517,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`section.keybindsRecording`](#node-section-keybindsRecording) |
 | Title source | catalog key `Cancel recording` |
-| Description | Cancels the current recording. / Bricht die laufende Aufnahme ab. |
+| Description | Cancels the current recording. / Bricht die laufende Aufnahme ab. / Annule l’enregistrement en cours. |
 | Description source | catalog key `Cancels the current recording.` |
 | Destination | `keybinds` |
 | Dictionary tab | none |
@@ -2454,11 +2527,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: abort<br>phrases: change the shortcut that cancels recording; choose a key to discard the current recording |
 | Search (de) | words: Abbruchtaste, Abbruchkürzel<br>phrases: ändere mein Tastenkürzel zum Abbrechen der Aufnahme; leg eine Taste zum Verwerfen der laufenden Aufnahme fest |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: raccourci annulation, touche d’annulation<br>phrases: choisir la touche qui annule l’enregistrement en cours |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-escapeRecovery"></a>
 
-### Escape Recovery / Wiederherstellung bei Escape (`escapeRecovery`)
+### Escape Recovery / Wiederherstellung bei Escape / Récupération avec Échap (`escapeRecovery`)
 
 | Field | Value |
 |---|---|
@@ -2466,7 +2540,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`section.keybindsRecording`](#node-section-keybindsRecording) |
 | Title source | catalog key `Escape Recovery` |
-| Description | Keeps cancelled dictations in History for 24 hours. / Behält abgebrochene Diktate 24 Stunden lang im Verlauf. |
+| Description | Keeps cancelled dictations in History for 24 hours. / Behält abgebrochene Diktate 24 Stunden lang im Verlauf. / Conserve les dictées annulées dans l’Historique pendant 24 heures. |
 | Description source | catalog key `Keeps cancelled dictations in History for 24 hours.` |
 | Destination | `keybinds` |
 | Dictionary tab | none |
@@ -2476,11 +2550,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: recover, recovery, history<br>phrases: keep cancelled dictations for 24 hours; recover my dictation after I accidentally press escape |
 | Search (de) | words: retten, Verlauf, Wiederherstellung<br>phrases: bewahre abgebrochene Diktate 24 Stunden lang auf; rette mein Diktat, wenn ich versehentlich Escape drücke |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: dictée annulée, récupération, Échap, historique 24 h<br>phrases: garder les dictées annulées dans l’historique pendant 24 heures; récupérer ma dictée après un appui accidentel sur Échap |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-quickAddKeybind"></a>
 
-### Add selected word to Dictionary / Markiertes Wort zum Wörterbuch hinzufügen (`quickAddKeybind`)
+### Add selected word to Dictionary / Markiertes Wort zum Wörterbuch hinzufügen / Ajouter le mot sélectionné au Dictionnaire (`quickAddKeybind`)
 
 | Field | Value |
 |---|---|
@@ -2488,7 +2563,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`section.keybindsShortcuts`](#node-section-keybindsShortcuts) |
 | Title source | catalog key `Add selected word to Dictionary` |
-| Description | Select a misheard word, then press these keys. / Markiere ein falsch erkanntes Wort und drücke dann diese Tasten. |
+| Description | Select a misheard word, then press these keys. / Markiere ein falsch erkanntes Wort und drücke dann diese Tasten. / Sélectionnez un mot mal reconnu, puis appuyez sur ces touches. |
 | Description source | catalog key `Select a misheard word, then press these keys.` |
 | Destination | `keybinds` |
 | Dictionary tab | none |
@@ -2498,11 +2573,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: misheard, vocabulary<br>phrases: set a shortcut to add a selected word to the dictionary; add a misheard word with a key press |
 | Search (de) | words: Wortschatz, Wörterbuchkürzel<br>phrases: leg ein Tastenkürzel zum Hinzufügen markierter Wörter fest; füge ein falsch erkanntes Wort per Tastendruck zum Wörterbuch hinzu |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: raccourci dictionnaire, touches ajout rapide<br>phrases: définir les touches pour ajouter un mot sélectionné au dictionnaire |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-pasteLastKeybind"></a>
 
-### Paste last dictation / Letztes Diktat einfügen (`pasteLastKeybind`)
+### Paste last dictation / Letztes Diktat einfügen / Coller la dernière dictée (`pasteLastKeybind`)
 
 | Field | Value |
 |---|---|
@@ -2510,7 +2586,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`section.keybindsShortcuts`](#node-section-keybindsShortcuts) |
 | Title source | catalog key `Paste last dictation` |
-| Description | Pastes your last dictation. / Fügt dein letztes Diktat ein. |
+| Description | Pastes your last dictation. / Fügt dein letztes Diktat ein. / Colle votre dernière dictée. |
 | Description source | catalog key `Pastes your last dictation.` |
 | Destination | `keybinds` |
 | Dictionary tab | none |
@@ -2520,11 +2596,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: reinsert<br>phrases: set a shortcut to paste my last dictation; insert what I just dictated again |
 | Search (de) | phrases: leg ein Tastenkürzel zum Einfügen meines letzten Diktats fest; füge meinen zuletzt diktierten Text nochmal ein |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: recoller, raccourci collage<br>phrases: définir un raccourci pour coller à nouveau ma dernière dictée |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-copyLastKeybind"></a>
 
-### Copy last dictation / Letztes Diktat kopieren (`copyLastKeybind`)
+### Copy last dictation / Letztes Diktat kopieren / Copier la dernière dictée (`copyLastKeybind`)
 
 | Field | Value |
 |---|---|
@@ -2532,7 +2609,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`section.keybindsShortcuts`](#node-section-keybindsShortcuts) |
 | Title source | catalog key `Copy last dictation` |
-| Description | Copies your last dictation. / Kopiert dein letztes Diktat. |
+| Description | Copies your last dictation. / Kopiert dein letztes Diktat. / Copie votre dernière dictée. |
 | Description source | catalog key `Copies your last dictation.` |
 | Destination | `keybinds` |
 | Dictionary tab | none |
@@ -2542,11 +2619,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: set a shortcut to copy my last dictation; copy what I just dictated to the clipboard |
 | Search (de) | phrases: leg ein Tastenkürzel zum Kopieren meines letzten Diktats fest; kopiere meinen zuletzt diktierten Text in die Zwischenablage |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: raccourci copie, copie dernière dictée<br>phrases: définir un raccourci pour copier ma dernière dictée |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-keybind-resetToDefault"></a>
 
-### Reset to default / Auf Standard zurücksetzen (`keybind.resetToDefault`)
+### Reset to default / Auf Standard zurücksetzen / Rétablir par défaut (`keybind.resetToDefault`)
 
 | Field | Value |
 |---|---|
@@ -2563,7 +2641,8 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: reset, default<br>phrases: restore this shortcut's original keys |
 | Search (de) | words: zurücksetzen, Standard<br>phrases: stell die ursprünglichen Tasten für dieses Kürzel wieder her |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: réinitialiser le raccourci<br>phrases: remettre les touches d’origine de ce raccourci |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-transcribeFile-steps"></a>
 
@@ -2584,11 +2663,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: stages, steps, progress<br>phrases: show the steps from uploading a file to the finished transcript; show which stage my file transcription is at |
 | Search (de) | words: Schritte, Ablauf, Fortschritt<br>phrases: zeig mir die Schritte von der Datei bis zum fertigen Text; zeig mir, bei welchem Schritt die Dateitranskription gerade ist |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: étapes, avancement, progression<br>phrases: voir à quelle étape en est la transcription de mon fichier |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetingCaptureCallSound"></a>
 
-### Record only my voice / Nur meine Stimme aufnehmen (`meetingCaptureCallSound`)
+### Record only my voice / Nur meine Stimme aufnehmen / Enregistrer uniquement ma voix (`meetingCaptureCallSound`)
 
 | Field | Value |
 |---|---|
@@ -2596,7 +2676,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`meetings.tab.general`](#node-meetings-tab-general) |
 | Title source | catalog key `Record only my voice` |
-| Description | Leaves out the sound your Mac plays, like the other people on a call. / Lässt den Ton weg, den dein Mac abspielt, zum Beispiel die Stimmen anderer Personen bei einem Anruf. |
+| Description | Leaves out the sound your Mac plays, like the other people on a call. / Lässt den Ton weg, den dein Mac abspielt, zum Beispiel die Stimmen anderer Personen bei einem Anruf. / Omet les sons diffusés par votre Mac, comme les voix des autres participants à un appel. |
 | Description source | catalog key `Leaves out the sound your Mac plays, like the other people on a call.` |
 | Destination | `meetings` › `general` |
 | Dictionary tab | none |
@@ -2606,11 +2686,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: don't record computer audio; leave out other people's voices on calls |
 | Search (de) | phrases: lass den Ton vom Mac bei Aufnahmen weg; nimm die anderen im Anruf nicht auf |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | phrases: ne pas enregistrer le son de l'ordinateur; ne pas enregistrer les autres pendant un appel |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetingWriteSummary"></a>
 
-### Write a summary when a meeting ends / Zusammenfassung erstellen, wenn ein Meeting endet (`meetingWriteSummary`)
+### Write a summary when a meeting ends / Zusammenfassung erstellen, wenn ein Meeting endet / Rédiger un résumé à la fin d’une réunion (`meetingWriteSummary`)
 
 | Field | Value |
 |---|---|
@@ -2618,7 +2699,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`meetings.tab.summaries`](#node-meetings-tab-summaries) |
 | Title source | catalog key `Write a summary when a meeting ends` |
-| Description | The summary engine on this tab writes a summary of each meeting. / Die Zusammenfassungs-Engine in diesem Tab erstellt eine Zusammenfassung für jedes Meeting. |
+| Description | The summary engine on this tab writes a summary of each meeting. / Die Zusammenfassungs-Engine in diesem Tab erstellt eine Zusammenfassung für jedes Meeting. / Le moteur de résumé de cet onglet crée un résumé pour chaque réunion. |
 | Description source | catalog key `The summary engine on this tab writes a summary of each meeting.` |
 | Destination | `meetings` › `summaries` |
 | Dictionary tab | none |
@@ -2628,11 +2709,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: automatically summarize meetings; write a summary when a meeting ends |
 | Search (de) | phrases: nach jedem Meeting automatisch eine Zusammenfassung erstellen; automatische Meetingzusammenfassung nach Meetingende einschalten |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | phrases: résumer la réunion une fois terminée; résumé automatique des réunions |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetingSummaryEngine"></a>
 
-### Summary engine / Zusammenfassungs-Engine (`meetingSummaryEngine`)
+### Summary engine / Zusammenfassungs-Engine / Moteur de résumé (`meetingSummaryEngine`)
 
 | Field | Value |
 |---|---|
@@ -2640,7 +2722,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`meetings.tab.summaries`](#node-meetings-tab-summaries) |
 | Title source | catalog key `Summary engine` |
-| Description | The AI that writes your meeting summaries. Separate from AI Polish for dictation. / Die KI, die deine Meeting-Zusammenfassungen erstellt. Getrennt von der KI-Nachbearbeitung für Diktate. |
+| Description | The AI that writes your meeting summaries. Separate from AI Polish for dictation. / Die KI, die deine Meeting-Zusammenfassungen erstellt. Getrennt von der KI-Nachbearbeitung für Diktate. / L’IA qui rédige les résumés de vos réunions. Indépendante de la Retouche IA pour les dictées. |
 | Description source | catalog key `The AI that writes your meeting summaries. Separate from AI Polish for dictation.` |
 | Destination | `meetings` › `summaries` |
 | Dictionary tab | none |
@@ -2650,11 +2732,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: which AI writes my meeting summaries; meeting summary engine setup |
 | Search (de) | words: Zusammenfassungsmodell<br>phrases: welche KI erstellt deine Meetingzusammenfassungen; Engine für Meetingzusammenfassungen einstellen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: moteur de résumé des réunions<br>phrases: quelle ia rédige mes résumés de réunion; configurer le moteur de résumé des réunions |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetingSummaryEngine-change"></a>
 
-### Change / Ändern (`meetingSummaryEngine.change`)
+### Change / Ändern / Modifier (`meetingSummaryEngine.change`)
 
 | Field | Value |
 |---|---|
@@ -2671,11 +2754,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: change AI for meeting summaries |
 | Search (de) | phrases: andere KI für Meetingzusammenfassungen auswählen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | phrases: changer l’ia pour les résumés de réunion |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetingSummaryEngine-keepCurrent"></a>
 
-### Keep current summary engine / Aktuelle Zusammenfassungs-Engine beibehalten (`meetingSummaryEngine.keepCurrent`)
+### Keep current summary engine / Aktuelle Zusammenfassungs-Engine beibehalten / Conserver le moteur de résumé actuel (`meetingSummaryEngine.keepCurrent`)
 
 | Field | Value |
 |---|---|
@@ -2692,11 +2776,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: keep using the same AI for meeting summaries |
 | Search (de) | phrases: bisherige KI für Meetingzusammenfassungen behalten |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | phrases: garder la même ia pour les résumés de réunion |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetingTurnsOffDictation"></a>
 
-### Turn off dictation during meetings / Diktieren während Meetings ausschalten (`meetingTurnsOffDictation`)
+### Turn off dictation during meetings / Diktieren während Meetings ausschalten / Désactiver la dictée pendant les réunions (`meetingTurnsOffDictation`)
 
 | Field | Value |
 |---|---|
@@ -2704,7 +2789,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`meetings.tab.general`](#node-meetings-tab-general) |
 | Title source | catalog key `Turn off dictation during meetings` |
-| Description | The dictation key records nothing while a meeting is recording. / Solange ein Meeting aufgenommen wird, startet die Diktiertaste kein Diktat. |
+| Description | The dictation key records nothing while a meeting is recording. / Solange ein Meeting aufgenommen wird, startet die Diktiertaste kein Diktat. / La touche de dictée ne lance aucune dictée pendant l’enregistrement d’une réunion. |
 | Description source | catalog key `The dictation key records nothing while a meeting is recording.` |
 | Destination | `meetings` › `general` |
 | Dictionary tab | none |
@@ -2714,11 +2799,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: disable dictation while recording a meeting; dictation key does nothing during meeting recording |
 | Search (de) | words: Meetingaufnahme, Besprechung<br>phrases: während einer Meetingaufnahme kein Diktat starten; schalte Diktieren im Meeting aus |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | phrases: bloquer la dictée pendant l’enregistrement d’une réunion; la touche de dictée ne fonctionne pas pendant l’enregistrement d’une réunion |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetingFollowsCallMute"></a>
 
-### Leave my voice out when I'm muted / Meine Stimme weglassen, wenn ich stummgeschaltet bin (`meetingFollowsCallMute`)
+### Leave my voice out when I'm muted / Meine Stimme weglassen, wenn ich stummgeschaltet bin / Ne pas enregistrer ma voix quand mon micro est coupé (`meetingFollowsCallMute`)
 
 | Field | Value |
 |---|---|
@@ -2726,7 +2812,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`meetings.tab.general`](#node-meetings-tab-general) |
 | Title source | catalog key `Leave my voice out when I'm muted` |
-| Description | Follows the mute button in supported Zoom, Teams and Google Meet calls. / Richtet sich nach deiner Stummschaltung in unterstützten Anrufen mit Zoom, Teams und Google Meet. |
+| Description | Follows the mute button in supported Zoom, Teams and Google Meet calls. / Richtet sich nach deiner Stummschaltung in unterstützten Anrufen mit Zoom, Teams und Google Meet. / Suit le bouton de désactivation du son lors des appels pris en charge sur Zoom, Teams et Google Meet. |
 | Description source | catalog key `Follows the mute button in supported Zoom, Teams and Google Meet calls.` |
 | Destination | `meetings` › `general` |
 | Dictionary tab | none |
@@ -2736,11 +2822,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: leave my voice out of the meeting recording when I'm muted; record my mic even when I'm muted in a meeting |
 | Search (de) | words: Stummschaltung, stummgeschaltet, Mikrofon, Stimme<br>phrases: meine Stimme nicht aufnehmen, wenn ich stumm bin; Stimme bei Stummschaltung weglassen; Stummschaltung in Google Meet |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: sourdine, mute<br>phrases: ne pas enregistrer ma voix quand je suis en sourdine dans l’appel; exclure mon micro de l’enregistrement quand il est coupé dans Teams |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetingLiveWords"></a>
 
-### Live Preview / Live-Vorschau (`meetingLiveWords`)
+### Live Preview / Live-Vorschau / Aperçu en direct (`meetingLiveWords`)
 
 | Field | Value |
 |---|---|
@@ -2748,7 +2835,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`meetings.tab.models`](#node-meetings-tab-models) |
 | Title source | catalog key `Live Preview` |
-| Description | The engine and language for words shown while a meeting records. / Engine und Sprache für die Live-Vorschau während einer Meeting-Aufnahme. |
+| Description | The engine and language for words shown while a meeting records. / Engine und Sprache für die Live-Vorschau während einer Meeting-Aufnahme. / Le moteur et la langue des mots affichés pendant l’enregistrement d’une réunion. |
 | Description source | catalog key `The engine and language for words shown while a meeting records.` |
 | Destination | `meetings` › `models` |
 | Dictionary tab | none |
@@ -2758,11 +2845,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: live meeting transcript, real-time meeting text<br>phrases: change meeting live transcript language; choose engine for live meeting transcription |
 | Search (de) | words: Live-Vorschau, Live-Transkript, Engine<br>phrases: Engine für die Live-Vorschau im Meeting wählen; Live-Vorschau für Meetings einrichten |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | phrases: choisir le moteur de l’aperçu en direct des réunions dans EnviousMeet; régler le moteur et la langue du texte affiché pendant une réunion |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetingLiveWords-change"></a>
 
-### Change / Ändern (`meetingLiveWords.change`)
+### Change / Ändern / Modifier (`meetingLiveWords.change`)
 
 | Field | Value |
 |---|---|
@@ -2779,11 +2867,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: open the Live Preview engine choices in EnviousMeet |
 | Search (de) | phrases: Engine für die Live-Vorschau im Meeting ändern |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | phrases: afficher les moteurs disponibles pour la transcription en direct des réunions dans EnviousMeet |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetingLiveWords-keepCurrent"></a>
 
-### Keep current Live Preview engine / Aktuelle Live-Vorschau-Engine beibehalten (`meetingLiveWords.keepCurrent`)
+### Keep current Live Preview engine / Aktuelle Live-Vorschau-Engine beibehalten / Conserver le moteur actuel d’Aperçu en direct (`meetingLiveWords.keepCurrent`)
 
 | Field | Value |
 |---|---|
@@ -2800,11 +2889,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: keep using the same engine for live meeting transcription |
 | Search (de) | phrases: bisherige Engine für die Live-Vorschau im Meeting behalten |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | phrases: fermer le choix des moteurs sans changer le moteur de l’aperçu en direct des réunions dans EnviousMeet |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetingLiveWordsLanguage"></a>
 
-### Live Preview language / Sprache der Live-Vorschau (`meetingLiveWordsLanguage`)
+### Live Preview language / Sprache der Live-Vorschau / Langue de l’Aperçu en direct (`meetingLiveWordsLanguage`)
 
 | Field | Value |
 |---|---|
@@ -2812,7 +2902,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`meetings.tab.models`](#node-meetings-tab-models) |
 | Title source | catalog key `Live Preview language` |
-| Description | The language Live Preview listens for during a meeting. / Die Sprache, die die Live-Vorschau während eines Meetings erkennt. |
+| Description | The language Live Preview listens for during a meeting. / Die Sprache, die die Live-Vorschau während eines Meetings erkennt. / La langue que l’Aperçu en direct écoute pendant une réunion. |
 | Description source | catalog key `The language Live Preview listens for during a meeting.` |
 | Destination | `meetings` › `models` |
 | Dictionary tab | none |
@@ -2822,11 +2912,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: change the live preview language for meetings; change the language of text shown while recording a meeting |
 | Search (de) | words: Sprache, Live-Vorschau, Live-Text, Meeting<br>phrases: Sprache der Live-Vorschau ändern; Sprache für Live-Text im Meeting |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | phrases: changer la langue de l’aperçu en direct d’une réunion dans EnviousMeet |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetingTranscriptEngine"></a>
 
-### Transcript engine / Transkript-Engine (`meetingTranscriptEngine`)
+### Transcript engine / Transkript-Engine / Moteur de transcription (`meetingTranscriptEngine`)
 
 | Field | Value |
 |---|---|
@@ -2834,7 +2925,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`meetings.tab.models`](#node-meetings-tab-models) |
 | Title source | catalog key `Transcript engine` |
-| Description | Chooses the engine that writes the full transcript after a meeting. / Wählt die Engine, die nach einem Meeting das vollständige Transkript erstellt. |
+| Description | Chooses the engine that writes the full transcript after a meeting. / Wählt die Engine, die nach einem Meeting das vollständige Transkript erstellt. / Choisit le moteur qui rédige la transcription complète après une réunion. |
 | Description source | catalog key `Chooses the engine that writes the full transcript after a meeting.` |
 | Destination | `meetings` › `models` |
 | Dictionary tab | none |
@@ -2844,11 +2935,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: meeting transcript engine<br>phrases: choose model for the full meeting transcript; change the engine for full meeting transcripts |
 | Search (de) | phrases: Modell für das vollständige Meetingtranskript auswählen; Engine für die Transkription nach dem Meeting ändern |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | phrases: choisir le moteur qui transcrit toute la réunion une fois terminée; changer le moteur de transcription complète des réunions |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetingTranscriptEngine-change"></a>
 
-### Change / Ändern (`meetingTranscriptEngine.change`)
+### Change / Ändern / Modifier (`meetingTranscriptEngine.change`)
 
 | Field | Value |
 |---|---|
@@ -2865,11 +2957,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: open the full meeting transcript engine choices in EnviousMeet |
 | Search (de) | phrases: Engine für das Transkript nach dem Meeting ändern |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | phrases: afficher les moteurs disponibles pour transcrire toute la réunion après l’enregistrement dans EnviousMeet |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetingTranscriptEngine-keepCurrent"></a>
 
-### Keep current transcript engine / Aktuelle Transkript-Engine beibehalten (`meetingTranscriptEngine.keepCurrent`)
+### Keep current transcript engine / Aktuelle Transkript-Engine beibehalten / Conserver le moteur de transcription actuel (`meetingTranscriptEngine.keepCurrent`)
 
 | Field | Value |
 |---|---|
@@ -2886,11 +2979,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: keep using the same engine for meeting transcripts |
 | Search (de) | phrases: bisherige Engine für das Transkript nach dem Meeting behalten |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | phrases: fermer le choix des moteurs sans changer celui qui transcrit toute la réunion après l’enregistrement dans EnviousMeet |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetingTranscriptAutoDetect"></a>
 
-### Auto-detect language / Sprache automatisch erkennen (`meetingTranscriptAutoDetect`)
+### Auto-detect language / Sprache automatisch erkennen / Détecter automatiquement la langue (`meetingTranscriptAutoDetect`)
 
 | Field | Value |
 |---|---|
@@ -2907,11 +3001,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: automatically detect the language for the full meeting transcript; turn off automatic language detection for meeting transcripts |
 | Search (de) | words: Transkript, Spracherkennung, automatisch<br>phrases: Sprache des Transkripts automatisch erkennen; automatische Spracherkennung im Meeting |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | phrases: détecter automatiquement la langue pour transcrire la réunion une fois terminée; désactiver la détection automatique de la langue pour la transcription des réunions |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetingTranscriptLanguage"></a>
 
-### Transcript language / Transkriptsprache (`meetingTranscriptLanguage`)
+### Transcript language / Transkriptsprache / Langue de transcription (`meetingTranscriptLanguage`)
 
 | Field | Value |
 |---|---|
@@ -2919,7 +3014,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`meetings.tab.models`](#node-meetings-tab-models) |
 | Title source | catalog key `Transcript language` |
-| Description | The language of the full transcript written after a meeting. / Die Sprache des vollständigen Transkripts, das nach einem Meeting erstellt wird. |
+| Description | The language of the full transcript written after a meeting. / Die Sprache des vollständigen Transkripts, das nach einem Meeting erstellt wird. / La langue de la transcription complète créée après une réunion. |
 | Description source | catalog key `The language of the full transcript written after a meeting.` |
 | Destination | `meetings` › `models` |
 | Dictionary tab | none |
@@ -2929,11 +3024,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: change meeting transcript language; language of the full transcript after a meeting |
 | Search (de) | phrases: ändere die Sprache für das vollständige Transkript nach dem Meeting; in welcher Sprache wird das vollständige Transkript nach dem Meeting erstellt |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | phrases: choisir la langue de la transcription complète des prochaines réunions; langue du texte intégral après la réunion |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetingSpeakerLabels"></a>
 
-### Speaker labels / Sprecherkennzeichnung (`meetingSpeakerLabels`)
+### Speaker labels / Sprecherkennzeichnung / Libellés des intervenants (`meetingSpeakerLabels`)
 
 | Field | Value |
 |---|---|
@@ -2941,7 +3037,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | feature |
 | Parent | [`meetings.tab.models`](#node-meetings-tab-models) |
 | Title source | catalog key `Speaker labels` |
-| Description | Shows who is talking in Live Preview while a meeting records. / Zeigt in der Live-Vorschau, wer gerade spricht, während ein Meeting aufgenommen wird. |
+| Description | Shows who is talking in Live Preview while a meeting records. / Zeigt in der Live-Vorschau, wer gerade spricht, während ein Meeting aufgenommen wird. / Affiche l’intervenant dans l’Aperçu en direct pendant l’enregistrement d’une réunion. |
 | Description source | catalog key `Shows who is talking in Live Preview while a meeting records.` |
 | Destination | `meetings` › `models` |
 | Dictionary tab | none |
@@ -2951,11 +3047,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: diarization, speaker identification, speaker labels<br>phrases: who is talking in the meeting; show who is speaking in live preview |
 | Search (de) | words: Sprecherzuordnung, Sprechererkennung, Sprechermodell<br>phrases: wer spricht gerade im Meeting; unterscheide Stimmen im Meeting |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: locuteurs, distinction des voix<br>phrases: qui parle en ce moment dans la réunion; afficher qui parle dans l’aperçu en direct |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetingUseCalendarForNames"></a>
 
-### Name meetings from my calendar / Meetings nach meinem Kalender benennen (`meetingUseCalendarForNames`)
+### Name meetings from my calendar / Meetings nach meinem Kalender benennen / Nommer les réunions d’après mon calendrier (`meetingUseCalendarForNames`)
 
 | Field | Value |
 |---|---|
@@ -2963,7 +3060,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`meetings.tab.general`](#node-meetings-tab-general) |
 | Title source | catalog key `Name meetings from my calendar` |
-| Description | Uses the title of the calendar event at the time the meeting starts. / Nutzt den Titel des Kalendertermins zum Zeitpunkt, an dem das Meeting beginnt. |
+| Description | Uses the title of the calendar event at the time the meeting starts. / Nutzt den Titel des Kalendertermins zum Zeitpunkt, an dem das Meeting beginnt. / Utilise le titre de l’événement du calendrier au moment où la réunion commence. |
 | Description source | catalog key `Uses the title of the calendar event at the time the meeting starts.` |
 | Destination | `meetings` › `general` |
 | Dictionary tab | none |
@@ -2973,11 +3070,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: automatic naming, event title<br>phrases: use the calendar event title as the meeting name; automatically name meetings from calendar events |
 | Search (de) | words: Terminname<br>phrases: nimm den Termintitel als Meetingnamen; benenne meine Meetings automatisch nach dem Kalender |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: calendrier, titre de l’événement<br>phrases: utiliser le titre de l’événement du calendrier comme nom de réunion; nommer automatiquement les réunions d’après mon calendrier |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetingCallDetection"></a>
 
-### When a call starts / Wenn ein Anruf beginnt (`meetingCallDetection`)
+### When a call starts / Wenn ein Anruf beginnt / Au début d’un appel (`meetingCallDetection`)
 
 | Field | Value |
 |---|---|
@@ -2985,7 +3083,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`meetings.tab.general`](#node-meetings-tab-general) |
 | Title source | catalog key `When a call starts` |
-| Description | EnviousMeet can ask to record when a call app starts using your microphone. / EnviousMeet kann dich fragen, ob du einen Anruf aufnehmen möchtest, sobald eine Anruf-App dein Mikrofon nutzt. |
+| Description | EnviousMeet can ask to record when a call app starts using your microphone. / EnviousMeet kann dich fragen, ob du einen Anruf aufnehmen möchtest, sobald eine Anruf-App dein Mikrofon nutzt. / EnviousMeet peut vous proposer d’enregistrer lorsqu’une app d’appel commence à utiliser votre micro. |
 | Description source | catalog key `EnviousMeet can ask to record when a call app starts using your microphone.` |
 | Destination | `meetings` › `general` |
 | Dictionary tab | none |
@@ -2995,11 +3093,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: call detection, recording prompt<br>phrases: ask me if I want to record a call; detect calls when an app uses my microphone |
 | Search (de) | words: Anruferkennung, Aufnahmeabfrage<br>phrases: frag mich, ob ich den Anruf aufnehmen möchte; starte die Meetingaufnahme automatisch, wenn ein Anruf beginnt; schalte die automatische Anruferkennung aus |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: détection des appels, enregistrement automatique<br>phrases: me demander si je veux enregistrer l’appel; enregistrer automatiquement quand un appel commence; désactiver la détection des appels |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetingCallApps"></a>
 
-### Notice calls in / Anrufe erkennen in (`meetingCallApps`)
+### Notice calls in / Anrufe erkennen in / Détecter les appels dans (`meetingCallApps`)
 
 | Field | Value |
 |---|---|
@@ -3007,7 +3106,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`meetings.tab.callApps`](#node-meetings-tab-callApps) |
 | Title source | catalog key `Notice calls in` |
-| Description | Turn off an app to never be asked about its calls. / Wenn du eine App ausschaltest, fragt EnviousMeet bei Anrufen über diese App nicht mehr nach. |
+| Description | Turn off an app to never be asked about its calls. / Wenn du eine App ausschaltest, fragt EnviousMeet bei Anrufen über diese App nicht mehr nach. / Désactivez une app pour ne plus recevoir de demande concernant ses appels. |
 | Description source | catalog key `Turn off an app to never be asked about its calls.` |
 | Destination | `meetings` › `callApps` |
 | Dictionary tab | none |
@@ -3017,11 +3116,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: call apps<br>phrases: choose which apps to detect calls in; stop asking about calls in this app |
 | Search (de) | words: Anruferkennung<br>phrases: wähle aus, in welchen Apps Anrufe erkannt werden; frag mich bei Anrufen in dieser App nicht mehr nach einer Aufnahme; schalte die Anruferkennung für einzelne Apps aus |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | phrases: choisir les applis où détecter les appels; ne plus me proposer d’enregistrer les appels de cette appli |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-enableAIPolish"></a>
 
-### Enable AI Polish / KI-Nachbearbeitung aktivieren (`enableAIPolish`)
+### Enable AI Polish / KI-Nachbearbeitung aktivieren / Activer la retouche IA (`enableAIPolish`)
 
 | Field | Value |
 |---|---|
@@ -3029,7 +3129,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`page.aiPolish`](#node-page-aiPolish) |
 | Title source | catalog key `settings.aiPolish.enable.title` |
-| Description | Fixes grammar, punctuation and formatting / Korrigiert Grammatik, Zeichensetzung und Formatierung |
+| Description | Fixes grammar, punctuation and formatting / Korrigiert Grammatik, Zeichensetzung und Formatierung / Corrige la grammaire, la ponctuation et la mise en forme |
 | Description source | catalog key `Fixes grammar, punctuation and formatting` |
 | Destination | `aiPolish` |
 | Dictionary tab | none |
@@ -3039,7 +3139,8 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: grammar, punctuation, formatting, proofread<br>phrases: turn on automatic grammar correction for dictation; fix punctuation and formatting after I dictate |
 | Search (de) | words: Grammatik, Satzzeichen, Zeichensetzung, Formatierung<br>phrases: verbessere nach dem Diktieren automatisch die Grammatik; korrigiere Satzzeichen und Formatierung meiner Diktate |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: grammaire, correction automatique, mise en forme, relecture<br>phrases: activer la correction automatique de la grammaire et de la ponctuation après ma dictée |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-aiPolishProvider"></a>
 
@@ -3060,11 +3161,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: choose the model that cleans up my dictation; switch the AI provider for my dictated text |
 | Search (de) | phrases: wähle das Modell für die Nachbearbeitung meiner Diktate; wechsle den KI-Anbieter für meinen diktierten Text |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: fournisseur IA, correcteur de dictée<br>phrases: choisir le fournisseur qui corrige mes dictées |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-dictationOutputLanguage"></a>
 
-### Dictation output language / Ausgabesprache für Diktate (`dictationOutputLanguage`)
+### Dictation output language / Ausgabesprache für Diktate / Langue du texte dicté (`dictationOutputLanguage`)
 
 | Field | Value |
 |---|---|
@@ -3081,7 +3183,8 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: target language, final text language<br>phrases: change the language of my dictated text; get my dictation in another language |
 | Search (de) | words: Zielsprache<br>phrases: Ausgabesprache für Diktate; Diktate in die gewählte Zielsprache übersetzen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: langue de sortie, langue cible<br>phrases: changer la langue du texte après la dictée; je veux le texte de ma dictée dans une autre langue |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-aiPolish-providerSection"></a>
 
@@ -3102,11 +3205,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: show the settings specific to my selected dictation polish model; find the options that apply only to my chosen dictation provider |
 | Search (de) | phrases: zeig mir die Einstellungen speziell für mein gewähltes Diktatkorrekturmodell; zeig mir die Optionen, die nur für meinen gewählten Anbieter zur KI-Nachbearbeitung gelten |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: réglages du fournisseur, options AI Polish<br>phrases: voir les réglages propres au modèle choisi pour corriger mes dictées |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-aiPolish-whyUse-egOne"></a>
 
-### Why use EG-1 / Warum EG-1 verwenden? (`aiPolish.whyUse.egOne`)
+### Why use EG-1 / Warum EG-1 verwenden? / Pourquoi utiliser EG-1 (`aiPolish.whyUse.egOne`)
 
 | Field | Value |
 |---|---|
@@ -3123,11 +3227,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: how long does EG-1 cleanup take; when should I choose something other than EG-1 |
 | Search (de) | phrases: wie lange dauert die Nachbearbeitung mit EG-1; wann sollte ich statt EG-1 ein anderes Modell nehmen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: durée EG-1, alternatives EG-1<br>phrases: combien de temps prend la correction avec EG-1; quand choisir un autre modèle qu’EG-1 |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-aiPolish-whyUse-s1Mini"></a>
 
-### Why use S1-mini / Warum S1-mini verwenden? (`aiPolish.whyUse.s1Mini`)
+### Why use S1-mini / Warum S1-mini verwenden? / Pourquoi utiliser S1-mini (`aiPolish.whyUse.s1Mini`)
 
 | Field | Value |
 |---|---|
@@ -3144,11 +3249,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: is S1-mini a good fit for my language; when should I choose S1-mini |
 | Search (de) | phrases: eignet sich S1-mini für meine Sprache; wann ist S1-mini die richtige Wahl |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: langues S1-mini, conseils S1-mini<br>phrases: est-ce que S1-mini convient à ma langue |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-aiPolish-whyUse-appleIntelligence"></a>
 
-### Why use Apple Intelligence / Warum Apple Intelligence verwenden? (`aiPolish.whyUse.appleIntelligence`)
+### Why use Apple Intelligence / Warum Apple Intelligence verwenden? / Pourquoi utiliser Apple Intelligence (`aiPolish.whyUse.appleIntelligence`)
 
 | Field | Value |
 |---|---|
@@ -3165,11 +3271,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: why is Apple Intelligence unavailable; when is Apple's built-in cleanup model a good fit |
 | Search (de) | phrases: warum ist Apple Intelligence nicht verfügbar; wann eignet sich Apples eingebautes Modell zur Nachbearbeitung |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: conseils Apple Intelligence, aide Apple Intelligence<br>phrases: quand choisir Apple Intelligence pour corriger mes dictées; pourquoi Apple Intelligence peut être indisponible |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-aiPolish-whyUse-ollama"></a>
 
-### Why use Ollama / Warum Ollama verwenden? (`aiPolish.whyUse.ollama`)
+### Why use Ollama / Warum Ollama verwenden? / Pourquoi utiliser Ollama (`aiPolish.whyUse.ollama`)
 
 | Field | Value |
 |---|---|
@@ -3186,11 +3293,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: which Ollama model should I use for cleanup; why is my Ollama model missing |
 | Search (de) | phrases: welches Ollama-Modell eignet sich zur Nachbearbeitung; warum fehlt mein Ollama-Modell |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: conseils Ollama, modèle Ollama absent<br>phrases: quel modèle Ollama est adapté à la correction; pourquoi mon modèle Ollama n’apparaît pas |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-aiPolish-whyUse-openAI"></a>
 
-### Why use OpenAI / Warum OpenAI verwenden? (`aiPolish.whyUse.openAI`)
+### Why use OpenAI / Warum OpenAI verwenden? / Pourquoi utiliser OpenAI (`aiPolish.whyUse.openAI`)
 
 | Field | Value |
 |---|---|
@@ -3207,11 +3315,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: which OpenAI model should I use for dictation cleanup; why are some OpenAI models missing |
 | Search (de) | phrases: welches OpenAI-Modell eignet sich für die Diktatkorrektur; warum fehlen manche OpenAI-Modelle |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: conseils OpenAI, modèles OpenAI absents<br>phrases: quel modèle OpenAI est adapté à la correction de dictée; pourquoi certains modèles OpenAI n’apparaissent pas |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-aiPolish-whyUse-gemini"></a>
 
-### Why use Gemini / Warum Gemini verwenden? (`aiPolish.whyUse.gemini`)
+### Why use Gemini / Warum Gemini verwenden? / Pourquoi utiliser Gemini (`aiPolish.whyUse.gemini`)
 
 | Field | Value |
 |---|---|
@@ -3228,11 +3337,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: which Gemini model should I use for cleanup; why are some Gemini models locked |
 | Search (de) | phrases: welches Gemini-Modell eignet sich zur Nachbearbeitung; warum sind manche Gemini-Modelle gesperrt |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: conseils Gemini, modèles Gemini verrouillés<br>phrases: quel modèle Gemini est adapté à la correction; pourquoi certains modèles Gemini sont verrouillés |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-aiPolish-whyUse-claude"></a>
 
-### Why use Claude / Warum Claude verwenden? (`aiPolish.whyUse.claude`)
+### Why use Claude / Warum Claude verwenden? / Pourquoi utiliser Claude (`aiPolish.whyUse.claude`)
 
 | Field | Value |
 |---|---|
@@ -3249,11 +3359,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: which Claude model should I use for cleanup; why are some Claude models missing; what API access do I need for Claude |
 | Search (de) | phrases: welches Claude-Modell eignet sich zur Nachbearbeitung; warum fehlen manche Claude-Modelle; welchen API-Zugang brauche ich für Claude |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: conseils Claude, modèles Claude absents, accès API Claude<br>phrases: quel modèle Claude est adapté à la correction; pourquoi certains modèles Claude manquent et quel accès API faut-il |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-aiPolish-link-aboutAppleIntelligence"></a>
 
-### About Apple Intelligence / Über Apple Intelligence (`aiPolish.link.aboutAppleIntelligence`)
+### About Apple Intelligence / Über Apple Intelligence / À propos d’Apple Intelligence (`aiPolish.link.aboutAppleIntelligence`)
 
 | Field | Value |
 |---|---|
@@ -3270,11 +3381,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: open the information page about Apple Intelligence |
 | Search (de) | phrases: öffne die Infoseite zu Apple Intelligence |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: page Apple Intelligence<br>phrases: ouvrir la page d’information sur Apple Intelligence |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-aiPolish-link-ollamaLibrary"></a>
 
-### Ollama model library / Ollama-Modellbibliothek (`aiPolish.link.ollamaLibrary`)
+### Ollama model library / Ollama-Modellbibliothek / Bibliothèque de modèles Ollama (`aiPolish.link.ollamaLibrary`)
 
 | Field | Value |
 |---|---|
@@ -3291,11 +3403,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: open the Ollama model library website |
 | Search (de) | phrases: öffne die Webseite mit der Ollama-Modellbibliothek |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: catalogue web Ollama<br>phrases: ouvrir le site de la bibliothèque de modèles Ollama |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-aiPolish-link-openAIRateLimits"></a>
 
-### OpenAI rate limits by tier / OpenAI-Ratenlimits nach Stufe (`aiPolish.link.openAIRateLimits`)
+### OpenAI rate limits by tier / OpenAI-Ratenlimits nach Stufe / Limites de débit d’OpenAI par niveau (`aiPolish.link.openAIRateLimits`)
 
 | Field | Value |
 |---|---|
@@ -3312,11 +3425,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: show the OpenAI request limits for my usage tier |
 | Search (de) | phrases: zeig mir die OpenAI-Anfragelimits für meine Nutzungsstufe |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: quotas OpenAI, limites OpenAI<br>phrases: ouvrir les limites de requêtes OpenAI pour mon niveau d’utilisation |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-aiPolish-link-geminiRateLimits"></a>
 
-### Gemini API rate limits by tier / Ratenlimits der Gemini-API nach Nutzungsstufe (`aiPolish.link.geminiRateLimits`)
+### Gemini API rate limits by tier / Ratenlimits der Gemini-API nach Nutzungsstufe / Limites de débit de l’API Gemini par niveau (`aiPolish.link.geminiRateLimits`)
 
 | Field | Value |
 |---|---|
@@ -3333,11 +3447,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: show the Gemini request limits for my usage tier |
 | Search (de) | phrases: zeig mir die Gemini-Anfragelimits für meine Nutzungsstufe |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: quotas Gemini, limites Gemini<br>phrases: ouvrir les limites de requêtes Gemini pour mon niveau d’utilisation |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-aiPolish-link-claudeRateLimits"></a>
 
-### Claude API rate limits / Claude-API-Ratenlimits (`aiPolish.link.claudeRateLimits`)
+### Claude API rate limits / Claude-API-Ratenlimits / Limites de débit de l’API Claude (`aiPolish.link.claudeRateLimits`)
 
 | Field | Value |
 |---|---|
@@ -3354,11 +3469,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: show the Claude API request limits |
 | Search (de) | phrases: zeig mir die Anfragelimits der Claude-API |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: quotas Claude, limites Claude<br>phrases: ouvrir les limites de requêtes de l’API Claude |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-localModel-download"></a>
 
-### Download / Laden (`localModel.download`)
+### Download / Laden / Télécharger (`localModel.download`)
 
 | Field | Value |
 |---|---|
@@ -3375,11 +3491,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: download EG-1 or S1-mini onto my Mac |
 | Search (de) | phrases: lade EG-1 oder S1-mini auf meinen Mac herunter |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: télécharger EG-1, télécharger S1-mini<br>phrases: télécharger EG-1 ou S1-mini sur mon Mac |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-localModel-cancel"></a>
 
-### Cancel / Abbrechen (`localModel.cancel`)
+### Cancel / Abbrechen / Annuler (`localModel.cancel`)
 
 | Field | Value |
 |---|---|
@@ -3396,11 +3513,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: cancel the EG-1 or S1-mini download |
 | Search (de) | phrases: brich den Download von EG-1 oder S1-mini ab |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: annuler EG-1, annuler S1-mini<br>phrases: annuler le téléchargement d’EG-1 ou de S1-mini |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-localModel-resume"></a>
 
-### Resume / Fortsetzen (`localModel.resume`)
+### Resume / Fortsetzen / Reprendre (`localModel.resume`)
 
 | Field | Value |
 |---|---|
@@ -3417,11 +3535,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: unpause<br>phrases: continue the paused EG-1 or S1-mini download |
 | Search (de) | words: weiterladen<br>phrases: setz den pausierten Download von EG-1 oder S1-mini fort |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: reprendre EG-1, reprendre S1-mini<br>phrases: reprendre le téléchargement mis en pause d’EG-1 ou de S1-mini |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-localModel-resumeUpgrade"></a>
 
-### Resume upgrade / Upgrade fortsetzen (`localModel.resumeUpgrade`)
+### Resume upgrade / Upgrade fortsetzen / Reprendre la mise à niveau (`localModel.resumeUpgrade`)
 
 | Field | Value |
 |---|---|
@@ -3438,11 +3557,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: resume the EG-1 or S1-mini upgrade that stopped partway |
 | Search (de) | phrases: setz das unterbrochene Upgrade von EG-1 oder S1-mini fort |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | phrases: reprendre la mise à niveau interrompue d’EG-1 ou de S1-mini |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-localModel-finishUpgrade"></a>
 
-### Finish upgrade / Upgrade abschließen (`localModel.finishUpgrade`)
+### Finish upgrade / Upgrade abschließen / Terminer la mise à niveau (`localModel.finishUpgrade`)
 
 | Field | Value |
 |---|---|
@@ -3459,11 +3579,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: finish installing the new model version so cleanup works again |
 | Search (de) | phrases: schließ die Installation der neuen Modellversion ab, damit die Nachbearbeitung wieder funktioniert |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: finir la mise à niveau<br>phrases: terminer l’installation de la nouvelle version d’EG-1 ou de S1-mini pour réactiver la correction |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-localModel-tryAgain"></a>
 
-### Try Again / Erneut versuchen (`localModel.tryAgain`)
+### Try Again / Erneut versuchen / Réessayer (`localModel.tryAgain`)
 
 | Field | Value |
 |---|---|
@@ -3480,7 +3601,8 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: retry after the EG-1 or S1-mini error |
 | Search (de) | phrases: versuch es nach dem Fehler bei EG-1 oder S1-mini nochmal |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: réessayer EG-1, réessayer S1-mini<br>phrases: réessayer après l’erreur d’EG-1 ou de S1-mini |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-localModel-testLive"></a>
 
@@ -3501,11 +3623,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: test<br>phrases: test whether the downloaded cleanup model is working |
 | Search (de) | words: Funktionstest, testen<br>phrases: teste, ob das heruntergeladene Nachbearbeitungsmodell funktioniert |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: tester EG-1, tester S1-mini, tester le modèle, vérifier que le modèle est actif<br>phrases: tester si le modèle de correction téléchargé fonctionne |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-s1Tone"></a>
 
-### Tone / Ton (`s1Tone`)
+### Tone / Ton / Ton (`s1Tone`)
 
 | Field | Value |
 |---|---|
@@ -3513,7 +3636,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`aiPolish.providerSection`](#node-aiPolish-providerSection) |
 | Title source | catalog key `Tone` |
-| Description | Choose how formal your text sounds. / Wähle, wie förmlich dein Text klingt. |
+| Description | Choose how formal your text sounds. / Wähle, wie förmlich dein Text klingt. / Choisissez le niveau de formalité de votre texte. |
 | Description source | catalog key `Choose how formal your text sounds.` |
 | Destination | `aiPolish` |
 | Dictionary tab | none |
@@ -3523,11 +3646,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: formality, style, register<br>phrases: choose how formal S1-mini makes my text; adjust the writing style in S1-mini |
 | Search (de) | words: Formalität, Sprachstil, Schreibstil<br>phrases: stell ein, wie förmlich S1-mini meinen Text schreibt; pass den Schreibstil von S1-mini an |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: ton S1-mini, registre, formalité<br>phrases: régler le degré de formalité du texte avec S1-mini |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-s1Structure"></a>
 
-### Structure / Struktur (`s1Structure`)
+### Structure / Struktur / Structure (`s1Structure`)
 
 | Field | Value |
 |---|---|
@@ -3535,7 +3659,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`aiPolish.providerSection`](#node-aiPolish-providerSection) |
 | Title source | catalog key `Structure` |
-| Description | Keep sentences or turn spoken items into lists. / Sätze behalten oder gesprochene Punkte in Listen umwandeln. |
+| Description | Keep sentences or turn spoken items into lists. / Sätze behalten oder gesprochene Punkte in Listen umwandeln. / Conserver les phrases ou transformer les éléments dictés en listes. |
 | Description source | catalog key `Keep sentences or turn spoken items into lists.` |
 | Destination | `aiPolish` |
 | Dictionary tab | none |
@@ -3545,11 +3669,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: organization, arrangement<br>phrases: choose whether S1-mini keeps sentences or makes lists; change how S1-mini organizes my dictated text |
 | Search (de) | words: Textaufbau, Anordnung<br>phrases: stell ein, ob S1-mini Sätze beibehält oder Listen erstellt; ändere, wie S1-mini meinen diktierten Text aufbaut |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: organisation S1-mini, structure du texte<br>phrases: choisir si S1-mini garde les phrases ou fait des listes |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-s1Context"></a>
 
-### Context / Kontext (`s1Context`)
+### Context / Kontext / Contexte (`s1Context`)
 
 | Field | Value |
 |---|---|
@@ -3557,7 +3682,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`aiPolish.providerSection`](#node-aiPolish-providerSection) |
 | Title source | catalog key `Context` |
-| Description | Format dictated greetings and sign-offs as email. / Diktierte Anreden und Grußformeln als E-Mail formatieren. |
+| Description | Format dictated greetings and sign-offs as email. / Diktierte Anreden und Grußformeln als E-Mail formatieren. / Mettre en forme les salutations et formules de politesse dictées comme un e-mail. |
 | Description source | catalog key `Format dictated greetings and sign-offs as email.` |
 | Destination | `aiPolish` |
 | Dictionary tab | none |
@@ -3567,7 +3692,8 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: choose whether S1-mini uses general or email formatting; change the context used to format my S1-mini dictation |
 | Search (de) | phrases: stell ein, ob S1-mini normalen Text oder eine E-Mail formatiert; wähle den Kontext für die Formatierung meiner S1-mini-Diktate |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: contexte S1-mini, format S1-mini<br>phrases: choisir entre une mise en forme générale et une mise en forme de mail avec S1-mini |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-appleIntelligence-status"></a>
 
@@ -3588,11 +3714,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: show whether Apple Intelligence is ready on this Mac; show the current availability of Apple's cleanup model |
 | Search (de) | phrases: zeig mir, ob Apple Intelligence auf diesem Mac bereit ist; zeig mir die aktuelle Verfügbarkeit von Apples Nachbearbeitungsmodell |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: état Apple Intelligence, disponibilité Apple Intelligence<br>phrases: voir l’état actuel d’Apple Intelligence sur ce Mac |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-appleIntelligence-recheck"></a>
 
-### Check Apple Intelligence availability / Verfügbarkeit von Apple Intelligence prüfen (`appleIntelligence.recheck`)
+### Check Apple Intelligence availability / Verfügbarkeit von Apple Intelligence prüfen / Vérifier la disponibilité d’Apple Intelligence (`appleIntelligence.recheck`)
 
 | Field | Value |
 |---|---|
@@ -3609,11 +3736,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: check Apple Intelligence availability again |
 | Search (de) | phrases: prüf nochmal, ob Apple Intelligence verfügbar ist |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: revérifier Apple Intelligence<br>phrases: vérifier à nouveau la disponibilité d’Apple Intelligence |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-ollama-downloadOllama"></a>
 
-### Download Ollama / Ollama herunterladen (`ollama.downloadOllama`)
+### Download Ollama / Ollama herunterladen / Télécharger Ollama (`ollama.downloadOllama`)
 
 | Field | Value |
 |---|---|
@@ -3630,11 +3758,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: runtime<br>phrases: install Ollama itself on my Mac |
 | Search (de) | words: Laufzeitumgebung<br>phrases: installiere Ollama selbst auf meinem Mac |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: installer Ollama<br>phrases: installer Ollama lui-même sur mon Mac |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-ollama-start"></a>
 
-### Start Ollama / Ollama starten (`ollama.start`)
+### Start Ollama / Ollama starten / Démarrer Ollama (`ollama.start`)
 
 | Field | Value |
 |---|---|
@@ -3651,7 +3780,8 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: serve<br>phrases: launch Ollama after installation |
 | Search (de) | words: serve<br>phrases: starte Ollama nach der Installation |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: lancer Ollama, ollama serve<br>phrases: démarrer Ollama après son installation |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-ollama-downloadModel"></a>
 
@@ -3672,11 +3802,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: download a model so Ollama can polish text |
 | Search (de) | phrases: lade ein Modell herunter, damit Ollama Text nachbearbeiten kann |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: premier modèle Ollama<br>phrases: télécharger le modèle nécessaire pour qu’Ollama puisse corriger le texte |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-ollama-cancelPull"></a>
 
-### Cancel / Abbrechen (`ollama.cancelPull`)
+### Cancel / Abbrechen / Annuler (`ollama.cancelPull`)
 
 | Field | Value |
 |---|---|
@@ -3693,11 +3824,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: cancel the model download in Ollama |
 | Search (de) | phrases: brich den Modelldownload in Ollama ab |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: annuler le téléchargement Ollama<br>phrases: arrêter le téléchargement du modèle dans Ollama |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-ollama-server"></a>
 
-### Server / Server (`ollama.server`)
+### Server / Server / Serveur (`ollama.server`)
 
 | Field | Value |
 |---|---|
@@ -3714,11 +3846,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: address, endpoint, connection<br>phrases: show the address of my Ollama server; show the running Ollama server |
 | Search (de) | words: Adresse, Serveradresse, Verbindung<br>phrases: zeig mir die Adresse meines Ollama-Servers; zeig mir den laufenden Ollama-Server |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: adresse Ollama, endpoint Ollama<br>phrases: voir l’adresse de mon serveur Ollama en cours d’exécution |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-ollama-recheck"></a>
 
-### Re-check Ollama status / Ollama-Status erneut prüfen (`ollama.recheck`)
+### Re-check Ollama status / Ollama-Status erneut prüfen / Vérifier à nouveau l’état d’Ollama (`ollama.recheck`)
 
 | Field | Value |
 |---|---|
@@ -3735,11 +3868,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: check again whether Ollama is running |
 | Search (de) | phrases: prüf nochmal, ob Ollama läuft |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: revérifier Ollama<br>phrases: vérifier à nouveau si Ollama est en cours d’exécution |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-ollama-tryAgain"></a>
 
-### Try Again / Erneut versuchen (`ollama.tryAgain`)
+### Try Again / Erneut versuchen / Réessayer (`ollama.tryAgain`)
 
 | Field | Value |
 |---|---|
@@ -3756,11 +3890,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: retry after the Ollama error |
 | Search (de) | phrases: versuch es nach dem Ollama-Fehler nochmal |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: réessayer Ollama<br>phrases: réessayer après l’erreur Ollama |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-ollama-browseModels"></a>
 
-### Download more models / Weitere Modelle laden (`ollama.browseModels`)
+### Download more models / Weitere Modelle laden / Télécharger d’autres modèles (`ollama.browseModels`)
 
 | Field | Value |
 |---|---|
@@ -3777,11 +3912,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: browse more models to download through Ollama |
 | Search (de) | phrases: zeig mir weitere Modelle zum Herunterladen über Ollama |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: autres modèles Ollama<br>phrases: parcourir d’autres modèles à télécharger avec Ollama |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-ollama-prepareModel"></a>
 
-### Prepare model / Modell vorbereiten (`ollama.prepareModel`)
+### Prepare model / Modell vorbereiten / Préparer le modèle (`ollama.prepareModel`)
 
 | Field | Value |
 |---|---|
@@ -3798,11 +3934,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: prepare, initialize<br>phrases: prepare my selected Ollama model for cleanup |
 | Search (de) | words: vorbereiten, startklar<br>phrases: mach mein gewähltes Ollama-Modell für die Nachbearbeitung bereit |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: initialiser le modèle Ollama<br>phrases: préparer le modèle Ollama sélectionné pour la correction |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-apiKey-openAI"></a>
 
-### OpenAI API Key / OpenAI-API-Schlüssel (`apiKey.openAI`)
+### OpenAI API Key / OpenAI-API-Schlüssel / Clé d’API OpenAI (`apiKey.openAI`)
 
 | Field | Value |
 |---|---|
@@ -3810,7 +3947,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`aiPolish.providerSection`](#node-aiPolish-providerSection) |
 | Title source | catalog key `OpenAI API Key` |
-| Description | Sends text and dictation context to OpenAI. / Sendet Text und Diktatkontext an OpenAI. |
+| Description | Sends text and dictation context to OpenAI. / Sendet Text und Diktatkontext an OpenAI. / Envoie le texte et le contexte de dictée à OpenAI. |
 | Description source | catalog key `Sends text and dictation context to OpenAI.` |
 | Destination | `aiPolish` |
 | Dictionary tab | none |
@@ -3820,11 +3957,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: enter my OpenAI API key for dictation cleanup; change the OpenAI API key used to send dictation text and context |
 | Search (de) | phrases: trag meinen OpenAI-API-Schlüssel für die Diktatkorrektur ein; ändere den OpenAI-API-Schlüssel zum Senden von Diktattext und Kontext |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: clé OpenAI, API key OpenAI<br>phrases: saisir ma clé API OpenAI pour corriger mes dictées |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-apiKey-gemini"></a>
 
-### Google Gemini API Key / Google Gemini-API-Schlüssel (`apiKey.gemini`)
+### Google Gemini API Key / Google Gemini-API-Schlüssel / Clé API Google Gemini (`apiKey.gemini`)
 
 | Field | Value |
 |---|---|
@@ -3832,7 +3970,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`aiPolish.providerSection`](#node-aiPolish-providerSection) |
 | Title source | catalog key `Google Gemini API Key` |
-| Description | Sends text and dictation context to Google. / Sendet Text und Diktatkontext an Google. |
+| Description | Sends text and dictation context to Google. / Sendet Text und Diktatkontext an Google. / Envoie le texte et le contexte de dictée à Google. |
 | Description source | catalog key `Sends text and dictation context to Google.` |
 | Destination | `aiPolish` |
 | Dictionary tab | none |
@@ -3842,11 +3980,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: enter my Google API key for Gemini dictation cleanup; change the Gemini API key used to send dictation text and context |
 | Search (de) | phrases: trag meinen Google-API-Schlüssel für die Diktatkorrektur mit Gemini ein; ändere den Gemini-API-Schlüssel zum Senden von Diktattext und Kontext |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: clé Gemini, clé Google, API key Gemini<br>phrases: saisir ma clé API Google pour la correction avec Gemini |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-apiKey-claude"></a>
 
-### Claude API Key / Claude-API-Schlüssel (`apiKey.claude`)
+### Claude API Key / Claude-API-Schlüssel / Clé API Claude (`apiKey.claude`)
 
 | Field | Value |
 |---|---|
@@ -3854,7 +3993,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`aiPolish.providerSection`](#node-aiPolish-providerSection) |
 | Title source | catalog key `Claude API Key` |
-| Description | Sends text and dictation context to Anthropic. / Sendet Text und Diktatkontext an Anthropic. |
+| Description | Sends text and dictation context to Anthropic. / Sendet Text und Diktatkontext an Anthropic. / Envoie le texte et le contexte de dictée à Anthropic. |
 | Description source | catalog key `Sends text and dictation context to Anthropic.` |
 | Destination | `aiPolish` |
 | Dictionary tab | none |
@@ -3864,11 +4003,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: Anthropic, credential, token<br>phrases: enter my Anthropic API key; use my Anthropic key for AI Polish |
 | Search (de) | words: Anthropic, Zugangsdaten, Token<br>phrases: meinen API-Schlüssel von Anthropic eintragen; Claude mit meinem Anthropic-Schlüssel nutzen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: clé Claude, clé Anthropic, API key Anthropic<br>phrases: saisir ma clé API Anthropic pour AI Polish |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-apiKey-save"></a>
 
-### Save / Sichern (`apiKey.save`)
+### Save / Sichern / Enregistrer (`apiKey.save`)
 
 | Field | Value |
 |---|---|
@@ -3885,11 +4025,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: save the API key I entered |
 | Search (de) | phrases: meinen eingegebenen API-Schlüssel speichern |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: enregistrer la clé<br>phrases: enregistrer la clé API que je viens de saisir |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-apiKey-clear"></a>
 
-### Clear / Löschen (`apiKey.clear`)
+### Clear / Löschen / Effacer (`apiKey.clear`)
 
 | Field | Value |
 |---|---|
@@ -3906,7 +4047,8 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: remove my saved API key |
 | Search (de) | phrases: meinen gespeicherten API-Schlüssel entfernen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: supprimer la clé<br>phrases: effacer ma clé API enregistrée |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-apiKey-reveal"></a>
 
@@ -3927,7 +4069,8 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: unmask, conceal<br>phrases: show the hidden API key; hide my API key again |
 | Search (de) | phrases: meinen API-Schlüssel sichtbar machen; meinen API-Schlüssel wieder verbergen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: afficher la clé, masquer la clé<br>phrases: afficher ou masquer ma clé API |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-apiKey-getKeyLink"></a>
 
@@ -3948,11 +4091,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: where do I get an API key; open the provider website to get a key |
 | Search (de) | phrases: wo bekomme ich einen API-Schlüssel; die Anbieterseite für einen API-Schlüssel öffnen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: obtenir une clé<br>phrases: ouvrir le site du fournisseur pour obtenir une clé API |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-polishModel"></a>
 
-### Model / Modell (`polishModel`)
+### Model / Modell / Modèle (`polishModel`)
 
 | Field | Value |
 |---|---|
@@ -3969,11 +4113,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: LLM, Ollama<br>phrases: choose which AI polishes my text; switch the model used for AI Polish |
 | Search (de) | words: KI, LLM, Ollama<br>phrases: eine andere KI zum Überarbeiten wählen; ändern, welches Modell meinen Text verbessert |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: LLM, modèle du fournisseur<br>phrases: choisir le modèle utilisé au sein de mon fournisseur AI Polish ou d’Ollama |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-polishModel-refresh"></a>
 
-### Refresh available models / Verfügbare Modelle aktualisieren (`polishModel.refresh`)
+### Refresh available models / Verfügbare Modelle aktualisieren / Actualiser les modèles disponibles (`polishModel.refresh`)
 
 | Field | Value |
 |---|---|
@@ -3990,11 +4135,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: reload the list of available polish models; check for newly available polish models |
 | Search (de) | phrases: die Liste der verfügbaren Modelle neu laden; noch mal nach Modellen zum Überarbeiten suchen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: actualiser les modèles<br>phrases: recharger la liste des modèles disponibles pour AI Polish |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-enableDictionary"></a>
 
-### Enable Dictionary / Wörterbuch aktivieren (`enableDictionary`)
+### Enable Dictionary / Wörterbuch aktivieren / Activer le Dictionnaire (`enableDictionary`)
 
 | Field | Value |
 |---|---|
@@ -4002,7 +4148,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`page.dictionary`](#node-page-dictionary) |
 | Title source | catalog key `Enable Dictionary` |
-| Description | Use your words and vocabulary to improve recognition. / Nutze deine Wörter und dein Vokabular für eine bessere Erkennung. |
+| Description | Use your words and vocabulary to improve recognition. / Nutze deine Wörter und dein Vokabular für eine bessere Erkennung. / Utilisez vos mots et votre vocabulaire pour améliorer la reconnaissance. |
 | Description source | catalog key `Use your words and vocabulary to improve recognition.` |
 | Destination | `dictionary` |
 | Dictionary tab | none |
@@ -4012,11 +4158,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: recognition<br>phrases: use my dictionary to improve dictation recognition; stop using my dictionary when I dictate |
 | Search (de) | words: Worterkennung, Erkennung<br>phrases: mein Wörterbuch beim Diktieren berücksichtigen; die Wörterbuchhilfe für die Erkennung ausschalten |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: dictionnaire activé, reconnaissance personnalisée<br>phrases: activer ou désactiver l’utilisation de mon dictionnaire pour reconnaître mes dictées |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-dictionary-tab-yourWords"></a>
 
-### Your Words / Deine Wörter (`dictionary.tab.yourWords`)
+### Your Words / Deine Wörter / Vos mots (`dictionary.tab.yourWords`)
 
 | Field | Value |
 |---|---|
@@ -4024,7 +4171,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | feature |
 | Parent | [`page.dictionary`](#node-page-dictionary) |
 | Title source | catalog key `Your Words` |
-| Description | Words you added / Eigene Wörter |
+| Description | Words you added / Eigene Wörter / Mots ajoutés |
 | Description source | catalog key `Words you added` |
 | Destination | `dictionary` |
 | Dictionary tab | `yourWords` |
@@ -4034,11 +4181,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: entries, spellings, lexicon<br>phrases: show the words I added myself; where is my personal word list |
 | Search (de) | words: Wörterbucheinträge, Schreibweisen<br>phrases: wo sind meine selbst hinzugefügten Wörter; meine persönliche Wortliste ansehen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: mots personnels, lexique personnel, orthographes enregistrées<br>phrases: voir les mots que j’ai ajoutés moi-même |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-dictionary-tab-vocabularyPacks"></a>
 
-### Vocabulary Packs / Wortschatzpakete (`dictionary.tab.vocabularyPacks`)
+### Vocabulary Packs / Wortschatzpakete / Lexiques (`dictionary.tab.vocabularyPacks`)
 
 | Field | Value |
 |---|---|
@@ -4046,7 +4194,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | feature |
 | Parent | [`page.dictionary`](#node-page-dictionary) |
 | Title source | catalog key `Vocabulary Packs` |
-| Description | Ready-made lists / Fertige Listen |
+| Description | Ready-made lists / Fertige Listen / Listes types |
 | Description source | catalog key `Ready-made lists` |
 | Destination | `dictionary` |
 | Dictionary tab | `vocabularyPacks` |
@@ -4056,11 +4204,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: enable lists of specialist terms; recognise medical terms; enable lists of brand names |
 | Search (de) | phrases: Listen mit Fachbegriffen einschalten; medizinische Begriffe erkennen; Listen mit Markennamen einschalten |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: onglet packs, onglet vocabulaire<br>phrases: ouvrir l’onglet des packs de vocabulaire |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-dictionary-tab-learnFrom"></a>
 
-### Learn from... / Lernen aus... (`dictionary.tab.learnFrom`)
+### Learn from... / Lernen aus... / Apprendre de… (`dictionary.tab.learnFrom`)
 
 | Field | Value |
 |---|---|
@@ -4068,7 +4217,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | feature |
 | Parent | [`page.dictionary`](#node-page-dictionary) |
 | Title source | catalog key `Learn from...` |
-| Description | Learn as you go / Nebenbei lernen |
+| Description | Learn as you go / Nebenbei lernen / Au fil de l’usage |
 | Description source | catalog key `Learn as you go` |
 | Destination | `dictionary` |
 | Dictionary tab | `learnFrom` |
@@ -4078,11 +4227,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: learn new words from my corrections; learn words I correct after dictating; learn names from my contacts |
 | Search (de) | phrases: lerne neue Wörter aus meinen Korrekturen; merk dir Wörter, die ich nach dem Diktieren korrigiere; lerne Namen aus meinen Kontakten |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: onglet apprentissage, onglet sources<br>phrases: ouvrir l’onglet Apprendre à partir de |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-dictionary-tab-quickAdd"></a>
 
-### Quick Add / Schnell hinzufügen (`dictionary.tab.quickAdd`)
+### Quick Add / Schnell hinzufügen / Ajout rapide (`dictionary.tab.quickAdd`)
 
 | Field | Value |
 |---|---|
@@ -4090,7 +4240,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | feature |
 | Parent | [`page.dictionary`](#node-page-dictionary) |
 | Title source | catalog key `Quick Add` |
-| Description | Add from any app / Aus jeder App |
+| Description | Add from any app / Aus jeder App / Depuis toute app |
 | Description source | catalog key `Add from any app` |
 | Destination | `dictionary` |
 | Dictionary tab | `quickAdd` |
@@ -4100,11 +4250,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: guide, instructions<br>phrases: how do I add words from another app; show me how Quick Add works |
 | Search (de) | words: Anleitung<br>phrases: wie füge ich Wörter aus anderen Apps hinzu; wie funktioniert Schnell hinzufügen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: guide Quick Add, aide ajout rapide<br>phrases: ouvrir le guide de l’ajout de mots depuis une autre application |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-yourWords-add"></a>
 
-### Add word / Wort hinzufügen (`yourWords.add`)
+### Add word / Wort hinzufügen / Ajouter un mot (`yourWords.add`)
 
 | Field | Value |
 |---|---|
@@ -4121,11 +4272,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: add a word directly to my personal word list |
 | Search (de) | phrases: ein Wort direkt in meiner persönlichen Wortliste anlegen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | phrases: ajouter directement un mot à mon dictionnaire personnel |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-yourWords-import"></a>
 
-### Import / Importieren (`yourWords.import`)
+### Import / Importieren / Importer (`yourWords.import`)
 
 | Field | Value |
 |---|---|
@@ -4142,11 +4294,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: bring an existing word list into my dictionary |
 | Search (de) | phrases: eine vorhandene Wortliste in mein Wörterbuch einlesen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | phrases: importer une liste de mots dans mon dictionnaire |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-yourWords-export"></a>
 
-### Export your words / Deine Wörter exportieren (`yourWords.export`)
+### Export your words / Deine Wörter exportieren / Exporter vos mots (`yourWords.export`)
 
 | Field | Value |
 |---|---|
@@ -4163,11 +4316,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: export my personal dictionary entries |
 | Search (de) | phrases: meine persönlichen Wörterbucheinträge exportieren |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: exporter des mots<br>phrases: exporter les mots de mon dictionnaire personnel |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-yourWords-search"></a>
 
-### Search by word, mishearing, or category / Nach Wort, Fehlerkennung oder Kategorie suchen (`yourWords.search`)
+### Search by word, mishearing, or category / Nach Wort, Fehlerkennung oder Kategorie suchen / Rechercher par mot, erreur de reconnaissance ou catégorie (`yourWords.search`)
 
 | Field | Value |
 |---|---|
@@ -4184,11 +4338,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: find a word in my personal dictionary; search my own entries by mishearing or category |
 | Search (de) | words: Wörterbuchsuche<br>phrases: ein Wort in meinem persönlichen Wörterbuch suchen; meine eigenen Einträge nach falscher Erkennung oder Kategorie durchsuchen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: recherche dictionnaire, recherche mots personnels<br>phrases: chercher dans mes mots personnels par mot, erreur de reconnaissance ou catégorie |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-yourWords-clearSearch"></a>
 
-### Clear search / Suche löschen (`yourWords.clearSearch`)
+### Clear search / Suche löschen / Effacer la recherche (`yourWords.clearSearch`)
 
 | Field | Value |
 |---|---|
@@ -4205,11 +4360,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: clear the search field in my personal word list |
 | Search (de) | phrases: das Suchfeld bei meinen eigenen Wörtern leeren |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: vider la recherche dictionnaire<br>phrases: vider le champ de recherche de ma liste de mots personnels |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-yourWords-categoryFilter"></a>
 
-### All categories / Alle Kategorien (`yourWords.categoryFilter`)
+### All categories / Alle Kategorien / Toutes les catégories (`yourWords.categoryFilter`)
 
 | Field | Value |
 |---|---|
@@ -4226,11 +4382,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: filter, groups, types<br>phrases: filter my own words by category; show only one type of dictionary entry |
 | Search (de) | words: Kategoriefilter, Wortgruppen, Eintragstypen<br>phrases: meine eigenen Wörter nach Kategorie filtern; nur eine bestimmte Art von Wörterbucheinträgen anzeigen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: filtre dictionnaire, catégories de mots<br>phrases: filtrer mes mots personnels par catégorie |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-yourWords-massEdit"></a>
 
-### Mass edit / Mehrere auswählen (`yourWords.massEdit`)
+### Mass edit / Mehrere auswählen / Modification groupée (`yourWords.massEdit`)
 
 | Field | Value |
 |---|---|
@@ -4247,11 +4404,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: bulk, batch, multiselect<br>phrases: select several dictionary entries at once |
 | Search (de) | words: Mehrfachauswahl, Sammelauswahl<br>phrases: mehrere Wörterbucheinträge auf einmal auswählen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: sélection multiple, sélection en lot<br>phrases: sélectionner plusieurs entrées du dictionnaire à la fois |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-learnFrom"></a>
 
-### Learn from... / Lernen aus... (`learnFrom`)
+### Learn from... / Lernen aus... / Apprendre de… (`learnFrom`)
 
 | Field | Value |
 |---|---|
@@ -4259,7 +4417,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | feature |
 | Parent | [`dictionary.tab.learnFrom`](#node-dictionary-tab-learnFrom) |
 | Title source | catalog key `Learn from...` |
-| Description | Let EnviousWispr pick up new words on its own, from things you already have. / Lass EnviousWispr neue Wörter aus deinen vorhandenen Inhalten selbst lernen. |
+| Description | Let EnviousWispr pick up new words on its own, from things you already have. / Lass EnviousWispr neue Wörter aus deinen vorhandenen Inhalten selbst lernen. / Laissez EnviousWispr apprendre de lui-même de nouveaux mots à partir de ce que vous avez déjà. |
 | Description source | catalog key `Let EnviousWispr pick up new words on its own, from things you already have.` |
 | Destination | `dictionary` |
 | Dictionary tab | `learnFrom` |
@@ -4269,11 +4427,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: sources, discovery<br>phrases: find ways for the app to learn new words; let the app pick up vocabulary from things I already have |
 | Search (de) | words: Lernquellen, Wortquellen<br>phrases: welche Quellen kann die App zum Wörterlernen nutzen; neue Wörter aus vorhandenen Quellen übernehmen lassen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: sources de vocabulaire, découverte de mots<br>phrases: voir les façons d’apprendre de nouveaux mots à partir de ce que j’ai déjà |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-selfLearningDictionary"></a>
 
-### Learn new words / Neue Wörter lernen (`selfLearningDictionary`)
+### Learn new words / Neue Wörter lernen / Apprendre de nouveaux mots (`selfLearningDictionary`)
 
 | Field | Value |
 |---|---|
@@ -4281,7 +4440,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`dictionary.tab.learnFrom`](#node-dictionary-tab-learnFrom) |
 | Title source | catalog key `Learn new words` |
-| Description | Automatically detects when you correct a dictation and adds the corrected word to your dictionary. Undo it from the notification, or remove it later in Your Words. / Erkennt automatisch, wenn du ein Diktat korrigierst, und fügt das korrigierte Wort deinem Wörterbuch hinzu. Du kannst das über die Mitteilung rückgängig machen oder das Wort später unter „Deine Wörter“ entfernen. |
+| Description | Automatically detects when you correct a dictation and adds the corrected word to your dictionary. Undo it from the notification, or remove it later in Your Words. / Erkennt automatisch, wenn du ein Diktat korrigierst, und fügt das korrigierte Wort deinem Wörterbuch hinzu. Du kannst das über die Mitteilung rückgängig machen oder das Wort später unter „Deine Wörter“ entfernen. / Détecte automatiquement les corrections apportées à une dictée et ajoute le mot corrigé à votre dictionnaire. Annulez cette action depuis la notification ou supprimez le mot plus tard dans Vos mots. |
 | Description source | catalog key `Automatically detects when you correct a dictation and adds the corrected word to your dictionary. Undo it from the notification, or remove it later in Your Words.` |
 | Destination | `dictionary` |
 | Dictionary tab | `learnFrom` |
@@ -4291,11 +4450,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: selflearning<br>phrases: learn new words from edits I make after dictating; stop learning from my dictation corrections |
 | Search (de) | words: selbstlernend<br>phrases: Wörter lernen, wenn ich mein Diktat korrigiere; nicht mehr aus meinen Diktatkorrekturen lernen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: apprentissage de nouveaux mots<br>phrases: ajouter automatiquement au dictionnaire les mots que je corrige à la main après une dictée |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-fixLearnedWords"></a>
 
-### Fix words it learned / Gelernte Korrekturen anwenden (`fixLearnedWords`)
+### Fix words it learned / Gelernte Korrekturen anwenden / Corriger les mots appris (`fixLearnedWords`)
 
 | Field | Value |
 |---|---|
@@ -4303,7 +4463,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`dictionary.tab.learnFrom`](#node-dictionary-tab-learnFrom) |
 | Title source | catalog key `Fix words it learned` |
-| Description | Use learned words in new recordings and imports. Turn this off to keep using words you added yourself without applying learned corrections. / Wende gelernte Korrekturen bei neuen Aufnahmen und Importen an. Wenn du diese Option ausschaltest, werden selbst hinzugefügte Wörter weiterhin berücksichtigt, solange das Wörterbuch aktiviert ist. |
+| Description | Use learned words in new recordings and imports. Turn this off to keep using words you added yourself without applying learned corrections. / Wende gelernte Korrekturen bei neuen Aufnahmen und Importen an. Wenn du diese Option ausschaltest, werden selbst hinzugefügte Wörter weiterhin berücksichtigt, solange das Wörterbuch aktiviert ist. / Utilisez les mots appris dans les nouveaux enregistrements et les importations. Désactivez cette option pour continuer à utiliser les mots que vous avez ajoutés vous-même sans appliquer les corrections apprises. |
 | Description source | catalog key `Use learned words in new recordings and imports. Turn this off to keep using words you added yourself without applying learned corrections.` |
 | Destination | `dictionary` |
 | Dictionary tab | `learnFrom` |
@@ -4313,11 +4473,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: learned corrections<br>phrases: use my past corrections in new recordings; apply learned corrections to imported audio; stop applying learned corrections |
 | Search (de) | phrases: gelernte Korrekturen bei neuen Aufnahmen und Importen anwenden; nur noch selbst hinzugefügte Wörter für Korrekturen nutzen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: réutiliser les corrections<br>phrases: appliquer les corrections apprises aux prochains enregistrements et aux fichiers importés; désactiver les corrections apprises tout en continuant à utiliser les mots ajoutés à la main |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-selfLearningDictionary-learnMore"></a>
 
-### Learn more / Mehr erfahren (`selfLearningDictionary.learnMore`)
+### Learn more / Mehr erfahren / En savoir plus (`selfLearningDictionary.learnMore`)
 
 | Field | Value |
 |---|---|
@@ -4334,11 +4495,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: read how learning from dictation corrections works |
 | Search (de) | phrases: nachlesen, wie das Lernen aus Diktatkorrekturen funktioniert |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: aide apprentissage dictionnaire<br>phrases: ouvrir l’explication de l’apprentissage à partir de mes corrections de dictée |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-selfLearningDictionary-forgetMemory"></a>
 
-### Forget learning memory / Lerngedächtnis löschen (`selfLearningDictionary.forgetMemory`)
+### Forget learning memory / Lerngedächtnis löschen / Oublier la mémoire d’apprentissage (`selfLearningDictionary.forgetMemory`)
 
 | Field | Value |
 |---|---|
@@ -4355,11 +4517,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: forget, reset, blocked, unblock, memory<br>phrases: clear the memory of rejected corrections; let blocked words be learned again |
 | Search (de) | words: Lerngedächtnis, blockiert, entsperren, vergessen<br>phrases: Lerngedächtnis löschen; abgelehnte Korrekturen vergessen; blockierte Wörter wieder lernen lassen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: oublier, mémoire, corrections refusées, mots bloqués, débloquer<br>phrases: effacer la mémoire des corrections refusées; permettre au dictionnaire d’apprendre les mots bloqués |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-importContacts"></a>
 
-### Import from Contacts / Aus Kontakten importieren (`importContacts`)
+### Import from Contacts / Aus Kontakten importieren / Importer depuis Contacts (`importContacts`)
 
 | Field | Value |
 |---|---|
@@ -4367,7 +4530,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | feature |
 | Parent | [`dictionary.tab.learnFrom`](#node-dictionary-tab-learnFrom) |
 | Title source | catalog key `Import from Contacts` |
-| Description | Add the names of people you know to your word list, so dictation spells them right. / Füge Namen von Personen zu deiner Wortliste hinzu, damit sie beim Diktieren richtig geschrieben werden. |
+| Description | Add the names of people you know to your word list, so dictation spells them right. / Füge Namen von Personen zu deiner Wortliste hinzu, damit sie beim Diktieren richtig geschrieben werden. / Ajoutez les noms des personnes que vous connaissez à votre liste de mots pour que la dictée les orthographie correctement. |
 | Description source | catalog key `Add the names of people you know to your word list, so dictation spells them right.` |
 | Destination | `dictionary` |
 | Dictionary tab | `learnFrom` |
@@ -4377,11 +4540,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: addressbook<br>phrases: teach dictation the names in my address book; use names from my contacts to improve spelling |
 | Search (de) | words: Adressbuch<br>phrases: die Namen aus meinem Adressbuch fürs Diktieren nutzen; Namen aus meinen Kontakten richtig erkennen lassen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: carnet d’adresses, vocabulaire des contacts<br>phrases: utiliser les noms de mon carnet d’adresses pour améliorer leur reconnaissance |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-contactsSyncOnLaunch"></a>
 
-### Keep in sync on launch / Beim Start synchron halten (`contactsSyncOnLaunch`)
+### Keep in sync on launch / Beim Start synchron halten / Maintenir la synchronisation au lancement (`contactsSyncOnLaunch`)
 
 | Field | Value |
 |---|---|
@@ -4389,7 +4553,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`importContacts`](#node-importContacts) |
 | Title source | catalog key `Keep in sync on launch` |
-| Description | Check for new contacts each time EnviousWispr starts. Off by default. / Bei jedem Start von EnviousWispr nach neuen Kontakten suchen. Standardmäßig deaktiviert. |
+| Description | Check for new contacts each time EnviousWispr starts. Off by default. / Bei jedem Start von EnviousWispr nach neuen Kontakten suchen. Standardmäßig deaktiviert. / Rechercher de nouveaux contacts à chaque démarrage d’EnviousWispr. Désactivé par défaut. |
 | Description source | catalog key `Check for new contacts each time EnviousWispr starts. Off by default.` |
 | Destination | `dictionary` |
 | Dictionary tab | `learnFrom` |
@@ -4399,11 +4563,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: sync, synchronization<br>phrases: check for new contact names when the app starts; keep my contact vocabulary updated on launch |
 | Search (de) | words: Kontaktabgleich, Synchronisierung<br>phrases: bei jedem Appstart nach neuen Kontaktnamen suchen; meine Kontaktwörter beim Start aktuell halten |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: synchronisation contacts, nouveaux contacts, sync au démarrage<br>phrases: chercher de nouveaux noms de contacts à chaque démarrage de l’application |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-quickAdd-step1"></a>
 
-### Highlight a word / Wort markieren (`quickAdd.step1`)
+### Highlight a word / Wort markieren / Sélectionner un mot (`quickAdd.step1`)
 
 | Field | Value |
 |---|---|
@@ -4411,7 +4576,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | feature |
 | Parent | [`dictionary.tab.quickAdd`](#node-dictionary-tab-quickAdd) |
 | Title source | catalog key `Highlight a word` |
-| Description | Select the word you want to fix in an email, chat, or document. / Markiere das Wort, das du in einer E-Mail, einem Chat oder Dokument korrigieren möchtest. |
+| Description | Select the word you want to fix in an email, chat, or document. / Markiere das Wort, das du in einer E-Mail, einem Chat oder Dokument korrigieren möchtest. / Sélectionnez le mot que vous voulez corriger dans un e-mail, une conversation ou un document. |
 | Description source | catalog key `Select the word you want to fix in an email, chat, or document.` |
 | Destination | `dictionary` |
 | Dictionary tab | `quickAdd` |
@@ -4421,11 +4586,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: highlight, highlighting<br>phrases: highlight the word I want to fix in another app; select a word before using Quick Add |
 | Search (de) | words: Textauswahl, Textmarkierung<br>phrases: das Wort zum Korrigieren in einer anderen App markieren; vor Schnell hinzufügen ein Wort auswählen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: mot à sélectionner, surligner un mot<br>phrases: sélectionner le mot à corriger dans une autre application avant l’ajout rapide |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-quickAdd-step2"></a>
 
-### Trigger Quick Add / „Schnell hinzufügen“ aufrufen (`quickAdd.step2`)
+### Trigger Quick Add / „Schnell hinzufügen“ aufrufen / Déclencher l’ajout rapide (`quickAdd.step2`)
 
 | Field | Value |
 |---|---|
@@ -4442,11 +4608,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: start Quick Add after selecting a word; open Quick Add for the highlighted word |
 | Search (de) | phrases: Schnell hinzufügen für das markierte Wort aufrufen; nach dem Markieren die Wortübernahme starten |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: déclenchement Quick Add, ouverture après sélection<br>phrases: comment déclencher l’ajout rapide une fois le mot sélectionné |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-quickAdd-step3"></a>
 
-### Choose and save / Auswählen und sichern (`quickAdd.step3`)
+### Choose and save / Auswählen und sichern / Choisir et enregistrer (`quickAdd.step3`)
 
 | Field | Value |
 |---|---|
@@ -4454,7 +4621,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | feature |
 | Parent | [`dictionary.tab.quickAdd`](#node-dictionary-tab-quickAdd) |
 | Title source | catalog key `Choose and save` |
-| Description | Choose the word you meant, or create a new one. Quick Add saves the highlighted spelling to your dictionary. / Wähle das gemeinte Wort oder erstelle ein neues. „Schnell hinzufügen“ speichert die markierte Schreibweise in deinem Wörterbuch. |
+| Description | Choose the word you meant, or create a new one. Quick Add saves the highlighted spelling to your dictionary. / Wähle das gemeinte Wort oder erstelle ein neues. „Schnell hinzufügen“ speichert die markierte Schreibweise in deinem Wörterbuch. / Choisissez le mot voulu ou créez-en un nouveau. L’ajout rapide enregistre l’orthographe sélectionnée dans votre dictionnaire. |
 | Description source | catalog key `Choose the word you meant, or create a new one. Quick Add saves the highlighted spelling to your dictionary.` |
 | Destination | `dictionary` |
 | Dictionary tab | `quickAdd` |
@@ -4464,11 +4631,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: choose the intended word in Quick Add; save the highlighted spelling with the right dictionary word |
 | Search (de) | phrases: bei Schnell hinzufügen das gemeinte Wort auswählen; die markierte Schreibweise beim richtigen Wörterbucheintrag speichern |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: mot voulu, association des orthographes<br>phrases: choisir le bon mot et enregistrer l’orthographe sélectionnée dans l’ajout rapide |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-quickAdd-shortcut"></a>
 
-### Keyboard shortcut / Tastenkürzel (`quickAdd.shortcut`)
+### Keyboard shortcut / Tastenkürzel / Raccourci clavier (`quickAdd.shortcut`)
 
 | Field | Value |
 |---|---|
@@ -4485,11 +4653,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: hotkey, keybind<br>phrases: which keys open Quick Add; where can I change the Quick Add shortcut |
 | Search (de) | words: Hotkey, Tastenkombination<br>phrases: welche Tasten öffnen Schnell hinzufügen; wo kann ich das Tastenkürzel für Schnell hinzufügen ändern |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: voir les touches Quick Add<br>phrases: voir quelles touches ouvrent l’ajout rapide et où modifier ce raccourci |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-quickAdd-menuBar"></a>
 
-### Menu bar / Menüleiste (`quickAdd.menuBar`)
+### Menu bar / Menüleiste / Barre des menus (`quickAdd.menuBar`)
 
 | Field | Value |
 |---|---|
@@ -4497,7 +4666,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | feature |
 | Parent | [`dictionary.tab.quickAdd`](#node-dictionary-tab-quickAdd) |
 | Title source | catalog key `Menu bar` |
-| Description | Click the EnviousWispr icon, then choose the item that starts with “Add” / Klicke auf das EnviousWispr-Symbol und wähle dann den Eintrag, der mit „hinzufügen“ endet |
+| Description | Click the EnviousWispr icon, then choose the item that starts with “Add” / Klicke auf das EnviousWispr-Symbol und wähle dann den Eintrag, der mit „hinzufügen“ endet / Cliquez sur l’icône EnviousWispr, puis choisissez l’élément qui commence par « Ajouter » |
 | Description source | catalog key `Click the EnviousWispr icon, then choose the item that starts with “Add”` |
 | Destination | `dictionary` |
 | Dictionary tab | `quickAdd` |
@@ -4507,11 +4676,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: add a selected word through the EnviousWispr menu; find the Add item under the EnviousWispr icon |
 | Search (de) | phrases: ein markiertes Wort über das EnviousWispr-Menü hinzufügen; den Eintrag zum Hinzufügen unter dem EnviousWispr-Symbol finden |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: menu EnviousWispr, commande Ajouter<br>phrases: trouver la commande Ajouter sous l’icône EnviousWispr dans la barre des menus |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-snippets"></a>
 
-### Paste the text you type over and over, by voice / Füge Text, den du oft tippst, per Stimme ein (`snippets`)
+### Paste the text you type over and over, by voice / Füge Text, den du oft tippst, per Stimme ein / Coller à la voix les textes que vous saisissez souvent (`snippets`)
 
 | Field | Value |
 |---|---|
@@ -4519,7 +4689,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | feature |
 | Parent | [`page.snippets`](#node-page-snippets) |
 | Title source | catalog key `Paste the text you type over and over, by voice` |
-| Description | Save an email address, a signature, a link. Say your keyword, then the trigger, and the saved text lands where your cursor is. Say the trigger on its own and your dictation is left alone. / Speichere eine E-Mail-Adresse, eine Signatur oder einen Link. Sprich dein Schlüsselwort und danach den Auslöser, und der gespeicherte Text erscheint an der Cursorposition. Sprichst du nur den Auslöser, bleibt dein Diktat unverändert. |
+| Description | Save an email address, a signature, a link. Say your keyword, then the trigger, and the saved text lands where your cursor is. Say the trigger on its own and your dictation is left alone. / Speichere eine E-Mail-Adresse, eine Signatur oder einen Link. Sprich dein Schlüsselwort und danach den Auslöser, und der gespeicherte Text erscheint an der Cursorposition. Sprichst du nur den Auslöser, bleibt dein Diktat unverändert. / Enregistrez une adresse e-mail, une signature ou un lien. Dites votre mot-clé, puis le déclencheur, et le texte enregistré s’insère à l’emplacement du curseur. Dites uniquement le déclencheur et votre dictée reste inchangée. |
 | Description source | catalog key `Save an email address, a signature, a link. Say your keyword, then the trigger, and the saved text lands where your cursor is. Say the trigger on its own and your dictation is left alone.` |
 | Destination | `snippets` |
 | Dictionary tab | none |
@@ -4529,11 +4699,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: expander, expansion<br>phrases: insert saved text by voice; say a command instead of typing repeated text; paste a saved signature with my voice |
 | Search (de) | words: Texterweiterung, Textersetzung<br>phrases: gespeicherten Text per Stimme einfügen; wiederkehrenden Text mit einem Sprachbefehl einsetzen; eine gespeicherte Signatur per Stimme einfügen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: expansion de texte, raccourcis vocaux, signature vocale<br>phrases: insérer un texte enregistré en disant le mot-clé puis son déclencheur |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-snippetKeyword"></a>
 
-### Keyword / Schlüsselwort (`snippetKeyword`)
+### Keyword / Schlüsselwort / Mot-clé (`snippetKeyword`)
 
 | Field | Value |
 |---|---|
@@ -4541,7 +4712,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`page.snippets`](#node-page-snippets) |
 | Title source | catalog key `Keyword` |
-| Description | Say this first, then your trigger. One word. / Sag zuerst dieses Wort, dann deinen Auslöser. Ein Wort. |
+| Description | Say this first, then your trigger. One word. / Sag zuerst dieses Wort, dann deinen Auslöser. Ein Wort. / Dites d’abord ceci, puis votre déclencheur. Un seul mot. |
 | Description source | catalog key `Say this first, then your trigger. One word.` |
 | Destination | `snippets` |
 | Dictionary tab | none |
@@ -4551,11 +4722,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: prefix, opener<br>phrases: change the word I say before a snippet trigger; choose the opening word for snippet commands |
 | Search (de) | words: Startwort, Einleitungswort<br>phrases: das Wort vor dem Textbausteinauslöser ändern; festlegen, mit welchem Wort meine Textbausteinbefehle anfangen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: préfixe des extraits, mot-clé snippets<br>phrases: choisir le mot à dire avant le déclencheur d’un extrait |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-yourSnippets"></a>
 
-### Your snippets / Deine Textbausteine (`yourSnippets`)
+### Your snippets / Deine Textbausteine / Vos extraits de texte (`yourSnippets`)
 
 | Field | Value |
 |---|---|
@@ -4572,11 +4744,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: show my saved snippet collection; where are the reusable texts I already saved |
 | Search (de) | words: Bausteinsammlung<br>phrases: meine gespeicherte Textbausteinsammlung ansehen; wo sind die Texte, die ich schon als Bausteine gespeichert habe |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: extraits enregistrés, textes réutilisables, snippets sauvegardés<br>phrases: voir les textes réutilisables que j’ai déjà enregistrés |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-snippets-search"></a>
 
-### Search snippets / Textbausteine durchsuchen (`snippets.search`)
+### Search snippets / Textbausteine durchsuchen / Rechercher des extraits (`snippets.search`)
 
 | Field | Value |
 |---|---|
@@ -4593,11 +4766,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: find a snippet in my saved collection; search my existing text snippets |
 | Search (de) | words: Bausteinsuche<br>phrases: einen Textbaustein in meiner Sammlung finden; meine vorhandenen Textbausteine durchsuchen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: recherche extraits, recherche snippets<br>phrases: chercher un extrait dans ma collection enregistrée |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-snippets-import"></a>
 
-### Import / Importieren (`snippets.import`)
+### Import / Importieren / Importer (`snippets.import`)
 
 | Field | Value |
 |---|---|
@@ -4614,11 +4788,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: import an existing collection of text snippets |
 | Search (de) | phrases: eine vorhandene Textbausteinsammlung einlesen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | phrases: importer une collection de textes réutilisables |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-snippets-export"></a>
 
-### Export / Exportieren (`snippets.export`)
+### Export / Exportieren / Exporter (`snippets.export`)
 
 | Field | Value |
 |---|---|
@@ -4635,11 +4810,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: export my saved text snippet collection |
 | Search (de) | phrases: meine gespeicherte Textbausteinsammlung exportieren |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | phrases: exporter ma collection de textes réutilisables |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-snippets-add"></a>
 
-### Add snippet / Textbaustein hinzufügen (`snippets.add`)
+### Add snippet / Textbaustein hinzufügen / Ajouter un extrait (`snippets.add`)
 
 | Field | Value |
 |---|---|
@@ -4656,11 +4832,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: add another snippet to my existing collection |
 | Search (de) | phrases: meiner vorhandenen Sammlung einen weiteren Textbaustein hinzufügen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: ajouter un autre extrait<br>phrases: ajouter un autre extrait à ma collection existante |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-snippets-addFirst"></a>
 
-### Add your first snippet / Ersten Textbaustein hinzufügen (`snippets.addFirst`)
+### Add your first snippet / Ersten Textbaustein hinzufügen / Ajouter votre premier extrait (`snippets.addFirst`)
 
 | Field | Value |
 |---|---|
@@ -4677,11 +4854,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: create my first snippet while the list is empty |
 | Search (de) | phrases: meinen ersten Textbaustein in der noch leeren Liste anlegen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: premier extrait<br>phrases: créer mon premier extrait quand la liste est vide |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-snippets-clearSearch"></a>
 
-### Clear search / Suche löschen (`snippets.clearSearch`)
+### Clear search / Suche löschen / Effacer la recherche (`snippets.clearSearch`)
 
 | Field | Value |
 |---|---|
@@ -4698,11 +4876,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: clear the search field in my snippet list |
 | Search (de) | phrases: das Suchfeld in meiner Textbausteinliste leeren |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: vider la recherche snippets<br>phrases: vider le champ de recherche de mes extraits |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetings-tab-general"></a>
 
-### General / Allgemein (`meetings.tab.general`)
+### General / Allgemein / Général (`meetings.tab.general`)
 
 | Field | Value |
 |---|---|
@@ -4719,11 +4898,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: general EnviousMeet settings |
 | Search (de) | phrases: allgemeine Einstellungen für EnviousMeet |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | phrases: ouvrir l’onglet général d’EnviousMeet |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetings-tab-models"></a>
 
-### Models / Modelle (`meetings.tab.models`)
+### Models / Modelle / Modèles (`meetings.tab.models`)
 
 | Field | Value |
 |---|---|
@@ -4740,11 +4920,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: meeting models; EnviousMeet models |
 | Search (de) | phrases: Modelle für Meetings; Modelle in EnviousMeet |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | phrases: modèles pour les réunions |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetings-tab-summaries"></a>
 
-### Summaries / Zusammenfassungen (`meetings.tab.summaries`)
+### Summaries / Zusammenfassungen / Résumés (`meetings.tab.summaries`)
 
 | Field | Value |
 |---|---|
@@ -4761,11 +4942,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: meeting summary settings; EnviousMeet summaries tab |
 | Search (de) | phrases: Tab Zusammenfassungen in EnviousMeet öffnen; zu den Einstellungen für Meetingzusammenfassungen wechseln |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | phrases: ouvrir l’onglet résumés d’EnviousMeet; où sont les réglages des résumés de réunion |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetings-tab-callApps"></a>
 
-### Call Apps / Anruf-Apps (`meetings.tab.callApps`)
+### Call Apps / Anruf-Apps / Apps d’appel (`meetings.tab.callApps`)
 
 | Field | Value |
 |---|---|
@@ -4782,11 +4964,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: Zoom, Microsoft Teams, FaceTime, Slack, Webex, Google Meet<br>phrases: choose which apps to watch for calls; turn off call detection for Zoom |
 | Search (de) | words: Zoom, Microsoft Teams, FaceTime, Slack, Webex, Google Meet<br>phrases: lege fest, bei welchen Apps EnviousMeet Anrufe erkennt; schalte die Anruferkennung für Zoom aus; schalte die Anruferkennung für Meetings im Browser aus |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: applis d’appel<br>phrases: paramètres des applications d’appel; liste des applications d’appel |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetings-tab-permissions"></a>
 
-### Permissions / Berechtigungen (`meetings.tab.permissions`)
+### Permissions / Berechtigungen / Autorisations (`meetings.tab.permissions`)
 
 | Field | Value |
 |---|---|
@@ -4803,11 +4986,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: meeting permissions, call sound<br>phrases: EnviousMeet permissions; check permissions for meeting recording; allow microphone access for meeting recording |
 | Search (de) | phrases: Berechtigungen für EnviousMeet; welche Berechtigungen braucht EnviousMeet |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: permissions EnviousMeet<br>phrases: autorisations pour EnviousMeet; vérifier les autorisations pour enregistrer une réunion; autoriser le micro et le son du Mac pour EnviousMeet |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-appSettings-tab-appearance"></a>
 
-### Appearance / Erscheinungsbild (`appSettings.tab.appearance`)
+### Appearance / Erscheinungsbild / Apparence (`appSettings.tab.appearance`)
 
 | Field | Value |
 |---|---|
@@ -4824,11 +5008,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: open the Appearance tab in App Settings; where is the Appearance section of App Settings |
 | Search (de) | phrases: den Bereich Erscheinungsbild in den App-Einstellungen öffnen; wo ist der Reiter Erscheinungsbild |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: onglet apparence, réglages visuels<br>phrases: ouvrir l’onglet Apparence des réglages de l’application |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-appSettings-tab-permissions"></a>
 
-### Permissions / Berechtigungen (`appSettings.tab.permissions`)
+### Permissions / Berechtigungen / Autorisations (`appSettings.tab.permissions`)
 
 | Field | Value |
 |---|---|
@@ -4845,11 +5030,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: authorizations, privileges<br>phrases: see all the Mac permissions the app needs; open the app permissions overview |
 | Search (de) | words: Zugriffsrechte, Freigaben, Appzugriffe<br>phrases: alle benötigten Mac-Berechtigungen ansehen; die Übersicht der App-Berechtigungen öffnen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: permissions macOS, autorisations de l’app<br>phrases: voir toutes les autorisations du Mac nécessaires à l’application |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-appSettings-tab-privacy"></a>
 
-### Privacy / Datenschutz (`appSettings.tab.privacy`)
+### Privacy / Datenschutz / Confidentialité (`appSettings.tab.privacy`)
 
 | Field | Value |
 |---|---|
@@ -4866,11 +5052,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: open the Privacy tab in App Settings; where are the app's data-sharing settings |
 | Search (de) | words: Privatsphäre<br>phrases: den Datenschutzbereich der App-Einstellungen öffnen; wo sind die Einstellungen zur Datenweitergabe |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: onglet confidentialité, partage de données<br>phrases: ouvrir l’onglet Confidentialité des réglages de l’application |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-appSettings-tab-recordings"></a>
 
-### Recordings / Aufnahmen (`appSettings.tab.recordings`)
+### Recordings / Aufnahmen / Enregistrements (`appSettings.tab.recordings`)
 
 | Field | Value |
 |---|---|
@@ -4887,11 +5074,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: audio recordings, voice recordings<br>phrases: save dictation recordings; how long to keep meeting audio; delete saved audio to free up space |
 | Search (de) | words: Audioaufnahmen, Diktataufnahmen, Aufbewahrungsdauer, Speicherplatz<br>phrases: speichere meine Diktataufnahmen; wie lange werden Diktataufnahmen und Meeting-Audio aufbewahrt; lösche gespeicherte Audioaufnahmen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: enregistrements audio, audio des réunions, durée de conservation, stockage audio<br>phrases: conserver les enregistrements de dictée; supprimer les enregistrements sans effacer le texte; régler le seuil d’alerte du stockage audio |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-appSettings-tab-licenses"></a>
 
-### Licenses / Lizenzen (`appSettings.tab.licenses`)
+### Licenses / Lizenzen / Licences (`appSettings.tab.licenses`)
 
 | Field | Value |
 |---|---|
@@ -4908,11 +5096,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: copyright<br>phrases: show the overview of app and third-party licenses; where are all the software licensing documents |
 | Search (de) | words: Urheberrecht, Lizenzübersicht<br>phrases: die Übersicht der App- und Drittanbieterlizenzen öffnen; wo finde ich alle Lizenzdokumente |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: onglet licences, droits d’auteur<br>phrases: ouvrir la vue d’ensemble des licences de l’application et des logiciels tiers |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-theme"></a>
 
-### Theme / Design (`theme`)
+### Theme / Design / Thème (`theme`)
 
 | Field | Value |
 |---|---|
@@ -4920,7 +5109,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`section.appearance`](#node-section-appearance) |
 | Title source | catalog key `Theme` |
-| Description | Choose how EnviousWispr looks. / Lege fest, wie EnviousWispr aussieht. |
+| Description | Choose how EnviousWispr looks. / Lege fest, wie EnviousWispr aussieht. / Choisissez l’apparence d’EnviousWispr. |
 | Description source | catalog key `Choose how EnviousWispr looks.` |
 | Destination | `appSettings` › `appearance` |
 | Dictionary tab | none |
@@ -4930,11 +5119,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: colors, colours, palette<br>phrases: change the app's color scheme; choose the app's appearance mode |
 | Search (de) | words: Farbschema, Farben, Farbmodus<br>phrases: das Farbschema der App ändern; den Darstellungsmodus der App auswählen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: couleurs, palette<br>phrases: où choisir le thème de l’application |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-appLanguage"></a>
 
-### Language / Sprache (`appLanguage`)
+### Language / Sprache / Langue (`appLanguage`)
 
 | Field | Value |
 |---|---|
@@ -4942,7 +5132,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`section.appearance`](#node-section-appearance) |
 | Title source | catalog key `Language` |
-| Description | The language of the app interface. / Die Sprache der App-Oberfläche. |
+| Description | The language of the app interface. / Die Sprache der App-Oberfläche. / La langue de l’interface de l’app. |
 | Description source | catalog key `The language of the app interface.` |
 | Destination | `appSettings` › `appearance` |
 | Dictionary tab | none |
@@ -4952,11 +5142,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: locale, localization, translation<br>phrases: change the language of the app menus; change the language used in Settings |
 | Search (de) | words: Oberflächensprache, Menüsprache, Übersetzung<br>phrases: die Sprache der Appmenüs ändern; die Sprache der Einstellungen ändern |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: langue des menus, traduction, localisation<br>phrases: où changer la langue des menus et des réglages de l’application |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-appLanguage-systemDefault"></a>
 
-### System default / Systemstandard (`appLanguage.systemDefault`)
+### System default / Systemstandard / Par défaut du système (`appLanguage.systemDefault`)
 
 | Field | Value |
 |---|---|
@@ -4973,7 +5164,8 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: use the same app language as my Mac; let my Mac choose the interface language |
 | Search (de) | phrases: die Appsprache vom Mac übernehmen; die App in derselben Sprache wie meinen Mac anzeigen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: langue système, langue automatique des menus<br>phrases: utiliser la même langue que mon Mac pour l’interface |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-appLanguage-shipped"></a>
 
@@ -4994,11 +5186,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: English, German, Deutsch<br>phrases: show the app menus in English; show the app menus in German |
 | Search (de) | words: Deutsch, Englisch, English<br>phrases: die Appmenüs auf Deutsch anzeigen; die Appmenüs auf Englisch anzeigen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: menus anglais, menus allemands, English, Deutsch<br>phrases: afficher les menus de l’application en anglais; afficher les menus de l’application en allemand |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-appLanguage-relaunch"></a>
 
-### Relaunch to apply / Zum Übernehmen neu starten (`appLanguage.relaunch`)
+### Relaunch to apply / Zum Übernehmen neu starten / Relancer pour appliquer (`appLanguage.relaunch`)
 
 | Field | Value |
 |---|---|
@@ -5015,11 +5208,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: restart the app to apply the new menu language |
 | Search (de) | phrases: die App neu starten, um die neue Menüsprache zu übernehmen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: relancer pour la langue<br>phrases: redémarrer l’application pour appliquer la nouvelle langue des menus |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-showInDock"></a>
 
-### Show app in Dock / App im Dock anzeigen (`showInDock`)
+### Show app in Dock / App im Dock anzeigen / Afficher l’app dans le Dock (`showInDock`)
 
 | Field | Value |
 |---|---|
@@ -5027,7 +5221,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`section.appearance`](#node-section-appearance) |
 | Title source | catalog key `Show app in Dock` |
-| Description | Keep EnviousWispr in your Dock. / EnviousWispr im Dock behalten. |
+| Description | Keep EnviousWispr in your Dock. / EnviousWispr im Dock behalten. / Conserver EnviousWispr dans le Dock. |
 | Description source | catalog key `Keep EnviousWispr in your Dock.` |
 | Destination | `appSettings` › `appearance` |
 | Dictionary tab | none |
@@ -5037,11 +5231,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: keep the EnviousWispr icon in my Dock; hide EnviousWispr from the Dock |
 | Search (de) | phrases: das EnviousWispr-Symbol im Dock behalten; EnviousWispr aus dem Dock ausblenden |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: Dock, icône Dock<br>phrases: afficher ou masquer EnviousWispr dans le Dock |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-updateAlertInMenuBar"></a>
 
-### Update alert in menu bar / Update-Hinweis in der Menüleiste (`updateAlertInMenuBar`)
+### Update alert in menu bar / Update-Hinweis in der Menüleiste / Alerte de mise à jour dans la barre des menus (`updateAlertInMenuBar`)
 
 | Field | Value |
 |---|---|
@@ -5049,7 +5244,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`section.appearance`](#node-section-appearance) |
 | Title source | catalog key `Update alert in menu bar` |
-| Description | Show gold lips when an update is ready. / Goldene Lippen anzeigen, wenn ein Update bereitsteht. |
+| Description | Show gold lips when an update is ready. / Goldene Lippen anzeigen, wenn ein Update bereitsteht. / Afficher les lèvres dorées lorsqu’une mise à jour est disponible. |
 | Description source | catalog key `Show gold lips when an update is ready.` |
 | Destination | `appSettings` › `appearance` |
 | Dictionary tab | none |
@@ -5059,11 +5254,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: gold, golden, lips, badge<br>phrases: show gold lips when an update is ready; hide the update indicator in the menu bar |
 | Search (de) | words: gold, golden, Lippen, Updatesymbol<br>phrases: goldene Lippen anzeigen, wenn ein Update bereitsteht; den Update-Hinweis in der Menüleiste ausblenden |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: lèvres dorées, badge de mise à jour<br>phrases: afficher ou masquer les lèvres dorées quand une mise à jour est prête |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-permission-microphone"></a>
 
-### Microphone / Mikrofon (`permission.microphone`)
+### Microphone / Mikrofon / Micro (`permission.microphone`)
 
 | Field | Value |
 |---|---|
@@ -5071,7 +5267,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | feature |
 | Parent | [`section.permissions`](#node-section-permissions) |
 | Title source | catalog key `Microphone` |
-| Description | Needed to record your voice. / Nötig, um deine Stimme aufzunehmen. |
+| Description | Needed to record your voice. / Nötig, um deine Stimme aufzunehmen. / Nécessaire pour enregistrer votre voix. |
 | Description source | catalog key `Needed to record your voice.` |
 | Destination | `appSettings` › `permissions` |
 | Dictionary tab | none |
@@ -5081,11 +5277,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: mic, recording, audio<br>phrases: check whether the app can record my voice; why is microphone access denied |
 | Search (de) | words: Mikro, Aufnahme, Sprachaufnahme<br>phrases: prüfen, ob die App meine Stimme aufnehmen darf; warum ist der Mikrofonzugriff gesperrt |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: accès micro, micro refusé, permission micro<br>phrases: vérifier si l’application a l’autorisation d’enregistrer ma voix |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-permission-microphone-request"></a>
 
-### Request Access / Zugriff anfordern (`permission.microphone.request`)
+### Request Access / Zugriff anfordern / Demander l’accès (`permission.microphone.request`)
 
 | Field | Value |
 |---|---|
@@ -5102,11 +5299,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: request permission to use the microphone |
 | Search (de) | phrases: die Erlaubnis für den Mikrofonzugriff anfordern |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: demander l’accès micro<br>phrases: demander l’autorisation d’utiliser le microphone |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-permission-accessibility"></a>
 
-### Accessibility / Bedienungshilfen (`permission.accessibility`)
+### Accessibility / Bedienungshilfen / Accessibilité (`permission.accessibility`)
 
 | Field | Value |
 |---|---|
@@ -5114,7 +5312,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | feature |
 | Parent | [`section.permissions`](#node-section-permissions) |
 | Title source | catalog key `Accessibility` |
-| Description | Needed to paste text into other apps. / Nötig, um Text in andere Apps einzufügen. |
+| Description | Needed to paste text into other apps. / Nötig, um Text in andere Apps einzufügen. / Nécessaire pour coller du texte dans d’autres apps. |
 | Description source | catalog key `Needed to paste text into other apps.` |
 | Destination | `appSettings` › `permissions` |
 | Dictionary tab | none |
@@ -5124,11 +5322,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: paste, pasting, insertion<br>phrases: check the permission needed to paste dictation into other apps; why does text insertion need Accessibility access |
 | Search (de) | words: Einfügeberechtigung, Einfügen, Texteingabe<br>phrases: die Berechtigung zum Einfügen von Diktaten prüfen; warum braucht die Texteingabe Zugriff auf Bedienungshilfen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: accessibilité, permission collage<br>phrases: vérifier l’autorisation nécessaire pour coller ma dictée dans d’autres applications |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-permission-accessibility-openSettings"></a>
 
-### Open System Settings / Systemeinstellungen öffnen (`permission.accessibility.openSettings`)
+### Open System Settings / Systemeinstellungen öffnen / Ouvrir Réglages Système (`permission.accessibility.openSettings`)
 
 | Field | Value |
 |---|---|
@@ -5145,11 +5344,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: open Mac settings to grant Accessibility permission; open Mac settings to grant Accessibility access again after rebuilding |
 | Search (de) | phrases: die Mac-Einstellungen für den Zugriff auf Bedienungshilfen öffnen; nach einem neuen App-Build die Bedienungshilfen erneut freigeben |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: ouvrir les autorisations d’accessibilité<br>phrases: ouvrir les réglages du Mac pour accorder l’accès à l’accessibilité |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-shareUsageMetrics"></a>
 
-### Share usage metrics / Nutzungsstatistiken teilen (`shareUsageMetrics`)
+### Share usage metrics / Nutzungsstatistiken teilen / Partager les données d’utilisation (`shareUsageMetrics`)
 
 | Field | Value |
 |---|---|
@@ -5157,7 +5357,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`section.privacy`](#node-section-privacy) |
 | Title source | catalog key `Share usage metrics` |
-| Description | Help us catch broken updates. / Hilf uns, fehlerhafte Updates zu erkennen. |
+| Description | Help us catch broken updates. / Hilf uns, fehlerhafte Updates zu erkennen. / Aidez-nous à détecter les mises à jour défectueuses. |
 | Description source | catalog key `Help us catch broken updates.` |
 | Destination | `appSettings` › `privacy` |
 | Dictionary tab | none |
@@ -5167,11 +5367,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: analytics, statistics<br>phrases: share usage data to help spot broken updates; turn off usage analytics |
 | Search (de) | words: Nutzungsdaten, Nutzungsanalyse<br>phrases: Nutzungsdaten teilen, um fehlerhafte Updates zu erkennen; die Nutzungsanalyse ausschalten |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: statistiques, données d’usage, analytics, télémétrie<br>phrases: activer ou désactiver le partage des statistiques d’utilisation |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-sendCrashReports"></a>
 
-### Send crash reports / Absturzberichte senden (`sendCrashReports`)
+### Send crash reports / Absturzberichte senden / Envoyer les rapports de plantage (`sendCrashReports`)
 
 | Field | Value |
 |---|---|
@@ -5179,7 +5380,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`section.privacy`](#node-section-privacy) |
 | Title source | catalog key `Send crash reports` |
-| Description | Help us fix crashes and errors. / Hilf uns, Abstürze und Fehler zu beheben. |
+| Description | Help us fix crashes and errors. / Hilf uns, Abstürze und Fehler zu beheben. / Aidez-nous à corriger les plantages et les erreurs. |
 | Description source | catalog key `Help us fix crashes and errors.` |
 | Destination | `appSettings` › `privacy` |
 | Dictionary tab | none |
@@ -5189,11 +5390,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: crashes, errors, diagnostics<br>phrases: send information about app crashes and errors; stop sending crash reports |
 | Search (de) | words: Abstürze, Fehler, Fehlerdiagnose<br>phrases: Informationen zu Abstürzen und Fehlern senden; keine Absturzberichte mehr senden |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: plantages, crashs, diagnostics, rapports d’erreurs<br>phrases: activer ou désactiver l’envoi des rapports de plantage et d’erreur |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-sendCrashReports-restart"></a>
 
-### Restart now / Jetzt neu starten (`sendCrashReports.restart`)
+### Restart now / Jetzt neu starten / Redémarrer maintenant (`sendCrashReports.restart`)
 
 | Field | Value |
 |---|---|
@@ -5210,11 +5412,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: restart the app to apply my crash-reporting setting |
 | Search (de) | phrases: die App neu starten, um meine Einstellung für Absturzberichte zu übernehmen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: redémarrer pour les rapports<br>phrases: redémarrer l’application pour appliquer le réglage des rapports de plantage |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-whatWeCollect"></a>
 
-### What we collect / Was wir erfassen (`whatWeCollect`)
+### What we collect / Was wir erfassen / Ce que nous recueillons (`whatWeCollect`)
 
 | Field | Value |
 |---|---|
@@ -5222,7 +5425,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | feature |
 | Parent | [`section.privacy`](#node-section-privacy) |
 | Title source | catalog key `What we collect` |
-| Description | Never your audio, text, history, snippets, dictionary or API keys. Only what you type into the feedback form. / Niemals deine Audiodaten, Texte, deinen Verlauf, deine Textbausteine, dein Wörterbuch oder API-Schlüssel. Nur was du in das Feedback-Formular eingibst. |
+| Description | Never your audio, text, history, snippets, dictionary or API keys. Only what you type into the feedback form. / Niemals deine Audiodaten, Texte, deinen Verlauf, deine Textbausteine, dein Wörterbuch oder API-Schlüssel. Nur was du in das Feedback-Formular eingibst. / Jamais votre audio, vos textes, votre historique, vos extraits, votre dictionnaire ou vos clés API. Uniquement ce que vous saisissez dans le formulaire de commentaires. |
 | Description source | catalog key `Never your audio, text, history, snippets, dictionary or API keys. Only what you type into the feedback form.` |
 | Destination | `appSettings` › `privacy` |
 | Dictionary tab | none |
@@ -5232,11 +5435,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: collection, feedback<br>phrases: what information does the app collect; are my recordings or dictations collected; does the app collect my dictionary or API keys |
 | Search (de) | words: Datenerfassung, Feedbackdaten<br>phrases: welche Daten erfasst die App; werden meine Aufnahmen oder Diktate gesammelt; werden mein Wörterbuch oder meine API-Schlüssel erfasst |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: données collectées, collecte, formulaire de retour<br>phrases: quelles informations l’application collecte-t-elle; est-ce que mes dictées ou mes clés API sont collectées |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-whatWeCollect-seeDetails"></a>
 
-### See details / Details ansehen (`whatWeCollect.seeDetails`)
+### See details / Details ansehen / Afficher les détails (`whatWeCollect.seeDetails`)
 
 | Field | Value |
 |---|---|
@@ -5253,11 +5457,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: open the detailed explanation of what data is collected |
 | Search (de) | phrases: die ausführliche Erklärung zur Datenerfassung öffnen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: détails de la collecte<br>phrases: ouvrir l’explication détaillée des données collectées |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-saveDictationRecordings"></a>
 
-### Save dictation recordings / Diktataufnahmen speichern (`saveDictationRecordings`)
+### Save dictation recordings / Diktataufnahmen speichern / Enregistrer l’audio des dictées (`saveDictationRecordings`)
 
 | Field | Value |
 |---|---|
@@ -5265,7 +5470,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`section.recordings`](#node-section-recordings) |
 | Title source | catalog key `Save dictation recordings` |
-| Description | Keep the audio of each new dictation on this Mac, so you can play it back. / Speichert das Audio jedes neuen Diktats auf diesem Mac, damit du es abspielen kannst. |
+| Description | Keep the audio of each new dictation on this Mac, so you can play it back. / Speichert das Audio jedes neuen Diktats auf diesem Mac, damit du es abspielen kannst. / Conserver l’audio de chaque nouvelle dictée sur ce Mac pour pouvoir le réécouter. |
 | Description source | catalog key `Keep the audio of each new dictation on this Mac, so you can play it back.` |
 | Destination | `appSettings` › `recordings` |
 | Dictionary tab | none |
@@ -5275,11 +5480,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: keep audio<br>phrases: save each dictation's audio on my Mac; keep recordings so I can listen later |
 | Search (de) | words: Audioaufnahmen, Diktataudio<br>phrases: speichere den Ton neuer Diktate auf diesem Mac zum späteren Anhören; speichere keine Audioaufnahmen neuer Diktate mehr |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | phrases: garder l’audio de chaque dictée; enregistrer mes dictées pour les réécouter |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-dictationRecordingRetention"></a>
 
-### Keep dictation recordings / Diktataufnahmen behalten (`dictationRecordingRetention`)
+### Keep dictation recordings / Diktataufnahmen behalten / Conserver les enregistrements de dictée (`dictationRecordingRetention`)
 
 | Field | Value |
 |---|---|
@@ -5287,7 +5493,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`section.recordings`](#node-section-recordings) |
 | Title source | catalog key `Keep dictation recordings` |
-| Description | Choose how long to keep recordings. The text always stays. / Wähle, wie lange Aufnahmen behalten werden. Der Text bleibt immer erhalten. |
+| Description | Choose how long to keep recordings. The text always stays. / Wähle, wie lange Aufnahmen behalten werden. Der Text bleibt immer erhalten. / Choisissez combien de temps conserver les enregistrements. Le texte reste toujours disponible. |
 | Description source | catalog key `Choose how long to keep recordings. The text always stays.` |
 | Destination | `appSettings` › `recordings` |
 | Dictionary tab | none |
@@ -5297,11 +5503,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: dictation recording retention<br>phrases: how long are dictation recordings kept; automatically delete old dictation recordings but keep the text; keep dictation recordings until I delete them |
 | Search (de) | words: Aufbewahrungsdauer, Diktataufnahmen<br>phrases: wie lange bleiben meine Diktataufnahmen gespeichert; alte Diktataufnahmen automatisch löschen und den Text behalten |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: durée de conservation<br>phrases: choisir combien de temps garder l’audio des dictées; supprimer automatiquement les anciens enregistrements de dictée sans supprimer le texte |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetingRecordingRetention"></a>
 
-### Keep meeting audio / Meeting-Audio behalten (`meetingRecordingRetention`)
+### Keep meeting audio / Meeting-Audio behalten / Conserver l’audio des réunions (`meetingRecordingRetention`)
 
 | Field | Value |
 |---|---|
@@ -5309,7 +5516,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`section.recordings`](#node-section-recordings) |
 | Title source | catalog key `Keep meeting audio` |
-| Description | Meeting text, notes and summaries always stay. / Meeting-Text, Notizen und Zusammenfassungen bleiben immer erhalten. |
+| Description | Meeting text, notes and summaries always stay. / Meeting-Text, Notizen und Zusammenfassungen bleiben immer erhalten. / Le texte, les notes et les résumés des réunions sont toujours conservés. |
 | Description source | catalog key `Meeting text, notes and summaries always stay.` |
 | Destination | `appSettings` › `recordings` |
 | Dictionary tab | none |
@@ -5319,11 +5526,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: meeting recordings, meeting audio retention<br>phrases: choose how long to keep meeting audio; automatically delete old meeting audio; keep meeting audio until I delete it |
 | Search (de) | words: Meeting-Audio, Meetingaudio, Aufbewahrungsdauer<br>phrases: stell ein, wie lange Meeting-Audio gespeichert bleibt; bewahre Meeting-Audio 30 oder 90 Tage auf; behalte Meeting-Audio, bis ich es lösche |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: enregistrements de réunions<br>phrases: choisir combien de temps garder l’audio des réunions; supprimer automatiquement l’audio des anciennes réunions |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-recordingStorageUsage"></a>
 
-### Storage used / Belegter Speicher (`recordingStorageUsage`)
+### Storage used / Belegter Speicher / Stockage utilisé (`recordingStorageUsage`)
 
 | Field | Value |
 |---|---|
@@ -5340,11 +5548,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: recording size, disk usage<br>phrases: how much space do my recordings take; space taken up by recordings |
 | Search (de) | words: Speicherbelegung, Speicherverbrauch<br>phrases: wie viel Platz brauchen meine Aufnahmen; zeig mir die Größe meiner Aufnahmen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: taille des enregistrements<br>phrases: combien de place prennent mes enregistrements; espace occupé par les enregistrements |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-recordingStorageWarningThreshold"></a>
 
-### Storage warning threshold / Speicherwarnschwelle (`recordingStorageWarningThreshold`)
+### Storage warning threshold / Speicherwarnschwelle / Seuil d’avertissement du stockage (`recordingStorageWarningThreshold`)
 
 | Field | Value |
 |---|---|
@@ -5352,7 +5561,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`section.recordingStorage`](#node-section-recordingStorage) |
 | Title source | catalog key `Storage warning threshold` |
-| Description | Get a warning when recordings use more than this. / Erhalte eine Warnung, wenn Aufnahmen mehr Speicher als diesen Wert belegen. |
+| Description | Get a warning when recordings use more than this. / Erhalte eine Warnung, wenn Aufnahmen mehr Speicher als diesen Wert belegen. / Recevoir un avertissement lorsque les enregistrements utilisent plus que cette valeur. |
 | Description source | catalog key `Get a warning when recordings use more than this.` |
 | Destination | `appSettings` › `recordings` |
 | Dictionary tab | none |
@@ -5362,11 +5571,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: recording size alert, disk usage warning<br>phrases: warn me when recordings take up too much space; set when the recording storage warning appears |
 | Search (de) | words: Warnschwelle, Speicherplatzwarnung<br>phrases: warne mich, wenn Aufnahmen mehr als 2 GB belegen; schalte die Speicherplatzwarnung für Aufnahmen aus |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: alerte de stockage, seuil d’avertissement<br>phrases: me prévenir quand les enregistrements prennent trop de place; régler le seuil d’alerte pour l’espace occupé par les enregistrements; désactiver l’alerte de stockage des enregistrements |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-recordingThresholdBehavior"></a>
 
-### Past the threshold / Über der Schwelle (`recordingThresholdBehavior`)
+### Past the threshold / Über der Schwelle / Au-delà du seuil (`recordingThresholdBehavior`)
 
 | Field | Value |
 |---|---|
@@ -5374,7 +5584,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | setting |
 | Parent | [`section.recordingStorage`](#node-section-recordingStorage) |
 | Title source | catalog key `Past the threshold` |
-| Description | Ask you, or remove the oldest dictation recordings. / Dich fragen oder die ältesten Diktataufnahmen entfernen. |
+| Description | Ask you, or remove the oldest dictation recordings. / Dich fragen oder die ältesten Diktataufnahmen entfernen. / Vous demander quoi faire ou supprimer les enregistrements les plus anciens. |
 | Description source | catalog key `Ask you, or remove the oldest dictation recordings.` |
 | Destination | `appSettings` › `recordings` |
 | Dictionary tab | none |
@@ -5384,11 +5594,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: automatic deletion<br>phrases: ask me to free space when storage is over the limit; automatically delete the oldest dictation recordings when over the storage limit |
 | Search (de) | words: Löschverhalten, automatisches Löschen<br>phrases: frag mich, ob ich Platz schaffen möchte, wenn Aufnahmen die Warnschwelle überschreiten; lösche die ältesten Diktataufnahmen automatisch, wenn Aufnahmen die Warnschwelle überschreiten |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: suppression automatique<br>phrases: me demander de libérer de l’espace quand le seuil est dépassé; supprimer automatiquement les plus anciens enregistrements de dictée au-delà du seuil |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-deleteRecordings"></a>
 
-### Delete recordings / Aufnahmen löschen (`deleteRecordings`)
+### Delete recordings / Aufnahmen löschen / Supprimer les enregistrements (`deleteRecordings`)
 
 | Field | Value |
 |---|---|
@@ -5396,7 +5607,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | feature |
 | Parent | [`section.recordingStorage`](#node-section-recordingStorage) |
 | Title source | catalog key `Delete recordings` |
-| Description | Text, meeting notes and summaries stay. / Text, Meeting-Notizen und Zusammenfassungen bleiben erhalten. |
+| Description | Text, meeting notes and summaries stay. / Text, Meeting-Notizen und Zusammenfassungen bleiben erhalten. / Le texte, les notes de réunion et les résumés sont conservés. |
 | Description source | catalog key `Text, meeting notes and summaries stay.` |
 | Destination | `appSettings` › `recordings` |
 | Dictionary tab | none |
@@ -5406,11 +5617,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: audio files, remove<br>phrases: delete audio and keep the text |
 | Search (de) | words: Audiodateien, Aufnahmen<br>phrases: lösche Audio von Diktaten oder Meetings; lösche Aufnahmen und behalte Text, Notizen und Zusammenfassungen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: fichiers audio, effacer<br>phrases: supprimer l’audio et garder le texte |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-deleteRecordings-dictations"></a>
 
-### Delete all dictation recordings / Alle Diktataufnahmen löschen (`deleteRecordings.dictations`)
+### Delete all dictation recordings / Alle Diktataufnahmen löschen / Supprimer tous les enregistrements de dictée (`deleteRecordings.dictations`)
 
 | Field | Value |
 |---|---|
@@ -5427,11 +5639,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: dictation audio<br>phrases: remove all my dictation audio recordings |
 | Search (de) | words: Diktataudio<br>phrases: lösch alle Audioaufnahmen meiner Diktate |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | phrases: effacer tous les audios de mes dictées |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-deleteRecordings-meetings"></a>
 
-### Delete all meeting audio / Gesamtes Meeting-Audio löschen (`deleteRecordings.meetings`)
+### Delete all meeting audio / Gesamtes Meeting-Audio löschen / Supprimer tout l’audio des réunions (`deleteRecordings.meetings`)
 
 | Field | Value |
 |---|---|
@@ -5448,11 +5661,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: meeting recordings<br>phrases: delete audio recordings of all meetings |
 | Search (de) | words: Besprechungsaufnahmen<br>phrases: lösch die Audioaufnahmen aller Meetings |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | phrases: effacer les enregistrements audio de toutes les réunions |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-license-gpl"></a>
 
-### EnviousWispr · GPLv3 / EnviousWispr · GPLv3 (`license.gpl`)
+### EnviousWispr · GPLv3 / EnviousWispr · GPLv3 / EnviousWispr · GPLv3 (`license.gpl`)
 
 | Field | Value |
 |---|---|
@@ -5460,7 +5674,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | feature |
 | Parent | [`section.about`](#node-section-about) |
 | Title source | catalog key `EnviousWispr · GPLv3` |
-| Description | Open source under the GNU GPL version 3. / Open Source unter der GNU GPL Version 3. |
+| Description | Open source under the GNU GPL version 3. / Open Source unter der GNU GPL Version 3. / Open source sous licence GNU GPL version 3. |
 | Description source | catalog key `Open source under the GNU GPL version 3.` |
 | Destination | `appSettings` › `licenses` |
 | Dictionary tab | none |
@@ -5470,11 +5684,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: opensource, copyleft, GNU, GPL<br>phrases: is EnviousWispr open source; which open-source license covers EnviousWispr |
 | Search (de) | words: quelloffen, Copyleft, GNU, GPL<br>phrases: ist EnviousWispr Open Source; unter welcher freien Lizenz steht EnviousWispr |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: open source, logiciel libre, copyleft, GNU GPL<br>phrases: sous quelle licence libre est publié EnviousWispr |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-license-gpl-view"></a>
 
-### View license / Lizenz ansehen (`license.gpl.view`)
+### View license / Lizenz ansehen / Afficher la licence (`license.gpl.view`)
 
 | Field | Value |
 |---|---|
@@ -5491,11 +5706,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: open the full GPLv3 license text |
 | Search (de) | phrases: den vollständigen GPLv3-Lizenztext öffnen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: texte intégral GPLv3<br>phrases: ouvrir le texte complet de la licence GPLv3 |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-license-notices"></a>
 
-### Third-Party Notices / Hinweise zu Drittanbietern (`license.notices`)
+### Third-Party Notices / Hinweise zu Drittanbietern / Mentions légales de tiers (`license.notices`)
 
 | Field | Value |
 |---|---|
@@ -5503,7 +5719,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | feature |
 | Parent | [`section.about`](#node-section-about) |
 | Title source | catalog key `Third-Party Notices` |
-| Description | Licenses for the tools EnviousWispr uses. / Lizenzen der Werkzeuge, die EnviousWispr nutzt. |
+| Description | Licenses for the tools EnviousWispr uses. / Lizenzen der Werkzeuge, die EnviousWispr nutzt. / Licences des outils utilisés par EnviousWispr. |
 | Description source | catalog key `Licenses for the tools EnviousWispr uses.` |
 | Destination | `appSettings` › `licenses` |
 | Dictionary tab | none |
@@ -5513,11 +5729,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: dependencies, libraries, components<br>phrases: which licenses cover the tools used by EnviousWispr; find licensing information for the app's dependencies |
 | Search (de) | words: Bibliothekslizenzen, Komponentenlizenzen, Fremdsoftware<br>phrases: welche Lizenzen gelten für die verwendeten Werkzeuge; Lizenzinformationen zu den eingebauten Bibliotheken finden |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: dépendances, bibliothèques tierces, composants tiers<br>phrases: quelles licences couvrent les outils utilisés par EnviousWispr |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-license-notices-view"></a>
 
-### View notices / Hinweise ansehen (`license.notices.view`)
+### View notices / Hinweise ansehen / Afficher les avis (`license.notices.view`)
 
 | Field | Value |
 |---|---|
@@ -5534,11 +5751,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: open the third-party licensing notices |
 | Search (de) | phrases: die Lizenzhinweise zu Drittanbietern öffnen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: ouvrir les mentions tierces<br>phrases: ouvrir les mentions de licence des logiciels tiers |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-transcriptionEngine-fast"></a>
 
-### Fast / Schnell (`transcriptionEngine.fast`)
+### Fast / Schnell / Rapide (`transcriptionEngine.fast`)
 
 | Field | Value |
 |---|---|
@@ -5546,7 +5764,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | choice |
 | Parent | [`transcriptionEngine`](#node-transcriptionEngine) |
 | Title source | catalog key `Fast` |
-| Description | Pick this for everyday English and European dictation. / Wähle dies für alltägliche Diktate auf Englisch und in europäischen Sprachen. |
+| Description | Pick this for everyday English and European dictation. / Wähle dies für alltägliche Diktate auf Englisch und in europäischen Sprachen. / Choisissez cette option pour les dictées quotidiennes en anglais et dans les langues européennes. |
 | Description source | catalog key `Pick this for everyday English and European dictation.` |
 | Destination | `dictation` › `engine` |
 | Dictionary tab | none |
@@ -5556,11 +5774,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: Parakeet, European, ANE<br>phrases: use Parakeet for dictation; choose the dictation model that uses the Apple Neural Engine |
 | Search (de) | words: Parakeet, europäisch, ANE<br>phrases: nimm Parakeet fürs Diktieren; wähle das Diktiermodell für europäische Sprachen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: Parakeet dictée, ANE dictée, dictée européenne<br>phrases: utiliser Parakeet pour mes dictées; choisir le modèle de dictée qui utilise le Neural Engine |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-transcriptionEngine-allLanguages"></a>
 
-### All Languages / Alle Sprachen (`transcriptionEngine.allLanguages`)
+### All Languages / Alle Sprachen / Toutes les langues (`transcriptionEngine.allLanguages`)
 
 | Field | Value |
 |---|---|
@@ -5568,7 +5787,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | choice |
 | Parent | [`transcriptionEngine`](#node-transcriptionEngine) |
 | Title source | catalog key `All Languages` |
-| Description | Pick this for other languages or the toughest audio. / Wähle dies für andere Sprachen oder besonders schwierige Aufnahmen. |
+| Description | Pick this for other languages or the toughest audio. / Wähle dies für andere Sprachen oder besonders schwierige Aufnahmen. / Choisissez celui-ci pour les autres langues ou les enregistrements les plus difficiles. |
 | Description source | catalog key `Pick this for other languages or the toughest audio.` |
 | Destination | `dictation` › `engine` |
 | Dictionary tab | none |
@@ -5578,7 +5797,8 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: Whisper, Turbo, GPU, WhisperKit<br>phrases: use Whisper for dictation; choose the dictation model for difficult audio; I need to dictate in a language outside Europe |
 | Search (de) | words: Whisper, Turbo, GPU, WhisperKit<br>phrases: nimm Whisper fürs Diktieren; wähle das Diktiermodell für schwierige Aufnahmen; ich möchte in einer außereuropäischen Sprache diktieren |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: Whisper dictée, Turbo dictée, GPU dictée, WhisperKit<br>phrases: utiliser Whisper pour mes dictées; choisir le modèle de dictée pour un son difficile à comprendre |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-startWordLanguage-en"></a>
 
@@ -5599,7 +5819,8 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: select English for the punctuation start word; show the English punctuation trigger |
 | Search (de) | phrases: wähle Englisch für das Startwort vor Satzzeichen; zeig mir das Auslösewort für englische Satzzeichen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: déclencheur anglais, préfixe anglais<br>phrases: afficher le mot déclencheur de ponctuation pour l’anglais |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-startWordLanguage-de"></a>
 
@@ -5620,7 +5841,8 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: select German for the punctuation start word; show the German punctuation trigger |
 | Search (de) | phrases: wähle Deutsch für das Startwort vor Satzzeichen; zeig mir das Auslösewort für deutsche Satzzeichen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: déclencheur allemand, préfixe allemand<br>phrases: afficher le mot déclencheur de ponctuation pour l’allemand |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-startWordLanguage-fr"></a>
 
@@ -5641,7 +5863,8 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: select French for the punctuation start word; show the French punctuation trigger |
 | Search (de) | phrases: wähle Französisch für das Startwort vor Satzzeichen; zeig mir das Auslösewort für französische Satzzeichen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: déclencheur français, préfixe français<br>phrases: afficher le mot déclencheur de ponctuation pour le français |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-startWordLanguage-es"></a>
 
@@ -5662,7 +5885,8 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: select Spanish for the punctuation start word; show the Spanish punctuation trigger |
 | Search (de) | phrases: wähle Spanisch für das Startwort vor Satzzeichen; zeig mir das Auslösewort für spanische Satzzeichen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: déclencheur espagnol, préfixe espagnol<br>phrases: afficher le mot déclencheur de ponctuation pour l’espagnol |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-startWordLanguage-it"></a>
 
@@ -5683,7 +5907,8 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: select Italian for the punctuation start word; show the Italian punctuation trigger |
 | Search (de) | phrases: wähle Italienisch für das Startwort vor Satzzeichen; zeig mir das Auslösewort für italienische Satzzeichen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: déclencheur italien, préfixe italien<br>phrases: afficher le mot déclencheur de ponctuation pour l’italien |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetingLiveWords-apple"></a>
 
@@ -5704,11 +5929,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: use Apple for live meeting transcription |
 | Search (de) | words: Apple<br>phrases: verwende Apple für die Live-Vorschau im Meeting |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | phrases: utiliser Apple pour transcrire la réunion en direct |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetingLiveWords-universal"></a>
 
-### Universal / Universal (`meetingLiveWords.universal`)
+### Universal / Universal / Universal (`meetingLiveWords.universal`)
 
 | Field | Value |
 |---|---|
@@ -5725,11 +5951,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: use Universal for live meeting transcription |
 | Search (de) | words: Universal<br>phrases: nutze Universal für die Live-Vorschau im Meeting |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | phrases: choisir Universal pour la transcription en direct de la réunion |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetingTranscriptEngine-parakeet"></a>
 
-### Parakeet / Parakeet (`meetingTranscriptEngine.parakeet`)
+### Parakeet / Parakeet / Parakeet (`meetingTranscriptEngine.parakeet`)
 
 | Field | Value |
 |---|---|
@@ -5746,11 +5973,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: use Parakeet for meeting transcripts |
 | Search (de) | phrases: Parakeet für das Transkript nach dem Meeting nutzen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | phrases: utiliser Parakeet pour transcrire les réunions |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetingTranscriptEngine-whisper"></a>
 
-### Whisper Large v3 Turbo / Whisper Large v3 Turbo (`meetingTranscriptEngine.whisper`)
+### Whisper Large v3 Turbo / Whisper Large v3 Turbo / Whisper Large v3 Turbo (`meetingTranscriptEngine.whisper`)
 
 | Field | Value |
 |---|---|
@@ -5767,7 +5995,8 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: use Whisper for meeting transcripts |
 | Search (de) | phrases: Whisper für das Transkript nach dem Meeting nutzen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | phrases: utiliser Whisper pour transcrire les réunions |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetingTranscriptEngine-apple"></a>
 
@@ -5788,7 +6017,8 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: Apple engine for full meeting transcripts coming soon |
 | Search (de) | phrases: wann kann ich Apple für das Transkript nutzen; Apple Spracherkennung für Meeting-Transkripte |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | phrases: moteur Apple bientôt disponible pour la transcription complète des réunions dans EnviousMeet |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetingSummaryEngine-egOne"></a>
 
@@ -5809,7 +6039,8 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: use EG-1 for meeting summaries |
 | Search (de) | phrases: EG-1 für Meetingzusammenfassungen auswählen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | phrases: utiliser EG-1 pour résumer les réunions |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetingSummaryEngine-appleIntelligence"></a>
 
@@ -5830,7 +6061,8 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: use Apple Intelligence for meeting summaries |
 | Search (de) | phrases: Apple Intelligence für Meetingzusammenfassungen auswählen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | phrases: utiliser Apple Intelligence pour résumer les réunions |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetingSummaryEngine-ollama"></a>
 
@@ -5851,7 +6083,8 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: use Ollama for meeting summaries |
 | Search (de) | phrases: Ollama für Meetingzusammenfassungen auswählen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | phrases: utiliser Ollama pour résumer les réunions |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetingSummaryEngine-openAI"></a>
 
@@ -5872,7 +6105,8 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: use OpenAI for meeting summaries |
 | Search (de) | phrases: OpenAI für Meetingzusammenfassungen auswählen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | phrases: utiliser OpenAI pour résumer les réunions |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetingSummaryEngine-gemini"></a>
 
@@ -5893,7 +6127,8 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: use Google Gemini for meeting summaries |
 | Search (de) | phrases: Google Gemini für Meetingzusammenfassungen auswählen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | phrases: utiliser Google Gemini pour résumer les réunions |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetingSummaryEngine-claude"></a>
 
@@ -5914,11 +6149,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: use Claude for meeting summaries |
 | Search (de) | phrases: Claude für Meetingzusammenfassungen auswählen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | phrases: utiliser Claude pour résumer les réunions |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-unloadModel-never"></a>
 
-### Never / Nie (`unloadModel.never`)
+### Never / Nie / Jamais (`unloadModel.never`)
 
 | Field | Value |
 |---|---|
@@ -5935,11 +6171,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: keep the dictation model loaded all the time; never unload the speech model |
 | Search (de) | phrases: lass das Diktiermodell dauerhaft geladen; entferne das Diktiermodell nie aus dem Speicher |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: modèle toujours chargé, mémoire permanente<br>phrases: garder le modèle de dictée en mémoire tout le temps |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-unloadModel-immediately"></a>
 
-### Immediately / Sofort (`unloadModel.immediately`)
+### Immediately / Sofort / Immédiatement (`unloadModel.immediately`)
 
 | Field | Value |
 |---|---|
@@ -5956,11 +6193,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: unload the model after every transcription; free model memory as soon as the dictation is finished |
 | Search (de) | phrases: entlade das Modell nach jedem Diktat; gib den Modellspeicher frei, sobald der Text fertig ist |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: déchargement immédiat, mémoire après dictée<br>phrases: libérer la mémoire du modèle après chaque transcription |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-unloadModel-twoMinutes"></a>
 
-### After 2 minutes / Nach 2 Minuten (`unloadModel.twoMinutes`)
+### After 2 minutes / Nach 2 Minuten / Après 2 minutes (`unloadModel.twoMinutes`)
 
 | Field | Value |
 |---|---|
@@ -5977,11 +6215,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: unload the dictation model after two idle minutes; keep the speech model loaded for 2 minutes |
 | Search (de) | phrases: entlade das Diktiermodell nach zwei Minuten ohne Diktat; lass das Diktiermodell 2 Minuten im Speicher |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: mémoire 2 minutes, modèle deux minutes<br>phrases: libérer le modèle après deux minutes sans dictée |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-unloadModel-fiveMinutes"></a>
 
-### After 5 minutes / Nach 5 Minuten (`unloadModel.fiveMinutes`)
+### After 5 minutes / Nach 5 Minuten / Après 5 minutes (`unloadModel.fiveMinutes`)
 
 | Field | Value |
 |---|---|
@@ -5998,11 +6237,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: unload the dictation model after five idle minutes; keep the speech model loaded for 5 minutes |
 | Search (de) | phrases: entlade das Diktiermodell nach fünf Minuten ohne Diktat; lass das Diktiermodell 5 Minuten im Speicher |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: mémoire 5 minutes, modèle cinq minutes<br>phrases: libérer le modèle après cinq minutes sans dictée |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-unloadModel-tenMinutes"></a>
 
-### After 10 minutes / Nach 10 Minuten (`unloadModel.tenMinutes`)
+### After 10 minutes / Nach 10 Minuten / Après 10 minutes (`unloadModel.tenMinutes`)
 
 | Field | Value |
 |---|---|
@@ -6019,11 +6259,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: unload the dictation model after ten idle minutes; keep the speech model loaded for 10 minutes |
 | Search (de) | phrases: entlade das Diktiermodell nach zehn Minuten ohne Diktat; lass das Diktiermodell 10 Minuten im Speicher |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: mémoire 10 minutes, modèle dix minutes<br>phrases: libérer le modèle après dix minutes sans dictée |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-unloadModel-fifteenMinutes"></a>
 
-### After 15 minutes / Nach 15 Minuten (`unloadModel.fifteenMinutes`)
+### After 15 minutes / Nach 15 Minuten / Après 15 minutes (`unloadModel.fifteenMinutes`)
 
 | Field | Value |
 |---|---|
@@ -6040,11 +6281,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: quarter-hour<br>phrases: unload the dictation model after a quarter of an hour; keep the speech model loaded for 15 idle minutes |
 | Search (de) | words: Viertelstunde<br>phrases: entlade das Diktiermodell nach einer Viertelstunde ohne Diktat; lass das Diktiermodell 15 Minuten im Speicher |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: mémoire 15 minutes, modèle quart d’heure<br>phrases: libérer le modèle après un quart d’heure sans dictée |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-unloadModel-oneHour"></a>
 
-### After 1 hour / Nach 1 Stunde (`unloadModel.oneHour`)
+### After 1 hour / Nach 1 Stunde / Après 1 heure (`unloadModel.oneHour`)
 
 | Field | Value |
 |---|---|
@@ -6061,11 +6303,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: hour<br>phrases: unload the dictation model after an hour without dictation; keep the speech model loaded for 60 idle minutes |
 | Search (de) | words: Stunde<br>phrases: entlade das Diktiermodell nach einer Stunde ohne Diktat; lass das Diktiermodell 60 Minuten im Speicher |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: mémoire 1 heure, modèle 60 minutes<br>phrases: libérer le modèle après une heure sans dictée |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-mediaDuringDictation-continue"></a>
 
-### Continue / Weiterlaufen lassen (`mediaDuringDictation.continue`)
+### Continue / Weiterlaufen lassen / Continuer la lecture (`mediaDuringDictation.continue`)
 
 | Field | Value |
 |---|---|
@@ -6082,11 +6325,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: uninterrupted, unchanged<br>phrases: keep my music playing at its normal volume while I dictate; leave background audio unchanged during recording |
 | Search (de) | words: unverändert, weiterlaufen<br>phrases: lass meine Musik beim Diktieren mit normaler Lautstärke weiterlaufen; lass den Hintergrundton während der Aufnahme unverändert |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: lecture continue, musique inchangée<br>phrases: laisser ma musique jouer au même volume pendant la dictée |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-mediaDuringDictation-lower"></a>
 
-### Lower / Leiser (`mediaDuringDictation.lower`)
+### Lower / Leiser / Baisser (`mediaDuringDictation.lower`)
 
 | Field | Value |
 |---|---|
@@ -6103,11 +6347,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: ducking, quieter, quieten, halve<br>phrases: turn playback volume down while I dictate; lower my speaker volume during recording and restore it afterward |
 | Search (de) | words: absenken, runterdrehen, halbieren, Ducking<br>phrases: dreh die Wiedergabe beim Diktieren leiser; senke die Lautsprecherlautstärke während der Aufnahme ab und stell sie danach wieder her |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: volume réduit, demi-volume, ducking<br>phrases: baisser le volume pendant la dictée puis le rétablir |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-mediaDuringDictation-mute"></a>
 
-### Mute / Stummschalten (`mediaDuringDictation.mute`)
+### Mute / Stummschalten / Couper le son (`mediaDuringDictation.mute`)
 
 | Field | Value |
 |---|---|
@@ -6124,11 +6369,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: silent, silence, speakers, headphones<br>phrases: mute my speakers while I dictate; turn off headphone sound during recording; silence call audio while I am dictating |
 | Search (de) | words: stumm, lautlos, Lautsprecher, Kopfhörer<br>phrases: schalte meine Lautsprecher beim Diktieren stumm; mach den Kopfhörerton während der Aufnahme aus; schalte den Ton von Anrufen beim Diktieren stumm |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: son coupé, muet, mute<br>phrases: couper le son des haut-parleurs ou du casque pendant la dictée puis le rétablir |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-mediaDuringDictation-pause"></a>
 
-### Pause / Pausieren (`mediaDuringDictation.pause`)
+### Pause / Pausieren / Mettre en pause (`mediaDuringDictation.pause`)
 
 | Field | Value |
 |---|---|
@@ -6145,11 +6391,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: suspend, pausing<br>phrases: pause my podcast while I dictate and resume it afterward; pause the video until I finish recording; stop music playback temporarily during dictation |
 | Search (de) | words: anhalten, unterbrechen<br>phrases: halte meinen Podcast beim Diktieren an und spiel danach weiter; pausiere das Video, bis die Aufnahme fertig ist; unterbrich die Musikwiedergabe während des Diktierens |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: musique en pause, podcast en pause, vidéo en pause<br>phrases: mettre la lecture en pause pendant la dictée puis la reprendre |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-micReadiness-off"></a>
 
-### Off / Aus (`micReadiness.off`)
+### Off / Aus / Désactivé (`micReadiness.off`)
 
 | Field | Value |
 |---|---|
@@ -6166,11 +6413,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: disable microphone standby after recording; release the microphone as soon as recording ends |
 | Search (de) | phrases: schalte die Mikrofonbereitschaft nach der Aufnahme aus; gib das Mikrofon direkt nach der Aufnahme frei |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: micro libéré, maintien désactivé<br>phrases: libérer le microphone dès la fin de l’enregistrement |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-micReadiness-10s"></a>
 
-### 10 sec / 10 Sek. (`micReadiness.10s`)
+### 10 sec / 10 Sek. / 10 s (`micReadiness.10s`)
 
 | Field | Value |
 |---|---|
@@ -6187,11 +6435,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: keep the microphone ready for ten seconds after recording; set microphone standby to 10 seconds |
 | Search (de) | phrases: halte das Mikrofon nach der Aufnahme zehn Sekunden bereit; stelle die Mikrofonbereitschaft auf 10 Sekunden |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: micro 10 secondes, micro dix secondes<br>phrases: garder le micro prêt dix secondes après l’enregistrement |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-micReadiness-30s"></a>
 
-### 30 sec / 30 Sek. (`micReadiness.30s`)
+### 30 sec / 30 Sek. / 30 s (`micReadiness.30s`)
 
 | Field | Value |
 |---|---|
@@ -6208,11 +6457,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: keep the microphone ready for half a minute after recording; set microphone standby to 30 seconds |
 | Search (de) | phrases: halte das Mikrofon nach der Aufnahme eine halbe Minute bereit; stelle die Mikrofonbereitschaft auf 30 Sekunden |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: micro 30 secondes, micro demi-minute<br>phrases: garder le micro prêt trente secondes après l’enregistrement |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-micReadiness-60s"></a>
 
-### 60 sec / 60 Sek. (`micReadiness.60s`)
+### 60 sec / 60 Sek. / 60 s (`micReadiness.60s`)
 
 | Field | Value |
 |---|---|
@@ -6229,11 +6479,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: keep the microphone ready for a minute after recording; set microphone standby to 60 seconds |
 | Search (de) | phrases: halte das Mikrofon nach der Aufnahme eine Minute bereit; stelle die Mikrofonbereitschaft auf 60 Sekunden |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: micro 60 secondes, micro une minute<br>phrases: garder le micro prêt une minute après l’enregistrement |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-micReadiness-always"></a>
 
-### Always / Immer (`micReadiness.always`)
+### Always / Immer / Toujours (`micReadiness.always`)
 
 | Field | Value |
 |---|---|
@@ -6250,7 +6501,8 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: keep the microphone engine active all the time; keep the microphone permanently ready between recordings; why might the microphone indicator stay visible with Always selected |
 | Search (de) | phrases: halte das Mikrofon dauerhaft bereit; lass die Mikrofonengine zwischen allen Aufnahmen aktiv; warum kann bei Immer die Mikrofonanzeige anbleiben |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: micro toujours actif, micro permanent, voyant micro permanent<br>phrases: garder le micro prêt en permanence entre les enregistrements; pourquoi le voyant du micro peut rester allumé avec l’option Toujours |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-previewEngine-apple"></a>
 
@@ -6262,7 +6514,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | choice |
 | Parent | [`previewEngine`](#node-previewEngine) |
 | Title source | product name |
-| Description | Uses Apple's speech recognition. No separate preview-model download; some languages may need an Apple language download. Needs macOS 26. / Verwendet Apples Spracherkennung. Für die Vorschau ist kein eigenes Modell nötig. Manche Sprachen müssen möglicherweise von Apple heruntergeladen werden. Benötigt macOS 26. |
+| Description | Uses Apple's speech recognition. No separate preview-model download; some languages may need an Apple language download. Needs macOS 26. / Verwendet Apples Spracherkennung. Für die Vorschau ist kein eigenes Modell nötig. Manche Sprachen müssen möglicherweise von Apple heruntergeladen werden. Benötigt macOS 26. / Utilise la reconnaissance vocale d’Apple. Aucun téléchargement distinct de modèle pour l’aperçu en direct n’est nécessaire. Certaines langues peuvent nécessiter le téléchargement d’une langue Apple. Nécessite macOS 26. |
 | Description source | catalog key `Uses Apple's speech recognition. No separate preview-model download; some languages may need an Apple language download. Needs macOS 26.` |
 | Destination | `dictation` › `livePreview` |
 | Dictionary tab | none |
@@ -6272,11 +6524,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: use Apple's speech recognition for live preview; choose the preview engine that needs macOS 26; use the preview engine without a separate preview model download |
 | Search (de) | phrases: nimm Apples Spracherkennung für die Live-Vorschau; wähle die Vorschau-Engine, die macOS 26 braucht; nimm die Vorschau ohne separaten Download eines Vorschaumodells |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: aperçu Apple, reconnaissance Apple, aperçu macOS 26<br>phrases: utiliser la reconnaissance vocale Apple pour l’aperçu en direct |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-previewEngine-universal"></a>
 
-### Universal / Universal (`previewEngine.universal`)
+### Universal / Universal / Universal (`previewEngine.universal`)
 
 | Field | Value |
 |---|---|
@@ -6284,7 +6537,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | choice |
 | Parent | [`previewEngine`](#node-previewEngine) |
 | Title source | catalog key `Universal` |
-| Description | Works on macOS 14 and later, in more languages. Needs one optional 270 MB download. / Funktioniert ab macOS 14 und unterstützt mehr Sprachen. Ein optionaler Download von 270 MB ist nötig. |
+| Description | Works on macOS 14 and later, in more languages. Needs one optional 270 MB download. / Funktioniert ab macOS 14 und unterstützt mehr Sprachen. Ein optionaler Download von 270 MB ist nötig. / Fonctionne sous macOS 14 et versions ultérieures, dans davantage de langues. Un téléchargement facultatif de 270 Mo est nécessaire. |
 | Description source | catalog key `Works on macOS 14 and later, in more languages. Needs one optional 270 MB download.` |
 | Destination | `dictation` › `livePreview` |
 | Dictionary tab | none |
@@ -6294,11 +6547,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: 270MB<br>phrases: choose Universal for the live preview; use the preview engine that works on macOS 14; choose the preview engine with more languages |
 | Search (de) | words: 270MB<br>phrases: nimm Universal für die Live-Vorschau; wähle die Vorschau-Engine, die auf macOS 14 läuft; nimm die Vorschau-Engine mit mehr Sprachen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: aperçu Universal, 270 Mo, aperçu macOS 14<br>phrases: utiliser Universal pour l’aperçu en direct |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-pillPosition-top"></a>
 
-### Top / Oben (`pillPosition.top`)
+### Top / Oben / En haut (`pillPosition.top`)
 
 | Field | Value |
 |---|---|
@@ -6315,11 +6569,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: upper, above<br>phrases: put the recording pill at the top of the screen; show the recording indicator at the upper screen edge |
 | Search (de) | words: oberhalb<br>phrases: setz die Aufnahmeanzeige oben auf den Bildschirm; zeig die Aufnahmeanzeige am oberen Bildschirmrand |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: bord supérieur<br>phrases: mettre l’indicateur d’enregistrement en haut de l’écran |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-pillPosition-bottom"></a>
 
-### Bottom / Unten (`pillPosition.bottom`)
+### Bottom / Unten / En bas (`pillPosition.bottom`)
 
 | Field | Value |
 |---|---|
@@ -6336,11 +6591,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: lower, below<br>phrases: put the recording pill at the bottom of the screen; show the recording indicator at the lower screen edge |
 | Search (de) | words: unterhalb<br>phrases: setz die Aufnahmeanzeige unten auf den Bildschirm; zeig die Aufnahmeanzeige am unteren Bildschirmrand |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: bord inférieur<br>phrases: mettre l’indicateur d’enregistrement en bas de l’écran |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-pillStyle-capsule"></a>
 
-### Capsule / Kapsel (`pillStyle.capsule`)
+### Capsule / Kapsel / Capsule (`pillStyle.capsule`)
 
 | Field | Value |
 |---|---|
@@ -6348,7 +6604,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | choice |
 | Parent | [`pillStyle`](#node-pillStyle) |
 | Title source | catalog key `Capsule` |
-| Description | A compact pill with a dot and level meter. / Eine kompakte Kapsel mit Punkt und Pegelbalken. |
+| Description | A compact pill with a dot and level meter. / Eine kompakte Kapsel mit Punkt und Pegelbalken. / Une pastille compacte avec un point et un indicateur de niveau. |
 | Description source | catalog key `A compact pill with a dot and level meter.` |
 | Destination | `dictation` › `pill` |
 | Dictionary tab | none |
@@ -6358,11 +6614,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: dot, compact<br>phrases: use the small recording pill with a dot and level meter; choose the compact dot and meter recording indicator |
 | Search (de) | words: Aufnahmepunkt, kompakt<br>phrases: nimm die kleine Aufnahmeanzeige mit Punkt und Pegel; wähle die kompakte Anzeige mit Punkt und Lautstärkemesser |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: point et jauge, indicateur compact<br>phrases: utiliser le petit indicateur avec un point et une jauge de volume |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-pillStyle-levelRail"></a>
 
-### Level Rail / Pegelanzeige (`pillStyle.levelRail`)
+### Level Rail / Pegelanzeige / Barre de niveau (`pillStyle.levelRail`)
 
 | Field | Value |
 |---|---|
@@ -6370,7 +6627,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | choice |
 | Parent | [`pillStyle`](#node-pillStyle) |
 | Title source | catalog key `Level Rail` |
-| Description | A slim rail that follows your volume. / Eine schmale Leiste, die sich deiner Lautstärke anpasst. |
+| Description | A slim rail that follows your volume. / Eine schmale Leiste, die sich deiner Lautstärke anpasst. / Une barre fine qui suit votre volume. |
 | Description source | catalog key `A slim rail that follows your volume.` |
 | Destination | `dictation` › `pill` |
 | Dictionary tab | none |
@@ -6380,11 +6637,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: bar, strip, rail, slim<br>phrases: use a thin recording bar that follows my voice volume; choose the slim level rail as the recording indicator |
 | Search (de) | words: Balken, Leiste, Streifen, schmal<br>phrases: nimm einen schmalen Aufnahmebalken, der meiner Lautstärke folgt; wähle die dünne Pegelleiste als Aufnahmeanzeige |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: barre fine, barre de volume<br>phrases: utiliser une barre fine qui suit le volume de ma voix |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-pillStyle-readingWell"></a>
 
-### Reading Well / Lesefeld (`pillStyle.readingWell`)
+### Reading Well / Lesefeld / Zone de lecture (`pillStyle.readingWell`)
 
 | Field | Value |
 |---|---|
@@ -6392,7 +6650,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | choice |
 | Parent | [`pillStyle`](#node-pillStyle) |
 | Title source | catalog key `Reading Well` |
-| Description | Shows words as you speak. Turns Live Preview on. / Zeigt Wörter beim Sprechen. Schaltet die Live-Vorschau ein. |
+| Description | Shows words as you speak. Turns Live Preview on. / Zeigt Wörter beim Sprechen. Schaltet die Live-Vorschau ein. / Affiche les mots pendant que vous parlez. Active l’Aperçu en direct. |
 | Description source | catalog key `Shows words as you speak. Turns Live Preview on.` |
 | Destination | `dictation` › `pill` |
 | Dictionary tab | none |
@@ -6402,11 +6660,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: panel<br>phrases: choose the recording pill style that displays my words; use a floating text panel as the recording indicator; choose the Reading Well style and turn on Live Preview |
 | Search (de) | words: Textfeld<br>phrases: wähle den Stil der Aufnahmeanzeige, der meine Wörter zeigt; nimm ein schwebendes Textfeld als Aufnahmeanzeige; wähle das Lesefeld und schalte damit die Live-Vorschau ein |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: texte flottant<br>phrases: choisir le style d’indicateur qui affiche mes mots et active l’aperçu en direct |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-recordingChime-dustMote"></a>
 
-### Dust Mote / Staubflöckchen (`recordingChime.dustMote`)
+### Dust Mote / Staubflöckchen / Grain de poussière (`recordingChime.dustMote`)
 
 | Field | Value |
 |---|---|
@@ -6414,7 +6673,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | choice |
 | Parent | [`recordingChime`](#node-recordingChime) |
 | Title source | catalog key `Dust Mote` |
-| Description | Soft filtered air, no tone. / Leises, gefiltertes Rauschen ohne Tonhöhe. |
+| Description | Soft filtered air, no tone. / Leises, gefiltertes Rauschen ohne Tonhöhe. / Un souffle doux filtré, sans tonalité. |
 | Description source | catalog key `Soft filtered air, no tone.` |
 | Destination | `dictation` › `chimes` |
 | Dictionary tab | none |
@@ -6424,11 +6683,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: toneless, pitchless, air<br>phrases: choose the filtered air sound with no tone; use the soft recording sound without a musical pitch |
 | Search (de) | words: Luftrauschen, Luftgeräusch<br>phrases: nimm das sanfte Luftrauschen ohne Tonhöhe; wähle das gefilterte Luftgeräusch ohne erkennbare Tonhöhe |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: sans note, sans tonalité<br>phrases: choisir le léger bruit d’air filtré sans note musicale |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-recordingChime-velvetHush"></a>
 
-### Velvet Hush / Samtflüstern (`recordingChime.velvetHush`)
+### Velvet Hush / Samtflüstern / Murmure velouté (`recordingChime.velvetHush`)
 
 | Field | Value |
 |---|---|
@@ -6436,7 +6696,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | choice |
 | Parent | [`recordingChime`](#node-recordingChime) |
 | Title source | catalog key `Velvet Hush` |
-| Description | Two close tones, gentle warmth. / Zwei eng beieinanderliegende Töne, sanft und warm. |
+| Description | Two close tones, gentle warmth. / Zwei eng beieinanderliegende Töne, sanft und warm. / Deux tonalités proches, une douce chaleur. |
 | Description source | catalog key `Two close tones, gentle warmth.` |
 | Destination | `dictation` › `chimes` |
 | Dictionary tab | none |
@@ -6446,11 +6706,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: choose the warm chime with two closely pitched tones; use the gentle pair of tones with similar pitches |
 | Search (de) | phrases: nimm den warmen Klang mit zwei ähnlichen Tonhöhen; wähle das sanfte Tonpaar mit dicht beieinanderliegenden Tönen |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: notes proches, duo chaleureux<br>phrases: choisir le son chaleureux avec deux notes proches |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-recordingChime-mutedConfirm"></a>
 
-### Muted Confirm / Leises Okay (`recordingChime.mutedConfirm`)
+### Muted Confirm / Leises Okay / Confirmation discrète (`recordingChime.mutedConfirm`)
 
 | Field | Value |
 |---|---|
@@ -6458,7 +6719,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | choice |
 | Parent | [`recordingChime`](#node-recordingChime) |
 | Title source | catalog key `Muted Confirm` |
-| Description | Same pitch both ways, plain. / Gleiche Tonhöhe beim Starten und Stoppen, ganz schlicht. |
+| Description | Same pitch both ways, plain. / Gleiche Tonhöhe beim Starten und Stoppen, ganz schlicht. / Même note au début et à la fin, sans fioritures. |
 | Description source | catalog key `Same pitch both ways, plain.` |
 | Destination | `dictation` › `chimes` |
 | Dictionary tab | none |
@@ -6468,11 +6729,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: plain, matching<br>phrases: use the same chime pitch for recording start and stop; choose the plain sound with matching pitches both ways |
 | Search (de) | words: schlicht, gleich<br>phrases: nimm beim Aufnahmestart und Aufnahmeende dieselbe Tonhöhe; wähle den schlichten Ton, der beim Starten und Stoppen gleich klingt |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: notes identiques, tonalité identique<br>phrases: utiliser la même note au début et à la fin de l’enregistrement |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-recordingChime-whisperTick"></a>
 
-### Whisper Tick / Flüstertick (`recordingChime.whisperTick`)
+### Whisper Tick / Flüstertick / Tic Whisper (`recordingChime.whisperTick`)
 
 | Field | Value |
 |---|---|
@@ -6480,7 +6742,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | choice |
 | Parent | [`recordingChime`](#node-recordingChime) |
 | Title source | catalog key `Whisper Tick` |
-| Description | Barely-there tick. / Ein kaum hörbares Ticken. |
+| Description | Barely-there tick. / Ein kaum hörbares Ticken. / Un tic à peine audible. |
 | Description source | catalog key `Barely-there tick.` |
 | Destination | `dictation` › `chimes` |
 | Dictionary tab | none |
@@ -6490,11 +6752,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: tick, ticking, faint<br>phrases: choose the recording tick that is barely audible; use the very faint ticking sound |
 | Search (de) | words: Ticken, Tick, Tickgeräusch<br>phrases: nimm das Ticken, das kaum zu hören ist; wähle das ganz leise Tickgeräusch |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: tic, presque inaudible<br>phrases: choisir le petit tic à peine audible |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-recordingChime-roundPebble"></a>
 
-### Round Pebble / Runder Kiesel (`recordingChime.roundPebble`)
+### Round Pebble / Runder Kiesel / Galet rond (`recordingChime.roundPebble`)
 
 | Field | Value |
 |---|---|
@@ -6502,7 +6765,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | choice |
 | Parent | [`recordingChime`](#node-recordingChime) |
 | Title source | catalog key `Round Pebble` |
-| Description | Rounded, no edge. / Rund und weich. |
+| Description | Rounded, no edge. / Rund und weich. / Un son rond, sans aspérité. |
 | Description source | catalog key `Rounded, no edge.` |
 | Destination | `dictation` › `chimes` |
 | Dictionary tab | none |
@@ -6512,11 +6775,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: rounded, round, edgeless<br>phrases: choose the rounded recording sound without a sharp edge; use the chime described as rounded with no edge |
 | Search (de) | words: rund, abgerundet<br>phrases: nimm den rund klingenden Aufnahmeton ohne scharfe Kante; wähle den Klang, der als abgerundet beschrieben wird |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: son rond, son arrondi<br>phrases: choisir le son rond sans côté tranchant |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-recordingChime-paperTap"></a>
 
-### Paper Tap / Papierklopfen (`recordingChime.paperTap`)
+### Paper Tap / Papierklopfen / Tapotement de papier (`recordingChime.paperTap`)
 
 | Field | Value |
 |---|---|
@@ -6524,7 +6788,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | choice |
 | Parent | [`recordingChime`](#node-recordingChime) |
 | Title source | catalog key `Paper Tap` |
-| Description | Soft paper-like tap. / Ein leises Klopfen wie auf Papier. |
+| Description | Soft paper-like tap. / Ein leises Klopfen wie auf Papier. / Un léger tapotement évoquant le papier. |
 | Description source | catalog key `Soft paper-like tap.` |
 | Destination | `dictation` › `chimes` |
 | Dictionary tab | none |
@@ -6534,11 +6798,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: papery, paper<br>phrases: choose the recording sound like a soft tap on paper; use the gentle paper-like tapping sound |
 | Search (de) | words: Papier, Papiergeräusch<br>phrases: nimm den Aufnahmeton, der wie sanftes Tippen auf Papier klingt; wähle das leise papierartige Klopfgeräusch |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: papier, tapotement papier<br>phrases: choisir le son d’un léger tapotement sur du papier |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-recordingChime-softHush"></a>
 
-### Soft Hush / Sanftes Säuseln (`recordingChime.softHush`)
+### Soft Hush / Sanftes Säuseln / Doux murmure (`recordingChime.softHush`)
 
 | Field | Value |
 |---|---|
@@ -6546,7 +6811,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | choice |
 | Parent | [`recordingChime`](#node-recordingChime) |
 | Title source | catalog key `Soft Hush` |
-| Description | Slow fade, like a breath. / Ein langsames Verklingen wie ein Atemzug. |
+| Description | Slow fade, like a breath. / Ein langsames Verklingen wie ein Atemzug. / Fondu lent, comme un souffle. |
 | Description source | catalog key `Slow fade, like a breath.` |
 | Destination | `dictation` › `chimes` |
 | Dictionary tab | none |
@@ -6556,11 +6821,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: breath, breathy, fade, exhale<br>phrases: choose the breath-like recording sound that fades slowly; use the chime that sounds like a slowly fading breath |
 | Search (de) | words: Atem, Atemzug, Ausatmen, ausklingen<br>phrases: nimm den Klang, der wie ein Atemzug langsam ausklingt; wähle das langsam verklingende Atemgeräusch |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: expiration, fondu lent<br>phrases: choisir le son qui ressemble à un souffle et disparaît lentement |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-recordingChime-lowNod"></a>
 
-### Low Nod / Tiefes Nicken (`recordingChime.lowNod`)
+### Low Nod / Tiefes Nicken / Hochement grave (`recordingChime.lowNod`)
 
 | Field | Value |
 |---|---|
@@ -6568,7 +6834,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | choice |
 | Parent | [`recordingChime`](#node-recordingChime) |
 | Title source | catalog key `Low Nod` |
-| Description | Low, warm, unhurried. / Tief, warm und gemächlich. |
+| Description | Low, warm, unhurried. / Tief, warm und gemächlich. / Grave, chaleureux et posé. |
 | Description source | catalog key `Low, warm, unhurried.` |
 | Destination | `dictation` › `chimes` |
 | Dictionary tab | none |
@@ -6578,11 +6844,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: deep, low, unhurried<br>phrases: choose the low warm recording sound; use the deep chime with an unhurried feel |
 | Search (de) | words: tief, dunkel, gemächlich<br>phrases: nimm den tiefen warmen Aufnahmeton; wähle den dunklen Klang, der ruhig und gemächlich klingt |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: son grave, note basse<br>phrases: choisir le son grave et chaleureux qui prend son temps |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-recordingChime-cloudPop"></a>
 
-### Cloud Pop / Wolkenplopp (`recordingChime.cloudPop`)
+### Cloud Pop / Wolkenplopp / Ploc nuageux (`recordingChime.cloudPop`)
 
 | Field | Value |
 |---|---|
@@ -6590,7 +6857,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | choice |
 | Parent | [`recordingChime`](#node-recordingChime) |
 | Title source | catalog key `Cloud Pop` |
-| Description | Tiny filtered-air pop. / Ein leises Ploppen wie ein Luftstoß durch einen Filter. |
+| Description | Tiny filtered-air pop. / Ein leises Ploppen wie ein Luftstoß durch einen Filter. / Petit claquement d’air filtré. |
 | Description source | catalog key `Tiny filtered-air pop.` |
 | Destination | `dictation` › `chimes` |
 | Dictionary tab | none |
@@ -6600,11 +6867,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: pop, popping<br>phrases: choose the tiny filtered air pop; use the little airy popping recording sound |
 | Search (de) | words: Plopp, ploppen, Luftplopp<br>phrases: nimm den kleinen gefilterten Luftplopp; wähle das kurze luftige Ploppgeräusch |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: pop, petit pop<br>phrases: choisir le petit pop d’air filtré |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-recordingChime-velvetTap"></a>
 
-### Velvet Tap / Samttipp (`recordingChime.velvetTap`)
+### Velvet Tap / Samttipp / Tapotement velouté (`recordingChime.velvetTap`)
 
 | Field | Value |
 |---|---|
@@ -6612,7 +6880,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | choice |
 | Parent | [`recordingChime`](#node-recordingChime) |
 | Title source | catalog key `Velvet Tap` |
-| Description | Muted, compact tap. / Ein leises, kurzes Klopfen. |
+| Description | Muted, compact tap. / Ein leises, kurzes Klopfen. / Un tapotement discret et bref. |
 | Description source | catalog key `Muted, compact tap.` |
 | Destination | `dictation` › `chimes` |
 | Dictionary tab | none |
@@ -6622,11 +6890,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: muted, damped<br>phrases: choose the compact muted tapping sound; use the short damped tap as my recording chime |
 | Search (de) | words: gedämpft<br>phrases: nimm das kurze gedämpfte Tippgeräusch; wähle den kompakten gedämpften Klopfton |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: coup étouffé<br>phrases: choisir le tapotement court et étouffé |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-recordingChime-satinShift"></a>
 
-### Satin Shift / Satin-Schimmer (`recordingChime.satinShift`)
+### Satin Shift / Satin-Schimmer / Éclat satiné (`recordingChime.satinShift`)
 
 | Field | Value |
 |---|---|
@@ -6634,7 +6903,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | choice |
 | Parent | [`recordingChime`](#node-recordingChime) |
 | Title source | catalog key `Satin Shift` |
-| Description | Smooth two-tone shift. / Ein sanfter Wechsel zwischen zwei Tönen. |
+| Description | Smooth two-tone shift. / Ein sanfter Wechsel zwischen zwei Tönen. / Transition douce entre deux tons. |
 | Description source | catalog key `Smooth two-tone shift.` |
 | Destination | `dictation` › `chimes` |
 | Dictionary tab | none |
@@ -6644,11 +6913,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: transition, shift<br>phrases: choose the recording sound with a smooth two-tone shift; use the chime with a smooth change between two tones |
 | Search (de) | words: Tonwechsel, Tonübergang<br>phrases: nimm den sanften Wechsel zwischen zwei Tönen; wähle den Aufnahmeton mit dem fließenden Tonübergang |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: glissement sonore, transition de notes<br>phrases: choisir le son qui passe doucement d’une note à l’autre |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-recordingChime-airGlint"></a>
 
-### Air Glint / Luftfunkeln (`recordingChime.airGlint`)
+### Air Glint / Luftfunkeln / Éclat d’air (`recordingChime.airGlint`)
 
 | Field | Value |
 |---|---|
@@ -6656,7 +6926,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | choice |
 | Parent | [`recordingChime`](#node-recordingChime) |
 | Title source | catalog key `Air Glint` |
-| Description | Clean, airy glint. / Ein klarer, luftiger Klang. |
+| Description | Clean, airy glint. / Ein klarer, luftiger Klang. / Son clair et aérien. |
 | Description source | catalog key `Clean, airy glint.` |
 | Destination | `dictation` › `chimes` |
 | Dictionary tab | none |
@@ -6666,11 +6936,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: airy, shimmer, sparkle<br>phrases: pick the airy chime; use the shimmering sound |
 | Search (de) | words: luftig, schimmernd, funkelnd<br>phrases: nimm den luftig klingenden Ton; wähle den schimmernden Klang |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: scintillement, son scintillant<br>phrases: choisir le son aérien qui scintille |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-recordingMode-pushToTalk"></a>
 
-### Push to Talk / Zum Sprechen drücken (`recordingMode.pushToTalk`)
+### Push to Talk / Zum Sprechen drücken / Appuyer pour parler (`recordingMode.pushToTalk`)
 
 | Field | Value |
 |---|---|
@@ -6687,11 +6958,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: hold, release, lock<br>phrases: record while I hold the key; stop recording when I release the key; double press to keep recording; triple press to cancel in push to talk mode |
 | Search (de) | words: gedrückthalten, loslassen, einrasten<br>phrases: nimm auf, solange ich die Taste gedrückt halte; beende die Aufnahme, wenn ich die Taste loslasse; lass die Aufnahme nach zweimaligem Drücken weiterlaufen; brich im Modus zum Gedrückthalten nach dreimaligem Drücken ab |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: push to talk, touche maintenue, relâcher, double appui, triple appui<br>phrases: enregistrer tant que je maintiens la touche et arrêter quand je la relâche; en mode maintien appuyer deux fois pour verrouiller ou trois fois pour annuler |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-recordingMode-toggle"></a>
 
-### Toggle / Umschalten (`recordingMode.toggle`)
+### Toggle / Umschalten / Activer ou désactiver (`recordingMode.toggle`)
 
 | Field | Value |
 |---|---|
@@ -6708,7 +6980,8 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: press once to record and again to stop; start and stop recording with separate key presses |
 | Search (de) | words: antippen<br>phrases: starte die Aufnahme beim ersten Drücken und beende sie beim nächsten; lass mich zum Aufnehmen einmal drücken statt die Taste zu halten |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: bascule, toggle, appuis séparés<br>phrases: appuyer une fois pour enregistrer puis une autre fois pour arrêter |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-aiPolishProvider-egOne"></a>
 
@@ -6720,7 +6993,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | choice |
 | Parent | [`aiPolishProvider`](#node-aiPolishProvider) |
 | Title source | product name |
-| Description | Our tuned model / Unser angepasstes Modell |
+| Description | Our tuned model / Unser angepasstes Modell / Notre modèle optimisé |
 | Description source | catalog key `Our tuned model` |
 | Destination | `aiPolish` |
 | Dictionary tab | none |
@@ -6730,7 +7003,8 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: use the app's own model to clean up my dictation; choose EG-1 for dictation cleanup on this Mac |
 | Search (de) | phrases: verbessere meine Diktate mit dem eigenen Modell der App; wähle EG-1 für die Diktatkorrektur auf diesem Mac |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: EG-1 dictée, correcteur EnviousWispr<br>phrases: utiliser EG-1 sur mon Mac pour corriger mes dictées |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-aiPolishProvider-s1Mini"></a>
 
@@ -6742,7 +7016,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | choice |
 | Parent | [`aiPolishProvider`](#node-aiPolishProvider) |
 | Title source | product name |
-| Description | by Superwhisper / von Superwhisper |
+| Description | by Superwhisper / von Superwhisper / par Superwhisper |
 | Description source | catalog key `by Superwhisper` |
 | Destination | `aiPolish` |
 | Dictionary tab | none |
@@ -6752,7 +7026,8 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: Superwhisper, small, compact<br>phrases: use Superwhisper's model to clean up my dictation; pick the small local model suited to English dictation |
 | Search (de) | words: Superwhisper, klein, kompakt<br>phrases: verbessere meine Diktate mit dem Modell von Superwhisper; nimm das kleine lokale Modell für englische Diktate |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: Superwhisper, petit correcteur, correcteur anglais<br>phrases: utiliser le petit modèle de Superwhisper pour corriger mes dictées |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-aiPolishProvider-appleIntelligence"></a>
 
@@ -6764,7 +7039,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | choice |
 | Parent | [`aiPolishProvider`](#node-aiPolishProvider) |
 | Title source | product name |
-| Description | Built into macOS / In macOS integriert |
+| Description | Built into macOS / In macOS integriert / Intégrée à macOS |
 | Description source | catalog key `Built into macOS` |
 | Destination | `aiPolish` |
 | Dictionary tab | none |
@@ -6774,7 +7049,8 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: use Apple's built-in model to clean up my dictation; choose Apple Intelligence for dictation polish |
 | Search (de) | phrases: verbessere meine Diktate mit Apples eingebautem Modell; wähle Apple Intelligence für die Diktatkorrektur |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: Apple Intelligence dictée, correcteur intégré<br>phrases: utiliser Apple Intelligence pour corriger mes dictées |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-aiPolishProvider-ollama"></a>
 
@@ -6786,7 +7062,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | choice |
 | Parent | [`aiPolishProvider`](#node-aiPolishProvider) |
 | Title source | product name |
-| Description | Your models, local or hosted / Deine Modelle, lokal oder gehostet |
+| Description | Your models, local or hosted / Deine Modelle, lokal oder gehostet / Vos modèles, locaux ou hébergés |
 | Description source | catalog key `Your models, local or hosted` |
 | Destination | `aiPolish` |
 | Dictionary tab | none |
@@ -6796,7 +7072,8 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: use my Ollama models to clean up dictation; choose my own local or hosted Ollama setup for dictation |
 | Search (de) | phrases: verbessere meine Diktate mit meinen Ollama-Modellen; nutze für die Diktatkorrektur meine eigene lokale oder gehostete Ollama-Umgebung |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: Ollama dictée, correction Ollama dictée<br>phrases: utiliser mes modèles Ollama locaux ou hébergés pour corriger mes dictées |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-aiPolishProvider-openAI"></a>
 
@@ -6808,7 +7085,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | choice |
 | Parent | [`aiPolishProvider`](#node-aiPolishProvider) |
 | Title source | product name |
-| Description | Your API key / Dein API-Schlüssel |
+| Description | Your API key / Dein API-Schlüssel / Votre clé API |
 | Description source | catalog key `Your API key` |
 | Destination | `aiPolish` |
 | Dictionary tab | none |
@@ -6818,7 +7095,8 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: choose OpenAI to clean up my dictation; use OpenAI cloud polish for dictated text |
 | Search (de) | phrases: wähle OpenAI für die Nachbearbeitung meiner Diktate; verbessere meinen diktierten Text mit OpenAI in der Cloud |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: OpenAI dictée, correction OpenAI dictée<br>phrases: choisir OpenAI pour corriger mes dictées dans le cloud |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-aiPolishProvider-gemini"></a>
 
@@ -6830,7 +7108,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | choice |
 | Parent | [`aiPolishProvider`](#node-aiPolishProvider) |
 | Title source | product name |
-| Description | Your API key / Dein API-Schlüssel |
+| Description | Your API key / Dein API-Schlüssel / Votre clé API |
 | Description source | catalog key `Your API key` |
 | Destination | `aiPolish` |
 | Dictionary tab | none |
@@ -6840,7 +7118,8 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: choose Google's model to clean up my dictation; use Gemini cloud polish for dictated text |
 | Search (de) | phrases: wähle Googles Modell für die Nachbearbeitung meiner Diktate; verbessere meinen diktierten Text mit Gemini in der Cloud |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: Gemini dictée, correction Google dictée<br>phrases: choisir Gemini pour corriger mes dictées dans le cloud |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-aiPolishProvider-claude"></a>
 
@@ -6852,7 +7131,7 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Kind | choice |
 | Parent | [`aiPolishProvider`](#node-aiPolishProvider) |
 | Title source | product name |
-| Description | Your API key / Dein API-Schlüssel |
+| Description | Your API key / Dein API-Schlüssel / Votre clé API |
 | Description source | catalog key `Your API key` |
 | Destination | `aiPolish` |
 | Dictionary tab | none |
@@ -6862,11 +7141,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: choose Anthropic's model to clean up my dictation; use Claude cloud polish for dictated text |
 | Search (de) | phrases: wähle Anthropics Modell für die Nachbearbeitung meiner Diktate; verbessere meinen diktierten Text mit Claude in der Cloud |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: Claude dictée, correction Anthropic dictée<br>phrases: choisir Claude pour corriger mes dictées dans le cloud |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-s1Tone-casual"></a>
 
-### Casual / Locker (`s1Tone.casual`)
+### Casual / Locker / Décontracté (`s1Tone.casual`)
 
 | Field | Value |
 |---|---|
@@ -6883,11 +7163,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: informal, chatty, relaxed<br>phrases: make S1-mini write in an informal style; make my text sound like everyday chat |
 | Search (de) | words: umgangssprachlich, salopp, ungezwungen<br>phrases: lass S1-mini ganz ungezwungen schreiben; formuliere meinen Text so locker wie in einem Chat |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: familier, informel, conversationnel<br>phrases: faire écrire S1-mini comme dans une conversation de tous les jours |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-s1Tone-semiCasual"></a>
 
-### Semi-casual / Eher locker (`s1Tone.semiCasual`)
+### Semi-casual / Eher locker / Plutôt décontracté (`s1Tone.semiCasual`)
 
 | Field | Value |
 |---|---|
@@ -6904,11 +7185,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: make S1-mini slightly informal; use a relaxed style without being too chatty |
 | Search (de) | phrases: lass S1-mini eher locker schreiben; formuliere entspannt, aber nicht zu salopp |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: semi-casual, légèrement informel<br>phrases: utiliser avec S1-mini un ton un peu décontracté sans être trop familier |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-s1Tone-semiFormal"></a>
 
-### Semi-formal / Eher förmlich (`s1Tone.semiFormal`)
+### Semi-formal / Eher förmlich / Plutôt formel (`s1Tone.semiFormal`)
 
 | Field | Value |
 |---|---|
@@ -6925,11 +7207,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: make S1-mini somewhat formal; use a professional style without sounding stiff |
 | Search (de) | phrases: lass S1-mini eher förmlich schreiben; formuliere professionell, aber nicht steif |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: semi-formel, professionnel souple<br>phrases: utiliser avec S1-mini un style professionnel sans être trop rigide |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-s1Tone-formal"></a>
 
-### Formal / Förmlich (`s1Tone.formal`)
+### Formal / Förmlich / Formel (`s1Tone.formal`)
 
 | Field | Value |
 |---|---|
@@ -6946,11 +7229,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: businesslike, official<br>phrases: make S1-mini write in a fully formal style; use formal wording for my text |
 | Search (de) | words: formell, geschäftlich, offiziell<br>phrases: lass S1-mini sehr förmlich schreiben; verwende einen formellen Stil für meinen Text |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: soutenu, officiel<br>phrases: faire écrire S1-mini dans un style formel |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-s1Structure-prose"></a>
 
-### Prose / Fließtext (`s1Structure.prose`)
+### Prose / Fließtext / Prose (`s1Structure.prose`)
 
 | Field | Value |
 |---|---|
@@ -6967,11 +7251,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: sentences, paragraphs<br>phrases: keep S1-mini output in full sentences; write paragraphs instead of bullet points |
 | Search (de) | words: Sätze, Absätze<br>phrases: lass S1-mini in ganzen Sätzen schreiben; schreib Absätze statt Stichpunkte |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: prose, phrases complètes, paragraphes<br>phrases: garder des phrases complètes plutôt que des puces avec S1-mini |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-s1Structure-lists"></a>
 
-### Lists / Listen (`s1Structure.lists`)
+### Lists / Listen / Listes (`s1Structure.lists`)
 
 | Field | Value |
 |---|---|
@@ -6988,11 +7273,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: bullets, itemization, enumeration<br>phrases: make S1-mini turn spoken items into bullet points; format my dictated items as a list |
 | Search (de) | words: Stichpunkte, Aufzählung, Listenpunkte<br>phrases: mach mit S1-mini aus meinen gesprochenen Punkten eine Liste; formatiere meine diktierten Punkte als Aufzählung |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: puces, énumérations<br>phrases: transformer les éléments dictés en liste à puces avec S1-mini |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-s1Context-general"></a>
 
-### General / Allgemein (`s1Context.general`)
+### General / Allgemein / Général (`s1Context.general`)
 
 | Field | Value |
 |---|---|
@@ -7009,11 +7295,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: use ordinary text formatting in S1-mini; do not format my S1-mini dictation as an email |
 | Search (de) | phrases: behandle mein S1-mini-Diktat als normalen Text; formatiere meinen S1-mini-Text nicht als E-Mail |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: texte ordinaire, format général<br>phrases: utiliser une mise en forme ordinaire avec S1-mini sans format de mail |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-s1Context-email"></a>
 
-### Email / E-Mail (`s1Context.email`)
+### Email / E-Mail / E-mail (`s1Context.email`)
 
 | Field | Value |
 |---|---|
@@ -7030,11 +7317,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: mail, greetings, signoffs<br>phrases: format my dictated greeting and signoff as an email; use email formatting in S1-mini |
 | Search (de) | words: Mail, Anrede, Grußformel<br>phrases: formatiere meine diktierte Anrede und Grußformel wie in einer E-Mail; lass S1-mini meinen Text als E-Mail formatieren |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: mail, salutations, formule de fin<br>phrases: mettre les salutations et la formule de fin de ma dictée au format e-mail avec S1-mini |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-yourWords-category-all"></a>
 
-### All categories / Alle Kategorien (`yourWords.category.all`)
+### All categories / Alle Kategorien / Toutes les catégories (`yourWords.category.all`)
 
 | Field | Value |
 |---|---|
@@ -7051,11 +7339,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: unfiltered<br>phrases: show my words from every category; remove the category filter from my word list |
 | Search (de) | words: ungefiltert<br>phrases: meine Wörter aus allen Kategorien anzeigen; den Kategoriefilter für meine Wörter aufheben |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: toutes catégories, sans filtre<br>phrases: afficher mes mots personnels de toutes les catégories |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-yourWords-category-general"></a>
 
-### General / Allgemein (`yourWords.category.general`)
+### General / Allgemein / Général (`yourWords.category.general`)
 
 | Field | Value |
 |---|---|
@@ -7072,11 +7361,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: everyday, ordinary<br>phrases: show my entries in the general category; filter my own words for everyday vocabulary |
 | Search (de) | phrases: meine Einträge in der Kategorie Allgemein anzeigen; meine Wortliste nach der Kategorie Allgemein filtern |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: catégorie générale, mots courants personnels<br>phrases: afficher mes mots personnels dans la catégorie générale |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-yourWords-category-person"></a>
 
-### Person / Person (`yourWords.category.person`)
+### Person / Person / Personne (`yourWords.category.person`)
 
 | Field | Value |
 |---|---|
@@ -7093,11 +7383,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: filter my own word list for people's names; show the first and last names I added myself |
 | Search (de) | phrases: meine eigene Wortliste nach Personennamen filtern; die Vor- und Nachnamen anzeigen, die ich selbst hinzugefügt habe |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: prénoms ajoutés, noms personnels<br>phrases: afficher les noms et prénoms que j’ai ajoutés moi-même |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-yourWords-category-brand"></a>
 
-### Brand / Marke (`yourWords.category.brand`)
+### Brand / Marke / Marque (`yourWords.category.brand`)
 
 | Field | Value |
 |---|---|
@@ -7114,11 +7405,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: filter my own entries for brands; show the company and product names I added myself |
 | Search (de) | phrases: meine eigenen Einträge nach Marken filtern; die Firmen- und Produktnamen anzeigen, die ich selbst hinzugefügt habe |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: marques ajoutées, produits ajoutés<br>phrases: afficher les noms de marques et de produits que j’ai ajoutés moi-même |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-yourWords-category-acronym"></a>
 
-### Acronym / Akronym (`yourWords.category.acronym`)
+### Acronym / Akronym / Acronyme (`yourWords.category.acronym`)
 
 | Field | Value |
 |---|---|
@@ -7135,11 +7427,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: abbreviations, initialisms, shortenings<br>phrases: show the abbreviations I saved; filter my own word list for acronyms |
 | Search (de) | words: Abkürzungen, Kürzel, Kurzformen<br>phrases: meine gespeicherten Abkürzungen anzeigen; meine eigene Wortliste nach Kürzeln filtern |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: sigles, abréviations, acronymes<br>phrases: afficher les abréviations que j’ai enregistrées dans mes mots personnels |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-yourWords-category-domain"></a>
 
-### Domain / Fachgebiet (`yourWords.category.domain`)
+### Domain / Fachgebiet / Domaine (`yourWords.category.domain`)
 
 | Field | Value |
 |---|---|
@@ -7156,11 +7449,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: filter my own entries for specialist terms; show the industry vocabulary I added myself |
 | Search (de) | phrases: meine eigenen Einträge nach Fachbegriffen filtern; die Fachwörter anzeigen, die ich selbst hinzugefügt habe |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: termes spécialisés ajoutés, vocabulaire métier personnel<br>phrases: afficher les termes spécialisés que j’ai ajoutés moi-même |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-yourWords-category-autoLearned"></a>
 
-### Auto-learned / Automatisch gelernt (`yourWords.category.autoLearned`)
+### Auto-learned / Automatisch gelernt / Appris automatiquement (`yourWords.category.autoLearned`)
 
 | Field | Value |
 |---|---|
@@ -7177,11 +7471,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: show only the words learned from my corrections; filter my word list for automatically learned entries |
 | Search (de) | phrases: nur die aus meinen Korrekturen gelernten Wörter anzeigen; meine Wortliste nach automatisch gelernten Einträgen filtern |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: mots appris, entrées auto-apprises<br>phrases: afficher seulement les mots déjà appris à partir de mes corrections |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-theme-system"></a>
 
-### System / System (`theme.system`)
+### System / System / Système (`theme.system`)
 
 | Field | Value |
 |---|---|
@@ -7198,11 +7493,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: make the app follow my Mac's appearance; switch between light and dark with my Mac |
 | Search (de) | phrases: das Farbschema meines Macs übernehmen; mit meinem Mac zwischen hell und dunkel wechseln |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: thème système, apparence automatique<br>phrases: faire suivre à l’application le mode clair ou sombre du Mac |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-theme-light"></a>
 
-### Light / Hell (`theme.light`)
+### Light / Hell / Clair (`theme.light`)
 
 | Field | Value |
 |---|---|
@@ -7219,11 +7515,12 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: bright, day, daytime<br>phrases: use a light app interface; keep the app in light mode |
 | Search (de) | words: Tagmodus, heller<br>phrases: die App im hellen Modus anzeigen; dauerhaft das helle Design verwenden |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: mode clair, mode jour, light mode<br>phrases: garder l’interface de l’application en mode clair |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-theme-dark"></a>
 
-### Dark / Dunkel (`theme.dark`)
+### Dark / Dunkel / Sombre (`theme.dark`)
 
 | Field | Value |
 |---|---|
@@ -7240,7 +7537,8 @@ Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8f
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: night, nighttime, darker<br>phrases: use a dark app interface; keep the app in dark mode |
 | Search (de) | words: Nachtmodus, dunkler<br>phrases: die App im dunklen Modus anzeigen; dauerhaft das dunkle Design verwenden |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+| Search (fr) | words: mode sombre, mode nuit, dark mode<br>phrases: garder l’interface de l’application en mode sombre |
+| Search (other 29 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 ## Language lists
 
