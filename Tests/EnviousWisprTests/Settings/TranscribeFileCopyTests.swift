@@ -33,7 +33,7 @@ struct TranscribeFileCopyTests {
       (.engineBusy(.abandonedDecode),
        "The last dictation is still transcribing. Restart the app, then try again."),
       (.engineBusy(.meeting), "A meeting is being transcribed. Try again when it finishes."),
-      (.failed("internal detail"), "Something went wrong reading that file. Try a different one."),
+      (.failed("internal detail"), "The import didn't finish. Select the file again to retry."),
     ]
     for (reason, expected) in rows {
       #expect(TranscribeFileView.sentence(for: reason) == expected, "refusal: \(reason)")

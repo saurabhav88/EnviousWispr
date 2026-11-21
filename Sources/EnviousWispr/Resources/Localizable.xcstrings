@@ -24663,17 +24663,6 @@
         }
       }
     },
-    "Something went wrong reading that file. Try a different one." : {
-      "comment" : "Transcribe a File: why the file was refused.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Beim Lesen der Datei ist etwas schiefgegangen. Versuche es mit einer anderen."
-          }
-        }
-      }
-    },
     "Space" : {
       "localizations" : {
         "de" : {
@@ -26941,6 +26930,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Der schnellste Weg zu diktieren."
+          }
+        }
+      }
+    },
+    "The import didn't finish. Select the file again to retry." : {
+      "comment" : "Transcribe a File: why the file was refused.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Import wurde nicht abgeschlossen. Wähle die Datei erneut aus, um es noch einmal zu versuchen."
           }
         }
       }
