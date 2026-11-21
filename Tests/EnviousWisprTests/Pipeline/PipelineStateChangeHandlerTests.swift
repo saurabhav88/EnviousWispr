@@ -111,8 +111,8 @@ struct PipelineStateChangeHandlerTests {
     #expect(calls.scheduleWarningCount == 0)
   }
 
-  @Test("complete + polish failed: schedule warning before showing overlay, then reload + report")
-  func completePolishFailedRoutesWarningSchedule() {
+  @Test("A completed paste schedules the appropriate polish warning", arguments: [false, true])
+  func completePolishFailedRoutesWarningSchedule(translation: Bool) {
     let spy = OverlaySpy()
     let calls = CallbackRecorder()
     let handler = Self.makeHandler(overlay: spy, callbacks: calls)
@@ -121,13 +121,18 @@ struct PipelineStateChangeHandlerTests {
     handler.handle(
       to: PipelineState.complete,
       pipelineOverlayIntent: .hidden,
-      lastPolishNotice: PolishNotice(leadIn: .failed, text: "openai_timeout"),
+      lastPolishNotice: PolishNotice(
+        leadIn: .failed, text: "provider timeout", isTranslationFailure: translation),
       currentTranscript: transcript,
       historySaved: true,
       historySaveReason: nil
     )
 
     #expect(calls.scheduleWarningCount == 1)
+    let expectedReason: RecordingWarningReason = translation
+      ? .translationFailed(message: "Couldn’t translate. Your original-language text was kept.")
+      : .polishFailed
+    #expect(calls.polishWarningReason == expectedReason)
     #expect(calls.cancelWarningCount == 0)
     #expect(spy.calls == [OverlaySpy.Call(intent: .hidden)])
     #expect(calls.appendedCalls.count == 1)
@@ -177,8 +182,9 @@ struct PipelineStateChangeHandlerTests {
     #expect(calls.completedCalls.count == 1)
   }
 
-  @Test("clipboard-only completion with a polish failure shows one accurate warning")
-  func intentionalCopyWithPolishFailureWarnsOnce() {
+  @Test("clipboard-only completion with a polish failure shows one accurate warning",
+        arguments: [false, true])
+  func intentionalCopyWithPolishFailureWarnsOnce(isTranslationFailure: Bool) {
     let overlay = OverlaySpy()
     let callbacks = CallbackRecorder()
     let handler = Self.makeHandler(overlay: overlay, callbacks: callbacks)
@@ -189,7 +195,8 @@ struct PipelineStateChangeHandlerTests {
     handler.handle(
       to: PipelineState.complete,
       pipelineOverlayIntent: .hidden,
-      lastPolishNotice: PolishNotice(leadIn: .failed, text: reason),
+      lastPolishNotice: PolishNotice(
+        leadIn: .failed, text: reason, isTranslationFailure: isTranslationFailure),
       currentTranscript: transcript,
       historySaved: true,
       historySaveReason: nil,

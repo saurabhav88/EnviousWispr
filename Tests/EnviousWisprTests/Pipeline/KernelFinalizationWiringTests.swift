@@ -702,19 +702,23 @@ import os
   // now runs against the live wiring, where a regression in the real delivery
   // path actually fails.
 
-  @Test("a limb failure preserves the raw ASR text and still saves exactly once")
-  func limbFailurePreservesRawTextAndSavesOnce() async throws {
+  @Test("A provider failure preserves the source text and details", arguments: [false, true])
+  func limbFailurePreservesRawTextAndSavesOnce(translation: Bool) async throws {
     // A polish throw is the realistic limb failure; the chain surfaces it and
     // the heart path still delivers the raw words.
     let outcome = KernelFinalizationOutcome()
     let saves = SaveCountBox()
+    let context = KernelSessionContext()
     let polish = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
-    polish.setPolish(provider: .openAI)
+    let provider: LLMProvider = translation ? .claude : .openAI
+    polish.setPolish(provider: provider)
     // #4353 D2: the step has no implicit model; a cloud step without one is a bypass.
-    polish.llmModel = "gpt-4o-mini"
+    polish.llmModel = translation ? "claude-haiku-4-5" : "gpt-4o-mini"
+    if translation { context.config = .testDefault(translationTarget: .german) }
     polish.makePolisher = { _, _, _, _ in ThrowingPolisher() }
     let wiring = makeWiring(
       outcome: outcome,
+      context: context,
       steps: makeSteps(polish: polish),
       save: { transcript, _ in
         saves.count += 1
@@ -729,7 +733,10 @@ import os
 
     #expect(text == "hello world this is a test", "raw ASR text survives a limb failure")
     #expect(outcome.polishedText == nil)
-    #expect(outcome.polishError != nil, "polish surfaces its error")
+    let notice = try #require(outcome.polishNotice)
+    #expect(notice.isTranslationFailure == translation)
+    #expect(notice.text.isEmpty == false)
+    #expect(notice.text != PolishNotice.translationFailureText, "Provider details stay available")
     #expect(saves.count == 1)
     #expect(saves.last?.text == "hello world this is a test")
   }
@@ -768,6 +775,7 @@ import os
 
     let original = "the code is 203 and you can email it to sam@example.com today"
     #expect(outcome.polishFallbackReason == SnippetFinalizer.sentinelLossReason)
+    #expect(outcome.polishNotice?.text == "Couldn’t translate. Your original-language text was kept.")
     #expect(outcome.transcript?.text == original)
     #expect(outcome.transcript?.polishedText == nil)
     #expect(delivery == .pasted)

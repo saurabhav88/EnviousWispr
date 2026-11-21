@@ -261,13 +261,18 @@
    "id": "automaticDictationPaste",
    "review": "additions/automaticDictationPaste.json",
    "reviewSHA256": "f6024586d111edcbac384983717e07ef5331493b859af6808bd864a298a16708"
+  },
+  {
+   "id": "dictationOutputLanguage",
+   "review": "additions/dictationOutputLanguage.json",
+   "reviewSHA256": "898926a2d29a6ae23d962b3e3e8d826925e89c82cf1579043e39c42618db4d8b"
   }
  ],
  "retiredIDs": [],
  "resource": {
   "path": "Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json",
-  "sha256": "f27d623c318325d7367f855d330f83ba73699b4880eab0e5a099978d419fd4e6",
-  "bytes": 1904171
+  "sha256": "a1f3564189c4977d2af54bacbd4931f022eb117b096bcbb1ab4b9e7158fe394d",
+  "bytes": 1911112
  },
  "sources": [
   {
@@ -551,7 +556,7 @@
  "languages": [
   {
    "language": "ar",
-   "contentSHA256": "64fefb75682e4138c2155599f037e0319d4929754c3f3fc30ace3964ae80f4ea",
+   "contentSHA256": "d7138d703498b2405cdb0872097d7439f492caa8a1610fb7ba49215f3700d125",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1740,13 +1745,24 @@
       "sha256": "e3354e417cc75e42acce56880b6820cb69327798fa1679cf227479e9455669a5"
      },
      "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "ar: The title and queries clearly refer to the written result."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "bg",
-   "contentSHA256": "6c7736b97cf11b473e188a444b834f90dc1660e26b55ace5662c7f4de52ec734",
+   "contentSHA256": "9ae5ea44a3767ca6e93d789706b2072d0a4a59039a8306b440245d2bacec1fae",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2926,13 +2942,24 @@
       "sha256": "5187b40caf6aff1d1d4975d92b973ee922d0321fe16c12476d394a18273fadaf"
      },
      "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "bg: „Изходен език“ can mean the source language in translation."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "cs",
-   "contentSHA256": "61d8076a80629407d4c40b886567623a59a067f66ccab4cac771f9bd8ed9b15f",
+   "contentSHA256": "e0e4a4ab01d529339f0a9af931f414910c00a40fb4877e9aae5ed1b076cbcf84",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4112,13 +4139,24 @@
       "sha256": "0ac8d798b71586570a5d1a44aeaee6cf8f38160e1104159b2329f13b186db17b"
      },
      "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "cs: The output title and both text-focused queries are natural."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "da",
-   "contentSHA256": "d0a06103480c02d08d84d2583b2d54580bf62629fa8553d1d42435c6561d164a",
+   "contentSHA256": "0e13c0c1666d78c72d10ecffbf0dbbb01ef9a0e68d54b896a6758b8ba2bf8a61",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -5298,13 +5336,24 @@
       "sha256": "3132ef2cab62c2bb71b24fe183424def921a18bbe8c2f36d5fa45f4ce2e777f7"
      },
      "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "da: The wording clearly asks for dictated text in another language."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "de",
-   "contentSHA256": "4754025472e27cc08b9c9bf0cc5f839d6f77599da97322f1e9797dd219779d79",
+   "contentSHA256": "fde9caae722c6e0591812d3b90393fa8157920f47591a9014a315e7c0de061ae",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -6717,13 +6766,35 @@
       "sha256": "c9e1e38f0c922bb8e283f616fa6e078df14c7e4c0ce1dd0576efe48e205c5eb9"
      },
      "disposition": "Adopted two dictation-specific queries and one term."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "de: The compiled title is clear and all aliases use reviewed wording."
+    },
+    {
+     "kind": "german-council",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "Azure GPT and Gemini reviewed German Settings terms and copy.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/german-copy-reviewed.md",
+      "sha256": "af0f5041c1b418e493d10121f1777751e8169f07c12ac6d1b71e17bbfc239986"
+     },
+     "disposition": "Reused the reviewed output-language title and target-language wording."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "el",
-   "contentSHA256": "3925514eb18b7de0c7aebad81a4b8891a220b5d6dd57eac60135f082bf669204",
+   "contentSHA256": "a36604bc6415b8c343cdfd2157ec917a7fad59a302994e924287be63e4a0cad6",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -7912,13 +7983,24 @@
       "sha256": "c4979d4b1cd640e50ec983e32dd1efe7c93b1a39393c880cab682bc64a4291bc"
      },
      "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "el: The title’s stacked nouns sound unnatural."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "en",
-   "contentSHA256": "e70e81a31c629ca9a9c99a2ed50c37c5ae821ab35a7986f3b31ba24e9f128fdf",
+   "contentSHA256": "cbab6bbc3a9bb94d6573b2bab7feba6a4d2fa65c81dc0a1bfea0f2a035373d11",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -9079,13 +9161,24 @@
       "sha256": "39c7251bfd62c217bdeb0f4cd176c72b61b759c4bba7762c48f06d7596e95049"
      },
      "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "en: The compiled title and both queries point to the final text."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "es",
-   "contentSHA256": "14b3f827c882e0d97fed02c3f7e8771968ab07dcd4af049888f61490207430db",
+   "contentSHA256": "39b69ffa7548cdbdf9ce71b6e5f389ae95fe9890c69338e1ce465bf2a6494839",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -10274,13 +10367,24 @@
       "sha256": "2b2cb367e9450f9a6b8d7fcb4029bb7e5c847f7dc09b550f1eb813067e5dd803"
      },
      "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "es: «Que el dictado salga» naturally signals the desired result."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "et",
-   "contentSHA256": "74420267efdba9351a18764a17370389ce68762fb2f436943315a6a25cbf7a85",
+   "contentSHA256": "77ae53f8c784653fc0453e5cd1e558b0ed00252d5a21ebd3e31a0780f53a8bf0",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -11460,13 +11564,24 @@
       "sha256": "e1b526570ffd752d33953a362377927fcd14b16a460a07ba78a4373a6137efad"
      },
      "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "et: The output term and both queries clearly refer to the resulting text."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fi",
-   "contentSHA256": "74c072bfb5dacc72adc26a49eaa27637c524fddf12bf168327b067131fdaa8ef",
+   "contentSHA256": "571cb71be00bfa32687b3816d2621ba6df7c91c7a4c99d838727c62bda0403b6",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -12646,13 +12761,24 @@
       "sha256": "416308579145069ff9beb8fd689678009299cbb376892e7d36b3bf653a146238"
      },
      "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "fi: The title names the text and «kohdekieli» identifies the target language."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fr",
-   "contentSHA256": "352fb75698daffc322177a3c3d581ed54ed9ffe301a2ea4ef2bf69ccb7c12c36",
+   "contentSHA256": "bf1a8f01b8619e92c426453217615b10f3d5f9197291146f01ff9d4f24b5ac2d",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -13832,13 +13958,24 @@
       "sha256": "9088f3410fa8a13824987eba6aeba28a9ca6a73e5984ca30b6f8ac6e35c12375"
      },
      "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "fr: The queries naturally distinguish the written text from the act of dictating."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hi",
-   "contentSHA256": "bef7910fd0545f0108388679a67bd0eb050c000322bb643cb46204194ccfd81f",
+   "contentSHA256": "cfd6f4aaa55a59a4dc610cd06ca16169548d107cb3ed7c4cdfd41309a2c99079",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -15018,13 +15155,24 @@
       "sha256": "8b32f2e6a82b36cc3d4784bb22cc61f6397c0e3aa780d4355f17f59a273baeb4"
      },
      "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "hi: The everyday Hindi and familiar loanwords clearly describe the text produced."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hr",
-   "contentSHA256": "05062096c6f602e2e7122cf48855958e770a7c0f3c497cf2ab2dbb615a212dd9",
+   "contentSHA256": "d0b58038314ad581e43337cb5db6ef8e5d1710a5cf2e7c275cf94d8c7a1bde3a",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -16204,13 +16352,24 @@
       "sha256": "92835edb20970b43d83e86780a6a77ac0424367adebd59ec751cada55a11fa0b"
      },
      "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "hr: Both queries naturally describe changing the language of the dictated text."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hu",
-   "contentSHA256": "9807a443579a48a785a0126b9efead525c66a6248ce82f053ea6b45fb393aa8a",
+   "contentSHA256": "a17e98ec46e1eabd89424a88b61bff5c9ae8f4c60ff4b8242ea3f3294458291e",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -17390,13 +17549,24 @@
       "sha256": "55a2db4432768a66733ffd7c9e69fde98bfe14330f52837ab53c39e5567e8d2b"
      },
      "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "hu: «Nyelvet a diktált szövegnél» sounds awkward."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "it",
-   "contentSHA256": "938a61db24ce07b26827689d438fc37003bcb8526bd2c83b1b7d401b4589d5a9",
+   "contentSHA256": "906794a6e8e9f7cee89d5bf878f575b4ccc732916758299a8216fdc37dc5c398",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -18585,13 +18755,24 @@
       "sha256": "56bc09cb52023309e53520423516bb941158f405ec0c759d7f4e728692c18950"
      },
      "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "it: The target-language terms and conversational queries fit the written result."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ja",
-   "contentSHA256": "f638f91a9b9311f7951b8624ff099fe7cba7a55b196a1de270c7ef3f8bf378ab",
+   "contentSHA256": "78c475f17d384ca5c7b92444a4dd3809daa8431aed5b1017e77e8df26e4fccfc",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -19771,13 +19952,24 @@
       "sha256": "3c39636b39b54bedaec74060d6aa5dc6bee0f117f91542017eade9c5008be0c1"
      },
      "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "ja: 「出力言語」 and the queries clearly point to what gets written."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ko",
-   "contentSHA256": "a0b5762457605eff9a5fe07fcb9b0e4de7b948d7bc204d61a3b6bb76174c7d59",
+   "contentSHA256": "1d4f16c137543432d4ea9c33aa8ce27660ea5018d9eb0e30c0b74ff5a31440a0",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -20957,13 +21149,24 @@
       "sha256": "61882f0120b0e74c85814e3e7753b9dc612176f78076e923110f40503cde64a7"
      },
      "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "ko: The output title and both queries clearly describe the resulting text."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lt",
-   "contentSHA256": "5f53483498384a2ce9fb207156f51cb042e550b378d4760443e877953b09ed01",
+   "contentSHA256": "419be2e7e6d26b72be98168f9d9e6e9812cfe475235fb30ae099b32053dbb8bc",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -22152,13 +22355,24 @@
       "sha256": "922f2a7456914d1326311a1255b6fd492334130592491f876c597d5fd39bf6c0"
      },
      "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "lt: The title and queries naturally refer to the text after dictation."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lv",
-   "contentSHA256": "b7c1860a719619d733c006f65cdf5947034f14520bf5a03cca4c1307245dcbe9",
+   "contentSHA256": "e82d12de7d2efc612528f8606307a9ccdf3ffb93682607611f0241d21ef44243",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -23338,13 +23552,24 @@
       "sha256": "69dbaa1b24ab3ad02360babf03e41f70b120182084cfde37d7715c909b0d808e"
      },
      "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "lv: «Izvades valoda» and the queries clearly point to written output."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "mt",
-   "contentSHA256": "0e7d6eecd3b770c3ccc30b4dece23b17f42efdcf5e942aa6fc346fe154586b67",
+   "contentSHA256": "71a206d629467e89a20713573ed5a91317ff1865e3dc86848ee2f31b02374888",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -24533,13 +24758,24 @@
       "sha256": "443af1f4995d750d6f0699a57324242ab728614af02e59fb47ae0d8cd0443616"
      },
      "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "mt: The familiar output loanword and both queries fit the dictated text."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "nl",
-   "contentSHA256": "90b437e542c1bbf68b86db86ecbefc0fe610ec06c3443ed4b97185fcffb7a561",
+   "contentSHA256": "bcde87b56a08ca2ea5f4861be753b74045e042366eae6ee5d3093a18fd623795",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -25719,13 +25955,24 @@
       "sha256": "126c22f1b3759371a08e5af439f3045d0f96e1355730f82003b6cb6f00e2c35a"
      },
      "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "nl: «Uitvoertaal» and «doeltaal» reinforce the text-focused queries."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pl",
-   "contentSHA256": "c5c10d4efc4511577520365b3ecafcdba561b666a862b2bfaf734879bea816ed",
+   "contentSHA256": "b3e571c9f4598cfff7d6420f38a038d7ed9876826f07044d392e9df57bfeaec6",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -26905,13 +27152,24 @@
       "sha256": "88e8a6d2f7e455019b7eb1962bffba9577a3c9ea7a8964c2be9cab260ae14f6f"
      },
      "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "pl: «Język wyjściowy» can mean the source language in translation."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pt",
-   "contentSHA256": "a15a7b4232fc46f5694c1f90d67924edc0d10f0dc10088bf499f68e191b46e02",
+   "contentSHA256": "d98fb64cd2e5117cc75c206b68001503c7688df91bb8007e3054ed3c5f50f7d4",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -28099,13 +28357,24 @@
       "sha256": "79f3b0c4f57509b2ae98c172684251786a088102f3f48e1d981e3dc1b285cde6"
      },
      "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "pt: The queries read naturally in Brazilian Portuguese and describe the written result."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ro",
-   "contentSHA256": "72811ab6fb88c70c39779df2c81a58b2a7adf1dbf4e3f9e67b3fdfd60d5ac616",
+   "contentSHA256": "1be5f9b79c255e9a7908494a004cc8946af760fdc5c7bc142b84e76d083ff225",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -29285,13 +29554,24 @@
       "sha256": "4fcc600aefdcce38b2d8c86a6e48fdbc015d73f2b94a7c65bb384abeb5190fa1"
      },
      "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "ro: The target-language term and both queries clearly describe the resulting text."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ru",
-   "contentSHA256": "8221cfe688f23076f320feebc8cbe305a89621412450155bda66adaddc2ebba0",
+   "contentSHA256": "8e1db79dd2ea804ac2d49067803aaf8925334856f085347a850c6ad269fe9642",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -30471,13 +30751,24 @@
       "sha256": "676e60304c1028f8ce147d1340573990c0cdbf3ed268dd4fee100e577dadb5da"
      },
      "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "ru: The output terms and both queries clearly ask for written text in another language."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sk",
-   "contentSHA256": "a3cce6f78bed6901982fcbae44471a9333eb1f0cf8f000ce5dfed68cc221a08a",
+   "contentSHA256": "91c0c211758d71fcc0b760bb4d3faabc1ff5be4332156554f52c9bf23faafe4b",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -31657,13 +31948,24 @@
       "sha256": "40af10a76acb810b2261dbec57ef64aacea421a784a5f56436a673358744ea96"
      },
      "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "sk: The title and queries naturally distinguish the written result from speech."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sl",
-   "contentSHA256": "e36db8118134ba701c2659b1b453253821a7c4bf61eb7b048c6a604adfa3a4d7",
+   "contentSHA256": "d17117a82f8901c51fe3640ec92e218f9de64ad378a24e774e0a9dfb39e8b2b0",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -32852,13 +33154,24 @@
       "sha256": "31fc3fefeefb35bc1d4c7201142e31b6e76682c410fbb1c266fb8d132227de0a"
      },
      "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "sl: «Izhodni jezik» and both queries point to the resulting text."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sv",
-   "contentSHA256": "534631972fd1f4f58e2017c61d8ed3d96a1fb82e5f55ae884872637d0240a323",
+   "contentSHA256": "a192eb3a025833b1918f0a5ffc54c3611057758baeb6858ab8883eaecac9b65d",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -34038,13 +34351,24 @@
       "sha256": "293fe0ecf5cfb92b4cddf4e64c37beec0602dbc81c82d20cdf81077095678b5c"
      },
      "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "sv: «Målspråk» and the everyday queries clearly describe the desired text language."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "tr",
-   "contentSHA256": "1b4309ecd021876a40a77d7f27c5b4883ef9cd42ca51dd51881b30ee4e18b4c1",
+   "contentSHA256": "389d5bca46337355fde5d9f7c4c7a51f9f08378aef6d3bc9ecc35f14ad34486b",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -35224,13 +35548,24 @@
       "sha256": "04b477f1129728ee5ee49d96a1d937f1ad972eda79e698921065b0f4144e562b"
      },
      "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "tr: «Dikte çıktı dili» and «sonuç dili» sound unnatural."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "uk",
-   "contentSHA256": "1f5e19bd6bdc5ab9b1683cdfba7d9e24c780345acf88e7950354f860592d3602",
+   "contentSHA256": "334bbc0365f1985dfee82a7734ca05b24816ef4dc031a8a33fa380d9e0b536e9",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -36419,13 +36754,24 @@
       "sha256": "6a53329248c8a3055c2973f2820b0c628cf348a71858d8580d86e75c9820a376"
      },
      "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "uk: The target-language term and natural queries clearly describe the written result."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "vi",
-   "contentSHA256": "a1441c1020aa27dee036a30f0840353129f17f88574d472598263b5903634619",
+   "contentSHA256": "0b2ffc451b037d282478eb7aa890cbcf9a269d99f52551f6ee3766fe7ea4880d",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -37605,13 +37951,24 @@
       "sha256": "bb98470e32bc775f36d9913692b15fd4a65add61dc0bee1964ea500e0f705d33"
      },
      "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "vi: «Đọc chính tả» suggests a spelling exercise."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "zh",
-   "contentSHA256": "253743bf443f212d709990d0365cb1b0655a9980161ae8357ccb52d69669160d",
+   "contentSHA256": "732705ab6329f5fd09772fb1251d40d339aa728b5b00e8906990837488b25403",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -38791,6 +39148,17 @@
       "sha256": "9ebdedda0357b784e4686203e0361022580b6a72e0d47919361c102edfb4bd3f"
      },
      "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "zh: 「文字语言」 reads awkwardly as an alias and in the first query."
     }
    ],
    "phraseExemptions": []
@@ -39093,7 +39461,8 @@
   "recordingThresholdBehavior": "bac4c37e3af597722bd55e5ba70d1becf7e718a9e97d8f3e3a9ffdcd9e6afc9b",
   "saveDictationRecordings": "fb9f5d70b2b05c69625cab3cb03ef8bdf678aa90f6b6e6e2f813390fe8ea0b3d",
   "fixLearnedWords": "974b844c17efb198324180a5e5fd890282108fbeaa0512d9077fa73694a9c0e3",
-  "automaticDictationPaste": "b672f5f91a9715f212c55a07f5770fe119fcda154813dd9746e2abc04389e1c6"
+  "automaticDictationPaste": "b672f5f91a9715f212c55a07f5770fe119fcda154813dd9746e2abc04389e1c6",
+  "dictationOutputLanguage": "9e149372fb352030a5d520bdd80b2f92c7f26d88bbcf87f385b6b9baf57de396"
  },
  "reviewedSourceNote": "Per searchable id, the SHA-256 of the English title and description its translations were reviewed against (reference/settings-map.json; SettingsSearchVocabularyTests.sourceFingerprint). First recorded 2026-10-07 at be0086b6 from the export the Phase 0 and council reviews covered. When a test names an id here, re-review that id's translated blocks, then record the hash the test prints. Limit: dynamic titles are bound by resolver name, not template wording."
 }

@@ -690,6 +690,17 @@ struct KernelFinalizationWiring {
       outcome.afmPrewarmOutcome = ctx.afmPrewarmOutcome
       outcome.afmPrewarmTakeID = ctx.afmPrewarmOutcome == nil ? nil : ctx.takeID
       outcome.polishNotice = result.polishNotice
+      if ctx.requestedTranslationTarget != nil {
+        if let notice = result.polishNotice, notice.leadIn == .failed {
+          outcome.polishNotice = PolishNotice(
+            leadIn: notice.leadIn, text: notice.text, isTranslationFailure: true)
+        } else if result.polishNotice == nil, ctx.acceptedTranslationTarget == nil,
+          ctx.polishValidatorGuard != nil || ctx.polishFallbackReason == SnippetFinalizer.sentinelLossReason
+        {
+          outcome.polishNotice = PolishNotice(
+            leadIn: .failed, text: PolishNotice.translationFailureText, isTranslationFailure: true)
+        }
+      }
       outcome.polishTakeOutcome = result.polishTakeOutcome
       // #3988: the first live take to meet an outside stop is its recovery take. Its stop and
       // its own polish result ride on its terminal row (zero new rows), written here because the

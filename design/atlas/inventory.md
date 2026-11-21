@@ -8,7 +8,7 @@ Each picture is the whole page, top to bottom, at the 820pt window (a 578pt page
 
 ## page-aiPolish-egOne
 **AI Polish > EG-1 on this Mac.** Turns AI Polish on and picks the polish model. In this picture EG-1 runs on this Mac and you pick its size.
-- **Top to bottom:** Enable AI Polish row, MODEL ("Changes apply to the next recording") with the EG-1 summary card, "EG-1 · choose a size" ("This Mac: 64 GB memory") with three size cards, WHY USE EG-1 help text.
+- **Top to bottom:** Enable AI Polish row, MODEL ("Changes apply to the next recording") with the EG-1 summary card, "EG-1 · choose a size" ("This Mac: 64 GB memory") with three size cards, WHY USE EG-1 help text, and Dictation output language with the Claude requirement.
 - **Controls:** Enable AI Polish: switch (on). Size cards: EG-1 ("Best quality", badge "Best for this Mac", selected), EG-1 Mini ("Fast all-rounder"), EG-1 Micro ("Smallest and fastest"), each "Not downloaded".
 - **Buttons:** Change (outlined, up/down chevrons), Download (filled, on EG-1), Download (outlined, on EG-1 Mini and EG-1 Micro).
 - **Parts:** BrandedSection, BrandedToggleStyle, SettingsSectionHeading, SettingsSummaryCard, EngineCard, SettingsHelpText.
@@ -16,15 +16,15 @@ Each picture is the whole page, top to bottom, at the 820pt window (a 578pt page
 
 ## page-aiPolish-off
 **AI Polish > not set up.** The AI Polish page with polish switched off.
-- **Top to bottom:** one card, Enable AI Polish ("Fixes grammar, punctuation and formatting"), then empty page.
+- **Top to bottom:** the Enable AI Polish card ("Fixes grammar, punctuation and formatting"), then Dictation output language with the Claude requirement.
 - **Controls:** Enable AI Polish: switch (off).
 - **Buttons:** none.
-- **Parts:** BrandedSection, BrandedToggleStyle.
+- **Parts:** BrandedSection, BrandedToggleStyle, SettingsRow.
 - **Fixture state:** AI Polish off, so the model sections are hidden.
 
 ## page-aiPolish-openAI-savedKey
 **AI Polish > OpenAI with a saved key.** AI Polish set to the OpenAI cloud model, with an API key already saved.
-- **Top to bottom:** Enable AI Polish row, MODEL ("Changes apply to the next recording") with the OpenAI "Cloud" summary card, "OPENAI · only for this model" card with OpenAI API Key and Model rows, WHY USE OPENAI help text.
+- **Top to bottom:** Enable AI Polish row, MODEL ("Changes apply to the next recording") with the OpenAI "Cloud" summary card, "OPENAI · only for this model" card with OpenAI API Key and Model rows, WHY USE OPENAI help text, and Dictation output language with the Claude requirement.
 - **Controls:** Enable AI Polish: switch (on). OpenAI API Key: secure field (dots) with eye toggle. Model: dropdown (disabled until the key is saved) with a refresh icon button.
 - **Buttons:** Change (outlined, chevrons), Save (quiet, disabled), Clear (destructive), links "Get your free API key at platform.openai.com" and "OpenAI rate limits by tier".
 - **Parts:** BrandedSection, BrandedToggleStyle, SettingsSectionHeading, SettingsSummaryCard, SettingsRow, SettingsRowIcon, .settingsFieldChrome, SettingsHelpText, SettingsHelpArticleLink.

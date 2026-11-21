@@ -591,10 +591,20 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
 public struct PolishNotice: Equatable, Sendable {
   public let leadIn: PolishFailureReason.LeadIn
   public let text: String
+  package let isTranslationFailure: Bool
 
   public init(leadIn: PolishFailureReason.LeadIn, text: String) {
+    self.init(leadIn: leadIn, text: text, isTranslationFailure: false)
+  }
+
+  package init(leadIn: PolishFailureReason.LeadIn, text: String, isTranslationFailure: Bool) {
     self.leadIn = leadIn
     self.text = text
+    self.isTranslationFailure = isTranslationFailure
+  }
+
+  package static var translationFailureText: String {
+    String(localized: "Couldn’t translate. Your original-language text was kept.")
   }
 }
 

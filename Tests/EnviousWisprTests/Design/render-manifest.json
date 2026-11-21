@@ -1402,7 +1402,7 @@
       "scroll": 0,
       "appearance": "light",
       "locale": "en_US",
-      "state": "scroll position 1 of 2"
+      "state": "scroll position 1 of 3"
     },
     {
       "name": "page-aiPolish-egOne-820-light-s1",
@@ -1414,7 +1414,19 @@
       "scroll": 1,
       "appearance": "light",
       "locale": "en_US",
-      "state": "scroll position 2 of 2"
+      "state": "scroll position 2 of 3"
+    },
+    {
+      "name": "page-aiPolish-egOne-820-light-s2",
+      "producer": "DesignRenderHarness",
+      "fixture": "page:aiPolish.egOne",
+      "window": 820,
+      "pageWidth": 578,
+      "viewport": 560,
+      "scroll": 2,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "scroll position 3 of 3"
     },
     {
       "name": "page-aiPolish-egOne-820-dark-s0",
@@ -1426,7 +1438,7 @@
       "scroll": 0,
       "appearance": "dark",
       "locale": "en_US",
-      "state": "scroll position 1 of 2"
+      "state": "scroll position 1 of 3"
     },
     {
       "name": "page-aiPolish-egOne-820-dark-s1",
@@ -1438,7 +1450,19 @@
       "scroll": 1,
       "appearance": "dark",
       "locale": "en_US",
-      "state": "scroll position 2 of 2"
+      "state": "scroll position 2 of 3"
+    },
+    {
+      "name": "page-aiPolish-egOne-820-dark-s2",
+      "producer": "DesignRenderHarness",
+      "fixture": "page:aiPolish.egOne",
+      "window": 820,
+      "pageWidth": 578,
+      "viewport": 560,
+      "scroll": 2,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "scroll position 3 of 3"
     },
     {
       "name": "page-aiPolish-openAI-savedKey-750-light-s0",

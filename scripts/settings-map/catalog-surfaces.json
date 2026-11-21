@@ -747,6 +747,9 @@
   ],
   "mac-ctl-delete-all-meeting-audio": [
    "deleteRecordings.meetings"
+  ],
+  "mac-ctl-dictation-output-language": [
+   "dictationOutputLanguage"
   ]
  },
  "newSurfaces": {
@@ -969,6 +972,11 @@
    "kind": "control",
    "parent": "mac-sec-recording-storage",
    "label": "Delete all meeting audio [Delete recordings row; confirms; meetings, notes and summaries stay]"
+  },
+  "mac-ctl-dictation-output-language": {
+   "kind": "control",
+   "parent": "mac-page-ai-polish",
+   "label": "Dictation output language"
   }
  }
 }

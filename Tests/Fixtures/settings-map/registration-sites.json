@@ -1,5 +1,6 @@
 [
  "AIPolishProviderPicker.swift | settingsMapRegistration | .aiPolishProvider",
+ "AIPolishSettingsView.swift | SettingsRow | map .id(.dictationOutputLanguage)",
  "AIPolishSettingsView.swift | SettingsSectionHeading | map .id(.sectionAiPolishModel)",
  "AIPolishSettingsView.swift | settingsMapRegistration | .enableAIPolish",
  "AppearanceSettingsView.swift | SettingsRow | map .id(.appLanguage)",

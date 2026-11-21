@@ -8606,6 +8606,16 @@
         }
       }
     },
+    "Couldn’t translate. Your original-language text was kept." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Übersetzung fehlgeschlagen. Dein Text bleibt in der Originalsprache."
+          }
+        }
+      }
+    },
     "Couldn’t undo" : {
       "comment" : "Pill result when removing the just-added word failed.",
       "localizations" : {
@@ -9522,6 +9532,16 @@
         }
       }
     },
+    "Dictation output language" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ausgabesprache für Diktate"
+          }
+        }
+      }
+    },
     "Dictation pauses while this runs. Your keybind will not record until the transcript is finished, in about %@ minutes." : {
       "comment" : "Transcribe a File, Review step: warning before starting. %@ is minutes, never 1.",
       "localizations" : {
@@ -9627,6 +9647,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Das Diktieren funktioniert weiterhin. Ohne Schlüssel wird Text ohne KI-Nachbearbeitung eingefügt."
+          }
+        }
+      }
+    },
+    "Dictation translation requires Claude in AI Polish." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zum Übersetzen von Diktaten muss Claude in der KI-Nachbearbeitung ausgewählt sein."
           }
         }
       }
@@ -22986,6 +23016,16 @@
         }
       }
     },
+    "Same as spoken" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wie gesprochen"
+          }
+        }
+      }
+    },
     "Same pitch both ways, plain." : {
       "comment" : "Chimes settings: describes how a recording chime sounds.",
       "localizations" : {
@@ -30239,6 +30279,16 @@
         }
       }
     },
+    "Very short dictations stay in the language you spoke. After cleanup, that means three words or fewer, or fewer than ten non-space characters for languages the app counts by characters." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sehr kurze Diktate bleiben in der gesprochenen Sprache. Im bereinigten Text gilt: höchstens drei Wörter oder, wenn die App für die Sprache Zeichen statt Wörter zählt, weniger als zehn Zeichen ohne Leerzeichen."
+          }
+        }
+      }
+    },
     "Vietnamese" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -30642,6 +30692,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Neuigkeiten & Updates"
+          }
+        }
+      }
+    },
+    "When Claude is selected, translate new dictations across apps into the chosen language after recording." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ist Claude ausgewählt, werden neue Diktate nach Abschluss appübergreifend in die gewählte Zielsprache übersetzt."
           }
         }
       }
