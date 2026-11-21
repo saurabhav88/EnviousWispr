@@ -871,7 +871,7 @@ import EnviousWisprAppKitTestSupport
       text: "self.unload(reason: \"idle\")", classification: .unrelatedDomain),
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/WordCheckRuntime.swift", matcher: "unload",
-      text: "if activeSelections == 0 { unload(reason: \"not_wanted\") }",
+      text: "if !wanted, activeSelections == 0 { unload(reason: \"not_wanted\") }",
       classification: .unrelatedDomain),
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/WordCheckRuntime.swift", matcher: "unload",

@@ -45,7 +45,8 @@ enum FileImportSettingsFreeze {
   /// lock, language detection and spelling follow `backend`, never the selected engine.
   static func snapshot(
     settings: SettingsManager, backend: ASRBackendType,
-    polishOverride: HistoryPolishChoice? = nil
+    polishOverride: HistoryPolishChoice? = nil,
+    appliesDictionaryCleanup: Bool = true
   ) -> RecordingSettingsSnapshot {
     // #3905: frozen as the engine can honour it (an unhonoured lock runs as Auto).
     let languageMode = LanguageLockOptions.effectiveLanguageMode(
@@ -59,6 +60,7 @@ enum FileImportSettingsFreeze {
       backendSupportsLanguageDetection: backend == .whisper,
       languageMode: languageMode,
       wordCorrectionEnabled: settings.wordCorrectionEnabled,
+      fixLearnedWords: appliesDictionaryCleanup && settings.fixLearnedWords,
       fillerRemovalEnabled: settings.fillerRemovalEnabled,
       emojiFormatterEnabled: settings.emojiFormatterEnabled,
       spokenPunctuationEnabled: settings.spokenPunctuation.enabled,

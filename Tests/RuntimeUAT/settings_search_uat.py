@@ -35,7 +35,7 @@ sys.path.insert(0, HERE)
 # `dest_tab` on Dictionary is the selected section of its rail.
 PROBES = [
     {"name": "self-learning-dictionary", "page": "Dictionary", "tab": None,
-     "query": "self-learning", "title": "Self-Learning Dictionary", "row_has": None,
+     "query": "self-learning", "title": "Learn new words", "row_has": None,
      "entry": "selfLearningDictionary", "dest_page": "Dictionary", "dest_tab": "Learn from...",
      "landings": {("target", "selfLearningDictionary")}},
     {"name": "unload-model-from-clipboard", "page": "Dictation Settings", "tab": "Clipboard",

@@ -162,8 +162,8 @@ struct RecoverySpoolReplayerTests {
   private static func makeHarness(
     transcriptDir: URL? = nil,
     now: @escaping @Sendable () -> Date = { Date() },
-    onReplayWillTranscribe: (@MainActor (LLMProvider) -> Void)? = nil,
-    onReplayFinished: (@MainActor (LLMProvider) -> Void)? = nil,
+    onReplayWillTranscribe: (@MainActor (LLMProvider, Bool) -> Void)? = nil,
+    onReplayFinished: (@MainActor (LLMProvider, Bool) -> Void)? = nil,
     currentCloudModelList: @escaping @MainActor () -> CloudModelList? = { nil },
     activeEngineMissing: (@MainActor () async -> ASRBackendType?)? = nil
   ) -> Harness {
@@ -286,7 +286,7 @@ struct RecoverySpoolReplayerTests {
   func replayReportsEngineBeforeTranscribing() async throws {
     var reported: [(LLMProvider, Int)] = []
     var asrRef: FakeBatchASR?
-    let h = Self.makeHarness(onReplayWillTranscribe: { provider in
+    let h = Self.makeHarness(onReplayWillTranscribe: { provider, _ in
       reported.append((provider, asrRef?.transcribeCallCount ?? -1))
     })
     asrRef = h.asr
@@ -307,8 +307,8 @@ struct RecoverySpoolReplayerTests {
     for fails in [false, true] {
       var events: [String] = []
       let h = Self.makeHarness(
-        onReplayWillTranscribe: { _ in events.append("start") },
-        onReplayFinished: { _ in events.append("end") })
+        onReplayWillTranscribe: { _, _ in events.append("start") },
+        onReplayFinished: { _, _ in events.append("end") })
       if fails { h.asr.transcribeError = CancellationError() }
       let id = "end-\(fails)-\(UUID().uuidString)"
       try await Self.seedSpool(h, id: id, samples: [0.1, 0.2, 0.3])

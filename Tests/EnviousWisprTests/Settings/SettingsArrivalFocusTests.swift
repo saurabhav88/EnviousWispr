@@ -348,7 +348,11 @@ struct SettingsArrivalFocusTests {
     ),
     ("dictation.chimes", [.recordingChimes, .recordingChimeAirGlint], [.sectionChimes, .recordingChime]),
     ("dictation.pill", [.pillPosition, .pillStyle], [.sectionPill]),
-    ("dictionary.learnFrom", [.selfLearningDictionary, .contactsSyncOnLaunch, .importContacts], [.learnFrom]),
+    (
+      "dictionary.learnFrom",
+      [.selfLearningDictionary, .fixLearnedWords, .contactsSyncOnLaunch, .importContacts],
+      [.learnFrom]
+    ),
     ("appSettings.permissions", [], [.sectionPermissions]),
     ("transcribeFile", [], [.transcribeFileSteps]),
     (
@@ -444,7 +448,9 @@ struct SettingsArrivalFocusTests {
   func learnFromActionButtonDoesNotClaimThePanel() async throws {
     let page = try await Self.render("dictionary.learnFrom.download")
     #expect(page.kinds[.learnFrom] == .readOnly, "the panel is published as \(String(describing: page.kinds[.learnFrom]))")
-    let controls: Set<SettingsMapID> = [.selfLearningDictionary, .contactsSyncOnLaunch, .importContacts]
+    let controls: Set<SettingsMapID> = [
+      .selfLearningDictionary, .fixLearnedWords, .contactsSyncOnLaunch, .importContacts,
+    ]
     let published = Set(page.kinds.filter { $0.value == .control }.keys)
     let extra = published.subtracting(controls).filter { !Self.otherRealControls.contains($0.rawValue) }
     #expect(extra.isEmpty, "unexpected controls \(extra.map(\.rawValue).sorted())")

@@ -114,8 +114,8 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
   /// #3289: told the recovered recording's frozen polish engine just before it is transcribed, so
   /// the word check can start loading behind the transcription, and again when this replay ends on
   /// any path, so the word check stops counting it as work. Nil in tests that do not care.
-  private let onReplayWillTranscribe: (@MainActor (LLMProvider) -> Void)?
-  private let onReplayFinished: (@MainActor (LLMProvider) -> Void)?
+  private let onReplayWillTranscribe: (@MainActor (LLMProvider, Bool) -> Void)?
+  private let onReplayFinished: (@MainActor (LLMProvider, Bool) -> Void)?
   /// #4578: the active engine when its model is not on this Mac (the job decision), else nil.
   private let activeEngineMissing: (@MainActor () async -> ASRBackendType?)?
   /// Current custom-words vocabulary, best-effort (the snapshot carries only the
@@ -160,8 +160,8 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     additionalLocalRuntimes: [LocalPolishModelID: any EGOneEndpointProviding] = [:],
     s1MiniRuntime: (any EGOneEndpointProviding)? = nil,
     checkerSelectionProvider: (@MainActor (LocalPolishModelID, String?) async -> LearnedWordCheckerSelection)? = nil,
-    onReplayWillTranscribe: (@MainActor (LLMProvider) -> Void)? = nil,
-    onReplayFinished: (@MainActor (LLMProvider) -> Void)? = nil,
+    onReplayWillTranscribe: (@MainActor (LLMProvider, Bool) -> Void)? = nil,
+    onReplayFinished: (@MainActor (LLMProvider, Bool) -> Void)? = nil,
     activeEngineMissing: (@MainActor () async -> ASRBackendType?)? = nil,
     now: @escaping @Sendable () -> Date = { Date() },
     currentCloudModelList: @escaping @MainActor () -> CloudModelList?,
@@ -403,8 +403,9 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     let result: ASRResult
     // Same fallback as `RecoveryTextProcessor.applySettings`: an unknown saved provider is `.none`.
     let replayProvider = recovered.settings.map { LLMProvider(rawValue: $0.llmProvider) ?? .none }
-    if let replayProvider { onReplayWillTranscribe?(replayProvider) }
-    defer { if let replayProvider { onReplayFinished?(replayProvider) } }
+    let allowsLearnedFixes = recovered.settings?.allowsLearnedFixes == true
+    if let replayProvider { onReplayWillTranscribe?(replayProvider, allowsLearnedFixes) }
+    defer { if let replayProvider { onReplayFinished?(replayProvider, allowsLearnedFixes) } }
     do {
       result = try await activeEngine.transcribe(recovered.samples, options, nil)
     } catch {

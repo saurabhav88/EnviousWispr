@@ -48,6 +48,7 @@
  "KeybindsSettingsView.swift | SettingsSectionHeading | map .id(.sectionKeybindsRecording)",
  "KeybindsSettingsView.swift | SettingsSectionHeading | map .id(.sectionKeybindsShortcuts)",
  "LearningSection.swift | settingsMapRegistration | .contactsSyncOnLaunch",
+ "LearningSection.swift | settingsMapRegistration | .fixLearnedWords",
  "LearningSection.swift | settingsMapRegistration | .importContacts",
  "LearningSection.swift | settingsMapRegistration | .learnFrom",
  "LearningSection.swift | settingsMapRegistration | .selfLearningDictionary",

@@ -107,6 +107,8 @@ public final class RecoveryTextProcessor {
     self.runner = TextProcessingRunner(telemetry: .silent)
   }
 
+  private var fixLearnedWords = true
+
   /// Apply the recording's record-time settings snapshot so recovery replays
   /// under the ORIGINAL settings (engine, language, polish provider/model, limb
   /// toggles), NOT the user's current ones — preventing the "recorded in
@@ -114,6 +116,7 @@ public final class RecoveryTextProcessor {
   /// not in the snapshot (only its version); PR2 reconstructs and assigns it via
   /// `wordCorrectionStep.correctorVocabulary` separately.
   public func applySettings(_ snapshot: RecordingSettingsSnapshot) {
+    fixLearnedWords = snapshot.fixLearnedWords ?? true
     steps.wordCorrection.wordCorrectionEnabled = snapshot.wordCorrectionEnabled
     steps.learnedWordCheck.wordCorrectionEnabled = snapshot.wordCorrectionEnabled
     steps.fillerRemoval.fillerRemovalEnabled = snapshot.fillerRemovalEnabled
@@ -237,7 +240,7 @@ public final class RecoveryTextProcessor {
           englishSpelling: recordedEnglishSpelling),
         targetAppName: targetAppName,
         steps: steps.orderedChain,
-        frozenCorrectorVocabulary: frozenCorrectorVocabulary)
+        frozenCorrectorVocabulary: frozenCorrectorVocabulary, fixLearnedWords: fixLearnedWords)
       // #1948: a BLANK polish is not a polish. Live finalization has an empty-output
       // recovery floor (`KernelFinalizationWiring` `:349`) that turns "" into the intact
       // deterministic text; this replay path has none, so a blank result would be saved to

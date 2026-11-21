@@ -4668,6 +4668,26 @@
    }
   },
   {
+   "id": "fixLearnedWords",
+   "kind": "setting",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "learnFrom"
+   },
+   "disposition": "mapped",
+   "parent": "dictionary.tab.learnFrom",
+   "target": "fixLearnedWords",
+   "fallbacks": [
+    "selfLearningDictionary"
+   ],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Use learned words in new recordings and imports. Turn this off to keep using words you added yourself without applying learned corrections."
+   }
+  },
+  {
    "id": "selfLearningDictionary.learnMore",
    "kind": "action",
    "destination": {

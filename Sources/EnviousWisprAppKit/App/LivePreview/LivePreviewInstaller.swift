@@ -54,7 +54,8 @@ enum LivePreviewInstaller {
     capture: any AudioCaptureInterface,
     settings: SettingsManager,
     settingsSync: PipelineSettingsSync,
-    modelDelivery: ModelDeliveryHome
+    modelDelivery: ModelDeliveryHome,
+    recordingFixLearnedWords: @escaping () -> Bool
   ) -> LivePreviewInstallation {
     // **Effective, not merely persisted** — the requirement this wiring exists
     // for, unchanged since #1988. A value saved as true on macOS 26 and then read
@@ -99,7 +100,9 @@ enum LivePreviewInstaller {
       englishSpelling: {
         EnglishSpelling.effective(languageMode: settings.languageMode, stored: settings.englishSpelling)
       },
-      selectedRoute: selectedRoute
+      selectedRoute: selectedRoute,
+      fixLearnedWords: { settings.fixLearnedWords },
+      recordingFixLearnedWords: recordingFixLearnedWords
     )
     // Geometry reads the COORDINATOR's frozen answer, not a second live
     // computation. The overlay creates its panel on the next run-loop cycle and

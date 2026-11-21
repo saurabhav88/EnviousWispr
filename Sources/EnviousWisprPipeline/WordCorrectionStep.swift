@@ -149,7 +149,7 @@ public final class WordCorrectionStep: TextProcessingStep, CorrectorVocabularyCo
       lookupCacheHits += 1
       return cache.lookups
     }
-    let lookups = WordCorrector.buildLookups(words: vocab.terms)
+    let lookups = WordCorrector.buildLookups(words: vocab.correctingTerms)
     cachedLookups = CachedLookups(generation: vocab.generation, lookups: lookups)
     lookupCacheBuilds += 1
     return lookups

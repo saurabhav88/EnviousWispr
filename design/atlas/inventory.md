@@ -118,12 +118,11 @@ Each picture is the whole page, top to bottom, at the 820pt window (a 578pt page
 - **Parts:** SettingsTabStrip, SettingsSectionHeading, BrandedSection, SettingsRow, SettingsRowIcon, SettingsInfoButton, BrandedSegmentedPicker.
 
 ## page-dictionary-learnFrom
-**Dictionary > Learn From.** Lets the app learn new words from your corrections and your Contacts.
-- **Top to bottom:** LEARN FROM... (with icon) and intro line, Self-Learning Dictionary card, Import from Contacts card.
-- **Controls:** Self-Learning Dictionary ("Beta" tag): switch (on, dimmed). Keep in sync on launch: switch (off).
-- **Buttons:** Learn more (link, outward arrow), Import (outlined).
-- **Parts:** SettingsSectionHeading, BrandedToggleStyle.
-- **Fixture state:** only the tab content is shown; "Not available on this version of macOS yet" and "Learn-only: This polish choice doesn't use learned words yet."
+**Dictionary > Learn From.** Controls learning new words from corrections, applying learned corrections, and importing Contacts.
+- **Top to bottom:** LEARN FROM... introduction, Learn new words card, Fix words it learned card, Import from Contacts card.
+- **Controls:** Independent learning and fixing switches with help and availability. Keep in sync on launch belongs to Contacts.
+- **Buttons:** Learn more, Import, and any action needed to restore availability.
+- **Parts:** SettingsSectionHeading, SettingsInfoButton, BrandedToggleStyle.
 
 ## page-dictionary-quickAdd
 **Dictionary > Quick Add.** Explains how to add a highlighted word to the dictionary from any app.

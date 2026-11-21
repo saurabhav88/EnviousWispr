@@ -125,6 +125,7 @@ public final class SettingsManager {
     case otherAudioWhileDictating
     /// #996: ask before remembering a word the user fixed in pasted text.
     case learnFromEdits
+    case fixLearnedWords
     /// #3147: save a recording of each new dictation (D1), how long dictation and meeting
     /// recordings are kept, and the storage warning.
     case saveDictationRecordings
@@ -190,7 +191,7 @@ public final class SettingsManager {
     "overlayPillPosition",
     "recordingPillDesignWithoutWords", "recordingPillDesignWithWords",
     "showBluetoothTips", "showInDock", "showMenuBarUpdateAlert", "playRecordingSounds", "recordingSoundPairing",
-    "otherAudioWhileDictating", "learnFromEdits",
+    "otherAudioWhileDictating", "learnFromEdits", "fixLearnedWords",
     "saveDictationRecordings", "dictationRecordingRetention", "meetingRecordingRetention",
     "recordingStorageWarningThreshold", "recordingThresholdBehavior",
     WhatsNewConstants.lastSeenVersionDefaultsKey,
@@ -1522,6 +1523,15 @@ public final class SettingsManager {
     }
   }
 
+  /// The saved preference for applying learned corrections. Enable Dictionary
+  /// can pause corrections without changing this choice.
+  public var fixLearnedWords: Bool {
+    didSet {
+      defaults.set(fixLearnedWords, forKey: "fixLearnedWords")
+      onChange?(.fixLearnedWords)
+    }
+  }
+
   /// #3147 D1: save a compressed recording of each new dictation. Read once when a take is
   /// accepted (the kernel freezes it for that take). Off affects new dictations only: existing
   /// recordings stay, keep their expiry, still play and still count toward storage.
@@ -2273,6 +2283,9 @@ public final class SettingsManager {
       learnFromEdits = SettingsDefaultValues.learnFromEdits
       defaults.set(SettingsDefaultValues.learnFromEdits, forKey: "learnFromEdits")
     }
+
+    fixLearnedWords = defaults.object(forKey: "fixLearnedWords") as? Bool
+      ?? SettingsDefaultValues.fixLearnedWords
     // #3147: absent or unknown values resolve to the canonical defaults, never seeded, so an
     // unreadable value cannot turn on deletion.
     saveDictationRecordings =

@@ -512,6 +512,9 @@
   "mac-ctl-self-learning": [
    "selfLearningDictionary"
   ],
+  "mac-ctl-fix-learned-words": [
+   "fixLearnedWords"
+  ],
   "mac-ctl-self-learning-learn-more": [
    "selfLearningDictionary.learnMore"
   ],
@@ -744,6 +747,11 @@
   ]
  },
  "newSurfaces": {
+  "mac-ctl-fix-learned-words": {
+   "kind": "control",
+   "parent": "mac-sec-dict-learn-from",
+   "label": "Fix words it learned"
+  },
   "mac-ctl-self-learning-forget-memory": {
    "kind": "control",
    "parent": "mac-sec-dict-learn-from",

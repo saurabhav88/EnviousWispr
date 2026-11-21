@@ -188,7 +188,7 @@ struct ImportedFileTranscriberTests {
     }
     let runner = HistoryRepolishRunner(
       choices: { _ in [choice] }, admission: .live(lease: rig.lease, as: .fileImport),
-      freeze: { backend, selected in
+      freeze: { backend, selected, _ in
         #expect(selected == choice)
         return freeze(backend)
       },

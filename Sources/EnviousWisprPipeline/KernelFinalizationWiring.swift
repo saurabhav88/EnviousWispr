@@ -547,7 +547,9 @@ struct KernelFinalizationWiring {
       // FIRST statement, before any suspension point: freeze one full vocabulary
       // for both correction steps and the protected-spellings floor. Canonicals
       // are protected spellings; aliases are misheard forms we correct FROM.
+      let fixLearnedWords = context.config?.fixLearnedWords ?? true
       let frozenCorrectorVocabulary = steps.wordCorrection.correctorVocabulary
+        .forLearnedFixes(fixLearnedWords)
       context.protectedSpellings = Set(
         frozenCorrectorVocabulary.terms.map(\.canonical))
       // #996: this take's languages start unknown. The four fields are
@@ -594,6 +596,7 @@ struct KernelFinalizationWiring {
         targetAppName: context.targetApp?.localizedName,
         steps: steps.orderedChain,
         frozenCorrectorVocabulary: frozenCorrectorVocabulary,
+        fixLearnedWords: fixLearnedWords,
         polishSetup: Self.polishSetupProbe(
           takeID: telemetryState.takeID, context: context.polishSetupContext,
           hooks: context.polishSetupHooks),

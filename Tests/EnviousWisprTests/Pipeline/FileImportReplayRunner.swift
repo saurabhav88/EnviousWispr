@@ -624,8 +624,7 @@ final class ReplayRig {
         .egOne(.full): .init(
           base: egOneRegistration, promptTemplateID: promptTemplateID, runtime: egOneRuntime,
           debugThreshold: nil)
-      ],
-      currentModel: { settingsBox.settings.polishModelID(for: $0) })
+      ])
     let wordCheck = WordCheckRuntime(
       delivery: home,
       isDictionaryEnabled: { settingsBox.settings.wordCorrectionEnabled },

@@ -64,7 +64,7 @@ final class RecordingStarter {
     /// opaque directive payload (nil when recovery is off or could not arm).
     /// (#1063 PR1.)
     let makeDirective:
-      @MainActor (SettingsManager, ASRBackendType, Bool, LocalPolishModelID, String) async -> (
+      @MainActor (SettingsManager, ASRBackendType, Bool, LocalPolishModelID, String, Bool) async -> (
         recoverySessionID: String, payload: Data
       )?
 
@@ -98,7 +98,7 @@ final class RecordingStarter {
 
     /// The recovery-off shape, for construction that is not about recovery.
     static let disabled = RecoveryAccess(
-      makeDirective: { _, _, _, _, _ in nil },
+      makeDirective: { _, _, _, _, _, _ in nil },
       cleanupArm: { _ in },
       isRecovering: { false },
       signalPendingLiveStart: {},
@@ -517,6 +517,7 @@ final class RecordingStarter {
     beginMinting()
     defer { endMinting() }
     accessibilityRefresh()
+    let fixLearnedWords = settings.fixLearnedWords
     recordingOverlay.present(
       .recording(
         RecordingPillInput(
@@ -593,7 +594,8 @@ final class RecordingStarter {
     }
     let preWarmMs = Self.elapsedMs(since: pttStart)
     do {
-      let config = await makeSessionConfig(triggerSource: .pttHotkey, armRecovery: true)
+      let config = await makeSessionConfig(
+        triggerSource: .pttHotkey, armRecovery: true, fixLearnedWords: fixLearnedWords)
       // #1063 PR1: the recovery-arm await widened the pre-session window. If PTT
       // was released during it, `requestStop` hit the idle kernel and was ignored
       // — bail before minting a session so a quick release can't leave a recording
@@ -855,7 +857,7 @@ final class RecordingStarter {
       // toggle reaches here too, but the kernel ignores the config — arming there
       // would orphan a key (Codex code-diff P2).
       let config = await makeSessionConfig(
-        triggerSource: source, armRecovery: isStartingFromIdle)
+        triggerSource: source, armRecovery: isStartingFromIdle, fixLearnedWords: settings.fixLearnedWords)
       // #1063 PR1 (Codex r3 P1): the recovery-arm await (when armRecovery)
       // suspended this start path. If the user cancelled, OR a concurrent toggle
       // started the kernel during that window, do NOT start a fresh recording —
@@ -963,7 +965,9 @@ final class RecordingStarter {
   /// The directive is nil unless recovery is on, so the heart path is unchanged.
   /// Reads the active engine's LID CAPABILITY (not an identity literal).
   /// (#1063 PR1.)
-  private func makeSessionConfig(triggerSource: TriggerSource, armRecovery: Bool) async
+  private func makeSessionConfig(
+    triggerSource: TriggerSource, armRecovery: Bool, fixLearnedWords: Bool
+  ) async
     -> DictationSessionConfig
   {
     // #4473 (plan §3.1.1 S6): the take's polish model is captured ONCE, here, before the
@@ -977,7 +981,7 @@ final class RecordingStarter {
       armRecovery
       ? await recovery.makeDirective(
         settings, asrManager.activeBackendType, activeDriver.supportsLanguageDetection,
-        polishModel, polishWireModel)
+        polishModel, polishWireModel, fixLearnedWords)
       : nil
     return DictationSessionConfigFactory.make(
       asrManager: asrManager,
@@ -986,6 +990,7 @@ final class RecordingStarter {
       settings: settings,
       polishModel: polishModel,
       polishWireModel: polishWireModel,
+      fixLearnedWords: fixLearnedWords,
       triggerSource: triggerSource,
       recoverySessionID: recovery?.recoverySessionID,
       recoveryPayload: recovery?.payload)

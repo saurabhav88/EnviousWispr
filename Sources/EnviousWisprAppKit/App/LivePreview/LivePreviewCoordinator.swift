@@ -113,6 +113,8 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   /// the language when a recording starts. American by default, so a construction that does not
   /// care keeps today's display.
   private let englishSpelling: () -> EnglishSpelling
+  private let fixLearnedWords: () -> Bool
+  private let recordingFixLearnedWords: () -> Bool
 
   /// Which engine can serve a given language, and why not when it cannot.
   ///
@@ -138,7 +140,7 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   /// recognizer's guard short-circuits instead of running a full correction pass
   /// that cannot match anything. Most users have no custom words.
   var correctorVocabulary: CorrectorVocabulary = .empty {
-    didSet { rebuildCorrectorLookupsIfNeeded() }
+    didSet { rebuildCorrectorLookupsIfNeeded(for: correctorVocabulary.forLearnedFixes(fixLearnedWords())) }
   }
 
   /// Lookups for `correctorVocabulary`, or `nil` when there is nothing to correct.
@@ -154,6 +156,7 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   /// vocabulary was already there. Comparing against what was actually BUILT
   /// starts at `nil`, which cannot collide with a real generation.
   private var builtLookupsGeneration: UInt64?
+  private var builtLookupsIncludeLearnedWords = true
 
   /// Test seam, mirroring `WordCorrectionStep.lookupCacheBuilds`: how many times
   /// lookups have actually been built. Lets a test prove the seed vocabulary was
@@ -242,6 +245,7 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
     let route: LivePreviewEngineRoute
     let enabled: Bool
     let dictionaryOn: Bool
+    let fixLearnedWords: Bool
     /// #3124: the preview language and spelling frozen WITH the route, so a setting changed while
     /// the session is still resolving applies to the next recording, and a new language can never
     /// be paired with the old spelling.
@@ -291,7 +295,9 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
     isDictionaryOn: @escaping () -> Bool,
     languageMode: @escaping () -> LanguageMode,
     englishSpelling: @escaping () -> EnglishSpelling = { .american },
-    selectedRoute: @escaping () -> LivePreviewEngineRoute
+    selectedRoute: @escaping () -> LivePreviewEngineRoute,
+    fixLearnedWords: @escaping () -> Bool = { true },
+    recordingFixLearnedWords: @escaping () -> Bool = { true }
   ) {
     self.readSamples = readSamples
     self.isPreviewOn = isPreviewOn
@@ -299,6 +305,8 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
     self.languageMode = languageMode
     self.englishSpelling = englishSpelling
     self.selectedRoute = selectedRoute
+    self.fixLearnedWords = fixLearnedWords
+    self.recordingFixLearnedWords = recordingFixLearnedWords
   }
 
   /// Whether the pill should be SIZED for preview text, for the overlay's
@@ -389,6 +397,7 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
       guard !isRemovingModel else {
         recordingSnapshot = RecordingSnapshot(
           route: selectedRoute(), enabled: false, dictionaryOn: isDictionaryOn(),
+          fixLearnedWords: recordingFixLearnedWords(),
           languageMode: languageMode(),
           englishSpelling: englishSpelling())
         display = .off
@@ -400,7 +409,7 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
       let route = selectedRoute()
       recordingSnapshot = RecordingSnapshot(
         route: route, enabled: route.isSupportedOnThisSystem() && isPreviewOn(),
-        dictionaryOn: isDictionaryOn(),
+        dictionaryOn: isDictionaryOn(), fixLearnedWords: recordingFixLearnedWords(),
         languageMode: languageMode(), englishSpelling: englishSpelling())
 
       guard recordingSnapshot?.enabled == true else {
@@ -572,9 +581,11 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
     // chain, never from here. A table that failed to load shows the text as heard.
     let britishConverter =
       snapshot.englishSpelling == .british ? BritishSpellingConverter.shared.converter : nil
+    let correctionVocabulary = correctorVocabulary.forLearnedFixes(snapshot.fixLearnedWords)
+    rebuildCorrectorLookupsIfNeeded(for: correctionVocabulary)
     let protectedWords =
       britishConverter == nil
-      ? [] : BritishSpellingConverter.protectedWords(fromUserWordsIn: correctorVocabulary)
+      ? [] : BritishSpellingConverter.protectedWords(fromUserWordsIn: correctionVocabulary)
     let publish: @Sendable (String) -> Void = { [weak self] heard in
       // Re-bounded after conversion: British forms are longer ("colour", "travelled"), so text
       // the recognizer capped can grow past the cap again (same reason the preview corrector
@@ -598,8 +609,8 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
       // Read synchronously on the main actor at the moment the session opens, so
       // the session cannot start before the vocabulary reaches it.
       let vocabulary = LivePreviewVocabulary(
-        lookups: correctorLookups, contextualPhrases: contextualPhrases,
-        dictionaryEnabled: snapshot.dictionaryOn)
+        lookups: correctorLookups,
+        contextualPhrases: contextualPhrases, dictionaryEnabled: snapshot.dictionaryOn)
       session = try await engine.openSession(vocabulary: vocabulary, onText: publish)
     } catch {
       guard isCurrent(generation) else { return }
@@ -927,7 +938,7 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   /// #3973: the Custom Words a dictation preview session gets, for EnviousMeet's live words
   /// (read once at a meeting's start).
   func vocabularySnapshot() -> LivePreviewVocabulary {
-    rebuildCorrectorLookupsIfNeeded()
+    rebuildCorrectorLookupsIfNeeded(for: correctorVocabulary.forLearnedFixes(fixLearnedWords()))
     // #3973: Dictionary off means no word corrections on any engine (Universal reads `lookups`
     // without checking `dictionaryEnabled`).
     let dictionaryOn = isDictionaryOn()
@@ -936,14 +947,16 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
       dictionaryEnabled: dictionaryOn)
   }
 
-  private func rebuildCorrectorLookupsIfNeeded() {
-    guard builtLookupsGeneration != correctorVocabulary.generation else { return }
-    builtLookupsGeneration = correctorVocabulary.generation
+  private func rebuildCorrectorLookupsIfNeeded(for vocabulary: CorrectorVocabulary) {
+    guard builtLookupsGeneration != vocabulary.generation
+      || builtLookupsIncludeLearnedWords != vocabulary.includesLearnedWords
+    else { return }
+    builtLookupsGeneration = vocabulary.generation
+    builtLookupsIncludeLearnedWords = vocabulary.includesLearnedWords
     correctorLookupBuilds += 1
     correctorLookups =
-      correctorVocabulary.terms.isEmpty
-      ? nil : WordCorrector.buildLookups(words: correctorVocabulary.terms)
-    contextualPhrases = ApplePreviewHints.build(from: correctorVocabulary.terms)
+      vocabulary.correctingTerms.isEmpty ? nil : WordCorrector.buildLookups(words: vocabulary.correctingTerms)
+    contextualPhrases = ApplePreviewHints.build(from: vocabulary.terms)
   }
 
   private func ensurePrepared(_ candidate: LivePreviewEngineCandidate) async -> Bool {

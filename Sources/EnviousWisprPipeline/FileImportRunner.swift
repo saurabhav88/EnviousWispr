@@ -122,6 +122,8 @@ public final class FileImportRunner {
     frozenSettings.map { LLMProvider(rawValue: $0.llmProvider) ?? .none }
   }
 
+  package var frozenAllowsLearnedFixes: Bool { frozenSettings?.allowsLearnedFixes == true }
+
   public convenience init(
     keychainManager: KeychainManager,
     localPolishers: BundledLocalPolisherFactories,
@@ -253,7 +255,8 @@ public final class FileImportRunner {
       // happened to have open while the file decoded.
       targetAppName: nil,
       steps: chain,
-      frozenCorrectorVocabulary: steps.wordCorrection.correctorVocabulary)
+      frozenCorrectorVocabulary: steps.wordCorrection.correctorVocabulary,
+      fixLearnedWords: settings.fixLearnedWords ?? true)
 
     // The user pressed Stop while this part was in flight. The runner will have
     // returned the deterministic floor rather than propagating, which is right
@@ -370,7 +373,8 @@ public final class FileImportRunner {
           lockedLanguage: lock, engineDetectsLanguage: settings.backendSupportsLanguageDetection,
           engineReportedLanguage: engineLanguage, englishSpelling: settings.englishSpelling ?? .american),
         targetAppName: nil, steps: steps.orderedChainForFileImport,
-        frozenCorrectorVocabulary: steps.wordCorrection.correctorVocabulary)
+        frozenCorrectorVocabulary: steps.wordCorrection.correctorVocabulary,
+        fixLearnedWords: settings.fixLearnedWords ?? true)
       try checkCurrent()
       let prefix = try await runner.run(context: seed, steps: stages.beforePolish)
       try checkCurrent()

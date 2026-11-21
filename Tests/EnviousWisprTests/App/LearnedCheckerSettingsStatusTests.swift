@@ -20,16 +20,16 @@ struct LearnedCheckerSettingsStatusTests {
   func states() {
     let cases: [(LearnedWordCheckerSelection, String, Bool)] = [
       (.init(checker: ReadyChecker(), identity: "eg1c-v2", judge: egOne),
-        "Checked by: EG-1. Learned words are checked before they're used.", false),
+        "Available with EG-1", false),
       (.init(absence: .adapterDownloading, judge: egOne),
-        "Learn-only: EG-1's word check is downloading", false),
+        "EG-1's word check is downloading", false),
       (.init(absence: .adapterDeliveryFailed, retryAvailable: true, judge: egOne),
-        "Learn-only: EG-1's word check couldn't download", true),
+        "EG-1's word check couldn't download", true),
       (.init(absence: .adapterDeliveryFailed, judge: egOne),
-        "Learn-only: EG-1's word check isn't available yet", false),
+        "EG-1's word check isn't available yet", false),
       (.init(absence: .deliveryDisabled, judge: egOne),
-        "Learn-only: EG-1's word check isn't available yet", false),
-      (.init(absence: .engineHasNoChecker), "Learn-only: This polish choice", false),
+        "EG-1's word check isn't available yet", false),
+      (.init(absence: .engineHasNoChecker), "This polish choice", false),
     ]
     for (selection, prefix, retry) in cases {
       let status = LearnedCheckerSettingsStatus(selection: selection)
@@ -56,7 +56,7 @@ struct LearnedCheckerSettingsStatusTests {
     let judge = LearnedWordJudge(displayName: "S1-mini")
     #expect(LearnedCheckerSettingsStatus(selection: .init(
       checker: ReadyChecker(), identity: "s1c-d5", judge: judge)).line
-      == "Checked by: S1-mini. Learned words are checked before they're used.")
+      == "Available with S1-mini")
   }
 
   @Test("all Dictionary status copy avoids internal terms")

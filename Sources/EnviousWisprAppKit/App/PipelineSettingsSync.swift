@@ -38,6 +38,7 @@ final class PipelineSettingsSync {
   /// File's) changed, so whether the shared word check is needed may have changed. The
   /// composition root binds this to `WordCheckRuntime.refresh`.
   var onWordCheckInputsChanged: () -> Void = {}
+  var onWordCheckWorkFinished: () -> Void = {}
 
   /// Tracks the last evictable Ollama model for #295. Independent of the
   /// kernel's polish step because SettingsManager's cascading didSet can
@@ -459,6 +460,8 @@ final class PipelineSettingsSync {
       break  // #1063: read by the recovery wiring at capture start, not the live pipeline.
     case .learnFromEdits:
       break  // #996: read live by the edit watcher at each paste; nothing in the pipeline reads it.
+    case .fixLearnedWords:
+      onWordCheckInputsChanged()
     case .shareUsageMetrics, .sendCrashReports:
       // #3269: `ObservabilityBootstrap` owns both. Usage metrics apply now (PostHog closes or
       // starts); crash reports are restart-only and never change the running Sentry. The

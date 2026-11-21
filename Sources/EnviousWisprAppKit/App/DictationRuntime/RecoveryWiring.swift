@@ -32,10 +32,10 @@ enum RecoveryWiring {
   ) -> RecordingStarter.RecoveryAccess {
     RecordingStarter.RecoveryAccess(
     // #1063 PR1: arm crash recovery for this start.
-    makeDirective: { settings, backend, lid, polishModel, polishWireModel in
+    makeDirective: { settings, backend, lid, polishModel, polishWireModel, fixLearnedWords in
       await recoveryCoordinator.makeDirective(
         settings: settings, backendType: backend, supportsLanguageDetection: lid,
-        polishModel: polishModel, polishWireModel: polishWireModel)
+        polishModel: polishModel, polishWireModel: polishWireModel, fixLearnedWords: fixLearnedWords)
     },
     // #1063 PR1 (Codex r3): a PTT release or concurrent-toggle stop landing in
     // the arm window mints no session, so the lifecycle coordinator sees no

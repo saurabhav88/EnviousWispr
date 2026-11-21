@@ -251,13 +251,18 @@
    "id": "saveDictationRecordings",
    "review": "additions/saveDictationRecordings.json",
    "reviewSHA256": "629a17a3f7a6274d42dbe56b0c9be706066bcea54b46dc5ee0c6a46040836bc3"
+  },
+  {
+   "id": "fixLearnedWords",
+   "review": "additions/fixLearnedWords.json",
+   "reviewSHA256": "0a0ab81c6e17dd3efbf7794b073a3fc1ba13281b878e9fda74442cfe9b9de2b1"
   }
  ],
  "retiredIDs": [],
  "resource": {
   "path": "Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json",
-  "sha256": "33d583304fa73b4547e53f491c69599d47ec82a067b6d6ea657cd0a1e400efd9",
-  "bytes": 1886497
+  "sha256": "69186cd226bfb54ce66cc90148130ba842b55eca1f94a8ef33d2b26d99e25aac",
+  "bytes": 1892971
  },
  "sources": [
   {
@@ -541,7 +546,7 @@
  "languages": [
   {
    "language": "ar",
-   "contentSHA256": "371cd1abef06e58a0af76f78bd79204e86e64448ae52387666ea054694361f58",
+   "contentSHA256": "1e4d82509aac7b675b7d5507e8314486eb44fb1b568b8adaffa6590cdf7c6250",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1710,13 +1715,22 @@
       "sha256": "05e7923fa51b7aa9d0d71e972d94e473ddf723b6a44ef3feb45e1e8381c91104"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/ar/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "bg",
-   "contentSHA256": "71873ae35a01ba9a79ca5593acc4c3a6b68c5d62c22f6c72e64263a8aa9294f1",
+   "contentSHA256": "e76009002689fce4add05c96bf475e44b3858a6859cf0eff1db19c515aa241a6",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2876,13 +2890,22 @@
       "sha256": "028d1642f4606df8efdbb882c08a4b6431a9d48b0dbec28466341d3e17c50f56"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/bg/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "cs",
-   "contentSHA256": "559dd3cb4cdb74bd15163415ece48ee5a507e02941c5045ff8e300d7f069a7f8",
+   "contentSHA256": "6a2e244871d158fd7c756291872c0ed9608e90136009e4e6e0725f892518c656",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4042,13 +4065,22 @@
       "sha256": "f9d8009791eba0236994f47b173d2878d63f13bed5b980b0c90c3fda978b1685"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/cs/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "da",
-   "contentSHA256": "43ffb478f051038c26a5df93f249a70297a6db33078df7edf6646c5f38295848",
+   "contentSHA256": "d8670aeb22e04aa4ca774a54cffe2b7f2d9cc2c37e298c1c442eaea014926d55",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -5208,13 +5240,22 @@
       "sha256": "e7062d563786221ae209a0bfa4f49072742f5d6c1ceeffb86259de47c26872da"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/da/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "de",
-   "contentSHA256": "2c8a77c5afaa0fa6b99a3545ae575a73a0c94f521b0cfcd64bd2006bcb8b8273",
+   "contentSHA256": "6d58b72ee76bf4f4fdc118504f573d53e30acf2e084aea2e2f1152d3fbd55642",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -6596,13 +6637,22 @@
       "path": "additions/dictationRecordingRetention/council-de-digest.md",
       "sha256": "890f0c794d1f24e277829c446402852a249dbe9b0c3dd82197360ea679cb1011"
      }
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/de/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "el",
-   "contentSHA256": "b3ca7617cf62494b056fbfc96d1a70aa10058c73cf97b103f5745703d8fbecec",
+   "contentSHA256": "32aaaca30790f8cd3e4b25c4ce9d89a2aff62df5151ca798fa0ec01597c635dd",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -7771,13 +7821,22 @@
       "sha256": "cd9330fed783cd5bdc75d80d7e50e6042b110fe2deb2eae501999f103f7eeae8"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/el/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "en",
-   "contentSHA256": "bfc02e6f79c580a8e947ab9329a21ed57be6cd0ea224eadcb763d5abb6f21cdd",
+   "contentSHA256": "1486bd4c2b4ef41f3746185eeaf5162ab985e162e9f3af569ebfcfdb5d2a05fb",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -8918,13 +8977,22 @@
       "sha256": "4648c8c80ad9596aa510a3e6949e6cfb0afa294c8677018c6fcc8829a8fae1da"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/en/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "es",
-   "contentSHA256": "50497cd2244c97557749655f527da6df7287a8112a852b34f828639f9750ac70",
+   "contentSHA256": "f26a46351f1108c33c13a7515aca4fe1ed54b9c4f780c1debe5427b7c055bc02",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -10093,13 +10161,22 @@
       "sha256": "b60f76d6d544a3b62cc1266c294419de41f0e9663618175b116d60fc2fa4a1f3"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/es/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "et",
-   "contentSHA256": "3518b73f2efd9188d0f9e1c21c888ff46642ac525c7b94496dd3d6f691dfd2ac",
+   "contentSHA256": "9c04154560d15d3f41cf484e9fe63aba0e619dd42c74011c4867daba659ccc3c",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -11259,13 +11336,22 @@
       "sha256": "0e89e0af94b032624babc03eebb69ecca67aecaaf21d258b70ccb83b4988a1c7"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/et/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fi",
-   "contentSHA256": "0ab6426bd1dc32ce3b23a053f1ddf3c7dd1474a2f28e15706f570a6598f53556",
+   "contentSHA256": "e52acf20fec45e51ac7754b943ae3251e3977c1c2b45ed01ee829643d4d6ed9b",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -12425,13 +12511,22 @@
       "sha256": "1acd851a8ef4ebe7fc10e108aa62e74ba253958e55be526791df616843043998"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/fi/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fr",
-   "contentSHA256": "5298f511f0a473989257c15df8353ec97aad92b882319cbc8ca394027248db73",
+   "contentSHA256": "be604d5970d3b193d5b746055b1bad46fea238d445a509950045e4594aaf617b",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -13591,13 +13686,22 @@
       "sha256": "28b7d21ccfcbddeff0e724902f2cfa907b26a72912ac6f62da2a1a01c74bbe2f"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/fr/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hi",
-   "contentSHA256": "7d053d8e63f2ea4eeb10a84a08f05031348068ef3f24fe252788255bf4e80ad6",
+   "contentSHA256": "91219978d5f11f26797a14fd0251923ef9f72c5fd8acd901825a85dd0b64864e",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -14757,13 +14861,22 @@
       "sha256": "048bb0db14797c37eba2a39b54c21e0b7be4fa06a480d13fe71a11fd59f14625"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/hi/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hr",
-   "contentSHA256": "f488dcbb65c9c6e8ca98258d44f22154d47e1bb753ff2ba9982b7b71786d84e5",
+   "contentSHA256": "0aa25b8e59ec586a9c54a288ae8b208cdd1c07da0b80ccb1f2886f7d3e82c1fd",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -15923,13 +16036,22 @@
       "sha256": "f3ae21fb5d38f7afb671edaaa6b447b4f1c307f4bb203052ac9e776e4a20147e"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/hr/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hu",
-   "contentSHA256": "8eb2a03fb9ea2db96794152abb05f80ba159e6883500d99a1442d00c94315961",
+   "contentSHA256": "ed1f91d9e3d57feb659dd5b7b214c0a418746e0e75d9c845b8edccca3b24ae36",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -17089,13 +17211,22 @@
       "sha256": "dd2ddc32aa1c9236be3536d6fca2584b4ba9a5ef54487e3cfbff3cd9ad62336c"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/hu/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "it",
-   "contentSHA256": "8a6ecf6ed37738377c6a8e79ac35bb3cfafd9cada4163a2d6796e0d59e5f0d2f",
+   "contentSHA256": "c36cba05c9d090b413756f57302272a1c88d0fc3e121c9efdba7242e57a7562a",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -18264,13 +18395,22 @@
       "sha256": "b0cfc66bf4b6406808ee7955f14b1571741140c25e100f476f1afe4eeefc1010"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/it/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ja",
-   "contentSHA256": "9201d2df79ad1a65990df2c00740a1f06a06e1aa8176dfa7d2f20ab5c2b8297a",
+   "contentSHA256": "6b362a6bd1959f30cf64d900c61082c2d529afd72eed09f96439c4e7e6537ea5",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -19430,13 +19570,22 @@
       "sha256": "ce357e0982fd088ca51090005c64b23f1b9f612d24e08e6de5e8b53a0e0c8d08"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/ja/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ko",
-   "contentSHA256": "2daa942896a1945d9488bcf766cd63e103b3076beabc168de86525f6dd9b3ca6",
+   "contentSHA256": "7d44dc142d0737ae479149ed699eb368edcc5f1c6b84f5c66f80d0fbdfa13513",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -20596,13 +20745,22 @@
       "sha256": "a7fa7be0baa9253ac0a06d7107396a35634abe1fceb39675d8e7c83e2f1f9531"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/ko/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lt",
-   "contentSHA256": "351ff485245c965e80ce7eb036105895b867575ecc84feec5558813c921cca4e",
+   "contentSHA256": "1292af7dd214feb92122e1b4e327c2db9a8c52897d0c2655f37001ba04446217",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -21771,13 +21929,22 @@
       "sha256": "825e4042846d46ce06310c2383a8cef91876ceaf84e7d818c109833e5338640f"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/lt/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lv",
-   "contentSHA256": "5923bd6c06721ead4d1847368aa1aa52e42cbde27e2331c4990023cf85042af3",
+   "contentSHA256": "cd50b5fd72acfe298b40b7b631fcbc48fec50c03cdade0a5dfe7fa5c8370bd58",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -22937,13 +23104,22 @@
       "sha256": "ed756ea1c8e9e11c938ae8b294440fea81c07c1f505d7ca61ec59d466420b558"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/lv/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "mt",
-   "contentSHA256": "7e0b9439eb13d9dbb915a0d13e513d6becbfbbac24f47a5b95a02287ed1046bf",
+   "contentSHA256": "d7473a303a082b451b6724cb24e6f615ba8782d6d4d4d9798c2bc6cb71f24948",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -24112,13 +24288,22 @@
       "sha256": "ba4786aebaa3376ed09f9d0a724cbda934d43bf85d7d71f27256bf6927590691"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/mt/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "nl",
-   "contentSHA256": "c8ccb00799ed7c6351f214355d1cdb65e222addf36b1da37ed47f7cf730341d9",
+   "contentSHA256": "c4510b6b683b135245b99ede8ad1e21fe28f29e0168c14f88019ff1d43f9adfd",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -25278,13 +25463,22 @@
       "sha256": "f8a85f6ae4d7df29345b452f76ac76bbea04c93d4335e15d375e05945af9fb0d"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/nl/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pl",
-   "contentSHA256": "bed86fa7557116f153329f228192e81b5857a123497d32950cff414dbc72364e",
+   "contentSHA256": "cc807519cf2f21f7c9a8c5581267e64690e6986b9cb1cb838bf0403b6efb68e1",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -26444,13 +26638,22 @@
       "sha256": "a650194969538ef896439652602b07b4532eb21ac7c57c1027b3e735d52a4938"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/pl/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pt",
-   "contentSHA256": "ebfd4312bcba886794af104da20b5787991f7a32028b834316764d3ffcf8dce1",
+   "contentSHA256": "61caae8606ffd2538b96570a830bf44dd60194918b54ba59b1f93a8c03667ca4",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -27618,13 +27821,22 @@
       "sha256": "f2b6e714d6f3b24da2f6e0e24f432a72823da05ee90ef572e3a6ebed909a3008"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/pt/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ro",
-   "contentSHA256": "aac4312e15e99569ccb244977d85045773ecec4630203d9820ecc62748555997",
+   "contentSHA256": "50fc06ff586e8c5d0c0f7274ef44f2ef0676b2880a512cbe13eed1c90f2a74cf",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -28784,13 +28996,22 @@
       "sha256": "027f8bfddf136f53cc4bd08c76209f30225905aed3e44e347a555681dab8d975"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/ro/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ru",
-   "contentSHA256": "d507114545167f1dc9d8baf24554706a9ebabcca31acd2a92a22db0ed17ca23f",
+   "contentSHA256": "5f13498b6e999d27008c2106c5713fddd88a4c216d19ff159cc42e2769d6c465",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -29950,13 +30171,22 @@
       "sha256": "d43ef675cf606053c3702543c6b04b13d104072197e2b9fd34b2617df5fdd646"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/ru/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sk",
-   "contentSHA256": "ece831f2ed7f81cf4b27f735b468f9982d18be1d36ac60370101f9bc1be54f36",
+   "contentSHA256": "8952ad825cec89a1c639919a12740d7fd0c320de506ecad6ce5024b05cedac07",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -31116,13 +31346,22 @@
       "sha256": "4c587deb05ad09195e5f2391f6c0b45d9484176a89a045b83adf2c53751d40ce"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/sk/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sl",
-   "contentSHA256": "908f0598e633a6e3c2d5e549f09f68eacb01c4d6ef32d157ca2aa7a39d562a99",
+   "contentSHA256": "bcf0f2bcce80a5ff7d5c06731bc616c6c70299df09b64635052aa68f8d67b348",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -32291,13 +32530,22 @@
       "sha256": "b693cc76c4424601a2ec09157ae037ec9158708e6c3508ab207d4657f39473e1"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/sl/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sv",
-   "contentSHA256": "3dbe7112f47249c9f982b125d7ece0222211523ebfa15c2ec3e3ab418aa7f0d0",
+   "contentSHA256": "f9fb80339f4d277daaefd2ab1182a2d038045b616978e50b350b0de5bc706292",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -33457,13 +33705,22 @@
       "sha256": "1872d0c9ff235ca4b201ee78e2dfa9d61b1971b128bdc6700264bc8a527a4403"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/sv/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "tr",
-   "contentSHA256": "df3324e9e2aca7cef3a35e6532b515f60e67fd506ad960a96a628f4db142c59f",
+   "contentSHA256": "59a38e8b2953532f8a7117ca74b56059b84f42efad87a0e4976d3265fdddb216",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -34623,13 +34880,22 @@
       "sha256": "540819dabd813d6953b40e7afba5211076b8f0f8daa1e5c43bee771b562981d2"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/tr/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "uk",
-   "contentSHA256": "b4add5d8eec3d6670bea39c0ce4f0b454e7cee0dcf8acdaa692e0c2263567b9c",
+   "contentSHA256": "c40f6acffc5b246ef5c2dc4a705fd2a0efc2626f15206fa3d26389c8e21c74d0",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -35798,13 +36064,22 @@
       "sha256": "5570ece0cae746f84a18f4b18572287a75676bd4aaaeadebefaec6568e45bc5e"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/uk/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "vi",
-   "contentSHA256": "ddfc601b6b9baa9077906c2b5250d799e1ce7138929e663e13105420febf9726",
+   "contentSHA256": "c67072efbdddbc638d621099e238fb60efc86f043ec5914fcb78c56c46df38de",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -36964,13 +37239,22 @@
       "sha256": "2d28255a14401f56be7fd91ec0ef6f41ec071670020a45faac05e18db4100919"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/vi/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "zh",
-   "contentSHA256": "f701974154224ed5980015a9fa096063cc4e0adc0f7c62e1c144bd0032f18eb7",
+   "contentSHA256": "4a0647f82b5b75712f06d60a36ad5510a8170c909b19283bd10d61aed8cfdc8b",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -38130,6 +38414,15 @@
       "sha256": "71501943595f837c95335e8ac364616bfb536f3727cf91560c5eab64dfc85046"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/zh/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
     }
    ],
    "phraseExemptions": []
@@ -38350,7 +38643,7 @@
   "s1Tone.formal": "8b1761ddec33a303628a3535d90a6cfeefe275beddcf73326375e03ca75ac731",
   "s1Tone.semiCasual": "062153676d7f17313d101d61ab2d6b69134b61f1f28d224e85655a10c41f32f4",
   "s1Tone.semiFormal": "1502974d8ccf74f594f04a3000e8a3166aaadb5daac96b6e37153d5541318fe2",
-  "selfLearningDictionary": "d54352d0295d20d0cb9d405b8b9c23ebdda33d3eeecdea50180d9fbd0969a784",
+  "selfLearningDictionary": "c34c3d5e98acbd760c647bc2f105ca4f9bf902440a1aa08defbddef8c4a5ebaf",
   "selfLearningDictionary.forgetMemory": "df6f4cc0a6d055a0e8f95ed369832bb56bb7f738c3aad4f3a30c81e0bb909e1b",
   "selfLearningDictionary.learnMore": "4d312e93ce5f0565e9506db62ecc1c6a42894567ec5476e1abbce81f4b47cd16",
   "sendCrashReports": "c0168c94a0fd2fe7a8ad8ea4a9eab87da62cb17aff262fc0b1eeb01fb71a3210",
@@ -38430,7 +38723,8 @@
   "recordingStorageUsage": "40f22ae273a32f95b6228e03dc72dc5036062c0cab82597035792fa98494ca65",
   "recordingStorageWarningThreshold": "e2876cc89fcd3a19a4e00d19487f4e52686af550015b92a4b6f2f89fe0a562a7",
   "recordingThresholdBehavior": "bac4c37e3af597722bd55e5ba70d1becf7e718a9e97d8f3e3a9ffdcd9e6afc9b",
-  "saveDictationRecordings": "fb9f5d70b2b05c69625cab3cb03ef8bdf678aa90f6b6e6e2f813390fe8ea0b3d"
+  "saveDictationRecordings": "fb9f5d70b2b05c69625cab3cb03ef8bdf678aa90f6b6e6e2f813390fe8ea0b3d",
+  "fixLearnedWords": "974b844c17efb198324180a5e5fd890282108fbeaa0512d9077fa73694a9c0e3"
  },
  "reviewedSourceNote": "Per searchable id, the SHA-256 of the English title and description its translations were reviewed against (reference/settings-map.json; SettingsSearchVocabularyTests.sourceFingerprint). First recorded 2026-10-07 at be0086b6 from the export the Phase 0 and council reviews covered. When a test names an id here, re-review that id's translated blocks, then record the hash the test prints. Limit: dynamic titles are bound by resolver name, not template wording."
 }
