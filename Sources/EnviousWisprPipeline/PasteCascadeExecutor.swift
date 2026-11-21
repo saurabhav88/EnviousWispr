@@ -62,6 +62,19 @@ internal struct PasteDeliveryRequest {
   var pasteWriteKind: PasteService.WriteKind {
     restoreClipboardAfterPaste && keepDictationsOutOfClipboardHistory ? .temporary : .kept
   }
+  /// The clipboard policy of a Tier 2 / 2b key paste for this focus: whether the user's clipboard
+  /// is restored after it, and how the paste write is marked.
+  ///
+  /// #1070: a remote session's landing cannot be observed (the arrival reader cannot see inside the
+  /// session), and the session may read the clipboard late or not at all, so the dictation stays on
+  /// the clipboard as a kept write and nothing is restored. Today's clipboard-only fallback for these
+  /// windows already leaves it there. Decided by oversight for the founder, 2026-11-21.
+  func keyPasteClipboardPolicy(
+    for focus: PasteFocusClassification
+  ) -> (restore: Bool, kind: PasteService.WriteKind) {
+    if focus == .remoteSession { return (false, .kept) }
+    return (restoreClipboardAfterPaste, pasteWriteKind)
+  }
   /// The SAME cumulative terminal-resolution budget the caret read used.
   ///
   /// One per delivery, shared by the initial resolution and every commit
@@ -929,6 +942,8 @@ internal final class PasteCascadeExecutor {
       targetDiagnostics = .missing
     }
     let canAttemptKeyPaste = classification.canAttemptKeyPaste
+    // #1070: one clipboard decision for both key tiers and the cleanup below.
+    let keyClipboard = request.keyPasteClipboardPolicy(for: classification)
     // #2297: a Chromium (Chrome/Brave/Edge) address bar specifically. Decided
     // here, alongside `classification`, because it changes whether Tier 1
     // should even be attempted — a direct AX write lands the text but never
@@ -1232,7 +1247,7 @@ internal final class PasteCascadeExecutor {
           // copied while it runs would otherwise be captured as "the user's old
           // clipboard" and then restored over (Codex review r5).
           let snapshot: ClipboardSnapshot? =
-            request.restoreClipboardAfterPaste
+            keyClipboard.restore
             ? ClipboardCleanup.snapshotForDelivery(from: pasteboard)
             : {
               ClipboardCleanup.deliveryClaimsBoard()
@@ -1255,7 +1270,7 @@ internal final class PasteCascadeExecutor {
           }
           let dispatchResult = PasteService.pasteToActiveApp(
             payload.text, to: self.pasteboard,
-            kind: request.pasteWriteKind,
+            kind: keyClipboard.kind,
             postKeystroke: poster)
           submittedClipboardChangeCount = dispatchResult.changeCount
           switch dispatchResult {
@@ -1366,7 +1381,7 @@ internal final class PasteCascadeExecutor {
           // has to learn it lost — `snapshotForDelivery` is the only thing that used to say so,
           // and it does not run on this arm.
           let snapshot: ClipboardSnapshot? =
-            request.restoreClipboardAfterPaste
+            keyClipboard.restore
             ? ClipboardCleanup.snapshotForDelivery(from: pasteboard)
             : {
               ClipboardCleanup.deliveryClaimsBoard()
@@ -1379,7 +1394,7 @@ internal final class PasteCascadeExecutor {
           #endif
           let changeCount = PasteService.copyToClipboardReturningChangeCount(
             payload.text, to: self.pasteboard,
-            kind: request.pasteWriteKind)
+            kind: keyClipboard.kind)
           submittedClipboardChangeCount = changeCount
           tiersAttempted.append(.appleScript)
           let tier2bStart = CFAbsoluteTimeGetCurrent()
@@ -1593,7 +1608,7 @@ internal final class PasteCascadeExecutor {
           )
         }
       }
-    } else if !request.restoreClipboardAfterPaste,
+    } else if classification != .remoteSession, !request.restoreClipboardAfterPaste,
       let submitted = submittedClipboardChangeCount,
       let landing = landingCheck(for: committedArrivalCapture, request: request)
     {
@@ -1603,13 +1618,16 @@ internal final class PasteCascadeExecutor {
       // when the board already holds the legacy text) and only then waits; see
       // `ClipboardCleanup.scheduleLegacyRewrite`. Every other case falls to the branch below
       // unchanged.
+      // #1070: a remote session never enters here. Its landing cannot be read, so it takes no
+      // landing wait and shows no retained notice; the branch below keeps the guarded legacy
+      // rewrite with its own restore decision (`keyClipboard.restore`, always false for it).
       ClipboardCleanup.scheduleLegacyRewrite(
         legacyText: request.legacyText, submittedChangeCount: submitted, tier: tier,
         landing: landing)
     } else if mustRewriteClipboardToLegacy(
       submitted: submittedKind,
       routeWroteClipboard: tier != .axDirect,
-      willRestoreUserClipboard: request.restoreClipboardAfterPaste,
+      willRestoreUserClipboard: keyClipboard.restore,
       fellBackToClipboardOnly: false)
     {
       // A clipboard route delivered contextual text and nothing else is going to
