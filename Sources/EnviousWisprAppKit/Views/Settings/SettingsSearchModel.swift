@@ -133,6 +133,10 @@ final class SettingsSearchModel {
   private(set) var attempt: Attempt?
   /// Reads "Share usage metrics" now; the window sets it once its settings are in scope.
   @ObservationIgnored var usageMetricsOn: @MainActor () -> Bool
+  /// Reads whether the search field has keyboard focus now; the window sets it (#4772). A
+  /// dropdown that waited for the title-only index shows only if the field still has focus when
+  /// the index arrives, so it never appears over a control the person moved to.
+  @ObservationIgnored var searchFieldFocused: @MainActor () -> Bool = { true }
   private let emitFinished: @MainActor (SettingsSearchFinished) -> Void
   private let announce: @MainActor (String) -> Void
   private let announcementDelay: Duration
@@ -273,6 +277,7 @@ final class SettingsSearchModel {
   private func titlesBuilt(_ titles: SettingsSearchIndex) {
     guard case .preparingTitles = indexState else { return }
     indexState = .loading(titleOnly: titles)
+    if isPanelPresented, !searchFieldFocused() { dismissPanel() }
     refresh()
   }
 
