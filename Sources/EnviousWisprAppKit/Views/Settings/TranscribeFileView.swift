@@ -2373,7 +2373,7 @@ struct TranscribeFileView: View {
         comment: "Transcribe a File: why the file was refused. A meeting transcript is using the engine.")
     case .failed:
       return String(
-        localized: "Something went wrong reading that file. Try a different one.",
+        localized: "The import didn't finish. Select the file again to retry.",
         comment: "Transcribe a File: why the file was refused.")
     }
   }
