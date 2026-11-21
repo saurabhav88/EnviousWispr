@@ -115,6 +115,25 @@ struct DictationSessionConfigFactoryTests {
     #expect(make().englishSpelling == .american, "Auto never applies British spelling")
   }
 
+  @Test("The dictation config uses the captured translation choice after Settings changes")
+  func keepsCapturedTranslationTarget() async throws {
+    let harness = try Harness.make(backend: .parakeet)
+    harness.settings.languageMode = .locked("en")
+    harness.settings.llmProvider = .claude
+    harness.settings.dictationTranslationTarget = .german
+    let captured = harness.settings.dictationTranslationTarget
+    harness.settings.dictationTranslationTarget = .hindi
+
+    let config = DictationSessionConfigFactory.make(
+      asrManager: harness.asrManager, kernelDriver: harness.kernelDriver,
+      whisperKernelDriver: harness.whisperKernelDriver, settings: harness.settings,
+      polishModel: .singleModel(for: .claude), polishWireModel: "claude-haiku-4-5",
+      translationTarget: captured, fixLearnedWords: true, triggerSource: .pttHotkey)
+
+    #expect(config.translationTarget == .german)
+    #expect(config.lockedLanguageCode == "en")
+  }
+
   /// #3905: the fast engine cannot honour a Japanese lock, so the take runs as
   /// Auto everywhere. The stored setting keeps the lock for a later engine switch.
   @Test("A lock the active engine cannot honour is frozen as Auto")

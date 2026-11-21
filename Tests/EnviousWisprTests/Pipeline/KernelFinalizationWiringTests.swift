@@ -734,6 +734,46 @@ import os
     #expect(saves.last?.text == "hello world this is a test")
   }
 
+  @Test("A translation that drops a snippet delivers the prepared source exactly once")
+  func translationThatDropsSnippetKeepsSource() async throws {
+    let outcome = KernelFinalizationOutcome()
+    let requests = PasteRequestRecorder()
+    let context = KernelSessionContext()
+    context.config = .testDefault(
+      autoPasteToActiveApp: true, languageMode: .locked("en"), llmProvider: .claude,
+      llmModel: "claude-haiku-4-5", translationTarget: .german)
+    let polish = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
+    polish.setPolish(provider: .claude)
+    polish.llmModel = "claude-haiku-4-5"
+    polish.makePolisher = { _, _, _, _ in
+      CannedPolisher(
+        output: "Der Code lautet 203, und du kannst ihn heute per E-Mail schicken.",
+        expectedInstruction: "Translate this dictation into German.")
+    }
+    let steps = makeSteps(polish: polish)
+    steps.snippetExpansion.snippetVocabulary = SnippetVocabulary(
+      snippets: [Snippet(trigger: "my email address", expansion: "sam@example.com")],
+      keyword: SnippetVocabulary.defaultKeyword, generation: 1)
+    let wiring = makeWiring(
+      outcome: outcome, context: context, steps: steps,
+      deliverPaste: { request in
+        requests.record(request.legacyText)
+        return Self.deliveredResult
+      })
+
+    let text = try await wiring.processText(
+      "the code is two zero three and you can email it to backslash my email address today") {}
+    try await wiring.store(text, UUID(), .ordinary)
+    let delivery = await wiring.deliver(text, .ordinary)
+
+    let original = "the code is 203 and you can email it to sam@example.com today"
+    #expect(outcome.polishFallbackReason == SnippetFinalizer.sentinelLossReason)
+    #expect(outcome.transcript?.text == original)
+    #expect(outcome.transcript?.polishedText == nil)
+    #expect(delivery == .pasted)
+    #expect(requests.legacyTexts == [original + " "])
+  }
+
   // MARK: #1914 remoteness carrier, through the real wiring
 
   /// Drives the actual `processText` → `store` → `deliver` path with an injected
@@ -3590,13 +3630,19 @@ private final class CapturedRequest {
 /// come from the too-short gate. If the gate ever let the short input through,
 /// the test would see "canned polish output" persisted instead of nil.
 private struct CannedPolisher: TranscriptPolisher {
+  var output = "canned polish output"
+  var expectedInstruction: String? = nil
+
   func polish(
     text: String,
     instructions: PolishInstructions,
     config: LLMProviderConfig,
     onToken: (@Sendable (String) -> Void)?
   ) async throws -> LLMResult {
-    LLMResult(polishedText: "canned polish output")
+    if let expectedInstruction {
+      #expect(instructions.systemPrompt.contains(expectedInstruction))
+    }
+    return LLMResult(polishedText: output)
   }
 }
 

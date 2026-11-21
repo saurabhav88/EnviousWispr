@@ -45,7 +45,8 @@ final class CasualEndingStep: TextProcessingStep {
       context.text, language: language, spokenFinalFullStop: context.spokenFinalFullStop)
     if let polished = context.polishedText {
       ctx.polishedText = CasualEnding.removingFinalFullStop(
-        polished, language: language, spokenFinalFullStop: context.spokenFinalFullStop)
+        polished, language: context.acceptedTranslationTarget?.rawValue ?? language,
+        spokenFinalFullStop: context.spokenFinalFullStop)
     }
     return ctx
   }

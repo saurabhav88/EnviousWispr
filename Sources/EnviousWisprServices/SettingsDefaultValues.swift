@@ -184,6 +184,7 @@ enum SettingsDefaultValues {
   static let whisperKitLanguage = "en"
   // #3124: American spelling unless the user picks English (UK); only in force with an English lock.
   static let englishSpelling: EnglishSpelling = .american
+  static let dictationTranslationTarget: DictationTranslationTarget? = nil
 
   static let selectedInputDeviceUID = ""
   static let preferredInputDeviceIDOverride = ""

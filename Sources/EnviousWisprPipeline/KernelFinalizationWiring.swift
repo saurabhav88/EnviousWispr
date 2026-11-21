@@ -601,6 +601,7 @@ struct KernelFinalizationWiring {
           takeID: telemetryState.takeID, context: context.polishSetupContext,
           hooks: context.polishSetupHooks),
         claimsPaste: context.config?.copyOnlyByPreference != true,
+        translationTarget: context.config?.translationTarget,
         // #1846: the LIVE in-flight take, not the concluded one. Polish runs before
         // the session terminal, and starting a session CLEARS `kernel.lastTakeID`,
         // so it is nil here — substituting it would emit no take key at all. Same
@@ -619,6 +620,9 @@ struct KernelFinalizationWiring {
       // after this line, and any of them seeing a raw sentinel is the failure this whole
       // design exists to make impossible. A no-op when no snippet fired.
       SnippetFinalizer.finalize(&ctx)
+      if ctx.polishedText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
+        ctx.acceptedTranslationTarget = nil
+      }
       context.snippetExpansionFired = !ctx.protectedExpansions.isEmpty
       // #145: thread the ITN run outcome onto `dictation.completed` (metadata
       // only — `telemetry-privacy-boundary`). Read on the same actor right after

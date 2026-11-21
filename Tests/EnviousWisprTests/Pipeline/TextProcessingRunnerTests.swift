@@ -29,6 +29,20 @@ struct TextProcessingRunnerTests {
     #expect(result.polishError == nil)
   }
 
+  @Test("The live runner carries the written target separately from the spoken language")
+  func liveRunnerSeedsTranslationTarget() async throws {
+    let result = try await deterministicRunner().run(
+      rawText: "please send the update today",
+      evidence: .locked("en"),
+      targetAppName: nil,
+      steps: [],
+      translationTarget: .german)
+
+    #expect(result.context.requestedTranslationTarget == .german)
+    #expect(result.context.language == "en")
+    #expect(result.context.acceptedTranslationTarget == nil)
+  }
+
   @Test("passes raw text, language, target app, and prior mutations through the real runner")
   func passesSeededAndMutatedContextThroughTheChain() async throws {
     let runner = deterministicRunner()

@@ -977,6 +977,8 @@ final class RecordingStarter {
     // saved recording another, nor send one provider's runtime another provider's model name.
     let polishModel = settings.polishModelID(for: settings.llmProvider)
     let polishWireModel = settings.effectiveLLMModel
+    let translationTarget = polishModel.provider.supportsDictationTranslation
+      ? settings.dictationTranslationTarget : nil
     let recovery =
       armRecovery
       ? await recovery.makeDirective(
@@ -990,6 +992,7 @@ final class RecordingStarter {
       settings: settings,
       polishModel: polishModel,
       polishWireModel: polishWireModel,
+      translationTarget: translationTarget,
       fixLearnedWords: fixLearnedWords,
       triggerSource: triggerSource,
       recoverySessionID: recovery?.recoverySessionID,
