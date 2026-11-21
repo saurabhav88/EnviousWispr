@@ -302,34 +302,29 @@ struct SettingsSearchMatchingTests {
 
   /// #3142 French slice: a place named only at run time has no catalog title and, now that French
   /// is an interface language, no French vocabulary title either; its reviewed French label must
-  /// still find it from the reviewed French words and phrases, wherever its English label finds
-  /// it in English (some labels are shared by several controls, so English misses a few too).
-  @Test("a French interface finds every runtime-named place its English label finds in English")
+  /// still find it from the reviewed French words and phrases.
+  @Test("a French interface finds every runtime-named place by its French label")
   func frenchRuntimeNamedLabels() throws {
     let french = try Self.french.get()
-    let english = try Self.english.get()
-    func label(_ id: SettingsMapID, _ language: String) throws -> String {
-      if let resource = SettingsSearchPresentation.dynamicTitleResource(of: id) {
-        return try SettingsMapExportTests.resolve(resource, language)
-      }
-      return SettingsSearchPresentation.dynamicTitle(of: id, language: language)
-    }
     var checked = 0
-    var comparable = 0
     var missed: [String] = []
     for entry in SettingsSearchCatalog.entries {
       guard case .dynamic = entry.node.title else { continue }
       let id = entry.node.id
+      let label: String
+      if let resource = SettingsSearchPresentation.dynamicTitleResource(of: id) {
+        label = try SettingsMapExportTests.resolve(resource, "fr")
+      } else {
+        label = SettingsSearchPresentation.dynamicTitle(of: id, language: "fr")
+      }
       checked += 1
-      let englishTop = english.results(for: try label(id, "en")).prefix(5).map(\.entryID)
-      guard englishTop.contains(id.rawValue) else { continue }
-      comparable += 1
-      let frenchLabel = try label(id, "fr")
-      let top = french.results(for: frenchLabel).prefix(5).map(\.entryID)
-      if !top.contains(id.rawValue) { missed.append("\(id.rawValue) «\(frenchLabel)» → \(top)") }
+      let ids = french.results(for: label).map(\.entryID)
+      if !ids.prefix(5).contains(id.rawValue) {
+        let rank = ids.firstIndex(of: id.rawValue).map { "rank \($0 + 1)" } ?? "absent"
+        missed.append("\(id.rawValue) «\(label)» \(rank); top \(ids.prefix(5))")
+      }
     }
-    #expect(checked >= 20, "only \(checked) runtime-named places; the filter read nothing")
-    #expect(comparable >= checked / 2, "English finds only \(comparable) of \(checked) places")
+    #expect(checked == 21, "runtime-named searchable places: \(checked)")
     #expect(missed.isEmpty, "runtime-named places a French label does not find: \(missed)")
   }
 

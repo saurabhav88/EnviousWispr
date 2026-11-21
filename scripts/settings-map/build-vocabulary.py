@@ -8,7 +8,7 @@ Inputs, all named on the command line:
               which are exempt. Every source id must be one or the other.
   --edits     scripts/settings-map/receipts/reviewed-edits.json: the reviewed stop
               lists and markers for every language, and reviewed replacements of
-              single blocks' words, phrases or (outside English and German) title.
+              single blocks' words, phrases or (outside the interface languages) title.
 
 It writes the resource and prints each language's content hash. It never writes a
 review receipt and never decides validity: the Swift validator
