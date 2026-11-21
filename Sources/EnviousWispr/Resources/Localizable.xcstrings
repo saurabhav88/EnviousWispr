@@ -269,6 +269,17 @@
         }
       }
     },
+    "%@ couldn't summarize this meeting." : {
+      "comment" : "Meeting summary failed at a model limit. The placeholder is the engine used, e.g. EG-1.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ konnte dieses Meeting nicht zusammenfassen."
+          }
+        }
+      }
+    },
     "%@ dictations" : {
       "comment" : "History day heading: how many dictations that day. Never 1.",
       "localizations" : {
@@ -6872,6 +6883,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Auswählen und sichern"
+          }
+        }
+      }
+    },
+    "Choose another engine" : {
+      "comment" : "After a meeting summary hits a model limit: opens Summaries and highlights Change summary engine.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Andere Engine wählen"
           }
         }
       }
@@ -28115,17 +28137,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dieses Meeting hat kein Transkript und daher keine Zusammenfassung."
-          }
-        }
-      }
-    },
-    "This meeting is too long for the selected model to summarize." : {
-      "comment" : "History, a meeting: the meeting needs more calls than a summary may make.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dieses Meeting ist zu lang, um vom ausgewählten Modell zusammengefasst zu werden."
           }
         }
       }

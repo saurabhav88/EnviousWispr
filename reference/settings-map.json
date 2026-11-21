@@ -5,8 +5,8 @@
     "vocabularyBlocks" : 9536
   },
   "fingerprints" : {
-    "mapSHA256" : "867e6bdd6da3b08db188c356e3a749c9c334c35e4bd4216b3d655867b4f84b30",
-    "uiCatalogSHA256" : "cf227175b096c9365299cbcf0d3b3c5f227a91a002f3f843854a3854dd5fcd2c",
+    "mapSHA256" : "c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8feb3f105df",
+    "uiCatalogSHA256" : "47c8663889fc88c336ad7a8f29b27a91f834a5d0dfd1574482e6b61c6b021eca",
     "vocabularyCanonicalization" : "length-prefixed-v1",
     "vocabularySHA256" : "a1f3564189c4977d2af54bacbd4931f022eb117b096bcbb1ab4b9e7158fe394d"
   },
@@ -38483,14 +38483,14 @@
       },
       "dictionaryTab" : null,
       "fallbacks" : [
-
+        "meetingSummaryEngine"
       ],
       "id" : "meetingSummaryEngine.change",
       "kind" : "action",
       "parent" : "meetingSummaryEngine",
       "searchable" : true,
       "structure" : "item",
-      "target" : "meetingSummaryEngine",
+      "target" : "meetingSummaryEngine.change",
       "title" : {
         "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
         "de" : "Ändern",

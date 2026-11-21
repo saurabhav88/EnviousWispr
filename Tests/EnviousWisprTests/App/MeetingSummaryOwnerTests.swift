@@ -65,6 +65,8 @@ struct MeetingSummaryOwnerTests {
     /// When set, replaces `localTurn` (production also waits for final-pass work).
     @ObservationIgnored var localTurnCheck: (@MainActor () -> Bool)?
     var finished: [MeetingSummaryFinishedTelemetry] = []
+    var shownLimits: [MeetingSummaryOwner.LimitFailure] = []
+    @ObservationIgnored var limitIsCurrent: (@MainActor () -> Bool)?
     /// #4012: titles the owner handed to the coordinator, in order.
     var titles: [String] = []
     var calls: [String] = []
@@ -218,6 +220,10 @@ struct MeetingSummaryOwnerTests {
           wakes: nil,
           emitFinished: { world.finished.append($0) },
           log: { _ in },
+          presentLimit: { failure, isCurrent in
+            world.shownLimits.append(failure)
+            world.limitIsCurrent = isCurrent
+          },
           assignTitle: { _, title in world.titles.append(title) },
           referenceSources: { _ in world.sources },
           writesReferences: { _, _ in world.referencing },
@@ -1855,8 +1861,9 @@ struct MeetingSummaryOwnerTests {
   @Test("every summary problem has its own message, and the engine ones open Summaries settings")
   func problemCopy() {
     let problems: [MeetingSummaryOwner.Problem] = [
-      .noProvider, .notForSummaries, .notReady, .ollamaTooOld, .tooLong, .providerFailed,
-      .notesUnreadable, .storageFailed,
+      .noProvider, .notForSummaries, .notReady, .ollamaTooOld,
+      .modelLimit(.init(reason: .tooLong, provider: .egOne, attempt: UUID())),
+      .providerFailed, .notesUnreadable, .storageFailed,
     ]
     let messages = problems.map(MeetingSummaryView.message)
     #expect(Set(messages).count == problems.count)
@@ -1864,6 +1871,81 @@ struct MeetingSummaryOwnerTests {
     #expect(
       problems.filter(MeetingSummaryView.opensSummarySettings)
         == [.noProvider, .notForSummaries, .notReady, .ollamaTooOld])
+  }
+
+  @Test("model limits keep the attempted engine and preserve existing outcomes")
+  func modelLimits() async throws {
+    let cases: [(MeetingSummary.Failure, MeetingSummaryOwner.LimitFailure.Reason?,
+                 MeetingSummaryFinishedTelemetry.Outcome)] = [
+      (.tooLong, .tooLong, .unsupported),
+      (.truncated, .truncated, .failed),
+      (.providerFailed, nil, .failed),
+    ]
+    for (failure, expectedReason, outcome) in cases {
+      let rig = try Rig()
+      let (id, saved) = try await Self.writtenMeeting(rig)
+      rig.world.holdCalls = true
+      rig.world.callFailures = [failure]
+      rig.owner.writeAgain(id, replacing: nil)
+      await Self.eventually("call held") { rig.world.callsWaiting == 1 }
+      rig.world.provider = .claude
+      rig.world.model = "claude-new"
+      rig.world.releaseCall()
+      await Self.eventually("settled failure") { rig.world.finished.count == 1 }
+      #expect(rig.world.finished == [Self.row(outcome, .hosted)])
+      #expect(rig.summaryOnDisk(id) == saved)
+      if let expectedReason {
+        let limit = try #require(rig.world.shownLimits.first)
+        #expect(rig.world.shownLimits == [limit])
+        #expect(limit.reason == expectedReason)
+        #expect(limit.provider == .openAI)
+        #expect(rig.owner.activity[id] == .failed(.modelLimit(limit)))
+        #expect(rig.world.limitIsCurrent?() == true)
+        await rig.owner.settleBeforeNewTranscript(id)
+        #expect(rig.world.limitIsCurrent?() == false)
+      } else {
+        #expect(rig.world.shownLimits.isEmpty)
+        #expect(rig.owner.activity[id] == .failed(.providerFailed))
+      }
+    }
+  }
+
+  @Test("replacing the transcript during limit cleanup does not publish the old failure")
+  func transcriptReplacementSuppressesLimit() async throws {
+    let rig = try Rig()
+    let (id, saved) = try await Self.writtenMeeting(rig)
+    rig.world.callFailures = [MeetingSummary.Failure.truncated]
+    rig.world.holdFinish = true
+    rig.owner.writeAgain(id, replacing: nil)
+    await Self.eventually("attempt entered cleanup") { rig.world.finishWaiting }
+    // Replacement cancels the attempt before suspending to drain it.
+    Task { rig.world.releaseFinish() }
+    await rig.owner.settleBeforeNewTranscript(id)
+    #expect(rig.world.finished == [Self.row(.failed, .hosted)])
+    #expect(rig.world.shownLimits.isEmpty)
+    #expect(rig.owner.activity[id] == nil)
+    #expect(rig.summaryOnDisk(id) == saved)
+  }
+
+  @Test("closing History keeps the settled model limit until the user dismisses it")
+  func previewLimitSurvivesClosingHistory() async throws {
+    let rig = try Rig()
+    let (id, saved) = try await Self.writtenMeeting(rig)
+    rig.world.callFailures = [MeetingSummary.Failure.truncated]
+    rig.owner.startPreview(id, with: HistoryPolishChoice(provider: .claude, model: "claude-test"))
+    await Self.eventually("limit settled") { rig.world.shownLimits.count == 1 }
+    let failure = try #require(rig.world.shownLimits.first)
+    rig.owner.closePreview(id)
+    guard case .modelLimit(let retained)? = rig.owner.previews[id] else {
+      Issue.record("the actionable failure disappeared on closing History")
+      return
+    }
+    #expect(retained == failure)
+    #expect(retained.provider == .claude)
+    #expect(rig.summaryOnDisk(id) == saved)
+    rig.owner.discardPreview(id)
+    #expect(rig.owner.previews[id] == nil)
+    #expect(rig.world.limitIsCurrent?() == false)
   }
 
   // MARK: - Summary tab review fixes (Codex C13b-1 r1)

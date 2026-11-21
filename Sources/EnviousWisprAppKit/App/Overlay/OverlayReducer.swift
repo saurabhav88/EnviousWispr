@@ -27,6 +27,7 @@ enum OverlayEvent: Equatable {
   /// A bulk-import progress pill. A feature, so it takes the slot only while
   /// the pipeline is idle, and only from ITSELF.
   case importStatus(message: String)
+  case meetingSummaryLimit(LLMProvider)
   /// The Bluetooth-microphone card. A feature, so it takes the slot only while
   /// the pipeline is idle, and persists until it is replaced.
   case bluetoothAwareness
@@ -288,6 +289,9 @@ struct OverlayReducer {
       return reducePipeline(.advisory(reason: reason), advisoryHint: hint)
     case .importStatus(let message):
       return reduceImportStatus(message: message)
+    case .meetingSummaryLimit(let provider):
+      guard state.pipelineIntent == .hidden, state.current == nil else { return .noChange }
+      return admitEntry(PillCatalog.entry(for: .meetingSummaryLimit(provider), id: makeID()))
     case .bluetoothAwareness:
       return reduceBluetoothAwareness()
     case .polishSetupCard(let model):

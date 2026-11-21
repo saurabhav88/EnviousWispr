@@ -706,7 +706,7 @@
       case .notForSummaries: return "notForSummaries"
       case .notReady: return "notReady"
       case .ollamaTooOld: return "ollamaTooOld"
-      case .tooLong: return "tooLong"
+      case .modelLimit(let limit): return limit.reason == .tooLong ? "tooLong" : "truncated"
       case .providerFailed: return "providerFailed"
       case .notesUnreadable: return "notesUnreadable"
       case .storageFailed: return "storageFailed"

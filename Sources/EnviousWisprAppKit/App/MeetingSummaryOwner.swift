@@ -62,6 +62,7 @@ final class MeetingSummaryOwner {
     var wakes: MeetingWakeSignal?
     var emitFinished: @MainActor (MeetingSummaryFinishedTelemetry) -> Void
     var log: @MainActor (String) -> Void
+    var presentLimit: @MainActor (LimitFailure, @escaping @MainActor () -> Bool) -> Void = { _, _ in }
     /// #4012 D8, R6: names a meeting that has no name yet with the summary's AI title
     /// (`MeetingCoordinator.assignAITitle`).
     var assignTitle: @MainActor (UUID, String) async -> Void = { _, _ in }
@@ -125,6 +126,17 @@ final class MeetingSummaryOwner {
     case failed(Problem)
   }
 
+  struct LimitFailure: Equatable {
+    enum Reason: Equatable {
+      case tooLong
+      case truncated
+    }
+
+    let reason: Reason
+    let provider: LLMProvider
+    let attempt: UUID
+  }
+
   enum Problem: Equatable {
     case noProvider
     /// S1-mini, EG-1 through Ollama, or a model whose window is too small.
@@ -132,9 +144,8 @@ final class MeetingSummaryOwner {
     /// Ollama is not running or lacks the model, or Apple Intelligence is not available.
     case notReady
     case ollamaTooOld
-    /// The meeting is too long for this model.
-    case tooLong
-    /// The provider failed, timed out, cut its answer or answered with nothing.
+    case modelLimit(LimitFailure)
+    /// The provider failed, timed out or answered with nothing.
     case providerFailed
     /// The notes could not be read, so the summary would leave them out.
     case notesUnreadable
@@ -312,6 +323,7 @@ final class MeetingSummaryOwner {
   /// so the new transcript's owed mark is written after them and none of them can clear it.
   func settleBeforeNewTranscript(_ meetingID: UUID) async {
     previews[meetingID] = nil
+    if case .failed(.modelLimit)? = activity[meetingID] { activity[meetingID] = nil }
     let mine = attempts.values.filter { $0.meetingID == meetingID }
     for running in mine { running.task.cancel() }
     for running in mine { await running.task.value }
@@ -330,6 +342,7 @@ final class MeetingSummaryOwner {
     case generating(UUID)
     case comparing(Candidate)
     case failed
+    case modelLimit(LimitFailure)
   }
 
   struct Candidate {
@@ -379,7 +392,8 @@ final class MeetingSummaryOwner {
 
   /// The meeting page closed. A first summary still being written keeps going and is kept when
   /// it is ready (#4719): nothing would be compared, so leaving the page must not lose it. Any
-  /// other new summary is dropped, as Cancel does.
+  /// other new summary is dropped, as Cancel does. A settled limit remains actionable in
+  /// History when the person returns, including when the pill could not appear.
   func closePreview(_ meetingID: UUID) {
     switch previews[meetingID] {
     case .generating(let id)?:
@@ -393,6 +407,8 @@ final class MeetingSummaryOwner {
       discardPreview(meetingID)
     case .comparing(let candidate)? where candidate.replacesNoSummary:
       // A first summary being kept.
+      return
+    case .modelLimit?:
       return
     default:
       discardPreview(meetingID)
@@ -441,7 +457,11 @@ final class MeetingSummaryOwner {
     if let previous = currentAttempt[meetingID] { attempts[previous]?.task.cancel() }
     let attempt = UUID()
     activity[meetingID] = .waiting
-    if preview != nil { previews[meetingID] = .generating(attempt) }
+    if preview != nil {
+      previews[meetingID] = .generating(attempt)
+    } else if case .modelLimit? = previews[meetingID] {
+      previews[meetingID] = nil
+    }
     let task = Task { [weak self] () -> Void in
       guard let self else { return }
       await self.run(
@@ -527,6 +547,11 @@ final class MeetingSummaryOwner {
               meetingID, selection: selection, override: written.choice, withSources: true)
               == written.inputs
           previews[meetingID] = unchanged ? .comparing(written) : .failed
+        } else if case .problem(.modelLimit(let failure)) = ending.end,
+          !Task.isCancelled, !terminating, !documents.isForgotten(meetingID)
+        {
+          previews[meetingID] = .modelLimit(failure)
+          presentLimit(failure, meetingID: meetingID)
         } else {
           previews[meetingID] = Task.isCancelled || terminating ? nil : .failed
         }
@@ -779,9 +804,12 @@ final class MeetingSummaryOwner {
       }
       switch failure {
       case .cancelled: return Ending(end: .cancelled)
-      case .tooLong: return Ending(end: .problem(.tooLong))
+      case .tooLong, .truncated:
+        return Ending(end: .problem(.modelLimit(LimitFailure(
+          reason: failure == .tooLong ? .tooLong : .truncated,
+          provider: selection.provider, attempt: attempt))))
       case .windowTooSmall: return Ending(end: .problem(.notForSummaries))
-      case .providerFailed, .empty, .truncated, .timedOut:
+      case .providerFailed, .empty, .timedOut:
         return Ending(end: .problem(.providerFailed))
       case .rejected(let reason):
         // #4353 D9: a cloud model problem only when the shared reading says this attempt's
@@ -1207,8 +1235,10 @@ final class MeetingSummaryOwner {
       // #4353 D9: no cloud model chosen is a setup state like an engine that cannot summarize;
       // nothing was attempted, so it never reads as a provider failure.
       case .problem(.notForSummaries), .problem(.notReady), .problem(.ollamaTooOld),
-        .problem(.tooLong), .problem(.cloudNoModel):
+        .problem(.cloudNoModel):
         outcome = .unsupported
+      case .problem(.modelLimit(let limit)):
+        outcome = limit.reason == .tooLong ? .unsupported : .failed
       case .problem(.providerFailed), .problem(.notesUnreadable), .problem(.storageFailed),
         .problem(.cloudModelUnavailable):
         outcome = .failed
@@ -1224,8 +1254,23 @@ final class MeetingSummaryOwner {
     }
     guard current, !terminating else { return }
     switch end {
+    case .problem(.modelLimit(let failure)):
+      guard settled, !Task.isCancelled, !documents.isForgotten(meetingID) else {
+        activity[meetingID] = nil
+        return
+      }
+      activity[meetingID] = .failed(.modelLimit(failure))
+      presentLimit(failure, meetingID: meetingID)
     case .problem(let problem): activity[meetingID] = .failed(problem)
     case .written, .preview, .stale, .cancelled, .nothingToSummarize: activity[meetingID] = nil
+    }
+  }
+
+  private func presentLimit(_ failure: LimitFailure, meetingID: UUID) {
+    deps.presentLimit(failure) { [weak self] in
+      guard let self, !terminating, !documents.isForgotten(meetingID) else { return false }
+      if case .modelLimit(let current)? = previews[meetingID], current == failure { return true }
+      return activity[meetingID] == .failed(.modelLimit(failure))
     }
   }
 }

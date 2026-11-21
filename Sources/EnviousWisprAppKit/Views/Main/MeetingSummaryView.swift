@@ -72,7 +72,7 @@ struct MeetingSummaryView: View {
     let previewing: Bool = {
       if summaries?.savingFirst.contains(meetingID) == true { return true }
       switch summaries?.previews[meetingID] {
-      case .generating?, .comparing?: return true
+      case .generating?, .comparing?, .modelLimit?: return true
       case .failed?, nil: return false
       }
     }()
@@ -95,7 +95,7 @@ struct MeetingSummaryView: View {
           if let shown = Self.shownProblem(
             activity: activity, configuration: configurationProblem)
           {
-            problemView(shown)
+            Self.problemView(shown)
           }
         }
       }
@@ -211,14 +211,16 @@ struct MeetingSummaryView: View {
     }
   }
 
-  @ViewBuilder private func problemView(_ problem: MeetingSummaryOwner.Problem) -> some View {
+  @ViewBuilder static func problemView(_ problem: MeetingSummaryOwner.Problem) -> some View {
     VStack(alignment: .leading, spacing: 6) {
       Text(Self.message(problem))
         .font(.stHelper)
         .foregroundStyle(.stError)
         .fixedSize(horizontal: false, vertical: true)
         .accessibilityIdentifier("history.meeting.summaryProblem")
-      if Self.opensSummaryModelMenu(problem) {
+      if case .modelLimit = problem {
+        MeetingSummarySettingsLink(highlightEngineChoice: true)
+      } else if Self.opensSummaryModelMenu(problem) {
         MeetingSummaryModelMenuLink()
       } else if Self.opensSummarySettings(problem) {
         MeetingSummarySettingsLink()
@@ -244,7 +246,7 @@ struct MeetingSummaryView: View {
   static func opensSummaryModelMenu(_ problem: MeetingSummaryOwner.Problem) -> Bool {
     switch problem {
     case .cloudNoModel, .cloudModelUnavailable: return true
-    case .noProvider, .notForSummaries, .notReady, .ollamaTooOld, .tooLong, .providerFailed,
+    case .noProvider, .notForSummaries, .notReady, .ollamaTooOld, .modelLimit, .providerFailed,
       .notesUnreadable, .storageFailed:
       return false
     }
@@ -255,7 +257,7 @@ struct MeetingSummaryView: View {
   static func opensSummarySettings(_ problem: MeetingSummaryOwner.Problem) -> Bool {
     switch problem {
     case .noProvider, .notForSummaries, .notReady, .ollamaTooOld: return true
-    case .tooLong, .providerFailed, .notesUnreadable, .storageFailed: return false
+    case .modelLimit, .providerFailed, .notesUnreadable, .storageFailed: return false
     // The model menu action replaces the plain link for these (`opensSummaryModelMenu`).
     case .cloudNoModel, .cloudModelUnavailable: return false
     }
@@ -287,10 +289,8 @@ struct MeetingSummaryView: View {
       return String(
         localized: "Update Ollama to version 0.12.6 or later to write summaries with it.",
         comment: "History, a meeting: the Ollama app is too old for meeting summaries.")
-    case .tooLong:
-      return String(
-        localized: "This meeting is too long for the selected model to summarize.",
-        comment: "History, a meeting: the meeting needs more calls than a summary may make.")
+    case .modelLimit(let failure):
+      return MeetingSummaryLimitCopy.message(failure.provider)
     case .providerFailed:
       return String(
         localized: "The summary could not be written. Try again.",

@@ -22,6 +22,25 @@ import Testing
 @Suite(.tags(.productOutcome))
 struct OverlayReducerTests {
 
+  @Test("a summary limit names the engine and takes only an idle, empty slot")
+  func meetingSummaryLimitNotice() throws {
+    var reducer = OverlayReducer()
+    _ = reducer.reduce(.importStatus(message: "Importing"))
+    #expect(reducer.reduce(.meetingSummaryLimit(.egOne)) == .noChange)
+    _ = reducer.reduce(.pipeline(.hidden))
+    let plan = reducer.reduce(.meetingSummaryLimit(.egOne))
+    let shown = try #require(plan.presentation)
+    guard case .notice(let notice) = shown.content else {
+      Issue.record("the model limit did not produce a notice")
+      return
+    }
+    #expect(notice.text == "EG-1 couldn't summarize this meeting.")
+    #expect(notice.action?.action == .chooseMeetingSummaryEngine)
+    #expect(notice.action?.label == "Choose another engine")
+    #expect(plan.announcement == .medium(notice.text))
+    #expect(shown.content.reChecksOwnerBeforeRender)
+  }
+
   /// Deterministic ids, so identity can be asserted rather than inferred.
   private static func sequencedReducer() -> (OverlayReducer, () -> PresentationID) {
     var n = 0

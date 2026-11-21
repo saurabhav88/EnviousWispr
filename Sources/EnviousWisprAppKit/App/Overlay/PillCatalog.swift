@@ -52,6 +52,7 @@ enum PillCatalogRequest: Equatable, Sendable {
   /// The one request with no matching `OverlayIntent`. It is minted by a feature
   /// path rather than by the pipeline, which is why it announces nothing.
   case importStatus(message: String)
+  case meetingSummaryLimit(LLMProvider)
   /// #996 auto-learn: the Undo pill (`.learned` phase only; results are
   /// reducer morphs) and its standalone save-error notice. Feature routes with
   /// no matching pipeline intent; unlike import status they ARE announced: the
@@ -163,6 +164,9 @@ enum PillCatalog {
     if case .polishSetupCard(let model) = request {
       return .medium(model.announcement)
     }
+    if case .meetingSummaryLimit(let provider) = request {
+      return .medium(MeetingSummaryLimitCopy.message(provider))
+    }
     if case .parakeetUpgrade(let model) = request {
       return .medium(DictationNarrator.parakeetUpgradeAnnouncement(for: model.phase))
     }
@@ -250,6 +254,13 @@ enum PillCatalog {
         // #3912: wraps at `messageWidth` and takes its height from the text.
         width: .fixed(messageWidth),
         expiry: .after(seconds: 2.5), severity: .warning, isMultiline: true)  // NotificationStyle 2.5
+
+    case .meetingSummaryLimit(let provider):
+      return notice(
+        id: id, kind: .notification, text: MeetingSummaryLimitCopy.message(provider),
+        width: .fixed(400), expiry: .after(seconds: 8), severity: .error, isMultiline: true,
+        action: NoticeAction(
+          label: MeetingSummaryLimitCopy.action, action: .chooseMeetingSummaryEngine))
 
     case .error(let reason):
       // #2549: `.permissionDenied` gets the richer badge+title+subtitle+button
@@ -560,7 +571,7 @@ extension PillCatalogRequest {
     case .recoverySucceeded: return .recoverySucceeded
     case .bluetoothAwareness: return .bluetoothAwareness
     case .escapeRecovery(let transcriptID): return .escapeRecovery(transcriptID: transcriptID)
-    case .importStatus, .correctionLearned, .correctionLearnedSaveError, .polishSetupCard,
+    case .importStatus, .meetingSummaryLimit, .correctionLearned, .correctionLearnedSaveError, .polishSetupCard,
       .parakeetUpgrade:
       return nil
     }

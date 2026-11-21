@@ -44,8 +44,23 @@ struct MeetingSummaryLongMeetingHint: View {
   }
 }
 
+enum MeetingSummaryLimitCopy {
+  static func message(_ provider: LLMProvider) -> String {
+    String(
+      localized: "\(provider.displayName) couldn't summarize this meeting.",
+      comment: "Meeting summary failed at a model limit. The placeholder is the engine used, e.g. EG-1.")
+  }
+
+  static var action: String {
+    String(
+      localized: "Choose another engine",
+      comment: "After a meeting summary hits a model limit: opens Summaries and highlights Change summary engine.")
+  }
+}
+
 /// #4287: opens EnviousMeet's Summaries tab, where the summary engine is chosen.
 struct MeetingSummarySettingsLink: View {
+  var highlightEngineChoice = false
   @Environment(NavigationCoordinator.self) private var navigation
 
   /// The link's action, for tests: the one destination it requests.
@@ -53,16 +68,28 @@ struct MeetingSummarySettingsLink: View {
     navigation.request(.meetings(.summaries))
   }
 
+  static func highlightChoice(_ navigation: NavigationCoordinator) {
+    navigation.requestReveal(.meetingSummaryEngineChange)
+  }
+
   var body: some View {
     Button {
-      Self.open(navigation)
+      if highlightEngineChoice {
+        Self.highlightChoice(navigation)
+      } else {
+        Self.open(navigation)
+      }
     } label: {
-      EnviousButtonLabel(
-        LocalizedStringResource(
-          "Open Summaries settings",
-          comment: "History, a meeting: opens EnviousMeet's Summaries settings to choose or fix the summary engine."
-        ),
-        size: .medium)
+      if highlightEngineChoice {
+        EnviousButtonLabel(verbatim: MeetingSummaryLimitCopy.action, size: .medium)
+      } else {
+        EnviousButtonLabel(
+          LocalizedStringResource(
+            "Open Summaries settings",
+            comment: "History, a meeting: opens EnviousMeet's Summaries settings to choose or fix the summary engine."
+          ),
+          size: .medium)
+      }
     }
     .settingsButton(.quiet, size: .medium, isEnabled: true)
   }

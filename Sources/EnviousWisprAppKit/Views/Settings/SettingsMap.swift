@@ -696,7 +696,8 @@ enum SettingsMap {
       title: .resource(SettingsItemCopy.Shared.change),
       description: nil,
       parent: .meetingSummaryEngine, destination: .meetings(.summaries), dictionaryTab: nil,
-      visibility: .always, target: .meetingSummaryEngine, fallbacks: []),
+      visibility: .always, target: .meetingSummaryEngineChange,
+      fallbacks: [.meetingSummaryEngine]),
     SettingsMapNode(
       id: .meetingSummaryEngineKeepCurrent, structure: .item, item: .action,
       title: .resource(MeetingsCopy.keepCurrentSummaryEngine),

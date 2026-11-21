@@ -497,6 +497,9 @@ enum OverlayContent: Equatable, Sendable {
   var reChecksOwnerBeforeRender: Bool {
     if case .correctionLearned(let model) = self, case .learned = model.phase { return true }
     if case .retainedClipboardFallback = self { return true }
+    if case .notice(let notice) = self, notice.action?.action == .chooseMeetingSummaryEngine {
+      return true
+    }
     // #3546 A3: a Cancel can stop the download, or the switch can settle, before the first
     // render; the upgrade pill would then announce something no longer true.
     if case .parakeetUpgrade = self { return true }

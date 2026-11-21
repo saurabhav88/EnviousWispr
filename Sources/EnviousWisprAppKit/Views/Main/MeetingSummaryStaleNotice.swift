@@ -80,7 +80,7 @@ struct MeetingSummaryStaleNotice: View {
   private static func previewAnswers(_ preview: MeetingSummaryOwner.Preview?) -> Bool {
     switch preview {
     case .generating?, .comparing?: true
-    case .failed?, nil: false
+    case .failed?, .modelLimit?, nil: false
     }
   }
 

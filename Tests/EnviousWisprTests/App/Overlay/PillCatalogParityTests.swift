@@ -101,6 +101,7 @@ struct PillCatalogParityTests {
     case .grantAccessibility: return "grantAccessibility"
     case .openMicrophoneSettings: return "openMicrophoneSettings"
     case .openMicrophoneHelp: return "openMicrophoneHelp"
+    case .chooseMeetingSummaryEngine: return "chooseMeetingSummaryEngine"
     case .discardRecovery: return "discardRecovery"
     case .pasteEscapeRecovery: return "pasteEscapeRecovery"
     case .lockLanguage: return "lockLanguage"

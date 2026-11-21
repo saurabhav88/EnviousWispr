@@ -347,6 +347,8 @@ enum DesignPageCaptures {
     case .accessibilityToast: "accessibility-toast"
     case .warning: "warning-polish-failed"
     case .error: "error-capture"
+    // Reuses the actionable microphone notification layout; the live UAT captures this copy.
+    case .meetingSummaryLimit: nil
     case .advisory: "advisory-zero-signal"
     case .interruption: "interruption-device-removed"
     case .passiveChip: "language-chip"

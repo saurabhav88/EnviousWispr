@@ -15,13 +15,21 @@ enum SettingsNavigationIntent: Equatable {
   case destination(SettingsDestination)
   case sharedMedia(URL)
   case search(SettingsSearchRequest)
+  case externalReveal(SettingsSearchRequest)
 
   var page: SettingsPage {
     switch self {
     case .sidebar(let page): page
     case .destination(let destination): destination.page
     case .sharedMedia: .transcribeFile
-    case .search(let request): request.destination.page
+    case .search(let request), .externalReveal(let request): request.destination.page
+    }
+  }
+
+  var requiresOpenWindow: Bool {
+    switch self {
+    case .sharedMedia, .externalReveal: true
+    case .sidebar, .destination, .search: false
     }
   }
 }
@@ -32,7 +40,7 @@ extension SettingsNavigationState {
     case .sidebar(let page): selectSidebar(page)
     case .destination(let destination): apply(destination)
     case .sharedMedia: apply(.transcribeFile)
-    case .search(let request): apply(request)
+    case .search(let request), .externalReveal(let request): apply(request)
     }
   }
 }

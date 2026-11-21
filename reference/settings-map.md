@@ -14,7 +14,7 @@ The interface ships in English and German. The other 30 languages (ar, bg, cs, d
 
 327 nodes, 298 searchable, 9536 vocabulary blocks.
 
-Fingerprints: mapSHA256 `867e6bdd6da3b08db188c356e3a749c9c334c35e4bd4216b3d655867b4f84b30`, uiCatalogSHA256 `cf227175b096c9365299cbcf0d3b3c5f227a91a002f3f843854a3854dd5fcd2c`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `a1f3564189c4977d2af54bacbd4931f022eb117b096bcbb1ab4b9e7158fe394d`
+Fingerprints: mapSHA256 `c0d2c409eb01a06b1e122ab44c42b6cb0e0c50534c1b5167a159b8feb3f105df`, uiCatalogSHA256 `47c8663889fc88c336ad7a8f29b27a91f834a5d0dfd1574482e6b61c6b021eca`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `a1f3564189c4977d2af54bacbd4931f022eb117b096bcbb1ab4b9e7158fe394d`
 
 ## Structure
 
@@ -2666,8 +2666,8 @@ Fingerprints: mapSHA256 `867e6bdd6da3b08db188c356e3a749c9c334c35e4bd4216b3d65586
 | Destination | `meetings` › `summaries` |
 | Dictionary tab | none |
 | Shown when | `always` |
-| Arrival target | [`meetingSummaryEngine`](#node-meetingSummaryEngine) |
-| Fallbacks, in order | none |
+| Arrival target | [`meetingSummaryEngine.change`](#node-meetingSummaryEngine-change) |
+| Fallbacks, in order | [`meetingSummaryEngine`](#node-meetingSummaryEngine) |
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: change AI for meeting summaries |
 | Search (de) | phrases: andere KI für Meetingzusammenfassungen auswählen |
