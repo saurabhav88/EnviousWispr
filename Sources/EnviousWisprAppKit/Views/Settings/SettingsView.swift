@@ -86,7 +86,6 @@ struct UnifiedWindowView: View {
       // #3482 §8.1: the failed-search row follows "Share usage metrics", read at every terminal.
       .onAppear {
         search.usageMetricsOn = { settings.shareUsageMetrics }
-        search.searchFieldFocused = { searchFocused }
         // #4772: build the title-only index now, off the main actor, so typing never waits.
         search.prepareIndex()
       }

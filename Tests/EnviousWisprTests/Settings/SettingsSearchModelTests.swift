@@ -28,7 +28,6 @@ struct SettingsSearchModelTests {
 
   @MainActor @Observable final class SpokenLog { var lines: [String] = [] }
   @MainActor final class FinishedLog { var rows: [SettingsSearchFinished] = [] }
-  @MainActor final class FocusFlag { var focused = true }
 
   /// A model on the real index; announcements are collected, not spoken.
   static func model(spoken: SpokenLog = SpokenLog()) throws -> SettingsSearchModel {
@@ -283,7 +282,7 @@ struct SettingsSearchModelTests {
     }
     #expect(cleared.results.isEmpty, "a cleared search was answered: \(cleared.results)")
     #expect(cleared.isPanelPresented == false)
-    // No search is on screen, so the full index is not loaded yet (#4772).
+    #expect(cleared.fullIndexRequested == false, "the full index loaded with no search on screen")
     await clearedGate.open()
   }
 
@@ -341,25 +340,6 @@ struct SettingsSearchModelTests {
     // A showing dropdown keeps focus in the search: leaving focus does not close it.
     model.searchFocusLeft()
     #expect(model.showsPanel)
-    await fullGate.open()
-    #expect(await Self.ready(model))
-  }
-
-  @Test("a waiting dropdown stays closed when its index arrives after focus moved on")
-  func indexArrivingAfterFocusMovedKeepsTheDropdownClosed() async {
-    let titles = HeldTitleBuild(Self.fixture([(.theme, "alpha")]))
-    let fullGate = AsyncGate()
-    let model = Self.heldModel(titles, fullGate: fullGate, full: nil)
-    let focus = FocusFlag()
-    model.searchFieldFocused = { focus.focused }
-    model.setQuery("alpha")
-    #expect(model.isPanelPresented)
-    // Focus moved before the window could report it: the index arrival itself checks.
-    focus.focused = false
-    titles.release()
-    #expect(await Self.waitUntil { model.results.map(\.entryID) == ["theme"] })
-    #expect(model.showsPanel == false, "the dropdown appeared after focus had moved on")
-    #expect(model.query == "alpha")
     await fullGate.open()
     #expect(await Self.ready(model))
   }
