@@ -5,6 +5,7 @@ import EnviousWisprLLM
 import EnviousWisprLivePreview
 import EnviousWisprModelDelivery
 import EnviousWisprPipeline
+import EnviousWisprPostProcessing
 import EnviousWisprServices
 import EnviousWisprStorage
 import Foundation
@@ -232,6 +233,7 @@ enum MeetingWiring {
   static func make(_ inputs: Inputs) -> MeetingCoordinator {
     let store = inputs.store
     let lane = MeetingLocalModelLane()
+    let correctionAdmission = admission(lane: lane, dictationIdle: inputs.isDictationIdle)
     let coordinator = MeetingCoordinator(
       dependencies: MeetingCoordinator.Dependencies(
         store: store,
@@ -278,7 +280,16 @@ enum MeetingWiring {
         detectedStartWanted: inputs.detectedStartWanted,
         saveTranscript: {
           [transcriptCoordinator = inputs.transcriptCoordinator] transcript, naming in
-          try await transcriptCoordinator.saveAndShowDurably(transcript, naming: naming)
+          var savedRow = transcript
+          let summary = try await transcriptCoordinator.saveAndShowDurably(
+            transcript, naming: naming, didPublish: { savedRow = $0 })
+          return (savedRow, summary)
+        },
+        correctTranscript: { row, lookups, canWrite, setWaiting in
+          await correctFinishedTranscript(
+            row, lookups: lookups, isAdmitted: correctionAdmission, wakes: inputs.dictationWakes,
+            canWrite: canWrite, setWaiting: setWaiting,
+            history: inputs.transcriptCoordinator, log: inputs.log)
         },
         durableHistoryRow: { [transcriptCoordinator = inputs.transcriptCoordinator] id in
           try await transcriptCoordinator.durableRow(id: id)
@@ -497,6 +508,106 @@ enum MeetingWiring {
     lane: MeetingLocalModelLane, dictationIdle: @escaping @MainActor () -> Bool
   ) -> @MainActor () -> Bool {
     { dictationIdle() && !lane.summaryCallRunning }
+  }
+
+  private static func correctFinishedTranscript(
+    _ row: Transcript, lookups: WordCorrector.Lookups,
+    isAdmitted: @escaping @MainActor () -> Bool, wakes: MeetingWakeSignal,
+    canWrite: @escaping @MainActor () -> Bool, setWaiting: @escaping @MainActor (Bool) -> Void,
+    history: TranscriptCoordinator, log: @MainActor (String) -> Void
+  ) async {
+    guard let turns = row.turns, !turns.isEmpty else { return }
+    let budget = 180.0
+    let deadline = ContinuousClock.now.advanced(by: .seconds(budget))
+    let result = await withOffActorOrderedDeadline(seconds: budget) {
+      await correctedTurns(
+        turns, rawText: row.text, lookups: lookups, deadline: deadline,
+        isAdmitted: isAdmitted, wakes: wakes, canWrite: canWrite, setWaiting: setWaiting)
+    } onTimeout: {}
+    guard canWrite() else { return }
+    guard ContinuousClock.now < deadline else {
+      log("meeting custom words skipped reason=deadline")
+      return
+    }
+    guard let result = result ?? nil else { return }
+    do {
+      _ = try await history.applyMeetingWordCorrections(
+        to: row, text: result.text, turns: result.turns,
+        canWrite: { canWrite() && ContinuousClock.now < deadline })
+    } catch {
+      log("meeting custom words update failed error=\(type(of: error))")
+    }
+  }
+
+  /// Produces values only, so a turn still finishing after cancellation cannot publish anything.
+  static func correctedTurns(
+    _ turns: [Turn], rawText: String, lookups: WordCorrector.Lookups,
+    deadline: ContinuousClock.Instant,
+    isAdmitted: @escaping @MainActor () -> Bool, wakes: MeetingWakeSignal,
+    canWrite: @escaping @MainActor () -> Bool, setWaiting: @escaping @MainActor (Bool) -> Void,
+    now: @escaping @MainActor () -> ContinuousClock.Instant = { .now }
+  ) async -> (text: String, turns: [Turn])? {
+    let canContinue: @MainActor () -> Bool = {
+      !Task.isCancelled && now() < deadline && canWrite()
+    }
+    func waitForAdmission() async -> Bool {
+      guard canContinue() else { return false }
+      if !isAdmitted() {
+        setWaiting(true)
+        await MeetingWorkAdmission.waitUntil({ !canContinue() || isAdmitted() }, wakes: wakes)
+        guard canContinue() else { return false }
+        setWaiting(false)
+      }
+      return true
+    }
+    var output: [Turn] = []
+    var document: [String] = []
+    var changed = false
+    for turn in turns {
+      guard await waitForAdmission() else { return nil }
+      let (original, pieces) = await correctionPieces(for: turn, rawText: rawText)
+      var updated = ""
+      if let pieces {
+        for (piece, gap) in zip(pieces.pieces, pieces.gaps) {
+          guard await waitForAdmission() else { return nil }
+          updated += await correctedPiece(piece, lookups: lookups)
+          updated += gap
+        }
+      }
+      if updated.isEmpty || updated.utf8.elementsEqual(original.utf8) {
+        output.append(turn)
+        document.append(original)
+      } else {
+        changed = true
+        output.append(Turn(
+          id: turn.id, speakerId: turn.speakerId, startMs: turn.startMs, endMs: turn.endMs,
+          originalTextRange: turn.originalTextRange, processedText: updated,
+          wasPolished: turn.wasPolished, granularity: turn.granularity))
+        document.append(updated)
+      }
+    }
+    guard changed, canContinue() else { return nil }
+    return (document.joined(separator: "\n\n"), output)
+  }
+
+  @concurrent
+  private static func correctionPieces(for turn: Turn, rawText: String) async
+    -> (String, FileImportDocumentMath.Pieces?)
+  {
+    let original = TranscriptDocumentPresenter.slice(rawText, turn.originalTextRange)
+    guard !MeetingGapPresentation.containsGap(original) else { return (original, nil) }
+    return (
+      original,
+      FileImportDocumentMath.cleanupPieces(turns: [turn], rawText: rawText, maximumWords: 30)
+    )
+  }
+
+  @concurrent
+  private static func correctedPiece(_ piece: String, lookups: WordCorrector.Lookups) async
+    -> String
+  {
+    let result = WordCorrector().correct(piece, using: lookups)
+    return result.replacements.isEmpty ? piece : result.corrected
   }
 
   /// History's meeting facts, from the coordinator's in-memory durable copy (observable): the

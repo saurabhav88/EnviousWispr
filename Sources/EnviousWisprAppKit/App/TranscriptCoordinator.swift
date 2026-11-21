@@ -666,10 +666,13 @@ final class TranscriptCoordinator: HistoryExpiryPulseWriter, HistoryBrowserWrite
   /// One ordinary write, run as the head command: the file work on the storage worker, then
   /// the publication. Update-only when `insertIfAbsent` is false: a row no longer listed is
   /// not written and the answer is false.
-  private func performWrite(_ transcript: Transcript, insertIfAbsent: Bool) async throws -> Bool {
+  private func performWrite(
+    _ transcript: Transcript, insertIfAbsent: Bool, canWrite: (@MainActor () -> Bool)? = nil
+  ) async throws -> Bool {
     if !insertIfAbsent, try await rowForCommand(transcript.id) == nil {
       return false
     }
+    guard canWrite?() != false else { return false }
     let proof = try await transactionExecutor.write(transcript)
     // Stamped with the publication, with no read applied in between, so an in-flight `load()`
     // cannot publish the version it read BEFORE this write.
@@ -710,7 +713,10 @@ final class TranscriptCoordinator: HistoryExpiryPulseWriter, HistoryBrowserWrite
   /// returns what naming achieved in the row actually written, after the user's names were
   /// reconciled; `nil` without `naming`. A throw returns nothing.
   @discardableResult
-  func saveAndShowDurably(_ transcript: Transcript, naming: SpeakerNamingPass? = nil)
+  func saveAndShowDurably(
+    _ transcript: Transcript, naming: SpeakerNamingPass? = nil,
+    didPublish: (@MainActor (Transcript) -> Void)? = nil
+  )
     async throws -> SpeakerNamingSummary?
   {
     guard !transactionExecutor.isDurableWriteInFlight(transcript.id) else { throw RowWriteInFlight() }
@@ -720,7 +726,7 @@ final class TranscriptCoordinator: HistoryExpiryPulseWriter, HistoryBrowserWrite
     return try await transactionExecutor.admit { [self] in
       defer { transactionExecutor.finishDurableWrite(transcript.id) }
       return await transactionExecutor.capture {
-        try await performDurableWrite(transcript, naming: naming)
+        try await performDurableWrite(transcript, naming: naming, didPublish: didPublish)
       }
     }.get()
   }
@@ -733,7 +739,10 @@ final class TranscriptCoordinator: HistoryExpiryPulseWriter, HistoryBrowserWrite
     }.get()
   }
 
-  private func performDurableWrite(_ incoming: Transcript, naming: SpeakerNamingPass?)
+  private func performDurableWrite(
+    _ incoming: Transcript, naming: SpeakerNamingPass?,
+    didPublish: (@MainActor (Transcript) -> Void)?
+  )
     async throws -> SpeakerNamingSummary?
   {
     // #4013 r2 item 4: the user's speaker names are carried over from the row as it is NOW,
@@ -763,7 +772,30 @@ final class TranscriptCoordinator: HistoryExpiryPulseWriter, HistoryBrowserWrite
       insertByDate(transcript)
     }
     expiry.startPulseIfNeeded()
+    didPublish?(transcript)
     return pending?.committed(.written)
+  }
+
+  /// Applies deterministic corrections only to the exact meeting row that was saved.
+  func applyMeetingWordCorrections(
+    to base: Transcript, text: String, turns: [Turn],
+    canWrite: @escaping @MainActor () -> Bool
+  ) async throws -> Bool {
+    guard base.isMeeting, let generation = base.meetingTranscriptGeneration,
+      canWrite(), !transactionExecutor.isDurableWriteInFlight(base.id)
+    else { return false }
+    return try await transactionExecutor.admit { [self] in
+      await transactionExecutor.capture {
+        guard canWrite(), let current = try await rowForCommand(base.id),
+          current.meetingTranscriptGeneration == generation
+        else { return false }
+        let expectedDigest = try await Self.canonicalDigest(base)
+        guard try await Self.canonicalDigest(current) == expectedDigest else { return false }
+        return try await performWrite(
+          current.withMeetingWordCorrections(text, turns: turns),
+          insertIfAbsent: false, canWrite: canWrite)
+      }
+    }.get()
   }
 
   #if DEBUG

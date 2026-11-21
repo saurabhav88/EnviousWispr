@@ -8,7 +8,9 @@ import os
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprAudio
 @testable import EnviousWisprCore
+@testable import EnviousWisprLivePreview
 @testable import EnviousWisprPipeline
+@testable import EnviousWisprPostProcessing
 @testable import EnviousWisprStorage
 import EnviousWisprAppKitTestSupport
 
@@ -351,6 +353,8 @@ struct MeetingCoordinatorTests {
           MeetingCoordinatorTests.result()
         }
     var saved: [Transcript] = []
+    var wordLookups: WordCorrector.Lookups?
+    var afterPlainSave: (@MainActor (Transcript, WordCorrector.Lookups) async -> Void)?
     /// Every History save asked for, recorded before anything can fail it.
     var saveRequests: [Transcript] = []
     /// The meeting's saved state at the moment its History row was written.
@@ -453,6 +457,12 @@ struct MeetingCoordinatorTests {
         return await requestedOnly(attempt)
       }
       dependencies.meetingTranscriptEngine = { [self] in transcriptEngine }
+      dependencies.liveVocabulary = { [self] in
+        LivePreviewVocabulary(lookups: wordLookups, contextualPhrases: [], dictionaryEnabled: wordLookups != nil)
+      }
+      dependencies.correctTranscript = { [self] row, lookups, _, _ in
+        await afterPlainSave?(row, lookups)
+      }
       // #4356: a test never presses a real Zoom button.
       dependencies.selfProbe = { _, _, _, _ in .refused(.notFound, elapsedMs: 0) }
       return dependencies
@@ -505,9 +515,13 @@ struct MeetingCoordinatorTests {
           await saveGate?.wait()
           if let saveError { throw saveError }
           var summary: SpeakerNamingSummary?
-          if let history { summary = try await history.saveAndShowDurably(transcript, naming: naming) }
+          var savedRow = transcript
+          if let history {
+            summary = try await history.saveAndShowDurably(
+              transcript, naming: naming, didPublish: { savedRow = $0 })
+          }
           saved.append(transcript)
-          return summary
+          return (savedRow, summary)
         },
         durableHistoryRow: { [self] id in
           await historyReadGate?.wait()
@@ -696,6 +710,60 @@ struct MeetingCoordinatorTests {
 
   /// #3147 PR4A (Codex integration r1 #1): a note typed while recording is stamped from the
   /// recorder's own host-time anchor, never the wall clock, so a slow start does not shift it.
+  @Test("finished meetings save plain first and use the vocabulary frozen for each attempt")
+  func frozenMeetingWords() async throws {
+    let harness = try Harness()
+    let text = "Sunny brought the notes."
+    let turn = Turn(
+      id: "m0-0", speakerId: "mic:you", startMs: 0, endMs: 1000,
+      originalTextRange: 0..<text.utf16.count)
+    harness.jobBehavior = { _ in Self.result(text: text, turns: [turn]) }
+    harness.wordLookups = WordCorrector.buildLookups(
+      words: [CustomWord(canonical: "Sunee", aliases: ["Sunny"])])
+    let correctionGate = Gate()
+    var corrections: [String] = []
+    harness.afterPlainSave = { row, lookups in
+      #expect(harness.saved.last?.meetingTranscriptGeneration == row.meetingTranscriptGeneration)
+      #expect(row.text == text)
+      #expect(row.processedText == nil)
+      if let id = row.meetingID {
+        #expect(FileManager.default.fileExists(atPath: harness.store.transcriptReplacementURL(for: id).path) == false)
+      }
+      await correctionGate.wait()
+      corrections.append(WordCorrector().correct(row.text, using: lookups).corrected)
+    }
+    let coordinator = harness.coordinator
+    coordinator.summaries = MeetingSummaryOwner(
+      dependencies: .init(
+        isEnabled: { true }, selection: { (.openAI, "test") }, cloudModelList: { nil },
+        prepare: { _, _, _ in
+          #expect(corrections.first == "Sunee brought the notes.")
+          return .failure(.notReady)
+        },
+        visibleTranscript: { _ in nil },
+        hasNoWords: { _ in false }, isLocalTurn: { _ in true }, wakes: nil,
+        emitFinished: { _ in }, log: { _ in }),
+      documents: coordinator.documents, lane: MeetingLocalModelLane())
+    await coordinator.start(from: .history)
+    let id = try onlyMeeting(harness).id
+    harness.wordLookups = WordCorrector.buildLookups(
+      words: [CustomWord(canonical: "Sunni", aliases: ["Sunny"])])
+    await coordinator.stop(reason: .user)
+    await Self.eventually("plain row published and correction admitted") { correctionGate.parked }
+    #expect(coordinator.isWorkInFlight == false)
+    #expect(coordinator.summaries?.activity[id] == nil)
+    correctionGate.open()
+    await Self.livePassFinished(coordinator, id)
+    #expect(corrections == ["Sunee brought the notes."])
+    await Self.eventually("summary starts after correction") {
+      coordinator.summaries?.activity[id] != nil
+    }
+    let generation = try #require(coordinator.record(id: id)?.committedTranscriptGeneration)
+    #expect(await coordinator.transcribeAgain(meetingID: id, engine: .parakeet))
+    await Self.livePassFinished(coordinator, id, replacing: generation)
+    #expect(corrections == ["Sunee brought the notes.", "Sunni brought the notes."])
+  }
+
   @Test("the recording position counts from the recorder's anchor, only while recording")
   func recordingPositionFromTheRecorderAnchor() async throws {
     let harness = try Harness()
