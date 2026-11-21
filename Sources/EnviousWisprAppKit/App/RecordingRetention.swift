@@ -37,7 +37,7 @@ extension MeetingCoordinator: MeetingAudioRetaining {}
 @Observable
 final class RecordingRetention {
   /// What History and Settings show about the storage warning threshold (chunk 6 presents it).
-  enum StorageWarning: Sendable, Equatable {
+  enum StorageWarning: Sendable, Equatable, Codable {
     /// "Ask me to free space": over the threshold; nothing was deleted.
     case overThreshold(totalBytes: Int64, thresholdBytes: Int64)
     /// Automatic mode removed what it could; kept, playing, meeting or temporary audio keeps
@@ -86,13 +86,24 @@ final class RecordingRetention {
     var log: @MainActor (String) -> Void = { message in
       Task { await AppLogger.shared.log(message, level: .info, category: "RecordingRetention") }
     }
+    var warningDefaults: UserDefaults? = nil
   }
 
+  private static let warningCacheKey = "lastVerifiedRecordingStorageWarning"
   static let sweepInterval: Duration = .seconds(6 * 60 * 60)
   /// A burst of recording changes (Delete All, a run of dictations) becomes one usage check.
   static let usageCheckDelay: Duration = .seconds(2)
 
   private(set) var warning: StorageWarning?
+  private var launchHistoryWarning: StorageWarning?
+
+  /// Use the last verified warning until the live check has an answer for History.
+  var historyWarning: StorageWarning? {
+    guard let candidate = warning ?? launchHistoryWarning, matchesWarningPolicy(candidate)
+    else { return nil }
+    return candidate
+  }
+
   private(set) var lastSweep: SweepSummary?
   private(set) var staged: RetentionPreview?
   /// Moves on every stage, Undo and commit, so a count that finishes late is dropped.
@@ -113,6 +124,12 @@ final class RecordingRetention {
 
   init(_ deps: Dependencies) {
     self.deps = deps
+    if let data = deps.warningDefaults?.data(forKey: Self.warningCacheKey),
+      let saved = try? PropertyListDecoder().decode(StorageWarning.self, from: data),
+      Self.isVerifiedOverThreshold(saved)
+    {
+      launchHistoryWarning = saved
+    }
   }
 
   // MARK: - Lifecycle
@@ -157,6 +174,9 @@ final class RecordingRetention {
   /// A retention or threshold setting changed (a committed keep period, or the threshold):
   /// sweep again under it.
   func settingsChanged() {
+    if let launchHistoryWarning, !matchesWarningPolicy(launchHistoryWarning) {
+      self.launchHistoryWarning = nil
+    }
     request(.sweep)
   }
 
@@ -297,20 +317,25 @@ final class RecordingRetention {
   /// seen and no recording goes that is no longer needed.
   private func applyThreshold(_ summary: inout SweepSummary) async {
     let snapshot = await deps.usage.measure()
-    guard let threshold = deps.thresholdBytes(deps.settings.recordingStorageWarningThreshold) else {
-      warning = nil
+    let threshold = deps.thresholdBytes(deps.settings.recordingStorageWarningThreshold)
+    let behavior = deps.settings.recordingThresholdBehavior
+    guard let threshold else {
+      publishWarning(nil, threshold: nil, behavior: behavior)
       return
     }
     guard let pressure = Self.pressure(snapshot, threshold: threshold) else {
-      warning = .usageUnknown(thresholdBytes: threshold)
+      publishWarning(
+        .usageUnknown(thresholdBytes: threshold), threshold: threshold, behavior: behavior)
       return
     }
     guard pressure else {
-      warning = nil
+      publishWarning(nil, threshold: threshold, behavior: behavior)
       return
     }
-    guard deps.settings.recordingThresholdBehavior == .removeOldestDictations else {
-      warning = .overThreshold(totalBytes: snapshot.totalBytes ?? 0, thresholdBytes: threshold)
+    guard behavior == .removeOldestDictations else {
+      publishWarning(
+        .overThreshold(totalBytes: snapshot.totalBytes ?? 0, thresholdBytes: threshold),
+        threshold: threshold, behavior: behavior)
       return
     }
     for candidate in await dictationCandidates() ?? [] {
@@ -337,10 +362,67 @@ final class RecordingRetention {
     }
     let final = await deps.usage.measure()
     switch Self.pressure(final, threshold: threshold) {
-    case nil: warning = .usageUnknown(thresholdBytes: threshold)
+    case nil:
+      publishWarning(
+        .usageUnknown(thresholdBytes: threshold), threshold: threshold, behavior: behavior)
     case true?:
-      warning = .cannotReachThreshold(totalBytes: final.totalBytes ?? 0, thresholdBytes: threshold)
-    case false?: warning = nil
+      publishWarning(
+        .cannotReachThreshold(totalBytes: final.totalBytes ?? 0, thresholdBytes: threshold),
+        threshold: threshold, behavior: behavior)
+    case false?:
+      publishWarning(nil, threshold: threshold, behavior: behavior)
+    }
+  }
+
+  static func canKeepHistoryWarningText(_ first: StorageWarning, for current: StorageWarning) -> Bool {
+    let previous = warningDetails(first)
+    let latest = warningDetails(current)
+    return previous.threshold == latest.threshold && previous.behavior == latest.behavior
+  }
+
+  private static func warningDetails(_ warning: StorageWarning)
+    -> (total: Int64?, threshold: Int64, behavior: RecordingThresholdBehavior?)
+  {
+    switch warning {
+    case .overThreshold(let total, let threshold):
+      (total, threshold, .ask)
+    case .cannotReachThreshold(let total, let threshold):
+      (total, threshold, .removeOldestDictations)
+    case .usageUnknown(let threshold):
+      (nil, threshold, nil)
+    }
+  }
+
+  private static func isVerifiedOverThreshold(_ warning: StorageWarning) -> Bool {
+    let measurement = warningDetails(warning)
+    guard let total = measurement.total else { return false }
+    return total > measurement.threshold
+  }
+
+  private func matchesWarningPolicy(_ candidate: StorageWarning) -> Bool {
+    let details = Self.warningDetails(candidate)
+    return details.threshold == deps.thresholdBytes(deps.settings.recordingStorageWarningThreshold)
+      && (details.behavior == nil || details.behavior == deps.settings.recordingThresholdBehavior)
+  }
+
+  private func publishWarning(
+    _ result: StorageWarning?, threshold: Int64?, behavior: RecordingThresholdBehavior
+  ) {
+    // Automatic cleanup can finish after the settings change or the app starts shutting down.
+    guard started, !Task.isCancelled,
+      threshold == deps.thresholdBytes(deps.settings.recordingStorageWarningThreshold),
+      behavior == deps.settings.recordingThresholdBehavior
+    else { return }
+
+    warning = result
+    launchHistoryWarning = nil
+    guard let defaults = deps.warningDefaults else { return }
+    if let result, Self.isVerifiedOverThreshold(result),
+      let data = try? PropertyListEncoder().encode(result)
+    {
+      defaults.set(data, forKey: Self.warningCacheKey)
+    } else {
+      defaults.removeObject(forKey: Self.warningCacheKey)
     }
   }
 
