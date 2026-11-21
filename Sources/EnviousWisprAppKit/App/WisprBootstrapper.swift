@@ -3316,7 +3316,7 @@ package final class WisprBootstrapper {
           settings: settings, recordings: recordings, archive: recordingArchive,
           savedDates: { [transcriptStore] ids in await transcriptStore.savedDates(of: ids) },
           meetings: { [weak meetingCoordinator] in meetingCoordinator },
-          usage: recordingUsage))
+          usage: recordingUsage, warningDefaults: .standard))
     }
     recordingRetentionForSettings = recordingRetention
     recordingRetention?.start()

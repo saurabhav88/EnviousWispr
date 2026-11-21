@@ -689,38 +689,50 @@ enum RecordingStorageWarningCopy {
     comment: "History: button on the storage warning that opens App Settings > Recordings.")
 }
 
-/// History's compact storage warning, outside the transcript split (#3147 chunk 6). Shown while
-/// `RecordingRetention.warning` is set; its button opens App Settings > Recordings.
+/// History's compact storage warning, above the diary. Its button opens App Settings > Recordings.
 struct RecordingStorageBanner: View {
   @Environment(RecordingRetention.self) private var retention: RecordingRetention?
   @Environment(NavigationCoordinator.self) private var navigation
+  @State private var firstShownWarning: RecordingRetention.StorageWarning?
 
   var body: some View {
-    if let warning = retention?.warning {
-      HStack(alignment: .firstTextBaseline, spacing: DesignSpacing.lg) {
-        Image(systemName: "externaldrive.badge.exclamationmark")
-          .foregroundStyle(.stWarning)
-          .accessibilityHidden(true)
-        Text(verbatim: RecordingStorageWarningCopy.text(warning))
-          .font(.stBody)
-          .foregroundStyle(.stTextPrimary)
-          .fixedSize(horizontal: false, vertical: true)
-        Spacer(minLength: 0)
-        Button {
-          navigation.request(.appSettings(.recordings))
-        } label: {
-          EnviousButtonLabel(RecordingStorageWarningCopy.openSettings, size: .medium)
-        }
-        .settingsButton(.quiet, size: .medium, isEnabled: true)
-        .accessibilityIdentifier("history.recordingStorage.openSettings")
-      }
-      .padding(DesignSpacing.xl)
-      .background(
-        Color.stWarning.opacity(0.12), in: RoundedRectangle(cornerRadius: DesignRadius.lg)
-      )
-      .accessibilityElement(children: .contain)
-      .padding(.horizontal, DesignSpacing.xl)
-      .padding(.top, DesignSpacing.md)
+    let candidate = retention?.historyWarning
+    let display = candidate.map { current in
+      guard let firstShownWarning,
+        RecordingRetention.canKeepHistoryWarningText(firstShownWarning, for: current)
+      else { return current }
+      return firstShownWarning
     }
+    Group {
+      if let warning = display {
+        HStack(alignment: .firstTextBaseline, spacing: DesignSpacing.lg) {
+          Image(systemName: "externaldrive.badge.exclamationmark")
+            .foregroundStyle(.stWarning)
+            .accessibilityHidden(true)
+          Text(verbatim: RecordingStorageWarningCopy.text(warning))
+            .font(.stBody)
+            .foregroundStyle(.stTextPrimary)
+            .fixedSize(horizontal: false, vertical: true)
+          Spacer(minLength: 0)
+          Button {
+            navigation.request(.appSettings(.recordings))
+          } label: {
+            EnviousButtonLabel(RecordingStorageWarningCopy.openSettings, size: .medium)
+          }
+          .settingsButton(.quiet, size: .medium, isEnabled: true)
+          .accessibilityIdentifier("history.recordingStorage.openSettings")
+        }
+        .padding(DesignSpacing.xl)
+        .background(
+          Color.stWarning.opacity(0.12), in: RoundedRectangle(cornerRadius: DesignRadius.lg)
+        )
+        .accessibilityElement(children: .contain)
+        .padding(.horizontal, DesignSpacing.xl)
+        .padding(.top, DesignSpacing.md)
+      }
+    }
+    // Keep the same text from rewrapping when the live size changes during this visit.
+    .onChange(of: candidate, initial: true) { firstShownWarning = display }
+    .onDisappear { firstShownWarning = nil }
   }
 }
