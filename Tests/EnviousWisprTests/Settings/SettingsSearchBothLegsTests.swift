@@ -298,6 +298,9 @@ struct SettingsSearchMeaningCampaignTests {
       try #require(phase == "warm", "EW_MEANING_CAMPAIGN is cold:<n> or warm")
       first = 30
     }
+    // #4772: the title index is built before the clock starts, as an open window has it, so the
+    // cold samples time the full index and the meaning pass only.
+    try #require(await SettingsSearchModelTests.prepared(model), "the title index never arrived")
     model.setQuery(queries[first])
     let started = ContinuousClock.now
     await gate.open()

@@ -32,18 +32,18 @@ struct SettingsSearchField: View {
         if let request = model.submit() { choose(request) }
       }
       .onKeyPress(.downArrow) {
-        guard model.isPanelPresented else { return .ignored }
+        guard model.showsPanel else { return .ignored }
         model.moveSelection(by: 1)
         return .handled
       }
       .onKeyPress(.upArrow) {
-        guard model.isPanelPresented else { return .ignored }
+        guard model.showsPanel else { return .ignored }
         model.moveSelection(by: -1)
         return .handled
       }
       .onKeyPress(.tab) {
         // Focus stays in the search while its dropdown is open (§3.4).
-        model.isPanelPresented ? .handled : .ignored
+        model.showsPanel ? .handled : .ignored
       }
       .onKeyPress(.escape) {
         guard !model.query.isEmpty else { return .ignored }

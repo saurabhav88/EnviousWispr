@@ -84,8 +84,14 @@ struct UnifiedWindowView: View {
       // #3482 §3.4: a direct tab change drops an arrival meant for another tab.
       .onChange(of: navigationState.dictationTab) { _, _ in navigationState.noteTabChange() }
       // #3482 §8.1: the failed-search row follows "Share usage metrics", read at every terminal.
-      .onAppear { search.usageMetricsOn = { settings.shareUsageMetrics } }
+      .onAppear {
+        search.usageMetricsOn = { settings.shareUsageMetrics }
+        // #4772: build the title-only index now, off the main actor, so typing never waits.
+        search.prepareIndex()
+      }
       .onChange(of: settings.shareUsageMetrics) { _, isOn in search.usageMetricsChanged(isOn: isOn) }
+      // #4772: a dropdown still waiting for its index closes when focus leaves the search.
+      .onChange(of: searchFocused) { _, focused in if !focused { search.searchFocusLeft() } }
       .onChange(of: navigationState.appSettingsTab) { _, _ in navigationState.noteTabChange() }
       .onChange(of: navigationState.dictionaryTab) { _, _ in navigationState.noteTabChange() }
       .onChange(of: navigationState.meetingsTab) { _, _ in navigationState.noteTabChange() }
@@ -552,7 +558,7 @@ struct UnifiedWindowView: View {
         .padding(.vertical, 8)
       }
       .scrollContentBackground(.hidden)
-      .searchPanelBlocksBackground(search.isPanelPresented)
+      .searchPanelBlocksBackground(search.showsPanel)
 
       // Issue #343: in-app update banner. Fixed sibling of the scroll (NOT a
       // scrolling row) so it stays pinned to the bottom of the sidebar card.
@@ -581,7 +587,7 @@ struct UnifiedWindowView: View {
   /// equally-inset panels on the canvas.
   private var detailCard: some View {
     detailContent
-      .searchPanelBlocksBackground(search.isPanelPresented)
+      .searchPanelBlocksBackground(search.showsPanel)
       .frame(maxWidth: .infinity, maxHeight: .infinity)
       .clipShape(
         RoundedRectangle(cornerRadius: SettingsLayout.windowCardRadius, style: .continuous)
@@ -627,7 +633,7 @@ struct UnifiedWindowView: View {
   /// that turns an outside click into closing it (the field and the panel stay clickable).
   @ViewBuilder
   private func searchDropdown(_ anchor: Anchor<CGRect>?) -> some View {
-    if search.isPanelPresented, let anchor {
+    if search.showsPanel, let anchor {
       GeometryReader { proxy in
         let field = proxy[anchor]
         let width = max(0, min(440, proxy.size.width - field.minX - 8))
