@@ -49,7 +49,8 @@ enum SetupPracticeState: Equatable {
     case .worked: "That is it. You are set."
     case .workedWithoutPolish: "Dictation worked"
     case .noSpeech: "Let’s try that again"
-    case .missedBox: "Click the box, then talk"
+    case .missedBox(copiedToClipboard: true): "Your words were copied"
+    case .missedBox(copiedToClipboard: false): "Click the box, then talk"
     case .pipelineFailed: "One more time"
     case .microphoneNotResponding: "Let’s try that again"
     case .microphoneOff: "Turn the microphone back on"
@@ -74,7 +75,7 @@ enum SetupPracticeState: Equatable {
     case .noSpeech:
       "EnviousWispr didn’t hear any speech.\nPick another microphone, or hold \(key) and speak."
     case .missedBox(copiedToClipboard: true):
-      "EnviousWispr types where your cursor is.\nThis take is saved on your clipboard."
+      "This take is on your clipboard. If automatic paste is off, turn it on in Dictation > Clipboard to practice, or skip."
     case .missedBox(copiedToClipboard: false):
       "EnviousWispr types where your cursor is.\nClick here and try again."
     case .pipelineFailed: "That one was on us, not you.\nHold \(key) and say it again."

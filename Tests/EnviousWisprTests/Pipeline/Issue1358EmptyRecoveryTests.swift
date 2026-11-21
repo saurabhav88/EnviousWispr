@@ -259,7 +259,7 @@ struct Issue1358EmptyRecoveryTests {
       currentTime: { ProcessInfo.processInfo.systemUptime },
       telemetryState: KernelTelemetryState(),
       // #2146: absorbed, never the real clipboard.
-      copyToClipboard: { _ in true })
+      copyToClipboard: { _, _ in true })
   }
 }
 

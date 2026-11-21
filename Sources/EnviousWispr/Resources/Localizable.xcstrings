@@ -11074,16 +11074,6 @@
         }
       }
     },
-    "EnviousWispr types where your cursor is.\nThis take is saved on your clipboard." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "EnviousWispr schreibt dort, wo dein Cursor ist.\nDer Text dieses Versuchs liegt in deiner Zwischenablage."
-          }
-        }
-      }
-    },
     "EnviousWispr uses the new language after it relaunches." : {
       "localizations" : {
         "de" : {
@@ -28230,6 +28220,16 @@
         }
       }
     },
+    "This take is on your clipboard. If automatic paste is off, turn it on in Dictation > Clipboard to practice, or skip." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieses Diktat liegt in deiner Zwischenablage. Wenn das automatische Einfügen aus ist, schalte es zum Üben unter Diktat > Zwischenablage ein oder überspringe die Übung."
+          }
+        }
+      }
+    },
     "This transcript changed meanwhile, so nothing was replaced. Try again." : {
       "comment" : "History transcript: Transcribe again with was refused because the transcript changed or was deleted.",
       "localizations" : {
@@ -32522,6 +32522,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Deine Worte landen dort, wo du angefangen hast."
+          }
+        }
+      }
+    },
+    "Your words were copied" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Worte wurden kopiert"
           }
         }
       }

@@ -488,7 +488,7 @@ import os
     let wiring = makeWiring(
       context: context,
       deliverPaste: { _ in Self.deliveredResult },
-      copyToClipboard: { recorder.record($0) })
+      copyToClipboard: { text, _ in recorder.record(text) })
     let outcome = await wiring.deliver("hello", .ordinary)
     #expect(outcome == .clipboardOnly, "no auto-paste => never .pasted")
     #expect(recorder.copies == ["hello"], "clipboardOnly must mean it actually copied")
@@ -499,7 +499,8 @@ import os
     let text = "The final dictated words."
     let context = KernelSessionContext()
     context.config = .testDefault(
-      autoCopyToClipboard: false, autoPasteToActiveApp: false, copyOnlyByPreference: true)
+      autoCopyToClipboard: false, autoPasteToActiveApp: false, copyOnlyByPreference: true,
+      restoreClipboardAfterPaste: true, keepDictationsOutOfClipboardHistory: true)
     let outcome = KernelFinalizationOutcome()
     outcome.transcript = Transcript(text: text, processingTime: 0, backendType: .parakeet)
     let recorder = ClipboardRecorder()
@@ -510,7 +511,11 @@ import os
         Issue.record("intentional clipboard delivery must not call paste")
         return Self.deliveredResult
       },
-      copyToClipboard: { written in
+      copyToClipboard: { written, kind in
+        guard case .keptHidden = kind else {
+          Issue.record("the requested kept copy must carry the clipboard history marker")
+          return false
+        }
         _ = recorder.record(written)
         return copied
       })
@@ -554,7 +559,7 @@ import os
         requests.record(request.legacyText)
         return Self.deliveredResult
       },
-      copyToClipboard: { recorder.record($0) })
+      copyToClipboard: { text, _ in recorder.record(text) })
 
     let outcome = await wiring.deliver(signature, .ordinary)
 
@@ -598,7 +603,7 @@ import os
         requests.record(request.legacyText)
         return Self.deliveredResult
       },
-      copyToClipboard: { _ in true })
+      copyToClipboard: { _, _ in true })
 
     let outcome = await wiring.deliver("今日は晴れです。", .ordinary)
 
@@ -678,7 +683,7 @@ import os
     // it must be absorbed rather than reach the developer's real clipboard.
     let wiring = makeWiring(
       outcome: outcome, context: context, deliverPaste: { _ in Self.deliveredResult },
-      copyToClipboard: { _ in true })
+      copyToClipboard: { _, _ in true })
 
     _ = await wiring.deliver("hello", .ordinary)
 
@@ -1199,7 +1204,7 @@ import os
         return Self.deliveredResult
       },
       registry: registry,
-      copyToClipboard: { recorder.record($0) })
+      copyToClipboard: { text, _ in recorder.record(text) })
 
     _ = await wiring.deliver("hello", .ordinary)
 
@@ -1244,7 +1249,7 @@ import os
         Issue.record("the cascade must not run when auto-paste is off")
         return Self.deliveredResult
       },
-      copyToClipboard: { recorder.record($0) })
+      copyToClipboard: { text, _ in recorder.record(text) })
 
     _ = await wiring.deliver(polished, .ordinary)
 
@@ -2387,7 +2392,7 @@ import os
     //
     // A test that WANTS to observe the copy passes a recorder. A test that copies
     // without meaning to now fails here instead of silently damaging the machine.
-    copyToClipboard: @escaping @MainActor (String) -> Bool = { text in
+    copyToClipboard: @escaping @MainActor (String, PasteService.WriteKind) -> Bool = { text, _ in
       Issue.record("unexpected clipboard copy: \(text)")
       return false
     },
@@ -2953,7 +2958,7 @@ import os
             language: "en", learnLanguage: "en", source: .dictation, confidenceBucket: .ge90)
         },
         pasteCompletionRegistry: nil,
-        copyToClipboard: { text in
+        copyToClipboard: { text, _ in
           Issue.record("unexpected clipboard copy: \(text)")
           return false
         })
@@ -3105,7 +3110,7 @@ import os
             language: "en", learnLanguage: "en", source: .dictation, confidenceBucket: .ge90)
         },
         pasteCompletionRegistry: nil,
-        copyToClipboard: { text in
+        copyToClipboard: { text, _ in
           Issue.record("unexpected clipboard copy: \(text)")
           return false
         })
@@ -3261,7 +3266,7 @@ import os
             language: "en", learnLanguage: "en", source: .dictation, confidenceBucket: .ge90)
         },
         pasteCompletionRegistry: nil,
-        copyToClipboard: { text in
+        copyToClipboard: { text, _ in
           Issue.record("unexpected clipboard copy: \(text)")
           return false
         })
@@ -3415,7 +3420,7 @@ import os
             language: "en", learnLanguage: "en", source: .dictation, confidenceBucket: .ge90)
         },
         pasteCompletionRegistry: nil,
-        copyToClipboard: { text in
+        copyToClipboard: { text, _ in
           Issue.record("unexpected clipboard copy: \(text)")
           return false
         })

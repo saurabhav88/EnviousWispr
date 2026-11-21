@@ -137,14 +137,15 @@ public enum PasteService {
   // because a concurrently-running suite had advanced the count. The guard is
   // correct; the shared board was the defect.
 
-  /// Whether a clipboard write is meant to stay (#3528). Clipboard managers that follow the
-  /// nspasteboard.org convention skip a `.temporary` write, so a dictation we only borrow the
-  /// board for never lands in their history. Every caller names a kind; there is no default.
+  /// The intended clipboard lifetime and marking policy (#3528). Clipboard managers that
+  /// follow the nspasteboard.org convention skip marked writes. Every caller names a kind.
   public enum WriteKind: Sendable {
     /// We will undo this write (paste then restore the user's clipboard). Carries the marker.
     case temporary
     /// The text is meant to stay on the clipboard (auto-copy, copy buttons, paste-miss fallback).
     case kept
+    /// The user requested a kept copy and chose to hide it from clipboard history.
+    case keptHidden
   }
 
   /// The nspasteboard.org marker for "on the board only briefly, do not record in a history".
@@ -152,14 +153,14 @@ public enum PasteService {
     "org.nspasteboard.TransientType")
 
   /// The only place a `WriteKind` becomes bytes on the board (#3528).
-  /// `.temporary` publishes the text and the marker as ONE item in ONE `writeObjects`, so no
+  /// Marked writes publish text and marker as ONE item in ONE `writeObjects`, so no
   /// manager can see the text without its marker.
   private static func publish(_ text: String, to pasteboard: NSPasteboard, kind: WriteKind) {
     switch kind {
     case .kept:
       pasteboard.clearContents()
       pasteboard.setString(text, forType: .string)
-    case .temporary:
+    case .temporary, .keptHidden:
       let item = NSPasteboardItem()
       item.setString(text, forType: .string)
       // A refused marker leaves the text unmarked, which is today's behaviour (#3528 plan Q7).

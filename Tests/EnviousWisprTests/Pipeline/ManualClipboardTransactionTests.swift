@@ -254,6 +254,9 @@ struct ManualClipboardTransactionTests {
           case .kept:
             board.clearContents()
             return board.changeCount
+          case .keptHidden:
+            Issue.record("Manual paste must not use the intentional clipboard-copy write kind")
+            return board.changeCount
           }
         }
       ) { false }

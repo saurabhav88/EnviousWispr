@@ -537,7 +537,7 @@ struct KernelFinalizationWiring {
     // cost of defaulting it is a silent regression nobody can grep for. Two
     // tests already reached the real clipboard exactly this way and neither
     // mentions a clipboard anywhere.
-    copyToClipboard: @escaping @MainActor (String) -> Bool
+    copyToClipboard: @escaping @MainActor (String, PasteService.WriteKind) -> Bool
   ) {
     // processText — run the limb chain, write the polish side-channel, return
     // the final display text. `onPolishStarted` is wired into
@@ -1108,7 +1108,9 @@ struct KernelFinalizationWiring {
         // #2465: auto-copy never enters `PasteCascadeExecutor`, so it reaches the board without
         // passing any of the claim sites there. Same ownership failure as Tier 3, one layer up.
         ClipboardCleanup.deliveryClaimsBoard()
-        let copied = copyToClipboard(text)
+        let hideCopy = copyOnlyByPreference && config?.restoreClipboardAfterPaste == true
+          && config?.keepDictationsOutOfClipboardHistory == true
+        let copied = copyToClipboard(text, hideCopy ? .keptHidden : .kept)
         outcome.practiceCopiedToClipboard = copied
         deliveryOutcome = copyOnlyByPreference ? .intentionalClipboard(copied: copied) : .clipboardOnly
       } else {

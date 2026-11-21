@@ -125,7 +125,7 @@ struct AFMPrewarmTelemetryTests {
         },
         pasteCompletionRegistry: nil,
         telemetryState: telemetry,
-        copyToClipboard: { _ in true })
+        copyToClipboard: { _, _ in true })
     }
 
     private let raw = "so the invoice is still open I think and I was going to send it today"
