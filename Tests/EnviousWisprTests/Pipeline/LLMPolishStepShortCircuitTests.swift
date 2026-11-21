@@ -179,6 +179,69 @@ struct LLMPolishStepShortCircuitTests {
     #expect(result.acceptedTranslationTarget == .english)
   }
 
+  @Test("A translated command survives, but the existing same-language question check still applies")
+  func translationDoesNotTreatCommandsAsQuestions() async throws {
+    let source = "Do not send that email until Friday."
+    let command = "Schick diese E-Mail erst am Freitag."
+    let translated = makeStep(counter: InvocationCounter(), result: command, provider: .claude)
+    var input = TextProcessingContext(text: source, language: "en")
+    input.requestedTranslationTarget = .german
+    let translatedResult = try await translated.process(input)
+    #expect(translatedResult.polishedText == command)
+    #expect(translatedResult.acceptedTranslationTarget == .german)
+
+    let question = "Can you send that email by Friday?"
+    input.text = question
+    let rejectedAnswer = try await translated.process(input)
+    #expect(rejectedAnswer.polishedText == nil)
+    #expect(rejectedAnswer.text == question)
+    #expect(rejectedAnswer.polishValidatorGuard == "question_flip")
+
+    let english = makeStep(
+      counter: InvocationCounter(), result: "Wait until Friday to send that email.",
+      provider: .claude)
+    input.text = source
+    input.requestedTranslationTarget = nil
+    let ordinary = try await english.process(input)
+    input.requestedTranslationTarget = .english
+    let sameLanguage = try await english.process(input)
+    #expect(ordinary.polishValidatorGuard == "question_flip")
+    #expect(sameLanguage.polishValidatorGuard == ordinary.polishValidatorGuard)
+    #expect((sameLanguage.polishedText ?? sameLanguage.text).utf8.elementsEqual(
+      (ordinary.polishedText ?? ordinary.text).utf8))
+  }
+
+  @Test("Only translation from a recognized unsegmented source can exceed the usual length ceiling")
+  func unsegmentedTranslationKeepsNaturalExpansion() async throws {
+    let source = "明早九点在北门集合。带护照、雨衣、水和车票。下雨就去车站咖啡馆等。别忘了告诉李娜改到周五。"
+    let reply = "Meet at the north gate at nine tomorrow morning. Bring your passport, a raincoat, "
+      + "some water, and your train ticket. If it rains, wait at the café inside the train station. "
+      + "Remember to tell Li Na that we moved it to Friday."
+    #expect(reply.count > max(3 * source.count, 200))
+    let step = makeStep(counter: InvocationCounter(), result: reply, provider: .claude)
+    var input = TextProcessingContext(text: source, language: "zh")
+    input.requestedTranslationTarget = .english
+
+    let translated = try await step.process(input)
+    #expect(translated.polishedText == reply)
+    #expect(translated.acceptedTranslationTarget == .english)
+
+    input.requestedTranslationTarget = nil
+    let ordinaryChinese = try await step.process(input)
+    #expect(ordinaryChinese.polishValidatorGuard == "expansion")
+    #expect(ordinaryChinese.polishedText?.utf8.elementsEqual(source.utf8) == true)
+
+    let englishSource = "Meet at the north gate tomorrow morning."
+    input = TextProcessingContext(text: englishSource, language: "en")
+    let ordinaryEnglish = try await step.process(input)
+    input.requestedTranslationTarget = .english
+    let sameLanguage = try await step.process(input)
+    #expect(ordinaryEnglish.polishValidatorGuard == "expansion")
+    #expect(sameLanguage.polishValidatorGuard == ordinaryEnglish.polishValidatorGuard)
+    #expect((sameLanguage.polishedText ?? sameLanguage.text).utf8.elementsEqual(
+      (ordinaryEnglish.polishedText ?? ordinaryEnglish.text).utf8))
+  }
+
   @Test("Other cloud providers keep ordinary polish with a saved translation target")
   func translationTargetDoesNotApplyToOpenAI() async throws {
     let counter = InvocationCounter()

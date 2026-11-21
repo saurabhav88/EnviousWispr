@@ -1486,11 +1486,16 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       ctx.symbolTokens = nil
       return ctx
     }
+    let sourceLanguage = LanguageNormalizer.baseCode(languageDetection?.lang ?? context.language)
+    let crossLanguageSource =
+      translationTarget != nil && translationTarget?.rawValue != sourceLanguage
+      ? sourceLanguage : nil
     let validation = validatePolishOutput(
       polished: result.polishedText,
       original: context.text,
       mode: mode,
-      provider: provider, model: model, policy: policy
+      provider: provider, model: model, policy: policy,
+      crossLanguageSource: crossLanguageSource
     )
     let validatedText = validation.text
 
@@ -1619,7 +1624,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// slash or backslash token the deterministic text carried.
   func validatePolishOutput(
     polished: String, original: String, mode: PolishMode,
-    provider: LLMProvider, model: String, policy: ResultPolicy = .ordinary
+    provider: LLMProvider, model: String, policy: ResultPolicy = .ordinary,
+    crossLanguageSource: String? = nil
   ) -> PolishValidation {
     guard !original.isEmpty else {
       return PolishValidation(text: polished, guardName: nil, symbolTokens: nil)
@@ -1654,8 +1660,10 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
         contentDropFraction = (1, 3)
       }
 
-      // Guard 1: Expansion hallucination
-      if polished.count > expansionThreshold {
+      // A character ratio cannot compare unsegmented source text with translated words.
+      // Claude still caps generation and rejects a truncated reply.
+      let unsegmentedTranslation = crossLanguageSource.map(LanguageTypes.isUnsegmentedScript) ?? false
+      if !unsegmentedTranslation && polished.count > expansionThreshold {
         Task {
           await AppLogger.shared.log(
             "LLM polish validator: expansion \(polished.count)/\(original.count) chars "
@@ -1686,8 +1694,11 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
 
     }
 
-    // Guard 3: Question-to-answer conversion (unchanged across modes)
-    if looksLikeQuestion(original) && !looksLikeQuestion(polished) {
+    // An English opening like "Do not" does not identify a question across languages.
+    let inferFromOpening = crossLanguageSource == nil
+    if looksLikeQuestion(original, inferFromOpening: inferFromOpening)
+      && !looksLikeQuestion(polished, inferFromOpening: inferFromOpening)
+    {
       Task {
         await AppLogger.shared.log(
           "LLM polish validator: question-to-answer conversion detected — "
@@ -1729,8 +1740,9 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// Conservative question detection using strong signals only.
   /// Returns true if the text contains `?` or full-width `？`, or starts with an interrogative pattern.
   /// Leading fillers and common preambles are stripped before checking.
-  private func looksLikeQuestion(_ text: String) -> Bool {
+  private func looksLikeQuestion(_ text: String, inferFromOpening: Bool) -> Bool {
     if text.contains("?") || text.contains("\u{FF1F}") { return true }
+    guard inferFromOpening else { return false }
 
     // Strip leading fillers to find the real sentence start.
     let fillers: Set<String> = ["um", "uh", "so", "like", "well", "okay", "ok"]

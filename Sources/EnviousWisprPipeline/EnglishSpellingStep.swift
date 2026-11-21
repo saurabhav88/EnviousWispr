@@ -76,6 +76,7 @@ final class EnglishSpellingStep: TextProcessingStep {
       swaps = converted.swaps
     case .polishedText:
       guard let polished = context.polishedText else { return context }
+      if let target = context.acceptedTranslationTarget, target != .english { return context }
       let converted = converter.convert(
         polished, protectedWords: context.spellingProtectedWords, protectedSpans: spans)
       result.polishedText = converted.text
