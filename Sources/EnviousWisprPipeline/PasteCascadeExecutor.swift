@@ -288,13 +288,21 @@ internal func classifyPasteFocus(
   guard elementPresent else { return .missing }
   if roleIsTextField { return .textField }
   if focusRole == "AXWindow", focusSubrole == "AXStandardWindow",
-    SelectionAcquisition.isKeystrokeForwarding(targetBundleID)
+    SelectionAcquisition.isKeystrokeForwarding(targetBundleID),
+    !remoteSessionPasteExclusions.contains(targetBundleID ?? "")
   {
     return .remoteSession
   }
   if isKnownWebWrapperBundle(targetBundleID) { return .missing }  // #729
   return .nonText
 }
+
+/// #1070: remote clients on the shared list that never receive the remote-session key paste.
+/// Apple Screen Sharing: a Cmd+V on the remote Mac pastes that Mac's OLD clipboard when its shared
+/// clipboard has not synced (#3279, user report), which would insert the wrong text silently. Its
+/// surface normally reports `AXSharedScreen` and is excluded by role; this keeps it excluded if its
+/// focus ever reports a standard window. The synthetic-Copy refusal for it is unchanged.
+internal let remoteSessionPasteExclusions: Set<String> = ["com.apple.ScreenSharing"]
 
 /// #729 — bundle-id prefixes for known web-wrapper packagers. Conservative
 /// list: only prefixes that no native macOS app uses in practice. Each

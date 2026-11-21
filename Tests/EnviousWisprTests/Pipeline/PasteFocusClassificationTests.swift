@@ -134,6 +134,9 @@ struct PasteFocusClassificationTests {
   @Test("Screen Sharing's shared screen stays non-text (#3279 is out of scope)")
   func screenSharingStaysNonText() {
     #expect(classify("com.apple.ScreenSharing", role: "AXSharedScreen", subrole: nil) == .nonText)
+    // Excluded by name too, should its focus ever report a standard window.
+    #expect(
+      classify("com.apple.ScreenSharing", role: "AXWindow", subrole: "AXStandardWindow") == .nonText)
   }
 
   @Test("The macOS password dialog never becomes a remote session")

@@ -795,6 +795,10 @@ struct PasteTargetWindowGateWiringTests {
     let inside = calls.found.filter { $0.callee == "PasteTargetWindowGate.decide" }.map(\.node)
     try #require(inside.count == 1)
     #expect(forwards(inside[0]), "dispatchGate hands the flag to the gate")
+    // `refusal` (the activation poll's entry) hands the flag on to `decide`.
+    let viaRefusal = calls.found.filter { $0.callee == "decide" }.map(\.node)
+    try #require(viaRefusal.count == 1)
+    #expect(forwards(viaRefusal[0]), "refusal hands the flag to decide")
   }
 
   @Test(

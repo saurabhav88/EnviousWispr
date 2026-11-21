@@ -1,3 +1,6 @@
+import Foundation
+import SwiftParser
+import SwiftSyntax
 import Testing
 
 @testable import EnviousWisprPipeline
@@ -43,5 +46,60 @@ struct PasteRemoteSessionRestoreTests {
     let off = request(restore: false, keepOutOfHistory: true)
     #expect(off.keyPasteClipboardPolicy(for: focus).restore == false)
     #expect(off.keyPasteClipboardPolicy(for: focus).kind == .kept)
+  }
+}
+
+/// #1070 Drift Guard: the key tiers take their restore decision from the per-focus policy.
+///
+/// The policy helper above can be right while a tier stops reading it; that would restore a remote
+/// user's old clipboard after the paste with every unit test green. Parsed with `SwiftParser`, so a
+/// comment cannot satisfy it.
+@Suite("Key tiers read the remote-session clipboard policy (#1070)", .tags(.driftGuard))
+struct PasteRemoteSessionPolicyWiringTests {
+
+  private final class Sites: SyntaxVisitor {
+    var snapshotConditions: [String] = []
+    var willRestoreArguments: [String] = []
+    var checkedCleanupFirstConditions: [String] = []
+    init() { super.init(viewMode: .sourceAccurate) }
+    override func visit(_ node: PatternBindingSyntax) -> SyntaxVisitorContinueKind {
+      if node.pattern.trimmedDescription == "snapshot",
+        node.typeAnnotation?.type.trimmedDescription == "ClipboardSnapshot?",
+        let sequence = node.initializer?.value.as(SequenceExprSyntax.self),
+        let condition = sequence.elements.first
+      {
+        snapshotConditions.append(condition.trimmedDescription)
+      }
+      return .visitChildren
+    }
+    override func visit(_ node: LabeledExprSyntax) -> SyntaxVisitorContinueKind {
+      if node.label?.text == "willRestoreUserClipboard" {
+        willRestoreArguments.append(node.expression.trimmedDescription)
+      }
+      return .visitChildren
+    }
+    override func visit(_ node: IfExprSyntax) -> SyntaxVisitorContinueKind {
+      let conditions = node.conditions.map(\.condition.trimmedDescription)
+      if conditions.contains(where: { $0.contains("landingCheck(for: committedArrivalCapture") }),
+        let first = conditions.first
+      {
+        checkedCleanupFirstConditions.append(first)
+      }
+      return .visitChildren
+    }
+  }
+
+  @Test("Tier 2 and 2b snapshot only when the key policy restores; Tier 2c keeps the request's")
+  func snapshotsFollowThePolicy() throws {
+    let text = try String(
+      contentsOf: RepoRoot.sourceURL("Sources/EnviousWisprPipeline/PasteCascadeExecutor.swift"),
+      encoding: .utf8)
+    let sites = Sites()
+    sites.walk(CachedSwiftParser.parse(source: text))
+    #expect(
+      sites.snapshotConditions
+        == ["keyClipboard.restore", "keyClipboard.restore", "request.restoreClipboardAfterPaste"])
+    #expect(sites.willRestoreArguments == ["keyClipboard.restore"])
+    #expect(sites.checkedCleanupFirstConditions == ["classification != .remoteSession"])
   }
 }
