@@ -1054,7 +1054,6 @@ package final class WisprBootstrapper {
           base: s1BaseRegistration, promptTemplateID: s1Manifest?.promptTemplateID,
           runtime: s1MiniRuntime, debugThreshold: debugS1LearnedWordAdapter?.threshold),
       ],
-      currentModel: { [settings] in settings.polishModelID(for: $0) },
       debugScriptedChecker: debugScriptedChecker)
     for runtime in [egOneFull.runtime] + egOneOtherSizes.map(\.wiring.runtime) {
       let report = EGOneTelemetryBridge.handler(engine: .egOne, size: runtime.modelID.size)
@@ -1164,6 +1163,7 @@ package final class WisprBootstrapper {
     let wordCheck = WordCheckRuntime(
       delivery: modelDelivery,
       isDictionaryEnabled: { [weak settings] in settings?.wordCorrectionEnabled ?? false },
+      areLearnedFixesEnabled: { [weak settings] in settings?.fixLearnedWords ?? false },
       someEngineLacksOwnChecker: { [weak settings] in
         guard let settings else { return false }
         return !LearnedWordCheckerEngine.hasOwnChecker(settings.llmProvider)
@@ -1175,6 +1175,7 @@ package final class WisprBootstrapper {
     settingsSync.onWordCheckInputsChanged = { [weak wordCheck] in
       wordCheck?.refresh(trigger: .settingsChanged)
     }
+    settingsSync.onWordCheckWorkFinished = { [weak wordCheck] in wordCheck?.workFinished() }
 
     // #1988: the live-preview limb, wired ONLY to the overlay. See the installer.
     //
@@ -1182,7 +1183,12 @@ package final class WisprBootstrapper {
     // rather than pushing providers into an overlay that had to already exist.
     let livePreviewInstallation = LivePreviewInstaller.install(
       capture: audioCapture, settings: settings,
-      settingsSync: settingsSync, modelDelivery: modelDelivery)
+      settingsSync: settingsSync, modelDelivery: modelDelivery,
+      recordingFixLearnedWords: { [weak kernelDriver, weak whisperKernelDriver] in
+        kernelDriver?.currentSessionConfig?.fixLearnedWords
+          ?? whisperKernelDriver?.currentSessionConfig?.fixLearnedWords
+          ?? settings.fixLearnedWords
+      })
     let livePreview = livePreviewInstallation.coordinator
 
     // **The director is constructed HERE, roughly 360 lines below where it used
@@ -1687,14 +1693,14 @@ package final class WisprBootstrapper {
       // #3289: start loading the word check behind the recovered recording's transcription when
       // its frozen polish engine uses it (the model is no longer loaded at launch).
       // #3853: and the output classifier counts the replay as a consumer, by the same provider.
-      onReplayWillTranscribe: { [weak checkerEligibility, weak settingsSync, settings] provider in
+      onReplayWillTranscribe: { [weak checkerEligibility, weak settingsSync, settings] provider, allowsLearnedFixes in
         checkerEligibility?.wordCheck?.recoveryStarted(
-          needsWordCheck: !LearnedWordCheckerEngine.hasOwnChecker(provider))
+          needsWordCheck: allowsLearnedFixes && !LearnedWordCheckerEngine.hasOwnChecker(provider))
         settingsSync?.outputClassifierRecoveryStarted(provider: provider, settings: settings)
       },
-      onReplayFinished: { [weak checkerEligibility, weak settingsSync, settings] provider in
+      onReplayFinished: { [weak checkerEligibility, weak settingsSync, settings] provider, allowsLearnedFixes in
         checkerEligibility?.wordCheck?.recoveryFinished(
-          needsWordCheck: !LearnedWordCheckerEngine.hasOwnChecker(provider))
+          needsWordCheck: allowsLearnedFixes && !LearnedWordCheckerEngine.hasOwnChecker(provider))
         settingsSync?.outputClassifierRecoveryFinished(provider: provider, settings: settings)
       },
       // #4578: replay never downloads a missing engine; it ends through the terminal refusal.
@@ -2335,7 +2341,8 @@ package final class WisprBootstrapper {
             ?? whisperKernelDriver?.currentSessionConfig
         else { return }
         checkerEligibility?.wordCheck?.recordingStarted(
-          needsWordCheckForRecording: !LearnedWordCheckerEngine.hasOwnChecker(config.llmProvider))
+          needsWordCheckForRecording: config.fixLearnedWords && settings.wordCorrectionEnabled
+            && !LearnedWordCheckerEngine.hasOwnChecker(config.llmProvider))
         // #4473: the take's exact model. A size no runtime serves gets none, never another's.
         localPolishRuntimes.runtime(for: config.polishModelID)?.recordingStarted()
       }
@@ -2613,6 +2620,7 @@ package final class WisprBootstrapper {
         engineCoordinator?.poke(.driverStateChanged)
         settingsSync.retryDeferredOllamaEviction(settings: settings)
         settingsSync.retryDeferredOutputClassifierRelease(settings: settings)
+        settingsSync.onWordCheckWorkFinished()
         Task { @MainActor in
           await releaseHold?.value
           // #2772: FORCED. An import that started its own bundled polisher armed no
@@ -2647,7 +2655,7 @@ package final class WisprBootstrapper {
         // check now for a run whose FROZEN engine has no checker of its own, so the first part finds
         // it loading or ready. Opening the page or a refused claim never reaches this line.
         checkerEligibility.wordCheck?.fileImportStarted(
-          needsWordCheck: !LearnedWordCheckerEngine.hasOwnChecker(
+          needsWordCheck: snapshot.allowsLearnedFixes && !LearnedWordCheckerEngine.hasOwnChecker(
             LLMProvider(rawValue: snapshot.llmProvider) ?? .none))
         var configuration = FileImportSettingsFreeze.configuration(
           for: snapshot,
@@ -2762,11 +2770,12 @@ package final class WisprBootstrapper {
         dictationProviders: [
           kernelDriver?.currentSessionConfig, whisperKernelDriver?.currentSessionConfig,
         ]
-        .compactMap { $0?.llmProvider },
+        .compactMap { $0 }.filter(\.fixLearnedWords).map(\.llmProvider),
         importHoldsEngine: fileImportCoordinator?.isEngineHeld == true
           || transcriptRetranscriptionForGates?.isEngineHeld == true
           || historyRepolishForGates?.heldRun != nil,
-        importProvider: fileImportRunner?.frozenLLMProvider)
+        importProvider: fileImportRunner?.frozenAllowsLearnedFixes == true
+          ? fileImportRunner?.frozenLLMProvider : nil)
     }
     let setupOwners = OnboardingLiveOwners(
       settings: settings, modelDelivery: modelDelivery, whisperSetup: setup.whisperSetup,
@@ -3198,15 +3207,16 @@ package final class WisprBootstrapper {
     // #3147 PR3: Transcribe again with. Same `.fileImport` lease and the same cleanup runner and
     // polisher hold as Transcribe a File (the lease keeps the two from overlapping), the chosen
     // model on its own copy, and the wizard's release retries afterwards.
-    let freezeHistoryCleanup: @MainActor (ASRBackendType, HistoryPolishChoice?) -> ImportedFileTranscriber.FrozenRun = {
-      backend, choice in
+    let freezeHistoryCleanup: @MainActor (ASRBackendType, HistoryPolishChoice?, Bool) -> ImportedFileTranscriber.FrozenRun = {
+      backend, choice, appliesDictionaryCleanup in
       let snapshot = FileImportSettingsFreeze.snapshot(
-        settings: settings, backend: backend, polishOverride: choice)
+        settings: settings, backend: backend, polishOverride: choice,
+        appliesDictionaryCleanup: appliesDictionaryCleanup)
       fileImportRunner.freeze(
         settings: snapshot, vocabulary: customWordsPropagator.corrector,
         cloudModelList: cloudModelList.snapshot?.list)
       checkerEligibility.wordCheck?.fileImportStarted(
-        needsWordCheck: !LearnedWordCheckerEngine.hasOwnChecker(
+        needsWordCheck: snapshot.allowsLearnedFixes && !LearnedWordCheckerEngine.hasOwnChecker(
           LLMProvider(rawValue: snapshot.llmProvider) ?? .none))
       let configuration = FileImportSettingsFreeze.configuration(
         for: snapshot,
@@ -3215,7 +3225,7 @@ package final class WisprBootstrapper {
       return ImportedFileTranscriber.FrozenRun(settings: snapshot, configuration: configuration)
     }
     let historyCleanup = ImportedFileTranscriber.Cleanup(
-      freeze: { freezeHistoryCleanup($0, nil) },
+      freeze: { freezeHistoryCleanup($0, nil, true) },
       prepareLocalPolish: { [localPolishRuntimes] configuration in
         // The wizard's `prepareLocalPolish`, verbatim in behaviour.
         guard let localPolish = configuration.localPolishModel else { return true }
@@ -3241,6 +3251,7 @@ package final class WisprBootstrapper {
         engineCoordinator?.poke(.driverStateChanged)
         settingsSync?.retryDeferredOllamaEviction(settings: settings)
         settingsSync?.retryDeferredOutputClassifierRelease(settings: settings)
+        settingsSync?.onWordCheckWorkFinished()
         Task { @MainActor in
           await releaseHold?.value
           settingsSync?.retryDeferredEGOneDeactivation(
@@ -3295,7 +3306,7 @@ package final class WisprBootstrapper {
         await savedKeyPresence.readUnknown(using: keychainManager)
       },
       admission: .live(lease: engineLease, as: .fileImport),
-      freeze: { freezeHistoryCleanup($0, $1) },
+      freeze: { freezeHistoryCleanup($0, $1, $2) },
       cleanup: historyCleanup,
       polishDictation: { try await fileImportRunner.polishSavedDictation($0, language: $1) },
       meetingInfo: { [weak meetingCoordinator] row in

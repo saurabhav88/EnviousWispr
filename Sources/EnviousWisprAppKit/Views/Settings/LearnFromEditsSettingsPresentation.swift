@@ -23,6 +23,7 @@ struct LearnFromEditsSettingsPresentation: Equatable, Sendable {
     case downloading(fractionCompleted: Double, bytesWritten: Int64, totalBytes: Int64)
     case verifying
     case loading
+    case downloadedNotLoaded
     case ready
     case cancelled
     case deliveryFailed
@@ -60,9 +61,16 @@ struct LearnFromEditsSettingsPresentation: Equatable, Sendable {
   /// what reaches a cloud polish provider live in the help article behind
   /// `learnMoreURL`, so the row never has to carry a privacy claim that a
   /// settings change elsewhere could make untrue.
-  static let rowTitleResource = LocalizedStringResource("Self-Learning Dictionary",
+  static let rowTitleResource = LocalizedStringResource("Learn new words",
     comment: "Your Words, Learn from: the self-learning dictionary row: the feature's name.")
   static var rowTitle: String { String(localized: rowTitleResource) }
+
+  static let fixesTitle = LocalizedStringResource(
+    "Fix words it learned", comment: "Dictionary: the switch that applies learned corrections.")
+  static let fixesHelp = LocalizedStringResource(
+    "Use learned words in new recordings and imports. Turn this off to keep using words you added yourself without applying learned corrections.",
+    comment: "Dictionary: explains when the learned word fixing switch applies.")
+
   /// #3338 (founder 2026-10-01): a badge after the name so people know the
   /// feature is still improving.
   static let betaBadge = String(
@@ -77,6 +85,9 @@ struct LearnFromEditsSettingsPresentation: Equatable, Sendable {
         "Your Words, Learn from: the self-learning dictionary row: what the feature does. Your Words is a page name."
     )
   static var rowCopy: String { String(localized: rowCopyResource) }
+  static let learningSwitchHelp = String(
+    localized: "Add words when you correct your dictation. Turn this off to stop learning new words. Words you already taught can still be fixed.",
+    comment: "Dictionary: explains the switch that collects learned words.")
   static let learnMoreLabelResource = LocalizedStringResource("Learn more",
     comment: "Your Words, Learn from: the self-learning dictionary row: link to the help article.")
   static var learnMoreLabel: String { String(localized: learnMoreLabelResource) }
@@ -116,6 +127,10 @@ struct LearnFromEditsSettingsPresentation: Equatable, Sendable {
   init(selection: CorrectionJudgeArmSelection, judge: JudgePhase = .none) {
     switch (selection, judge) {
     case (.arm, _):
+      isEnabled = true
+      secondaryLine = nil
+      action = nil
+    case (.unavailable, .downloadedNotLoaded):
       isEnabled = true
       secondaryLine = nil
       action = nil

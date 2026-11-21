@@ -305,7 +305,8 @@ final class RecoveryCoordinator {
     backendType: ASRBackendType,
     supportsLanguageDetection: Bool,
     polishModel: LocalPolishModelID,
-    polishWireModel: String
+    polishWireModel: String,
+    fixLearnedWords: Bool
   ) async -> (recoverySessionID: String, payload: Data)? {
     guard settings.crashRecoveryEnabled else { return nil }
 
@@ -322,6 +323,7 @@ final class RecoveryCoordinator {
       backendSupportsLanguageDetection: supportsLanguageDetection,
       languageMode: languageMode,
       wordCorrectionEnabled: settings.wordCorrectionEnabled,
+      fixLearnedWords: fixLearnedWords,
       fillerRemovalEnabled: settings.fillerRemovalEnabled,
       emojiFormatterEnabled: settings.emojiFormatterEnabled,
       spokenPunctuationEnabled: settings.spokenPunctuation.enabled,

@@ -164,6 +164,7 @@ enum SettingsDefaultValues {
   // #996: learn from edits. ON by default (founder 2026-09-18): the card only
   // asks, nothing is remembered without a click. See `SettingsManager.learnFromEdits`.
   static let learnFromEdits = true
+  static let fixLearnedWords = true
 
   // #3147 Gate 2 (founder 2026-11-12): recordings are kept until the user deletes them (D2:
   // no automatic seven-day removal); meeting audio likewise; warn at 2 GB and ask (D3).

@@ -27,7 +27,6 @@ final class LearnedWordCheckerEligibility {
   private let delivery: ModelDeliveryHome
   private let engines: [LearnedWordCheckerEngine: EngineInputs]
   /// #4473: the model NEW work would freeze for a provider (the Settings rows ask about it).
-  private let currentModel: @MainActor (LLMProvider) -> LocalPolishModelID
   /// #3242: the word check for every provider without a checker of its own. Set by the
   /// composition root after construction (it needs the delivery home's registration); nil
   /// leaves those providers at `.engineHasNoChecker`, as before.
@@ -38,12 +37,10 @@ final class LearnedWordCheckerEligibility {
 
   init(
     delivery: ModelDeliveryHome, engines: [LearnedWordCheckerEngine: EngineInputs],
-    currentModel: @escaping @MainActor (LLMProvider) -> LocalPolishModelID,
     debugScriptedChecker: (any LearnedWordChecking)? = nil
   ) {
     self.delivery = delivery
     self.engines = engines
-    self.currentModel = currentModel
     #if DEBUG
       self.debugScriptedChecker = debugScriptedChecker
     #endif
@@ -64,26 +61,25 @@ final class LearnedWordCheckerEligibility {
     statusDidChange()
   }
 
-  /// The Dictionary row's status for this provider. The shared word check reports without loading
-  /// its model (#3242); an engine's own check reports through its take selection, as before.
-  func settingsStatus(provider: LLMProvider) async -> LearnedCheckerSettingsStatus {
-    let status: LearnedCheckerSettingsStatus
-    if !LearnedWordCheckerEngine.hasOwnChecker(provider), let wordCheck {
-      status = wordCheck.settingsStatus()
-    } else {
-      // #4473: the status of the model new work would use for this provider.
-      let model = currentModel(provider)
-      status = LearnedCheckerSettingsStatus(
-        selection: await selection(model: model, language: nil))
+  /// Reports the exact selected model without starting its helper.
+  func settingsStatus(model: LocalPolishModelID) async -> LearnedCheckerSettingsStatus {
+    if !LearnedWordCheckerEngine.hasOwnChecker(model.provider), let wordCheck {
+      return wordCheck.settingsStatus()
     }
-    return status
+    guard let engine = LearnedWordCheckerEngine(model: model),
+      let inputs = engines[engine], inputs.runtime.modelID == model
+    else { return LearnedCheckerSettingsStatus(selection: .init(absence: .engineHasNoChecker)) }
+
+    let selection = await engineSelection(engine, inputs: inputs, language: nil, requiresEndpoint: false)
+    return LearnedCheckerSettingsStatus(
+      selection: selection.naming(LearnedWordJudge(displayName: model.provider.displayName)))
   }
 
-  /// "Try again" in the Dictionary row, for whichever check the provider uses.
-  func retryDownload(for provider: LLMProvider) async {
-    if let engine = LearnedWordCheckerEngine(model: currentModel(provider)) {
+  /// "Try again" for the same model the Settings status described.
+  func retryDownload(for model: LocalPolishModelID) async {
+    if let engine = LearnedWordCheckerEngine(model: model) {
       await requestAdapterDownload(for: engine)
-    } else {
+    } else if !LearnedWordCheckerEngine.hasOwnChecker(model.provider) {
       wordCheck?.retryDownload()
     }
   }
@@ -117,7 +113,8 @@ final class LearnedWordCheckerEligibility {
   }
 
   private func engineSelection(
-    _ engine: LearnedWordCheckerEngine, inputs: EngineInputs, language: String?
+    _ engine: LearnedWordCheckerEngine, inputs: EngineInputs, language: String?,
+    requiresEndpoint: Bool = true
   ) async -> LearnedWordCheckerSelection {
     guard let base = inputs.base, let promptTemplateID = inputs.promptTemplateID else {
       return .init(absence: .baseNotAdmitted)
@@ -151,7 +148,7 @@ final class LearnedWordCheckerEligibility {
       admittedBase: AdmittedCheckerBase(
         manifest: base.manifest, promptTemplateID: promptTemplateID),
       endpoint: endpoint, serverReason: serverReason,
-      debugThreshold: inputs.debugThreshold,
+      debugThreshold: inputs.debugThreshold, requiresEndpoint: requiresEndpoint,
       makeChecker: { [runtime = inputs.runtime] threshold in
         engine.makeChecker(threshold: threshold, language: language, runtime: runtime)
       })
@@ -172,7 +169,7 @@ final class LearnedWordCheckerEligibility {
     deliveryState: DeliveryState, hostConfigured: Bool = true, deliveryEnabled: Bool = true,
     contract: LearnedWordCheckerContract?,
     admittedBase: AdmittedCheckerBase?, endpoint: LocalPolishEndpoint?,
-    serverReason: String?, debugThreshold: Double? = nil,
+    serverReason: String?, debugThreshold: Double? = nil, requiresEndpoint: Bool = true,
     makeChecker: @MainActor (Double) -> any LearnedWordChecking
   ) -> LearnedWordCheckerSelection {
     func absent(_ reason: LearnedWordCheckerAbsence) -> LearnedWordCheckerSelection {
@@ -199,11 +196,15 @@ final class LearnedWordCheckerEligibility {
         return absent(.adapterDownloading)
       }
     }
-    guard let endpoint else { return absent(.serverUnavailable) }
-    guard endpoint.hasLearnedWordAdapter else {
-      return absent(
-        .serverWithoutAdapter(
-          serverReason ?? LocalPolishProcessManager.CheckerFailureReason.adapterMissing.rawValue))
+    if let endpoint {
+      guard endpoint.hasLearnedWordAdapter else {
+        return absent(
+          .serverWithoutAdapter(
+            serverReason ?? LocalPolishProcessManager.CheckerFailureReason.adapterMissing.rawValue))
+      }
+    } else {
+      if let serverReason, !requiresEndpoint { return absent(.serverWithoutAdapter(serverReason)) }
+      if requiresEndpoint { return absent(.serverUnavailable) }
     }
     guard let threshold = Double(contract.qualifiedThreshold), threshold.isFinite,
       (0...1).contains(threshold)

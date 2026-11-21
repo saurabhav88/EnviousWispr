@@ -12,9 +12,9 @@ Generated from the compiled Settings Map and the validated search vocabulary. Do
 
 The interface ships in English and German. The other 30 languages (ar, bg, cs, da, el, es, et, fi, fr, hi, hr, hu, it, ja, ko, lt, lv, mt, nl, pl, pt, ro, ru, sk, sl, sv, tr, uk, vi, zh) are search metadata only: words and titles people may type, matched against the same places. Titles below read English / German.
 
-324 nodes, 295 searchable, 9440 vocabulary blocks.
+325 nodes, 296 searchable, 9472 vocabulary blocks.
 
-Fingerprints: mapSHA256 `0429303e6605473a5ebb1968eb26eafc653fe747f9fa847dbababdab08ba63ad`, uiCatalogSHA256 `e089f17f26ea7f5e9125dc3b966cca8d8b10f03c7b83d30440229f1326e67644`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `33d583304fa73b4547e53f491c69599d47ec82a067b6d6ea657cd0a1e400efd9`
+Fingerprints: mapSHA256 `6c2420ddd1ab11cc6239d8b097ac18c0e3ec1bfc62deea6849c3e77ad772d767`, uiCatalogSHA256 `36f8fbf6d4834b0bfdcd4dcaad5e8b34fffe0a224a35ab60c2a206bd36317c77`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `69186cd226bfb54ce66cc90148130ba842b55eca1f94a8ef33d2b26d99e25aac`
 
 ## Structure
 
@@ -269,9 +269,10 @@ Fingerprints: mapSHA256 `0429303e6605473a5ebb1968eb26eafc653fe747f9fa847dbababda
     - [Vocabulary Packs / Wortschatzpakete](#node-dictionary-tab-vocabularyPacks) `dictionary.tab.vocabularyPacks` (feature)
     - [Learn from... / Lernen aus...](#node-dictionary-tab-learnFrom) `dictionary.tab.learnFrom` (feature)
       - [Learn from... / Lernen aus...](#node-learnFrom) `learnFrom` (feature)
-      - [Self-Learning Dictionary / Selbstlernendes Wörterbuch](#node-selfLearningDictionary) `selfLearningDictionary` (setting)
+      - [Learn new words / Neue Wörter lernen](#node-selfLearningDictionary) `selfLearningDictionary` (setting)
         - [Learn more / Mehr erfahren](#node-selfLearningDictionary-learnMore) `selfLearningDictionary.learnMore` (action)
         - [Forget learning memory / Lerngedächtnis löschen](#node-selfLearningDictionary-forgetMemory) `selfLearningDictionary.forgetMemory` (action)
+      - [Fix words it learned / Gelernte Korrekturen anwenden](#node-fixLearnedWords) `fixLearnedWords` (setting)
       - [Import from Contacts / Aus Kontakten importieren](#node-importContacts) `importContacts` (feature)
         - [Keep in sync on launch / Beim Start synchron halten](#node-contactsSyncOnLaunch) `contactsSyncOnLaunch` (setting)
     - [Quick Add / Schnell hinzufügen](#node-dictionary-tab-quickAdd) `dictionary.tab.quickAdd` (feature)
@@ -4227,14 +4228,14 @@ Fingerprints: mapSHA256 `0429303e6605473a5ebb1968eb26eafc653fe747f9fa847dbababda
 
 <a id="node-selfLearningDictionary"></a>
 
-### Self-Learning Dictionary / Selbstlernendes Wörterbuch (`selfLearningDictionary`)
+### Learn new words / Neue Wörter lernen (`selfLearningDictionary`)
 
 | Field | Value |
 |---|---|
 | Structure | item |
 | Kind | setting |
 | Parent | [`dictionary.tab.learnFrom`](#node-dictionary-tab-learnFrom) |
-| Title source | catalog key `Self-Learning Dictionary` |
+| Title source | catalog key `Learn new words` |
 | Description | Automatically detects when you correct a dictation and adds the corrected word to your dictionary. Undo it from the notification, or remove it later in Your Words. / Erkennt automatisch, wenn du ein Diktat korrigierst, und fügt das korrigierte Wort deinem Wörterbuch hinzu. Du kannst das über die Mitteilung rückgängig machen oder das Wort später unter „Deine Wörter“ entfernen. |
 | Description source | catalog key `Automatically detects when you correct a dictation and adds the corrected word to your dictionary. Undo it from the notification, or remove it later in Your Words.` |
 | Destination | `dictionary` |
@@ -4243,8 +4244,30 @@ Fingerprints: mapSHA256 `0429303e6605473a5ebb1968eb26eafc653fe747f9fa847dbababda
 | Arrival target | [`selfLearningDictionary`](#node-selfLearningDictionary) |
 | Fallbacks, in order | none |
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
-| Search (en) | words: selflearning<br>phrases: remember words when I correct a dictation; automatically add corrected words to my dictionary; stop learning from my dictation corrections |
-| Search (de) | words: Korrekturlernen, Korrekturerkennung<br>phrases: Wörter merken, wenn ich ein Diktat korrigiere; korrigierte Wörter automatisch ins Wörterbuch aufnehmen; nicht mehr aus meinen Diktatkorrekturen lernen |
+| Search (en) | words: selflearning<br>phrases: learn new words from edits I make after dictating; stop learning from my dictation corrections |
+| Search (de) | words: selbstlernend<br>phrases: Wörter lernen, wenn ich mein Diktat korrigiere; nicht mehr aus meinen Diktatkorrekturen lernen |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-fixLearnedWords"></a>
+
+### Fix words it learned / Gelernte Korrekturen anwenden (`fixLearnedWords`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | setting |
+| Parent | [`dictionary.tab.learnFrom`](#node-dictionary-tab-learnFrom) |
+| Title source | catalog key `Fix words it learned` |
+| Description | Use learned words in new recordings and imports. Turn this off to keep using words you added yourself without applying learned corrections. / Wende gelernte Korrekturen bei neuen Aufnahmen und Importen an. Wenn du diese Option ausschaltest, werden selbst hinzugefügte Wörter weiterhin berücksichtigt, solange das Wörterbuch aktiviert ist. |
+| Description source | catalog key `Use learned words in new recordings and imports. Turn this off to keep using words you added yourself without applying learned corrections.` |
+| Destination | `dictionary` |
+| Dictionary tab | `learnFrom` |
+| Shown when | `always` |
+| Arrival target | [`fixLearnedWords`](#node-fixLearnedWords) |
+| Fallbacks, in order | [`selfLearningDictionary`](#node-selfLearningDictionary) |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | words: learned corrections<br>phrases: use my past corrections in new recordings; apply learned corrections to imported audio; stop applying learned corrections |
+| Search (de) | phrases: gelernte Korrekturen bei neuen Aufnahmen und Importen anwenden; nur noch selbst hinzugefügte Wörter für Korrekturen nutzen |
 | Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-selfLearningDictionary-learnMore"></a>

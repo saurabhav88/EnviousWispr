@@ -68,6 +68,7 @@
       .warmEnginePolicy, .appearance, .overlayPillPosition, .recordingPillDesignWithoutWords,
       .recordingPillDesignWithWords, .showBluetoothTips, .showInDock, .showMenuBarUpdateAlert,
       .playRecordingSounds, .recordingSoundPairing, .otherAudioWhileDictating, .learnFromEdits,
+        .fixLearnedWords,
       .saveDictationRecordings, .dictationRecordingRetention, .meetingRecordingRetention,
       .recordingStorageWarningThreshold, .recordingThresholdBehavior,
     ]
@@ -101,6 +102,7 @@
         .livePreviewEnabled, .livePreviewEngine, .warmEnginePolicy, .appearance,
         .overlayPillPosition, .showBluetoothTips, .showInDock, .showMenuBarUpdateAlert,
         .playRecordingSounds, .recordingSoundPairing, .otherAudioWhileDictating, .learnFromEdits,
+        .fixLearnedWords,
         .egOneSize, .saveDictationRecordings:
         return make(.direct)
       case .selectedInputDeviceUID, .preferredInputDeviceIDOverride, .spokenPunctuation,
@@ -222,6 +224,7 @@
       case .recordingSoundPairing: return settings.recordingSoundPairing.rawValue
       case .otherAudioWhileDictating: return settings.otherAudioWhileDictating.rawValue
       case .learnFromEdits: return settings.learnFromEdits
+      case .fixLearnedWords: return settings.fixLearnedWords
       case .saveDictationRecordings: return settings.saveDictationRecordings
       case .dictationRecordingRetention: return settings.dictationRecordingRetention.rawValue
       case .meetingRecordingRetention: return settings.meetingRecordingRetention.rawValue
@@ -490,6 +493,8 @@
         }
       case .learnFromEdits:
         return set(Codec.bool(value)) { settings.learnFromEdits = $0 }
+      case .fixLearnedWords:
+        return set(Codec.bool(value)) { settings.fixLearnedWords = $0 }
       case .saveDictationRecordings:
         return set(Codec.bool(value)) { settings.saveDictationRecordings = $0 }
       case .dictationRecordingRetention:
@@ -648,6 +653,7 @@
         .livePreviewEnabled, .livePreviewEngine, .warmEnginePolicy, .appearance,
         .overlayPillPosition, .showBluetoothTips, .showInDock, .showMenuBarUpdateAlert,
         .playRecordingSounds, .recordingSoundPairing, .otherAudioWhileDictating, .learnFromEdits,
+        .fixLearnedWords,
         .egOneSize, .saveDictationRecordings, .dictationRecordingRetention,
         .meetingRecordingRetention, .recordingStorageWarningThreshold,
         .recordingThresholdBehavior:

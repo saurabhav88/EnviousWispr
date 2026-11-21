@@ -703,8 +703,7 @@ struct SettingsMapRenderingTests {
         .egOne(.full): .init(
           base: nil, promptTemplateID: nil,
           runtime: home.egOne, debugThreshold: nil)
-      ],
-      currentModel: { .singleModel(for: $0) })
+      ])
     return AnyView(
       view
         .environment(home.settings).environment(words).environment(packs)

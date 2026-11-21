@@ -1335,7 +1335,7 @@ def scan_cases():
                     for s in sn.DICTIONARY_SECTIONS]
             body = {"Your Words": el("AXButton", desc="Add word"),
                     "Vocabulary Packs": el("AXStaticText", value="VOCABULARY PACKS"),
-                    "Learn from...": el("AXCheckBox", desc="Self-Learning Dictionary", value="1"),
+                    "Learn from...": el("AXCheckBox", desc="Learn new words", value="1"),
                     "Quick Add": el("AXStaticText", value="Highlight a word")}[self.section]
             kids = [el("AXCheckBox", desc="Enable Dictionary", value="1"),
                     el("AXGroup", desc="Dictionary section", children=rail)]
@@ -1435,7 +1435,7 @@ INVENTORY = [
     ("21 Vocabulary Packs", ("Dictionary", None),
      ("section", ("Vocabulary Packs", "named", "Vocabulary Packs"))),
     ("21 Learn from", ("Dictionary", None),
-     ("section", ("Learn from...", "toggle", "Self-Learning Dictionary"))),
+     ("section", ("Learn from...", "toggle", "Learn new words"))),
     ("21 Quick Add", ("Dictionary", None), ("section", ("Quick Add", "named", "Highlight a word"))),
 ] + [(f"21 Diagnostics {label}", ("Diagnostics", None), (kind, label)) for kind, label in [
     ("toggle", "Enable debug mode"), ("toggle", "Use tuned on-device adapter (PoC)"),

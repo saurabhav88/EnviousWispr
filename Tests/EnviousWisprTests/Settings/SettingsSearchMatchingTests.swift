@@ -244,7 +244,11 @@ struct SettingsSearchMatchingTests {
     #expect(parakeet.entryID == "transcriptionEngine.fast")
     #expect(parakeet.hint == "Parakeet")
     let selfLearning = try #require(try Self.search("self-learning", "en").first)
-    #expect(selfLearning.hint == nil)
+    #expect(selfLearning.entryID == "selfLearningDictionary")
+    #expect(selfLearning.hint == "selflearning")
+    let learningTitle = try #require(try Self.search("learn new words", "en").first)
+    #expect(learningTitle.entryID == "selfLearningDictionary")
+    #expect(learningTitle.hint == nil)
     let dock = try #require(try Self.search("dock", "en").first)
     #expect(dock.hint == nil)
     // The hint is the vocabulary's word, never the user's spelling.

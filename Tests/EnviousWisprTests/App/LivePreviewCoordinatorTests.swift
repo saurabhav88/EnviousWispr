@@ -1487,15 +1487,27 @@ struct LivePreviewCoordinatorTests {
   @Test("the meeting's vocabulary carries word corrections only while Dictionary is on (#3973)")
   func meetingVocabularyFollowsDictionarySwitch() {
     let dictionaryOn = OSAllocatedUnfairLock(initialState: true)
+    let fixesOn = OSAllocatedUnfairLock(initialState: true)
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
       isPreviewOn: { true },
       isDictionaryOn: { dictionaryOn.withLock { $0 } },
       languageMode: { .locked("en") },
-      selectedRoute: previewRoute { _ in .blocked(.unsupportedSystem) })
-    coordinator.correctorVocabulary = CorrectorVocabulary(terms: [word("Qualtrics")], generation: 1)
+      selectedRoute: previewRoute { _ in .blocked(.unsupportedSystem) },
+      fixLearnedWords: { fixesOn.withLock { $0 } })
+    let learned = CustomWord(canonical: "Tuist", learnedAt: Date(timeIntervalSince1970: 1))
+    coordinator.correctorVocabulary = CorrectorVocabulary(
+      terms: [word("Qualtrics"), learned], generation: 1)
     let on = coordinator.vocabularySnapshot()
     #expect(on.dictionaryEnabled && on.lookups != nil, "control: corrections while on")
+    #expect(on.contextualPhrases.contains("Tuist"))
+
+    fixesOn.withLock { $0 = false }
+    let savedOnly = coordinator.vocabularySnapshot()
+    #expect(savedOnly.contextualPhrases.contains("Tuist") == false)
+    #expect(savedOnly.contextualPhrases.contains("Qualtrics"))
+    #expect(savedOnly.lookups != nil)
+
     dictionaryOn.withLock { $0 = false }
     let off = coordinator.vocabularySnapshot()
     #expect(!off.dictionaryEnabled)

@@ -168,6 +168,7 @@ final class LearnFromEditsWiring {
   /// construct without them and behave as before).
   private let deliveryHome: ModelDeliveryHome?
   private let isOnboardingComplete: @MainActor () -> Bool
+  private let isLearningEnabled: @MainActor () -> Bool
   private let osMajor: Int
   private let afmAvailable: @MainActor () -> Bool
   private let afmDigest: String?
@@ -177,6 +178,7 @@ final class LearnFromEditsWiring {
   /// newer admission compares its generation and publishes nothing.
   private var loadGeneration: UInt64 = 0
   private var loadTask: Task<Void, Never>?
+  private var removingDeliveredJudge = false
   /// The delivery-side phase the row shows while no classifier serves.
   private var judgePhase: LearnFromEditsSettingsPresentation.JudgePhase = .none
   private var lastDeliveryState: DeliveryState = .notReady
@@ -257,6 +259,7 @@ final class LearnFromEditsWiring {
     self.afmAvailable = { [weak suggestionService] in suggestionService?.isAvailable ?? false }
     self.deliveryHome = deliveryHome
     self.isOnboardingComplete = isOnboardingComplete
+    self.isLearningEnabled = { [weak settings] in settings?.learnFromEdits ?? false }
     self.compiledCacheDirectory = compiledCacheDirectory
     // `.none` until the launch probe's policy result says otherwise: a
     // not-yet-decided row must never offer a Download the policy will refuse.
@@ -442,7 +445,10 @@ final class LearnFromEditsWiring {
   /// Remove and download again: outcome-based, no optimistic flag. A refused
   /// removal (kill switch) leaves the loaded judge in place and says why.
   private func removeAndDownload() async {
-    guard let home = deliveryHome else { return }
+    guard let home = deliveryHome, !removingDeliveredJudge else { return }
+    // A toggle can request a load while delivery is deleting the drained model.
+    removingDeliveredJudge = true
+    defer { removingDeliveredJudge = false }
     switch await home.removeEditJudge() {
     case .removed:
       lastDeliveryState = .notReady
@@ -474,7 +480,11 @@ final class LearnFromEditsWiring {
     case .verifying:
       publishPhase(.verifying)
     case .admitted:
-      loadDeliveredJudge(reason: "admitted")
+      if isLearningEnabled() {
+        loadDeliveredJudge(reason: "admitted")
+      } else {
+        publishPhase(.downloadedNotLoaded)
+      }
     case .cancelled:
       publishPhase(.cancelled)
     case .failed:
@@ -488,7 +498,9 @@ final class LearnFromEditsWiring {
   private func loadDeliveredJudge(reason: String) {
     // Single-flight: a duplicate `.admitted` never starts a second compile
     // whose handle nobody retains (round 17).
-    guard loadTask == nil else { return }
+    guard loadTask == nil, deliveredJudge == nil, !removingDeliveredJudge, isLearningEnabled(),
+      case .admitted = lastDeliveryState
+    else { return }
     guard let home = deliveryHome, let registration = home.editJudgeRegistration,
       let handle = home.editJudgeHandle
     else { return }
@@ -512,12 +524,19 @@ final class LearnFromEditsWiring {
       } catch {
         loaded = .failure(error)
       }
-      guard let self, self.loadGeneration == generation, !Task.isCancelled else { return }
-      self.loadTask = nil
+      guard let self else { return }
+      defer {
+        self.loadTask = nil
+        if self.loadGeneration != generation { self.resumeAdmittedJudge() }
+      }
+      guard self.loadGeneration == generation, !Task.isCancelled, self.isLearningEnabled()
+      else { return }
       switch loaded {
       case .failure(let error):
         await AppLogger.shared.log(
           "learn-from-edits judge load (\(reason)) failed: \(error)", category: "LearnFromEdits")
+        guard self.loadGeneration == generation, !Task.isCancelled, self.isLearningEnabled()
+        else { return }
         LearnJudgeFailureReporter.shared.reportLoadFailure(error, judgeRevision: revision)
         self.publishPhase(.loadFailed)
       case .success(let judge):
@@ -586,16 +605,8 @@ final class LearnFromEditsWiring {
   /// the contract (round 16 finding 2): nothing may still map the model when
   /// the bytes go, and no late load may re-create the compiled cache.
   private func releaseDeliveredJudge() async -> Bool {
-    loadGeneration &+= 1
-    let loading = loadTask
-    loadTask = nil
-    loading?.cancel()
-    watcher.modelBecameUnavailable()
-    let judge = deliveredJudge
-    deliveredJudge = nil
-    reselect()
-    await loading?.value
-    await judge?.drain()
+    suspendDeliveredJudge()
+    await loadTask?.value
     do {
       try CoreMLCorrectionJudge.removeCompiledModels(cacheDirectory: compiledCacheDirectory)
     } catch {
@@ -606,6 +617,28 @@ final class LearnFromEditsWiring {
     }
     publishPhase(.notInstalled)
     return true
+  }
+
+  private func suspendDeliveredJudge() {
+    loadGeneration &+= 1
+    loadTask?.cancel()
+    watcher.modelBecameUnavailable()
+    let judge = deliveredJudge
+    deliveredJudge = nil
+    if case .admitted = lastDeliveryState { judgePhase = .downloadedNotLoaded }
+    reselect()
+    if let judge {
+      loadTask = Task { [weak self] in
+        await judge.drain()
+        self?.loadTask = nil
+        self?.resumeAdmittedJudge()
+      }
+    }
+  }
+
+  private func resumeAdmittedJudge() {
+    guard judgePhase == .downloadedNotLoaded else { return }
+    loadDeliveredJudge(reason: "learning_enabled")
   }
 
   /// The learn path's vocabulary in production: every read and write goes to the words
@@ -675,6 +708,11 @@ final class LearnFromEditsWiring {
   func settingChanged(_ key: SettingsManager.SettingKey, settings: SettingsManager) {
     guard key == .learnFromEdits else { return }
     watcher.learnFromEditsChanged(isOn: settings.learnFromEdits)
+    if settings.learnFromEdits {
+      resumeAdmittedJudge()
+    } else {
+      suspendDeliveredJudge()
+    }
   }
 
   /// Each real transition into `.recording` (the pipeline-state owner calls it).

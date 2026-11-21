@@ -20,6 +20,7 @@ import Foundation
 struct WordCheckFetchPolicy: Equatable, Sendable {
   struct Inputs: Equatable, Sendable {
     var dictionaryEnabled: Bool
+    var learnedFixesEnabled: Bool = true
     var someEngineLacksOwnChecker: Bool
     var onboardingComplete: Bool
     var parakeetUsable: Bool
@@ -35,6 +36,7 @@ struct WordCheckFetchPolicy: Equatable, Sendable {
 
     enum Reason: String, Equatable, Sendable, CaseIterable {
       case dictionaryOff
+      case learnedFixesOff
       case notNeeded
       case onboardingIncomplete
       /// Raw value kept: the serialized spelling predates #3546.
@@ -48,6 +50,7 @@ struct WordCheckFetchPolicy: Equatable, Sendable {
 
   static func decide(_ inputs: Inputs) -> Decision {
     guard inputs.dictionaryEnabled else { return .hold(.dictionaryOff) }
+    guard inputs.learnedFixesEnabled else { return .hold(.learnedFixesOff) }
     guard inputs.someEngineLacksOwnChecker else { return .hold(.notNeeded) }
     guard inputs.onboardingComplete else { return .hold(.onboardingIncomplete) }
     guard inputs.parakeetUsable else { return .hold(.parakeetNotUsable) }

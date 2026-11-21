@@ -54,6 +54,16 @@ enum WhatsNewContent {
   }
 
   static let entries: [Entry] = [
+    // MARK: - v2.6.2
+
+    Entry(
+      id: "separate-dictionary-controls",
+      icon: "text.book.closed",
+      title: "Separate controls for learned words",
+      description: "Choose whether your dictionary learns new words and whether it fixes words it already learned. Words you added yourself still work when learned fixes are off.",
+      version: "2.6.2"
+    ),
+
     // MARK: - v2.6.1
 
     // Founder-approved group, 2026-11-20 (Claude Doc "EnviousWispr 2.6.1 Release Notes"). The

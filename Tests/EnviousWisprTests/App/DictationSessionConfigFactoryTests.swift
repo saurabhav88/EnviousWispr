@@ -40,6 +40,7 @@ struct DictationSessionConfigFactoryTests {
         settings: harness.settings,
         polishModel: harness.settings.polishModelID(for: harness.settings.llmProvider),
         polishWireModel: harness.settings.effectiveLLMModel,
+        fixLearnedWords: harness.settings.fixLearnedWords,
         triggerSource: source
       )
       #expect(config.triggerSource == source, "triggerSource=\(source) must pass through")
@@ -61,6 +62,7 @@ struct DictationSessionConfigFactoryTests {
       settings: harness.settings,
       polishModel: harness.settings.polishModelID(for: harness.settings.llmProvider),
       polishWireModel: harness.settings.effectiveLLMModel,
+      fixLearnedWords: harness.settings.fixLearnedWords,
       triggerSource: .pttHotkey
     )
 
@@ -73,6 +75,7 @@ struct DictationSessionConfigFactoryTests {
       settings: harness.settings,
       polishModel: harness.settings.polishModelID(for: harness.settings.llmProvider),
       polishWireModel: harness.settings.effectiveLLMModel,
+      fixLearnedWords: harness.settings.fixLearnedWords,
       triggerSource: .pttHotkey
     )
 
@@ -96,6 +99,7 @@ struct DictationSessionConfigFactoryTests {
         settings: harness.settings,
         polishModel: harness.settings.polishModelID(for: harness.settings.llmProvider),
         polishWireModel: harness.settings.effectiveLLMModel,
+        fixLearnedWords: harness.settings.fixLearnedWords,
         triggerSource: .pttHotkey)
     }
     let british = make()
@@ -125,6 +129,7 @@ struct DictationSessionConfigFactoryTests {
       settings: harness.settings,
       polishModel: harness.settings.polishModelID(for: harness.settings.llmProvider),
       polishWireModel: harness.settings.effectiveLLMModel,
+      fixLearnedWords: harness.settings.fixLearnedWords,
       triggerSource: .pttHotkey)
     #expect(config.languageMode == .auto)
     #expect(config.lockedLanguageCode == nil)
@@ -169,6 +174,7 @@ struct DictationSessionConfigFactoryTests {
       settings: harness.settings,
       polishModel: harness.settings.polishModelID(for: harness.settings.llmProvider),
       polishWireModel: harness.settings.effectiveLLMModel,
+      fixLearnedWords: harness.settings.fixLearnedWords,
       triggerSource: .pttHotkey
     )
 
@@ -181,6 +187,7 @@ struct DictationSessionConfigFactoryTests {
       settings: harness.settings,
       polishModel: harness.settings.polishModelID(for: harness.settings.llmProvider),
       polishWireModel: harness.settings.effectiveLLMModel,
+      fixLearnedWords: harness.settings.fixLearnedWords,
       triggerSource: .pttHotkey
     )
 
@@ -322,6 +329,7 @@ private struct Harness {
       settings: settings,
       polishModel: settings.polishModelID(for: settings.llmProvider),
       polishWireModel: settings.effectiveLLMModel,
+      fixLearnedWords: settings.fixLearnedWords,
       triggerSource: triggerSource
     )
   }

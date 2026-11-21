@@ -85,6 +85,9 @@ public struct DictationSessionConfig: Sendable {
   /// #3124: the spelling IN FORCE for this take (`EnglishSpelling.effective`), frozen with the
   /// language so a picker change mid-recording applies to the next take.
   public let englishSpelling: EnglishSpelling
+
+  /// Frozen when this recording is accepted.
+  public let fixLearnedWords: Bool
   /// Parakeet-only. Committed at start — there is no mid-record reconfiguration path
   /// in the dictation kernel.
   public let useStreamingASR: Bool
@@ -172,6 +175,7 @@ public struct DictationSessionConfig: Sendable {
     vadEnergyGate: Bool,
     languageMode: LanguageMode,
     englishSpelling: EnglishSpelling,
+    fixLearnedWords: Bool = true,
     useStreamingASR: Bool,
     modelUnloadPolicy: ModelUnloadPolicy,
     llmProvider: LLMProvider,
@@ -198,6 +202,7 @@ public struct DictationSessionConfig: Sendable {
     self.vadEnergyGate = vadEnergyGate
     self.languageMode = languageMode
     self.englishSpelling = englishSpelling
+    self.fixLearnedWords = fixLearnedWords
     self.useStreamingASR = useStreamingASR
     self.modelUnloadPolicy = modelUnloadPolicy
     self.llmProvider = llmProvider

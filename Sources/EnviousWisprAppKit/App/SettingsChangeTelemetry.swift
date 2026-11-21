@@ -76,6 +76,7 @@ enum SettingsProjection {
     /// adoption of a default-ON toggle is measured by who turns it OFF, and that
     /// decides whether the card is welcome. On/off only, never a word.
     case learnFromEdits = "learn_from_edits"
+    case fixLearnedWords = "fix_learned_words"
     case languageMode = "language_mode"
     /// #3124: the English spelling PREFERENCE (`american` / `british`), the adoption signal for
     /// English (UK). A closed enum value, never a language code or any dictated text.
@@ -209,6 +210,7 @@ enum SettingsProjection {
     case .casualModeEnabled: return [.casualMode]
     case .crashRecoveryEnabled: return [.crashRecovery]
     case .learnFromEdits: return [.learnFromEdits]
+    case .fixLearnedWords: return [.fixLearnedWords]
     case .languageMode: return [.languageMode]
     case .englishSpelling: return [.englishSpelling]
     case .egOneSize: return [.egOneSize]
@@ -343,6 +345,7 @@ enum SettingsProjection {
     case .egOneSize: return settings.preferredEGOneSize.rawValue
     case .crashRecovery: return onOff(settings.crashRecoveryEnabled)
     case .learnFromEdits: return onOff(settings.learnFromEdits)
+    case .fixLearnedWords: return onOff(settings.fixLearnedWords)
     case .languageMode: return languageModeLabel(settings.languageMode)
     case .englishSpelling: return settings.englishSpelling.rawValue
     case .streamingASR: return onOff(settings.useStreamingASR)

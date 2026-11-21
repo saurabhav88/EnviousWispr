@@ -1168,6 +1168,50 @@
         }
       }
     },
+    "%@'s word check couldn't download" : {
+      "comment" : "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Wortprüfung für %@ konnte nicht heruntergeladen werden"
+          }
+        }
+      }
+    },
+    "%@'s word check is downloading" : {
+      "comment" : "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Wortprüfung für %@ wird heruntergeladen"
+          }
+        }
+      }
+    },
+    "%@'s word check isn't available yet" : {
+      "comment" : "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Wortprüfung für %@ ist noch nicht verfügbar"
+          }
+        }
+      }
+    },
+    "%@'s word check isn't ready" : {
+      "comment" : "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Wortprüfung für %@ ist noch nicht einsatzbereit"
+          }
+        }
+      }
+    },
     "%@, %@" : {
       "comment" : "VoiceOver, Transcribe a File: a live count. The first %@ is its label, the second its value.",
       "localizations" : {
@@ -3291,6 +3335,17 @@
         }
       }
     },
+    "Add words when you correct your dictation. Turn this off to stop learning new words. Words you already taught can still be fixed." : {
+      "comment" : "Dictionary: explains the switch that collects learned words.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn du dein Diktat korrigierst, lernt das Wörterbuch neue Wörter. Schalte diese Option aus, damit es keine neuen Wörter mehr lernt. Bereits gelernte Korrekturen können weiterhin angewendet werden."
+          }
+        }
+      }
+    },
     "Add your %@ API key to use AI polish." : {
       "comment" : "AI Polish, leave pop-up reason. %@ is a provider name, such as OpenAI.",
       "localizations" : {
@@ -5098,6 +5153,17 @@
         }
       }
     },
+    "Available with %@" : {
+      "comment" : "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verfügbar mit %@"
+          }
+        }
+      }
+    },
     "Azerbaijani" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -6275,17 +6341,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Prüfe die Gesetze, die für dich und die Personen gelten, die du aufnimmst."
-          }
-        }
-      }
-    },
-    "Checked by: %@. Learned words are checked before they're used." : {
-      "comment" : "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Geprüft von: %@. Gelernte Wörter werden geprüft, bevor sie verwendet werden."
           }
         }
       }
@@ -11927,6 +11982,17 @@
         }
       }
     },
+    "Fix words it learned" : {
+      "comment" : "Dictionary: the switch that applies learned corrections.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gelernte Korrekturen anwenden"
+          }
+        }
+      }
+    },
     "Fixes filler words" : {
       "comment" : "Setup polish intro: a capability.",
       "localizations" : {
@@ -14781,57 +14847,13 @@
         }
       }
     },
-    "Learn-only: %@'s word check couldn't download. Learned words are saved for later." : {
-      "comment" : "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.",
+    "Learn new words" : {
+      "comment" : "Your Words, Learn from: the self-learning dictionary row: the feature's name.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nur lernen: Die Wortprüfung (%@) konnte nicht heruntergeladen werden. Gelernte Wörter werden für später gespeichert."
-          }
-        }
-      }
-    },
-    "Learn-only: %@'s word check is downloading. Learned words are saved for later." : {
-      "comment" : "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nur lernen: Die Wortprüfung (%@) wird heruntergeladen. Gelernte Wörter werden für später gespeichert."
-          }
-        }
-      }
-    },
-    "Learn-only: %@'s word check isn't available yet. Learned words are saved for later." : {
-      "comment" : "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nur lernen: Die Wortprüfung (%@) ist noch nicht verfügbar. Gelernte Wörter werden für später gespeichert."
-          }
-        }
-      }
-    },
-    "Learn-only: %@'s word check isn't ready. Learned words are saved for later." : {
-      "comment" : "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nur lernen: Die Wortprüfung (%@) ist noch nicht einsatzbereit. Gelernte Wörter werden für später gespeichert."
-          }
-        }
-      }
-    },
-    "Learn-only: This polish choice doesn't use learned words yet." : {
-      "comment" : "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nur lernen: Diese Nachbearbeitungsoption verwendet gelernte Wörter noch nicht."
+            "value" : "Neue Wörter lernen"
           }
         }
       }
@@ -20046,6 +20068,16 @@
         }
       }
     },
+    "Paused by Dictionary" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pausiert, weil das Wörterbuch deaktiviert ist"
+          }
+        }
+      }
+    },
     "Paused to free memory for other apps. Use the refresh button to restart it." : {
       "comment" : "AI Polish, local model card: the reason under the health status.",
       "localizations" : {
@@ -23619,17 +23651,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ausgewählt"
-          }
-        }
-      }
-    },
-    "Self-Learning Dictionary" : {
-      "comment" : "Your Words, Learn from: the self-learning dictionary row: the feature's name.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Selbstlernendes Wörterbuch"
           }
         }
       }
@@ -28105,6 +28126,17 @@
         }
       }
     },
+    "This polish choice can't check learned words." : {
+      "comment" : "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mit der gewählten Überarbeitungsoption können gelernte Wörter nicht geprüft werden."
+          }
+        }
+      }
+    },
     "This recording was removed from History." : {
       "comment" : "Speaker rename popover: the recording no longer exists in History, so the name was not saved.",
       "localizations" : {
@@ -28568,6 +28600,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Datei transkribieren..."
+          }
+        }
+      }
+    },
+    "Transcribe a File: %@" : {
+      "comment" : "Dictionary: word checker status for file transcription.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datei transkribieren: %@"
           }
         }
       }
@@ -29783,6 +29826,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nachbearbeitungseinstellungen für Diktate verwenden"
+          }
+        }
+      }
+    },
+    "Use learned words in new recordings and imports. Turn this off to keep using words you added yourself without applying learned corrections." : {
+      "comment" : "Dictionary: explains when the learned word fixing switch applies.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wende gelernte Korrekturen bei neuen Aufnahmen und Importen an. Wenn du diese Option ausschaltest, werden selbst hinzugefügte Wörter weiterhin berücksichtigt, solange das Wörterbuch aktiviert ist."
           }
         }
       }
@@ -35021,6 +35075,42 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "⏎"
+          }
+        }
+      }
+    },
+    "whatsNew.separate-dictionary-controls.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry separate-dictionary-controls).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Separate controls for learned words"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lernen und Korrigieren getrennt steuern"
+          }
+        }
+      }
+    },
+    "whatsNew.separate-dictionary-controls.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry separate-dictionary-controls).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose whether your dictionary learns new words and whether it fixes words it already learned. Words you added yourself still work when learned fixes are off."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lege getrennt fest, ob dein Wörterbuch neue Wörter lernt und ob es gelernte Korrekturen anwendet. Solange das Wörterbuch aktiviert ist, werden selbst hinzugefügte Wörter auch ohne gelernte Korrekturen berücksichtigt."
           }
         }
       }

@@ -1207,7 +1207,7 @@ SCAN = [
         ("toggle", "Enable Dictionary", None),
         ("section", ("Your Words", "button", "Add word"), None),
         ("section", ("Vocabulary Packs", "named", "Vocabulary Packs"), None),
-        ("section", ("Learn from...", "toggle", "Self-Learning Dictionary"), None),
+        ("section", ("Learn from...", "toggle", "Learn new words"), None),
         ("section", ("Quick Add", "named", "Highlight a word"), None),
     ]),
     ("Snippets", None, [("button", "Add snippet", None), ("button", "Import", None),

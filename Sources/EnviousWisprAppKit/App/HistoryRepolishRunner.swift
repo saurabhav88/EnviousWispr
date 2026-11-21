@@ -17,7 +17,7 @@ final class HistoryRepolishRunner {
   let choices: @MainActor (Surface) -> [HistoryPolishChoice]
   let refreshAvailability: @MainActor () async -> Void
   private let admission: EngineAdmissionAccess
-  private let freeze: @MainActor (ASRBackendType, HistoryPolishChoice) -> ImportedFileTranscriber.FrozenRun
+  private let freeze: @MainActor (ASRBackendType, HistoryPolishChoice, Bool) -> ImportedFileTranscriber.FrozenRun
   private let cleanup: ImportedFileTranscriber.Cleanup
   private let polishDictation: @MainActor (String, String?) async throws -> String?
   private let meetingInfo: @MainActor (Transcript) -> MeetingHistoryInfo?
@@ -27,7 +27,7 @@ final class HistoryRepolishRunner {
     choices: @escaping @MainActor (Surface) -> [HistoryPolishChoice],
     refreshAvailability: @escaping @MainActor () async -> Void = {},
     admission: EngineAdmissionAccess,
-    freeze: @escaping @MainActor (ASRBackendType, HistoryPolishChoice) -> ImportedFileTranscriber.FrozenRun,
+    freeze: @escaping @MainActor (ASRBackendType, HistoryPolishChoice, Bool) -> ImportedFileTranscriber.FrozenRun,
     cleanup: ImportedFileTranscriber.Cleanup,
     polishDictation: @escaping @MainActor (String, String?) async throws -> String?,
     meetingInfo: @escaping @MainActor (Transcript) -> MeetingHistoryInfo?
@@ -49,7 +49,7 @@ final class HistoryRepolishRunner {
     let info = row.isMeeting ? meetingInfo(row) : nil
     guard !row.isMeeting || info != nil else { throw Failure.unavailable }
     guard case .granted(let token) = admission.claim() else { throw Failure.busy }
-    let run = freeze(row.backendType, choice)
+    let run = freeze(row.backendType, choice, document)
     heldRun = run
     defer {
       heldRun = nil

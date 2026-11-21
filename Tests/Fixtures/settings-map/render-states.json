@@ -865,6 +865,7 @@
   "exempt": {},
   "mapped": [
    "contactsSyncOnLaunch",
+   "fixLearnedWords",
    "importContacts",
    "learnFrom",
    "selfLearningDictionary",
@@ -875,6 +876,7 @@
   "exempt": {},
   "mapped": [
    "contactsSyncOnLaunch",
+   "fixLearnedWords",
    "importContacts",
    "learnFrom",
    "selfLearningDictionary",

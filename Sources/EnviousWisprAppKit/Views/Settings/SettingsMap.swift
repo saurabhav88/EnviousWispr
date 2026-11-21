@@ -1163,6 +1163,12 @@ enum SettingsMap {
       parent: .dictionaryTabLearnFrom, destination: .dictionary, dictionaryTab: .learnFrom,
       visibility: .always, target: .selfLearningDictionary, fallbacks: []),
     SettingsMapNode(
+      id: .fixLearnedWords, structure: .item, item: .setting,
+      title: .resource(LearnFromEditsSettingsPresentation.fixesTitle),
+      description: .resource(LearnFromEditsSettingsPresentation.fixesHelp),
+      parent: .dictionaryTabLearnFrom, destination: .dictionary, dictionaryTab: .learnFrom,
+      visibility: .always, target: .fixLearnedWords, fallbacks: [.selfLearningDictionary]),
+    SettingsMapNode(
       id: .selfLearningDictionaryLearnMore, structure: .item, item: .action,
       title: .resource(LearnFromEditsSettingsPresentation.learnMoreLabelResource),
       description: nil,

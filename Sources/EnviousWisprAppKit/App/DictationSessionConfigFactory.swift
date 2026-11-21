@@ -19,6 +19,7 @@ enum DictationSessionConfigFactory {
     settings: SettingsManager,
     polishModel: LocalPolishModelID,
     polishWireModel: String,
+    fixLearnedWords: Bool,
     triggerSource: TriggerSource,
     recoverySessionID: String? = nil,
     recoveryPayload: Data? = nil
@@ -60,6 +61,7 @@ enum DictationSessionConfigFactory {
       // #3124: the EFFECTIVE value, decided once here and frozen for the take.
       englishSpelling: EnglishSpelling.effective(
         languageMode: languageMode, stored: settings.englishSpelling),
+      fixLearnedWords: fixLearnedWords,
       useStreamingASR: settings.useStreamingASR,
       modelUnloadPolicy: settings.modelUnloadPolicy,
       // #4473: provider and model from the caller's ONE capture, never a second settings read.

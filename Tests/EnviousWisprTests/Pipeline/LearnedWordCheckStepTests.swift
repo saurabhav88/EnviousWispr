@@ -58,6 +58,47 @@ struct LearnedWordCheckStepTests {
     try await step.process(TextProcessingContext(text: text, language: "en")).text
   }
 
+  @Test("turning learned fixes off keeps saved corrections and bypasses checker selection")
+  func fixingSwitchKeepsSavedCorrections() async throws {
+    let saved = CustomWord(canonical: "Mise", aliases: ["meez", "mease"], learnedAliases: ["mease"])
+    let microphone = CustomWord(canonical: "Microphone X", aliases: ["microphone"])
+    let learnedMicrophones = CustomWord(
+      canonical: "Stereo Array", aliases: ["microphones"], learnedAliases: ["microphones"],
+      learnedAt: Date(timeIntervalSince1970: 1))
+    let vocabulary = CorrectorVocabulary(terms: [tuist, saved, microphone, learnedMicrophones], generation: 1)
+    let wordCorrection = WordCorrectionStep()
+    wordCorrection.wordCorrectionEnabled = true
+    wordCorrection.correctorVocabulary = vocabulary
+    let learnedCheck = step(nil, words: vocabulary.terms)
+    var selections = 0
+    learnedCheck.selectionProvider = { _, _ in
+      selections += 1
+      return LearnedWordCheckerSelection(checker: Checker(mode: .approveAll), identity: "test")
+    }
+    let runner = TextProcessingRunner(telemetry: .silent)
+    let input = "I checked toast and meez today."
+    let steps: [any TextProcessingStep] = [wordCorrection, learnedCheck]
+
+    let on = try await runner.run(
+      rawText: input, evidence: .locked("en"), targetAppName: nil, steps: steps,
+      frozenCorrectorVocabulary: vocabulary, fixLearnedWords: true)
+    #expect(on.context.text == "I checked Tuist and Mise today.")
+    #expect(selections == 1)
+
+    let off = try await runner.run(
+      rawText: input, evidence: .locked("en"), targetAppName: nil, steps: steps,
+      frozenCorrectorVocabulary: vocabulary, fixLearnedWords: false)
+    #expect(off.context.text == "I checked toast and Mise today.")
+    #expect(selections == 1)
+    #expect(off.context.frozenCorrectorVocabulary?.terms.first?.aliases == ["meez"])
+
+    let protected = try await runner.run(
+      rawText: "Two microphones on the desk.", evidence: .locked("en"), targetAppName: nil,
+      steps: steps, frozenCorrectorVocabulary: vocabulary, fixLearnedWords: false)
+    #expect(protected.context.text == "Two microphones on the desk.")
+    #expect(selections == 1)
+  }
+
   @Test("no checker installed: the step records why and changes nothing")
   func noCheckerIsOff() async throws {
     let s = step(nil)

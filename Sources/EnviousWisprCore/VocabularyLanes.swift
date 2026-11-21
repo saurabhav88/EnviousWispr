@@ -20,9 +20,38 @@ public struct CorrectorVocabulary: Sendable, Equatable {
   public let terms: [CustomWord]
   public let generation: UInt64
 
+  /// The same generation can be read with or without its learned words.
+  package let includesLearnedWords: Bool
+
+  /// Learned triggers still protect heard text from ordinary fuzzy replacements.
+  package let correctingTerms: [CustomWord]
+
   public init(terms: [CustomWord], generation: UInt64) {
+    self.init(terms: terms, generation: generation, includesLearnedWords: true, correctingTerms: terms)
+  }
+
+  private init(
+    terms: [CustomWord], generation: UInt64, includesLearnedWords: Bool, correctingTerms: [CustomWord]
+  ) {
     self.terms = terms
     self.generation = generation
+    self.includesLearnedWords = includesLearnedWords
+    self.correctingTerms = correctingTerms
+  }
+
+  package func forLearnedFixes(_ enabled: Bool) -> CorrectorVocabulary {
+    guard !enabled, includesLearnedWords else { return self }
+    let saved = terms.compactMap { term -> CustomWord? in
+      guard term.learnedAt == nil else { return nil }
+      guard term.source != .builtin, !term.learnedAliases.isEmpty else { return term }
+      var savedTerm = term
+      let learnedAliases = Set(term.learnedAliases)
+      savedTerm.aliases.removeAll { learnedAliases.contains($0) }
+      savedTerm.learnedAliases.removeAll()
+      return savedTerm
+    }
+    return CorrectorVocabulary(
+      terms: saved, generation: generation, includesLearnedWords: false, correctingTerms: correctingTerms)
   }
 
   /// Empty initial value used at the former root state wire time before the first user mutation.

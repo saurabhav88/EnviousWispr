@@ -68,6 +68,11 @@ public struct RecordingSettingsSnapshot: Codable, Sendable, Equatable {
   /// The decode language the user had locked (or `.auto`).
   public let languageMode: LanguageMode
   public let wordCorrectionEnabled: Bool
+
+  /// Missing in snapshots from before learned fixes had their own switch.
+  public let fixLearnedWords: Bool?
+
+  package var allowsLearnedFixes: Bool { wordCorrectionEnabled && fixLearnedWords != false }
   public let fillerRemovalEnabled: Bool
   public let emojiFormatterEnabled: Bool
   /// Spoken-punctuation switch at record time (#1794). OPTIONAL: spools written before
@@ -145,6 +150,7 @@ public struct RecordingSettingsSnapshot: Codable, Sendable, Equatable {
     backendSupportsLanguageDetection: Bool,
     languageMode: LanguageMode,
     wordCorrectionEnabled: Bool,
+    fixLearnedWords: Bool? = nil,
     fillerRemovalEnabled: Bool,
     emojiFormatterEnabled: Bool,
     spokenPunctuationEnabled: Bool?,
@@ -163,6 +169,7 @@ public struct RecordingSettingsSnapshot: Codable, Sendable, Equatable {
     self.backendSupportsLanguageDetection = backendSupportsLanguageDetection
     self.languageMode = languageMode
     self.wordCorrectionEnabled = wordCorrectionEnabled
+    self.fixLearnedWords = fixLearnedWords
     self.fillerRemovalEnabled = fillerRemovalEnabled
     self.emojiFormatterEnabled = emojiFormatterEnabled
     self.spokenPunctuationEnabled = spokenPunctuationEnabled

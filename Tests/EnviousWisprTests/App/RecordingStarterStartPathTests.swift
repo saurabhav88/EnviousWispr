@@ -214,9 +214,9 @@ import Testing
     // and returns a directive (so `config.recoverySessionID` is set), simulating
     // launch recovery starting mid-`start()`.
     let makeRecoveryDirective:
-      @MainActor (SettingsManager, ASRBackendType, Bool, LocalPolishModelID, String) async -> (
+      @MainActor (SettingsManager, ASRBackendType, Bool, LocalPolishModelID, String, Bool) async -> (
         recoverySessionID: String, payload: Data
-      )? = { _, backend, _, polishModel, polishWireModel in
+      )? = { _, backend, _, polishModel, polishWireModel, _ in
         onRecoveryModel?(polishModel, polishWireModel)
         onRecoveryArm?(backend)
         duringRecoveryArm?()
