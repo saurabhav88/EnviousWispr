@@ -50,7 +50,7 @@ struct SettingsSearchVocabulary: Sendable, Equatable {
     "ko", "lt", "lv", "mt", "nl", "pl", "pt", "ro", "ru", "sk", "sl", "sv", "tr", "uk", "vi", "zh",
   ]
   /// Languages whose titles come from the interface's copy owners.
-  static let interfaceLanguages: Set<String> = ["en", "de"]
+  static let interfaceLanguages: Set<String> = ["en", "de", "fr"]
   static let resourceName = "SettingsSearchVocabulary"
 
   /// What the draft command is, for messages about a missing or renamed id.

@@ -77,12 +77,12 @@ struct SettingsSearchVocabularyTests {
     #expect(pairs == vocabulary.entries.count * Self.languages.count)
   }
 
-  @Test("English and German titles come from the interface; every other block has its own title")
+  @Test("Interface-language titles come from the interface; every other block has its own title")
   func contentShape() throws {
     let vocabulary = try Self.shipped()
     for (id, blocks) in vocabulary.entries {
       for (code, block) in blocks {
-        if code == "en" || code == "de" {
+        if SettingsSearchVocabulary.interfaceLanguages.contains(code) {
           #expect(block.title == nil, "\(id)/\(code)")
         } else {
           #expect(block.title?.isEmpty == false, "\(id)/\(code)")
@@ -407,8 +407,8 @@ struct SettingsSearchVocabularyTests {
         + "5:entry9:alpha.two6:absent0:5:words1:07:phrases1:111:phrase 2 en"
         + "15:phraseExemption6:absent0:")
     #expect(
-      vocabulary.canonicalText(language: "fr").hasSuffix(
-        "5:entry9:alpha.two7:present10:title 2 fr5:words1:07:phrases1:111:phrase 2 fr"
+      vocabulary.canonicalText(language: "es").hasSuffix(
+        "5:entry9:alpha.two7:present10:title 2 es5:words1:07:phrases1:111:phrase 2 es"
           + "15:phraseExemption6:absent0:"))
   }
 
@@ -426,13 +426,13 @@ struct SettingsSearchVocabularyTests {
     let base = try Self.fixtureVocabulary()
     func with(_ phrases: [String]) -> SettingsSearchVocabulary {
       var entries = base.entries
-      entries["alpha.one"]?["fr"] = .init(
-        title: "title 1 fr", words: [], phrases: phrases, phraseExemption: nil)
+      entries["alpha.one"]?["es"] = .init(
+        title: "title 1 es", words: [], phrases: phrases, phraseExemption: nil)
       return SettingsSearchVocabulary(
         version: 1, languageData: base.languageData, entries: entries, byteCount: 0)
     }
     #expect(
-      with(left).contentHash(language: "fr") != with(right).contentHash(language: "fr"), "\(name)")
+      with(left).contentHash(language: "es") != with(right).contentHash(language: "es"), "\(name)")
   }
 
   // MARK: - Rejections
@@ -502,8 +502,8 @@ struct SettingsSearchVocabularyTests {
     .init(name: "repeated word", expected: "\"w\" appears twice") {
       editingBlock("fr", &$0) { $0["words"] = ["w", "w"] }
     },
-    .init(name: "blank title", expected: "alpha.one/fr.title: missing or blank") {
-      editingBlock("fr", &$0) { $0["title"] = " " }
+    .init(name: "blank title", expected: "alpha.one/es.title: missing or blank") {
+      editingBlock("es", &$0) { $0["title"] = " " }
     },
     .init(name: "English title", expected: "alpha.one/en.title: en titles come from the interface")
     {

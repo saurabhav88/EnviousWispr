@@ -271,8 +271,8 @@
  "retiredIDs": [],
  "resource": {
   "path": "Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json",
-  "sha256": "a1f3564189c4977d2af54bacbd4931f022eb117b096bcbb1ab4b9e7158fe394d",
-  "bytes": 1911112
+  "sha256": "e3699c870128d2d978cb3844ab77161c7b3d1c7165701147dd6b93b5931df1f9",
+  "bytes": 1900607
  },
  "sources": [
   {
@@ -12778,7 +12778,7 @@
   },
   {
    "language": "fr",
-   "contentSHA256": "bf1a8f01b8619e92c426453217615b10f3d5f9197291146f01ff9d4f24b5ac2d",
+   "contentSHA256": "67119c564401cd34a4195d7524f2051111dd9bb1eb30417ef9f922ac06d6da1f",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -13969,6 +13969,16 @@
       "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
      },
      "disposition": "fr: The queries naturally distinguish the written text from the act of dictating."
+    },
+    {
+     "kind": "french-interface-migration",
+     "method": "#3142 French slice: French titles moved to the String Catalog; three runtime-named places' words reviewed by the GPT + Gemini council (session fr-vocab-x2-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-2026-11-21.md",
+      "sha256": "f646b7d6d32be26e8ec3d54b47978ec950bce11ffcf3cfe4fa7117c40e9e31a7"
+     },
+     "disposition": "French titles removed from shipped blocks; words and phrases kept; three word edits adopted as recorded in reviewed-edits.json"
     }
    ],
    "phraseExemptions": []

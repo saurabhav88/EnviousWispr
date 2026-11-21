@@ -25,7 +25,11 @@ import pathlib
 import sys
 import unicodedata
 
-INTERFACE = ("en", "de")
+# The Phase 0 English/German review record (`phase0/ende`) covers exactly these two languages.
+PHASE0_ENDE = ("en", "de")
+# Languages whose shipped titles come from the app's own interface text, so shipped blocks carry
+# no title (#3142 French slice added "fr"; its reviewed words still come from `phase0/intl`).
+INTERFACE = ("en", "de", "fr")
 DECLARED = [
     "ar", "bg", "cs", "da", "de", "el", "en", "es", "et", "fi", "fr", "hi", "hr", "hu", "it", "ja",
     "ko", "lt", "lv", "mt", "nl", "pl", "pt", "ro", "ru", "sk", "sl", "sv", "tr", "uk", "vi", "zh",
@@ -85,10 +89,10 @@ def main():
     }
     mapped = {i["id"] for i in inventory["items"] if i["disposition"] == "mapped"}
 
-    reviewed = {code: {} for code in INTERFACE}
+    reviewed = {code: {} for code in PHASE0_ENDE}
     for part in sorted((args.phase0 / "ende").glob("review-a?.txt")):
         for entry_id, by_language in answer(part).items():
-            for code in INTERFACE:
+            for code in PHASE0_ENDE:
                 if entry_id in reviewed[code]:
                     sys.exit(f"{part}: {entry_id} reviewed twice")
                 reviewed[code][entry_id] = by_language[code]

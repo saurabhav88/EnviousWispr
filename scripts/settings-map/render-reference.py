@@ -42,10 +42,23 @@ def code(text):
     return f"`{text}`"
 
 
+# English names of the interface languages a reference may list, in export order.
+LANGUAGE_NAMES = {"en": "English", "de": "German", "fr": "French"}
+INTERFACE_ORDER = list(LANGUAGE_NAMES)
+
+
+def resource_text(resource):
+    """A resource's text in every interface language it carries, joined in export order."""
+    present = [c for c in INTERFACE_ORDER if c in resource]
+    if not present:
+        fail(f"resource {resource.get('key')!r} carries no interface language")
+    return " / ".join(escape(resource[c]) for c in present)
+
+
 def title_text(title):
     source = title["source"]
     if source == "resource":
-        return f"{escape(title['en'])} / {escape(title['de'])}"
+        return resource_text(title)
     if source == "verbatim":
         return escape(title["text"])
     if source == "dynamic":
@@ -57,7 +70,7 @@ def description_text(description):
     if description is None:
         return "none"
     if description["source"] == "resource":
-        return f"{escape(description['en'])} / {escape(description['de'])}"
+        return resource_text(description)
     if description["source"] == "runtime":
         return "composed at display time from live state (not exported)"
     fail(f"unknown description source {description['source']!r}")
@@ -113,6 +126,11 @@ def render(document):
         children.setdefault(n["parent"], []).append(n["id"])
     sources, fingerprints, counts = document["sources"], document["fingerprints"], document["counts"]
     other = [c for c in document["languages"] if c not in document["interfaceLanguages"]]
+    unknown = [c for c in document["interfaceLanguages"] if c not in LANGUAGE_NAMES]
+    if unknown:
+        fail(f"no English name for interface language(s) {unknown}")
+    names = [LANGUAGE_NAMES[c] for c in document["interfaceLanguages"]]
+    spoken = names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
 
     out = [
         "# Settings Map",
@@ -122,12 +140,12 @@ def render(document):
         "- Regenerate: `scripts/settings-map/export.sh`",
         "- Check: `scripts/settings-map/export.sh --check` (CI runs the same comparison)",
         f"- Map: [{sources['map']}]({LINK_ROOT}{sources['map']}); runtime titles: [{sources['titleResolver']}]({LINK_ROOT}{sources['titleResolver']})",
-        f"- Interface text: [{sources['uiCatalog']}]({LINK_ROOT}{sources['uiCatalog']}) (English and German)",
+        f"- Interface text: [{sources['uiCatalog']}]({LINK_ROOT}{sources['uiCatalog']}) ({spoken})",
         f"- Search vocabulary: [{sources['vocabulary']}]({LINK_ROOT}{sources['vocabulary']})",
         "- Machine-readable export with every field and all vocabulary: [settings-map.json](settings-map.json)",
         "- Authoring and review: [scripts/settings-map/README.md](../scripts/settings-map/README.md)",
         "",
-        f"The interface ships in English and German. The other {len(other)} languages ({', '.join(other)}) are search metadata only: words and titles people may type, matched against the same places. Titles below read English / German.",
+        f"The interface ships in {spoken}. The other {len(other)} languages ({', '.join(other)}) are search metadata only: words and titles people may type, matched against the same places. Titles below read {' / '.join(names)}.",
         "",
         f"{counts['nodes']} nodes, {counts['searchable']} searchable, {counts['vocabularyBlocks']} vocabulary blocks.",
         "",
