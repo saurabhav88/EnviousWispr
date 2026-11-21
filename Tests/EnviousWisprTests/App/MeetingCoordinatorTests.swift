@@ -565,10 +565,12 @@ struct MeetingCoordinatorTests {
     }
   }
 
-  static func result(text: String = "hello there") -> MeetingTranscriptionJob.Result {
+  static func result(
+    text: String = "hello there", turns: [Turn] = []
+  ) -> MeetingTranscriptionJob.Result {
     MeetingTranscriptionJob.Result(
       composition: MeetingComposition(
-        text: text, turns: [], speakerNames: [:], echoTurnIDs: ["mic-3"], speakerCount: 1),
+        text: text, turns: turns, speakerNames: [:], echoTurnIDs: ["mic-3"], speakerCount: 1),
       speakerOutcomes: [.microphone: .single], forcedCuts: 0, failedPieces: 0, failedRanges: [:],
       resumedPieces: 0, checkpointSaveFailures: 0, yieldCount: 0, processingSeconds: 1,
       audioSeconds: 1, resolved: placeholderResolved)
@@ -2171,6 +2173,101 @@ struct MeetingCoordinatorTests {
     #expect(try harness.store.load(id: crashed.id).segments[.microphone]?.count == 1)
     #expect(try Data(contentsOf: harness.store.recordURL(for: ready.id)) == readyBytes)
     #expect(harness.removedRows == [deleted.transcriptID])
+  }
+
+  @Test(
+    "a second interruption stops automatic meeting transcription and leaves a manual retry",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4388", "meeting launch crash loop"))
+  func launchStopsAfterInterruptedAutomaticRetry() async throws {
+    let initial = try Harness()
+    initial.jobBehavior = { _ in
+      let text = "hello there"
+      return Self.result(
+        text: text,
+        turns: [
+          Turn(
+            id: "mic-1", speakerId: "mic:1", startMs: 0, endMs: 500,
+            originalTextRange: 0..<text.utf16.count)
+        ])
+    }
+    let original = initial.coordinator
+    await original.start(from: .history)
+    let id = try onlyMeeting(initial).id
+    await original.stop(reason: .user)
+    await Self.livePassFinished(original, id)
+    let prior = try #require(initial.saved.first)
+    let priorGeneration = try #require(prior.meetingTranscriptAttemptID)
+    let audio = try initial.store.segmentFiles(meeting: id).map { try Data(contentsOf: $0.url) }
+    try #require(audio.isEmpty == false)
+    initial.historyFiles[prior.id] = prior
+
+    let firstPass = Gate()
+    defer { firstPass.open() }
+    initial.jobBehavior = { _ in
+      await firstPass.wait()
+      throw MeetingTranscriptionJob.JobError.cancelled
+    }
+    await Self.transcribeAgainOnceOffered(original, meetingID: id)
+    await Self.eventually("original rerun started") { firstPass.parked }
+    try #require(initial.store.load(id: id).state == .processing)
+    let resumed = try Harness(copying: initial.root)
+    original.prepareForTermination()
+    firstPass.open()
+
+    let automaticPass = Gate()
+    defer { automaticPass.open() }
+    resumed.historyFiles[prior.id] = prior
+    resumed.jobBehavior = { _ in
+      await automaticPass.wait()
+      throw MeetingTranscriptionJob.JobError.cancelled
+    }
+    let firstRelaunch = resumed.coordinator
+    firstRelaunch.launch()
+    await Self.eventually("automatic retry started") { automaticPass.parked }
+    try #require(resumed.store.load(id: id).state == .processing)
+    let exhausted = try Harness(copying: resumed.root)
+    firstRelaunch.prepareForTermination()
+    automaticPass.open()
+
+    exhausted.historyFiles[prior.id] = prior
+    exhausted.jobBehavior = { _ in Self.result(text: "replacement transcript") }
+    let secondRelaunch = exhausted.coordinator
+    secondRelaunch.launch()
+    // On the parent, an unexpected additional automatic pass finishes and becomes ready.
+    // Both outcomes reach this same settled signal, so the state assertion detects the bug.
+    await Self.eventually("manual retry available after launch") {
+      secondRelaunch.canTranscribeAgain(id) && !secondRelaunch.hasFinalPassWork
+    }
+    let failed = try exhausted.store.load(id: id)
+    try #require(failed.state == .failed, "a second automatic retry must not run")
+    #expect(exhausted.jobs.isEmpty)
+    #expect(failed.audioKept)
+    #expect(try exhausted.store.segmentFiles(meeting: id).map { try Data(contentsOf: $0.url) } == audio)
+    let previousRow = try #require(exhausted.historyFiles[failed.transcriptID])
+    let previousProjection = MeetingHistoryPresentation.project(
+      previousRow, info: MeetingHistoryInfo.paired(with: failed), showEcho: true)
+    #expect(MeetingHistoryPresentation.previewText(previousProjection).contains(prior.text))
+    #expect(secondRelaunch.playbackSource(meetingID: id) != nil)
+
+    // A capture that was interrupted can still have only its recording checkpoint on disk.
+    // In that case the same failure offers Retry but must never advertise partial playback.
+    let interrupted = try Harness(copying: exhausted.root)
+    var checkpoint = failed
+    checkpoint.wasInterrupted = true
+    try interrupted.store.save(checkpoint)
+    let interruptedLaunch = interrupted.coordinator
+    interruptedLaunch.launch()
+    await Self.eventually("interrupted recording can be transcribed again") {
+      interruptedLaunch.canTranscribeAgain(id)
+    }
+    #expect(interruptedLaunch.playbackSource(meetingID: id) == nil)
+
+    await Self.transcribeAgainOnceOffered(secondRelaunch, meetingID: id)
+    await Self.livePassFinished(secondRelaunch, id, replacing: priorGeneration)
+    let replacement = try #require(exhausted.saved.first)
+    #expect(replacement.id == prior.id)
+    #expect(replacement.text == "replacement transcript")
+    #expect(replacement.meetingTranscriptAttemptID != priorGeneration)
   }
 
   @Test("a meeting written by a newer build is listed but never recovered or rewritten")

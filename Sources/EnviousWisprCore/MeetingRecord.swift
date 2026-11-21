@@ -216,6 +216,9 @@ public struct MeetingRecord: Sendable, Equatable, Codable, Identifiable {
   /// #3973 C2: the attempt still to finish (queued, processing, or failed and resumable); nil
   /// once its transcript committed. Never the attempt the shown transcript came from.
   public var pendingAttempt: MeetingAttemptConfiguration?
+  /// True once launch recovery queued the current final pass's one automatic retry.
+  /// Missing on older records and new attempts.
+  package var didUseAutomaticFinalPassRetry: Bool?
   /// #3973 C2: what `pendingAttempt` resolved to, once it did.
   public var resolvedAttempt: MeetingResolvedAttempt?
   /// #3973 C2: the committed transcript's attempt, its requested and used engine and why they
@@ -268,6 +271,7 @@ public struct MeetingRecord: Sendable, Equatable, Codable, Identifiable {
     transcriptEngineUsed = resolved.resolvedEngine
     transcriptEngineFallbackReason = resolved.fallbackReason
     pendingAttempt = nil
+    didUseAutomaticFinalPassRetry = nil
     resolvedAttempt = nil
   }
 
@@ -314,6 +318,7 @@ public struct MeetingRecord: Sendable, Equatable, Codable, Identifiable {
     self.callAppRaw = nil
     self.transcriptLanguage = nil
     self.pendingAttempt = nil
+    self.didUseAutomaticFinalPassRetry = nil
     self.resolvedAttempt = nil
     self.committedTranscriptAttemptID = nil
     self.requestedTranscriptEngine = nil

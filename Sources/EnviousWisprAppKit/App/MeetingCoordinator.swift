@@ -699,6 +699,7 @@ final class MeetingCoordinator {
 
   /// Minimum free space to start or keep recording, and to start a pass.
   static let diskFloorBytes: Int64 = 1_000_000_000
+  private static let interruptedAutomaticRetry = "automatic_retry_interrupted"
 
   init(dependencies: Dependencies) {
     self.deps = dependencies
@@ -782,10 +783,11 @@ final class MeetingCoordinator {
     guard let record = records[meetingID], record.audioKept, !deleting.contains(meetingID),
       !closeOwned.contains(meetingID), !record.deletionRequested, record.state != .recording,
       record.state != .stopping,
-      // #4118: an interrupted meeting's saved list may be only its recording checkpoint until
-      // its pass rebuilds the list from the files.
+      // #4118: an interrupted meeting's saved list may be only its recording checkpoint.
+      // If automatic recovery stopped, keep playback unavailable until a manual pass rebuilds it.
       !(record.wasInterrupted == true
-        && ([.queued, .processing, .interrupted] as [MeetingState]).contains(record.state))
+        && (([.queued, .processing, .interrupted] as [MeetingState]).contains(record.state)
+          || (record.state == .failed && record.failureCode == Self.interruptedAutomaticRetry)))
     else { return nil }
     switch phase {
     case .recording(let id, _), .stopping(let id):
@@ -870,7 +872,7 @@ final class MeetingCoordinator {
     }
     if notice == .storageFailed { notice = nil }
     fileWorkInFlight -= 1
-    var loaded: [UUID] = []
+    var loaded: [MeetingRecord] = []
     for listing in listings {
       switch listing {
       case .meeting(let record):
@@ -878,7 +880,7 @@ final class MeetingCoordinator {
         guard live[record.id] == nil else { continue }
         live[record.id] = record
         records[record.id] = record
-        loaded.append(record.id)
+        loaded.append(record)
       case .newerFormat(let header):
         if !newerFormatMeetings.contains(where: { $0.id == header.id }) {
           newerFormatMeetings.append(header)
@@ -889,35 +891,51 @@ final class MeetingCoordinator {
     // #3973 C2: commit receipts are settled before History, the queue, summaries or audio
     // cleanup read these meetings. Committed ones pair History's previous row with its own
     // facts until published below; uncommitted ones are dropped.
-    let committedReceipts = await reconcileReceipts(loaded)
+    let loadedIDs = loaded.map(\.id)
+    let committedReceipts = await reconcileReceipts(loadedIDs)
     publish()
     for receipt in committedReceipts where isStillOwned(receipt.meetingID) {
       _ = await publishCommitted(receipt, atLaunch: true)
     }
-    let toRead = loaded
     // #3973 C2: a meeting whose committed row could not be published keeps its owed summary
     // for the launch that publishes it; resumed now it would find no transcript and drop it.
-    let ready = loaded.filter {
+    let ready = loadedIDs.filter {
       live[$0]?.state == .ready && live[$0]?.deletionRequested != true
         && unpublishedReceipts[$0] == nil
     }
     Task { [weak self] in
-      for meetingID in toRead { await self?.documents.load(meetingID) }
+      for meetingID in loadedIDs { await self?.documents.load(meetingID) }
       await self?.summaries?.resumeOwed(readyMeetingIDs: ready)
     }
-    for meetingID in loaded {
-      guard !quitting, var record = live[meetingID], meetingID != activeMeetingID else {
+    for loadedRecord in loaded {
+      let meetingID = loadedRecord.id
+      guard !quitting, let current = live[meetingID], meetingID != activeMeetingID else {
         continue
       }
-      if record.deletionRequested {
+      if current.deletionRequested {
         // Its attempt ended when it was marked, in the session that marked it.
         Task { await delete(meetingID: meetingID) }
         continue
       }
       // An audio deletion an exit or a failure cut short is finished (its record already says
       // the audio is gone).
-      if !record.audioKept, record.isWritableByThisBuild {
+      if !current.audioKept, current.isWritableByThisBuild {
         await finishAudioDeletion(meetingID)
+      }
+      guard var record = live[meetingID] else { continue }
+      if record.state == .processing {
+        // A queued record may have started in this process while the scan was awaiting I/O.
+        // Only a pass already processing in the saved snapshot is launch recovery's to resume.
+        guard loadedRecord.state == .processing, processing?.meetingID != meetingID,
+          isStillOwned(meetingID),
+          record.audioKept, !record.deletionRequested, !unresolvedReceipts.contains(meetingID)
+        else { continue }
+        if record.didUseAutomaticFinalPassRetry == true {
+          record.state = .failed
+          record.failureCode = Self.interruptedAutomaticRetry
+          await persist(record)
+          continue
+        }
       }
       if ![.ready, .failed, .notesOnly].contains(record.state) {
         // Unfinished: the same attempt, its start facts unknown after the relaunch.
@@ -930,6 +948,8 @@ final class MeetingCoordinator {
         if record.endedAt == nil { record.endedAt = Date() }
         await persist(record)
       case .processing:
+        // Reserve the retry in the same durable write that makes it visible to the queue.
+        record.didUseAutomaticFinalPassRetry = true
         record.state = .queued
         await persist(record)
       case .queued, .ready, .failed, .notesOnly:
@@ -2180,7 +2200,8 @@ final class MeetingCoordinator {
       meetingID,
       attempt: MeetingAttemptConfiguration(
         requestedEngine: engine, language: deps.meetingLanguage(),
-        supports: deps.engineSupportsLanguage))
+        supports: deps.engineSupportsLanguage),
+      startsNewAttempt: true)
   }
 
   /// #3973 C3: the engines Transcribe again offers: the ready ones, the Transcript engine
@@ -2197,11 +2218,15 @@ final class MeetingCoordinator {
   func resumeAttempt(meetingID: UUID) async -> Bool {
     if let launchTask { await launchTask.value }
     guard canTranscribeAgain(meetingID), let record = live[meetingID] else { return false }
-    return await queue(meetingID, attempt: record.pendingAttempt ?? record.attemptFromStartValues())
+    return await queue(
+      meetingID, attempt: record.pendingAttempt ?? record.attemptFromStartValues(),
+      startsNewAttempt: false)
   }
 
   /// Queues `attempt` for the meeting and starts the queue.
-  private func queue(_ meetingID: UUID, attempt: MeetingAttemptConfiguration) async -> Bool {
+  private func queue(
+    _ meetingID: UUID, attempt: MeetingAttemptConfiguration, startsNewAttempt: Bool
+  ) async -> Bool {
     guard canTranscribeAgain(meetingID), var record = live[meetingID] else { return false }
     if record.state == .queued, record.pendingAttempt == attempt {
       // Left queued (a full disk, or a pass whose first save failed): nothing to save, the
@@ -2209,6 +2234,8 @@ final class MeetingCoordinator {
       startQueueIfNeeded()
       return true
     }
+    // A legacy continuation can synthesize an ID without being a new user attempt.
+    if startsNewAttempt { record.didUseAutomaticFinalPassRetry = nil }
     record.beginAttempt(attempt)
     record.state = .queued
     guard await persist(record) else { return false }
