@@ -119,20 +119,23 @@ struct EscapeRecoveryCompletionProducerTests {
     /// context is gone. So the payload must carry the take's window and Smart Insertion facts,
     /// frozen at capture. The reported language comes from the SAVED row: the adapter's result
     /// here deliberately says something else, so reading the wrong source fails this case.
-    @Test("the payload freezes this take's window and Smart Insertion facts (#3437)")
-    func payloadFreezesTakeFacts() async throws {
+    @Test("Undo freezes this take's window and the language of the accepted text (#3437)",
+          arguments: [nil, .english] as [DictationTranslationTarget?])
+    func payloadFreezesTakeFacts(acceptedTranslation: DictationTranslationTarget?) async throws {
       let h = makeDriver()
       let context = h.driver.contextForTesting
       context.config = .testDefault(languageMode: .locked("de"))
       context.protectedSpellings = ["Zorblax"]
       context.snippetExpansionFired = true
+      h.outcome.acceptedTranslationTarget = acceptedTranslation
       let window = AXUIElementCreateApplication(5001)
       context.targetWindow = window
       h.adapter.detectsLanguage = true
       h.adapter.lastResult = ASRResult(
         text: "x", language: "fr", duration: 0.5, processingTime: 0.1, backendType: .parakeet)
       let saved = Transcript(
-        text: "kept text", language: "es", processingTime: 1, backendType: .parakeet,
+        text: "kept text", polishedText: acceptedTranslation.map { _ in "Bring the papers." },
+        language: "es", processingTime: 1, backendType: .parakeet,
         escapeRecoveredAt: Date(), escapeRecoveryTakeID: "take-1")
       // The driver fires its state change AFTER the capture and the context clear, so this is the
       // subject's own signal that both have run.
@@ -145,7 +148,8 @@ struct EscapeRecoveryCompletionProducerTests {
 
       let payload = try #require(h.driver.takeEscapeRecoveryCompletion()?.payload)
       let expected = InsertionTakeFacts(
-        snippetFired: true, lockedLanguageCode: "de", engineDetectsLanguage: true,
+        snippetFired: true, lockedLanguageCode: acceptedTranslation?.rawValue ?? "de",
+        engineDetectsLanguage: true,
         engineReportedLanguage: "es", protectedSpellings: ["Zorblax"])
       #expect(payload.takeFacts == expected)
       #expect(payload.targetWindow.map { CFEqual($0, window) } == true)
