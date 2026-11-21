@@ -24,6 +24,20 @@ struct AppLanguagePreferenceTests {
     #expect(preference.languages == ["en", "de"])
   }
 
+  /// #3142 French slice: a bundle that ships French offers it after English, named in French,
+  /// and a regional French list from System Settings resolves to the shipped "fr".
+  @Test("A bundle shipping French offers Français, and a regional French override reads as fr")
+  func offersShippedFrench() {
+    let (preference, defaults, suite) = Self.preference(shipped: ["Base", "de", "en", "fr"])
+    defer { UserDefaults.standard.removePersistentDomain(forName: suite) }
+    #expect(preference.languages == ["en", "de", "fr"])
+    #expect(AppLanguagePreference.name(of: "fr") == "Français")
+    defaults.set(["fr-CA"], forKey: "AppleLanguages")
+    #expect(preference.choice == "fr")
+    preference.choose("fr")
+    #expect(defaults.persistentDomain(forName: suite)?["AppleLanguages"] as? [String] == ["fr"])
+  }
+
   @Test("Nothing chosen reads as System default")
   func nothingChosenIsSystemDefault() {
     let (preference, _, suite) = Self.preference()
