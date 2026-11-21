@@ -3,21 +3,8 @@ import EnviousWisprAudio
 
 @testable import EnviousWisprPipeline
 
-/// #1854 Phase 1. Pins what the capture-session identity fence does and does
-/// NOT protect, now that `FakeAudioCapture` models it faithfully.
-///
-/// The fence lives in `AudioCaptureManager.stopCapture(sessionID:)` and refuses
-/// a stop whose id is not the live one. Its own comment states the limit this
-/// issue exists to close:
-///
-/// > `0` stays valid: it is the id of a prepared-but-never-armed engine, whose
-/// > cleanup must be allowed through or the engine leaks. This guard cannot
-/// > identify that prepared interval; callers must separately gate it using
-/// > lifecycle ownership.
-///
-/// Until now the fake ignored `sessionID` entirely, so every stale stop landed
-/// and a test could not tell "production would have fenced this" from "this is
-/// the hole". Both showed up as the capture stopping. These tests separate them.
+/// Keeps the simulator's stop-ID equality controls. The production
+/// preparation handoff is exercised by `AudioCaptureManagerStopFenceTests`.
 @MainActor
 @Suite("Capture session fence (#1854 Phase 1)")
 struct CaptureSessionFenceTests {
@@ -44,40 +31,6 @@ struct CaptureSessionFenceTests {
     // would be taking credit for a guard that already exists.
     #expect(capture.stopCaptureRefusedCallCount == 1)
     #expect(capture.isCapturing, "the newer capture must survive a stale stop")
-  }
-
-  @Test("a stale stop DURING the successor's prepared interval is NOT refused")
-  func staleStopDuringPreparedIntervalIsNotRefused() async throws {
-    let capture = FakeAudioCapture()
-
-    // Predecessor arms. Counter is 1.
-    try await capture.startEnginePhase(startDeadline: MicrophoneStartBudget.deadline(from: .now))
-    _ = try await capture.beginCapturePhase(recoveryPayload: nil)
-    let ownedSessionID = capture.currentCaptureSessionID
-
-    // The successor prepares the engine but has NOT armed yet — exactly the
-    // interval cloud review reached independently on PR #1855. `startEnginePhase`
-    // does not bump the counter, so it still reads the PREDECESSOR's id.
-    try await capture.startEnginePhase(startDeadline: MicrophoneStartBudget.deadline(from: .now))
-    #expect(
-      capture.currentCaptureSessionID == ownedSessionID,
-      "preparing a successor must not bump the counter — that is the premise")
-
-    // The predecessor's detached cleanup lands now, carrying the id it
-    // snapshotted synchronously at terminal time (`RecordingSessionKernel`
-    // :3797). That id still matches, so the fence has nothing to catch it with.
-    _ = await capture.stopCapture(sessionID: ownedSessionID)
-
-    // THE HOLE, pinned. Not refused, and the engine the successor just prepared
-    // is now stopped. `AudioCaptureManager`'s own comment predicts exactly this:
-    // the guard cannot identify the prepared interval, so the caller must gate
-    // it by lifecycle ownership — which is Phase 2.
-    #expect(
-      capture.stopCaptureRefusedCallCount == 0,
-      "the identity fence cannot see this interval — that is the defect")
-    #expect(
-      !capture.isCapturing,
-      "the successor's prepared engine was stopped by its predecessor's cleanup")
   }
 
   @Test("a prepared-but-never-armed cleanup still gets through")

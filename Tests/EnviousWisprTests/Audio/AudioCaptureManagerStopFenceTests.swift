@@ -10,14 +10,13 @@ import Testing
 // whole suite is DEBUG-only — the Release test-target lane must not compile it.
 #if DEBUG
 
-  // MARK: - #1579 — the armed-session identity fence on the terminal stop.
+  // MARK: - #1579 and #1854: capture ownership on terminal stop.
   //
   // `stopCapture(sessionID:)` must be a TOTAL no-op when the id names a session
   // that is no longer current, because every statement in its body mutates
   // session-scoped state: a stale stop would clear a newer take's accumulated
   // samples and deactivate its source. These tests drive the REAL
-  // `AudioCaptureManager`, not a `FakeAudioCapture` — the fake is a pass-through
-  // recorder and would test itself rather than the guard.
+  // `AudioCaptureManager` so they exercise the production ownership check.
   //
   // Every test here is TWO-WAY on purpose (`validation-discipline.md`
   // RULE: a-guard-nothing-arms-is-not-a-guard): a fence that refuses EVERYTHING
@@ -70,14 +69,22 @@ import Testing
         return boundToReturn
       }
       func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> {
-        AsyncStream { $0.finish() }
+        guard running else {
+          throw AudioError.formatCreationFailed(source: "StopFenceTests.sourceNotRunning")
+        }
+        guard !isCapturing else { throw AudioError.alreadyCapturing }
+        isCapturing = true
+        return AsyncStream { $0.finish() }
       }
       func stop() async -> [Float] {
         stopCallCount += 1
         running = false
         return []
       }
-      func deactivateCapture() { deactivateCallCount += 1 }
+      func deactivateCapture() {
+        deactivateCallCount += 1
+        isCapturing = false
+      }
       func waitForFormatStabilization(maxWait: TimeInterval, pollInterval: TimeInterval) async
         -> Bool
       {
@@ -138,16 +145,56 @@ import Testing
       #expect(stub.deactivateCallCount == 1, "the accepted stop deactivates its own source")
     }
 
+    @Test(
+      "Delayed cleanup leaves the next prepared microphone able to record",
+      .bug("https://github.com/saurabhav88/EnviousWispr/issues/1854"),
+      arguments: [false, true]
+    )
+    func delayedCleanupLeavesSuccessorReady(usesPreWarm: Bool) async throws {
+      let manager = AudioCaptureManager()
+      manager.warmEnginePolicy = .off
+      manager.installRouteResolverForTesting(
+        CaptureRouteResolver(defaultOutputDeviceID: { nil }, isBluetoothOutputDevice: { _ in false }))
+
+      let predecessor = StubSource()
+      _ = try await predecessor.startCapture()
+      manager.installCapturedSourceForTesting(predecessor, sessionID: 8)
+      manager.isCapturing = true
+      manager.ingestSamples([1, 2], level: 0.5)
+      let outgoingID = manager.currentCaptureSessionID
+
+      let successor = StubSource()
+      manager.installSourceFactoryForTesting { _ in successor }
+      let deadline = MicrophoneStartBudget.deadline(from: .now)
+      if usesPreWarm {
+        try await manager.preWarm(startDeadline: deadline)
+      } else {
+        try await manager.startEnginePhase(startDeadline: deadline)
+      }
+      try #require(successor.prepareCallCount == 1)
+
+      // Deliver the old task's stop before the successor arms. For PTT this
+      // must happen before startEnginePhase could mask a missing prewarm handoff.
+      _ = await manager.stopCapture(sessionID: outgoingID)
+      try #require(
+        successor.deactivateCallCount == 0, "delayed cleanup deactivated the successor")
+      #expect(predecessor.deactivateCallCount == 1, "handoff stopped the outgoing capture")
+      #expect(predecessor.isCapturing == false)
+
+      _ = try await manager.beginCapturePhase()
+      #expect(successor.isCapturing)
+      manager.ingestSamples([3, 4], level: 0.5)
+      let result = await manager.stopCapture(sessionID: manager.currentCaptureSessionID)
+      #expect(result.samples == [3, 4])
+      #expect(successor.deactivateCallCount == 1, "the successor's own stop was accepted")
+    }
+
     // MARK: - 3. Control: a prepared-but-never-armed engine is still stoppable
     //
-    // The regression this test exists for: `beginCapturePhase` is what advances
-    // the counter, so an engine that was PREPARED and then cancelled has session
-    // id 0. An earlier draft of this fence keyed on "the id I got when I armed",
-    // which does not exist on this path — it would have refused the cleanup and
-    // left the prepared engine running. Reached through the real
-    // `startEnginePhase()`, not by hand-installing the end state.
+    // A take can end between prepare and arm. Its cleanup still owns the
+    // prepared source and must apply that take's teardown policy.
 
-    @Test("prepared engine, capture never armed → stop with id 0 is ACCEPTED, not fenced out")
+    @Test("Prepared microphone can be stopped before capture starts")
     func preparedButUnarmedEngineIsStoppable() async throws {
       let manager = AudioCaptureManager()
       let stub = StubSource()
@@ -160,11 +207,10 @@ import Testing
       try await manager.startEnginePhase(startDeadline: MicrophoneStartBudget.deadline(from: .now))
 
       #expect(stub.prepareCallCount == 1, "the engine really was prepared through startEnginePhase")
-      #expect(
-        manager.currentCaptureSessionID == 0,
-        "capture was never armed, so the counter has not advanced")
+      let preparedID = manager.currentCaptureSessionID
+      #expect(preparedID != 0, "preparation claimed the source before arming")
 
-      let result = await manager.stopCapture(sessionID: 0)
+      let result = await manager.stopCapture(sessionID: preparedID)
 
       #expect(result.samples.isEmpty, "nothing was captured, so there is nothing to return")
       #expect(stub.deactivateCallCount == 1, "the stop was ACCEPTED, not fenced out")
