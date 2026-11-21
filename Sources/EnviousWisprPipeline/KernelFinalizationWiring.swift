@@ -600,13 +600,13 @@ struct KernelFinalizationWiring {
         polishSetup: Self.polishSetupProbe(
           takeID: telemetryState.takeID, context: context.polishSetupContext,
           hooks: context.polishSetupHooks),
+        claimsPaste: context.config?.copyOnlyByPreference != true,
         // #1846: the LIVE in-flight take, not the concluded one. Polish runs before
         // the session terminal, and starting a session CLEARS `kernel.lastTakeID`,
         // so it is nil here — substituting it would emit no take key at all. Same
         // key as the completion events, read at a different point; swapping the two
         // reads would silently blank one family.
-        takeID: telemetryState.takeID,
-        claimsPaste: context.config?.copyOnlyByPreference != true)
+        takeID: telemetryState.takeID)
       var ctx = result.context
       // #2614: which language the chain cleaned under, and on what evidence.
       // Source and bucket only, never the score (`telemetry-privacy-boundary`).

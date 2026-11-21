@@ -296,7 +296,7 @@ struct TelemetryEmitterRegistryTests {
   /// audio-unit lane's stuck jobs reuse the existing `coreAudioReadStuck` site (new closed
   /// `read` tokens), so no new site.
   static let sitesFingerprint =
-    "2586d824134c0f922158eac9028eadd8d61ceeb1d3adf483ac81b6f24e09aa81"
+    "8c5ddc3650ffac60257f7970d23a939fc2f42518198c33527b61d607a3bf368e"
   /// #4721: `api_key.validation_completed` graded (per_launch, keep) when the launch key check
   /// added `source=launch`; ceiling 106 -> 105.
   static let ungradedFingerprint =

@@ -239,11 +239,11 @@ internal final class TextProcessingRunner {
     /// #3438: the live take's frozen AI polish setup. Nil for recovery, file import and direct
     /// callers: they classify and record nothing.
     polishSetup: PolishSetupTakeProbe? = nil,
+    claimsPaste: Bool = true,
     /// #1846: the live in-flight take. Frozen into the context below so every
     /// emission in this chain names the same dictation even if the session state
     /// moves on mid-chain.
-    takeID: String? = nil,
-    claimsPaste: Bool = true
+    takeID: String? = nil
   ) async throws -> TextProcessingRunResult {
     let context = await makeContext(
       rawText: rawText, evidence: evidence, targetAppName: targetAppName, steps: steps,

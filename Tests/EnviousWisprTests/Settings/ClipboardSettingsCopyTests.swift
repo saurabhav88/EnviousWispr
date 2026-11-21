@@ -13,6 +13,11 @@ struct ClipboardSettingsCopyTests {
   typealias Copy = DictationSettingsCopy.Clipboard
 
   static let expected: [String: (LocalizedStringResource, String)] = [
+    "automaticPasteTitle": (Copy.automaticPasteTitle, "Paste dictations automatically"),
+    "automaticPasteShort": (
+      Copy.automaticPasteShort,
+      "Turn this off to keep your latest dictation on the clipboard for manual paste."
+    ),
     "autoCopyTitle": (Copy.autoCopyTitle, "Auto-copy to clipboard"),
     "autoCopyShort": (Copy.autoCopyShort, "Copies dictation when automatic pasting is skipped."),
     "autoCopyHelp": (
