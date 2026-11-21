@@ -358,7 +358,8 @@ struct MeetingLiveWordsTests {
   }
 
   static func owner(
-    _ world: World, choiceOwner: MeetingLiveWordsChoice.Initializer? = nil
+    _ world: World, choiceOwner: MeetingLiveWordsChoice.Initializer? = nil,
+    makePump: @escaping () -> MeetingLiveAudioPump = { MeetingLiveAudioPump(cadence: .milliseconds(1)) }
   ) -> MeetingLiveWords {
     MeetingLiveWords(
       dependencies: .init(
@@ -383,7 +384,7 @@ struct MeetingLiveWordsTests {
           return tag
         },
         isHeartStreaming: { false },
-        makePump: { MeetingLiveAudioPump(cadence: .milliseconds(1)) },
+        makePump: makePump,
         droppedCheckInterval: .milliseconds(1),
         appleRestartAfterSamples: world.restartAfterSamples,
         restartEndDeadline: world.restartEndDeadline,
@@ -1099,19 +1100,58 @@ struct MeetingLiveWordsTests {
     #expect(await owner.waitForCleanups(seconds: 10))
   }
 
-  @Test("dropped live audio is flagged even when no words arrive")
+  @Test("sparse live audio refusals do not trigger the warning")
+  func sparseRefusalsStayQuiet() {
+    var warning = MeetingLiveWords.PreviewAudioDropWarning()
+    // Repeat the measured 682-sample refusal every three minutes until the lifetime
+    // count exceeds 25,600 samples. Only one of these increments fits in any minute.
+    for occurrence in 1...38 {
+      #expect(
+        warning.shouldWarn(
+          accounting: .init(refused: 682 * occurrence), elapsedSecond: 180 * (occurrence - 1),
+          previewIsActive: true) == false)
+    }
+  }
+
+  @Test("the live audio warning counts each refusal once and expires it after one minute")
+  func refusalWarningWindow() {
+    var warning = MeetingLiveWords.PreviewAudioDropWarning()
+    #expect(warning.shouldWarn(accounting: .init(refused: 682), elapsedSecond: 0, previewIsActive: true) == false)
+    #expect(warning.shouldWarn(accounting: .init(refused: 682), elapsedSecond: 1, previewIsActive: true) == false)
+    #expect(
+      warning.shouldWarn(accounting: .init(refused: 25_599), elapsedSecond: 59, previewIsActive: true) == false)
+
+    var beforeExpiry = warning
+    let warnsBeforeExpiry = beforeExpiry.shouldWarn(
+      accounting: .init(refused: 25_600), elapsedSecond: 59, previewIsActive: true)
+    #expect(warnsBeforeExpiry)
+    #expect(
+      warning.shouldWarn(accounting: .init(refused: 26_281), elapsedSecond: 60, previewIsActive: true) == false)
+    let warnsAtThreshold = warning.shouldWarn(
+      accounting: .init(refused: 26_282), elapsedSecond: 60, previewIsActive: true)
+    #expect(warnsAtThreshold)
+  }
+
+  @Test("evicted live audio is flagged even when no words arrive")
   func droppedFlagWithoutEvents() async throws {
     let world = World()
     let feed = Gate()
     defer { feed.open() }
     world.engineGates = { $0 == 0 ? Gates(feed: feed) : Gates() }
     world.apple = .ready(world.appleCandidate())
-    let owner = Self.owner(world)
+    let micPump = MeetingLiveAudioPump(cadence: .milliseconds(1))
+    var pumps = [micPump, MeetingLiveAudioPump(cadence: .milliseconds(1))]
+    let owner = Self.owner(world, makePump: { pumps.removeFirst() })
     let observer = Self.record(owner)
-    await Self.until("running", owner) { Self.bothRunning($0) }
-    // The mic feed is held, so 40 s of audio overflows the 28.8 s the pump keeps.
     let second = [Float](repeating: 0.1, count: 16_000)
+    observer.offer(.microphone, second)
+    await Self.until("running", owner) { Self.bothRunning($0) }
+    await PreviewWait.within("the microphone feed is held", onExpiry: feed.open) {
+      await feed.reached(1)
+    }
+    // The mic feed is held, so 40 s of audio overflows the 28.8 s the pump keeps.
     for _ in 0..<40 { observer.offer(.microphone, second) }
+    try #require(micPump.accounting.evicted > 0)
     await Self.until("the dropped flag", owner, release: feed.open) {
       $0.transcript?.tracks[.microphone]?.droppedAudio == true
     }

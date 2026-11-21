@@ -193,8 +193,34 @@ final class MeetingLiveWords {
   /// even once the removal has ended (the model it named may be gone).
   @ObservationIgnored private var removalEpoch = 0
 
+  /// The preview warning uses recent refusals, while the pump keeps exact lifetime counts.
+  struct PreviewAudioDropWarning {
+    private static let warningSamples = Int(1.6 * AudioConstants.sampleRate)
+    private var previousRefused = 0
+    private var buckets: [(second: Int, samples: Int)] = []
+
+    mutating func shouldWarn(
+      accounting: MeetingLiveAudioPump.Accounting, elapsedSecond: Int, previewIsActive: Bool
+    ) -> Bool {
+      if accounting.evicted > 0 { return true }
+      guard previewIsActive, accounting.refused > previousRefused else { return false }
+
+      let added = accounting.refused - previousRefused
+      previousRefused = accounting.refused
+      // Attribute each increment to the second in which an existing refresh saw it.
+      buckets.removeAll { $0.second <= elapsedSecond - 60 }
+      if buckets.last?.second == elapsedSecond {
+        buckets[buckets.count - 1].samples += added
+      } else {
+        buckets.append((elapsedSecond, added))
+      }
+      return buckets.reduce(0) { $0 + $1.samples } >= Self.warningSamples
+    }
+  }
+
   private final class TrackSlot {
     let pump: MeetingLiveAudioPump
+    var dropWarning = PreviewAudioDropWarning()
     /// The current session's epoch in the bridge (0 before the first open).
     var epoch = 0
     var session: (any LiveTranscriptSession)? {
@@ -912,12 +938,19 @@ final class MeetingLiveWords {
     refreshDropped(generation: current.generation)
   }
 
-  /// Marks each track whose pump dropped live audio; also run on a timer, events or not.
+  /// Marks significant live audio loss per track, including on the timer without word events.
   private func refreshDropped(generation gen: Int) {
-    guard let current = recording, current.generation == gen else { return }
-    for (track, slot) in current.tracks
-    where slot.pump.accounting.dropped > 0 && transcript?.tracks[track]?.droppedAudio == false {
-      transcript?.tracks[track]?.droppedAudio = true
+    guard let current = recording, current.generation == gen, let bridge = current.bridge else {
+      return
+    }
+    let elapsedSecond = bridge.now() / 1_000
+    for (track, slot) in current.tracks where transcript?.tracks[track]?.droppedAudio == false {
+      if slot.dropWarning.shouldWarn(
+        accounting: slot.pump.accounting, elapsedSecond: elapsedSecond,
+        previewIsActive: !slot.finished)
+      {
+        transcript?.tracks[track]?.droppedAudio = true
+      }
     }
   }
 
