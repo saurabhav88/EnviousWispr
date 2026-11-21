@@ -71,6 +71,29 @@ struct CloudFixedPromptBuilderTests {
     }
   }
 
+  @Test("A directed request keeps its target and preferred spelling through the planner")
+  func translationKeepsTargetAndVocabulary() {
+    let input = PromptBuildInput(
+      transcript: "Mira can send the key.",
+      provider: .openAI,
+      modelID: "gpt-4o",
+      appName: nil,
+      language: nil,
+      polishVocabulary: PolishVocabulary(terms: [CustomWord(canonical: "Mira")], generation: 0),
+      languageDetection: LanguageDetectionResult(
+        lang: "en", confidence: 0.95, margin: 0.9, tier: .highAuto,
+        voicedDuration: 3, abstained: false, usedSessionPrior: false),
+      backend: .whisper,
+      translationTarget: .hindi)
+    let messages = DefaultPromptPlanner().plan(input: input).envelope.messages
+
+    #expect(messages[0].content.contains("Translate this dictation into Hindi."))
+    #expect(messages[0].content.contains("Mira"))
+    #expect(messages[0].content.contains("Never translate it") == false)
+    #expect(messages[0].content.contains("Return as-is") == false)
+    #expect(messages[1].content == "Transcript to translate:\n\nMira can send the key.")
+  }
+
   // MARK: - Mode invariance (the whole premise: no per-transcript segregation)
 
   @Test("mode is ignored — inline and structured produce identical envelopes")

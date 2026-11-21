@@ -12,6 +12,10 @@ public struct TextProcessingContext: Sendable {
   public var text: String
   /// Optional polished/enhanced version of the text.
   public var polishedText: String?
+  /// The live take's selected written language. Other processing paths leave it unset.
+  var requestedTranslationTarget: DictationTranslationTarget?
+  /// Set only when a directed result survives validation. The source language stays separate.
+  var acceptedTranslationTarget: DictationTranslationTarget?
   /// The RESOLVED dictation language (#2614): the user's lock, an engine that
   /// really detects, or the text itself at `DictationLanguageResolver`'s
   /// confidence floor — or nil when nothing established it. Seeded once by

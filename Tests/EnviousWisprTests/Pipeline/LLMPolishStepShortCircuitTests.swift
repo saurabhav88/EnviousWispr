@@ -21,7 +21,12 @@ struct LLMPolishStepShortCircuitTests {
   /// returns is race-free (the polish call completes before process returns).
   private actor InvocationCounter {
     private(set) var count = 0
-    func increment() { count += 1 }
+    private(set) var systemPrompt: String?
+
+    func record(systemPrompt: String) {
+      count += 1
+      self.systemPrompt = systemPrompt
+    }
   }
 
   /// Deterministic polisher: records the call, returns a fixed result.
@@ -37,7 +42,7 @@ struct LLMPolishStepShortCircuitTests {
       config: LLMProviderConfig,
       onToken: (@Sendable (String) -> Void)?
     ) async throws -> LLMResult {
-      await counter.increment()
+      await counter.record(systemPrompt: instructions.systemPrompt)
       return LLMResult(polishedText: result)
     }
   }
@@ -133,6 +138,61 @@ struct LLMPolishStepShortCircuitTests {
     let ctx = try await step.process(TextProcessingContext(text: "สวัสดี", language: "th"))
     expectBypass(ctx)
     #expect(await counter.count == 0)
+  }
+
+  @Test(
+    "Translation keeps the existing word and character cutoffs",
+    arguments: [
+      ("please call today", "en", false),
+      ("please call me today", "en", true),
+      ("こんにちは元気です", "ja", false),
+      ("こんにちは元気ですか", "ja", true),
+    ])
+  func translationKeepsCutoff(text: String, language: String, expectsCall: Bool) async throws {
+    let counter = InvocationCounter()
+    let step = makeStep(counter: counter, result: "Ruf mich bitte heute an.")
+    var input = TextProcessingContext(text: text, language: language)
+    input.requestedTranslationTarget = .german
+
+    let result = try await step.process(input)
+
+    #expect(await counter.count == (expectsCall ? 1 : 0))
+    #expect(result.acceptedTranslationTarget == (expectsCall ? .german : nil))
+    #expect(result.text == text)
+  }
+
+  @Test("A valid translated opening survives the existing provider call")
+  func translationKeepsOpening() async throws {
+    let counter = InvocationCounter()
+    let reply = "Sure, I’ll bring the key."
+    let step = makeStep(counter: counter, result: reply)
+    var input = TextProcessingContext(text: "Klar, ich bringe den Schlüssel mit.", language: "de")
+    input.requestedTranslationTarget = .english
+
+    let result = try await step.process(input)
+
+    #expect(await counter.count == 1)
+    let systemPrompt = try #require(await counter.systemPrompt)
+    #expect(systemPrompt.contains("Translate this dictation into English."))
+    #expect(result.polishedText == reply)
+    #expect(result.acceptedTranslationTarget == .english)
+  }
+
+  @Test("A discarded translation leaves the entire prepared source for delivery")
+  func translationRejectionKeepsSource() async throws {
+    let source = "Bitte bring mir am Freitag um 15 Uhr die drei Schlüssel mit."
+    let counter = InvocationCounter()
+    let step = makeStep(counter: counter, result: "The keys.")
+    var input = TextProcessingContext(text: source, language: "de")
+    input.requestedTranslationTarget = .english
+
+    let result = try await step.process(input)
+
+    #expect(await counter.count == 1)
+    #expect(result.polishedText == nil)
+    #expect(result.text == source)
+    #expect(result.polishValidatorGuard == "content_drop")
+    #expect(result.acceptedTranslationTarget == nil)
   }
 
   // MARK: Stale-field defense

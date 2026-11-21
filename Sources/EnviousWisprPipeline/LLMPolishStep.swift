@@ -88,7 +88,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     let plan = promptPlan(
       context: context, provider: llmProvider, model: llmModel, ollamaRemote: nil,
       s1Control: s1Control, vocabularySnapshot: PromptVocabulary.fromLegacy(polishVocabulary.terms),
-      namedLanguage: nil)
+      namedLanguage: nil, translationTarget: nil)
     guard plan.family == .cloudFixed, plan.envelope.messages.count == 2,
       let pair = plan.envelope.asSingleTurn()
     else { return nil }
@@ -798,6 +798,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // same shape from outside.
     ctx.polishWasBypassed = true
     ctx.polishedText = nil
+    ctx.acceptedTranslationTarget = nil
     ctx.llmProvider = nil
     ctx.llmModel = nil
     // #1914: nothing polished, so there is no completed remoteness fact to carry.
@@ -885,8 +886,6 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     var outsideStopRecovery: OutsideStopContext?
   }
   private(set) var setupObservation = SetupObservation()
-  /// The providers whose model the user picks from a key-backed catalog (#4353).
-  static let cloudProviders: Set<LLMProvider> = [.openAI, .gemini, .claude]
   /// #3988: the wall clock an outside-stop miss is stamped with. A seam for tests.
   var wallNow: @MainActor () -> Date = { Date() }
 
@@ -915,6 +914,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     let provider = llmProvider
     let model = llmModel
     let localModel = polishModelID
+    let usesDirectCloud = CloudModelMemory.cloudProviders.contains(provider)
+    let translationTarget = usesDirectCloud ? context.requestedTranslationTarget : nil
     // #4353 D6: the operation's cloud model list, read with provider and model; every request
     // policy below (thinking, connector body, chat preflight) comes from this local.
     let cloudModelList = cloudModelList
@@ -944,7 +945,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // the short-text bypass (a too-short take stays a quiet bypass, as for every provider)
     // and BEFORE any key read, connector or request. A surfaced skip: the runner keeps the
     // deterministic text and shows the skipped notice.
-    if Self.cloudProviders.contains(provider), model.isEmpty {
+    if usesDirectCloud, model.isEmpty {
       setupObservation.cloudModelCheckedAt = .now
       throw LLMError.cloudModelNotSelected(provider)
     }
@@ -1233,7 +1234,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     let plan = promptPlan(
       context: context, provider: provider, model: model, ollamaRemote: ollamaRemote,
       s1Control: s1Control, vocabularySnapshot: vocabularySnapshot,
-      namedLanguage: egOneDecision?.namedLanguage)
+      namedLanguage: egOneDecision?.namedLanguage, translationTarget: translationTarget)
     let envelope: PromptEnvelope
     if let batch = fileBatchInput {
       guard provider == batch.members[0].provider, model == batch.members[0].model,
@@ -1303,7 +1304,11 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     }
     // This source-owning boundary replaces connector chatter stripping. Native
     // cleaned-empty skips still precede completion breadcrumbs and warmth stamps.
-    let result = try response.removingModelChatter(dictation: context.text, provider: provider)
+    // An opening translated into another language won't match the source words.
+    let result =
+      translationTarget == nil
+      ? try response.removingModelChatter(dictation: context.text, provider: provider)
+      : response
     let llmEnd = CFAbsoluteTimeGetCurrent()
 
     logPolishCompletion(
@@ -1346,13 +1351,13 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
 
     return finishCleanedResult(
       result, context: context, mode: plan.mode, provider: provider, model: model,
-      ollamaRemote: ollamaRemote, family: plan.family)
+      ollamaRemote: ollamaRemote, family: plan.family, translationTarget: translationTarget)
   }
 
   private func promptPlan(
     context: TextProcessingContext, provider: LLMProvider, model: String,
     ollamaRemote: Bool?, s1Control: S1ControlSettings, vocabularySnapshot: PromptVocabulary,
-    namedLanguage: String?
+    namedLanguage: String?, translationTarget: DictationTranslationTarget?
   ) -> PolishPlan {
     let input = PromptBuildInput(
       transcript: context.text,
@@ -1380,7 +1385,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       s1Control: s1Control,
       // #3111: native EG-1 only, and only when the raw text itself names a measured
       // language that no lock or engine answer contradicts. Nil sends today's prompt.
-      namedLanguage: namedLanguage
+      namedLanguage: namedLanguage,
+      translationTarget: translationTarget
     )
     return promptPlanner.plan(input: input)
 
@@ -1463,7 +1469,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   private func finishCleanedResult(
     _ result: LLMResult, context: TextProcessingContext, mode: PolishMode,
     provider: LLMProvider, model: String, ollamaRemote: Bool?, family: PromptFamily,
-    policy: ResultPolicy = .ordinary
+    policy: ResultPolicy = .ordinary, translationTarget: DictationTranslationTarget? = nil
   ) -> TextProcessingContext {
     if policy == .batchPiece,
       result.polishedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -1488,7 +1494,11 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     let validatedText = validation.text
 
     var ctx = context
-    ctx.polishedText = validatedText
+    let rejectedTranslation = translationTarget != nil && (
+      validation.guardName != nil || result.polishMetadata?.filterFellBackToRaw == true
+        || validatedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+    ctx.polishedText = rejectedTranslation ? nil : validatedText
+    ctx.acceptedTranslationTarget = rejectedTranslation ? nil : translationTarget
     ctx.polishValidatorGuard = validation.guardName
     ctx.symbolTokens = validation.symbolTokens
     ctx.llmProvider = provider.rawValue

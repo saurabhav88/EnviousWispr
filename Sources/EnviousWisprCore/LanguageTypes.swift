@@ -60,6 +60,22 @@ public enum LanguageConfidenceTier: String, Sendable, Equatable, Codable {
 
 // MARK: - Language Mode setting
 
+/// Requested written language for dictation translation. Independent of the
+/// spoken-language lock, which still controls recognition and source cleanup.
+public enum DictationTranslationTarget: String, CaseIterable, Sendable {
+  case english = "en"
+  case german = "de"
+  case hindi = "hi"
+
+  package var promptName: String {
+    switch self {
+    case .english: return "English"
+    case .german: return "German"
+    case .hindi: return "Hindi"
+    }
+  }
+}
+
 /// Persisted user setting: auto-detect or locked to a specific ISO 639-1 code.
 public enum LanguageMode: Codable, Sendable, Equatable {
   case auto
