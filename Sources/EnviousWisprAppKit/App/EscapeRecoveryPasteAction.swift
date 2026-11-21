@@ -56,6 +56,8 @@ enum EscapeRecoveryPasteAction {
       Self.finish(
         .pasted, stampedAt: row.stampedAt, takeID: row.takeID, report: report,
         recordLog: recordLog)
+    case .copyFailed:
+      recordLog("copy-failed", nil, row.takeID)
     case .clipboardOnly, .accessibilityDenied:
       // The text is on the clipboard, so this is still a restore: the user has their words back
       // and the row stands in History for 24 hours. The notice tells them where the words went.

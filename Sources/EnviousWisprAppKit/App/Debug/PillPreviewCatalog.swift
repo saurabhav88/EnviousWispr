@@ -159,6 +159,7 @@
       case .modelNotDownloaded: return "modelNotDownloaded"
       case .modelRequiresExplicitRetry: return "modelRequiresExplicitRetry"
       case .polishFailed: return "polishFailed"
+      case .clipboardPolishFailed: return "clipboardPolishFailed"
       case .historySaveFailed: return "historySaveFailed"
       case .escapeRecoveryUnavailable: return "escapeRecoveryUnavailable"
       case .salvagedBeginning: return "salvagedBeginning"
@@ -171,7 +172,7 @@
     /// Every warning case name a complete table must cover.
     static let allWarningCaseNames: Set<String> = [
       "modelNotDownloaded", "modelRequiresExplicitRetry", "polishFailed", "historySaveFailed",
-      "escapeRecoveryUnavailable",
+      "clipboardPolishFailed", "escapeRecoveryUnavailable",
       "salvagedBeginning", "interruptedTail", "sharedEngineBusy", "dictationOffDuringMeeting",
     ]
 
@@ -181,6 +182,7 @@
       + [.modelRequiresExplicitRetry(engineLabel: ASRBackendType.parakeet.displayName), .polishFailed]
       + historyClasses.map { .historySaveFailed(reason: $0.userMessage) }
       + [
+        .clipboardPolishFailed(copied: true, reason: "The model did not answer in time."),
         .escapeRecoveryUnavailable,
         .salvagedBeginning,
         .interruptedTail(disclosure: .deviceRemoved, alsoTrimmedLead: false),

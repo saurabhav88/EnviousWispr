@@ -5,7 +5,11 @@ import Foundation
 public struct ExecutionMetrics: Codable, Sendable {
   public var asrLatencySeconds: Double?
   public var llmLatencySeconds: Double?
+  package static let automaticPasteDisabledDelivery = "automatic_paste_disabled"
+
   public var pasteTier: String?
+  /// A confirmed intentional clipboard copy, separate from any attempted paste.
+  public var deliveryOutcome: String?
   public var pasteLatencyMs: Int?
   /// Cursor-aware insertion (#1785, extended by #1921 and #1980). All eight are
   /// optional and additive, so a transcript written before any of these features
@@ -227,6 +231,7 @@ public struct ExecutionMetrics: Codable, Sendable {
     asrLatencySeconds: Double? = nil,
     llmLatencySeconds: Double? = nil,
     pasteTier: String? = nil,
+    deliveryOutcome: String? = nil,
     pasteLatencyMs: Int? = nil,
     smartInsertionEnabled: Bool? = nil,
     caretContextOutcome: String? = nil,
@@ -301,6 +306,7 @@ public struct ExecutionMetrics: Codable, Sendable {
     self.asrLatencySeconds = asrLatencySeconds
     self.llmLatencySeconds = llmLatencySeconds
     self.pasteTier = pasteTier
+    self.deliveryOutcome = deliveryOutcome
     self.pasteLatencyMs = pasteLatencyMs
     self.smartInsertionEnabled = smartInsertionEnabled
     self.caretContextOutcome = caretContextOutcome

@@ -259,6 +259,24 @@ struct DictationSessionConfigFactoryTests {
     #expect(config.autoPasteToActiveApp == true)
   }
 
+  @Test("automatic paste off is frozen separately from the saved auto-copy choice")
+  func clipboardOnlyPreferenceIsFrozenAtStart() throws {
+    let harness = try Harness.make(backend: .parakeet)
+    harness.settings.autoCopyToClipboard = false
+    harness.settings.automaticDictationPasteEnabled = false
+    let clipboardOnly = harness.makeConfig()
+
+    harness.settings.automaticDictationPasteEnabled = true
+    let automatic = harness.makeConfig()
+
+    #expect(clipboardOnly.copyOnlyByPreference == true)
+    #expect(clipboardOnly.autoPasteToActiveApp == false)
+    #expect(clipboardOnly.autoCopyToClipboard == false)
+    #expect(automatic.copyOnlyByPreference == false)
+    #expect(automatic.autoPasteToActiveApp == true)
+    #expect(harness.settings.autoCopyToClipboard == false)
+  }
+
   // MARK: - Settings field passthrough
 
   @Test("settings fields pass through unchanged")

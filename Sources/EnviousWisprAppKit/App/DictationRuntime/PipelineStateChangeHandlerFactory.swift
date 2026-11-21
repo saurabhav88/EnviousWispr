@@ -57,9 +57,7 @@ enum PipelineStateChangeHandlerFactory {
     PipelineStateChangeHandler(
       showOverlay: { intent in deps.showOverlay(intent) },
       cancelPendingWarning: { deps.cancelPendingWarning() },
-      schedulePolishFailedWarning: {
-        deps.schedulePostCompletionWarning(.polishFailed)
-      },
+      schedulePolishFailedWarning: { deps.schedulePostCompletionWarning($0) },
       appendCompletedTranscript: { t in
         deps.appendTranscript(t)
         // #1063 PR1: the save is durable by `.complete`; delete this session's

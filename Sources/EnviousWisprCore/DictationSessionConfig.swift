@@ -57,6 +57,8 @@ public struct DictationSessionConfig: Sendable {
   /// recordings or when the paste target cannot be resolved. Consolidates the previously
   /// scattered writes to `pipeline.autoPasteToActiveApp` in the former root state.
   public let autoPasteToActiveApp: Bool
+  /// The user explicitly chose clipboard delivery for this take.
+  public let copyOnlyByPreference: Bool
   public let restoreClipboardAfterPaste: Bool
   /// FROZEN at recording start with `restoreClipboardAfterPaste` (#3672): mark the temporary
   /// paste write and the clipboard we give back as transient, so clipboard-history apps that follow
@@ -166,6 +168,7 @@ public struct DictationSessionConfig: Sendable {
     inputMode: RecordingMode,
     triggerSource: TriggerSource,
     autoPasteToActiveApp: Bool,
+    copyOnlyByPreference: Bool = false,
     restoreClipboardAfterPaste: Bool,
     keepDictationsOutOfClipboardHistory: Bool,
     smartInsertion: Bool,
@@ -193,6 +196,7 @@ public struct DictationSessionConfig: Sendable {
     self.inputMode = inputMode
     self.triggerSource = triggerSource
     self.autoPasteToActiveApp = autoPasteToActiveApp
+    self.copyOnlyByPreference = copyOnlyByPreference
     self.restoreClipboardAfterPaste = restoreClipboardAfterPaste
     self.keepDictationsOutOfClipboardHistory = keepDictationsOutOfClipboardHistory
     self.smartInsertion = smartInsertion

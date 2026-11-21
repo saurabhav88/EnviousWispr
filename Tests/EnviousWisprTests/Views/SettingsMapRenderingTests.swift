@@ -366,7 +366,8 @@ struct SettingsMapRenderingTests {
     .pill: [.sectionPill, .pillPosition, .pillStyle],
     .chimes: [.sectionChimes, .recordingChimes, .recordingChime],
     .clipboard: [
-      .sectionClipboard, .autoCopyToClipboard, .restoreClipboard, .keepOutOfClipboardHistory,
+      .sectionClipboard, .automaticDictationPaste, .autoCopyToClipboard, .restoreClipboard,
+      .keepOutOfClipboardHistory,
       .smartInsertion,
       .sectionQuickAddClipboard, .quickAddClipboardFallback,
     ],

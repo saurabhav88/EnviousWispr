@@ -239,6 +239,7 @@ internal final class TextProcessingRunner {
     /// #3438: the live take's frozen AI polish setup. Nil for recovery, file import and direct
     /// callers: they classify and record nothing.
     polishSetup: PolishSetupTakeProbe? = nil,
+    claimsPaste: Bool = true,
     /// #1846: the live in-flight take. Frozen into the context below so every
     /// emission in this chain names the same dictation even if the session state
     /// moves on mid-chain.
@@ -248,7 +249,8 @@ internal final class TextProcessingRunner {
       rawText: rawText, evidence: evidence, targetAppName: targetAppName, steps: steps,
       frozenCorrectorVocabulary: frozenCorrectorVocabulary, fixLearnedWords: fixLearnedWords,
       takeID: takeID)
-    return try await run(context: context, steps: steps, polishSetup: polishSetup)
+    return try await run(
+      context: context, steps: steps, polishSetup: polishSetup, claimsPaste: claimsPaste)
   }
 
   /// Seeds once from the FULL chain, even when a caller will execute it in stages. Language,
@@ -322,7 +324,8 @@ internal final class TextProcessingRunner {
   /// continuation never labels prepared text as RAW ASR or selects a checker a second time.
   func run(
     context initialContext: TextProcessingContext, steps: [any TextProcessingStep],
-    polishSetup: PolishSetupTakeProbe? = nil
+    polishSetup: PolishSetupTakeProbe? = nil,
+    claimsPaste: Bool = true
   ) async throws -> TextProcessingRunResult {
     var context = initialContext
     var polishNotice: PolishNotice?
@@ -607,7 +610,7 @@ internal final class TextProcessingRunner {
           // fallback covers a defensive future reason without pinned copy.
           polishNotice =
             skipReason.ollamaPreflightSkipNotice
-            ?? skipReason.notice(provider: .ollama)
+            ?? skipReason.notice(provider: .ollama, claimsPaste: claimsPaste)
         } else if step.errorSurfacePolicy == .surface && !polishSkippedSilently {
           let model = polishModelAtStart ?? "unknown"
           if let provider = polishProviderAtStart, provider != .appleIntelligence {
@@ -625,7 +628,7 @@ internal final class TextProcessingRunner {
               polishNotice = PolishNotice(
                 leadIn: .failed, text: CloudModelNoticeCopy.noLongerWorks(attempted))
             } else {
-              polishNotice = reason.notice(provider: provider)
+              polishNotice = reason.notice(provider: provider, claimsPaste: claimsPaste)
             }
             // #1446: EVERY attempted-and-failed polish gets a durable counted
             // record, whatever its channel. Sentry alerting is the interrupting

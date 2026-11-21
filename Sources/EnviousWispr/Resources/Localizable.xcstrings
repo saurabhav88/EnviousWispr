@@ -2442,6 +2442,16 @@
         }
       }
     },
+    "AI polish failed: %@ blocked this text." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-Nachbearbeitung fehlgeschlagen: %@ hat diesen Text blockiert."
+          }
+        }
+      }
+    },
     "AI polish failed: %@ blocked this text. Pasted without AI polish." : {
       "comment" : "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is.",
       "localizations" : {
@@ -2471,6 +2481,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "KI-Nachbearbeitung fehlgeschlagen: %@ hat die Antwort vor Abschluss der Nachbearbeitung beendet. Ohne KI-Nachbearbeitung eingefügt. Falls das wiederholt passiert, wähle ein anderes Modell oder diktiere kürzer."
+          }
+        }
+      }
+    },
+    "AI polish failed: %@ ended the response before AI polish finished. Try a shorter dictation or another model." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-Nachbearbeitung fehlgeschlagen: %@ hat die Antwort vorzeitig beendet. Versuche es mit einem kürzeren Diktat oder einem anderen Modell."
           }
         }
       }
@@ -2558,6 +2578,16 @@
         }
       }
     },
+    "AI polish failed: a configuration problem stopped it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-Nachbearbeitung wegen eines Konfigurationsproblems fehlgeschlagen."
+          }
+        }
+      }
+    },
     "AI polish failed: a configuration problem stopped it. Pasted without AI polish." : {
       "comment" : "Dictation notice: AI polish failed and the original text was used.",
       "localizations" : {
@@ -2565,6 +2595,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "KI-Nachbearbeitung wegen eines Konfigurationsproblems fehlgeschlagen. Ohne KI-Nachbearbeitung eingefügt."
+          }
+        }
+      }
+    },
+    "AI polish failed: an unexpected error stopped it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-Nachbearbeitung wegen eines unerwarteten Fehlers fehlgeschlagen."
           }
         }
       }
@@ -2696,6 +2736,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "KI-Nachbearbeitung übersprungen"
+          }
+        }
+      }
+    },
+    "AI polish skipped: %@ did not answer in time." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-Nachbearbeitung übersprungen: %@ hat nicht rechtzeitig geantwortet."
           }
         }
       }
@@ -7393,6 +7443,16 @@
         }
       }
     },
+    "Click the box and try again. If automatic paste is off, turn it on in Dictation > Clipboard first, or skip." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klicke ins Textfeld und versuche es erneut. Wenn das automatische Einfügen aus ist, schalte es zuerst unter Diktat > Zwischenablage ein oder überspringe die Übung."
+          }
+        }
+      }
+    },
     "Click the box, then talk" : {
       "localizations" : {
         "de" : {
@@ -7821,6 +7881,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Kopiert"
+          }
+        }
+      }
+    },
+    "Copied without AI polish. %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ohne KI-Nachbearbeitung kopiert. %@"
           }
         }
       }
@@ -11010,16 +11080,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "EnviousWispr schreibt dort, wo dein Cursor ist.\nKlicke hier und versuche es erneut."
-          }
-        }
-      }
-    },
-    "EnviousWispr types where your cursor is.\nThis take is saved on your clipboard." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "EnviousWispr schreibt dort, wo dein Cursor ist.\nDer Text dieses Versuchs liegt in deiner Zwischenablage."
           }
         }
       }
@@ -19884,6 +19944,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Füge eine Wortliste aus beliebiger Quelle ein."
+          }
+        }
+      }
+    },
+    "Paste dictations automatically" : {
+      "comment" : "Clipboard settings: automatic paste switch title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktate automatisch einfügen"
           }
         }
       }
@@ -29163,6 +29234,17 @@
         }
       }
     },
+    "Turn this off to keep your latest dictation on the clipboard for manual paste." : {
+      "comment" : "Clipboard settings: explains what happens when automatic paste is off.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn du das ausschaltest, bleibt dein letztes Diktat zum manuellen Einfügen in der Zwischenablage."
+          }
+        }
+      }
+    },
     "Turned off" : {
       "comment" : "Setup Downloads card: AI polish skipped.",
       "localizations" : {
@@ -32440,6 +32522,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Deine Worte landen dort, wo du angefangen hast."
+          }
+        }
+      }
+    },
+    "Your words were copied" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Worte wurden kopiert"
           }
         }
       }

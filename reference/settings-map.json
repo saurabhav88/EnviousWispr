@@ -1,14 +1,14 @@
 {
   "counts" : {
-    "nodes" : 325,
-    "searchable" : 296,
-    "vocabularyBlocks" : 9472
+    "nodes" : 326,
+    "searchable" : 297,
+    "vocabularyBlocks" : 9504
   },
   "fingerprints" : {
-    "mapSHA256" : "6c2420ddd1ab11cc6239d8b097ac18c0e3ec1bfc62deea6849c3e77ad772d767",
-    "uiCatalogSHA256" : "36f8fbf6d4834b0bfdcd4dcaad5e8b34fffe0a224a35ab60c2a206bd36317c77",
+    "mapSHA256" : "37123b897fb0897f42ec3f7e6634cb220cdfe8c96174f7f62f308b15994973fd",
+    "uiCatalogSHA256" : "d87ce4ba465dd23b065e7456e3eb396c3c2f437a12febf425b26768e71a62d58",
     "vocabularyCanonicalization" : "length-prefixed-v1",
-    "vocabularySHA256" : "69186cd226bfb54ce66cc90148130ba842b55eca1f94a8ef33d2b26d99e25aac"
+    "vocabularySHA256" : "f27d623c318325d7367f855d330f83ba73699b4880eab0e5a099978d419fd4e6"
   },
   "interfaceLanguages" : [
     "en",
@@ -31644,6 +31644,437 @@
           "words" : [
             "试听提示音",
             "播放样音"
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.dictation",
+        "dictation.tab.clipboard",
+        "section.clipboard"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Wenn du das ausschaltest, bleibt dein letztes Diktat zum manuellen Einfügen in der Zwischenablage.",
+        "en" : "Turn this off to keep your latest dictation on the clipboard for manual paste.",
+        "key" : "Turn this off to keep your latest dictation on the clipboard for manual paste.",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "destination" : {
+        "page" : "dictation",
+        "tab" : "clipboard"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "automaticDictationPaste",
+      "kind" : "setting",
+      "parent" : "section.clipboard",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "automaticDictationPaste",
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Diktate automatisch einfügen",
+        "en" : "Paste dictations automatically",
+        "key" : "Paste dictations automatically",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "always",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "فعّل اللصق التلقائي بعد الإملاء",
+            "أوقف اللصق التلقائي بعد الإملاء",
+            "خلّي النص في الحافظة بعد كل إملاء عشان ألصقه بنفسي"
+          ],
+          "title" : "لصق النص المُملى تلقائيًا",
+          "words" : [
+            "لصق تلقائي",
+            "لصق يدوي"
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "включи автоматичното поставяне след диктовка",
+            "изключи автоматичното поставяне след диктовка",
+            "копирай всяка диктовка в клипборда, за да я поставя ръчно"
+          ],
+          "title" : "Автоматично поставяне на диктувания текст",
+          "words" : [
+            "автоматично поставяне",
+            "ръчно поставяне"
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "zapnout automatické vkládání po diktování",
+            "vypnout automatické vkládání po diktování",
+            "ukládat nadiktovaný text jen do schránky a vkládat ho ručně"
+          ],
+          "title" : "Automaticky vkládat nadiktovaný text",
+          "words" : [
+            "ruční vkládání diktátů"
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "indsæt automatisk teksten, når jeg er færdig med at diktere",
+            "slå automatisk indsætning af dikteret tekst fra",
+            "læg kun den dikterede tekst i udklipsholderen, så jeg selv kan indsætte den"
+          ],
+          "title" : "Indsæt dikteret tekst automatisk",
+          "words" : [
+            "automatisk indsætning",
+            "manuel indsætning"
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "automatisches Einfügen nach dem Diktieren ausschalten",
+            "letztes Diktat in der Zwischenablage behalten und selbst einfügen"
+          ],
+          "words" : [
+            "Diktat manuell einfügen"
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "να επικολλάται αυτόματα το κείμενο μετά την υπαγόρευση",
+            "να σταματήσει η αυτόματη επικόλληση μετά την υπαγόρευση",
+            "να μένει κάθε υπαγόρευση μόνο στο πρόχειρο για να την επικολλώ εγώ"
+          ],
+          "title" : "Αυτόματη επικόλληση υπαγορευμένου κειμένου",
+          "words" : [
+            "μη αυτόματη επικόλληση",
+            "απενεργοποίηση αυτόματης επικόλλησης"
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "paste my dictation automatically",
+            "stop pasting my dictation automatically",
+            "copy every dictation to the clipboard so I can paste it myself"
+          ],
+          "words" : [
+            "auto-paste",
+            "automatic pasting",
+            "manual paste",
+            "clipboard only"
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "pegar automáticamente el texto al terminar de dictar",
+            "desactivar el pegado automático de los dictados",
+            "dejar cada dictado en el portapapeles para pegarlo a mano"
+          ],
+          "title" : "Pegar automáticamente los dictados",
+          "words" : [
+            "pegado automático",
+            "pegado manual",
+            "autopegado"
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "lülita dikteeritud teksti automaatne kleepimine sisse",
+            "lülita dikteeritud teksti automaatne kleepimine välja",
+            "jäta dikteeritud tekst ainult lõikelauale, et saaksin selle ise kleepida"
+          ],
+          "title" : "Kleebi dikteeritud tekst automaatselt",
+          "words" : [
+            "automaatne kleepimine",
+            "käsitsi kleepimine"
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "liitä saneltu teksti automaattisesti sanelun päätyttyä",
+            "poista sanelujen automaattinen liittäminen käytöstä",
+            "jätä sanelut vain leikepöydälle, jotta voin liittää ne itse"
+          ],
+          "title" : "Liitä saneltu teksti automaattisesti",
+          "words" : [
+            "automaattinen liittäminen",
+            "manuaalinen liittäminen"
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "coller automatiquement le texte à la fin de chaque dictée",
+            "désactiver le collage automatique des dictées",
+            "garder chaque dictée dans le presse-papiers pour la coller moi-même"
+          ],
+          "title" : "Coller automatiquement le texte dicté",
+          "words" : [
+            "collage automatique",
+            "collage manuel",
+            "collage auto"
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "डिक्टेशन का ऑटो पेस्ट चालू करें",
+            "डिक्टेशन का ऑटो पेस्ट बंद करें",
+            "हर डिक्टेशन सिर्फ़ क्लिपबोर्ड में रखें ताकि मैं उसे खुद पेस्ट कर सकूँ"
+          ],
+          "title" : "डिक्टेशन अपने आप पेस्ट करें",
+          "words" : [
+            "ऑटो पेस्ट",
+            "मैनुअल पेस्ट"
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "uključi automatsko lijepljenje nakon diktiranja",
+            "isključi automatsko lijepljenje nakon diktiranja",
+            "ostavi svaki diktat samo u međuspremniku da ga mogu ručno zalijepiti"
+          ],
+          "title" : "Automatski zalijepi diktirani tekst",
+          "words" : [
+            "automatsko lijepljenje diktata",
+            "ručno lijepljenje diktata"
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "diktálás után automatikusan illessze be a szöveget",
+            "automatikus beillesztés kikapcsolása diktálás után",
+            "a diktált szöveg csak a vágólapra kerüljön, hogy én illeszthessem be"
+          ],
+          "title" : "Diktált szöveg automatikus beillesztése",
+          "words" : [
+            "automatikus beillesztés",
+            "kézi beillesztés"
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "attivare l’incolla automatico dopo la dettatura",
+            "disattivare l’incolla automatico dopo la dettatura",
+            "lasciare ogni dettatura solo negli appunti per incollarla a mano"
+          ],
+          "title" : "Incolla automaticamente il testo dettato",
+          "words" : [
+            "incolla automatico",
+            "incolla manuale",
+            "dettatura solo negli appunti"
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "音声入力したテキストを自動で貼り付けたい",
+            "音声入力後の自動貼り付けをオフにしたい",
+            "音声入力したテキストはクリップボードにコピーするだけにして、自分で貼り付けたい"
+          ],
+          "title" : "音声入力したテキストを自動で貼り付ける",
+          "words" : [
+            "自動貼り付け",
+            "自動ペースト",
+            "手動貼り付け",
+            "手動ペースト"
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "받아쓴 내용 자동 붙여넣기 켜기",
+            "받아쓴 내용 자동 붙여넣기 끄기",
+            "받아쓴 내용을 클립보드에만 복사해서 직접 붙여넣기"
+          ],
+          "title" : "받아쓴 내용 자동 붙여넣기",
+          "words" : [
+            "자동 붙여넣기",
+            "수동 붙여넣기"
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "įjungti automatinį įklijavimą po diktavimo",
+            "išjungti automatinį įklijavimą po diktavimo",
+            "po kiekvieno diktavimo tekstą palikti tik iškarpinėje ir įklijuoti rankiniu būdu"
+          ],
+          "title" : "Automatiškai įklijuoti padiktuotą tekstą",
+          "words" : [
+            "automatinis įklijavimas",
+            "rankinis įklijavimas"
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "ieslēgt diktētā teksta automātisku ielīmēšanu",
+            "izslēgt automātisko ielīmēšanu pēc diktēšanas",
+            "pēc katras diktēšanas kopēt tekstu tikai starpliktuvē, lai varu to ielīmēt manuāli"
+          ],
+          "title" : "automātiski ielīmēt diktēto tekstu",
+          "words" : [
+            "automātiska ielīmēšana",
+            "manuāla ielīmēšana"
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "attiva l-paste awtomatiku wara d-dettatura",
+            "itfi l-paste awtomatiku wara d-dettatura",
+            "żomm it-test iddettat fil-clipboard biss biex inwaħħlu jien"
+          ],
+          "title" : "Waħħal it-test iddettat awtomatikament",
+          "words" : [
+            "paste awtomatiku",
+            "paste manwali"
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "automatisch plakken na het dicteren aanzetten",
+            "automatisch plakken na het dicteren uitzetten",
+            "zet mijn gedicteerde tekst alleen op het klembord zodat ik die zelf kan plakken"
+          ],
+          "title" : "Gedicteerde tekst automatisch plakken",
+          "words" : [
+            "automatisch plakken",
+            "handmatig plakken"
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "włącz automatyczne wklejanie po dyktowaniu",
+            "wyłącz automatyczne wklejanie po dyktowaniu",
+            "zostawiaj podyktowany tekst w schowku do ręcznego wklejenia"
+          ],
+          "title" : "Automatycznie wklejaj podyktowany tekst",
+          "words" : [
+            "automatyczne wklejanie",
+            "ręczne wklejanie"
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "colar o texto automaticamente ao terminar de ditar",
+            "desativar a colagem automática após o ditado",
+            "deixar cada ditado só na área de transferência para colar manualmente"
+          ],
+          "title" : "Colar automaticamente o texto ditado",
+          "words" : [
+            "colagem automática",
+            "colagem manual"
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "activează lipirea automată după dictare",
+            "dezactivează lipirea automată după dictare",
+            "lasă textul dictat doar în clipboard ca să-l lipesc eu"
+          ],
+          "title" : "Lipește automat textul dictat",
+          "words" : [
+            "lipire automată",
+            "lipire manuală"
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "включить автоматическую вставку после диктовки",
+            "отключить автоматическую вставку после диктовки",
+            "копировать надиктованный текст только в буфер обмена, чтобы вставлять его вручную"
+          ],
+          "title" : "Автоматически вставлять надиктованный текст",
+          "words" : [
+            "автовставка",
+            "автоматическая вставка",
+            "ручная вставка"
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "zapnúť automatické vkladanie po diktovaní",
+            "vypnúť automatické vkladanie po diktovaní",
+            "po každom diktovaní nechať text iba v schránke a vložiť ho ručne"
+          ],
+          "title" : "Automaticky vkladať nadiktovaný text",
+          "words" : [
+            "automatické vkladanie diktátu",
+            "ručné vkladanie diktátu"
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "prilepi besedilo samodejno po narekovanju",
+            "izklopi samodejno lepljenje po narekovanju",
+            "po vsakem narekovanju pusti besedilo samo v odložišču, da ga lahko prilepim ročno"
+          ],
+          "title" : "Samodejno prilepi narekovano besedilo",
+          "words" : [
+            "samodejno lepljenje",
+            "ročno lepljenje"
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "slå på automatisk inklistring av dikterad text",
+            "stäng av automatisk inklistring efter diktering",
+            "lägg varje diktering i urklippet så att jag kan klistra in den själv"
+          ],
+          "title" : "Klistra in dikterad text automatiskt",
+          "words" : [
+            "automatisk inklistring",
+            "manuell inklistring"
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "dikte sonrası otomatik yapıştırmayı aç",
+            "dikte sonrası otomatik yapıştırmayı kapat",
+            "dikte ettiğim metin panoda kalsın, kendim yapıştırayım"
+          ],
+          "title" : "Dikte edilen metni otomatik yapıştır",
+          "words" : [
+            "otomatik yapıştırma",
+            "elle yapıştırma",
+            "manuel yapıştırma"
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "увімкнути автоматичне вставлення після диктування",
+            "вимкнути автоматичне вставлення після диктування",
+            "залишати надиктований текст у буфері обміну, щоб вставляти його вручну"
+          ],
+          "title" : "Автоматично вставляти надиктований текст",
+          "words" : [
+            "автовставлення",
+            "автоматичне вставлення",
+            "вставлення вручну"
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "bật tự động dán sau khi đọc chính tả",
+            "tắt tự động dán sau khi nhập bằng giọng nói",
+            "chỉ lưu đoạn vừa đọc vào bộ nhớ tạm để dán thủ công"
+          ],
+          "title" : "Tự động dán văn bản nhập bằng giọng nói",
+          "words" : [
+            "tự động dán",
+            "dán thủ công"
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "开启听写结束后的自动粘贴",
+            "关闭听写结束后的自动粘贴",
+            "每次听写结束后只复制到剪贴板，由我手动粘贴"
+          ],
+          "title" : "自动粘贴听写文本",
+          "words" : [
+            "自动粘贴",
+            "手动粘贴"
           ]
         }
       }

@@ -546,9 +546,10 @@ final class DictationLifecycleCoordinator {
     let driver = backend == .whisper ? whisperKernelDriver : kernelDriver
     return HeldDeliverySettings(
       smartInsertion: settings.smartInsertion,
-      autoPasteToActiveApp: driver.state.allowsAutoPaste,
+      autoPasteToActiveApp: driver.state.allowsAutoPaste && settings.automaticDictationPasteEnabled,
       restoreClipboardAfterPaste: settings.restoreClipboardAfterPaste,
-      keepDictationsOutOfClipboardHistory: settings.keepDictationsOutOfClipboardHistory)
+      keepDictationsOutOfClipboardHistory: settings.keepDictationsOutOfClipboardHistory,
+      copyOnlyByPreference: !settings.automaticDictationPasteEnabled)
   }
 
   /// #285 — resolve which backend owns the shared audio capture right now.

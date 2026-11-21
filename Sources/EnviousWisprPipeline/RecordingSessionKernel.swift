@@ -171,11 +171,13 @@ enum FinalizingSubStatus: Equatable, Sendable {
 enum KernelDeliveryOutcome: Equatable, Sendable {
   case pasted
   case clipboardOnly
+  /// The user disabled automatic paste; the board may or may not have confirmed the copy.
+  case intentionalClipboard(copied: Bool)
   /// Delivery ran its epilogue but deliberately wrote nowhere (#2087 Escape
   /// Recovery). Zero paste count, nil paste result, zero paste duration, and it
   /// must NEVER map to clipboard fallback.
   ///
-  /// A third case rather than reusing `.clipboardOnly`, because `.clipboardOnly`
+  /// Separate from `.clipboardOnly` because `.clipboardOnly`
   /// is a true statement about the clipboard that would be false here, and it
   /// can raise the clipboard-fallback overlay — telling the user their text is
   /// on the clipboard when nothing was written to it.

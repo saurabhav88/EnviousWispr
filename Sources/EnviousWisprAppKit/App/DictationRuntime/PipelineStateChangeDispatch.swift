@@ -32,6 +32,12 @@ enum PipelineStateChangeDispatch {
     driver: KernelDictationDriver,
     to newState: PipelineState
   ) {
+    let clipboardCopy = driver.intentionalClipboardCopy
+    let clipboardPolishReason = clipboardCopy.flatMap { _ in
+      driver.lastPolishNotice?.text ?? driver.concludedPolishTake.flatMap {
+        PolishSetupSurfaceCopy.shortReason(for: $0)
+      }
+    }
     let schedulesDataLossDisclosure = handler.handle(
       to: newState,
       pipelineOverlayIntent: driver.overlayIntent,
@@ -54,9 +60,12 @@ enum PipelineStateChangeDispatch {
       escapeRecoveryCompletion: driver.takeEscapeRecoveryCompletion(),
       // #3438: the concluded take's own typed outcome, read before planning, so a confirmed
       // setup problem replaces the failure pill with the setup card.
-      polishSetupBlocked: driver.lastPolishSetupBlocked)
+      polishSetupBlocked: driver.lastPolishSetupBlocked,
+      clipboardCopy: clipboardCopy,
+      clipboardPolishReason: clipboardPolishReason)
     // #3438: after the completion is planned, the concluded take's polish outcome goes to the
     // AI polish setup warnings, once per take, from whichever backend ran it.
-    driver.deliverPolishTakeOutcome(mayOfferCard: schedulesDataLossDisclosure == false)
+    driver.deliverPolishTakeOutcome(
+      mayOfferCard: clipboardCopy == nil && !schedulesDataLossDisclosure)
   }
 }

@@ -132,6 +132,24 @@ enum PolishSetupSurfaceCopy {
     return provider.displayName
   }
 
+  @MainActor
+  static func shortReason(for take: PolishTakeOutcome) -> String? {
+    if let stop = PolishSetupMonitor.outsideStopMissed(take) {
+      return shortReason(.localEngineStoppedOutside(stop.provider, stop))
+    }
+
+    let provider = take.context.provider
+    let problem: PolishSetupProblem
+    switch take.setupProblem {
+    case .localNotDownloaded: problem = .localEngineNotDownloaded(provider)
+    case .localDownloadPaused: problem = .localEngineDownloadPaused(provider)
+    case .localUpdatePaused: problem = .localEngineUpdatePaused(provider)
+    case .localDownloadFailed: problem = .localEngineFailed(provider)
+    default: return nil  // The runner supplies the reason for the remaining setup tags.
+    }
+    return banner(reason: shortReason(problem))
+  }
+
   /// The short reason: a fragment, no final punctuation, built from the problem itself (never
   /// from an error message).
   /// `egOneSize` is the size being set up when the problem is EG-1's.

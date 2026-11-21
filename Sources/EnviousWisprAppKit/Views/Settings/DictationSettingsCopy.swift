@@ -306,6 +306,12 @@ enum DictationSettingsCopy {
   /// Restore, Smart insertion and Quick Add explanations are the sentences the page
   /// showed before, now behind "?".
   enum Clipboard {
+    static let automaticPasteTitle = LocalizedStringResource(
+      "Paste dictations automatically", comment: "Clipboard settings: automatic paste switch title.")
+    static let automaticPasteShort = LocalizedStringResource(
+      "Turn this off to keep your latest dictation on the clipboard for manual paste.",
+      comment: "Clipboard settings: explains what happens when automatic paste is off.")
+
     static let autoCopyTitle = LocalizedStringResource(
       "Auto-copy to clipboard", comment: "Clipboard settings: switch title.")
     static let autoCopyShort = LocalizedStringResource(

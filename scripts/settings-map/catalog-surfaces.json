@@ -317,6 +317,9 @@
   "mac-ctl-sound-preview": [
    "recordingChime.preview"
   ],
+  "mac-ctl-automatic-dictation-paste": [
+   "automaticDictationPaste"
+  ],
   "mac-ctl-auto-copy": [
    "autoCopyToClipboard"
   ],
@@ -751,6 +754,11 @@
    "kind": "control",
    "parent": "mac-sec-dict-learn-from",
    "label": "Fix words it learned"
+  },
+  "mac-ctl-automatic-dictation-paste": {
+   "kind": "control",
+   "parent": "mac-sec-clipboard",
+   "label": "Paste dictations automatically"
   },
   "mac-ctl-self-learning-forget-memory": {
    "kind": "control",

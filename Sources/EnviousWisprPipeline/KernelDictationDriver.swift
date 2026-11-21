@@ -1192,11 +1192,17 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
 
   /// #3438: whether the CONCLUDED take's polish was skipped by a confirmed unfinished setup.
   /// Read for that take only (its ID must be `lastTakeID`), never another take's outcome.
-  public var lastPolishSetupBlocked: Bool {
-    guard let polish = outcome.polishTakeOutcome, polish.takeID == lastTakeID else {
-      return false
-    }
-    return polish.setupProblem != nil
+  public var lastPolishSetupBlocked: Bool { concludedPolishTake?.setupProblem != nil }
+
+  package var concludedPolishTake: PolishTakeOutcome? {
+    guard let polish = outcome.polishTakeOutcome, polish.takeID == lastTakeID else { return nil }
+    return polish
+  }
+
+  /// Nil for the ordinary paste route, false for a selected clipboard route with no confirmed write.
+  package var intentionalClipboardCopy: Bool? {
+    guard case .intentionalClipboard(let copied) = kernel.deliveryOutcome else { return nil }
+    return copied
   }
 
   /// The rule `deliverPolishTakeOutcome` applies: only the concluded take's own outcome, and

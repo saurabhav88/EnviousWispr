@@ -83,7 +83,7 @@ Each picture is the whole page, top to bottom, at the 820pt window (a 578pt page
 ## page-dictation-clipboard
 **Dictation > Clipboard.** Sets how dictation uses and restores the clipboard.
 - **Top to bottom:** tab strip (Clipboard selected), CLIPBOARD ("Changes apply to the next recording"), QUICK ADD.
-- **Controls:** Auto-copy to clipboard: switch (on). Restore clipboard after paste: switch (on). Hide dictations from clipboard manager apps: switch (off). Smart insertion: switch (on). Read selections through the clipboard: switch (on).
+- **Controls:** Paste dictations automatically: switch (on). Auto-copy to clipboard: switch (on). Restore clipboard after paste: switch (on). Hide dictations from clipboard manager apps: switch (off). Smart insertion: switch (on). Read selections through the clipboard: switch (on).
 - **Buttons:** none besides the ? help buttons.
 - **Parts:** SettingsTabStrip, SettingsSectionHeading, BrandedSection, SettingsRow, SettingsRowIcon, SettingsInfoButton, BrandedToggleStyle.
 

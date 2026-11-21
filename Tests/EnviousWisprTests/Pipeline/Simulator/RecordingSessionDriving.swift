@@ -427,6 +427,7 @@ final class KernelRecordingSession: RecordingSessionDriving {
     switch kernel.deliveryOutcome {
     case .pasted: result.pasteOutcome = .pasted
     case .clipboardOnly: result.pasteOutcome = .clipboardOnly
+    case .intentionalClipboard(let copied): result.pasteOutcome = copied ? .clipboardOnly : .none
     // #2087: mapped to its own case, never folded into `.none`. Suppressed
     // means the user still HAS their text (held for recovery); `.none` means
     // no delivery outcome exists at all.

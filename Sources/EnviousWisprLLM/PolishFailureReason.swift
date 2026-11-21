@@ -283,7 +283,7 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
   /// translation can reorder the whole thing. The notice's tone travels separately as `leadIn`
   /// (`notice(provider:)`); nothing reads it back out of this text. Always rendered with a
   /// concrete provider by the runner; `name` is the hardcoded display name, never a user host URL.
-  public func composedMessage(provider: LLMProvider) -> String {
+  public func composedMessage(provider: LLMProvider, claimsPaste: Bool = true) -> String {
     let name = provider.displayName
     let isOllama = provider == .ollama
     switch self {
@@ -372,6 +372,9 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
         comment: "Dictation notice: AI polish was skipped, not broken; the original text was used."
       )
     case .contentBlocked:
+      if !claimsPaste {
+        return String(localized: "AI polish failed: \(name) blocked this text.")
+      }
       return String(
         localized:
           "AI polish failed: \(name) blocked this text. Pasted without AI polish.",
@@ -413,6 +416,9 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
             "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is."
         )
       case .ollama, .appleIntelligence, .egOne, .s1Mini, .none:
+        if !claimsPaste {
+          return String(localized: "AI polish failed: a configuration problem stopped it.")
+        }
         return String(
           localized:
             "AI polish failed: a configuration problem stopped it. Pasted without AI polish.",
@@ -432,6 +438,9 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
     // answer inside the budget. A user-facing sentence is a claim like any
     // other, and this one was refuted by our own telemetry.
     case .timedOut:
+      if !claimsPaste {
+        return String(localized: "AI polish skipped: \(name) did not answer in time.")
+      }
       return String(
         localized:
           "AI polish skipped: \(name) did not answer in time. Pasted without AI polish.",
@@ -439,11 +448,19 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
           "Dictation notice: AI polish was skipped, not broken; the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is."
       )
     case .unknown:
+      if !claimsPaste {
+        return String(localized: "AI polish failed: an unexpected error stopped it.")
+      }
       return String(
         localized:
           "AI polish failed: an unexpected error stopped it. Pasted without AI polish.",
         comment: "Dictation notice: AI polish failed and the original text was used.")
     case .outputTruncated:
+      if !claimsPaste {
+        return String(
+          localized:
+            "AI polish failed: \(name) ended the response before AI polish finished. Try a shorter dictation or another model.")
+      }
       return String(
         localized:
           "AI polish failed: \(name) ended the response before AI polish finished. Pasted without AI polish. If this keeps happening, choose another model or use a shorter dictation.",
@@ -493,8 +510,8 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
   }
 
   /// The notice for this reason: its text and its tone, built together so they cannot drift.
-  public func notice(provider: LLMProvider) -> PolishNotice {
-    PolishNotice(leadIn: leadIn, text: composedMessage(provider: provider))
+  public func notice(provider: LLMProvider, claimsPaste: Bool = true) -> PolishNotice {
+    PolishNotice(leadIn: leadIn, text: composedMessage(provider: provider, claimsPaste: claimsPaste))
   }
 
   /// `ollamaPreflightSkipMessage` as a notice. Always skip-toned: that copy is written with

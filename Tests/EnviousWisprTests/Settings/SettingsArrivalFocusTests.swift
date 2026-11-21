@@ -349,6 +349,12 @@ struct SettingsArrivalFocusTests {
     ("dictation.chimes", [.recordingChimes, .recordingChimeAirGlint], [.sectionChimes, .recordingChime]),
     ("dictation.pill", [.pillPosition, .pillStyle], [.sectionPill]),
     (
+      "dictation.clipboard",
+      [.automaticDictationPaste, .autoCopyToClipboard, .restoreClipboard, .keepOutOfClipboardHistory,
+       .smartInsertion, .quickAddClipboardFallback],
+      [.sectionClipboard, .sectionQuickAddClipboard]
+    ),
+    (
       "dictionary.learnFrom",
       [.selfLearningDictionary, .fixLearnedWords, .contactsSyncOnLaunch, .importContacts],
       [.learnFrom]

@@ -52,7 +52,8 @@
       .selectedBackend, .recordingMode, .llmProvider, .llmModel, .ollamaModel,
       .fileImportLLMProvider, .fileImportLLMModel, .fileImportOllamaModel,
       .meetingSummaryLLMProvider, .meetingSummaryLLMModel, .meetingSummaryOllamaModel,
-      .s1MiniStyling, .s1MiniStructure, .s1MiniContext, .autoCopyToClipboard,
+      .s1MiniStyling, .s1MiniStructure, .s1MiniContext,
+      .automaticDictationPasteEnabled, .autoCopyToClipboard,
       .meetingCaptureCallSound, .meetingCallSoundExplained, .meetingWriteSummary, .meetingTurnsOffDictation, .meetingFollowsCallMute, .meetingOnboardingComplete, .meetingUseCalendarForNames, .meetingCallDetection, .meetingCallAppsOff, .meetingCallNoCounts, .meetingCallFirstTipShown, .meetingLanguageMode, .meetingTranscriptEngine, .meetingLiveWordsEngine, .meetingLiveWordsLanguage, .hotkeyEnabled, .vadAutoStop, .vadSilenceTimeout, .vadSensitivity, .vadEnergyGate, .onboardingState,
       .hasCompletedOnboarding, .cancelKeyCode, .cancelModifiers, .quickAddKeyCode,
       .quickAddModifiers, .pasteLastKeyCode, .pasteLastModifiers, .copyLastKeyCode,
@@ -88,7 +89,8 @@
       }
       switch key {
       case .selectedBackend, .recordingMode, .llmProvider, .llmModel, .s1MiniStyling,
-        .s1MiniStructure, .s1MiniContext, .autoCopyToClipboard, .meetingCaptureCallSound,
+        .s1MiniStructure, .s1MiniContext, .automaticDictationPasteEnabled, .autoCopyToClipboard,
+        .meetingCaptureCallSound,
         .meetingCallSoundExplained, .meetingWriteSummary, .meetingTurnsOffDictation,
         .meetingFollowsCallMute, .meetingOnboardingComplete,
         .meetingUseCalendarForNames, .meetingCallDetection, .meetingCallAppsOff,
@@ -149,6 +151,7 @@
       case .s1MiniStyling: return settings.s1MiniStyling.rawValue
       case .s1MiniStructure: return settings.s1MiniStructure.rawValue
       case .s1MiniContext: return settings.s1MiniContext.rawValue
+      case .automaticDictationPasteEnabled: return settings.automaticDictationPasteEnabled
       case .autoCopyToClipboard: return settings.autoCopyToClipboard
       case .meetingCaptureCallSound: return settings.meetingCaptureCallSound
       case .meetingCallSoundExplained: return settings.meetingCallSoundExplained
@@ -310,6 +313,8 @@
         return set(Codec.raw(value, S1Structure.self)) { settings.s1MiniStructure = $0 }
       case .s1MiniContext:
         return set(Codec.raw(value, S1Context.self)) { settings.s1MiniContext = $0 }
+      case .automaticDictationPasteEnabled:
+        return set(Codec.bool(value)) { settings.automaticDictationPasteEnabled = $0 }
       case .autoCopyToClipboard:
         return set(Codec.bool(value)) { settings.autoCopyToClipboard = $0 }
       case .meetingCaptureCallSound:
@@ -637,7 +642,8 @@
         .toggleKeyCode, .toggleModifiers:
         return .shortcutField
       case .selectedBackend, .recordingMode, .llmProvider, .s1MiniStyling, .s1MiniStructure,
-        .s1MiniContext, .autoCopyToClipboard, .meetingCaptureCallSound, .meetingCallSoundExplained,
+        .s1MiniContext, .automaticDictationPasteEnabled, .autoCopyToClipboard, .meetingCaptureCallSound,
+        .meetingCallSoundExplained,
         .meetingWriteSummary, .meetingTurnsOffDictation, .meetingFollowsCallMute,
         .meetingOnboardingComplete, .meetingUseCalendarForNames,
         .meetingCallDetection, .meetingCallAppsOff, .meetingCallNoCounts, .meetingCallFirstTipShown,

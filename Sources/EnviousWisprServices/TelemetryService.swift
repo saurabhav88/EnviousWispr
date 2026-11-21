@@ -422,6 +422,7 @@ public final class TelemetryService {
       fillerRemoval: false,
       targetApp: m?.targetApp,
       pasteResult: m?.pasteTier,
+      deliveryOutcome: m?.deliveryOutcome,
       focusOwnerState: m?.focusOwnerState,
       e2eSeconds: m?.e2eSeconds ?? t.processingTime,
       asrSeconds: m?.asrLatencySeconds,
@@ -2251,6 +2252,7 @@ public final class TelemetryService {
     model: ASRModelAttribution?,
     llmProvider: String?, fillerRemoval: Bool,
     targetApp: String?, pasteResult: String?,
+    deliveryOutcome: String? = nil,
     /// #3423: the record-start focus-owner state, one of five closed values; nil omits the key.
     focusOwnerState: String? = nil,
     e2eSeconds: Double, asrSeconds: Double?, llmSeconds: Double?,
@@ -2340,6 +2342,7 @@ public final class TelemetryService {
     if let a = targetApp { props["target_app"] = a }
     if let state = focusOwnerState { props["focus_owner_state"] = state }
     if let pr = pasteResult { props["paste_result"] = pr }
+    if let deliveryOutcome { props["delivery_outcome"] = deliveryOutcome }
     if let asr = asrSeconds { props["asr_seconds"] = asr }
     if let llm = llmSeconds { props["llm_seconds"] = llm }
     // #145: deterministic ITN facts (metadata only — `telemetry-privacy-boundary`).

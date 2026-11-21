@@ -247,6 +247,8 @@ enum DictationNarrator {
       return String(
         localized: "Pasted without AI polish.",
         comment: "Pill: AI polish failed, so the unpolished text was pasted.")
+    case .clipboardPolishFailed(let copied, let reason):
+      return copied ? String(localized: "Copied without AI polish. \(reason)") : reason
     case .historySaveFailed(let reason):
       // #3142: `reason` is already the whole translated sentence
       // (`HistorySaveErrorClass.userMessage`), so the pill shows it as is.
