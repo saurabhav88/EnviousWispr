@@ -354,42 +354,21 @@ struct CustomWordEditSheet: View {
         .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: .infinity, alignment: .leading)
     } else {
+      let aliases = word.aliases
+      let isAutoLearned = word.isAutoLearned
+      let learnedAliases = word.learnedAliases
+      let removeAlias: @MainActor (String) -> Void = { alias in
+        CustomWordSuggestionFlow.removeAlias(alias, from: &word)
+      }
+
       WrappingHStack(spacing: 6) {
-        ForEach(word.aliases, id: \.self) { alias in
-          // #996: a sound-alike the app learned from the user's edits wears
-          // a sparkle and a deeper tint, so the person can tell what they
-          // typed from what the app added. The mark matches the stored
-          // spelling exactly (the manager keeps it that way).
-          // A built-in's check-only aliases were not learned from anyone (#3339).
-          let learned = word.isAutoLearned && word.learnedAliases.contains(alias)
-          HStack(spacing: 4) {
-            if learned {
-              Image(systemName: "sparkles")
-                .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(Color.stAccent)
-                .accessibilityHidden(true)
-            }
-            Text(alias)
-              .font(.stHelper)
-              .fixedSize(horizontal: false, vertical: true)
-              .accessibilityValue(learned ? CustomTermProvenanceCopy.learnedFromYourEdits : "")
-            Button {
-              CustomWordSuggestionFlow.removeAlias(alias, from: &word)
-            } label: {
-              // An 8pt glyph inside a chip: the smallest target in the
-              // whole window, and the one that deletes an alias.
-              Image(systemName: "xmark")
-                .font(.system(size: 8, weight: .bold))
-                .settingsHoverQuiet(inset: 2, tint: .stError)
-            }
-            .buttonStyle(.plain)
-            .fixedSize()
-            .accessibilityLabel("Remove mishearing \(alias)")
-          }
-          .padding(.horizontal, 9)
-          .padding(.vertical, 4)
-          .background(
-            learned ? Color.stAccent.opacity(0.18) : Color.stAccentLight, in: Capsule())
+        // SwiftUI can build ForEach items while fitting this layout off the main actor.
+        ForEach(aliases, id: \.self) { @Sendable alias in
+          // Built-in check-only aliases were not learned from a user's edits (#3339).
+          CustomWordAliasChip(
+            alias: alias,
+            learned: isAutoLearned && learnedAliases.contains(alias),
+            onRemove: removeAlias)
         }
       }
       .frame(maxWidth: .infinity, alignment: .leading)
@@ -455,6 +434,53 @@ struct CustomWordEditSheet: View {
     }
   }
 
+}
+
+private struct CustomWordAliasChip: View {
+  let alias: String
+  let learned: Bool
+  let onRemove: @MainActor (String) -> Void
+
+  nonisolated init(alias: String, learned: Bool, onRemove: @escaping @MainActor (String) -> Void) {
+    self.alias = alias
+    self.learned = learned
+    self.onRemove = onRemove
+  }
+
+  var body: some View {
+    HStack(spacing: 4) {
+      // #996: a sound-alike the app learned from the user's edits wears
+      // a sparkle and a deeper tint, so the person can tell what they
+      // typed from what the app added. The mark matches the stored
+      // spelling exactly (the manager keeps it that way).
+      if learned {
+        Image(systemName: "sparkles")
+          .font(.system(size: 9, weight: .semibold))
+          .foregroundStyle(Color.stAccent)
+          .accessibilityHidden(true)
+      }
+      Text(alias)
+        .font(.stHelper)
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityValue(learned ? CustomTermProvenanceCopy.learnedFromYourEdits : "")
+      Button {
+        onRemove(alias)
+      } label: {
+        // An 8pt glyph inside a chip: the smallest target in the
+        // whole window, and the one that deletes an alias.
+        Image(systemName: "xmark")
+          .font(.system(size: 8, weight: .bold))
+          .settingsHoverQuiet(inset: 2, tint: .stError)
+      }
+      .buttonStyle(.plain)
+      .fixedSize()
+      .accessibilityLabel("Remove mishearing \(alias)")
+    }
+    .padding(.horizontal, 9)
+    .padding(.vertical, 4)
+    .background(
+      learned ? Color.stAccent.opacity(0.18) : Color.stAccentLight, in: Capsule())
+  }
 }
 
 /// The suggestion-fetch-and-apply step of `CustomWordEditSheet`'s
