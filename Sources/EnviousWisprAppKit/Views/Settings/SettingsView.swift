@@ -556,7 +556,7 @@ struct UnifiedWindowView: View {
         .padding(.vertical, 8)
       }
       .scrollContentBackground(.hidden)
-      .searchPanelBlocksBackground(search.isPanelPresented)
+      .searchPanelBlocksBackground(search.showsPanel)
 
       // Issue #343: in-app update banner. Fixed sibling of the scroll (NOT a
       // scrolling row) so it stays pinned to the bottom of the sidebar card.
@@ -585,7 +585,7 @@ struct UnifiedWindowView: View {
   /// equally-inset panels on the canvas.
   private var detailCard: some View {
     detailContent
-      .searchPanelBlocksBackground(search.isPanelPresented)
+      .searchPanelBlocksBackground(search.showsPanel)
       .frame(maxWidth: .infinity, maxHeight: .infinity)
       .clipShape(
         RoundedRectangle(cornerRadius: SettingsLayout.windowCardRadius, style: .continuous)
@@ -631,7 +631,7 @@ struct UnifiedWindowView: View {
   /// that turns an outside click into closing it (the field and the panel stay clickable).
   @ViewBuilder
   private func searchDropdown(_ anchor: Anchor<CGRect>?) -> some View {
-    if search.isPanelPresented, let anchor {
+    if search.showsPanel, let anchor {
       GeometryReader { proxy in
         let field = proxy[anchor]
         let width = max(0, min(440, proxy.size.width - field.minX - 8))

@@ -36,6 +36,11 @@ final class SettingsSearchModel {
     }
   }
 
+  /// The dropdown and its outside-click surface show: the panel is open and an index answers, so
+  /// it shows rows or "No settings match". While the title-only index is still being built the
+  /// panel stays hidden, so an invisible surface never swallows clicks on the window (#4772).
+  var showsPanel: Bool { isPanelPresented && answeringIndex != nil }
+
   /// The meaning pass (plan §3.7 item 8): word results show at once; a final "no results" waits
   /// until the pass completes, is skipped or is abandoned at its deadline (#3545).
   enum MeaningPass: Equatable {
@@ -264,24 +269,30 @@ final class SettingsSearchModel {
   }
 
   /// The title-only index exists: it answers the query on screen now (the live query and
-  /// generation, not the one typed when the build started), and the full index loads once, off
-  /// the main actor.
+  /// generation, not the one typed when the build started).
   private func titlesBuilt(_ titles: SettingsSearchIndex) {
     guard case .preparingTitles = indexState else { return }
     indexState = .loading(titleOnly: titles)
-    let load = loadIndex
-    Task { [weak self] in
-      let index = await load()
-      self?.indexLoaded(index)
-    }
     refresh()
   }
+
+  /// The full index loads once, off the main actor, and only when someone searches: it repeats
+  /// the per-language lookups, so a window opened without a search never pays for it (#4772).
+  private(set) var fullIndexRequested = false
 
   private func refresh() {
     prepareIndex()
     guard let index = answeringIndex,
       !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     else { return }
+    if !fullIndexRequested {
+      fullIndexRequested = true
+      let load = loadIndex
+      Task { [weak self] in
+        let index = await load()
+        self?.indexLoaded(index)
+      }
+    }
     deliver(index.results(for: query), for: generation)
   }
 

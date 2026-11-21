@@ -246,9 +246,11 @@ struct SettingsSearchModelTests {
     #expect(model.isPanelPresented)
     #expect(model.results.isEmpty, "the title index was built inside the keystroke")
     #expect(model.showsNoResults == false)
+    #expect(model.showsPanel == false, "an empty dropdown would swallow clicks on the window")
     #expect(model.submit() == nil)
     titles.release()
     #expect(await Self.waitUntil { model.results.map(\.entryID) == ["theme"] })
+    #expect(model.showsPanel)
     #expect(titles.calls == [false], "title builds by thread (true = main): \(titles.calls)")
     await fullGate.open()
     #expect(await Self.ready(model))
@@ -280,8 +282,8 @@ struct SettingsSearchModelTests {
     }
     #expect(cleared.results.isEmpty, "a cleared search was answered: \(cleared.results)")
     #expect(cleared.isPanelPresented == false)
+    // No search is on screen, so the full index is not loaded yet (#4772).
     await clearedGate.open()
-    #expect(await Self.ready(cleared))
   }
 
   @Test("a search that ends before any answer is abandoned, without its text, never zero results")
@@ -297,8 +299,8 @@ struct SettingsSearchModelTests {
     #expect(finished.rows.map(\.outcome) == [.abandoned])
     #expect(finished.rows.first?.query == nil, "an unanswered search sent its text")
     titles.release()
+    #expect(await Self.titlesReady(model))
     await fullGate.open()
-    #expect(await Self.ready(model))
   }
 
   @Test("opening the window builds the title index before typing, so the first search answers at once")
@@ -319,6 +321,23 @@ struct SettingsSearchModelTests {
     #expect(titles.calls == [false], "the title index was built more than once or on main")
     await fullGate.open()
     #expect(await Self.ready(model))
+  }
+
+  @Test("opening the window without searching never loads the full index")
+  func openingWithoutSearchingLoadsOnlyTitles() async {
+    let loads = LoadCounter()
+    let gate = AsyncGate()
+    let model = Self.gatedModel(
+      gate, loads: loads, titles: Self.fixture([(.theme, "alpha")]),
+      full: Self.fixture([(.showInDock, "alpha")]))
+    #expect(await Self.prepared(model))
+    model.setQuery("   ")
+    #expect(model.fullIndexRequested == false, "the full index loaded with no search on screen")
+    model.setQuery("alpha")
+    #expect(model.results.map(\.entryID) == ["theme"])
+    await gate.open()
+    #expect(await Self.waitUntil { model.results.first?.entryID == "showInDock" })
+    #expect(await loads.value == 1)
   }
 
   @Test("the full index keeps a selection the person moved, and never reopens or revives a search")
@@ -555,9 +574,9 @@ struct SettingsSearchModelTests {
   }
 
   /// A model on a small full index with `worker`, whose pass deadline passes only when `clock`
-  /// fires. It reports every return of meaning work to `returns`. Returned with its index ready,
-  /// as an open window has it (#4772): the initial `meaningPass` is `.completed`, so a search typed
-  /// before any index answers would satisfy a "pass completed" wait without running a pass.
+  /// fires. It reports every return of meaning work to `returns`. Returned with its title index
+  /// built, as an open window has it (#4772): the initial `meaningPass` is `.completed`, so a search
+  /// typed before any index answers would satisfy a "pass completed" wait without running a pass.
   static func meaningModel(
     _ worker: SettingsSearchMeaningWorker, clock: DeadlineClock, spoken: SpokenLog = SpokenLog(),
     returns: ReturnLog = ReturnLog()
@@ -568,8 +587,7 @@ struct SettingsSearchModelTests {
       meaningDeadlineElapses: { await clock.wait() }, announce: { spoken.lines.append($0) },
       announcementDelay: .milliseconds(20))
     model.meaningWorkReturned = { returns.values.append($0) }
-    model.prepareIndex()
-    #expect(await ready(model), "the meaning test model's index never became ready")
+    #expect(await prepared(model), "the meaning test model's title index never arrived")
     return model
   }
 

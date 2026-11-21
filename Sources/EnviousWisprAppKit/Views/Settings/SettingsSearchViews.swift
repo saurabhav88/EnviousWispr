@@ -43,7 +43,7 @@ struct SettingsSearchField: View {
       }
       .onKeyPress(.tab) {
         // Focus stays in the search while its dropdown is open (§3.4).
-        model.isPanelPresented ? .handled : .ignored
+        model.showsPanel ? .handled : .ignored
       }
       .onKeyPress(.escape) {
         guard !model.query.isEmpty else { return .ignored }
