@@ -268,16 +268,13 @@ class AudioRig:
             print("RIG: the test sound is not proven stopped; all audio stays on BlackHole. Stop "
                   "`afplay`, then run `python3 Tests/RuntimeUAT/silent_audio.py restore`", flush=True)
             parts = ()
-        elif not take_idle and self.route is not None:
-            # The app may still be recording: put the SPEAKERS back but leave the system input and
-            # the app's microphone on BlackHole, so it can only hear silence, never the room.
-            try:
-                self._speakers_back(self.route.original_output)
-            except (Exception, SystemExit) as exc:
-                print(f"RIG: speakers not put back: {exc!r}", flush=True)
-            print("RIG: a take could not be proven stopped; the app's microphone stays on BlackHole. "
-                  "Stop the recording, then run `python3 Tests/RuntimeUAT/silent_audio.py restore`", flush=True)
-            parts = (self.sounds, self.alerts)  # quiet sounds back is harmless to a live take
+        elif not take_idle:
+            # The app may still be recording (the stop was already sent). Restore every device
+            # anyway and report the failure (#4829, oversight 2026-11-22): leaving the Mac's input
+            # on BlackHole breaks the founder's next real dictation, and the only thing a restore
+            # can cut into is this test take, already stopped and reported as failed.
+            print("RIG: a take could not be proven stopped; the stop was sent and every device is "
+                  "restored anyway. Check the app is idle before the next take.", flush=True)
         for part in parts:
             if part is None:
                 continue
@@ -292,11 +289,6 @@ class AudioRig:
         self._old_handlers = {}
         self.restored = ok
         return ok
-
-    @staticmethod
-    def _speakers_back(device):
-        if not sa._restore_device("output", device):
-            raise RuntimeError(f"output was not put back to {device!r}")
 
     def __exit__(self, exc_type, exc, tb):
         if self._restore_all():
@@ -416,17 +408,15 @@ def _self_test():
         tg._take = None  # self-test reset: the previous case left an unproven take on purpose
         tg.take_started(stop, idle)
         rig = AudioRig(target=FakeTarget())
-        rig._speakers_back = lambda device: None  # never touch the real devices in a self-test
         route = Fake()
-        route.original_output = "MacBook Pro Speakers"
         alerts = Fake()
         rig.route, rig.alerts = route, alerts
         try:
             rig.__exit__(None, None, None)
             expect(f"{label}: never a pass", False)
         except tg.SetupFailed as exc:
-            expect(f"{label}: SETUP FAILED, app mic left on BlackHole, alerts restored",
-                   exc.step == "restore" and route.calls == 0 and alerts.calls == 1)
+            expect(f"{label}: SETUP FAILED, and every device is restored anyway (#4829)",
+                   exc.step == "restore" and route.calls == 1 and alerts.calls == 1)
 
     class Player:
         def __init__(self):
@@ -486,14 +476,12 @@ def _self_test():
     tg.take_started(lambda: None, lambda: False)
     rig = AudioRig(target=FakeTarget())
     alerts = Fake()
-    rig.route, rig.alerts = Fake(), alerts
-    rig.route.original_output = "MacBook Pro Speakers"
-    rig._speakers_back = lambda device: 1 / 0
+    rig.route, rig.alerts = Fake(boom=True), alerts
     try:
         rig.__exit__(None, None, None)
     except tg.SetupFailed:
         pass
-    expect("a failing speakers-only step still restores the alerts", alerts.calls == 1)
+    expect("an unproven take whose route restore fails still restores the alerts", alerts.calls == 1)
     tg._take = None
 
     class Boom(FakeTarget):
@@ -553,16 +541,14 @@ def _self_test():
     tg._take = None
     tg.take_started(lambda: None, lambda: False)
     rig = AudioRig(target=FakeTarget())
-    rig._speakers_back = lambda device: None
     sounds, route, alerts = Fake(), Fake(), Fake()
-    route.original_output = "MacBook Pro Speakers"
     rig.sounds, rig.route, rig.alerts = sounds, route, alerts
     try:
         rig.__exit__(None, None, None)
     except tg.SetupFailed:
         pass
-    expect("#3990 an unproven take restores sounds and alerts and leaves the microphone pinned",
-           sounds.calls == 1 and alerts.calls == 1 and route.calls == 0)
+    expect("#3990/#4829 an unproven take restores sounds, the route and the alerts",
+           sounds.calls == 1 and alerts.calls == 1 and route.calls == 1)
     tg._take = None
 
     tg.declare_target("com.example.Outer")

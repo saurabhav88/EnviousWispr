@@ -786,14 +786,6 @@ def _device_restore_cases(expect, fake_client):
                        and os.path.exists(RESTORE_FILE)
                        and all(cmd[cmd.index("-t") + 1] == "output" for cmd in commands[start:]))
 
-                import audio_rig
-                devices["output"] = dict(silent)
-                start = len(commands)
-                with patch.object(audio_rig, "sa", sys.modules[__name__]):
-                    audio_rig.AudioRig._speakers_back(original)
-                expect("#4181 live-rig speakers-only cleanup uses the same identity restore",
-                       devices["output"] == original and devices["input"] == silent
-                       and all(cmd[cmd.index("-t") + 1] == "output" for cmd in commands[start:]))
 
 
 def _recover_cases(expect):
