@@ -1,5 +1,6 @@
 import AppKit
 import EnviousWisprCore
+import EnviousWisprServices
 import SwiftUI
 
 // Arrival after a search navigation (#3482 plan §3.4): scroll the chosen place into view, draw
@@ -734,6 +735,9 @@ extension EnvironmentValues {
   /// The key watcher's monitor, injected at the main window's root. Nil (a preview, a test that
   /// does not exercise keys): arrival does not watch keys.
   @Entry var settingsKeyMonitor: (any SettingsKeyMonitoring)? = nil
+  /// #4843: the app's one delivered-dictation broadcast, so Settings search can tell dictated
+  /// text from typed text. Nil (a preview, a test): search treats all text as typed.
+  @Entry var pasteCompletionRegistry: PasteCompletionRegistry? = nil
 }
 
 /// Calls `onKey` for every key pressed in the window it is in, before the window dispatches it to

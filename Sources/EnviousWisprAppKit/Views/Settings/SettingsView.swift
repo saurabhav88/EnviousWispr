@@ -50,6 +50,9 @@ struct UnifiedWindowView: View {
     AccessibilityNotification.Announcement(message).post()
   }
   @FocusState private var searchFocused: Bool
+  /// #4843: delivered dictations, so a search holding dictated text never sends its words.
+  @Environment(\.pasteCompletionRegistry) private var pasteCompletionRegistry
+  @Environment(LiveRecordingState.self) private var liveRecordingState: LiveRecordingState?
 
   /// Owned HERE so a language download survives the user navigating to another section: this view
   /// is retained, the pages inside `detailContent` are not. See
@@ -94,6 +97,11 @@ struct UnifiedWindowView: View {
       // #3482 §8.1: the failed-search row follows "Share usage metrics", read at every terminal.
       .onAppear {
         search.usageMetricsOn = { settings.shareUsageMetrics }
+        // #4843: held weakly and deduplicated by the registry, so a repeat appearance is harmless.
+        pasteCompletionRegistry?.subscribe(search)
+        search.dictationInFlight = { [liveRecordingState] in
+          liveRecordingState?.isDictationActive ?? false
+        }
         // #4772: build the title-only index now, off the main actor, so typing never waits.
         search.prepareIndex()
       }

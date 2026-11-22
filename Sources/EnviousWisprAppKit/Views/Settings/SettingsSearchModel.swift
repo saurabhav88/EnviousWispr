@@ -128,9 +128,22 @@ final class SettingsSearchModel {
     var meaningPending = false
     var meaningElapsedMilliseconds: Double?
     var frozen = false
+    /// #4843: some of this search's text came from an EnviousWispr dictation into our own app.
+    /// Sticky until the attempt ends; a dictated search sends counts only, never its words.
+    var dictated = false
   }
 
   private(set) var attempt: Attempt?
+  /// #4843: the text of the last few dictations EnviousWispr delivered into its own windows while
+  /// this model was listening, folded by `foldedForMatch`, kept in memory and never sent or
+  /// logged. A key paste into our own app can land after the delivery notice, so a search's text
+  /// is matched against these. Hand-pasted text follows the same search checks.
+  @ObservationIgnored private(set) var recentDictations: [String] = []
+  static let recentDictationsKept = 8
+  /// #4843: whether a dictation is recording, transcribing or polishing now. A take stays active
+  /// until its delivery returns, so a field change while it is true may be that take's paste
+  /// (including a direct write that sends no delivery notice). The window sets it.
+  @ObservationIgnored var dictationInFlight: @MainActor () -> Bool = { false }
   /// Reads "Share usage metrics" now; the window sets it once its settings are in scope.
   @ObservationIgnored var usageMetricsOn: @MainActor () -> Bool
   private let emitFinished: @MainActor (SettingsSearchFinished) -> Void
@@ -241,6 +254,7 @@ final class SettingsSearchModel {
       return
     }
     if attempt == nil { attempt = Attempt(eligible: usageMetricsOn()) }
+    if dictationInFlight() || containsRecentDictation(text) { attempt?.dictated = true }
     isPanelPresented = true
     attempt?.frozen = false
     refresh()
@@ -425,7 +439,9 @@ final class SettingsSearchModel {
       SettingsSearchFinished(
         outcome: outcome, endedBy: endedBy, resultCount: ended.resultCount,
         appLanguage: appLanguageCode, meaningElapsedMilliseconds: ended.meaningElapsedMilliseconds,
-        sidebarPage: sidebarPage, sidebarTab: sidebarTab, typedQuery: ended.query))
+        sidebarPage: sidebarPage, sidebarTab: sidebarTab,
+        typedQuery: ended.dictated ? nil : ended.query,
+        typedQueryWordCount: SearchText.words(ended.query).count))
   }
 
   static func outcome(
@@ -688,7 +704,11 @@ final class SettingsSearchModel {
     generation &+= 1
     cancelAnnouncement()
     cancelMeaning()
-    if endedBy == .windowClose { startNewWindowSession() }
+    if endedBy == .windowClose {
+      // #4843: the remembered dictation texts live only while the window is open.
+      recentDictations.removeAll()
+      startNewWindowSession()
+    }
   }
 
   /// A closed window's transient meaning failure is retried in the next window session (#3545
@@ -726,5 +746,35 @@ final class SettingsSearchModel {
   private func cancelAnnouncement() {
     announcement?.cancel()
     announcement = nil
+  }
+}
+
+// MARK: - Dictated text (#4843)
+
+extension SettingsSearchModel: PasteCompletionObserver {
+  /// A dictation was delivered. Only one delivered into our own app can be in this search: it
+  /// marks an open search as dictated and is remembered for a search whose text lands after it.
+  /// Marking a search when the dictation went into another of our fields is the safe direction.
+  func pasteCompleted(_ event: PasteCompletionEvent) {
+    guard AppBundleIdentity.isOurs(event.destinationBundleID) else { return }
+    let text = Self.foldedForMatch(event.pastedText)
+    guard !text.isEmpty else { return }
+    recentDictations.append(text)
+    if recentDictations.count > Self.recentDictationsKept {
+      recentDictations.removeFirst(recentDictations.count - Self.recentDictationsKept)
+    }
+    if attempt != nil { attempt?.dictated = true }
+  }
+
+  /// Lowercased with every run of white space (a single-line field turns line breaks into
+  /// spaces) as one space, trimmed.
+  static func foldedForMatch(_ text: String) -> String {
+    text.lowercased().split(whereSeparator: \.isWhitespace).joined(separator: " ")
+  }
+
+  private func containsRecentDictation(_ text: String) -> Bool {
+    guard !recentDictations.isEmpty else { return false }
+    let folded = Self.foldedForMatch(text)
+    return recentDictations.contains { folded.contains($0) }
   }
 }
