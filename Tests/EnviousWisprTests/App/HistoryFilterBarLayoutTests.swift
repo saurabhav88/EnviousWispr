@@ -451,6 +451,19 @@ struct HistoryFilterBarLayoutTests {
       try body(rig)
     }
 
+    /// What a failure prints besides the counts (#4716: fails only in full runs, never alone, and the
+    /// recorded failures kept no state): the process's window and focus state, the locale and the
+    /// last placements the controls layout made. Read only; it changes nothing it reports.
+    private func failureContext(_ rig: Rig) -> String {
+      let windows = NSApp.windows
+      let keyWindow = NSApp.keyWindow.map { String(describing: Swift.type(of: $0)) } ?? "none"
+      let responder = rig.window.firstResponder.map { String(describing: Swift.type(of: $0)) } ?? "none"
+      return "context: rigWindowKey=\(rig.window.isKeyWindow) appKeyWindow=\(keyWindow) "
+        + "windows=\(windows.count) visible=\(windows.filter(\.isVisible).count) "
+        + "firstResponder=\(responder) locale=\(Locale.current.identifier) field=\(rig.field.frame) "
+        + "lastPlacements=\(rig.probe.layout.placements.suffix(4))"
+    }
+
     private func reset(_ rig: Rig) {
       rig.probe.rowBodies = 0
       rig.counts.measurements = 0
@@ -507,14 +520,14 @@ struct HistoryFilterBarLayoutTests {
         #expect(
           first.layoutMeasurements == 0 && first.layoutArrangements == 0
             && first.searchFrameChanged == false,
-          "focus plus the first character changed layout: \(first)")
+          "focus plus the first character changed layout: \(first); \(failureContext(rig))")
         reset(rig)
         for letter in "bcdefghij" {
           try type(String(letter), into: rig.field)
           pump(rig.view)
         }
         let rest = cost(rig, searchFrame: searchFrame, fieldFrame: fieldFrame)
-        #expect(rest == still, "the next nine characters cost \(rest)")
+        #expect(rest == still, "the next nine characters cost \(rest); \(failureContext(rig))")
         #expect(rig.field.stringValue == "abcdefghij")
       }
     }
