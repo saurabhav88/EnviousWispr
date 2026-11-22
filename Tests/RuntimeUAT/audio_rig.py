@@ -253,6 +253,11 @@ class AudioRig:
         """Every step runs even if another fails; True only when all verified. A take still
         running is stopped FIRST, so no recording outlives its route."""
         player_gone, take_idle = tg.stop_active_take()
+        if player_gone and not take_idle:
+            # #4829: the stop the take sent is not proof capture ended (a menu Stop can even start
+            # a second take on BlackHole, #3107). Cancel through the app's own door and confirm
+            # idle from its own state before any real microphone comes back.
+            take_idle = self._cancel_take()
         tg.clear_target()
         try:
             self.target.close()
@@ -269,12 +274,12 @@ class AudioRig:
                   "`afplay`, then run `python3 Tests/RuntimeUAT/silent_audio.py restore`", flush=True)
             parts = ()
         elif not take_idle:
-            # The app may still be recording (the stop was already sent). Restore every device
-            # anyway and report the failure (#4829, oversight 2026-11-22): leaving the Mac's input
-            # on BlackHole breaks the founder's next real dictation, and the only thing a restore
-            # can cut into is this test take, already stopped and reported as failed.
-            print("RIG: a take could not be proven stopped; the stop was sent and every device is "
-                  "restored anyway. Check the app is idle before the next take.", flush=True)
+            # Stop sent, cancel sent, still not proven idle. Restore every device anyway and report
+            # the failure (#4829, oversight 2026-11-22): leaving the Mac's input on BlackHole breaks
+            # the founder's next real dictation, and the only thing a restore can cut into is this
+            # test take, already stopped, cancelled and reported as failed.
+            print("RIG: a take could not be proven stopped after a stop and a cancel; every device "
+                  "is restored anyway. Check the app is idle before the next take.", flush=True)
         for part in parts:
             if part is None:
                 continue
@@ -289,6 +294,21 @@ class AudioRig:
         self._old_handlers = {}
         self.restored = ok
         return ok
+
+    @staticmethod
+    def _cancel_take():
+        """Cancel the app's dictation through the dev control door, then confirm idle from the
+        app's own state (#4829). True only when idle is confirmed; never raises."""
+        try:
+            w.door().call(["dictation", "cancel"])
+            print("RIG: the take was cancelled through the app's control door", flush=True)
+        except (Exception, SystemExit) as exc:  # nothing to cancel, or the door is unavailable
+            print(f"RIG: cancel through the control door did not run: {exc!r}", flush=True)
+        try:
+            return bool(w._recording_idle(seconds=10.0))
+        except (Exception, SystemExit) as exc:
+            print(f"RIG: idle check after the cancel raised {exc!r}", flush=True)
+            return False
 
     def __exit__(self, exc_type, exc, tb):
         if self._restore_all():
@@ -347,6 +367,10 @@ def _self_test():
             self.closed += 1
 
     print("audio_rig --self-test")
+    # Offline: the cancel step never reaches the real app's door here (#4829); each case below
+    # that needs it says what the cancel reports.
+    cancel_results = []
+    AudioRig._cancel_take = staticmethod(lambda: cancel_results.pop(0) if cancel_results else False)
     rig = AudioRig(target=FakeTarget())
     first_alerts = Fake()
     rig.route, rig.alerts = Fake(boom=True), first_alerts
@@ -417,6 +441,16 @@ def _self_test():
         except tg.SetupFailed as exc:
             expect(f"{label}: SETUP FAILED, and every device is restored anyway (#4829)",
                    exc.step == "restore" and route.calls == 1 and alerts.calls == 1)
+
+    tg._take = None
+    tg.take_started(lambda: None, lambda: False)
+    cancel_results[:] = [True]
+    rig = AudioRig(target=FakeTarget())
+    route, alerts = Fake(), Fake()
+    rig.route, rig.alerts = route, alerts
+    expect("#4829 a take the cancel proves idle restores normally, no SETUP FAILED",
+           rig.__exit__(None, None, None) is False and rig.restored and route.calls == 1)
+    tg._take = None
 
     class Player:
         def __init__(self):

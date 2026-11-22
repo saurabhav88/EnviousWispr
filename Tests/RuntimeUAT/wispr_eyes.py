@@ -596,13 +596,15 @@ def _play_take(audio, on_fail):
 _DRIVER_ACTIVE_STATES = {"loadingModel", "recording", "transcribing", "polishing"}
 
 
-def _driver_state():
+def _driver_state(timeout=2.0):
     """The app's own dictation state, `activeDriver.state` from the dev control door's read-only
     `status` (`DevControlDispatcher.project(_:)`: idle, loadingModel, recording, transcribing,
-    polishing, complete, error, advisory), or None when the door cannot answer (#4829)."""
+    polishing, complete, error, advisory), or None when the door cannot answer within `timeout`
+    seconds (#4829)."""
     import dev_control
     try:
-        state = dev_control.DoorClient(_pid).status().get("activeDriver", {}).get("state")
+        reply = dev_control.DoorClient(_pid, timeout=timeout).status()
+        state = reply.get("activeDriver", {}).get("state")
     except Exception:
         return None
     return state if isinstance(state, str) else None
@@ -635,7 +637,11 @@ def _recording_idle(seconds=30.0):
 
     deadline = time.monotonic() + seconds
     while True:
-        state = _driver_state()
+        # Each door call gets only the time left (at least 0.2 s), and an answer that lands after
+        # the deadline is unconfirmed: a slow door never stretches cleanup past `seconds`.
+        state = _driver_state(timeout=max(0.2, min(2.0, deadline - time.monotonic())))
+        if time.monotonic() > deadline:
+            return False
         if state is not None:
             if state not in _DRIVER_ACTIVE_STATES:
                 return True
