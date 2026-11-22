@@ -178,27 +178,24 @@ struct ImportedSourcesTests {
     #expect(resolved.reference == ImportedSourceReference(stored))
   }
 
-  @Test("Show in Finder reveals an original whose link went stale, and the link is still repaired (#4799)")
-  func showInFinderLeavesStaleRepairToState() async throws {
+  @Test("Show in Finder of a moved original reveals it and leaves the playing page alone (#4799)")
+  func showInFinderLeavesPlaybackAlone() async throws {
     let rig = try makeRig()
     let file = try ImportedMediaFixture.write(.wav16kMono, seconds: 1, in: rig.dir)
     let row = try await importRow(linkedTo: file, rig: rig)
-    // Cached while the link was fine; then the link goes stale.
-    #expect(url(of: await rig.sources.state(for: row.id)) != nil)
+    // Cached (a page plays from this answer); then the file moves and its link goes stale.
+    let cached = await rig.sources.state(for: row.id)
+    let moved = rig.dir.appendingPathComponent("moved.wav")
+    try FileManager.default.moveItem(at: file, to: moved)
     rig.probe.staleResolutions = true
     let revision = rig.sources.revision(for: row.id)
 
     let fresh = await rig.sources.freshState(for: row.id)
-    #expect(url(of: fresh)?.standardizedFileURL.path == file.standardizedFileURL.path)
-    #expect(rig.arbiter.deletionCount(for: .transcript(row.id)) == 0, "Finder did not wait for repair")
-    #expect(rig.sources.revision(for: row.id) != revision, "the row's views look again")
-
-    // The views' next look takes the existing repair path.
-    guard case .available = await rig.sources.state(for: row.id) else {
-      Issue.record("expected available")
-      return
-    }
-    #expect(rig.arbiter.deletionCount(for: .transcript(row.id)) == 1, "the link was repaired")
+    #expect(url(of: fresh)?.standardizedFileURL.path == moved.standardizedFileURL.path)
+    // Nothing the page plays from changed: same revision, same cached answer, no repair write.
+    #expect(rig.sources.revision(for: row.id) == revision)
+    #expect(await rig.sources.state(for: row.id) == cached)
+    #expect(rig.arbiter.deletionCount(for: .transcript(row.id)) == 0)
   }
 
   @Test("a stale link to a DIFFERENT file is never refreshed and reads as changed")

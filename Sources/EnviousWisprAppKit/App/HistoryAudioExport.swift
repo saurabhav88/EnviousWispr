@@ -201,7 +201,13 @@ final class HistoryAudioExport {
     } catch is CancellationError {
       return .silent(.abandoned)
     } catch {
-      return Task.isCancelled ? .silent(.abandoned) : .notSaved(.failed(detail: Self.detail(error)))
+      if Task.isCancelled { return .silent(.abandoned) }
+      // A read that failed because the recording was deleted or rebuilt meanwhile says so.
+      switch request.check() {
+      case .deleted: return .notSaved(.deleted)
+      case .changed: return .notSaved(.changed)
+      case .deliverable: return .notSaved(.failed(detail: Self.detail(error)))
+      }
     }
 
     // From here to the publish there is no suspension: a deletion cannot land in between.
@@ -293,9 +299,10 @@ final class HistoryAudioExport {
 
   /// A failed `replaceItemAt` can leave the user's original moved aside, at the location its
   /// error names (`MeetingStore.originalItemLocationKey`): put it back, so a failed save never
-  /// loses the file the user had. Never overwrites a file that took the destination meanwhile.
-  /// True when nothing is left aside (nothing was moved, or it is back); false when the
-  /// original is still where Foundation left it, so the caller must not delete that place.
+  /// loses the file the user had. Never overwrites a file that took the destination meanwhile:
+  /// then the original goes beside it, as "<name> (original).m4a" (numbered when taken), where
+  /// the user can find it. True when nothing is left aside; false when the original is still
+  /// where Foundation left it, so the caller must not delete that place.
   @discardableResult
   nonisolated static func restoreDisplacedOriginal(after error: any Error, at destination: URL)
     -> Bool
@@ -304,12 +311,16 @@ final class HistoryAudioExport {
     guard let moved = info["NSFileOriginalItemLocationKey"] as? URL,
       FileManager.default.fileExists(atPath: moved.path)
     else { return true }
-    do {
-      try FileManager.default.moveItem(at: moved, to: destination)
-      return true
-    } catch {
-      return false
+    if (try? FileManager.default.moveItem(at: moved, to: destination)) != nil { return true }
+    let folder = destination.deletingLastPathComponent()
+    let stem = destination.deletingPathExtension().lastPathComponent
+    for attempt in 1...20 {
+      let suffix = attempt == 1 ? " (original)" : " (original \(attempt))"
+      let beside = folder.appendingPathComponent(stem + suffix)
+        .appendingPathExtension(destination.pathExtension)
+      if (try? FileManager.default.moveItem(at: moved, to: beside)) != nil { return true }
     }
+    return false
   }
 
   /// Foundation's own sentence for a file-system failure (#3908); nothing for the rest.

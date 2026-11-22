@@ -316,13 +316,33 @@ struct HistoryAudioExportTests {
       Issue.record("expected a failed save, got \(String(describing: outcome))")
       return
     }
-    // The file that took the destination is not overwritten, and the user's file survives in
-    // the kept staging folder.
+    // The file that took the destination is not overwritten; the user's file is put beside
+    // it where they can find it, and nothing is left in staging.
     #expect(try Data(contentsOf: destination) == Data("arrived meanwhile".utf8))
-    let staging = dir.appendingPathComponent("staging", isDirectory: true)
-    let kept = try #require(recorder.leftoverStaging.first)
-    let aside = staging.appendingPathComponent(kept).appendingPathComponent("original-aside.m4a")
-    #expect(try Data(contentsOf: aside) == Data("the user's file".utf8))
+    let beside = dir.appendingPathComponent("Dictation (original).m4a")
+    #expect(try Data(contentsOf: beside) == Data("the user's file".utf8))
+    #expect(recorder.leftoverStaging.isEmpty)
+  }
+
+  @Test("a meeting deleted while its audio is being mixed is reported deleted (#4799)")
+  func deletedWhileMixing() async throws {
+    let dir = try folder()
+    let recorder = Recorder(root: dir)
+    let export = HistoryAudioExport(effects: recorder.effects())
+    let broken = dir.appendingPathComponent("mic-00001-s000000000.caf")
+    try Data("not audio".utf8).write(to: broken)
+    recorder.destination = dir.appendingPathComponent("Meeting.m4a")
+
+    // Staging fails (no readable audio, as when the files were deleted mid-mix) and the owner
+    // reports the meeting deleted: the user hears why, not a generic failure.
+    let outcome = await export.save(
+      HistoryAudioExport.Request(
+        key: .meeting(UUID()), defaultName: "Meeting",
+        admit: { .meeting(files: [.microphone: [(broken, 0)]], durationMs: 1_000) },
+        check: { .deleted }))?.value
+
+    #expect(outcome == .notSaved(.deleted))
+    #expect(recorder.notices == [.deleted])
   }
 
   @Test("a quit stops a save in flight: nothing published, nothing said, no new save starts")
