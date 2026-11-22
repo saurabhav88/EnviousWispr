@@ -146,12 +146,18 @@ public actor LocalPolishServerCoordinator {
   /// Which model the manager is currently running, or nil when nothing is.
   /// This is the identity half of the rule; the manager's own state is the
   /// process half, and neither alone is sufficient.
-  private var resident: LocalPolishModelID?
+  private var resident: LocalPolishModelID? {
+    didSet {
+      // Another model, or none: the endpoint it served is not this one's.
+      if resident != oldValue { admissionMirror.withLock { $0.endpoint = nil } }
+      mirrorAdmission()
+    }
+  }
   private var residentTarget: LocalPolishTarget?
   private var deferredRequest: (request: LocalPolishIntent, intent: Int)?
   private var leases: [UUID: (model: LocalPolishModelID, purpose: LocalPolishLeasePurpose)] = [:]
   /// #4319: the summary holding the server, if any, and the waits for its drain.
-  private var summaryReservation: LocalPolishSummaryReservation?
+  private var summaryReservation: LocalPolishSummaryReservation? { didSet { mirrorAdmission() } }
   /// #4319: the process change deferred behind a summary, run after its release returns, so
   /// the summary's cleanup never waits for dictation's engine to become ready.
   private var selectionAfterSummary: Task<Void, Never>?
@@ -161,7 +167,52 @@ public actor LocalPolishServerCoordinator {
   private var probesInFlight = 0
   private var drainWaiters: [UUID: CheckedContinuation<Void, Never>] = [:]
   private var drainWaitWatchersForTesting: [(id: UUID, continuation: CheckedContinuation<Void, Never>)] = []
-  private var changing = false
+  private var changing = false { didSet { mirrorAdmission() } }
+
+  /// #4845: a non-isolated copy of the three facts dictation admission decides on (resident,
+  /// changing, summary reservation), written in the same actor turn as each change, so a
+  /// synchronous main-actor check (the overlay's question just before a first render) reads the
+  /// coordinator's own answer instead of a runtime's display copy.
+  private nonisolated let admissionMirror = OSAllocatedUnfairLock<
+    (
+      resident: LocalPolishModelID?, changing: Bool, reserved: Bool,
+      endpoint: LocalPolishEndpoint?, order: Int
+    )
+  >(initialState: (nil, false, false, nil, -1))
+
+  private func mirrorAdmission() {
+    let (model, isChanging, reserved) = (resident, changing, summaryReservation != nil)
+    admissionMirror.withLock {
+      $0.resident = model
+      $0.changing = isChanging
+      $0.reserved = reserved
+    }
+  }
+
+  /// The serving endpoint, from the manager's own lifecycle events in their emission order (the
+  /// lifecycle owner), applied BEFORE any runtime hears the event. A late, older event never
+  /// overwrites a newer one.
+  private func mirrorLifecycle(_ event: LocalPolishLifecycleEvent, for model: LocalPolishModelID) {
+    guard resident == model else { return }
+    let endpoint: LocalPolishEndpoint?
+    if case .ready(let live) = event.lifecycle.state { endpoint = live } else { endpoint = nil }
+    admissionMirror.withLock {
+      guard event.order >= $0.order else { return }
+      $0.order = event.order
+      $0.endpoint = endpoint
+    }
+  }
+
+  /// #4845: whether a dictation polish for `model` would be admitted on `endpoint` right now
+  /// (resident, not changing, no summary holding the server, and `endpoint` the one serving),
+  /// readable without a hop.
+  public nonisolated func dictationAdmissionOpenNow(
+    for model: LocalPolishModelID, endpoint: LocalPolishEndpoint
+  ) -> Bool {
+    admissionMirror.withLock {
+      $0.resident == model && !$0.changing && !$0.reserved && $0.endpoint == endpoint
+    }
+  }
   private var removalWaiters: [CheckedContinuation<Void, Never>] = []
   /// #3105: per engine, because each local engine boots its own checker adapter
   /// and one engine's fallback must not describe the other's.
@@ -561,6 +612,8 @@ public actor LocalPolishServerCoordinator {
     configuration.owningProvider = target.provider
     configuration.owningModel = target.modelID
     await manager.start(configuration: configuration)
+    // #4845: the endpoint admission reopens on, read from the manager in the same turn order.
+    mirrorLifecycle(await manager.currentEvent(), for: target.modelID)
     changing = false
     wakeRemovalWaiters()
     await retryDeferredReconfiguration()
@@ -748,7 +801,9 @@ public actor LocalPolishServerCoordinator {
     // Both halves matter: the event must belong to a model, and that model must
     // STILL be resident when it lands. A stale event for a model that has since
     // been evicted is not news it can act on.
-    guard let model, resident == model, let observer = observers[model] else { return }
+    guard let model, resident == model else { return }
+    mirrorLifecycle(state, for: model)
+    guard let observer = observers[model] else { return }
     observer(state)
   }
 

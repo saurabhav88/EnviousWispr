@@ -200,6 +200,10 @@ enum PillRequest {
   /// is read immediately before a deferred first render: false (the download stopped, the
   /// switch already settled) rolls it back unrendered and unannounced.
   case parakeetUpgrade(ParakeetUpgradePillModel, isStillWanted: () -> Bool)
+  /// #4845 LIFE-5: "AI polish download complete". The upgrade pill's admission (idle pipeline,
+  /// empty slot) and the same pre-render question: false (the selection or the server changed)
+  /// rolls it back unrendered and unannounced.
+  case polishDownloadComplete(PolishDownloadPillModel, isStillWanted: () -> Bool)
   /// #3438: the card after a dictation whose AI polish did not run because its chosen model is
   /// not set up. A feature: the slot only while the pipeline is idle, never displacing another
   /// feature, persisting until answered or replaced.

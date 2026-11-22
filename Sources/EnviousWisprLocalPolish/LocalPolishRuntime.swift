@@ -438,6 +438,7 @@ public final class LocalPolishRuntime: EGOneLeaseProviding {
       await self.server.setReleaseObserver(for: self.modelID) { [weak self] in
         Task { @MainActor [weak self] in
           self?.scheduleDownloadConfirmation()
+          self?.sharedServerReleases &+= 1
           self?.onReleaseObservedForTesting?()
         }
       }
@@ -986,6 +987,9 @@ public final class LocalPolishRuntime: EGOneLeaseProviding {
   /// Dictation activations running now; each probes the server it starts, so a server they bring
   /// up needs no separate confirmation.
   private var dictationActivationsInFlight = 0
+  /// #4845: counts the shared server becoming free (any model's valid release), so the pill's
+  /// presenter can try again when admission reopens without the notice itself changing.
+  public private(set) var sharedServerReleases = 0
   /// The confirmed notice, waiting for the presenter.
   public private(set) var pendingDownloadNotice: PolishDownloadNotice?
   /// The one confirmation in flight. A request while it runs is remembered and run once after it.
@@ -1041,6 +1045,14 @@ public final class LocalPolishRuntime: EGOneLeaseProviding {
     let open = await server.dictationAdmissionOpen(for: modelID, endpoint: notice.endpoint)
     // Everything read before the hop is read again after it.
     return open && noticeMatchesLiveServer(notice)
+  }
+
+  /// The synchronous half of `isCurrent`, for a check that cannot suspend (the overlay's question
+  /// just before the first render): still the pending notice for the selection, on the same live
+  /// server with its passed verdict. The coordinator facts behind `isCurrent` need its async call.
+  public func isLive(_ notice: PolishDownloadNotice) -> Bool {
+    noticeMatchesLiveServer(notice)
+      && server.dictationAdmissionOpenNow(for: modelID, endpoint: notice.endpoint)
   }
 
   private func noticeMatchesLiveServer(_ notice: PolishDownloadNotice) -> Bool {

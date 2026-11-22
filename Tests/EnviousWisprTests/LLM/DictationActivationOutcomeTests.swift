@@ -264,6 +264,52 @@ struct DictationActivationOutcomeTests {
     #expect(await rig.runtime.isCurrent(notice))
   }
 
+  @Test("closed dictation admission makes the notice not live while the old server still reads ready")
+  func admissionClosedIsNotLive() async throws {
+    // When this fails, the pill renders while a summary holds the server, because the runtime's
+    // own copy of the server state still says ready.
+    let rig = try await makeRig()
+    defer { rig.cleanup() }
+    _ = await rig.runtime.activateForDictation().value
+    _ = await completeTransfer(rig)
+    let notice = try #require(rig.runtime.pendingDownloadNotice)
+    #expect(rig.runtime.isLive(notice))
+    guard case .granted(let reservation) = await rig.runtime.reserveServerForSummary() else {
+      Issue.record("the summary was not granted the server")
+      return
+    }
+    #expect(rig.runtime.serverActivity == .ready, "the runtime's copy still reads ready")
+    #expect(rig.runtime.isLive(notice) == false, "admission closed but the notice read live")
+    await rig.runtime.releaseServerReservation(reservation)
+    #expect(rig.runtime.isLive(notice))
+  }
+
+  @Test("after the same model restarts, only the new server's endpoint reads open for dictation")
+  func admissionIsBoundToTheServingEndpoint() async throws {
+    // When this fails, the old notice renders (and is spent) in the moment after the model
+    // restarted, while the runtime's own copy still names the old server and its green verdict.
+    let rig = try await makeRig()
+    defer { rig.cleanup() }
+    guard case .ready(let first) = await rig.runtime.activateForDictation().value else {
+      Issue.record("the model never came up")
+      return
+    }
+    #expect(rig.coordinator.dictationAdmissionOpenNow(for: .egOne(.full), endpoint: first))
+    // The same model is stopped and started again: a new process, a new endpoint.
+    rig.runtime.deactivate()
+    guard case .ready(let second) = await rig.runtime.activateForDictation().value else {
+      Issue.record("the model never came back")
+      return
+    }
+    #expect(second != first, "the restart reused the endpoint; the case is not exercised")
+    #expect(
+      rig.coordinator.dictationAdmissionOpenNow(for: .egOne(.full), endpoint: first) == false,
+      "the old server's endpoint still read open after the restart")
+    #expect(rig.coordinator.dictationAdmissionOpenNow(for: .egOne(.full), endpoint: second))
+    #expect(
+      rig.coordinator.dictationAdmissionOpenNow(for: .egOne(.mini), endpoint: second) == false)
+  }
+
   @Test("a selection change while the confirmation runs keeps the notice back")
   func selectionChangeDuringConfirmation() async throws {
     let rig = try await makeRig()

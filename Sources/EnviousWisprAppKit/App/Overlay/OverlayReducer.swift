@@ -41,6 +41,8 @@ enum OverlayEvent: Equatable {
   /// identity and its armed dwell; a no-op when the downloading pill is not current, so a
   /// late update can never bring back a pill that already left.
   case parakeetUpgradeProgress(fraction: Double)
+  /// #4845 LIFE-5: the AI polish download completion pill. Idle pipeline and an empty slot only.
+  case polishDownloadComplete(PolishDownloadPillModel)
   /// A notice that morphs a LIVE recording pill rather than replacing it.
   case inPanelNotice(RecordingNoticeReason, dismissAfter: Double?)
   /// Hands-free lock engaged or released. updateLockState today; it
@@ -300,6 +302,10 @@ struct OverlayReducer {
       return reduceParakeetUpgrade(model)
     case .parakeetUpgradeProgress(let fraction):
       return reduceParakeetUpgradeProgress(fraction)
+    case .polishDownloadComplete(let model):
+      // #4845: never displaces anything; a busy slot leaves the notice for a later attempt.
+      guard state.pipelineIntent == .hidden, state.current == nil else { return .noChange }
+      return admitEntry(PillCatalog.entry(for: .polishDownloadComplete(model), id: makeID()))
     case .inPanelNotice(let reason, let dismissAfter):
       return reduceInPanelNotice(reason, dismissAfter: dismissAfter)
     case .lockStateChanged(let locked):
@@ -1116,7 +1122,7 @@ struct OverlayReducer {
     case .recording:
       effects.append(.recordingStateChanged(false))
     case .notice, .bluetoothAwareness, .polishSetupCard, .parakeetUpgrade,
-      .correctionLearnedSaveError, .retainedClipboardFallback:
+      .polishDownloadComplete, .correctionLearnedSaveError, .retainedClipboardFallback:
       break
     case .correctionLearned(let shown):
       // #996 auto-learn: only an unanswered offer owes an end report; a result

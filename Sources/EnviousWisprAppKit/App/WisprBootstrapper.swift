@@ -1301,6 +1301,20 @@ package final class WisprBootstrapper {
         upgradePills.backgroundUpgradeChanged(state)
       }
     }
+    // #4845 LIFE-5: the one "AI polish download complete" pill, for a download this process
+    // completed (Setup's Skip ahead or Settings). Held by the onboarding completion below.
+    let polishDownloadPills = PolishDownloadPillPresenter(
+      overlay: recordingOverlay,
+      inputs: .init(
+        sources: { [localPolishRuntimes] in localPolishRuntimes.all },
+        setupComplete: { [settings] in settings.onboardingState == .completed },
+        summaryHoldsServer: { [localPolishRuntimes] in localPolishRuntimes.summaryHeldModel != nil },
+        modelName: { model in
+          if let size = model.size { return EGOneSizeCardCopy.title(size) }
+          return model.provider.displayName
+        },
+        schedule: PolishDownloadPillPresenter.mainActorSchedule))
+    polishDownloadPills.start()
 
     // #996 chunk 5h: composed here because every collaborator it needs already
     // exists (settings, the word list, the packs, the overlay director, the
@@ -1540,6 +1554,8 @@ package final class WisprBootstrapper {
         learnFromEdits?.onboardingDidComplete()
         // #3546 E22: a held background Parakeet upgrade starts now.
         parakeetUpgrade.onboardingDidComplete()
+        // #4845 LIFE-5: a download-complete pill held back during Setup can show now.
+        polishDownloadPills.attempt()
         // #4528: launch skips the speech warm until Setup completes (LaunchEngineWarm), so
         // completion warms instead. Setup usually left the engine warm already (this joins or
         // no-ops); after a completion restored on relaunch, or Skip practice while Practice
