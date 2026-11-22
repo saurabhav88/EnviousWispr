@@ -390,6 +390,22 @@ struct SettingsSearchTelemetryTests {
     #expect(sent.rows.count == 3)
   }
 
+  @Test("a typed failed search of more than 6 words is sent without its words, counts kept (#4843)")
+  func longTypedSearchSendsCountsOnly() async throws {
+    let sent = Sent()
+    let model = try Self.model(sent: sent)
+    model.setQuery("zzqx blorp zzqx blorp zzqx blorp zzqx")
+    #expect(await SettingsSearchModelTests.ready(model))
+    model.reset(endedBy: .escape)
+    let row = try #require(sent.rows.last)
+    #expect(row.outcome == .zeroResults)
+    #expect(row.query == nil, "a 7-word typed search reached the row")
+    model.setQuery("zzqx blorp zzqx blorp zzqx blorp")
+    #expect(await SettingsSearchModelTests.ready(model))
+    model.reset(endedBy: .escape)
+    #expect(sent.rows.last?.query == "zzqx blorp zzqx blorp zzqx blorp", "6 words are sent")
+  }
+
   @Test("a dictation into another app, or a blank one, leaves a typed search alone (#4843)")
   func otherAppDictationKeepsTypedQuery() async throws {
     let sent = Sent()
@@ -403,12 +419,17 @@ struct SettingsSearchTelemetryTests {
     let row = try #require(sent.rows.last)
     #expect(row.query == "zzqx blorp")
     #expect(model.recentDictations.isEmpty)
-    // The mark belongs to one search: the next typed search is reported again.
-    model.pasteCompleted(Self.delivered("dock", to: AppBundleIdentity.production))
+    // The mark belongs to one search: a dictation that marked an open search does not mark the
+    // next search, whose text is unrelated.
+    model.setQuery("zzqw")
+    #expect(await SettingsSearchModelTests.ready(model))
+    model.pasteCompleted(Self.delivered("zzqx other", to: AppBundleIdentity.production))
+    model.reset(endedBy: .escape)
+    #expect(sent.rows.last?.query == nil, "an open search was not marked")
     model.setQuery("zzqy")
     #expect(await SettingsSearchModelTests.ready(model))
     model.reset(endedBy: .escape)
-    #expect(sent.rows.last?.query == "zzqy")
+    #expect(sent.rows.last?.query == "zzqy", "the mark carried over to the next search")
   }
 
   @Test("remembered dictation text is cleared on window close and is never in the event (#4843)")
@@ -441,8 +462,8 @@ struct SettingsSearchTelemetryTests {
     for n in 0..<(SettingsSearchModel.recentDictationsKept + 3) {
       model.pasteCompleted(Self.delivered("take \(n)", to: AppBundleIdentity.production))
     }
-    #expect(model.recentDictations.count == SettingsSearchModel.recentDictationsKept)
-    #expect(model.recentDictations.last == "take \(SettingsSearchModel.recentDictationsKept + 2)")
+    #expect(SettingsSearchModel.recentDictationsKept == 8)
+    #expect(model.recentDictations == (3..<11).map { "take \($0)" }, "oldest three not evicted in order")
   }
 
   @Test("deleting to empty finishes with the last non-empty search")
