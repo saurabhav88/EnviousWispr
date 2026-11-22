@@ -594,8 +594,10 @@ class RemoveSessionCopiesTests(Temp):
     def test_linked_run_folder_is_refused_and_nothing_is_deleted(self):
         link = self.root / "linked-run"
         link.symlink_to(self.run)
-        with self.assertRaisesRegex(fixture.FixtureError, "refused or incomplete"):
-            fixture.remove_session_copies(link, deregister=lambda root: [])
+        touched = []
+        with self.assertRaisesRegex(fixture.FixtureError, "refused"):
+            fixture.remove_session_copies(link, deregister=lambda root: touched.append(root) or [])
+        self.assertEqual(touched, [])   # nothing deregistered through the link
         self.assertEqual((self.run / "home/Library/fixture.txt").read_text(), "fixture")
         self.assertEqual((self.run / "subject/Pinned.app/Contents/MacOS/EnviousWispr").read_bytes(), b"app")
 

@@ -627,6 +627,12 @@ def remove_session_copies(run: Path, *, remover=None, deregister=deregister_apps
     for name in SESSION_COPIES:
         target = run / name
         if name == "subject":
+            # remove-tree's own preflight first: a linked or mounted run folder is refused before
+            # anything, Launch Services included, is touched through it.
+            try:
+                remover.inspect_target(str(run), str(target))
+            except (OSError, ValueError) as error:
+                raise FixtureError(f"removal of {target} refused: {error}; completed: {done}") from error
             failed = deregister(target)
             if failed:
                 done["deregister_failed"] = failed
