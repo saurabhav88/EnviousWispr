@@ -43,7 +43,7 @@ def code(text):
 
 
 # English names of the interface languages a reference may list.
-LANGUAGE_NAMES = {"en": "English", "de": "German", "fr": "French"}
+LANGUAGE_NAMES = {"en": "English", "de": "German", "es": "Spanish", "fr": "French"}
 
 
 def resource_text(resource, languages):
@@ -237,18 +237,19 @@ def self_test():
                 "id": node_id, "structure": "item", "kind": "setting", "searchable": True,
                 "parent": None, "context": [], "declaredIn": "S.swift", "visibility": "always",
                 "title": {"source": "resource", "key": "k|", "table": "Localizable",
-                          "catalog": "C", "en": f"T{i} <x>", "de": "D|", "fr": "F «é»"},
+                          "catalog": "C", "en": f"T{i} <x>", "de": "D|", "es": "E ¿ñ?", "fr": "F «é»"},
                 "description": None, "destination": {"page": "dictation", "tab": "engine"},
                 "dictionaryTab": None, "target": node_id, "fallbacks": [],
                 "vocabulary": {"en": {"words": ["a|b"], "phrases": ["p\nq"]},
                                "de": {"words": [], "phrases": ["x"]},
+                               "es": {"words": [], "phrases": ["z"]},
                                "fr": {"words": [], "phrases": ["y"]}},
             })
         return {"schema": "settings-map-export", "version": 2,
-                "interfaceLanguages": ["en", "de", "fr"],
-                "languages": ["en", "de", "fr"], "sources": {"map": "M", "titleResolver": "R",
+                "interfaceLanguages": ["en", "de", "es", "fr"],
+                "languages": ["en", "de", "es", "fr"], "sources": {"map": "M", "titleResolver": "R",
                 "uiCatalog": "C", "vocabulary": "V"}, "fingerprints": {"x": "1"},
-                "counts": {"nodes": len(ids), "searchable": len(ids), "vocabularyBlocks": 3 * len(ids)},
+                "counts": {"nodes": len(ids), "searchable": len(ids), "vocabularyBlocks": 4 * len(ids)},
                 "languageData": [{"language": "en", "stop": ["the"], "markers": ["not"]}],
                 "nodes": nodes}
 
@@ -256,9 +257,9 @@ def self_test():
     check("deterministic", render(doc(["a.b"])), first)
     check("cell escaping applied", "a\\|b" in first and "p<br>q" in first and "T0 &lt;x&gt;" in first, True)
     check("no raw pipe inside a cell", "| words: a|b" in first, False)
-    check("every interface language rendered in order", "T0 &lt;x&gt; / D\\| / F «é»" in first, True)
-    check("header names the three interface languages",
-          "The interface ships in English, German and French." in first, True)
+    check("every interface language rendered in order", "T0 &lt;x&gt; / D\\| / E ¿ñ? / F «é»" in first, True)
+    check("header names the four interface languages",
+          "The interface ships in English, German, Spanish and French." in first, True)
     for name, ids in (("duplicate id", ["a.b", "a.b"]), ("anchor collision", ["a.b", "a-b"])):
         cases += 1
         try:
@@ -274,6 +275,15 @@ def self_test():
         render(no_french)
         failures += 1
         print("FAIL a title missing a declared interface language: rendered")
+    except SystemExit:
+        pass
+    no_spanish = doc(["a.b"])
+    no_spanish["nodes"][0]["title"].pop("es")
+    cases += 1
+    try:
+        render(no_spanish)
+        failures += 1
+        print("FAIL a title missing Spanish: rendered")
     except SystemExit:
         pass
     incomplete = doc(["a.b"])

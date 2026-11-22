@@ -4,9 +4,10 @@ import Testing
 /// #3142: the interface String Catalog, as committed and as compiled into the app
 /// the same build produces beside this test bundle.
 ///
-/// #3142 Phase 5: English and German ship; the French slice adds French. A `de` or `fr` value in
-/// a catalog makes the main bundle declare that language, so each must stay on every key (completeness itself, per unit, is
-/// `l10n-catalog-sync.sh --check`); these tests keep that check from going vacuous.
+/// #3142 Phase 5: English and German ship; the French and Spanish slices add French and Spanish.
+/// A `de`, `fr` or `es` value in a catalog makes the main bundle declare that language, so each
+/// must stay on every key (completeness itself, per unit, is `l10n-catalog-sync.sh --check`);
+/// these tests keep that check from going vacuous.
 @Suite("Interface catalog source", .tags(.driftGuard))
 struct InterfaceCatalogSourceTests {
   private static let catalogPath = "Sources/EnviousWispr/Resources/Localizable.xcstrings"
@@ -81,6 +82,16 @@ struct InterfaceCatalogSourceTests {
     "feedback.send": "Envoyer",
   ]
 
+  // Literal oracle for the Spanish, independent of the catalog (#3142 Spanish slice, reviewed
+  // 2026-11-21: GPT + Gemini review, every suggestion adjudicated; neutral Spanish, tú).
+  private static let expectedSpanish: [String: String] = [
+    "settings.aiPolish.enable.title": "Activar Pulido con IA",
+    "menu.setupRequired.continue": "Configuración pendiente: continuar…",
+    "notification.update.ready.body": "La versión %@ está lista. Haz clic para instalarla.",
+    "feedback.title": "Enviar comentarios",
+    "feedback.send": "Enviar",
+  ]
+
   @Test("Semantic keys carry today's exact English")
   func semanticKeysCarryExactEnglish() throws {
     let strings = try Self.strings()
@@ -91,13 +102,14 @@ struct InterfaceCatalogSourceTests {
   }
 
   @Test(
-    "English, German and French only, with German and French on every key",
+    "English, German, Spanish and French only, with German, Spanish and French on every key",
     arguments: [catalogPath] + infoPlistCatalogs)
   func englishAndGermanShip(catalog: String) throws {
     let strings = try Self.strings(catalog)
     #expect(!strings.isEmpty, "catalog parsed to zero entries")
     var languages = Set<String>()
     var withoutGerman: [String] = []
+    var withoutSpanish: [String] = []
     var withoutFrench: [String] = []
     for (key, value) in strings {
       let localizations = (value as? [String: Any])?["localizations"] as? [String: Any] ?? [:]
@@ -105,12 +117,16 @@ struct InterfaceCatalogSourceTests {
       // `Text("")` extracts an empty key with nothing to translate. English may stay implicit
       // (the key itself), so only the shipped translations are required.
       if !key.isEmpty, localizations["de"] == nil { withoutGerman.append(key) }
+      if !key.isEmpty, localizations["es"] == nil { withoutSpanish.append(key) }
       if !key.isEmpty, localizations["fr"] == nil { withoutFrench.append(key) }
     }
-    #expect(languages.isSubset(of: ["en", "de", "fr"]), "languages present: \(languages.sorted())")
+    #expect(
+      languages.isSubset(of: ["en", "de", "es", "fr"]), "languages present: \(languages.sorted())")
     #expect(languages.contains("de"), "German is gone from \(catalog)")
+    #expect(languages.contains("es"), "Spanish is gone from \(catalog)")
     #expect(languages.contains("fr"), "French is gone from \(catalog)")
     #expect(withoutGerman.isEmpty, "keys without German: \(withoutGerman.sorted().prefix(10))")
+    #expect(withoutSpanish.isEmpty, "keys without Spanish: \(withoutSpanish.sorted().prefix(10))")
     #expect(withoutFrench.isEmpty, "keys without French: \(withoutFrench.sorted().prefix(10))")
   }
 
@@ -161,7 +177,7 @@ struct InterfaceCatalogSourceTests {
   /// The unit-test process's `Bundle.main` is not the app, but the same build places the app
   /// beside the test bundle. Reading the COMPILED table there proves the catalog ships; a
   /// catalog dropped from the app target (deleted, commented out, excluded) leaves no table.
-  @Test("The built app ships the compiled German and French tables")
+  @Test("The built app ships the compiled German, French and Spanish tables")
   func builtAppShipsCompiledGermanTable() throws {
     let app = try Self.builtApp()
     let compiled = try Self.compiledTable(in: app, language: "de", table: "Localizable")
@@ -177,6 +193,16 @@ struct InterfaceCatalogSourceTests {
       in: app, language: "fr", key: "%lld settings found")
     #expect(plural["one"] == "%lld réglage trouvé")
     #expect(plural["other"] == "%lld réglages trouvés")
+    let spanish = try Self.compiledTable(in: app, language: "es", table: "Localizable")
+    for (key, value) in Self.expectedSpanish {
+      #expect(spanish[key] == value, "\(key) in the shipped Spanish table")
+    }
+    // Spanish `one` is exactly 1; `many` (large round numbers) reads like `other`.
+    let spanishPlural = try Self.compiledPluralForms(
+      in: app, language: "es", key: "%lld settings found")
+    #expect(spanishPlural["one"] == "%lld ajuste encontrado")
+    #expect(spanishPlural["many"] == "%lld ajustes encontrados")
+    #expect(spanishPlural["other"] == "%lld ajustes encontrados")
   }
 
   @Test("The built app ships the compiled English table with every translated entry")
@@ -225,6 +251,11 @@ struct InterfaceCatalogSourceTests {
     #expect(
       frenchPrompts["NSMicrophoneUsageDescription"]
         == "EnviousWispr a besoin d’accéder au micro pour convertir la parole en texte lors de la dictée.")
+    let spanishPrompts = try Self.compiledTable(in: app, language: "es", table: "InfoPlist")
+    #expect(Set(spanishPrompts.keys) == Set(prompts.keys))
+    #expect(
+      spanishPrompts["NSMicrophoneUsageDescription"]
+        == "EnviousWispr necesita acceso al micrófono para convertir tu voz en texto mediante el dictado.")
   }
 
   /// The app built beside the test bundle (shared with SettingsMapExportTests).

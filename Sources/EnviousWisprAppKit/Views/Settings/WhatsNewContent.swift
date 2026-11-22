@@ -69,7 +69,17 @@ enum WhatsNewContent {
       id: "enviouswispr-in-french",
       icon: "globe",
       title: "Now available in French",
-      description: "Choose Français in Settings > Appearance > Language, then relaunch to apply. System default follows your Mac's language.",
+      description: "Choose Français in Settings > App Settings > Appearance > Language, then relaunch to apply. System default follows your Mac's language.",
+      version: "2.6.2"
+    ),
+
+    // #3142 Spanish slice: Spanish joins as an interface language (Gate 1: a second card in the
+    // French card's pattern; the French card stays as it is).
+    Entry(
+      id: "enviouswispr-in-spanish",
+      icon: "globe",
+      title: "Now available in Spanish",
+      description: "Choose Español in Settings > App Settings > Appearance > Language, then relaunch to apply. System default follows your Mac's language.",
       version: "2.6.2"
     ),
 

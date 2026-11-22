@@ -367,8 +367,9 @@ struct SettingsSearchTelemetryTests {
     }
     #expect(row("fr") == "fr")
     #expect(row("de") == "de")
+    #expect(row("es") == "es")
     #expect(row("en") == "en")
-    #expect(row("es") == "en")
+    #expect(row("it") == "en")
     #expect(row("") == "en")
   }
 }

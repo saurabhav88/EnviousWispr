@@ -60,8 +60,9 @@
       ]
     },
     "es": {
-      "title": "motor de transcripción de reuniones",
-      "words": [],
+      "words": [
+        "motor de transcripción de reuniones"
+      ],
       "phrases": [
         "elegir motor para la transcripción completa de la reunión",
         "cambiar el motor que transcribe después de la reunión"

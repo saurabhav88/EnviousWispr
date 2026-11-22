@@ -34,7 +34,7 @@ LANGUAGES = [
     "ar", "bg", "cs", "da", "de", "el", "en", "es", "et", "fi", "fr", "hi", "hr", "hu", "it", "ja",
     "ko", "lt", "lv", "mt", "nl", "pl", "pt", "ro", "ru", "sk", "sl", "sv", "tr", "uk", "vi", "zh",
 ]
-INTERFACE = {"en", "de", "fr"}
+INTERFACE = {"en", "de", "es", "fr"}
 
 
 def fail(message):
@@ -228,7 +228,7 @@ def self_test():
             if want == "title edited":
                 titles = {b["language"]: b.get("title") for e in built["entries"] if e["id"] == "keep"
                           for b in e["blocks"]}
-                got = "title edited" if titles["it"] == "nuovo" and titles["es"] == "t es" else str(titles)
+                got = "title edited" if titles["it"] == "nuovo" and titles["pt"] == "t pt" else str(titles)
         except BuildError as error:
             got = str(error)
         ok = got == want if isinstance(want, list) else isinstance(got, str) and want in got

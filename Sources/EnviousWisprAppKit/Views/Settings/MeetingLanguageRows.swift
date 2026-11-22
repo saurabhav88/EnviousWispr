@@ -88,6 +88,9 @@ struct MeetingTranscriptLanguageSection: View {
             } label: {
               EnviousButtonLabel(SettingsItemCopy.Engine.lockedLanguageChange)
             }
+            // #3142 Spanish walkthrough: while Auto disables it, the button was squeezed to
+            // "Camb…"; it keeps its own width like the Live Preview language row's button.
+            .fixedSize()
             .settingsButton(isEnabled: !isAuto)
             .accessibilityLabel(String(localized: MeetingsCopy.transcriptLanguageTitle))
           }
