@@ -152,11 +152,23 @@ enum MeetingLiveWordsChoice {
         return code
       }
       let base = baseCode(code)
-      let resolved = await appleEquivalent(base)
+      // #4813: a tag with a region or script (Auto guesses the Mac's own language) asks Apple
+      // for the FULL tag's equivalent first, and an installed match wins: Apple maps
+      // `zh-Hant-US` to `zh-TW` but the bare `zh` to `zh-CN`, and `base-macRegion` ignores the
+      // script (`zh-Hans-TW` is not `zh-TW`). A bare (or locked) code is unchanged.
+      let fullMatch = code == base ? nil : await appleEquivalent(code)
+      let resolved: String?
+      if let fullMatch {
+        resolved = fullMatch
+      } else {
+        resolved = await appleEquivalent(base)
+      }
       // #4320: an installed tag in this Mac's region, then Apple's own equivalent, before any
       // other installed region. Without this a bare `en` (switching back from Universal) took
       // the alphabetically first installed English, en-AU, on a US Mac.
-      let preferred = [inventory.macRegion.map { "\(base)-\($0)" }, resolved].compactMap { $0 }
+      let regional = inventory.macRegion.map { "\(base)-\($0)" }
+      let preferred = (fullMatch != nil ? [fullMatch, regional] : [regional, resolved])
+        .compactMap { $0 }
       if let tag = preferred.first(where: inventory.appleInstalledTags.contains) {
         return tag
       }

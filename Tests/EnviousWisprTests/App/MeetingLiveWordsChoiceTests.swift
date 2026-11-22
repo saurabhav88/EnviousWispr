@@ -102,6 +102,40 @@ struct MeetingLiveWordsChoiceTests {
         == .ready(engine: .universal, language: "nl"))
   }
 
+  /// #4813: Auto now guesses the Mac's own language, so a Traditional Chinese Mac with Region
+  /// United States guesses `zh-Hant-US`. Apple maps that full tag to `zh-TW` but the bare `zh`
+  /// to `zh-CN` (measured), so stripping to the base first saved Simplified Chinese as the
+  /// meeting default when both packs were installed.
+  @Test("A regional guess Apple does not list exactly keeps its script through Apple's match")
+  func regionalGuessKeepsItsScript() async {
+    var chinese = Self.inventory
+    chinese.appleSupportedTags = ["zh-CN", "zh-HK", "zh-TW"]
+    chinese.appleInstalledTags = ["zh-CN", "zh-TW"]
+    chinese.macRegion = "US"
+    let equivalent: @Sendable (String) async -> String? = { code in
+      ["zh-Hant-US": "zh-TW", "zh": "zh-CN"][code]
+    }
+    #expect(
+      await Choice.language(
+        for: .apple, from: "zh-Hant-US", inventory: chinese, appleEquivalent: equivalent)
+        == "zh-TW", "Traditional Chinese, not the bare code's Simplified match")
+    #expect(
+      await Choice.language(
+        for: .apple, from: "zh", inventory: chinese, appleEquivalent: equivalent) == "zh-CN",
+      "a bare code keeps Apple's own match for it")
+
+    // A Simplified Chinese Mac in Taiwan: the Mac-region tag (`zh-TW`) is the other script.
+    var taiwan = chinese
+    taiwan.macRegion = "TW"
+    let simplified: @Sendable (String) async -> String? = { code in
+      ["zh-Hans-TW": "zh-CN", "zh": "zh-CN"][code]
+    }
+    #expect(
+      await Choice.language(
+        for: .apple, from: "zh-Hans-TW", inventory: taiwan, appleEquivalent: simplified)
+        == "zh-CN", "Apple's match for the full tag beats the Mac-region tag of another script")
+  }
+
   @Test("The same inventory picks the same installed region every time")
   func regionIsStable() async {
     var two = Self.inventory
