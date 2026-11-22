@@ -225,7 +225,7 @@ for plan in d.get("testNodes", []):
             print(node.get("name", ""))
 ' "$payload" 2>/dev/null)"
       for required_bundle in $required_bundles; do
-        if ! printf '%s\n' "$ran_bundles" | grep -qx "$required_bundle"; then
+        if ! grep -qx "$required_bundle" <<<"$ran_bundles"; then  # no pipe: a broken pipe under pipefail is not "absent" (#4817)
           echo "ERROR: $label never ran $required_bundle — absent from the result bundle" >&2
           echo "  ran: $(printf '%s ' $ran_bundles)" >&2
           echo "==> $label verdict: FAIL"
