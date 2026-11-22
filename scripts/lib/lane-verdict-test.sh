@@ -153,7 +153,7 @@ out=$(ew_lane_verdict "$LOG" 2>&1); rc=$?
 if [ "$rc" -eq 2 ]; then ok "too few arguments is a usage error, not a verdict"; else bad "too few arguments is a usage error, not a verdict" "rc=$rc out=$out"; fi
 
 out=$(ew_lane_verdict "$TMP/no-such.log" "$TMP/bundle" "probe" 2>&1); rc=$?
-if [ "$rc" -ne 0 ] && printf '%s' "$out" | /usr/bin/grep -q "verdict: FAIL"; then
+if [ "$rc" -ne 0 ] && /usr/bin/grep -q "verdict: FAIL" <<<"$out"; then
   ok "a missing log is a FAIL verdict"
 else
   bad "a missing log is a FAIL verdict" "rc=$rc out=$out"
@@ -162,7 +162,7 @@ fi
 # The empty-run guard this change PRESERVES rather than replaces.
 : > "$TMP/zero.log"
 out=$(ew_lane_verdict "$TMP/zero.log" "$TMP/bundle" "probe" 2>&1); rc=$?
-if [ "$rc" -ne 0 ] && printf '%s' "$out" | /usr/bin/grep -q "executed 0 tests"; then
+if [ "$rc" -ne 0 ] && /usr/bin/grep -q "executed 0 tests" <<<"$out"; then
   ok "the empty-run guard still refuses a zero count"
 else
   bad "the empty-run guard still refuses a zero count" "rc=$rc out=$out"
@@ -170,7 +170,7 @@ fi
 
 # A positive count is no longer sufficient — the truncated-run half of the fix.
 out=$(ew_lane_verdict "$LOG" "$TMP/no-such-bundle" "probe" 2>&1); rc=$?
-if [ "$rc" -ne 0 ] && printf '%s' "$out" | /usr/bin/grep -q "no result bundle"; then
+if [ "$rc" -ne 0 ] && /usr/bin/grep -q "no result bundle" <<<"$out"; then
   ok "a positive count alone does NOT green a lane"
 else
   bad "a positive count alone does NOT green a lane" "rc=$rc out=$out"
@@ -178,7 +178,7 @@ fi
 
 # The count is summed across per-target summaries, unchanged.
 out=$(ew_lane_verdict "$LOG" "$TMP/no-such-bundle" "probe" 2>&1)
-if printf '%s' "$out" | /usr/bin/grep -q "executed 6829 tests"; then
+if /usr/bin/grep -q "executed 6829 tests" <<<"$out"; then
   ok "the count sums every per-target run summary"
 else
   bad "the count sums every per-target run summary" "out=$out"
@@ -206,19 +206,19 @@ if [ "$mrc" -eq "$yrc" ]; then
 else
   bad "an expected-count mismatch does not change the verdict" "mismatch rc=$mrc, match rc=$yrc"
 fi
-if printf '%s' "$mismatch" | /usr/bin/grep -q "expected 9999"; then
+if /usr/bin/grep -q "expected 9999" <<<"$mismatch"; then
   ok "an expected-count mismatch is reported LOUDLY"
 else
   bad "an expected-count mismatch is reported LOUDLY" "out=$mismatch"
 fi
-if printf '%s' "$matched" | /usr/bin/grep -q "expected"; then
+if /usr/bin/grep -q "expected" <<<"$matched"; then
   bad "a matching expected-count says nothing" "out=$matched"
 else
   ok "a matching expected-count says nothing"
 fi
 # A borrowed or malformed parameter must be loud and inert, never a verdict.
 junk=$(ew_lane_verdict "$LOG" "$TMP/no-such-bundle" "probe" "not-a-number" 2>&1); jrc=$?
-if [ "$jrc" -eq "$mrc" ] && printf '%s' "$junk" | /usr/bin/grep -q "not a number"; then
+if [ "$jrc" -eq "$mrc" ] && /usr/bin/grep -q "not a number" <<<"$junk"; then
   ok "a non-numeric expected-count warns and is ignored"
 else
   bad "a non-numeric expected-count warns and is ignored" "rc=$jrc out=$junk"
@@ -240,7 +240,7 @@ errexit_out=$(
   ew_lane_verdict "$TMP/zero.log" "$TMP/bundle" "errexit probe" 2>&1
   echo "REACHED-END"
 )
-if printf '%s' "$errexit_out" | /usr/bin/grep -q "verdict: FAIL"; then
+if /usr/bin/grep -q "verdict: FAIL" <<<"$errexit_out"; then
   ok "a refusal prints its verdict even under errexit"
 else
   bad "a refusal prints its verdict even under errexit" "out=$errexit_out"
