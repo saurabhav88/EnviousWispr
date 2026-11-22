@@ -156,6 +156,33 @@ struct MeetingLiveWordsChoiceTests {
       await Choice.language(
         for: .apple, from: "zh-GB", inventory: britain, appleEquivalent: traditional)
         == "zh-TW", "a regional tag's implied script counts too")
+
+    // #4828: Apple's Hong Kong Chinese (zh-HK) is Cantonese. A Mandarin guess with only that
+    // pack installed must not save it; the Taiwan Mandarin download is offered instead.
+    var cantoneseOnly = chinese
+    cantoneseOnly.appleInstalledTags = ["zh-HK"]
+    #expect(
+      await Choice.language(
+        for: .apple, from: "zh-Hant-US", inventory: cantoneseOnly, appleEquivalent: equivalent)
+        == "zh-TW", "a Mandarin guess never falls back to the Cantonese pack")
+
+    // The guess's spoken language is Apple's match for it, not its region: Simplified Chinese
+    // in Hong Kong is Mandarin (zh-CN) and Traditional Chinese in Macau is Cantonese (zh-HK).
+    var hongKong = chinese
+    hongKong.macRegion = "HK"
+    let variants: @Sendable (String) async -> String? = { code in
+      ["zh-Hans-HK": "zh-CN", "zh-Hant-MO": "zh-HK", "zh": "zh-CN"][code]
+    }
+    hongKong.appleInstalledTags = ["zh-CN"]
+    #expect(
+      await Choice.language(
+        for: .apple, from: "zh-Hans-HK", inventory: hongKong, appleEquivalent: variants)
+        == "zh-CN", "Simplified Chinese in Hong Kong keeps the installed Mandarin pack")
+    hongKong.appleInstalledTags = ["zh-HK"]
+    #expect(
+      await Choice.language(
+        for: .apple, from: "zh-Hant-MO", inventory: hongKong, appleEquivalent: variants)
+        == "zh-HK", "Traditional Chinese in Macau keeps the installed Cantonese pack")
   }
 
   @Test("The same inventory picks the same installed region every time")

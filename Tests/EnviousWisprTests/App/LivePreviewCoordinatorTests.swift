@@ -1192,11 +1192,24 @@ struct LivePreviewCoordinatorTests {
     ("unusual script kept", ["sr-Latn-RS"], "en_RS", "sr-Latn-RS"),
     ("unusual script kept in its region", ["zh-Hans-TW"], "en_TW", "zh-Hans-TW"),
     ("a regional entry's implied script survives the Mac's region", ["zh-TW"], "en_US", "zh-Hant-US"),
+    ("#4828: Mandarin stays Mandarin in a Cantonese region", ["zh-Hant-TW"], "en_HK", "zh-TW"),
+    ("#4828: Cantonese stays Cantonese in a Mandarin region", ["zh-HK"], "en_TW", "zh-HK"),
     ("region from the Mac's Region setting, as before", ["en-GB"], "en_US", "en-US"),
     ("language-only entry takes the Mac's region", ["es-419"], "en_MX", "es-MX"),
     ("no Mac list: today's locale", [], "fr_CA", "fr-CA"),
     ("unparseable first entry: today's locale", [""], "de_DE", "de-DE"),
   ]
+
+  /// #4828: Apple's speech lists carry one Chinese tag per spoken language. False for a bare
+  /// `zh` means only that the tag carries no Cantonese marker.
+  nonisolated static let cantoneseRows: [(String, Bool)] = [
+    ("yue", true), ("zh-Hant-HK", true), ("zh-HK", true), ("zh-TW", false), ("zh", false),
+  ]
+
+  @Test("Apple's Cantonese tags are told apart from Mandarin", arguments: cantoneseRows)
+  func cantoneseTags(row: (String, Bool)) {
+    #expect(ApplePreviewEngineResolver.isCantonese(row.0) == row.1, "\(row.0)")
+  }
 
   @Test("Auto previews in the Mac's language with the Mac's region", arguments: autoRows)
   func languagePolicyAuto(row: (String, [String], String, String)) {
