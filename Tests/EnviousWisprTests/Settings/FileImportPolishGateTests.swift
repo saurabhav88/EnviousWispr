@@ -221,7 +221,7 @@ struct FileImportPolishGateTests {
     let verdict = Self.readiness(
       provider: .claude, savedKey: .absent, hasUnsavedKeyDraft: true)
     #expect(verdict == .blocked(.unsavedKey))
-    #expect(verdict.footer == "Press Save key to finish, or pick another.")
+    #expect(verdict.footer == "Press Save to finish, or pick another.")
     #expect(
       FileImportPolishSubtitle.text(provider: .claude, readiness: verdict) == "Key not saved")
     // And the other side of the same fork, so one arm cannot swallow the other.

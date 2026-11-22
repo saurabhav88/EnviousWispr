@@ -80,22 +80,22 @@ enum HistoryHelpContent {
     case .day1:
       kept = String(
         localized:
-          "Audio is not uploaded. Dictation recordings are kept for 1 day unless you choose Keep this recording. Change this in Settings > Recordings.",
+          "Audio is not uploaded. Dictation recordings are kept for 1 day unless you choose Keep this recording. Change this in Settings > App Settings > Recordings.",
         comment: "History help: where recordings are stored and for how long (1 day).")
     case .day7:
       kept = String(
         localized:
-          "Audio is not uploaded. Dictation recordings are kept for 7 days unless you choose Keep this recording. Change this in Settings > Recordings.",
+          "Audio is not uploaded. Dictation recordings are kept for 7 days unless you choose Keep this recording. Change this in Settings > App Settings > Recordings.",
         comment: "History help: where recordings are stored and for how long (7 days).")
     case .day30:
       kept = String(
         localized:
-          "Audio is not uploaded. Dictation recordings are kept for 30 days unless you choose Keep this recording. Change this in Settings > Recordings.",
+          "Audio is not uploaded. Dictation recordings are kept for 30 days unless you choose Keep this recording. Change this in Settings > App Settings > Recordings.",
         comment: "History help: where recordings are stored and for how long (30 days).")
     case .forever:
       kept = String(
         localized:
-          "Audio is not uploaded. Dictation recordings are kept until you delete them. Change this in Settings > Recordings.",
+          "Audio is not uploaded. Dictation recordings are kept until you delete them. Change this in Settings > App Settings > Recordings.",
         comment: "History help: where recordings are stored; they are kept until deleted.")
     }
     return Item(
