@@ -75,4 +75,51 @@ struct MacProfileReaderTests {
   func appleIntelligenceMapping(_ m: Mapping) {
     #expect(AppleIntelligenceSetupState.from(notice: m.notice, live: m.live) == m.expected)
   }
+
+  // MARK: - #4824: dates are written in the Mac's language, not the interface language
+
+  private static let plain = MacProfile.FormatPreferences(customFormats: false, forcedHourCycle: nil)
+
+  private static func text(_ locale: Locale, date: Bool) -> String {
+    Date(timeIntervalSince1970: 1_795_335_000).formatted(  // Nov 22, 2026, 02:10 in Chicago
+      Date.FormatStyle(
+        date: date ? .abbreviated : .omitted, time: date ? .omitted : .shortened, locale: locale,
+        calendar: locale.calendar, timeZone: TimeZone(identifier: "America/Chicago") ?? .gmt))
+  }
+
+  @Test("#4824: dates use the Mac's first language and keep the Mac's Region")
+  func macLanguageBeatsTheInterfaceLanguage() {
+    let interfaceGerman = Locale(identifier: "de-US")
+    #expect(Self.text(interfaceGerman, date: true) == "22. Nov. 2026", "control: the bug's output")
+    let mac = MacProfile.macLanguageLocale(
+      macLanguages: ["en-US"], current: interfaceGerman, preferences: Self.plain)
+    #expect(Self.text(mac, date: true) == "Nov 22, 2026")
+    let french = MacProfile.macLanguageLocale(
+      macLanguages: ["fr-CA", "en-US"], current: Locale(identifier: "en-US"), preferences: Self.plain)
+    #expect(french.language.languageCode?.identifier == "fr" && french.region?.identifier == "US")
+  }
+
+  @Test("#4824: no Mac language, the same language or custom formats keep the current locale")
+  func keepsCurrent() {
+    let current = Locale(identifier: "de-US")
+    let custom = MacProfile.FormatPreferences(customFormats: true, forcedHourCycle: nil)
+    for (languages, preferences) in [([String](), Self.plain), ([""], Self.plain), (["en-US"], custom)] {
+      #expect(MacProfile.macLanguageLocale(macLanguages: languages, current: current, preferences: preferences) == current)
+    }
+    let english = Locale(identifier: "en-US")
+    #expect(MacProfile.macLanguageLocale(macLanguages: ["en-US"], current: english, preferences: Self.plain) == english)
+  }
+
+  @Test("#4824: a forced 24-hour clock and the user's calendar survive the language change")
+  func preferencesSurvive() {
+    let forced = MacProfile.FormatPreferences(customFormats: false, forcedHourCycle: .zeroToTwentyThree)
+    let h23 = MacProfile.macLanguageLocale(
+      macLanguages: ["en-US"], current: Locale(identifier: "de-US"), preferences: forced)
+    #expect(Self.text(h23, date: false) == "02:10", "an English 24-hour clock, not 2:10 AM")
+    var buddhist = Locale.Components(identifier: "de-US")
+    buddhist.calendar = .buddhist
+    let thai = MacProfile.macLanguageLocale(
+      macLanguages: ["en-US"], current: Locale(components: buddhist), preferences: Self.plain)
+    #expect(Self.text(thai, date: true).contains("2569"), "Buddhist year 2569, not 2026")
+  }
 }
