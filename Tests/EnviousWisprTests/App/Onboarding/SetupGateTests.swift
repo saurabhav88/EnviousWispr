@@ -230,6 +230,11 @@ struct SetupGateTests {
     init(_ value: P) { self.value = value }
   }
 
+  @Observable final class OfferBox {
+    var value: SetupSkipAheadOffer
+    init(_ value: SetupSkipAheadOffer) { self.value = value }
+  }
+
   @Test("a progress-only or slow-network change redraws the mounted screen")
   func liveChangesRedraw() throws {
     _ = NSApplication.shared
@@ -334,5 +339,73 @@ struct SetupGateTests {
     let rep = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
     host.cacheDisplay(in: host.bounds, to: rep)
     return try #require(rep.representation(using: .png, properties: [:]))
+  }
+
+  // MARK: - #4845 Skip ahead
+
+  /// When this fails, Getting ready shows a time that was never measured, a time while nothing is
+  /// downloading, or a time on top of a problem.
+  @Test("the time left shows only for a measured polish transfer on Getting ready")
+  func timeLeft() {
+    let x = Self.p(speech: .installed, polishPhase: .downloading(fraction: 0.3), prep: .downloading)
+    func left(_ s: Double?, _ q: P = x, _ screen: SetupGate.Screen = .gettingReady) -> String? {
+      SetupGate.timeLeft(q, screen: screen, secondsLeft: s)
+    }
+    #expect(left(30) == "Less than a minute left.")
+    #expect(left(75) == "About a minute left.")
+    #expect(left(360) == "About 6 minutes left.")
+    #expect(left(nil) == nil && left(.infinity) == nil)
+    #expect(left(360, x, .downloads) == nil)
+    #expect(left(360, Self.p(speech: .installed, polishPhase: .verifying, prep: .downloading)) == nil)
+    #expect(left(360, Self.p(speech: .installed, polishPhase: .paused, prep: .downloadStopped)) == nil)
+    #expect(
+      SetupGate.subtitle(x, screen: .gettingReady, secondsLeft: 360)
+        == "About 6 minutes left.\nYour first dictation starts the moment this finishes.")
+    #expect(
+      SetupGate.subtitle(x, screen: .gettingReady)
+        == "Your first dictation starts the moment this finishes.")
+  }
+
+  /// When this fails, the offer never shows, shows in the wrong form, or a press acts for another
+  /// visit or pick than the screen showed.
+  @Test("the Skip ahead card and line render and press for the visit and pick they show")
+  func skipAheadOfferRenders() throws {
+    _ = NSApplication.shared
+    let world = OnboardingCoordinatorTests.World()
+    let coordinator = OnboardingRuntimeTests.atDownloads(world)
+    coordinator.send(.next)
+    coordinator.send(.readinessChanged(.init(microphoneGranted: true, accessibilityGranted: true)))
+    coordinator.send(.next)
+    #expect(coordinator.state.step == .gettingReady)
+    let model = SetupScreenModel(coordinator: coordinator)
+    defer { model.detach() }
+    let presentation = Self.p(
+      speech: .installed, polishPhase: .downloading(fraction: 0.34), prep: .downloading, warm: true)
+    model.sources.downloads = { presentation }
+    model.sources.closeSetup = {}
+    let box = OfferBox(SetupSkipAheadOffer.hidden)
+    var presses: [String] = []
+    model.sources.skipAhead = SetupSkipAheadSources(
+      offer: { box.value },
+      skip: { presses.append("skip \($0) \($1)") },
+      keepWaiting: { presses.append("wait \($0) \($1)") })
+    let folder = RepoRoot.url.appending(path: "build/design-render")
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    var pictures: [Data] = []
+    for (name, offer) in [
+      ("hidden", SetupSkipAheadOffer(form: .hidden, visit: 3, pick: nil, secondsLeft: 360)),
+      ("card", SetupSkipAheadOffer(form: .card, visit: 3, pick: "eg1.mini", secondsLeft: 360)),
+      ("line", SetupSkipAheadOffer(form: .line, visit: 3, pick: "eg1.mini", secondsLeft: 300)),
+    ] {
+      box.value = offer
+      for (variant, dark) in [("light", false), ("dark", true)] {
+        let host = Self.host(SetupWindowRoot(model: model), dark: dark)
+        let png = try Self.png(host)
+        if variant == "light" { pictures.append(png) }
+        try png.write(to: folder.appending(path: "setup-gate-skip-ahead-\(name)-\(variant).png"))
+      }
+    }
+    #expect(Set(pictures).count == 3, "the card, the line and no offer did not differ")
+    #expect(presses.isEmpty, "rendering pressed a button")
   }
 }

@@ -437,7 +437,7 @@ struct OnboardingRuntimeTests {
     world.polishPhase[.egOne(.mini)] = .downloading(fraction: 0.3)
     let c = try OnboardingCoordinatorTests.atGettingReady(world)
     var rows: [OnboardingTelemetry.SkipAheadAction] = []
-    c.onObservation = { if case .skipAhead(let action, _, _, _) = $0 { rows.append(action) } }
+    c.onObservation = { if case .skipAhead(let action, _, _, _, _) = $0 { rows.append(action) } }
     let polish = OnboardingDownloadSnapshot.Pick(
       id: "polish:eg1.mini", phase: .downloading(fraction: nil), downloadedBytes: nil,
       totalBytes: nil)
@@ -451,12 +451,13 @@ struct OnboardingRuntimeTests {
     world.uptime = 60
     r.tick()
     #expect(r.skipOffer == .card && rows == [.offered])
+    #expect(r.skipOfferPick == "eg1.mini", "the offer was not tied to the pick that earned it")
     let firstVisit = r.offerVisit
     #expect(r.keepWaiting(visit: firstVisit, pick: "eg1.mini"))
     #expect(r.skipOffer == .line && rows == [.offered, .keptWaiting])
 
     r.beginOfferVisit()  // window closed and reopened
-    #expect(r.skipOffer == .hidden && r.offerVisit != firstVisit)
+    #expect(r.skipOffer == .hidden && r.offerVisit != firstVisit && r.skipOfferPick == nil)
     #expect(!r.skipAhead(visit: firstVisit, pick: "eg1.mini"))
     world.uptime = 61
     r.tick()

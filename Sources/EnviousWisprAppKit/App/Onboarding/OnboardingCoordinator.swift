@@ -54,13 +54,14 @@ enum OnboardingObservation: Equatable {
   /// #4845: one Skip ahead row (the coordinator already latched it once per visit).
   case skipAhead(
     OnboardingTelemetry.SkipAheadAction, polish: String, secondsLeft: Double?,
-    waitedSeconds: Double)
+    waitedSeconds: Double, visit: String)
   /// Completion is durable (SettingsManager already wrote `.completed`). `interrupted` is a
   /// completion finished on relaunch, with no visit shown. `rulesVersion`: the visit's captured
   /// recommendation's, or for an interrupted completion the rules in force when it finished.
   /// `polishDeferred`: the person chose Skip ahead for the polish pick they kept (#4845).
   case completed(
-    OnboardingChoices, interrupted: Bool, rulesVersion: String, polishDeferred: Bool)
+    OnboardingChoices, interrupted: Bool, rulesVersion: String, polishDeferred: Bool,
+    skipAhead: OnboardingTelemetry.SkipAheadVisitSummary)
 }
 
 /// Owns the one live Setup flow (#4528 chunk C2b, plan §3.3-3.4, §5). It applies C1's reducer
@@ -186,8 +187,13 @@ final class OnboardingCoordinator {
     var waitedAtOffer: Double
     var keptWaiting = false
     var ended = false
+    /// The first practice take verified in the expected editor in this visit (monotonic).
+    var firstDeliveryAt: TimeInterval?
   }
   @ObservationIgnored private var skipAheadLog: SkipAheadVisitLog?
+  /// #4845 D-H: a random per-window-visit key on the Skip ahead rows and the visit's end row, so
+  /// an offer is resolved only by its own visit's end. Metadata only; a new visit gets a new key.
+  @ObservationIgnored private(set) var skipAheadVisitID = UUID().uuidString
   /// #4845: when this window visit first reached Getting ready (monotonic), set at the transition.
   @ObservationIgnored private var gettingReadyEnteredAt: TimeInterval?
 
@@ -226,7 +232,7 @@ final class OnboardingCoordinator {
         .completed(
           choices, interrupted: true,
           rulesVersion: deps.recommended(choices.languageMode).rulesVersion,
-          polishDeferred: deferred))
+          polishDeferred: deferred, skipAhead: skipAheadVisitSummary()))
       deps.onCompleted()
       return false
     case .fresh:
@@ -314,7 +320,8 @@ final class OnboardingCoordinator {
       onObservation?(
         .skipAhead(
           .downloadWon, polish: transition.state.choices.polish ?? "", secondsLeft: nil,
-          waitedSeconds: log.waitedAtOffer + max(0, deps.uptime() - log.offeredAt)))
+          waitedSeconds: log.waitedAtOffer + max(0, deps.uptime() - log.offeredAt),
+          visit: skipAheadVisitID))
     }
     apply(transition, after: before)
   }
@@ -370,7 +377,26 @@ final class OnboardingCoordinator {
   /// that opens on Getting ready (a reopened window) enters it now.
   func beginSkipAheadVisit() {
     skipAheadLog = nil
+    skipAheadVisitID = UUID().uuidString
     gettingReadyEnteredAt = state.step == .gettingReady ? deps.uptime() : nil
+  }
+
+  /// #4845 D-H: a practice take reached the expected editor (the route's verified receipt). Only
+  /// the first one of an offered visit is kept; a later or unoffered one changes nothing.
+  func noteVerifiedPracticeDelivery() {
+    guard var log = skipAheadLog, log.firstDeliveryAt == nil else { return }
+    log.firstDeliveryAt = deps.uptime()
+    skipAheadLog = log
+  }
+
+  /// This window visit's Skip ahead summary for its end row (completed or abandoned).
+  func skipAheadVisitSummary() -> OnboardingTelemetry.SkipAheadVisitSummary {
+    guard let log = skipAheadLog else {
+      return .init(visit: skipAheadVisitID, offered: false, offerToFirstDeliverySeconds: nil)
+    }
+    return .init(
+      visit: skipAheadVisitID, offered: true,
+      offerToFirstDeliverySeconds: log.firstDeliveryAt.map { max(0, $0 - log.offeredAt) })
   }
 
   /// The offer's card is showing (the runtime calls it on every tick it shows; sent once per visit).
@@ -379,7 +405,9 @@ final class OnboardingCoordinator {
     skipAheadLog = SkipAheadVisitLog(
       polish: polish, offeredAt: deps.uptime(), waitedAtOffer: waitedSeconds)
     onObservation?(
-      .skipAhead(.offered, polish: polish, secondsLeft: secondsLeft, waitedSeconds: waitedSeconds))
+      .skipAhead(
+        .offered, polish: polish, secondsLeft: secondsLeft, waitedSeconds: waitedSeconds,
+        visit: skipAheadVisitID))
   }
 
   /// Keep waiting was pressed on a current offer (the runtime checked the visit and the form).
@@ -389,7 +417,8 @@ final class OnboardingCoordinator {
     skipAheadLog = log
     onObservation?(
       .skipAhead(
-        .keptWaiting, polish: polish, secondsLeft: secondsLeft, waitedSeconds: waitedSeconds))
+        .keptWaiting, polish: polish, secondsLeft: secondsLeft, waitedSeconds: waitedSeconds,
+        visit: skipAheadVisitID))
   }
 
   /// Skip ahead was pressed on a current offer for `pick` (the runtime checked the visit and the
@@ -425,7 +454,9 @@ final class OnboardingCoordinator {
       log.ended = true
       skipAheadLog = log
       onObservation?(
-        .skipAhead(.skipped, polish: pick, secondsLeft: secondsLeft, waitedSeconds: waitedSeconds))
+        .skipAhead(
+          .skipped, polish: pick, secondsLeft: secondsLeft, waitedSeconds: waitedSeconds,
+          visit: skipAheadVisitID))
     }
     // Speech is installed (the offer requires it), so a polish waiting behind it starts now. A
     // refusal (disk) sets the block Practice's note reads; Practice itself stays open.
@@ -791,7 +822,8 @@ final class OnboardingCoordinator {
       .completed(
         resolvedChoices(state.choices), interrupted: false,
         rulesVersion: state.recommended.rulesVersion,
-        polishDeferred: state.deferredPolish != nil && state.deferredPolish == state.choices.polish))
+        polishDeferred: state.deferredPolish != nil && state.deferredPolish == state.choices.polish,
+        skipAhead: skipAheadVisitSummary()))
     deps.onCompleted()
   }
 

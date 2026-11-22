@@ -207,6 +207,12 @@ struct SetupPracticeScreenTests {
       ("worked", .worked, .live), ("worked-off", .worked, .off),
       ("worked-cloud-later", .worked, .cloudLater(providerName: "Claude")),
       ("worked-without-polish", .workedWithoutPolish, .live),
+      ("waiting-basic-cleanup", .waiting, .deferred(.downloading)),
+      ("waiting-polish-starting", .waiting, .deferred(.starting)),
+      ("waiting-polish-unavailable", .waiting, .deferred(.unavailable)),
+      ("waiting-polish-paused", .waiting, .deferred(.stopped(paused: true))),
+      ("waiting-polish-failed", .waiting, .deferred(.stopped(paused: false))),
+      ("worked-basic-cleanup", .workedBasicCleanup, .deferred(.downloading)),
       ("no-speech", .noSpeech, .live),
       ("missed-box", .missedBox(copiedToClipboard: false), .live),
       ("copied", .missedBox(copiedToClipboard: true), .live),
@@ -255,5 +261,71 @@ struct SetupPracticeScreenTests {
         try png.write(to: folder.appending(path: "\(name)-\(variant).png"))
       }
     }
+  }
+
+  /// #4845. When this fails, a person who chose Skip ahead is told to try again after a take that
+  /// worked, a take that got polished mid-way is called basic cleanup, or the delivery time for
+  /// the Skip ahead summary is missed or counted for a take that did not land.
+  @Test("a take started after Skip ahead reads Dictation worked with basic cleanup")
+  func skippedAheadTakeIsASuccess() {
+    var attempt = SetupPracticeAttempt()
+    func take(_ id: String, deferred: Bool, terminal: PracticeTakeEvidence) -> Bool {
+      attempt.observe(
+        SetupPracticeTake(id: id, phase: .recording, locked: false, terminal: nil),
+        focusedEditor: "box", polishDeferred: deferred)
+      // The phase changes mid-take; only the take-start value counts.
+      return attempt.observe(
+        SetupPracticeTake(id: id, phase: .complete, locked: false, terminal: terminal),
+        focusedEditor: "box", polishDeferred: !deferred)
+    }
+    let shown = SetupPracticeRoute.shown
+    #expect(!take("a", deferred: true, terminal: .failed), "a failed take was timed")
+    #expect(attempt.success == nil)
+    #expect(take("b", deferred: true, terminal: .delivered(verifiedEditor: "box", copied: false, polished: false)))
+    #expect(shown(attempt.state, attempt.result, true) == .workedBasicCleanup)
+    #expect(SetupPracticeState.workedBasicCleanup.canContinue(hasSucceeded: attempt.success != nil))
+    #expect(SetupPracticeState.workedBasicCleanup.isWorked)
+    #expect(SetupPracticeState.workedBasicCleanup.headline == "Dictation worked")
+    // Polish got ready during the take: the take was polished, so it is the full success.
+    #expect(take("c", deferred: true, terminal: .delivered(verifiedEditor: "box", copied: false, polished: true)))
+    #expect(shown(attempt.state, attempt.result, true) == .worked)
+    // Not skipped ahead at take start: today's honest copy.
+    #expect(take("d", deferred: false, terminal: .delivered(verifiedEditor: "box", copied: false, polished: false)))
+    #expect(shown(attempt.state, attempt.result, true) == .workedWithoutPolish)
+    // A take outside the box is not a verified delivery.
+    #expect(!take("e", deferred: true, terminal: .delivered(verifiedEditor: "elsewhere", copied: false, polished: false)))
+  }
+
+  @Test("the Basic cleanup note follows the skipped-ahead model's phase and hides once it is ready")
+  func deferredNoteStages() {
+    typealias P = OnboardingDownloadsPresentation
+    func p(_ prep: P.PolishPreparation, phase: OnboardingDownloadPhase? = .downloading(fraction: 0.4),
+      block: OnboardingDownloadBlock? = nil) -> P {
+      P(
+        speech: .parakeet, speechPhase: .installed, polish: "eg1.mini", polishPhase: phase,
+        polishPreparation: prep, block: block, engineWarm: true, warmFailed: false,
+        microphoneGranted: true, accessibilityGranted: true, downloadsFinished: false,
+        isNetworkSlow: false, isCountingDown: false)
+    }
+    let stage = SetupPracticePolish.deferredStage
+    #expect(stage(p(.downloading)) == .downloading)
+    #expect(stage(p(.queued, phase: .notStarted)) == .downloading)
+    #expect(stage(p(.loading, phase: .installed)) == .starting)
+    #expect(stage(p(.failed, phase: .installed)) == .unavailable)
+    #expect(stage(p(.downloadStopped, phase: .paused)) == .stopped(paused: true))
+    #expect(stage(p(.downloadStopped, phase: .failed(.whisper("x")))) == .stopped(paused: false))
+    #expect(stage(p(.downloadStopped, phase: .notStarted)) == .stopped(paused: false))
+    #expect(
+      stage(p(.waiting, phase: .notStarted, block: .insufficientDisk(neededBytes: 9, freeBytes: 1)))
+        == .stopped(paused: false), "a disk refusal pointed at a download still running")
+    #expect(stage(p(.ready, phase: .installed)) == nil)
+    // Live readiness and a moving transfer beat a saved disk refusal from earlier.
+    let disk = OnboardingDownloadBlock.insufficientDisk(neededBytes: 9, freeBytes: 1)
+    #expect(stage(p(.ready, phase: .installed, block: disk)) == nil, "a ready model kept the stopped note")
+    #expect(stage(p(.downloading, block: disk)) == .downloading)
+    #expect(stage(p(.loading, phase: .installed, block: disk)) == .starting)
+    #expect(SetupPracticePolish.deferred(.downloading).note == nil)
+    #expect(SetupPracticePolish.deferred(.downloading).deferredBody != nil)
+    #expect(SetupPracticePolish.live.deferredBody == nil)
   }
 }

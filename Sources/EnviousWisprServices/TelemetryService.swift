@@ -908,6 +908,9 @@ public final class TelemetryService {
       // summary can say so, never `onboarding.film_finished`.
       props["film_result"] = summary.filmResult?.rawValue ?? "not_shown"
       if let deferred = summary.polishDeferred { props["polish_deferred"] = deferred }
+      if let skipAhead = summary.skipAhead {
+        props.merge(skipAhead.properties) { current, _ in current }
+      }
     }
     #if DEBUG
       testEventHook?(
@@ -968,10 +971,11 @@ public final class TelemetryService {
   /// time since the visit first reached Getting ready (`$value`); the estimate is a coarse bucket.
   public func onboardingSkipAhead(
     action: OnboardingTelemetry.SkipAheadAction, polishModel: String, secondsLeft: Double?,
-    waitedSeconds: Double
+    waitedSeconds: Double, visit: String
   ) {
     let props: [String: Any] = [
       "action": action.rawValue,
+      "setup_visit_id": OnboardingTelemetry.boundedIdentifier(visit),
       "polish_model": OnboardingTelemetry.polishValue(polishModel),
       "seconds_left_bucket": OnboardingTelemetry.secondsLeftBucket(secondsLeft),
       "waited_seconds": waitedSeconds, "$value": waitedSeconds,
@@ -1032,13 +1036,15 @@ public final class TelemetryService {
   /// visible. `app_quit` is best-effort (a `kill -9` bypasses `applicationWillTerminate`).
   public func onboardingAbandoned(
     screen: String, step: String, elapsedSeconds: Double?,
-    micStatus: String, accessibilityStatus: String, abandonReason: String, source: String
+    micStatus: String, accessibilityStatus: String, abandonReason: String, source: String,
+    skipAhead: OnboardingTelemetry.SkipAheadVisitSummary? = nil
   ) {
     var props: [String: Any] = [
       "screen": screen, "step": step, "mic_status": micStatus,
       "accessibility_status": accessibilityStatus, "abandon_reason": abandonReason,
       "source": source,
     ]
+    if let skipAhead { props.merge(skipAhead.properties) { current, _ in current } }
     if let e = elapsedSeconds {
       props["elapsed_seconds"] = e  // #2980: Double
       props["$value"] = e  // raw numeric for PostHog aggregation (matches step_completed)
@@ -6029,11 +6035,14 @@ public enum OnboardingTelemetry {
     /// #4845: the person chose Skip ahead for the polish model they kept (Practice ran with basic
     /// cleanup while it downloaded). nil when unknown.
     public var polishDeferred: Bool?
+    /// #4845: this visit's Skip ahead summary; nil off the Setup path.
+    public var skipAhead: SkipAheadVisitSummary?
 
     public init(
       polishProvider: LLMProvider, polishModel: PolishModel, speechModel: ASRBackendType,
       followedAllRecommendations: Bool?, languageMode: LanguageMode, rulesVersion: String,
-      filmResult: FilmResult?, polishDeferred: Bool? = nil
+      filmResult: FilmResult?, polishDeferred: Bool? = nil,
+      skipAhead: SkipAheadVisitSummary? = nil
     ) {
       self.polishProvider = polishProvider
       self.polishModel = polishModel
@@ -6043,6 +6052,38 @@ public enum OnboardingTelemetry {
       self.rulesVersion = rulesVersion
       self.filmResult = filmResult
       self.polishDeferred = polishDeferred
+      self.skipAhead = skipAhead
+    }
+  }
+
+  /// #4845 D-H: one Setup window visit's Skip ahead outcome, carried on the visit's own end row
+  /// (`onboarding.completed` or `onboarding.abandoned`), so every offered visit is counted by its
+  /// end row. Metadata only: never editor text.
+  public struct SkipAheadVisitSummary: Sendable, Equatable {
+    /// The visit key also carried by this visit's `onboarding.skip_ahead` rows.
+    public var visit: String
+    /// This visit showed the Skip ahead card.
+    public var offered: Bool
+    /// Seconds from the offer to the first practice take verified in the expected editor in this
+    /// visit; nil when no offer, or no verified delivery in this visit.
+    public var offerToFirstDeliverySeconds: Double?
+
+    public init(visit: String, offered: Bool, offerToFirstDeliverySeconds: Double?) {
+      self.visit = visit
+      self.offered = offered
+      self.offerToFirstDeliverySeconds = offerToFirstDeliverySeconds
+    }
+
+    /// The row properties: `skip_ahead_offered` always, the delivery time when known.
+    public var properties: [String: Any] {
+      var props: [String: Any] = [
+        "skip_ahead_offered": offered,
+        "setup_visit_id": OnboardingTelemetry.boundedIdentifier(visit),
+      ]
+      if let seconds = offerToFirstDeliverySeconds {
+        props["offer_to_first_delivery_seconds"] = seconds
+      }
+      return props
     }
   }
 

@@ -404,6 +404,9 @@ final class OnboardingRuntime {
   @ObservationIgnored private var offer = OnboardingSkipOffer()
   /// #4845: Getting ready's Skip ahead offer form and the time left, for the screen.
   private(set) var skipOffer: OnboardingSkipOffer.Form = .hidden
+  /// #4845: the polish pick the shown offer was earned for (nil while hidden), published with
+  /// `skipOffer` so Getting ready never pairs an offer with a pick it was not earned for.
+  private(set) var skipOfferPick: String?
   private(set) var secondsLeft: Double?
   /// #4845: bumped at every window visit; a button press from an earlier visit is refused.
   private(set) var offerVisit = 0
@@ -459,6 +462,7 @@ final class OnboardingRuntime {
     estimator = OnboardingDownloadEstimator()
     offer = OnboardingSkipOffer()
     skipOffer = .hidden
+    skipOfferPick = nil
     secondsLeft = nil
   }
 
@@ -468,6 +472,7 @@ final class OnboardingRuntime {
     estimator.newVisit()
     offer.newVisit()
     skipOffer = .hidden
+    skipOfferPick = nil
     secondsLeft = nil
     offerVisit &+= 1
     offerVisitOpen = true
@@ -480,6 +485,7 @@ final class OnboardingRuntime {
     estimator.newVisit()
     offer.newVisit()
     skipOffer = .hidden
+    skipOfferPick = nil
     secondsLeft = nil
     offerVisit &+= 1
     offerVisitOpen = false
@@ -497,6 +503,7 @@ final class OnboardingRuntime {
       waitedSeconds: offer.waitedSeconds(at: inputs.uptime()))
     if accepted {
       skipOffer = .hidden
+      skipOfferPick = nil
     }
     return accepted
   }
@@ -510,6 +517,7 @@ final class OnboardingRuntime {
     else { return false }
     offer.keepWaiting()
     skipOffer = offer.form
+    skipOfferPick = offer.shownPick
     coordinator.noteSkipAheadKeptWaiting(
       polish: pick, secondsLeft: estimator.secondsLeft,
       waitedSeconds: offer.waitedSeconds(at: inputs.uptime()))
@@ -646,6 +654,7 @@ final class OnboardingRuntime {
         polish: pick, secondsLeft: estimator.secondsLeft, waitedSeconds: offer.waitedSeconds(at: at))
     }
     if skipOffer != offer.form { skipOffer = offer.form }
+    if skipOfferPick != offer.shownPick { skipOfferPick = offer.shownPick }
     let left = estimator.secondsLeft.map { $0.rounded() }
     if secondsLeft != left { secondsLeft = left }
   }

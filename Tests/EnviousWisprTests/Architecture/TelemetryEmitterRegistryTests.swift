@@ -297,9 +297,13 @@ struct TelemetryEmitterRegistryTests {
   /// `read` tokens), so no new site.
   /// #4845: one new event, `onboarding.skip_ahead`, at one site (`TelemetryService.onboardingSkipAhead`),
   /// graded in its own registry row (per_user_action, keep; at most 3 per Setup visit, latched by
-  /// OnboardingCoordinator). No existing site moved.
+  /// OnboardingCoordinator). No existing site moved. Then `onboarding.abandoned`'s one site
+  /// (`TelemetryService.onboardingAbandoned`) gained the optional `skipAhead:` summary argument:
+  /// same site, same once-per-visit cadence, two more properties (`skip_ahead_offered`,
+  /// `offer_to_first_delivery_seconds`, `setup_visit_id`), and `onboardingSkipAhead` gained the
+  /// same `visit:` key (same site, same cadence).
   static let sitesFingerprint =
-    "9ec05617fce9b68cde85c20ebbc538f70b9450e8b57898b02dd36ead0bc7e872"
+    "3d4aacad89f6f2f9153dfa13bf27fa6cb57fb9c8a1c45ff590cc79503b00ad6b"
   /// #4721: `api_key.validation_completed` graded (per_launch, keep) when the launch key check
   /// added `source=launch`; ceiling 106 -> 105.
   static let ungradedFingerprint =

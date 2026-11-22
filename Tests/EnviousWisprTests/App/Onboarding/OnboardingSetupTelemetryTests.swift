@@ -585,6 +585,10 @@ struct OnboardingSetupTelemetryTests {
     #expect(summary?.polishModel.id == "none" && summary?.languageMode == .auto)
     #expect(summary?.followedAllRecommendations == false)  // Skip polish vs the recommended card
     #expect(summary?.filmResult == nil && summary?.rulesVersion == "rules-a")
+    // #4845: a visit with no offer still says so on its end row.
+    #expect(summary?.skipAhead?.offered == false)
+    #expect(summary?.skipAhead?.offerToFirstDeliverySeconds == nil)
+    #expect(summary?.skipAhead?.visit.isEmpty == false)
     o.visitEnded()
     #expect(r.completed.count == 1 && r.choices.count == 3)  // no second terminal
   }
@@ -633,5 +637,23 @@ struct OnboardingSetupTelemetryTests {
     tick()
     o.visitEnded()
     #expect(r.choices.isEmpty && r.downloads.isEmpty && r.blocked.isEmpty)
+  }
+
+  @Test("a Skip ahead visit's end row carries the offer flag and the first delivery time only")
+  func skipAheadVisitSummaryProperties() {
+    // When this fails, offered visits drop out of the denominator or editor text reaches us.
+    let visit = UUID().uuidString
+    let none = OnboardingTelemetry.SkipAheadVisitSummary(
+      visit: visit, offered: true, offerToFirstDeliverySeconds: nil)
+    #expect(none.properties.keys.sorted() == ["setup_visit_id", "skip_ahead_offered"])
+    #expect(none.properties["setup_visit_id"] as? String == visit, "a real visit key was rejected")
+    #expect(none.properties["skip_ahead_offered"] as? Bool == true)
+    let timed = OnboardingTelemetry.SkipAheadVisitSummary(
+      visit: visit, offered: true, offerToFirstDeliverySeconds: 42.5)
+    #expect(
+      timed.properties.keys.sorted() == [
+        "offer_to_first_delivery_seconds", "setup_visit_id", "skip_ahead_offered",
+      ])
+    #expect(timed.properties["offer_to_first_delivery_seconds"] as? Double == 42.5)
   }
 }

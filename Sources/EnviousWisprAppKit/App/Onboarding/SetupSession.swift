@@ -94,6 +94,20 @@ final class SetupSession {
       cancelDownloads: { [weak coordinator] in coordinator?.cancelDownloads() },
       retryWarmup: { [weak coordinator] in coordinator?.retryWarmup() },
       retryPolish: { [weak coordinator] in coordinator?.retryPolish() })
+    sources.skipAhead = SetupSkipAheadSources(
+      offer: { [weak runtime, weak coordinator] in
+        guard let runtime, let coordinator else { return .hidden }
+        // The estimate shows in the subtitle whether or not the offer does. The offer shows only
+        // for the pick it was earned for; a pick change hides it until the runtime re-decides.
+        let pick = runtime.skipOfferPick
+        let current = pick != nil && pick == coordinator.state.choices.polish
+        return SetupSkipAheadOffer(
+          form: current ? runtime.skipOffer : .hidden, visit: runtime.offerVisit,
+          pick: current ? pick : nil, secondsLeft: runtime.secondsLeft)
+      },
+      skip: { [weak runtime] visit, pick in runtime?.skipAhead(visit: visit, pick: pick) },
+      keepWaiting: { [weak runtime] visit, pick in runtime?.keepWaiting(visit: visit, pick: pick) })
+    sources.practiceDelivered = { [weak coordinator] in coordinator?.noteVerifiedPracticeDelivery() }
     presenter.show(
       coordinator: coordinator, telemetry: components.telemetry, sources: sources,
       activateApp: components.activateApp,
@@ -155,7 +169,8 @@ final class SetupSession {
     components?.telemetry?.visitEnded()
     progress?.emitAbandonIfInFlight(
       reason: reason, micStatus: permissions?.microphoneStatusString ?? "unknown",
-      accessibilityStatus: (permissions?.accessibilityGrantedLive ?? false) ? "granted" : "denied")
+      accessibilityStatus: (permissions?.accessibilityGrantedLive ?? false) ? "granted" : "denied",
+      skipAhead: components?.coordinator.skipAheadVisitSummary())
     ownsVisit = false
   }
 }

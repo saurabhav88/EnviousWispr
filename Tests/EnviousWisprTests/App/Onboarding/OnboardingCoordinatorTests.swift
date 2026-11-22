@@ -701,7 +701,7 @@ struct OnboardingCoordinatorTests {
 
   private static func skipRows(_ c: OnboardingCoordinator) -> () -> [OnboardingTelemetry.SkipAheadAction] {
     var rows: [OnboardingTelemetry.SkipAheadAction] = []
-    c.onObservation = { if case .skipAhead(let action, _, _, _) = $0 { rows.append(action) } }
+    c.onObservation = { if case .skipAhead(let action, _, _, _, _) = $0 { rows.append(action) } }
     return { rows }
   }
 
@@ -820,7 +820,7 @@ struct OnboardingCoordinatorTests {
       let c = world.coordinator()
       var reported: Bool?
       c.onObservation = {
-        if case .completed(_, true, _, let polishDeferred) = $0 { reported = polishDeferred }
+        if case .completed(_, true, _, let polishDeferred, _) = $0 { reported = polishDeferred }
       }
       #expect(!c.begin())
       #expect(reported == expected, "\(String(describing: deferred))")
@@ -832,11 +832,64 @@ struct OnboardingCoordinatorTests {
     let c = try Self.atGettingReady(world)
     var reported: Bool?
     c.onObservation = {
-      if case .completed(_, false, _, let polishDeferred) = $0 { reported = polishDeferred }
+      if case .completed(_, false, _, let polishDeferred, _) = $0 { reported = polishDeferred }
     }
     #expect(c.acceptSkipAhead(pick: "eg1.mini", secondsLeft: 300, waitedSeconds: 70))
     c.send(.practiceSucceeded)
     c.send(.filmFinished)
     #expect(reported == true)
+  }
+
+  @Test("the first verified practice delivery is timed from this visit's offer, never a past visit's")
+  func skipAheadDeliveryIsVisitScoped() throws {
+    // When this fails, the Skip ahead metric times the wrong take, a reopened window inherits the
+    // last visit's numbers, or a later visit's end row resolves an earlier visit's offer.
+    let world = OnboardingCoordinatorTests.World()
+    world.speechPhase[.parakeet] = .installed
+    world.polishPhase[.egOne(.mini)] = .downloading(fraction: 0.3)
+    let c = try Self.atGettingReady(world)
+    var rowVisits: [String] = []
+    c.onObservation = { if case .skipAhead(_, _, _, _, let visit) = $0 { rowVisits.append(visit) } }
+    func summary() -> (Bool, Double?) {
+      let s = c.skipAheadVisitSummary()
+      return (s.offered, s.offerToFirstDeliverySeconds)
+    }
+    c.beginSkipAheadVisit()
+    c.noteVerifiedPracticeDelivery()  // no offer yet: nothing to time
+    #expect(summary() == (false, nil))
+    world.uptime = 100
+    c.noteSkipAheadOffered(polish: "eg1.mini", secondsLeft: 300, waitedSeconds: 61)
+    #expect(summary() == (true, nil))
+    world.uptime = 130
+    #expect(c.acceptSkipAhead(pick: "eg1.mini", secondsLeft: 300, waitedSeconds: 91))
+    world.uptime = 145  // a failed take sends nothing; this is the first verified one
+    c.noteVerifiedPracticeDelivery()
+    world.uptime = 200
+    c.noteVerifiedPracticeDelivery()  // a later take keeps the first time
+    #expect(summary() == (true, 45))
+    let firstVisit = c.skipAheadVisitSummary().visit
+    #expect(rowVisits.count == 2 && Set(rowVisits) == [firstVisit], "offer rows and end row disagree")
+    c.beginSkipAheadVisit()  // the window closed and reopened
+    #expect(summary() == (false, nil))
+    #expect(c.skipAheadVisitSummary().visit != firstVisit, "a later visit could resolve the old offer")
+    c.noteVerifiedPracticeDelivery()
+    #expect(summary() == (false, nil))
+
+    // The same summary rides on completion.
+    let world2 = OnboardingCoordinatorTests.World()
+    world2.speechPhase[.parakeet] = .installed
+    world2.polishPhase[.egOne(.mini)] = .downloading(fraction: 0.3)
+    let c2 = try Self.atGettingReady(world2)
+    var reported: OnboardingTelemetry.SkipAheadVisitSummary?
+    c2.onObservation = { if case .completed(_, _, _, _, let s) = $0 { reported = s } }
+    world2.uptime = 10
+    c2.noteSkipAheadOffered(polish: "eg1.mini", secondsLeft: nil, waitedSeconds: 60)
+    #expect(c2.acceptSkipAhead(pick: "eg1.mini", secondsLeft: nil, waitedSeconds: 60))
+    world2.uptime = 25
+    c2.noteVerifiedPracticeDelivery()
+    c2.send(.practiceSucceeded)
+    c2.send(.filmFinished)
+    #expect(reported?.offered == true && reported?.offerToFirstDeliverySeconds == 15)
+    #expect(reported?.visit == c2.skipAheadVisitID)
   }
 }
