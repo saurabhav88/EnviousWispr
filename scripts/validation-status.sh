@@ -50,7 +50,7 @@ required=$(jq -r '.required_checks[]' "$STATE_FILE" | sort -u)
 missing=""
 while IFS= read -r check; do
   [ -z "$check" ] && continue
-  if [ -z "$completed" ] || ! echo "$completed" | grep -qx "$check"; then
+  if [ -z "$completed" ] || ! grep -qx "$check" <<<"$completed"; then
     if [ -z "$missing" ]; then
       missing="$check"
     else
@@ -79,7 +79,7 @@ fi
 echo "Required checks:"
 while IFS= read -r check; do
   [ -z "$check" ] && continue
-  if [ -n "$completed" ] && echo "$completed" | grep -qx "$check"; then
+  if [ -n "$completed" ] && grep -qx "$check" <<<"$completed"; then
     note=$(jq -r "select(.tree_hash == \"$state_hash\" and .check == \"$check\") | .note" "$EVENTS_FILE" 2>/dev/null | tail -1 || true)
     echo "  [x] $check: $note"
   else

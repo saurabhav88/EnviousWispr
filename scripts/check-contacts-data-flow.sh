@@ -55,15 +55,15 @@ for path in "${CONTACT_PATHS[@]}"; do
   while IFS= read -r hit; do
     code=$(code_of "$hit")
     [ -z "${code// /}" ] && continue
-    printf '%s' "$code" | grep -qE "$HARD_SINK" && flag "$hit"
+    grep -qE "$HARD_SINK" <<<"$code" && flag "$hit"
   done < <(grep -rEn "$HARD_SINK" "$path" --include='*.swift' 2>/dev/null || true)
 
   # Tier 2 — telemetry sinks: fail unless the line is the allowed count event.
   while IFS= read -r hit; do
     code=$(code_of "$hit")
     [ -z "${code// /}" ] && continue
-    printf '%s' "$code" | grep -qE "$TELEMETRY_SINK" || continue  # token was comment-only
-    printf '%s' "$code" | grep -qE "$ALLOW" && continue  # allowed integer-count event
+    grep -qE "$TELEMETRY_SINK" <<<"$code" || continue  # token was comment-only
+    grep -qE "$ALLOW" <<<"$code" && continue  # allowed integer-count event
     flag "$hit"
   done < <(grep -rEn "$TELEMETRY_SINK" "$path" --include='*.swift' 2>/dev/null || true)
 done

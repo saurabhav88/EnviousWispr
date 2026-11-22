@@ -129,7 +129,7 @@ fi
 # --- consume with NO snapshot: must not create anything ------------------------
 DD1="$TMPROOT/dd1"
 ew_seed_consume "$ROOT" "$DD1" > "$TMPROOT/captured-output" 2>&1; out="$(cat "$TMPROOT/captured-output")"
-if [ ! -e "$DD1/SourcePackages" ] && printf '%s' "$out" | grep -q "no seed snapshot"; then
+if [ ! -e "$DD1/SourcePackages" ] && grep -q "no seed snapshot" <<<"$out"; then
   ok "no snapshot: creates nothing and SAYS why"
 else
   bad "no-snapshot path" "target=$([ -e "$DD1/SourcePackages" ] && echo exists || echo absent) out='$out'"
@@ -155,7 +155,7 @@ ew_seed_consume "$ROOT" "$DD3" > "$TMPROOT/captured-output" 2>&1; out="$(cat "$T
 # the assertion here, because a consumed tree no longer carries the state file
 # that check uses as its marker. Assert the content instead.
 if [ -d "$DD3/SourcePackages/artifacts" ] && [ -n "$(ls -A "$DD3/SourcePackages/artifacts" 2>/dev/null)" ] \
-   && [ -d "$DD3/SourcePackages/checkouts" ] && printf '%s' "$out" | grep -q "Seeded packages"; then
+   && [ -d "$DD3/SourcePackages/checkouts" ] && grep -q "Seeded packages" <<<"$out"; then
   ok "consume clones the snapshot's payload into an absent target"
 else
   bad "consume" "target missing payload or unannounced: '$out'"
@@ -296,7 +296,7 @@ mkdir -p "$(ew_seed_dir "$KEY_B")/artifacts"
 printf '{}\n' > "$(ew_seed_dir "$KEY_B")/workspace-state.json"   # artifacts/ empty
 DD6="$TMPROOT/dd6"
 ew_seed_consume "$ROOT" "$DD6" > "$TMPROOT/captured-output" 2>&1; out="$(cat "$TMPROOT/captured-output")"
-if [ ! -e "$DD6/SourcePackages" ] && printf '%s' "$out" | grep -q "no seed snapshot"; then
+if [ ! -e "$DD6/SourcePackages" ] && grep -q "no seed snapshot" <<<"$out"; then
   ok "consume REFUSES a corrupt snapshot and leaves no partial target"
 else
   bad "corrupt snapshot" "target=$([ -e "$DD6/SourcePackages" ] && echo exists || echo absent) out='$out'"
@@ -326,7 +326,7 @@ ew_seed_consume "$ROOT" "$DD7" > "$TMPROOT/captured-output" 2>&1
 rc=$?
 out="$(cat "$TMPROOT/captured-output")"
 ew_seed_lock_release "$KEY"
-if [ "$rc" -eq 0 ] && [ ! -e "$DD7/SourcePackages" ] && printf '%s' "$out" | grep -q "seed busy"; then
+if [ "$rc" -eq 0 ] && [ ! -e "$DD7/SourcePackages" ] && grep -q "seed busy" <<<"$out"; then
   ok "a HELD lock is a cache miss (exit 0, nothing created, reason announced)"
 else
   bad "lock contention" "rc=$rc target=$([ -e "$DD7/SourcePackages" ] && echo exists || echo absent) out='$out'"
@@ -572,7 +572,7 @@ EW_SEED_CONSUMED=0
 # assertion on a side effect whether the harness put the subject in a subshell.
 ew_seed_consume "$ROOT" "$PROV" > "$TMPROOT/prov.out" 2>&1
 out="$(cat "$TMPROOT/prov.out")"
-if [ "$EW_SEED_CONSUMED" = "1" ] && printf '%s' "$out" | grep -q "earlier run"; then
+if [ "$EW_SEED_CONSUMED" = "1" ] && grep -q "earlier run" <<<"$out"; then
   ok "an existing tree carrying the marker ARMS the fallback in a later process"
 else
   bad "provenance carry-over" "consumed=$EW_SEED_CONSUMED out='$out'"

@@ -192,7 +192,7 @@ if [ "$rc" -eq 2 ]; then
 else
   bad "launch probe error" "returned $rc; a probe failure is indistinguishable from a real launch failure"
 fi
-if printf '%s' "$launch_warn" | grep -q "not evidence the app did not launch"; then
+if grep -q "not evidence the app did not launch" <<<"$launch_warn"; then
   ok "the could-not-tell case says so on stderr"
 else
   bad "launch probe warning" "silent: '$launch_warn'"
@@ -224,7 +224,7 @@ fi
 # every row would pass having tested no code.
 CALLER="$HERE/../build-dev-app.sh"
 HANDLER="$(sed -n '/# LAUNCH-HANDLER-BEGIN/,/# LAUNCH-HANDLER-END/p' "$CALLER")"
-if [ -z "$HANDLER" ] || ! printf '%s' "$HANDLER" | grep -q "_launch_rc"; then
+if [ -z "$HANDLER" ] || ! grep -q "_launch_rc" <<<"$HANDLER"; then
   echo "ERROR: could not extract the launch handler from $CALLER — anchor drifted." >&2
   exit 1
 fi
@@ -249,21 +249,21 @@ reach() { # <stubbed return> -> the handler's own output
 }
 
 out="$(reach 2)"
-if printf '%s' "$out" | grep -q "could not determine"; then
+if grep -q "could not determine" <<<"$out"; then
   ok "the caller's could-not-tell branch is REACHED under set -e"
 else
   bad "handler reachability (rc=2)" "handler produced '$out' — the branch is dead"
 fi
 
 out="$(reach 1)"
-if printf '%s' "$out" | grep -q "did not launch"; then
+if grep -q "did not launch" <<<"$out"; then
   ok "the caller's did-not-launch branch is REACHED under set -e (the twin)"
 else
   bad "handler reachability (rc=1)" "handler produced '$out' — the branch is dead"
 fi
 
 out="$(reach 0)"
-if ! printf '%s' "$out" | grep -qE "did not launch|could not determine"; then
+if ! grep -qE "did not launch|could not determine" <<<"$out"; then
   ok "a successful launch takes NEITHER error branch"
 else
   bad "handler success path" "a successful launch produced an error: '$out'"
@@ -293,7 +293,7 @@ if [ "$crash_rc" -eq 1 ]; then
 else
   bad "crash on startup" "returned $crash_rc — a process seen once was treated as a successful launch"
 fi
-if printf '%s' "$crash_warn" | grep -q "appeared and then exited"; then
+if grep -q "appeared and then exited" <<<"$crash_warn"; then
   ok "the crash-on-startup failure NAMES itself, not just 'did not launch'"
 else
   bad "crash message" "reported failure without distinguishing a crash from a no-show: '$crash_warn'"
