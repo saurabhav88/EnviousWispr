@@ -98,6 +98,231 @@ struct OnboardingAutoAdvance: Equatable {
   mutating func cancel() { self = Self() }
 }
 
+/// #4845 D-A: one poll's view of the current picks' downloads. Built by the live mapping from
+/// the owners' in-memory phases and cached manifest sizes; tests supply it directly.
+struct OnboardingDownloadSnapshot: Equatable, Sendable {
+  struct Pick: Equatable, Sendable {
+    /// Which model, e.g. "speech:parakeet" or "polish:eg1.mini".
+    var id: String
+    var phase: OnboardingDownloadPhase
+    /// Bytes already on the Mac for a running download; nil when the owner publishes no fraction.
+    var downloadedBytes: Int64?
+    /// The model's manifest size; nil when unknown.
+    var totalBytes: Int64?
+  }
+
+  var speech: Pick?
+  var polish: Pick?
+  /// The polish pick waiting behind the speech download (the coordinator's queue), if any.
+  var queuedPolishID: String?
+
+  /// The polish pick is waiting in the coordinator's queue rather than transferring.
+  var polishIsQueued: Bool {
+    guard let polish, let queued = queuedPolishID else { return false }
+    return polish.id == "polish:\(queued)"
+  }
+}
+
+/// #4845 D-A: the time left for the current picks' downloads, from the measured byte rate.
+/// Pure: the caller supplies snapshots and a monotonic time (seconds since an arbitrary origin).
+/// The only carried rate is the last valid speech rate into the already selected queued polish
+/// download, because that transfer starts right after on the same connection.
+struct OnboardingDownloadEstimator: Equatable {
+  static let window: TimeInterval = 10
+  /// A running download with no new bytes for this long has no usable rate.
+  static let stallAfter: TimeInterval = 30
+
+  private var speechID: String?
+  private var polishID: String?
+  private var contributing: Set<String> = []
+  private var samples: [Sample] = []
+  private var lastValidRate: Double?
+  private var lastValidRateWasSpeech = false
+  private var carriedRate: Double?
+  /// The current polish pick was seen waiting in the coordinator's queue during this pick.
+  private var polishWasQueued = false
+  private var lastProgressAt: TimeInterval?
+  private(set) var secondsLeft: Double?
+
+  private struct Sample: Equatable {
+    var at: TimeInterval
+    var bytes: Int64
+  }
+
+  /// A new Setup visit (window reopened): nothing measured before it carries over.
+  mutating func newVisit() { self = Self() }
+
+  /// Records one poll. `snapshot` nil means no current pick has a download (resets everything).
+  mutating func record(_ snapshot: OnboardingDownloadSnapshot?, at now: TimeInterval) {
+    guard let snapshot else {
+      self = Self()
+      return
+    }
+    // A changed speech or polish pick drops everything measured for the old picks.
+    let newSpeech = snapshot.speech?.id
+    let newPolish = snapshot.polish?.id
+    if (speechID != nil && newSpeech != nil && newSpeech != speechID)
+      || (polishID != nil && newPolish != nil && newPolish != polishID)
+    {
+      self = Self()
+    }
+    speechID = newSpeech ?? speechID
+    polishID = newPolish ?? polishID
+    if snapshot.polishIsQueued { polishWasQueued = true }
+
+    let running = [snapshot.speech, snapshot.polish].compactMap { $0 }.filter {
+      if case .downloading = $0.phase, $0.downloadedBytes != nil { return true }
+      return false
+    }
+    let ids = Set(running.map(\.id))
+    if ids != contributing {
+      // Serial carry: the speech download finished (or is finishing) and the queued polish
+      // download is next or now running. Anything else starts measuring from nothing.
+      let speechOnly = Set([speechID].compactMap { $0 })
+      let polishOnly = Set([polishID].compactMap { $0 })
+      let speechWasAlone = !contributing.isEmpty && contributing == speechOnly
+      let polishIsNext = ids.isEmpty ? snapshot.polishIsQueued : (!ids.isEmpty && ids == polishOnly)
+      // The gap between them: the carried rate waits for the queued polish download to start.
+      let gapIntoPolish =
+        contributing.isEmpty && carriedRate != nil
+        && (ids.isEmpty ? snapshot.polishIsQueued : ids == polishOnly)
+      if speechWasAlone, polishIsNext, polishWasQueued, lastValidRateWasSpeech,
+        let rate = lastValidRate
+      {
+        carriedRate = rate
+      } else if !gapIntoPolish {
+        carriedRate = nil
+      }
+      contributing = ids
+      samples = []
+      lastProgressAt = ids.isEmpty ? nil : now
+    }
+
+    var measured: Double?
+    if !running.isEmpty {
+      let bytes = running.reduce(Int64(0)) { $0 + ($1.downloadedBytes ?? 0) }
+      if let last = samples.last, bytes > last.bytes { lastProgressAt = now }
+      samples.append(Sample(at: now, bytes: bytes))
+      // Keep the newest sample at or before the window start as the anchor (the monitor's rule).
+      if let anchor = samples.lastIndex(where: { now - $0.at >= Self.window }) {
+        samples.removeFirst(anchor)
+      }
+      if let first = samples.first, now - first.at >= Self.window {
+        let rate = Double(bytes - first.bytes) / (now - first.at)
+        if rate > 0 {
+          measured = rate
+          lastValidRate = rate
+          lastValidRateWasSpeech = ids == Set([speechID].compactMap { $0 })
+          if !lastValidRateWasSpeech { carriedRate = nil }
+        }
+      }
+      if let progressed = lastProgressAt, now - progressed >= Self.stallAfter {
+        measured = nil
+        carriedRate = nil
+        lastValidRate = nil
+      }
+    }
+
+    guard let rate = measured ?? carriedRate, rate > 0,
+      let remaining = Self.remainingBytes(snapshot)
+    else {
+      secondsLeft = nil
+      return
+    }
+    secondsLeft = Double(remaining) / rate
+  }
+
+  /// Bytes still to come for the current picks, or nil when any part is unknown.
+  static func remainingBytes(_ snapshot: OnboardingDownloadSnapshot) -> Int64? {
+    var total: Int64 = 0
+    for pick in [snapshot.speech, snapshot.polish].compactMap({ $0 }) {
+      switch pick.phase {
+      case .installed, .verifying:
+        continue
+      case .downloading:
+        guard let size = pick.totalBytes, let done = pick.downloadedBytes else { return nil }
+        total += max(0, size - done)
+      case .notStarted where pick.id == snapshot.polish?.id && snapshot.polishIsQueued:
+        guard let size = pick.totalBytes else { return nil }
+        total += size
+      case .unknown, .notStarted, .paused, .failed, .unavailable:
+        return nil
+      }
+    }
+    return total
+  }
+}
+
+/// #4845 D-B: when Getting ready offers Skip ahead, and in which form. Pure: the caller supplies
+/// the facts and a monotonic time. The first-entry time belongs to the visit; the card or line
+/// belongs to the polish pick it was shown for, so a replacement pick starts fresh.
+struct OnboardingSkipOffer: Equatable {
+  enum Form: Equatable, Sendable {
+    case hidden
+    case card
+    /// After Keep waiting: one "Rather not wait? Skip ahead" line.
+    case line
+  }
+
+  struct Facts: Equatable, Sendable {
+    var onGettingReady: Bool
+    /// The speech model is installed and warm and both permissions are granted.
+    var speechReady: Bool
+    var polishPick: String?
+    var polishPhase: OnboardingDownloadPhase?
+    var polishQueued: Bool
+  }
+
+  /// A known estimate must be strictly above this; an elapsed wait must reach it.
+  static let threshold: TimeInterval = 60
+
+  private var firstEntryAt: TimeInterval?
+  private var pick: String?
+  private var shownForm: Form?
+  private(set) var form: Form = .hidden
+
+  /// A new Setup visit (window reopened).
+  mutating func newVisit() { self = Self() }
+
+  mutating func update(_ facts: Facts, secondsLeft: Double?, at now: TimeInterval) {
+    if facts.onGettingReady, firstEntryAt == nil { firstEntryAt = now }
+    if facts.polishPick != pick {
+      pick = facts.polishPick
+      shownForm = nil
+    }
+    guard Self.isEligible(facts) else {
+      form = .hidden
+      return
+    }
+    if shownForm == nil {
+      let estimated = (secondsLeft ?? 0) > Self.threshold
+      let waited = firstEntryAt.map { now - $0 >= Self.threshold } ?? false
+      if estimated || waited { shownForm = .card }
+    }
+    form = shownForm ?? .hidden
+  }
+
+  /// Keep waiting: the card becomes the line once.
+  mutating func keepWaiting() {
+    guard shownForm == .card else { return }
+    shownForm = .line
+    if form == .card { form = .line }
+  }
+
+  static func isEligible(_ facts: Facts) -> Bool {
+    guard facts.onGettingReady, facts.speechReady, let pick = facts.polishPick,
+      OnboardingChoices.isRuntimeDownloadedPolish(pick)
+    else { return false }
+    // The phase decides first: a paused, failed, verifying or installed model is owned by its
+    // existing recovery or readiness, even if a retry waits in the queue.
+    switch facts.polishPhase {
+    case .downloading: return true
+    case .notStarted, .none: return facts.polishQueued
+    case .unknown, .verifying, .installed, .paused, .failed, .unavailable: return false
+    }
+  }
+}
+
 /// Facts the readiness closures read that come from an off-main sample (Apple Intelligence's
 /// live availability), shared by the production dependencies and the runtime that samples them.
 @MainActor
