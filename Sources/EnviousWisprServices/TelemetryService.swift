@@ -907,6 +907,7 @@ public final class TelemetryService {
       // The film may not have been shown (Skip practice ends Setup before it); only this
       // summary can say so, never `onboarding.film_finished`.
       props["film_result"] = summary.filmResult?.rawValue ?? "not_shown"
+      if let deferred = summary.polishDeferred { props["polish_deferred"] = deferred }
     }
     #if DEBUG
       testEventHook?(
@@ -960,6 +961,22 @@ public final class TelemetryService {
       "bytes_bucket": OnboardingTelemetry.bytesBucket(bytes),
     ]
     captureOnboarding("onboarding.download_finished", props)
+  }
+
+  /// #4845: Getting ready's Skip ahead offer, at most one `offered`, one `kept_waiting` and one
+  /// of `skipped`/`download_won` per Setup visit (the coordinator latches). `waited_seconds` is the
+  /// time since the visit first reached Getting ready (`$value`); the estimate is a coarse bucket.
+  public func onboardingSkipAhead(
+    action: OnboardingTelemetry.SkipAheadAction, polishModel: String, secondsLeft: Double?,
+    waitedSeconds: Double
+  ) {
+    let props: [String: Any] = [
+      "action": action.rawValue,
+      "polish_model": OnboardingTelemetry.polishValue(polishModel),
+      "seconds_left_bucket": OnboardingTelemetry.secondsLeftBucket(secondsLeft),
+      "waited_seconds": waitedSeconds, "$value": waitedSeconds,
+    ]
+    captureOnboarding("onboarding.skip_ahead", props)
   }
 
   /// #4528 §3.8: once per visit when the refresher film ends.
@@ -6009,11 +6026,14 @@ public enum OnboardingTelemetry {
     /// nil when no film result was recorded (e.g. a completion restored after relaunch); the
     /// summary then says `not_shown`. Skip practice plays the film too (#4528, 2026-11-13).
     public var filmResult: FilmResult?
+    /// #4845: the person chose Skip ahead for the polish model they kept (Practice ran with basic
+    /// cleanup while it downloaded). nil when unknown.
+    public var polishDeferred: Bool?
 
     public init(
       polishProvider: LLMProvider, polishModel: PolishModel, speechModel: ASRBackendType,
       followedAllRecommendations: Bool?, languageMode: LanguageMode, rulesVersion: String,
-      filmResult: FilmResult?
+      filmResult: FilmResult?, polishDeferred: Bool? = nil
     ) {
       self.polishProvider = polishProvider
       self.polishModel = polishModel
@@ -6022,6 +6042,27 @@ public enum OnboardingTelemetry {
       self.languageMode = languageMode
       self.rulesVersion = rulesVersion
       self.filmResult = filmResult
+      self.polishDeferred = polishDeferred
+    }
+  }
+
+  /// #4845: what happened to Getting ready's Skip ahead offer in one Setup visit.
+  public enum SkipAheadAction: String, Sendable, Equatable, CaseIterable {
+    case offered
+    case skipped
+    case keptWaiting = "kept_waiting"
+    /// The polish model became ready while the offer was up, before any skip.
+    case downloadWon = "download_won"
+  }
+
+  /// #4845: the time-left estimate as a coarse bucket; `unknown` when there was none.
+  public static func secondsLeftBucket(_ seconds: Double?) -> String {
+    guard let seconds, seconds >= 0 else { return "unknown" }
+    switch seconds {
+    case ..<60: return "lt_1m"
+    case ..<180: return "1_3m"
+    case ..<600: return "3_10m"
+    default: return "gt_10m"
     }
   }
 

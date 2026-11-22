@@ -271,6 +271,9 @@ struct OnboardingSkipOffer: Equatable {
     var polishPick: String?
     var polishPhase: OnboardingDownloadPhase?
     var polishQueued: Bool
+    /// When this visit first reached Getting ready (monotonic), recorded by the coordinator at the
+    /// transition itself; nil before it did.
+    var gettingReadyEnteredAt: TimeInterval? = nil
   }
 
   /// A known estimate must be strictly above this; an elapsed wait must reach it.
@@ -284,8 +287,20 @@ struct OnboardingSkipOffer: Equatable {
   /// A new Setup visit (window reopened).
   mutating func newVisit() { self = Self() }
 
+  /// Seconds since this visit first reached Getting ready; 0 before it did.
+  func waitedSeconds(at now: TimeInterval) -> Double {
+    firstEntryAt.map { max(0, now - $0) } ?? 0
+  }
+
+  /// The polish pick the current card or line was earned for; nil while hidden.
+  var shownPick: String? { form == .hidden ? nil : pick }
+
   mutating func update(_ facts: Facts, secondsLeft: Double?, at now: TimeInterval) {
-    if facts.onGettingReady, firstEntryAt == nil { firstEntryAt = now }
+    if let entered = facts.gettingReadyEnteredAt {
+      firstEntryAt = min(firstEntryAt ?? entered, entered)
+    } else if facts.onGettingReady, firstEntryAt == nil {
+      firstEntryAt = now
+    }
     if facts.polishPick != pick {
       pick = facts.polishPick
       shownForm = nil
@@ -343,8 +358,8 @@ final class OnboardingRuntime {
     /// Reads every tracked owner fact readiness depends on (inside observation tracking) and
     /// returns a summary of the readiness-relevant ones; progress-only changes must not change it.
     var readObservedFacts: () -> AnyHashable
-    /// Downloaded bytes and an identity for the current picks' running downloads, or nil.
-    var downloadProgress: () -> (identity: String, bytes: Int64)?
+    /// #4845: one typed view of the current picks' downloads per poll, or nil when none.
+    var downloadSnapshot: () -> OnboardingDownloadSnapshot?
     /// Whether every required current download is installed.
     var downloadsFinished: () -> Bool
     /// Samples Apple Intelligence's live availability off the main thread.
@@ -352,6 +367,9 @@ final class OnboardingRuntime {
     /// Asks the availability owner for its approved recheck.
     var recheckAppleIntelligence: () -> Void
     var now: () -> Date
+    /// #4845: a monotonic clock (seconds) for the estimate and the offer; calendar time stays
+    /// with `now`.
+    var uptime: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
     /// Waits out a duration (production: `Task.sleep`); tests inject their own.
     var sleep: (Duration) async -> Void = { try? await Task.sleep(for: $0) }
     /// The onboarding permission cadence (2 s).
@@ -382,6 +400,16 @@ final class OnboardingRuntime {
   private(set) var isNetworkSlow = false
   /// Downloads' 1.6 s countdown is running ("Taking you to the next step").
   var isCountingDown: Bool { advance.isCounting }
+  @ObservationIgnored private var estimator = OnboardingDownloadEstimator()
+  @ObservationIgnored private var offer = OnboardingSkipOffer()
+  /// #4845: Getting ready's Skip ahead offer form and the time left, for the screen.
+  private(set) var skipOffer: OnboardingSkipOffer.Form = .hidden
+  private(set) var secondsLeft: Double?
+  /// #4845: bumped at every window visit; a button press from an earlier visit is refused.
+  private(set) var offerVisit = 0
+  /// #4845: the Setup window is open for the current visit. Polling and downloads go on while it
+  /// is closed, but the Skip ahead offer and its buttons exist only inside an open visit.
+  private(set) var offerVisitOpen = false
 
   init(coordinator: OnboardingCoordinator, facts: OnboardingLiveFacts, inputs: Inputs) {
     self.coordinator = coordinator
@@ -428,6 +456,64 @@ final class OnboardingRuntime {
     advance.cancel()
     isNetworkSlow = false
     downloadsVisible = false
+    estimator = OnboardingDownloadEstimator()
+    offer = OnboardingSkipOffer()
+    skipOffer = .hidden
+    secondsLeft = nil
+  }
+
+  /// #4845: a new window visit. The offer's timer and form and the measured speed start over,
+  /// even when the runtime kept running while the window was closed.
+  func beginOfferVisit() {
+    estimator.newVisit()
+    offer.newVisit()
+    skipOffer = .hidden
+    secondsLeft = nil
+    offerVisit &+= 1
+    offerVisitOpen = true
+    coordinator.beginSkipAheadVisit()
+  }
+
+  /// #4845: the window closed. The offer and its timer end with the visit; a press from it is
+  /// refused (the next open starts a new visit).
+  func endOfferVisit() {
+    estimator.newVisit()
+    offer.newVisit()
+    skipOffer = .hidden
+    secondsLeft = nil
+    offerVisit &+= 1
+    offerVisitOpen = false
+  }
+
+  /// #4845 D-B: Getting ready's Skip ahead button. `visit` and `pick` are what the screen showed;
+  /// the coordinator re-reads every fact before anything changes.
+  @discardableResult
+  func skipAhead(visit: Int, pick: String) -> Bool {
+    guard isRunning, offerVisitOpen, visit == offerVisit, offer.shownPick == pick,
+      coordinator.state.choices.polish == pick
+    else { return false }
+    let accepted = coordinator.acceptSkipAhead(
+      pick: pick, secondsLeft: estimator.secondsLeft,
+      waitedSeconds: offer.waitedSeconds(at: inputs.uptime()))
+    if accepted {
+      skipOffer = .hidden
+    }
+    return accepted
+  }
+
+  /// #4845 D-B: Keep waiting. Collapses the card to the one-line form once.
+  @discardableResult
+  func keepWaiting(visit: Int, pick: String) -> Bool {
+    guard isRunning, offerVisitOpen, visit == offerVisit, offer.form == .card, offer.shownPick == pick,
+      coordinator.state.choices.polish == pick,
+      OnboardingSkipOffer.isEligible(coordinator.skipAheadFacts())
+    else { return false }
+    offer.keepWaiting()
+    skipOffer = offer.form
+    coordinator.noteSkipAheadKeptWaiting(
+      polish: pick, secondsLeft: estimator.secondsLeft,
+      waitedSeconds: offer.waitedSeconds(at: inputs.uptime()))
+    return true
   }
 
   /// Restart Onboarding through the runtime: pending timing and results end first.
@@ -498,9 +584,11 @@ final class OnboardingRuntime {
       if lastStep == .downloads { advance.cancel() }
       lastStep = step
     }
-    let progress = inputs.downloadProgress()
-    speed.record(identity: progress?.identity, bytes: progress?.bytes ?? 0, at: now)
+    let snapshot = inputs.downloadSnapshot()
+    let running = Self.runningBytes(snapshot)
+    speed.record(identity: running?.identity, bytes: running?.bytes ?? 0, at: now)
     isNetworkSlow = step == .downloads && speed.isSlow
+    updateSkipOffer(snapshot)
     inputs.observeTelemetry()
     if advance.shouldAdvance(
       onDownloads: step == .downloads, visible: downloadsVisible,
@@ -528,6 +616,39 @@ final class OnboardingRuntime {
   }
 
   // MARK: Private
+
+  /// The running downloads' identity and summed bytes, the slow-network notice's input (the same
+  /// picks and bytes it read before #4845).
+  static func runningBytes(_ snapshot: OnboardingDownloadSnapshot?) -> (
+    identity: String, bytes: Int64
+  )? {
+    let running = [snapshot?.speech, snapshot?.polish].compactMap { $0 }.filter {
+      if case .downloading = $0.phase, $0.downloadedBytes != nil { return true }
+      return false
+    }
+    guard !running.isEmpty else { return nil }
+    return (
+      running.map(\.id).joined(separator: "|"),
+      running.reduce(Int64(0)) { $0 + ($1.downloadedBytes ?? 0) }
+    )
+  }
+
+  private func updateSkipOffer(_ snapshot: OnboardingDownloadSnapshot?) {
+    // A closed window has no offer: the next visit starts its own estimate and minute.
+    guard offerVisitOpen else { return }
+    let at = inputs.uptime()
+    estimator.record(snapshot, at: at)
+    // The poll decides on the same sample as the estimate; fresh owner reads are for presses.
+    let facts = coordinator.skipAheadFacts(sampled: snapshot)
+    offer.update(facts, secondsLeft: estimator.secondsLeft, at: at)
+    if offer.form == .card, let pick = facts.polishPick {
+      coordinator.noteSkipAheadOffered(
+        polish: pick, secondsLeft: estimator.secondsLeft, waitedSeconds: offer.waitedSeconds(at: at))
+    }
+    if skipOffer != offer.form { skipOffer = offer.form }
+    let left = estimator.secondsLeft.map { $0.rounded() }
+    if secondsLeft != left { secondsLeft = left }
+  }
 
   /// Re-arming observation over the owners' tracked facts (the PolishSetupMonitor pattern). A
   /// change first clears readiness, so a fact that just became false (a replaced key, a revoked

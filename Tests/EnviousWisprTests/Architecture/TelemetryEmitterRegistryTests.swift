@@ -295,8 +295,11 @@ struct TelemetryEmitterRegistryTests {
   /// otherwise); that one site's identity only, same event and cadence, no new row. The
   /// audio-unit lane's stuck jobs reuse the existing `coreAudioReadStuck` site (new closed
   /// `read` tokens), so no new site.
+  /// #4845: one new event, `onboarding.skip_ahead`, at one site (`TelemetryService.onboardingSkipAhead`),
+  /// graded in its own registry row (per_user_action, keep; at most 3 per Setup visit, latched by
+  /// OnboardingCoordinator). No existing site moved.
   static let sitesFingerprint =
-    "8c5ddc3650ffac60257f7970d23a939fc2f42518198c33527b61d607a3bf368e"
+    "9ec05617fce9b68cde85c20ebbc538f70b9450e8b57898b02dd36ead0bc7e872"
   /// #4721: `api_key.validation_completed` graded (per_launch, keep) when the launch key check
   /// added `source=launch`; ceiling 106 -> 105.
   static let ungradedFingerprint =

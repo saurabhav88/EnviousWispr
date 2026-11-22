@@ -80,6 +80,8 @@ final class SetupSession {
 
   func present() {
     guard let components, components.coordinator.isActive else { return }
+    // #4845: a window opened (not a refocus) starts a new Skip ahead visit.
+    if !presenter.isVisible { components.runtime.beginOfferVisit() }
     beginVisit()
     var sources = components.screenSources
     let runtime = components.runtime
@@ -147,6 +149,8 @@ final class SetupSession {
   }
 
   private func endVisit(reason: String) {
+    // #4845: the Skip ahead offer ends with the window, whoever owns the telemetry visit.
+    components?.runtime.endOfferVisit()
     guard ownsVisit else { return }
     components?.telemetry?.visitEnded()
     progress?.emitAbandonIfInFlight(

@@ -144,16 +144,19 @@ extension OnboardingRuntime.Inputs {
         OnboardingLiveMapping.observedSnapshot(
           owners, choices: coordinator?.state.choices ?? .init())
       },
-      downloadProgress: { [weak coordinator] in
+      downloadSnapshot: { [weak coordinator] in
         guard let coordinator else { return nil }
         #if DEBUG
           // Fault `slow-network`: a synthetic 0.1 MB/s stream for the notice; no real transfer.
           if OnboardingDebugFaults.active.contains(.slowNetwork) {
-            return ("simulated-slow", Int64(Date().timeIntervalSince1970 * 100_000))
+            return OnboardingDownloadSnapshot(
+              speech: .init(
+                id: "simulated-slow", phase: .downloading(fraction: nil),
+                downloadedBytes: Int64(Date().timeIntervalSince1970 * 100_000), totalBytes: nil))
           }
         #endif
-        return OnboardingLiveMapping.downloadProgress(
-          choices: coordinator.state.choices,
+        return OnboardingLiveMapping.downloadSnapshot(
+          choices: coordinator.state.choices, queuedPolish: coordinator.queuedPolishID,
           downloads: OnboardingDownloads(owners: OnboardingLiveMapping.downloadOwners(owners, facts: facts)),
           bytes: { model in
             OnboardingLiveMapping.downloadBytes(
@@ -291,26 +294,33 @@ enum OnboardingLiveMapping {
     recommendation.polishCards.first { $0.preselected }?.model ?? recommendation.polishPrimary
   }
 
-  /// Downloaded bytes across the current picks' running downloads (owner fraction × manifest
-  /// total, since the local runtimes publish fractions only), keyed by which models run.
+  /// #4845 D-A: one typed view of the current picks' downloads, from the owners' in-memory phases
+  /// and the cached manifest sizes (no I/O). Downloaded bytes are owner fraction × manifest total,
+  /// since the local runtimes publish fractions only; nil when the owner reports no fraction.
   @MainActor
-  static func downloadProgress(
-    choices: OnboardingChoices, downloads: OnboardingDownloads, bytes: (OnboardingModel) -> Int64?
-  ) -> (identity: String, bytes: Int64)? {
-    var parts: [String] = []
-    var total: Int64 = 0
-    func add(_ name: String, _ phase: OnboardingDownloadPhase?, _ model: OnboardingModel) {
-      guard case .downloading(let fraction?) = phase, let size = bytes(model) else { return }
-      parts.append(name)
-      total += Int64(fraction * Double(size))
+  static func downloadSnapshot(
+    choices: OnboardingChoices, queuedPolish: String?, downloads: OnboardingDownloads,
+    bytes: (OnboardingModel) -> Int64?
+  ) -> OnboardingDownloadSnapshot? {
+    func pick(_ id: String, _ phase: OnboardingDownloadPhase?, _ model: OnboardingModel)
+      -> OnboardingDownloadSnapshot.Pick?
+    {
+      guard let phase else { return nil }
+      let size = bytes(model)
+      var done: Int64?
+      if case .downloading(let fraction?) = phase, let size { done = Int64(fraction * Double(size)) }
+      return .init(id: id, phase: phase, downloadedBytes: done, totalBytes: size)
     }
+    var snapshot = OnboardingDownloadSnapshot()
     if let speech = choices.speech {
-      add("speech:\(speech.rawValue)", downloads.speechPhase(speech), .speech(speech))
+      snapshot.speech = pick(
+        "speech:\(speech.rawValue)", downloads.speechPhase(speech), .speech(speech))
     }
     if let polish = choices.polish, let model = OnboardingDownloads.localModel(forPolish: polish) {
-      add("polish:\(polish)", downloads.polishPhase(polish), .polish(model))
+      snapshot.polish = pick("polish:\(polish)", downloads.polishPhase(polish), .polish(model))
+      if queuedPolish == polish { snapshot.queuedPolishID = polish }
     }
-    return parts.isEmpty ? nil : (parts.joined(separator: "|"), total)
+    return snapshot.speech == nil && snapshot.polish == nil ? nil : snapshot
   }
 
   /// Every required current download is on the Mac (non-local polish needs none).

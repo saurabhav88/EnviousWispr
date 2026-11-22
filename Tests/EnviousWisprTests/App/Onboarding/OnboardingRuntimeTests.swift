@@ -148,14 +148,16 @@ struct OnboardingRuntimeTests {
 
   static func runtime(
     _ world: OnboardingCoordinatorTests.World, _ c: OnboardingCoordinator, _ facts: Facts,
-    clock: @escaping () -> Date, read: (() -> AnyHashable)? = nil
+    clock: @escaping () -> Date, read: (() -> AnyHashable)? = nil,
+    snapshot: @escaping () -> OnboardingDownloadSnapshot? = { nil },
+    uptime: @escaping () -> TimeInterval = { 0 }
   ) -> OnboardingRuntime {
     OnboardingRuntime(
       coordinator: c, facts: OnboardingLiveFacts(),
       inputs: .init(
-        readObservedFacts: read ?? { facts.read() }, downloadProgress: { nil },
+        readObservedFacts: read ?? { facts.read() }, downloadSnapshot: snapshot,
         downloadsFinished: { facts.finished }, sampleAppleIntelligence: { facts.sample() },
-        recheckAppleIntelligence: { facts.rechecks += 1 }, now: clock,
+        recheckAppleIntelligence: { facts.rechecks += 1 }, now: clock, uptime: uptime,
         // deadline-fallback: timers wait until stop() cancels them; tests drive tick() directly.
         sleep: { _ in try? await Task.sleep(for: .seconds(3600)) },
         pollInterval: .seconds(3600)))
@@ -393,9 +395,15 @@ struct OnboardingRuntimeTests {
     world.speechPhase[.whisper] = .downloading(fraction: 0.5)
     world.polishPhase[.egOne(.mini)] = .installed
     let downloads = OnboardingDownloads(owners: Self.owners(world))
-    let progress = OnboardingLiveMapping.downloadProgress(
-      choices: choices, downloads: downloads, bytes: { _ in 1000 })
-    #expect(progress?.identity == "speech:whisper" && progress?.bytes == 500)
+    let snapshot = OnboardingLiveMapping.downloadSnapshot(
+      choices: choices, queuedPolish: nil, downloads: downloads, bytes: { _ in 1000 })
+    let running = OnboardingRuntime.runningBytes(snapshot)
+    #expect(running?.identity == "speech:whisper" && running?.bytes == 500)
+    #expect(snapshot?.polish?.phase == .installed && snapshot?.polish?.totalBytes == 1000)
+    #expect(snapshot?.queuedPolishID == nil)
+    let queued = OnboardingLiveMapping.downloadSnapshot(
+      choices: choices, queuedPolish: "eg1.mini", downloads: downloads, bytes: { _ in 1000 })
+    #expect(queued?.queuedPolishID == "eg1.mini")
     #expect(OnboardingLiveMapping.downloadsFinished(choices, downloads: downloads) == false)
     world.speechPhase[.whisper] = .installed
     #expect(OnboardingLiveMapping.downloadsFinished(choices, downloads: downloads))
@@ -413,5 +421,122 @@ struct OnboardingRuntimeTests {
       clearSpeechBlock: { _ in true }, speechPhase: { world.speechPhase[$0] ?? .notStarted },
       writePolishSelection: { _ in }, polishPhase: { world.polishPhase[$0] ?? .notStarted },
       requestPolish: { _ in true }, cancelPolish: { _ in }, activatePolish: { _ in })
+  }
+
+  // MARK: - #4845 Skip ahead offer, live
+
+  static let speechInstalled = OnboardingDownloadSnapshot.Pick(
+    id: "speech:parakeet", phase: .installed, downloadedBytes: nil, totalBytes: nil)
+
+  @Test("the offer shows after a minute on Getting ready, a new window visit starts over, and an old press does nothing")
+  func offerFollowsTheVisit() async throws {
+    // When this fails, the offer never appears on slow internet, nags across window reopens, or a
+    // press from a closed window opens Practice.
+    let world = OnboardingCoordinatorTests.World()
+    world.speechPhase[.parakeet] = .installed
+    world.polishPhase[.egOne(.mini)] = .downloading(fraction: 0.3)
+    let c = try OnboardingCoordinatorTests.atGettingReady(world)
+    var rows: [OnboardingTelemetry.SkipAheadAction] = []
+    c.onObservation = { if case .skipAhead(let action, _, _, _) = $0 { rows.append(action) } }
+    let polish = OnboardingDownloadSnapshot.Pick(
+      id: "polish:eg1.mini", phase: .downloading(fraction: nil), downloadedBytes: nil,
+      totalBytes: nil)
+    let r = Self.runtime(
+      world, c, Facts(), clock: { Self.t0 }, snapshot: { .init(speech: Self.speechInstalled, polish: polish) },
+      uptime: { world.uptime })
+    r.start()
+    r.beginOfferVisit()
+    r.tick()
+    #expect(r.skipOffer == .hidden)
+    world.uptime = 60
+    r.tick()
+    #expect(r.skipOffer == .card && rows == [.offered])
+    let firstVisit = r.offerVisit
+    #expect(r.keepWaiting(visit: firstVisit, pick: "eg1.mini"))
+    #expect(r.skipOffer == .line && rows == [.offered, .keptWaiting])
+
+    r.beginOfferVisit()  // window closed and reopened
+    #expect(r.skipOffer == .hidden && r.offerVisit != firstVisit)
+    #expect(!r.skipAhead(visit: firstVisit, pick: "eg1.mini"))
+    world.uptime = 61
+    r.tick()
+    #expect(r.skipOffer == .hidden)
+    world.uptime = 121
+    r.tick()
+    #expect(r.skipOffer == .card && rows == [.offered, .keptWaiting, .offered])
+    #expect(r.skipAhead(visit: r.offerVisit, pick: "eg1.mini"))
+    #expect(c.state.step == .practice && rows.last == .skipped)
+    r.stop()
+  }
+
+  @Test("the minute counts from reaching Getting ready, and closing the window ends the offer")
+  func offerClockAndWindowClose() async throws {
+    // When this fails, a slow first poll delays the offer, or a press from a closed window still
+    // opens Practice.
+    let world = OnboardingCoordinatorTests.World()
+    world.speechPhase[.parakeet] = .installed
+    world.polishPhase[.egOne(.mini)] = .downloading(fraction: 0.3)
+    world.uptime = 100
+    let c = try OnboardingCoordinatorTests.atGettingReady(world)
+    let polish = OnboardingDownloadSnapshot.Pick(
+      id: "polish:eg1.mini", phase: .downloading(fraction: nil), downloadedBytes: nil,
+      totalBytes: nil)
+    let r = Self.runtime(
+      world, c, Facts(), clock: { Self.t0 }, snapshot: { .init(speech: Self.speechInstalled, polish: polish) },
+      uptime: { world.uptime })
+    r.start()
+    r.beginOfferVisit()  // the window opens on Getting ready at 100
+    world.uptime = 159
+    r.tick()  // first poll, late
+    #expect(r.skipOffer == .hidden)
+    world.uptime = 160
+    r.tick()
+    #expect(r.skipOffer == .card)
+    let visit = r.offerVisit
+    r.endOfferVisit()  // the window closed
+    #expect(r.skipOffer == .hidden && r.offerVisit != visit)
+    #expect(!r.skipAhead(visit: visit, pick: "eg1.mini"))
+    world.uptime = 200
+    r.tick()  // polling goes on while the window is closed
+    #expect(r.skipOffer == .hidden)
+    #expect(!r.skipAhead(visit: r.offerVisit, pick: "eg1.mini"))
+    #expect(!r.keepWaiting(visit: r.offerVisit, pick: "eg1.mini"))
+    #expect(c.state.step == .gettingReady && c.state.deferredPolish == nil)
+    r.beginOfferVisit()  // reopened at 200: a new minute
+    world.uptime = 259
+    r.tick()
+    #expect(r.skipOffer == .hidden)
+    world.uptime = 260
+    r.tick()
+    #expect(r.skipOffer == .card)
+    r.stop()
+  }
+
+  @Test("the offer follows the polled download sample, not a newer owner read")
+  func offerUsesTheSample() async throws {
+    // When this fails, the card and its time estimate can disagree about the same download.
+    let world = OnboardingCoordinatorTests.World()
+    world.speechPhase[.parakeet] = .installed
+    world.polishPhase[.egOne(.mini)] = .downloading(fraction: 0.3)
+    let c = try OnboardingCoordinatorTests.atGettingReady(world)
+    var phase: OnboardingDownloadPhase = .paused
+    let r = Self.runtime(
+      world, c, Facts(), clock: { Self.t0 },
+      snapshot: {
+        .init(
+          speech: Self.speechInstalled,
+          polish: .init(
+            id: "polish:eg1.mini", phase: phase, downloadedBytes: nil, totalBytes: nil))
+      },
+      uptime: { world.uptime })
+    r.start()
+    r.beginOfferVisit()
+    world.uptime = 90
+    r.tick()
+    #expect(r.skipOffer == .hidden)  // the sample says paused; the owner says downloading
+    phase = .downloading(fraction: 0.3)
+    r.tick()
+    #expect(r.skipOffer == .card)
+    r.stop()
   }
 }
