@@ -23,7 +23,9 @@ enum HistoryDelivery {
   /// Save as… for text read AFTER the panel closes: the row can change or be deleted while it is
   /// open. A failed write reports Foundation's localized sentence (#3908), never the NSError dump.
   static func save(defaultName: String, text: () -> String?, onError: (String) -> Void) {
-    guard let url = chooseSaveURL(defaultName: defaultName), let text = text() else { return }
+    guard let url = chooseSaveURL(defaultName: defaultName, types: [.plainText]),
+      let text = text()
+    else { return }
     if let message = write(.text(text), to: url) { onError(message) }
   }
 
@@ -43,7 +45,7 @@ enum HistoryDelivery {
     defaultName: String, document: @escaping @MainActor () async -> Document,
     onError: @escaping @MainActor (String) -> Void
   ) {
-    guard let url = chooseSaveURL(defaultName: defaultName) else { return }
+    guard let url = chooseSaveURL(defaultName: defaultName, types: [.plainText]) else { return }
     Task {
       if let message = write(await document(), to: url) { onError(message) }
     }
@@ -67,10 +69,12 @@ enum HistoryDelivery {
     }
   }
 
-  /// The plain-text save panel, run modally. Nil when cancelled.
-  private static func chooseSaveURL(defaultName: String) -> URL? {
+  /// History's save panel, run modally, for one kind of file: plain text for Save as…, M4A
+  /// audio for Save audio (#4799). Only those types may be chosen. Nil when cancelled.
+  static func chooseSaveURL(defaultName: String, types: [UTType]) -> URL? {
     let panel = NSSavePanel()
-    panel.allowedContentTypes = [.plainText]
+    panel.allowedContentTypes = types
+    panel.allowsOtherFileTypes = false
     panel.nameFieldStringValue = defaultName
     guard panel.runModal() == .OK else { return nil }
     return panel.url

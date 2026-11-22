@@ -108,6 +108,9 @@ package final class WisprBootstrapper {
   let historyPaste: HistoryPaste
   /// #4611: History's own More menu, shown through the panel seam.
   let historyMenu: HistoryMenuPresenter
+  /// #4799: History's Save audio, one owner for every surface, so a save in flight is seen by
+  /// both meeting menus and by both retention sweeps.
+  let historyAudioExport: HistoryAudioExport
   let menuBarController: MenuBarController
   let appLifecycleCoordinator: AppLifecycleCoordinator
 
@@ -3199,6 +3202,14 @@ package final class WisprBootstrapper {
     let playbackArbiter = PlaybackArbiter()
     meetingCoordinator.playbackArbiter = playbackArbiter
     transcriptCoordinator.recordings?.arbiter = playbackArbiter
+    // #4799: retention never removes audio that History's Save audio is saving.
+    let historyAudioExport = HistoryAudioExport()
+    meetingCoordinator.isExportingAudio = { [weak historyAudioExport] in
+      historyAudioExport?.isExporting(.meeting($0)) ?? false
+    }
+    transcriptCoordinator.recordings?.isExporting = { [weak historyAudioExport] in
+      historyAudioExport?.isExporting(.dictation($0)) ?? false
+    }
     // #3147 PR3: an import's original-file players stop before its link, content or row
     // changes (relink, Transcribe again with, deletion, Delete All).
     transcriptCoordinator.onImportedContentWillChange = { [weak playbackArbiter] rowID in
@@ -3587,6 +3598,7 @@ package final class WisprBootstrapper {
     self.historyPaste = historyPaste
     self.historyMenu = HistoryMenuPresenter(
       panels: presentationEffects.panels, scrollHold: wheelScrollSmoother)
+    self.historyAudioExport = historyAudioExport
     self.menuBarController = menuBarController
     self.appLifecycleCoordinator = appLifecycleCoordinator
 
@@ -4026,6 +4038,8 @@ package final class WisprBootstrapper {
     callDetection.shutDown()
     callDetection.discovery.shutDown()
     meetingCoordinator.prepareForTermination(deadline: .now() + 1)
+    // #4799: History's Save audio stops without publishing; the quit does not wait for it.
+    historyAudioExport.cancelAll()
     meetingMemoryPressure.stop()
     // #3147: no retention pass starts after this.
     recordingRetention?.stop()
@@ -4165,6 +4179,7 @@ private struct AppHomesEnvironment: ViewModifier {
         .environment(b.previousApplicationTracker)
         .environment(b.historyPaste)
         .environment(b.historyMenu)
+        .environment(b.historyAudioExport)
         // The nine view-facing homes (epic #763).
         .environment(b.settings)
         .environment(b.pillAppearance)
