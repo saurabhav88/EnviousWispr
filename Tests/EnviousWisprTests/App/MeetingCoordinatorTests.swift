@@ -1771,6 +1771,108 @@ struct MeetingCoordinatorTests {
         == .skipped, "nothing left to remove")
   }
 
+  @Test("retention skips a meeting whose audio Save audio is mixing (#4799)")
+  func retentionSkipsExportingMeeting() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    await coordinator.start(from: .history)
+    let meetingID = try onlyMeeting(harness).id
+    await coordinator.stop(reason: .user)
+    await Self.eventually("ready") {
+      coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
+    }
+    let exporting = ExportingIDs([meetingID])
+    coordinator.isExportingAudio = { exporting.ids.contains($0) }
+
+    #expect(
+      await coordinator.removeAudioForRetention(meetingID: meetingID, stillEligible: { _ in true })
+        == .skipped)
+    #expect(try harness.store.load(id: meetingID).audioKept, "kept while it is being saved")
+
+    exporting.ids = []
+    #expect(
+      await coordinator.removeAudioForRetention(meetingID: meetingID, stillEligible: { _ in true })
+        == .removed)
+  }
+
+  @Test("Save audio's snapshot: offered for a ready meeting, never while recording or removing (#4799)")
+  func audioExportSnapshotAdmission() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    let gate = harness.writeGate
+    await coordinator.start(from: .history)
+    let meetingID = try onlyMeeting(harness).id
+    #expect(coordinator.audioExportSnapshot(meetingID: meetingID) == nil, "still recording")
+    await coordinator.stop(reason: .user)
+    await Self.eventually("ready") {
+      coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
+    }
+
+    let record = try #require(coordinator.record(id: meetingID))
+    let snapshot = try #require(coordinator.audioExportSnapshot(meetingID: meetingID))
+    #expect(snapshot.segments == record.segments)
+    #expect(snapshot.durationMs == record.recordedDurationMs)
+    #expect(snapshot.durationMs > 0)
+    #expect(snapshot.folder == harness.store.folder(for: meetingID))
+    #expect(coordinator.audioExportSnapshot(meetingID: meetingID) == snapshot, "stable")
+
+    // Delete audio claims the meeting before its save lands: no snapshot from that moment.
+    gate.holdNext { $0.id == meetingID && !$0.audioKept }
+    let removing = Task { await coordinator.deleteAudio(meetingID: meetingID) }
+    // Off the main actor: a blocking wait there would stall the save it waits on.
+    #expect(await Task.detached { Self.waitBlocking(gate.entered) }.value == .success)
+    #expect(coordinator.audioExportSnapshot(meetingID: meetingID) == nil)
+    gate.release.signal()
+    await removing.value
+    #expect(gate.timedOut.withLock { $0 } == false, "a held write waited out its bound")
+    #expect(coordinator.audioExportSnapshot(meetingID: meetingID) == nil, "no audio kept")
+  }
+
+  @Test("History Delete All's mark refuses Save audio before the saved record changes (#4799)")
+  func audioExportSnapshotSeesDeleteAllIntent() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    let gate = harness.writeGate
+    await coordinator.start(from: .history)
+    let meetingID = try onlyMeeting(harness).id
+    await coordinator.stop(reason: .user)
+    await Self.eventually("ready") {
+      coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
+    }
+    #expect(coordinator.audioExportSnapshot(meetingID: meetingID) != nil)
+
+    gate.holdNext { $0.id == meetingID && $0.deletionRequested }
+    let marking = Task { await coordinator.deleteForHistoryDeleteAll(meetingIDs: [meetingID]) }
+    // Off the main actor: a blocking wait there would stall the mark it waits on.
+    #expect(await Task.detached { Self.waitBlocking(gate.entered) }.value == .success)
+    // The saved record still plays; the deletion is only intended.
+    #expect(coordinator.playbackSource(meetingID: meetingID) != nil)
+    #expect(coordinator.audioExportSnapshot(meetingID: meetingID) == nil)
+    gate.release.signal()
+    _ = await marking.value
+    #expect(gate.timedOut.withLock { $0 } == false, "a held write waited out its bound")
+  }
+
+  @Test("a snapshot whose inventory differs only by a frame count is not equal (#4799)")
+  func audioExportSnapshotEqualityIncludesFrames() {
+    let id = UUID()
+    let folder = URL(filePath: "/tmp/meeting")
+    func snapshot(frames: Int) -> MeetingAudioExportSnapshot {
+      MeetingAudioExportSnapshot(
+        meetingID: id, folder: folder,
+        segments: [
+          .microphone: [
+            MeetingSegmentInfo(index: 1, fileName: "mic-00001-s000000000.caf", startMs: 0, frameCount: frames)
+          ]
+        ], durationMs: 1_000)
+    }
+    #expect(snapshot(frames: 16_000) == snapshot(frames: 16_000))
+    #expect(snapshot(frames: 16_000) != snapshot(frames: 15_999))
+    #expect(
+      snapshot(frames: 16_000).trackFiles[.microphone]?.map(\.url)
+        == [folder.appendingPathComponent("mic-00001-s000000000.caf")])
+  }
+
   @Test("a meeting audio file that cannot be removed counts as failed, never as removed")
   func retentionReportsFailedFileRemoval() async throws {
     let harness = try Harness()
@@ -2763,6 +2865,10 @@ struct MeetingCoordinatorTests {
     let recovering = await Task.detached { Self.waitBlocking(recoverySignal) }.value
     #expect(recovering == .success)
     #expect(busy())
+    // #4799: playback stays available, but Save audio is refused while recovery may still
+    // rebuild the inventory.
+    #expect(coordinator.playbackSource(meetingID: meetingID) != nil)
+    #expect(coordinator.audioExportSnapshot(meetingID: meetingID) == nil)
     recovery.signal()
     // The checkpoint write is held next.
     let enteredSignal = harness.checkpointEntered

@@ -623,6 +623,92 @@ struct DictationRecordingsTests {
     #expect(await rig.recordings.status(for: row.id) == .unreadable, "a read failure is no absence")
   }
 
+  @Test("Save audio admits a recording, and a deletion or Delete All afterwards is seen (#4799)")
+  func exportSnapshotSeesDeletions() async throws {
+    let rig = rig()
+    defer { rig.gate.releaseAll() }
+    rig.recordings.arbiter = PlaybackArbiter()
+    let first = try savedRow(rig, "first")
+    let second = try savedRow(rig, "second")
+    for row in [first, second] { try await storeRealRecording(rig, rowID: row.id) }
+    #expect(await rig.recordings.exportSnapshot(rowID: UUID()) == nil, "no recording, no save")
+
+    let one = try #require(await rig.recordings.exportSnapshot(rowID: first.id))
+    let two = try #require(await rig.recordings.exportSnapshot(rowID: second.id))
+    #expect(one.url == (await rig.archive.url(for: first.id)))
+    #expect(rig.recordings.isStillDeliverable(one) == .deliverable)
+
+    try await rig.recordings.deleteRecording(rowID: first.id, reason: .deleted)
+    #expect(rig.recordings.isStillDeliverable(one) == .deleted)
+    #expect(rig.recordings.isStillDeliverable(two) == .deliverable, "only that row's recording")
+
+    await rig.coordinator.deleteAll()
+    #expect(rig.recordings.isStillDeliverable(two) == .deleted, "Delete All moves the epoch")
+  }
+
+  @Test("Save audio sees another file at the recording's path as changed, not deleted (#4799)")
+  func exportSnapshotSeesReplacedFile() async throws {
+    let rig = rig()
+    defer { rig.gate.releaseAll() }
+    rig.recordings.arbiter = PlaybackArbiter()
+    let row = try savedRow(rig)
+    try await storeRealRecording(rig, rowID: row.id)
+    let snapshot = try #require(await rig.recordings.exportSnapshot(rowID: row.id))
+
+    // A different file at the same path (a new inode), as an outside change would leave it.
+    let replacement = snapshot.url.deletingLastPathComponent()
+      .appendingPathComponent("replacement.tmp")
+    try FileManager.default.copyItem(at: snapshot.url, to: replacement)
+    _ = try FileManager.default.replaceItemAt(snapshot.url, withItemAt: replacement)
+
+    #expect(rig.recordings.isStillDeliverable(snapshot) == .changed)
+  }
+
+  @Test("Save audio never admits a recording file that does not read as audio (#4799)")
+  func exportSnapshotRefusesUnreadableAudio() async throws {
+    let rig = rig()
+    defer { rig.gate.releaseAll() }
+    let row = try savedRow(rig)
+    try await storeRealRecording(rig, rowID: row.id)
+    let url = try #require(await rig.archive.url(for: row.id))
+    try Data("not audio".utf8).write(to: url)
+
+    #expect(await rig.recordings.status(for: row.id) == .unreadable)
+    #expect(await rig.recordings.exportSnapshot(rowID: row.id) == nil)
+  }
+
+  @Test("Save audio follows History's unavailable answer when the Keep list cannot be read (#4799)")
+  func exportSnapshotRefusesUnreadableKeepList() async throws {
+    let rig = rig()
+    defer { rig.gate.releaseAll() }
+    let row = try savedRow(rig)
+    try await storeRealRecording(rig, rowID: row.id)
+    try Data("not json".utf8).write(to: rig.archive.directory.appendingPathComponent("pins.json"))
+
+    #expect(await rig.recordings.status(for: row.id) == .unreadable)
+    #expect(await rig.recordings.exportSnapshot(rowID: row.id) == nil)
+  }
+
+  @Test("automatic removal skips a recording that Save audio is copying (#4799)")
+  func retentionSkipsExportingRecording() async throws {
+    let rig = rig()
+    defer { rig.gate.releaseAll() }
+    let row = try savedRow(rig)
+    try await storeRealRecording(rig, rowID: row.id)
+    let exporting = ExportingIDs([row.id])
+    rig.recordings.isExporting = { exporting.ids.contains($0) }
+
+    #expect(
+      await rig.recordings.removeAutomatically(
+        rowID: row.id, as: .expired(days: 7), stillEligible: { true }) == .skipped)
+    #expect(await rig.archive.url(for: row.id) != nil, "still there while it is being saved")
+
+    exporting.ids = []
+    #expect(
+      await rig.recordings.removeAutomatically(
+        rowID: row.id, as: .expired(days: 7), stillEligible: { true }) == .removed)
+  }
+
   @Test("every recording deletion stops that recording's players before its files go")
   func deletionsStopPlayback() async throws {
     let rig = rig()
@@ -837,4 +923,10 @@ struct DictationRecordingsTests {
 
     #expect(try await rig.archive.recordedRowIDs() == [orphan])
   }
+}
+
+/// #4799: the ids a test says Save audio is exporting, read by the retention predicate.
+@MainActor final class ExportingIDs {
+  var ids: Set<UUID>
+  init(_ ids: Set<UUID>) { self.ids = ids }
 }
