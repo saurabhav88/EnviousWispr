@@ -382,7 +382,7 @@ struct SpeechEngineStatusRow: View {
 
   private var recheckButton: some View {
     Button(action: recheck) {
-      Image(systemName: "arrow.clockwise").settingsHoverQuiet()
+      Image(systemName: "arrow.clockwise").settingsHoverQuiet().minimumHitRegion()
     }
     .buttonStyle(.borderless)
     .help(Text(recheckLabel))

@@ -27,6 +27,8 @@ struct SettingsSearchField: View {
         text: Binding(get: { model.query }, set: { model.setQuery($0) })
       )
       .textFieldStyle(.plain)
+      // #4545: a placeholder alone gives the field no accessible name.
+      .accessibilityLabel(Text(SettingsSearchCopy.placeholder))
       .focused(isFocused)
       .onSubmit {
         if let request = model.submit() { choose(request) }

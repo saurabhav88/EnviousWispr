@@ -1513,6 +1513,7 @@ private func keyField(_ descriptor: APIKeyDescriptor) -> some View {
           .font(.system(size: 13, weight: .medium))
           .foregroundStyle(Color.stTextSecondary)
           .settingsHoverQuiet()
+          .minimumHitRegion()
       }
       .buttonStyle(.plain)
       .help(revealKeyTitle)

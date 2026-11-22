@@ -368,6 +368,27 @@ struct EnviousCloseGlyph: View {
   }
 }
 
+/// A click region at least `side` wide and tall, centred on the view it shapes, never smaller than
+/// that view. The shape reads the view's own size at layout time, so no caller states it.
+struct MinimumHitShape: Shape {
+  let side: CGFloat
+
+  func path(in rect: CGRect) -> Path {
+    Path(
+      rect.insetBy(dx: min(0, (rect.width - side) / 2), dy: min(0, (rect.height - side) / 2)))
+  }
+}
+
+extension View {
+  /// #4545: widens a small icon button's click and accessibility region to
+  /// `SettingsLayout.minimumHitTarget` (Apple's macOS minimum control size) without changing
+  /// layout or look. Apply to the button's LABEL.
+  func minimumHitRegion() -> some View {
+    contentShape(
+      [.interaction, .accessibility], MinimumHitShape(side: SettingsLayout.minimumHitTarget))
+  }
+}
+
 /// The "?" glyph of `SettingsInfoButton`. ONE `Image`; hover changes only its colour value, and
 /// the capsule is `settingsHoverQuiet`'s.
 struct EnviousHelpGlyph: View {

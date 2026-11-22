@@ -302,6 +302,8 @@ struct SnippetsView: View {
         .accessibilityHidden(true)
       TextField(String(localized: SettingsItemCopy.Snippets.search), text: $query)
         .textFieldStyle(.plain)
+        // #4545: a placeholder alone gives the field no accessible name.
+        .accessibilityLabel(Text(SettingsItemCopy.Snippets.search))
         .settingsArrivalFocusControl(textEntry: true)
         .settingsMapRegistration(.snippetsSearch)
     }

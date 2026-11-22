@@ -339,6 +339,10 @@ enum SettingsLayout {
   static let windowCardRadius: CGFloat = 18
   /// Inset of the frame cards from the window edge and from each other.
   static let windowFrameInset: CGFloat = 14
+  /// Smallest click region of a control, in each direction.
+  ///
+  /// Apple's macOS minimum control size (Human Interface Guidelines, Accessibility: default 28 x 28 pt, minimum 20 x 20 pt), #4545. `minimumHitRegion()` widens a smaller icon button's click and accessibility region to it without changing layout or look.
+  static let minimumHitTarget: CGFloat = 20
 }
 
 enum SettingsPR1Layout {
