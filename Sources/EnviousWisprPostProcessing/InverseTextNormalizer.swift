@@ -136,7 +136,9 @@ public struct InverseTextNormalizer: Sendable {
   // A number token: a number-WORD or an already-digit token ('20', '1,234') for mixed-state.
   // A comma counts only as a thousands separator (three digits after it). A list comma ends the
   // token, so "40, 20, 10 percent" is a list ending in "10%", never one run summed to "70%" (#4632).
-  static let numtok = alt(numword) + #"|\d{1,3}(?:,\d{3})+|\d+"#
+  // The digit half, shared with the localhost port pass so a comma after a port stays (#4635).
+  static let digitNumtok = #"\d{1,3}(?:,\d{3})+|\d+"#
+  static let numtok = alt(numword) + "|" + digitNumtok
   static let tensAlt = alt(Array(tens.keys))
   static let unit19Alt = alt(units.filter { (1...9).contains($0.value) }.map(\.key))
   static let teenAlt = alt(units.filter { (10...19).contains($0.value) }.map(\.key))
