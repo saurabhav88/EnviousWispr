@@ -1930,6 +1930,34 @@ struct MeetingCoordinatorTests {
     #expect(gate.timedOut.withLock { $0 } == false, "a held write waited out its bound")
   }
 
+  @Test("a save overtaken by deleting the meeting itself is refused and reported deleted (#4799)")
+  func audioExportCheckSeesMeetingDeletion() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    let gate = harness.writeGate
+    await coordinator.start(from: .history)
+    let meetingID = try onlyMeeting(harness).id
+    await coordinator.stop(reason: .user)
+    await Self.eventually("ready") {
+      coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
+    }
+    let request = HistoryAudioExport.meeting(
+      meetingID: meetingID, defaultName: "Meeting", meetings: coordinator, window: { nil })
+    #expect(await request.admit() != nil)
+
+    // Delete meeting claims it at once; its mark is held before the saved record changes.
+    gate.holdNext { $0.id == meetingID && $0.deletionRequested }
+    let deleting = Task { await coordinator.delete(meetingID: meetingID) }
+    // Off the main actor: a blocking wait there would stall the mark it waits on.
+    #expect(await Task.detached { Self.waitBlocking(gate.entered) }.value == .success)
+    #expect(coordinator.record(id: meetingID)?.deletionRequested == false, "saved record unchanged")
+    #expect(coordinator.audioExportSnapshot(meetingID: meetingID) == nil)
+    #expect(request.check() == .deleted)
+    gate.release.signal()
+    _ = await deleting.value
+    #expect(gate.timedOut.withLock { $0 } == false, "a held write waited out its bound")
+  }
+
   @Test("a snapshot whose inventory differs only by a frame count is not equal (#4799)")
   func audioExportSnapshotEqualityIncludesFrames() {
     let id = UUID()
