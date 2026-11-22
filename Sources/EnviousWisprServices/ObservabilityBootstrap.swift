@@ -55,6 +55,22 @@ public enum ObservabilityBootstrap {
   @MainActor
   public static var launchedCrashReports: Bool? { lifecycle.launchedCrashReports }
 
+  /// #4825: runs `body`, a modal that waits for the person, without sending a freeze report for
+  /// that wait. A modal entered from inside a main-actor task runs no main-queue work until it
+  /// returns, which the hang tracker reads as a freeze (ENVIOUSWISPR-9E). Only reporting pauses;
+  /// detection keeps running. Reporting resumes from a main-queue block queued when `body`
+  /// returns, so it runs only after the tracker's own check (queued earlier, during the wait)
+  /// has run: resuming inside the still-running task could let that unanswered check be
+  /// reported as a freeze. Does nothing when Sentry never started (crash reports off, #3269).
+  /// The SDK marks pause/resume deprecated together with `enableAppHangTracking`; a
+  /// sentry-cocoa v10 bump replaces both.
+  @MainActor
+  public static func withoutAppHangReports<T>(_ body: () -> T) -> T {
+    SentrySDK.pauseAppHangTracking()
+    defer { DispatchQueue.main.async { SentrySDK.resumeAppHangTracking() } }
+    return body()
+  }
+
   /// Whether PostHog is capturing right now (usage metrics ON and set up). #3546: a
   /// once-per-install event records its local "already sent" mark only when this is
   /// true, so turning metrics on later does not lose or manufacture it.
