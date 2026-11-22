@@ -128,7 +128,27 @@ Path(a.log).write_text('Test run with 2 tests passed.\\n')
 ''')
         bin_dir = self.root / 'bin'
         bin_dir.mkdir()
-        xcode = bin_dir / 'xcodebuild'
+        # #4699: the fake is a Python program behind a small sh wrapper. With HANG set (only
+        # the hung-step test sets it), package resolution and build-for-testing answer in sh,
+        # so the test's 2 s no-output limit never waits on a Python start in those steps.
+        # Known limit: the test step still starts Python before it prints Hang.forever, as
+        # before (measured p99 27 ms, max 33 ms at load 5.9). Without HANG the wrapper just
+        # execs the fake.
+        wrapper = bin_dir / 'xcodebuild'
+        wrapper.write_text('''#!/bin/sh
+if [ -n "${HANG:-}" ]; then
+  case "${1:-}" in
+    -resolvePackageDependencies) echo "fake xcodebuild: package resolution"; exit 0 ;;
+    build-for-testing)
+      echo "fake xcodebuild: build-for-testing"
+      printf '%s' 'current lockfile dependencies' > "$PACKAGE_STATE"
+      exit "${BUILD_RC:-0}" ;;
+  esac
+fi
+exec python3 "${0%/*}/xcodebuild-fake.py" "$@"
+''')
+        wrapper.chmod(0o755)
+        xcode = bin_dir / 'xcodebuild-fake.py'
         xcode.write_text('''#!/usr/bin/env python3
 import json, os, sys
 from pathlib import Path
