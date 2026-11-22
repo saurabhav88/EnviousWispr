@@ -38,7 +38,7 @@ This is the fix for a colleague's name that is spelled wrong every single time. 
 
 ### My language comes out wrong
 
-The **Fast** engine (Parakeet), which you start with, covers 25 European languages. For any other language, go to **Dictation Settings** > **Engine**, click **Change**, pick the **All Languages** card (Whisper), set up its model, then pick your language. On All Languages, naming your language is more accurate than leaving it on auto-detect. See [Multi-Language Dictation](/help/multi-language-dictation/).
+The **Fast** engine (Parakeet) covers 25 European languages. For any other language, go to **Dictation Settings** > **Engine**, click **Change**, pick the **All Languages** card (Whisper), set up its model, then pick your language. On All Languages, naming your language is more accurate than leaving it on auto-detect. See [Multi-Language Dictation](/help/multi-language-dictation/).
 
 ### Faster Transcription is making mistakes
 

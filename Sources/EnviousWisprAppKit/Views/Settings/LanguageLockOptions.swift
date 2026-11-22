@@ -79,7 +79,8 @@ enum LanguageLockOptions {
   /// macro-language versus a specific written form, and the deprecated ISO codes
   /// Foundation still emits for historical identifiers.
   static func catalogueCode(forPackTag tag: String) -> String? {
-    let subtag = Locale(identifier: tag).language.languageCode?.identifier
+    let subtag =
+      Locale(identifier: tag).language.languageCode?.identifier
       ?? tag.split(separator: "-").first.map(String.init)
       ?? tag
     let lowered = subtag.lowercased()
@@ -250,8 +251,16 @@ enum LanguageLockOptions {
   /// authorities as `lockableCodes(for:)`, handed to Services as data.
   static var speechCapabilities: SpeechLanguageCapabilities {
     SpeechLanguageCapabilities(
-      parakeet: lockableCodes(for: .parakeet) ?? [], whisper: lockableCodes(for: .whisper))
+      parakeet: (lockableCodes(for: .parakeet) ?? []).subtracting(parakeetAdviceExclusions),
+      whisper: lockableCodes(for: .whisper))
   }
+
+  /// Languages the Fast engine can be locked to but writes badly, so the engine ADVICE (first-run
+  /// Setup, Transcribe a File's badges) recommends Whisper for them. The lock itself stays offered
+  /// (`lockableCodes(for:)`) and saved settings are never changed.
+  /// #2615 Greek: Parakeet drops the final sigma (0 of 52 written, 48 dropped); Whisper writes 51
+  /// of 52 on the same clips (2026-11-21).
+  static let parakeetAdviceExclusions: Set<String> = ["el"]
 
   static func lockableCodes(for backend: ASRBackendType) -> Set<String>? {
     switch backend {
