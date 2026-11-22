@@ -586,6 +586,41 @@ def reset_catalog(home: Path, *, owner_check=_default_owner_check, remover=None)
     raise FixtureError(f"catalog deletion refused or incomplete (remove-tree status {status}): {catalog_dir(home)}")
 
 
+SESSION_COPIES = ("subject", "home")
+
+
+def session_run_dir(run: Path) -> Path:
+    """The run folder with its parent resolved and its own name kept, so a linked run folder still
+    fails remove-tree's inspection instead of being followed."""
+    run = Path(os.path.abspath(run))
+    return run.parent.resolve() / run.name
+
+
+def remove_session_copies(run: Path, *, remover=None) -> dict:
+    """Remove a finished pilot session's own `subject` and `home` copies (#4789): about 3 GB per
+    session that filled a backup Mac's disk. The caller decides that nothing still runs from them;
+    this only deletes, through `remove-tree.py`, and reports {"subject": .., "home": ..} as
+    "removed" or "absent". A refusal or a partial removal raises and names what already completed
+    (`find -xdev -delete` can remove part of a tree before it refuses)."""
+    run = session_run_dir(run)
+    remover = remover or _load_remover()
+    done = {}
+    for name in SESSION_COPIES:
+        target = run / name
+        try:
+            status = remover.remove_tree(str(run), str(target))
+        except Exception as error:
+            raise FixtureError(f"removal of {target} interrupted: {error}; completed: {done}") from error
+        if status == remover.REMOVED:
+            done[name] = "removed"
+        elif status == remover.ABSENT:
+            done[name] = "absent"
+        else:
+            raise FixtureError(f"removal of {target} refused or incomplete (remove-tree status {status}); "
+                               f"completed: {done}")
+    return done
+
+
 # ---------------------------------------------------------------- command line
 
 

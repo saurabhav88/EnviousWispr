@@ -36,7 +36,11 @@ The first prints the Release app path and its executable sha256 (the pin every r
 All live runs need the dev-app lock first (`python3 <main>/scripts/lib/dev-app-lock.py claim --label ...`,
 in its own call; release it after). `containment_pilot.py` prepares the renamed subject
 (`com.enviouswispr.app.historyspeed`), a fresh fixture home from the seed, launches inside
-`fixture.ContainedSession`, waits for full catalog coverage, runs one driver and cleans up.
+`fixture.ContainedSession`, waits for full catalog coverage, runs one driver and cleans up. At the end it
+removes the run's `home/` and `subject/` copies (about 3 GB each session, #4789) through `scripts/lib/remove-tree.py`
+and records the result in `cleanup.json`; reports, traces and logs stay. It keeps the copies, and says why, when
+`--keep-copies` is passed (put it before `--scroll`) or when an app the session started is not proven stopped
+(a driver timed out, Ctrl-C, or `--open` / `--launch-cost` wrote no final report).
 
 ```bash
 S=/Users/m4pro_sv/Developer/AgentArtifacts/enviouswispr/runs/2026/11/20261115-020456-4586-history-speed-pr0-fixture-54bb/seed
