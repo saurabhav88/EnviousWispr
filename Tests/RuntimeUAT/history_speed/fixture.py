@@ -41,6 +41,7 @@ import hashlib
 import json
 import os
 import signal
+import stat
 import subprocess
 import sys
 import time
@@ -584,6 +585,101 @@ def reset_catalog(home: Path, *, owner_check=_default_owner_check, remover=None)
     if status == remover.ABSENT:
         return False
     raise FixtureError(f"catalog deletion refused or incomplete (remove-tree status {status}): {catalog_dir(home)}")
+
+
+SESSION_COPIES = ("subject", "home")
+
+
+def session_run_dir(run: Path) -> Path:
+    """The run folder with its parent resolved and its own name kept, so a linked run folder still
+    fails remove-tree's inspection instead of being followed."""
+    run = Path(os.path.abspath(run))
+    return run.parent.resolve() / run.name
+
+
+LSREGISTER = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+
+
+def copy_identity(run: Path, name: str, *, remover=None) -> str:
+    """The device:inode identity of a copy this session just created, read through remove-tree's own
+    preflight, so cleanup can later refuse a folder that is no longer this session's (#4789)."""
+    run = session_run_dir(run)
+    remover = remover or _load_remover()
+    try:
+        observed = remover.inspect_target(str(run), str(run / name))
+    except (OSError, ValueError) as error:
+        raise FixtureError(f"cannot record the identity of {run / name}: {error}") from error
+    if not observed["exists"]:
+        raise FixtureError(f"cannot record the identity of {run / name}: it does not exist")
+    return observed["identity"]
+
+
+def deregister_apps(root: Path, *, run=subprocess.run) -> list[str]:
+    """Remove every app bundle under `root` from Launch Services while it still exists, nested ones
+    first (xcode-build-tooling.md RULE: development-app-copy-lifecycle): `lsregister -u` on a path
+    that is already gone changes nothing and leaves a ghost entry. The walk follows no links and
+    stays on `root`'s filesystem, like the deletion. Returns the bundles whose deregistration
+    failed; `sweep-launchservices-ghosts.sh` is the backstop for those."""
+    try:
+        device = os.lstat(root).st_dev
+    except FileNotFoundError:
+        return []
+    apps = []
+    for directory, names, _ in os.walk(root):
+        kept = []
+        for name in names:
+            entry = os.lstat(os.path.join(directory, name))
+            if stat.S_ISDIR(entry.st_mode) and entry.st_dev == device:
+                kept.append(name)
+        names[:] = kept
+        apps += [Path(directory) / name for name in kept if name.endswith(".app")]
+    failed = []
+    for app in sorted(apps, key=lambda p: len(p.parts), reverse=True):
+        if run([LSREGISTER, "-u", str(app)], capture_output=True).returncode != 0:
+            failed.append(str(app))
+    return failed
+
+
+def remove_session_copies(run: Path, owned: dict, *, remover=None, deregister=deregister_apps) -> dict:
+    """Remove a finished pilot session's own `subject` and `home` copies (#4789): about 3 GB per
+    session that filled a backup Mac's disk. The caller decides that nothing still runs from them.
+    `owned` maps each copy this session created to its `copy_identity`; a copy with no recorded
+    identity is never touched ("not recorded" when it exists), and a copy whose identity changed is
+    refused. The subject's app bundles are deregistered, then each copy is deleted through
+    `remove-tree.py`; the result is {"subject": .., "home": ..} as "removed" or "absent" (plus
+    "deregister_failed" when any `lsregister -u` failed). A refusal or a partial removal raises and
+    names what already completed (`find -xdev -delete` can remove part of a tree before it refuses)."""
+    run = session_run_dir(run)
+    remover = remover or _load_remover()
+    done = {}
+    for name in SESSION_COPIES:
+        target = run / name
+        expected = owned.get(name)
+        if expected is None:
+            done[name] = "not recorded" if os.path.lexists(target) else "absent"
+            continue
+        # remove-tree's own preflight first, against the recorded identity: a linked, mounted or
+        # replaced folder is refused before anything, Launch Services included, is touched.
+        try:
+            remover.inspect_target(str(run), str(target), expected)
+        except (OSError, ValueError) as error:
+            raise FixtureError(f"removal of {target} refused: {error}; completed: {done}") from error
+        if name == "subject":
+            failed = deregister(target)
+            if failed:
+                done["deregister_failed"] = failed
+        try:
+            status = remover.remove_tree(str(run), str(target), expected)
+        except Exception as error:
+            raise FixtureError(f"removal of {target} interrupted: {error}; completed: {done}") from error
+        if status == remover.REMOVED:
+            done[name] = "removed"
+        elif status == remover.ABSENT:
+            done[name] = "absent"
+        else:
+            raise FixtureError(f"removal of {target} refused or incomplete (remove-tree status {status}); "
+                               f"completed: {done}")
+    return done
 
 
 # ---------------------------------------------------------------- command line
