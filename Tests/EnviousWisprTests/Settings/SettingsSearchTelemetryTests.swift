@@ -511,6 +511,28 @@ struct SettingsSearchTelemetryTests {
     #expect(row.sidebarPage == "keybinds")
   }
 
+  @Test("a dictated search that ends at the sidebar sends the page but not its words (#4843)")
+  func dictatedSidebarBypass() async throws {
+    let sent = Sent()
+    let model = try Self.model(sent: sent)
+    model.setQuery("dock")
+    #expect(await SettingsSearchModelTests.ready(model))
+    model.pasteCompleted(Self.delivered("dock", to: AppBundleIdentity.production))
+    model.finish(endedBy: .sidebar, sidebarPage: "keybinds", sidebarTab: nil)
+    let row = try #require(sent.rows.first)
+    #expect(row.outcome == .sidebarBypass, "it had results")
+    #expect(row.sidebarPage == "keybinds")
+    #expect(row.resultCount > 0)
+    #expect(row.query == nil, "dictated words reached a sidebar_bypass row")
+    // The same search typed (no dictation) keeps its words: the omission is the dictation rule.
+    let typedSent = Sent()
+    let typed = try Self.model(sent: typedSent)
+    typed.setQuery("dock")
+    #expect(await SettingsSearchModelTests.ready(typed))
+    typed.finish(endedBy: .sidebar, sidebarPage: "keybinds", sidebarTab: nil)
+    #expect(typedSent.rows.first?.query == "dock")
+  }
+
   @Test("a chosen result is result_chosen with no query")
   func resultChosen() async throws {
     let sent = Sent()
