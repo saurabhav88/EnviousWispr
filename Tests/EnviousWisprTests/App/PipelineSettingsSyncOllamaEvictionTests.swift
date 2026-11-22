@@ -50,7 +50,9 @@ struct PipelineSettingsSyncOllamaEvictionTests {
   private func makeSync(
     catalog: [OllamaDownloadedModel],
     lookupCounter: (() -> Void)? = nil,
-    summaryPin: @escaping @MainActor () -> String? = { nil }
+    summaryPin: @escaping @MainActor () -> String? = { nil },
+    importPin: @escaping @MainActor () -> String? = { nil },
+    summaryDemand: @escaping @MainActor () -> Set<String> = { [] }
   ) -> (PipelineSettingsSync, SettingsManager, EvictionRecorder) {
     let audio = RouterTestAudioCapture()
     let asr = RouterTestASRManager()
@@ -73,7 +75,9 @@ struct PipelineSettingsSyncOllamaEvictionTests {
         lookupCounter?()
         return PipelineSettingsSync.ollamaRemoteness(of: model, in: catalog)
       },
-      summaryPinnedOllamaModel: summaryPin
+      importPinnedOllamaModel: importPin,
+      summaryPinnedOllamaModel: summaryPin,
+      summaryOllamaDemand: summaryDemand
     )
     sync.evictionScheduler = { recorder.record($0) }
     return (sync, settings, recorder)
@@ -116,28 +120,54 @@ struct PipelineSettingsSyncOllamaEvictionTests {
     #expect(recorder.scheduled == ["mistral"])
   }
 
-  // MARK: - The meeting summary's own model (#4287)
+  // MARK: - Meeting summary work (#4287, #3853)
 
   private var localModels: [OllamaDownloadedModel] {
     ["mistral", "llama3", "qwen3"].map { catalogRow($0, isRemote: false) }
   }
 
-  @Test("a summary-only Ollama model is evicted when the summary switches away from it")
-  func summaryOnlyModelIsEvicted() {
-    let (sync, settings, recorder) = makeSync(catalog: localModels)
+  /// Mutable fixture state read by the sync's closures (a captured `var` would be a data race).
+  @MainActor
+  private final class OllamaWork {
+    var demand: Set<String> = []
+    var summaryPin: String?
+    var importPin: String?
+  }
+
+  private func makeWorkSync(_ work: OllamaWork, catalog: [OllamaDownloadedModel]? = nil)
+    -> (PipelineSettingsSync, SettingsManager, EvictionRecorder)
+  {
+    makeSync(
+      catalog: catalog ?? localModels,
+      summaryPin: { work.summaryPin }, importPin: { work.importPin },
+      summaryDemand: { work.demand })
+  }
+
+  /// #3853 (#4360): the summary SETTING no longer keeps a model wanted. Only summary work does
+  /// (`summaryOllamaDemand`), and a model a local summary used is owed an unload once nothing
+  /// holds it.
+  @Test("a model a summary used is evicted once, after the summary work ends")
+  func usedSummaryModelIsEvictedWhenWorkEnds() {
+    let work = OllamaWork()
+    work.demand = ["mistral"]
+    let (sync, settings, recorder) = makeWorkSync(work)
     settings.llmProvider = .appleIntelligence
     settings.meetingSummaryLLMProvider = .ollama
     settings.meetingSummaryOllamaModel = "mistral"
     sync.applyInitialSettings(settings)
     #expect(recorder.scheduled.isEmpty, "seeding must never evict")
 
-    settings.meetingSummaryOllamaModel = "llama3"
-    sync.handleSettingChanged(.meetingSummaryOllamaModel, settings: settings)
-    #expect(recorder.scheduled == ["mistral"])
+    sync.summaryUsedOllamaModel("mistral", settings: settings)
+    #expect(recorder.scheduled.isEmpty, "held while the summary work needs it")
+
+    work.demand = []
+    sync.retryDeferredOllamaEviction(settings: settings)
+    sync.retryDeferredOllamaEviction(settings: settings)
+    #expect(recorder.scheduled == ["mistral"], "the setting still names it, and it is evicted once")
   }
 
-  @Test("dictation's previous model is kept while the summary still selects it, under either spelling")
-  func summaryKeepsDictationsPreviousModel() {
+  @Test("the summary setting alone keeps nothing: dictation leaving its model evicts it")
+  func summarySettingAloneKeepsNothing() {
     let (sync, settings, recorder) = makeSync(catalog: localModels)
     settings.llmProvider = .ollama
     settings.ollamaModel = "mistral"
@@ -147,55 +177,204 @@ struct PipelineSettingsSyncOllamaEvictionTests {
 
     settings.ollamaModel = "llama3"
     sync.handleSettingChanged(.ollamaModel, settings: settings)
-    #expect(recorder.scheduled.isEmpty)
+    #expect(recorder.scheduled == ["mistral"])
   }
 
-  @Test("the summary's previous model is kept while the import still selects it")
-  func importKeepsSummarysPreviousModel() {
-    let (sync, settings, recorder) = makeSync(catalog: localModels)
+  @Test("final-pass demand alone creates no unload candidate")
+  func finalPassDemandAloneCreatesNoCandidate() {
+    let work = OllamaWork()
+    work.demand = ["mistral"]
+    let (sync, settings, recorder) = makeWorkSync(work)
     settings.llmProvider = .appleIntelligence
-    settings.fileImportLLMProvider = .ollama
-    settings.fileImportOllamaModel = "mistral"
     settings.meetingSummaryLLMProvider = .ollama
     settings.meetingSummaryOllamaModel = "mistral"
     sync.applyInitialSettings(settings)
 
-    settings.meetingSummaryOllamaModel = "llama3"
-    sync.handleSettingChanged(.meetingSummaryOllamaModel, settings: settings)
-    #expect(recorder.scheduled.isEmpty)
+    sync.retryDeferredOllamaEviction(settings: settings)
+    work.demand = []
+    sync.retryDeferredOllamaEviction(settings: settings)
+    #expect(recorder.scheduled.isEmpty, "nothing of ours loaded it")
   }
 
-  @Test("a model two surfaces left in one pass is evicted once")
-  func twoSurfacesLeavingEvictOnce() {
-    let (sync, settings, recorder) = makeSync(catalog: localModels)
+  @Test("dictation leaving a model summary work holds keeps it pending, and it goes once")
+  func summaryDemandHoldsDictationsPreviousModel() {
+    let work = OllamaWork()
+    work.demand = ["mistral:latest"]
+    let (sync, settings, recorder) = makeWorkSync(work)
     settings.llmProvider = .ollama
     settings.ollamaModel = "mistral"
-    settings.meetingSummaryLLMProvider = .ollama
-    settings.meetingSummaryOllamaModel = "mistral"
     sync.applyInitialSettings(settings)
 
     settings.ollamaModel = "llama3"
-    settings.meetingSummaryOllamaModel = "qwen3"
-    sync.handleSettingChanged(.meetingSummaryOllamaModel, settings: settings)
+    sync.handleSettingChanged(.ollamaModel, settings: settings)
+    #expect(recorder.scheduled.isEmpty, "held while summary work needs it")
+
+    work.demand = []
+    sync.retryDeferredOllamaEviction(settings: settings)
+    #expect(recorder.scheduled == ["mistral"])
+  }
+
+  @Test("both trackers leaving a model summary work holds keep it pending, and it goes once")
+  func summaryDemandHoldsBothTrackersPreviousModel() {
+    let work = OllamaWork()
+    work.demand = ["mistral"]
+    let (sync, settings, recorder) = makeWorkSync(work)
+    settings.llmProvider = .ollama
+    settings.ollamaModel = "mistral"
+    settings.fileImportLLMProvider = .ollama
+    settings.fileImportOllamaModel = "mistral"
+    sync.applyInitialSettings(settings)
+
+    settings.ollamaModel = "llama3"
+    settings.fileImportOllamaModel = "qwen3"
+    sync.handleSettingChanged(.fileImportOllamaModel, settings: settings)
+    #expect(recorder.scheduled.isEmpty, "held while summary work needs it")
+
+    work.demand = []
+    sync.retryDeferredOllamaEviction(settings: settings)
     #expect(recorder.scheduled == ["mistral"])
   }
 
   @Test("a running summary call's model is not evicted, and goes once the call is over")
   func runningSummaryCallPinsItsModel() {
-    var pinned: String? = "mistral:latest"
-    let (sync, settings, recorder) = makeSync(catalog: localModels, summaryPin: { pinned })
+    let work = OllamaWork()
+    work.summaryPin = "mistral:latest"
+    let (sync, settings, recorder) = makeWorkSync(work)
     settings.llmProvider = .appleIntelligence
-    settings.meetingSummaryLLMProvider = .ollama
-    settings.meetingSummaryOllamaModel = "mistral"
     sync.applyInitialSettings(settings)
 
-    settings.meetingSummaryOllamaModel = "llama3"
-    sync.handleSettingChanged(.meetingSummaryOllamaModel, settings: settings)
+    sync.summaryUsedOllamaModel("mistral", settings: settings)
     #expect(recorder.scheduled.isEmpty, "deferred while the call uses it")
 
-    pinned = nil
+    work.summaryPin = nil
     sync.retryDeferredOllamaEviction(settings: settings)
     #expect(recorder.scheduled == ["mistral"])
+  }
+
+  @Test("a running import call's model is not evicted for a summary, and goes once it is over")
+  func runningImportCallPinsSummaryUsedModel() {
+    let work = OllamaWork()
+    work.importPin = "mistral"
+    let (sync, settings, recorder) = makeWorkSync(work)
+    settings.llmProvider = .appleIntelligence
+    sync.applyInitialSettings(settings)
+
+    sync.summaryUsedOllamaModel("mistral", settings: settings)
+    #expect(recorder.scheduled.isEmpty, "the import call still uses it")
+
+    work.importPin = nil
+    sync.retryDeferredOllamaEviction(settings: settings)
+    #expect(recorder.scheduled == ["mistral"])
+  }
+
+  @Test("a model dictation selects is kept while a summary used it, and goes once dictation leaves")
+  func dictationSelectionKeepsUsedSummaryModel() {
+    let (sync, settings, recorder) = makeSync(catalog: localModels)
+    settings.llmProvider = .ollama
+    settings.ollamaModel = "mistral:latest"
+    sync.applyInitialSettings(settings)
+
+    sync.summaryUsedOllamaModel("mistral", settings: settings)
+    #expect(recorder.scheduled.isEmpty, "dictation still selects it")
+
+    settings.ollamaModel = "llama3"
+    sync.handleSettingChanged(.ollamaModel, settings: settings)
+    #expect(recorder.scheduled == ["mistral:latest"], "one unload, from the tracker; the map adds none")
+  }
+
+  @Test("a model the import selects is kept while a summary used it")
+  func importSelectionKeepsUsedSummaryModel() {
+    let (sync, settings, recorder) = makeSync(catalog: localModels)
+    settings.llmProvider = .appleIntelligence
+    settings.fileImportLLMProvider = .ollama
+    settings.fileImportOllamaModel = "mistral"
+    sync.applyInitialSettings(settings)
+
+    sync.summaryUsedOllamaModel("mistral", settings: settings)
+    sync.retryDeferredOllamaEviction(settings: settings)
+    #expect(recorder.scheduled.isEmpty, "the import still selects it")
+  }
+
+  @Test("two models two summaries used are each evicted once")
+  func twoUsedSummaryModelsAreEachEvictedOnce() {
+    let work = OllamaWork()
+    work.demand = ["mistral", "llama3"]
+    let (sync, settings, recorder) = makeWorkSync(work)
+    settings.llmProvider = .appleIntelligence
+    sync.applyInitialSettings(settings)
+
+    sync.summaryUsedOllamaModel("mistral", settings: settings)
+    sync.summaryUsedOllamaModel("llama3", settings: settings)
+    #expect(recorder.scheduled.isEmpty)
+
+    work.demand = []
+    sync.retryDeferredOllamaEviction(settings: settings)
+    #expect(Set(recorder.scheduled) == ["mistral", "llama3"] && recorder.scheduled.count == 2)
+  }
+
+  @Test("a model proven remote is never scheduled for eviction by a summary")
+  func usedRemoteSummaryModelIsNotEvicted() {
+    let (sync, settings, recorder) = makeSync(
+      catalog: [catalogRow("kimi", isRemote: true)])
+    settings.llmProvider = .appleIntelligence
+    sync.applyInitialSettings(settings)
+
+    sync.summaryUsedOllamaModel("kimi", settings: settings)
+    sync.retryDeferredOllamaEviction(settings: settings)
+    #expect(recorder.scheduled.isEmpty)
+  }
+
+  /// A tracker stuck behind a pin never sees a model the other surface holds. The model goes
+  /// to the pending map instead, so it is still unloaded once nothing holds it.
+  @Test("a model held by the other surface while its tracker is pinned is still evicted once")
+  func heldModelOfAStuckTrackerIsEvicted() {
+    let work = OllamaWork()
+    work.importPin = "llama3"
+    let (sync, settings, recorder) = makeWorkSync(work)
+    settings.llmProvider = .ollama
+    settings.ollamaModel = "mistral"
+    settings.fileImportLLMProvider = .ollama
+    settings.fileImportOllamaModel = "llama3"
+    sync.applyInitialSettings(settings)
+
+    settings.fileImportOllamaModel = "mistral"
+    sync.handleSettingChanged(.fileImportOllamaModel, settings: settings)
+    #expect(recorder.scheduled.isEmpty, "the import's tracker waits on its pinned run")
+
+    settings.ollamaModel = "qwen3"
+    sync.handleSettingChanged(.ollamaModel, settings: settings)
+    #expect(recorder.scheduled.isEmpty, "the import still selects mistral")
+
+    settings.fileImportOllamaModel = "qwen3"
+    sync.handleSettingChanged(.fileImportOllamaModel, settings: settings)
+    #expect(recorder.scheduled == ["mistral"], "nothing holds mistral now, though llama3 is pinned")
+
+    work.importPin = nil
+    sync.retryDeferredOllamaEviction(settings: settings)
+    #expect(recorder.scheduled.filter { $0 == "mistral" }.count == 1)
+    #expect(recorder.scheduled.contains("llama3"))
+  }
+
+  /// Both trackers and the pending map all owe the same model in ONE reconcile: one unload.
+  @Test("both trackers and a used summary model leaving in one pass schedule one unload")
+  func bothTrackersAndUsedSummaryModelScheduleOnce() {
+    let work = OllamaWork()
+    work.demand = ["mistral"]
+    let (sync, settings, recorder) = makeWorkSync(work)
+    settings.llmProvider = .ollama
+    settings.ollamaModel = "mistral"
+    settings.fileImportLLMProvider = .ollama
+    settings.fileImportOllamaModel = "mistral:latest"
+    sync.applyInitialSettings(settings)
+    sync.summaryUsedOllamaModel("mistral", settings: settings)
+    #expect(recorder.scheduled.isEmpty)
+
+    settings.ollamaModel = "llama3"
+    settings.fileImportOllamaModel = "qwen3"
+    work.demand = []
+    sync.handleSettingChanged(.fileImportOllamaModel, settings: settings)
+    sync.retryDeferredOllamaEviction(settings: settings)
+    #expect([["mistral"], ["mistral:latest"]].contains(recorder.scheduled))
   }
 
   /// The other way round is the reason this is two trackers and not one: a model the import

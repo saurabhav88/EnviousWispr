@@ -866,6 +866,164 @@ struct MeetingSummaryOwnerTests {
     #expect(rig.owner.summaryPinnedOllamaModel == nil)
   }
 
+  // MARK: - Ollama demand and use (#3853, #4360)
+
+  /// What the owner tells `PipelineSettingsSync` about Ollama models, in order: a model name when
+  /// a local attempt reaches the queue for it, nil when an attempt's demand ends.
+  @MainActor final class OllamaHookLog { var events: [String?] = [] }
+
+  static func ollamaRig(
+    provider: LLMProvider = .ollama, model: String = "mistral",
+    execution: MeetingSummary.Execution = .local
+  ) throws -> (Rig, UUID, OllamaHookLog) {
+    let rig = try Rig()
+    let id = try rig.readyMeeting()
+    let log = OllamaHookLog()
+    rig.owner.onOllamaSummaryWorkChanged = { log.events.append($0) }
+    rig.world.provider = provider
+    rig.world.model = model
+    rig.world.execution = execution
+    return (rig, id, log)
+  }
+
+  @Test("a local Ollama summary demands its model from start to end and reports its use once")
+  func localOllamaDemandAndUse() async throws {
+    let (rig, id, log) = try Self.ollamaRig()
+    rig.world.holdCalls = true
+    _ = await Self.schedule(rig, id)
+    #expect(rig.owner.ollamaSummaryDemand == ["mistral"])
+    await Self.eventually("calling") { rig.world.callsWaiting == 1 }
+    #expect(log.events == ["mistral"])
+
+    rig.world.holdFinish = true
+    defer {
+      rig.world.holdFinish = false
+      rig.world.releaseFinish()
+    }
+    rig.world.releaseCall()
+    await Self.eventually("prepared cleanup held") { rig.world.finishWaiting }
+    #expect(rig.owner.ollamaSummaryDemand == ["mistral"], "still demanded until the attempt ends")
+    #expect(log.events == ["mistral"])
+    rig.world.holdFinish = false
+    rig.world.releaseFinish()
+    await Self.eventually("finished") { rig.world.finished.count == 1 }
+    #expect(rig.world.finished.map(\.outcome) == [.written])
+    #expect(rig.owner.ollamaSummaryDemand.isEmpty)
+    #expect(log.events == ["mistral", nil])
+  }
+
+  @Test("a hosted Ollama summary demands its model but never reports local use")
+  func hostedOllamaDemandOnly() async throws {
+    let (rig, id, log) = try Self.ollamaRig(execution: .hosted)
+    rig.world.holdCalls = true
+    _ = await Self.schedule(rig, id)
+    await Self.eventually("calling") { rig.world.callsWaiting == 1 }
+    #expect(rig.owner.ollamaSummaryDemand == ["mistral"])
+    #expect(log.events.isEmpty)
+
+    rig.world.releaseCall()
+    await Self.eventually("finished") { rig.world.finished.count == 1 }
+    #expect(rig.owner.ollamaSummaryDemand.isEmpty)
+    #expect(log.events == [nil])
+  }
+
+  @Test("a local Apple Intelligence summary registers no Ollama demand and reports nothing")
+  func appleIntelligenceHasNoOllamaDemand() async throws {
+    let (rig, id, log) = try Self.ollamaRig(provider: .appleIntelligence, model: "apple")
+    rig.world.holdCalls = true
+    _ = await Self.schedule(rig, id)
+    await Self.eventually("calling") { rig.world.callsWaiting == 1 }
+    #expect(rig.owner.ollamaSummaryDemand.isEmpty)
+
+    rig.world.releaseCall()
+    await Self.eventually("finished") { rig.world.finished.count == 1 }
+    #expect(log.events.isEmpty)
+  }
+
+  @Test("a summary whose model preparation fails still clears its demand")
+  func preparationFailureClearsDemand() async throws {
+    let (rig, id, log) = try Self.ollamaRig()
+    rig.world.unavailable = .notReady
+    _ = await Self.schedule(rig, id)
+    #expect(rig.owner.ollamaSummaryDemand == ["mistral"], "registered at start")
+    await Self.eventually("settled") { rig.world.finished.count == 1 }
+    #expect(rig.owner.ollamaSummaryDemand.isEmpty)
+    #expect(log.events == [nil], "no local use: the model was never reached")
+  }
+
+  @Test("a summary that cannot write its owed mark still clears its demand")
+  func owedMarkFailureClearsDemand() async throws {
+    let (rig, _, log) = try Self.ollamaRig()
+    let missingID = UUID()
+    rig.owner.writeAgain(missingID, replacing: nil)
+    #expect(rig.owner.ollamaSummaryDemand == ["mistral"])
+    await Self.eventually("demand cleared") { rig.owner.ollamaSummaryDemand.isEmpty }
+    #expect(log.events == [nil])
+    #expect(rig.owner.activity[missingID] == .failed(.storageFailed))
+    #expect(rig.world.preparedLists.isEmpty, "failed before preparation")
+  }
+
+  @Test("a cancelled local summary waiting for its turn clears its demand")
+  func cancelledSummaryClearsDemand() async throws {
+    let (rig, id, log) = try Self.ollamaRig()
+    rig.world.localTurn = false
+    _ = await Self.schedule(rig, id)
+    await Self.eventually("waiting") { rig.lane.summaryWaiting == 1 }
+    #expect(log.events == ["mistral"], "queued: it may load the model once it runs")
+
+    await rig.owner.cancelAndWait(id)
+    #expect(rig.owner.ollamaSummaryDemand.isEmpty)
+    #expect(log.events == ["mistral", nil])
+  }
+
+  @Test("a replacement's demand is registered before the replaced attempt exits")
+  func replacementDemandHasNoGap() async throws {
+    let (rig, id, log) = try Self.ollamaRig()
+    rig.world.localTurn = false
+    _ = await Self.schedule(rig, id)
+    await Self.eventually("waiting") { rig.lane.summaryWaiting == 1 }
+
+    rig.world.holdPrepare = true
+    defer {
+      rig.world.holdPrepare = false
+      rig.world.releasePrepare()
+    }
+    rig.world.model = "llama3"
+    rig.owner.writeAgain(id, replacing: nil)
+    #expect(
+      rig.owner.ollamaSummaryDemand == ["mistral", "llama3"],
+      "both demanded synchronously: no moment in which neither model is needed")
+
+    // The setting changes again: a second read of it in `run` would be caught here.
+    rig.world.model = "qwen3"
+    await Self.eventually("old attempt ended while the replacement prepares") {
+      rig.world.preparing && rig.owner.ollamaSummaryDemand == ["llama3"]
+    }
+    #expect(log.events == ["mistral", nil])
+
+    rig.world.model = "llama3"
+    rig.world.localTurn = true
+    rig.world.holdPrepare = false
+    rig.world.releasePrepare()
+    await Self.eventually("both ended") { rig.owner.ollamaSummaryDemand.isEmpty }
+    #expect(log.events == ["mistral", nil, "llama3", nil])
+  }
+
+  @Test("a preview demands and reports the model it was asked to use, not the setting")
+  func previewDemandsItsOwnModel() async throws {
+    let (rig, id, log) = try Self.ollamaRig(provider: .openAI, model: "gpt-4o-mini")
+    rig.world.execution = .local
+    rig.world.localTurn = false
+    rig.owner.startPreview(id, with: HistoryPolishChoice(provider: .ollama, model: "qwen3"))
+    #expect(rig.owner.ollamaSummaryDemand == ["qwen3"])
+    await Self.eventually("waiting") { rig.lane.summaryWaiting == 1 }
+    #expect(log.events == ["qwen3"])
+
+    await rig.owner.cancelAndWait(id)
+    #expect(rig.owner.ollamaSummaryDemand.isEmpty)
+    #expect(log.events == ["qwen3", nil])
+  }
+
   @Test("a local Ollama call's end asks for the deferred eviction once; a local Apple call does not")
   func releaseRetriesDeferredEviction() async throws {
     for (provider, expected) in [(LLMProvider.ollama, 1), (.appleIntelligence, 0)] {
