@@ -1354,7 +1354,9 @@ def test_main_window(ctx):
         return find_element(get_ax_app(ctx.pid), role="AXWindow", title=_MAIN_WINDOW_TITLE)
 
     def close_main_window(window):
-        close_btn = find_element(window, role="AXButton", description="close button")
+        # The window's own close button (AXCloseButton): the AppKit main window's button has
+        # no "close button" description, so a description search never finds it.
+        close_btn = get_attr(window, "AXCloseButton")
         if close_btn is None or not perform_action(close_btn, "AXPress"):
             raise AssertionError("could not close the main window")
         if not wait_for_condition(lambda: main_window() is None, timeout=3.0,
