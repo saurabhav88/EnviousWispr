@@ -68,6 +68,14 @@ def take_player(proc):
         _take["player"] = proc
 
 
+def take_proven_idle():
+    """The rig proved the registered take over itself (cancelled through the app's door and
+    confirmed idle from its own state, #4829): the registration ends, so the next take starts
+    clean."""
+    global _take
+    _take = None
+
+
 def take_stopped():
     """The take sent its own stop (menu Stop, key up). The registration stays: the next
     `stop_active_take` verifies it without sending another stop."""

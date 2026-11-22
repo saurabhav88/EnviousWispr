@@ -594,6 +594,9 @@ def _play_take(audio, on_fail):
 
 
 _DRIVER_ACTIVE_STATES = {"loadingModel", "recording", "transcribing", "polishing"}
+# The dev control door of the app under test, set by `audio_rig.AudioRig` (its pinned client) for
+# the length of a rig (#4829); outside a rig the idle check opens one for `_pid`.
+_idle_door = None
 
 
 def _driver_state(timeout=2.0):
@@ -603,7 +606,12 @@ def _driver_state(timeout=2.0):
     seconds (#4829)."""
     import dev_control
     try:
-        reply = dev_control.DoorClient(_pid, timeout=timeout).status()
+        client = _idle_door if _idle_door is not None else dev_control.DoorClient(_pid)
+        previous, client.timeout = client.timeout, timeout
+        try:
+            reply = client.status()
+        finally:
+            client.timeout = previous
         state = reply.get("activeDriver", {}).get("state")
     except Exception:
         return None

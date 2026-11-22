@@ -208,6 +208,8 @@ class AudioRig:
                     raise tg.SetupFailed("audio-route", "alert sounds did not move to BlackHole")
                 self.route.apply()
                 self._prove_route()
+                # #4829: the idle check asks THIS app's door, never the first EnviousWispr by name.
+                w._idle_door = self.route.client
                 if self.quiet_app:
                     self.sounds = sa.AppSounds(self.route.client)
                     self.sounds.apply()
@@ -258,6 +260,9 @@ class AudioRig:
             # a second take on BlackHole, #3107). Cancel through the app's own door and confirm
             # idle from its own state before any real microphone comes back.
             take_idle = self._cancel_take()
+            if take_idle:
+                tg.take_proven_idle()
+        w._idle_door = None
         tg.clear_target()
         try:
             self.target.close()
@@ -295,12 +300,13 @@ class AudioRig:
         self.restored = ok
         return ok
 
-    @staticmethod
-    def _cancel_take():
-        """Cancel the app's dictation through the dev control door, then confirm idle from the
-        app's own state (#4829). True only when idle is confirmed; never raises."""
+    def _cancel_take(self):
+        """Cancel the app's dictation through the dev control door of the app under test (the
+        rig's pinned client), then confirm idle from that app's own state (#4829). True only when
+        idle is confirmed; never raises."""
         try:
-            w.door().call(["dictation", "cancel"])
+            client = self.route.client if self.route is not None else w.door()
+            client.call(["dictation", "cancel"])
             print("RIG: the take was cancelled through the app's control door", flush=True)
         except (Exception, SystemExit) as exc:  # nothing to cancel, or the door is unavailable
             print(f"RIG: cancel through the control door did not run: {exc!r}", flush=True)
@@ -370,7 +376,7 @@ def _self_test():
     # Offline: the cancel step never reaches the real app's door here (#4829); each case below
     # that needs it says what the cancel reports.
     cancel_results = []
-    AudioRig._cancel_take = staticmethod(lambda: cancel_results.pop(0) if cancel_results else False)
+    AudioRig._cancel_take = lambda self: cancel_results.pop(0) if cancel_results else False
     rig = AudioRig(target=FakeTarget())
     first_alerts = Fake()
     rig.route, rig.alerts = Fake(boom=True), first_alerts
@@ -450,7 +456,7 @@ def _self_test():
     rig.route, rig.alerts = route, alerts
     expect("#4829 a take the cancel proves idle restores normally, no SETUP FAILED",
            rig.__exit__(None, None, None) is False and rig.restored and route.calls == 1)
-    tg._take = None
+    expect("#4829 a take the cancel proves idle is no longer registered", tg._take is None)
 
     class Player:
         def __init__(self):
