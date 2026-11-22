@@ -169,11 +169,18 @@ enum MeetingLiveWordsChoice {
       let regional = inventory.macRegion.map { "\(base)-\($0)" }
       let preferred = (fullMatch != nil ? [fullMatch, regional] : [regional, resolved])
         .compactMap { $0 }
-      // #4813: a tag that names its script (`zh-Hans-TW`) accepts only tags written in that
-      // script, so every fallback below (the Mac-region tag, any installed sibling, the
-      // download) stays in it; otherwise Universal or the right download wins. A tag with no
-      // script (every bare or locked code) accepts any, as before.
-      let script = Locale.Language.Components(identifier: code).script
+      // #4813: a tag with a region or script accepts only tags written in ITS script, read
+      // through Foundation's likely subtags (`zh-GB` and `zh-TW` are Traditional, `zh-Hans-TW`
+      // Simplified), so every fallback below (the Mac-region tag, any installed sibling, the
+      // download) stays in it; otherwise Universal or the right download wins. A bare code
+      // (every locked code, a switch back from Universal) accepts any, as before.
+      let requested = Locale.Language.Components(identifier: code)
+      let script =
+        requested.region == nil && requested.script == nil
+        ? nil
+        : Locale.Language.Components(
+          identifier: Locale.Language(identifier: code).maximalIdentifier
+        ).script
       let inScript: (String) -> Bool = { tag in
         guard let script else { return true }
         let maximal = Locale.Language(identifier: tag).maximalIdentifier

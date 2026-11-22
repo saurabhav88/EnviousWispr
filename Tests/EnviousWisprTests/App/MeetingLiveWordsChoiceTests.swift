@@ -143,6 +143,19 @@ struct MeetingLiveWordsChoiceTests {
       await Choice.language(
         for: .apple, from: "zh-Hans-TW", inventory: traditionalOnly, appleEquivalent: simplified)
         == "zh-CN", "the right script's download, never the installed other script")
+
+    // A Traditional Chinese Mac with Region United Kingdom guesses `zh-GB` (no written script;
+    // Traditional by likely subtags). Only the Simplified pack installed: offer Traditional.
+    var britain = chinese
+    britain.macRegion = "GB"
+    britain.appleInstalledTags = ["zh-CN"]
+    let traditional: @Sendable (String) async -> String? = { code in
+      ["zh-GB": "zh-TW", "zh": "zh-CN"][code]
+    }
+    #expect(
+      await Choice.language(
+        for: .apple, from: "zh-GB", inventory: britain, appleEquivalent: traditional)
+        == "zh-TW", "a regional tag's implied script counts too")
   }
 
   @Test("The same inventory picks the same installed region every time")
