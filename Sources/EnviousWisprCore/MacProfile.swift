@@ -47,6 +47,19 @@ public struct MacProfile: Sendable, Equatable {
   }
 }
 
+extension MacProfile {
+  /// The Mac's own preferred languages, most preferred first (the global-domain `AppleLanguages`
+  /// list, for example `["fr-CA", "en-US"]`), or empty when macOS reports none. The one reader of
+  /// that list: Setup advice (`MacProfileReader`), the Appearance page and Apple Live Preview's
+  /// Auto language read it here. Never the app's interface override, which `Locale.current` and
+  /// `Bundle.main` follow (#4813: the language of `Locale.current` is the best match among the
+  /// interface languages the app ships, not the Mac's language).
+  package static var systemLanguages: [String] {
+    UserDefaults.standard.persistentDomain(forName: UserDefaults.globalDomain)?["AppleLanguages"]
+      as? [String] ?? []
+  }
+}
+
 /// What Setup may say about Apple Intelligence (plan M24, #1454, #1080).
 ///
 /// Derived ONLY from the availability report's actionable notice and its live status, never from

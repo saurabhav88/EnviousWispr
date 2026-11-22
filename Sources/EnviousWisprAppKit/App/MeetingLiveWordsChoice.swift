@@ -152,21 +152,53 @@ enum MeetingLiveWordsChoice {
         return code
       }
       let base = baseCode(code)
-      let resolved = await appleEquivalent(base)
+      // #4813: a tag with a region or script (Auto guesses the Mac's own language) asks Apple
+      // for the FULL tag's equivalent first, and an installed match wins: Apple maps
+      // `zh-Hant-US` to `zh-TW` but the bare `zh` to `zh-CN`, and `base-macRegion` ignores the
+      // script (`zh-Hans-TW` is not `zh-TW`). A bare (or locked) code is unchanged.
+      let fullMatch = code == base ? nil : await appleEquivalent(code)
+      let resolved: String?
+      if let fullMatch {
+        resolved = fullMatch
+      } else {
+        resolved = await appleEquivalent(base)
+      }
       // #4320: an installed tag in this Mac's region, then Apple's own equivalent, before any
       // other installed region. Without this a bare `en` (switching back from Universal) took
       // the alphabetically first installed English, en-AU, on a US Mac.
-      let preferred = [inventory.macRegion.map { "\(base)-\($0)" }, resolved].compactMap { $0 }
-      if let tag = preferred.first(where: inventory.appleInstalledTags.contains) {
+      let regional = inventory.macRegion.map { "\(base)-\($0)" }
+      let preferred = (fullMatch != nil ? [fullMatch, regional] : [regional, resolved])
+        .compactMap { $0 }
+      // #4813: a tag with a region or script accepts only tags written in ITS script, read
+      // through Foundation's likely subtags (`zh-GB` and `zh-TW` are Traditional, `zh-Hans-TW`
+      // Simplified), so every fallback below (the Mac-region tag, any installed sibling, the
+      // download) stays in it; otherwise Universal or the right download wins. A bare code
+      // (every locked code, a switch back from Universal) accepts any, as before.
+      let requested = Locale.Language.Components(identifier: code)
+      let script =
+        requested.region == nil && requested.script == nil
+        ? nil
+        : Locale.Language.Components(
+          identifier: Locale.Language(identifier: code).maximalIdentifier
+        ).script
+      let inScript: (String) -> Bool = { tag in
+        guard let script else { return true }
+        let maximal = Locale.Language(identifier: tag).maximalIdentifier
+        return Locale.Language.Components(identifier: maximal).script == script
+      }
+      if let tag = preferred.first(where: { inventory.appleInstalledTags.contains($0) && inScript($0) })
+      {
         return tag
       }
       if let installed = ApplePreviewEngineResolver.satisfyingTag(
         requestedCode: base, resolvedTag: resolved ?? base,
-        installedTags: inventory.appleInstalledTags, macRegion: inventory.macRegion)
+        installedTags: inventory.appleInstalledTags.filter(inScript), macRegion: inventory.macRegion)
       {
         return installed
       }
-      guard let resolved, inventory.appleSupportedTags.contains(resolved) else { return nil }
+      guard let resolved, inventory.appleSupportedTags.contains(resolved), inScript(resolved) else {
+        return nil
+      }
       return resolved
     case .universal:
       let catalogue = catalogueCode(code)

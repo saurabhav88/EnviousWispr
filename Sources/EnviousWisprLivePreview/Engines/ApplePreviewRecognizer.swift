@@ -970,8 +970,8 @@ package enum ApplePreviewEngineResolver {
   ///
   /// So a bare code accepts ANY installed variant of that language and USES it. That also pins
   /// `commitment`, so the cached engine stops being rebuilt with a different regional model on
-  /// random recordings. A code that carries a REGION (Auto sends the full system locale) still
-  /// requires that exact tag: the region is the whole point there — measured, a `zh-TW` Mac
+  /// random recordings. A code that carries a REGION (Auto sends the Mac's language with its
+  /// region) still requires that exact tag: the region is the whole point there — measured, a `zh-TW` Mac
   /// reduced to a bare code gets Simplified characters for a Traditional reader.
   ///
   /// This does NOT fix the underlying product gap: a locked language still gets an arbitrary
@@ -1009,7 +1009,7 @@ package enum ApplePreviewEngineResolver {
   }
 
   /// The language tag to ask Apple for: a bare ISO 639-1 code when the user locked
-  /// one, the FULL system locale under Auto.
+  /// one, the Mac's own language with the Mac's region under Auto.
   ///
   /// **Apple's recognizer must commit to one language before it hears anything, so
   /// Auto has no answer to give it.** The system language is the honest guess: it
@@ -1036,10 +1036,57 @@ package enum ApplePreviewEngineResolver {
   /// ISO 639-1 codes, so a user who explicitly picks Chinese gets `zh-CN`. Giving
   /// locked mode regional variants means adding them to that catalogue, which is a
   /// product decision about a user-visible list, not this function.
+  ///
+  /// **Auto reads the Mac's language list, not `Locale.current` (#4813).** In the app,
+  /// `Locale.current` takes its LANGUAGE from the best match among the interface languages
+  /// the app ships: with the interface set to German on an English Mac it is `de-US`, and on
+  /// a Mac whose language the app does not ship (measured with a probe bundle: Italian,
+  /// Spanish) it is `en-<region>`. So the language (and a script the region does not already
+  /// imply) comes from the Mac's first preferred language, and only the REGION from
+  /// `Locale.current`, which a per-app language leaves alone.
   package static func languageCode(for mode: LanguageMode) -> String {
+    languageCode(for: mode, macLanguages: MacProfile.systemLanguages, current: .current)
+  }
+
+  /// `languageCode(for:)` with its inputs explicit: `macLanguages` is the Mac's preferred
+  /// languages, most preferred first; `current` supplies the region and the fallback when
+  /// the list gives no language.
+  package static func languageCode(
+    for mode: LanguageMode, macLanguages: [String], current: Locale
+  ) -> String {
     switch mode {
     case .locked(let code): return code
-    case .auto: return Locale.current.identifier(.bcp47)
+    case .auto:
+      guard let first = macLanguages.first, !first.isEmpty else {
+        return current.identifier(.bcp47)
+      }
+      // Components, not `Locale.Language`: the latter infers a script ("en-Latn-US").
+      let preferred = Locale.Language.Components(identifier: first)
+      guard let code = preferred.languageCode else {
+        return current.identifier(.bcp47)
+      }
+      let region = current.region
+      // The preference's script: written (zh-Hant-TW) or, when it names a region, implied by
+      // it (zh-TW is Traditional), so swapping in the Mac's region cannot change the script
+      // (zh-TW with Region United States must not become zh-US, which Apple reads as
+      // Simplified). Then drop a script the new region already implies (zh-Hant with TW gives
+      // "zh-TW"), so the tag is the spelling Apple's dictation and meeting lists carry (zh-TW,
+      // zh-CN, zh-HK) and the meeting chooser's exact-tag match finds it. Keep an unusual
+      // script (sr-Latn-RS, zh-Hans-TW), and keep any script when the Mac has no region.
+      var script =
+        preferred.script
+        ?? (preferred.region == nil
+          ? nil
+          : Locale.Language.Components(
+            identifier: Locale.Language(identifier: first).maximalIdentifier
+          ).script)
+      if let explicit = script, let region {
+        let implied = Locale.Language(languageCode: code, script: nil, region: region)
+          .maximalIdentifier
+        if Locale.Language(identifier: implied).script == explicit { script = nil }
+      }
+      return Locale(languageCode: code, script: script, languageRegion: region)
+        .identifier(.bcp47)
     }
   }
 

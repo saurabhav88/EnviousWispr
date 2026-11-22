@@ -13,6 +13,7 @@ public struct MacProfileReader: Sendable {
   public var freeDiskBytes: @Sendable () -> Int64?
   /// The Mac's own preferred languages, from the global domain, never the app's interface override
   /// (plan M20: `Locale.current` and `Bundle.main` follow the app language, AppLanguagePreference.swift).
+  /// The live reader is `MacProfile.systemLanguages` (Core).
   public var systemLanguages: @Sendable () -> [String]
 
   /// A reader with every system read handed in (tests, and the live factory below).
@@ -37,7 +38,7 @@ public struct MacProfileReader: Sendable {
       macOSMajor: { ProcessInfo.processInfo.operatingSystemVersion.majorVersion },
       chipName: { chipBrandString() },
       freeDiskBytes: { startupVolumeFreeBytes() },
-      systemLanguages: { globalPreferredLanguages() })
+      systemLanguages: { MacProfile.systemLanguages })
   }
 
   /// Bytes per binary gigabyte; Macs report whole GiB of installed memory.
@@ -55,13 +56,6 @@ public struct MacProfileReader: Sendable {
   }
 
   // MARK: Live system reads
-
-  /// The global-domain `AppleLanguages` list, the same source `AppLanguagePreference.systemPreferences`
-  /// reads in the app.
-  private static func globalPreferredLanguages() -> [String] {
-    UserDefaults.standard.persistentDomain(forName: UserDefaults.globalDomain)?["AppleLanguages"]
-      as? [String] ?? []
-  }
 
   private static func chipBrandString() -> String? {
     let name = "machdep.cpu.brand_string"

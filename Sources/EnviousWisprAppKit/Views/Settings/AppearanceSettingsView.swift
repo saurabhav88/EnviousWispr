@@ -35,7 +35,7 @@ struct AppearanceSettingsView: View {
   private var needsRelaunch: Bool {
     languagePreference.language(
       forChoice: language.isEmpty ? nil : language,
-      systemPreferences: AppLanguagePreference.systemPreferences) != Self.launchLanguage
+      systemPreferences: MacProfile.systemLanguages) != Self.launchLanguage
   }
 
   var body: some View {

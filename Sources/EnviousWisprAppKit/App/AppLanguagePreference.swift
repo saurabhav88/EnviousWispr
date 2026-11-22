@@ -66,7 +66,7 @@ struct AppLanguagePreference {
   }
 
   /// The language the app would show if launched now: the override, else the first of the Mac's
-  /// preferred languages (`systemPreferences`, the global `AppleLanguages`) that the bundle ships,
+  /// preferred languages (`systemPreferences`, `MacProfile.systemLanguages`) that the bundle ships,
   /// else English.
   func languageAtNextLaunch(systemPreferences: [String]) -> String {
     language(forChoice: choice, systemPreferences: systemPreferences)
@@ -77,11 +77,6 @@ struct AppLanguagePreference {
   func language(forChoice code: String?, systemPreferences: [String]) -> String {
     if let code, languages.contains(code) { return code }
     return Bundle.preferredLocalizations(from: languages, forPreferences: systemPreferences).first ?? "en"
-  }
-
-  /// The Mac's own preferred languages, read from the global domain (never the app's override).
-  static var systemPreferences: [String] {
-    UserDefaults.standard.persistentDomain(forName: UserDefaults.globalDomain)?[key] as? [String] ?? []
   }
 
   /// A language named in its own language ("Deutsch", "English"), never translated.
