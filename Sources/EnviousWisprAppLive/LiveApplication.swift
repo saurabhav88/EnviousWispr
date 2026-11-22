@@ -106,6 +106,10 @@ package final class LiveApplication {
   // MARK: - Lifecycle surface
 
   package func applicationWillFinishLaunching() {
+    // #4849: FIRST, on every launch path: our menu bar icon's status item must exist before
+    // SwiftUI builds the hidden menu bar scene, so ours keeps AppKit's `Item-0` (saved position,
+    // visibility, first-run placement).
+    MenuBarStatusItem.reserveAtLaunch()
     sequencer.applicationWillFinishLaunching()
     // #2377 Phase 6: arm the DEBUG marker sink in the callback BEFORE the
     // measured one, and AFTER this callback's own production work.

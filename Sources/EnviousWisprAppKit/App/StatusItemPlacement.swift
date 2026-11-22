@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 
 /// Where the menu bar icon starts on a Mac that has never placed it (#2480).
 ///
@@ -29,5 +29,59 @@ enum StatusItemPlacement {
   static func seedPreferredPositionIfAbsent(in defaults: UserDefaults) {
     guard defaults.object(forKey: preferredPositionKey) == nil else { return }
     defaults.set(firstRunPosition, forKey: preferredPositionKey)
+  }
+}
+
+/// Our menu bar icon's status item, created FIRST at launch so it keeps AppKit's `Item-0`
+/// (#4849).
+///
+/// AppKit names an unnamed status item by creation order (`Item-0`, `Item-1`, ...) and keys its
+/// saved position (`NSStatusItem Preferred Position <name>`) and visibility
+/// (`NSStatusItem VisibleCC <name>`) by that name. Since #4842 the app's first SwiftUI scene is a
+/// never-inserted `MenuBarExtra`, whose own hidden status item SwiftUI creates while it builds the
+/// scenes. Created after it, ours became `Item-1`: it lost the user's saved position and
+/// `StatusItemPlacement`'s seed, and the hidden scene wrote `VisibleCC Item-0 = 0`, which hid the
+/// icon of any older build launched afterwards. `LiveApplication.applicationWillFinishLaunching`
+/// reserves it before anything else, on every launch path (a relocation offer included);
+/// measured on macOS 27, an item created there is `Item-0` and the hidden scene's is `Item-1`.
+@MainActor
+package enum MenuBarStatusItem {
+  private static let reservation = StatusItemReservation<NSStatusItem>()
+
+  /// Creates the status item now (once), after seeding its first-run position.
+  package static func reserveAtLaunch() {
+    reservation.reserve(in: .standard, make: makeItem)
+  }
+
+  /// The reserved item, or a new one when nothing was reserved.
+  static func take() -> NSStatusItem {
+    reservation.take(in: .standard, make: makeItem)
+  }
+
+  private static func makeItem() -> NSStatusItem {
+    NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+  }
+}
+
+/// The reserve-then-take rule, generic so tests use a stand-in instead of putting real items in
+/// the menu bar.
+@MainActor
+final class StatusItemReservation<Item: AnyObject> {
+  private var reserved: Item?
+
+  func reserve(in defaults: UserDefaults, make: () -> Item) {
+    guard reserved == nil else { return }
+    // AppKit reads the position key when the item is created, so seed first.
+    StatusItemPlacement.seedPreferredPositionIfAbsent(in: defaults)
+    reserved = make()
+  }
+
+  func take(in defaults: UserDefaults, make: () -> Item) -> Item {
+    if let item = reserved {
+      reserved = nil
+      return item
+    }
+    StatusItemPlacement.seedPreferredPositionIfAbsent(in: defaults)
+    return make()
   }
 }
