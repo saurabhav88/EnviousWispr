@@ -740,7 +740,10 @@
       await box.gate!.open()
       let busy = await sink.reply(withStatus: "busy")
       #expect(busy["reason"] == "fileInHand")
-      #expect(coordinator.file?.name == "users-own.m4a")
+      // `choose(url:)` reads the file in its own task, so the busy reply can land first (#4714):
+      // wait for the user's file to be the selected one, as part B waits for its ready state.
+      let usersFile = await settleUntilObserved { coordinator.file?.name == "users-own.m4a" }
+      #expect(usersFile, "the user's file is the selected one")
       #expect(!sink.statuses().contains("accepted"))
 
       // B. The user picks a file while the PRE-START probe is open (the door's own file
