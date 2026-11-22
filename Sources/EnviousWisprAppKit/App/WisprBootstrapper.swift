@@ -402,6 +402,9 @@ package final class WisprBootstrapper {
     // #4287: same pattern; the settings sync is built long before the meeting summary owner,
     // and its eviction check must see a summary call that is running on an Ollama model.
     weak var meetingSummariesForEviction: MeetingSummaryOwner?
+    // #3853 (#4360): same pattern; a running meeting final pass keeps the selected summary
+    // model wanted, because it may start a summary on it.
+    weak var meetingCoordinatorForEviction: MeetingCoordinator?
     // #3853: same pattern; the import's frozen polish provider lives on the runner.
     weak var fileImportRunnerForGates: FileImportRunner?
     // GitHub cloud review, PR #1732: captured by `isDictationActive` below,
@@ -1149,6 +1152,19 @@ package final class WisprBootstrapper {
           ?? historyRepolishForGates?.heldRun?.configuration.ollamaModel
       },
       summaryPinnedOllamaModel: { meetingSummariesForEviction?.summaryPinnedOllamaModel },
+      // #3853 (#4360): only summary WORK keeps a summary model wanted, never the setting: each
+      // attempt from its start to its end, plus the selected model while a final pass runs.
+      summaryOllamaDemand: {
+        var demand = meetingSummariesForEviction?.ollamaSummaryDemand ?? []
+        if meetingCoordinatorForEviction?.processing != nil,
+          let selected = OllamaConnector.effectiveOllamaModel(
+            provider: settings.effectiveMeetingSummaryLLMProvider,
+            model: settings.effectiveMeetingSummaryLLMModel)
+        {
+          demand.insert(selected)
+        }
+        return demand
+      },
       outputClassifierHolder: outputClassifierHolder,
       loadOutputClassifier: { [outputClassifierHolder] in
         WisprBootstrapper.prewarmOutputClassifier(holder: outputClassifierHolder)
@@ -3090,7 +3106,12 @@ package final class WisprBootstrapper {
         installedNow: { [weak speechModels] in speechModels?.installedSnapshot(.parakeet) == true }),
       modelUseGate: modelDelivery.controller.meetingModelUseGate,
       isDeliveryEnabled: { [modelDelivery] in modelDelivery.parakeetHandle?.isEnabled() ?? false },
-      workChanged: { [weak engineCoordinator] in engineCoordinator?.poke(.parakeetUpgradeOwed) },
+      // #3853: a final pass ending also rechecks Ollama residency (a Transcribe again starts no
+      // summary, so no summary hook would).
+      workChanged: { [weak engineCoordinator, weak settingsSync, settings] in
+        engineCoordinator?.poke(.parakeetUpgradeOwed)
+        settingsSync?.retryDeferredOllamaEviction(settings: settings)
+      },
       log: { line in
         Task { await AppLogger.shared.log(line, level: .info, category: "Meetings") }
       },
@@ -3361,10 +3382,21 @@ package final class WisprBootstrapper {
     recordingRetentionForSettings = recordingRetention
     recordingRetention?.start()
     meetingSummariesForEviction = meetingCoordinator.summaries
+    meetingCoordinatorForEviction = meetingCoordinator
     // #4287: an eviction deferred while a summary call used its Ollama model runs once the
     // call releases it, as dictation and file import retry theirs on completion.
     meetingCoordinator.summaries?.onOllamaModelReleased = { [weak settingsSync, settings] in
       settingsSync?.retryDeferredOllamaEviction(settings: settings)
+    }
+    // #3853 (#4360): a local summary reaching the queue for an Ollama model owes it an unload; an
+    // attempt ending (finish, failure or cancel) rechecks whether anything still needs it.
+    meetingCoordinator.summaries?.onOllamaSummaryWorkChanged = {
+      [weak settingsSync, settings] model in
+      if let model {
+        settingsSync?.summaryUsedOllamaModel(model, settings: settings)
+      } else {
+        settingsSync?.retryDeferredOllamaEviction(settings: settings)
+      }
     }
     // #4287 PR 3: both live dictation polish steps skip polish while a summary call runs on
     // the same local engine. File import, re-polish and recovery build their own steps and
