@@ -1347,8 +1347,9 @@ def test_main_window(ctx):
     WHEN 'Open EnviousWispr' is triggered via the menu on a closed main window,
     THEN a window titled exactly the app name appears (#4847).
 
-    An already-open main window is closed first so Open is really exercised. The main window
-    is put back as it was found whenever Open works (a missing Open item cannot reopen it)."""
+    An already-open main window is closed first so Open is really exercised. Afterwards the
+    check tries to put the main window back as it was found; that restore is best effort and
+    never changes the verdict (a missing Open item cannot reopen it)."""
     def main_window():
         return find_element(get_ax_app(ctx.pid), role="AXWindow", title=_MAIN_WINDOW_TITLE)
 
