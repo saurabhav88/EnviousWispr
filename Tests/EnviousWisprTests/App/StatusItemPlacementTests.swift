@@ -37,29 +37,42 @@ struct StatusItemPlacementTests {
     #expect(defaults.object(forKey: Self.appKitKey) as? Double == 463)
   }
 
-  /// #4849: the item reserved at the start of launch is the one the menu bar uses, created after
-  /// the first-run seed (AppKit reads the position when the item is created). When this fails,
-  /// the user's icon lands in a new slot: it loses its saved place, or an older build hides it.
+  /// A stand-in for `NSStatusItem`: the rule is the same, and no real item reaches the menu bar.
+  private final class Item {}
+
+  /// #4849: the item reserved at the start of launch is the one the menu bar uses, created once,
+  /// after the first-run seed (AppKit reads the position when the item is created). When this
+  /// fails, the user's icon lands in a new slot: it loses its saved place, or an older build
+  /// hides it.
   @MainActor
   @Test("the launch reservation seeds first, creates once, and hands that item to the menu bar")
   func reservationIsTheMenuBarItem() {
     let defaults = Self.freshSuite()
-    var events: [String] = []
-    let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-    defer { NSStatusBar.system.removeStatusItem(item) }
-    let make: () -> NSStatusItem = {
-      events.append(defaults.object(forKey: Self.appKitKey) == nil ? "make-unseeded" : "make-seeded")
+    let reservation = StatusItemReservation<Item>()
+    var made: [(item: Item, seeded: Bool)] = []
+    let make: () -> Item = {
+      let item = Item()
+      made.append((item, defaults.object(forKey: Self.appKitKey) != nil))
       return item
     }
-    MenuBarStatusItem.reserve(in: defaults, make: make)
-    MenuBarStatusItem.reserve(in: defaults, make: make)  // a second reservation creates nothing
-    #expect(events == ["make-seeded"])
-    #expect(MenuBarStatusItem.take(in: defaults, make: make) === item)
-    // Nothing reserved any more: a later take creates its own.
-    var made = 0
-    let other = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-    defer { NSStatusBar.system.removeStatusItem(other) }
-    #expect(MenuBarStatusItem.take(in: defaults, make: { made += 1; return other }) === other)
-    #expect(made == 1)
+    reservation.reserve(in: defaults, make: make)
+    reservation.reserve(in: defaults, make: make)  // a second reservation creates nothing
+    let taken = reservation.take(in: defaults, make: make)
+    #expect(made.count == 1)
+    #expect(made.first?.seeded == true)
+    #expect(made.first?.item === taken)
+  }
+
+  @MainActor
+  @Test("with nothing reserved, the menu bar creates its own item, still after the seed")
+  func takeWithoutReservationSeedsFirst() {
+    let defaults = Self.freshSuite()
+    let reservation = StatusItemReservation<Item>()
+    var seededAtMake: [Bool] = []
+    _ = reservation.take(in: defaults) {
+      seededAtMake.append(defaults.object(forKey: Self.appKitKey) != nil)
+      return Item()
+    }
+    #expect(seededAtMake == [true])
   }
 }

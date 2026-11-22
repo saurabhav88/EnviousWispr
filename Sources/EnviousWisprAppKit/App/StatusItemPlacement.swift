@@ -46,31 +46,37 @@ enum StatusItemPlacement {
 /// measured on macOS 27, an item created there is `Item-0` and the hidden scene's is `Item-1`.
 @MainActor
 package enum MenuBarStatusItem {
-  private static var reserved: NSStatusItem?
+  private static let reservation = StatusItemReservation<NSStatusItem>()
 
   /// Creates the status item now (once), after seeding its first-run position.
   package static func reserveAtLaunch() {
-    reserve(in: .standard, make: makeItem)
+    reservation.reserve(in: .standard, make: makeItem)
   }
 
   /// The reserved item, or a new one when nothing was reserved.
   static func take() -> NSStatusItem {
-    take(in: .standard, make: makeItem)
+    reservation.take(in: .standard, make: makeItem)
   }
 
   private static func makeItem() -> NSStatusItem {
     NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
   }
+}
 
-  /// Seam for tests, which must not put real items in the menu bar.
-  static func reserve(in defaults: UserDefaults, make: () -> NSStatusItem) {
+/// The reserve-then-take rule, generic so tests use a stand-in instead of putting real items in
+/// the menu bar.
+@MainActor
+final class StatusItemReservation<Item: AnyObject> {
+  private var reserved: Item?
+
+  func reserve(in defaults: UserDefaults, make: () -> Item) {
     guard reserved == nil else { return }
     // AppKit reads the position key when the item is created, so seed first.
     StatusItemPlacement.seedPreferredPositionIfAbsent(in: defaults)
     reserved = make()
   }
 
-  static func take(in defaults: UserDefaults, make: () -> NSStatusItem) -> NSStatusItem {
+  func take(in defaults: UserDefaults, make: () -> Item) -> Item {
     if let item = reserved {
       reserved = nil
       return item
