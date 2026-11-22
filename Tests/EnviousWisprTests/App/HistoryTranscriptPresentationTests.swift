@@ -333,6 +333,51 @@ struct HistoryTranscriptPresentationTests {
     }
   }
 
+  @Test("Show in Finder is offered only while the original plays, on card, page and window (#4799)")
+  func showInFinderOffering() throws {
+    let sources = FakeSources()
+    let id = UUID()
+    // The card's line is verified availability; the page's needs an opened player. Both reach
+    // this rule through `sourceLine(state:playable:)`.
+    let file = URL(filePath: "/tmp/call.m4a")
+    let available = ImportedSourceState.available(
+      ResolvedImportedSource(
+        rowID: id, reference: ImportedSourceReference(bookmark: Data(), fingerprint: nil),
+        url: file, identity: ImportedSourceIdentity(byteCount: 1, durationMs: 1, digest: "a")))
+    let plays = P.sourceLine(state: available, playable: true)
+    let item = try #require(P.showInFinderItem(rowID: id, line: plays, sources: sources))
+    #expect(item.id == "show-in-finder")
+    #expect(item.systemImage == "folder")
+    #expect(item.title == P.showInFinderLabel)
+    // A page whose player did not open does not offer it.
+    #expect(
+      P.showInFinderItem(
+        rowID: id, line: P.sourceLine(state: available, playable: false), sources: sources)
+        == nil)
+    for state: ImportedSourceState in [
+      .missing, .changed, .unreadable, .unverifiable(file), .unsupportedIdentity, .removed,
+    ] {
+      #expect(
+        P.showInFinderItem(
+          rowID: id, line: P.sourceLine(state: state, playable: false), sources: sources)
+          == nil)
+    }
+    #expect(P.showInFinderItem(rowID: id, line: .checking, sources: sources) == nil)
+  }
+
+  @Test("Show in Finder reveals nothing and says nothing when the fresh look finds no original (#4799)")
+  func showInFinderMissing() async {
+    let sources = FakeSources()
+    sources.answer = .missing
+    var revealed: [URL] = []
+    let shown = await P.showOriginalInFinder(
+      rowID: UUID(), sources: sources, reveal: { revealed.append($0) })
+    #expect(shown == false)
+    #expect(revealed.isEmpty)
+    #expect(sources.freshLookups == 1)
+    #expect(sources.lookups == 0, "never the cached answer")
+  }
+
   @Test("the card looks up the original when it appears and again when the owner bumps the row")
   func cardLookup() async throws {
     try await withCoordinator { coordinator in
@@ -386,6 +431,11 @@ struct HistoryTranscriptPresentationTests {
     func revision(for rowID: UUID) -> Int { revisions[rowID, default: 0] }
     func state(for rowID: UUID) async -> ImportedSourceState {
       lookups += 1
+      return answer
+    }
+    private(set) var freshLookups = 0
+    func freshState(for rowID: UUID) async -> ImportedSourceState {
+      freshLookups += 1
       return answer
     }
     func playbackSource(for rowID: UUID) async throws -> ImportedPlaybackSource? {

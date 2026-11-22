@@ -165,6 +165,31 @@ final class ImportedSources: ImportedSourceAccessing {
     return coordinator.currentRow(id: rowID) == nil ? removed(rowID) : last
   }
 
+  /// #4799: Show in Finder's look at the disk, now. Never the cached answer: the same
+  /// identity lookup and fences as `state(for:)`, retried once when the row changed under it,
+  /// then refused (`.missing`, not cached). A result is cached for this row only, so its views
+  /// redraw (Audio unavailable, Locate original) and no other row moves. A stale bookmark's
+  /// repair is not waited for: its cached answer is dropped (this row only), so the views' next
+  /// `state(for:)` takes the existing repair path, which never interrupts playback.
+  func freshState(for rowID: UUID) async -> ImportedSourceState {
+    for _ in 0..<2 {
+      guard let row = coordinator.currentRow(id: rowID) else { return removed(rowID) }
+      guard row.isImported else { return .missing }
+      let reference = ImportedSourceReference(row)
+      let fence = currentFence(rowID)
+      lookupsStarted += 1
+      let result = await Self.lookup(rowID: rowID, reference: reference, io: io)
+      guard isUnchanged(rowID, reference: reference, fence: fence) else { continue }
+      if result.refreshedBookmark == nil {
+        store(rowID, reference: reference, state: result.state)
+      } else if cache.removeValue(forKey: rowID) != nil {
+        generations[rowID, default: 0] &+= 1
+      }
+      return result.state
+    }
+    return coordinator.currentRow(id: rowID) == nil ? removed(rowID) : .missing
+  }
+
   func playbackSource(for rowID: UUID) async throws -> ImportedPlaybackSource? {
     guard let row = coordinator.currentRow(id: rowID) else {
       _ = removed(rowID)

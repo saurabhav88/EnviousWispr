@@ -178,6 +178,29 @@ struct ImportedSourcesTests {
     #expect(resolved.reference == ImportedSourceReference(stored))
   }
 
+  @Test("Show in Finder reveals an original whose link went stale, and the link is still repaired (#4799)")
+  func showInFinderLeavesStaleRepairToState() async throws {
+    let rig = try makeRig()
+    let file = try ImportedMediaFixture.write(.wav16kMono, seconds: 1, in: rig.dir)
+    let row = try await importRow(linkedTo: file, rig: rig)
+    // Cached while the link was fine; then the link goes stale.
+    #expect(url(of: await rig.sources.state(for: row.id)) != nil)
+    rig.probe.staleResolutions = true
+    let revision = rig.sources.revision(for: row.id)
+
+    let fresh = await rig.sources.freshState(for: row.id)
+    #expect(url(of: fresh)?.standardizedFileURL.path == file.standardizedFileURL.path)
+    #expect(rig.arbiter.deletionCount(for: .transcript(row.id)) == 0, "Finder did not wait for repair")
+    #expect(rig.sources.revision(for: row.id) != revision, "the row's views look again")
+
+    // The views' next look takes the existing repair path.
+    guard case .available = await rig.sources.state(for: row.id) else {
+      Issue.record("expected available")
+      return
+    }
+    #expect(rig.arbiter.deletionCount(for: .transcript(row.id)) == 1, "the link was repaired")
+  }
+
   @Test("a stale link to a DIFFERENT file is never refreshed and reads as changed")
   func staleButDifferentNotRefreshed() async throws {
     let rig = try makeRig()
@@ -213,6 +236,67 @@ struct ImportedSourcesTests {
     try ImportedMediaFixture.write(.wav16kMono, seconds: 2, in: rig.dir, seed: 5)
     #expect(await rig.sources.state(for: row.id) == .changed)
     #expect(try await rig.sources.playbackSource(for: row.id) == nil)
+  }
+
+  @Test("Show in Finder reveals a verified original, looked up on the disk, not the cache (#4799)")
+  func showInFinderRevealsVerifiedOriginal() async throws {
+    let rig = try makeRig()
+    let file = try ImportedMediaFixture.write(.wav16kMono, seconds: 1, in: rig.dir)
+    let row = try await importRow(linkedTo: file, rig: rig)
+    _ = await rig.sources.state(for: row.id)
+    #expect(rig.sources.lookupsStarted == 1)
+
+    var revealed: [URL] = []
+    let shown = await HistoryTranscriptPresentation.showOriginalInFinder(
+      rowID: row.id, sources: rig.sources, reveal: { revealed.append($0) })
+
+    #expect(shown)
+    #expect(revealed.map(\.standardizedFileURL.path) == [file.standardizedFileURL.path])
+    #expect(rig.sources.lookupsStarted == 2, "a fresh disk lookup, not the cached answer")
+  }
+
+  @Test("Show in Finder never reveals a different recording put at the original's place (#4799)")
+  func showInFinderRefusesReplacedOriginal() async throws {
+    let rig = try makeRig()
+    let file = try ImportedMediaFixture.write(.wav16kMono, seconds: 2, in: rig.dir)
+    let row = try await importRow(linkedTo: file, rig: rig)
+    // Cached as available, then replaced in place.
+    #expect(url(of: await rig.sources.state(for: row.id)) != nil)
+    let revision = rig.sources.revision(for: row.id)
+    try ImportedMediaFixture.write(.wav16kMono, seconds: 2, in: rig.dir, seed: 5)
+
+    var revealed: [URL] = []
+    let shown = await HistoryTranscriptPresentation.showOriginalInFinder(
+      rowID: row.id, sources: rig.sources, reveal: { revealed.append($0) })
+
+    #expect(shown == false)
+    #expect(revealed.isEmpty)
+    // That row's cached answer is now changed, so its views redraw with Locate original.
+    #expect(await rig.sources.state(for: row.id) == .changed)
+    #expect(rig.sources.revision(for: row.id) != revision)
+  }
+
+  @Test("Show in Finder's lookup overtaken by a change of the row looks again once (#4799)")
+  func showInFinderRetriesOnce() async throws {
+    let rig = try makeRig()
+    let first = try ImportedMediaFixture.write(.wav16kMono, seconds: 1, in: rig.dir, name: "first")
+    let row = try await importRow(linkedTo: first, rig: rig)
+    let moved = rig.dir.appendingPathComponent("moved-first.wav")
+    rig.probe.holdOnCall = 1
+    async let state = rig.sources.freshState(for: row.id)
+    await eventually("lookup held") { rig.probe.held }
+    // Meanwhile the row is relinked to a copy elsewhere (same recording, new bookmark).
+    try FileManager.default.copyItem(at: first, to: moved)
+    let fresh = try ImportedSourceIO.live.makeBookmark(moved)
+    #expect(
+      try await rig.coordinator.setImportedSource(
+        bookmark: fresh, fingerprint: row.sourceFingerprint, for: row.id,
+        expected: ImportedSourceReference(row), confirmedLegacy: false))
+    rig.probe.release()
+    #expect(
+      url(of: await state)?.standardizedFileURL.path == moved.standardizedFileURL.path,
+      "answered for the current link")
+    #expect(rig.probe.identityCalls == 2, "looked again once")
   }
 
   @Test("an original that is there but cannot be read reads unreadable")
