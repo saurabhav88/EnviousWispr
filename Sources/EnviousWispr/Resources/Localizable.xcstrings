@@ -6055,7 +6055,7 @@
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aproximadamente 2×"
+            "value" : "Aprox. 2×"
           }
         }
       }
@@ -15677,7 +15677,7 @@
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Cerrar la Configuración. Las descargas continuarán en la barra de menús."
+            "value" : "Cerrar. Las descargas siguen en la barra de menús."
           }
         }
       }
@@ -45386,7 +45386,7 @@
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Recomendado · mejores resultados"
+            "value" : "Recomendado · óptimo"
           }
         }
       }
