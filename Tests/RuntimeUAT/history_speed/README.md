@@ -75,6 +75,18 @@ they report only whether the banner was seen and its first-seen ms after spawn. 
 not read until 8 s after spawn, or the expectation does not hold, and `--samples` must be at least 1. The
 banner jump itself is #4667. Its report is excluded from `summarize_baseline.py`.
 
+## Other page movers (#4784)
+
+- Every run starts a fresh throwaway profile, whose first launch would offer the recordings tour card
+  (#4791) above History. Every launch passes the app's own `recordingDisclosureAcknowledged=YES` as a
+  launch argument (nothing written), so no launch shows the card.
+- The app withdraws the catalog certificate while its launch re-check runs. A launch stopped before the
+  re-check certifies again leaves the next launch uncertified, and that launch truthfully shows
+  "Updating History…" (29 pt) above the list. `m5-speed-open.py --mode existing` therefore starts each
+  launch only on a certified catalog, waits for a NEW certificate token before stopping it, runs one
+  untimed preparation launch when the run starts uncertified, and stops the run (never PASS) when a check
+  fails.
+
 ## Controls (each driver shown able to fail)
 
 - Search: offline `search_test.py` (a prefix page is `incomplete`, containment is not a match, wrong

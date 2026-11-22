@@ -256,6 +256,7 @@ def _plist_identity(app: Path) -> str | None:
 
 
 STORAGE_WARNING_KEY = "recordingStorageWarningThreshold"
+TOUR_SEEN_KEY = "recordingDisclosureAcknowledged"   # SettingsManager; gates the recordings tour offer
 
 
 def launch_plan(app: Path, home: Path, base_env: dict[str, str] | None = None, *,
@@ -278,8 +279,11 @@ def launch_plan(app: Path, home: Path, base_env: dict[str, str] | None = None, *
     env = dict(os.environ if base_env is None else base_env)
     env["HOME"] = str(home)
     env["CFFIXED_USER_HOME"] = str(home)
+    # Every run starts a fresh throwaway profile, so its first launch would offer the recordings tour
+    # card (#4791) above History and move the page (#4784). The app's own "already seen" setting is
+    # passed in the launch arguments, so it lives only for this process and writes no preference.
     argv = ("/usr/bin/sandbox-exec", "-f", str(profile), str(executable),
-            "-onboardingState", "completed")
+            "-onboardingState", "completed", f"-{TOUR_SEEN_KEY}", "YES")
     if not storage_warning:
         # The fixture holds ~2.15 GB of recordings, over the default 2 GB storage warning threshold:
         # the "Recordings use about 2.15 GB" banner appears 2.4-3.9 s after launch and pushes the whole
