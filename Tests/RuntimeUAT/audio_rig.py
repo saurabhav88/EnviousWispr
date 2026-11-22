@@ -310,11 +310,16 @@ class AudioRig:
             print("RIG: the take was cancelled through the app's control door", flush=True)
         except (Exception, SystemExit) as exc:  # nothing to cancel, or the door is unavailable
             print(f"RIG: cancel through the control door did not run: {exc!r}", flush=True)
-        try:
-            return bool(w._recording_idle(seconds=10.0))
-        except (Exception, SystemExit) as exc:
-            print(f"RIG: idle check after the cancel raised {exc!r}", flush=True)
-            return False
+        # Only the app's own state confirms a cancel: its menu shows a disabled Start Recording while
+        # it loads, transcribes or polishes, so a menu read cannot prove the take ended.
+        deadline = time.monotonic() + 10.0
+        while time.monotonic() < deadline:
+            state = w._driver_state(timeout=max(0.2, min(2.0, deadline - time.monotonic())))
+            if state is not None and state not in w._DRIVER_ACTIVE_STATES and time.monotonic() <= deadline:
+                return True
+            time.sleep(0.3)
+        print("RIG: the app's own state did not confirm the cancelled take ended", flush=True)
+        return False
 
     def __exit__(self, exc_type, exc, tb):
         if self._restore_all():

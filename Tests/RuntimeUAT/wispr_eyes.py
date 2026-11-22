@@ -653,7 +653,7 @@ def _recording_idle(seconds=30.0):
         if state is not None:
             if state not in _DRIVER_ACTIVE_STATES:
                 return True
-        elif menu_idle():
+        elif menu_idle() and time.monotonic() <= deadline:  # a late menu answer is unconfirmed
             return True
         if time.monotonic() >= deadline:
             return False
