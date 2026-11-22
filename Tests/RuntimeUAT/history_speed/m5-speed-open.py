@@ -17,7 +17,12 @@ Per sample:
    (`search_frames.reference_from_frames`); the endpoint is the FIRST captured frame after the spawn
    that shows it. `launch_to_page_ms` = endpoint - spawn (headline). If the first frame captured
    after the spawn already shows it, the endpoint is an upper bound (`capture_late`).
-6. Stop the subject (TERM, re-verified pid).
+6. Stop the subject (TERM, re-verified pid). In `existing` mode, first wait until the catalog holds a
+   certificate token different from the one read before the spawn (the app withdraws the certificate
+   while its launch re-check runs; stopping earlier leaves the next launch uncertified, and it shows
+   "Updating History…" above the list, #4784). Each existing launch also requires a certified catalog
+   before it spawns, and an untimed preparation launch certifies it when the run starts without one.
+   A failed check stops the run: later attempts are `invalid` unspawned and the verdict is never PASS.
 
 The window opens where AppKit restored it; every measured sample checks that the list rectangle
 equals the warm-up one, or the sample is invalid. Every attempted sample is kept: a sample with no
@@ -133,17 +138,31 @@ def main():
         answer_rows = answer_rows[:1] + answer_rows[2:]
     answer = check.expected_tokens(answer_rows)
 
-    def coverage_complete():
+    def coverage_revision():
+        """The catalog's persisted certificate token, or None when it holds none or cannot be read.
+        Every certifying pass writes a fresh UUID and an uncertified batch writes NULL (#4784), so a
+        token proves only what the file held when read, not which pass wrote it."""
         import sqlite3
         db = fixture.catalog_dir(home) / "history.sqlite"
         if not db.is_file():
-            return False
+            return None
         try:
             with sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=1) as con:
-                row = con.execute("select revision from coverage where revision is not null and revision != ''").fetchone()
-            return row is not None
+                row = con.execute("select revision from coverage where id = 0").fetchone()
         except sqlite3.Error:
-            return False
+            return None
+        return row[0] if row and row[0] else None
+
+    def coverage_complete():
+        return coverage_revision() is not None
+
+    # #4784: existing-catalog launches start on a certified catalog and are stopped only after a NEW
+    # certificate token is seen. The app withdraws the certificate while its launch re-check runs; a
+    # stop before the re-check certifies again leaves the next launch uncertified, and that launch
+    # truthfully shows "Updating History…" above the list (29 pt), voiding the sample. The first
+    # failed check latches: no later launch spawns and the verdict cannot be PASS.
+    existing = mode == "existing" and not banner_mode
+    latched = []
 
     def start_recorder(path, rect):
         recorder = subprocess.Popen([str(recorder_bin), "--display-rect", rect, "--seconds", str(int(PAGE_DEADLINE_S + 60)),
@@ -170,9 +189,21 @@ def main():
                                   lambda: time.sleep(0.1),  # deadline-fallback: paced read inside the banner watch window
                                   BANNER_WATCH_S * 1000)
 
-    def one_launch(index, rect, measured):
-        """One launch; returns a sample record. `rect` is the capture rectangle or None (warm-up)."""
+    def one_launch(index, rect, measured, prepare=False):
+        """One launch; returns a sample record. `rect` is the capture rectangle or None (warm-up).
+        `prepare`: an untimed existing-mode launch that only lets the app certify the catalog."""
         sample = {"index": index, "measured": measured, "conditions": load_tools.machine_conditions()}
+        before = None
+        if existing:
+            if latched:
+                sample.update(result="invalid", reason="run stopped: launch re-check not confirmed")
+                return sample
+            before = coverage_revision()
+            sample["coverage_before"] = before is not None
+            if before is None and not prepare:
+                latched.append(f"launch {index}: catalog not certified before launch")
+                sample.update(result="invalid", reason="catalog not certified before launch")
+                return sample
         if mode == "missing":
             sample["catalog_deleted"] = fixture.reset_catalog(home)
         frames_path = out / f"open-{index}.jsonl"
@@ -182,6 +213,9 @@ def main():
             pid = fixture.launch(subject, home, out / "app.log", storage_warning=storage_warning)
             spawned = fixture.LAST_SPAWN_AT
             sample["pid"] = pid
+            if prepare:
+                sample["result"] = "prepared"
+                return sample
             window, window_at = None, None
             deadline = time.monotonic() + WINDOW_DEADLINE_S
             while time.monotonic() < deadline and window is None:
@@ -236,15 +270,8 @@ def main():
             sample["list_rect"] = f"{int(a['x'])},{int(a['y'])},{int(a['width'] - SCROLL_BAR)},{int(a['height'])}"
             sample["window_frame"] = w
             if recorder is None:
-                if mode == "existing":
-                    # Untimed: the existing-catalog samples need a COMPLETE catalog, and an earlier
-                    # missing-catalog sample may have stopped right after its first page (Codex round 6).
-                    deadline = time.monotonic() + COVERAGE_DEADLINE_S
-                    while time.monotonic() < deadline and not coverage_complete():
-                        time.sleep(1)  # deadline-fallback: poll the catalog's coverage signal
-                    sample["coverage_complete"] = coverage_complete()
-                    if not sample["coverage_complete"]:
-                        raise RuntimeError("the catalog never reached full coverage before existing-catalog samples")
+                # Existing mode: the complete catalog this warm-up needs was checked before it
+                # launched, and its own re-check is waited for before it stops (#4784).
                 sample.update(result="warmup")
                 return sample
             header, frames = stop_recorder(recorder, frames_path)
@@ -273,11 +300,31 @@ def main():
             sample["result"] = "timed"
             return sample
         finally:
-            if recorder is not None:
-                recorder.kill()
-                recorder.wait()
-            if pid is not None:
-                fixture.stop(pid, executable)
+            clean = sys.exc_info()[0] is None   # an error stops the app at once, with no wait
+            try:
+                if recorder is not None:
+                    recorder.kill()
+                    recorder.wait()
+                if pid is not None and existing and clean:
+                    started = time.monotonic()
+                    seen = False
+                    while time.monotonic() - started < COVERAGE_DEADLINE_S:
+                        token = coverage_revision()
+                        if token is not None and token != before:
+                            seen = True
+                            break
+                        time.sleep(0.25)  # deadline-fallback: paced read of the catalog's certificate token
+                    sample["fresh_certificate_seen"] = seen
+                    sample["stop_wait_s"] = round(time.monotonic() - started, 2)
+            finally:
+                if pid is not None:
+                    fixture.stop(pid, executable)
+                    if existing and clean:
+                        sample["coverage_at_stop"] = coverage_complete()
+                        if not (sample.get("fresh_certificate_seen") and sample["coverage_at_stop"]) and not latched:
+                            latched.append(f"launch {index}: launch re-check not confirmed (fresh token seen "
+                                           f"{sample.get('fresh_certificate_seen')}, token after stop "
+                                           f"{sample['coverage_at_stop']})")
 
     # ------------------------------------------------------------------ session
     fixture._default_owner_check()
@@ -322,12 +369,19 @@ def main():
         if busy:
             busy.__enter__()
         rect = None
+        if existing and not coverage_complete():
+            # Untimed: the existing-catalog samples need a COMPLETE catalog, and an earlier
+            # missing-catalog sample may have stopped right after its first page (Codex round 6).
+            # One launch certifies it before any warm-up takes the capture rectangle (#4784).
+            report["preparation"] = one_launch(-1, None, False, prepare=True)
+            print(json.dumps({k: report["preparation"].get(k) for k in
+                              ("index", "result", "fresh_certificate_seen", "stop_wait_s")}), flush=True)
         for index in range(0 if banner_mode else warmups):
             sample = one_launch(index, None, False)
             report["samples"].append(sample)
             rect = sample.get("list_rect", rect)
             print(json.dumps({k: sample.get(k) for k in ("index", "result", "list_rect", "ax_confirm_ms")}), flush=True)
-        if rect is None and not banner_mode:
+        if rect is None and not banner_mode and not latched:
             raise RuntimeError("warm-up never showed the page; cannot place the capture")
         report["capture_rect"] = rect
         for index in range(0 if banner_mode else warmups, samples if banner_mode else warmups + samples):
@@ -385,6 +439,11 @@ def main():
         verdict = "PASS"
     else:
         verdict = "UNPROVEN"
+    if latched:   # #4784: a run whose catalog checks failed is never a PASS, even with timed samples
+        report["run_stopped"] = latched[0]
+        problems.append(f"run stopped: {latched[0]}")
+        if verdict == "PASS":
+            verdict = "UNPROVEN"
     report["budget_verdict"] = verdict
     report["conditions_end"] = load_tools.machine_conditions()
     report["problems"] = problems
