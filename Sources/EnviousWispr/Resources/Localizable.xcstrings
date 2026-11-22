@@ -2313,16 +2313,16 @@
         "fr" : {
           "variations" : {
             "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld réglage trouvé"
-                }
-              },
               "many" : {
                 "stringUnit" : {
                   "state" : "translated",
                   "value" : "%lld réglages trouvés"
+                }
+              },
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld réglage trouvé"
                 }
               },
               "other" : {
@@ -16856,6 +16856,23 @@
         }
       }
     },
+    "EnviousWispr couldn't save the audio." : {
+      "comment" : "History Save audio alert: saving the audio failed.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr konnte die Aufnahme nicht sichern."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr n’a pas pu enregistrer le fichier audio."
+          }
+        }
+      }
+    },
     "EnviousWispr couldn’t open this recording. Try sharing it again." : {
       "localizations" : {
         "de" : {
@@ -30839,6 +30856,23 @@
         }
       }
     },
+    "Part of this recording couldn't be read, so it is silent in the saved file." : {
+      "comment" : "History Save audio alert after saving: some recorded audio could not be read.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Teil dieser Aufnahme konnte nicht gelesen werden. In der gesicherten Datei ist an dieser Stelle deshalb nichts zu hören."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Une partie de cet enregistrement n’a pas pu être lue ; le passage correspondant ne contient donc aucun son dans le fichier enregistré."
+          }
+        }
+      }
+    },
     "Pashto" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -35848,6 +35882,23 @@
         }
       }
     },
+    "Save audio…" : {
+      "comment" : "History More menu: saves this item's recording as an audio file.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Audio sichern…"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enregistrer l’audio…"
+          }
+        }
+      }
+    },
     "Save cleaned as…" : {
       "comment" : "Export button: save the cleaned text to a file (Marked Up view).",
       "localizations" : {
@@ -36081,6 +36132,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sauvegarde de l’enregistrement de la réunion"
+          }
+        }
+      }
+    },
+    "Saving audio…" : {
+      "comment" : "History More menu, disabled: this item's recording is being saved as a file.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Audio wird gesichert…"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enregistrement de l’audio…"
           }
         }
       }
@@ -37516,7 +37584,7 @@
       }
     },
     "Show in Finder" : {
-      "comment" : "Move to Applications result: opens Finder at the moved app.",
+      "comment" : "History transcript, More menu: shows the original audio or video file in Finder.\nMove to Applications result: opens Finder at the moved app.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -42040,6 +42108,23 @@
         }
       }
     },
+    "The file you chose to replace changed. Save again." : {
+      "comment" : "History Save audio alert: the existing file the user chose to replace was changed by something else.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Datei, die du ersetzen wolltest, wurde geändert. Sichere die Aufnahme erneut."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le fichier que vous avez choisi de remplacer a été modifié. Enregistrez à nouveau."
+          }
+        }
+      }
+    },
     "The import didn't finish. Select the file again to retry." : {
       "comment" : "Transcribe a File: why the file was refused.",
       "localizations" : {
@@ -42548,6 +42633,23 @@
         }
       }
     },
+    "The recording changed while saving. Try again." : {
+      "comment" : "History Save audio alert: the recording was rebuilt while it was being saved.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Aufnahme wurde beim Sichern geändert. Versuche es erneut."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L’enregistrement a été modifié pendant l’écriture du fichier. Réessayez."
+          }
+        }
+      }
+    },
     "The recording couldn't be deleted. Try again." : {
       "comment" : "History meeting: Delete recording, keep text failed.",
       "localizations" : {
@@ -42612,6 +42714,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "L’enregistrement a été interrompu prématurément. La partie enregistrée est conservée et sera transcrite."
+          }
+        }
+      }
+    },
+    "The recording was deleted before it finished saving." : {
+      "comment" : "History Save audio alert: the recording was deleted while it was being saved.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Aufnahme wurde gelöscht, bevor das Sichern abgeschlossen war."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L’enregistrement a été supprimé avant que le fichier soit entièrement enregistré."
           }
         }
       }
@@ -43809,6 +43928,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Cette option de retouche ne peut pas vérifier les mots appris."
+          }
+        }
+      }
+    },
+    "This recording is no longer available." : {
+      "comment" : "History Save audio alert: the recording was removed before saving started.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Aufnahme ist nicht mehr verfügbar."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cet enregistrement n’est plus disponible."
           }
         }
       }

@@ -284,6 +284,10 @@ struct HistoryTranscriptCard: View {
           openWindow(id: TranscriptWindowIdentity.sceneID, value: rowID)
         })
     ]
+    // #4799: the user's own original, checked again on the disk at the press.
+    if let show = P.showInFinderItem(rowID: rowID, line: sourceLine, sources: sources) {
+      items.append(show)
+    }
     if P.offersLocate(sourceLine) {
       items.append(
         .init(

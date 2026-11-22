@@ -573,6 +573,10 @@ final class MeetingCoordinator {
   /// Meetings whose Delete audio is under way, from its guard until its files are gone (#3994):
   /// claimed synchronously, so no pass can start on audio that is being removed.
   private var removingAudio: Set<UUID> = []
+  /// #4799: whether History's Save audio is mixing this meeting's audio now. Retention skips
+  /// such a meeting (the next sweep takes it); the user's own deletions still win. Set by the
+  /// composition root; the default exports nothing.
+  var isExportingAudio: @MainActor (UUID) -> Bool = { _ in false }
   private var startGeneration = 0
   /// Meetings an explicit Transcribe again queued while a drain ran (#4008): each gets one more
   /// opportunity in that drain. Emptied at every selection and when the drain starts and ends.
@@ -805,6 +809,31 @@ final class MeetingCoordinator {
     case .idle, .starting: break
     }
     return MeetingPlaybackSource(record: record, folder: deps.store.folder(for: meetingID))
+  }
+
+  /// #4799: what History's Save audio may mix for this meeting now, or nil. Stricter than
+  /// `playbackSource`: also nil while any deletion is intended (History Delete All marks the
+  /// live copy before the saved record changes), while the meeting is active (its pass, which
+  /// can rebuild the inventory, Delete audio, deletion, a start or a failed-start recovery),
+  /// while the launch or restored-meeting scan runs, and when there is nothing to save. One rule
+  /// for the card's and the page's menus, and the commit check compares it for equality.
+  func audioExportSnapshot(meetingID: UUID) -> MeetingAudioExportSnapshot? {
+    guard playbackSource(meetingID: meetingID) != nil, let record = records[meetingID],
+      live[meetingID]?.deletionRequested != true, !isActive(meetingID), launchTask == nil,
+      record.recordedDurationMs > 0, record.segments.values.contains(where: { !$0.isEmpty })
+    else { return nil }
+    return MeetingAudioExportSnapshot(
+      meetingID: meetingID, folder: deps.store.folder(for: meetingID), segments: record.segments,
+      durationMs: record.recordedDurationMs)
+  }
+
+  /// #4799: whether this meeting's audio is gone or going, from the owner's live state (a
+  /// deletion or Delete All mark, Delete audio, a deletion in progress), so Save audio says
+  /// "deleted" even before the saved record changes.
+  func isAudioRemovalUnderway(meetingID: UUID) -> Bool {
+    guard let record = live[meetingID] else { return true }
+    return record.deletionRequested || !record.audioKept || removingAudio.contains(meetingID)
+      || deleting.contains(meetingID)
   }
 
   /// #4013 r3 F3: the participant list saved with the meeting, for the rename suggestions.
@@ -2456,7 +2485,7 @@ final class MeetingCoordinator {
   ) async -> AudioRetentionOutcome {
     guard let record = live[meetingID], isRetentionEligible(record),
       let endedAt = record.endedAt, stillEligible(endedAt),
-      playbackArbiter?.isPlaying(.meeting(meetingID)) != true
+      playbackArbiter?.isPlaying(.meeting(meetingID)) != true, !isExportingAudio(meetingID)
     else { return .skipped }
     return await deleteAudio(meetingID: meetingID) ? .removed : .failed
   }
@@ -3278,6 +3307,23 @@ final class MeetingCoordinator {
       return .abstained(surface: nil, outcome: .unavailable)
     case .absent:
       return .abstained(surface: nil, outcome: record.callApp == nil ? nil : .unavailable)
+    }
+  }
+}
+
+/// #4799: one meeting's saved audio inventory, frozen when History's Save audio was admitted.
+/// Equal only when every track lists the same files with the same starts and frame counts and
+/// the length is the same, so a recovery that rewrote the inventory is seen at commit.
+struct MeetingAudioExportSnapshot: Sendable, Equatable {
+  let meetingID: UUID
+  let folder: URL
+  let segments: [MeetingTrackKind: [MeetingSegmentInfo]]
+  let durationMs: Int
+
+  /// The files to mix, as playback reads them.
+  var trackFiles: MeetingPlaybackController.TrackFiles {
+    segments.mapValues { list in
+      list.map { (url: folder.appendingPathComponent($0.fileName), startMs: $0.startMs) }
     }
   }
 }

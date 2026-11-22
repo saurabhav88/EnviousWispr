@@ -153,4 +153,103 @@ struct SpeechAudioEncoderTests {
     await #expect(throws: CancellationError.self) { try await task.value }
     #expect(!FileManager.default.fileExists(atPath: destination.path))
   }
+
+  /// The windowed source's sample at timeline position `i`, computed from the index alone.
+  private static func windowedValue(_ i: Int64) -> Float {
+    Float(sin(Double(i) * 2 * .pi * 300 / 16_000)) * 0.25
+  }
+
+  @Test("a long source fed window by window becomes one AAC file of the full length (#4799)")
+  func encodesWindows() throws {
+    let dir = try folder()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let destination = dir.appendingPathComponent("meeting.m4a")
+    let chunk = Int64(SpeechAudioEncoder.chunkFrames)
+    let frames = chunk * 2 + 1_234
+    var requests: [(Int64, Int)] = []
+
+    let output = try SpeechAudioEncoder.encode(frames: frames, purpose: .meeting, to: destination) {
+      offset, count in
+      requests.append((offset, count))
+      return (0..<Int64(count)).map { Self.windowedValue(offset + $0) }
+    }
+
+    // Contiguous windows, the last one partial.
+    #expect(requests.map(\.0) == [0, chunk, chunk * 2])
+    #expect(requests.map(\.1) == [Int(chunk), Int(chunk), 1_234])
+    #expect(abs(output.frames - frames) <= SpeechAudioEncoder.durationToleranceFrames)
+    let file = try AVAudioFile(forReading: destination)
+    #expect(file.fileFormat.streamDescription.pointee.mFormatID == kAudioFormatMPEG4AAC)
+    #expect(file.fileFormat.sampleRate == 16_000)
+    #expect(file.fileFormat.channelCount == 1)
+    // The saved file itself decodes to the full length (50 ms = 800 frames), independent of
+    // what the encoder reports.
+    let buffer = try #require(
+      AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: 65_536))
+    var decoded: Int64 = 0
+    while file.framePosition < file.length {
+      try file.read(into: buffer, frameCount: 65_536)
+      if buffer.frameLength == 0 { break }
+      decoded += Int64(buffer.frameLength)
+    }
+    #expect(abs(decoded - frames) <= 800)
+  }
+
+  @Test("a window read that returns the wrong count fails and leaves no file (#4799)")
+  func shortWindowLeavesNothing() throws {
+    let dir = try folder()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let destination = dir.appendingPathComponent("short.m4a")
+
+    #expect(throws: SpeechAudioEncoder.Failure.encodeFailed) {
+      try SpeechAudioEncoder.encode(frames: 40_000, purpose: .meeting, to: destination) {
+        _, count in [Float](repeating: 0.1, count: count - 1)
+      }
+    }
+    #expect(FileManager.default.fileExists(atPath: destination.path) == false)
+  }
+
+  @Test("zero frames is empty input and creates no file (#4799)")
+  func zeroFramesLeavesNothing() throws {
+    let dir = try folder()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let destination = dir.appendingPathComponent("empty.m4a")
+
+    #expect(throws: SpeechAudioEncoder.Failure.emptyInput) {
+      try SpeechAudioEncoder.encode(frames: 0, purpose: .meeting, to: destination) { _, count in
+        [Float](repeating: 0, count: count)
+      }
+    }
+    #expect(FileManager.default.fileExists(atPath: destination.path) == false)
+  }
+
+  @Test("cancelled after the first window was written: stops and removes the output (#4799)")
+  func cancelledAfterWritingLeavesNothing() async throws {
+    let dir = try folder()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let destination = dir.appendingPathComponent("cancelled.m4a")
+    let frames = Int64(SpeechAudioEncoder.chunkFrames) * 3
+    // Its own task, so cancelling it does not cancel the test. Returns how many windows were
+    // read when the cancellation stopped the encode; nil if the encode finished instead.
+    let task = Task { () throws -> Int? in
+      var reads = 0
+      do {
+        _ = try SpeechAudioEncoder.encode(frames: frames, purpose: .meeting, to: destination) {
+          _, count in
+          reads += 1
+          // The first window is written; the cancel lands while the second is read, so the
+          // check before the third window throws with a partly written file on disk.
+          if reads == 2 { withUnsafeCurrentTask { $0?.cancel() } }
+          return [Float](repeating: 0.1, count: count)
+        }
+        return nil
+      } catch is CancellationError {
+        return reads
+      }
+    }
+
+    // Cancelled, and stopped before the third window rather than after reading everything.
+    #expect(try await task.value == 2)
+    #expect(FileManager.default.fileExists(atPath: destination.path) == false)
+  }
 }

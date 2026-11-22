@@ -387,6 +387,10 @@ struct HistoryTranscriptView: View {
           id: "new-window", title: String(localized: Self.newWindowLabel),
           systemImage: "macwindow.badge.plus", kind: .action { openInNewWindow(rowID) }))
     }
+    // #4799: after Open in new window on the page, after Save in the transcript's own window.
+    if let show = P.showInFinderItem(rowID: rowID, line: sourceLine, sources: sources) {
+      items.append(show)
+    }
     items.append(.divider("d1"))
     let polish = HistoryPolishMenu.menuItems(
       surface: .transcript, choices: historyRepolish.choices(.transcript),

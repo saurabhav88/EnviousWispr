@@ -83,6 +83,8 @@ protocol ImportedSourceAccessing: AnyObject {
   /// Bumped whenever a row's source state may have changed, so views re-read it.
   func revision(for rowID: UUID) -> Int
   func state(for rowID: UUID) async -> ImportedSourceState
+  /// #4799: the disk's answer now, never a cached one (Show in Finder).
+  func freshState(for rowID: UUID) async -> ImportedSourceState
   func playbackSource(for rowID: UUID) async throws -> ImportedPlaybackSource?
   func relocate(rowID: UUID, to url: URL, userConfirmed: Bool) async throws
     -> ImportedRelocationOutcome

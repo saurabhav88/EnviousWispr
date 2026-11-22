@@ -389,20 +389,26 @@ final class MeetingPlaybackController {
     return tracks
   }
 
-  /// `count` ms from `startMs`, every track summed and clipped to the sample range. A gap is
-  /// silence; a file the window needs that can no longer be read (deleted while playing)
-  /// throws.
+  /// `count` ms from `startMs`: playback's millisecond view of `mixSamples`.
   nonisolated static func mix(_ tracks: [MeetingTrackAudio], startMs: Int, count: Int) throws
     -> [Float]
   {
-    let start = startMs * samplesPerMs
-    let samples = count * samplesPerMs
-    var out = [Float](repeating: 0, count: samples)
+    try mixSamples(tracks, start: startMs * samplesPerMs, count: count * samplesPerMs)
+  }
+
+  /// `count` samples from timeline sample `start`, every track summed and clipped to the sample
+  /// range: the one mix both playback (through `mix`) and History's Save audio (#4799) use, so
+  /// a saved file holds what playback plays. A gap is silence; a file the window needs that can
+  /// no longer be read (deleted while playing or saving) throws.
+  nonisolated static func mixSamples(_ tracks: [MeetingTrackAudio], start: Int, count: Int) throws
+    -> [Float]
+  {
+    var out = [Float](repeating: 0, count: count)
     for track in tracks {
-      let part = try track.read(from: start, count: samples)
-      for i in 0..<samples { out[i] += part[i] }
+      let part = try track.read(from: start, count: count)
+      for i in 0..<count { out[i] += part[i] }
     }
-    for i in 0..<samples { out[i] = min(1, max(-1, out[i])) }
+    for i in 0..<count { out[i] = min(1, max(-1, out[i])) }
     return out
   }
 }

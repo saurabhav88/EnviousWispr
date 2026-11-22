@@ -76,6 +76,7 @@ struct HistoryMeetingAfterView: View {
   @Environment(PreviousApplicationTracker.self) private var previousApplication
   @Environment(HistoryRepolishRunner.self) private var historyRepolish
   @Environment(HistoryMenuPresenter.self) private var historyMenu
+  @Environment(HistoryAudioExport.self) private var audioExport
   @State private var pagePlayer = MeetingPagePlayer()
   @State private var followState = MeetingFollowState()
   @State private var notesPane = MeetingNotesPaneState()
@@ -795,6 +796,13 @@ struct HistoryMeetingAfterView: View {
         kind: .action { save(defaultName: title) }),
       .divider("d1"),
     ]
+    // #4799: Save audio, after the text save, by the same rule as the meeting card.
+    if let saveAudio = audioExport.meetingMenuItem(
+      meetingID: meetingID, meetings: meetings, actionInFlight: commands.actionInFlight,
+      start: { saveAudio(defaultName: title) })
+    {
+      items.insert(saveAudio, at: items.count - 1)
+    }
     items.append(
       .init(
         id: "polish",
@@ -1135,6 +1143,16 @@ struct HistoryMeetingAfterView: View {
   /// lines that were deleted or hidden meanwhile.
   private func share() {
     HistoryDelivery.share(from: commands.anchor.view) { deliveryText() }
+  }
+
+  /// #4799: the meeting's audio, admitted again after the panel closes; the export owner
+  /// reports every outcome.
+  private func saveAudio(defaultName: String) {
+    let window = commands.anchor.view?.window
+    audioExport.save(
+      HistoryAudioExport.meeting(
+        meetingID: meetingID, defaultName: defaultName, meetings: meetings,
+        window: { [weak window] in window }))
   }
 
   /// The document is read AFTER the panel closes, so a meeting deleted meanwhile saves nothing.

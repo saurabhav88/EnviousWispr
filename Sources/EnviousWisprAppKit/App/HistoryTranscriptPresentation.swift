@@ -1,3 +1,4 @@
+import AppKit
 import EnviousWisprCore
 import EnviousWisprStorage
 import Foundation
@@ -149,6 +150,46 @@ enum HistoryTranscriptPresentation {
     case .unsupportedIdentity: return .unavailable(.unsupported)
     case .removed: return .removed
     }
+  }
+
+  /// #4799: Show in Finder is offered only while the original plays: on a card a verified
+  /// original, on the page and in its window one a player opened.
+  static func offersShowInFinder(_ line: SourceLine) -> Bool { line == .plays }
+
+  static var showInFinderLabel: String {
+    String(
+      localized: "Show in Finder",
+      comment: "History transcript, More menu: shows the original audio or video file in Finder.")
+  }
+
+  /// The Show in Finder row, after Open in new window (or after Save in the transcript's own
+  /// window); nil when the original does not play.
+  @MainActor
+  static func showInFinderItem(
+    rowID: UUID, line: SourceLine, sources: any ImportedSourceAccessing
+  ) -> HistoryMenuItem? {
+    guard offersShowInFinder(line) else { return nil }
+    return HistoryMenuItem(
+      id: "show-in-finder", title: showInFinderLabel, systemImage: "folder",
+      kind: .action {
+        Task { await showOriginalInFinder(rowID: rowID, sources: sources) }
+      })
+  }
+
+  /// Reveals the original only after a fresh identity check; true when it was shown. A
+  /// missing, replaced or unverifiable original is not shown and nothing is said: the fresh
+  /// look updates that row, so it shows Audio unavailable and Locate original instead.
+  @MainActor
+  @discardableResult
+  static func showOriginalInFinder(
+    rowID: UUID, sources: any ImportedSourceAccessing,
+    reveal: @MainActor (URL) -> Void = { NSWorkspace.shared.activateFileViewerSelecting([$0]) }
+  ) async -> Bool {
+    guard case .available(let original) = await sources.freshState(for: rowID) else {
+      return false
+    }
+    reveal(original.url)
+    return true
   }
 
   /// Whether Locate original is offered for this line.
