@@ -60,6 +60,15 @@ struct InverseTextNormalizerSpokenCodesTests {
     ("The date is twenty twenty six dash nine dash twenty six.", "The date is 2026-09-26."),
     ("Open localhost colon three thousand.", "Open localhost:3000."),
     ("Open localhost colon three thousand and one.", "Open localhost:3001."),
+    // #4635: Parakeet writes a digit port followed by a sentence comma (Transcribe a File on main
+    // 66bee57aa); the comma is punctuation, never part of the port
+    (
+      "Start the server on localhost colon 8080, and open the browser.",
+      "Start the server on localhost:8080, and open the browser."
+    ),
+    ("Run it on localhost colon 3000, then reload the page.", "Run it on localhost:3000, then reload the page."),
+    ("Open localhost colon 3,000, then reload.", "Open localhost:3000, then reload."),
+    ("Open localhost colon 3,000.", "Open localhost:3000."),
     ("Visit www dot example dot com today", "Visit www.example.com today"),
     ("Go to docs dot example dot com today", "Go to docs.example.com today"),
     ("Visit www dot google dot co dot uk today", "Visit www.google.co.uk today"),
@@ -161,6 +170,8 @@ struct InverseTextNormalizerSpokenCodesTests {
     // an impossible date or port is left alone
     ("The code is 2026-13-40.", "The code is 2026-13-40."),
     ("localhost colon seventy thousand", "localhost colon 70,000"),
+    // #4635: a malformed digit grouping is not a port; never read it as a different number
+    ("Open localhost colon 30,00.", "Open localhost colon 30,00."),
     // a spoken protocol with no host after it
     ("type https colon slash slash then the name", "type https colon slash slash then the name"),
   ]

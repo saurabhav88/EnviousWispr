@@ -314,7 +314,8 @@ extension InverseTextNormalizer {
   func localhostPorts(_ t: String) -> String {
     let pat =
       #"\b(?<host>localhost)\s+colon\s+(?<p>(?:"# + Self.numwordNoAndAlt + #")(?:\s+(?:"#
-      + Self.numwordNoAndAlt + #")|(?<=hundred|thousand)\s+and)*|\d[\d,]*)(?![\w])"#
+      + Self.numwordNoAndAlt + #")|(?<=hundred|thousand)\s+and)*|(?:"#
+      + Self.digitNumtok + #")(?!,+\d))(?![\w])"#  // a malformed grouping ("30,00") is no port
     return reSub(pat, t) { m in
       let raw = (m.g("p") ?? "").replacingOccurrences(of: ",", with: "")
       let words = Self.splitWords(raw.lowercased())
