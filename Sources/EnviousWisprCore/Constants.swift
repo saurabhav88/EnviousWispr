@@ -284,6 +284,15 @@ public enum AudioConstants {
   /// (#604), separate from the VAD's own segmentation padding (zero).
   public static let speechPaddingSamples: Int = 1600
 
+  /// #4841: silent-mic notice thresholds, in live samples at `sampleRate` (16 kHz).
+  /// Founder decision 2026-11-22, matching the industry leader: a calm notice
+  /// after 5 s of exact zeros mid-take or 6 s when silent since the take started,
+  /// and a stronger notice at 15 s in either case. Exact zeros never end a take;
+  /// these only choose which notice the pill shows.
+  public static let silentMicCalmMidTakeSamples: Int = Int(5.0 * sampleRate)
+  public static let silentMicCalmSinceStartSamples: Int = Int(6.0 * sampleRate)
+  public static let silentMicStrongSamples: Int = Int(15.0 * sampleRate)
+
 }
 
 // MARK: - Crash-Recovery Constants
