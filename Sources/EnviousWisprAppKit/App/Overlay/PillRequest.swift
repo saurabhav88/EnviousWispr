@@ -256,6 +256,8 @@ struct PillReceipt: Hashable, Sendable {
 enum PillUpdate: Equatable, Sendable {
   case recordingLock(Bool)
   case inPanelNotice(RecordingNoticeReason, dismissAfter: Double?)
+  /// #4841: clear the live recording pill's notice only if it is of this kind.
+  case clearInPanelNotice(RecordingNoticeKind)
   /// #3546 A3: new download progress for the Parakeet Ultra downloading pill, if current.
   case parakeetUpgradeProgress(fraction: Double)
 }

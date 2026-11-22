@@ -16,7 +16,7 @@ struct SetupPracticePillPicture: View {
           livePreviewProvider: { .off },
           onContentHeightChange: { _ in },
           chrome: RecordingPillDesign.classic.chrome,
-          isLocked: handsFree, noticeText: nil, cadence: .still, animatesGlow: false)
+          isLocked: handsFree, notice: nil, cadence: .still, animatesGlow: false)
       case .transcribing:
         PolishingOverlayView(label: String(localized: "Transcribing…"))
       case .polishing:

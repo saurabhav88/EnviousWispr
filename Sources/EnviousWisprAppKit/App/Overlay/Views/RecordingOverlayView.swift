@@ -311,10 +311,10 @@ struct RecordingOverlayView: View {
   /// chrome, so this leaf cannot draw a new presentation beside a previous pill's
   /// lock or banner.
   ///
-  /// `noticeText` is COPY, already resolved by the publisher. This view renders
-  /// a string and asks nobody what it should say.
+  /// `notice` carries COPY already resolved by the publisher, plus its typed
+  /// reason (#4841). This view renders the text and asks nobody what to say.
   let isLocked: Bool
-  let noticeText: String?
+  let notice: RecordingNoticeDisplay?
 
   /// How long the poll waits between reads. Production never passes this.
   let cadence: RecordingPollCadence
@@ -380,7 +380,7 @@ struct RecordingOverlayView: View {
     onContentHeightChange: @escaping (CGFloat) -> Void,
     chrome: RecordingPillChrome,
     isLocked: Bool,
-    noticeText: String?,
+    notice: RecordingNoticeDisplay?,
     initialPreview: LivePreviewDisplay = .off,
     cadence: RecordingPollCadence = .live,
     animatesGlow: Bool = true,
@@ -394,7 +394,7 @@ struct RecordingOverlayView: View {
     self.onContentHeightChange = onContentHeightChange
     self.chrome = chrome
     self.isLocked = isLocked
-    self.noticeText = noticeText
+    self.notice = notice
     self.cadence = cadence
     self.animatesGlow = animatesGlow
     self.initialLevelHistory = initialLevelHistory
@@ -558,8 +558,8 @@ struct RecordingOverlayView: View {
 
       // #1060: approaching-cap warning banner. Appears inside the same capsule
       // (no panel rebuild), wraps within the pill width, auto-clears.
-      if let notice = noticeText {
-        Text(notice)
+      if let noticeText = notice?.text {
+        Text(noticeText)
           .font(.system(size: 11, weight: .medium))
           // #2204: the notice is rendered by BOTH layouts from this one `Text`,
           // and white is invisible on a light pill. Gated rather than made
@@ -608,7 +608,7 @@ struct RecordingOverlayView: View {
     // why removing it would make the pill move more, not less.
     .animation(
       OverlayMotion.stateChange(.easeInOut(duration: 0.25), reduceMotion: reduceMotion),
-      value: noticeText)
+      value: notice)
     // #2202 row 8 of the shared-root table. The capsule keeps its uniform inset;
     // the preview zeroes it and each section supplies its own, because a header
     // strip over a reading well does not want one rectangle of padding wrapped

@@ -1897,12 +1897,55 @@ extension OverlayDirector: OverlayPresenting {
     return true
   }
 
+  /// #4841: the live recording pill's identity, or nil when no recording holds
+  /// the slot. The silent-mic tracker binds its posts to this value.
+  var currentRecordingPresentationID: PresentationID? {
+    guard let current = reducer.state.current, case .recording = current.content else {
+      return nil
+    }
+    return current.id
+  }
+
+  /// #4841: the kind of notice the live recording pill shows now, if any.
+  var currentInPanelNoticeKind: RecordingNoticeKind? {
+    guard case .recording(_, _, let notice?, _)? = reducer.state.current?.content else {
+      return nil
+    }
+    return notice.reason.kind
+  }
+
+  /// #4841: show a notice only on the recording presentation `presentation`
+  /// names. Returns that id when accepted; nil when no recording holds the slot
+  /// or a newer recording replaced it, so a late poll cannot reach a new take.
+  @discardableResult
+  func showInPanelNotice(
+    _ reason: RecordingNoticeReason, dismissAfter: Double?, on presentation: PresentationID
+  ) -> PresentationID? {
+    guard currentRecordingPresentationID == presentation else { return nil }
+    update(.inPanelNotice(reason, dismissAfter: dismissAfter))
+    return presentation
+  }
+
+  /// #4841: clear a notice of `kind`, only on the recording presentation
+  /// `presentation` names. Returns true only when a notice of that kind was
+  /// showing there and is now gone; a stale presentation, no notice, or another
+  /// kind's notice (which keeps its dwell) returns false.
+  @discardableResult
+  func clearInPanelNotice(_ kind: RecordingNoticeKind, on presentation: PresentationID) -> Bool {
+    guard currentRecordingPresentationID == presentation, currentInPanelNoticeKind == kind
+    else { return false }
+    update(.clearInPanelNotice(kind))
+    return true
+  }
+
   func update(_ update: PillUpdate) {
     switch update {
     case .recordingLock(let isLocked):
       handle(.lockStateChanged(isLocked), binding: .none)
     case .inPanelNotice(let reason, let dismissAfter):
       handle(.inPanelNotice(reason, dismissAfter: dismissAfter), binding: .none)
+    case .clearInPanelNotice(let kind):
+      handle(.clearInPanelNotice(kind), binding: .none)
     case .parakeetUpgradeProgress(let fraction):
       handle(.parakeetUpgradeProgress(fraction: fraction), binding: .none)
     }

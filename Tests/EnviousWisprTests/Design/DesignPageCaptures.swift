@@ -243,10 +243,10 @@ enum DesignPageCaptures {
 
   /// A recording pill leaf as the overlay draws it, with constant level and elapsed time.
   /// The screen atlas (#4506) also photographs it with words (`preview`) and with the in-pill
-  /// notice (`noticeText`); the defaults draw exactly what the Phase 2 captures drew.
+  /// notice (`notice`); the defaults draw exactly what the Phase 2 captures drew.
   static func pill(
     _ design: RecordingPillDesign, locked: Bool, preview: LivePreviewDisplay = .off,
-    noticeText: String? = nil
+    notice: RecordingNoticeReason? = nil
   ) -> AnyView {
     AnyView(
       RecordingOverlayView(
@@ -256,7 +256,9 @@ enum DesignPageCaptures {
         onContentHeightChange: { _ in },
         chrome: design.chrome,
         isLocked: locked,
-        noticeText: noticeText,
+        notice: notice.map {
+          RecordingNoticeDisplay(reason: $0, text: DictationNarrator.copy(for: $0))
+        },
         initialPreview: preview
       ).frame(width: design.width))
   }

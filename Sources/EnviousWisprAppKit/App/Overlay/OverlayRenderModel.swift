@@ -124,7 +124,9 @@ final class OverlayRenderModel: ObservableObject {
       // Resolved at publication so the root carries no copy. `DictationNarrator`
       // is the one authority for this sentence and always has been; what moved
       // is only WHERE it is asked.
-      noticeText: notice.map { DictationNarrator.copy(for: $0.reason) },
+      notice: notice.map {
+        RecordingNoticeDisplay(reason: $0.reason, text: DictationNarrator.copy(for: $0.reason))
+      },
       audioLevelProvider: staged.audioLevelProvider,
       recordingElapsedProvider: staged.recordingElapsedProvider,
       livePreviewProvider: staged.livePreviewProvider,

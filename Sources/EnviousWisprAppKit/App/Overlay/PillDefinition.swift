@@ -517,6 +517,14 @@ struct InPanelNotice: Equatable, Sendable {
   let dismissAfter: Double?
 }
 
+/// #4841: what a recording leaf renders for its notice — the typed reason (for
+/// styling) and the copy `DictationNarrator` resolved for it. Built only by the
+/// publisher, so a leaf never authors or looks up a sentence.
+struct RecordingNoticeDisplay: Equatable, Sendable {
+  let reason: RecordingNoticeReason
+  let text: String
+}
+
 /// One occupancy of the overlay slot: what to show, how it is identified, and
 /// when it goes away. The director never holds a per-kind field collection —
 /// this value IS the state.

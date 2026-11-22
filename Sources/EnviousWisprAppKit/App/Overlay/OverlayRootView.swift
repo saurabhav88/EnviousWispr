@@ -245,7 +245,7 @@ struct OverlayRootView: View {
   @ViewBuilder
   private func recording(_ recordingFrame: RecordingFrame, id: PresentationID) -> some View {
     let _ = Self.leafObserverForTesting?(
-      id, recordingFrame.isLocked, recordingFrame.noticeText)
+      id, recordingFrame.isLocked, recordingFrame.notice?.text)
     let design = recordingFrame.design
     let view = RecordingOverlayView(
       audioLevelProvider: recordingFrame.audioLevelProvider,
@@ -254,7 +254,7 @@ struct OverlayRootView: View {
       onContentHeightChange: recordingFrame.onContentHeightChange,
       chrome: design.chrome,
       isLocked: recordingFrame.isLocked,
-      noticeText: recordingFrame.noticeText)
+      notice: recordingFrame.notice)
 
     switch design {
     case .readingWell:

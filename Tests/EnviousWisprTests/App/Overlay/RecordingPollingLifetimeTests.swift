@@ -96,7 +96,7 @@ struct RecordingPollingLifetimeTests {
       onContentHeightChange: { _ in },
       chrome: RecordingPillDesign.classic.chrome,
       isLocked: false,
-      noticeText: nil,
+      notice: nil,
       cadence: .still)
 
     let hosted = NSHostingView(rootView: AnyView(view))

@@ -1520,6 +1520,64 @@ struct OverlayDirectorTests {
       "a `.cancel` coalesced onto a pending `.arm` left a dwell armed anyway")
   }
 
+  // MARK: - #4841 silent-mic notice receipt
+
+  @Test("a silence notice bound to the live recording is accepted and reported by kind")
+  func silenceNoticeOnTheLiveRecordingIsAccepted() throws {
+    let (d, _, _) = Self.director()
+    Self.record(d)
+    let id = try #require(d.currentRecordingPresentationID)
+
+    #expect(d.showInPanelNotice(.micSilent(.calm), dismissAfter: nil, on: id) == id)
+    #expect(d.currentInPanelNoticeKind == .micSilent)
+    #expect(d.clearInPanelNotice(.micSilent, on: id))
+    #expect(d.currentInPanelNoticeKind == nil)
+  }
+
+  @Test("a silence notice bound to another recording is refused and changes nothing")
+  func staleSilenceNoticeIsRefused() throws {
+    let (d, _, _) = Self.director()
+    Self.record(d)
+    let stale = PresentationID()
+    #expect(try #require(d.currentRecordingPresentationID) != stale)
+
+    #expect(d.showInPanelNotice(.micSilent(.strong), dismissAfter: nil, on: stale) == nil)
+    #expect(d.currentInPanelNoticeKind == nil)
+    let live = try #require(d.currentRecordingPresentationID)
+    _ = d.showInPanelNotice(.micSilent(.calm), dismissAfter: nil, on: live)
+    #expect(d.clearInPanelNotice(.micSilent, on: stale) == false)
+    #expect(d.currentInPanelNoticeKind == .micSilent, "a stale clear removed the live notice")
+  }
+
+  @Test("clearing silence reports false and keeps the dwell when another notice is showing")
+  func clearSilenceOverAnotherNoticeReportsFalse() throws {
+    let host = RefusingWindowlessHost()
+    let deferral = Deferral()
+    let d = OverlayDirector(
+      host: host, scheduler: .manual { _ in }, announce: { _ in },
+      livePreview: .disabled, grantAccessibility: {}, openMicrophoneSettings: {}, openMicrophoneHelp: {},
+      advisoryHint: { _ in nil },
+      selections: { .shipped },
+      firstRenderSchedule: { deferral.block = $0 })
+    Self.record(d)
+    let id = try #require(d.currentRecordingPresentationID)
+    #expect(d.clearInPanelNotice(.micSilent, on: id) == false, "no notice: nothing was cleared")
+
+    #expect(d.showInPanelNotice(.secureInputActive, dismissAfter: 5.0))
+    #expect(d.clearInPanelNotice(.micSilent, on: id) == false, "another kind is not cleared")
+    #expect(d.currentInPanelNoticeKind == .secureInputActive)
+    deferral.fireAll()
+    #expect(d.renderModel.state.dwell?.seconds == 5.0, "the Secure Input dwell was lost")
+  }
+
+  @Test("with no recording on screen there is nothing to bind a silence notice to")
+  func noRecordingNoSilenceNotice() {
+    let (d, _, _) = Self.director()
+    #expect(d.currentRecordingPresentationID == nil)
+    #expect(d.currentInPanelNoticeKind == nil)
+    #expect(d.showInPanelNotice(.micSilent(.calm), dismissAfter: nil, on: PresentationID()) == nil)
+  }
+
   /// **A REENTRANT `present` from inside a supersession callback must not be
   /// silently overwritten by the outer call finishing its own bookkeeping
   /// after the reentrant call already installed its own slot.** `resolve`

@@ -180,7 +180,7 @@ enum RenderedPillHarness {
       onContentHeightChange: { log.record($0) },
       chrome: design.chrome,
       isLocked: locked,
-      noticeText: notice,
+      notice: notice.map(RecordingNoticeDisplay.layoutFixture),
       initialPreview: display)
 
     let host = NSHostingView(rootView: view.frame(width: width))
@@ -224,7 +224,7 @@ enum RenderedPillHarness {
       onContentHeightChange: { _ in },
       chrome: design.chrome,
       isLocked: locked,
-      noticeText: notice,
+      notice: notice.map(RecordingNoticeDisplay.layoutFixture),
       initialPreview: display)
 
     // No `.frame(width:)`, which is the whole point — an unproposed hosting view
@@ -237,5 +237,14 @@ enum RenderedPillHarness {
     host.layoutSubtreeIfNeeded()
     window.displayIfNeeded()
     return host.fittingSize.width
+  }
+}
+
+extension RecordingNoticeDisplay {
+  /// #4841: a notice for layout fixtures that measure TEXT (translations, long
+  /// sentences). The reason is a neutral, unstyled kind; the text is what the
+  /// fixture measures.
+  static func layoutFixture(_ text: String) -> RecordingNoticeDisplay {
+    RecordingNoticeDisplay(reason: .approachingCap, text: text)
   }
 }

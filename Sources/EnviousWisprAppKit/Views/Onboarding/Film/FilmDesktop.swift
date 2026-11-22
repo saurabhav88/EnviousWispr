@@ -258,7 +258,7 @@ struct FilmRecordingPill: View {
       onContentHeightChange: { _ in },
       chrome: RecordingPillDesign.classic.chrome,
       isLocked: false,
-      noticeText: nil,
+      notice: nil,
       cadence: .still,
       animatesGlow: false,
       initialAudioLevel: Self.level,

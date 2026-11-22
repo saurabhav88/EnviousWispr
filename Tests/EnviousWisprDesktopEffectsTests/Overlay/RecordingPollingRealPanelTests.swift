@@ -51,7 +51,7 @@ struct RecordingPollingRealPanelTests {
       onContentHeightChange: { _ in },
       chrome: RecordingPillDesign.classic.chrome,
       isLocked: false,
-      noticeText: nil,
+      notice: nil,
       cadence: manual.cadence)
 
     let hosted = NSHostingView(rootView: AnyView(view))

@@ -639,7 +639,7 @@ private struct RecordingPillPreview: View {
       // differ per design, so a picker showing ONE mode is the honest one.
       isLocked: false,
       // #1060's banner is a runtime event, not an appearance.
-      noticeText: nil,
+      notice: nil,
       // **Seeded, or the reading well renders empty on its first frame and
       // visibly fills in.** `preview` is `@State`, so this parameter is the only
       // way to make the first frame the right one.

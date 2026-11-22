@@ -64435,6 +64435,29 @@
         }
       }
     },
+    "We’re not hearing anything from your microphone." : {
+      "comment" : "Notice next to the recording pill after about 5 seconds in which the microphone sent only digital silence. The recording keeps going.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Über dein Mikrofon hören wir nichts."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nous ne recevons aucun son de votre micro."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No oímos nada de tu micrófono."
+          }
+        }
+      }
+    },
     "What Faster Transcription changes" : {
       "comment" : "Speech engine settings, Faster Transcription: help panel title.",
       "localizations" : {
@@ -67570,6 +67593,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Tu idioma principal para dictar"
+          }
+        }
+      }
+    },
+    "Your microphone isn’t sending sound. Stop and check it in Settings." : {
+      "comment" : "Notice next to the recording pill after 15 seconds in which the microphone sent only digital silence. The recording keeps going; it asks the user to stop and check the microphone in the app's Settings.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein Mikrofon liefert keinen Ton. Beende die Aufnahme und prüfe es in den Einstellungen."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Votre micro n’envoie aucun son. Arrêtez l’enregistrement et vérifiez-le dans Réglages."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu micrófono no envía sonido. Detén la grabación y revísalo en Ajustes."
           }
         }
       }

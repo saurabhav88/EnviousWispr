@@ -267,6 +267,85 @@ struct OverlayReducerTests {
     #expect(r.state.current == nil)
   }
 
+  // MARK: - #4841 silent-mic notice: clear by kind
+
+  private static func notice(_ r: OverlayReducer) -> InPanelNotice? {
+    guard case .recording(_, _, let notice, _)? = r.state.current?.content else { return nil }
+    return notice
+  }
+
+  @Test("clearing mic silence removes the silence notice and keeps the pill, lock and identity")
+  func clearMicSilenceRemovesOnlyThatNotice() {
+    var r = Self.makeReducer()
+    _ = r.startRecordingForTests(audioLevel: 0.2)
+    _ = r.reduce(.lockStateChanged(true))
+    let id = try! #require(r.state.current?.id)
+    _ = r.reduce(.inPanelNotice(.micSilent(.strong), dismissAfter: nil))
+
+    let plan = r.reduce(.clearInPanelNotice(.micSilent))
+
+    #expect(plan.didChange)
+    #expect(plan.expiryCommand == .unchanged, "a clear must not touch any armed timer")
+    #expect(r.state.current?.id == id)
+    #expect(Self.notice(r) == nil)
+    guard case .recording(_, let locked, _, _)? = r.state.current?.content else {
+      Issue.record("the recording pill did not survive the clear")
+      return
+    }
+    #expect(locked)
+  }
+
+  @Test("clearing mic silence leaves another kind's notice and its timer alone")
+  func clearMicSilenceIgnoresOtherKinds() {
+    var r = Self.makeReducer()
+    _ = r.startRecordingForTests(audioLevel: 0.2)
+    let id = try! #require(r.state.current?.id)
+    let armed = r.reduce(.inPanelNotice(.secureInputActive, dismissAfter: 5.0))
+    #expect(armed.expiryCommand == .arm(id: id, seconds: 5.0, target: .inPanelNotice))
+
+    let plan = r.reduce(.clearInPanelNotice(.micSilent))
+
+    #expect(plan.didChange == false)
+    #expect(Self.notice(r)?.reason == .secureInputActive)
+    // The Secure Input dwell still ends it.
+    #expect(r.reduce(.inPanelNoticeExpiryFired(id)).didChange)
+    #expect(Self.notice(r) == nil)
+  }
+
+  @Test("calm and strong are one kind: a strong notice replaces calm and one clear removes it")
+  func calmAndStrongShareAKind() {
+    var r = Self.makeReducer()
+    _ = r.startRecordingForTests(audioLevel: 0.2)
+    _ = r.reduce(.inPanelNotice(.micSilent(.calm), dismissAfter: nil))
+    _ = r.reduce(.inPanelNotice(.micSilent(.strong), dismissAfter: nil))
+    #expect(Self.notice(r)?.reason == .micSilent(.strong))
+    #expect(r.reduce(.clearInPanelNotice(.micSilent)).didChange)
+    #expect(Self.notice(r) == nil)
+  }
+
+  @Test("a late timed expiry never clears the persistent silence notice that replaced it")
+  func staleExpiryNeverClearsAPersistentReplacement() {
+    var r = Self.makeReducer()
+    _ = r.startRecordingForTests(audioLevel: 0.2)
+    let id = try! #require(r.state.current?.id)
+    _ = r.reduce(.inPanelNotice(.autoStopUnavailable, dismissAfter: 4.0))
+    let replaced = r.reduce(.inPanelNotice(.micSilent(.calm), dismissAfter: nil))
+    #expect(replaced.expiryCommand == .cancel)
+
+    let late = r.reduce(.inPanelNoticeExpiryFired(id))
+
+    #expect(late.didChange == false)
+    #expect(Self.notice(r)?.reason == .micSilent(.calm))
+  }
+
+  @Test("a clear with no recording, or no notice, is a no-op")
+  func clearWithoutRecordingOrNoticeIsIgnored() {
+    var r = Self.makeReducer()
+    #expect(r.reduce(.clearInPanelNotice(.micSilent)).didChange == false)
+    _ = r.startRecordingForTests(audioLevel: 0.2)
+    #expect(r.reduce(.clearInPanelNotice(.micSilent)).didChange == false)
+  }
+
   // MARK: - Hover
 
   @Test("hovering a pausable presentation stops it expiring, and leaving re-arms it")

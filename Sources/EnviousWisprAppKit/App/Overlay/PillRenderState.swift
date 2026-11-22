@@ -81,12 +81,13 @@ struct RecordingFrame {
   /// Hands-free lock, taken from the presentation being published.
   let isLocked: Bool
 
-  /// The #1060 banner's copy, already resolved by the publisher.
+  /// The in-panel notice: its typed reason and its copy, already resolved by the
+  /// publisher (#4841 carries the reason so the leaf can style the strong level).
   ///
-  /// `DictationNarrator` is the one authority for this sentence. It is asked here
+  /// `DictationNarrator` is the one authority for the sentence. It is asked here
   /// because the root holds exhaustive routing and no copy, and the leaf renders
-  /// a string it is handed.
-  let noticeText: String?
+  /// the text it is handed.
+  let notice: RecordingNoticeDisplay?
 
   /// PULLS, not pushes. A snapshot pushed through the reducer would either lag
   /// the meter or churn a presentation identity many times a second, so the

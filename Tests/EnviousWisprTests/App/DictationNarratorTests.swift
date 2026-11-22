@@ -249,6 +249,13 @@ import Testing
     #expect(
       DictationNarrator.copy(for: RecordingNoticeReason.secureInputActive)
         == "Secure Input is on, so some keyboard features are paused")
+    // #4841: founder-approved silent-mic copy, calm then strong.
+    #expect(
+      DictationNarrator.copy(for: RecordingNoticeReason.micSilent(.calm))
+        == "We’re not hearing anything from your microphone.")
+    #expect(
+      DictationNarrator.copy(for: RecordingNoticeReason.micSilent(.strong))
+        == "Your microphone isn’t sending sound. Stop and check it in Settings.")
   }
 
   // MARK: - Spoken announcements + fixed status copy (E4, #1569)

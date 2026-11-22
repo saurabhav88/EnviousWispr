@@ -391,7 +391,7 @@ struct DesignRenderHarness {
       case "waiting": view = DesignPageCaptures.pill(design, locked: false, preview: .waiting)
       case "notice":
         view = DesignPageCaptures.pill(
-          design, locked: false, noticeText: DictationNarrator.copy(for: .secureInputActive))
+          design, locked: false, notice: .secureInputActive)
       default: throw RenderError("\(entry.name): unknown pill state \(parts[2])")
       }
     } else if entry.fixture.hasPrefix("notice-") {

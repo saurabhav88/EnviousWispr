@@ -72,7 +72,7 @@ struct RecordingOverlayPreviewSizingTests {
       onContentHeightChange: { log.record($0) },
       chrome: design.chrome,
       isLocked: locked,
-      noticeText: notice,
+      notice: notice.map(RecordingNoticeDisplay.layoutFixture),
       initialPreview: display
     )
 
@@ -244,7 +244,7 @@ struct RecordingOverlayPreviewSizingTests {
       onContentHeightChange: { log.record($0) },
       chrome: RecordingPillDesign.readingWell.chrome,
       isLocked: false,
-      noticeText: nil,
+      notice: nil,
       initialPreview: .text(Self.threeLines)
     )
     let host = NSHostingView(rootView: view.frame(width: Self.previewWidth))
@@ -291,7 +291,7 @@ struct RecordingOverlayPreviewSizingTests {
       onContentHeightChange: { log.record($0) },
       chrome: RecordingPillDesign.classic.chrome,
       isLocked: false,
-      noticeText: nil,
+      notice: nil,
       initialPreview: .off
     )
     let host = NSHostingView(rootView: view.frame(width: 185, height: 92))
