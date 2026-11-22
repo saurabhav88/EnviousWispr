@@ -582,22 +582,36 @@ class RemoveSessionCopiesTests(Temp):
         (self.run / "open-existing/report.json").write_text("{}")
 
     def test_removes_both_copies_and_keeps_reports(self):
-        self.assertEqual(fixture.remove_session_copies(self.run), {"subject": "removed", "home": "removed"})
+        self.assertEqual(fixture.remove_session_copies(self.run, deregister=lambda root: []), {"subject": "removed", "home": "removed"})
         self.assertEqual(sorted(p.name for p in self.run.iterdir()), ["open-existing", "pilot.json"])
         self.assertEqual((self.run / "open-existing/report.json").read_text(), "{}")
 
     def test_absent_copies_are_reported_absent(self):
         empty = self.root / "empty-run"
         empty.mkdir()
-        self.assertEqual(fixture.remove_session_copies(empty), {"subject": "absent", "home": "absent"})
+        self.assertEqual(fixture.remove_session_copies(empty, deregister=lambda root: []), {"subject": "absent", "home": "absent"})
 
     def test_linked_run_folder_is_refused_and_nothing_is_deleted(self):
         link = self.root / "linked-run"
         link.symlink_to(self.run)
         with self.assertRaisesRegex(fixture.FixtureError, "refused or incomplete"):
-            fixture.remove_session_copies(link)
+            fixture.remove_session_copies(link, deregister=lambda root: [])
         self.assertEqual((self.run / "home/Library/fixture.txt").read_text(), "fixture")
         self.assertEqual((self.run / "subject/Pinned.app/Contents/MacOS/EnviousWispr").read_bytes(), b"app")
+
+    def test_app_bundles_are_deregistered_nested_first_while_they_exist(self):
+        nested = self.run / "subject/Pinned.app/Contents/Frameworks/Sparkle.framework/Updater.app"
+        nested.mkdir(parents=True)
+        calls = []
+
+        def lsregister(argv, **_):
+            calls.append((argv[1:], Path(argv[2]).is_dir()))
+            return subprocess.CompletedProcess(argv, 1 if argv[2].endswith("Updater.app") else 0)
+
+        removed = fixture.remove_session_copies(
+            self.run, deregister=lambda root: fixture.deregister_apps(root, run=lsregister))
+        self.assertEqual(calls, [(["-u", str(nested)], True), (["-u", str(self.run / "subject/Pinned.app")], True)])
+        self.assertEqual(removed, {"deregister_failed": [str(nested)], "subject": "removed", "home": "removed"})
 
 
 class EntryPointTests(unittest.TestCase):

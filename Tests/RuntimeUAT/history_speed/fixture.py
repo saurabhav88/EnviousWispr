@@ -596,17 +596,40 @@ def session_run_dir(run: Path) -> Path:
     return run.parent.resolve() / run.name
 
 
-def remove_session_copies(run: Path, *, remover=None) -> dict:
+LSREGISTER = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+
+
+def deregister_apps(root: Path, *, run=subprocess.run) -> list[str]:
+    """Remove every app bundle under `root` from Launch Services while it still exists, nested ones
+    first (xcode-build-tooling.md RULE: development-app-copy-lifecycle): `lsregister -u` on a path
+    that is already gone changes nothing and leaves a ghost entry. Returns the bundles whose
+    deregistration failed; `sweep-launchservices-ghosts.sh` is the backstop for those."""
+    if not root.is_dir() or root.is_symlink():
+        return []
+    apps = [p for p in root.rglob("*.app") if p.is_dir() and not p.is_symlink()]
+    failed = []
+    for app in sorted(apps, key=lambda p: len(p.parts), reverse=True):
+        if run([LSREGISTER, "-u", str(app)], capture_output=True).returncode != 0:
+            failed.append(str(app))
+    return failed
+
+
+def remove_session_copies(run: Path, *, remover=None, deregister=deregister_apps) -> dict:
     """Remove a finished pilot session's own `subject` and `home` copies (#4789): about 3 GB per
     session that filled a backup Mac's disk. The caller decides that nothing still runs from them;
-    this only deletes, through `remove-tree.py`, and reports {"subject": .., "home": ..} as
-    "removed" or "absent". A refusal or a partial removal raises and names what already completed
+    this deregisters the subject's app bundles, deletes through `remove-tree.py`, and reports
+    {"subject": .., "home": ..} as "removed" or "absent" (plus "deregister_failed" when any
+    `lsregister -u` failed). A refusal or a partial removal raises and names what already completed
     (`find -xdev -delete` can remove part of a tree before it refuses)."""
     run = session_run_dir(run)
     remover = remover or _load_remover()
     done = {}
     for name in SESSION_COPIES:
         target = run / name
+        if name == "subject":
+            failed = deregister(target)
+            if failed:
+                done["deregister_failed"] = failed
         try:
             status = remover.remove_tree(str(run), str(target))
         except Exception as error:
