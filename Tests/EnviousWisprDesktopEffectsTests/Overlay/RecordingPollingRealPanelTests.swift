@@ -50,6 +50,7 @@ struct RecordingPollingRealPanelTests {
       },
       onContentHeightChange: { _ in },
       chrome: RecordingPillDesign.classic.chrome,
+      position: .top,
       isLocked: false,
       notice: nil,
       cadence: manual.cadence)
@@ -60,7 +61,7 @@ struct RecordingPollingRealPanelTests {
     try #require(
       host.present(
         hosted, width: .fixed(RecordingPillDesign.classic.width),
-        fixedHeight: RecordingPillDesign.classic.reservedHeight,
+        fixedHeight: nil,
         isFresh: true, position: .top),
       "the recording pill never reached the host")
 

@@ -38,6 +38,7 @@ struct RecordingOverlayPreviewTypographyTests {
       livePreviewProvider: { display },
       onContentHeightChange: { log.record($0) },
       chrome: RecordingPillDesign.readingWell.chrome,
+      position: .top,
       isLocked: false,
       notice: nil,
       initialPreview: display

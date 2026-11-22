@@ -42,6 +42,7 @@ struct RecordingOverlayPreviewChromeTests {
       livePreviewProvider: { display },
       onContentHeightChange: { log.record($0) },
       chrome: design.chrome,
+      position: .top,
       isLocked: locked,
       notice: nil,
       initialPreview: display
@@ -152,6 +153,7 @@ struct RecordingOverlayPreviewChromeTests {
       livePreviewProvider: { text },
       onContentHeightChange: { log.record($0) },
       chrome: RecordingPillDesign.readingWell.chrome,
+      position: .top,
       isLocked: false,
       notice: .layoutFixture("Recording stops in one minute."),
       initialPreview: text

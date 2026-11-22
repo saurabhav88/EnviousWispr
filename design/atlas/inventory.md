@@ -220,7 +220,16 @@ The pill floats over other apps while you dictate. Three designs exist; the user
 **Capsule, locked (hands-free).** The clock disappears and the lips grow to twice their size in a small round capsule.
 
 ## pill-classic-notice
-**Capsule, with a notice.** The capsule grows to carry a short white sentence under the lips and clock. Sample: "Secure Input is on, so some keyboard features are paused".
+**Capsule, with a notice.** The notice sits in its own rounded dark bubble 4 pt from the capsule (below it when the pill is at the top of the screen, above it at the bottom), as wide as the capsule. The capsule itself does not change. Sample: "Secure Input is on, so some keyboard features are paused".
+
+## pill-classic-silent
+**Capsule, silent microphone (5 s).** The lips turn grey and still; the bubble below reads "We’re not hearing anything from your microphone." with a crossed-out microphone mark.
+
+## pill-classic-silentStrong
+**Capsule, silent microphone (15 s).** Same bubble; the text, the mark and a thin edge turn amber (`stWarning`): "Your microphone isn’t sending sound. Stop and check it in Settings."
+
+## pill-classic-silentBottom
+**Capsule at the bottom of the screen, silent microphone (15 s).** The bubble opens above the capsule, so the capsule stays on the screen edge.
 
 ## pill-readingWell-rest
 **Reading Well, recording.** A 400pt rounded panel: clock on the left, a dotted rainbow level rail, "LISTENING" on the right. Light panel in light mode, dark in dark mode.
@@ -235,7 +244,16 @@ The pill floats over other apps while you dictate. Three designs exist; the user
 **Reading Well, words on, none yet.** The panel before the first words arrive.
 
 ## pill-readingWell-notice
-**Reading Well, with a notice.** The notice sentence sits in a second line under the clock row.
+**Reading Well, with a notice.** The notice is a strip inside the panel, under a hairline below the clock row.
+
+## pill-readingWell-silent
+**Reading Well, silent microphone (5 s).** The strip shows the crossed-out microphone mark and "We’re not hearing anything from your microphone."
+
+## pill-readingWell-silentStrong
+**Reading Well, silent microphone (15 s).** The strip takes a soft amber tint (`stWarningSoft`) with amber text and mark.
+
+## pill-readingWell-silentBottom
+**Reading Well at the bottom of the screen, silent microphone (15 s).** The strip stays inside the panel; the panel grows upward from the screen edge.
 
 ## pill-levelRail-rest
 **Level Rail, recording.** A wide dark capsule: clock on the left, a dotted rainbow level rail with a purple end mark, no lips.
@@ -244,7 +262,16 @@ The pill floats over other apps while you dictate. Three designs exist; the user
 **Level Rail, locked.** Adds a quiet "Hands-free" tag on the right.
 
 ## pill-levelRail-notice
-**Level Rail, with a notice.** The capsule grows to carry the notice sentence under the clock and rail.
+**Level Rail, with a notice.** The notice sits in its own rounded dark bubble 4 pt from the rail, capped at 210 pt so it reads as a bubble, not a second pill.
+
+## pill-levelRail-silent
+**Level Rail, silent microphone (5 s).** The level dots lie flat; the bubble reads "We’re not hearing anything from your microphone."
+
+## pill-levelRail-silentStrong
+**Level Rail, silent microphone (15 s).** The bubble's text, mark and a thin edge turn amber.
+
+## pill-levelRail-silentBottom
+**Level Rail at the bottom of the screen, silent microphone (15 s).** The bubble opens above the rail.
 
 # Pill notices
 

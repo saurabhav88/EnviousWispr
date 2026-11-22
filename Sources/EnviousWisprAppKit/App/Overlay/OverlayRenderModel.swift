@@ -59,8 +59,10 @@ final class OverlayRenderModel: ObservableObject {
     // disagree with another about what was on screen.
     staged.livePreviewProvider = design.canHoldWords ? livePreview : { .off }
     staged.position = position
-    // Likewise `{ _ in }` for a pill that holds no words: only that one grows.
-    staged.onContentHeightChange = design.canHoldWords ? onContentHeightChange : { _ in }
+    // #4841: every design grows with its content (a notice bubble or strip),
+    // so the height callback is staged for all of them. The live-preview gate
+    // above stays: a pill that holds no words still never reads a preview.
+    staged.onContentHeightChange = onContentHeightChange
   }
 
   /// Drop the providers, so a stale closure cannot outlive the dictation it was

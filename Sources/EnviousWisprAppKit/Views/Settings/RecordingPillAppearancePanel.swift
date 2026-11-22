@@ -635,6 +635,8 @@ private struct RecordingPillPreview: View {
       // lets `theTileDrawsItsOwnChrome` be an exact question instead of a
       // name-resolution guess.
       chrome: self.design.chrome,
+      // A picker shows no notice, so the bubble's side never matters here.
+      position: .top,
       // Hands free is not what is being chosen here, and the locked variants
       // differ per design, so a picker showing ONE mode is the honest one.
       isLocked: false,

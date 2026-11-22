@@ -264,6 +264,33 @@
       }
     },
     {
+      "id": "pill-classic-silent",
+      "kind": "harness",
+      "group": "Recording pill",
+      "title": "Pill: Capsule, silent mic (5 s)",
+      "source": {
+        "manifest": "pill-classic-silent"
+      }
+    },
+    {
+      "id": "pill-classic-silentStrong",
+      "kind": "harness",
+      "group": "Recording pill",
+      "title": "Pill: Capsule, silent mic (15 s)",
+      "source": {
+        "manifest": "pill-classic-silentStrong"
+      }
+    },
+    {
+      "id": "pill-classic-silentBottom",
+      "kind": "harness",
+      "group": "Recording pill",
+      "title": "Pill: Capsule, silent mic at the bottom",
+      "source": {
+        "manifest": "pill-classic-silentBottom"
+      }
+    },
+    {
       "id": "pill-readingWell-rest",
       "kind": "harness",
       "group": "Recording pill",
@@ -309,6 +336,33 @@
       }
     },
     {
+      "id": "pill-readingWell-silent",
+      "kind": "harness",
+      "group": "Recording pill",
+      "title": "Pill: Reading Well, silent mic (5 s)",
+      "source": {
+        "manifest": "pill-readingWell-silent"
+      }
+    },
+    {
+      "id": "pill-readingWell-silentStrong",
+      "kind": "harness",
+      "group": "Recording pill",
+      "title": "Pill: Reading Well, silent mic (15 s)",
+      "source": {
+        "manifest": "pill-readingWell-silentStrong"
+      }
+    },
+    {
+      "id": "pill-readingWell-silentBottom",
+      "kind": "harness",
+      "group": "Recording pill",
+      "title": "Pill: Reading Well, silent mic at the bottom",
+      "source": {
+        "manifest": "pill-readingWell-silentBottom"
+      }
+    },
+    {
       "id": "pill-levelRail-rest",
       "kind": "harness",
       "group": "Recording pill",
@@ -333,6 +387,33 @@
       "title": "Pill: Level Rail, with a notice",
       "source": {
         "manifest": "pill-levelRail-notice"
+      }
+    },
+    {
+      "id": "pill-levelRail-silent",
+      "kind": "harness",
+      "group": "Recording pill",
+      "title": "Pill: Level Rail, silent mic (5 s)",
+      "source": {
+        "manifest": "pill-levelRail-silent"
+      }
+    },
+    {
+      "id": "pill-levelRail-silentStrong",
+      "kind": "harness",
+      "group": "Recording pill",
+      "title": "Pill: Level Rail, silent mic (15 s)",
+      "source": {
+        "manifest": "pill-levelRail-silentStrong"
+      }
+    },
+    {
+      "id": "pill-levelRail-silentBottom",
+      "kind": "harness",
+      "group": "Recording pill",
+      "title": "Pill: Level Rail, silent mic at the bottom",
+      "source": {
+        "manifest": "pill-levelRail-silentBottom"
       }
     },
     {

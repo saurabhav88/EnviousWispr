@@ -387,22 +387,14 @@ struct OverlayReducerTests {
 
   // MARK: - The reserved interaction frame
 
-  @Test("only the NON-PREVIEW recording pill reserves a fixed height")
-  func onlyRecordingReservesAFixedFrame() {
-    // #1060: the 92-point recording frame is deliberate — it holds the normal
-    // 185x44, the locked 120x64 and the in-panel notice expansion without
-    // resizing on every morph. This migration does NOT make every kind
-    // content-sized, and asserting that here is what stops a later chunk
-    // "simplifying" it away.
-    //
-    // Scoped to NON-PREVIEW deliberately. With Live Preview on, the shipped
-    // path is content-sized (`05411427:Sources/EnviousWisprAppKit/App/RecordingOverlayPanel.swift`), so the
-    // earlier unscoped name claimed more than the code does. The reducer cannot
-    // yet tell the two apart — the preview flag is a provider the director owns
-    // — so C3 adds that branch and this test gains its pair.
+  @Test("the recording pill is content-sized, with no reserved height (#4841)")
+  func recordingPillIsContentSized() {
+    // #4841: the Capsule used to reserve a 92-point frame so the #1060 banner fit
+    // a pill that could not grow. Its notice is now a separate bubble and the
+    // window follows the measured height, so nothing is reserved.
     var r = Self.makeReducer()
     _ = r.startRecordingForTests(audioLevel: 0.1)
-    #expect(r.state.current?.reservesFixedHeight == 92)
+    #expect(r.state.current?.reservesFixedHeight == nil)
     #expect(r.state.current?.requestedWidth == .fixed(185))
 
     _ = r.reduce(.pipeline(.hidden))

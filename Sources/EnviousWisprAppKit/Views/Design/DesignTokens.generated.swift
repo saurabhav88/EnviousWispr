@@ -312,6 +312,10 @@ extension Font {
   static let firstRunCaption = Font.system(size: 13, weight: .regular)
   /// Setup uppercase eyebrow and badge (RECOMMENDED).
   static let firstRunEyebrow = Font.system(size: 11, weight: .semibold)
+  /// Text of a recording pill notice (bubble or strip).
+  ///
+  /// #4841, approved mockup 2026-11-22 (Option 2): the notice bubble beside the Capsule and Level Rail and the strip inside the Reading Well.
+  static let pillNotice = Font.system(size: 11, weight: .semibold)
 }
 
 // MARK: - Layout (points)
@@ -352,6 +356,29 @@ enum SettingsPR1Layout {
   static let rowPaddingV: CGFloat = 10
   /// Dictation Settings dense heading gap.
   static let headingGap: CGFloat = 8
+}
+
+enum PillNoticeLayout {
+  /// Gap between the recording pill and its notice bubble.
+  ///
+  /// #4841 Option 2: a separate bubble 4 pt from the pill, below it at Top and above it at Bottom.
+  static let gap: CGFloat = 4
+  /// Top and bottom padding inside a pill notice bubble.
+  static let paddingV: CGFloat = 8
+  /// Side padding inside a pill notice bubble.
+  static let paddingH: CGFloat = 12
+  /// Gap between the notice mark and its text.
+  static let iconGap: CGFloat = 6
+  /// Widest a Level Rail notice bubble may be, inside the rail's 288 pt panel.
+  ///
+  /// #4841 §14 Q2: the Capsule bubble takes the Capsule's own 185 pt width so the window never widens; the rail bubble is capped narrower than its panel so it reads as a bubble, not a second pill.
+  static let railMaxWidth: CGFloat = 210
+  /// Corner radius of a recording pill notice bubble.
+  ///
+  /// #4841 approved mockup (Option 2, founder 2026-11-22): a 13 pt rounded bubble in the pill's solid dark fill. Scoped to this one part; it is not a general radius.
+  static let radius: CGFloat = 13
+  /// Width of the amber edge on a strong (15 s) silent-mic notice.
+  static let strongEdge: CGFloat = 1
 }
 
 enum DesignRadius {

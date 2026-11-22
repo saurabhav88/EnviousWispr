@@ -57,7 +57,7 @@ struct OverlayDirectorTests {
         content: .recording(audioLevel: 0, isLocked: false, notice: nil, design: design),
         expiry: .untilReplaced,
         requestedWidth: .fixed(design.width),
-        reservesFixedHeight: design.reservedHeight))
+        reservesFixedHeight: nil))
     #expect(
       model.state.recording?.audioLevelProvider() == 0,
       "the released dictation's level closure was staged and reappeared on the next pill")
@@ -1109,9 +1109,11 @@ struct OverlayDirectorTests {
     Self.record(preview, level: 0.2, preview: true, previewSetting: previewSetting)
     let wide = try #require(previewHost.presented.last)
 
+    // #4841: neither reserves a height any more; the Capsule grows for its
+    // notice bubble exactly as the preview pill grows for its words.
     #expect(
-      compact.fixedHeight == 92,
-      "the non-preview recording pill lost its reserved 92-point frame")
+      compact.fixedHeight == nil,
+      "the non-preview recording pill still reserves a frame")
     #expect(
       wide.fixedHeight == nil,
       "the Live Preview pill reserved a frame instead of sizing to its content")

@@ -67,12 +67,13 @@ struct RecordingPillChromeTests {
     #expect(chrome.levelAnimation == .capsuleEaseOut)
     #expect(chrome.showsListeningSentence)
     #expect(chrome.noticeInk == .capsuleWhite)
-    #expect(chrome.noticeMaxWidth == 170)
-    #expect(chrome.noticeInsets == EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+    // #4841: the notice is a bubble that takes the Capsule's full 185 pt width.
+    #expect(chrome.noticeMaxWidth == nil)
+    #expect(chrome.noticeInsets == EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
     #expect(chrome.wellInsets == EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
     #expect(chrome.wellInk == .capsuleWhite)
     #expect(chrome.fadesWhenWellIsFull == false)
-    #expect(chrome.isContentSizedVertically == false)
+    #expect(chrome.noticePlacement == .bubble)
   }
 
   @Test("the reading well's chrome is what the boolean's true side said")
@@ -86,11 +87,11 @@ struct RecordingPillChromeTests {
     #expect(chrome.showsListeningSentence == false)
     #expect(chrome.noticeInk == .previewPalette)
     #expect(chrome.noticeMaxWidth == nil)
-    #expect(chrome.noticeInsets == EdgeInsets(top: 0, leading: 16, bottom: 12, trailing: 16))
+    #expect(chrome.noticeInsets == EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
     #expect(chrome.wellInsets == EdgeInsets(top: 12, leading: 16, bottom: 15, trailing: 16))
     #expect(chrome.wellInk == .previewPalette)
     #expect(chrome.fadesWhenWellIsFull)
-    #expect(chrome.isContentSizedVertically)
+    #expect(chrome.noticePlacement == .strip)
   }
 
   /// **The third design, which had no pin at all.** Its two siblings above fix
@@ -102,7 +103,7 @@ struct RecordingPillChromeTests {
   /// A window written down rather than closed (code-design-rules.md
   /// RULE: close-the-window-never-handle-it); this closes it.
   @Test("the level rail's chrome is pinned, and its notice cap is derived rather than typed")
-  func levelRailChromeIsPinned() {
+  func levelRailChromeIsPinned() throws {
     let chrome = RecordingPillDesign.levelRail.chrome
     #expect(chrome.header == .clockAndRail)
     #expect(chrome.stackSpacing == 6)
@@ -111,35 +112,16 @@ struct RecordingPillChromeTests {
     #expect(chrome.levelAnimation == .none)
     #expect(chrome.showsListeningSentence == false)
     #expect(chrome.noticeInk == .capsuleWhite)
-    #expect(chrome.noticeInsets == EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+    #expect(chrome.noticeInsets == EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
     #expect(chrome.wellInsets == EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
     #expect(chrome.wellInk == .capsuleWhite)
     #expect(chrome.fadesWhenWellIsFull == false)
+    #expect(chrome.noticePlacement == .bubble)
 
-    // THE ARITHMETIC, NOT THE NUMBER. 260 is the design's own width less the
-    // root inset either side, and the source says so in words. Pinning the
-    // literal would let a width change leave this behind silently, which is
-    // exactly the miss that comment records; pinning the relation makes the
-    // width and the cap move together or go red.
-    let sideInsets = chrome.rootInsets.leading + chrome.rootInsets.trailing
-    #expect(chrome.noticeMaxWidth == RecordingPillDesign.levelRail.width - sideInsets)
-  }
-
-  /// **The one field that must never be typed, only derived.** A design that
-  /// reserves a fixed box is not content-sized, by definition; two independent
-  /// answers to that is how a pill comes to be measured inside the panel being
-  /// sized from that measurement, which is the loop #2201 settled.
-  @Test(
-    "content sizing follows the design's reserved height",
-    arguments: RecordingPillDesign.allCases)
-  func contentSizingIsDerivedFromTheReservedHeight(design: RecordingPillDesign) {
-    #expect(
-      design.chrome.isContentSizedVertically == (design.reservedHeight == nil),
-      """
-      \(design) reserves \(String(describing: design.reservedHeight)) and reports \
-      isContentSizedVertically = \(design.chrome.isContentSizedVertically). These are \
-      one fact; if they can disagree, one of them is typed rather than derived.
-      """)
+    // #4841 §14 Q2: the bubble is capped at 210 pt, narrower than the 288 pt
+    // panel, so it reads as a bubble and the locked rail keeps its width.
+    #expect(chrome.noticeMaxWidth == 210)
+    #expect(try #require(chrome.noticeMaxWidth) < RecordingPillDesign.levelRail.width)
   }
 
   /// The two inks must resolve to different colours, or the enum is a label with

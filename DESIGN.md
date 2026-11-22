@@ -297,7 +297,8 @@ Edit values only here, then run `python3 scripts/design/generate-tokens.py`. Col
     "Font.firstRunButton": {"size": 19, "weight": "bold", "design": "rounded", "usage": "Setup primary button text (founder 2026-11-13)."},
     "Font.firstRunLabel": {"size": 15, "weight": "semibold", "usage": "Setup card name and option name."},
     "Font.firstRunCaption": {"size": 13, "weight": "regular", "usage": "Setup card detail lines, hints and film caption subtitle."},
-    "Font.firstRunEyebrow": {"size": 11, "weight": "semibold", "usage": "Setup uppercase eyebrow and badge (RECOMMENDED)."}
+    "Font.firstRunEyebrow": {"size": 11, "weight": "semibold", "usage": "Setup uppercase eyebrow and badge (RECOMMENDED)."},
+    "Font.pillNotice": {"size": 11, "weight": "semibold", "usage": "Text of a recording pill notice (bubble or strip).", "note": "#4841, approved mockup 2026-11-22 (Option 2): the notice bubble beside the Capsule and Level Rail and the strip inside the Reading Well."}
   },
   "layout": {
     "SettingsLayout.sectionRadius": {"value": 14, "usage": "Corner radius of a settings card."},
@@ -321,6 +322,13 @@ Edit values only here, then run `python3 scripts/design/generate-tokens.py`. Col
       "note": "#3385: density belongs to Dictation Settings, not every shared consumer."
     },
     "SettingsPR1Layout.headingGap": {"value": 8, "usage": "Dictation Settings dense heading gap."},
+    "PillNoticeLayout.gap": {"value": 4, "usage": "Gap between the recording pill and its notice bubble.", "note": "#4841 Option 2: a separate bubble 4 pt from the pill, below it at Top and above it at Bottom."},
+    "PillNoticeLayout.paddingV": {"value": 8, "usage": "Top and bottom padding inside a pill notice bubble."},
+    "PillNoticeLayout.paddingH": {"value": 12, "usage": "Side padding inside a pill notice bubble."},
+    "PillNoticeLayout.iconGap": {"value": 6, "usage": "Gap between the notice mark and its text."},
+    "PillNoticeLayout.railMaxWidth": {"value": 210, "usage": "Widest a Level Rail notice bubble may be, inside the rail's 288 pt panel.", "note": "#4841 §14 Q2: the Capsule bubble takes the Capsule's own 185 pt width so the window never widens; the rail bubble is capped narrower than its panel so it reads as a bubble, not a second pill."},
+    "PillNoticeLayout.radius": {"value": 13, "usage": "Corner radius of a recording pill notice bubble.", "note": "#4841 approved mockup (Option 2, founder 2026-11-22): a 13 pt rounded bubble in the pill's solid dark fill. Scoped to this one part; it is not a general radius."},
+    "PillNoticeLayout.strongEdge": {"value": 1, "usage": "Width of the amber edge on a strong (15 s) silent-mic notice."},
     "DesignRadius.xs": {"value": 4, "usage": "Smallest radius."},
     "DesignRadius.sm": {"value": 6, "usage": "Small radius."},
     "DesignRadius.md": {"value": 8, "usage": "Default small surface (the most-used radius)."},
@@ -496,6 +504,7 @@ Use these. All live in `Sources/EnviousWisprAppKit/Views/Settings/SettingsCompon
 | `WrappingHStack` | Chips or tags that wrap | Your own flow layout |
 | `.settingsHoverRow(...)` (`SettingsHover.swift`) | Hover on a row or card | Your own `onHover` tint |
 | `OnboardingButtonStyle` (`OnboardingDesignTokens.swift`) | The onboarding primary button | A new onboarding button |
+| Pill notice bubble and strip (`RecordingOverlayView` `noticeBubble`/`noticeStrip`, `OverlayCapsuleBackground` `.bubble`) | Any notice on the live recording pill: a solid dark 13 pt bubble 4 pt from the Capsule or Level Rail (below at Top, above at Bottom), or a strip inside the Reading Well. Sizes from `PillNoticeLayout`, text `Font.pillNotice`, strong level in `stWarning` (approved mockup #4841) | Text inside the capsule, a second floating panel, a new notice view |
 | `CorrectionLearnedPillFace` (`App/Overlay/Views/CorrectionLearnedPillView.swift`) | The "word learned" pill and its Undone, removed and Pending states: round icon, word, subtitle, filled Undo, quiet ×, brand countdown line. Colors from `PillPalette` and `Color.pillAccent` / `Color.pillAccentWash`, sizes from `LearnedPillMetrics` | A second learned-word card, a hand-drawn Undo pill in a mockup |
 
 A control must answer on the whole area it paints (`code-conventions.md` FACT: view-patterns).

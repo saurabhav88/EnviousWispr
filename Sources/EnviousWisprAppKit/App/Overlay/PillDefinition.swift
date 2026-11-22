@@ -124,25 +124,6 @@ extension RecordingPillDesign {
         comment: "Recording Pill settings: description of the Level Rail recording pill style.")
     }
   }
-
-  /// `nil` means content-sized, which is `fitToContent: true` at the shipped
-  /// site. The classic pill reserves a fixed box; the reading well does not.
-  var reservedHeight: CGFloat? {
-    switch self {
-    // **92 IS THE WITHOUT-WORDS NOTICE BUDGET, and it is inherited rather than
-    // chosen.** The #1060 in-panel banner is rendered by every layout from one
-    // `Text` inside the root stack, and a design that cannot hold words is handed
-    // a no-op growth callback by `OverlayRenderModel` — so it CANNOT resize its
-    // window when the banner arrives mid-recording. Measured 2026-08-25: the
-    // longest shipped banner fills this box EXACTLY, with zero headroom, and a
-    // three-line sentence measures 120 and would be clipped in silence. A 40 or
-    // 44-point box would clip the graceful-cap warning on a shipping path with no
-    // test able to see it, which is why `.levelRail` takes the same number as
-    // `.classic` rather than one sized to its own contents.
-    case .classic, .levelRail: return 92
-    case .readingWell: return nil
-    }
-  }
 }
 
 /// Why the recording pill can or cannot show words as you speak (#2376 Phase 4).
@@ -567,12 +548,10 @@ struct PillDefinition: Equatable, Sendable {
   /// - Escape Recovery's `EscapeRecoveryPillFace` is content-sized from the title
   ///   and button word's text metrics at runtime (#3747) → `.measured`, and no literal is correct.
   let requestedWidth: OverlayWidth
-  /// True when this presentation must reserve a fixed interaction frame rather
-  /// than shrink to its content. **Only the non-preview recording pill sets
-  /// this**, and its 92-point frame is deliberate: it reserves room for the
-  /// lock state and for in-panel notice expansion (#1060). Everything else is
-  /// content-sized. This migration does not make every kind content-sized, and
-  /// it does not make every kind fixed.
+  /// A fixed interaction frame for the presentation, or nil to size to its
+  /// content. Since #4841 no catalog presentation reserves one (the recording
+  /// pill's 92-point frame became a content-sized pill plus notice bubble); the
+  /// host still honours a value, which its own tests exercise.
   let reservesFixedHeight: CGFloat?
 
   init(

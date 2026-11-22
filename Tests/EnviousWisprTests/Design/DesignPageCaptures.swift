@@ -246,6 +246,7 @@ enum DesignPageCaptures {
   /// notice (`notice`); the defaults draw exactly what the Phase 2 captures drew.
   static func pill(
     _ design: RecordingPillDesign, locked: Bool, preview: LivePreviewDisplay = .off,
+    position: OverlayPillPosition = .top,
     notice: RecordingNoticeReason? = nil
   ) -> AnyView {
     AnyView(
@@ -255,6 +256,7 @@ enum DesignPageCaptures {
         livePreviewProvider: { preview },
         onContentHeightChange: { _ in },
         chrome: design.chrome,
+        position: position,
         isLocked: locked,
         notice: notice.map {
           RecordingNoticeDisplay(reason: $0, text: DictationNarrator.copy(for: $0))

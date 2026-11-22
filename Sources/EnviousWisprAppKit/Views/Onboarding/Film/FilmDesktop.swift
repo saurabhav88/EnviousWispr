@@ -257,6 +257,7 @@ struct FilmRecordingPill: View {
       livePreviewProvider: { .off },
       onContentHeightChange: { _ in },
       chrome: RecordingPillDesign.classic.chrome,
+      position: .top,
       isLocked: false,
       notice: nil,
       cadence: .still,

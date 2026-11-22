@@ -80,8 +80,7 @@ enum PillLevelAnimation: Equatable, Sendable {
 /// well has any words in it is decided upstream, and this value only says what
 /// the well looks like when it does.
 ///
-/// Every field is a per-design literal except `isContentSizedVertically`, whose
-/// derivation is documented at its own declaration.
+/// Every field is a per-design literal.
 struct RecordingPillChrome: Equatable, Sendable {
 
   /// What sits above the preview area.
@@ -129,15 +128,15 @@ struct RecordingPillChrome: Equatable, Sendable {
   let wellInk: PillInk
   /// #2203: fade the well's top edge when something is scrolling off it.
   let fadesWhenWellIsFull: Bool
-  /// #2201: whether the root stack reports its IDEAL height whatever it is
-  /// offered, so the pill's height is a function of what it is SHOWING rather
-  /// than of how tall it happens to be already.
-  ///
-  /// **DERIVED from the design's own `reservedHeight`, never typed twice.** A
-  /// design that reserves a fixed box is not content-sized by definition, and the
-  /// two answers disagreeing is how a pill comes to be measured inside the panel
-  /// that is being sized from that measurement — the loop #2201 settled.
-  let isContentSizedVertically: Bool
+  /// #4841: where an in-panel notice draws. `.bubble` is a separate rounded
+  /// bubble `PillNoticeLayout.gap` from the pill, opening away from the screen
+  /// edge; `.strip` is a row inside the pill (the reading well's).
+  let noticePlacement: NoticePlacement
+
+  enum NoticePlacement: Equatable, Sendable {
+    case bubble
+    case strip
+  }
 }
 
 extension RecordingPillDesign {
@@ -160,12 +159,16 @@ extension RecordingPillDesign {
         levelAnimation: .capsuleEaseOut,
         showsListeningSentence: true,
         noticeInk: .capsuleWhite,
-        noticeMaxWidth: 170,
-        noticeInsets: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0),
+        // #4841: the bubble takes the Capsule's own 185 pt window width, so the
+        // window never widens and a dragged pill never shifts (§14 Q2).
+        noticeMaxWidth: nil,
+        noticeInsets: EdgeInsets(
+          top: PillNoticeLayout.paddingV, leading: PillNoticeLayout.paddingH,
+          bottom: PillNoticeLayout.paddingV, trailing: PillNoticeLayout.paddingH),
         wellInsets: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0),
         wellInk: .capsuleWhite,
         fadesWhenWellIsFull: false,
-        isContentSizedVertically: reservedHeight == nil)
+        noticePlacement: .bubble)
 
     case .levelRail:
       // Every value here is `.classic`'s, except the header and the notice cap.
@@ -181,21 +184,16 @@ extension RecordingPillDesign {
         levelAnimation: .none,
         showsListeningSentence: false,
         noticeInk: .capsuleWhite,
-        // 288 less the 14pt root inset either side. Stated as the arithmetic it
-        // is, because a bare 260 beside a 288-wide design reads as a second
-        // measurement nobody took.
-        //
-        // **This is the site the round-5 width change nearly missed.** Nothing
-        // fails if it keeps the old 232 — notices would just wrap 28pt early,
-        // for ever, with no test red anywhere. It was found by grepping the
-        // VALUE rather than the symbol, which is the only thing that reaches a
-        // number carrying someone else's arithmetic.
-        noticeMaxWidth: 260,
-        noticeInsets: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0),
+        // #4841: capped narrower than the 288 pt panel so it reads as a bubble,
+        // not a second pill (§14 Q2).
+        noticeMaxWidth: PillNoticeLayout.railMaxWidth,
+        noticeInsets: EdgeInsets(
+          top: PillNoticeLayout.paddingV, leading: PillNoticeLayout.paddingH,
+          bottom: PillNoticeLayout.paddingV, trailing: PillNoticeLayout.paddingH),
         wellInsets: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0),
         wellInk: .capsuleWhite,
         fadesWhenWellIsFull: false,
-        isContentSizedVertically: reservedHeight == nil)
+        noticePlacement: .bubble)
 
     case .readingWell:
       return RecordingPillChrome(
@@ -207,11 +205,13 @@ extension RecordingPillDesign {
         showsListeningSentence: false,
         noticeInk: .previewPalette,
         noticeMaxWidth: nil,
-        noticeInsets: EdgeInsets(top: 0, leading: 16, bottom: 12, trailing: 16),
+        noticeInsets: EdgeInsets(
+          top: PillNoticeLayout.paddingV, leading: 16, bottom: PillNoticeLayout.paddingV,
+          trailing: 16),
         wellInsets: EdgeInsets(top: 12, leading: 16, bottom: 15, trailing: 16),
         wellInk: .previewPalette,
         fadesWhenWellIsFull: true,
-        isContentSizedVertically: reservedHeight == nil)
+        noticePlacement: .strip)
     }
   }
 }
@@ -315,6 +315,9 @@ struct RecordingOverlayView: View {
   /// reason (#4841). This view renders the text and asks nobody what to say.
   let isLocked: Bool
   let notice: RecordingNoticeDisplay?
+  /// #4841: where the pill is anchored, frozen for this recording. A bubble
+  /// opens away from the screen edge: below the pill at Top, above it at Bottom.
+  let position: OverlayPillPosition
 
   /// How long the poll waits between reads. Production never passes this.
   let cadence: RecordingPollCadence
@@ -351,6 +354,7 @@ struct RecordingOverlayView: View {
   /// the crash-recovery pill and the Settings surfaces already read. `OverlayMotion` owns which
   /// of this view's three container animations it changes and which it must not.
   @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+  @Environment(\.colorScheme) private var colorScheme
   @Environment(\.overlayReduceMotionOverride) private var reduceMotionOverride
   private var reduceMotion: Bool { reduceMotionOverride ?? systemReduceMotion }
 
@@ -379,6 +383,7 @@ struct RecordingOverlayView: View {
     livePreviewProvider: @escaping () -> LivePreviewDisplay,
     onContentHeightChange: @escaping (CGFloat) -> Void,
     chrome: RecordingPillChrome,
+    position: OverlayPillPosition,
     isLocked: Bool,
     notice: RecordingNoticeDisplay?,
     initialPreview: LivePreviewDisplay = .off,
@@ -395,6 +400,7 @@ struct RecordingOverlayView: View {
     self.chrome = chrome
     self.isLocked = isLocked
     self.notice = notice
+    self.position = position
     self.cadence = cadence
     self.animatesGlow = animatesGlow
     self.initialLevelHistory = initialLevelHistory
@@ -432,7 +438,8 @@ struct RecordingOverlayView: View {
         .foregroundStyle(PreviewPillPalette.timer)
 
       RainbowLevelMeter(
-        audioLevel: audioLevel, tick: audioTick, initialHistory: initialLevelHistory)
+        audioLevel: audioLevel, tick: audioTick, initialHistory: initialLevelHistory,
+        isFlat: isMicSilent)
 
       Spacer(minLength: 8)
 
@@ -474,7 +481,60 @@ struct RecordingOverlayView: View {
   /// Fixed, so the header cannot change height between modes. Read by a test.
   static let previewHeaderHeight: CGFloat = 34
 
+  /// #4841: the silent-mic notice is showing (either level).
+  private var isMicSilent: Bool {
+    if case .micSilent? = notice?.reason { return true }
+    return false
+  }
+
+  /// #4841: the strong (15 s) silent-mic level, drawn in the warning color.
+  private var isStrongMicSilence: Bool {
+    notice?.reason == .micSilent(.strong)
+  }
+
   var body: some View {
+    // #4841: the pill and, for the Capsule and Level Rail, its notice bubble.
+    // The bubble opens away from the screen edge (below at Top, above at
+    // Bottom), so the pill itself never moves. The whole stack is measured, so
+    // the window grows for the bubble and shrinks when it leaves.
+    VStack(spacing: PillNoticeLayout.gap) {
+      if chrome.noticePlacement == .bubble, position == .bottom, let notice {
+        noticeBubble(notice)
+      }
+      pill
+      if chrome.noticePlacement == .bubble, position == .top, let notice {
+        noticeBubble(notice)
+      }
+    }
+    // #2303: becomes instant under Reduce Motion.
+    .animation(
+      OverlayMotion.stateChange(.easeInOut(duration: 0.25), reduceMotion: reduceMotion),
+      value: notice)
+    .fixedSize(horizontal: false, vertical: true)
+    // #1988: report the real height so the panel can follow it. Measured rather
+    // than computed from a line count, because only the text engine knows how
+    // many lines a sentence wraps to at this width in this script.
+    .background(
+      GeometryReader { geo in
+        Color.clear
+          .onAppear { onContentHeightChange(geo.size.height) }
+          .onChange(of: geo.size.height) { _, height in onContentHeightChange(height) }
+      }
+    )
+    .task {
+      while !Task.isCancelled {
+        audioLevel = audioLevelProvider()
+        audioTick &+= 1
+        elapsed = recordingElapsedProvider() ?? 0
+        preview = livePreviewProvider()
+        await cadence.wait()
+      }
+    }
+  }
+
+  /// The pill itself: header, live preview and, for the reading well, the
+  /// notice strip.
+  private var pill: some View {
     // #2202 row 1 of the shared-root table: the capsule wants 6pt between its
     // stacked pieces; the preview puts a ruled header directly against its
     // reading well and supplies its own spacing inside each section.
@@ -496,35 +556,17 @@ struct RecordingOverlayView: View {
             .foregroundStyle(.white)
           // Taller and wider-barred than the reading well's, so the rail rather
           // than the clock is what the eye lands on. No lips mark: the rail IS
-          // the audio-reactive element, and two of them would compete.
+          // the audio-reactive element, and two of them would compete. While the
+          // microphone is silent the level is exactly zero, so the dots lie flat.
           RainbowLevelMeter(
             audioLevel: audioLevel, tick: audioTick, height: 24, barWidth: 3, spacing: 2,
-            initialHistory: initialLevelHistory)
+            initialHistory: initialLevelHistory, isFlat: isMicSilent)
 
-          // **The hands-free badge, and without it this design was the one that
-          // never said the microphone stays open** (#2376 Phase 4, cloud review
-          // round 5, P1). Every other visual property here is independent of
-          // `isLocked`, so the container's animation had nothing to
-          // animate and the locked pill was pixel-identical to the unlocked one.
-          // The cost is not cosmetic: hands-free keeps recording after the key is
-          // released, so a user with no confirmation can leave a capture running.
-          //
-          // Treatment is the reading well's, verbatim, for the reason recorded
-          // there: a filled badge because the mode PERSISTS, where a size change
-          // is only legible to someone who saw the other size a second earlier.
-          //
-          // **INLINE rather than on a row of its own, and the reserved-box guard is
-          // what decided that.** A second row put the pill at 104pt with a #1060
-          // banner also showing, against the 92pt box this design reserves — and a
-          // without-words pill is handed a no-op growth callback, so that overflow
-          // is CLIPPED with nothing reporting it. The box is the inherited notice
-          // budget rather than a number this phase gets to pick, so the badge
-          // gives up the row instead.
-          //
-          // No leading dot, unlike the reading well's: this row is a ~45pt clock
-          // plus 24 bars at 3pt-and-2pt, and the dot is 11pt of the margin that
-          // keeps the rail from being squeezed. Measured locked: 279pt of content,
-          // which is what moved this design's width to 288.
+          // **The hands-free badge** (#2376 Phase 4, cloud review round 5, P1):
+          // hands-free keeps recording after the key is released, so a user with
+          // no confirmation can leave a capture running. Inline rather than on a
+          // row of its own; measured locked, 279pt of content, which is what moved
+          // this design's width to 288.
           if isLocked {
             Text(LivePreviewCopy.handsFreeMode)
               .font(.system(size: 11, weight: .semibold))
@@ -539,8 +581,10 @@ struct RecordingOverlayView: View {
       case .mark:
         HStack(spacing: 10) {
           // Rainbow lips icon — audio-reactive during recording.
-          // Scales to 2x in hands-free (locked) mode.
-          RainbowLipsIcon(size: 24, audioLevel: audioLevel)
+          // Scales to 2x in hands-free (locked) mode. #4841: grey and still while
+          // the microphone is silent (the level is exactly zero, so it does not
+          // move), matching the approved mockup.
+          RainbowLipsIcon(size: 24, audioLevel: audioLevel, isSilent: isMicSilent)
             .scaleEffect(isLocked ? 2.0 : 1.0)
 
           if !isLocked {
@@ -556,28 +600,9 @@ struct RecordingOverlayView: View {
       // normal transcription path after the key is released.
       livePreviewBody
 
-      // #1060: approaching-cap warning banner. Appears inside the same capsule
-      // (no panel rebuild), wraps within the pill width, auto-clears.
-      if let noticeText = notice?.text {
-        Text(noticeText)
-          .font(.system(size: 11, weight: .medium))
-          // #2204: the notice is rendered by BOTH layouts from this one `Text`,
-          // and white is invisible on a light pill. Gated rather than made
-          // dynamic, so the capsule's paint is unchanged to the byte.
-          .foregroundStyle(chrome.noticeInk.notice)
-          .multilineTextAlignment(.center)
-          .fixedSize(horizontal: false, vertical: true)
-          // 170pt suits the 185pt capsule. The preview pill is 400pt wide, so the
-          // same cap would wrap a one-line warning into three inside a box with
-          // room to spare.
-          .frame(maxWidth: chrome.noticeMaxWidth ?? .infinity)
-          // #2202 row 4 of the shared-root table. The notice is rendered by BOTH
-          // layouts and its ONLY inset came from the shared root padding, which
-          // the preview now zeroes — so without this it sits flush against the
-          // pill's bottom edge. The header and the reading well each received
-          // replacement padding; this is the third section and it was missed.
-          .padding(chrome.noticeInsets)
-          .transition(.opacity)
+      // #4841: the reading well's notice strip, inside the panel under the well.
+      if chrome.noticePlacement == .strip, let notice {
+        noticeStrip(notice)
       }
     }
     .animation(
@@ -585,87 +610,91 @@ struct RecordingOverlayView: View {
       value: isLocked)
     // Single container animation prevents animation stacking: N per-element
     // modifiers × update rate creates exponential state transitions (gotchas.md).
-    //
-    // #2201: the PREVIEW layout selects no animation here. `audioLevel` is
-    // repolled every 50 ms, so this fires ~20 times a second, and a container
-    // animation animates whatever else changed in the same update — including the
-    // preview text, and therefore the capsule's HEIGHT. That turned each genuine
-    // resize into a smoothly animated one and drove `setFrame` once per frame.
-    //
-    // The trigger VALUE is kept rather than deleted, so the capsule's animation is
-    // visibly untouched. **There is no branch here any more** (#2376 C2): the
-    // policy is a field on the design's chrome, so each design states its own
-    // answer once instead of both answers sitting inline. Audio-reactive PAINT is
-    // unaffected either way: `RainbowLipsIcon` reads `audioLevel` directly and
-    // redraws without needing this.
-    //
-    // Not a violation of swift-patterns.md RULE: animate-the-container-not-children
-    // — that forbids per-child `.animation(value:)`, and this adds none. The
-    // container keeps its lock and notice triggers in both layouts.
+    // #2201: the PREVIEW layout selects no animation here (`levelAnimation`), so a
+    // genuine resize is never smoothly animated once per poll.
     .animation(chrome.levelAnimation.resolved, value: audioLevel)
-    // #2303: both of this container's discrete triggers become instant under Reduce Motion.
-    // The audio level's easing on the line above deliberately does NOT — `OverlayMotion` states
-    // why removing it would make the pill move more, not less.
-    .animation(
-      OverlayMotion.stateChange(.easeInOut(duration: 0.25), reduceMotion: reduceMotion),
-      value: notice)
-    // #2202 row 8 of the shared-root table. The capsule keeps its uniform inset;
-    // the preview zeroes it and each section supplies its own, because a header
-    // strip over a reading well does not want one rectangle of padding wrapped
-    // around both. Migrated ATOMICALLY with the section padding above and below:
-    // split across two commits, whatever shipped in between would have had no
-    // insets at all.
+    // #2202 row 8 of the shared-root table: the capsule keeps its uniform inset;
+    // the preview zeroes it and each section supplies its own.
     .padding(chrome.rootInsets)
-    // #2201: the preview pill's height must be a function of what it is SHOWING,
-    // never of how tall it happens to be already.
-    //
-    // Without this the capsule is free to stretch into whatever room the panel
-    // offers, because `previewText`'s `.frame(maxHeight:)` grows to its cap under
-    // a large proposal. The panel is then sized FROM that measurement
-    // (`onContentHeightChange` -> resizeRecordingPanel) while the measurement is
-    // taken INSIDE the panel, so the pair has no single solution: measured on the
-    // real view, one line of text reported 65pt in a 65pt panel and 125pt in a
-    // 125pt one. Nothing in the loop pulls the height back down either, so a box
-    // that grew for a long sentence stayed at the cap when the recognizer revised
-    // the sentence shorter.
-    //
-    // `fixedSize` makes the stack report its IDEAL height whatever it is offered,
-    // which is the same question `showPanel(fitToContent:)` asks at creation — so
-    // the two sizing paths finally agree. Growth is unaffected: the ideal height
-    // still tracks the text (65 -> 80 -> 125 across one, three and six-plus lines).
-    //
-    // **Gated, because every modifier on this root is rendered by BOTH layouts.**
-    // The 185pt capsule sits inside a fixed 92pt frame and is out of scope for
-    // #2198; `vertical: false` leaves it exactly as it was.
-    //
-    // **Order is load-bearing:** after the root inset, before both backgrounds.
-    // (It was "after both paddings" while the root applied a horizontal and a
-    // vertical modifier separately; #2376 C2 collapsed those into one
-    // `EdgeInsets`, and the ordering constraint is unchanged.) The
-    // measurement is taken on the padded stack, so moving this either side of it
-    // measures a different view than the one that was proven.
-    .fixedSize(horizontal: false, vertical: chrome.isContentSizedVertically)
+    // #2201: the pill's height is a function of what it is SHOWING, never of how
+    // tall it happens to be already. Every design is content-sized since #4841.
+    // **Order is load-bearing:** after the root inset, before the background.
+    .fixedSize(horizontal: false, vertical: true)
     .background(
       OverlayCapsuleBackground(cornerStyle: chrome.cornerStyle, animatesGlow: animatesGlow))
-    // #1988: report the capsule's real height so the panel can follow it. Measured
-    // on the capsule rather than computed from a line count, because only the text
-    // engine knows how many lines a sentence wraps to at this width in this script.
-    .background(
-      GeometryReader { geo in
-        Color.clear
-          .onAppear { onContentHeightChange(geo.size.height) }
-          .onChange(of: geo.size.height) { _, height in onContentHeightChange(height) }
-      }
-    )
-    .task {
-      while !Task.isCancelled {
-        audioLevel = audioLevelProvider()
-        audioTick &+= 1
-        elapsed = recordingElapsedProvider() ?? 0
-        preview = livePreviewProvider()
-        await cadence.wait()
+  }
+
+  /// The notice's leading mark: the silent-mic glyph for the silence notice, none
+  /// for the other reasons (whose look is unchanged apart from where they sit).
+  @ViewBuilder
+  private func noticeMark() -> some View {
+    if isMicSilent {
+      Image(systemName: "mic.slash.fill")
+        .font(Font.pillNotice)
+        .accessibilityHidden(true)
+    }
+  }
+
+  /// #4841: the Capsule and Level Rail notice — a separate rounded bubble in the
+  /// pill's own dark fill and edge. At the strong level the text, mark and a thin
+  /// inset edge turn `stWarning`.
+  private func noticeBubble(_ notice: RecordingNoticeDisplay) -> some View {
+    HStack(alignment: .firstTextBaseline, spacing: PillNoticeLayout.iconGap) {
+      noticeMark()
+      Text(notice.text)
+        .font(Font.pillNotice)
+        .multilineTextAlignment(.leading)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+    .foregroundStyle(isStrongMicSilence ? Color.stWarning : chrome.noticeInk.notice)
+    .padding(chrome.noticeInsets)
+    .frame(maxWidth: chrome.noticeMaxWidth ?? .infinity)
+    .background(OverlayCapsuleBackground(cornerStyle: .bubble, animatesGlow: false))
+    // The bubble is always dark, so its colours resolve as dark-appearance
+    // tokens in both appearances (the light `stWarning` is too dark on it).
+    .overlay {
+      if isStrongMicSilence {
+        // Matches `OverlayCapsuleBackground`'s `.bubble` shape.
+        RoundedRectangle(cornerRadius: PillNoticeLayout.radius, style: .continuous)
+          .strokeBorder(Color.stWarning, lineWidth: PillNoticeLayout.strongEdge)
       }
     }
+    .environment(\.colorScheme, .dark)
+    .transition(.opacity)
+  }
+
+  /// #4841: the reading well's notice — a strip inside the panel under the
+  /// well, with a hairline above. At the strong level the mark is `stWarning` on
+  /// a `stWarningSoft` tint; the text is `stWarning` too in the dark appearance,
+  /// but keeps the strip's own ink in the light one, where the light `stWarning`
+  /// on the light strip measures about 3:1, below the 4.5:1 small text needs.
+  private func noticeStrip(_ notice: RecordingNoticeDisplay) -> some View {
+    VStack(spacing: 0) {
+      Rectangle()
+        .fill(PreviewPillPalette.divider)
+        .frame(height: 0.5)
+      HStack(alignment: .firstTextBaseline, spacing: PillNoticeLayout.iconGap) {
+        noticeMark()
+          .foregroundStyle(isStrongMicSilence ? Color.stWarning : chrome.noticeInk.notice)
+        Text(notice.text)
+          .font(Font.pillNotice)
+          .multilineTextAlignment(.leading)
+          .fixedSize(horizontal: false, vertical: true)
+          .foregroundStyle(
+            isStrongMicSilence && colorScheme == .dark ? Color.stWarning : chrome.noticeInk.notice)
+        Spacer(minLength: 0)
+      }
+      .padding(chrome.noticeInsets)
+      // Rounded at the bottom to follow the panel's own 16 pt corners, so the
+      // tint never shows outside the panel.
+      .background(
+        UnevenRoundedRectangle(
+          cornerRadii: .init(bottomLeading: DesignRadius.xxl, bottomTrailing: DesignRadius.xxl),
+          style: .continuous
+        )
+        .fill(isStrongMicSilence ? Color.stWarningSoft : Color.clear))
+    }
+    .transition(.opacity)
   }
 
   /// The preview area.

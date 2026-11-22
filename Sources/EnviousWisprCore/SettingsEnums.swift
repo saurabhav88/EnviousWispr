@@ -43,8 +43,8 @@ public enum LivePreviewEngineChoice: String, CaseIterable, Sendable {
 /// without touching the other.
 ///
 /// **It lives in Core because a SETTING persists it**, and `SettingsManager` is
-/// in Services. Only the identity is here: `canHoldWords`, `width`,
-/// `reservedHeight` and `chrome` are an AppKit extension, because Core has no
+/// in Services. Only the identity is here: `canHoldWords`, `width` and
+/// `chrome` are an AppKit extension, because Core has no
 /// business knowing a pill's pixels. Persisted by rawValue, which derives from
 /// the case NAMES — `recordingPillDesignRawValuesAreStable` pins them, because a
 /// rename would silently orphan every saved selection to the fallback.

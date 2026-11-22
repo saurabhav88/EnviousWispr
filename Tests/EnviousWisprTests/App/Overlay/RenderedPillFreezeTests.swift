@@ -457,8 +457,9 @@ struct RenderedPillFreezeTests {
   nonisolated static let frozenRecording:
     [(label: String, design: RecordingPillDesign, locked: Bool, width: CGFloat, height: CGFloat)] =
       [
-        ("classic.unlocked", .classic, false, 185, 92),
-        ("classic.locked", .classic, true, 185, 92),
+        // #4841: content-sized; the 92-point reserved box is gone.
+        ("classic.unlocked", .classic, false, 185, 44),
+        ("classic.locked", .classic, true, 185, 44),
         ("readingWell.unlocked", .readingWell, false, 400, 34),
         ("readingWell.locked", .readingWell, true, 400, 34),
       ]
@@ -492,52 +493,47 @@ struct RenderedPillFreezeTests {
 
   // MARK: - The measurement nobody had taken
 
-  /// **The classic pill's reserved box has ZERO headroom for its own longest
-  /// notice, and that is measured rather than asserted.**
+  /// #4841: every notice now sits in a bubble (Capsule, Level Rail) or a strip
+  /// (Reading Well) and the window grows to fit it, so the old 92-point box is
+  /// gone. What must still hold is that the longest reviewed copy, in every
+  /// interface language, stays a short notice at the existing width: at most
+  /// four lines of 11 pt text, never a wall of text beside a 44 pt pill.
   ///
-  /// The #1060 banner is the only thing that makes a without-words pill grow.
-  /// The root frames such a pill to `RecordingPillDesign.reservedHeight`, and a
-  /// without-words design is handed a no-op growth callback by
-  /// `OverlayRenderModel`, so nothing in production and nothing in this tree
-  /// could previously observe the content exceeding the box.
-  ///
-  /// Measured 2026-08-25: `approachingCap` fills the 92-point box EXACTLY, and
-  /// `autoStopUnavailable` uses 78. A three-line sentence measures 120 and would
-  /// be silently cut off. So this is not a defect today and is one word of copy
-  /// away from being one — which is precisely why the budget is pinned here
-  /// rather than left as a number in a doc comment.
-  @Test(
-    "the shipped in-panel notices fit the box the classic pill reserves",
-    arguments: [RecordingNoticeReason.approachingCap, .autoStopUnavailable, .secureInputActive])
-  func inPanelNoticesFitTheReservedBox(reason: RecordingNoticeReason) throws {
-    let budget = try #require(RecordingPillDesign.classic.reservedHeight)
-    for locked in [false, true] {
-      let height = try RenderedPillHarness.recordingContentHeight(
-        design: .classic, locked: locked,
-        notice: DictationNarrator.copy(for: reason), width: RecordingPillDesign.classic.width)
-      #expect(
-        height <= budget,
-        """
-        the \(reason) banner made the capsule \(height)pt tall (locked: \(locked)) \
-        against the \(budget)pt box the classic design reserves. The pill cannot \
-        grow — a without-words design is handed a no-op growth callback — so the \
-        overflow is CLIPPED on screen with nothing reporting it. Shorten the copy \
-        or raise the reserved height; do not raise this expectation.
-        """)
-    }
-  }
+  /// Product Outcome: when this fails, a notice wraps into a tall block that
+  /// covers the app behind the pill, or a translation is cut short.
+  static let longestNotices: [(reason: RecordingNoticeReason, text: String)] = [
+    (.approachingCap, DictationNarrator.copy(for: .approachingCap)),
+    (.autoStopUnavailable, DictationNarrator.copy(for: .autoStopUnavailable)),
+    (.secureInputActive, DictationNarrator.copy(for: .secureInputActive)),
+    (.micSilent(.calm), DictationNarrator.copy(for: .micSilent(.calm))),
+    (.micSilent(.strong), DictationNarrator.copy(for: .micSilent(.strong))),
+    // The catalog's reviewed translations of the longest notices (literals, so a
+    // copy change fails here rather than passing on the new value), typed so the
+    // silence lines measure with their mark.
+    (.secureInputActive, "Sichere Tastatureingabe aktiv: einige Tastaturfunktionen pausiert"),
+    (.micSilent(.strong),
+      "Dein Mikrofon liefert keinen Ton. Beende die Aufnahme und prüfe es in den Einstellungen."),
+    (.micSilent(.strong), "Tu micrófono no envía sonido. Detén la grabación y revísalo en Ajustes."),
+    (.micSilent(.strong),
+      "Votre micro n’envoie aucun son. Arrêtez l’enregistrement et vérifiez-le dans Réglages."),
+  ]
 
-  /// #3544 P4: the German Secure Input banner is the longest notice copy shipped (65 characters
-  /// against the English 56), so it is measured too. The literal is the catalog's German value.
-  @Test("the German Secure Input notice fits the box the classic pill reserves")
-  func germanSecureInputNoticeFits() throws {
-    let budget = try #require(RecordingPillDesign.classic.reservedHeight)
-    for locked in [false, true] {
+  @Test(
+    "the longest reviewed notice in every language stays within four lines on every design",
+    arguments: RecordingPillDesign.allCases)
+  func longestNoticesStayShort(design: RecordingPillDesign) throws {
+    let bare = try RenderedPillHarness.recordingContentHeight(design: design, width: design.width)
+    // Four lines of 11 pt semibold text (measured line height 14.1 pt, so 14.5
+    // leaves rounding room but not a fifth line) plus the bubble's 8 pt padding
+    // top and bottom and the 4 pt gap: 4 x 14.5 + 16 + 4 = 78.
+    let ceiling = bare + 78
+    for notice in Self.longestNotices {
       let height = try RenderedPillHarness.recordingContentHeight(
-        design: .classic, locked: locked,
-        notice: "Sichere Tastatureingabe aktiv: einige Tastaturfunktionen pausiert",
-        width: RecordingPillDesign.classic.width)
-      #expect(height <= budget, "the German banner made the capsule \(height)pt against \(budget)pt")
+        design: design, notice: notice.text, noticeReason: notice.reason, width: design.width)
+      #expect(height > bare, "\(design): the notice never rendered (\(notice.text))")
+      #expect(
+        height <= ceiling,
+        "\(design): \(height)pt with the notice against \(ceiling)pt allowed: \(notice.text)")
     }
   }
 

@@ -95,6 +95,7 @@ struct RecordingPollingLifetimeTests {
       },
       onContentHeightChange: { _ in },
       chrome: RecordingPillDesign.classic.chrome,
+      position: .top,
       isLocked: false,
       notice: nil,
       cadence: .still)
@@ -103,7 +104,7 @@ struct RecordingPollingLifetimeTests {
     try #require(
       host.present(
         hosted, width: .fixed(RecordingPillDesign.classic.width),
-        fixedHeight: RecordingPillDesign.classic.reservedHeight,
+        fixedHeight: nil,
         isFresh: true, position: .top),
       "the still pill never reached the host")
 

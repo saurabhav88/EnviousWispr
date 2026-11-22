@@ -683,8 +683,9 @@ final class OverlayDirector {
         // re-read** (#2375 C3b). Reading it back off the render model is what
         // made this a second consumer of the geometry override, so a change to
         // that override silently moved a live pill's growth width.
-        guard let self, self.presentedID == presentation.id, design.canHoldWords
-        else { return }
+        // #4841: every design grows (a notice bubble or strip), not only the one
+        // that can hold words.
+        guard let self, self.presentedID == presentation.id else { return }
         self.host.resizeCurrentPresentation(to: CGSize(width: design.width, height: height))
       })
   }
@@ -1058,10 +1059,9 @@ final class OverlayDirector {
   }
 
   /// **Discharges the obligation `OverlayContent.recording` records**: the
-  /// non-preview recording pill is 185 points wide in a reserved 92-point
-  /// interaction frame, and the Live Preview variant is 400 wide and
-  /// content-sized from its first frame so it does not visibly snap once the
-  /// real height is measured.
+  /// recording pill takes its design's width and, since #4841, is content-sized
+  /// in every design (the Capsule and Level Rail grow for their notice bubble;
+  /// the 92-point reserved frame is gone).
   ///
   /// The DIRECTOR decides it and the reducer cannot, because whether preview is
   /// on arrives as a PROVIDER rather than as an event — putting it in the reducer
