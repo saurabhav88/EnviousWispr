@@ -181,8 +181,13 @@ enum MeetingLiveWordsChoice {
         : Locale.Language.Components(
           identifier: Locale.Language(identifier: code).maximalIdentifier
         ).script
+      // #4828: a Chinese request also keeps its spoken language: Apple's Hong Kong Chinese is
+      // Cantonese, so a Mandarin guess never falls back to it (or the reverse).
+      let chinese = ["zh", "yue"].contains(requested.languageCode?.identifier ?? "")
+      let cantonese = ApplePreviewEngineResolver.isCantonese(code)
       let inScript: (String) -> Bool = { tag in
         guard let script else { return true }
+        if chinese, ApplePreviewEngineResolver.isCantonese(tag) != cantonese { return false }
         let maximal = Locale.Language(identifier: tag).maximalIdentifier
         return Locale.Language.Components(identifier: maximal).script == script
       }

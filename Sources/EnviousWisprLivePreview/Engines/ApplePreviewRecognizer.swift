@@ -1043,7 +1043,8 @@ package enum ApplePreviewEngineResolver {
   /// a Mac whose language the app does not ship (measured with a probe bundle: Italian,
   /// Spanish) it is `en-<region>`. So the language (and a script the region does not already
   /// imply) comes from the Mac's first preferred language, and only the REGION from
-  /// `Locale.current`, which a per-app language leaves alone.
+  /// `Locale.current`, which a per-app language leaves alone (unless that region would change
+  /// the spoken Chinese language, #4828).
   package static func languageCode(for mode: LanguageMode) -> String {
     languageCode(for: mode, macLanguages: MacProfile.systemLanguages, current: .current)
   }
@@ -1065,7 +1066,16 @@ package enum ApplePreviewEngineResolver {
       guard let code = preferred.languageCode else {
         return current.identifier(.bcp47)
       }
-      let region = current.region
+      // The Mac's Region, unless swapping it in would change the spoken Chinese language
+      // (#4828): Apple's Hong Kong Chinese is Cantonese, so a Taiwan Mandarin preference with
+      // Region Hong Kong keeps TW (zh-TW, not zh-HK), and a Hong Kong Cantonese preference with
+      // Region Taiwan keeps HK. Only when both regions exist; every other case is unchanged.
+      var region = current.region
+      if let own = preferred.region, let mac = region,
+        isCantonese(first) != isCantonese("\(code.identifier)-\(mac.identifier)")
+      {
+        region = own
+      }
       // The preference's script: written (zh-Hant-TW) or, when it names a region, implied by
       // it (zh-TW is Traditional), so swapping in the Mac's region cannot change the script
       // (zh-TW with Region United States must not become zh-US, which Apple reads as
@@ -1088,6 +1098,17 @@ package enum ApplePreviewEngineResolver {
       return Locale(languageCode: code, script: script, languageRegion: region)
         .identifier(.bcp47)
     }
+  }
+
+  /// Whether a tag names Cantonese in Apple's speech lists, which carry one Chinese tag per
+  /// spoken language: `zh-HK` and `yue-*` are Cantonese, `zh-TW` and `zh-CN` Mandarin (#4828;
+  /// inferred from Apple naming its languages Cantonese (Hong Kong) and Mandarin (Taiwan, China
+  /// mainland), not verified by listening). False for a bare `zh` means only that the tag
+  /// carries no Cantonese marker.
+  package static func isCantonese(_ tag: String) -> Bool {
+    let parts = Locale.Language.Components(identifier: tag)
+    guard let code = parts.languageCode?.identifier else { return false }
+    return code == "yue" || (code == "zh" && parts.region?.identifier == "HK")
   }
 
   private static func log(_ message: String) async {

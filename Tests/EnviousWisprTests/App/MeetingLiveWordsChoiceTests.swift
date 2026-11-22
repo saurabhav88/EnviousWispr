@@ -156,6 +156,15 @@ struct MeetingLiveWordsChoiceTests {
       await Choice.language(
         for: .apple, from: "zh-GB", inventory: britain, appleEquivalent: traditional)
         == "zh-TW", "a regional tag's implied script counts too")
+
+    // #4828: Apple's Hong Kong Chinese (zh-HK) is Cantonese. A Mandarin guess with only that
+    // pack installed must not save it; the Taiwan Mandarin download is offered instead.
+    var cantoneseOnly = chinese
+    cantoneseOnly.appleInstalledTags = ["zh-HK"]
+    #expect(
+      await Choice.language(
+        for: .apple, from: "zh-Hant-US", inventory: cantoneseOnly, appleEquivalent: equivalent)
+        == "zh-TW", "a Mandarin guess never falls back to the Cantonese pack")
   }
 
   @Test("The same inventory picks the same installed region every time")
