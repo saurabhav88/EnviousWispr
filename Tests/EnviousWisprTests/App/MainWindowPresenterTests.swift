@@ -109,7 +109,8 @@ struct MainWindowPresenterTests {
     defer { close(sut, window) }
     #expect(window.frameAutosaveName == name)
     window.setFrame(window.frame.insetBy(dx: 20, dy: 20), display: false)
-    #expect(UserDefaults.standard.string(forKey: key) != nil)
+    // The saved value is the resized frame, not the opening one.
+    #expect(UserDefaults.standard.string(forKey: key) == window.frameDescriptor)
   }
 
   @Test("a second show brings back the same window without rebuilding it")
