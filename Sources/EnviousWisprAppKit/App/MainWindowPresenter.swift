@@ -120,6 +120,9 @@ package struct MainWindowMenuCommand: Commands {
   package var body: some Commands {
     CommandGroup(before: .windowList) {
       Button(title) { show() }
+      // The scene-generated entry sat between two separators; the one above comes from the
+      // window-arrangement group, this one keeps "Bring All to Front" apart as before.
+      Divider()
     }
   }
 }
