@@ -329,6 +329,9 @@ call simulate fakes call apps holding the microphone (--holders JSON list of {bu
 input, evidence, url?, pid?}); the rules, the panel and every Start run as in production.
 --clear returns to the real microphone; --press presses a button the call panel shows;
 with no option it reads the panel.
+history delete ID removes ONE dictation or import row through History's own Delete (text
+and recordings); an unknown or expired id is notFound and a meeting's row is refused (use
+meeting delete). Delete only rows you recorded as your own test data (#4798).
 Changes need the shared dev-app lock (dev-app-lock.py claim) unless run by hand.
 """
 
@@ -406,13 +409,15 @@ def build_parser():
     remove = words.add_parser("remove")
     remove.add_argument("id")
 
-    history = sub.add_parser("history", help="read History").add_subparsers(
+    history = sub.add_parser("history", help="read History, or delete one test row").add_subparsers(
         dest="action", required=True, metavar="ACTION")
     history_list = history.add_parser("list")
     history_list.add_argument("--limit", type=int)
     history_list.add_argument("--tab", choices=("dictations", "transcripts", "meetings"))
     history_get = history.add_parser("get")
     history_get.add_argument("id")
+    history_delete = history.add_parser("delete")
+    history_delete.add_argument("id")
 
     models = sub.add_parser("models", help="download or cancel a speech model").add_subparsers(
         dest="action", required=True, metavar="ACTION")
@@ -731,6 +736,8 @@ def route(args):
         return "history.list", wire, False
     if key == ("history", "get"):
         return "history.get", {"id": args.id}, False
+    if key == ("history", "delete"):
+        return "history.delete", {"id": args.id}, True
     if key == ("file", "transcribe"):
         # The import client's deadline is `time.time() + timeout`; NaN or infinity would
         # make it wait forever.

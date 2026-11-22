@@ -430,7 +430,8 @@
 
     private static func make(
       status: DevControlFixtures.StatusFake, rows: @escaping @MainActor () -> [Transcript] = { [] },
-      models: DevControlFixtures.ModelFake = DevControlFixtures.ModelFake()
+      models: DevControlFixtures.ModelFake = DevControlFixtures.ModelFake(),
+      history: DevControlDispatcher.HistorySource? = nil
     ) -> (SettingsManager, DevControlDispatcher) {
       let defaults = TestDefaults.suite("ew.tests.3765.dispatch.\(UUID().uuidString)")!
       let settings = SettingsManager(defaults: defaults)
@@ -442,7 +443,7 @@
           connectedInputUIDs: { [] }, inputChannelCounts: { [:] },
           pillWordsCapability: { .available }),
         status: status.sources,
-        history: DevControlDispatcher.HistorySource(visibleTranscripts: rows),
+        history: history ?? DevControlDispatcher.HistorySource(visibleTranscripts: rows),
         models: models.actions,
         dictation: DevControlFixtures.inertDictation(),
         credentials: DevControlFixtures.isolatedCredentials(),
@@ -776,6 +777,65 @@
       #expect(
         code(await dispatcher.handle(.historyGet, args: ["id": permanent.id.uuidString]))
           == "notFound")
+    }
+
+    @Test("history.delete calls History's Delete once for a known row and refuses everything else")
+    func historyDeleteOneKnownRow() async throws {
+      let dictation = Transcript(text: "test take")
+      let meeting = Transcript(text: "meeting row", meetingID: UUID())
+      let rows = DevControlFixtures.Box<[Transcript]>([dictation, meeting])
+      let calls = DevControlFixtures.Box<[UUID]>([])
+      let outcome = DevControlFixtures.Box<HistoryDeleteOutcome>(.removed)
+      let (_, dispatcher) = Self.make(
+        status: DevControlFixtures.StatusFake(),
+        history: DevControlDispatcher.HistorySource(
+          visibleTranscripts: { rows.value },
+          delete: { id in
+            calls.value.append(id)
+            return outcome.value
+          }))
+
+      let done = try #require(
+        payload(await dispatcher.handle(.historyDelete, args: ["id": dictation.id.uuidString])))
+      #expect(done["deleted"] as? String == dictation.id.uuidString)
+      #expect(calls.value == [dictation.id])
+
+      // Unknown id: notFound, and History's Delete is never called.
+      #expect(
+        code(await dispatcher.handle(.historyDelete, args: ["id": UUID().uuidString]))
+          == "notFound")
+      // A meeting's row belongs to meeting.delete.
+      #expect(
+        code(await dispatcher.handle(.historyDelete, args: ["id": meeting.id.uuidString]))
+          == "badArgs")
+      #expect(calls.value == [dictation.id])
+      // One UUID only: no pattern, list or missing id.
+      for bad: Any in ["*", "test", [dictation.id.uuidString], NSNumber(value: 1)] {
+        #expect(code(await dispatcher.handle(.historyDelete, args: ["id": bad])) == "badArgs")
+      }
+      #expect(code(await dispatcher.handle(.historyDelete, args: [:])) == "badArgs")
+      #expect(calls.value == [dictation.id])
+
+      // What History's Delete reports is what the client hears.
+      outcome.value = .alreadyAbsent
+      #expect(
+        code(await dispatcher.handle(.historyDelete, args: ["id": dictation.id.uuidString]))
+          == "notFound")
+      for refused: HistoryDeleteOutcome in [.failed, .skipped] {
+        outcome.value = refused
+        #expect(
+          code(await dispatcher.handle(.historyDelete, args: ["id": dictation.id.uuidString]))
+            == "checkFailed")
+      }
+    }
+
+    @Test("history.delete without History's Delete wired is notWired, before any read")
+    func historyDeleteUnwired() async throws {
+      let row = Transcript(text: "test take")
+      let (_, dispatcher) = Self.make(status: DevControlFixtures.StatusFake(), rows: { [row] })
+      #expect(
+        code(await dispatcher.handle(.historyDelete, args: ["id": row.id.uuidString]))
+          == "notWired")
     }
 
     @Test("status and History reads change no setting and never enter a dev-control write")

@@ -2898,6 +2898,11 @@ package final class WisprBootstrapper {
             },
             savedRow: { [transcriptCoordinator] id in
               try await transcriptCoordinator.savedRowForDiagnostics(id: id)
+            },
+            // #4798: the History card's own Delete (text and recordings).
+            delete: { [transcriptCoordinator] id in
+              await transcriptCoordinator.deleteHistoryItem(
+                id: .transcript(id), kind: .textAndRecordings)
             }),
           models: DevControlDispatcher.ModelActions(
             parakeetDownload: { [modelDelivery] in modelDelivery.resumeParakeetDownload() },

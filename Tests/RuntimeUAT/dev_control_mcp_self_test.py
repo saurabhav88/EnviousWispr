@@ -29,7 +29,8 @@ EXPECTED_TOOLS = {
     "ew_status", "ew_settings_list", "ew_settings_get", "ew_settings_set", "ew_language_set",
     "ew_channel_set", "ew_shortcut_set",
     "ew_keys_set", "ew_keys_clear", "ew_words_list", "ew_words_add", "ew_words_update",
-    "ew_words_remove", "ew_history_list", "ew_history_get", "ew_dictation_start",
+    "ew_words_remove", "ew_history_list", "ew_history_get", "ew_history_delete",
+    "ew_dictation_start",
     "ew_dictation_stop", "ew_dictation_cancel", "ew_dictation_receipt", "ew_dictation_wait",
     "ew_models_download", "ew_models_cancel", "ew_file_transcribe",
     "ew_meeting_start", "ew_meeting_stop", "ew_meeting_status", "ew_meeting_list",
@@ -249,6 +250,10 @@ async def run_cases(r, base):
             r.check("meeting summary-write passes --replace and the id after --",
                     calls and calls[-1]["argv"][-4:] == [
                         "summary-write", "--replace", "--", "m1"], f"{calls}")
+            reply, text, calls = await call("ew_history_delete", {"id": "h1"})
+            r.check("history delete maps to the CLI's history delete verb with the id after --",
+                    not reply.is_error and calls and calls[0]["argv"][2:] == [
+                        "history", "delete", "--", "h1"], f"{calls}")
             reply, text, calls = await call("ew_meeting_delete_audio", {"id": "m1"})
             r.check("meeting delete-audio maps to the CLI's delete-audio verb",
                     not reply.is_error and calls and calls[0]["argv"][2:] == [

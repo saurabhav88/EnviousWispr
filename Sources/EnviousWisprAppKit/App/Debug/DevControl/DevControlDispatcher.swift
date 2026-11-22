@@ -30,6 +30,8 @@
       case status
       case historyList = "history.list"
       case historyGet = "history.get"
+      /// #4798: deletes ONE dictation or import row through History's own Delete.
+      case historyDelete = "history.delete"
       case wordsList = "words.list"
       case wordsAdd = "words.add"
       case wordsUpdate = "words.update"
@@ -157,13 +159,18 @@
     struct HistorySource {
       let visibleTranscripts: @MainActor () async throws -> [Transcript]
       let savedRow: (@MainActor (UUID) async throws -> Transcript?)?
+      /// #4798: History's own Delete of one row (`TranscriptCoordinator.deleteHistoryItem`,
+      /// text and recordings), the call the History card makes. Nil when not wired.
+      let delete: (@MainActor (UUID) async -> HistoryDeleteOutcome)?
 
       init(
         visibleTranscripts: @escaping @MainActor () async throws -> [Transcript],
-        savedRow: (@MainActor (UUID) async throws -> Transcript?)? = nil
+        savedRow: (@MainActor (UUID) async throws -> Transcript?)? = nil,
+        delete: (@MainActor (UUID) async -> HistoryDeleteOutcome)? = nil
       ) {
         self.visibleTranscripts = visibleTranscripts
         self.savedRow = savedRow
+        self.delete = delete
       }
     }
 
@@ -270,6 +277,8 @@
         return await historyList(args)
       case .historyGet:
         return await historyGet(args)
+      case .historyDelete:
+        return await historyDelete(args)
       case .wordsList:
         return wordsList(args)
       case .wordsAdd:
@@ -829,8 +838,52 @@
     /// `{id}`: a UUID string of one row History offers now. A row that expired or was
     /// deleted since the client last looked is `notFound`, never a neighbour.
     private func historyGet(_ args: [String: Any]) async -> Result {
+      switch await historyRow(args) {
+      case .success(let row): return .ok(["row": Self.detail(row)])
+      case .failure(let failure): return failure
+      }
+    }
+
+    /// #4798 `{id}`: deletes ONE dictation or import row through History's own Delete
+    /// (text and recordings). The row is read first exactly as `history.get` reads it, so an
+    /// unknown or expired id is `notFound` and the owner is never called; a meeting's row is
+    /// refused (`meeting.delete` owns meetings). `checkFailed` can mean the text went but a
+    /// recording file could not be removed; `history.get` answering `notFound` afterwards
+    /// proves only that the row is gone. One id per call; no pattern or bulk form.
+    private func historyDelete(_ args: [String: Any]) async -> Result {
+      guard let delete = history.delete else {
+        return .failure(.notWired, "History delete was not handed to the door")
+      }
+      let row: Transcript
+      switch await historyRow(args) {
+      case .success(let found): row = found
+      case .failure(let failure): return failure
+      }
+      if row.isMeeting || row.meetingID != nil {
+        return .failure(.badArgs, "this row belongs to a meeting: use meeting.delete")
+      }
+      switch await delete(row.id) {
+      case .removed: return .ok(["deleted": row.id.uuidString])
+      case .alreadyAbsent: return .failure(.notFound, "no visible History row has that id")
+      case .skipped: return .failure(.checkFailed, "History kept the row on purpose")
+      case .failed:
+        // The text can already be gone while a recording file stayed: a retry then answers
+        // notFound before any cleanup, so say so instead of "not deleted".
+        return .failure(
+          .checkFailed,
+          "deletion did not fully complete: the row may be gone while a recording file remains")
+      }
+    }
+
+    private enum RowLookup {
+      case success(Transcript)
+      case failure(Result)
+    }
+
+    /// The one row `{id}` names, read as History offers it now.
+    private func historyRow(_ args: [String: Any]) async -> RowLookup {
       guard let raw = args["id"] as? String, let id = UUID(uuidString: raw) else {
-        return .failure(.badArgs, "id must be a UUID string")
+        return .failure(.failure(.badArgs, "id must be a UUID string"))
       }
       let saved: Transcript?
       do {
@@ -840,12 +893,12 @@
           saved = try await history.visibleTranscripts().first { $0.id == id }
         }
       } catch {
-        return .failure(.catalogUnavailable, "could not read the saved History row")
+        return .failure(.failure(.catalogUnavailable, "could not read the saved History row"))
       }
       guard let row = saved else {
-        return .failure(.notFound, "no visible History row has that id")
+        return .failure(.failure(.notFound, "no visible History row has that id"))
       }
-      return .ok(["row": Self.detail(row)])
+      return .success(row)
     }
 
     private static let timestamp = Date.ISO8601FormatStyle(includingFractionalSeconds: true)

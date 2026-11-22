@@ -352,6 +352,7 @@ def routes_and_values(r, tree):
         (["history", "list", "--limit", "5", "--tab", "dictations"], "history.list",
          {"limit": 5, "tab": "dictations"}),
         (["history", "get", word_id], "history.get", {"id": word_id}),
+        (["history", "delete", word_id], "history.delete", {"id": word_id}),
         (["meeting", "start"], "meeting.start", {"entryPoint": "menu"}),
         (["meeting", "start", "--entry-point", "history", "--call-sound"], "meeting.start",
          {"entryPoint": "history", "callSound": True}),
@@ -576,6 +577,7 @@ def lock_cases(r, tree):
         ["meeting", "retry", word_id],
         ["meeting", "delete-audio", word_id],
         ["meeting", "delete", word_id],
+        ["history", "delete", word_id],
         ["meeting", "notes-set", word_id, "--text", "x"],
         ["meeting", "summary-write", word_id],
     ]
