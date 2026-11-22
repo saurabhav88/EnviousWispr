@@ -1058,44 +1058,27 @@ package enum ApplePreviewEngineResolver {
     switch mode {
     case .locked(let code): return code
     case .auto:
-      guard let first = macLanguages.first, !first.isEmpty else {
-        return current.identifier(.bcp47)
-      }
       // Components, not `Locale.Language`: the latter infers a script ("en-Latn-US").
-      let preferred = Locale.Language.Components(identifier: first)
-      guard let code = preferred.languageCode else {
-        return current.identifier(.bcp47)
-      }
+      guard let first = macLanguages.first, !first.isEmpty,
+        let code = Locale.Language.Components(identifier: first).languageCode
+      else { return current.identifier(.bcp47) }
       // The Mac's Region, unless swapping it in would change the spoken Chinese language
       // (#4828): Apple's Hong Kong Chinese is Cantonese, so a Taiwan Mandarin preference with
       // Region Hong Kong keeps TW (zh-TW, not zh-HK), and a Hong Kong Cantonese preference with
       // Region Taiwan keeps HK. Only when both regions exist; every other case is unchanged.
       var region = current.region
-      if let own = preferred.region, let mac = region,
+      if let own = Locale.Language.Components(identifier: first).region, let mac = region,
         isCantonese(first) != isCantonese("\(code.identifier)-\(mac.identifier)")
       {
         region = own
       }
-      // The preference's script: written (zh-Hant-TW) or, when it names a region, implied by
-      // it (zh-TW is Traditional), so swapping in the Mac's region cannot change the script
-      // (zh-TW with Region United States must not become zh-US, which Apple reads as
-      // Simplified). Then drop a script the new region already implies (zh-Hant with TW gives
-      // "zh-TW"), so the tag is the spelling Apple's dictation and meeting lists carry (zh-TW,
-      // zh-CN, zh-HK) and the meeting chooser's exact-tag match finds it. Keep an unusual
-      // script (sr-Latn-RS, zh-Hans-TW), and keep any script when the Mac has no region.
-      var script =
-        preferred.script
-        ?? (preferred.region == nil
-          ? nil
-          : Locale.Language.Components(
-            identifier: Locale.Language(identifier: first).maximalIdentifier
-          ).script)
-      if let explicit = script, let region {
-        let implied = Locale.Language(languageCode: code, script: nil, region: region)
-          .maximalIdentifier
-        if Locale.Language(identifier: implied).script == explicit { script = nil }
-      }
-      return Locale(languageCode: code, script: script, languageRegion: region)
+      // The language and script for that region: `MacProfile.preferredLanguage`, the #4813
+      // rule shared with snippet dates since #4824 (a written or region-implied script is kept,
+      // one the region already implies is dropped, so the tag is the spelling Apple's dictation
+      // and meeting lists carry: zh-TW, zh-CN, zh-HK).
+      guard let preferred = MacProfile.preferredLanguage(macLanguages: macLanguages, region: region)
+      else { return current.identifier(.bcp47) }
+      return Locale(languageCode: preferred.code, script: preferred.script, languageRegion: region)
         .identifier(.bcp47)
     }
   }

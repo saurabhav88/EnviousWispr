@@ -58,6 +58,94 @@ extension MacProfile {
     UserDefaults.standard.persistentDomain(forName: UserDefaults.globalDomain)?["AppleLanguages"]
       as? [String] ?? []
   }
+
+  /// The Mac's first preferred language and its script, for the given region (#4813 rule; moved
+  /// here for #4824 so Live Preview's Auto tag and snippet dates share it). Nil when the first
+  /// preference gives no language.
+  ///
+  /// The script is the preference's own (zh-Hant-TW) or, when it names a region, the one that
+  /// region implies (zh-TW is Traditional), so a different `region` cannot change the script
+  /// (zh-TW with Region United States must not become zh-US, which Apple reads as Simplified).
+  /// A script `region` already implies is dropped (zh-Hant with TW gives zh-TW, the spelling
+  /// Apple's dictation and meeting lists carry); an unusual one is kept (sr-Latn-RS,
+  /// zh-Hans-TW), and any script is kept when there is no region.
+  package static func preferredLanguage(macLanguages: [String], region: Locale.Region?)
+    -> (code: Locale.LanguageCode, script: Locale.Script?)?
+  {
+    guard let first = macLanguages.first, !first.isEmpty else { return nil }
+    // Components, not `Locale.Language`: the latter infers a script ("en-Latn-US").
+    let preferred = Locale.Language.Components(identifier: first)
+    guard let code = preferred.languageCode else { return nil }
+    var script =
+      preferred.script
+      ?? (preferred.region == nil
+        ? nil
+        : Locale.Language.Components(
+          identifier: Locale.Language(identifier: first).maximalIdentifier
+        ).script)
+    if let explicit = script, let region {
+      let implied = Locale.Language(languageCode: code, script: nil, region: region)
+        .maximalIdentifier
+      if Locale.Language(identifier: implied).script == explicit { script = nil }
+    }
+    return (code: code, script: script)
+  }
+
+  /// The Mac's own clock and format settings that a locale rebuilt from components would lose
+  /// (#4824 Codex review). Read from the global domain: custom date or time formats
+  /// (`AppleICUDateFormatStrings` / `AppleICUTimeFormatStrings`, which `Locale.current` honors and
+  /// a rebuilt locale does not) and a forced 24- or 12-hour clock (`AppleICUForce24HourTime` /
+  /// `AppleICUForce12HourTime`).
+  package struct FormatPreferences: Sendable, Equatable {
+    package var customFormats: Bool
+    package var forcedHourCycle: Locale.HourCycle?
+
+    package init(customFormats: Bool, forcedHourCycle: Locale.HourCycle?) {
+      self.customFormats = customFormats
+      self.forcedHourCycle = forcedHourCycle
+    }
+
+    package static var live: FormatPreferences {
+      let global = UserDefaults.standard.persistentDomain(forName: UserDefaults.globalDomain)
+      let custom = ["AppleICUDateFormatStrings", "AppleICUTimeFormatStrings"].contains {
+        (global?[$0] as? [String: Any])?.isEmpty == false
+      }
+      let cycle: Locale.HourCycle? =
+        global?["AppleICUForce24HourTime"] as? Bool == true
+        ? .zeroToTwentyThree
+        : global?["AppleICUForce12HourTime"] as? Bool == true ? .oneToTwelve : nil
+      return FormatPreferences(customFormats: custom, forcedHourCycle: cycle)
+    }
+  }
+
+  /// `current` speaking the Mac's language (#4824): the language and script come from
+  /// `preferredLanguage`, while region, calendar, a forced 24- or 12-hour clock and the user's
+  /// other preferences stay. `current` itself when the list gives no language, already names
+  /// that language, or the Mac has custom date or time formats: the user's own format wins,
+  /// exactly as before #4824 (a Mac with only a custom time format therefore keeps dates in
+  /// `current`'s language too: accepted, no worse than before). An unforced clock follows the
+  /// Mac's language and region, as macOS shows it. In the app `Locale.current` takes its
+  /// LANGUAGE from the interface language (#4813), so text the user writes (a dictated date)
+  /// must not use it directly.
+  package static func macLanguageLocale(
+    macLanguages: [String], current: Locale, preferences: FormatPreferences
+  ) -> Locale {
+    guard !preferences.customFormats,
+      let preferred = preferredLanguage(macLanguages: macLanguages, region: current.region)
+    else { return current }
+    var components = Locale.Components(locale: current)
+    if components.languageComponents.languageCode == preferred.code,
+      components.languageComponents.script == preferred.script
+    {
+      return current
+    }
+    if let cycle = preferences.forcedHourCycle { components.hourCycle = cycle }
+    components.languageComponents.languageCode = preferred.code
+    components.languageComponents.script = preferred.script
+    // Keep the user's calendar even when the replacement language defaults to another one.
+    components.calendar = current.calendar.identifier
+    return Locale(components: components)
+  }
 }
 
 /// What Setup may say about Apple Intelligence (plan M24, #1454, #1080).

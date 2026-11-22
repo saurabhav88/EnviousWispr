@@ -77,6 +77,9 @@ public final class SnippetExpansionStep: TextProcessingStep {
 
   private let expander: SnippetExpander
   private let now: @Sendable () -> Date
+  /// The locale dates and times are written in: the Mac's language, never the app's interface
+  /// language (#4824).
+  private let locale: @Sendable () -> Locale
   private let clipboardText: ClipboardTextReader
 
   /// The public entry point, unchanged in shape so every existing call site compiles as it was.
@@ -90,6 +93,10 @@ public final class SnippetExpansionStep: TextProcessingStep {
     self.init(
       expander: expander,
       now: { Date() },
+      locale: {
+        MacProfile.macLanguageLocale(
+          macLanguages: MacProfile.systemLanguages, current: .current, preferences: .live)
+      },
       clipboardText: { ClipboardCleanup.userPlainText(from: .general) })
   }
 
@@ -98,10 +105,12 @@ public final class SnippetExpansionStep: TextProcessingStep {
   package init(
     expander: SnippetExpander,
     now: @escaping @Sendable () -> Date,
+    locale: @escaping @Sendable () -> Locale,
     clipboardText: @escaping ClipboardTextReader
   ) {
     self.expander = expander
     self.now = now
+    self.locale = locale
     self.clipboardText = clipboardText
   }
 
@@ -109,7 +118,7 @@ public final class SnippetExpansionStep: TextProcessingStep {
     // Frozen ONCE for the whole take, before the probe pass. `base(clipboard:)` varies the
     // clipboard and nothing else, so the two passes below cannot disagree about what time it is.
     let instant = now()
-    let locale = Locale.current
+    let locale = self.locale()
     let timeZone = TimeZone.current
     func base(clipboard: String?) -> SnippetDynamicValues {
       SnippetDynamicValues(
