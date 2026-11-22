@@ -1337,27 +1337,56 @@ def test_clipboard_save_restore(ctx):
 
 # --- Suite: main_window ---
 
+# The main window's AX title is the app name in every language (#4847).
+_MAIN_WINDOW_TITLE = "EnviousWispr"
+
+
 @uat_test("main_window_opens", suite="main_window", context="menu_bar")
 def test_main_window(ctx):
     """GIVEN the app is running,
-    WHEN 'Open' is triggered via menu,
-    THEN the main window appears."""
-    app = get_ax_app(ctx.pid)
-    main_win = find_element(app, role="AXWindow", title="EnviousWispr")
-    if main_win is None:
-        # Try via menu
-        if ctx.menu_snapshot.has_item("Open EnviousWispr"):
-            ctx.click_menu_item("Open EnviousWispr")
-            time.sleep(1.0)  # Allow window to appear
-        else:
-            ctx.log("No 'Open' menu item found, checking for any window")
+    WHEN 'Open EnviousWispr' is triggered via the menu on a closed main window,
+    THEN a window titled exactly the app name appears (#4847).
 
-    app = get_ax_app(ctx.pid)
-    windows = get_attr(app, "AXWindows")
-    if windows and len(windows) > 0:
-        ctx.log(f"Found {len(windows)} window(s)")
-    else:
-        ctx.log("No windows found — app may be menu-bar-only at idle")
+    An already-open main window is closed first so Open is really exercised. Afterwards the
+    check tries to put the main window back as it was found; that restore is best effort and
+    never changes the verdict (a missing Open item cannot reopen it)."""
+    def main_window():
+        return find_element(get_ax_app(ctx.pid), role="AXWindow", title=_MAIN_WINDOW_TITLE)
+
+    def close_main_window(window):
+        # The window's own close button (AXCloseButton): the AppKit main window's button has
+        # no "close button" description, so a description search never finds it.
+        close_btn = get_attr(window, "AXCloseButton")
+        if close_btn is None or not perform_action(close_btn, "AXPress"):
+            raise AssertionError("could not close the main window")
+        if not wait_for_condition(lambda: main_window() is None, timeout=3.0,
+                                  description="the main window closing"):
+            raise AssertionError("the main window did not close")
+
+    existing = main_window()
+    try:
+        if existing is not None:
+            close_main_window(existing)
+        ctx.click_menu_item("Open EnviousWispr")  # raises when the item is missing
+        if not wait_for_condition(lambda: main_window() is not None, timeout=5.0,
+                                  description="the main window opening"):
+            windows = get_attr(get_ax_app(ctx.pid), "AXWindows") or []
+            titles = [get_attr(win, "AXTitle") for win in windows]
+            raise AssertionError(
+                f"Open did not produce a main window titled {_MAIN_WINDOW_TITLE!r}; "
+                f"windows: {titles}")
+        ctx.log("Open produced the main window")
+    finally:
+        # Leave the main window as found, whatever the verdict (best effort: a restore
+        # problem never replaces the check's own result).
+        try:
+            now = main_window()
+            if existing is None and now is not None:
+                close_main_window(now)
+            elif existing is not None and now is None:
+                ctx.click_menu_item("Open EnviousWispr")
+        except Exception:
+            pass
 
 
 # ---------------------------------------------------------------------------
