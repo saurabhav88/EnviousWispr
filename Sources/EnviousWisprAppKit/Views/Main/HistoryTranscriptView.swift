@@ -104,6 +104,10 @@ struct HistoryTranscriptView: View {
   /// The speed the user chose, kept while no player exists (the original went away and came
   /// back, or was located again).
   @State private var retainedRate: Float = 1
+  /// #4808: the place reached in this row's original, kept while no player exists (the same
+  /// original went missing and may come back, or is being reopened), so the next player for that
+  /// same file starts there. Forgotten on another row, a new player, removal or close.
+  @State private var retainedPlace: P.PlaybackPlace?
 
   // Actions
   @State private var saveError: String?
@@ -163,6 +167,7 @@ struct HistoryTranscriptView: View {
     }
     .task(id: rowID) { await transcripts.holdCatalogDetail(rowID) }
     .onChange(of: rowID) {
+      discardPlaybackForAnotherRow()
       documentView = .cleaned
       timesOn = true
       follow = .following
@@ -766,11 +771,10 @@ struct HistoryTranscriptView: View {
   /// Reads the original's state, then opens it for playback. Both answers are dropped when a
   /// deletion or Delete All overtook them, so a removed row never gets a player.
   private func refreshSource() async {
-    // Another row's player never serves this one, even while the new lookup runs.
-    if let source = playerSource, source.rowID != rowID {
-      dropPlayer()
-      sourceState = nil
-    }
+    // An already-cancelled task for an earlier row must not clear this row's place (#4808).
+    guard !Task.isCancelled else { return }
+    // Another row's player or place never serves this one, even while the new lookup runs.
+    discardPlaybackForAnotherRow()
     let arbiter = meetings.playbackArbiter
     let id = PlaybackSourceID.transcript(rowID)
     let fence = { (arbiter?.deletionCount(for: id), arbiter?.transcriptEpoch) }
@@ -781,7 +785,13 @@ struct HistoryTranscriptView: View {
     switch state {
     case .available, .unverifiable:
       break
-    case .missing, .changed, .unreadable, .unsupportedIdentity, .removed:
+    case .missing, .changed, .unreadable:
+      // #4808: the same original may come back (moved and located again; `.changed` means
+      // another file sits at the old path, and Locate accepts only the original), so the place
+      // is kept for the row's stored fingerprint.
+      dropPlayer(retainingPlaceFor: transcripts.currentRow(id: rowID)?.sourceFingerprint)
+      return
+    case .unsupportedIdentity, .removed:
       dropPlayer()
       return
     }
@@ -791,26 +801,56 @@ struct HistoryTranscriptView: View {
     } catch {
       opened = nil
     }
-    guard !Task.isCancelled, before == fence(), transcripts.currentRow(id: rowID) != nil
+    guard !Task.isCancelled, before == fence(), let row = transcripts.currentRow(id: rowID)
     else { return }
     guard let opened else {
-      dropPlayer()
+      dropPlayer(retainingPlaceFor: row.sourceFingerprint)
       return
     }
     guard
       P.needsNewPlayer(current: player, currentSource: playerSource, resolved: opened.source)
     else { return }
+    // #4808: the reader is tied to the file's old path, so a moved original needs a new player;
+    // it starts where the person was, and plays on only if the replaced player was playing.
+    let carry = P.carryOver(
+      live: P.place(of: player, source: playerSource),
+      retained: player == nil ? retainedPlace : nil, to: opened.source)
     let rate = player?.playbackRate ?? retainedRate
-    dropPlayer()
+    dropPlayer()  // forgets the retained place: the new player holds it from here
     let next = MeetingPlaybackController(
       media: .transcript(opened.audio), durationMs: opened.durationMs,
       output: MeetingPlaybackEngineOutput(), sourceID: id, arbiter: arbiter)
     next.setPlaybackRate(rate)
+    P.apply(carry, to: next)
     player = next
     playerSource = opened.source
   }
 
-  private func dropPlayer() {
+  /// Drops another row's player, or forgets another row's retained place (#4808).
+  private func discardPlaybackForAnotherRow() {
+    if let source = playerSource, source.rowID != rowID {
+      dropPlayer()
+      sourceState = nil
+    } else if let place = retainedPlace, place.rowID != rowID {
+      retainedPlace = nil
+      sourceState = nil
+    }
+  }
+
+  /// Lets the player go. With the row's stored fingerprint the place is kept for a gap (the same
+  /// original may come back, #4808); without one (row gone, view closed, another file, a new
+  /// player) it is forgotten.
+  private func dropPlayer(retainingPlaceFor fingerprint: String? = nil) {
+    if let fingerprint,
+      let place = player == nil ? retainedPlace : P.place(of: player, source: playerSource),
+      place.rowID == rowID, place.identity.fingerprint == fingerprint
+    {
+      retainedPlace = P.PlaybackPlace(
+        rowID: place.rowID, identity: place.identity, positionMs: place.positionMs,
+        playing: false)
+    } else {
+      retainedPlace = nil
+    }
     if let player { retainedRate = player.playbackRate }
     player?.stop()
     player = nil
