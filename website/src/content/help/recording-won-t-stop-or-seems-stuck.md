@@ -7,7 +7,7 @@ order: 7
 keywords: ["wont stop", "stuck", "keeps recording", "frozen", "hung", "still recording", "cant stop", "spinning", "transcribing", "previous take still running", "restart", "a take is stuck", "restart the app", "stuck on transcribing", "recording bar wont go away"]
 related: ["canceling-a-recording", "app-crashes-or-asr-engine-crashes"]
 seeAlso: "mac-dictation-keeps-stopping"
-updated: 2026-09-29
+updated: 2026-11-22
 deflection: "show_but_always_send"
 ---
 If a recording will not stop, press **Escape**. This ends any recording in progress, in every recording mode. The recording bar disappears, which confirms it worked.
@@ -29,7 +29,7 @@ You can have EnviousWispr end a recording after a period of silence.
 1. Click the EnviousWispr icon in your menu bar and choose **Open EnviousWispr**.
 2. Open **Dictation Settings**, then **Engine**.
 3. Switch on **Stop recording on silence**. It is off by default.
-4. Use the **Pause duration** slider that appears below it to set how long the pause has to be, from half a second to three seconds.
+4. Use the **Pause duration** slider that appears below it to set how long the pause has to be, from half a second to five seconds.
 
 A pause shorter than your chosen length is ignored. At the half-second setting, an ordinary pause for thought is enough to end the recording.
 
