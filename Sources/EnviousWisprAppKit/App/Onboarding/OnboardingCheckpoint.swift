@@ -15,6 +15,8 @@ struct OnboardingCheckpoint: Codable, Equatable, Sendable {
   var practiceOutcome: OnboardingPracticeOutcome?
   var downloadsReturn: OnboardingStep?
   var recoveringReadiness: Bool?
+  /// #4845: the pick Skip ahead was chosen for; absent in checkpoints written before #4845.
+  var deferredPolish: String?
   var startedAt: Date
   var savedAt: Date
 
@@ -24,6 +26,7 @@ struct OnboardingCheckpoint: Codable, Equatable, Sendable {
     practiceOutcome = state.practiceOutcome
     downloadsReturn = state.downloadsReturn
     recoveringReadiness = state.recoveringReadiness ? true : nil
+    deferredPolish = state.deferredPolish
     self.startedAt = startedAt
     self.savedAt = savedAt
   }
@@ -83,6 +86,13 @@ extension OnboardingRestore {
       state.step = checkpoint.step
       state.choices = checkpoint.choices
       state.practiceOutcome = checkpoint.practiceOutcome
+      // #4845: a saved Skip ahead survives only for the same, still-eligible pick; readiness for
+      // speech and permissions is re-measured like every other fact.
+      if let deferred = checkpoint.deferredPolish, deferred == checkpoint.choices.polish,
+        OnboardingChoices.isRuntimeDownloadedPolish(deferred)
+      {
+        state.deferredPolish = deferred
+      }
       if state.step == .downloads, let origin = checkpoint.downloadsReturn,
         OnboardingFlowState.downloadOrigins.contains(origin)
       {

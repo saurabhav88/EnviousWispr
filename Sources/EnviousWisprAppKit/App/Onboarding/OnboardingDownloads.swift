@@ -106,7 +106,7 @@ struct OnboardingDownloads {
 
   /// The local model a polish pick downloads, or nil for Apple Intelligence, a cloud key and
   /// polish off. Pick identifiers have one owner, `SetupRules.registeredPolish`.
-  static func localModel(forPolish id: String) -> LocalPolishModelID? {
+  nonisolated static func localModel(forPolish id: String) -> LocalPolishModelID? {
     guard let model = SetupRules.registeredPolish[id] else { return nil }
     switch model.provider {
     case .egOne, .s1Mini: return model
