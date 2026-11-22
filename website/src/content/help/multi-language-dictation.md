@@ -4,12 +4,12 @@ description: "Dictating in languages other than English."
 category: "speech-engines"
 section: "Transcription"
 order: 2
-keywords: ["language", "languages", "spanish", "french", "german", "hindi", "not english", "foreign language", "bilingual", "multilingual", "change language", "accent", "british english", "british spelling", "uk english", "english uk", "colour", "organise", "american spelling", "wrong language", "greek letters", "cyrillic", "lock language"]
+keywords: ["language", "languages", "spanish", "french", "german", "hindi", "not english", "foreign language", "bilingual", "multilingual", "change language", "accent", "british english", "british spelling", "uk english", "english uk", "colour", "organise", "american spelling", "wrong language", "greek letters", "cyrillic", "lock language", "greek", "final sigma"]
 related: ["choosing-a-speech-engine-parakeet-vs-whisperkit", "filler-word-removal", "live-preview-words-on-screen"]
-updated: 2026-11-05
+updated: 2026-11-21
 deflection: "can_resolve"
 ---
-EnviousWispr handles dozens of languages. The **Fast** engine (Parakeet), which you start with, recognizes 25 European languages without needing you to pick one first. For other languages, switch to the **All Languages** engine (Whisper), which supports 99+.
+EnviousWispr handles dozens of languages. The **Fast** engine (Parakeet) recognizes 25 European languages without needing you to pick one first. For other languages, switch to the **All Languages** engine (Whisper), which supports 99+.
 
 ### Lock or auto-detect my language
 
@@ -17,6 +17,7 @@ Under **Dictation Settings** > **Engine**, you can lock one language or leave **
 
 - **On Fast (Parakeet)**, locking a language narrows the text to your own alphabet. A German dictation stops coming back with stray Greek or Cyrillic characters. A lock cannot tell apart two languages that share an alphabet, so it will not separate German from Dutch.
 - **On All Languages (Whisper)**, locking a language is more accurate than auto-detect.
+- **Dictating in Greek?** Choose **All Languages** under **Dictation Settings** > **Engine**. The Fast engine leaves the final ς off Greek words, such as "κύριο" for "κύριος".
 
 To lock a language, switch off **Auto-detect language**, then click **Change** and pick your language. On All Languages, the language section appears once its model has finished downloading.
 

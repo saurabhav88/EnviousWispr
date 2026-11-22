@@ -99,6 +99,27 @@ struct SetupAdviceConsumerTests {
     #expect(japanese.speech == .whisper)
   }
 
+  /// #2615: Parakeet drops the Greek final sigma, so advice points Greek to Whisper, while a saved
+  /// Greek lock on Parakeet stays offered and honoured (existing users keep working unchanged).
+  @Test("Greek is recommended Whisper, and a Greek lock on Parakeet stays honoured")
+  func greekAdvicePointsToWhisperWithoutTouchingTheLock() throws {
+    let greek = SetupAdvice.recommendation(
+      languageMode: .locked("el"), capabilities: LanguageLockOptions.speechCapabilities)
+    #expect(greek.speech == .whisper)
+    // Auto takes the language from the Mac: a Greek Mac is pointed to Whisper too.
+    let greekMac = MacProfile(
+      memoryGiB: 16, chipName: nil, macOSMajor: 26, appleIntelligence: .unavailable,
+      macLanguages: ["el-GR"], freeDiskBytes: nil)
+    let auto = SetupRecommender.recommend(
+      profile: greekMac, rules: try SetupRules.bundled(), languageMode: .auto,
+      capabilities: LanguageLockOptions.speechCapabilities)
+    #expect(auto.suggestedLanguage == "el")
+    #expect(auto.speech == .whisper)
+    let parakeetLocks = LanguageLockOptions.lockableCodes(for: .parakeet)
+    #expect(parakeetLocks?.contains("el") == true)
+    #expect(LanguageLockOptions.isLockHonoured("el", in: parakeetLocks))
+  }
+
   @Test("the recommended EG-1 size is one of the shipped sizes")
   func recommendedSizeIsShipped() {
     #expect(EGOneSize.allCases.contains(SetupAdvice.recommendedEGOneSize(languageMode: .auto)))
