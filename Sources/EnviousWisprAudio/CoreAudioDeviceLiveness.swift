@@ -166,9 +166,9 @@ package enum CoreAudioDeviceMute {
 /// into one `false`, so a refusal recorded no reason at all — which is the
 /// defect #1578 exists to close.
 ///
-/// Diagnostic classification, NEVER a failure: only `.eligible` permits
-/// `fireDeadAirStall`, and every other case leaves the take on today's silent
-/// no-speech path unchanged.
+/// Diagnostic classification, NEVER a failure: only `.eligible` permits the
+/// stop-time whole-zero stamp (#4841: STOP is the only classifier), and every
+/// other case leaves the take on today's silent no-speech path unchanged.
 public enum ZeroSignalEligibility: String, Sendable, CaseIterable {
   case eligible
   /// No frozen bind to classify. A defensive invariant canary, not an ordinary
@@ -198,9 +198,8 @@ public enum ZeroSignalEligibility: String, Sendable, CaseIterable {
 
 /// #1317 §3.0, widened at #1578: the single authority for deciding whether
 /// the frozen capture device is eligible for harness-glitch recovery and, when
-/// it is not, why. Both the in-process reactive detector (`AudioCaptureManager`)
-/// and the kernel's STOP-time classification use this type, so identity,
-/// liveness, and input-scope mute precedence cannot drift between callers.
+/// it is not, why. The kernel's STOP-time classification is the only caller since
+/// #4841, so identity, liveness, and input-scope mute precedence have one owner.
 public enum ZeroSignalDeviceDiscriminator {
   /// #1578: the reason-bearing production entry point, and the sole owner of all
   /// SIX outcomes — including the missing-bind case, which both call sites used

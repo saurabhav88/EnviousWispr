@@ -205,6 +205,10 @@ public enum KernelDictationDriverFactory {
     /// #4052: true while EnviousMeet's transcript holds the shared engine lease. Required, no
     /// default: the adapter's wedge recovery must not unload a model a meeting is decoding on.
     package let isSharedEngineHeldByOtherWorkload: @MainActor () -> Bool
+    /// #4841: the #900 clock seam, passed through to `KernelFinalizationWiring` so
+    /// a factory-built test can advance logical time past the too-short gate
+    /// instead of sleeping. Defaults to the live clock; production never sets it.
+    package let currentTime: @MainActor () -> TimeInterval
 
     /// Explicit package init: Swift's synthesized memberwise init is `internal`
     /// and would prevent App callers from constructing this struct. `@MainActor`
@@ -238,9 +242,12 @@ public enum KernelDictationDriverFactory {
       onTakeAccepted: @escaping @MainActor (String) -> Void = { _ in },
       revealPatience: PasteRevealPatience,
       onRetained: @escaping RetainedCallback = { _, _, report in report(false) },
-      isSharedEngineHeldByOtherWorkload: @escaping @MainActor () -> Bool
+      isSharedEngineHeldByOtherWorkload: @escaping @MainActor () -> Bool,
+      currentTime: @escaping @MainActor () -> TimeInterval =
+        KernelFinalizationWiring.InsertionSeams.live.currentTime
     ) {
       self.isSharedEngineHeldByOtherWorkload = isSharedEngineHeldByOtherWorkload
+      self.currentTime = currentTime
       self.audioCapture = audioCapture
       self.asrManager = asrManager
       self.parakeetUpgrade = parakeetUpgrade
@@ -497,6 +504,7 @@ public enum KernelDictationDriverFactory {
       recordingPreference: inputs.recordingPreference,
       recordingSink: inputs.recordingSink,
       microphonePermissionIsDenied: inputs.microphonePermissionIsDenied,
+      currentTime: inputs.currentTime,
       egOneRuntime: inputs.egOneRuntime,
       additionalLocalRuntimes: inputs.additionalLocalRuntimes,
       s1MiniRuntime: inputs.s1MiniRuntime,
@@ -583,6 +591,8 @@ public enum KernelDictationDriverFactory {
     recordingPreference: @escaping @MainActor () -> Bool = { false },
     recordingSink: (any DictationRecordingSink)? = nil,
     microphonePermissionIsDenied: @escaping @MainActor () -> Bool = { false },
+    currentTime: @escaping @MainActor () -> TimeInterval =
+      KernelFinalizationWiring.InsertionSeams.live.currentTime,
     egOneRuntime: (any EGOneEndpointProviding)? = nil,
     additionalLocalRuntimes: [LocalPolishModelID: any EGOneEndpointProviding] = [:],
     s1MiniRuntime: (any EGOneEndpointProviding)? = nil,
@@ -746,6 +756,7 @@ public enum KernelDictationDriverFactory {
         return result
       },
       pasteCompletionRegistry: pasteCompletionRegistry,
+      currentTime: currentTime,
       // #950 — share the SAME telemetry state the kernel stamps so the metrics
       // builder reads the tail-trim diagnostic for `dictation.completed`.
       telemetryState: telemetryState,
@@ -820,24 +831,19 @@ public enum KernelDictationDriverFactory {
       deadMicRecoveryTelemetry: { outcome in
         emitter.deadMicRecovered(outcome: outcome)
       },
-      // #1317 §3.6 N4: the kernel's STOP-time classification does not
-      // traverse the reactive WedgeRecoveryRouter funnel, so it submits its
-      // own event through this closure — wired to the SAME emitter authority
-      // the reactive path uses (per-mode dedup makes a duplicate safe).
+      // #1317 §3.6 N4: the kernel's STOP-time classification (the only one
+      // since #4841) does not traverse the WedgeRecoveryRouter funnel, so it
+      // submits its own event through this closure to the emitter authority.
       stopTimeZeroSignalTelemetry: { ctx in
         emitter.stallFired(ctx: ctx, isActivelyCapturing: false)
       },
-      // #1578: the DELAYED path's only route to the emitter — both the drained
-      // backlog of rejected reactive refusals AND a STOP-time refusal for a run
-      // the reactive detector never classified. The immediate path (reactive →
-      // router → driver → observer) reaches the same method through its own
-      // wiring; without THIS line everything upstream still works and production
-      // emits nothing, with every other test green, because every other test
-      // drives the sink directly.
+      // #1578: the ONLY route a zero-signal refusal has to the emitter (since
+      // #4841, a STOP-time refusal for an ineligible whole-zero take). Without
+      // THIS line everything upstream still works and production emits nothing,
+      // with every other test green, because every other test drives the sink
+      // directly.
       //
-      // One call per context, in order. The take returns an array; the emitter
-      // takes one context. Batching or de-duplicating here would silently
-      // undercount runs the producer already proved distinct.
+      // One call per context, in order.
       zeroSignalRefusalSink: { contexts in
         for context in contexts {
           emitter.zeroSignalRefused(context)

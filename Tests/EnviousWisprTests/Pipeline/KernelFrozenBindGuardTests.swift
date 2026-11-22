@@ -172,23 +172,18 @@ struct KernelFrozenBindGuardTests {
     #expect(ctx.wrapper.stopTimeZeroSignalTelemetryFired.isEmpty)
   }
 
-  @Test("a run already classified reactively short-circuits BEFORE the bind is read")
-  func reactivelyClassifiedRunShortCircuitsBeforeReadingBind() async {
+  @Test("#4841: STOP reads the frozen bind exactly once per whole-zero take")
+  func stopReadsTheBindExactlyOnce() async {
     let ctx = makeContext()
     ctx.capture.stubbedZeroSignalDiscriminatorDevice = Self.syntheticBind
-    // #1578: the categorical replacement for the old Boolean latch. The reactive
-    // producer froze a REASON for this run, and the flag says it did so.
-    ctx.capture.stubbedZeroSignalRunWasClassifiedReactively = true
-    ctx.capture.stubbedZeroSignalRefusalReason = .deviceMuted
 
     await driveAllZeroCapture(ctx)
 
-    // Guard ORDER is the contract: a stretch that was genuinely unusable must stay
-    // refused even if the device's live state has since become fine, so the frozen
-    // reason is taken and the device is never consulted.
+    // STOP is the only classifier since #4841, so the decision is ONE read of the
+    // bind; a second read could see a since-changed device and disagree with the
+    // first inside the same STOP (#1578).
     #expect(
-      ctx.capture.zeroSignalDiscriminatorDeviceReadCount == 0,
-      "the device was consulted despite a run already classified reactively")
-    #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == nil)
+      ctx.capture.zeroSignalDiscriminatorDeviceReadCount == 1,
+      "STOP read the frozen bind \(ctx.capture.zeroSignalDiscriminatorDeviceReadCount) times")
   }
 }

@@ -46,11 +46,10 @@ protocol AudioInputSource: AnyObject {
   /// `startCapture()` of a session.
   ///
   /// **This is a CAPTURE-POLICY input, not telemetry.** The drained batch is fed
-  /// to `DeadAirStreamingDetector` exactly like live audio, so it counts toward
-  /// the all-zero ceiling; without this the "1.0s of silence" bar documented in
-  /// `AudioConstants.minimumTranscriptionSamples` is really 1.0s MINUS whatever
-  /// silent pre-roll was drained, measured at 147-553ms in production.
-  /// `AudioCaptureManager.allZeroCeilingSamples` adds it back.
+  /// to `DeadAirStreamingDetector` exactly like live audio, so without this every
+  /// live-capture bar would silently include whatever silent pre-roll was drained,
+  /// measured at 147-553ms in production. `AudioCaptureManager.exactZeroRun` (the
+  /// silent-mic notice, #4841) and the stop-time classifier subtract it.
   ///
   /// **Deliberately undefaulted**, same reasoning as the two members below it: a
   /// no-op default would let a future conformer silently report no pre-roll while

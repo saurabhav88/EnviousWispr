@@ -4,30 +4,12 @@ import EnviousWisprCore
 import Foundation
 import Testing
 
-// #1578: the refusal conduit's value types and its source-compatibility
-// contract for conformers that have no reactive detector.
+// #1578: the stop-time refusal payload and decision snapshot value types.
 //
-// Deliberately a plain `import`, not `@testable`: the whole point of these two
-// structures and four protocol members is that they are PUBLIC surface the
-// Pipeline and AppKit modules consume, so the test exercises them exactly as a
-// cross-module caller would. A `@testable` import would hide a missing `public`.
-//
-// The fixture is a PRIVATE conformer that overrides nothing, and that is
-// load-bearing rather than convenient. This suite originally borrowed the shared
-// `RouterTestAudioCapture`, on the reasoning that a real conformer is better
-// evidence than a purpose-built stub. One chunk later that conformer legitimately
-// gained a stored `onZeroSignalRefused` (the router tests need to invoke what the
-// router installs), and this suite silently stopped testing the extension default
-// while still claiming to — it went red on the assertion that would otherwise
-// have quietly become meaningless.
-//
-// The lesson generalises: a test whose SUBJECT is "what a type that overrides
-// nothing receives" cannot use a shared fixture, because any shared fixture may
-// legitimately gain an override later. Its fixture has to be a type that by
-// construction never will.
-//
-// This double is deliberately inert everywhere else, so an assertion here can
-// only be describing the protocol extension.
+// Deliberately a plain `import`, not `@testable`: both structures are PUBLIC
+// surface the Pipeline and AppKit modules consume, so the test exercises them
+// exactly as a cross-module caller would. A `@testable` import would hide a
+// missing `public`.
 @MainActor
 @Suite("#1578 zero-signal refusal conduit — value types + conformer defaults")
 struct AudioCaptureInterfaceZeroSignalDefaultsTests {
@@ -79,29 +61,12 @@ struct AudioCaptureInterfaceZeroSignalDefaultsTests {
           failureShape: .allZeroFromStart))
   }
 
-  @Test("decision snapshot preserves both fields, and equality sees a changed one")
+  @Test("decision snapshot preserves eligibility, and equality sees a changed one")
   func decisionSnapshotRoundTripsAndComparesByValue() {
-    let snapshot = ZeroSignalDecisionSnapshot(
-      eligibility: .identityMismatch, currentRunWasClassifiedReactively: true)
+    let snapshot = ZeroSignalDecisionSnapshot(eligibility: .identityMismatch)
 
     #expect(snapshot.eligibility == .identityMismatch)
-    #expect(snapshot.currentRunWasClassifiedReactively == true)
-
-    #expect(
-      snapshot
-        == ZeroSignalDecisionSnapshot(
-          eligibility: .identityMismatch, currentRunWasClassifiedReactively: true))
-    #expect(
-      snapshot
-        != ZeroSignalDecisionSnapshot(
-          eligibility: .notAlive, currentRunWasClassifiedReactively: true))
-    #expect(
-      snapshot
-        != ZeroSignalDecisionSnapshot(
-          eligibility: .identityMismatch, currentRunWasClassifiedReactively: false))
+    #expect(snapshot == ZeroSignalDecisionSnapshot(eligibility: .identityMismatch))
+    #expect(snapshot != ZeroSignalDecisionSnapshot(eligibility: .notAlive))
   }
-
-  // MARK: - Conformer defaults, seen through the existential
-
 }
-

@@ -166,37 +166,6 @@ final class FakeAudioCapture: AudioCaptureInterface {
     return stubbedZeroSignalDiscriminatorDevice
   }
 
-  // #1578: the categorical replacements for the old boolean saw-ineligible
-  // seam, which is deleted here rather than kept. The kernel no longer
-  // reads the legacy Boolean at all, so stubbing it here would model a path
-  // production does not take.
-
-  /// The reason the reactive producer froze for the current run, if any. Read by
-  /// the production snapshot closure when the run was classified reactively.
-  var stubbedZeroSignalRefusalReason: ZeroSignalEligibility?
-  /// Whether the current run was already classified by the reactive producer.
-  /// True must short-circuit BEFORE the frozen bind is consulted.
-  var stubbedZeroSignalRunWasClassifiedReactively = false
-  /// Contexts a rejected reactive forward left behind, handed over in order by
-  /// the atomic take.
-  var stubbedPendingZeroSignalRefusals: [ZeroSignalRefusalContext] = []
-  /// Counts atomic takes, so a test can prove a second drain happened AND was
-  /// empty rather than never happening at all.
-  private(set) var takePendingZeroSignalRefusalsCallCount = 0
-
-  var zeroSignalRefusalReason: ZeroSignalEligibility? { stubbedZeroSignalRefusalReason }
-
-  var zeroSignalRunWasClassifiedReactively: Bool { stubbedZeroSignalRunWasClassifiedReactively }
-
-  /// Mirrors `AudioCaptureManager`'s contract exactly: synchronous, order
-  /// preserving, and empty on every call after the first.
-  func takePendingZeroSignalRefusals() -> [ZeroSignalRefusalContext] {
-    takePendingZeroSignalRefusalsCallCount += 1
-    let pending = stubbedPendingZeroSignalRefusals
-    stubbedPendingZeroSignalRefusals.removeAll(keepingCapacity: true)
-    return pending
-  }
-
   // MARK: AudioCaptureInterface — callbacks
 
   var onBufferCaptured: (@Sendable (AVAudioPCMBuffer) -> Void)?

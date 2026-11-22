@@ -318,13 +318,10 @@ final class HeartPathTelemetryEmitter {
   /// `deadMicRetireAttempted` above, from ONE set of computed values so the two
   /// sinks can never disagree.
   ///
-  /// NO dedup here, deliberately. `stallFired` dedups because two independent
-  /// producers (the HAL watchdog and the raw-samples route) can observe the
-  /// SAME stall. Refusal cardinality is already enforced before the emitter:
-  /// the manager's per-run flag permits one reactive forward attempt, and STOP
-  /// emits only when that run was not classified reactively. Several zero runs
-  /// in one session are legitimately several events; emitter-side dedup would
-  /// suppress the later ones.
+  /// NO dedup here, deliberately. Refusal cardinality is enforced before the
+  /// emitter: since #4841 the only producer is the kernel's STOP, which runs
+  /// once per take and emits at most one refusal (an ineligible whole-zero
+  /// take).
   ///
   /// Observational: a breadcrumb, never a `captureError`, so this raises no
   /// Sentry issue and no alert.

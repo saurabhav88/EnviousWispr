@@ -50,13 +50,9 @@ enum PipelineStateChangeDispatch {
       // completion; `.deviceRemoved` = verified removal (may say "Microphone
       // disconnected"); `.otherInterruption` = salvaged with the mic, as far as
       // we know, still attached (neutral copy). The factory owns the sentences.
-      // #1317: a `becameZeroMidCapture` completion never stamps an
-      // `EngineInterruptionCause` (§3.4 — no synthesized cause), so it is read
-      // directly off the zero-signal side-channel instead of going through
-      // `CompletionInterruptionDisclosure.init(cause:)` (§3.5).
-      interruptionDisclosure: driver.lastZeroSignalFailureMode == .becameZeroMidCapture
-        ? .otherInterruption
-        : CompletionInterruptionDisclosure(cause: driver.lastAudioInterruptionCause),
+      // #4841: a silent tail after speech is a normal completion with no
+      // disclosure; only a real interruption cause produces one.
+      interruptionDisclosure: CompletionInterruptionDisclosure(cause: driver.lastAudioInterruptionCause),
       escapeRecoveryCompletion: driver.takeEscapeRecoveryCompletion(),
       // #3438: the concluded take's own typed outcome, read before planning, so a confirmed
       // setup problem replaces the failure pill with the setup card.
