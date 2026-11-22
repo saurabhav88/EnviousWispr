@@ -169,16 +169,29 @@ enum MeetingLiveWordsChoice {
       let regional = inventory.macRegion.map { "\(base)-\($0)" }
       let preferred = (fullMatch != nil ? [fullMatch, regional] : [regional, resolved])
         .compactMap { $0 }
-      if let tag = preferred.first(where: inventory.appleInstalledTags.contains) {
+      // #4813: a tag that names its script (`zh-Hans-TW`) accepts only tags written in that
+      // script, so every fallback below (the Mac-region tag, any installed sibling, the
+      // download) stays in it; otherwise Universal or the right download wins. A tag with no
+      // script (every bare or locked code) accepts any, as before.
+      let script = Locale.Language.Components(identifier: code).script
+      let inScript: (String) -> Bool = { tag in
+        guard let script else { return true }
+        let maximal = Locale.Language(identifier: tag).maximalIdentifier
+        return Locale.Language.Components(identifier: maximal).script == script
+      }
+      if let tag = preferred.first(where: { inventory.appleInstalledTags.contains($0) && inScript($0) })
+      {
         return tag
       }
       if let installed = ApplePreviewEngineResolver.satisfyingTag(
         requestedCode: base, resolvedTag: resolved ?? base,
-        installedTags: inventory.appleInstalledTags, macRegion: inventory.macRegion)
+        installedTags: inventory.appleInstalledTags.filter(inScript), macRegion: inventory.macRegion)
       {
         return installed
       }
-      guard let resolved, inventory.appleSupportedTags.contains(resolved) else { return nil }
+      guard let resolved, inventory.appleSupportedTags.contains(resolved), inScript(resolved) else {
+        return nil
+      }
       return resolved
     case .universal:
       let catalogue = catalogueCode(code)

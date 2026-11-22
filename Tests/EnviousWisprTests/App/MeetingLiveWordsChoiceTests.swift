@@ -134,6 +134,15 @@ struct MeetingLiveWordsChoiceTests {
       await Choice.language(
         for: .apple, from: "zh-Hans-TW", inventory: taiwan, appleEquivalent: simplified)
         == "zh-CN", "Apple's match for the full tag beats the Mac-region tag of another script")
+
+    // Same Mac with only the Traditional pack installed: no fallback to the other script; the
+    // Simplified download is offered instead (so a ready Universal model can win).
+    var traditionalOnly = taiwan
+    traditionalOnly.appleInstalledTags = ["zh-TW"]
+    #expect(
+      await Choice.language(
+        for: .apple, from: "zh-Hans-TW", inventory: traditionalOnly, appleEquivalent: simplified)
+        == "zh-CN", "the right script's download, never the installed other script")
   }
 
   @Test("The same inventory picks the same installed region every time")
