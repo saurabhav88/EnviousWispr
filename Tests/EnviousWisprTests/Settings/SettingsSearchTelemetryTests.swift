@@ -13,34 +13,76 @@ import Testing
 struct SettingsSearchTelemetryTests {
   // MARK: - The privacy filter
 
+  /// The filter as the app calls it: the word count comes from the real Settings search word
+  /// splitter, never a test copy (#4843).
+  static func sent(_ text: String) -> String? {
+    SettingsSearchQueryFilter.reportable(text, wordCount: SearchText.words(text).count)
+  }
+
   @Test("ordinary failed searches are kept, trimmed and lowercased")
   func keepsOrdinaryQueries() {
-    #expect(SettingsSearchQueryFilter.reportable("  Dark Mode ") == "dark mode")
-    #expect(SettingsSearchQueryFilter.reportable("API key") == "api key")
-    #expect(SettingsSearchQueryFilter.reportable("Tastenkürzel ändern") == "tastenkürzel ändern")
-    #expect(SettingsSearchQueryFilter.reportable("windows 11") == "windows 11")
+    #expect(Self.sent("  Dark Mode ") == "dark mode")
+    #expect(Self.sent("API key") == "api key")
+    #expect(Self.sent("Tastenkürzel ändern") == "tastenkürzel ändern")
+    #expect(Self.sent("windows 11") == "windows 11")
     // Near misses for the credential check: real words, a long German compound, a key's name.
-    #expect(SettingsSearchQueryFilter.reportable("skip silence") == "skip silence")
-    #expect(SettingsSearchQueryFilter.reportable("hfp headset") == "hfp headset")
-    #expect(SettingsSearchQueryFilter.reportable("asian languages") == "asian languages")
+    #expect(Self.sent("skip silence") == "skip silence")
+    #expect(Self.sent("hfp headset") == "hfp headset")
+    #expect(Self.sent("asian languages") == "asian languages")
     #expect(
-      SettingsSearchQueryFilter.reportable("Spracherkennungseinstellungen")
+      Self.sent("Spracherkennungseinstellungen")
         == "spracherkennungseinstellungen")
-    #expect(SettingsSearchQueryFilter.reportable("openai key: where?") == "openai key: where?")
-    #expect(SettingsSearchQueryFilter.reportable("pause after 10:30") == "pause after 10:30")
-    #expect(SettingsSearchQueryFilter.reportable("talk at home") == "talk at home")
-    #expect(SettingsSearchQueryFilter.reportable("password manager") == "password manager")
-    #expect(SettingsSearchQueryFilter.reportable("users folder") == "users folder")
-    #expect(SettingsSearchQueryFilter.reportable("desk-top mic") == "desk-top mic")
-    #expect(SettingsSearchQueryFilter.reportable("what is that") == "what is that")
+    #expect(Self.sent("openai key: where?") == "openai key: where?")
+    #expect(Self.sent("pause after 10:30") == "pause after 10:30")
+    #expect(Self.sent("talk at home") == "talk at home")
+    #expect(Self.sent("password manager") == "password manager")
+    #expect(Self.sent("users folder") == "users folder")
+    #expect(Self.sent("desk-top mic") == "desk-top mic")
+    #expect(Self.sent("what is that") == "what is that")
     for text in ["formatting dotted lists", "formatting dot points", "dictation dot commands"] {
-      #expect(SettingsSearchQueryFilter.reportable(text) == text, "dropped \(text)")
+      #expect(Self.sent(text) == text, "dropped \(text)")
     }
     // The sent text keeps what was typed; only the checks read the normalized copy.
-    #expect(SettingsSearchQueryFilter.reportable("dark\u{00A0}mode") == "dark\u{00A0}mode")
-    // A Japanese vocabulary phrase longer than 32 characters, written without spaces.
+    #expect(Self.sent("dark\u{00A0}mode") == "dark\u{00A0}mode")
+    // A Japanese vocabulary phrase longer than 32 characters, written without spaces, is not
+    // taken for a key. The word rule is held aside here (its 18 words drop it, #4843).
     let japanese = "文章整形に使うClaudeモデルの選び方や表示されない理由を知りたい"
-    #expect(SettingsSearchQueryFilter.reportable(japanese) == japanese.lowercased())
+    #expect(SettingsSearchQueryFilter.reportable(japanese, wordCount: 1) == japanese.lowercased())
+    #expect(Self.sent(japanese) == nil)
+  }
+
+  @Test("a failed search of more than 6 words never leaves the Mac, in any script (#4843)")
+  func sentencesAreDropped() {
+    #expect(SettingsSearchQueryFilter.maxWords == 6)
+    #expect(Self.sent("turn off the sound when recording starts") == nil)  // 7 words
+    #expect(Self.sent("turn off sound when recording starts") == "turn off sound when recording starts")
+    #expect(Self.sent("wie kann ich die Tastenkürzel für Diktat ändern") == nil)
+    #expect(Self.sent("Tastenkürzel für Diktat ändern") == "tastenkürzel für diktat ändern")
+    // Hyphens split words the way search splits them: 7 words.
+    #expect(Self.sent("self-learning off for e-mail and chat") == nil)
+    // Scripts written without spaces: the system word splitter counts every word, so a sentence
+    // is never one word.
+    let sentences = [
+      "我想知道为什么我说话的时候这个应用程序没有把文字粘贴到我正在使用的窗口里面",
+      "ฉันอยากรู้ว่าทำไมแอปนี้ไม่วางข้อความลงในหน้าต่างที่ฉันกำลังใช้อยู่ตอนนี้",
+      "話している時にこのアプリが文字を今使っているウィンドウに貼り付けないのはなぜですか",
+      "제가 말할 때 이 앱이 왜 지금 쓰고 있는 창에 글자를 붙여 넣지 않는지 알고 싶어요",
+      "मैं जानना चाहता हूं कि यह ऐप काम क्यों नहीं करता",
+    ]
+    for text in sentences {
+      #expect(SearchText.words(text).count > SettingsSearchQueryFilter.maxWords, "\(text)")
+      #expect(Self.sent(text) == nil, "kept \(text)")
+    }
+    for text in ["深色模式", "快捷键设置", "ショートカット", "โหมดมืด", "단축키 설정"] {
+      #expect(Self.sent(text) == text, "dropped \(text)")
+    }
+    // The row applies the same rule.
+    let long = "please tell me why my words never paste anywhere"
+    let row = SettingsSearchFinished(
+      outcome: .zeroResults, endedBy: .escape, resultCount: 0, appLanguage: "en",
+      typedQuery: long, typedQueryWordCount: SearchText.words(long).count)
+    #expect(row.query == nil, "a sentence reached the row")
+    #expect(row.outcome == .zeroResults)
   }
 
   @Test("the whole query is dropped when it could identify someone or hold a secret")
@@ -74,14 +116,14 @@ struct SettingsSearchTelemetryTests {
       "password\u{FF1A}Tr0ub4dor!", "/System/Volumes/Data/Users/Jane", "/Volumes/Mac/Users/Jane",
       "jane(at)example(dot)com", "jane [at] example [dot] com", "10 . 0 . 0 . 1",
     ] {
-      #expect(SettingsSearchQueryFilter.reportable(text) == nil, "kept \(text)")
+      #expect(Self.sent(text) == nil, "kept \(text)")
     }
   }
 
   @Test("naturally labelled passwords never enter failed-search reports (#3526)")
   func labelledPasswordRegression() {
-    #expect(SettingsSearchQueryFilter.reportable("password is hunter2") == nil)
-    #expect(SettingsSearchQueryFilter.reportable("Passwort ist geheim") == nil)
+    #expect(Self.sent("password is hunter2") == nil)
+    #expect(Self.sent("Passwort ist geheim") == nil)
   }
 
   @Test("approved labelled-password forms are dropped (#3526)")
@@ -93,9 +135,9 @@ struct SettingsSearchTelemetryTests {
     ]
     for label in labels {
       for text in ["\(label) is !value", "\(label):!value", "\(label)=!value", "\(label) value2"] {
-        #expect(SettingsSearchQueryFilter.reportable(text) == nil, "kept \(text)")
+        #expect(Self.sent(text) == nil, "kept \(text)")
       }
-      #expect(SettingsSearchQueryFilter.reportable("\(label) manager") == "\(label) manager")
+      #expect(Self.sent("\(label) manager") == "\(label) manager")
     }
     let separators = [
       "is", "was", "are", "ist", "war", "lautet", "est", "c'est", "c’est", "es", "era", "é", "jest",
@@ -103,8 +145,8 @@ struct SettingsSearchTelemetryTests {
     for separator in separators {
       let sensitive = "password \(separator) !value"
       let ordinary = "bypass \(separator) !value"
-      #expect(SettingsSearchQueryFilter.reportable(sensitive) == nil, "kept \(sensitive)")
-      #expect(SettingsSearchQueryFilter.reportable(ordinary) == ordinary, "dropped \(ordinary)")
+      #expect(Self.sent(sensitive) == nil, "kept \(sensitive)")
+      #expect(Self.sent(ordinary) == ordinary, "dropped \(ordinary)")
     }
     let gaps = [" ", ",", ";", ":", "=", ".", "-", "\"", "'", "“", "”", "‘", "’", "(", ")", "[", "]"]
     for gap in gaps {
@@ -115,8 +157,8 @@ struct SettingsSearchTelemetryTests {
         ("password\(gap)c'est !value", "bypass\(gap)c'est !value"),
         ("password c'est\(gap)!value", "bypass c'est\(gap)!value"),
       ] {
-        #expect(SettingsSearchQueryFilter.reportable(sensitive) == nil, "kept \(sensitive)")
-        #expect(SettingsSearchQueryFilter.reportable(ordinary) == ordinary, "dropped \(ordinary)")
+        #expect(Self.sent(sensitive) == nil, "kept \(sensitive)")
+        #expect(Self.sent(ordinary) == ordinary, "dropped \(ordinary)")
       }
     }
     for text in [
@@ -128,7 +170,7 @@ struct SettingsSearchTelemetryTests {
       "passcode is 1234", "secret is abc123", "password hunter2", "password \"hunter2\"",
       "password 2024 reset", "pin 1234", "pin 1234 is it", "password hunter٢",
     ] {
-      #expect(SettingsSearchQueryFilter.reportable(text) == nil, "kept \(text)")
+      #expect(Self.sent(text) == nil, "kept \(text)")
     }
   }
 
@@ -141,9 +183,9 @@ struct SettingsSearchTelemetryTests {
       "secret sauce", "login is broken", "password to reset", "password hunter",
       "my password hint hunter2", "hasło to x", "pass the hunter", "password !!!",
     ] {
-      #expect(SettingsSearchQueryFilter.reportable(text) == text, "dropped \(text)")
+      #expect(Self.sent(text) == text, "dropped \(text)")
     }
-    #expect(SettingsSearchQueryFilter.reportable("password is ") == "password is")
+    #expect(Self.sent("password is ") == "password is")
   }
 
   @Test("documented labelled-password over-drops are intentional (#3526)")
@@ -152,7 +194,7 @@ struct SettingsSearchTelemetryTests {
       "password is wrong", "password is the", "reset password is broken", "pin 2 settings",
       "password 2024", "pin: 2 cups", "password is !!!",
     ] {
-      #expect(SettingsSearchQueryFilter.reportable(text) == nil, "kept \(text)")
+      #expect(Self.sent(text) == nil, "kept \(text)")
     }
   }
 
@@ -161,11 +203,13 @@ struct SettingsSearchTelemetryTests {
     for outcome in [SettingsSearchFinished.Outcome.zeroResults, .sidebarBypass, .resultChosen, .abandoned] {
       for sensitive in ["password is hunter2", "Passwort ist geheim", "pin 1234"] {
         let row = SettingsSearchFinished(
-          outcome: outcome, endedBy: .escape, resultCount: 0, appLanguage: "en", typedQuery: sensitive)
+          outcome: outcome, endedBy: .escape, resultCount: 0, appLanguage: "en", typedQuery: sensitive,
+          typedQueryWordCount: SearchText.words(sensitive).count)
         #expect(row.query == nil, "password reached \(outcome.rawValue)")
       }
       let control = SettingsSearchFinished(
-        outcome: outcome, endedBy: .escape, resultCount: 0, appLanguage: "en", typedQuery: "dark mode")
+        outcome: outcome, endedBy: .escape, resultCount: 0, appLanguage: "en", typedQuery: "dark mode",
+          typedQueryWordCount: SearchText.words("dark mode").count)
       let expected = outcome == .zeroResults || outcome == .sidebarBypass ? "dark mode" : nil
       #expect(control.query == expected)
     }
@@ -173,12 +217,12 @@ struct SettingsSearchTelemetryTests {
 
   @Test("copied invisible password gaps never enter reports (#3526)")
   func passwordFormatRegression() {
-    #expect(SettingsSearchQueryFilter.reportable("password\u{200B}is\u{200B}hunter2") == nil)
-    #expect(SettingsSearchQueryFilter.reportable("Passwort\u{200B}ist\u{200B}geheim") == nil)
+    #expect(Self.sent("password\u{200B}is\u{200B}hunter2") == nil)
+    #expect(Self.sent("Passwort\u{200B}ist\u{200B}geheim") == nil)
     // Marks that render as nothing (variation selector, combining grapheme joiner) too.
-    #expect(SettingsSearchQueryFilter.reportable("password\u{FE0F}is\u{FE0F}hunter2") == nil)
-    #expect(SettingsSearchQueryFilter.reportable("password\u{034F}is\u{034F}hunter2") == nil)
-    #expect(SettingsSearchQueryFilter.reportable("dark\u{FE0F}mode") == "dark\u{FE0F}mode")
+    #expect(Self.sent("password\u{FE0F}is\u{FE0F}hunter2") == nil)
+    #expect(Self.sent("password\u{034F}is\u{034F}hunter2") == nil)
+    #expect(Self.sent("dark\u{FE0F}mode") == "dark\u{FE0F}mode")
   }
 
   @Test("every Unicode format or default-ignorable member can separate a labelled password (#3526)")
@@ -193,9 +237,9 @@ struct SettingsSearchTelemetryTests {
     print("Settings search password format members: \(formats.count)")
     for scalar in formats {
       let f = String(scalar)
-      #expect(SettingsSearchQueryFilter.reportable("password\(f)is\(f)hunter2") == nil)
+      #expect(Self.sent("password\(f)is\(f)hunter2") == nil)
       let ordinary = "password\(f)manager"
-      #expect(SettingsSearchQueryFilter.reportable(ordinary) == ordinary)
+      #expect(Self.sent(ordinary) == ordinary)
     }
   }
 
@@ -209,16 +253,16 @@ struct SettingsSearchTelemetryTests {
       "pass\u{200B}word\u{2060}:hunter2", "pass\u{200B}word\u{2060}=hunter2",
       "mot\u{200B}de\u{200B}passe est secret",
     ] {
-      #expect(SettingsSearchQueryFilter.reportable(text) == nil, "kept \(text)")
+      #expect(Self.sent(text) == nil, "kept \(text)")
     }
     for text in [
       "by\u{200B}pass is enabled", "pass\u{200B}port is expired",
       "password\u{200B}hunter", "password hint hunter2", "hasło\u{200B}to x", "dark\u{200B}mode",
     ] {
-      #expect(SettingsSearchQueryFilter.reportable(text) == text, "dropped \(text)")
+      #expect(Self.sent(text) == text, "dropped \(text)")
     }
     // Foundation's existing whitespace trim removes a trailing U+200B before detection.
-    #expect(SettingsSearchQueryFilter.reportable("password is\u{200B}") == "password is")
+    #expect(Self.sent("password is\u{200B}") == "password is")
   }
 
   @Test("the query rides only on zero_results and sidebar_bypass")
@@ -226,7 +270,7 @@ struct SettingsSearchTelemetryTests {
     func query(_ outcome: SettingsSearchFinished.Outcome) -> String? {
       SettingsSearchFinished(
         outcome: outcome, endedBy: .escape, resultCount: 0, appLanguage: "en",
-        typedQuery: "dark mode"
+        typedQuery: "dark mode", typedQueryWordCount: 2
       ).query
     }
     #expect(query(.zeroResults) == "dark mode")
@@ -235,7 +279,8 @@ struct SettingsSearchTelemetryTests {
     #expect(query(.abandoned) == nil)
     let leak = SettingsSearchFinished(
       outcome: .zeroResults, endedBy: .clear, resultCount: 0, appLanguage: "en",
-      typedQuery: "me@example.com")
+      typedQuery: "me@example.com",
+          typedQueryWordCount: SearchText.words("me@example.com").count)
     #expect(leak.query == nil, "an email reached the row")
   }
 
@@ -296,6 +341,108 @@ struct SettingsSearchTelemetryTests {
     #expect(row.endedBy == .escape)
     #expect(row.query == "zzqx", "the last presented query, not a prefix")
     #expect(row.appLanguage == "en")
+  }
+
+  /// #4843: text EnviousWispr dictated into its own Settings search is dictated content, so the
+  /// row carries counts only, whichever lands first: the delivery notice or the field's text.
+  static func delivered(_ text: String, to bundleID: String?) -> PasteCompletionEvent {
+    PasteCompletionEvent(pastedText: text, destinationBundleID: bundleID)
+  }
+
+  @Test("a search holding text dictated into our own app never sends its words (#4843)")
+  func dictatedSearchSendsCountsOnly() async throws {
+    // The field's text changes first (a direct write), then the delivery notice arrives.
+    let sent = Sent()
+    let textFirst = try Self.model(sent: sent)
+    textFirst.setQuery("zzqx blorp")
+    #expect(await SettingsSearchModelTests.ready(textFirst))
+    textFirst.pasteCompleted(Self.delivered("Zzqx blorp ", to: AppBundleIdentity.production))
+    textFirst.reset(endedBy: .escape)
+    var row = try #require(sent.rows.last)
+    #expect(row.outcome == .zeroResults)
+    #expect(row.query == nil, "dictated words reached the row")
+
+    // The delivery notice arrives first, then the pasted text lands in the empty field (a key
+    // paste into our own window is handled after the notice); later typed edits keep the mark.
+    let noticeFirst = try Self.model(sent: sent)
+    noticeFirst.pasteCompleted(Self.delivered(" Zzqx\nblorp", to: AppBundleIdentity.development))
+    noticeFirst.setQuery("Zzqx blorp")
+    #expect(await SettingsSearchModelTests.ready(noticeFirst))
+    noticeFirst.setQuery("zzqx blo")
+    noticeFirst.setQuery("zzqx blorq")
+    noticeFirst.reset(endedBy: .escape)
+    row = try #require(sent.rows.last)
+    #expect(row.outcome == .zeroResults)
+    #expect(row.query == nil, "dictated words reached the row after edits")
+
+    // The text lands while the take is still delivering and the search ends before any notice
+    // (or the route sends none): a field change during an active dictation marks the search.
+    let inFlight = try Self.model(sent: sent)
+    var active = true
+    inFlight.dictationInFlight = { active }
+    inFlight.setQuery("zzqx blorp")
+    active = false
+    #expect(await SettingsSearchModelTests.ready(inFlight))
+    inFlight.reset(endedBy: .escape)
+    row = try #require(sent.rows.last)
+    #expect(row.outcome == .zeroResults)
+    #expect(row.query == nil, "text typed during a dictation reached the row")
+    #expect(sent.rows.count == 3)
+  }
+
+  @Test("a dictation into another app, or a blank one, leaves a typed search alone (#4843)")
+  func otherAppDictationKeepsTypedQuery() async throws {
+    let sent = Sent()
+    let model = try Self.model(sent: sent)
+    model.pasteCompleted(Self.delivered("zzqx blorp", to: "com.apple.TextEdit"))
+    model.pasteCompleted(Self.delivered("zzqx blorp", to: nil))
+    model.pasteCompleted(Self.delivered("   ", to: AppBundleIdentity.production))
+    model.setQuery("zzqx blorp")
+    #expect(await SettingsSearchModelTests.ready(model))
+    model.reset(endedBy: .escape)
+    let row = try #require(sent.rows.last)
+    #expect(row.query == "zzqx blorp")
+    #expect(model.recentDictations.isEmpty)
+    // The mark belongs to one search: the next typed search is reported again.
+    model.pasteCompleted(Self.delivered("dock", to: AppBundleIdentity.production))
+    model.setQuery("zzqy")
+    #expect(await SettingsSearchModelTests.ready(model))
+    model.reset(endedBy: .escape)
+    #expect(sent.rows.last?.query == "zzqy")
+  }
+
+  @Test("remembered dictation text is cleared on window close and is never in the event (#4843)")
+  func rememberedDictationsStayInMemory() async throws {
+    let sent = Sent()
+    let model = try Self.model(sent: sent)
+    let secret = "zzqx secretphrase blorp"
+    model.pasteCompleted(Self.delivered(secret, to: AppBundleIdentity.production))
+    #expect(model.recentDictations == [secret])
+    // A search that ends as a gap with the dictation in memory: counts only, and no part of the
+    // remembered text appears anywhere in the row.
+    model.setQuery(secret)
+    #expect(await SettingsSearchModelTests.ready(model))
+    model.reset(endedBy: .escape)
+    let row = try #require(sent.rows.last)
+    #expect(row.query == nil)
+    #expect(!String(describing: row).contains("secretphrase"), "dictated text reached the row")
+    // Closing the window forgets the memory.
+    model.reset(endedBy: .windowClose)
+    #expect(model.recentDictations.isEmpty)
+    model.setQuery(secret)
+    #expect(await SettingsSearchModelTests.ready(model))
+    model.reset(endedBy: .escape)
+    #expect(sent.rows.last?.query == secret, "a closed window still remembered")
+  }
+
+  @Test("only the last few own dictations are remembered (#4843)")
+  func recentDictationsAreBounded() throws {
+    let model = try Self.model(sent: Sent())
+    for n in 0..<(SettingsSearchModel.recentDictationsKept + 3) {
+      model.pasteCompleted(Self.delivered("take \(n)", to: AppBundleIdentity.production))
+    }
+    #expect(model.recentDictations.count == SettingsSearchModel.recentDictationsKept)
+    #expect(model.recentDictations.last == "take \(SettingsSearchModel.recentDictationsKept + 2)")
   }
 
   @Test("deleting to empty finishes with the last non-empty search")
@@ -362,7 +509,7 @@ struct SettingsSearchTelemetryTests {
     func row(_ language: String) -> String {
       SettingsSearchFinished(
         outcome: .zeroResults, endedBy: .escape, resultCount: 0, appLanguage: language,
-        typedQuery: nil
+        typedQuery: nil, typedQueryWordCount: 0
       ).appLanguage
     }
     #expect(row("fr") == "fr")

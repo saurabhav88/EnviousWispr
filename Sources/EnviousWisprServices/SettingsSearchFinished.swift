@@ -2,7 +2,8 @@ import Foundation
 
 /// One finished Settings search attempt (#3482 plan §8.1): event `settings.search_finished`.
 /// Counts and closed values, plus the typed text ONLY for a search that found nothing or that
-/// the person bypassed with the sidebar, and only after `SettingsSearchQueryFilter` accepts it.
+/// the person bypassed with the sidebar, and only after `SettingsSearchQueryFilter` accepts it
+/// (6 words or fewer, among its other checks).
 /// The text is a question about the app's own settings, never dictated content; it is sent only
 /// while "Share usage metrics" is on (checked by the caller at the terminal).
 public struct SettingsSearchFinished: Equatable, Sendable {
@@ -35,10 +36,13 @@ public struct SettingsSearchFinished: Equatable, Sendable {
   /// The filtered query, or nil: never for result_chosen or abandoned, never unfiltered.
   public let query: String?
 
+  /// `typedQueryWordCount` is the typed query's word count from the Settings search word
+  /// splitter (`SearchText.words` in the app module, which this lower module cannot import), so
+  /// Chinese, Japanese and Thai sentences count as many words, never one (#4843).
   public init(
     outcome: Outcome, endedBy: EndedBy, resultCount: Int, appLanguage: String,
     meaningElapsedMilliseconds: Double? = nil, sidebarPage: String? = nil,
-    sidebarTab: String? = nil, typedQuery: String?
+    sidebarTab: String? = nil, typedQuery: String?, typedQueryWordCount: Int
   ) {
     self.outcome = outcome
     self.endedBy = endedBy
@@ -52,20 +56,31 @@ public struct SettingsSearchFinished: Equatable, Sendable {
     self.sidebarPage = navigatedBySidebar ? sidebarPage : nil
     self.sidebarTab = navigatedBySidebar ? sidebarTab : nil
     let mayCarryQuery = outcome == .zeroResults || outcome == .sidebarBypass
-    self.query = mayCarryQuery ? typedQuery.flatMap(SettingsSearchQueryFilter.reportable) : nil
+    self.query =
+      mayCarryQuery
+      ? typedQuery.flatMap { SettingsSearchQueryFilter.reportable($0, wordCount: typedQueryWordCount) }
+      : nil
   }
 }
 
 /// The privacy filter for a failed search's text (#3482 plan §8.1): trimmed and lowercased,
-/// 3 to 80 characters and at most 320 UTF-8 bytes; the WHOLE query is dropped (never a shortened
-/// prefix) when it looks like an email address (also spelled out with "at" and "dot"), a web,
+/// 6 words or fewer (#4843: people dictate whole sentences into the field, and a sentence is
+/// dictated content, not a question about our settings), 3 to 80 characters and at most 320 UTF-8
+/// bytes; the WHOLE query is dropped (never a shortened prefix) when it looks like an email address (also spelled out with "at" and "dot"), a web,
 /// IP or hardware address, a home-folder path, a bank account number, has seven or more digits,
 /// or looks like a credential or token. "API key" itself is fine. Labelled passwords are dropped
 /// with colon/equal, listed word separators, or a digit in the first token after the label (#3526).
 /// Arbitrary personal text, unlabelled values, and a later value without a listed separator cannot be
 /// recognised; the privacy policy discloses failed-search text.
 public enum SettingsSearchQueryFilter {
-  public static func reportable(_ text: String) -> String? {
+  /// The most words a sent failed search may have (#4843). In the 90 days to 2026-11-22, 53 of
+  /// 83 sent production queries had 1 to 6 words and 30 had 7 to 17, the length of a spoken sentence.
+  public static let maxWords = 6
+
+  /// `wordCount` comes from the Settings search word splitter (`SearchText.words`); it is
+  /// required so no caller can skip the word rule.
+  public static func reportable(_ text: String, wordCount: Int) -> String? {
+    guard wordCount <= maxWords else { return nil }
     let query = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     guard (3...80).contains(query.count), query.utf8.count <= 320 else { return nil }
     let checked = detectionCopy(query)

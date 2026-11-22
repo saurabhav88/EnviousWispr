@@ -208,6 +208,8 @@ package final class WisprBootstrapper {
   /// coordinator and the paste registry hold their collaborators weakly, so
   /// this property is what keeps the feature alive for the app's lifetime.
   let learnFromEdits: LearnFromEditsWiring
+  /// #4843: the delivered-dictation broadcast, also read by Settings search (`AppHomesEnvironment`).
+  let pasteCompletionRegistry: PasteCompletionRegistry
 
   /// - Parameter makeHotkeyEffects: supplies the live desktop-effect adapter the
   ///   one shared `HotkeyService` will use.
@@ -520,6 +522,7 @@ package final class WisprBootstrapper {
     // share the same registry. (#1106 re-homed this from the deleted re-polish
     // service per `state-ownership.md` shared-infra-homes-not-feature-services.)
     let pasteCompletionRegistry = PasteCompletionRegistry()
+    self.pasteCompletionRegistry = pasteCompletionRegistry
 
     // #1348 Phase 2/3 — owned model delivery. Constructed BEFORE EG-1 so the
     // EG-1 adapter receives the ONE shared `ModelDeliveryController` (#1348
@@ -4167,6 +4170,7 @@ private struct AppHomesEnvironment: ViewModifier {
         .environment(b.languageSuggestionPresenter)
         .environment(b.updateCoordinatorHolder)
         .environment(\.settingsKeyMonitor, b.settingsKeyMonitor)
+        .environment(\.pasteCompletionRegistry, b.pasteCompletionRegistry)
         .environment(\.historyScrollMonitor, b.historyScrollMonitor)
         .environment(\.historyClickMonitor, b.historyClickMonitor)
         .environment(b.transcriptCoordinator)
