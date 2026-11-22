@@ -1103,8 +1103,10 @@ package enum ApplePreviewEngineResolver {
   /// Whether a tag names Cantonese in Apple's speech lists, which carry one Chinese tag per
   /// spoken language: `zh-HK` and `yue-*` are Cantonese, `zh-TW` and `zh-CN` Mandarin (#4828;
   /// inferred from Apple naming its languages Cantonese (Hong Kong) and Mandarin (Taiwan, China
-  /// mainland), not verified by listening). False for a bare `zh` means only that the tag
-  /// carries no Cantonese marker.
+  /// mainland), not verified by listening). Exact for those list spellings; for any other tag
+  /// it reads only the region (`zh-Hans-HK` reads as Cantonese though Apple maps it to
+  /// Mandarin), so a caller with Apple's own match classifies that match instead. False for a
+  /// bare `zh` means only that the tag carries no Cantonese marker.
   package static func isCantonese(_ tag: String) -> Bool {
     let parts = Locale.Language.Components(identifier: tag)
     guard let code = parts.languageCode?.identifier else { return false }
