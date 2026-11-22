@@ -321,6 +321,8 @@ struct HistoryAudioExportTests {
     #expect(try Data(contentsOf: destination) == Data("arrived meanwhile".utf8))
     let beside = dir.appendingPathComponent("Dictation (original).m4a")
     #expect(try Data(contentsOf: beside) == Data("the user's file".utf8))
+    // Shown in Finder so the user can find it; nothing is left in staging.
+    #expect(recorder.revealed.map(\.lastPathComponent) == ["Dictation (original).m4a"])
     #expect(recorder.leftoverStaging.isEmpty)
   }
 

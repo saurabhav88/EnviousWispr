@@ -154,6 +154,11 @@ final class HistoryAudioExport {
     case .notSaved(let notice):
       effects.notify(notice, request.window())
       return .notSaved(notice)
+    case .originalLeftAside(let notice, let original):
+      // The user's own file could not go back to its place: show them where it is.
+      effects.notify(notice, request.window())
+      effects.reveal(original)
+      return .notSaved(notice)
     case .silent(let outcome):
       return outcome
     }
@@ -163,6 +168,8 @@ final class HistoryAudioExport {
   private enum Feedback {
     case saved(URL, partlySilent: Bool)
     case notSaved(Notice)
+    /// A failed Replace left the user's original at this place.
+    case originalLeftAside(Notice, URL)
     case silent(Outcome)
   }
 
@@ -228,8 +235,14 @@ final class HistoryAudioExport {
       } catch {
         // A failed replacement can leave the user's file moved aside; if it cannot be put
         // back, the staging folder (where it may sit) is kept rather than deleted.
-        keepStaging = !Self.restoreDisplacedOriginal(after: error, at: destination)
-        return .notSaved(.failed(detail: Self.detail(error)))
+        let notice = Notice.failed(detail: Self.detail(error))
+        guard let original = Self.restoreDisplacedOriginal(after: error, at: destination) else {
+          return .notSaved(notice)
+        }
+        // Kept only while the original is still inside the staging folder.
+        keepStaging = original.standardizedFileURL.path.hasPrefix(
+          staged.directory.standardizedFileURL.path)
+        return .originalLeftAside(notice, original)
       }
     }
     do {
@@ -300,27 +313,32 @@ final class HistoryAudioExport {
   /// A failed `replaceItemAt` can leave the user's original moved aside, at the location its
   /// error names (`MeetingStore.originalItemLocationKey`): put it back, so a failed save never
   /// loses the file the user had. Never overwrites a file that took the destination meanwhile:
-  /// then the original goes beside it, as "<name> (original).m4a" (numbered when taken), where
-  /// the user can find it. True when nothing is left aside; false when the original is still
-  /// where Foundation left it, so the caller must not delete that place.
+  /// then the original goes beside it, as "<name> (original).m4a" (numbered only when that
+  /// name is taken), where the user can find it. Nil when nothing is left aside; otherwise the
+  /// place the original is now (beside the destination, or where Foundation left it when that
+  /// folder takes no new file), which the caller must not delete and shows the user.
   @discardableResult
   nonisolated static func restoreDisplacedOriginal(after error: any Error, at destination: URL)
-    -> Bool
+    -> URL?
   {
+    let fm = FileManager.default
     let info = (error as NSError).userInfo
     guard let moved = info["NSFileOriginalItemLocationKey"] as? URL,
-      FileManager.default.fileExists(atPath: moved.path)
-    else { return true }
-    if (try? FileManager.default.moveItem(at: moved, to: destination)) != nil { return true }
+      fm.fileExists(atPath: moved.path)
+    else { return nil }
+    if (try? fm.moveItem(at: moved, to: destination)) != nil { return nil }
     let folder = destination.deletingLastPathComponent()
     let stem = destination.deletingPathExtension().lastPathComponent
     for attempt in 1...20 {
       let suffix = attempt == 1 ? " (original)" : " (original \(attempt))"
       let beside = folder.appendingPathComponent(stem + suffix)
         .appendingPathExtension(destination.pathExtension)
-      if (try? FileManager.default.moveItem(at: moved, to: beside)) != nil { return true }
+      if fm.fileExists(atPath: beside.path) { continue }
+      if (try? fm.moveItem(at: moved, to: beside)) != nil { return beside }
+      // The folder takes no new file: leave the original where it is.
+      break
     }
-    return false
+    return moved
   }
 
   /// Foundation's own sentence for a file-system failure (#3908); nothing for the rest.
