@@ -4388,7 +4388,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Un enregistrement que vous marquez comme « Conserver cet enregistrement dans l’Historique » n’est jamais supprimé automatiquement. Choisir une période plus courte vous indique combien d’enregistrements seront supprimés avant toute modification."
+            "value" : "Un enregistrement pour lequel vous choisissez « Conserver cet enregistrement » dans l’Historique n’est jamais supprimé automatiquement. Choisir une période plus courte vous indique combien d’enregistrements seront supprimés avant toute modification."
           }
         },
         "es" : {
@@ -10113,19 +10113,19 @@
         }
       }
     },
-    "Audio is not uploaded. Dictation recordings are kept for 1 day unless you choose Keep this recording. Change this in Settings > Recordings." : {
+    "Audio is not uploaded. Dictation recordings are kept for 1 day unless you choose Keep this recording. Change this in Settings > App Settings > Recordings." : {
       "comment" : "History help: where recordings are stored and for how long (1 day).",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Audio wird nicht hochgeladen. Diktataufnahmen werden 1 Tag lang aufbewahrt, außer du wählst „Diese Aufnahme behalten“. Ändere das unter Einstellungen > Aufnahmen."
+            "value" : "Audio wird nicht hochgeladen. Diktataufnahmen werden 1 Tag lang aufbewahrt, außer du wählst „Diese Aufnahme behalten“. Ändere das unter Einstellungen > App-Einstellungen > Aufnahmen."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "L’audio n’est pas envoyé. Les enregistrements de dictée sont conservés pendant 1 jour, sauf si vous choisissez « Conserver cet enregistrement ». Modifiez ce réglage dans Réglages > Enregistrements."
+            "value" : "L’audio n’est pas envoyé. Les enregistrements de dictée sont conservés pendant 1 jour, sauf si vous choisissez « Conserver cet enregistrement ». Modifiez ce réglage dans Réglages > Réglages de l’app > Enregistrements."
           }
         },
         "es" : {
@@ -10136,19 +10136,19 @@
         }
       }
     },
-    "Audio is not uploaded. Dictation recordings are kept for 30 days unless you choose Keep this recording. Change this in Settings > Recordings." : {
+    "Audio is not uploaded. Dictation recordings are kept for 30 days unless you choose Keep this recording. Change this in Settings > App Settings > Recordings." : {
       "comment" : "History help: where recordings are stored and for how long (30 days).",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Audio wird nicht hochgeladen. Diktataufnahmen werden 30 Tage lang aufbewahrt, außer du wählst „Diese Aufnahme behalten“. Ändere das unter Einstellungen > Aufnahmen."
+            "value" : "Audio wird nicht hochgeladen. Diktataufnahmen werden 30 Tage lang aufbewahrt, außer du wählst „Diese Aufnahme behalten“. Ändere das unter Einstellungen > App-Einstellungen > Aufnahmen."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "L’audio n’est pas envoyé. Les enregistrements de dictée sont conservés pendant 30 jours, sauf si vous choisissez « Conserver cet enregistrement ». Modifiez ce réglage dans Réglages > Enregistrements."
+            "value" : "L’audio n’est pas envoyé. Les enregistrements de dictée sont conservés pendant 30 jours, sauf si vous choisissez « Conserver cet enregistrement ». Modifiez ce réglage dans Réglages > Réglages de l’app > Enregistrements."
           }
         },
         "es" : {
@@ -10159,19 +10159,19 @@
         }
       }
     },
-    "Audio is not uploaded. Dictation recordings are kept for 7 days unless you choose Keep this recording. Change this in Settings > Recordings." : {
+    "Audio is not uploaded. Dictation recordings are kept for 7 days unless you choose Keep this recording. Change this in Settings > App Settings > Recordings." : {
       "comment" : "History help: where recordings are stored and for how long (7 days).",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Audio wird nicht hochgeladen. Diktataufnahmen werden 7 Tage lang aufbewahrt, außer du wählst „Diese Aufnahme behalten“. Ändere das unter Einstellungen > Aufnahmen."
+            "value" : "Audio wird nicht hochgeladen. Diktataufnahmen werden 7 Tage lang aufbewahrt, außer du wählst „Diese Aufnahme behalten“. Ändere das unter Einstellungen > App-Einstellungen > Aufnahmen."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "L’audio n’est pas envoyé. Les enregistrements de dictée sont conservés pendant 7 jours, sauf si vous choisissez « Conserver cet enregistrement ». Modifiez ce réglage dans Réglages > Enregistrements."
+            "value" : "L’audio n’est pas envoyé. Les enregistrements de dictée sont conservés pendant 7 jours, sauf si vous choisissez « Conserver cet enregistrement ». Modifiez ce réglage dans Réglages > Réglages de l’app > Enregistrements."
           }
         },
         "es" : {
@@ -10182,19 +10182,19 @@
         }
       }
     },
-    "Audio is not uploaded. Dictation recordings are kept until you delete them. Change this in Settings > Recordings." : {
+    "Audio is not uploaded. Dictation recordings are kept until you delete them. Change this in Settings > App Settings > Recordings." : {
       "comment" : "History help: where recordings are stored; they are kept until deleted.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Audio wird nicht hochgeladen. Diktataufnahmen bleiben erhalten, bis du sie löschst. Ändere das unter Einstellungen > Aufnahmen."
+            "value" : "Audio wird nicht hochgeladen. Diktataufnahmen bleiben erhalten, bis du sie löschst. Ändere das unter Einstellungen > App-Einstellungen > Aufnahmen."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "L’audio n’est pas envoyé. Les enregistrements de dictée sont conservés jusqu’à leur suppression. Modifiez ce réglage dans Réglages > Enregistrements."
+            "value" : "L’audio n’est pas envoyé. Les enregistrements de dictée sont conservés jusqu’à leur suppression. Modifiez ce réglage dans Réglages > Réglages de l’app > Enregistrements."
           }
         },
         "es" : {
@@ -12949,7 +12949,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Les modifications s’appliquent aux nouvelles réunions. Utilisez « Transcrire à nouveau » pour remplacer une transcription enregistrée."
+            "value" : "Les modifications s’appliquent aux nouvelles réunions. Utilisez « Retranscrire » pour remplacer une transcription enregistrée."
           }
         },
         "es" : {
@@ -13703,7 +13703,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Choisissez « Sélectionner », puis cochez les éléments. Faites Maj-clic sur un élément pour sélectionner une plage, ou utilisez « Sélectionner le jour » ou « Sélectionner tout ce qui correspond ». Les éléments qui n’ont pas pu être supprimés restent cochés."
+            "value" : "Choisissez « Sélectionner », puis cochez les éléments. Faites Maj-clic sur un élément pour sélectionner une plage, ou utilisez « Sélectionner le jour » ou « Sélectionner tous les résultats ». Les éléments qui n’ont pas pu être supprimés restent cochés."
           }
         },
         "es" : {
@@ -14474,13 +14474,13 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wähle die exportierte %@, eine CSV mit einer Auslöser- und einer Textspalte oder eine einfache Liste. Dein Schlüsselwort bleibt unverändert."
+            "value" : "Wähle die exportierte %@, eine CSV mit einer Spalte „trigger“ und einer Spalte „text“ oder eine einfache Liste. Dein Schlüsselwort bleibt unverändert."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Choisissez le %@ que vous avez exporté, un fichier CSV avec une colonne de déclencheurs et une colonne de texte, ou une liste simple. Votre mot-clé reste inchangé."
+            "value" : "Choisissez le %@ que vous avez exporté, un fichier CSV avec une colonne « trigger » et une colonne « text », ou une liste simple. Votre mot-clé reste inchangé."
           }
         },
         "es" : {
@@ -15456,24 +15456,24 @@
         }
       }
     },
-    "Click the box and try again. If automatic paste is off, turn it on in Dictation > Clipboard first, or skip." : {
+    "Click the box and try again. If Paste dictations automatically is off, turn it on in Dictation Settings > Clipboard first, or skip." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Klicke ins Textfeld und versuche es erneut. Wenn das automatische Einfügen aus ist, schalte es zuerst unter Diktat > Zwischenablage ein oder überspringe die Übung."
+            "value" : "Klicke ins Textfeld und versuche es erneut. Wenn „Diktate automatisch einfügen“ aus ist, schalte es zuerst unter Diktateinstellungen > Zwischenablage ein oder überspringe die Übung."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Cliquez dans le champ, puis réessayez. Si le collage automatique est désactivé, activez-le d’abord dans Dictée > Presse-papiers ou ignorez cette étape."
+            "value" : "Cliquez dans le champ, puis réessayez. Si « Coller automatiquement les dictées » est désactivé, activez-le d’abord dans Réglages de dictée > Presse-papiers ou ignorez cette étape."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Haz clic en el campo y vuelve a intentarlo. Si el pegado automático está desactivado, actívalo primero en Ajustes del dictado > Portapapeles > “Pegar dictados automáticamente” o salta este paso."
+            "value" : "Haz clic en el campo y vuelve a intentarlo. Si “Pegar dictados automáticamente” está desactivado, actívalo primero en Ajustes del dictado > Portapapeles o salta este paso."
           }
         }
       }
@@ -16350,13 +16350,13 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Gesprochene Emojis umwandeln (z. B. „Daumen hoch Emoji“ → 👍)"
+            "value" : "Gesprochene Emojis umwandeln (z. B. „thumbs up emoji“ → 👍)"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Convertir les émojis dictés (p. ex. « émoji pouce levé » → 👍)"
+            "value" : "Convertir les émojis dictés (p. ex. « thumbs up emoji » → 👍)"
           }
         },
         "es" : {
@@ -22919,7 +22919,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "EnviousWispr conserve sur ce Mac un enregistrement de chaque dictée enregistrée, afin que vous puissiez le réécouter dans l’Historique. Les enregistrements sont conservés pendant la durée que vous avez choisie dans Réglages > Réglages de l’app > Enregistrements. Désactiver l’option Enregistrer les enregistrements des dictées à cet endroit empêche d’en créer de nouveaux, sans supprimer ceux que vous avez déjà. Supprimez un enregistrement dans l’Historique, ou tous les enregistrements avec Supprimer tous les enregistrements des dictées. Le texte est toujours conservé."
+            "value" : "EnviousWispr conserve sur ce Mac un enregistrement de chaque dictée enregistrée, afin que vous puissiez le réécouter dans l’Historique. Les enregistrements sont conservés pendant la durée que vous avez choisie dans Réglages > Réglages de l’app > Enregistrements. Désactiver l’option « Enregistrer l’audio des dictées » à cet endroit empêche d’en créer de nouveaux, sans supprimer ceux que vous avez déjà. Supprimez un enregistrement dans l’Historique, ou tous les enregistrements avec Supprimer tous les enregistrements des dictées. Le texte est toujours conservé."
           }
         },
         "es" : {
@@ -22942,7 +22942,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "EnviousWispr conserve sur ce Mac un enregistrement de chaque dictée enregistrée, afin que vous puissiez le réécouter dans l’Historique. Les enregistrements sont conservés jusqu’à leur suppression, ou pendant la durée que vous choisissez dans Réglages > Réglages de l’app > Enregistrements. Désactiver l’option Enregistrer les enregistrements des dictées à cet endroit empêche d’en créer de nouveaux, sans supprimer ceux que vous avez déjà. Supprimez un enregistrement dans l’Historique, ou tous les enregistrements avec Supprimer tous les enregistrements des dictées. Le texte est toujours conservé."
+            "value" : "EnviousWispr conserve sur ce Mac un enregistrement de chaque dictée enregistrée, afin que vous puissiez le réécouter dans l’Historique. Les enregistrements sont conservés jusqu’à leur suppression, ou pendant la durée que vous choisissez dans Réglages > Réglages de l’app > Enregistrements. Désactiver l’option « Enregistrer l’audio des dictées » à cet endroit empêche d’en créer de nouveaux, sans supprimer ceux que vous avez déjà. Supprimez un enregistrement dans l’Historique, ou tous les enregistrements avec Supprimer tous les enregistrements des dictées. Le texte est toujours conservé."
           }
         },
         "es" : {
@@ -23556,7 +23556,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Exemple : la carte sous la barre des menus demande : « Prendre des notes sur cet appel Zoom ? »"
+            "value" : "Exemple : la carte sous la barre des menus demande : « Prendre des notes pendant cet appel Zoom ? »"
           }
         },
         "es" : {
@@ -25057,19 +25057,19 @@
         }
       }
     },
-    "First turn on Live Preview in EnviousMeet settings under Models. Then open History and click M: the meeting you are recording shows its words as people talk." : {
-      "comment" : "EnviousMeet setup: how-it-works card 5 line. M is History's Meetings tab letter.",
+    "First turn on Live Preview in EnviousMeet settings under Models. Then open History and choose Meetings: the meeting you are recording shows its words as people talk." : {
+      "comment" : "EnviousMeet setup: how-it-works card 5 line. Meetings is the name of History's meetings tab.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aktiviere zuerst die Live-Vorschau in den EnviousMeet-Einstellungen unter „Modelle“. Öffne dann den Verlauf und klicke auf M: Beim laufenden Meeting erscheint das Gesagte, während die Teilnehmenden sprechen."
+            "value" : "Aktiviere zuerst die Live-Vorschau in den EnviousMeet-Einstellungen unter „Modelle“. Öffne dann den Verlauf und wähle „Meetings“: Beim laufenden Meeting erscheint das Gesagte, während die Teilnehmenden sprechen."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Activez d’abord l’Aperçu en direct dans les réglages d’EnviousMeet, sous Modèles. Ouvrez ensuite l’Historique et cliquez sur M : la réunion que vous enregistrez affiche les paroles au fil des échanges."
+            "value" : "Activez d’abord l’Aperçu en direct dans les réglages d’EnviousMeet, sous Modèles. Ouvrez ensuite l’Historique et choisissez « Réunions » : la réunion que vous enregistrez affiche les paroles au fil des échanges."
           }
         },
         "es" : {
@@ -37121,7 +37121,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aucun moteur de transcription n’a été téléchargé. Téléchargez-en un dans les Réglages, puis sélectionnez à nouveau Transcrire."
+            "value" : "Aucun moteur de transcription n’a été téléchargé. Téléchargez-en un dans les Réglages, puis choisissez « Retranscrire »."
           }
         },
         "es" : {
@@ -43737,8 +43737,8 @@
         }
       }
     },
-    "Press Save key to finish, or pick another." : {
-      "comment" : "Transcribe a File, Polish step: the note beside Continue when it is blocked. Save key is a button.",
+    "Press Save to finish, or pick another." : {
+      "comment" : "Transcribe a File, Polish step: the note beside Continue when it is blocked. Save is the button beside the API key field.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -43749,7 +43749,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Cliquez sur « Enregistrer la clé » pour terminer ou choisissez une autre clé."
+            "value" : "Cliquez sur « Enregistrer » pour terminer ou choisissez-en un autre."
           }
         },
         "es" : {
@@ -44585,7 +44585,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Vérifier à nouveau l’état du modèle Fast"
+            "value" : "Vérifier à nouveau l’état du modèle « Rapide »"
           }
         },
         "es" : {
@@ -46538,7 +46538,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Récupération de votre dernier enregistrement. Appuyez sur « Ignorer » pour passer."
+            "value" : "Récupération de votre dernier enregistrement. Appuyez sur « Abandonner » pour passer."
           }
         },
         "es" : {
@@ -58383,7 +58383,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ces mots ne sont pas enregistrés dans l’Historique. Copiez-les ou enregistrez-les avant de partir, ou choisissez « Retoucher à nouveau » pour réessayer."
+            "value" : "Ces mots ne sont pas enregistrés dans l’Historique. Copiez-les ou enregistrez-les avant de partir, ou choisissez « Nettoyer à nouveau » pour réessayer."
           }
         },
         "es" : {
@@ -63914,7 +63914,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "En attente d’espace disque disponible. Libérez de l’espace, puis choisissez à nouveau « Transcrire »."
+            "value" : "En attente d’espace disque disponible. Libérez de l’espace, puis choisissez « Retranscrire »."
           }
         },
         "es" : {
@@ -64073,7 +64073,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Voir comment fonctionne le mode « Maintenir pour parler »"
+            "value" : "Voir comment fonctionne le mode « Appuyer pour parler »"
           }
         },
         "es" : {
@@ -65197,7 +65197,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avec Automatique, aucune langue n’est définie et le moteur transcrit comme il le fait par défaut. Choisissez une langue lorsque vos réunions se déroulent toujours dans cette langue. Toute modification s’applique à la prochaine réunion ; une réunion déjà enregistrée conserve sa langue. « Transcrire à nouveau » utilise la langue choisie ici à ce moment-là."
+            "value" : "Avec « Auto », aucune langue n’est définie et le moteur transcrit comme il le fait par défaut. Choisissez une langue lorsque vos réunions se déroulent toujours dans cette langue. Toute modification s’applique à la prochaine réunion ; une réunion déjà enregistrée conserve sa langue. « Retranscrire » utilise la langue choisie ici à ce moment-là."
           }
         },
         "es" : {
@@ -66571,13 +66571,13 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Du hast bei %1$@ mehrmals „Nein“ gewählt. Letzte Erinnerung: In den EnviousMeet-Einstellungen kannst du %2$@ ausschalten."
+            "value" : "Du hast bei %1$@ mehrmals „Nicht jetzt“ gewählt. Letzte Erinnerung: In den EnviousMeet-Einstellungen kannst du %2$@ ausschalten."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Vous avez répondu « Non » à %1$@ plusieurs fois. Dernier rappel : vous pouvez désactiver %2$@ dans les réglages d’EnviousMeet."
+            "value" : "Vous avez répondu « Pas maintenant » à %1$@ plusieurs fois. Dernier rappel : vous pouvez désactiver %2$@ dans les réglages d’EnviousMeet."
           }
         },
         "es" : {
@@ -79903,13 +79903,13 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bisher wurde deine Aufnahme beim Drücken des Abbrechen-Tastenkürzels sofort verworfen. Mit „Escape-Wiederherstellung“ bleibt sie stattdessen erhalten. Die App beendet Transkription und Nachbearbeitung und zeigt dann drei Sekunden lang eine kleine Anzeige mit „Rückgängig“. Solange dein Mauszeiger darauf liegt, bleibt sie sichtbar. Danach wartet der Text 24 Stunden im Verlauf; mit „Behalten“ speicherst du ihn dauerhaft. Nur das Transkript wird aufbewahrt, niemals die Audiodatei. „Escape-Wiederherstellung“ ist standardmäßig ausgeschaltet und lässt sich unter „Tastenkürzel“ aktivieren."
+            "value" : "Bisher wurde deine Aufnahme beim Drücken des Abbrechen-Tastenkürzels sofort verworfen. Mit „Wiederherstellung bei Escape“ bleibt sie stattdessen erhalten. Die App beendet Transkription und Nachbearbeitung und zeigt dann drei Sekunden lang eine kleine Anzeige mit „Rückgängig“. Solange dein Mauszeiger darauf liegt, bleibt sie sichtbar. Danach wartet der Text 24 Stunden im Verlauf; mit „Behalten“ speicherst du ihn dauerhaft. Nur das Transkript wird aufbewahrt, niemals die Audiodatei. „Wiederherstellung bei Escape“ ist standardmäßig ausgeschaltet und lässt sich unter „Tastenkürzel“ aktivieren."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Auparavant, appuyer sur votre raccourci d’annulation supprimait immédiatement votre enregistrement. Activez la récupération après Échap pour conserver votre dictée. L’app termine la transcription et la retouche, puis affiche une petite pastille proposant un bouton Annuler pendant trois secondes. Elle reste visible tant que votre pointeur repose dessus. Si vous la laissez disparaître, le texte reste dans votre Historique pendant 24 heures. Le bouton Conserver permet alors de le garder définitivement. Seule la transcription texte est conservée, jamais l’audio. La récupération après Échap est désactivée par défaut. Vous pouvez l’activer dans les réglages des raccourcis."
+            "value" : "Auparavant, appuyer sur votre raccourci d’annulation supprimait immédiatement votre enregistrement. Activez « Récupération avec Échap » pour conserver votre dictée. L’app termine la transcription et la retouche, puis affiche une petite pastille proposant un bouton Annuler pendant trois secondes. Elle reste visible tant que votre pointeur repose dessus. Si vous la laissez disparaître, le texte reste dans votre Historique pendant 24 heures. Le bouton Conserver permet alors de le garder définitivement. Seule la transcription texte est conservée, jamais l’audio. « Récupération avec Échap » est désactivée par défaut. Vous pouvez l’activer dans « Raccourcis clavier »."
           }
         },
         "es" : {
@@ -84583,13 +84583,13 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sag beim Diktieren den Namen eines Emoji und danach „Emoji“, etwa „lachendes Gesicht Emoji“ oder „Daumen hoch Emoji“. EnviousWispr fügt das Zeichen direkt ein."
+            "value" : "Sag beim Diktieren den englischen Namen eines Emojis und danach „emoji“, etwa „smiley face emoji“ oder „thumbs up emoji“. EnviousWispr fügt das Zeichen direkt ein."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Pendant votre dictée, dites le nom de l’emoji suivi du mot « emoji », comme « visage souriant emoji » ou « pouce levé emoji », et EnviousWispr insère directement le symbole."
+            "value" : "Pendant votre dictée, dites le nom anglais de l’emoji suivi du mot « emoji », comme « smiley face emoji » ou « thumbs up emoji », et EnviousWispr insère directement le symbole."
           }
         },
         "es" : {

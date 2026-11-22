@@ -14,7 +14,7 @@ The interface ships in English, German, Spanish and French. The other 28 languag
 
 327 nodes, 298 searchable, 9536 vocabulary blocks.
 
-Fingerprints: mapSHA256 `176c5f5116d5b48c42f08aa1986cfb18f910010734a70e5666cbafaff2a28328`, uiCatalogSHA256 `7863167a57be788b4275daba38a7ebe6f19934340aa0da99f707902458ea7c93`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `77e7d3272fba639d1dd73807953d4b91c9a9273a4b5d8832ef9d6f49b5018995`
+Fingerprints: mapSHA256 `78a18c41df65c26ed3b3c1f8d219269d225d89b384af535f7d407c704b7945a1`, uiCatalogSHA256 `245c047fec36593d3f0148c5ad51d434daf7b19962b9017e3804ce05de2f1a1d`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `77e7d3272fba639d1dd73807953d4b91c9a9273a4b5d8832ef9d6f49b5018995`
 
 ## Structure
 
@@ -133,7 +133,7 @@ Fingerprints: mapSHA256 `176c5f5116d5b48c42f08aa1986cfb18f910010734a70e5666cbafa
         - [TRANSCRIPTION ENGINE / TRANSKRIPTIONS-ENGINE / MOTOR DE TRANSCRIPCIÓN / MOTEUR DE TRANSCRIPTION](#node-transcriptionEngine) `transcriptionEngine` (setting)
           - [Change / Ändern / Cambiar / Modifier](#node-transcriptionEngine-change) `transcriptionEngine.change` (action)
           - [Keep current engine / Aktuelle Engine beibehalten / Mantener el motor actual / Conserver le moteur actuel](#node-transcriptionEngine-keepCurrent) `transcriptionEngine.keepCurrent` (action)
-          - [Re-check Fast model status / Modellstatus von „Schnell“ erneut prüfen / Comprobar de nuevo el estado del modelo Rápido / Vérifier à nouveau l’état du modèle Fast](#node-transcriptionEngine-recheckFast) `transcriptionEngine.recheckFast` (action)
+          - [Re-check Fast model status / Modellstatus von „Schnell“ erneut prüfen / Comprobar de nuevo el estado del modelo Rápido / Vérifier à nouveau l’état du modèle « Rapide »](#node-transcriptionEngine-recheckFast) `transcriptionEngine.recheckFast` (action)
           - [Cancel / Abbrechen / Cancelar / Annuler](#node-fastModel-cancelDownload) `fastModel.cancelDownload` (action)
           - [Resume / Fortsetzen / Reanudar / Reprendre](#node-fastModel-resume) `fastModel.resume` (action)
           - [Try Again / Erneut versuchen / Intentar de nuevo / Réessayer](#node-fastModel-tryAgain) `fastModel.tryAgain` (action)
@@ -149,7 +149,7 @@ Fingerprints: mapSHA256 `176c5f5116d5b48c42f08aa1986cfb18f910010734a70e5666cbafa
         - [Stop recording on silence / Aufnahme bei Stille stoppen / Detener la grabación al detectar silencio / Arrêter l’enregistrement en cas de silence](#node-stopOnSilence) `stopOnSilence` (setting)
           - [Pause duration / Pausendauer / Duración de la pausa / Durée de la pause](#node-pauseDuration) `pauseDuration` (setting)
         - [Remove filler words (um, uh, hmm...) / Füllwörter entfernen (ähm, äh, hm...) / Eliminar muletillas (um, uh, mmm...) / Supprimer les mots de remplissage (euh, hum, hmm…)](#node-fillerRemoval) `fillerRemoval` (setting)
-        - [Convert spoken emoji (e.g. "thumbs up emoji" → 👍) / Gesprochene Emojis umwandeln (z. B. „Daumen hoch Emoji“ → 👍) / Convertir los emojis dictados (p. ej., “thumbs up emoji” → 👍) / Convertir les émojis dictés (p. ex. « émoji pouce levé » → 👍)](#node-spokenEmoji) `spokenEmoji` (setting)
+        - [Convert spoken emoji (e.g. "thumbs up emoji" → 👍) / Gesprochene Emojis umwandeln (z. B. „thumbs up emoji“ → 👍) / Convertir los emojis dictados (p. ej., “thumbs up emoji” → 👍) / Convertir les émojis dictés (p. ex. « thumbs up emoji » → 👍)](#node-spokenEmoji) `spokenEmoji` (setting)
         - [Spoken punctuation / Gesprochene Satzzeichen / Puntuación por voz / Ponctuation dictée](#node-spokenPunctuation) `spokenPunctuation` (setting)
           - [Start word / Startwort / Palabra de inicio / Mot de début](#node-startWordLanguage) `startWordLanguage` (setting)
             - [(named at runtime by `startWordLanguage`)](#node-startWordLanguage-en) `startWordLanguage.en` (choice)
@@ -1079,7 +1079,7 @@ Fingerprints: mapSHA256 `176c5f5116d5b48c42f08aa1986cfb18f910010734a70e5666cbafa
 
 <a id="node-transcriptionEngine-recheckFast"></a>
 
-### Re-check Fast model status / Modellstatus von „Schnell“ erneut prüfen / Comprobar de nuevo el estado del modelo Rápido / Vérifier à nouveau l’état du modèle Fast (`transcriptionEngine.recheckFast`)
+### Re-check Fast model status / Modellstatus von „Schnell“ erneut prüfen / Comprobar de nuevo el estado del modelo Rápido / Vérifier à nouveau l’état du modèle « Rapide » (`transcriptionEngine.recheckFast`)
 
 | Field | Value |
 |---|---|
@@ -1520,7 +1520,7 @@ Fingerprints: mapSHA256 `176c5f5116d5b48c42f08aa1986cfb18f910010734a70e5666cbafa
 
 <a id="node-spokenEmoji"></a>
 
-### Convert spoken emoji (e.g. "thumbs up emoji" → 👍) / Gesprochene Emojis umwandeln (z. B. „Daumen hoch Emoji“ → 👍) / Convertir los emojis dictados (p. ej., “thumbs up emoji” → 👍) / Convertir les émojis dictés (p. ex. « émoji pouce levé » → 👍) (`spokenEmoji`)
+### Convert spoken emoji (e.g. "thumbs up emoji" → 👍) / Gesprochene Emojis umwandeln (z. B. „thumbs up emoji“ → 👍) / Convertir los emojis dictados (p. ej., “thumbs up emoji” → 👍) / Convertir les émojis dictés (p. ex. « thumbs up emoji » → 👍) (`spokenEmoji`)
 
 | Field | Value |
 |---|---|

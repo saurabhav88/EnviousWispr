@@ -81,9 +81,9 @@ enum FileImportPolishBlock: Equatable {
         comment: "Transcribe a File, Polish step: the note beside Continue when it is blocked.")
     case .unsavedKey:
       return String(
-        localized: "Press Save key to finish, or pick another.",
+        localized: "Press Save to finish, or pick another.",
         comment:
-          "Transcribe a File, Polish step: the note beside Continue when it is blocked. Save key is a button."
+          "Transcribe a File, Polish step: the note beside Continue when it is blocked. Save is the button beside the API key field."
       )
     }
   }
