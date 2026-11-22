@@ -7,13 +7,13 @@ import Observation
 @Observable
 final class AppWindowCoordinator: UpdateDialogPresenting {
   private let isOnboardingComplete: @MainActor () -> Bool
-  private weak var mainWindow: NSWindow?
   private var windowCloseObserver: (any NSObjectProtocol)?
   var setupSession: SetupSession?
-  private var openMainWindowAction: (() -> Void)?
-  private var pendingMainHandoff = false
+  /// #4842: the main window, an AppKit window this app creates and releases. Its close never
+  /// quits the app (a SwiftUI `Window` primary scene did, for some 2.6.1 users).
+  let mainWindowPresenter = MainWindowPresenter()
   private(set) var mainWindowVisitIsSetupHandoff = false
-  private var handledInitialSetup = false
+  private var openedFirstSurface = false
 
   /// #2455 C3: required and non-defaulted. Every activation and Dock-policy call
   /// this type makes goes through it, so a default would let a unit test move the
@@ -41,6 +41,9 @@ final class AppWindowCoordinator: UpdateDialogPresenting {
     self.application = application
     self.showInDock = showInDock
     self.isOnboardingComplete = isOnboardingComplete
+    mainWindowPresenter.onMainWindowClosed = { [weak self] closing in
+      self?.refreshActivationPolicy(excluding: closing)
+    }
   }
 
   // MARK: - Dock policy (#2480)
@@ -66,18 +69,12 @@ final class AppWindowCoordinator: UpdateDialogPresenting {
   }
 
   /// Launch rise, from `applicationWillFinishLaunching` before any scene or Sparkle
-  /// starts. `.regular` under EITHER setting: the main scene opens at launch, and
+  /// starts. `.regular` under EITHER setting: the main window opens at launch, and
   /// with the setting off the Dock icon then shows only until that window closes,
   /// which is what "off" promises. Before #2480 launch forced `.accessory`, which
   /// left the launch window behind other apps with no app menu or Cmd-Tab entry.
   func beginLaunch() {
     application.setPolicy(.regular)
-  }
-
-  /// One activation request once launch has finished, so the launch window comes
-  /// up in front. A request, not a guarantee: macOS may decline it.
-  func finishLaunch() {
-    application.activate(.ignoringOtherApps)
   }
 
   /// Sparkle is about to show a modal (`UpdateDialogPresenting`).
@@ -98,16 +95,12 @@ final class AppWindowCoordinator: UpdateDialogPresenting {
   /// `willClose`).
   func refreshActivationPolicy(excluding closing: NSWindow?) {
     let windows = NSApp.windows.filter { $0 !== closing }
+    let main = mainWindowPresenter.window.flatMap { $0 === closing ? nil : $0 }
     application.setPolicy(
       Self.activationPolicy(
         showInDock: showInDock(),
         mainWindowPresented: Self.isMainWindowPresented(
-          windowStates: windows.map {
-            (
-              matchesIdentity: Self.matchesMainWindowIdentity($0), isVisible: $0.isVisible,
-              isMiniaturized: $0.isMiniaturized
-            )
-          }),
+          main.map { (isVisible: $0.isVisible, isMiniaturized: $0.isMiniaturized) }),
         onboardingPresented: windows.contains {
           Self.matchesOnboardingWindowIdentity($0) && ($0.isVisible || $0.isMiniaturized)
         },
@@ -139,13 +132,10 @@ final class AppWindowCoordinator: UpdateDialogPresenting {
     transcriptWindows.contains(window)
   }
 
-  /// Install the main/onboarding window close observer (#2480: the Dock-policy
-  /// fall point). Called once from
-  /// `AppDelegate.applicationDidFinishLaunching` at the same position the
-  /// inline observer block occupied before PR-B.2.
+  /// Install the Setup and transcript window close observer (#2480: the Dock-policy fall
+  /// point). The main window reports its own close through `MainWindowPresenter` (#4842).
+  /// Called once from `AppLifecycleCoordinator.runDidFinishLaunching`.
   func installOnLaunch() {
-    // #2480: when the main OR onboarding window closes, re-decide the Dock policy
-    // without it. Before #2480 this dropped to `.accessory` unconditionally.
     // Store token so we can remove on termination (H11 observer leak fix).
     windowCloseObserver = NotificationCenter.default.addObserver(
       forName: NSWindow.willCloseNotification,
@@ -155,19 +145,9 @@ final class AppWindowCoordinator: UpdateDialogPresenting {
       guard let window = notification.object as? NSWindow else { return }
       MainActor.assumeIsolated {
         guard let self else { return }
-        // Capture the main window on the first close of a window we can
-        // positively identify as ours. See `isMainWindow` — matching by scene
-        // identity (not merely "titled and not onboarding") keeps a transient
-        // titled dialog, e.g. Sparkle's attended-update window, from being
-        // mistaken for the main window and flipping the app to `.accessory`
-        // while the real window is still open (#1296 review).
-        if self.mainWindow == nil, self.isMainWindow(window) {
-          self.mainWindow = window
-        }
         // Match by identity so status-bar/panel windows never trigger a re-decision.
         guard
-          window === self.mainWindow || Self.matchesOnboardingWindowIdentity(window)
-            || self.transcriptWindows.contains(window)
+          Self.matchesOnboardingWindowIdentity(window) || self.transcriptWindows.contains(window)
         else { return }
         self.refreshActivationPolicy(excluding: window)
         self.transcriptWindows.remove(window)
@@ -175,52 +155,21 @@ final class AppWindowCoordinator: UpdateDialogPresenting {
     }
   }
 
-  /// Positively identifies our main window, the SwiftUI `Window("", id: "main")`.
-  /// It carries the "main" scene identifier and an intentionally blank title (the
-  /// toolbar wordmark is the identity). Preferring the scene identifier, with a
-  /// blank-title fallback, means titled system dialogs (Sparkle's attended-update
-  /// window, save/open panels — all of which carry non-empty titles) never match.
-  private static func matchesMainWindowIdentity(_ window: NSWindow) -> Bool {
-    // The main window carries the app name as its title (visually suppressed by
-    // the principal toolbar item, but still set for the Window menu / VoiceOver).
-    // Match on it: onboarding ("Setup"), Sparkle's update dialog, and save/open
-    // panels all carry different titles, so none is mistaken for the main window.
-    window.styleMask.contains(.titled) && window.title == AppConstants.appName
-  }
-
   /// The onboarding scene's window. Owner: `OnboardingWindowIdentity`.
   private static func matchesOnboardingWindowIdentity(_ window: NSWindow) -> Bool {
     OnboardingWindowIdentity.matches(window)
   }
 
-  private func isMainWindow(_ window: NSWindow) -> Bool {
-    Self.matchesMainWindowIdentity(window)
-  }
-
-  /// #1392: the pure presentation decision, input-driven so it's testable
-  /// without touching real `NSWindow`/`NSApp` state. A window "counts" if it
-  /// matches the main-window identity AND is visible or minimized — not just
-  /// currently onscreen. Bare `isVisible` alone would revert to accessory
-  /// (and effectively strand the window) if the user minimized Settings
-  /// while an attended update check was in flight (#1392 r1 finding).
-  ///
-  /// r2 correction (code-diff review): deliberately does NOT also treat
-  /// "the whole app is Cmd+H-hidden" as presence. A window the user already
-  /// closed can still linger in `NSApp.windows` in a hidden-but-retained
-  /// state (SwiftUI single-instance `Window(id:)` scenes may keep the
-  /// underlying `NSWindow` around to support instant reopen); an app-wide
-  /// hidden flag can't distinguish that from a genuinely-still-open window
-  /// the user merely Cmd+H'd. Reverting to accessory while the app is
-  /// Cmd+H-hidden is accepted, documented behavior (Live UAT preface above)
-  /// — the user explicitly hid the whole app, so losing the Dock icon is not
-  /// a regression, and this check only ever needs to protect a window the
-  /// user can currently see or reach via the Dock/minimized state.
+  /// #1392: the pure presentation decision, input-driven so it's testable without touching real
+  /// `NSWindow`/`NSApp` state. The main window "counts" if it exists and is visible or minimized,
+  /// not just currently onscreen: bare `isVisible` would revert to accessory (and strand the
+  /// window) if the user minimized it while an attended update check was in flight. An app-wide
+  /// Cmd+H is deliberately not presence; reverting to accessory then is accepted (#1392 r2).
   static func isMainWindowPresented(
-    windowStates: [(matchesIdentity: Bool, isVisible: Bool, isMiniaturized: Bool)]
+    _ main: (isVisible: Bool, isMiniaturized: Bool)?
   ) -> Bool {
-    windowStates.contains { state in
-      state.matchesIdentity && (state.isVisible || state.isMiniaturized)
-    }
+    guard let main else { return false }
+    return main.isVisible || main.isMiniaturized
   }
 
   func tearDown() {
@@ -230,27 +179,13 @@ final class AppWindowCoordinator: UpdateDialogPresenting {
     }
   }
 
-  /// Show the unified window: bring it to front, set .regular, activate.
+  /// Show the unified window (building it when closed, #4842), set .regular, activate.
   ///
-  /// Returns whether anything was opened (#2480: the Dock-icon reopen handler
-  /// reports "handled" only when this did something).
+  /// Always opens something, so it returns true (#2480: the Dock-icon reopen handler
+  /// reports "handled" from this).
   @discardableResult
   func showWindow() -> Bool {
-    var opened = false
-    if let action = openMainWindowAction {
-      action()
-      opened = true
-    } else {
-      // Fallback: find and show the existing main window by scene identity.
-      for window in NSApp.windows where isMainWindow(window) {
-        window.makeKeyAndOrderFront(nil)
-        opened = true
-        break
-      }
-    }
-    // #2480: rise only when something was opened. With "Show app in Dock" off, a
-    // rise with no window would leave a Dock icon that no close event removes.
-    guard opened else { return false }
+    mainWindowPresenter.show()
     application.setPolicy(.regular)
     application.activate(.ignoringOtherApps)
     return true
@@ -263,11 +198,10 @@ final class AppWindowCoordinator: UpdateDialogPresenting {
   /// right.
   func reopenFromDock() -> Bool {
     let onboardingDone = isOnboardingComplete()
-    let neededWindowOnScreen = NSApp.windows.contains {
-      (onboardingDone
-        ? Self.matchesMainWindowIdentity($0) : Self.matchesOnboardingWindowIdentity($0))
-        && $0.isVisible
-    }
+    let neededWindowOnScreen =
+      onboardingDone
+      ? mainWindowPresenter.window?.isVisible == true
+      : NSApp.windows.contains { Self.matchesOnboardingWindowIdentity($0) && $0.isVisible }
     guard !neededWindowOnScreen else { return false }
     guard onboardingDone else {
       return openOnboardingWindow()
@@ -275,17 +209,17 @@ final class AppWindowCoordinator: UpdateDialogPresenting {
     return showWindow()
   }
 
-  /// The first main-scene task supplies the sole SwiftUI bridge. Attaching it again does not
-  /// reopen Setup after a person has closed it.
-  func attachMainWindow(open: @escaping () -> Void, automaticallyOpenSetup: Bool = true) {
-    openMainWindowAction = open
-    if pendingMainHandoff {
-      pendingMainHandoff = false
-      finishSetup()
-    }
-    guard !handledInitialSetup else { return }
-    handledInitialSetup = true
-    if automaticallyOpenSetup { openOnboardingWindow() }
+  /// #4842: the launch's first window, once. Setup when it is admitted (the main window stays
+  /// unshown until Setup finishes); otherwise the main window. An interrupted Setup visit that
+  /// completes inside `openOnboardingWindow()` has already shown the main window through
+  /// `finishSetup`, so it is shown only when it does not exist yet. The surface that opens
+  /// activates the app, so launch activates once.
+  func openFirstSurfaceAtLaunch(automaticallyOpenSetup: Bool) {
+    guard !openedFirstSurface else { return }
+    openedFirstSurface = true
+    if automaticallyOpenSetup, openOnboardingWindow() { return }
+    guard mainWindowPresenter.window == nil else { return }
+    showWindow()
   }
 
   @discardableResult
@@ -293,19 +227,9 @@ final class AppWindowCoordinator: UpdateDialogPresenting {
     guard !isOnboardingComplete(), let setupSession, setupSession.begin() else { return false }
     application.setPolicy(.regular)
     setupSession.present()
-    hideMainWindowForSetup()
-    // The first SwiftUI main scene may finish ordering itself during this run-loop turn.
-    DispatchQueue.main.async { [weak self, weak setupSession] in
-      guard let setupSession, setupSession.presenter.isVisible else { return }
-      self?.hideMainWindowForSetup()
-    }
+    // Setup covers the main window; ordered out, not closed, so it keeps its place.
+    mainWindowPresenter.orderOut()
     return true
-  }
-
-  private func hideMainWindowForSetup() {
-    for window in NSApp.windows where isMainWindow(window) && window.isVisible {
-      window.orderOut(nil)
-    }
   }
 
   func restartOnboarding() {
@@ -319,17 +243,10 @@ final class AppWindowCoordinator: UpdateDialogPresenting {
   }
 
   /// The Setup session has already marked the visit complete and dismissed its window.
-  /// Prefer the existing main window so Dock policy can be reconciled synchronously.
   func finishSetup() {
     mainWindowVisitIsSetupHandoff = true
-    if let window = NSApp.windows.first(where: isMainWindow) {
-      window.makeKeyAndOrderFront(nil)
-      application.setPolicy(.regular)
-      application.activate(.ignoringOtherApps)
-      refreshActivationPolicy(excluding: nil)
-    } else if !showWindow() {
-      pendingMainHandoff = true
-    }
+    showWindow()
+    refreshActivationPolicy(excluding: nil)
   }
 
 }
