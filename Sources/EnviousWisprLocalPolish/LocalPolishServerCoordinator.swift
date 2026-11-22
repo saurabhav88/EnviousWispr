@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprModelDelivery
 import Foundation
 import os
 
@@ -172,6 +173,10 @@ public actor LocalPolishServerCoordinator {
   /// slot was a regression rather than merely a limitation.
   private var observers: [LocalPolishModelID: @Sendable (LocalPolishLifecycleEvent) -> Void] = [:]
   private var failureObservers: [LocalPolishModelID: @Sendable (ChildProcessFailure) -> Void] = [:]
+  /// #4845 LIFE-5: every runtime hears that the shared server became free for dictation again
+  /// (a summary's valid release, or the last lease's), whichever model held it, so the selected
+  /// runtime can confirm a download that is waiting for a probe.
+  private var releaseObservers: [LocalPolishModelID: @Sendable () -> Void] = [:]
   private var managerObserverInstalled = false
 
   /// A non-isolated mirror of `resident`, read from inside the manager's own
@@ -244,7 +249,46 @@ public actor LocalPolishServerCoordinator {
   public func releaseLease(_ lease: LocalPolishServerLease) async {
     guard leases.removeValue(forKey: lease.id)?.model == lease.model else { return }
     wakeRemovalWaiters()
-    if leases.isEmpty { await retryDeferredReconfiguration() }
+    if leases.isEmpty {
+      await retryDeferredReconfiguration()
+      notifyReleased()
+    }
+  }
+
+  /// #4845: one handler per model, replaced on re-registration.
+  public func setReleaseObserver(
+    for model: LocalPolishModelID, _ observer: @escaping @Sendable () -> Void
+  ) {
+    releaseObservers[model] = observer
+  }
+
+  private func notifyReleased() {
+    for observer in releaseObservers.values { observer() }
+  }
+
+  /// #4845: the exact artifact (revision) the process serving `endpoint` for `model` was launched
+  /// with; nil when that model is not resident or the live endpoint is another one.
+  public func residentArtifact(
+    for model: LocalPolishModelID, endpoint: LocalPolishEndpoint
+  ) async -> ModelIdentity? {
+    guard resident == model, let artifact = residentTarget?.configuration.spec.artifactIdentity
+    else { return nil }
+    let live = await manager.activeEndpoint()
+    guard live == endpoint, resident == model,
+      residentTarget?.configuration.spec.artifactIdentity == artifact
+    else { return nil }
+    return artifact
+  }
+
+  /// #4845: whether a dictation polish for `model` would be admitted on `endpoint` right now:
+  /// that model holds the process, nothing is changing it, no summary holds it, and the live
+  /// endpoint is that one. Read in one actor turn around the manager's answer.
+  public func dictationAdmissionOpen(
+    for model: LocalPolishModelID, endpoint: LocalPolishEndpoint
+  ) async -> Bool {
+    guard !changing, resident == model, summaryReservation == nil else { return false }
+    let live = await manager.activeEndpoint()
+    return live == endpoint && !changing && resident == model && summaryReservation == nil
   }
 
   public func hasLease(for model: LocalPolishModelID) -> Bool {
@@ -319,12 +363,16 @@ public actor LocalPolishServerCoordinator {
     guard summaryReservation == reservation else { return }
     summaryReservation = nil
     wakeRemovalWaiters()
+    // The same server may stay resident with nothing deferred; the selected runtime still hears.
+    notifyReleased()
     guard leases.isEmpty, deferredRequest != nil, selectionAfterSummary == nil,
       !closedForQuit.withLock({ $0 })
     else { return }
     selectionAfterSummary = Task {
       await self.retryDeferredReconfiguration()
       self.selectionAfterSummary = nil
+      // #4845: the selected model the summary deferred is up now; tell the runtimes again.
+      self.notifyReleased()
     }
   }
 

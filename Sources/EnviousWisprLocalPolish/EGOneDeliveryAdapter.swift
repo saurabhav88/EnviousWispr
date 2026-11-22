@@ -311,6 +311,30 @@ public final class EGOneDeliveryAdapter {
     }
   }
 
+  /// #4845 LIFE-5: `onCompleted` runs once for each transfer of THIS model that fetched,
+  /// verified and promoted bytes (the controller's `attemptCompleted`, emitted only after a real
+  /// fetch). A cache hit or an in-place adoption is `admittedWithoutFetch` and never counts.
+  /// Unlike the install-state stream, no event is dropped for arriving late.
+  public func observeCompletedTransfers(_ onCompleted: @escaping @MainActor () -> Void) {
+    let identity = registration.manifest.identity
+    Task {
+      await controller.addEventObserver { observedIdentity, event in
+        guard Self.isCompletedTransfer(event, for: identity, observed: observedIdentity) else {
+          return
+        }
+        Task { @MainActor in onCompleted() }
+      }
+    }
+  }
+
+  /// The filter `observeCompletedTransfers` applies.
+  nonisolated static func isCompletedTransfer(
+    _ event: DeliveryEvent, for identity: ModelIdentity, observed: ModelIdentity
+  ) -> Bool {
+    guard observed == identity, case .attemptCompleted = event else { return false }
+    return true
+  }
+
   /// Apply guard for the install-state stream (MainActor-isolated): a
   /// reordered older MainActor hop is dropped so the callback fires monotonic.
   private var lastAppliedInstallSeq: UInt64 = 0

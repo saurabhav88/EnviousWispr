@@ -116,6 +116,37 @@ public enum EGOnePausedInstallState: String, Sendable, Equatable {
   }
 }
 
+/// #4845 LIFE-5: what one dictation activation actually reached, reported by the activation
+/// itself instead of inferred from its task finishing. Only `.ready` carries a passed health
+/// check, and only for the endpoint it measured.
+public enum DictationActivationOutcome: Sendable, Equatable {
+  /// The server is up and the inference probe passed on this endpoint.
+  case ready(LocalPolishEndpoint)
+  /// The server is up but no verdict was taken or kept (the shared engine was busy, a summary
+  /// holds the server, or another workload used the slot during the probe).
+  case readyUnchecked
+  /// Refused before starting: another engine's take pins the server, or the manifest blocks it.
+  case skipped(DictationActivationSkip)
+  /// Superseded while it ran (a switch away or a removal); it reports nothing.
+  case deferred
+  /// The server did not come up, or the probe did not pass (`health` is that verdict).
+  case failed(health: EGOneHealth?)
+}
+
+public enum DictationActivationSkip: String, Sendable, Equatable {
+  case otherEnginePinned, manifestBlocked
+}
+
+/// #4845 LIFE-5: "the model you downloaded is ready for dictation", earned only by a download that
+/// completed in this process followed by a passed probe on the current dictation selection's live
+/// server. In memory only (PR 2 makes it durable). The presenter rechecks `isCurrent` before
+/// showing it and spends it with `acknowledgeDownloadNotice(_:)` after the overlay presented it.
+public struct PolishDownloadNotice: Sendable, Equatable {
+  public let id: UUID
+  public let model: LocalPolishModelID
+  public let endpoint: LocalPolishEndpoint
+}
+
 /// Single owner of the EG-1 inference server and its delivery adapter (#1271,
 /// #1348 Phase 3): exposes their state to the pipeline (endpoint) and the
 /// settings UI (install/health/progress). Constructed ONCE by
@@ -396,11 +427,19 @@ public final class LocalPolishRuntime: EGOneLeaseProviding {
     delivery?.observeInstallState { [weak self] state in
       self?.applyInstallState(state)
     }
+    delivery?.observeCompletedTransfers { [weak self] in self?.transferCompleted() }
     Task { [weak self] in
       guard let self else { return }
       await self.registerProcessFailureObserver()
       await self.server.setStateObserver(for: self.modelID) { [weak self] event in
         Task { @MainActor [weak self] in self?.receive(event) }
+      }
+      // #4845 LIFE-5: the shared server became free (any model's release).
+      await self.server.setReleaseObserver(for: self.modelID) { [weak self] in
+        Task { @MainActor [weak self] in
+          self?.scheduleDownloadConfirmation()
+          self?.onReleaseObservedForTesting?()
+        }
       }
     }
   }
@@ -465,6 +504,8 @@ public final class LocalPolishRuntime: EGOneLeaseProviding {
   /// Fires after each applied lifecycle event: the subject's own completion
   /// signal for tests that must wait for the main-actor projection.
   var onLifecycleAppliedForTesting: (@MainActor (LocalPolishProcessManager.Lifecycle) -> Void)?
+  /// Tests (#4845): a release of the shared server reached this runtime on the main actor.
+  var onReleaseObservedForTesting: (@MainActor () -> Void)?
 
   func applyServerStateForTesting(_ state: LocalPolishProcessManager.ServerState) {
     applyLifecycle(LocalPolishProcessManager.Lifecycle(state: state))
@@ -637,6 +678,16 @@ public final class LocalPolishRuntime: EGOneLeaseProviding {
     var sameServer = false
     if case .ready(let endpoint) = lifecycle.state { sameServer = readyProbeVerdict?.endpoint == endpoint }
     if !sameServer { readyProbeVerdict = nil }
+    // #4845: a notice measured on a server that is gone waits for the new one's probe; the
+    // completed download it belongs to is kept.
+    if let notice = pendingDownloadNotice, lifecycle.state != .ready(notice.endpoint) {
+      pendingDownloadNotice = nil
+    }
+    // A new server came up that no activation of ours is about to probe (a start the coordinator
+    // ran after a summary or a take): confirm a waiting download on it.
+    if case .ready = lifecycle.state, !sameServer, dictationActivationsInFlight == 0 {
+      scheduleDownloadConfirmation()
+    }
     if let generation = lifecycle.outsideStopGeneration {
       // One sample per stop: a repeat of the same stop keeps its context.
       if unresolvedOutsideStop?.generation != generation {
@@ -726,6 +777,7 @@ public final class LocalPolishRuntime: EGOneLeaseProviding {
     }
     removalPending = false
     activationGeneration += 1
+    clearDownloadNotice()
     // Keep the user's Remove in the same intent order as provider switches.
     let intent = server.claimIntent()
     Task {
@@ -804,6 +856,31 @@ public final class LocalPolishRuntime: EGOneLeaseProviding {
   /// discardable in production and gives tests the exact completion signal.
   @discardableResult
   public func activateAndProbe(retriesAdapterFallback: Bool = false) -> Task<Void, Never>? {
+    guard case .started(let activation) = beginDictationActivation(retriesAdapterFallback)
+    else { return nil }
+    return Task { _ = await activation.value }
+  }
+
+  /// #4845 LIFE-5: `activateAndProbe` with its outcome. A refusal before any work (the same
+  /// refusals `activateAndProbe` answers with nil) is `.skipped`.
+  @discardableResult
+  public func activateForDictation(retriesAdapterFallback: Bool = false)
+    -> Task<DictationActivationOutcome, Never>
+  {
+    switch beginDictationActivation(retriesAdapterFallback) {
+    case .started(let activation): return activation
+    case .refused(let skip): return Task { .skipped(skip) }
+    }
+  }
+
+  private enum DictationActivationStart {
+    case started(Task<DictationActivationOutcome, Never>)
+    case refused(DictationActivationSkip)
+  }
+
+  private func beginDictationActivation(_ retriesAdapterFallback: Bool)
+    -> DictationActivationStart
+  {
     // Choosing EG-1 cancels any deferred removal FIRST, even if activation
     // itself then bails on a blocker — otherwise remove-during-recording
     // followed by re-selecting EG-1 still deletes the model the user just
@@ -812,57 +889,211 @@ public final class LocalPolishRuntime: EGOneLeaseProviding {
     // Refused, not deferred here: the sync layer owns the retry and already
     // has one pending for exactly this situation (a switch that arrived while
     // the other engine's take was in flight).
-    if isBlockedByOtherPinnedSession?() == true { return nil }
+    if isBlockedByOtherPinnedSession?() == true { return .refused(.otherEnginePinned) }
     guard let manifest, activationBlockers.isEmpty else {
       // Blocked manifest = spawn will never run this session, so its
       // pre-spawn sweep never reaps a crash orphan; reap here (idle-gated
       // on the server actor, so it cannot touch a live child) (#1271 r11).
       sweepStaleServersAtLaunch()
-      return nil
+      return .refused(.manifestBlocked)
     }
     let generation = activationGeneration
     let intent = server.claimIntent()
-    return Task {
+    dictationActivationsInFlight += 1
+    return .started(Task {
+      defer { self.dictationActivationsInFlight -= 1 }
       // First hop back onto the main actor: a switch-to-then-away that beat
       // this task bumped the generation — do not start the server.
-      guard generation == self.activationGeneration else { return }
+      guard generation == self.activationGeneration else { return .deferred }
       await self.startServerIfInstalled(
         generation: generation, intent: intent, retriesAdapterFallback: retriesAdapterFallback)
       // A deactivate DURING the start already stopped the server (the
       // manager's mid-start guards handle that); just don't probe or stamp
       // health for a stale generation.
-      guard generation == self.activationGeneration else { return }
-      guard let family = manifest.promptFamily else { return }
-      // The engine is up either way; the QUESTION is what is skipped.
-      guard self.isSharedEngineBusy?() != true else { return }
-      // **The instrument measures the INTERVAL, not two instants.** Sampling
-      // "is it busy" before and after both read false for a workload that
-      // claimed and released inside the probe — a one-part re-polish does
-      // exactly that — while the probe queued behind it and came back slow. Two
-      // rounds of review each moved a sample; this reads a counter that cannot
-      // miss a visit however brief. Found by cloud review.
-      let epochBefore = self.sharedEngineAdmissionEpoch?()
-      // #3988: the server this probe will measure, so its verdict can never
-      // be pinned on a replacement that came up while it ran.
-      guard let probed = await self.server.endpoint(for: self.modelID) else { return }
-      // #4319: nil means an EnviousMeet summary holds the server; there is no verdict.
-      guard
-        let result = await self.server.probeHealth(
-          self.modelID, operation: self.engine.makeHealthProbe(self.modelID, family))
-      else { return }
-      // Probe verdict wins over the cheap projection while server is ready.
-      guard generation == self.activationGeneration else { return }
-      // **The verdict is DISCARDED rather than the slot reserved**, deliberately.
-      // Taking the claim would be the atomic answer to a question nobody is
-      // asking: exclusivity is not wanted here, because a probe holding it would
-      // refuse a user's record press for the length of a health check. What this
-      // exists to prevent is publishing a verdict measured under contention, and
-      // dropping it does that. The next activation takes a fresh one.
-      guard self.isSharedEngineBusy?() != true else { return }
-      guard self.sharedEngineAdmissionEpoch?() == epochBefore else { return }
-      self.acceptProbeResult(result, for: probed)
+      guard generation == self.activationGeneration else { return .deferred }
+      guard await self.server.endpoint(for: self.modelID) != nil else {
+        return .failed(health: self.health)
+      }
+      guard let family = manifest.promptFamily else { return .readyUnchecked }
+      // The completed download this probe may confirm is the one known BEFORE it runs.
+      let download = self.completedDownload
+      let outcome = await self.probeForDictation(family: family) {
+        generation == self.activationGeneration
+      }
+      await self.qualifyDownloadNotice(outcome, for: download)
+      // A download that completed while this activation ran gets its own confirmation.
+      if self.completedDownload != nil, self.completedDownload != download {
+        self.scheduleDownloadConfirmation()
+      }
+      return outcome
+    })
+  }
+
+  /// The nonexclusive inference probe on the server running now, with every guard the activation
+  /// always had: skipped while the shared engine is busy, and a verdict measured while another
+  /// workload used the slot (the admission epoch moved) or a summary held the server is not kept.
+  /// `stillCurrent` is rechecked after each suspension.
+  private func probeForDictation(
+    family: PromptFamily, stillCurrent: @MainActor () -> Bool
+  ) async -> DictationActivationOutcome {
+    // The engine is up either way; the QUESTION is what is skipped.
+    guard isSharedEngineBusy?() != true else { return .readyUnchecked }
+    // **The instrument measures the INTERVAL, not two instants.** Sampling
+    // "is it busy" before and after both read false for a workload that
+    // claimed and released inside the probe — a one-part re-polish does
+    // exactly that — while the probe queued behind it and came back slow. Two
+    // rounds of review each moved a sample; this reads a counter that cannot
+    // miss a visit however brief. Found by cloud review.
+    let epochBefore = sharedEngineAdmissionEpoch?()
+    // #3988: the server this probe will measure, so its verdict can never
+    // be pinned on a replacement that came up while it ran.
+    guard let probed = await server.endpoint(for: modelID) else {
+      return stillCurrent() ? .failed(health: health) : .deferred
+    }
+    // #4319: nil means an EnviousMeet summary holds the server; there is no verdict.
+    guard
+      let result = await server.probeHealth(
+        modelID, operation: engine.makeHealthProbe(modelID, family))
+    else { return stillCurrent() ? .readyUnchecked : .deferred }
+    // Probe verdict wins over the cheap projection while server is ready.
+    guard stillCurrent() else { return .deferred }
+    // **The verdict is DISCARDED rather than the slot reserved**, deliberately.
+    // Taking the claim would be the atomic answer to a question nobody is
+    // asking: exclusivity is not wanted here, because a probe holding it would
+    // refuse a user's record press for the length of a health check. What this
+    // exists to prevent is publishing a verdict measured under contention, and
+    // dropping it does that. The next activation takes a fresh one.
+    guard isSharedEngineBusy?() != true else { return .readyUnchecked }
+    guard sharedEngineAdmissionEpoch?() == epochBefore else { return .readyUnchecked }
+    acceptProbeResult(result, for: probed)
+    // Kept only if it landed on the server running now (`acceptProbeResult` refuses another).
+    guard readyProbeVerdict?.endpoint == probed, readyProbeVerdict?.health == result else {
+      return .readyUnchecked
+    }
+    return result == .green ? .ready(probed) : .failed(health: result)
+  }
+
+  // MARK: - #4845 LIFE-5: the download-complete notice
+
+  /// A download this process completed for the current selection, not yet confirmed ready: its
+  /// id and the exact artifact (revision) delivery admitted.
+  private struct CompletedDownload: Equatable {
+    let id: UUID
+    let artifact: ModelIdentity
+  }
+  private var completedDownload: CompletedDownload?
+  private var completedDownloadID: UUID? { completedDownload?.id }
+  /// Dictation activations running now; each probes the server it starts, so a server they bring
+  /// up needs no separate confirmation.
+  private var dictationActivationsInFlight = 0
+  /// The confirmed notice, waiting for the presenter.
+  public private(set) var pendingDownloadNotice: PolishDownloadNotice?
+  /// The one confirmation in flight. A request while it runs is remembered and run once after it.
+  private var downloadConfirmation: Task<Void, Never>?
+  private var downloadConfirmationRequestedAgain = false
+
+  /// #4845 LIFE-5: delivery fetched, verified and promoted this model's bytes in this process
+  /// (`EGOneDeliveryAdapter.observeCompletedTransfers`). For the current selection that is the
+  /// one completed download a notice can belong to; it qualifies only on a probe that passes
+  /// after this point, never on a verdict taken before it (an upgrade's older server).
+  func transferCompleted(artifact: ModelIdentity? = nil) {
+    guard isActiveProvider?() == true, let artifact = artifact ?? delivery?.modelIdentity else {
+      return
+    }
+    completedDownload = CompletedDownload(id: UUID(), artifact: artifact)
+    pendingDownloadNotice = nil
+    // The activation `startDownload` begins probes after it boots; if a server is already ready
+    // (an activation that finished first), confirm on it now.
+    scheduleDownloadConfirmation()
+  }
+
+  /// A green probe turns `download` (the completed download known before that probe ran) into a
+  /// notice only if it is still the current one, the selection is unchanged, and the probed server
+  /// runs exactly the artifact that download admitted (an upgrade's older revision never does).
+  /// Every fact is read again after the coordinator hop, and the notice is set with no suspension
+  /// after that read. A notice measured on a replaced server gives way to the new verdict.
+  private func qualifyDownloadNotice(
+    _ outcome: DictationActivationOutcome, for download: CompletedDownload?
+  ) async {
+    guard case .ready(let endpoint) = outcome, let download, completedDownload == download,
+      pendingDownloadNotice?.endpoint != endpoint, isActiveProvider?() == true
+    else { return }
+    let artifact = await server.residentArtifact(for: modelID, endpoint: endpoint)
+    guard artifact == download.artifact, completedDownload == download,
+      pendingDownloadNotice?.endpoint != endpoint, isActiveProvider?() == true,
+      case .ready(let live) = serverState, live == endpoint,
+      readyProbeVerdict?.endpoint == endpoint, readyProbeVerdict?.health == .green
+    else { return }
+    pendingDownloadNotice = PolishDownloadNotice(
+      id: download.id, model: modelID, endpoint: endpoint)
+  }
+
+  private func clearDownloadNotice() {
+    completedDownload = nil
+    pendingDownloadNotice = nil
+  }
+
+  /// The presenter's check just before showing `notice`: still this selection's model, on the
+  /// same live server with its passed verdict, and dictation can use the server (no summary holds
+  /// it).
+  public func isCurrent(_ notice: PolishDownloadNotice) async -> Bool {
+    guard noticeMatchesLiveServer(notice) else { return false }
+    let open = await server.dictationAdmissionOpen(for: modelID, endpoint: notice.endpoint)
+    // Everything read before the hop is read again after it.
+    return open && noticeMatchesLiveServer(notice)
+  }
+
+  private func noticeMatchesLiveServer(_ notice: PolishDownloadNotice) -> Bool {
+    guard pendingDownloadNotice == notice, isActiveProvider?() == true,
+      case .ready(let live) = serverState, live == notice.endpoint
+    else { return false }
+    return readyProbeVerdict?.endpoint == notice.endpoint && readyProbeVerdict?.health == .green
+  }
+
+  /// The overlay presented `notice`: spend it. A stale or repeated acknowledgment (another id)
+  /// changes nothing.
+  public func acknowledgeDownloadNotice(_ id: UUID) {
+    guard pendingDownloadNotice?.id == id, completedDownloadID == id else { return }
+    clearDownloadNotice()
+  }
+
+  /// After a summary reservation or the final lease is released: one probe on the server that is
+  /// already running, for a completed download still waiting for its confirmation. Never boots,
+  /// never waits for a take, and runs at most once at a time.
+  private func scheduleDownloadConfirmation() {
+    if downloadConfirmation != nil {
+      downloadConfirmationRequestedAgain = true
+      return
+    }
+    guard let download = completedDownload,
+      pendingDownloadNotice.map({ !noticeMatchesLiveServer($0) }) ?? true,
+      isActiveProvider?() == true, let family = manifest?.promptFamily, activationBlockers.isEmpty
+    else { return }
+    let generation = activationGeneration
+    downloadConfirmationRequestedAgain = false
+    downloadConfirmation = Task {
+      if case .ready = self.serverState {
+        let outcome = await self.probeForDictation(family: family) {
+          generation == self.activationGeneration && self.completedDownload == download
+            && self.isActiveProvider?() == true
+        }
+        await self.qualifyDownloadNotice(outcome, for: download)
+      }
+      self.downloadConfirmation = nil
+      if self.downloadConfirmationRequestedAgain {
+        self.downloadConfirmationRequestedAgain = false
+        self.scheduleDownloadConfirmation()
+      }
     }
   }
+
+  /// Tests: waits for the confirmation in flight and any one it scheduled after itself.
+  func awaitDownloadConfirmationForTesting() async {
+    while let confirmation = downloadConfirmation { await confirmation.value }
+  }
+
+  /// Tests: the download this process completed and has not yet spent, if any.
+  var completedDownloadIDForTesting: UUID? { completedDownloadID }
 
   /// A probe verdict lands only on the server it measured (#3988).
   func acceptProbeResult(_ result: EGOneHealth, for endpoint: LocalPolishEndpoint) {
@@ -937,6 +1168,8 @@ public final class LocalPolishRuntime: EGOneLeaseProviding {
   /// Provider switched away: free the RAM (isolate-limbs).
   public func deactivate() {
     activationGeneration += 1
+    // #4845: "on for your next dictation" is no longer true once the user switched away.
+    clearDownloadNotice()
     // The switch-away and the matching switch-to are separate tasks, and Swift
     // does not order them. Claiming both stamps here, on the main actor, is
     // what makes the later request win regardless of which task runs first.
