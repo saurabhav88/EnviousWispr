@@ -421,6 +421,51 @@ enum HistoryTranscriptPresentation {
     return currentSource != resolved || current.state == .unavailable
   }
 
+  /// #4808: where a transcript's player was, for the file it played.
+  struct PlaybackPlace: Equatable {
+    let rowID: UUID
+    let identity: ImportedSourceIdentity
+    let positionMs: Int
+    let playing: Bool
+  }
+
+  /// #4808: what a new player takes over from the place before it.
+  struct PlaybackCarryOver: Equatable {
+    let positionMs: Int
+    let resume: Bool
+  }
+
+  /// The place of a player that has one (playback was requested or a place was set); nil for no
+  /// player, or one never played or moved.
+  @MainActor static func place(
+    of player: MeetingPlaybackController?, source: ResolvedImportedSource?
+  ) -> PlaybackPlace? {
+    guard let player, let source, player.hasPosition else { return nil }
+    return PlaybackPlace(
+      rowID: source.rowID, identity: source.identity, positionMs: player.positionMs,
+      playing: player.state == .playing)
+  }
+
+  /// #4808: the same verified original (same row, same fingerprint) keeps its place wherever it
+  /// now is: moved and found again, located again, or a failed player rebuilt. The live player's
+  /// place wins over a retained one, and only a live player that is playing resumes. Another row
+  /// or another file starts fresh.
+  static func carryOver(
+    live: PlaybackPlace?, retained: PlaybackPlace?, to resolved: ResolvedImportedSource
+  ) -> PlaybackCarryOver? {
+    guard let place = live ?? retained, place.rowID == resolved.rowID,
+      place.identity == resolved.identity
+    else { return nil }
+    return PlaybackCarryOver(positionMs: place.positionMs, resume: live != nil && place.playing)
+  }
+
+  /// Applies a carry-over to a freshly built player: seek, then play when it was playing.
+  @MainActor static func apply(_ carry: PlaybackCarryOver?, to player: MeetingPlaybackController) {
+    guard let carry else { return }
+    player.seek(toMs: carry.positionMs)
+    if carry.resume { player.play() }
+  }
+
   // MARK: - Transcribe again with
 
   /// The line shown for a row's Transcribe again with job; nil when nothing is worth saying.

@@ -216,6 +216,90 @@ struct HistoryTranscriptPresentationTests {
     #expect(P.needsNewPlayer(current: player, currentSource: a, resolved: a))
   }
 
+  @Test("#4808: the same original found at a new place keeps the player's place and play state")
+  func movedOriginalKeepsPlace() {
+    let rowID = UUID()
+    let identity = ImportedSourceIdentity(byteCount: 1, durationMs: 60_000, digest: "a")
+    let reference = ImportedSourceReference(bookmark: nil, fingerprint: nil)
+    let before = ResolvedImportedSource(
+      rowID: rowID, reference: reference, url: URL(fileURLWithPath: "/tmp/Desktop/a.m4a"),
+      identity: identity)
+    let moved = ResolvedImportedSource(
+      rowID: rowID, reference: reference, url: URL(fileURLWithPath: "/tmp/Study/a.m4a"),
+      identity: identity)
+    func player() -> (MeetingPlaybackController, MeetingPlaybackControllerTests.FakeOutput) {
+      let output = MeetingPlaybackControllerTests.FakeOutput()
+      return (
+        MeetingPlaybackController(media: .transcript(Tone()), durationMs: 60_000, output: output),
+        output
+      )
+    }
+
+    // Paused part-way: the new player is at the same place and does not play.
+    let (paused, _) = player()
+    paused.seek(toMs: 11_500)
+    let pausedCarry = P.carryOver(
+      live: P.place(of: paused, source: before), retained: nil, to: moved)
+    #expect(pausedCarry == P.PlaybackCarryOver(positionMs: 11_500, resume: false))
+    let (next, nextOutput) = player()
+    P.apply(pausedCarry, to: next)
+    #expect(next.positionMs == 11_500)
+    #expect(next.hasPosition)
+    #expect(next.state == .idle)
+    #expect(nextOutput.starts == 0, "a paused place never starts the output")
+
+    // Playing: the new player plays on from the same place.
+    let (playing, _) = player()
+    playing.seek(toMs: 3_000)
+    playing.play()
+    #expect(playing.state == .playing)
+    let playingCarry = P.carryOver(
+      live: P.place(of: playing, source: before), retained: nil, to: moved)
+    #expect(playingCarry == P.PlaybackCarryOver(positionMs: 3_000, resume: true))
+    let (resumed, resumedOutput) = player()
+    P.apply(playingCarry, to: resumed)
+    #expect(resumed.state == .playing)
+    #expect(resumed.positionMs == 3_000)
+    #expect(resumedOutput.starts == 1)
+
+    // A gap with no player (the original read missing, then came back): the retained place is
+    // used, and never resumes, even when it says playing. A live place wins over a retained one.
+    let retained = P.PlaybackPlace(rowID: rowID, identity: identity, positionMs: 8_000, playing: true)
+    #expect(
+      P.carryOver(live: nil, retained: retained, to: moved)
+        == P.PlaybackCarryOver(positionMs: 8_000, resume: false))
+    #expect(
+      P.carryOver(live: P.place(of: paused, source: before), retained: retained, to: moved)?
+        .positionMs == 11_500)
+
+    // A player never played or moved has no place, so the new one starts at 0.
+    let (untouched, _) = player()
+    #expect(P.place(of: untouched, source: before) == nil)
+    #expect(P.carryOver(live: nil, retained: nil, to: moved) == nil)
+    let (fresh, _) = player()
+    P.apply(nil, to: fresh)
+    #expect(fresh.positionMs == 0)
+    #expect(fresh.state == .idle)
+
+    // Another file (fingerprint differs) or another row never inherits the place.
+    let otherFile = ResolvedImportedSource(
+      rowID: rowID, reference: reference, url: moved.url,
+      identity: ImportedSourceIdentity(byteCount: 2, durationMs: 60_000, digest: "b"))
+    let otherRow = ResolvedImportedSource(
+      rowID: UUID(), reference: reference, url: moved.url, identity: identity)
+    #expect(P.carryOver(live: P.place(of: paused, source: before), retained: nil, to: otherFile) == nil)
+    #expect(P.carryOver(live: P.place(of: paused, source: before), retained: nil, to: otherRow) == nil)
+
+    // A player that stopped for good (read failure) keeps its place but does not resume.
+    let (failed, _) = player()
+    failed.seek(toMs: 4_000)
+    failed.stopForDeletion()
+    #expect(failed.state == .unavailable)
+    #expect(
+      P.carryOver(live: P.place(of: failed, source: before), retained: nil, to: moved)
+        == P.PlaybackCarryOver(positionMs: 4_000, resume: false))
+  }
+
   // MARK: - Turn time buttons
 
   @Test("an original that becomes playable, or a new player, redraws the turn document")
