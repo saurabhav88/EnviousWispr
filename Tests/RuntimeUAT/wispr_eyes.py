@@ -593,27 +593,71 @@ def _play_take(audio, on_fail):
             raise _tg.SetupFailed("playback", f"afplay did not start: {exc!r}")
 
 
+_DRIVER_ACTIVE_STATES = {"loadingModel", "recording", "transcribing", "polishing"}
+# The dev control door of the app under test, set by `audio_rig.AudioRig` (its pinned client) for
+# the length of a rig (#4829); outside a rig the idle check opens one for `_pid`.
+_idle_door = None
+
+
+def _driver_state(timeout=2.0):
+    """The app's own dictation state, `activeDriver.state` from the dev control door's read-only
+    `status` (`DevControlDispatcher.project(_:)`: idle, loadingModel, recording, transcribing,
+    polishing, complete, error, advisory), or None when the door cannot answer within `timeout`
+    seconds (#4829)."""
+    import dev_control
+    try:
+        client = _idle_door if _idle_door is not None else dev_control.DoorClient(_pid)
+        previous, client.timeout = client.timeout, timeout
+        try:
+            reply = client.status()
+        finally:
+            client.timeout = previous
+        state = reply.get("activeDriver", {}).get("state")
+    except Exception:
+        return None
+    return state if isinstance(state, str) else None
+
+
 def _recording_idle(seconds=30.0):
-    """Whether the app stopped recording: its menu offers Start Recording and not Stop Recording.
-    Both are read so a menu AX cannot see at all never reads as idle (#3764).
+    """Whether the app stopped recording, polled until `seconds` pass.
 
-    Both items live in the status item's menu (`AXExtrasMenuBar`), so only the menu bars are
-    searched (#4047): a search of the whole app for the ABSENT "Stop Recording" walked every open
-    window and took 90 s per call (measured 2026-10-24), which stalled every take
-    after the first by about 100 s. With no readable menu bar the answer stays "not idle"."""
-    menus = [m for m in (get_attr(_app, "AXExtrasMenuBar"), get_attr(_app, "AXMenuBar")) if m is not None]
-    if not menus:
-        return False
+    First the app's own signal: the dev control door's dictation state is not one of the active
+    states (the same set as `PipelineState.isActive`) (#4829). The status-item menu is NOT a
+    reliable signal: measured on main 09fbe748d, its `AXExtrasMenuBar` vanishes from the AX tree
+    when recording starts and returns about 30 s after the take ends, so a check made right after
+    a take read no menu and answered "not idle" every time.
 
-    def offered(label):
-        return any(_find_match(m, label, "AXMenuItem") is not None for m in menus)
+    Only when the door cannot answer, the menu: it offers Start Recording and not Stop Recording,
+    both read so a menu AX cannot see never reads as idle (#3764), re-read on every poll because
+    the bar comes and goes. Only the menu bars are searched (#4047): a search of the whole app for
+    the ABSENT "Stop Recording" walked every open window and took 90 s per call."""
+
+    def menu_idle():
+        menus = [m for m in (get_attr(_app, "AXExtrasMenuBar"), get_attr(_app, "AXMenuBar"))
+                 if m is not None]
+        if not menus:
+            return False
+
+        def offered(label):
+            return any(_find_match(m, label, "AXMenuItem") is not None for m in menus)
+
+        return not offered("Stop Recording") and offered("Start Recording")
 
     deadline = time.monotonic() + seconds
-    while time.monotonic() < deadline:
-        if not offered("Stop Recording") and offered("Start Recording"):
+    while True:
+        # Each door call gets only the time left (at least 0.2 s), and an answer that lands after
+        # the deadline is unconfirmed: a slow door never stretches cleanup past `seconds`.
+        state = _driver_state(timeout=max(0.2, min(2.0, deadline - time.monotonic())))
+        if time.monotonic() > deadline:
+            return False
+        if state is not None:
+            if state not in _DRIVER_ACTIVE_STATES:
+                return True
+        elif menu_idle() and time.monotonic() <= deadline:  # a late menu answer is unconfirmed
             return True
+        if time.monotonic() >= deadline:
+            return False
         time.sleep(0.3)  # settle: the recording state changes asynchronously; no ack to await
-    return False
 
 
 def _take_lines(start):
