@@ -580,23 +580,25 @@ class RemoveSessionCopiesTests(Temp):
         (self.run / "pilot.json").write_text("{}")
         (self.run / "open-existing").mkdir()
         (self.run / "open-existing/report.json").write_text("{}")
+        self.owned = {name: fixture.copy_identity(self.run, name) for name in ("subject", "home")}
 
     def test_removes_both_copies_and_keeps_reports(self):
-        self.assertEqual(fixture.remove_session_copies(self.run, deregister=lambda root: []), {"subject": "removed", "home": "removed"})
+        self.assertEqual(fixture.remove_session_copies(self.run, self.owned, deregister=lambda root: []),
+                         {"subject": "removed", "home": "removed"})
         self.assertEqual(sorted(p.name for p in self.run.iterdir()), ["open-existing", "pilot.json"])
         self.assertEqual((self.run / "open-existing/report.json").read_text(), "{}")
 
     def test_absent_copies_are_reported_absent(self):
         empty = self.root / "empty-run"
         empty.mkdir()
-        self.assertEqual(fixture.remove_session_copies(empty, deregister=lambda root: []), {"subject": "absent", "home": "absent"})
+        self.assertEqual(fixture.remove_session_copies(empty, {}, deregister=lambda root: []), {"subject": "absent", "home": "absent"})
 
     def test_linked_run_folder_is_refused_and_nothing_is_deleted(self):
         link = self.root / "linked-run"
         link.symlink_to(self.run)
         touched = []
         with self.assertRaisesRegex(fixture.FixtureError, "refused"):
-            fixture.remove_session_copies(link, deregister=lambda root: touched.append(root) or [])
+            fixture.remove_session_copies(link, self.owned, deregister=lambda root: touched.append(root) or [])
         self.assertEqual(touched, [])   # nothing deregistered through the link
         self.assertEqual((self.run / "home/Library/fixture.txt").read_text(), "fixture")
         self.assertEqual((self.run / "subject/Pinned.app/Contents/MacOS/EnviousWispr").read_bytes(), b"app")
@@ -611,9 +613,27 @@ class RemoveSessionCopiesTests(Temp):
             return subprocess.CompletedProcess(argv, 1 if argv[2].endswith("Updater.app") else 0)
 
         removed = fixture.remove_session_copies(
-            self.run, deregister=lambda root: fixture.deregister_apps(root, run=lsregister))
+            self.run, self.owned, deregister=lambda root: fixture.deregister_apps(root, run=lsregister))
         self.assertEqual(calls, [(["-u", str(nested)], True), (["-u", str(self.run / "subject/Pinned.app")], True)])
         self.assertEqual(removed, {"deregister_failed": [str(nested)], "subject": "removed", "home": "removed"})
+
+    def test_replaced_copy_is_refused_and_left_untouched(self):
+        # The recorded folder moved away and another took its path: cleanup must not delete the newcomer.
+        (self.run / "home").rename(self.root / "moved-home")
+        (self.run / "home/Library").mkdir(parents=True)
+        (self.run / "home/Library/other.txt").write_text("another run")
+        touched = []
+        with self.assertRaisesRegex(fixture.FixtureError, "refused"):
+            fixture.remove_session_copies(self.run, {"home": self.owned["home"]},
+                                          deregister=lambda root: touched.append(root) or [])
+        self.assertEqual((self.run / "home/Library/other.txt").read_text(), "another run")
+        self.assertEqual(touched, [])
+
+    def test_unrecorded_copy_is_kept(self):
+        self.assertEqual(fixture.remove_session_copies(self.run, {"home": self.owned["home"]},
+                                                       deregister=lambda root: []),
+                         {"subject": "not recorded", "home": "removed"})
+        self.assertTrue((self.run / "subject/Pinned.app/Contents/MacOS/EnviousWispr").is_file())
 
 
 class EntryPointTests(unittest.TestCase):

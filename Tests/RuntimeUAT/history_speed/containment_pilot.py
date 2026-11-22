@@ -132,14 +132,14 @@ def copies_keep_reason(run, own, session, unwinding, relaunched):
     return None
 
 
-def record_copy_cleanup(run, reason):
+def record_copy_cleanup(run, reason, owned):
     """Remove the copies unless `reason` says to keep them; write the outcome to cleanup.json. Never
     raises: the pilot's own result or exception stays the pilot's."""
     if reason:
         outcome = {"kept": reason}
     else:
         try:
-            outcome = {"removed": fixture.remove_session_copies(run)}
+            outcome = {"removed": fixture.remove_session_copies(run, owned)}
         except Exception as error:
             outcome = {"error": str(error)}
     if outcome.get("error") or (reason and reason != "--keep-copies"):
@@ -170,11 +170,13 @@ def main():
         run_cases, run_samples = Path(OWN[at + 1]), OWN[at + 2]
     run = fixture.session_run_dir(run)
     run.mkdir(parents=True, exist_ok=False)
-    session, relaunched = None, []
+    session, relaunched, owned = None, [], {}
     try:
         real_home = Path(fixture.pwd_home())
         subject = fixture.prepare_subject(app, run / "subject", sha)
+        owned["subject"] = fixture.copy_identity(run, "subject")
         home = fixture.regenerate_home(seed, run / "home")
+        owned["home"] = fixture.copy_identity(run, "home")
         roots = watched(real_home)
         before = snapshot(roots)
         started = time.time()
@@ -302,7 +304,7 @@ def main():
             if "--storage-warning" in OWN else []
         return 1 if missing or banner_failed else 0   # a banner diagnostic's own failing exit fails the pilot
     finally:
-        record_copy_cleanup(run, copies_keep_reason(run, OWN, session, sys.exc_info()[1], relaunched))
+        record_copy_cleanup(run, copies_keep_reason(run, OWN, session, sys.exc_info()[1], relaunched), owned)
 
 
 if __name__ == "__main__":
